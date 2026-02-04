@@ -1,0 +1,160 @@
+SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
+
+CREATE DATABASE IF NOT EXISTS service_user_service_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE DATABASE IF NOT EXISTS service_group_service_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE DATABASE IF NOT EXISTS service_message_service_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+USE service_user_service_db;
+
+CREATE TABLE IF NOT EXISTS users (
+  id BIGINT NOT NULL COMMENT '用户ID（雪花ID）',
+  username VARCHAR(50) NOT NULL COMMENT '用户名',
+  password VARCHAR(255) NOT NULL COMMENT '密码（BCrypt）',
+  nickname VARCHAR(100) NULL COMMENT '昵称',
+  avatar VARCHAR(500) NULL COMMENT '头像URL',
+  phone VARCHAR(20) NULL COMMENT '手机号',
+  email VARCHAR(100) NULL COMMENT '邮箱',
+  status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1-正常，0-禁用',
+  last_login_time DATETIME NULL COMMENT '最后登录时间',
+  im_token VARCHAR(500) NULL COMMENT 'IM Token',
+  im_server_url VARCHAR(200) NULL COMMENT 'IM服务器地址',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_users_username (username),
+  KEY idx_users_status (status),
+  KEY idx_users_last_login (last_login_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户表';
+
+CREATE TABLE IF NOT EXISTS im_friend (
+  id BIGINT NOT NULL COMMENT '好友关系ID（雪花ID）',
+  user_id BIGINT NOT NULL COMMENT '用户ID',
+  friend_id BIGINT NOT NULL COMMENT '好友用户ID',
+  remark VARCHAR(100) NULL COMMENT '好友备注',
+  status TINYINT NOT NULL DEFAULT 1 COMMENT '关系状态：1-正常，2-删除，3-拉黑',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_friend_user_friend (user_id, friend_id),
+  KEY idx_friend_user_status (user_id, status),
+  KEY idx_friend_friend (friend_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='好友关系表';
+
+CREATE TABLE IF NOT EXISTS friend_request (
+  id BIGINT NOT NULL COMMENT '好友申请ID（雪花ID）',
+  applicant_id BIGINT NOT NULL COMMENT '申请人用户ID',
+  target_user_id BIGINT NOT NULL COMMENT '被申请人用户ID',
+  status INT NOT NULL COMMENT '申请状态：0-待处理，1-已同意，2-已拒绝',
+  apply_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '申请时间',
+  apply_reason VARCHAR(200) NULL COMMENT '申请理由',
+  reject_reason VARCHAR(200) NULL COMMENT '拒绝理由',
+  handle_time DATETIME NULL COMMENT '处理时间',
+  PRIMARY KEY (id),
+  KEY idx_friend_request_target_status (target_user_id, status),
+  KEY idx_friend_request_applicant (applicant_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='好友申请表';
+
+USE service_group_service_db;
+
+CREATE TABLE IF NOT EXISTS im_group (
+  id BIGINT NOT NULL COMMENT '群组ID（雪花ID）',
+  name VARCHAR(100) NOT NULL COMMENT '群名称',
+  avatar VARCHAR(500) NULL COMMENT '群头像URL',
+  announcement TEXT NULL COMMENT '群公告',
+  owner_id BIGINT NOT NULL COMMENT '群主用户ID',
+  type INT NOT NULL DEFAULT 1 COMMENT '群类型：1-普通群，2-公开群',
+  max_members INT NOT NULL DEFAULT 500 COMMENT '最大成员数',
+  member_count INT NOT NULL DEFAULT 1 COMMENT '当前成员数',
+  status TINYINT NOT NULL DEFAULT 1 COMMENT '群状态：1-正常，0-解散',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  KEY idx_group_owner (owner_id),
+  KEY idx_group_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='群组表';
+
+CREATE TABLE IF NOT EXISTS im_group_member (
+  id BIGINT NOT NULL COMMENT '群成员关系ID（雪花ID）',
+  group_id BIGINT NOT NULL COMMENT '群组ID',
+  user_id BIGINT NOT NULL COMMENT '用户ID',
+  nickname VARCHAR(100) NULL COMMENT '群内昵称',
+  role INT NOT NULL DEFAULT 1 COMMENT '成员角色：1-成员，2-管理员，3-群主',
+  status TINYINT NOT NULL DEFAULT 1 COMMENT '成员状态：1-正常，0-退出',
+  join_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '加入时间',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_group_member_group_user (group_id, user_id),
+  KEY idx_group_member_group (group_id),
+  KEY idx_group_member_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='群成员表';
+
+USE service_message_service_db;
+
+CREATE TABLE IF NOT EXISTS messages (
+  id BIGINT NOT NULL COMMENT '消息ID（雪花ID）',
+  sender_id BIGINT NOT NULL COMMENT '发送者用户ID',
+  receiver_id BIGINT NULL COMMENT '接收者用户ID（私聊）',
+  group_id BIGINT NULL COMMENT '群组ID（群聊）',
+  message_type INT NOT NULL COMMENT '消息类型编码（见 MessageType.code）',
+  content TEXT NULL COMMENT '消息内容',
+  media_url VARCHAR(500) NULL COMMENT '媒体文件URL',
+  media_size BIGINT NULL COMMENT '媒体文件大小（字节）',
+  media_name VARCHAR(255) NULL COMMENT '媒体文件名',
+  thumbnail_url VARCHAR(500) NULL COMMENT '缩略图URL',
+  duration INT NULL COMMENT '音视频时长（秒）',
+  location_info TEXT NULL COMMENT '位置信息（JSON/文本）',
+  status INT NOT NULL COMMENT '消息状态：1-已发送，2-已送达，3-已读，4-撤回，5-删除',
+  is_group_chat TINYINT NOT NULL DEFAULT 0 COMMENT '是否群聊：1-是，0-否',
+  reply_to_message_id BIGINT NULL COMMENT '回复的消息ID',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  KEY idx_messages_sender_time (sender_id, created_time),
+  KEY idx_messages_receiver_sender_status (receiver_id, sender_id, status),
+  KEY idx_messages_group_time (group_id, created_time),
+  KEY idx_messages_reply (reply_to_message_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='消息表';
+
+CREATE TABLE IF NOT EXISTS message_read_status (
+  id BIGINT NOT NULL COMMENT '已读记录ID（雪花ID）',
+  message_id BIGINT NOT NULL COMMENT '消息ID',
+  user_id BIGINT NOT NULL COMMENT '用户ID',
+  read_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '已读时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_message_read_message_user (message_id, user_id),
+  KEY idx_message_read_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='消息已读状态表';
+
+CREATE TABLE IF NOT EXISTS group_read_cursor (
+  id BIGINT NOT NULL COMMENT '游标ID（雪花ID）',
+  group_id BIGINT NOT NULL COMMENT '群组ID',
+  user_id BIGINT NOT NULL COMMENT '用户ID',
+  last_read_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最后已读时间',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_group_cursor_group_user (group_id, user_id),
+  KEY idx_group_cursor_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='群聊阅读游标表';
+
+CREATE TABLE IF NOT EXISTS message_outbox (
+  id BIGINT NOT NULL COMMENT '事件ID（雪花ID）',
+  topic VARCHAR(255) NOT NULL COMMENT 'Kafka Topic',
+  message_key VARCHAR(255) NULL COMMENT 'Kafka Key',
+  payload TEXT NOT NULL COMMENT '事件载荷（JSON）',
+  status VARCHAR(32) NOT NULL COMMENT '发送状态（PENDING/FAILED/SENT 等）',
+  attempts INT NOT NULL COMMENT '已尝试次数',
+  next_retry_at DATETIME NOT NULL COMMENT '下次重试时间',
+  last_error TEXT NULL COMMENT '最后一次错误信息',
+  related_message_id BIGINT NULL COMMENT '关联的消息ID',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  KEY idx_outbox_status_retry (status, next_retry_at),
+  KEY idx_outbox_related_topic (related_message_id, topic)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='消息发件箱(outbox)事件表';
+
+SET FOREIGN_KEY_CHECKS = 1;
+

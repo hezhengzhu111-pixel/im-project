@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IM服务器API测试页面</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 3px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .api-section {
+            margin-bottom: 40px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 20px;
+            background-color: #fafafa;
+        }
+        .api-title {
+            color: #007bff;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        
+        /* 聊天框样式 */
+        .chat-settings {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        
+        .row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .col {
+            flex: 1;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin: 0;
+        }
+        
+        .chat-window {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: white;
+            overflow: hidden;
+        }
+        
+        .chat-messages {
+            height: 400px;
+            overflow-y: auto;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+        
+        .message.sent {
+            justify-content: flex-end;
+        }
+        
+        .message.received {
+            justify-content: flex-start;
+        }
+        
+        .message-bubble {
+            max-width: 70%;
+            padding: 10px 15px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+        
+        .message.sent .message-bubble {
+            background-color: #007bff;
+            color: white;
+        }
+        
+        .message.received .message-bubble {
+            background-color: #e9ecef;
+            color: #333;
+        }
+        
+        .message-info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .system-message {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            margin: 10px 0;
+            padding: 8px;
+            background-color: #e9ecef;
+            border-radius: 15px;
+        }
+        
+        .chat-input-area {
+            padding: 15px;
+            background-color: white;
+        }
+        
+        .input-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .message-type-select {
+            width: 100px;
+            flex-shrink: 0;
+        }
+        
+        .input-row input[type="text"] {
+            flex: 1;
+        }
+        
+        .send-btn {
+            background-color: #28a745;
+            padding: 10px 20px;
+            margin: 0;
+            flex-shrink: 0;
+        }
+        
+        .send-btn:hover {
+            background-color: #218838;
+        }
+        
+        .chat-status {
+            padding: 10px;
+            text-align: center;
+            background-color: #e9ecef;
+            color: #666;
+            font-size: 14px;
+        }
+        .row {
+            display: flex;
+            gap: 15px;
+        }
+        .col {
+            flex: 1;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>IM服务器API测试页面</h1>
+        
+        <!-- 服务器信息 -->
+        <div class="api-section">
+            <div class="api-title">🌐 服务器信息</div>
+            <div class="form-group">
+                <label>服务器地址:</label>
+                <input type="text" id="serverUrl" value="http://localhost:8080" placeholder="http://localhost:8080">
+            </div>
+            <button onclick="testConnection()">测试连接</button>
+            <div id="connectionResponse" class="response" style="display:none;"></div>
+        </div>
+
+        <!-- 发送消息API -->
+        <div class="api-section">
+            <div class="api-title">📨 发送消息 API</div>
+            <div class="row">
+                <div class="col">
+                    <div class="form-group">
+                        <label>发送者ID:</label>
+                        <input type="text" id="senderId" value="user001" placeholder="发送者用户ID">
+                    </div>
+                    <div class="form-group">
+                        <label>接收者ID:</label>
+                        <input type="text" id="receiverId" value="user002" placeholder="接收者用户ID（私聊时必填）">
+                    </div>
+                    <div class="form-group">
+                        <label>群组ID:</label>
+                        <input type="text" id="groupId" value="group001" placeholder="群组ID（群聊时必填）">
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="form-group">
+                        <label>消息类型:</label>
+                        <select id="messageType">
+                            <option value="TEXT">文本消息</option>
+                            <option value="IMAGE">图片消息</option>
+                            <option value="FILE">文件消息</option>
+                            <option value="AUDIO">音频消息</option>
+                            <option value="VIDEO">视频消息</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="isGroupChat">
+                            <label for="isGroupChat">群聊消息</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>消息内容:</label>
+                <textarea id="messageContent" placeholder="请输入消息内容">Hello, this is a test message!</textarea>
+            </div>
+            <button onclick="sendMessage()">发送消息</button>
+            <button onclick="clearMessageForm()">清空表单</button>
+            <div id="messageResponse" class="response" style="display:none;"></div>
+        </div>
+
+        <!-- 用户下线API -->
+        <div class="api-section">
+            <div class="api-title">👋 用户下线 API</div>
+            <div class="form-group">
+                <label>用户ID:</label>
+                <input type="text" id="offlineUserId" value="user001" placeholder="需要下线的用户ID">
+            </div>
+            <button onclick="userOffline()">用户下线</button>
+            <div id="offlineResponse" class="response" style="display:none;"></div>
+        </div>
+
+        <!-- 心跳检测API -->
+        <div class="api-section">
+            <div class="api-title">💓 心跳检测 API</div>
+            <div class="form-group">
+                <label>用户ID列表 (每行一个):</label>
+                <textarea id="heartbeatUserIds" placeholder="user001\nuser002\nuser003">user001\nuser002\nuser003</textarea>
+            </div>
+            <button onclick="heartbeat()">心跳检测</button>
+            <button onclick="startAutoHeartbeat()">开始自动心跳</button>
+            <button onclick="stopAutoHeartbeat()">停止自动心跳</button>
+            <div id="heartbeatResponse" class="response" style="display:none;"></div>
+        </div>
+
+        <!-- WebSocket测试 -->
+        <div class="api-section">
+            <div class="api-title">🔌 WebSocket 连接测试</div>
+            <div class="form-group">
+                <label>用户ID:</label>
+                <input type="text" id="wsUserId" value="user001" placeholder="WebSocket连接用户ID">
+            </div>
+            <button onclick="connectWebSocket()">连接WebSocket</button>
+            <button onclick="disconnectWebSocket()">断开连接</button>
+            <div id="wsStatus" class="response info" style="display:none;">WebSocket未连接</div>
+            <div id="wsMessages" class="response" style="display:none;"></div>
+        </div>
+
+        <!-- 聊天框测试 -->
+        <div class="api-section">
+            <div class="api-title">💬 实时聊天测试</div>
+            
+            <!-- 聊天设置 -->
+            <div class="chat-settings">
+                <div class="row">
+                    <div class="col">
+                        <div class="form-group">
+                            <label>当前用户ID:</label>
+                            <input type="text" id="chatUserId" value="user001" placeholder="当前用户ID">
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="form-group">
+                            <label>聊天对象ID:</label>
+                            <input type="text" id="chatTargetId" value="user002" placeholder="聊天对象ID">
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="form-group">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="chatIsGroup">
+                                <label for="chatIsGroup">群聊模式</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button onclick="startChat()">开始聊天</button>
+                <button onclick="stopChat()">结束聊天</button>
+                <button onclick="clearChatHistory()">清空聊天记录</button>
+            </div>
+
+            <!-- 聊天窗口 -->
+            <div class="chat-window" id="chatWindow" style="display:none;">
+                <!-- 聊天消息显示区域 -->
+                <div class="chat-messages" id="chatMessages">
+                    <div class="system-message">聊天已开始，请开始对话...</div>
+                </div>
+                
+                <!-- 消息输入区域 -->
+                <div class="chat-input-area">
+                    <div class="input-row">
+                        <select id="chatMessageType" class="message-type-select">
+                            <option value="TEXT">文本</option>
+                            <option value="IMAGE">图片</option>
+                            <option value="FILE">文件</option>
+                            <option value="AUDIO">音频</option>
+                            <option value="VIDEO">视频</option>
+                        </select>
+                        <input type="text" id="chatMessageInput" placeholder="请输入消息内容..." onkeypress="handleChatKeyPress(event)">
+                        <button onclick="sendChatMessage()" class="send-btn">发送</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let heartbeatInterval = null;
+        let websocket = null;
+
+        // 获取服务器地址
+        function getServerUrl() {
+            return document.getElementById('serverUrl').value.trim() || 'http://localhost:8080';
+        }
+
+        // 显示响应结果
+        function showResponse(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.className = `response ${isError ? 'error' : 'success'}`;
+            element.textContent = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
+        }
+
+        // 测试服务器连接
+        async function testConnection() {
+            try {
+                const response = await fetch(`${getServerUrl()}/actuator/health`, {
+                    method: 'GET'
+                });
+                if (response.ok) {
+                    showResponse('connectionResponse', '✅ 服务器连接成功！');
+                } else {
+                    showResponse('connectionResponse', `❌ 服务器响应错误: ${response.status}`, true);
+                }
+            } catch (error) {
+                showResponse('connectionResponse', `❌ 连接失败: ${error.message}`, true);
+            }
+        }
+
+        // 发送消息
+        async function sendMessage() {
+            const messageData = {
+                senderId: document.getElementById('senderId').value,
+                receiverId: document.getElementById('receiverId').value,
+                groupId: document.getElementById('groupId').value,
+                isGroupChat: document.getElementById('isGroupChat').checked,
+                type: document.getElementById('messageType').value,
+                content: document.getElementById('messageContent').value,
+                sendTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
+            };
+
+            // 验证必填字段
+            if (!messageData.senderId || !messageData.content) {
+                showResponse('messageResponse', '❌ 发送者ID和消息内容不能为空', true);
+                return;
+            }
+
+            if (messageData.isGroupChat && !messageData.groupId) {
+                showResponse('messageResponse', '❌ 群聊消息必须填写群组ID', true);
+                return;
+            }
+
+            if (!messageData.isGroupChat && !messageData.receiverId) {
+                showResponse('messageResponse', '❌ 私聊消息必须填写接收者ID', true);
+                return;
+            }
+
+            try {
+                const response = await fetch(`${getServerUrl()}/api/im/sendMessage`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(messageData)
+                });
+
+                const result = await response.json();
+                showResponse('messageResponse', result, !response.ok);
+            } catch (error) {
+                showResponse('messageResponse', `❌ 请求失败: ${error.message}`, true);
+            }
+        }
+
+        // 清空消息表单
+        function clearMessageForm() {
+            document.getElementById('senderId').value = 'user001';
+            document.getElementById('receiverId').value = 'user002';
+            document.getElementById('groupId').value = 'group001';
+            document.getElementById('messageContent').value = 'Hello, this is a test message!';
+            document.getElementById('isGroupChat').checked = false;
+            document.getElementById('messageType').value = 'TEXT';
+        }
+
+        // 用户下线
+        async function userOffline() {
+            const userId = document.getElementById('offlineUserId').value;
+            
+            if (!userId) {
+                showResponse('offlineResponse', '❌ 用户ID不能为空', true);
+                return;
+            }
+
+            try {
+                const response = await fetch(`${getServerUrl()}/api/im/offline/${userId}`, {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+                showResponse('offlineResponse', result, !response.ok);
+            } catch (error) {
+                showResponse('offlineResponse', `❌ 请求失败: ${error.message}`, true);
+            }
+        }
+
+        // 心跳检测
+        async function heartbeat() {
+            const userIdsText = document.getElementById('heartbeatUserIds').value;
+            const userIds = userIdsText.split('\n').map(id => id.trim()).filter(id => id);
+            
+            if (userIds.length === 0) {
+                showResponse('heartbeatResponse', '❌ 用户ID列表不能为空', true);
+                return;
+            }
+
+            try {
+                const response = await fetch(`${getServerUrl()}/api/im/heartbeat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(userIds)
+                });
+
+                const result = await response.json();
+                showResponse('heartbeatResponse', result, !response.ok);
+            } catch (error) {
+                showResponse('heartbeatResponse', `❌ 请求失败: ${error.message}`, true);
+            }
+        }
+
+        // 开始自动心跳
+        function startAutoHeartbeat() {
+            if (heartbeatInterval) {
+                showResponse('heartbeatResponse', '⚠️ 自动心跳已经在运行中', true);
+                return;
+            }
+
+            heartbeatInterval = setInterval(() => {
+                heartbeat();
+            }, 30000); // 30秒间隔
+
+            showResponse('heartbeatResponse', '✅ 自动心跳已启动（30秒间隔）');
+        }
+
+        // 停止自动心跳
+        function stopAutoHeartbeat() {
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+                showResponse('heartbeatResponse', '✅ 自动心跳已停止');
+            } else {
+                showResponse('heartbeatResponse', '⚠️ 自动心跳未在运行', true);
+            }
+        }
+
+        // 连接WebSocket
+        function connectWebSocket() {
+            const userId = document.getElementById('wsUserId').value;
+            
+            if (!userId) {
+                showResponse('wsStatus', '❌ 用户ID不能为空', true);
+                return;
+            }
+
+            if (websocket) {
+                showResponse('wsStatus', '⚠️ WebSocket已经连接', true);
+                return;
+            }
+
+            const wsUrl = getServerUrl().replace('http', 'ws') + `/websocket/${userId}`;
+            
+            try {
+                websocket = new WebSocket(wsUrl);
+                
+                websocket.onopen = function(event) {
+                    showResponse('wsStatus', `✅ WebSocket连接成功: ${wsUrl}`);
+                };
+                
+                websocket.onmessage = function(event) {
+                    const messagesDiv = document.getElementById('wsMessages');
+                    messagesDiv.style.display = 'block';
+                    messagesDiv.className = 'response info';
+                    messagesDiv.textContent += `\n[${new Date().toLocaleTimeString()}] 收到消息: ${event.data}`;
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                };
+                
+                websocket.onerror = function(error) {
+                    showResponse('wsStatus', `❌ WebSocket错误: ${error}`, true);
+                };
+                
+                websocket.onclose = function(event) {
+                    showResponse('wsStatus', `🔌 WebSocket连接已关闭 (代码: ${event.code})`);
+                    websocket = null;
+                };
+                
+            } catch (error) {
+                showResponse('wsStatus', `❌ WebSocket连接失败: ${error.message}`, true);
+            }
+        }
+
+        // 断开WebSocket
+        function disconnectWebSocket() {
+            if (websocket) {
+                websocket.close();
+                websocket = null;
+                showResponse('wsStatus', '✅ WebSocket连接已断开');
+            } else {
+                showResponse('wsStatus', '⚠️ WebSocket未连接', true);
+            }
+        }
+
+        // 页面加载完成后自动测试连接
+        window.onload = function() {
+            testConnection();
+        };
+
+        // 页面关闭时清理资源
+        window.onbeforeunload = function() {
+            stopAutoHeartbeat();
+            disconnectWebSocket();
+        };
+
+        // 聊天相关变量
+        let chatWebSocket = null;
+        let currentChatUserId = null;
+        let currentChatTargetId = null;
+        let isChatGroupMode = false;
+
+        // 开始聊天
+        function startChat() {
+            const userId = document.getElementById('chatUserId').value.trim();
+            const targetId = document.getElementById('chatTargetId').value.trim();
+            const isGroup = document.getElementById('chatIsGroup').checked;
+
+            if (!userId || !targetId) {
+                alert('请填写用户ID和聊天对象ID');
+                return;
+            }
+
+            currentChatUserId = userId;
+            currentChatTargetId = targetId;
+            isChatGroupMode = isGroup;
+
+            // 显示聊天窗口
+            document.getElementById('chatWindow').style.display = 'block';
+            
+            // 连接WebSocket用于聊天
+            connectChatWebSocket();
+            
+            // 添加系统消息
+            addSystemMessage(`聊天已开始 - ${isGroup ? '群聊' : '私聊'} (${userId} <-> ${targetId})`);
+        }
+
+        // 结束聊天
+        function stopChat() {
+            if (chatWebSocket) {
+                chatWebSocket.close();
+                chatWebSocket = null;
+            }
+            
+            document.getElementById('chatWindow').style.display = 'none';
+            addSystemMessage('聊天已结束');
+        }
+
+        // 清空聊天记录
+        function clearChatHistory() {
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.innerHTML = '<div class="system-message">聊天记录已清空</div>';
+        }
+
+        // 连接聊天WebSocket
+        function connectChatWebSocket() {
+            if (chatWebSocket) {
+                chatWebSocket.close();
+            }
+
+            try {
+                const wsUrl = `ws://localhost:8080/websocket/${currentChatUserId}`;
+                chatWebSocket = new WebSocket(wsUrl);
+                
+                chatWebSocket.onopen = function(event) {
+                    addSystemMessage('WebSocket连接成功，可以开始聊天了');
+                };
+                
+                chatWebSocket.onmessage = function(event) {
+                    try {
+                        const message = JSON.parse(event.data);
+                        displayReceivedMessage(message);
+                    } catch (error) {
+                        console.error('解析消息失败:', error);
+                        addSystemMessage('收到无效消息格式');
+                    }
+                };
+                
+                chatWebSocket.onclose = function(event) {
+                    addSystemMessage('WebSocket连接已断开');
+                };
+                
+                chatWebSocket.onerror = function(error) {
+                    addSystemMessage('WebSocket连接错误: ' + error.message);
+                };
+                
+            } catch (error) {
+                addSystemMessage('WebSocket连接失败: ' + error.message);
+            }
+        }
+
+        // 发送聊天消息
+        async function sendChatMessage() {
+            const messageInput = document.getElementById('chatMessageInput');
+            const messageType = document.getElementById('chatMessageType').value;
+            const content = messageInput.value.trim();
+
+            if (!content) {
+                alert('请输入消息内容');
+                return;
+            }
+
+            const messageData = {
+                senderId: currentChatUserId,
+                receiverId: isChatGroupMode ? null : currentChatTargetId,
+                groupId: isChatGroupMode ? currentChatTargetId : null,
+                isGroupChat: isChatGroupMode,
+                type: messageType,
+                content: content,
+                sendTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
+            };
+
+            try {
+                // 发送消息到服务器
+                const response = await fetch(`${getServerUrl()}/api/im/sendMessage`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(messageData)
+                });
+
+                if (response.ok) {
+                    // 显示发送的消息
+                    displaySentMessage(messageData);
+                    messageInput.value = '';
+                } else {
+                    const error = await response.text();
+                    addSystemMessage('消息发送失败: ' + error);
+                }
+            } catch (error) {
+                addSystemMessage('消息发送失败: ' + error.message);
+            }
+        }
+
+        // 处理键盘事件
+        function handleChatKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendChatMessage();
+            }
+        }
+
+        // 显示发送的消息
+        function displaySentMessage(messageData) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message sent';
+            
+            const time = new Date().toLocaleTimeString();
+            messageDiv.innerHTML = `
+                <div class="message-bubble">
+                    <div>${messageData.content}</div>
+                    <div class="message-info">${time} | ${messageData.type}</div>
+                </div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // 显示接收的消息
+        function displayReceivedMessage(messageData) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message received';
+            
+            const time = new Date().toLocaleTimeString();
+            messageDiv.innerHTML = `
+                <div class="message-bubble">
+                    <div>${messageData.content}</div>
+                    <div class="message-info">${messageData.senderId} | ${time} | ${messageData.type}</div>
+                </div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // 添加系统消息
+        function addSystemMessage(message) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'system-message';
+            messageDiv.textContent = message;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    </script>
+</body>
+</html>

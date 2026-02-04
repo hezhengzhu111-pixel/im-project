@@ -1,0 +1,48 @@
+
+// Glassmorphism Design System
+@use 'sass:color';
+
+// 玻璃态变量
+$glass-bg-light: rgba(255, 255, 255, 0.65);
+$glass-bg-dark: rgba(20, 20, 20, 0.65);
+$glass-border-light: rgba(255, 255, 255, 0.4);
+$glass-border-dark: rgba(255, 255, 255, 0.1);
+$glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+$glass-blur: blur(12px);
+
+// 扁平化设计变量
+$flat-bg: #f3f4f6;
+$flat-radius: 16px;
+
+// 混合宏：玻璃态效果
+@mixin glass-effect($is-dark: false) {
+  @if $is-dark {
+    background: $glass-bg-dark;
+    border: 1px solid $glass-border-dark;
+  } @else {
+    background: $glass-bg-light;
+    border: 1px solid $glass-border-light;
+  }
+  
+  backdrop-filter: $glass-blur;
+  -webkit-backdrop-filter: $glass-blur;
+  box-shadow: $glass-shadow;
+}
+
+// 混合宏：现代卡片
+@mixin modern-card {
+  @include glass-effect;
+  border-radius: $flat-radius;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.12);
+  }
+}
+
+// 导出变量供其他文件使用
+:root {
+  --glass-radius: #{$flat-radius};
+  --glass-shadow: #{$glass-shadow};
+}

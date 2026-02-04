@@ -1,0 +1,38 @@
+package com.im.entity;
+
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
+import java.time.LocalDateTime;
+
+@Data
+@EqualsAndHashCode(callSuper = true)
+@TableName("message_outbox")
+public class MessageOutboxEvent extends BaseEntity {
+
+    @TableField("topic")
+    private String topic;
+
+    @TableField("message_key")
+    private String messageKey;
+
+    @TableField("payload")
+    private String payload;
+
+    @TableField("status")
+    private String status;
+
+    @TableField("attempts")
+    private Integer attempts;
+
+    @TableField("next_retry_at")
+    private LocalDateTime nextRetryAt;
+
+    @TableField("last_error")
+    private String lastError;
+
+    @TableField("related_message_id")
+    private Long relatedMessageId;
+}
