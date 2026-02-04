@@ -1,0 +1,28 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: im-registry-monitor
+  threads:
+    virtual:
+      enabled: ${SPRING_THREADS_VIRTUAL_ENABLED:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+im:
+  registry-monitor:
+    nacos:
+      base-url: ${NACOS_MONITOR_BASE_URL:http://127.0.0.1:8848/nacos}
+    poll:
+      interval-ms: ${REGISTRY_MONITOR_POLL_INTERVAL_MS:5000}
+    alert:
+      fluctuation-threshold: ${REGISTRY_MONITOR_FLUCTUATION_THRESHOLD:0.2}
+
