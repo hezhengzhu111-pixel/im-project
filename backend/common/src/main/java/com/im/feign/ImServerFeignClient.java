@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import java.util.List;
 import java.util.Map;
 
-@FeignClient(name = "im-server", path = "/api/im")
+@FeignClient(name = "im-server", path = "/api/im", url = "http://im-server", configuration = FeignInternalAuthConfig.class)
 public interface ImServerFeignClient {
 
     @PostMapping("/sendMessage")

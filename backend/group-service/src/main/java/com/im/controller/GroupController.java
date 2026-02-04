@@ -17,7 +17,7 @@ import jakarta.validation.constraints.Positive;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/groups")
+@RequestMapping("/s")
 @Slf4j
 @Validated
 public class GroupController {

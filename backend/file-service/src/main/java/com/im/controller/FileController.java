@@ -26,7 +26,7 @@ import java.util.Set;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/file")
+@RequestMapping("/")
 @RequiredArgsConstructor
 public class FileController {
 
