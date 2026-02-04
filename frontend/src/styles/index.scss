@@ -1,0 +1,707 @@
+@use "@/styles/variables.scss" as *;
+@use "@/styles/glassmorphism.scss" as glass;
+
+// 全局样式重置
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  font-family: $font-family-base;
+  font-size: $font-size-base;
+  line-height: $line-height-base;
+  color: $text-color-primary;
+  background-color: $background-color-base;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+// 滚动条样式
+::-webkit-scrollbar {
+  width: $scrollbar-width;
+  height: $scrollbar-width;
+}
+
+::-webkit-scrollbar-track {
+  background: $scrollbar-track-color;
+  border-radius: div($scrollbar-width, 2);
+}
+
+::-webkit-scrollbar-thumb {
+  background: $scrollbar-thumb-color;
+  border-radius: div($scrollbar-width, 2);
+  
+  &:hover {
+    background: $scrollbar-thumb-hover-color;
+  }
+}
+
+// 链接样式
+a {
+  color: $primary-color;
+  text-decoration: none;
+  transition: $transition-color;
+  
+  &:hover {
+    color: $primary-light-1;
+  }
+  
+  &:active {
+    color: $primary-dark-1;
+  }
+}
+
+// 按钮基础样式
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: $border-radius-base;
+  font-size: $font-size-base;
+  font-weight: $font-weight-primary;
+  line-height: 1;
+  cursor: pointer;
+  transition: $transition-base;
+  user-select: none;
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
+  // 按钮变体
+  &--primary {
+    @include custom-button-variant(white, $primary-color, $primary-color);
+  }
+  
+  &--success {
+    @include custom-button-variant(white, $success-color, $success-color);
+  }
+  
+  &--warning {
+    @include custom-button-variant(white, $warning-color, $warning-color);
+  }
+  
+  &--danger {
+    @include custom-button-variant(white, $danger-color, $danger-color);
+  }
+  
+  &--info {
+    @include custom-button-variant(white, $info-color, $info-color);
+  }
+
+  &--type {
+    @include custom-button-variant(white, $type-color, $type-color);
+  }
+}
+
+// 输入框基础样式
+.input {
+  @include input-style;
+}
+
+// 卡片样式
+.card {
+  @include card-style;
+  padding: $spacing-base;
+}
+
+// 工具类
+.flex {
+  display: flex;
+}
+
+.flex-center {
+  @include flex-center;
+}
+
+.flex-between {
+  @include flex-between;
+}
+
+.flex-start {
+  @include flex-start;
+}
+
+.flex-end {
+  @include flex-end;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-left {
+  text-align: left;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-ellipsis {
+  @include text-ellipsis(1);
+}
+
+.text-ellipsis-2 {
+  @include text-ellipsis(2);
+}
+
+.text-ellipsis-3 {
+  @include text-ellipsis(3);
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.cursor-not-allowed {
+  cursor: not-allowed;
+}
+
+// 间距工具类
+@for $i from 0 through 10 {
+  .m-#{$i} {
+    margin: #{$i * 4}px;
+  }
+  
+  .mt-#{$i} {
+    margin-top: #{$i * 4}px;
+  }
+  
+  .mr-#{$i} {
+    margin-right: #{$i * 4}px;
+  }
+  
+  .mb-#{$i} {
+    margin-bottom: #{$i * 4}px;
+  }
+  
+  .ml-#{$i} {
+    margin-left: #{$i * 4}px;
+  }
+  
+  .p-#{$i} {
+    padding: #{$i * 4}px;
+  }
+  
+  .pt-#{$i} {
+    padding-top: #{$i * 4}px;
+  }
+  
+  .pr-#{$i} {
+    padding-right: #{$i * 4}px;
+  }
+  
+  .pb-#{$i} {
+    padding-bottom: #{$i * 4}px;
+  }
+  
+  .pl-#{$i} {
+    padding-left: #{$i * 4}px;
+  }
+}
+
+// 显示/隐藏工具类
+.hidden {
+  display: none !important;
+}
+
+.invisible {
+  visibility: hidden;
+}
+
+.visible {
+  visibility: visible;
+}
+
+// 定位工具类
+.relative {
+  position: relative;
+}
+
+.absolute {
+  position: absolute;
+}
+
+.fixed {
+  position: fixed;
+}
+
+.sticky {
+  position: sticky;
+}
+
+// 宽高工具类
+.w-full {
+  width: 100%;
+}
+
+.h-full {
+  height: 100%;
+}
+
+.w-screen {
+  width: 100vw;
+}
+
+.h-screen {
+  height: 100vh;
+}
+
+// 溢出处理
+.overflow-hidden {
+  overflow: hidden;
+}
+
+.overflow-auto {
+  overflow: auto;
+}
+
+.overflow-scroll {
+  overflow: scroll;
+}
+
+.overflow-x-hidden {
+  overflow-x: hidden;
+}
+
+.overflow-y-hidden {
+  overflow-y: hidden;
+}
+
+.overflow-x-auto {
+  overflow-x: auto;
+}
+
+.overflow-y-auto {
+  overflow-y: auto;
+}
+
+// 圆角工具类
+.rounded {
+  border-radius: $border-radius-base;
+}
+
+.rounded-sm {
+  border-radius: $border-radius-small;
+}
+
+.rounded-lg {
+  border-radius: $border-radius-round;
+}
+
+.rounded-full {
+  border-radius: $border-radius-circle;
+}
+
+// 阴影工具类
+.shadow {
+  box-shadow: $box-shadow-base;
+}
+
+.shadow-light {
+  box-shadow: $box-shadow-light;
+}
+
+.shadow-dark {
+  box-shadow: $box-shadow-dark;
+}
+
+.shadow-none {
+  box-shadow: none;
+}
+
+// 过渡动画工具类
+.transition {
+  transition: $transition-base;
+}
+
+.transition-fast {
+  transition: all 0.15s ease;
+}
+
+.transition-slow {
+  transition: all 0.5s ease;
+}
+
+// 响应式工具类
+@include respond-to(xs) {
+  .xs\:hidden {
+    display: none;
+  }
+}
+
+@include respond-to(sm) {
+  .sm\:block {
+    display: block;
+  }
+  
+  .sm\:hidden {
+    display: none;
+  }
+}
+
+@include respond-to(md) {
+  .md\:block {
+    display: block;
+  }
+  
+  .md\:hidden {
+    display: none;
+  }
+}
+
+@include respond-to(lg) {
+  .lg\:block {
+    display: block;
+  }
+  
+  .lg\:hidden {
+    display: none;
+  }
+}
+
+@include respond-to(xl) {
+  .xl\:block {
+    display: block;
+  }
+  
+  .xl\:hidden {
+    display: none;
+  }
+}
+
+// Element Plus 样式覆盖
+.el-button {
+  border-radius: $border-radius-base;
+  font-weight: $font-weight-primary;
+  
+  // 扁平化按钮增强
+  &:not(.is-plain):not(.is-text):not(.is-disabled) {
+    box-shadow: 0 4px 14px 0 rgba(64, 158, 255, 0.3);
+    &:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px 0 rgba(64, 158, 255, 0.4);
+    }
+    &:active {
+      transform: translateY(0);
+    }
+  }
+}
+
+.el-input {
+  .el-input__wrapper {
+    border-radius: $border-radius-base;
+    box-shadow: none;
+    border: 1px solid transparent;
+    background-color: rgba(255, 255, 255, 0.6);
+    transition: all 0.3s ease;
+    
+    &:hover, &.is-focus {
+      background-color: white;
+      box-shadow: 0 0 0 1px $primary-color inset !important;
+    }
+  }
+}
+
+.el-card {
+  @include glass.modern-card;
+  border: none; // 使用 mixin 中的边框
+}
+
+.el-dialog {
+  @include glass.glass-effect;
+  border-radius: glass.$flat-radius;
+  
+  .el-dialog__header {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    margin-right: 0;
+  }
+}
+
+.el-message {
+  @include glass.glass-effect;
+  border-radius: glass.$flat-radius;
+}
+
+.el-notification {
+  @include glass.glass-effect;
+  border-radius: glass.$flat-radius;
+  
+  .el-notification__title {
+    font-weight: $font-weight-primary;
+  }
+}
+
+.el-menu {
+  border-right: none;
+  background-color: transparent !important; // 让玻璃态生效
+}
+
+.el-menu-item {
+  border-radius: 8px;
+  margin: 4px 8px;
+  
+  &:hover {
+    background-color: rgba(64, 158, 255, 0.1) !important;
+  }
+  
+  &.is-active {
+    background-color: rgba(64, 158, 255, 0.15) !important;
+    color: $primary-color;
+    font-weight: 600;
+  }
+}
+
+// 聊天相关样式
+.chat-container {
+  height: 100vh;
+  display: flex;
+  background-image: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); // 增加背景渐变以突显玻璃态
+}
+
+.chat-sidebar {
+  width: $sidebar-width;
+  @include glass.glass-effect;
+  border-right: 1px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: rgba(255, 255, 255, 0.3); // 半透明
+  backdrop-filter: blur(8px);
+}
+
+.chat-header {
+  height: $chat-header-height;
+  padding: 0 $spacing-base;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  @include flex-between;
+  background-color: rgba(255, 255, 255, 0.4);
+}
+
+.chat-messages {
+  flex: 1;
+  padding: $spacing-base;
+  overflow-y: auto;
+  @include scrollbar-style;
+}
+
+.chat-input {
+  height: $chat-input-height;
+  padding: $spacing-base;
+  border-top: 1px solid $border-color-light;
+  background-color: $chat-input-bg;
+}
+
+.message-item {
+  margin-bottom: $spacing-base;
+  
+  &.own {
+    text-align: right;
+    
+    .message-bubble {
+      background-color: $chat-message-own-bg;
+      color: white;
+      margin-left: auto;
+    }
+  }
+  
+  &.other {
+    text-align: left;
+    
+    .message-bubble {
+      background-color: $chat-message-other-bg;
+      color: $text-color-primary;
+      margin-right: auto;
+    }
+  }
+}
+
+.message-bubble {
+  display: inline-block;
+  max-width: $chat-message-max-width;
+  padding: 8px 12px;
+  border-radius: 12px;
+  word-wrap: break-word;
+  box-shadow: $box-shadow-light;
+}
+
+.message-time {
+  font-size: $font-size-small;
+  color: $message-time-color;
+  margin-top: 4px;
+}
+
+// 状态指示器
+.status-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  
+  &.online {
+    background-color: $status-online;
+  }
+  
+  &.offline {
+    background-color: $status-offline;
+  }
+  
+  &.away {
+    background-color: $status-away;
+  }
+  
+  &.busy {
+    background-color: $status-busy;
+  }
+  
+  &.invisible {
+    background-color: $status-invisible;
+  }
+}
+
+// 头像样式
+.avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  
+  &.large {
+    width: $avatar-size-large;
+    height: $avatar-size-large;
+  }
+  
+  &.default {
+    width: $avatar-size-default;
+    height: $avatar-size-default;
+  }
+  
+  &.small {
+    width: $avatar-size-small;
+    height: $avatar-size-small;
+  }
+  
+  &.mini {
+    width: $avatar-size-mini;
+    height: $avatar-size-mini;
+  }
+}
+
+// 加载动画
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.loading {
+  animation: spin 1s linear infinite;
+}
+
+// 淡入淡出动画
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.fade-out {
+  animation: fadeOut 0.3s ease-in-out;
+}
+
+// 滑动动画
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.slide-in-left {
+  animation: slideInLeft 0.3s ease-out;
+}
+
+.slide-in-right {
+  animation: slideInRight 0.3s ease-out;
+}
+
+// 打印样式
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  
+  .chat-container {
+    height: auto;
+  }
+  
+  .chat-sidebar {
+    display: none;
+  }
+}
+
+// 高对比度模式
+@media (prefers-contrast: high) {
+  .btn {
+    border-width: 2px;
+  }
+  
+  .card {
+    border-width: 2px;
+  }
+}
+
+// 减少动画模式
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

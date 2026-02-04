@@ -1,0 +1,185 @@
+server:
+  port: 8083
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: im-server
+  threads:
+    virtual:
+      enabled: ${SPRING_THREADS_VIRTUAL_ENABLED:false}
+  main:
+    allow-bean-definition-overriding: true
+    allow-circular-references: true
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        service: ${spring.application.name}
+        heart-beat-interval: 1000
+        heart-beat-timeout: 90000
+        ip-delete-timeout: 120000
+        naming-load-cache-at-start: false
+    loadbalancer:
+      enabled: true
+  # Redis配置已移除
+
+  # Kafka配置
+  kafka:
+    bootstrap-servers: 127.0.0.1:9092
+    consumer:
+      group-id: im-websocket-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+      auto-commit-interval: 300000
+      heartbeat-interval: 30000
+      session-timeout: 300000
+      max-poll-records: 100
+      max-poll-interval: 300000
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      batch-size: 16384
+      linger-ms: 1
+      buffer-memory: 33554432
+
+  # JSON配置
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+    
+  # JWT配置
+  jwt:
+    secret: OtB6MEakowaNzTiiGE1G4NpFGz4rzNUOrYO7URJk6m1oKpamZQZpgoUdNpSOonX7
+    expiration: 86400000
+
+  # 数据库相关配置已移除
+
+# IM系统配置
+im:
+  virtual-threads:
+    enabled: ${IM_VIRTUAL_THREADS_ENABLED:true}
+  server:
+    executor:
+      virtual-preferred: ${IM_SERVER_VIRTUAL_EXECUTOR_PREFERRED:true}
+      max-concurrency: ${IM_SERVER_EXECUTOR_MAX_CONCURRENCY:2000}
+      queue-capacity: ${IM_SERVER_EXECUTOR_QUEUE_CAPACITY:2000}
+  # 心跳检测配置
+  heartbeat:
+    interval: 30000  # 心跳间隔(毫秒)
+    timeout: 90000   # 心跳超时(毫秒)
+  
+  # 群组消息配置
+  groupMessage:
+    timeout: 86400000  # 群组消息过期时间(毫秒) - 24小时
+    listNum: 20        # 每次请求获取的消息数量
+  
+  # 群组配置
+  groupList:
+    updateRate: 5000   # 群组列表刷新频率(毫秒)
+  
+  group:
+    autoJoin: 1        # 连接建立后是否自动加入群组 (1:是, 0:否)
+    loginAuth: 1       # 连接建立后是否校验用户登录状态 (1:是, 0:否)
+  
+  # 消息配置
+  message:
+    # 离线消息配置
+    offline:
+      expire-time: 604800  # 7天过期(秒)
+      max-count: 1000      # 离线消息最大数量
+      max-content-length: 10000  # 消息最大长度
+
+  retry:
+    push-interval-ms: ${IM_RETRY_PUSH_INTERVAL_MS:1000}
+  
+  # Redis配置已移除
+  
+  # Kafka相关自定义配置
+  kafka:
+    topic:
+      private-message: im-private-message-topic # 私聊消息主题
+      group-message: im-group-message-topic # 群聊消息主题
+      offline-message: im-offline-message-topic
+    
+    # 消费者配置
+    consumer:
+      concurrency: 3  # 并发消费者数量
+      poll-timeout: 1000  # 轮询超时时间(毫秒)
+
+    idempotency:
+      ttl-ms: ${IM_KAFKA_IDEMPOTENCY_TTL_MS:600000}
+      cleanup-interval-ms: ${IM_KAFKA_IDEMPOTENCY_CLEANUP_INTERVAL_MS:60000}
+  
+  # WebSocket配置
+  websocket:
+    endpoint: "/websocket"
+    allowed-origins: "*"
+    connection-timeout: 30000  # 连接超时时间(毫秒)
+    cleanup-interval-ms: ${IM_WS_CLEANUP_INTERVAL_MS:60000}
+    max-text-message-size: 8192  # 最大文本消息大小
+    max-binary-message-size: 8192  # 最大二进制消息大小
+  
+  # 服务配置
+  service:
+    url: "http://127.0.0.1:8083"
+    max-group-member-size: 500  # 群组最大成员数
+
+# 监控配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+# 日志配置
+logging:
+  level:
+    com.im: info
+    org.springframework.web.socket: info
+    org.apache.kafka: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/im-server.log
+    max-size: 10MB
+    max-history: 30
+
+---
+# 测试环境配置
+spring:
+  config:
+    activate:
+      on-profile: test
+  
+  application:
+    name: im-server
+  
+  # 测试环境Redis配置已移除
+
+server:
+  servlet:
+    context-path: /im
+
+# 测试环境IM配置
+im:
+  heartbeat:
+    timeout: 60000   # 测试环境心跳超时时间更短
+    interval: 30000
+  
+  message:
+    offline:
+      expire-time: 86400  # 测试环境离线消息1天过期
+      max-count: 100

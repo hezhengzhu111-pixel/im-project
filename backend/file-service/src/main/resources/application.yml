@@ -1,0 +1,45 @@
+server:
+  port: 8088
+
+spring:
+  application:
+    name: im-file-service
+  threads:
+    virtual:
+      enabled: ${SPRING_THREADS_VIRTUAL_ENABLED:false}
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        service: ${spring.application.name}
+        heart-beat-interval: 1000
+        heart-beat-timeout: 90000
+        ip-delete-timeout: 120000
+        naming-load-cache-at-start: false
+
+im:
+  security:
+    mode: ${IM_SECURITY_MODE:gateway}
+  internal:
+    header: X-Internal-Secret
+    secret: ${IM_INTERNAL_SECRET:im-internal-secret}
+  gateway:
+    auth:
+      secret: ${IM_GATEWAY_AUTH_SECRET:im-gateway-auth-secret}
+  cos:
+    enabled: true
+    https: true
+    secret-id: ${COS_SECRET_ID:}
+    secret-key: ${COS_SECRET_KEY:}
+    region: ${COS_REGION:}
+    bucket: ${COS_BUCKET:}
+    public-domain: ${COS_PUBLIC_DOMAIN:}
+    path-prefix: ${COS_PATH_PREFIX:im}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

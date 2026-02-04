@@ -1,5 +1,10 @@
+target/
 # Compiled class file
 *.class
+node_modules/
+dist/
+.idea/
+.vscode/
 
 # Log file
 *.log

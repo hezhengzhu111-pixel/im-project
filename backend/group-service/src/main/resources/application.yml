@@ -1,0 +1,51 @@
+server:
+  port: 8086
+
+spring:
+  application:
+    name: im-group-service
+  threads:
+    virtual:
+      enabled: ${SPRING_THREADS_VIRTUAL_ENABLED:false}
+  profiles:
+    active: mysql
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        service: ${spring.application.name}
+        heart-beat-interval: 1000
+        heart-beat-timeout: 90000
+        ip-delete-timeout: 120000
+        naming-load-cache-at-start: false
+
+im:
+  jwt:
+    enabled: false
+  security:
+    mode: ${IM_SECURITY_MODE:test}
+  internal:
+    header: X-Internal-Secret
+    secret: ${IM_INTERNAL_SECRET:im-internal-secret}
+  gateway:
+    auth:
+      secret: ${IM_GATEWAY_AUTH_SECRET:im-gateway-auth-secret}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+feign:
+  client:
+    config:
+      default:
+        connectTimeout: 3000
+        readTimeout: 10000
