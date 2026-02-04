@@ -40,11 +40,11 @@ public class TokenParser {
 
         String normalized = normalizeBearer(token);
         try {
-            Claims claims = Jwts.parserBuilder()
-                    .setSigningKey(getSigningKey(secret))
+            Claims claims = Jwts.parser()
+                    .verifyWith(getSigningKey(secret))
                     .build()
-                    .parseClaimsJws(normalized)
-                    .getBody();
+                    .parseSignedClaims(normalized)
+                    .getPayload();
             fillFromClaims(info, claims, false);
             info.setValid(true);
             return info;

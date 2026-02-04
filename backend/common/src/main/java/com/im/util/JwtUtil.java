@@ -5,7 +5,6 @@ import io.jsonwebtoken.security.Keys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.HashMap;
@@ -71,11 +70,11 @@ public class JwtUtil {
     public Claims getAllClaimsFromToken(String token) {
         try {
             token = normalizeToken(token);
-            return Jwts.parserBuilder()
-                    .setSigningKey(getSigningKey())
+            return Jwts.parser()
+                    .verifyWith(getSigningKey())
                     .build()
-                    .parseClaimsJws(token)
-                    .getBody();
+                    .parseSignedClaims(token)
+                    .getPayload();
         } catch (Exception e) {
             logger.error("解析JWT令牌失败: {}", e.getMessage());
             throw new RuntimeException("无效的JWT令牌", e);
@@ -99,10 +98,10 @@ public class JwtUtil {
             }
             token = normalizeToken(token);
             
-            Jwts.parserBuilder()
-                    .setSigningKey(getSigningKey())
+            Jwts.parser()
+                    .verifyWith(getSigningKey())
                     .build()
-                    .parseClaimsJws(token);
+                    .parseSignedClaims(token);
             
             return !isTokenExpired(token);
         } catch (ExpiredJwtException e) {
@@ -167,15 +166,15 @@ public class JwtUtil {
         Date expiryDate = new Date(now.getTime() + expiration);
         
         return Jwts.builder()
-                .setClaims(claims)
-                .setSubject(subject)
-                .setIssuedAt(now)
-                .setExpiration(expiryDate)
-                .signWith(getSigningKey(), SignatureAlgorithm.HS512)
+                .claims(claims)
+                .subject(subject)
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(getSigningKey())
                 .compact();
     }
 
-    private SecretKey getSigningKey() {
+    private javax.crypto.SecretKey getSigningKey() {
         String effectiveSecret = secret == null ? "" : secret;
         byte[] keyBytes = effectiveSecret.getBytes(StandardCharsets.UTF_8);
         if (keyBytes.length >= 64) {
