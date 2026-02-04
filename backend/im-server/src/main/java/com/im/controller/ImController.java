@@ -25,7 +25,7 @@ import java.util.*;
  */
 @Slf4j
 @RestController
-@RequestMapping({"/api/v1/im", "/api/im"})
+@RequestMapping("/api/im")
 @Tag(name = "IM Core", description = "即时通讯核心服务接口")
 public class ImController {
     
