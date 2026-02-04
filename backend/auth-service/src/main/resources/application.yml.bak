@@ -1,0 +1,54 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: im-auth-service
+  threads:
+    virtual:
+      enabled: ${SPRING_THREADS_VIRTUAL_ENABLED:false}
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        service: ${spring.application.name}
+        heart-beat-interval: 1000
+        heart-beat-timeout: 90000
+        ip-delete-timeout: 120000
+        naming-load-cache-at-start: true
+  profiles:
+    active: im
+  data:
+    redis:
+      timeout: 3000ms
+      database: 0
+      password:
+      port: 6379
+      host: 127.0.0.1
+
+jwt:
+  secret: ${JWT_SECRET:im-backend-secret-key-for-jwt-token-generation}
+  expiration: ${JWT_EXPIRATION_MS:86400000}
+
+auth:
+  refresh:
+    secret: ${JWT_REFRESH_SECRET:im-backend-refresh-secret-key}
+    expiration: ${JWT_REFRESH_EXPIRATION_MS:604800000}
+  resource-cache:
+    ttl-seconds: ${AUTH_RESOURCE_CACHE_TTL_SECONDS:3600}
+
+im:
+  jwt:
+    enabled: false
+  internal:
+    header: X-Internal-Secret
+    secret: ${IM_INTERNAL_SECRET:im-internal-secret}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
