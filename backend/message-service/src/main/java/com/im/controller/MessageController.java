@@ -20,7 +20,7 @@ import jakarta.validation.constraints.Min;
  * 消息控制器
  */
 @RestController
-@RequestMapping("/api/messages")
+@RequestMapping("/s")
 @Validated
 public class MessageController {
 
