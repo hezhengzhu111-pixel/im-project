@@ -37,7 +37,7 @@ public class FriendController {
      */
     @PostMapping("/request")
     public ApiResponse<FriendRequestResponseDTO> sendFriendRequest(
-            @RequestAttribute Long userId,
+            @RequestAttribute("userId") Long userId,
             @Valid @RequestBody SendFriendRequestRequest request) {
         FriendRequestResponseDTO response = friendService.sendFriendRequest(userId, Long.valueOf(request.getTargetUserId()), request.getReason());
         return response.isSuccess()
@@ -51,7 +51,7 @@ public class FriendController {
      */
     @PostMapping("/accept")
     public ApiResponse<FriendRequestResponseDTO> acceptFriendRequest(
-            @RequestAttribute Long userId,
+            @RequestAttribute("userId") Long userId,
             @Valid @RequestBody AcceptFriendRequestRequest request) {
         FriendRequestResponseDTO response = friendService.acceptFriendRequest(userId, request.getRequestId());
         return response.isSuccess()
@@ -65,7 +65,7 @@ public class FriendController {
      */
     @PostMapping("/reject")
     public ApiResponse<FriendRequestResponseDTO> rejectFriendRequest(
-            @RequestAttribute Long userId,
+            @RequestAttribute("userId") Long userId,
             @Valid @RequestBody RejectFriendRequestRequest request) {
         FriendRequestResponseDTO response = friendService.rejectFriendRequest(userId, request.getRequestId(), request.getReason());
         return response.isSuccess()
@@ -79,8 +79,8 @@ public class FriendController {
      */
     @DeleteMapping("/remove")
     public ApiResponse<FriendRequestResponseDTO> removeFriend(
-            @RequestAttribute Long userId,
-            @RequestParam @NotNull(message = "好友用户ID不能为空") Long friendUserId) {
+            @RequestAttribute("userId") Long userId,
+            @RequestParam("friendUserId") @NotNull(message = "好友用户ID不能为空") Long friendUserId) {
         FriendRequestResponseDTO response = friendService.removeFriend(userId, friendUserId);
         return response.isSuccess()
                 ? ApiResponse.success(response.getMessage(), response)
@@ -93,8 +93,8 @@ public class FriendController {
      */
     @PostMapping("/block")
     public ApiResponse<FriendRequestResponseDTO> blockUser(
-            @RequestAttribute Long userId,
-            @RequestParam @NotNull(message = "用户ID不能为空") Long targetUserId) {
+            @RequestAttribute("userId") Long userId,
+            @RequestParam("targetUserId") @NotNull(message = "用户ID不能为空") Long targetUserId) {
         FriendRequestResponseDTO response = friendService.blockUser(userId, targetUserId);
         return response.isSuccess()
                 ? ApiResponse.success(response.getMessage(), response)
@@ -106,7 +106,7 @@ public class FriendController {
      * GET /friend/list
      */
     @GetMapping("/list")
-    public ApiResponse<List<FriendListDTO>> getFriendList(@RequestAttribute Long userId) {
+    public ApiResponse<List<FriendListDTO>> getFriendList(@RequestAttribute("userId") Long userId) {
         List<FriendListDTO> friendList = friendService.getFriendList(userId);
         return ApiResponse.success("获取好友列表成功", friendList);
     }
@@ -117,9 +117,9 @@ public class FriendController {
      */
     @GetMapping("/requests")
     public ApiResponse<PageResult<FriendRequestDTO>> getFriendRequests(
-            @RequestAttribute Long userId,
-            @RequestParam(required = false) String cursor,
-            @RequestParam(defaultValue = "10") @Min(value = 1, message = "limit不能小于1") @Max(value = 50, message = "limit不能大于50") Integer limit) {
+            @RequestAttribute("userId") Long userId,
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "limit", defaultValue = "10") @Min(value = 1, message = "limit不能小于1") @Max(value = 50, message = "limit不能大于50") Integer limit) {
         PageResult<FriendRequestDTO> requests = friendService.getFriendRequests(userId, cursor, limit);
         return ApiResponse.success("获取好友申请记录成功", requests);
     }
@@ -129,7 +129,7 @@ public class FriendController {
      * GET /friend/blocked
      */
     @GetMapping("/blocked")
-    public ApiResponse<List<FriendListDTO>> getBlockList(@RequestAttribute Long userId) {
+    public ApiResponse<List<FriendListDTO>> getBlockList(@RequestAttribute("userId") Long userId) {
         List<FriendListDTO> blockList = friendService.getBlockList(userId);
         return ApiResponse.success("获取黑名单成功", blockList);
     }
@@ -140,8 +140,8 @@ public class FriendController {
      */
     @GetMapping("/relation")
     public ApiResponse<Map<String, Object>> checkFriendRelation(
-            @RequestAttribute Long userId,
-            @RequestParam @NotNull(message = "目标用户ID不能为空") Long targetUserId) {
+            @RequestAttribute("userId") Long userId,
+            @RequestParam("targetUserId") @NotNull(message = "目标用户ID不能为空") Long targetUserId) {
         boolean isFriend = friendService.isFriend(userId, targetUserId);
         boolean isBlocked = friendService.isBlocked(userId, targetUserId);
 
@@ -159,9 +159,9 @@ public class FriendController {
      */
     @PutMapping("/remark")
     public ApiResponse<FriendRequestResponseDTO> updateFriendRemark(
-            @RequestAttribute Long userId,
-            @RequestParam @NotNull(message = "好友ID不能为空") Long friendUserId,
-            @RequestParam @NotBlank(message = "备注不能为空") String remark) {
+            @RequestAttribute("userId") Long userId,
+            @RequestParam("friendUserId") @NotNull(message = "好友ID不能为空") Long friendUserId,
+            @RequestParam("remark") @NotBlank(message = "备注不能为空") String remark) {
         FriendRequestResponseDTO response = friendService.updateFriendRemark(userId, friendUserId, remark);
         return response.isSuccess()
                 ? ApiResponse.success(response.getMessage(), response)

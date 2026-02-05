@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
-@FeignClient(name = "im-auth-service", path = "/api/auth/internal", url = "http://im-auth-service", configuration = FeignInternalAuthConfig.class)
+@FeignClient(name = "im-auth-service", path = "/api/auth/internal", url = "${auth.service.url:http://im-auth:8084}", configuration = FeignInternalAuthConfig.class)
 public interface AuthServiceFeignClient {
 
     @PostMapping("/token")

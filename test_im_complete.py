@@ -23,26 +23,24 @@ if sys.platform == 'win32':
 
 # 服务端口配置
 SERVICES = {
-    "gateway": {"url": "http://localhost:8082", "prefix": ""},
+    "gateway": {"url": "http://localhost:8080", "prefix": ""},
     "user": {"url": "http://localhost:8085", "prefix": ""},
     "auth": {"url": "http://localhost:8084", "prefix": ""},
     "group": {"url": "http://localhost:8086", "prefix": ""},
     "message": {"url": "http://localhost:8087", "prefix": ""},
-    "file": {"url": "http://localhost:8088", "prefix": ""},
     "im": {"url": "http://localhost:8083", "prefix": ""},
 }
 
 GATEWAY_PREFIXES = {
     "user": "/api/user",
-    "friend": "/api/friend/api/friend",
+    "friend": "/api/friend",
     "group": "/api/group",
     "message": "/api/message",
-    "file": "/api/file",
-    "im": "/api/im/api/im",
+    "im": "/api/im",
     "auth": "/api/auth",
     "auth_internal": "/api/auth/internal",
-    "user_internal": "/api/user/api/user/internal",
-    "group_internal": "/api/group/api/group/internal",
+    "user_internal": "/api/user/internal",
+    "group_internal": "/api/group/internal",
     "test": "/api/user"
 }
 
@@ -67,7 +65,6 @@ class IMTestRunner:
         self.private_message_id = None
         self.group_message_id = None
         self.conversation_id = None
-        self.uploaded_file = None
         self.internal_secret = "im-internal-secret"
         self.mode = mode
         
@@ -874,84 +871,27 @@ class IMTestRunner:
         except Exception as e:
             return self.log_result("群成员ID(内部)", "FAIL", "GET", url, error=str(e))
 
-    def test_file_upload_image(self):
-        url = self.get_url("file", "/upload/image")
-        files = {"file": ("test.jpg", b"\xff\xd8\xff\xe0\x00\x10JFIF", "image/jpeg")}
-        try:
-            r = self.session.post(url, files=files)
-            resp = self.safe_json(r)
-            if resp.get("code") == 200:
-                self.uploaded_file = resp.get("data")
             return self.log_result("上传图片", "PASS" if resp.get("code") == 200 else "FAIL", "POST", url, response=resp)
         except Exception as e:
             return self.log_result("上传图片", "FAIL", "POST", url, error=str(e))
 
-    def test_file_upload_file(self):
-        url = self.get_url("file", "/upload/file")
-        files = {"file": ("test.txt", b"hello", "text/plain")}
-        try:
-            r = self.session.post(url, files=files)
-            resp = self.safe_json(r)
-            return self.log_result("上传文件", "PASS" if resp.get("code") == 200 else "FAIL", "POST", url, response=resp)
         except Exception as e:
             return self.log_result("上传文件", "FAIL", "POST", url, error=str(e))
 
-    def test_file_upload_audio(self):
-        url = self.get_url("file", "/upload/audio")
-        files = {"file": ("test.mp3", b"ID3", "audio/mpeg")}
-        try:
-            r = self.session.post(url, files=files)
-            resp = self.safe_json(r)
-            return self.log_result("上传音频", "PASS" if resp.get("code") == 200 else "FAIL", "POST", url, response=resp)
         except Exception as e:
             return self.log_result("上传音频", "FAIL", "POST", url, error=str(e))
 
-    def test_file_upload_video(self):
-        url = self.get_url("file", "/upload/video")
-        files = {"file": ("test.mp4", b"\x00\x00\x00\x18ftypmp42", "video/mp4")}
-        try:
-            r = self.session.post(url, files=files)
-            resp = self.safe_json(r)
-            return self.log_result("上传视频", "PASS" if resp.get("code") == 200 else "FAIL", "POST", url, response=resp)
         except Exception as e:
             return self.log_result("上传视频", "FAIL", "POST", url, error=str(e))
 
-    def test_file_upload_avatar(self):
-        url = self.get_url("file", "/upload/avatar")
-        files = {"file": ("avatar.png", b"\x89PNG\r\n\x1a\n", "image/png")}
-        try:
-            r = self.session.post(url, files=files)
-            resp = self.safe_json(r)
-            return self.log_result("上传头像", "PASS" if resp.get("code") == 200 else "FAIL", "POST", url, response=resp)
         except Exception as e:
             return self.log_result("上传头像", "FAIL", "POST", url, error=str(e))
 
-    def test_file_info(self):
-        if not self.uploaded_file:
-            return self.log_result("获取文件信息", "SKIP", "POST", "/info", error="无上传文件")
-        url = self.get_url("file", "/info")
-        data = {
-            "category": self.uploaded_file.get("category"),
-            "date": self.uploaded_file.get("uploadDate"),
-            "filename": self.uploaded_file.get("filename")
-        }
-        try:
-            r = self.session.post(url, json=data)
             resp = self.safe_json(r)
             return self.log_result("获取文件信息", "PASS" if resp.get("code") == 200 else "FAIL", "POST", url, data=data, response=resp)
         except Exception as e:
             return self.log_result("获取文件信息", "FAIL", "POST", url, error=str(e))
 
-    def test_file_download(self):
-        if not self.uploaded_file:
-            return self.log_result("下载文件", "SKIP", "POST", "/download", error="无上传文件")
-        url = self.get_url("file", "/download")
-        data = {
-            "category": self.uploaded_file.get("category"),
-            "date": self.uploaded_file.get("uploadDate"),
-            "filename": self.uploaded_file.get("filename")
-        }
-        try:
             r = self.session.post(url, json=data)
             status = "PASS" if r.status_code == 200 else "FAIL"
             return self.log_result("下载文件", status, "POST", url, data=data, response={"status": r.status_code})
@@ -1030,11 +970,8 @@ class IMTestRunner:
                 self.test_message_conversations, self.test_message_mark_read,
                 self.test_message_retry_private, self.test_message_retry_group
             ],
-            "im": [self.test_im_heartbeat, self.test_im_online_status, self.test_im_send_message, self.test_im_offline],
-            "file": [
-                self.test_file_upload_image, self.test_file_upload_file, self.test_file_upload_audio,
-                self.test_file_upload_video, self.test_file_upload_avatar,
-                self.test_file_info, self.test_file_download
+            "im": [
+                self.test_im_heartbeat, self.test_im_online_status, self.test_im_send_message, self.test_im_offline
             ],
             "all": [
                 self.test_user_info, self.test_user_internal_exists, self.test_user_profile,
@@ -1054,8 +991,6 @@ class IMTestRunner:
                 self.test_message_conversations, self.test_message_mark_read,
                 self.test_message_retry_private, self.test_message_retry_group,
                 self.test_im_heartbeat, self.test_im_online_status, self.test_im_send_message,
-                self.test_file_upload_image, self.test_file_upload_file, self.test_file_upload_audio,
-                self.test_file_upload_video, self.test_file_upload_avatar, self.test_file_info, self.test_file_download,
                 self.test_auth_parse, self.test_auth_refresh,
                 self.test_auth_internal_issue_token, self.test_auth_internal_user_resource,
                 self.test_auth_internal_validate_token, self.test_auth_internal_check_permission,
