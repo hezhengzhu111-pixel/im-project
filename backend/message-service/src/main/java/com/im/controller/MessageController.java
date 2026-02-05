@@ -32,7 +32,7 @@ public class MessageController {
      */
     @PostMapping("/send/private")
     public ApiResponse<String> sendPrivateMessage(
-            @RequestAttribute Long userId,
+            @RequestAttribute("userId") Long userId,
             @Valid @RequestBody SendPrivateMessageRequest request) {
         messageService.sendPrivateMessage(userId, request);
         return ApiResponse.success("发送私聊消息成功", "私聊消息发送成功");
@@ -43,7 +43,7 @@ public class MessageController {
      */
     @PostMapping("/send/group")
     public ApiResponse<String> sendGroupMessage(
-            @RequestAttribute Long userId,
+            @RequestAttribute("userId") Long userId,
             @Valid @RequestBody SendGroupMessageRequest request) {
         messageService.sendGroupMessage(userId, request);
         return ApiResponse.success("发送群聊消息成功", "群聊消息发送成功");
@@ -53,7 +53,7 @@ public class MessageController {
      * 获取会话列表
      */
     @GetMapping("/conversations")
-    public ApiResponse<List<ConversationDTO>> getConversations(@RequestAttribute Long userId) {
+    public ApiResponse<List<ConversationDTO>> getConversations(@RequestAttribute("userId") Long userId) {
         List<ConversationDTO> conversations = messageService.getConversations(userId);
         return ApiResponse.success("获取会话列表成功", conversations);
     }
@@ -63,10 +63,10 @@ public class MessageController {
      */
     @GetMapping("/private/{friendId}")
     public ApiResponse<List<Message>> getPrivateMessages(
-            @RequestAttribute Long userId,
+            @RequestAttribute("userId") Long userId,
             @PathVariable Long friendId,
-            @RequestParam(defaultValue = "0") @Min(value = 0, message = "page不能小于0") int page,
-            @RequestParam(defaultValue = "50") @Min(value = 1, message = "size不能小于1") @Max(value = 200, message = "size不能大于200") int size) {
+            @RequestParam(value = "page", defaultValue = "0") @Min(value = 0, message = "page不能小于0") int page,
+            @RequestParam(value = "size", defaultValue = "50") @Min(value = 1, message = "size不能小于1") @Max(value = 200, message = "size不能大于200") int size) {
         List<Message> messages = messageService.getPrivateMessages(userId, friendId, page, size);
         return ApiResponse.success("获取私聊消息成功", messages);
     }
@@ -76,10 +76,10 @@ public class MessageController {
      */
     @GetMapping("/group/{groupId}")
     public ApiResponse<List<Message>> getGroupMessages(
-            @RequestAttribute Long userId,
+            @RequestAttribute("userId") Long userId,
             @PathVariable Long groupId,
-            @RequestParam(defaultValue = "0") @Min(value = 0, message = "page不能小于0") int page,
-            @RequestParam(defaultValue = "50") @Min(value = 1, message = "size不能小于1") @Max(value = 200, message = "size不能大于200") int size) {
+            @RequestParam(value = "page", defaultValue = "0") @Min(value = 0, message = "page不能小于0") int page,
+            @RequestParam(value = "size", defaultValue = "50") @Min(value = 1, message = "size不能小于1") @Max(value = 200, message = "size不能大于200") int size) {
         List<Message> messages = messageService.getGroupMessages(userId, groupId, page, size);
         return ApiResponse.success("获取群聊消息成功", messages);
     }
@@ -89,7 +89,7 @@ public class MessageController {
      */
     @PostMapping("/read/{conversationId}")
     public ApiResponse<String> markAsRead(
-            @RequestAttribute Long userId,
+            @RequestAttribute("userId") Long userId,
             @PathVariable String conversationId) {
         messageService.markAsRead(userId, conversationId);
         return ApiResponse.success("标记已读成功", "消息已标记为已读");

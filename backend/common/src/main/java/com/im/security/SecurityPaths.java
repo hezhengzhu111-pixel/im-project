@@ -12,13 +12,13 @@ public final class SecurityPaths {
         if (path.startsWith("/actuator")) {
             return true;
         }
-        if (path.startsWith("/api/v1/user/login") || path.startsWith("/api/v1/user/register") || path.startsWith("/api/v1/user/check-username")) {
+        if (path.startsWith("/api/user/login") || path.startsWith("/api/user/register") || path.startsWith("/api/user/check-username")) {
             return true;
         }
-        if (path.startsWith("/api/v1/auth/refresh") || path.startsWith("/api/v1/auth/parse")) {
+        if (path.startsWith("/api/auth/refresh") || path.startsWith("/api/auth/parse")) {
             return true;
         }
-        return path.startsWith("/api/v1/im");
+        return path.startsWith("/api/im");
     }
 
     public static boolean isGatewayInternalPath(String path) {
@@ -37,13 +37,15 @@ public final class SecurityPaths {
         if (requestURI.startsWith("/actuator") || requestURI.startsWith("/api/actuator")) {
             return true;
         }
-        if (requestURI.startsWith("/api/v1/user/register") || requestURI.startsWith("/api/v1/user/login")) {
+        if (requestURI.startsWith("/api/user/register") || requestURI.startsWith("/api/user/login")
+                || requestURI.startsWith("/user/register") || requestURI.startsWith("/user/login")
+                || requestURI.startsWith("/api/user/check-username") || requestURI.startsWith("/user/check-username")) {
             return true;
         }
-        if (requestURI.startsWith("/api/v1/user/internal") || requestURI.startsWith("/api/v1/group/internal")) {
+        if (requestURI.startsWith("/api/user/internal") || requestURI.startsWith("/api/group/internal")) {
             return true;
         }
-        if (requestURI.startsWith("/api/v1/im")) {
+        if (requestURI.startsWith("/api/im")) {
             return true;
         }
         return requestURI.startsWith("/static")

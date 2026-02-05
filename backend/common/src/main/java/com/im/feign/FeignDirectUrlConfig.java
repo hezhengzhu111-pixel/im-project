@@ -10,7 +10,7 @@ public class FeignDirectUrlConfig {
     @Bean
     public feign.RequestInterceptor directUrlInterceptor() {
         return template -> {
-            // 直接使用localhost加端口，不需要服务发现
+            // 直接使用服务名调用
         };
     }
 }
