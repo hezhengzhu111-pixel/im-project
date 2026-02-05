@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/")
+@RequestMapping("/user")
 @RequiredArgsConstructor
 @Validated
 @Slf4j
@@ -73,7 +73,7 @@ public class UserController {
      */
     @PutMapping("/profile")
     @Operation(summary = "修改用户信息", description = "更新用户个人资料")
-    public ApiResponse<Boolean> updateProfile(@RequestAttribute Long userId, @RequestBody @Validated(UpdateGroup.class) UserDTO userDTO) {
+    public ApiResponse<Boolean> updateProfile(@RequestAttribute("userId") Long userId, @RequestBody @Validated(UpdateGroup.class) UserDTO userDTO) {
         return ApiResponse.success(userService.updateProfile(userId, userDTO));
     }
 
@@ -82,7 +82,7 @@ public class UserController {
      */
     @PostMapping("/offline")
     @Operation(summary = "用户下线", description = "用户主动下线")
-    public ApiResponse<String> userOffline(@RequestAttribute Long userId) {
+    public ApiResponse<String> userOffline(@RequestAttribute("userId") Long userId) {
         try {
             imService.userOffline(userId.toString());
             return ApiResponse.success("用户下线成功", "用户下线成功");
@@ -97,7 +97,7 @@ public class UserController {
      */
     @PostMapping("/online")
     @Operation(summary = "用户上线", description = "用户上线")
-    public ApiResponse<String> userOnline(@RequestAttribute Long userId) {
+    public ApiResponse<String> userOnline(@RequestAttribute("userId") Long userId) {
         try {
             imService.userOnline(userId.toString());
             return ApiResponse.success("用户上线成功", "用户上线成功");

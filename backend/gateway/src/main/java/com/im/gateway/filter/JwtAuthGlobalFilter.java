@@ -25,7 +25,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
     private final ReactiveStringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
-    private final WebClient.Builder webClientBuilder;
+    private final WebClient webClient;
 
     @Value("${im.internal.header:X-Internal-Secret}")
     private String internalHeaderName;
@@ -42,6 +42,9 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     @Value("${im.gateway.auth.secret:im-gateway-auth-secret}")
     private String gatewayAuthSecret;
 
+    @Value("${auth.service.url:http://im-auth:8084}")
+    private String authServiceUrl;
+
     @Value("${jwt.header:Authorization}")
     private String jwtHeader;
 
@@ -49,21 +52,15 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private String jwtPrefix;
 
     public JwtAuthGlobalFilter(ReactiveStringRedisTemplate redisTemplate,
-                               ObjectMapper objectMapper,
-                               WebClient.Builder webClientBuilder) {
+                               ObjectMapper objectMapper) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
-        this.webClientBuilder = webClientBuilder;
+        this.webClient = WebClient.builder().build();
     }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
-        
-        // 放行登录和注册
-        if (path != null && (path.equals("/api/v1/user/login") || path.equals("/api/v1/user/register") || path.equals("/api/v1/user/check-username"))) {
-            return chain.filter(exchange);
-        }
         
         if (SecurityPaths.isGatewayWhiteList(path)) {
             return chain.filter(exchange);
@@ -158,9 +155,9 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private Mono<TokenParseResultDTO> validateToken(String token) {
-        return webClientBuilder.build()
+        return webClient
                 .post()
-                .uri("http://im-auth/api/auth/internal/validate-token")
+                .uri(authServiceUrl + "/api/auth/internal/validate-token")
                 .header(internalHeaderName, internalSecret)
                 .bodyValue(token)
                 .retrieve()
@@ -180,9 +177,9 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private Mono<AuthUserResourceDTO> loadUserResourceFromAuthService(Long userId) {
-        return webClientBuilder.build()
+        return webClient
                 .get()
-                .uri("http://im-auth/api/auth/internal/user-resource/{userId}", userId)
+                .uri(authServiceUrl + "/api/auth/internal/user-resource/{userId}", userId)
                 .header(internalHeaderName, internalSecret)
                 .retrieve()
                 .bodyToMono(AuthUserResourceDTO.class)

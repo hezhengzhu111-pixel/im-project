@@ -23,9 +23,9 @@ spring:
 
 im:
   jwt:
-    enabled: false
+    enabled: ${IM_JWT_ENABLED:true}
   security:
-    mode: ${IM_SECURITY_MODE:test}
+    mode: ${IM_SECURITY_MODE:gateway}
   internal:
     header: X-Internal-Secret
     secret: ${IM_INTERNAL_SECRET:im-internal-secret}

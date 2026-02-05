@@ -23,12 +23,12 @@ public class WhiteListAuthFilter implements GlobalFilter {
 
     // 白名单路径（无需 Gateway 认证，由后端服务处理）
     private static final List<String> WHITE_LIST_PATTERNS = List.of(
-            "/api/v1/user/login",
-            "/api/v1/user/register",
-            "/api/v1/user/check-username",
-            "/api/v1/auth/refresh",
-            "/api/v1/auth/parse",
-            "/api/v1/im"
+            "/api/user/login",
+            "/api/user/register",
+            "/api/user/check-username",
+            "/api/auth/refresh",
+            "/api/auth/parse",
+            "/api/im"
     );
 
     @Override
