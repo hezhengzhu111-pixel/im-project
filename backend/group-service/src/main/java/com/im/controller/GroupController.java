@@ -30,7 +30,7 @@ public class GroupController {
      */
     @PostMapping("/create")
     public ApiResponse<GroupInfoDTO> createGroup(
-            @RequestAttribute Long userId,
+            @RequestAttribute("userId") Long userId,
             @Valid @RequestBody CreateGroupRequest request) {
         GroupInfoDTO result = groupService.createGroup(
                 userId,
@@ -47,7 +47,7 @@ public class GroupController {
     @PostMapping("/{groupId}/members")
     public ApiResponse<String> addGroupMembers(
             @PathVariable Long groupId,
-            @RequestAttribute Long userId,
+            @RequestAttribute("userId") Long userId,
             @Valid @RequestBody AddGroupMembersRequest request) {
         groupService.addGroupMembers(groupId, userId, request.getMemberIds());
         return ApiResponse.success("添加成功", "添加成功");
@@ -59,7 +59,7 @@ public class GroupController {
     @PostMapping("/{groupId}/join")
     public ApiResponse<String> joinGroup(
             @PathVariable Long groupId,
-            @RequestAttribute Long userId) {
+            @RequestAttribute("userId") Long userId) {
         groupService.joinGroup(groupId, userId);
         return ApiResponse.success("加入成功", "加入成功");
     }
@@ -70,7 +70,7 @@ public class GroupController {
     @PostMapping("/{groupId}/leave")
     public ApiResponse<String> leaveGroup(
             @PathVariable Long groupId,
-            @RequestAttribute Long userId) {
+            @RequestAttribute("userId") Long userId) {
         groupService.leaveGroup(groupId, userId);
         return ApiResponse.success("退出成功", "退出成功");
     }
@@ -82,7 +82,7 @@ public class GroupController {
     public ApiResponse<String> removeMember(
             @PathVariable Long groupId,
             @PathVariable Long memberId,
-            @RequestAttribute Long userId) {
+            @RequestAttribute("userId") Long userId) {
         groupService.removeMember(groupId, userId, memberId);
         return ApiResponse.success("移除成功", "移除成功");
     }
@@ -93,7 +93,7 @@ public class GroupController {
     @DeleteMapping("/{groupId}")
     public ApiResponse<String> dismissGroup(
             @PathVariable Long groupId,
-            @RequestAttribute Long userId) {
+            @RequestAttribute("userId") Long userId) {
         groupService.dismissGroup(groupId, userId);
         return ApiResponse.success("解散成功", "解散成功");
     }
@@ -104,7 +104,7 @@ public class GroupController {
     @PutMapping("/{groupId}")
     public ApiResponse<GroupInfoDTO> updateGroupInfo(
             @PathVariable Long groupId,
-            @RequestAttribute Long userId,
+            @RequestAttribute("userId") Long userId,
             @Valid @RequestBody UpdateGroupInfoRequest request) {
         GroupInfoDTO result = groupService.updateGroupInfo(
                 groupId,
@@ -132,7 +132,7 @@ public class GroupController {
     @PutMapping("/{groupId}/admin")
     public ApiResponse<String> setAdmin(
             @PathVariable Long groupId,
-            @RequestAttribute Long userId,
+            @RequestAttribute("userId") Long userId,
             @Valid @RequestBody SetAdminRequest request) {
         groupService.setAdmin(groupId, userId, request.getUserId(), request.getIsAdmin());
         return ApiResponse.success(request.getIsAdmin() ? "设置管理员成功" : "取消管理员成功", "OK");

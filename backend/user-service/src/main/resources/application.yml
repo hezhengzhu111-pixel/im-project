@@ -7,6 +7,13 @@ spring:
   threads:
     virtual:
       enabled: ${SPRING_THREADS_VIRTUAL_ENABLED:false}
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.r2dbc.R2dbcAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.r2dbc.R2dbcDataAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.r2dbc.R2dbcRepositoriesAutoConfiguration
+  main:
+    allow-bean-definition-overriding: true
   cloud:
     nacos:
       config:
@@ -27,7 +34,21 @@ spring:
     database: 0
     timeout: 3000ms
   kafka:
-    bootstrap-servers: 127.0.0.1:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:im-kafka:9092}
+  feign:
+    client:
+      config:
+        default:
+          loggerLevel: FULL
+    httpclient:
+      enabled: true
+    hystrix:
+      enabled: false
+
+logging:
+  level:
+    com.im.feign: DEBUG
+    feign: DEBUG
 
 jwt:
   secret: ${JWT_SECRET:im-backend-secret-key-for-jwt-token-generation}
@@ -35,9 +56,9 @@ jwt:
 
 im:
   jwt:
-    enabled: false
+    enabled: ${IM_JWT_ENABLED:true}
   security:
-    mode: ${IM_SECURITY_MODE:test}
+    mode: ${IM_SECURITY_MODE:gateway}
   internal:
     header: X-Internal-Secret
     secret: ${IM_INTERNAL_SECRET:im-internal-secret}

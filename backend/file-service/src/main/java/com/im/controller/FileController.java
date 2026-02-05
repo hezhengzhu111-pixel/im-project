@@ -67,7 +67,7 @@ public class FileController {
     @PostMapping("/upload/image")
     public ApiResponse<FileUploadResponse> uploadImage(
             @RequestParam("file") MultipartFile file,
-            @RequestAttribute Long userId) {
+            @RequestAttribute("userId") Long userId) {
         
         try {
             // 验证文件
@@ -89,7 +89,7 @@ public class FileController {
     @PostMapping("/upload/file")
     public ApiResponse<FileUploadResponse> uploadFile(
             @RequestParam("file") MultipartFile file,
-            @RequestAttribute Long userId) {
+            @RequestAttribute("userId") Long userId) {
         
         try {
             // 验证文件
@@ -111,7 +111,7 @@ public class FileController {
     @PostMapping("/upload/audio")
     public ApiResponse<FileUploadResponse> uploadAudio(
             @RequestParam("file") MultipartFile file,
-            @RequestAttribute Long userId) {
+            @RequestAttribute("userId") Long userId) {
         
         try {
             // 验证文件
@@ -133,7 +133,7 @@ public class FileController {
     @PostMapping("/upload/video")
     public ApiResponse<FileUploadResponse> uploadVideo(
             @RequestParam("file") MultipartFile file,
-            @RequestAttribute Long userId) {
+            @RequestAttribute("userId") Long userId) {
         
         try {
             // 验证文件
@@ -155,7 +155,7 @@ public class FileController {
     @PostMapping("/upload/avatar")
     public ApiResponse<FileUploadResponse> uploadAvatar(
             @RequestParam("file") MultipartFile file,
-            @RequestAttribute Long userId) {
+            @RequestAttribute("userId") Long userId) {
         
         try {
             // 验证文件

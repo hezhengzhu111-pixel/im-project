@@ -20,6 +20,8 @@ spring:
         naming-load-cache-at-start: false
 
 im:
+  jwt:
+    enabled: ${IM_JWT_ENABLED:true}
   security:
     mode: ${IM_SECURITY_MODE:gateway}
   internal:
