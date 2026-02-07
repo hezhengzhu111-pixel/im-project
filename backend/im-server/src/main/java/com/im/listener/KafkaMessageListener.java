@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONWriter;
 import com.im.dto.GroupMemberDTO;
 import com.im.dto.MessageDTO;
+import com.im.dto.ReadReceiptDTO;
 import com.im.entity.UserSession;
 import com.im.service.IImService;
 import com.im.service.MessageRetryQueue;
@@ -57,8 +58,9 @@ public class KafkaMessageListener {
             }
 
             if (msg != null && msg.getId() != null) {
-                if (!deduplicator.tryMarkProcessed(String.valueOf(msg.getId()))) {
-                    log.debug("重复私聊消息已忽略: id={}, partition={}, offset={}", msg.getId(), partition, offset);
+                String key = String.valueOf(msg.getId()) + ":" + String.valueOf(msg.getStatus());
+                if (!deduplicator.tryMarkProcessed(key)) {
+                    log.debug("重复私聊消息已忽略: key={}, partition={}, offset={}", key, partition, offset);
                     return;
                 }
             }
@@ -97,8 +99,9 @@ public class KafkaMessageListener {
             }
 
             if (msg != null && msg.getId() != null) {
-                if (!deduplicator.tryMarkProcessed(String.valueOf(msg.getId()))) {
-                    log.debug("重复群聊消息已忽略: id={}, partition={}, offset={}", msg.getId(), partition, offset);
+                String key = String.valueOf(msg.getId()) + ":" + String.valueOf(msg.getStatus());
+                if (!deduplicator.tryMarkProcessed(key)) {
+                    log.debug("重复群聊消息已忽略: key={}, partition={}, offset={}", key, partition, offset);
                     return;
                 }
             }
@@ -113,6 +116,38 @@ public class KafkaMessageListener {
             });
         } catch (Exception e) {
             log.error("处理群聊消息异常: {}", message, e);
+            throw e;
+        } finally {
+            acknowledgment.acknowledge();
+        }
+    }
+
+    @KafkaListener(topics = "im-read-receipt-topic", groupId = "im-read-receipt-group",
+                   containerFactory = "kafkaListenerContainerFactory")
+    public void handleReadReceipt(String message,
+                                  @Header(KafkaHeaders.RECEIVED_PARTITION) int partition,
+                                  @Header(KafkaHeaders.OFFSET) long offset,
+                                  Acknowledgment acknowledgment) {
+        try {
+            ReadReceiptDTO receipt;
+            try {
+                receipt = JSON.parseObject(message, ReadReceiptDTO.class);
+            } catch (Exception parseError) {
+                log.error("已读回执反序列化失败: partition={}, offset={}, payload={}", partition, offset, message, parseError);
+                return;
+            }
+            if (receipt == null || receipt.getToUserId() == null) {
+                return;
+            }
+            executor.execute(() -> {
+                try {
+                    pushReadReceipt(receipt);
+                } catch (Exception e) {
+                    log.error("已读回执推送异常: payload={}", message, e);
+                }
+            });
+        } catch (Exception e) {
+            log.error("处理已读回执异常: {}", message, e);
             throw e;
         } finally {
             acknowledgment.acknowledge();
@@ -159,6 +194,28 @@ public class KafkaMessageListener {
         } else {
             log.warn("用户 {} 不在线或连接断开，消息未推送", userIdStr);
             retryQueue.enqueue(userIdStr, message, "offline");
+        }
+    }
+
+    private void pushReadReceipt(ReadReceiptDTO receipt) {
+        Long userId = receipt.getToUserId();
+        if (userId == null) return;
+        String userIdStr = userId.toString();
+        UserSession userSession = imService.getSessionUserMap().get(userIdStr);
+
+        Map<String, Object> wsMessage = new HashMap<>();
+        wsMessage.put("type", "READ_RECEIPT");
+        wsMessage.put("data", receipt);
+        wsMessage.put("timestamp", System.currentTimeMillis());
+
+        String textMessage = JSON.toJSONString(wsMessage, JSONWriter.Feature.WriteLongAsString);
+
+        if (userSession != null && userSession.getWebSocketSession() != null && userSession.getWebSocketSession().isOpen()) {
+            try {
+                userSession.getWebSocketSession().sendMessage(new TextMessage(textMessage));
+            } catch (Exception e) {
+                log.error("推送已读回执失败: {}", e.getMessage(), e);
+            }
         }
     }
 }

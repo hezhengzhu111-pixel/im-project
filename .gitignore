@@ -4,3 +4,8 @@ node_modules/
 dist/
 .idea/
 .vscode/
+__pycache__/
+*.pyc
+logs/
+test_reports/
+test_report_*.json

@@ -56,7 +56,11 @@ public class MessageConverter {
                 .isGroup(message.getIsGroupChat())
                 .replyToMessageId(message.getReplyToMessageId())
                 .createdTime(message.getCreatedTime())
+                .createdAt(message.getCreatedTime())
                 .updatedTime(message.getUpdatedTime())
+                .updatedAt(message.getUpdatedTime())
+                .readStatus(message.getStatus() != null && message.getStatus() == 3 ? 1 : 0)
+                .readAt(message.getStatus() != null && message.getStatus() == 3 ? message.getUpdatedTime() : null)
                 .groupMembers(message.getIsGroupChat() ? convertGroupMembersToDTO(groupMembers) : null)
                 .build();
     }
@@ -70,6 +74,7 @@ public class MessageConverter {
             case 1: return "SENT";
             case 2: return "DELIVERED";
             case 3: return "READ";
+            case 4: return "RECALLED";
             case 5: return "DELETED";
             default: return "SENDING";
         }

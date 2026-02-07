@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
 import lombok.Builder;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
@@ -15,7 +16,7 @@ import java.time.LocalDateTime;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class ConversationDTO {
+public class ConversationDTO implements Serializable {
     private String conversationId;
     private Integer conversationType; // 1-私聊, 2-群聊
     private String conversationName;

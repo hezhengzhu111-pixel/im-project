@@ -175,12 +175,13 @@
         </div>
 
         <!-- 消息列表 -->
-        <div ref="messageListRef" class="message-list" role="log" aria-live="polite">
+        <div ref="messageListRef" class="message-list" role="log" aria-live="polite" @scroll="handleMessageScroll">
           <MessageItem
             v-for="message in currentMessages"
             :key="message.id"
             :message="message"
             :current-user-id="String(userStore.userId)"
+            :current-user-name="userStore.userInfo?.username || userStore.nickname"
             :current-user-avatar="userStore.avatar"
           />
         </div>
@@ -332,7 +333,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch, computed } from "vue";
+import { ref, onMounted, onUnmounted, nextTick, watch, computed } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
@@ -440,12 +441,12 @@ const clearSession = () => {
   chatStore.currentSession = null;
 };
 
-const startChat = (contact: Friendship) => {
+const startChat = (contact: Friendship & { avatar?: string; username?: string; nickname?: string }) => {
   const session = chatStore.createOrGetSession(
     "private",
     contact.friendId,
-    contact.nickname || contact.friend.username, // Adjusted for Friendship structure
-    contact.friend.avatar, // Adjusted for Friendship structure
+    contact.nickname || contact.friend?.nickname || contact.friend?.username || contact.username || "",
+    contact.avatar || contact.friend?.avatar || "",
   );
   if (session) {
     selectSession(session);
@@ -556,8 +557,45 @@ const scrollToBottom = () => {
   });
 };
 
+let ackTimer: number | null = null;
+let loadingMore = false;
+const handleMessageScroll = () => {
+  if (ackTimer != null) {
+    window.clearTimeout(ackTimer);
+  }
+  ackTimer = window.setTimeout(() => {
+    void (async () => {
+      if (!currentSession.value?.id) return;
+      if (!messageListRef.value) return;
+      const { scrollTop, scrollHeight, clientHeight } = messageListRef.value;
+
+      if (!loadingMore && scrollTop < 80) {
+        loadingMore = true;
+        const prevHeight = scrollHeight;
+        await chatStore.loadMessages(currentSession.value.id, 1, 20);
+        await nextTick();
+        if (messageListRef.value) {
+          const newHeight = messageListRef.value.scrollHeight;
+          messageListRef.value.scrollTop = newHeight - prevHeight + scrollTop;
+        }
+        loadingMore = false;
+      }
+
+      if (document.hidden) return;
+      const nearBottom = scrollHeight - scrollTop - clientHeight < 120;
+      if (nearBottom) {
+        chatStore.markAsRead(currentSession.value.id);
+      }
+    })();
+  }, 300);
+};
+
 const formatTime = (time: string | Date) => {
-  const date = new Date(time);
+  const normalized =
+    typeof time === "string"
+      ? time.replace(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{3})\d+$/, "$1.$2")
+      : time;
+  const date = new Date(normalized as any);
   const now = new Date();
   const diff = now.getTime() - date.getTime();
 
@@ -621,6 +659,31 @@ onMounted(async () => {
   await chatStore.init();
   if (userStore.isLoggedIn && userStore.userId) {
     wsStore.connect(userStore.userId);
+  }
+});
+
+const tryAckRead = () => {
+  if (document.hidden) return;
+  if (!currentSession.value?.id) return;
+  chatStore.markAsRead(currentSession.value.id);
+};
+
+const onFocus = () => tryAckRead();
+const onVisibility = () => {
+  if (!document.hidden) tryAckRead();
+};
+
+onMounted(() => {
+  window.addEventListener("focus", onFocus);
+  document.addEventListener("visibilitychange", onVisibility);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("focus", onFocus);
+  document.removeEventListener("visibilitychange", onVisibility);
+  if (ackTimer != null) {
+    window.clearTimeout(ackTimer);
+    ackTimer = null;
   }
 });
 </script>

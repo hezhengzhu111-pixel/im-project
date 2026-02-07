@@ -1,0 +1,11 @@
+{
+  "name": "im-project-tests",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "db:reset": "python scripts/db_reset.py",
+    "test:api": "python test_im_complete.py",
+    "pretest": "npm run db:reset",
+    "test": "npm run test:api"
+  }
+}

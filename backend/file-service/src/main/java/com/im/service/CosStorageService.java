@@ -8,6 +8,7 @@ import com.qcloud.cos.model.COSObject;
 import com.qcloud.cos.model.ObjectMetadata;
 import com.qcloud.cos.model.PutObjectRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -19,7 +20,8 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
-public class CosStorageService {
+@ConditionalOnProperty(name = "im.cos.enabled", havingValue = "true", matchIfMissing = true)
+public class CosStorageService implements StorageService {
 
     private final COSClient cosClient;
     private final CosProperties props;
@@ -67,9 +69,17 @@ public class CosStorageService {
         return new FileInfoResponse(filename, size, contentType, lastModified);
     }
 
-    public COSObject getObject(String category, String date, String filename) {
+    @Override
+    public StorageObject getObject(String category, String date, String filename) throws Exception {
         String key = buildKey(category, date, filename);
-        return cosClient.getObject(props.getBucket(), key);
+        COSObject cosObject = cosClient.getObject(props.getBucket(), key);
+        if (cosObject == null) {
+            return null;
+        }
+        ObjectMetadata metadata = cosObject.getObjectMetadata();
+        String contentType = metadata == null ? null : metadata.getContentType();
+        Long len = metadata == null ? null : metadata.getContentLength();
+        return new StorageObject(cosObject.getObjectContent(), contentType, len, cosObject);
     }
 
     public String buildPublicUrl(String key) {

@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class UserProfileCache {
 
-    private final RedisTemplate<Object, Object> redisTemplate;
+    private final RedisTemplate<String, Object> redisTemplate;
     private final UserServiceFeignClient userServiceFeignClient;
 
     @Value("${im.message.user-cache.key-prefix:user:brief:}")

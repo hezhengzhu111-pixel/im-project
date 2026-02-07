@@ -50,7 +50,7 @@ public class AuthTokenRevokeService {
             String tokenHash = hashToken(request.getToken());
             String revokedKey = REVOKED_TOKEN_KEY_PREFIX + tokenHash;
 
-            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(revokedKey))) {
+            if (stringRedisTemplate.hasKey(revokedKey)) {
                 result.setSuccess(false);
                 result.setMessage("Token已被吊销");
                 return result;

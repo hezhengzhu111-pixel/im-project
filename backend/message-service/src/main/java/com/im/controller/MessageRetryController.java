@@ -29,14 +29,22 @@ public class MessageRetryController {
     }
 
     private ApiResponse<Void> retryByTopic(Long messageId, String topic) {
-        if (messageId == null) {
+        if (messageId == null || messageId <= 0) {
             return ApiResponse.badRequest("messageId不能为空");
         }
-        MessageOutboxEvent latest = outboxMapper.selectLatestByRelatedMessageIdAndTopic(messageId, topic);
-        if (latest == null) {
-            return ApiResponse.notFound("未找到可重投的消息事件");
+        try {
+            MessageOutboxEvent latest = outboxMapper.selectLatestByRelatedMessageIdAndTopic(messageId, topic);
+            if (latest == null) {
+                return ApiResponse.notFound("未找到可重投的消息事件");
+            }
+            outboxService.enqueueAfterCommit(latest.getTopic(), latest.getMessageKey(), latest.getPayload(), messageId);
+            return ApiResponse.success("已触发重投", null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.badRequest(e.getMessage());
+        } catch (SecurityException e) {
+            return ApiResponse.forbidden(e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.error("系统异常，请联系管理员");
         }
-        outboxService.enqueueAfterCommit(latest.getTopic(), latest.getMessageKey(), latest.getPayload(), messageId);
-        return ApiResponse.success("已触发重投", null);
     }
 }
