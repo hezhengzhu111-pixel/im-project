@@ -14,7 +14,7 @@ export interface WebSocketConfig {
 
 // 默认配置
 const DEFAULT_CONFIG: WebSocketConfig = {
-  baseUrl: "ws://127.0.0.1:8083",
+  baseUrl: "",
   reconnectAttempts: 5,
   reconnectInterval: 1000,
   heartbeatInterval: 30000,
@@ -26,8 +26,15 @@ const DEFAULT_CONFIG: WebSocketConfig = {
  * 优先使用环境变量，如果没有则使用默认配置
  */
 export function getWebSocketConfig(): WebSocketConfig {
+  const defaultBaseUrl = (() => {
+    if (typeof window === "undefined") {
+      return "ws://127.0.0.1:8080";
+    }
+    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+    return `${scheme}://${window.location.host}`;
+  })();
   const config: WebSocketConfig = {
-    baseUrl: import.meta.env.VITE_WS_BASE_URL || DEFAULT_CONFIG.baseUrl,
+    baseUrl: import.meta.env.VITE_WS_BASE_URL || DEFAULT_CONFIG.baseUrl || defaultBaseUrl,
     reconnectAttempts: DEFAULT_CONFIG.reconnectAttempts,
     reconnectInterval: DEFAULT_CONFIG.reconnectInterval,
     heartbeatInterval: DEFAULT_CONFIG.heartbeatInterval,

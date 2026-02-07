@@ -2,6 +2,8 @@ package com.im.util;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import lombok.Data;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -11,6 +13,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+
+import static com.im.service.AuthTokenService.getSecretKey;
 
 @Slf4j
 @Component
@@ -88,16 +92,7 @@ public class TokenParser {
     }
 
     private SecretKey getSigningKey(String secret) {
-        String effectiveSecret = secret == null ? "" : secret;
-        byte[] keyBytes = effectiveSecret.getBytes(StandardCharsets.UTF_8);
-        if (keyBytes.length >= 64) {
-            return Keys.hmacShaKeyFor(keyBytes);
-        }
-        byte[] padded = new byte[64];
-        for (int i = 0; i < padded.length; i++) {
-            padded[i] = keyBytes[i % Math.max(1, keyBytes.length)];
-        }
-        return Keys.hmacShaKeyFor(padded);
+        return getSecretKey(secret);
     }
 
     private String normalizeBearer(String token) {
@@ -108,6 +103,7 @@ public class TokenParser {
         return t;
     }
 
+    @Data
     public static class TokenParseInfo {
         private boolean valid;
         private boolean expired;
@@ -118,77 +114,5 @@ public class TokenParser {
         private String jti;
         private Long issuedAtEpochMs;
         private Long expiresAtEpochMs;
-
-        public boolean isValid() {
-            return valid;
-        }
-
-        public void setValid(boolean valid) {
-            this.valid = valid;
-        }
-
-        public boolean isExpired() {
-            return expired;
-        }
-
-        public void setExpired(boolean expired) {
-            this.expired = expired;
-        }
-
-        public String getError() {
-            return error;
-        }
-
-        public void setError(String error) {
-            this.error = error;
-        }
-
-        public Long getUserId() {
-            return userId;
-        }
-
-        public void setUserId(Long userId) {
-            this.userId = userId;
-        }
-
-        public String getUsername() {
-            return username;
-        }
-
-        public void setUsername(String username) {
-            this.username = username;
-        }
-
-        public String getTokenType() {
-            return tokenType;
-        }
-
-        public void setTokenType(String tokenType) {
-            this.tokenType = tokenType;
-        }
-
-        public String getJti() {
-            return jti;
-        }
-
-        public void setJti(String jti) {
-            this.jti = jti;
-        }
-
-        public Long getIssuedAtEpochMs() {
-            return issuedAtEpochMs;
-        }
-
-        public void setIssuedAtEpochMs(Long issuedAtEpochMs) {
-            this.issuedAtEpochMs = issuedAtEpochMs;
-        }
-
-        public Long getExpiresAtEpochMs() {
-            return expiresAtEpochMs;
-        }
-
-        public void setExpiresAtEpochMs(Long expiresAtEpochMs) {
-            this.expiresAtEpochMs = expiresAtEpochMs;
-        }
     }
 }

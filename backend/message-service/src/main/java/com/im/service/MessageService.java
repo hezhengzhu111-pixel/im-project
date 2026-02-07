@@ -2,10 +2,10 @@ package com.im.service;
 
 import com.im.dto.request.SendGroupMessageRequest;
 import com.im.dto.request.SendPrivateMessageRequest;
-import com.im.entity.Message;
+import com.im.dto.MessageDTO;
 import com.im.dto.ConversationDTO;
-import com.im.enums.MessageType;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -19,7 +19,7 @@ public interface MessageService {
      * @param request 发送私聊消息请求对象
      * @return 消息对象
      */
-    Message sendPrivateMessage(Long senderId, SendPrivateMessageRequest request);
+    MessageDTO sendPrivateMessage(Long senderId, SendPrivateMessageRequest request);
     
     /**
      * 发送群聊消息
@@ -27,7 +27,7 @@ public interface MessageService {
      * @param request 群聊消息请求对象
      * @return 消息对象
      */
-    Message sendGroupMessage(Long senderId, SendGroupMessageRequest request);
+    MessageDTO sendGroupMessage(Long senderId, SendGroupMessageRequest request);
     
     /**
      * 获取用户的会话列表
@@ -51,7 +51,7 @@ public interface MessageService {
      * @param size 每页大小
      * @return 消息列表
      */
-    List<Message> getPrivateMessages(Long userId, Long friendId, int page, int size);
+    List<MessageDTO> getPrivateMessages(Long userId, Long friendId, int page, int size);
     
     /**
      * 获取群聊消息历史
@@ -61,5 +61,23 @@ public interface MessageService {
      * @param size 每页大小
      * @return 消息列表
      */
-    List<Message> getGroupMessages(Long userId, Long groupId, int page, int size);
+    List<MessageDTO> getGroupMessages(Long userId, Long groupId, int page, int size);
+
+    List<MessageDTO> getPrivateMessagesCursor(Long userId,
+                                              Long friendId,
+                                              Long lastMessageId,
+                                              LocalDateTime beforeTimestamp,
+                                              Long afterMessageId,
+                                              int limit);
+
+    List<MessageDTO> getGroupMessagesCursor(Long userId,
+                                           Long groupId,
+                                           Long lastMessageId,
+                                           LocalDateTime beforeTimestamp,
+                                           Long afterMessageId,
+                                           int limit);
+
+    MessageDTO recallMessage(Long userId, Long messageId);
+
+    MessageDTO deleteMessage(Long userId, Long messageId);
 }

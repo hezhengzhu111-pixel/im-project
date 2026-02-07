@@ -57,14 +57,14 @@ public class ImController {
      */
     @PostMapping("/offline/{userId}")
     @Operation(summary = "用户下线", description = "强制用户下线")
-    public ApiResponse<String> userOffline(@PathVariable String userId) {
+    public ApiResponse<String> userOffline(@PathVariable("userId") String userId) {
         imService.userOffline(userId);
         return ApiResponse.success("用户下线成功");
     }
 
     @PostMapping("/online/{userId}")
     @Operation(summary = "用户上线", description = "用户上线并创建会话")
-    public ApiResponse<String> userOnline(@PathVariable String userId) {
+    public ApiResponse<String> userOnline(@PathVariable("userId") String userId) {
         if (userId == null || userId.trim().isEmpty()) {
             return ApiResponse.error("用户ID不能为空");
         }

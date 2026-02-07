@@ -35,6 +35,15 @@ public class GroupServiceImpl implements GroupService {
     @Override
     @Transactional
     public GroupInfoDTO createGroup(Long ownerId, String name, Integer type, String announcement) {
+        if (ownerId == null) {
+            throw new IllegalArgumentException("群主不能为空");
+        }
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("群名称不能为空");
+        }
+        if (type == null) {
+            throw new IllegalArgumentException("群类型不能为空");
+        }
         validateUserExists(ownerId);
         
         // 创建群组实体
@@ -81,18 +90,30 @@ public class GroupServiceImpl implements GroupService {
         validateGroupExists(groupId);
         validateUserExists(userId);
 
-        if (isMember(groupId, userId)) {
-            throw new IllegalStateException("用户 " + userId + " 已经是群组 " + groupId + " 的成员");
-        }
-
         Group group = findGroupById(groupId);
 
         if (group.getMemberCount() >= group.getMaxMembers()) {
             throw new IllegalStateException("群组 " + groupId + " 成员已满");
         }
 
-        addMemberToGroup(groupId, userId, 1); // 普通成员
-        updateMemberCount(groupId, 1);
+        GroupMember existing = groupMemberMapper.selectOne(new LambdaQueryWrapper<GroupMember>()
+                .eq(GroupMember::getGroupId, groupId)
+                .eq(GroupMember::getUserId, userId)
+                .last("limit 1"));
+
+        if (existing != null) {
+            if (Boolean.TRUE.equals(existing.getStatus())) {
+                throw new IllegalStateException("用户 " + userId + " 已经是群组 " + groupId + " 的成员");
+            }
+            existing.setStatus(true);
+            existing.setRole(1);
+            existing.setJoinTime(LocalDateTime.now());
+            groupMemberMapper.updateById(existing);
+            updateMemberCount(groupId, 1);
+        } else {
+            addMemberToGroup(groupId, userId, 1); // 普通成员
+            updateMemberCount(groupId, 1);
+        }
 
         log.info("用户 {} 加入群组 {}", userId, groupId);
     }

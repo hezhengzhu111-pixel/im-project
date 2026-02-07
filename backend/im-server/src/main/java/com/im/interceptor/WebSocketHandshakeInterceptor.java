@@ -5,11 +5,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
@@ -78,12 +83,20 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
 
     private TokenParseResultDTO validateToken(String token) {
         try {
-            return restTemplate.postForObject(
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.TEXT_PLAIN);
+            headers.set(internalHeaderName, internalSecret);
+            HttpEntity<String> entity = new HttpEntity<>(token, headers);
+
+            ResponseEntity<TokenParseResultDTO> resp = restTemplate.postForEntity(
                     authServiceUrl + "/api/auth/internal/validate-token",
-                    token,
-                    TokenParseResultDTO.class,
-                    internalHeaderName, internalSecret
+                    entity,
+                    TokenParseResultDTO.class
             );
+            return resp.getBody();
+        } catch (HttpStatusCodeException e) {
+            log.warn("验证Token失败: status={} body={}", e.getStatusCode(), e.getResponseBodyAsString());
+            return null;
         } catch (Exception e) {
             log.error("验证Token失败", e);
             return null;

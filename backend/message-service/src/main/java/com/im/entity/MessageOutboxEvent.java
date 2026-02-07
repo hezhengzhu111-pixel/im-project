@@ -35,4 +35,28 @@ public class MessageOutboxEvent extends BaseEntity {
 
     @TableField("related_message_id")
     private Long relatedMessageId;
+
+    public String getTopic() {
+        return topic;
+    }
+
+    public void setTopic(String topic) {
+        this.topic = topic;
+    }
+
+    public String getMessageKey() {
+        return messageKey;
+    }
+
+    public void setMessageKey(String messageKey) {
+        this.messageKey = messageKey;
+    }
+
+    public String getPayload() {
+        return payload;
+    }
+
+    public void setPayload(String payload) {
+        this.payload = payload;
+    }
 }

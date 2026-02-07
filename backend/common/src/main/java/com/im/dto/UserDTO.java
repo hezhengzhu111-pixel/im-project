@@ -14,6 +14,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
@@ -23,7 +24,7 @@ import java.time.LocalDateTime;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class UserDTO {
+public class UserDTO implements Serializable {
     private String id;
 
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)

@@ -12,10 +12,16 @@ public final class SecurityPaths {
         if (path.startsWith("/actuator")) {
             return true;
         }
+        if (path.startsWith("/v3/api-docs") || path.startsWith("/swagger-ui") || path.startsWith("/swagger-ui.html")) {
+            return true;
+        }
         if (path.startsWith("/api/user/login") || path.startsWith("/api/user/register") || path.startsWith("/api/user/check-username")) {
             return true;
         }
         if (path.startsWith("/api/auth/refresh") || path.startsWith("/api/auth/parse")) {
+            return true;
+        }
+        if (path.startsWith("/websocket")) {
             return true;
         }
         return path.startsWith("/api/im");
@@ -35,6 +41,12 @@ public final class SecurityPaths {
             return true;
         }
         if (requestURI.startsWith("/actuator") || requestURI.startsWith("/api/actuator")) {
+            return true;
+        }
+        if (requestURI.startsWith("/v3/api-docs") || requestURI.startsWith("/swagger-ui") || requestURI.startsWith("/swagger-ui.html")) {
+            return true;
+        }
+        if (requestURI.equals("/health") || requestURI.equals("/ready")) {
             return true;
         }
         if (requestURI.startsWith("/api/user/register") || requestURI.startsWith("/api/user/login")

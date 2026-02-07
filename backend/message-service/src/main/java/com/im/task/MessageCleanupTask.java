@@ -9,8 +9,11 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDateTime;
+import java.sql.Timestamp;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -25,7 +28,10 @@ public class MessageCleanupTask {
     private MessageMapper messageMapper;
     
     @Autowired
-    private RedisTemplate<Object, Object> redisTemplate;
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
     
     /**
      * 清理过期的已删除消息
@@ -43,6 +49,46 @@ public class MessageCleanupTask {
             log.info("清理过期消息完成，删除了 {} 条记录", deletedCount);
         } catch (Exception e) {
             log.error("清理过期消息失败", e);
+        }
+    }
+
+    /**
+     * 归档90天前消息到 messages_archive
+     * 每天凌晨2点10分执行
+     */
+    @Scheduled(cron = "0 10 2 * * ?")
+    public void archiveOldMessages() {
+        try {
+            LocalDateTime cutoff = LocalDateTime.now().minusDays(90);
+            int batch = 5000;
+            List<Long> ids = jdbcTemplate.queryForList(
+                    "SELECT id FROM messages WHERE created_time < ? ORDER BY created_time ASC LIMIT ?",
+                    Long.class,
+                    Timestamp.valueOf(cutoff),
+                    batch
+            );
+            if (ids == null || ids.isEmpty()) {
+                return;
+            }
+
+            String placeholders = String.join(",", ids.stream().map(x -> "?").toList());
+            String insertSql = """
+                    INSERT IGNORE INTO messages_archive (
+                      id, sender_id, receiver_id, group_id, message_type, content, media_url, media_size, media_name,
+                      thumbnail_url, duration, location_info, status, is_group_chat, reply_to_message_id, created_time, updated_time, archived_time
+                    )
+                    SELECT
+                      id, sender_id, receiver_id, group_id, message_type, content, media_url, media_size, media_name,
+                      thumbnail_url, duration, location_info, status, is_group_chat, reply_to_message_id, created_time, updated_time, NOW()
+                    FROM messages
+                    WHERE id IN (""" + placeholders + ")";
+            jdbcTemplate.update(insertSql, ids.toArray());
+
+            String deleteSql = "DELETE FROM messages WHERE id IN (" + placeholders + ")";
+            int deleted = jdbcTemplate.update(deleteSql, ids.toArray());
+            log.info("归档完成: cutoff={}, archived={}, deleted={}", cutoff, ids.size(), deleted);
+        } catch (Exception e) {
+            log.error("归档消息失败", e);
         }
     }
     
