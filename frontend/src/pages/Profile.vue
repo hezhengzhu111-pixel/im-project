@@ -1,9 +1,7 @@
 <template>
   <div class="profile-container">
     <div class="profile-header">
-      <el-button link :icon="ArrowLeft" @click="$router.back()"
-        >返回</el-button
-      >
+      <el-button link :icon="ArrowLeft" @click="$router.back()">返回</el-button>
       <h2>个人资料</h2>
       <div></div>
     </div>
@@ -132,9 +130,7 @@
               <div class="security-desc">定期更换密码可以保护账户安全</div>
             </div>
           </div>
-          <el-button link @click="showChangePassword = true"
-            >修改</el-button
-          >
+          <el-button link @click="showChangePassword = true">修改</el-button>
         </div>
 
         <div class="security-item">

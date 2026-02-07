@@ -44,8 +44,7 @@ export class HeartbeatService {
     try {
       const response = await friendService.getList();
       if (response.code === 200 && response.data) {
-        this.friends.value =
-          (response.data as unknown as Friendship[]) || [];
+        this.friends.value = (response.data as unknown as Friendship[]) || [];
         console.log(
           "心跳服务：已加载好友列表，共",
           this.friends.value.length,

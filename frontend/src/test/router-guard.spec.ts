@@ -9,9 +9,15 @@ vi.mock("element-plus", () => ({
   },
 }));
 
-vi.mock("@/pages/Login.vue", () => ({ default: { template: "<div>login</div>" } }));
-vi.mock("@/pages/Register.vue", () => ({ default: { template: "<div>register</div>" } }));
-vi.mock("@/pages/Chat.vue", () => ({ default: { template: "<div>chat</div>" } }));
+vi.mock("@/pages/Login.vue", () => ({
+  default: { template: "<div>login</div>" },
+}));
+vi.mock("@/pages/Register.vue", () => ({
+  default: { template: "<div>register</div>" },
+}));
+vi.mock("@/pages/Chat.vue", () => ({
+  default: { template: "<div>chat</div>" },
+}));
 
 vi.mock("@/stores/user", async () => {
   const { STORAGE_CONFIG } = await import("@/config");
@@ -73,7 +79,13 @@ describe("router auth guard", () => {
     localStorage.setItem(STORAGE_CONFIG.TOKEN_KEY, expired);
     localStorage.setItem(
       STORAGE_CONFIG.USER_INFO_KEY,
-      JSON.stringify({ id: "1", username: "u", nickname: "u", avatar: "", status: "OFFLINE" }),
+      JSON.stringify({
+        id: "1",
+        username: "u",
+        nickname: "u",
+        avatar: "",
+        status: "OFFLINE",
+      }),
     );
 
     const router = (await import("@/router")).default;

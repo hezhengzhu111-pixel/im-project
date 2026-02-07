@@ -5,7 +5,12 @@
 
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import { messageService, friendService, groupService, userService } from "@/services";
+import {
+  messageService,
+  friendService,
+  groupService,
+  userService,
+} from "@/services";
 import { heartbeatService } from "@/services/heartbeat";
 import type {
   Message,
@@ -73,7 +78,10 @@ export const useChatStore = defineStore("chat", () => {
   const loading = ref(false);
   const searchResults = ref<MessageSearchResult[]>([]);
   const unreadCounts = ref<Map<string, number>>(new Map());
-  const messageTextConfig = ref<{ textEnforce: boolean; textMaxLength: number } | null>(null);
+  const messageTextConfig = ref<{
+    textEnforce: boolean;
+    textMaxLength: number;
+  } | null>(null);
 
   // 计算属性
   const currentMessages = computed(() => {
@@ -104,13 +112,13 @@ export const useChatStore = defineStore("chat", () => {
     if (type === "private") {
       const userId = userStore.userId;
       if (!userId) {
-        console.error('用户未登录，无法创建会话');
-        return '';
+        console.error("用户未登录，无法创建会话");
+        return "";
       }
       const a = String(userId);
       const b = String(targetId);
 
-      if (!b) return '';
+      if (!b) return "";
 
       const aNum = Number(a);
       const bNum = Number(b);
@@ -132,9 +140,9 @@ export const useChatStore = defineStore("chat", () => {
     targetAvatar?: string,
   ): ChatSession | null => {
     const sessionId = getSessionId(type, targetId);
-    
+
     if (!sessionId) {
-      console.error('无法生成有效的会话ID');
+      console.error("无法生成有效的会话ID");
       return null;
     }
 
@@ -179,8 +187,18 @@ export const useChatStore = defineStore("chat", () => {
         const cached = await messageRepo.listConversation(sessionId);
         if (cached.length) {
           const hasUnsafeLong = cached.some((m: any) => {
-            const fields = [m?.id, m?.senderId, m?.receiverId, m?.groupId, (m as any)?.replyToMessageId];
-            return fields.some((v) => typeof v === "number" && (!Number.isFinite(v) || !Number.isSafeInteger(v)));
+            const fields = [
+              m?.id,
+              m?.senderId,
+              m?.receiverId,
+              m?.groupId,
+              (m as any)?.replyToMessageId,
+            ];
+            return fields.some(
+              (v) =>
+                typeof v === "number" &&
+                (!Number.isFinite(v) || !Number.isSafeInteger(v)),
+            );
           });
           if (hasUnsafeLong) {
             await messageRepo.clearConversation(sessionId);
@@ -201,7 +219,8 @@ export const useChatStore = defineStore("chat", () => {
                       "$1.$2",
                     )
                   : created;
-              const statusNum = typeof m.status === "number" ? m.status : Number(m.status);
+              const statusNum =
+                typeof m.status === "number" ? m.status : Number(m.status);
               const status =
                 Number.isFinite(statusNum) && statusNum > 0
                   ? statusNum === 3
@@ -219,18 +238,32 @@ export const useChatStore = defineStore("chat", () => {
               const normalized = {
                 ...m,
                 id: safePreferExistingId(m.id, m.id),
-                senderId: safePreferExistingId(m.senderId || m.sender?.id || m.sender_id, m.senderId),
-                receiverId: safePreferExistingId(m.receiverId || m.receiver_id, m.receiverId),
-                groupId: safePreferExistingId(m.groupId || m.group_id, m.groupId),
+                senderId: safePreferExistingId(
+                  m.senderId || m.sender?.id || m.sender_id,
+                  m.senderId,
+                ),
+                receiverId: safePreferExistingId(
+                  m.receiverId || m.receiver_id,
+                  m.receiverId,
+                ),
+                groupId: safePreferExistingId(
+                  m.groupId || m.group_id,
+                  m.groupId,
+                ),
                 messageType: m.messageType || m.type || "TEXT",
                 type: m.type || m.messageType || "TEXT",
-                senderName: m.senderName || m.sender?.nickname || m.sender?.username,
+                senderName:
+                  m.senderName || m.sender?.nickname || m.sender?.username,
                 senderAvatar: m.senderAvatar || m.sender?.avatar,
                 content: typeof m.content === "string" ? m.content : "",
-                sendTime: createdNormalized || m.sendTime || new Date().toISOString(),
+                sendTime:
+                  createdNormalized || m.sendTime || new Date().toISOString(),
                 status,
               };
-              if (String(m.status) === "SENDING" && String(m.id || "").startsWith("local_")) {
+              if (
+                String(m.status) === "SENDING" &&
+                String(m.id || "").startsWith("local_")
+              ) {
                 revivedCount += 1;
                 return { ...normalized, status: "FAILED" };
               }
@@ -244,9 +277,9 @@ export const useChatStore = defineStore("chat", () => {
         }
       }
 
-      const session = sessions.value.find(s => s.id === sessionId);
+      const session = sessions.value.find((s) => s.id === sessionId);
       if (!session) {
-        console.error('会话不存在:', sessionId);
+        console.error("会话不存在:", sessionId);
         return;
       }
       const existingMessagesForCursor = messages.value.get(sessionId) || [];
@@ -257,8 +290,12 @@ export const useChatStore = defineStore("chat", () => {
           return toBigIntId(raw);
         })
         .filter((n: any) => n != null) as bigint[];
-      const maxServerId = serverIds.length ? serverIds.reduce((a, b) => (a > b ? a : b)) : null;
-      const minServerId = serverIds.length ? serverIds.reduce((a, b) => (a < b ? a : b)) : null;
+      const maxServerId = serverIds.length
+        ? serverIds.reduce((a, b) => (a > b ? a : b))
+        : null;
+      const minServerId = serverIds.length
+        ? serverIds.reduce((a, b) => (a < b ? a : b))
+        : null;
 
       const baseParams: any = { limit: size };
       let response: any = null;
@@ -272,17 +309,26 @@ export const useChatStore = defineStore("chat", () => {
                     after_message_id: maxServerId.toString(),
                     limit: Math.max(size, 50),
                   })
-                : await messageService.getPrivateHistoryCursor(session.targetId, {
-                    ...baseParams,
-                    after_message_id: maxServerId.toString(),
-                    limit: Math.max(size, 50),
-                  });
+                : await messageService.getPrivateHistoryCursor(
+                    session.targetId,
+                    {
+                      ...baseParams,
+                      after_message_id: maxServerId.toString(),
+                      limit: Math.max(size, 50),
+                    },
+                  );
           }
           if (!response || response.code !== 200) {
             response =
               session.type === "group"
-                ? await messageService.getGroupHistoryCursor(session.targetId, baseParams)
-                : await messageService.getPrivateHistoryCursor(session.targetId, baseParams);
+                ? await messageService.getGroupHistoryCursor(
+                    session.targetId,
+                    baseParams,
+                  )
+                : await messageService.getPrivateHistoryCursor(
+                    session.targetId,
+                    baseParams,
+                  );
           }
         } else {
           if (minServerId == null) {
@@ -302,13 +348,19 @@ export const useChatStore = defineStore("chat", () => {
       } catch (e) {
         response =
           session.type === "group"
-            ? await messageService.getGroupHistory(session.targetId, { page, size })
-            : await messageService.getPrivateHistory(session.targetId, { page, size });
+            ? await messageService.getGroupHistory(session.targetId, {
+                page,
+                size,
+              })
+            : await messageService.getPrivateHistory(session.targetId, {
+                page,
+                size,
+              });
       }
 
       if (response.code === 200 && response.data) {
         const existingMessages = messages.value.get(sessionId) || [];
-        
+
         const normalizedMessages = response.data.map((msg: any) => {
           const created =
             msg.created_at ||
@@ -324,7 +376,8 @@ export const useChatStore = defineStore("chat", () => {
                   "$1.$2",
                 )
               : created;
-          const statusNum = typeof msg.status === "number" ? msg.status : Number(msg.status);
+          const statusNum =
+            typeof msg.status === "number" ? msg.status : Number(msg.status);
           const status =
             Number.isFinite(statusNum) && statusNum > 0
               ? statusNum === 3
@@ -342,39 +395,66 @@ export const useChatStore = defineStore("chat", () => {
           return {
             ...msg,
             id: safePreferExistingId(msg.id, msg.id),
-            senderId: safePreferExistingId(msg.senderId || msg.sender?.id || msg.sender_id, msg.senderId),
-            receiverId: safePreferExistingId(msg.receiverId || msg.receiver_id, msg.receiverId),
-            groupId: safePreferExistingId(msg.groupId || msg.group_id, msg.groupId),
+            senderId: safePreferExistingId(
+              msg.senderId || msg.sender?.id || msg.sender_id,
+              msg.senderId,
+            ),
+            receiverId: safePreferExistingId(
+              msg.receiverId || msg.receiver_id,
+              msg.receiverId,
+            ),
+            groupId: safePreferExistingId(
+              msg.groupId || msg.group_id,
+              msg.groupId,
+            ),
             messageType: msg.messageType || msg.type || "TEXT",
             type: msg.type || msg.messageType || "TEXT",
-            senderName: msg.senderName || msg.sender?.nickname || msg.sender?.username,
+            senderName:
+              msg.senderName || msg.sender?.nickname || msg.sender?.username,
             senderAvatar: msg.senderAvatar || msg.sender?.avatar,
-            sendTime: createdNormalized || msg.sendTime || new Date().toISOString(),
+            sendTime:
+              createdNormalized || msg.sendTime || new Date().toISOString(),
             status,
           };
         });
-        normalizedMessages.sort((a: any, b: any) => new Date(a.sendTime).getTime() - new Date(b.sendTime).getTime());
+        normalizedMessages.sort(
+          (a: any, b: any) =>
+            new Date(a.sendTime).getTime() - new Date(b.sendTime).getTime(),
+        );
 
         if (page === 0) {
-          const pending = existingMessages.filter((m: any) => String(m.id || "").startsWith("local_"));
-          const existingServer = existingMessages.filter((m: any) => !String(m.id || "").startsWith("local_"));
+          const pending = existingMessages.filter((m: any) =>
+            String(m.id || "").startsWith("local_"),
+          );
+          const existingServer = existingMessages.filter(
+            (m: any) => !String(m.id || "").startsWith("local_"),
+          );
           const serverMergedSource =
-            maxServerId != null ? [...existingServer, ...normalizedMessages] : normalizedMessages;
+            maxServerId != null
+              ? [...existingServer, ...normalizedMessages]
+              : normalizedMessages;
           const byId = new Map<string, any>();
           for (const m of serverMergedSource) {
             byId.set(String(m.id), m);
           }
           const mergedServer = Array.from(byId.values());
           const merged = [...mergedServer, ...pending].sort(
-            (a: any, b: any) => new Date(a.sendTime).getTime() - new Date(b.sendTime).getTime(),
+            (a: any, b: any) =>
+              new Date(a.sendTime).getTime() - new Date(b.sendTime).getTime(),
           );
           messages.value.set(sessionId, merged);
           if (normalizedMessages.length) {
-            await messageRepo.upsertServerMessages(sessionId, normalizedMessages);
+            await messageRepo.upsertServerMessages(
+              sessionId,
+              normalizedMessages,
+            );
           }
         } else {
           const newMessages = [...normalizedMessages, ...existingMessages];
-          newMessages.sort((a: any, b: any) => new Date(a.sendTime).getTime() - new Date(b.sendTime).getTime());
+          newMessages.sort(
+            (a: any, b: any) =>
+              new Date(a.sendTime).getTime() - new Date(b.sendTime).getTime(),
+          );
           messages.value.set(sessionId, newMessages);
           await messageRepo.upsertServerMessages(sessionId, normalizedMessages);
         }
@@ -403,14 +483,8 @@ export const useChatStore = defineStore("chat", () => {
         senderId: userStore.userId!,
         senderName: userStore.nickname,
         senderAvatar: userStore.avatar,
-        receiverId:
-          session.type === "private"
-            ? session.targetId
-            : undefined,
-        groupId:
-          session.type === "group"
-            ? session.targetId
-            : undefined,
+        receiverId: session.type === "private" ? session.targetId : undefined,
+        groupId: session.type === "group" ? session.targetId : undefined,
         isGroupChat: session.type === "group",
         messageType: type,
         type: type,
@@ -442,51 +516,62 @@ export const useChatStore = defineStore("chat", () => {
         } else {
           response = await messageService.sendPrivate(request);
         }
-        
+
         if (response.code === 200) {
-            const data: any = response.data;
-            if (data && typeof data === "object" && ("id" in data || "createdTime" in data || "created_at" in data)) {
-              const created =
-                data.created_at ||
-                data.createdAt ||
-                data.createdTime ||
-                data.created_time ||
-                data.sendTime;
-              const createdNormalized =
-                typeof created === "string"
-                  ? created.replace(
-                      /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{3})\d+$/,
-                      "$1.$2",
-                    )
-                  : created;
-              const serverMsg: Message = {
-                ...message,
-                ...data,
-                id: safePreferExistingId(data.id, message.id),
-                senderId: safePreferExistingId(data.senderId, message.senderId),
-                receiverId: safePreferExistingId(data.receiverId, message.receiverId),
-                groupId: safePreferExistingId(data.groupId, message.groupId),
-                messageType: data.messageType || data.type || message.messageType,
-                type: data.type || data.messageType || message.type,
-                sendTime: (createdNormalized as any) || message.sendTime,
-                status: "SENT",
-              };
-              const list = messages.value.get(session.id) || [];
-              const idx = list.findIndex((m) => String(m.id) === String(localId));
-              if (idx >= 0) {
-                list[idx] = serverMsg as any;
-                messages.value.set(session.id, list);
-              }
-              await messageRepo.removePendingMessage(session.id, localId);
-              await messageRepo.upsertServerMessages(session.id, [serverMsg]);
-            } else {
-              message.status = "SENT";
-              await messageRepo.upsertPendingMessage(session.id, localId, message);
+          const data: any = response.data;
+          if (
+            data &&
+            typeof data === "object" &&
+            ("id" in data || "createdTime" in data || "created_at" in data)
+          ) {
+            const created =
+              data.created_at ||
+              data.createdAt ||
+              data.createdTime ||
+              data.created_time ||
+              data.sendTime;
+            const createdNormalized =
+              typeof created === "string"
+                ? created.replace(
+                    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{3})\d+$/,
+                    "$1.$2",
+                  )
+                : created;
+            const serverMsg: Message = {
+              ...message,
+              ...data,
+              id: safePreferExistingId(data.id, message.id),
+              senderId: safePreferExistingId(data.senderId, message.senderId),
+              receiverId: safePreferExistingId(
+                data.receiverId,
+                message.receiverId,
+              ),
+              groupId: safePreferExistingId(data.groupId, message.groupId),
+              messageType: data.messageType || data.type || message.messageType,
+              type: data.type || data.messageType || message.type,
+              sendTime: (createdNormalized as any) || message.sendTime,
+              status: "SENT",
+            };
+            const list = messages.value.get(session.id) || [];
+            const idx = list.findIndex((m) => String(m.id) === String(localId));
+            if (idx >= 0) {
+              list[idx] = serverMsg as any;
+              messages.value.set(session.id, list);
             }
+            await messageRepo.removePendingMessage(session.id, localId);
+            await messageRepo.upsertServerMessages(session.id, [serverMsg]);
+          } else {
+            message.status = "SENT";
+            await messageRepo.upsertPendingMessage(
+              session.id,
+              localId,
+              message,
+            );
+          }
         } else {
-             message.status = "FAILED";
-             ElMessage.error(response.message || "发送失败");
-             await messageRepo.upsertPendingMessage(session.id, localId, message);
+          message.status = "FAILED";
+          ElMessage.error(response.message || "发送失败");
+          await messageRepo.upsertPendingMessage(session.id, localId, message);
         }
       } catch (apiError) {
         console.error("API发送消息失败:", apiError);
@@ -527,11 +612,13 @@ export const useChatStore = defineStore("chat", () => {
               textMaxLength: Number.isFinite(maxLen) ? maxLen : 2000,
             };
           }
-        } catch {
-        }
+        } catch {}
       }
 
-      const cfg = messageTextConfig.value || { textEnforce: true, textMaxLength: 2000 };
+      const cfg = messageTextConfig.value || {
+        textEnforce: true,
+        textMaxLength: 2000,
+      };
       if (cfg.textEnforce && cfg.textMaxLength > 0) {
         const parts = splitTextByCodePoints(content, cfg.textMaxLength);
         if (parts.length > 1) {
@@ -552,28 +639,36 @@ export const useChatStore = defineStore("chat", () => {
   const addMessage = (message: Message) => {
     let sessionId = "";
     if (message.isGroupChat && message.groupId) {
-       sessionId = getSessionId("group", message.groupId.toString());
-       if (!sessions.value.find(s => s.id === sessionId)) {
-           const group = groups.value.find(g => g.id?.toString() === message.groupId?.toString());
-           if (group) {
-               createOrGetSession("group", message.groupId.toString(), group.groupName, group.avatar);
-           } else {
-               createOrGetSession("group", message.groupId.toString(), "未知群组");
-           }
-       }
+      sessionId = getSessionId("group", message.groupId.toString());
+      if (!sessions.value.find((s) => s.id === sessionId)) {
+        const group = groups.value.find(
+          (g) => g.id?.toString() === message.groupId?.toString(),
+        );
+        if (group) {
+          createOrGetSession(
+            "group",
+            message.groupId.toString(),
+            group.groupName,
+            group.avatar,
+          );
+        } else {
+          createOrGetSession("group", message.groupId.toString(), "未知群组");
+        }
+      }
     } else if (message.senderId && message.receiverId) {
-       const userStore = useUserStore();
-       const targetId = message.senderId.toString() === userStore.userId?.toString() 
-            ? message.receiverId.toString() 
-            : message.senderId.toString();
-       
-       sessionId = getSessionId("private", targetId);
-       
-       if (!sessions.value.find(s => s.id === sessionId)) {
-           const targetName = message.senderName || "未知用户";
-           const targetAvatar = message.senderAvatar || "";
-           createOrGetSession("private", targetId, targetName, targetAvatar);
-       }
+      const userStore = useUserStore();
+      const targetId =
+        message.senderId.toString() === userStore.userId?.toString()
+          ? message.receiverId.toString()
+          : message.senderId.toString();
+
+      sessionId = getSessionId("private", targetId);
+
+      if (!sessions.value.find((s) => s.id === sessionId)) {
+        const targetName = message.senderName || "未知用户";
+        const targetAvatar = message.senderAvatar || "";
+        createOrGetSession("private", targetId, targetName, targetAvatar);
+      }
     }
 
     if (!sessionId) return;
@@ -585,7 +680,10 @@ export const useChatStore = defineStore("chat", () => {
     } else {
       sessionMessages.push(message);
     }
-    sessionMessages.sort((a: any, b: any) => new Date(a.sendTime).getTime() - new Date(b.sendTime).getTime());
+    sessionMessages.sort(
+      (a: any, b: any) =>
+        new Date(a.sendTime).getTime() - new Date(b.sendTime).getTime(),
+    );
 
     messages.value.set(sessionId, sessionMessages);
     updateSessionLastMessage(sessionId, message);
@@ -707,7 +805,8 @@ export const useChatStore = defineStore("chat", () => {
               !existing ||
               (session.lastActiveTime &&
                 existing.lastActiveTime &&
-                new Date(session.lastActiveTime) > new Date(existing.lastActiveTime))
+                new Date(session.lastActiveTime) >
+                  new Date(existing.lastActiveTime))
             ) {
               uniqueSessions.set(session.id, session);
             }
@@ -743,7 +842,7 @@ export const useChatStore = defineStore("chat", () => {
     try {
       loading.value = true;
       const userStore = useUserStore();
-      const response = await groupService.getList(userStore.userId || '');
+      const response = await groupService.getList(userStore.userId || "");
 
       if (response.code === 200 && response.data) {
         groups.value = response.data;
@@ -762,7 +861,8 @@ export const useChatStore = defineStore("chat", () => {
       const response = await friendService.getRequests();
 
       if (response.code === 200 && response.data) {
-        friendRequests.value = (response.data as any).content || response.data || [];
+        friendRequests.value =
+          (response.data as any).content || response.data || [];
       }
     } catch (error) {
       console.error("加载好友申请列表失败:", error);
@@ -784,7 +884,10 @@ export const useChatStore = defineStore("chat", () => {
   };
 
   // 发送好友请求
-  const sendFriendRequest = async (params: { userId: string; message: string }) => {
+  const sendFriendRequest = async (params: {
+    userId: string;
+    message: string;
+  }) => {
     try {
       const response = await friendService.add({
         userId: params.userId,
@@ -810,7 +913,11 @@ export const useChatStore = defineStore("chat", () => {
       });
 
       if (response.code === 200) {
-        await Promise.all([loadFriends(), loadFriendRequests(), loadSessions()]);
+        await Promise.all([
+          loadFriends(),
+          loadFriendRequests(),
+          loadSessions(),
+        ]);
       } else {
         throw new Error(response.message || "操作失败");
       }
@@ -845,9 +952,12 @@ export const useChatStore = defineStore("chat", () => {
       const response = await friendService.delete(friendId);
 
       if (response.code === 200) {
-        friends.value = friends.value.filter(f => f.friendId !== friendId);
-        
-        if (currentSession.value?.type === 'private' && currentSession.value.targetId === friendId) {
+        friends.value = friends.value.filter((f) => f.friendId !== friendId);
+
+        if (
+          currentSession.value?.type === "private" &&
+          currentSession.value.targetId === friendId
+        ) {
           currentSession.value = null;
         }
       } else {
@@ -863,16 +973,22 @@ export const useChatStore = defineStore("chat", () => {
   const updateFriendRemark = async (friendId: string, remark: string) => {
     try {
       const response = await friendService.updateRemark(friendId, remark);
-      
+
       if (response.code === 200) {
-        const friend = friends.value.find(f => f.friendId === friendId);
+        const friend = friends.value.find((f) => f.friendId === friendId);
         if (friend) {
           friend.remark = remark;
         }
-        
-        const session = sessions.value.find(s => s.type === 'private' && s.targetId === friendId);
+
+        const session = sessions.value.find(
+          (s) => s.type === "private" && s.targetId === friendId,
+        );
         if (session) {
-          session.targetName = remark || friend?.friend.nickname || friend?.friend.username || session.targetName;
+          session.targetName =
+            remark ||
+            friend?.friend.nickname ||
+            friend?.friend.username ||
+            session.targetName;
         }
       } else {
         throw new Error(response.message || "操作失败");
@@ -884,7 +1000,11 @@ export const useChatStore = defineStore("chat", () => {
   };
 
   // 创建群组
-  const createGroup = async (params: { name: string; description: string; memberIds: string[] }) => {
+  const createGroup = async (params: {
+    name: string;
+    description: string;
+    memberIds: string[];
+  }) => {
     try {
       const response = await groupService.create({
         groupName: params.name,
@@ -912,7 +1032,9 @@ export const useChatStore = defineStore("chat", () => {
         searchResults.value = [];
         return;
       }
-      const sessionIds = sessionId ? [sessionId] : Array.from(messages.value.keys());
+      const sessionIds = sessionId
+        ? [sessionId]
+        : Array.from(messages.value.keys());
       const results: MessageSearchResult[] = [];
       for (const sid of sessionIds) {
         const list = messages.value.get(sid) || [];
@@ -920,8 +1042,15 @@ export const useChatStore = defineStore("chat", () => {
           const msg = list[i] as any;
           const content = String(msg.content || "").toLowerCase();
           if (!content.includes(kw)) continue;
-          const ctx = list.slice(Math.max(0, i - 1), Math.min(list.length, i + 2));
-          results.push({ message: msg, highlight: keyword, context: ctx } as any);
+          const ctx = list.slice(
+            Math.max(0, i - 1),
+            Math.min(list.length, i + 2),
+          );
+          results.push({
+            message: msg,
+            highlight: keyword,
+            context: ctx,
+          } as any);
         }
       }
       searchResults.value = results;
@@ -985,12 +1114,16 @@ export const useChatStore = defineStore("chat", () => {
     const sessionId = getSessionId("private", String(readerId));
     if (!sessionId) return;
 
-    const lastIdRaw = receipt?.lastReadMessageId ?? receipt?.last_read_message_id;
+    const lastIdRaw =
+      receipt?.lastReadMessageId ?? receipt?.last_read_message_id;
     const lastId = toBigIntId(lastIdRaw);
     const readAtRaw = receipt?.readAt ?? receipt?.read_at;
     const readAt =
       typeof readAtRaw === "string"
-        ? readAtRaw.replace(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{3})\d+$/, "$1.$2")
+        ? readAtRaw.replace(
+            /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{3})\d+$/,
+            "$1.$2",
+          )
         : readAtRaw;
     const readAtMs = readAt ? new Date(readAt as any).getTime() : NaN;
 
@@ -1005,7 +1138,12 @@ export const useChatStore = defineStore("chat", () => {
         if (msgId == null || msgId > lastId) return m;
       }
       const msgMs = new Date(m.sendTime).getTime();
-      if (Number.isFinite(readAtMs) && Number.isFinite(msgMs) && msgMs > readAtMs) return m;
+      if (
+        Number.isFinite(readAtMs) &&
+        Number.isFinite(msgMs) &&
+        msgMs > readAtMs
+      )
+        return m;
       changed = true;
       return {
         ...m,
@@ -1060,9 +1198,12 @@ export const useChatStore = defineStore("chat", () => {
     try {
       const response = await groupService.quit(groupId);
       if (response.code === 200) {
-        groups.value = groups.value.filter(g => g.id !== groupId);
+        groups.value = groups.value.filter((g) => g.id !== groupId);
         // 如果当前会话是该群组，则清除当前会话
-        if (currentSession.value?.type === 'group' && currentSession.value.targetId === groupId) {
+        if (
+          currentSession.value?.type === "group" &&
+          currentSession.value.targetId === groupId
+        ) {
           currentSession.value = null;
         }
       } else {

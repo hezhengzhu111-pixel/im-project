@@ -3,22 +3,22 @@
     <div class="user-avatar">
       <el-avatar :size="36" :src="userStore.avatar" shape="square" />
     </div>
-    
+
     <div class="nav-icons">
-      <div 
-        class="nav-icon" 
+      <div
+        class="nav-icon"
         :class="{ active: activeTab === 'chat' }"
         @click="$emit('change-tab', 'chat')"
         title="聊天"
       >
         <el-icon :size="24"><ChatDotRound /></el-icon>
         <div v-if="unreadCount > 0" class="badge">
-          {{ unreadCount > 99 ? '99+' : unreadCount }}
+          {{ unreadCount > 99 ? "99+" : unreadCount }}
         </div>
       </div>
-      
-      <div 
-        class="nav-icon" 
+
+      <div
+        class="nav-icon"
         :class="{ active: activeTab === 'contacts' }"
         @click="$emit('change-tab', 'contacts')"
         title="通讯录"
@@ -26,9 +26,9 @@
         <el-icon :size="24"><User /></el-icon>
         <div v-if="pendingRequests > 0" class="badge dot"></div>
       </div>
-      
-      <div 
-        class="nav-icon" 
+
+      <div
+        class="nav-icon"
         :class="{ active: activeTab === 'groups' }"
         @click="$emit('change-tab', 'groups')"
         title="群组"
@@ -46,7 +46,12 @@
 </template>
 
 <script setup lang="ts">
-import { ChatDotRound, User, UserFilled, Setting } from "@element-plus/icons-vue";
+import {
+  ChatDotRound,
+  User,
+  UserFilled,
+  Setting,
+} from "@element-plus/icons-vue";
 import { useUserStore } from "@/stores/user";
 
 const userStore = useUserStore();
@@ -58,8 +63,8 @@ defineProps<{
 }>();
 
 defineEmits<{
-  (e: 'change-tab', tab: string): void;
-  (e: 'settings'): void;
+  (e: "change-tab", tab: string): void;
+  (e: "settings"): void;
 }>();
 </script>
 
@@ -98,11 +103,11 @@ defineEmits<{
   color: #999;
   cursor: pointer;
   transition: color 0.3s;
-  
+
   &:hover {
     color: #fff;
   }
-  
+
   &.active {
     color: #07c160;
   }
@@ -127,7 +132,7 @@ defineEmits<{
   align-items: center;
   justify-content: center;
   line-height: 1;
-  
+
   &.dot {
     width: 8px;
     height: 8px;

@@ -87,10 +87,14 @@ export const useUserStore = defineStore("user", () => {
       const parts = jwt.split(".");
       if (parts.length < 2) return null;
       const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-      const pad = payload.length % 4 === 0 ? "" : "=".repeat(4 - (payload.length % 4));
+      const pad =
+        payload.length % 4 === 0 ? "" : "=".repeat(4 - (payload.length % 4));
       const json = decodeURIComponent(
         Array.prototype.map
-          .call(atob(payload + pad), (c: string) => `%${(`00${c.charCodeAt(0).toString(16)}`).slice(-2)}`)
+          .call(
+            atob(payload + pad),
+            (c: string) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`,
+          )
           .join(""),
       );
       return JSON.parse(json);
@@ -108,7 +112,8 @@ export const useUserStore = defineStore("user", () => {
   };
 
   const ensureAuthenticated = async (): Promise<boolean> => {
-    const currentToken = token.value || localStorage.getItem(STORAGE_CONFIG.TOKEN_KEY) || "";
+    const currentToken =
+      token.value || localStorage.getItem(STORAGE_CONFIG.TOKEN_KEY) || "";
     if (!currentToken) {
       clearSessionOnly();
       return false;
@@ -130,7 +135,8 @@ export const useUserStore = defineStore("user", () => {
       try {
         const resp = await authApi.parseAccessToken(currentToken, true);
         const result = resp?.data;
-        const ok = !!result && result.valid && !result.expired && !!result.userId;
+        const ok =
+          !!result && result.valid && !result.expired && !!result.userId;
         lastSessionCheckAt.value = Date.now();
         lastSessionValid.value = ok;
         if (!ok) {
@@ -149,7 +155,10 @@ export const useUserStore = defineStore("user", () => {
           userInfo.value = minimalUser;
           token.value = currentToken;
           localStorage.setItem(STORAGE_CONFIG.TOKEN_KEY, currentToken);
-          localStorage.setItem(STORAGE_CONFIG.USER_INFO_KEY, JSON.stringify(minimalUser));
+          localStorage.setItem(
+            STORAGE_CONFIG.USER_INFO_KEY,
+            JSON.stringify(minimalUser),
+          );
         }
         return true;
       } catch {
@@ -206,7 +215,7 @@ export const useUserStore = defineStore("user", () => {
         password: registerForm.password,
         email: registerForm.email,
         nickname: registerForm.nickname || registerForm.username,
-        phone: registerForm.phone
+        phone: registerForm.phone,
       };
 
       const response = await userApi.register(userDTO);

@@ -75,7 +75,10 @@ export function useMessage() {
    */
   const getMessageSenderAvatar = (message: Message): string => {
     // 优先使用直接在Message对象上的senderName，然后再尝试从sender对象获取
-    const senderName = message.senderName || message.sender?.nickname || message.sender?.username;
+    const senderName =
+      message.senderName ||
+      message.sender?.nickname ||
+      message.sender?.username;
     return getAvatarText(senderName);
   };
 
@@ -84,7 +87,12 @@ export function useMessage() {
    */
   const getMessageSenderName = (message: Message): string => {
     // 优先使用直接在Message对象上的senderName，然后再尝试从sender对象获取
-    return message.senderName || message.sender?.nickname || message.sender?.username || "未知用户";
+    return (
+      message.senderName ||
+      message.sender?.nickname ||
+      message.sender?.username ||
+      "未知用户"
+    );
   };
 
   /**

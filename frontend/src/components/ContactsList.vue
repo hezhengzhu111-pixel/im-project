@@ -61,11 +61,17 @@
           <div
             class="friend-status"
             :class="
-              getFriendOnlineStatus(friend.friendId) === 'online' ? 'online' : 'offline'
+              getFriendOnlineStatus(friend.friendId) === 'online'
+                ? 'online'
+                : 'offline'
             "
           >
             <span class="status-dot"></span>
-            {{ getFriendOnlineStatus(friend.friendId) === 'online' ? "在线" : "离线" }}
+            {{
+              getFriendOnlineStatus(friend.friendId) === "online"
+                ? "在线"
+                : "离线"
+            }}
           </div>
         </div>
 
@@ -209,13 +215,15 @@ const loadPendingRequests = async () => {
 // 获取好友在线状态
 const getFriendOnlineStatus = (friendId: string) => {
   const wsStore = useWebSocketStore();
-  return wsStore.isUserOnline(friendId) ? 'online' : 'offline';
+  return wsStore.isUserOnline(friendId) ? "online" : "offline";
 };
 
 // 监听在线状态变化事件
 const handleOnlineStatusChange = (event: CustomEvent) => {
   const { userId, isOnline } = event.detail;
-  const friendIndex = friends.value.findIndex(friend => friend.userId === userId);
+  const friendIndex = friends.value.findIndex(
+    (friend) => friend.userId === userId,
+  );
   if (friendIndex !== -1) {
     // 强制重新渲染以更新在线状态显示
     friends.value = [...friends.value];
@@ -299,17 +307,23 @@ const handleCloseAddFriend = () => {
 onMounted(() => {
   // 加载好友列表
   loadFriends();
-  
+
   // 加载待处理的好友申请
   loadPendingRequests();
-  
+
   // 监听在线状态变化事件
-  window.addEventListener('onlineStatusChanged', handleOnlineStatusChange as EventListener);
+  window.addEventListener(
+    "onlineStatusChanged",
+    handleOnlineStatusChange as EventListener,
+  );
 });
 
 onUnmounted(() => {
   // 移除在线状态变化事件监听
-  window.removeEventListener('onlineStatusChanged', handleOnlineStatusChange as EventListener);
+  window.removeEventListener(
+    "onlineStatusChanged",
+    handleOnlineStatusChange as EventListener,
+  );
 });
 
 // 暴露方法供父组件调用
