@@ -314,8 +314,9 @@ onMounted(() => {
   font-weight: 400;
   background-color: #07c160;
   border-color: #07c160;
-  
-  &:hover, &:focus {
+
+  &:hover,
+  &:focus {
     background-color: #06ad56;
     border-color: #06ad56;
   }
@@ -331,7 +332,7 @@ onMounted(() => {
   margin-left: 8px;
   font-weight: 400;
   color: #576b95;
-  
+
   &:hover {
     color: #07c160;
   }

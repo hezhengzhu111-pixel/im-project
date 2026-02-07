@@ -33,12 +33,12 @@ export const useWebSocketStore = defineStore("websocket", () => {
   const buildWebSocketUrl = (userId: string): string => {
     const userStore = useUserStore();
     const token = userStore.token;
-    
+
     // 在开发环境中使用代理路径
     const isDev = import.meta.env.DEV;
     const wsBaseUrl = isDev ? "" : WS_CONFIG.BASE_URL;
     const url = `${wsBaseUrl}/websocket/${userId}`;
-    
+
     if (token) {
       // 使用 Sec-WebSocket-Protocol 需要后端支持，或者直接作为 Query Param
       return `${url}?token=${encodeURIComponent(token)}`;
@@ -175,21 +175,25 @@ export const useWebSocketStore = defineStore("websocket", () => {
       case "MESSAGE":
         if (data.data) {
           const msg = data.data;
-          const isSystem = (msg.messageType === "SYSTEM") || (msg.type === "SYSTEM");
+          const isSystem =
+            msg.messageType === "SYSTEM" || msg.type === "SYSTEM";
           if (isSystem) {
-            if (msg.content && (msg.content.includes("好友申请") || msg.content.includes("同意"))) {
+            if (
+              msg.content &&
+              (msg.content.includes("好友申请") || msg.content.includes("同意"))
+            ) {
               // 刷新好友列表、申请列表和会话列表，确保状态完全同步
               await Promise.all([
                 chatStore.loadFriendRequests(),
                 chatStore.loadFriends(),
-                chatStore.loadSessions()
+                chatStore.loadSessions(),
               ]);
-              
+
               ElNotification({
-                title: '系统通知',
+                title: "系统通知",
                 message: msg.content,
-                type: 'info',
-                duration: 3000
+                type: "info",
+                duration: 3000,
               });
             }
           } else {
@@ -208,7 +212,10 @@ export const useWebSocketStore = defineStore("websocket", () => {
                     "$1.$2",
                   )
                 : created;
-            const statusNum = typeof (msg as any).status === "number" ? (msg as any).status : Number((msg as any).status);
+            const statusNum =
+              typeof (msg as any).status === "number"
+                ? (msg as any).status
+                : Number((msg as any).status);
             const status =
               Number.isFinite(statusNum) && statusNum > 0
                 ? statusNum === 3
@@ -226,16 +233,22 @@ export const useWebSocketStore = defineStore("websocket", () => {
             const normalizedMsg = {
               ...msg,
               senderId: msg.senderId || msg.sender?.id || msg.sender_id,
-              messageType: msg.messageType || msg.type || 'TEXT',
-              type: msg.type || msg.messageType || 'TEXT',
-              senderName: msg.senderName || msg.sender?.nickname || msg.sender?.username,
+              messageType: msg.messageType || msg.type || "TEXT",
+              type: msg.type || msg.messageType || "TEXT",
+              senderName:
+                msg.senderName || msg.sender?.nickname || msg.sender?.username,
               senderAvatar: msg.senderAvatar || msg.sender?.avatar,
-              sendTime: createdNormalized || (msg as any).sendTime || new Date().toISOString(),
+              sendTime:
+                createdNormalized ||
+                (msg as any).sendTime ||
+                new Date().toISOString(),
               status,
             };
-            
+
             // 如果发送者是当前用户，则忽略该消息（因为本地已经添加了，避免重复）
-            if (String(normalizedMsg.senderId) === String(useUserStore().userId)) {
+            if (
+              String(normalizedMsg.senderId) === String(useUserStore().userId)
+            ) {
               console.log("忽略自己发送的消息:", normalizedMsg.id);
             } else {
               chatStore.addMessage(normalizedMsg);
@@ -261,58 +274,58 @@ export const useWebSocketStore = defineStore("websocket", () => {
       case "SYSTEM":
         // 处理系统消息
         if (data.data) {
-           const systemMsg = data.data;
-           const content = systemMsg.content || "";
-           
-           // 解析指令
-           let command = "";
-           let messageText = content;
-           
-           if (content.includes("::CMD:")) {
-             const parts = content.split("::CMD:");
-             messageText = parts[0];
-             command = parts[1];
-           }
-           
-           // 如果有指令，优先执行指令逻辑
-           if (command === "REFRESH_FRIEND_REQUESTS") {
-               // 刷新好友申请列表
-               await chatStore.loadFriendRequests();
-               ElNotification({
-                 title: '好友通知',
-                 message: messageText || '收到新的好友申请',
-                 type: 'info',
-                 duration: 3000
-               });
-           } else if (command === "REFRESH_FRIEND_LIST") {
-               // 刷新好友列表和会话
-               await Promise.all([
-                 chatStore.loadFriends(),
-                 chatStore.loadSessions()
-               ]);
-               ElNotification({
-                 title: '好友通知',
-                 message: messageText || '已添加新好友',
-                 type: 'success',
-                 duration: 3000
-               });
-           } else if (content.includes("好友申请") || content.includes("同意")) {
-               // 兼容旧逻辑：模糊匹配
-               await Promise.all([
-                 chatStore.loadFriendRequests(),
-                 chatStore.loadFriends(),
-                 chatStore.loadSessions()
-               ]);
-               
-               ElNotification({
-                 title: '系统通知',
-                 message: content,
-                 type: 'info',
-                 duration: 3000
-               });
-           } else if (systemMsg.message) {
-               ElMessage.info(systemMsg.message);
-           }
+          const systemMsg = data.data;
+          const content = systemMsg.content || "";
+
+          // 解析指令
+          let command = "";
+          let messageText = content;
+
+          if (content.includes("::CMD:")) {
+            const parts = content.split("::CMD:");
+            messageText = parts[0];
+            command = parts[1];
+          }
+
+          // 如果有指令，优先执行指令逻辑
+          if (command === "REFRESH_FRIEND_REQUESTS") {
+            // 刷新好友申请列表
+            await chatStore.loadFriendRequests();
+            ElNotification({
+              title: "好友通知",
+              message: messageText || "收到新的好友申请",
+              type: "info",
+              duration: 3000,
+            });
+          } else if (command === "REFRESH_FRIEND_LIST") {
+            // 刷新好友列表和会话
+            await Promise.all([
+              chatStore.loadFriends(),
+              chatStore.loadSessions(),
+            ]);
+            ElNotification({
+              title: "好友通知",
+              message: messageText || "已添加新好友",
+              type: "success",
+              duration: 3000,
+            });
+          } else if (content.includes("好友申请") || content.includes("同意")) {
+            // 兼容旧逻辑：模糊匹配
+            await Promise.all([
+              chatStore.loadFriendRequests(),
+              chatStore.loadFriends(),
+              chatStore.loadSessions(),
+            ]);
+
+            ElNotification({
+              title: "系统通知",
+              message: content,
+              type: "info",
+              duration: 3000,
+            });
+          } else if (systemMsg.message) {
+            ElMessage.info(systemMsg.message);
+          }
         }
         break;
 
@@ -342,19 +355,21 @@ export const useWebSocketStore = defineStore("websocket", () => {
   const updateOnlineStatus = (status: OnlineStatus) => {
     const wasOnline = onlineUsers.value.has(status.userId);
     const isNowOnline = status.status === "ONLINE";
-    
+
     if (isNowOnline) {
       onlineUsers.value.add(status.userId);
     } else {
       onlineUsers.value.delete(status.userId);
     }
-    
+
     // 使用更精确的状态变化触发机制
     if (wasOnline !== isNowOnline) {
       // 发送一个自定义事件来通知状态变化
-      window.dispatchEvent(new CustomEvent('onlineStatusChanged', {
-        detail: { userId: status.userId, isOnline: isNowOnline }
-      }));
+      window.dispatchEvent(
+        new CustomEvent("onlineStatusChanged", {
+          detail: { userId: status.userId, isOnline: isNowOnline },
+        }),
+      );
     }
   };
 

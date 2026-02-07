@@ -61,7 +61,7 @@ export default defineConfig(({ mode }) => {
           manualChunks: {
             "vue-vendor": ["vue", "vue-router", "pinia"],
             "element-plus": ["element-plus"],
-            "utils": ["dayjs", "axios", "crypto-js"],
+            utils: ["dayjs", "axios", "crypto-js"],
           },
         },
       },
@@ -89,7 +89,13 @@ export default defineConfig(({ mode }) => {
       coverage: {
         provider: "v8",
         reporter: ["text", "html", "json-summary"],
-        include: ["src/router/**", "src/stores/**", "src/utils/**", "src/pages/**", "src/components/**"],
+        include: [
+          "src/router/**",
+          "src/stores/**",
+          "src/utils/**",
+          "src/pages/**",
+          "src/components/**",
+        ],
       },
     },
   };

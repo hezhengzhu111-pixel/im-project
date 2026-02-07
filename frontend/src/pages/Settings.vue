@@ -1,9 +1,7 @@
 <template>
   <div class="settings-container">
     <div class="settings-header">
-      <el-button link :icon="ArrowLeft" @click="$router.back()"
-        >返回</el-button
-      >
+      <el-button link :icon="ArrowLeft" @click="$router.back()">返回</el-button>
       <h2>设置</h2>
     </div>
 

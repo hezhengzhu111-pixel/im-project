@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { friendService } from "@/services";
 import type { User, FriendRequest } from "@/types";
 
-export const useContactStore = defineStore('contact', {
+export const useContactStore = defineStore("contact", {
   state: () => ({
     contacts: [] as User[],
     pendingRequests: [] as FriendRequest[],
@@ -16,8 +16,8 @@ export const useContactStore = defineStore('contact', {
           this.pendingRequests = response.data;
         }
       } catch (error) {
-        console.error('加载待处理好友申请失败:', error);
+        console.error("加载待处理好友申请失败:", error);
       }
     },
-  }
+  },
 });
