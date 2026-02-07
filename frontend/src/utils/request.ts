@@ -13,6 +13,13 @@ import type { ApiResponse } from "@/types/api";
 import router from "@/router";
 import NProgress from "nprogress";
 
+function createTraceId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 // 创建axios实例
 const request: AxiosInstance = axios.create({
   baseURL: "/api",
@@ -37,6 +44,16 @@ request.interceptors.request.use(
 
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    if (config.headers) {
+      config.headers["X-Gateway-Route"] = "true";
+      const existingTraceId =
+        config.headers["X-Trace-Id"] ||
+        (typeof config.headers.get === "function"
+          ? config.headers.get("X-Trace-Id")
+          : undefined);
+      config.headers["X-Trace-Id"] = String(existingTraceId || createTraceId());
     }
 
     // 添加请求时间戳（防止缓存）

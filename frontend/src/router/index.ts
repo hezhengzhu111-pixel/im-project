@@ -121,17 +121,17 @@ router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore();
   const requiresAuth = to.meta.requiresAuth;
   const hideForAuth = to.meta.hideForAuth;
-  const isLoggedIn = userStore.isLoggedIn;
   try {
+    const isAuthed = await userStore.ensureAuthenticated();
     // 如果需要认证但用户未登录
-    if (requiresAuth && !isLoggedIn) {
+    if (requiresAuth && !isAuthed) {
       ElMessage.warning("请先登录");
       next({ name: "Login", query: { redirect: to.fullPath } });
       return;
     }
 
     // 如果已登录用户访问登录/注册页面
-    if (hideForAuth && isLoggedIn) {
+    if (hideForAuth && isAuthed) {
       next({ name: "Chat" });
       return;
     }

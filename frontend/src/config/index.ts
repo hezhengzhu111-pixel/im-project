@@ -7,7 +7,7 @@
 export const API_CONFIG = {
   // 基础URL
   // 直接连接后端服务 8082
-  BASE_URL: import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8082/api",
+  BASE_URL: import.meta.env.VITE_API_BASE_URL || "/api",
   // 超时时间
   TIMEOUT: 10000,
   // 重试次数
@@ -16,10 +16,18 @@ export const API_CONFIG = {
   RETRY_DELAY: 1000,
 };
 
+const defaultWsBaseUrl = (() => {
+  if (typeof window === "undefined") {
+    return "ws://127.0.0.1:8080";
+  }
+  const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+  return `${scheme}://${window.location.host}`;
+})();
+
 // WebSocket配置
 export const WS_CONFIG = {
   // WebSocket基础URL
-  BASE_URL: import.meta.env.VITE_WS_BASE_URL || "ws://127.0.0.1:8080",
+  BASE_URL: import.meta.env.VITE_WS_BASE_URL || defaultWsBaseUrl,
   // 重连次数
   RECONNECT_ATTEMPTS: 5,
   // 重连间隔

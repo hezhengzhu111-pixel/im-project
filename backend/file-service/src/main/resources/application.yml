@@ -31,7 +31,7 @@ im:
     auth:
       secret: ${IM_GATEWAY_AUTH_SECRET:im-gateway-auth-secret}
   cos:
-    enabled: true
+    enabled: ${IM_COS_ENABLED:false}
     https: true
     secret-id: ${COS_SECRET_ID:}
     secret-key: ${COS_SECRET_KEY:}

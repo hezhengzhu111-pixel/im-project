@@ -40,6 +40,16 @@ export interface Message {
   duration?: number; // 音视频时长
   sendTime: string;
   status?: MessageStatus | string; // 兼容后端字符串状态
+  createdTime?: string;
+  createdAt?: string;
+  created_at?: string;
+  updatedTime?: string;
+  updatedAt?: string;
+  updated_at?: string;
+  readStatus?: number;
+  read_status?: number;
+  readAt?: string;
+  read_at?: string;
   extra?: string; // 扩展信息JSON字符串
   sender?: {
     id: string | number;

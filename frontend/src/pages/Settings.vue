@@ -1019,7 +1019,9 @@ onUnmounted(() => {
 
 <style scoped>
 .settings-container {
-  min-height: 100vh;
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: #f5f5f5;
   padding: 20px;
 }

@@ -11,6 +11,7 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.checkerframework.checker.nullness.qual.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -165,6 +166,11 @@ public class AuthTokenService {
     }
 
     private SecretKey getSigningKey(String secret) {
+        return getSecretKey(secret);
+    }
+
+    @NonNull
+    public static SecretKey getSecretKey(String secret) {
         String effectiveSecret = secret == null ? "" : secret;
         byte[] keyBytes = effectiveSecret.getBytes(StandardCharsets.UTF_8);
         if (keyBytes.length >= 64) {

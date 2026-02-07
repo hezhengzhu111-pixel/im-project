@@ -62,6 +62,52 @@ spring:
             - Path=/im/**,/api/im/**
           filters:
             - RewritePath=/(?<prefix>api/)?im(?<segment>/.*), /api/im$\{segment}
+        - id: im-server-prefix
+          uri: http://im-server:8083
+          predicates:
+            - Path=/im-server/**
+          filters:
+            - RewritePath=/im-server(?<segment>/.*), $\{segment}
+        - id: im-websocket
+          uri: ws://im-server:8083
+          predicates:
+            - Path=/websocket/**
+        - id: openapi-auth
+          uri: http://im-auth:8084
+          predicates:
+            - Path=/v3/api-docs/auth
+          filters:
+            - RewritePath=/v3/api-docs/auth, /v3/api-docs
+        - id: openapi-user
+          uri: http://im-user:8085
+          predicates:
+            - Path=/v3/api-docs/user
+          filters:
+            - RewritePath=/v3/api-docs/user, /v3/api-docs
+        - id: openapi-group
+          uri: http://im-group:8086
+          predicates:
+            - Path=/v3/api-docs/group
+          filters:
+            - RewritePath=/v3/api-docs/group, /v3/api-docs
+        - id: openapi-message
+          uri: http://im-message:8087
+          predicates:
+            - Path=/v3/api-docs/message
+          filters:
+            - RewritePath=/v3/api-docs/message, /v3/api-docs
+        - id: openapi-file
+          uri: http://im-file:8088
+          predicates:
+            - Path=/v3/api-docs/file
+          filters:
+            - RewritePath=/v3/api-docs/file, /v3/api-docs
+        - id: openapi-im
+          uri: http://im-server:8083
+          predicates:
+            - Path=/v3/api-docs/im
+          filters:
+            - RewritePath=/v3/api-docs/im, /v3/api-docs
       httpclient:
         wiretap: true
       httpserver:

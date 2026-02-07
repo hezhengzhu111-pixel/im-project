@@ -3,7 +3,7 @@ package com.im.component;
 import com.im.mapper.MessageMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
 public class MessageRateLimiter {
 
     @Autowired
-    private RedisTemplate<Object, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     
     @Autowired
     private MessageMapper messageMapper;
@@ -77,18 +77,18 @@ public class MessageRateLimiter {
             
             // 记录分钟级计数
             String minuteKey = RATE_LIMIT_PREFIX + "minute:" + userId + ":" + (currentTime / 60000);
-            redisTemplate.opsForValue().increment(minuteKey);
-            redisTemplate.expire(minuteKey, 2, TimeUnit.MINUTES);
+            stringRedisTemplate.opsForValue().increment(minuteKey);
+            stringRedisTemplate.expire(minuteKey, 2, TimeUnit.MINUTES);
             
             // 记录小时级计数
             String hourKey = RATE_LIMIT_PREFIX + "hour:" + userId + ":" + (currentTime / 3600000);
-            redisTemplate.opsForValue().increment(hourKey);
-            redisTemplate.expire(hourKey, 2, TimeUnit.HOURS);
+            stringRedisTemplate.opsForValue().increment(hourKey);
+            stringRedisTemplate.expire(hourKey, 2, TimeUnit.HOURS);
             
             // 记录日级计数
             String dayKey = DAILY_LIMIT_PREFIX + userId + ":" + (currentTime / 86400000);
-            redisTemplate.opsForValue().increment(dayKey);
-            redisTemplate.expire(dayKey, 2, TimeUnit.DAYS);
+            stringRedisTemplate.opsForValue().increment(dayKey);
+            stringRedisTemplate.expire(dayKey, 2, TimeUnit.DAYS);
             
         } catch (Exception e) {
             log.error("记录消息发送失败，用户ID: {}", userId, e);
@@ -102,7 +102,7 @@ public class MessageRateLimiter {
         long currentTime = System.currentTimeMillis();
         String minuteKey = RATE_LIMIT_PREFIX + "minute:" + userId + ":" + (currentTime / 60000);
         
-        Object count = redisTemplate.opsForValue().get(minuteKey);
+        String count = stringRedisTemplate.opsForValue().get(minuteKey);
         int messageCount = count != null ? Integer.parseInt(count.toString()) : 0;
         
         return messageCount < MAX_MESSAGES_PER_MINUTE;
@@ -115,7 +115,7 @@ public class MessageRateLimiter {
         long currentTime = System.currentTimeMillis();
         String hourKey = RATE_LIMIT_PREFIX + "hour:" + userId + ":" + (currentTime / 3600000);
         
-        Object count = redisTemplate.opsForValue().get(hourKey);
+        String count = stringRedisTemplate.opsForValue().get(hourKey);
         int messageCount = count != null ? Integer.parseInt(count.toString()) : 0;
         
         return messageCount < MAX_MESSAGES_PER_HOUR;
@@ -128,7 +128,7 @@ public class MessageRateLimiter {
         long currentTime = System.currentTimeMillis();
         String dayKey = DAILY_LIMIT_PREFIX + userId + ":" + (currentTime / 86400000);
         
-        Object count = redisTemplate.opsForValue().get(dayKey);
+        String count = stringRedisTemplate.opsForValue().get(dayKey);
         int messageCount = count != null ? Integer.parseInt(count.toString()) : 0;
         
         return messageCount < MAX_MESSAGES_PER_DAY;
@@ -144,7 +144,7 @@ public class MessageRateLimiter {
             long currentTime = System.currentTimeMillis();
             String dayKey = DAILY_LIMIT_PREFIX + userId + ":" + (currentTime / 86400000);
             
-            Object count = redisTemplate.opsForValue().get(dayKey);
+            String count = stringRedisTemplate.opsForValue().get(dayKey);
             return count != null ? Integer.parseInt(count.toString()) : 0;
         } catch (Exception e) {
             log.error("获取用户今日消息数失败，用户ID: {}", userId, e);
@@ -182,15 +182,15 @@ public class MessageRateLimiter {
             
             // 删除分钟级计数
             String minuteKey = RATE_LIMIT_PREFIX + "minute:" + userId + ":" + (currentTime / 60000);
-            redisTemplate.delete(minuteKey);
+            stringRedisTemplate.delete(minuteKey);
             
             // 删除小时级计数
             String hourKey = RATE_LIMIT_PREFIX + "hour:" + userId + ":" + (currentTime / 3600000);
-            redisTemplate.delete(hourKey);
+            stringRedisTemplate.delete(hourKey);
             
             // 删除日级计数
             String dayKey = DAILY_LIMIT_PREFIX + userId + ":" + (currentTime / 86400000);
-            redisTemplate.delete(dayKey);
+            stringRedisTemplate.delete(dayKey);
             
             log.info("重置用户 {} 的限流计数", userId);
         } catch (Exception e) {

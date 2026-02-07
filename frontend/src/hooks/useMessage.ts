@@ -102,7 +102,7 @@ export function useMessage() {
     currentUserId: string,
   ): boolean => {
     // 只能撤回自己发送的消息
-    if (message.senderId !== currentUserId) return false;
+    if (String(message.senderId) !== String(currentUserId)) return false;
 
     // 只能撤回2分钟内的消息
     const sendTime = new Date(message.sendTime).getTime();

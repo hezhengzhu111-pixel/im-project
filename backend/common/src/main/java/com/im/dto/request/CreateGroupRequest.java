@@ -18,10 +18,12 @@ public class CreateGroupRequest {
     /**
      * 群名称
      */
+    @NotBlank(message = "群名称不能为空")
     String name;
     /**
      * 群类型
      */
+    @NotNull(message = "群类型不能为空")
     Integer type;
     /**
      * 群公告
