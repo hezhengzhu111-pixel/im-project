@@ -1,8 +1,5 @@
 <template>
-  <div
-    class="message-item"
-    :class="{ 'is-mine': isMine }"
-  >
+  <div class="message-item" :class="{ 'is-mine': isMine }">
     <!-- 发送者头像 -->
     <el-avatar
       v-if="!isMine"
@@ -91,19 +88,15 @@
         </div>
 
         <!-- 系统消息 -->
-        <div
-          v-else-if="messageType === 'SYSTEM'"
-          class="system-content"
-        >
+        <div v-else-if="messageType === 'SYSTEM'" class="system-content">
           {{ message.content }}
         </div>
 
         <!-- 消息状态 -->
-        <div
-          v-if="isMine"
-          class="message-status"
-        >
-          <el-icon v-if="message.status === 'SENDING'" class="status-sending is-loading"
+        <div v-if="isMine" class="message-status">
+          <el-icon
+            v-if="message.status === 'SENDING'"
+            class="status-sending is-loading"
             ><Loading
           /></el-icon>
           <el-icon
@@ -114,13 +107,19 @@
             ><Warning
           /></el-icon>
           <span
-            v-else-if="message.status === 'READ' || message.readStatus === 1 || message.read_status === 1"
+            v-else-if="
+              message.status === 'READ' ||
+              message.readStatus === 1 ||
+              message.read_status === 1
+            "
             class="status-read"
             title="对方已读"
             >✓✓</span
           >
           <span
-            v-else-if="message.status === 'SENT' || message.status === 'DELIVERED'"
+            v-else-if="
+              message.status === 'SENT' || message.status === 'DELIVERED'
+            "
             class="status-sent"
             title="发送成功"
             >✓</span
@@ -147,7 +146,9 @@
       :style="{ top: `${contextMenuY}px`, left: `${contextMenuX}px` }"
       v-click-outside="closeContextMenu"
     >
-      <div class="menu-item" @click="handleCopy" v-if="messageType === 'TEXT'">复制</div>
+      <div class="menu-item" @click="handleCopy" v-if="messageType === 'TEXT'">
+        复制
+      </div>
       <div class="menu-item" @click="handleRecall" v-if="canRecall">撤回</div>
       <div class="menu-item" @click="handleDelete">删除</div>
     </div>
@@ -156,7 +157,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onUnmounted } from "vue";
-import { Document, Loading, Warning, VideoPlay, VideoPause } from "@element-plus/icons-vue";
+import {
+  Document,
+  Loading,
+  Warning,
+  VideoPlay,
+  VideoPause,
+} from "@element-plus/icons-vue";
 import { useMessage } from "@/hooks/useMessage";
 import { formatFileSize, getAvatarText } from "@/utils/common";
 import type { Message } from "@/types/message";
@@ -165,7 +172,7 @@ import { useChatStore } from "@/stores/chat";
 
 // Computed message type (API may use 'type' or 'messageType')
 const messageType = computed(() => {
-  return props.message.messageType || props.message.type || 'TEXT';
+  return props.message.messageType || props.message.type || "TEXT";
 });
 
 // Custom directive for clicking outside
@@ -197,8 +204,13 @@ const props = withDefaults(defineProps<Props>(), {
   showSenderInfo: true,
 });
 
-const { getMessageSenderAvatar, getMessageSenderName, formatMessageTime, canRecallMessage, recallMessage } =
-  useMessage();
+const {
+  getMessageSenderAvatar,
+  getMessageSenderName,
+  formatMessageTime,
+  canRecallMessage,
+  recallMessage,
+} = useMessage();
 const chatStore = useChatStore();
 
 const audioPlaying = ref(false);
@@ -228,7 +240,9 @@ const isMine = computed(() => {
 
   const currentName = String(props.currentUserName || "").trim();
   if (!currentName) return false;
-  const senderName = String(msg?.senderName || msg?.sender?.username || msg?.sender?.nickname || "").trim();
+  const senderName = String(
+    msg?.senderName || msg?.sender?.username || msg?.sender?.nickname || "",
+  ).trim();
   return !!senderName && senderName === currentName;
 });
 
@@ -348,48 +362,51 @@ const playAudio = () => {
   const content = props.message.content || "";
   const mediaUrl = props.message.mediaUrl || "";
   let url = mediaUrl;
-  
+
   if (!url && content && content.startsWith("data:audio")) {
-      url = content;
+    url = content;
   } else if (!url && content) {
-      // 兼容可能没有前缀的Base64
-      // 这里假设如果是VOICE类型且没有URL，那content可能就是Base64（虽然这不太规范，但为了鲁棒性）
-      // 或者 content 只是文件名，那也没办法播放
-      // 如果content是url
-      if (content.startsWith("http")) {
-          url = content;
-      }
+    // 兼容可能没有前缀的Base64
+    // 这里假设如果是VOICE类型且没有URL，那content可能就是Base64（虽然这不太规范，但为了鲁棒性）
+    // 或者 content 只是文件名，那也没办法播放
+    // 如果content是url
+    if (content.startsWith("http")) {
+      url = content;
+    }
   }
 
   if (!url) {
     ElMessage.warning("语音文件无效");
     return;
   }
-  
+
   // 如果之前已经创建过player但url变了（不太可能，但为了安全），或者第一次创建
   if (!audioPlayer) {
     audioPlayer = new Audio(url);
-    
+
     audioPlayer.onended = () => {
       audioPlaying.value = false;
     };
-    
+
     audioPlayer.onerror = () => {
       audioPlaying.value = false;
       console.error("Audio playback error");
       ElMessage.error("语音播放失败");
     };
   } else if (audioPlayer.src !== url) {
-      audioPlayer.src = url;
+    audioPlayer.src = url;
   }
-  
-  audioPlayer.play().then(() => {
-    audioPlaying.value = true;
-  }).catch(e => {
-    console.error("Play failed", e);
-    ElMessage.error("播放失败: " + e.message);
-    audioPlaying.value = false;
-  });
+
+  audioPlayer
+    .play()
+    .then(() => {
+      audioPlaying.value = true;
+    })
+    .catch((e) => {
+      console.error("Play failed", e);
+      ElMessage.error("播放失败: " + e.message);
+      audioPlaying.value = false;
+    });
 };
 
 const stopAudio = () => {
@@ -439,14 +456,14 @@ const currentUserAvatarText = computed(() => {
     }
 
     .message-bubble {
-      background-color: #95EC69;
+      background-color: #95ec69;
       color: #000;
-      border: 1px solid #7DDE53; /* Slightly darker border for depth */
+      border: 1px solid #7dde53; /* Slightly darker border for depth */
       border-radius: 6px; /* Slightly more rounded */
 
       &::before {
         border-right: 0;
-        border-left: 6px solid #95EC69;
+        border-left: 6px solid #95ec69;
         border-right-color: transparent;
         left: auto;
         right: -6px;
@@ -454,7 +471,7 @@ const currentUserAvatarText = computed(() => {
 
       &::after {
         border-right: 0;
-        border-left: 6px solid #7DDE53; /* Match border color */
+        border-left: 6px solid #7dde53; /* Match border color */
         border-right-color: transparent;
         left: auto;
         right: -7px;
@@ -499,7 +516,7 @@ const currentUserAvatarText = computed(() => {
   white-space: pre-wrap;
   border: 1px solid #ededed;
   font-size: 15px; /* Improved readability */
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05); /* Subtle shadow */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* Subtle shadow */
 
   &::before {
     content: "";
@@ -534,7 +551,8 @@ const currentUserAvatarText = computed(() => {
     color: #1890ff;
     text-align: center;
     border: none;
-    &::before, &::after {
+    &::before,
+    &::after {
       display: none;
     }
   }
@@ -613,7 +631,7 @@ const currentUserAvatarText = computed(() => {
   top: 50%;
   left: -24px;
   margin-top: -8px;
-  
+
   .status-sending {
     color: #dcdfe6;
   }
@@ -642,7 +660,7 @@ const currentUserAvatarText = computed(() => {
   background: #fff;
   border: 1px solid #dcdfe6;
   border-radius: 4px;
-  box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   padding: 5px 0;
   min-width: 100px;
 }
@@ -652,7 +670,7 @@ const currentUserAvatarText = computed(() => {
   font-size: 14px;
   cursor: pointer;
   color: #606266;
-  
+
   &:hover {
     background-color: #f5f7fa;
     color: #409eff;

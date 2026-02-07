@@ -1,9 +1,7 @@
 <template>
   <div class="groups-container">
     <div class="groups-header">
-      <el-button link :icon="ArrowLeft" @click="$router.back()"
-        >返回</el-button
-      >
+      <el-button link :icon="ArrowLeft" @click="$router.back()">返回</el-button>
       <h2>群组</h2>
       <el-button type="primary" :icon="Plus" @click="showCreateGroup = true"
         >创建群组</el-button
@@ -569,7 +567,7 @@ const openChat = (group: Group) => {
     lastActiveTime: "",
     unreadCount: 0,
     isPinned: false,
-    isMuted: false
+    isMuted: false,
   });
 
   router.push("/chat");

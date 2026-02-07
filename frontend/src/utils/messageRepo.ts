@@ -51,11 +51,21 @@ async function openDb(): Promise<IDBDatabase> {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE_MESSAGES)) {
         const store = db.createObjectStore(STORE_MESSAGES, { keyPath: "key" });
-        store.createIndex("byConversation", "conversationId", { unique: false });
-        store.createIndex("byConversationCreatedAt", ["conversationId", "_createdAtMs"], {
+        store.createIndex("byConversation", "conversationId", {
           unique: false,
         });
-        store.createIndex("byConversationLocal", ["conversationId", "_localId"], { unique: false });
+        store.createIndex(
+          "byConversationCreatedAt",
+          ["conversationId", "_createdAtMs"],
+          {
+            unique: false,
+          },
+        );
+        store.createIndex(
+          "byConversationLocal",
+          ["conversationId", "_localId"],
+          { unique: false },
+        );
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -76,10 +86,16 @@ function localStorageKey(conversationId: string): string {
 }
 
 export const messageRepo = {
-  async upsertServerMessages(conversationId: string, messages: Message[]): Promise<void> {
+  async upsertServerMessages(
+    conversationId: string,
+    messages: Message[],
+  ): Promise<void> {
     const now = Date.now();
     if (!hasIndexedDb()) {
-      const existing = safeJsonParse<StoredMessage[]>(localStorage.getItem(localStorageKey(conversationId)), []);
+      const existing = safeJsonParse<StoredMessage[]>(
+        localStorage.getItem(localStorageKey(conversationId)),
+        [],
+      );
       const byId = new Map<string, StoredMessage>();
       for (const m of existing) {
         const sid = (m as any)._serverId;
@@ -95,7 +111,10 @@ export const messageRepo = {
           _createdAtMs: toCreatedAtMs(msg),
         });
       }
-      localStorage.setItem(localStorageKey(conversationId), JSON.stringify(Array.from(byId.values())));
+      localStorage.setItem(
+        localStorageKey(conversationId),
+        JSON.stringify(Array.from(byId.values())),
+      );
       return;
     }
 
@@ -122,7 +141,11 @@ export const messageRepo = {
     db.close();
   },
 
-  async upsertPendingMessage(conversationId: string, localId: string, message: Message): Promise<void> {
+  async upsertPendingMessage(
+    conversationId: string,
+    localId: string,
+    message: Message,
+  ): Promise<void> {
     const now = Date.now();
     const record: any = {
       key: buildLocalKey(conversationId, localId),
@@ -134,10 +157,16 @@ export const messageRepo = {
     };
 
     if (!hasIndexedDb()) {
-      const existing = safeJsonParse<StoredMessage[]>(localStorage.getItem(localStorageKey(conversationId)), []);
+      const existing = safeJsonParse<StoredMessage[]>(
+        localStorage.getItem(localStorageKey(conversationId)),
+        [],
+      );
       const filtered = existing.filter((m) => (m as any)._localId !== localId);
       filtered.push(record);
-      localStorage.setItem(localStorageKey(conversationId), JSON.stringify(filtered));
+      localStorage.setItem(
+        localStorageKey(conversationId),
+        JSON.stringify(filtered),
+      );
       return;
     }
 
@@ -152,17 +181,28 @@ export const messageRepo = {
     db.close();
   },
 
-  async removePendingMessage(conversationId: string, localId: string): Promise<void> {
+  async removePendingMessage(
+    conversationId: string,
+    localId: string,
+  ): Promise<void> {
     if (!hasIndexedDb()) {
-      const existing = safeJsonParse<StoredMessage[]>(localStorage.getItem(localStorageKey(conversationId)), []);
+      const existing = safeJsonParse<StoredMessage[]>(
+        localStorage.getItem(localStorageKey(conversationId)),
+        [],
+      );
       const filtered = existing.filter((m) => (m as any)._localId !== localId);
-      localStorage.setItem(localStorageKey(conversationId), JSON.stringify(filtered));
+      localStorage.setItem(
+        localStorageKey(conversationId),
+        JSON.stringify(filtered),
+      );
       return;
     }
     const db = await openDb();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_MESSAGES, "readwrite");
-      tx.objectStore(STORE_MESSAGES).delete(buildLocalKey(conversationId, localId));
+      tx.objectStore(STORE_MESSAGES).delete(
+        buildLocalKey(conversationId, localId),
+      );
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
@@ -172,12 +212,22 @@ export const messageRepo = {
 
   async listConversation(conversationId: string): Promise<Message[]> {
     if (!hasIndexedDb()) {
-      const existing = safeJsonParse<StoredMessage[]>(localStorage.getItem(localStorageKey(conversationId)), []);
+      const existing = safeJsonParse<StoredMessage[]>(
+        localStorage.getItem(localStorageKey(conversationId)),
+        [],
+      );
       return existing
         .slice()
         .sort((a, b) => (a._createdAtMs || 0) - (b._createdAtMs || 0))
         .map((m) => {
-          const { conversationId: _c, _cachedAt: _t, _createdAtMs: _m, _localId, _serverId, ...rest } = m as any;
+          const {
+            conversationId: _c,
+            _cachedAt: _t,
+            _createdAtMs: _m,
+            _localId,
+            _serverId,
+            ...rest
+          } = m as any;
           return rest as Message;
         });
     }
@@ -185,15 +235,28 @@ export const messageRepo = {
     const db = await openDb();
     const items = await new Promise<any[]>((resolve, reject) => {
       const tx = db.transaction(STORE_MESSAGES, "readonly");
-      const idx = tx.objectStore(STORE_MESSAGES).index("byConversationCreatedAt");
-      const range = IDBKeyRange.bound([conversationId, -Infinity], [conversationId, Infinity]);
+      const idx = tx
+        .objectStore(STORE_MESSAGES)
+        .index("byConversationCreatedAt");
+      const range = IDBKeyRange.bound(
+        [conversationId, -Infinity],
+        [conversationId, Infinity],
+      );
       const req = idx.getAll(range);
       req.onsuccess = () => resolve(req.result || []);
       req.onerror = () => reject(req.error);
     });
     db.close();
     return items.map((m: any) => {
-      const { key: _k, conversationId: _c, _cachedAt: _t, _createdAtMs: _m2, _localId, _serverId, ...rest } = m;
+      const {
+        key: _k,
+        conversationId: _c,
+        _cachedAt: _t,
+        _createdAtMs: _m2,
+        _localId,
+        _serverId,
+        ...rest
+      } = m;
       return rest as Message;
     });
   },
@@ -224,4 +287,3 @@ export const messageRepo = {
     db.close();
   },
 };
-

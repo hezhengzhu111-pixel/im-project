@@ -1,7 +1,7 @@
 <template>
   <div class="chat-container">
-    <SideNavBar 
-      :active-tab="activeTab" 
+    <SideNavBar
+      :active-tab="activeTab"
       :unread-count="chatStore.totalUnreadCount"
       :pending-requests="pendingRequestsCount"
       @change-tab="handleTabChange"
@@ -22,29 +22,33 @@
           @input="handleSearch"
         />
         <div class="add-btn" v-if="activeTab !== 'chat'">
-           <el-button 
-             v-if="activeTab === 'contacts'" 
-             size="small" 
-             :icon="Plus" 
-             circle 
-             aria-label="添加好友"
-             @click="showAddFriend = true" 
-             title="添加好友"
-           />
-           <el-button 
-             v-if="activeTab === 'groups'" 
-             size="small" 
-             :icon="Plus" 
-             circle 
-             aria-label="创建群组"
-             @click="showCreateGroup = true" 
-             title="创建群组"
-           />
+          <el-button
+            v-if="activeTab === 'contacts'"
+            size="small"
+            :icon="Plus"
+            circle
+            aria-label="添加好友"
+            @click="showAddFriend = true"
+            title="添加好友"
+          />
+          <el-button
+            v-if="activeTab === 'groups'"
+            size="small"
+            :icon="Plus"
+            circle
+            aria-label="创建群组"
+            @click="showCreateGroup = true"
+            title="创建群组"
+          />
         </div>
       </div>
 
       <!-- 好友申请提示 (仅在联系人Tab显示) -->
-      <div v-if="activeTab === 'contacts' && pendingRequestsCount > 0" class="friend-request-alert" @click="$router.push('/contacts')">
+      <div
+        v-if="activeTab === 'contacts' && pendingRequestsCount > 0"
+        class="friend-request-alert"
+        @click="$router.push('/contacts')"
+      >
         <el-alert
           :title="`新的朋友 (${pendingRequestsCount})`"
           type="info"
@@ -59,7 +63,11 @@
           v-for="session in filteredSessions"
           :key="session.id"
           class="session-item"
-          :class="{ active: currentSession && String(currentSession.id) === String(session.id) }"
+          :class="{
+            active:
+              currentSession &&
+              String(currentSession.id) === String(session.id),
+          }"
           @click="selectSession(session)"
           role="listitem"
           tabindex="0"
@@ -76,7 +84,9 @@
               }}</span>
             </div>
             <div class="session-content">
-              <span class="last-message">{{ getLastMessagePreview(session.lastMessage) }}</span>
+              <span class="last-message">{{
+                getLastMessagePreview(session.lastMessage)
+              }}</span>
               <el-badge
                 v-if="session.unreadCount > 0"
                 :value="session.unreadCount"
@@ -97,7 +107,11 @@
       <!-- 联系人列表 -->
       <div class="contact-list" v-show="activeTab === 'contacts'" role="list">
         <template v-if="groupedContacts.length > 0">
-          <div v-for="group in groupedContacts" :key="group.key" class="contact-group">
+          <div
+            v-for="group in groupedContacts"
+            :key="group.key"
+            class="contact-group"
+          >
             <div class="group-header">{{ group.key }}</div>
             <div
               v-for="contact in group.contacts"
@@ -117,11 +131,7 @@
           </div>
         </template>
 
-        <el-empty
-          v-else
-          description="暂无联系人"
-          :image-size="60"
-        />
+        <el-empty v-else description="暂无联系人" :image-size="60" />
       </div>
 
       <!-- 群组列表 -->
@@ -142,9 +152,9 @@
           </div>
         </div>
 
-        <el-empty 
-          v-if="filteredGroups.length === 0" 
-          description="暂无群组" 
+        <el-empty
+          v-if="filteredGroups.length === 0"
+          description="暂无群组"
           :image-size="60"
         />
       </div>
@@ -167,7 +177,9 @@
           </div>
           <div class="chat-title">
             {{ currentSession.targetName }}
-            <span v-if="currentSession.type === 'group'">({{ currentSession.memberCount || 0 }})</span>
+            <span v-if="currentSession.type === 'group'"
+              >({{ currentSession.memberCount || 0 }})</span
+            >
           </div>
           <div class="chat-actions">
             <el-button link :icon="MoreFilled" aria-label="更多选项" />
@@ -175,13 +187,21 @@
         </div>
 
         <!-- 消息列表 -->
-        <div ref="messageListRef" class="message-list" role="log" aria-live="polite" @scroll="handleMessageScroll">
+        <div
+          ref="messageListRef"
+          class="message-list"
+          role="log"
+          aria-live="polite"
+          @scroll="handleMessageScroll"
+        >
           <MessageItem
             v-for="message in currentMessages"
             :key="message.id"
             :message="message"
             :current-user-id="String(userStore.userId)"
-            :current-user-name="userStore.userInfo?.username || userStore.nickname"
+            :current-user-name="
+              userStore.userInfo?.username || userStore.nickname
+            "
             :current-user-avatar="userStore.avatar"
           />
         </div>
@@ -189,14 +209,26 @@
         <!-- 输入区域 -->
         <div class="input-area">
           <div class="input-toolbar">
-            <el-button link :icon="Picture" title="发送图片" aria-label="发送图片" @click="selectImage" />
-            <el-button link :icon="Paperclip" title="发送文件" aria-label="发送文件" @click="selectFile" />
-            <el-button 
-              link 
-              :icon="isVoiceMode ? 'ChatLineSquare' : Microphone" 
-              :title="isVoiceMode ? '切换键盘' : '语音消息'" 
+            <el-button
+              link
+              :icon="Picture"
+              title="发送图片"
+              aria-label="发送图片"
+              @click="selectImage"
+            />
+            <el-button
+              link
+              :icon="Paperclip"
+              title="发送文件"
+              aria-label="发送文件"
+              @click="selectFile"
+            />
+            <el-button
+              link
+              :icon="isVoiceMode ? 'ChatLineSquare' : Microphone"
+              :title="isVoiceMode ? '切换键盘' : '语音消息'"
               :aria-label="isVoiceMode ? '切换键盘' : '语音消息'"
-              @click="toggleVoiceMode" 
+              @click="toggleVoiceMode"
             />
           </div>
           <div class="input-box">
@@ -209,22 +241,23 @@
               @keydown.enter.exact.prevent="sendMessage"
               @keydown.enter.shift.exact="handleShiftEnter"
             ></textarea>
-            
+
             <div v-else class="voice-input-area">
-              <el-button 
-                class="voice-record-btn" 
+              <el-button
+                class="voice-record-btn"
                 :class="{ 'is-recording': isRecording }"
-                @mousedown="startRecording" 
+                @mousedown="startRecording"
                 @mouseup="stopRecording"
                 @mouseleave="cancelRecording"
                 @touchstart.prevent="startRecording"
                 @touchend.prevent="stopRecording"
               >
-                {{ isRecording ? '松开 发送' : '按住 说话' }}
+                {{ isRecording ? "松开 发送" : "按住 说话" }}
               </el-button>
               <div v-if="isRecording" class="recording-indicator">
                 <div class="recording-waves">
-                  <span></span><span></span><span></span><span></span><span></span>
+                  <span></span><span></span><span></span><span></span
+                  ><span></span>
                 </div>
                 <div class="recording-text">正在录音...</div>
               </div>
@@ -246,7 +279,12 @@
     </div>
 
     <!-- 添加好友对话框 -->
-    <el-dialog v-model="showAddFriend" title="添加好友" width="400px" append-to-body>
+    <el-dialog
+      v-model="showAddFriend"
+      title="添加好友"
+      width="400px"
+      append-to-body
+    >
       <el-form :model="addFriendForm" label-width="80px">
         <el-form-item label="用户名">
           <el-select
@@ -265,9 +303,18 @@
               :label="item.nickname || item.username"
               :value="item.id"
             >
-              <div style="display: flex; justify-content: space-between; align-items: center">
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                "
+              >
                 <span>{{ item.nickname || item.username }}</span>
-                <span style="color: #8492a6; font-size: 13px; margin-left: 10px">{{ item.username }}</span>
+                <span
+                  style="color: #8492a6; font-size: 13px; margin-left: 10px"
+                  >{{ item.username }}</span
+                >
               </div>
             </el-option>
           </el-select>
@@ -286,7 +333,12 @@
     </el-dialog>
 
     <!-- 创建群组对话框 -->
-    <el-dialog v-model="showCreateGroup" title="创建群组" width="500px" append-to-body>
+    <el-dialog
+      v-model="showCreateGroup"
+      title="创建群组"
+      width="500px"
+      append-to-body
+    >
       <el-form :model="createGroupForm" label-width="80px">
         <el-form-item label="群组名称">
           <el-input
@@ -345,7 +397,7 @@ import {
   Microphone,
   ChatLineSquare,
   Search,
-  ArrowLeft
+  ArrowLeft,
 } from "@element-plus/icons-vue";
 import { useUserStore } from "@/stores/user";
 import { useWebSocketStore } from "@/stores/websocket";
@@ -376,7 +428,7 @@ const {
   toggleVoiceMode,
   startRecording,
   stopRecording,
-  cancelRecording
+  cancelRecording,
 } = useVoice();
 
 const {
@@ -395,7 +447,7 @@ const {
   handleSearch,
   handleUserSearch,
   addFriend,
-  createGroup
+  createGroup,
 } = useChatLogic();
 
 // 引用
@@ -417,7 +469,10 @@ const currentSession = computed(() => {
 });
 
 const pendingRequestsCount = computed(() => {
-  return chatStore.friendRequests?.filter(req => req.status === "待处理").length || 0;
+  return (
+    chatStore.friendRequests?.filter((req) => req.status === "待处理").length ||
+    0
+  );
 });
 
 const isChatActiveOnMobile = computed(() => {
@@ -441,18 +496,28 @@ const clearSession = () => {
   chatStore.currentSession = null;
 };
 
-const startChat = (contact: Friendship & { avatar?: string; username?: string; nickname?: string }) => {
+const startChat = (
+  contact: Friendship & {
+    avatar?: string;
+    username?: string;
+    nickname?: string;
+  },
+) => {
   const session = chatStore.createOrGetSession(
     "private",
     contact.friendId,
-    contact.nickname || contact.friend?.nickname || contact.friend?.username || contact.username || "",
+    contact.nickname ||
+      contact.friend?.nickname ||
+      contact.friend?.username ||
+      contact.username ||
+      "",
     contact.avatar || contact.friend?.avatar || "",
   );
   if (session) {
     selectSession(session);
     activeTab.value = "chat";
   } else {
-    ElMessage.error('无法创建聊天会话，请先登录');
+    ElMessage.error("无法创建聊天会话，请先登录");
   }
 };
 
@@ -467,7 +532,7 @@ const startGroupChat = (group: Group) => {
     selectSession(session);
     activeTab.value = "chat";
   } else {
-    ElMessage.error('无法创建群聊会话，请先登录');
+    ElMessage.error("无法创建群聊会话，请先登录");
   }
 };
 
@@ -510,8 +575,8 @@ const selectFile = () => {
 const handleImageSelect = async (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
-  
-  (event.target as HTMLInputElement).value = '';
+
+  (event.target as HTMLInputElement).value = "";
 
   try {
     ElMessage.info("正在上传图片...");
@@ -530,7 +595,7 @@ const handleImageSelect = async (event: Event) => {
 const handleFileSelect = (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
-  (event.target as HTMLInputElement).value = '';
+  (event.target as HTMLInputElement).value = "";
   handleGenericFileUpload(file);
 };
 
@@ -593,7 +658,10 @@ const handleMessageScroll = () => {
 const formatTime = (time: string | Date) => {
   const normalized =
     typeof time === "string"
-      ? time.replace(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{3})\d+$/, "$1.$2")
+      ? time.replace(
+          /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{3})\d+$/,
+          "$1.$2",
+        )
       : time;
   const date = new Date(normalized as any);
   const now = new Date();
@@ -632,16 +700,18 @@ watch(
   currentMessages,
   (newVal, oldVal) => {
     const isNewMessage = newVal.length > (oldVal?.length || 0);
-    
+
     if (isNewMessage) {
       const lastMessage = newVal[newVal.length - 1];
-      const isMyMessage = String(lastMessage?.senderId) === String(userStore.userId);
-      
+      const isMyMessage =
+        String(lastMessage?.senderId) === String(userStore.userId);
+
       if (isMyMessage) {
         scrollToBottom();
       } else {
         if (messageListRef.value) {
-          const { scrollTop, scrollHeight, clientHeight } = messageListRef.value;
+          const { scrollTop, scrollHeight, clientHeight } =
+            messageListRef.value;
           const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
           if (isNearBottom) {
             scrollToBottom();
@@ -712,7 +782,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  
+
   .add-btn {
     flex-shrink: 0;
   }
@@ -723,63 +793,69 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.session-list, .contact-list, .group-list {
+.session-list,
+.contact-list,
+.group-list {
   flex: 1;
   overflow-y: auto;
-  
+
   &::-webkit-scrollbar {
     width: 6px;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background-color: #dcdfe6;
     border-radius: 3px;
   }
 }
 
-.session-item, .contact-item, .group-item {
+.session-item,
+.contact-item,
+.group-item {
   padding: 12px 15px;
   display: flex;
   align-items: center;
   cursor: pointer;
   transition: background-color 0.2s;
-  
+
   &:hover {
     background-color: #f5f7fa;
   }
-  
+
   &.active {
     background-color: #ecf5ff;
   }
-  
-  .session-info, .contact-info, .group-info {
+
+  .session-info,
+  .contact-info,
+  .group-info {
     flex: 1;
     margin-left: 10px;
     overflow: hidden;
   }
-  
+
   .session-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 4px;
-    
+
     .session-name {
       font-weight: 500;
       color: #303133;
     }
-    
+
     .session-time {
       font-size: 12px;
       color: #909399;
     }
   }
-  
+
   .session-content {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    
+
     .last-message {
       font-size: 13px;
       color: #909399;
@@ -814,10 +890,10 @@ onUnmounted(() => {
   justify-content: center;
   align-items: center;
   color: #909399;
-  
+
   .welcome-content {
     text-align: center;
-    
+
     p {
       margin-top: 20px;
     }
@@ -837,12 +913,12 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 0 20px;
-  
+
   .chat-title {
     font-size: 18px;
     font-weight: 500;
   }
-  
+
   .mobile-back {
     display: none;
     cursor: pointer;
@@ -855,11 +931,11 @@ onUnmounted(() => {
   overflow-y: auto;
   padding: 20px;
   background-color: #f5f7fa;
-  
+
   &::-webkit-scrollbar {
     width: 6px;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background-color: #dcdfe6;
     border-radius: 3px;
@@ -870,17 +946,17 @@ onUnmounted(() => {
   border-top: 1px solid #dcdfe6;
   padding: 10px 20px;
   background-color: #fff;
-  
+
   .input-toolbar {
     margin-bottom: 10px;
     display: flex;
     gap: 10px;
   }
-  
+
   .input-box {
     min-height: 80px;
     margin-bottom: 10px;
-    
+
     .chat-textarea {
       width: 100%;
       height: 80px;
@@ -891,12 +967,12 @@ onUnmounted(() => {
       font-size: 14px;
     }
   }
-  
+
   .input-actions {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    
+
     .tip {
       font-size: 12px;
       color: #909399;
@@ -910,18 +986,18 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   height: 80px;
-  
+
   .voice-record-btn {
     width: 200px;
     transition: all 0.3s;
-    
+
     &.is-recording {
       background-color: #f56c6c;
       color: #fff;
       border-color: #f56c6c;
     }
   }
-  
+
   .recording-indicator {
     margin-top: 10px;
     display: flex;
@@ -937,25 +1013,40 @@ onUnmounted(() => {
   align-items: center;
   gap: 3px;
   height: 15px;
-  
+
   span {
     display: block;
     width: 2px;
     height: 100%;
     background-color: #f56c6c;
     animation: wave 1s infinite ease-in-out;
-    
-    &:nth-child(1) { animation-delay: 0s; }
-    &:nth-child(2) { animation-delay: 0.1s; }
-    &:nth-child(3) { animation-delay: 0.2s; }
-    &:nth-child(4) { animation-delay: 0.3s; }
-    &:nth-child(5) { animation-delay: 0.4s; }
+
+    &:nth-child(1) {
+      animation-delay: 0s;
+    }
+    &:nth-child(2) {
+      animation-delay: 0.1s;
+    }
+    &:nth-child(3) {
+      animation-delay: 0.2s;
+    }
+    &:nth-child(4) {
+      animation-delay: 0.3s;
+    }
+    &:nth-child(5) {
+      animation-delay: 0.4s;
+    }
   }
 }
 
 @keyframes wave {
-  0%, 100% { height: 20%; }
-  50% { height: 100%; }
+  0%,
+  100% {
+    height: 20%;
+  }
+  50% {
+    height: 100%;
+  }
 }
 
 /* Mobile Responsive Styles */
@@ -963,14 +1054,14 @@ onUnmounted(() => {
   .side-nav-bar {
     display: none; // Hide side nav on mobile for now, or move to bottom
   }
-  
+
   .list-panel {
     width: 100%;
     &.hidden-mobile {
       display: none;
     }
   }
-  
+
   .chat-main {
     display: none;
     &.active-mobile {
@@ -983,13 +1074,13 @@ onUnmounted(() => {
       z-index: 10;
     }
   }
-  
+
   .chat-header {
     .mobile-back {
       display: block;
     }
   }
-  
+
   .input-actions {
     .tip {
       display: none;

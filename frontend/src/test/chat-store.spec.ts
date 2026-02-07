@@ -72,8 +72,20 @@ describe("chat store message ordering & receipts", () => {
     messageServiceMock.getPrivateHistoryCursor.mockResolvedValue({
       code: 200,
       data: [
-        { id: "2", senderId: "2", createdTime: "2026-02-07T10:00:00.999000000", content: "b", status: "SENT" },
-        { id: "1", senderId: "1", createdTime: "2026-02-07T10:00:00.100000000", content: "a", status: "SENT" },
+        {
+          id: "2",
+          senderId: "2",
+          createdTime: "2026-02-07T10:00:00.999000000",
+          content: "b",
+          status: "SENT",
+        },
+        {
+          id: "1",
+          senderId: "1",
+          createdTime: "2026-02-07T10:00:00.100000000",
+          content: "a",
+          status: "SENT",
+        },
       ],
     });
 
@@ -139,28 +151,51 @@ describe("chat store message ordering & receipts", () => {
     const { useChatStore } = await import("@/stores/chat");
     const store = useChatStore();
 
-    messageServiceMock.getPrivateHistoryCursor.mockResolvedValue({ code: 200, data: [] });
-    messageServiceMock.getConfig.mockResolvedValue({ code: 200, data: { textEnforce: true, textMaxLength: 2000 } });
+    messageServiceMock.getPrivateHistoryCursor.mockResolvedValue({
+      code: 200,
+      data: [],
+    });
+    messageServiceMock.getConfig.mockResolvedValue({
+      code: 200,
+      data: { textEnforce: true, textMaxLength: 2000 },
+    });
     const session = store.createOrGetSession("private", "2", "u2", "");
     store.setCurrentSession(session as any);
 
     const longText = "你".repeat(4500);
 
     messageServiceMock.sendPrivate
-      .mockResolvedValueOnce({ code: 200, data: { id: "s1", createdTime: "2026-02-07T10:00:00.100000000" } })
-      .mockResolvedValueOnce({ code: 200, data: { id: "s2", createdTime: "2026-02-07T10:00:00.200000000" } })
-      .mockResolvedValueOnce({ code: 200, data: { id: "s3", createdTime: "2026-02-07T10:00:00.300000000" } });
+      .mockResolvedValueOnce({
+        code: 200,
+        data: { id: "s1", createdTime: "2026-02-07T10:00:00.100000000" },
+      })
+      .mockResolvedValueOnce({
+        code: 200,
+        data: { id: "s2", createdTime: "2026-02-07T10:00:00.200000000" },
+      })
+      .mockResolvedValueOnce({
+        code: 200,
+        data: { id: "s3", createdTime: "2026-02-07T10:00:00.300000000" },
+      });
 
     const ok = await store.sendMessage(longText, "TEXT");
     expect(ok).toBe(true);
     expect(messageServiceMock.getConfig).toHaveBeenCalledTimes(1);
     expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(3);
-    expect(messageServiceMock.sendPrivate.mock.calls[0][0].content.length).toBe(2000);
-    expect(messageServiceMock.sendPrivate.mock.calls[1][0].content.length).toBe(2000);
-    expect(messageServiceMock.sendPrivate.mock.calls[2][0].content.length).toBe(500);
+    expect(messageServiceMock.sendPrivate.mock.calls[0][0].content.length).toBe(
+      2000,
+    );
+    expect(messageServiceMock.sendPrivate.mock.calls[1][0].content.length).toBe(
+      2000,
+    );
+    expect(messageServiceMock.sendPrivate.mock.calls[2][0].content.length).toBe(
+      500,
+    );
 
     const list = store.messages.get((session as any).id) || [];
-    const sent = list.filter((m: any) => m.status === "SENT" && typeof m.content === "string");
+    const sent = list.filter(
+      (m: any) => m.status === "SENT" && typeof m.content === "string",
+    );
     expect(sent.length).toBeGreaterThanOrEqual(3);
     const chunks = sent.slice(-3).map((m: any) => m.content);
     expect(chunks[0].length).toBe(2000);
@@ -172,18 +207,29 @@ describe("chat store message ordering & receipts", () => {
     const { useChatStore } = await import("@/stores/chat");
     const store = useChatStore();
 
-    messageServiceMock.getPrivateHistoryCursor.mockResolvedValue({ code: 200, data: [] });
-    messageServiceMock.getConfig.mockResolvedValue({ code: 200, data: { textEnforce: false, textMaxLength: 2000 } });
+    messageServiceMock.getPrivateHistoryCursor.mockResolvedValue({
+      code: 200,
+      data: [],
+    });
+    messageServiceMock.getConfig.mockResolvedValue({
+      code: 200,
+      data: { textEnforce: false, textMaxLength: 2000 },
+    });
     const session = store.createOrGetSession("private", "2", "u2", "");
     store.setCurrentSession(session as any);
 
     const longText = "你".repeat(4500);
 
-    messageServiceMock.sendPrivate.mockResolvedValueOnce({ code: 200, data: { id: "s1", createdTime: "2026-02-07T10:00:00.100000000" } });
+    messageServiceMock.sendPrivate.mockResolvedValueOnce({
+      code: 200,
+      data: { id: "s1", createdTime: "2026-02-07T10:00:00.100000000" },
+    });
 
     const ok = await store.sendMessage(longText, "TEXT");
     expect(ok).toBe(true);
     expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(1);
-    expect(messageServiceMock.sendPrivate.mock.calls[0][0].content.length).toBe(4500);
+    expect(messageServiceMock.sendPrivate.mock.calls[0][0].content.length).toBe(
+      4500,
+    );
   });
 });

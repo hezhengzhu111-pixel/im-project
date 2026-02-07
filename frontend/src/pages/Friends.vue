@@ -1,9 +1,7 @@
 <template>
   <div class="friends-container">
     <div class="friends-header">
-      <el-button link :icon="ArrowLeft" @click="$router.back()"
-        >返回</el-button
-      >
+      <el-button link :icon="ArrowLeft" @click="$router.back()">返回</el-button>
       <h2>联系人</h2>
       <el-button type="primary" :icon="Plus" @click="showAddFriend = true"
         >添加好友</el-button
