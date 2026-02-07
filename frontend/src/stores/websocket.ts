@@ -194,6 +194,35 @@ export const useWebSocketStore = defineStore("websocket", () => {
             }
           } else {
             // Normalize message fields for consistency
+            const created =
+              (msg as any).created_at ||
+              (msg as any).createdAt ||
+              (msg as any).createdTime ||
+              (msg as any).created_time ||
+              (msg as any).sendTime ||
+              (msg as any).send_time;
+            const createdNormalized =
+              typeof created === "string"
+                ? created.replace(
+                    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{3})\d+$/,
+                    "$1.$2",
+                  )
+                : created;
+            const statusNum = typeof (msg as any).status === "number" ? (msg as any).status : Number((msg as any).status);
+            const status =
+              Number.isFinite(statusNum) && statusNum > 0
+                ? statusNum === 3
+                  ? "READ"
+                  : statusNum === 2
+                    ? "DELIVERED"
+                    : statusNum === 1
+                      ? "SENT"
+                      : statusNum === 4
+                        ? "RECALLED"
+                        : statusNum === 5
+                          ? "DELETED"
+                          : "SENT"
+                : (msg as any).status || "SENT";
             const normalizedMsg = {
               ...msg,
               senderId: msg.senderId || msg.sender?.id || msg.sender_id,
@@ -201,6 +230,8 @@ export const useWebSocketStore = defineStore("websocket", () => {
               type: msg.type || msg.messageType || 'TEXT',
               senderName: msg.senderName || msg.sender?.nickname || msg.sender?.username,
               senderAvatar: msg.senderAvatar || msg.sender?.avatar,
+              sendTime: createdNormalized || (msg as any).sendTime || new Date().toISOString(),
+              status,
             };
             
             // 如果发送者是当前用户，则忽略该消息（因为本地已经添加了，避免重复）
@@ -218,6 +249,12 @@ export const useWebSocketStore = defineStore("websocket", () => {
         // 处理在线状态
         if (data.data) {
           updateOnlineStatus(data.data);
+        }
+        break;
+
+      case "READ_RECEIPT":
+        if (data.data) {
+          chatStore.applyReadReceipt(data.data);
         }
         break;
 

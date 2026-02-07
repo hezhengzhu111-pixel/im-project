@@ -1,11 +1,11 @@
 <template>
   <div
     class="message-item"
-    :class="{ 'is-mine': String(message.senderId) === String(currentUserId) }"
+    :class="{ 'is-mine': isMine }"
   >
     <!-- 发送者头像 -->
     <el-avatar
-      v-if="String(message.senderId) !== String(currentUserId)"
+      v-if="!isMine"
       :size="36"
       :src="message.senderAvatar || message.sender?.avatar"
       class="message-avatar"
@@ -17,7 +17,7 @@
     <!-- 消息内容 -->
     <div class="message-content">
       <!-- 发送者信息 -->
-      <div v-if="showSenderInfo && String(message.senderId) !== String(currentUserId)" class="message-sender">
+      <div v-if="showSenderInfo && !isMine" class="message-sender">
         {{ getMessageSenderName(message) }}
       </div>
 
@@ -27,8 +27,10 @@
         :class="`message-type-${messageType.toLowerCase()}`"
         @contextmenu.prevent="showContextMenu"
       >
+        <div v-if="isRecalled" class="recalled-content">消息已撤回</div>
+        <div v-else-if="isDeleted" class="deleted-content">消息已删除</div>
         <!-- 文本消息 -->
-        <div v-if="messageType === 'TEXT'" class="text-content">
+        <div v-else-if="messageType === 'TEXT'" class="text-content">
           {{ message.content }}
         </div>
 
@@ -98,7 +100,7 @@
 
         <!-- 消息状态 -->
         <div
-          v-if="String(message.senderId) === String(currentUserId)"
+          v-if="isMine"
           class="message-status"
         >
           <el-icon v-if="message.status === 'SENDING'" class="status-sending is-loading"
@@ -111,13 +113,25 @@
             color="#f56c6c"
             ><Warning
           /></el-icon>
+          <span
+            v-else-if="message.status === 'READ' || message.readStatus === 1 || message.read_status === 1"
+            class="status-read"
+            title="对方已读"
+            >✓✓</span
+          >
+          <span
+            v-else-if="message.status === 'SENT' || message.status === 'DELIVERED'"
+            class="status-sent"
+            title="发送成功"
+            >✓</span
+          >
         </div>
       </div>
     </div>
 
     <!-- 我的头像 -->
     <el-avatar
-      v-if="String(message.senderId) === String(currentUserId)"
+      v-if="isMine"
       :size="36"
       :src="currentUserAvatar"
       class="message-avatar"
@@ -174,6 +188,7 @@ const vClickOutside = {
 interface Props {
   message: Message;
   currentUserId: string;
+  currentUserName?: string;
   currentUserAvatar?: string;
   showSenderInfo?: boolean;
 }
@@ -202,6 +217,31 @@ const canRecall = computed(() => {
   return canRecallMessage(props.message, props.currentUserId);
 });
 
+const isMine = computed(() => {
+  const msg = props.message as any;
+  const idOk =
+    props.currentUserId != null &&
+    props.currentUserId !== "" &&
+    msg?.senderId != null &&
+    String(msg.senderId) === String(props.currentUserId);
+  if (idOk) return true;
+
+  const currentName = String(props.currentUserName || "").trim();
+  if (!currentName) return false;
+  const senderName = String(msg?.senderName || msg?.sender?.username || msg?.sender?.nickname || "").trim();
+  return !!senderName && senderName === currentName;
+});
+
+const isRecalled = computed(() => {
+  const s: any = (props.message as any).status;
+  return s === "RECALLED" || s === 4;
+});
+
+const isDeleted = computed(() => {
+  const s: any = (props.message as any).status;
+  return s === "DELETED" || s === 5;
+});
+
 // Context Menu Logic
 const showContextMenu = (event: MouseEvent) => {
   contextMenuVisible.value = true;
@@ -226,6 +266,11 @@ const handleCopy = async () => {
 const handleRecall = async () => {
   try {
     await recallMessage(String(props.message.id));
+    chatStore.addMessage({
+      ...(props.message as any),
+      status: "RECALLED",
+      content: "消息已撤回",
+    });
     ElMessage.success("已撤回");
   } catch (error: any) {
     ElMessage.error(error.message || "撤回失败");
@@ -375,7 +420,7 @@ const playVideo = () => {
 
 // 计算属性
 const currentUserAvatarText = computed(() => {
-  return getAvatarText(props.currentUserAvatar);
+  return getAvatarText(props.currentUserName || props.currentUserId);
 });
 </script>
 
@@ -387,7 +432,7 @@ const currentUserAvatarText = computed(() => {
   margin-bottom: 16px;
 
   &.is-mine {
-    flex-direction: row-reverse;
+    justify-content: flex-end;
 
     .message-content {
       align-items: flex-end;
@@ -432,6 +477,8 @@ const currentUserAvatarText = computed(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  flex: 1;
+  min-width: 0;
   max-width: 60%;
 }
 
@@ -443,10 +490,13 @@ const currentUserAvatarText = computed(() => {
 
 .message-bubble {
   position: relative;
+  display: inline-block;
+  max-width: 100%;
   padding: 10px 14px;
   border-radius: 6px;
   background-color: #ffffff;
-  word-wrap: break-word;
+  word-break: break-word;
+  white-space: pre-wrap;
   border: 1px solid #ededed;
   font-size: 15px; /* Improved readability */
   box-shadow: 0 1px 2px rgba(0,0,0,0.05); /* Subtle shadow */
@@ -571,6 +621,18 @@ const currentUserAvatarText = computed(() => {
   .status-failed {
     color: #f56c6c;
     cursor: pointer;
+  }
+
+  .status-sent {
+    color: #909399;
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .status-read {
+    color: #67c23a;
+    font-size: 12px;
+    line-height: 16px;
   }
 }
 

@@ -35,6 +35,10 @@ im:
     enabled: ${IM_JWT_ENABLED:true}
   security:
     mode: ${IM_SECURITY_MODE:gateway}
+  message:
+    text:
+      enforce: ${IM_MESSAGE_TEXT_ENFORCE:true}
+      max-length: ${IM_MESSAGE_TEXT_MAX_LENGTH:2000}
   internal:
     header: X-Internal-Secret
     secret: ${IM_INTERNAL_SECRET:im-internal-secret}

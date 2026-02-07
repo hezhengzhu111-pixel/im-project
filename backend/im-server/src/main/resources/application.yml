@@ -27,6 +27,17 @@ spring:
       enabled: true
   # Redis配置已移除
 
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:im-redis}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      database: ${SPRING_DATA_REDIS_DATABASE:0}
+
+  datasource:
+    url: ${IM_SERVER_DB_URL:jdbc:mysql://im-mysql:3306/service_im_server_db?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
+    username: ${IM_SERVER_DB_USERNAME:root}
+    password: ${IM_SERVER_DB_PASSWORD:root123}
+
   # Kafka配置
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:im-kafka:9092}
@@ -65,6 +76,9 @@ spring:
 
 # IM系统配置
 im:
+  internal:
+    header: ${IM_INTERNAL_HEADER:X-Internal-Secret}
+    secret: ${IM_INTERNAL_SECRET:im-internal-secret}
   virtual-threads:
     enabled: ${IM_VIRTUAL_THREADS_ENABLED:true}
   server:
@@ -130,8 +144,12 @@ im:
   
   # 服务配置
   service:
-    url: "http://127.0.0.1:8083"
+    url: ${IM_SERVICE_URL:http://127.0.0.1:8083}
     max-group-member-size: 500  # 群组最大成员数
+
+auth:
+  service:
+    url: ${AUTH_SERVICE_URL:http://im-auth:8084}
 
 # 监控配置
 management:

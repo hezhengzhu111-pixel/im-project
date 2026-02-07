@@ -49,3 +49,7 @@ feign:
       default:
         connectTimeout: 3000
         readTimeout: 10000
+
+user:
+  service:
+    url: ${USER_SERVICE_URL:http://im-user:8085}

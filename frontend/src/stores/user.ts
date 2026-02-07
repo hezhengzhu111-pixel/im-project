@@ -5,7 +5,7 @@
 
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import { userApi } from "@/services";
+import { userApi, authApi } from "@/services";
 import { STORAGE_CONFIG, APP_CONFIG } from "@/config";
 import type { User, LoginRequest, RegisterRequest } from "@/types";
 import { ElMessage } from "element-plus";
@@ -16,6 +16,9 @@ export const useUserStore = defineStore("user", () => {
   const userInfo = ref<User | null>(null);
   const token = ref<string>("");
   const loading = ref(false);
+  const lastSessionCheckAt = ref<number>(0);
+  const lastSessionValid = ref<boolean>(false);
+  let sessionCheckInFlight: Promise<boolean> | null = null;
 
   // 计算属性
   const isLoggedIn = computed(() => !!token.value && !!userInfo.value);
@@ -26,6 +29,15 @@ export const useUserStore = defineStore("user", () => {
     () => userInfo.value?.nickname || userInfo.value?.username || "未知用户",
   );
   const userId = computed(() => userInfo.value?.id || "");
+
+  const clearSessionOnly = () => {
+    userInfo.value = null;
+    token.value = "";
+    lastSessionCheckAt.value = 0;
+    lastSessionValid.value = false;
+    localStorage.removeItem(STORAGE_CONFIG.TOKEN_KEY);
+    localStorage.removeItem(STORAGE_CONFIG.USER_INFO_KEY);
+  };
 
   // 初始化状态
   const initializeStore = () => {
@@ -40,6 +52,7 @@ export const useUserStore = defineStore("user", () => {
       if (savedUserInfo) {
         userInfo.value = JSON.parse(savedUserInfo);
       }
+      lastSessionValid.value = !!savedToken && !!savedUserInfo;
     } catch (error) {
       console.error("初始化用户状态失败:", error);
       clearUserData();
@@ -53,6 +66,8 @@ export const useUserStore = defineStore("user", () => {
   const clearUserData = () => {
     userInfo.value = null;
     token.value = "";
+    lastSessionCheckAt.value = 0;
+    lastSessionValid.value = false;
     localStorage.removeItem(STORAGE_CONFIG.TOKEN_KEY);
     localStorage.removeItem(STORAGE_CONFIG.USER_INFO_KEY);
   };
@@ -61,8 +76,93 @@ export const useUserStore = defineStore("user", () => {
   const saveUserData = (user: User, authToken: string) => {
     userInfo.value = user;
     token.value = authToken;
+    lastSessionCheckAt.value = Date.now();
+    lastSessionValid.value = true;
     localStorage.setItem(STORAGE_CONFIG.TOKEN_KEY, authToken);
     localStorage.setItem(STORAGE_CONFIG.USER_INFO_KEY, JSON.stringify(user));
+  };
+
+  const tryDecodeJwtPayload = (jwt: string): any | null => {
+    try {
+      const parts = jwt.split(".");
+      if (parts.length < 2) return null;
+      const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+      const pad = payload.length % 4 === 0 ? "" : "=".repeat(4 - (payload.length % 4));
+      const json = decodeURIComponent(
+        Array.prototype.map
+          .call(atob(payload + pad), (c: string) => `%${(`00${c.charCodeAt(0).toString(16)}`).slice(-2)}`)
+          .join(""),
+      );
+      return JSON.parse(json);
+    } catch {
+      return null;
+    }
+  };
+
+  const isTokenExpired = (jwt: string): boolean => {
+    const payload = tryDecodeJwtPayload(jwt);
+    const exp = payload?.exp;
+    if (!exp || typeof exp !== "number") return false;
+    const expMs = exp * 1000;
+    return Date.now() > expMs - 5000;
+  };
+
+  const ensureAuthenticated = async (): Promise<boolean> => {
+    const currentToken = token.value || localStorage.getItem(STORAGE_CONFIG.TOKEN_KEY) || "";
+    if (!currentToken) {
+      clearSessionOnly();
+      return false;
+    }
+    if (isTokenExpired(currentToken)) {
+      clearSessionOnly();
+      return false;
+    }
+
+    const now = Date.now();
+    if (lastSessionValid.value && now - lastSessionCheckAt.value < 60_000) {
+      return true;
+    }
+    if (sessionCheckInFlight) {
+      return sessionCheckInFlight;
+    }
+
+    sessionCheckInFlight = (async () => {
+      try {
+        const resp = await authApi.parseAccessToken(currentToken, true);
+        const result = resp?.data;
+        const ok = !!result && result.valid && !result.expired && !!result.userId;
+        lastSessionCheckAt.value = Date.now();
+        lastSessionValid.value = ok;
+        if (!ok) {
+          clearSessionOnly();
+          return false;
+        }
+
+        if (!userInfo.value) {
+          const minimalUser: User = {
+            id: String(result.userId),
+            username: result.username || String(result.userId),
+            nickname: result.username || String(result.userId),
+            avatar: APP_CONFIG.DEFAULT_AVATAR,
+            status: "OFFLINE",
+          };
+          userInfo.value = minimalUser;
+          token.value = currentToken;
+          localStorage.setItem(STORAGE_CONFIG.TOKEN_KEY, currentToken);
+          localStorage.setItem(STORAGE_CONFIG.USER_INFO_KEY, JSON.stringify(minimalUser));
+        }
+        return true;
+      } catch {
+        lastSessionCheckAt.value = Date.now();
+        lastSessionValid.value = false;
+        clearSessionOnly();
+        return false;
+      } finally {
+        sessionCheckInFlight = null;
+      }
+    })();
+
+    return sessionCheckInFlight;
   };
 
   // 登录
@@ -134,9 +234,10 @@ export const useUserStore = defineStore("user", () => {
     } catch (error) {
       console.error("下线通知失败:", error);
     } finally {
+      const redirect = router.currentRoute.value.fullPath || "/chat";
       clearUserData();
       ElMessage.success("已退出登录");
-      router.push("/login");
+      router.push({ name: "Login", query: { redirect } });
     }
   };
 
@@ -216,13 +317,11 @@ export const useUserStore = defineStore("user", () => {
   // 获取用户信息
   const getUserInfo = async (userId: string) => {
     try {
-      const response = await userApi.getUserInfo(userId);
-
-      if (response.code === 200) {
-        return response.data;
-      } else {
-        throw new Error(response.message || "获取用户信息失败");
+      const current = userInfo.value;
+      if (current && String(current.id) === String(userId)) {
+        return current;
       }
+      return null;
     } catch (error: any) {
       console.error("获取用户信息失败:", error);
       return null;
@@ -421,5 +520,6 @@ export const useUserStore = defineStore("user", () => {
     clearUserData,
     initializeStore,
     init,
+    ensureAuthenticated,
   };
 });

@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.List;
 
-@FeignClient(name = "im-group-service", path = "/api/group/internal", url = "http://im-group-service", configuration = FeignInternalAuthConfig.class)
+@FeignClient(name = "im-group-service", path = "/api/group/internal", url = "${group.service.url:http://im-group:8086}", configuration = FeignInternalAuthConfig.class)
 public interface GroupServiceFeignClient {
 
     @GetMapping("/exists/{groupId}")

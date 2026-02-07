@@ -117,6 +117,32 @@ CREATE TABLE IF NOT EXISTS messages (
   KEY idx_messages_reply (reply_to_message_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='消息表';
 
+CREATE TABLE IF NOT EXISTS messages_archive (
+  id BIGINT NOT NULL COMMENT '消息ID（雪花ID）',
+  sender_id BIGINT NOT NULL COMMENT '发送者用户ID',
+  receiver_id BIGINT NULL COMMENT '接收者用户ID（私聊）',
+  group_id BIGINT NULL COMMENT '群组ID（群聊）',
+  message_type INT NOT NULL COMMENT '消息类型编码（见 MessageType.code）',
+  content TEXT NULL COMMENT '消息内容',
+  media_url VARCHAR(500) NULL COMMENT '媒体文件URL',
+  media_size BIGINT NULL COMMENT '媒体文件大小（字节）',
+  media_name VARCHAR(255) NULL COMMENT '媒体文件名',
+  thumbnail_url VARCHAR(500) NULL COMMENT '缩略图URL',
+  duration INT NULL COMMENT '音视频时长（秒）',
+  location_info TEXT NULL COMMENT '位置信息（JSON/文本）',
+  status INT NOT NULL COMMENT '消息状态：1-已发送，2-已送达，3-已读，4-撤回，5-删除',
+  is_group_chat TINYINT NOT NULL DEFAULT 0 COMMENT '是否群聊：1-是，0-否',
+  reply_to_message_id BIGINT NULL COMMENT '回复的消息ID',
+  created_time DATETIME NOT NULL COMMENT '创建时间',
+  updated_time DATETIME NOT NULL COMMENT '更新时间',
+  archived_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '归档时间',
+  PRIMARY KEY (id),
+  KEY idx_messages_archive_sender_time (sender_id, created_time),
+  KEY idx_messages_archive_receiver_sender_status (receiver_id, sender_id, status),
+  KEY idx_messages_archive_group_time (group_id, created_time),
+  KEY idx_messages_archive_reply (reply_to_message_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='消息归档表（90天之前）';
+
 CREATE TABLE IF NOT EXISTS message_read_status (
   id BIGINT NOT NULL COMMENT '已读记录ID（雪花ID）',
   message_id BIGINT NOT NULL COMMENT '消息ID',

@@ -2,7 +2,9 @@ package com.im.feign;
 
 import feign.RequestInterceptor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Configuration;
 
+@Configuration
 public class FeignInternalAuthConfig implements RequestInterceptor {
 
     @Value("${im.internal.header:X-Internal-Secret}")

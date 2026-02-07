@@ -190,7 +190,7 @@ public class FriendServiceImpl implements FriendService {
     @Override
     @Transactional
     public FriendRequestResponseDTO removeFriend(Long userId, Long friendUserId) {
-        if (!isFriend(userId, friendUserId)) {
+        if (!hasActiveRelation(userId, friendUserId)) {
             return FriendRequestResponseDTO.error("不是好友关系");
         }
         
@@ -198,7 +198,7 @@ public class FriendServiceImpl implements FriendService {
             // 删除双向好友关系
             friendMapper.update(null, new LambdaUpdateWrapper<Friend>()
                     .set(Friend::getStatus, 2)
-                    .eq(Friend::getStatus, 1)
+                    .in(Friend::getStatus, 1, 3)
                     .and(w -> w.eq(Friend::getUserId, userId).eq(Friend::getFriendId, friendUserId)
                             .or()
                             .eq(Friend::getUserId, friendUserId).eq(Friend::getFriendId, userId)));
@@ -376,7 +376,7 @@ public class FriendServiceImpl implements FriendService {
     @Override
     @Transactional
     public FriendRequestResponseDTO updateFriendRemark(Long userId, Long friendUserId, String remark) {
-        if (!isFriend(userId, friendUserId)) {
+        if (!hasActiveRelation(userId, friendUserId)) {
             return FriendRequestResponseDTO.error("不是好友关系");
         }
         
@@ -401,5 +401,13 @@ public class FriendServiceImpl implements FriendService {
             log.error("更新好友备注失败", e);
             return FriendRequestResponseDTO.error("更新失败: " + e.getMessage());
         }
+    }
+
+    private boolean hasActiveRelation(Long userId, Long friendId) {
+        Long count = friendMapper.selectCount(new LambdaQueryWrapper<Friend>()
+                .eq(Friend::getUserId, userId)
+                .eq(Friend::getFriendId, friendId)
+                .in(Friend::getStatus, 1, 3));
+        return count != null && count > 0;
     }
 }

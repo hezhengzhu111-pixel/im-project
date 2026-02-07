@@ -6,6 +6,7 @@ import com.im.dto.GroupMemberPageDTO;
 import com.im.dto.request.*;
 import com.im.dto.request.GetGroupMembersRequest;
 import com.im.dto.request.GetUserRoleRequest;
+import com.im.exception.BusinessException;
 import com.im.service.GroupService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,13 +33,22 @@ public class GroupController {
     public ApiResponse<GroupInfoDTO> createGroup(
             @RequestAttribute("userId") Long userId,
             @Valid @RequestBody CreateGroupRequest request) {
-        GroupInfoDTO result = groupService.createGroup(
-                userId,
-                request.getName(),
-                request.getType(),
-                request.getAnnouncement()
-        );
-        return ApiResponse.success("创建群组成功", result);
+        try {
+            GroupInfoDTO result = groupService.createGroup(
+                    userId,
+                    request.getName(),
+                    request.getType(),
+                    request.getAnnouncement()
+            );
+            return ApiResponse.success("创建群组成功", result);
+        } catch (BusinessException | IllegalArgumentException e) {
+            return ApiResponse.badRequest(e.getMessage());
+        } catch (SecurityException e) {
+            return ApiResponse.forbidden(e.getMessage());
+        } catch (Exception e) {
+            log.error("创建群组失败: userId={}, name={}", userId, request == null ? null : request.getName(), e);
+            return ApiResponse.error("系统异常，请联系管理员");
+        }
     }
 
     /**
@@ -46,7 +56,7 @@ public class GroupController {
      */
     @PostMapping("/{groupId}/members")
     public ApiResponse<String> addGroupMembers(
-            @PathVariable Long groupId,
+            @PathVariable("groupId") Long groupId,
             @RequestAttribute("userId") Long userId,
             @Valid @RequestBody AddGroupMembersRequest request) {
         groupService.addGroupMembers(groupId, userId, request.getMemberIds());
@@ -58,7 +68,7 @@ public class GroupController {
      */
     @PostMapping("/{groupId}/join")
     public ApiResponse<String> joinGroup(
-            @PathVariable Long groupId,
+            @PathVariable("groupId") Long groupId,
             @RequestAttribute("userId") Long userId) {
         groupService.joinGroup(groupId, userId);
         return ApiResponse.success("加入成功", "加入成功");
@@ -69,7 +79,7 @@ public class GroupController {
      */
     @PostMapping("/{groupId}/leave")
     public ApiResponse<String> leaveGroup(
-            @PathVariable Long groupId,
+            @PathVariable("groupId") Long groupId,
             @RequestAttribute("userId") Long userId) {
         groupService.leaveGroup(groupId, userId);
         return ApiResponse.success("退出成功", "退出成功");
@@ -80,8 +90,8 @@ public class GroupController {
      */
     @DeleteMapping("/{groupId}/members/{memberId}")
     public ApiResponse<String> removeMember(
-            @PathVariable Long groupId,
-            @PathVariable Long memberId,
+            @PathVariable("groupId") Long groupId,
+            @PathVariable("memberId") Long memberId,
             @RequestAttribute("userId") Long userId) {
         groupService.removeMember(groupId, userId, memberId);
         return ApiResponse.success("移除成功", "移除成功");
@@ -92,7 +102,7 @@ public class GroupController {
      */
     @DeleteMapping("/{groupId}")
     public ApiResponse<String> dismissGroup(
-            @PathVariable Long groupId,
+            @PathVariable("groupId") Long groupId,
             @RequestAttribute("userId") Long userId) {
         groupService.dismissGroup(groupId, userId);
         return ApiResponse.success("解散成功", "解散成功");
@@ -103,7 +113,7 @@ public class GroupController {
      */
     @PutMapping("/{groupId}")
     public ApiResponse<GroupInfoDTO> updateGroupInfo(
-            @PathVariable Long groupId,
+            @PathVariable("groupId") Long groupId,
             @RequestAttribute("userId") Long userId,
             @Valid @RequestBody UpdateGroupInfoRequest request) {
         GroupInfoDTO result = groupService.updateGroupInfo(
@@ -131,7 +141,7 @@ public class GroupController {
      */
     @PutMapping("/{groupId}/admin")
     public ApiResponse<String> setAdmin(
-            @PathVariable Long groupId,
+            @PathVariable("groupId") Long groupId,
             @RequestAttribute("userId") Long userId,
             @Valid @RequestBody SetAdminRequest request) {
         groupService.setAdmin(groupId, userId, request.getUserId(), request.getIsAdmin());
@@ -143,7 +153,7 @@ public class GroupController {
      * 获取用户加入的群组列表
      */
     @GetMapping("/user/{userId}")
-    public ApiResponse<List<GroupInfoDTO>> getUserGroups(@PathVariable Long userId) {
+    public ApiResponse<List<GroupInfoDTO>> getUserGroups(@PathVariable("userId") Long userId) {
         List<GroupInfoDTO> result = groupService.getUserGroups(userId);
         return ApiResponse.success("获取成功", result);
     }
@@ -152,7 +162,7 @@ public class GroupController {
      * 获取群组详细信息
      */
     @GetMapping("/{groupId}/info")
-    public ApiResponse<GroupInfoDTO> getGroupInfo(@PathVariable Long groupId) {
+    public ApiResponse<GroupInfoDTO> getGroupInfo(@PathVariable("groupId") Long groupId) {
         GroupInfoDTO result = groupService.getGroupInfo(groupId);
         return ApiResponse.success("获取成功", result);
     }

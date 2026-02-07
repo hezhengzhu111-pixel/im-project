@@ -1,0 +1,110 @@
+name: im-server CI/CD
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+env:
+  JAVA_VERSION: "21"
+  SERVICE_NAME: "im-server"
+  DOCKER_CONTEXT: "./backend/im-server"
+  MAVEN_PROJECT_DIR: "./backend"
+  IMAGE_NAME: "${{ vars.IMAGE_REGISTRY }}/${{ vars.IMAGE_NAMESPACE }}/im-server"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Maven test (im-server)
+        run: mvn -f ${{ env.MAVEN_PROJECT_DIR }}/pom.xml -pl im-server -am test
+
+  build_and_push:
+    runs-on: ubuntu-latest
+    needs: [ test ]
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Build jar (im-server)
+        run: mvn -f ${{ env.MAVEN_PROJECT_DIR }}/pom.xml -pl im-server -am package -DskipTests
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.IMAGE_REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Compute image tags
+        id: meta
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION_TAG="${GITHUB_REF_NAME}"
+          else
+            VERSION_TAG="sha-${GITHUB_SHA::12}"
+          fi
+          echo "version_tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.DOCKER_CONTEXT }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version_tag }}
+            ${{ env.IMAGE_NAME }}:latest
+          build-args: |
+            IM_BUILD_NONCE=${{ github.run_id }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [ build_and_push ]
+    if: github.event_name != 'pull_request'
+    steps:
+      - name: Deploy via SSH
+        if: ${{ secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USER != '' && secrets.DEPLOY_KEY != '' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_WORKDIR }}
+            docker compose pull im-server
+            docker compose up -d im-server
+            docker compose ps im-server
+
+      - name: Deploy (manual)
+        if: ${{ secrets.DEPLOY_HOST == '' || secrets.DEPLOY_USER == '' || secrets.DEPLOY_KEY == '' }}
+        run: |
+          echo "Deploy secrets are not configured; skipping SSH deploy."
+          echo "Manual deploy: docker compose pull im-server && docker compose up -d im-server"

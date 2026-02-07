@@ -3,6 +3,9 @@ package com.im.dto;
 import com.im.enums.MessageType;
 
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -21,20 +24,24 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class MessageDTO {
     // 消息的唯一标识符
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long id;
     // 发送者的唯一标识符
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long senderId;
     // 发送者的名称
     private String senderName;
     // 发送者的头像URL
     private String senderAvatar;
     // 接收者的唯一标识符
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long receiverId;
     // 接收者的名称
     private String receiverName;
     // 接收者的头像URL
     private String receiverAvatar;
     // 如果是群消息，则为群的唯一标识符
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long groupId;
     // 消息的类型，如文本、图片等
     private MessageType messageType;
@@ -57,11 +64,20 @@ public class MessageDTO {
     // 标识是否为群消息
     private Boolean isGroupMessage;
     // 如果消息是对另一条消息的回复，则为被回复消息的ID
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long replyToMessageId;
     // 消息创建的时间
     private LocalDateTime createdTime;
+    @JsonProperty("created_at")
+    private LocalDateTime createdAt;
     // 消息更新的时间
     private LocalDateTime updatedTime;
+    @JsonProperty("updated_at")
+    private LocalDateTime updatedAt;
+    @JsonProperty("read_status")
+    private Integer readStatus;
+    @JsonProperty("read_at")
+    private LocalDateTime readAt;
     // 标识是否为群聊消息
     private boolean isGroup;
     // 如果是群消息，包含群成员的信息

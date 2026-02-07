@@ -2,6 +2,7 @@ import { userService } from "./user";
 import { messageService } from "./message";
 import { fileService } from "./file";
 import { heartbeatService } from "./heartbeat";
+import { authService } from "./auth";
 
 export * from "./user";
 export * from "./message";
@@ -10,6 +11,7 @@ export * from "./group";
 export * from "./file";
 export * from "./im";
 export * from "./heartbeat";
+export * from "./auth";
 
 export const userApi = {
   loginWithPassword: (username: string, password: string) => 
@@ -18,8 +20,6 @@ export const userApi = {
     userService.register(data),
   updateUserInfo: (data: any) => 
     userService.updateProfile(data),
-  getUserInfo: (userId: string) => 
-    userService.getUserInfo(userId),
   searchUsers: (keyword: string) => 
     userService.search(keyword),
   logout: () => 
@@ -27,24 +27,22 @@ export const userApi = {
 };
 
 export const messageApi = {
+  sendPrivateMessage: (data: any) => messageService.sendPrivate(data),
+  sendGroupMessage: (data: any) => messageService.sendGroup(data),
   sendPrivate: (data: any) => 
     messageService.sendPrivate(data),
   sendGroup: (data: any) => 
     messageService.sendGroup(data),
-  getHistory: (sessionId: string, params: any) => 
-    messageService.getHistory(sessionId, params),
-  markRead: (sessionId: string, messageIds?: string[]) => 
-    messageService.markRead(sessionId, messageIds),
-  getOfflineMessages: () => 
-    messageService.getOfflineMessages(),
+  getPrivateHistory: (friendId: string, params: any) =>
+    messageService.getPrivateHistory(friendId, params),
+  getGroupHistory: (groupId: string, params: any) =>
+    messageService.getGroupHistory(groupId, params),
+  markAsRead: (conversationId: string) => messageService.markRead(conversationId),
+  markRead: (conversationId: string) => messageService.markRead(conversationId),
+  recallMessage: (messageId: string) => messageService.recallMessage(messageId),
+  deleteMessage: (messageId: string) => messageService.deleteMessage(messageId),
   getConversations: () => 
     messageService.getConversations(),
-  searchMessages: (keyword: string, sessionId?: string) => 
-    messageService.searchMessages(keyword, sessionId),
-  deleteMessage: (messageId: string) => 
-    messageService.deleteMessage(messageId),
-  clearMessages: (sessionId: string) => 
-    messageService.clearMessages(sessionId),
 };
 
 export const fileApi = {
@@ -55,4 +53,9 @@ export const fileApi = {
 export const imApi = {
   heartbeat: (userIds: string[]) => 
     userService.checkOnlineStatus(userIds),
+};
+
+export const authApi = {
+  parseAccessToken: (token: string, allowExpired: boolean = true) =>
+    authService.parseAccessToken(token, allowExpired),
 };

@@ -120,3 +120,15 @@ export interface HandleFriendRequestRequest {
   action: "ACCEPT" | "REJECT";
   remark?: string;
 }
+
+export interface TokenParseResultDTO {
+  valid: boolean;
+  expired: boolean;
+  error?: string;
+  userId?: number;
+  username?: string;
+  issuedAtEpochMs?: number;
+  expiresAtEpochMs?: number;
+  jti?: string;
+  tokenType?: string;
+}

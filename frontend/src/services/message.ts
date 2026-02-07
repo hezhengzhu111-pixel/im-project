@@ -3,13 +3,17 @@ import type { Message, SendPrivateMessageRequest, SendGroupMessageRequest, Messa
 import type { ChatSession } from "@/types"; // Need ChatSession type, likely in types/chat.ts or types/index.ts
 
 export const messageService = {
-  sendPrivate: (data: SendPrivateMessageRequest) => http.post<boolean>("/v1/messages/send/private", data),
-  sendGroup: (data: SendGroupMessageRequest) => http.post<boolean>("/v1/messages/send/group", data),
-  getHistory: (sessionId: string, params: any) => http.get<Message[]>(`/v1/messages/private/${params.friendId || sessionId}`, { params }), 
-  markRead: (sessionId: string, messageIds?: string[]) => http.post(`/v1/messages/read/${sessionId}`),
-  getOfflineMessages: () => http.get<Message[]>("/v1/messages/offline"),
-  getConversations: () => http.get<any[]>("/v1/messages/conversations"),
-  searchMessages: (keyword: string, sessionId?: string) => http.get<MessageSearchResult[]>("/v1/messages/search", { params: { keyword, sessionId } }),
-  deleteMessage: (messageId: string) => http.delete<void>(`/v1/messages/${messageId}`),
-  clearMessages: (sessionId: string) => http.delete<void>(`/v1/messages/clear/${sessionId}`),
+  sendPrivate: (data: SendPrivateMessageRequest) => http.post<Message>("/message/send/private", data),
+  sendGroup: (data: SendGroupMessageRequest) => http.post<Message>("/message/send/group", data),
+  getPrivateHistory: (friendId: string, params: any) => http.get<Message[]>(`/message/private/${friendId}`, { params }),
+  getPrivateHistoryCursor: (friendId: string, params: any) =>
+    http.get<Message[]>(`/message/private/${friendId}/cursor`, { params }),
+  getGroupHistory: (groupId: string, params: any) => http.get<Message[]>(`/message/group/${groupId}`, { params }),
+  getGroupHistoryCursor: (groupId: string, params: any) =>
+    http.get<Message[]>(`/message/group/${groupId}/cursor`, { params }),
+  markRead: (conversationId: string) => http.post(`/message/read/${conversationId}`),
+  recallMessage: (messageId: string) => http.post<Message>(`/message/recall/${messageId}`),
+  deleteMessage: (messageId: string) => http.post<Message>(`/message/delete/${messageId}`),
+  getConversations: () => http.get<any[]>("/message/conversations"),
+  getConfig: () => http.get<any>("/message/config"),
 };
