@@ -14,45 +14,37 @@ export * from "./heartbeat";
 export * from "./auth";
 
 export const userApi = {
-  loginWithPassword: (username: string, password: string) => 
+  loginWithPassword: (username: string, password: string) =>
     userService.login({ username, password }),
-  register: (data: any) => 
-    userService.register(data),
-  updateUserInfo: (data: any) => 
-    userService.updateProfile(data),
-  searchUsers: (keyword: string) => 
-    userService.search(keyword),
-  logout: () => 
-    userService.logout(),
+  register: (data: any) => userService.register(data),
+  updateUserInfo: (data: any) => userService.updateProfile(data),
+  searchUsers: (keyword: string) => userService.search(keyword),
+  logout: () => userService.logout(),
 };
 
 export const messageApi = {
   sendPrivateMessage: (data: any) => messageService.sendPrivate(data),
   sendGroupMessage: (data: any) => messageService.sendGroup(data),
-  sendPrivate: (data: any) => 
-    messageService.sendPrivate(data),
-  sendGroup: (data: any) => 
-    messageService.sendGroup(data),
+  sendPrivate: (data: any) => messageService.sendPrivate(data),
+  sendGroup: (data: any) => messageService.sendGroup(data),
   getPrivateHistory: (friendId: string, params: any) =>
     messageService.getPrivateHistory(friendId, params),
   getGroupHistory: (groupId: string, params: any) =>
     messageService.getGroupHistory(groupId, params),
-  markAsRead: (conversationId: string) => messageService.markRead(conversationId),
+  markAsRead: (conversationId: string) =>
+    messageService.markRead(conversationId),
   markRead: (conversationId: string) => messageService.markRead(conversationId),
   recallMessage: (messageId: string) => messageService.recallMessage(messageId),
   deleteMessage: (messageId: string) => messageService.deleteMessage(messageId),
-  getConversations: () => 
-    messageService.getConversations(),
+  getConversations: () => messageService.getConversations(),
 };
 
 export const fileApi = {
-  upload: (file: File) => 
-    fileService.upload(file),
+  upload: (file: File) => fileService.upload(file),
 };
 
 export const imApi = {
-  heartbeat: (userIds: string[]) => 
-    userService.checkOnlineStatus(userIds),
+  heartbeat: (userIds: string[]) => userService.checkOnlineStatus(userIds),
 };
 
 export const authApi = {

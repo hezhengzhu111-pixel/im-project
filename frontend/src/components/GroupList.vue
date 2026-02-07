@@ -336,11 +336,15 @@ const handleGroupAction = ({
       emit("edit-group", group.id);
       break;
     case "leave":
-      ElMessageBox.confirm(`确定要退出群组 "${group.groupName}" 吗？`, "退出群组", {
-        confirmButtonText: "确定",
-        cancelButtonText: "取消",
-        type: "warning",
-      })
+      ElMessageBox.confirm(
+        `确定要退出群组 "${group.groupName}" 吗？`,
+        "退出群组",
+        {
+          confirmButtonText: "确定",
+          cancelButtonText: "取消",
+          type: "warning",
+        },
+      )
         .then(() => {
           emit("leave", group.id);
         })

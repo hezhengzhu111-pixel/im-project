@@ -34,7 +34,10 @@ export function getWebSocketConfig(): WebSocketConfig {
     return `${scheme}://${window.location.host}`;
   })();
   const config: WebSocketConfig = {
-    baseUrl: import.meta.env.VITE_WS_BASE_URL || DEFAULT_CONFIG.baseUrl || defaultBaseUrl,
+    baseUrl:
+      import.meta.env.VITE_WS_BASE_URL ||
+      DEFAULT_CONFIG.baseUrl ||
+      defaultBaseUrl,
     reconnectAttempts: DEFAULT_CONFIG.reconnectAttempts,
     reconnectInterval: DEFAULT_CONFIG.reconnectInterval,
     heartbeatInterval: DEFAULT_CONFIG.heartbeatInterval,

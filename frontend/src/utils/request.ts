@@ -81,7 +81,10 @@ request.interceptors.response.use(
     const responseData = response.data;
 
     // 处理UserAuthResponse格式（登录接口）
-    if ("success" in responseData && typeof responseData.success === 'boolean') {
+    if (
+      "success" in responseData &&
+      typeof responseData.success === "boolean"
+    ) {
       if (responseData.success) {
         return responseData;
       } else {
@@ -97,17 +100,21 @@ request.interceptors.response.use(
     if (code === 200) {
       return responseData;
     }
-    
+
     // 如果响应数据直接是数组或对象（没有包装 code/message/data），且 HTTP 状态码为 200，则视为成功
     // 这是为了兼容 getUserGroups 接口直接返回 List<GroupInfoDTO> 的情况
-    if (code === undefined && message === undefined && response.status === 200) {
-       return {
-           code: 200,
-           message: "success",
-           data: responseData,
-           success: true,
-           timestamp: Date.now()
-       } as any; // 强转以适配拦截器返回类型预期
+    if (
+      code === undefined &&
+      message === undefined &&
+      response.status === 200
+    ) {
+      return {
+        code: 200,
+        message: "success",
+        data: responseData,
+        success: true,
+        timestamp: Date.now(),
+      } as any; // 强转以适配拦截器返回类型预期
     }
 
     // 业务错误
