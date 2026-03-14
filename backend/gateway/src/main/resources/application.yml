@@ -30,7 +30,7 @@ spring:
           predicates:
             - Path=/auth/**,/api/auth/**
           filters:
-            - RewritePath=/(?<prefix>api/)?auth(?<segment>/.*), /$\{segment}
+            - RewritePath=/(?<prefix>api/)?auth(?<segment>/.*), $\{segment}
         - id: user-service
           uri: http://im-user:8085
           predicates:

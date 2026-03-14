@@ -42,7 +42,7 @@ public class WebSocketSessionCleanupTask {
                     log.debug("关闭超时会话失败: userId={}", userId, e);
                 }
             }
-            imService.removeSessionMapping(userId);
+            imService.userOffline(userId);
         }
     }
 }

@@ -100,6 +100,27 @@ public interface MessageMapper extends BaseMapper<Message> {
                                                  @Param("userId") Long userId,
                                                  @Param("lastReadTime") LocalDateTime lastReadTime);
 
+    @Select({
+            "<script>",
+            "SELECT m.group_id AS groupId, COUNT(1) AS cnt",
+            "FROM messages m",
+            "LEFT JOIN group_read_cursor grc",
+            "  ON grc.group_id = m.group_id",
+            " AND grc.user_id = #{userId}",
+            "WHERE m.group_id IN",
+            "  <foreach collection='groupIds' item='gid' open='(' separator=',' close=')'>",
+            "    #{gid}",
+            "  </foreach>",
+            "  AND m.is_group_chat = 1",
+            "  AND m.sender_id &lt;&gt; #{userId}",
+            "  AND m.status &lt;&gt; 5",
+            "  AND (grc.last_read_at IS NULL OR m.created_time &gt; grc.last_read_at)",
+            "GROUP BY m.group_id",
+            "</script>"
+    })
+    List<CountPair> countUnreadGroupMessagesByUserCursors(@Param("groupIds") List<Long> groupIds,
+                                                           @Param("userId") Long userId);
+
     @Select("""
             SELECT COUNT(1) FROM messages
             WHERE sender_id = #{senderId}

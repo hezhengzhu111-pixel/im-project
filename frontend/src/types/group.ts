@@ -3,11 +3,20 @@
 // 群组实体
 export interface Group {
   id: string;
+  name?: string;
   groupName: string;
   description?: string;
+  announcement?: string;
+  type?: string | number;
   avatar?: string;
   ownerId: string;
   memberCount: number;
+  maxMembers?: number;
+  isPublic?: boolean;
+  unreadCount?: number;
+  lastMessageTime?: string;
+  lastActivityAt?: string;
+  members?: Array<{ userId: string | number; role?: string | number }>;
   createTime: string;
   status: GroupStatus;
 }
@@ -30,9 +39,10 @@ export type GroupRole = "OWNER" | "ADMIN" | "MEMBER";
 
 // 创建群组请求
 export interface CreateGroupRequest {
-  groupName: string;
-  description?: string;
-  memberIds: string[];
+  name: string;
+  type?: number;
+  announcement?: string;
+  memberIds?: string[];
 }
 
 // 更新群组请求

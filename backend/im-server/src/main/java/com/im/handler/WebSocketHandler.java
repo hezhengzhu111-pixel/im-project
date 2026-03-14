@@ -161,7 +161,6 @@ public class WebSocketHandler implements org.springframework.web.socket.WebSocke
         if (userId != null) {
             UserSession userSession = imService.getSessionUserMap().get(userId);
             if (userSession != null && userSession.getWebSocketSession() == session) {
-                imService.removeSessionMapping(userId);
                 imService.userOffline(userId);
                 log.debug("WebSocket连接已清理: userId={}", userId);
             }

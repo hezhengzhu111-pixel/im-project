@@ -3,6 +3,7 @@ package com.im.controller;
 import com.im.dto.ApiResponse;
 import com.im.dto.UserAuthResponseDTO;
 import com.im.dto.UserDTO;
+import com.im.feign.AuthServiceFeignClient;
 import com.im.dto.request.LoginRequest;
 import com.im.service.ImService;
 import com.im.service.UserService;
@@ -31,6 +32,8 @@ public class UserController {
     private final UserService userService;
 
     private final ImService imService;
+
+    private final AuthServiceFeignClient authServiceFeignClient;
 
     /**
      * 用户注册（开放注册）
@@ -83,11 +86,18 @@ public class UserController {
     @PostMapping("/offline")
     @Operation(summary = "用户下线", description = "用户主动下线")
     public ApiResponse<String> userOffline(@RequestAttribute("userId") Long userId) {
+        return userLogout(userId);
+    }
+
+    @PostMapping("/logout")
+    @Operation(summary = "用户登出", description = "撤销用户令牌并下线")
+    public ApiResponse<String> userLogout(@RequestAttribute("userId") Long userId) {
         try {
+            authServiceFeignClient.revokeUserTokens(userId);
             imService.userOffline(userId.toString());
-            return ApiResponse.success("用户下线成功", "用户下线成功");
+            return ApiResponse.success("用户登出成功", "用户登出成功");
         } catch (Exception e) {
-            log.error("用户下线失败", e);
+            log.error("用户登出失败", e);
             return ApiResponse.error(e.getMessage());
         }
     }
@@ -111,9 +121,18 @@ public class UserController {
      * 心跳检测
      */
     @PostMapping("/heartbeat")
-    @Operation(summary = "心跳检测", description = "批量检测用户在线状态")
-    public ApiResponse<Map<String, Boolean>> heartbeat(@RequestBody @NotEmpty(message = "用户ID列表不能为空") List<String> userIds) {
+    @Operation(summary = "心跳检测", description = "刷新当前用户心跳并可选查询在线状态")
+    public ApiResponse<Map<String, Boolean>> heartbeat(
+            @RequestAttribute("userId") Long userId,
+            @RequestBody(required = false) List<String> userIds) {
         try {
+            boolean touched = imService.touchHeartbeat(String.valueOf(userId));
+            if (!touched) {
+                return ApiResponse.badRequest("当前用户不在线或会话已失效");
+            }
+            if (userIds == null || userIds.isEmpty()) {
+                return ApiResponse.success("心跳刷新成功", Map.of(String.valueOf(userId), true));
+            }
             Map<String, Boolean> onlineStatus = imService.checkUsersOnlineStatus(userIds);
             return ApiResponse.success("心跳检测成功", onlineStatus);
         } catch (Exception e) {

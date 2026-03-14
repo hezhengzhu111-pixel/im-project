@@ -1,12 +1,10 @@
 package com.im.controller;
 
-import com.im.constants.ImConstants;
 import com.im.dto.ApiResponse;
 import com.im.dto.MessageDTO;
 import com.im.entity.UserSession;
 import com.im.enums.UserStatus;
 import com.im.service.IImService;
-// DatabaseService依赖已移除
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
@@ -84,28 +82,29 @@ public class ImController {
         return ApiResponse.success("用户上线成功");
     }
 
-    /**
-     * 心跳检测和获取在线用户状态
-     * @param userIds 用户ID列表
-     * @return 用户在线状态信息
-     */
-    @PostMapping("/heartbeat")
-    @Operation(summary = "心跳检测", description = "批量检测用户在线状态")
-    public ApiResponse<Map<String, Boolean>> heartbeat(@RequestBody List<String> userIds) {
-        try {
-            if (userIds == null || userIds.isEmpty()) {
-                log.warn("心跳检测失败: 用户ID列表为空");
-                return ApiResponse.error("用户ID列表为空");
-            }
-            
-            // 批量检查用户在线状态并更新心跳
-            Map<String, Boolean> userStatusMap = imService.checkUsersOnlineStatus(userIds);
-
-            return ApiResponse.success("心跳检测成功", userStatusMap);
-            
-        } catch (Exception e) {
-            log.error("心跳检测异常", e);
-            return ApiResponse.error("心跳检测失败");
+    @PostMapping("/heartbeat/{userId}")
+    @Operation(summary = "刷新用户心跳", description = "刷新指定用户会话心跳")
+    public ApiResponse<Boolean> touchHeartbeat(@PathVariable("userId") String userId) {
+        boolean touched = imService.touchUserHeartbeat(userId);
+        if (!touched) {
+            return ApiResponse.badRequest("用户不在线或会话已失效");
         }
+        return ApiResponse.success("心跳刷新成功", true);
+    }
+
+    @PostMapping("/heartbeat")
+    @Operation(summary = "批量检查在线状态", description = "批量检测用户在线状态")
+    public ApiResponse<Map<String, Boolean>> heartbeat(@RequestBody List<String> userIds) {
+        return onlineStatus(userIds);
+    }
+
+    @PostMapping("/online-status")
+    @Operation(summary = "在线状态查询", description = "批量查询用户在线状态")
+    public ApiResponse<Map<String, Boolean>> onlineStatus(@RequestBody List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return ApiResponse.error("用户ID列表为空");
+        }
+        Map<String, Boolean> userStatusMap = imService.checkUsersOnlineStatus(userIds);
+        return ApiResponse.success("在线状态查询成功", userStatusMap);
     }
 }

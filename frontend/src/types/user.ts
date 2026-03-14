@@ -1,5 +1,3 @@
-import type { OnlineStatus } from "./index";
-
 // 用户DTO - 对应后端UserDTO
 export interface UserDTO {
   id?: string;
@@ -10,6 +8,11 @@ export interface UserDTO {
   email?: string;
   phone?: string;
   status?: number;
+  gender?: string;
+  birthday?: string;
+  signature?: string;
+  location?: string;
+  lastLoginTime?: string;
   createTime?: string;
   updateTime?: string;
 }
@@ -20,7 +23,17 @@ export interface UserAuthResponse {
   message: string;
   user?: UserDTO;
   token?: string;
+  refreshToken?: string;
+  expiresInMs?: number;
+  refreshExpiresInMs?: number;
   imToken?: string;
+}
+
+export interface TokenPairDTO {
+  accessToken: string;
+  refreshToken: string;
+  expiresInMs?: number;
+  refreshExpiresInMs?: number;
 }
 
 // 注册请求
@@ -54,8 +67,11 @@ export interface UserOnlineStatus {
 
 // 扩展的用户接口
 export interface User extends UserDTO {
+  userId?: string;
   birthday?: string;
   signature?: string;
+  location?: string;
+  lastSeen?: string;
 }
 
 // 修改密码请求
@@ -71,8 +87,17 @@ export interface UserBrief {
   username: string;
   nickname: string;
   avatar?: string;
-  onlineStatus: OnlineStatus;
+  onlineStatus:
+    | "ONLINE"
+    | "OFFLINE"
+    | "BUSY"
+    | "AWAY"
+    | "online"
+    | "offline"
+    | "busy"
+    | "away";
   lastSeen?: string;
+  signature?: string;
 }
 
 // 用户搜索结果
@@ -90,6 +115,11 @@ export interface Friendship {
   id: string;
   userId: string;
   friendId: string;
+  username?: string;
+  nickname?: string;
+  avatar?: string;
+  signature?: string;
+  lastSeen?: string;
   remark?: string;
   groupName?: string;
   createTime: string;
@@ -102,10 +132,14 @@ export interface FriendRequest {
   fromUserId: string;
   toUserId: string;
   message: string;
+  reason?: string;
   status: "PENDING" | "ACCEPTED" | "REJECTED";
   createTime: string;
   updateTime: string;
   fromUser: UserBrief;
+  avatar?: string;
+  nickname?: string;
+  username?: string;
 }
 
 // 添加好友请求

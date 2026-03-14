@@ -11,5 +11,7 @@ public interface StorageService {
     FileInfoResponse getFileInfo(String category, String date, String filename);
 
     StorageObject getObject(String category, String date, String filename) throws Exception;
+
+    boolean deleteObject(String category, String date, String filename) throws Exception;
 }
 

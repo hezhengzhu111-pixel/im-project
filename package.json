@@ -3,9 +3,8 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "db:reset": "python scripts/db_reset.py",
-    "test:api": "python test_im_complete.py",
-    "pretest": "npm run db:reset",
-    "test": "npm run test:api"
+    "deploy:middleware": "python scripts/deploy_middleware.py --clean",
+    "deploy:services": "python scripts/deploy_services.py",
+    "deploy:services:initdb": "python scripts/deploy_services.py --init-db"
   }
 }

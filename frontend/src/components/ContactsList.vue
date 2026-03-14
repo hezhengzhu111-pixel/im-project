@@ -143,7 +143,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { ElMessage } from "element-plus";
 import { Plus, Setting, Search } from "@element-plus/icons-vue";
 import { friendService } from "@/services/friend";
@@ -204,7 +204,7 @@ const loadPendingRequests = async () => {
     if (response.code === 200) {
       const requests = (response.data as any).content || response.data || [];
       pendingRequestsCount.value = requests.filter(
-        (req) => req.status === "PENDING",
+        (req: any) => req.status === "PENDING",
       ).length;
     }
   } catch (error) {
@@ -225,8 +225,7 @@ const handleOnlineStatusChange = (event: CustomEvent) => {
     (friend) => friend.userId === userId,
   );
   if (friendIndex !== -1) {
-    // 强制重新渲染以更新在线状态显示
-    friends.value = [...friends.value];
+    pendingRequestsCount.value = pendingRequestsCount.value + 0;
   }
 };
 

@@ -176,8 +176,8 @@ public class FriendServiceImpl implements FriendService {
             request.setRejectReason(reason);
             request.setHandleTime(LocalDateTime.now());
             friendRequestMapper.updateById(request);
-            
-            // TODO: 触发事件 OnFriendApplicationRejected
+
+            sendSystemNotice(request.getApplicantId(), "您的好友申请已被拒绝::CMD:REFRESH_FRIEND_REQUESTS");
             log.info("用户{}拒绝了用户{}的好友申请", currentUserId, request.getApplicantId());
             
             return FriendRequestResponseDTO.success("已拒绝好友申请", request.getId());
@@ -202,8 +202,8 @@ public class FriendServiceImpl implements FriendService {
                     .and(w -> w.eq(Friend::getUserId, userId).eq(Friend::getFriendId, friendUserId)
                             .or()
                             .eq(Friend::getUserId, friendUserId).eq(Friend::getFriendId, userId)));
-            
-            // TODO: 触发事件 OnFriendDeleted
+
+            sendSystemNotice(friendUserId, "对方已解除好友关系::CMD:REFRESH_FRIEND_LIST");
             log.info("用户{}删除了好友{}", userId, friendUserId);
             
             return FriendRequestResponseDTO.success("已删除好友", null);
@@ -238,8 +238,8 @@ public class FriendServiceImpl implements FriendService {
             } else {
                 friendMapper.updateById(friend);
             }
-            
-            // TODO: 触发事件 OnBlackAdded
+
+            sendSystemNotice(targetUserId, "对方已将您加入黑名单::CMD:REFRESH_FRIEND_LIST");
             log.info("用户{}拉黑了用户{}", userId, targetUserId);
             
             return FriendRequestResponseDTO.success("已拉黑用户", null);
@@ -409,5 +409,18 @@ public class FriendServiceImpl implements FriendService {
                 .eq(Friend::getFriendId, friendId)
                 .in(Friend::getStatus, 1, 3));
         return count != null && count > 0;
+    }
+
+    private void sendSystemNotice(Long receiverId, String content) {
+        try {
+            MessageDTO messageDTO = new MessageDTO();
+            messageDTO.setMessageType(MessageType.SYSTEM);
+            messageDTO.setReceiverId(receiverId);
+            messageDTO.setContent(content);
+            messageDTO.setCreatedTime(LocalDateTime.now());
+            imService.sendMessage(messageDTO);
+        } catch (Exception e) {
+            log.warn("发送系统通知失败: receiverId={}, content={}", receiverId, content, e);
+        }
     }
 }
