@@ -65,6 +65,8 @@ export const APP_CONFIG = {
 export const STORAGE_CONFIG = {
   // Token存储键
   TOKEN_KEY: "im_token",
+  // 刷新Token存储键
+  REFRESH_TOKEN_KEY: "im_refresh_token",
   // 用户信息存储键
   USER_INFO_KEY: "im_user_info",
   // WebSocket缓存键

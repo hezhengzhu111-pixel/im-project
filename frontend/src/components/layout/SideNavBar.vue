@@ -12,8 +12,8 @@
         title="聊天"
       >
         <el-icon :size="24"><ChatDotRound /></el-icon>
-        <div v-if="unreadCount > 0" class="badge">
-          {{ unreadCount > 99 ? "99+" : unreadCount }}
+        <div v-if="(unreadCount || 0) > 0" class="badge">
+          {{ (unreadCount || 0) > 99 ? "99+" : unreadCount || 0 }}
         </div>
       </div>
 
@@ -24,7 +24,7 @@
         title="通讯录"
       >
         <el-icon :size="24"><User /></el-icon>
-        <div v-if="pendingRequests > 0" class="badge dot"></div>
+        <div v-if="(pendingRequests || 0) > 0" class="badge dot"></div>
       </div>
 
       <div

@@ -18,13 +18,11 @@ public final class SecurityPaths {
         if (path.startsWith("/api/user/login") || path.startsWith("/api/user/register") || path.startsWith("/api/user/check-username")) {
             return true;
         }
-        if (path.startsWith("/api/auth/refresh") || path.startsWith("/api/auth/parse")) {
+        if (path.startsWith("/api/auth/refresh") || path.startsWith("/api/auth/parse")
+                || path.startsWith("/auth/refresh") || path.startsWith("/auth/parse")) {
             return true;
         }
-        if (path.startsWith("/websocket")) {
-            return true;
-        }
-        return path.startsWith("/api/im");
+        return path.startsWith("/websocket");
     }
 
     public static boolean isGatewayInternalPath(String path) {
@@ -55,9 +53,6 @@ public final class SecurityPaths {
             return true;
         }
         if (requestURI.startsWith("/api/user/internal") || requestURI.startsWith("/api/group/internal")) {
-            return true;
-        }
-        if (requestURI.startsWith("/api/im")) {
             return true;
         }
         return requestURI.startsWith("/static")

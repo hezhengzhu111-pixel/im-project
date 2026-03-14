@@ -22,7 +22,24 @@ export class HeartbeatService {
 
   constructor() {
     this.loadFriends();
+    if (typeof window !== "undefined") {
+      window.addEventListener(
+        "onlineStatusChanged",
+        this.handleOnlineStatusChanged as EventListener,
+      );
+    }
   }
+
+  private handleOnlineStatusChanged = (event: Event) => {
+    const customEvent = event as CustomEvent<{ userId: string; isOnline: boolean }>;
+    const userId = customEvent?.detail?.userId;
+    if (!userId) {
+      return;
+    }
+    this.friendsOnlineStatus.value[userId] = customEvent.detail.isOnline
+      ? "ONLINE"
+      : "OFFLINE";
+  };
 
   // 获取好友在线状态
   getFriendOnlineStatus(friendId: string): string {
@@ -144,10 +161,7 @@ export class HeartbeatService {
     }
 
     try {
-      // 使用当前用户ID检查在线状态
-      const response = await userService.checkOnlineStatus([
-        userStore.userInfo.id,
-      ]);
+      const response = await userService.heartbeat([userStore.userInfo.id]);
 
       if (response.code === 200 && response.data) {
         const userStatus = (
@@ -187,9 +201,9 @@ export class HeartbeatService {
   // 手动检查指定好友的在线状态
   async checkSpecificFriend(friendId: string): Promise<string> {
     try {
-      const response = await userApi.checkUsersOnlineStatus([friendId]);
+      const response = await userService.checkOnlineStatus([friendId]);
 
-      if (response.success && response.data) {
+      if (response.code === 200 && response.data) {
         const friendStatus = (
           response.data as unknown as Record<string, boolean>
         )?.[friendId]

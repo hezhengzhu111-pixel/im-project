@@ -1,11 +1,13 @@
 package com.im.controller;
 
 import com.im.dto.ApiResponse;
+import com.im.dto.request.DeleteFileRequest;
 import com.im.dto.request.DownloadFileRequest;
 import com.im.dto.request.GetFileInfoRequest;
 import com.im.dto.response.FileInfoResponse;
 import com.im.dto.response.FileUploadResponse;
-import com.im.service.CosStorageService;
+import com.im.service.StorageObject;
+import com.im.service.StorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,8 +15,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.qcloud.cos.model.COSObject;
-import com.qcloud.cos.model.ObjectMetadata;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import java.io.InputStream;
@@ -30,7 +30,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class FileController {
 
-    private final CosStorageService cosStorageService;
+    private final StorageService storageService;
     
     @Value("${app.file.max-size:10485760}") // 10MB
     private long maxFileSize;
@@ -74,7 +74,7 @@ public class FileController {
             validateFile(file, ALLOWED_IMAGE_TYPES, "图片");
             
             // 保存文件
-            FileUploadResponse fileInfo = cosStorageService.upload(file, "images", userId);
+            FileUploadResponse fileInfo = storageService.upload(file, "images", userId);
             
             return ApiResponse.success("图片上传成功", fileInfo);
         } catch (Exception e) {
@@ -96,7 +96,7 @@ public class FileController {
             validateFile(file, ALLOWED_FILE_TYPES, "文件");
             
             // 保存文件
-            FileUploadResponse fileInfo = cosStorageService.upload(file, "files", userId);
+            FileUploadResponse fileInfo = storageService.upload(file, "files", userId);
             
             return ApiResponse.success("文件上传成功", fileInfo);
         } catch (Exception e) {
@@ -118,7 +118,7 @@ public class FileController {
             validateFile(file, ALLOWED_AUDIO_TYPES, "音频");
             
             // 保存文件
-            FileUploadResponse fileInfo = cosStorageService.upload(file, "audios", userId);
+            FileUploadResponse fileInfo = storageService.upload(file, "audios", userId);
             
             return ApiResponse.success("音频上传成功", fileInfo);
         } catch (Exception e) {
@@ -140,7 +140,7 @@ public class FileController {
             validateFile(file, ALLOWED_VIDEO_TYPES, "视频");
             
             // 保存文件
-            FileUploadResponse fileInfo = cosStorageService.upload(file, "videos", userId);
+            FileUploadResponse fileInfo = storageService.upload(file, "videos", userId);
             
             return ApiResponse.success("视频上传成功", fileInfo);
         } catch (Exception e) {
@@ -167,7 +167,7 @@ public class FileController {
             }
             
             // 保存文件
-            FileUploadResponse fileInfo = cosStorageService.upload(file, "avatars", userId);
+            FileUploadResponse fileInfo = storageService.upload(file, "avatars", userId);
             
             return ApiResponse.success("头像上传成功", fileInfo);
         } catch (Exception e) {
@@ -185,24 +185,21 @@ public class FileController {
             HttpServletResponse response) {
         
         try {
-            COSObject cosObject = cosStorageService.getObject(request.getCategory(), request.getDate(), request.getFilename());
+            StorageObject cosObject = storageService.getObject(request.getCategory(), request.getDate(), request.getFilename());
             if (cosObject == null) {
                 response.setStatus(HttpServletResponse.SC_NOT_FOUND);
                 return;
             }
 
-            ObjectMetadata metadata = cosObject.getObjectMetadata();
-            if (metadata != null) {
-                if (StringUtils.hasText(metadata.getContentType())) {
-                    response.setContentType(metadata.getContentType());
-                }
-                if (metadata.getContentLength() > 0) {
-                    response.setContentLengthLong(metadata.getContentLength());
-                }
+            if (StringUtils.hasText(cosObject.getContentType())) {
+                response.setContentType(cosObject.getContentType());
+            }
+            if (cosObject.getContentLength() != null && cosObject.getContentLength() > 0) {
+                response.setContentLengthLong(cosObject.getContentLength());
             }
             response.setHeader("Content-Disposition", "inline; filename=\"" + request.getFilename() + "\"");
 
-            try (InputStream is = cosObject.getObjectContent();
+            try (InputStream is = cosObject.getInputStream();
                  OutputStream os = response.getOutputStream()) {
                 byte[] buffer = new byte[8192];
                 int bytesRead;
@@ -228,11 +225,25 @@ public class FileController {
             @Valid @RequestBody GetFileInfoRequest request) {
         
         try {
-            FileInfoResponse fileInfo = cosStorageService.getFileInfo(request.getCategory(), request.getDate(), request.getFilename());
+            FileInfoResponse fileInfo = storageService.getFileInfo(request.getCategory(), request.getDate(), request.getFilename());
             
             return ApiResponse.success("获取文件信息成功", fileInfo);
         } catch (Exception e) {
             log.error("获取文件信息失败: {}/{}/{}", request.getCategory(), request.getDate(), request.getFilename(), e);
+            return ApiResponse.error(e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/delete")
+    public ApiResponse<Boolean> deleteFile(@Valid DeleteFileRequest request) {
+        try {
+            boolean deleted = storageService.deleteObject(request.getCategory(), request.getDate(), request.getFilename());
+            if (!deleted) {
+                return ApiResponse.notFound("文件不存在");
+            }
+            return ApiResponse.success("文件删除成功", true);
+        } catch (Exception e) {
+            log.error("删除文件失败: {}/{}/{}", request.getCategory(), request.getDate(), request.getFilename(), e);
             return ApiResponse.error(e.getMessage());
         }
     }

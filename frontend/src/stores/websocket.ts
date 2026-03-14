@@ -11,6 +11,7 @@ import type { Message, OnlineStatus, WebSocketMessage } from "@/types";
 import { ElMessage, ElNotification } from "element-plus";
 import { useChatStore } from "./chat";
 import { useUserStore } from "./user";
+import { normalizeMessageBase } from "@/utils/messageNormalize";
 
 export const useWebSocketStore = defineStore("websocket", () => {
   // 状态
@@ -21,6 +22,9 @@ export const useWebSocketStore = defineStore("websocket", () => {
   const reconnectAttempts = ref(0);
   const heartbeatTimer = ref<NodeJS.Timeout | null>(null);
   const reconnectTimer = ref<NodeJS.Timeout | null>(null);
+  const manualDisconnect = ref(false);
+  const incomingProcessing = ref<Promise<void>>(Promise.resolve());
+  const recentMessageIds = ref<Map<string, number>>(new Map());
 
   // 计算属性
   const connectionStatus = computed(() => {
@@ -54,6 +58,11 @@ export const useWebSocketStore = defineStore("websocket", () => {
     }
 
     try {
+      manualDisconnect.value = false;
+      if (reconnectTimer.value) {
+        clearTimeout(reconnectTimer.value);
+        reconnectTimer.value = null;
+      }
       isConnecting.value = true;
       const url = buildWebSocketUrl(userId);
 
@@ -65,13 +74,19 @@ export const useWebSocketStore = defineStore("websocket", () => {
         console.log("WebSocket连接成功");
         isConnected.value = true;
         isConnecting.value = false;
-        reconnectAttempts.value = 0;
+        stopReconnect();
 
         // 保存连接状态
         saveConnectionCache(userId);
 
         // 开始心跳
         startHeartbeat();
+
+        void useChatStore()
+          .syncOfflineMessages()
+          .catch((error) => {
+            console.error("同步离线消息失败:", error);
+          });
 
         ElMessage.success("连接成功");
       };
@@ -80,7 +95,11 @@ export const useWebSocketStore = defineStore("websocket", () => {
       socket.value.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          handleMessage(data);
+          incomingProcessing.value = incomingProcessing.value
+            .then(() => handleMessage(data))
+            .catch((error) => {
+              console.error("处理WebSocket消息失败:", error);
+            });
         } catch (error) {
           console.error("解析WebSocket消息失败:", error);
         }
@@ -99,10 +118,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
         clearConnectionCache();
 
         // 如果不是主动关闭，尝试重连
-        if (
-          event.code !== 1000 &&
-          reconnectAttempts.value < WS_CONFIG.RECONNECT_ATTEMPTS
-        ) {
+        if (!manualDisconnect.value) {
           scheduleReconnect(userId);
         }
       };
@@ -124,6 +140,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
 
   // 断开连接
   const disconnect = () => {
+    manualDisconnect.value = true;
     if (socket.value) {
       socket.value.close(1000, "主动断开");
       socket.value = null;
@@ -197,61 +214,29 @@ export const useWebSocketStore = defineStore("websocket", () => {
               });
             }
           } else {
-            // Normalize message fields for consistency
-            const created =
-              (msg as any).created_at ||
-              (msg as any).createdAt ||
-              (msg as any).createdTime ||
-              (msg as any).created_time ||
-              (msg as any).sendTime ||
-              (msg as any).send_time;
-            const createdNormalized =
-              typeof created === "string"
-                ? created.replace(
-                    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{3})\d+$/,
-                    "$1.$2",
-                  )
-                : created;
-            const statusNum =
-              typeof (msg as any).status === "number"
-                ? (msg as any).status
-                : Number((msg as any).status);
-            const status =
-              Number.isFinite(statusNum) && statusNum > 0
-                ? statusNum === 3
-                  ? "READ"
-                  : statusNum === 2
-                    ? "DELIVERED"
-                    : statusNum === 1
-                      ? "SENT"
-                      : statusNum === 4
-                        ? "RECALLED"
-                        : statusNum === 5
-                          ? "DELETED"
-                          : "SENT"
-                : (msg as any).status || "SENT";
-            const normalizedMsg = {
-              ...msg,
-              senderId: msg.senderId || msg.sender?.id || msg.sender_id,
-              messageType: msg.messageType || msg.type || "TEXT",
-              type: msg.type || msg.messageType || "TEXT",
-              senderName:
-                msg.senderName || msg.sender?.nickname || msg.sender?.username,
-              senderAvatar: msg.senderAvatar || msg.sender?.avatar,
-              sendTime:
-                createdNormalized ||
-                (msg as any).sendTime ||
-                new Date().toISOString(),
-              status,
-            };
+            const normalizedMsg = normalizeMessageBase(msg) as Message;
+            const msgId = String(normalizedMsg.id || "");
+            if (msgId && !msgId.startsWith("local_")) {
+              const now = Date.now();
+              const prev = recentMessageIds.value.get(msgId) || 0;
+              if (now - prev < 60000) {
+                break;
+              }
+              recentMessageIds.value.set(msgId, now);
+              if (recentMessageIds.value.size > 2000) {
+                const expiredBefore = now - 300000;
+                recentMessageIds.value.forEach((ts, id) => {
+                  if (ts < expiredBefore) {
+                    recentMessageIds.value.delete(id);
+                  }
+                });
+              }
+            }
 
-            // 如果发送者是当前用户，则忽略该消息（因为本地已经添加了，避免重复）
-            if (
-              String(normalizedMsg.senderId) === String(useUserStore().userId)
-            ) {
-              console.log("忽略自己发送的消息:", normalizedMsg.id);
-            } else {
-              chatStore.addMessage(normalizedMsg);
+            const isSelfMessage =
+              String(normalizedMsg.senderId) === String(useUserStore().userId);
+            chatStore.addMessage(normalizedMsg);
+            if (!isSelfMessage) {
               showMessageNotification(normalizedMsg);
             }
           }
@@ -409,6 +394,12 @@ export const useWebSocketStore = defineStore("websocket", () => {
 
   // 安排重连
   const scheduleReconnect = (userId: string) => {
+    if (manualDisconnect.value) {
+      return;
+    }
+    if (reconnectTimer.value) {
+      return;
+    }
     if (reconnectAttempts.value >= WS_CONFIG.RECONNECT_ATTEMPTS) {
       console.log("重连次数已达上限，停止重连");
       ElMessage.error("连接失败，请手动重新连接");
@@ -421,6 +412,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
     console.log(`第${reconnectAttempts.value}次重连，${delay}ms后开始`);
 
     reconnectTimer.value = setTimeout(() => {
+      reconnectTimer.value = null;
       connect(userId);
     }, delay);
   };

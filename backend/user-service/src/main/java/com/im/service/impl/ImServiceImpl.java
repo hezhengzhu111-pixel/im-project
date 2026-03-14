@@ -49,9 +49,20 @@ public class ImServiceImpl implements ImService {
     }
 
     @Override
+    public boolean touchHeartbeat(String userId) {
+        try {
+            ApiResponse<Boolean> resp = imServerFeignClient.touchHeartbeat(userId);
+            return resp != null && Boolean.TRUE.equals(resp.getData());
+        } catch (Exception e) {
+            log.error("刷新用户心跳失败", e);
+            return false;
+        }
+    }
+
+    @Override
     public Map<String, Boolean> checkUsersOnlineStatus(List<String> userIds) {
         try {
-            ApiResponse<Map<String, Boolean>> resp = imServerFeignClient.heartbeat(userIds);
+            ApiResponse<Map<String, Boolean>> resp = imServerFeignClient.onlineStatus(userIds);
             return resp == null ? null : resp.getData();
         } catch (Exception e) {
             log.error("从im-server检查用户在线状态失败", e);

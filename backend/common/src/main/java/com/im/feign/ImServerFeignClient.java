@@ -22,7 +22,13 @@ public interface ImServerFeignClient {
     @PostMapping("/offline/{userId}")
     ApiResponse<String> userOffline(@PathVariable("userId") String userId);
 
+    @PostMapping("/heartbeat/{userId}")
+    ApiResponse<Boolean> touchHeartbeat(@PathVariable("userId") String userId);
+
     @PostMapping("/heartbeat")
     ApiResponse<Map<String, Boolean>> heartbeat(@RequestBody List<String> userIds);
+
+    @PostMapping("/online-status")
+    ApiResponse<Map<String, Boolean>> onlineStatus(@RequestBody List<String> userIds);
 }
 

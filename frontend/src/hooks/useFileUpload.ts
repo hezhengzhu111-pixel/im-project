@@ -8,6 +8,7 @@ import {
 } from "@/utils/common";
 import { FILE_SIZE_LIMITS } from "@/constants";
 import type { FileUploadResponse } from "@/types/api";
+import type { FileDeleteRef } from "@/services/file";
 
 /**
  * 文件上传相关的组合式函数
@@ -106,9 +107,9 @@ export function useFileUpload() {
   /**
    * 删除文件
    */
-  const deleteFile = async (fileId: string): Promise<boolean> => {
+  const deleteFile = async (fileRef: FileDeleteRef): Promise<boolean> => {
     try {
-      const response = await fileApi.delete(fileId);
+      const response = await fileApi.delete(fileRef);
 
       if (response.code === 200) {
         ElMessage.success("文件删除成功");

@@ -44,6 +44,8 @@ public interface IImService {
      * @return 用户会话信息列表
      */
     Map<String, Boolean> checkUsersOnlineStatus(List<String> userIds);
+
+    boolean touchUserHeartbeat(String userId);
     
     /**
      * 获取用户会话信息

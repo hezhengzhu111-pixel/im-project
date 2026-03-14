@@ -110,8 +110,8 @@
               <el-avatar :size="50" :src="group.avatar">
                 {{ group.groupName?.charAt(0) || "G" }}
               </el-avatar>
-              <div v-if="group.unreadCount > 0" class="unread-badge">
-                {{ group.unreadCount > 99 ? "99+" : group.unreadCount }}
+              <div v-if="(group.unreadCount || 0) > 0" class="unread-badge">
+                {{ (group.unreadCount || 0) > 99 ? "99+" : group.unreadCount || 0 }}
               </div>
             </div>
 
@@ -130,7 +130,7 @@
 
             <div class="group-actions">
               <el-dropdown
-                @command="(command) => handleGroupAction(command, group)"
+                @command="handleGroupAction($event, group)"
               >
                 <el-button link :icon="MoreFilled" />
                 <template #dropdown>
@@ -333,6 +333,8 @@ import {
 } from "@element-plus/icons-vue";
 import { useChatStore } from "@/stores/chat";
 import { useUserStore } from "@/stores/user";
+import { groupService } from "@/services/group";
+import { fileService } from "@/services/file";
 import type { Group, Friend } from "@/types";
 
 // 路由
@@ -489,12 +491,20 @@ const handleAvatarChange = (event: Event) => {
   const target = event.target as HTMLInputElement;
   const file = target.files?.[0];
   if (file) {
-    // TODO: 上传头像文件
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      createGroupForm.avatar = e.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+    void (async () => {
+      try {
+        const resp = await fileService.uploadImage(file);
+        if (resp.code === 200 && resp.data?.url) {
+          createGroupForm.avatar = resp.data.url;
+        } else {
+          throw new Error(resp.message || "上传群头像失败");
+        }
+      } catch (error: any) {
+        ElMessage.error(error.message || "上传群头像失败");
+      } finally {
+        target.value = "";
+      }
+    })();
   }
 };
 
@@ -585,11 +595,11 @@ const handleGroupAction = async (command: string, group: Group) => {
       break;
 
     case "members":
-      viewMembers();
+      viewMembers(group);
       break;
 
     case "manage":
-      manageGroup();
+      manageGroup(group);
       break;
 
     case "leave":
@@ -598,14 +608,67 @@ const handleGroupAction = async (command: string, group: Group) => {
   }
 };
 
-const viewMembers = () => {
-  // TODO: 查看群组成员
-  ElMessage.info("查看成员功能开发中");
+const viewMembers = async (group?: Group) => {
+  const target = group || currentGroup.value;
+  if (!target) return;
+  try {
+    const resp = await groupService.getMembers(target.id);
+    if (resp.code !== 200) {
+      throw new Error(resp.message || "加载成员失败");
+    }
+    const members = resp.data || [];
+    const content =
+      members.length === 0
+        ? "暂无成员"
+        : members
+            .slice(0, 50)
+            .map((m: any) => {
+              const roleLabel =
+                m.role === "OWNER" ? "群主" : m.role === "ADMIN" ? "管理员" : "成员";
+              return `${m.nickname || m.username || m.userId}（${roleLabel}）`;
+            })
+            .join("\n");
+    await ElMessageBox.alert(content, `${target.groupName} 成员列表`, {
+      confirmButtonText: "关闭",
+    });
+  } catch (error: any) {
+    ElMessage.error(error.message || "查看成员失败");
+  }
 };
 
-const manageGroup = () => {
-  // TODO: 群组管理
-  ElMessage.info("群组管理功能开发中");
+const manageGroup = async (group?: Group) => {
+  const target = group || currentGroup.value;
+  if (!target) return;
+  try {
+    const namePrompt = await ElMessageBox.prompt("请输入群组名称", "群组管理", {
+      inputValue: target.groupName || "",
+      confirmButtonText: "下一步",
+      cancelButtonText: "取消",
+    });
+    const descPrompt = await ElMessageBox.prompt("请输入群组描述", "群组管理", {
+      inputValue: target.description || "",
+      confirmButtonText: "保存",
+      cancelButtonText: "取消",
+    });
+    const response = await groupService.update(target.id, {
+      groupName: namePrompt.value || target.groupName,
+      description: descPrompt.value || "",
+    });
+    if (response.code !== 200) {
+      throw new Error(response.message || "群组更新失败");
+    }
+    await loadGroups();
+    currentGroup.value = {
+      ...target,
+      groupName: namePrompt.value || target.groupName,
+      description: descPrompt.value || "",
+    };
+    ElMessage.success("群组信息已更新");
+  } catch (error: any) {
+    if (error !== "cancel" && error !== "close") {
+      ElMessage.error(error.message || "群组更新失败");
+    }
+  }
 };
 
 const leaveGroup = async (group: Group) => {

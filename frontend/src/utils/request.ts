@@ -7,11 +7,13 @@ import type {
   AxiosResponse,
   InternalAxiosRequestConfig,
 } from "axios";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage } from "element-plus";
 import { useUserStore } from "@/stores/user";
 import type { ApiResponse } from "@/types/api";
 import router from "@/router";
 import NProgress from "nprogress";
+import { STORAGE_CONFIG } from "@/config";
+import { refreshAccessTokenRaw } from "@/services/auth-refresh";
 
 function createTraceId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -19,6 +21,65 @@ function createTraceId(): string {
   }
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
+
+let refreshInFlight: Promise<string | null> | null = null;
+let reauthPromptInFlight = false;
+
+const shouldSkipRefresh = (url?: string) => {
+  if (!url) return false;
+  return (
+    url.includes("/auth/refresh") ||
+    url.includes("/user/login") ||
+    url.includes("/user/register") ||
+    url.includes("/user/logout") ||
+    url.includes("/user/offline")
+  );
+};
+
+const promptReLogin = () => {
+  if (reauthPromptInFlight) return;
+  reauthPromptInFlight = true;
+  ElMessage.warning("登录状态已过期，已为您跳转到登录页");
+  Promise.resolve()
+    .then(() => {
+      if (router.currentRoute.value.path !== "/login") {
+        return router.push("/login");
+      }
+      return undefined;
+    })
+    .finally(() => {
+      reauthPromptInFlight = false;
+    });
+};
+
+const tryRefreshAccessToken = async (): Promise<string | null> => {
+  if (refreshInFlight) return refreshInFlight;
+  const refreshToken = localStorage.getItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY);
+  if (!refreshToken) return null;
+  refreshInFlight = (async () => {
+    try {
+      const response = await refreshAccessTokenRaw(refreshToken, createTraceId());
+      const payload = response?.data;
+      if (payload?.code !== 200 || !payload?.data?.accessToken) {
+        return null;
+      }
+      const accessToken = String(payload.data.accessToken);
+      const nextRefreshToken = String(payload.data.refreshToken || refreshToken);
+      localStorage.setItem(STORAGE_CONFIG.TOKEN_KEY, accessToken);
+      localStorage.setItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY, nextRefreshToken);
+      try {
+        const userStore = useUserStore();
+        userStore.setAuthToken(accessToken, nextRefreshToken);
+      } catch {}
+      return accessToken;
+    } catch {
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+};
 
 // 创建axios实例
 const request: AxiosInstance = axios.create({
@@ -40,7 +101,8 @@ request.interceptors.request.use(
 
     // 添加认证token
     const userStore = useUserStore();
-    const token = userStore.token;
+    const token =
+      userStore.token || localStorage.getItem(STORAGE_CONFIG.TOKEN_KEY) || "";
 
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -75,7 +137,7 @@ request.interceptors.request.use(
 
 // 响应拦截器
 request.interceptors.response.use(
-  (response: AxiosResponse<any>) => {
+  async (response: AxiosResponse<any>) => {
     NProgress.done();
 
     const responseData = response.data;
@@ -119,21 +181,22 @@ request.interceptors.response.use(
 
     // 业务错误
     if (code === 401) {
-      // 未授权，清除token并跳转到登录页
+      const config = response.config as any;
+      if (!config?.__retry401 && !shouldSkipRefresh(response.config.url)) {
+        config.__retry401 = true;
+        const refreshed = await tryRefreshAccessToken();
+        if (refreshed) {
+          return request(config);
+        }
+      }
       const userStore = useUserStore();
-
-      // 如果不是logout接口，才调用logout方法，避免循环调用
-      if (!response.config.url?.includes("/user/offline")) {
+      if (
+        !response.config.url?.includes("/user/offline") &&
+        !response.config.url?.includes("/user/logout")
+      ) {
         userStore.logout();
       }
-
-      ElMessageBox.confirm("登录状态已过期，请重新登录", "提示", {
-        confirmButtonText: "重新登录",
-        cancelButtonText: "取消",
-        type: "warning",
-      }).then(() => {
-        router.push("/login");
-      });
+      promptReLogin();
 
       return Promise.reject(new Error(message || "未授权"));
     }
@@ -157,7 +220,7 @@ request.interceptors.response.use(
     ElMessage.error(message || "请求失败");
     return Promise.reject(new Error(message || "请求失败"));
   },
-  (error) => {
+  async (error) => {
     NProgress.done();
 
     console.error("响应拦截器错误:", error);
@@ -175,21 +238,22 @@ request.interceptors.response.use(
         ElMessage.error("请求参数错误");
         break;
       case 401: {
-        // 未授权，清除token并跳转到登录页
+        const config = error.config as any;
+        if (!config?.__retry401 && !shouldSkipRefresh(config?.url)) {
+          config.__retry401 = true;
+          const refreshed = await tryRefreshAccessToken();
+          if (refreshed) {
+            return request(config);
+          }
+        }
         const userStore = useUserStore();
-
-        // 如果不是logout接口，才调用logout方法，避免循环调用
-        if (!error.config?.url?.includes("/user/offline")) {
+        if (
+          !error.config?.url?.includes("/user/offline") &&
+          !error.config?.url?.includes("/user/logout")
+        ) {
           userStore.logout();
         }
-
-        ElMessageBox.confirm("登录状态已过期，请重新登录", "提示", {
-          confirmButtonText: "重新登录",
-          cancelButtonText: "取消",
-          type: "warning",
-        }).then(() => {
-          router.push("/login");
-        });
+        promptReLogin();
         break;
       }
       case 403:

@@ -275,6 +275,7 @@ import {
   Iphone,
 } from "@element-plus/icons-vue";
 import { useUserStore } from "@/stores/user";
+import { fileService } from "@/services/file";
 
 // 状态管理
 const userStore = useUserStore();
@@ -315,7 +316,7 @@ const privacySettings = reactive({
 });
 
 // 计算属性
-const userInfo = computed(() => userStore.userInfo || {});
+const userInfo = computed<any>(() => userStore.userInfo || {});
 
 // 表单验证规则
 const profileRules: FormRules = {
@@ -425,9 +426,12 @@ const handleAvatarSelect = async (event: Event) => {
 
   try {
     updating.value = true;
-
-    // TODO: 实现头像上传
-    ElMessage.info("头像上传功能开发中");
+    const response = await fileService.uploadImage(file);
+    if (response.code !== 200 || !response.data?.url) {
+      throw new Error(response.message || "头像上传失败");
+    }
+    await userStore.updateUserInfo({ avatar: response.data.url });
+    ElMessage.success("头像更新成功");
 
     // 清空文件输入
     if (avatarInputRef.value) {
@@ -446,9 +450,11 @@ const changePassword = async () => {
   try {
     await passwordFormRef.value.validate();
     changingPassword.value = true;
-
-    // TODO: 实现密码修改
-    ElMessage.info("密码修改功能开发中");
+    await userStore.changePassword({
+      currentPassword: passwordForm.oldPassword,
+      newPassword: passwordForm.newPassword,
+    });
+    ElMessage.success("密码修改成功");
 
     showChangePassword.value = false;
     Object.assign(passwordForm, {
@@ -468,9 +474,7 @@ const changePassword = async () => {
 const updatePrivacySettings = async () => {
   try {
     updatingPrivacy.value = true;
-
-    // TODO: 实现隐私设置更新
-    ElMessage.info("隐私设置功能开发中");
+    await userStore.updatePrivacySettings({ ...privacySettings });
 
     ElMessage.success("隐私设置已保存");
   } catch (error: any) {

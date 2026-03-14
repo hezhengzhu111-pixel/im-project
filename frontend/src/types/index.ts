@@ -14,12 +14,18 @@ export interface ApiResponse<T = any> {
 // 用户相关类型
 export interface User {
   id: string;
+  userId?: string;
   username: string;
   nickname: string;
   avatar?: string;
   email?: string;
   phone?: string;
-  status: "ONLINE" | "OFFLINE" | "BUSY" | "AWAY";
+  gender?: string;
+  birthday?: string;
+  signature?: string;
+  location?: string;
+  lastSeen?: string;
+  status: "ONLINE" | "OFFLINE" | "BUSY" | "AWAY" | "online" | "offline" | "busy" | "away";
   lastLoginTime?: string;
   createTime?: string;
 }
@@ -27,6 +33,10 @@ export interface User {
 export interface LoginRequest {
   username: string;
   password: string;
+}
+
+export interface LoginForm extends LoginRequest {
+  rememberMe?: boolean;
 }
 
 export interface RegisterRequest {
@@ -37,12 +47,36 @@ export interface RegisterRequest {
   phone?: string;
 }
 
+export interface RegisterForm {
+  username: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  agreement: boolean;
+  nickname?: string;
+  phone?: string;
+}
+
+export interface UserInfo {
+  id: string;
+  username: string;
+  nickname?: string;
+  avatar?: string;
+  email?: string;
+  phone?: string;
+  signature?: string;
+  location?: string;
+  gender?: string;
+  birthday?: string;
+  lastSeen?: string;
+  status?: "ONLINE" | "OFFLINE" | "BUSY" | "AWAY" | "online" | "offline" | "busy" | "away";
+}
+
 // 消息相关类型
 export type MessageType =
   | "TEXT"
   | "IMAGE"
   | "FILE"
-  | "AUDIO"
   | "VIDEO"
   | "VOICE"
   | "SYSTEM";
@@ -51,30 +85,34 @@ export type MessageStatus =
   | "SENT"
   | "DELIVERED"
   | "READ"
-  | "FAILED";
+  | "FAILED"
+  | "OFFLINE"
+  | "RECALLED"
+  | "DELETED";
 
 export interface Message {
-  id: string;
+  id: string | number;
   messageId?: string;
-  senderId: string;
+  senderId: string | number;
   senderName?: string;
   senderAvatar?: string;
-  receiverId?: string;
+  receiverId?: string | number;
   receiverName?: string;
-  groupId?: string;
+  groupId?: string | number;
   groupName?: string;
-  isGroupChat: boolean;
-  type: MessageType;
-  messageType?: MessageType;
+  groupAvatar?: string;
+  isGroupChat?: boolean;
+  type?: MessageType;
+  messageType: MessageType;
   content: string;
   mediaUrl?: string;
   mediaSize?: number;
   mediaName?: string;
-  sendTime: string;
-  status: MessageStatus | string;
-  extra?: Record<string, any>;
   thumbnailUrl?: string;
   duration?: number;
+  sendTime: string;
+  status?: MessageStatus | string;
+  extra?: any;
 }
 
 export interface SendMessageRequest {
@@ -86,15 +124,29 @@ export interface SendMessageRequest {
   extra?: Record<string, any>;
 }
 
+export interface MessageSearchResult {
+  message: Message;
+  highlight: string;
+  context: Message[];
+}
+
 // 好友相关类型
 export interface Friend {
   id: string;
   userId: string;
   friendId: string;
-  friendInfo: User;
+  friendInfo?: User;
+  friend?: UserInfo;
+  username?: string;
+  nickname?: string;
+  avatar?: string;
+  signature?: string;
+  lastSeen?: string;
   remark?: string;
   createTime: string;
 }
+
+export type FriendListDTO = Friend;
 
 export interface FriendRequest {
   id: string;
@@ -109,13 +161,20 @@ export interface FriendRequest {
 // 群组相关类型
 export interface Group {
   id: string;
-  name: string;
+  name?: string;
+  groupName?: string;
   description?: string;
+  announcement?: string;
+  type?: string | number;
   avatar?: string;
   ownerId: string;
   memberCount: number;
-  maxMembers: number;
-  isPublic: boolean;
+  maxMembers?: number;
+  isPublic?: boolean;
+  unreadCount?: number;
+  lastMessageTime?: string;
+  lastActivityAt?: string;
+  members?: Array<{ userId: string | number; role?: string | number }>;
   createTime: string;
 }
 
@@ -136,12 +195,18 @@ export interface ChatSession {
   type: "private" | "group";
   targetId: string;
   targetName: string;
+  name?: string;
+  avatar?: string;
   targetAvatar?: string;
-  lastMessage?: Message;
+  lastMessage?: (Partial<Message> & Record<string, any>) | string;
   unreadCount: number;
   lastActiveTime: string;
+  updateTime?: string;
+  memberCount?: number;
   isPinned: boolean;
+  pinned?: boolean;
   isMuted: boolean;
+  muted?: boolean;
 }
 
 export interface ChatItem {
@@ -158,7 +223,12 @@ export interface ChatItem {
 
 // WebSocket相关类型
 export interface WebSocketMessage {
-  type: "MESSAGE" | "HEARTBEAT" | "ONLINE_STATUS" | "SYSTEM";
+  type:
+    | "MESSAGE"
+    | "HEARTBEAT"
+    | "ONLINE_STATUS"
+    | "READ_RECEIPT"
+    | "SYSTEM";
   data: any;
   timestamp: number;
 }
@@ -272,10 +342,3 @@ export interface EventData {
   payload: any;
   timestamp: number;
 }
-
-// 导出所有类型
-export * from "./api";
-export * from "./chat";
-export * from "./group";
-export * from "./message";
-export * from "./user";
