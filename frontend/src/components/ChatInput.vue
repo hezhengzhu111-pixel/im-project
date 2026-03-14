@@ -110,6 +110,7 @@ import {
 import { useMessage } from "@/hooks/useMessage";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { MESSAGE_TYPES } from "@/constants";
+import type { MessageType } from "@/types/message";
 import type { Conversation } from "@/types/chat";
 
 interface Props {
@@ -244,7 +245,7 @@ const handleVideoSelect = async (event: Event) => {
   await handleFileUpload(Array.from(files), MESSAGE_TYPES.VIDEO);
 };
 
-const handleFileUpload = async (files: File[], messageType: string) => {
+const handleFileUpload = async (files: File[], messageType: MessageType) => {
   if (!props.currentConversation) {
     ElMessage.error("请先选择一个会话");
     return;

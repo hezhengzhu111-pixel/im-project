@@ -57,7 +57,7 @@
     <div v-if="showDetails" class="user-details">
       <div class="detail-item">
         <span class="detail-label">用户ID:</span>
-        <span class="detail-value">{{ userInfo?.userId }}</span>
+        <span class="detail-value">{{ userInfo?.id }}</span>
       </div>
 
       <div class="detail-item">
@@ -72,13 +72,13 @@
 
       <div class="detail-item">
         <span class="detail-label">注册时间:</span>
-        <span class="detail-value">{{ formatTime(userInfo?.createTime) }}</span>
+        <span class="detail-value">{{ formatTime(userInfo?.createTime || "") }}</span>
       </div>
 
       <div class="detail-item">
         <span class="detail-label">最后登录:</span>
         <span class="detail-value">{{
-          formatTime(userInfo?.lastLoginTime)
+          formatTime((userInfo as any)?.lastLoginTime || "")
         }}</span>
       </div>
     </div>
@@ -97,7 +97,6 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   Setting,
@@ -130,7 +129,6 @@ interface Emits {
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
 
-const router = useRouter();
 const userStore = useUserStore();
 
 // 响应式数据
@@ -203,7 +201,7 @@ const handleAvatarUpload = async () => {
 
     try {
       const result = await uploadFile(file);
-      await userStore.updateProfile({ avatar: result.url });
+      await userStore.updateUserInfo({ avatar: result.url });
       ElMessage.success("头像更新成功");
     } catch (error) {
       console.error("头像上传失败:", error);
@@ -270,7 +268,6 @@ const logout = async () => {
 
     await userStore.logout();
     ElMessage.success("已退出登录");
-    router.push("/login");
   } catch (error) {
     if (error !== "cancel") {
       console.error("退出登录失败:", error);

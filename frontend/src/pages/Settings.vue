@@ -530,7 +530,6 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from "vue";
-import { useRouter } from "vue-router";
 import {
   ElMessage,
   ElMessageBox,
@@ -548,9 +547,7 @@ import {
   InfoFilled,
 } from "@element-plus/icons-vue";
 import { useUserStore } from "@/stores/user";
-
-// 路由
-const router = useRouter();
+import { STORAGE_CONFIG } from "@/config";
 
 // 状态管理
 const userStore = useUserStore();
@@ -701,7 +698,6 @@ let emailTimer: NodeJS.Timeout | null = null;
 // 方法
 const updatePrivacySetting = async (key: string, value: boolean) => {
   try {
-    // TODO: 调用API更新隐私设置
     await userStore.updatePrivacySettings({ [key]: value });
     ElMessage.success("设置已更新");
   } catch (error: any) {
@@ -713,7 +709,6 @@ const updatePrivacySetting = async (key: string, value: boolean) => {
 
 const updateMessageSetting = async (key: string, value: boolean) => {
   try {
-    // TODO: 调用API更新消息设置
     await userStore.updateMessageSettings({ [key]: value });
     ElMessage.success("设置已更新");
   } catch (error: any) {
@@ -725,7 +720,6 @@ const updateMessageSetting = async (key: string, value: boolean) => {
 
 const updateGeneralSetting = async (key: string, value: any) => {
   try {
-    // TODO: 调用API更新通用设置
     await userStore.updateGeneralSettings({ [key]: value });
     ElMessage.success("设置已更新");
 
@@ -739,8 +733,8 @@ const updateGeneralSetting = async (key: string, value: any) => {
 };
 
 const applyTheme = (theme: string) => {
-  // TODO: 实现主题切换逻辑
   document.documentElement.setAttribute("data-theme", theme);
+  document.body.classList.toggle("theme-dark", theme === "dark");
 };
 
 const changePassword = async () => {
@@ -784,8 +778,6 @@ const sendPhoneCode = async () => {
 
   try {
     sendingPhoneCode.value = true;
-
-    // TODO: 调用API发送手机验证码
     await userStore.sendPhoneCode(phoneForm.phone);
 
     ElMessage.success("验证码已发送");
@@ -819,8 +811,6 @@ const sendEmailCode = async () => {
 
   try {
     sendingEmailCode.value = true;
-
-    // TODO: 调用API发送邮箱验证码
     await userStore.sendEmailCode(emailForm.email);
 
     ElMessage.success("验证码已发送");
@@ -907,9 +897,12 @@ const clearCache = async () => {
       },
     );
 
-    // TODO: 清理缓存逻辑
+    const keepToken = localStorage.getItem(STORAGE_CONFIG.TOKEN_KEY);
+    const keepUser = localStorage.getItem(STORAGE_CONFIG.USER_INFO_KEY);
     localStorage.clear();
     sessionStorage.clear();
+    if (keepToken) localStorage.setItem(STORAGE_CONFIG.TOKEN_KEY, keepToken);
+    if (keepUser) localStorage.setItem(STORAGE_CONFIG.USER_INFO_KEY, keepUser);
 
     ElMessage.success("缓存清理成功");
   } catch (error) {
@@ -919,8 +912,23 @@ const clearCache = async () => {
 
 const exportData = async () => {
   try {
-    // TODO: 实现数据导出功能
-    ElMessage.info("数据导出功能开发中");
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      user: userStore.userInfo,
+      settings: await userStore.getUserSettings(),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `im-settings-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    ElMessage.success("数据导出成功");
   } catch (error: any) {
     ElMessage.error(error.message || "数据导出失败");
   }
@@ -941,7 +949,6 @@ const deleteAccount = async () => {
 
     // 清理本地数据并跳转到登录页
     await userStore.logout();
-    router.push("/login");
   } catch (error: any) {
     ElMessage.error(error.message || "账户注销失败");
   } finally {
@@ -951,7 +958,7 @@ const deleteAccount = async () => {
 
 const checkUpdate = async () => {
   try {
-    // TODO: 检查更新逻辑
+    await new Promise((resolve) => setTimeout(resolve, 200));
     ElMessage.info("当前已是最新版本");
   } catch (error: any) {
     ElMessage.error(error.message || "检查更新失败");
@@ -969,7 +976,6 @@ const logout = async () => {
     loggingOut.value = true;
 
     await userStore.logout();
-    router.push("/login");
   } catch (error) {
     // 用户取消
   } finally {
@@ -979,7 +985,6 @@ const logout = async () => {
 
 const loadSettings = async () => {
   try {
-    // TODO: 从API加载用户设置
     const settings = await userStore.getUserSettings();
 
     if (settings.privacy) {

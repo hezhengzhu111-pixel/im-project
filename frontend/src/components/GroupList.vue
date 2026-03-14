@@ -52,10 +52,10 @@
           </div>
           <div class="group-status">
             <span class="last-activity">{{
-              formatTime(group.lastActivityAt)
+              formatTime(group.lastActivityAt || "")
             }}</span>
-            <span v-if="group.unreadCount > 0" class="unread-indicator">
-              {{ group.unreadCount > 99 ? "99+" : group.unreadCount }}
+            <span v-if="(group.unreadCount || 0) > 0" class="unread-indicator">
+              {{ (group.unreadCount || 0) > 99 ? "99+" : group.unreadCount || 0 }}
             </span>
           </div>
         </div>

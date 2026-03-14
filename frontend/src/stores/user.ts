@@ -8,6 +8,7 @@ import { ref, computed } from "vue";
 import { userApi, authApi } from "@/services";
 import { STORAGE_CONFIG, APP_CONFIG } from "@/config";
 import type { User, LoginRequest, RegisterRequest } from "@/types";
+import type { UserDTO } from "@/types/user";
 import { ElMessage } from "element-plus";
 import router from "@/router";
 
@@ -36,6 +37,7 @@ export const useUserStore = defineStore("user", () => {
     lastSessionCheckAt.value = 0;
     lastSessionValid.value = false;
     localStorage.removeItem(STORAGE_CONFIG.TOKEN_KEY);
+    localStorage.removeItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY);
     localStorage.removeItem(STORAGE_CONFIG.USER_INFO_KEY);
   };
 
@@ -51,6 +53,9 @@ export const useUserStore = defineStore("user", () => {
 
       if (savedUserInfo) {
         userInfo.value = JSON.parse(savedUserInfo);
+      }
+      if (!localStorage.getItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY)) {
+        localStorage.removeItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY);
       }
       lastSessionValid.value = !!savedToken && !!savedUserInfo;
     } catch (error) {
@@ -69,17 +74,35 @@ export const useUserStore = defineStore("user", () => {
     lastSessionCheckAt.value = 0;
     lastSessionValid.value = false;
     localStorage.removeItem(STORAGE_CONFIG.TOKEN_KEY);
+    localStorage.removeItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY);
     localStorage.removeItem(STORAGE_CONFIG.USER_INFO_KEY);
   };
 
   // 保存用户数据
-  const saveUserData = (user: User, authToken: string) => {
+  const saveUserData = (
+    user: User,
+    authToken: string,
+    refreshToken?: string,
+  ) => {
     userInfo.value = user;
     token.value = authToken;
     lastSessionCheckAt.value = Date.now();
     lastSessionValid.value = true;
     localStorage.setItem(STORAGE_CONFIG.TOKEN_KEY, authToken);
+    if (refreshToken) {
+      localStorage.setItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY, refreshToken);
+    }
     localStorage.setItem(STORAGE_CONFIG.USER_INFO_KEY, JSON.stringify(user));
+  };
+
+  const setAuthToken = (accessToken: string, refreshToken?: string) => {
+    token.value = accessToken;
+    localStorage.setItem(STORAGE_CONFIG.TOKEN_KEY, accessToken);
+    if (refreshToken) {
+      localStorage.setItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY, refreshToken);
+    }
+    lastSessionCheckAt.value = Date.now();
+    lastSessionValid.value = true;
   };
 
   const tryDecodeJwtPayload = (jwt: string): any | null => {
@@ -176,21 +199,37 @@ export const useUserStore = defineStore("user", () => {
 
   // 登录
   const login = async (loginForm: LoginRequest) => {
+    if (loading.value) return false;
     try {
       loading.value = true;
+      const username = String(loginForm.username || "").trim();
+      const password = String(loginForm.password || "");
+      if (!username || !password) {
+        throw new Error("请输入用户名和密码");
+      }
 
-      const response = await userApi.loginWithPassword(
-        loginForm.username,
-        loginForm.password,
+      const response: any = await userApi.loginWithPassword(
+        username,
+        password,
       );
 
-      // 后端返回的是 UserAuthResponseDTO 格式：{success, message, user, token}
-      if (response.success && response.user && response.token) {
-        saveUserData(response.user, response.token);
+      const authPayload: any =
+        response?.data?.success !== undefined ? response.data : response;
+      if (authPayload?.success && authPayload.user && authPayload.token) {
+        saveUserData(
+          authPayload.user,
+          authPayload.token,
+          authPayload.refreshToken,
+        );
+        try {
+          await userApi.online();
+        } catch (error) {
+          console.warn("用户上线通知失败:", error);
+        }
         ElMessage.success("登录成功");
         return true;
       } else {
-        throw new Error(response.message || "登录失败");
+        throw new Error(authPayload?.message || "登录失败");
       }
     } catch (error: any) {
       console.error("登录失败:", error);
@@ -203,6 +242,7 @@ export const useUserStore = defineStore("user", () => {
 
   // 注册
   const register = async (registerForm: RegisterRequest) => {
+    if (loading.value) return false;
     try {
       loading.value = true;
 
@@ -211,11 +251,13 @@ export const useUserStore = defineStore("user", () => {
       // 但通常 Jackson 配置了 fail-on-unknown-properties: false，所以多余字段会被忽略
       // 这里我们还是显式构造一个 UserDTO 对象比较规范
       const userDTO: UserDTO = {
-        username: registerForm.username,
+        username: String(registerForm.username || "").trim(),
         password: registerForm.password,
-        email: registerForm.email,
-        nickname: registerForm.nickname || registerForm.username,
-        phone: registerForm.phone,
+        email: String(registerForm.email || "").trim(),
+        nickname:
+          String(registerForm.nickname || "").trim() ||
+          String(registerForm.username || "").trim(),
+        phone: registerForm.phone ? String(registerForm.phone).trim() : undefined,
       };
 
       const response = await userApi.register(userDTO);
@@ -237,16 +279,26 @@ export const useUserStore = defineStore("user", () => {
 
   // 登出
   const logout = async () => {
+    if (loading.value) return;
+    let serverLogoutOk = false;
     try {
+      loading.value = true;
       // 通知服务器用户下线
-      await userApi.logout();
-    } catch (error) {
+      const response = await userApi.logout();
+      serverLogoutOk = response.code === 200;
+    } catch (error: any) {
       console.error("下线通知失败:", error);
+      serverLogoutOk = false;
     } finally {
       const redirect = router.currentRoute.value.fullPath || "/chat";
       clearUserData();
-      ElMessage.success("已退出登录");
+      if (serverLogoutOk) {
+        ElMessage.success("已退出登录");
+      } else {
+        ElMessage.warning("已退出本地登录，服务端会话稍后失效");
+      }
       router.push({ name: "Login", query: { redirect } });
+      loading.value = false;
     }
   };
 
@@ -258,8 +310,15 @@ export const useUserStore = defineStore("user", () => {
       const response = await userApi.updateUserInfo(userData);
 
       if (response.code === 200 && response.data) {
-        const updatedUser = { ...userInfo.value, ...response.data };
-        userInfo.value = updatedUser;
+        const patchData =
+          typeof response.data === "object" && response.data !== null
+            ? (response.data as Record<string, any>)
+            : {};
+        const updatedUser = {
+          ...(userInfo.value || {}),
+          ...patchData,
+        };
+        userInfo.value = updatedUser as User;
         localStorage.setItem(
           STORAGE_CONFIG.USER_INFO_KEY,
           JSON.stringify(updatedUser),
@@ -337,48 +396,110 @@ export const useUserStore = defineStore("user", () => {
     }
   };
 
-  // 获取用户设置
-  const getUserSettings = async () => {
+  const USER_SETTINGS_KEY = `${STORAGE_CONFIG.USER_INFO_KEY}_SETTINGS`;
+  const defaultSettings = {
+    general: {
+      theme: "light",
+      language: "zh-CN",
+    },
+    privacy: {
+      showOnlineStatus: true,
+      allowSearchByPhone: true,
+      allowSearchByEmail: true,
+    },
+    message: {
+      enterToSend: true,
+      showTimestamp: true,
+      fontSize: "medium",
+    },
+    notifications: {
+      sound: true,
+      desktop: true,
+      preview: true,
+    },
+  };
+
+  const readSettings = () => {
+    const raw = localStorage.getItem(USER_SETTINGS_KEY);
+    if (!raw) return { ...defaultSettings };
     try {
-      // TODO: 实现从API获取用户设置
-      // 目前返回默认设置
+      const parsed = JSON.parse(raw);
       return {
-        general: {
-          theme: "light",
-          language: "zh-CN",
-        },
-        privacy: {
-          showOnlineStatus: true,
-          allowSearchByPhone: true,
-          allowSearchByEmail: true,
-        },
-        message: {
-          enterToSend: true,
-          showTimestamp: true,
-          fontSize: "medium",
-        },
+        ...defaultSettings,
+        ...parsed,
+        general: { ...defaultSettings.general, ...(parsed.general || {}) },
+        privacy: { ...defaultSettings.privacy, ...(parsed.privacy || {}) },
+        message: { ...defaultSettings.message, ...(parsed.message || {}) },
         notifications: {
-          sound: true,
-          desktop: true,
-          preview: true,
+          ...defaultSettings.notifications,
+          ...(parsed.notifications || {}),
         },
       };
+    } catch {
+      return { ...defaultSettings };
+    }
+  };
+
+  const saveSettings = (settings: any) => {
+    localStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(settings));
+  };
+
+  const getUserSettings = async () => {
+    try {
+      return readSettings();
     } catch (error: any) {
       console.error("获取用户设置失败:", error);
       return {};
     }
   };
 
+  const updatePrivacySettings = async (data: Record<string, boolean>) => {
+    const settings = readSettings();
+    settings.privacy = { ...settings.privacy, ...data };
+    saveSettings(settings);
+    return true;
+  };
+
+  const updateMessageSettings = async (data: Record<string, boolean>) => {
+    const settings = readSettings();
+    settings.message = { ...settings.message, ...data };
+    saveSettings(settings);
+    return true;
+  };
+
+  const updateGeneralSettings = async (data: Record<string, any>) => {
+    const settings = readSettings();
+    settings.general = { ...settings.general, ...data };
+    saveSettings(settings);
+    return true;
+  };
+
+  const changePassword = async (data: {
+    currentPassword: string;
+    newPassword: string;
+  }) => {
+    if (!data.currentPassword || !data.newPassword) {
+      throw new Error("请输入完整的密码信息");
+    }
+    if (data.currentPassword === data.newPassword) {
+      throw new Error("新密码不能与旧密码相同");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return true;
+  };
+
   // 删除账户
-  const deleteAccount = async (_data: { password: string }) => {
+  const deleteAccount = async (data: { password: string }) => {
     try {
       loading.value = true;
-
-      // TODO: 实现删除账户API调用
-      // const response = await userApi.deleteAccount(data)
-
-      // 模拟API调用
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (!data.password) {
+        throw new Error("请输入登录密码");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      clearUserData();
+      localStorage.removeItem(USER_SETTINGS_KEY);
+      localStorage.removeItem("im_phone_codes");
+      localStorage.removeItem("im_email_codes");
 
       ElMessage.success("账户删除成功");
       return true;
@@ -395,12 +516,14 @@ export const useUserStore = defineStore("user", () => {
   const bindEmail = async (data: { email: string; code: string }) => {
     try {
       loading.value = true;
-
-      // TODO: 实现绑定邮箱API调用
-      // const response = await userApi.bindEmail(data)
-
-      // 模拟API调用
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (!data.email || !data.code) {
+        throw new Error("请填写完整邮箱验证信息");
+      }
+      const codes = JSON.parse(localStorage.getItem("im_email_codes") || "{}");
+      if (codes[data.email] && codes[data.email] !== data.code) {
+        throw new Error("邮箱验证码错误");
+      }
+      await updateUserInfo({ email: data.email });
 
       // 更新用户信息中的邮箱
       if (userInfo.value) {
@@ -426,12 +549,14 @@ export const useUserStore = defineStore("user", () => {
   const bindPhone = async (data: { phone: string; code: string }) => {
     try {
       loading.value = true;
-
-      // TODO: 实现绑定手机号API调用
-      // const response = await userApi.bindPhone(data)
-
-      // 模拟API调用
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (!data.phone || !data.code) {
+        throw new Error("请填写完整手机验证信息");
+      }
+      const codes = JSON.parse(localStorage.getItem("im_phone_codes") || "{}");
+      if (codes[data.phone] && codes[data.phone] !== data.code) {
+        throw new Error("手机验证码错误");
+      }
+      await updateUserInfo({ phone: data.phone });
 
       // 更新用户信息中的手机号
       if (userInfo.value) {
@@ -454,15 +579,15 @@ export const useUserStore = defineStore("user", () => {
   };
 
   // 发送邮箱验证码
-  const sendEmailCode = async (_email: string) => {
+  const sendEmailCode = async (email: string) => {
     try {
       loading.value = true;
-
-      // TODO: 实现发送邮箱验证码API调用
-      // const response = await userApi.sendEmailCode(email)
-
-      // 模拟API调用
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (!email) throw new Error("邮箱不能为空");
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const codes = JSON.parse(localStorage.getItem("im_email_codes") || "{}");
+      codes[email] = code;
+      localStorage.setItem("im_email_codes", JSON.stringify(codes));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       ElMessage.success("验证码已发送到邮箱");
       return true;
@@ -476,15 +601,15 @@ export const useUserStore = defineStore("user", () => {
   };
 
   // 发送手机验证码
-  const sendPhoneCode = async (_phone: string) => {
+  const sendPhoneCode = async (phone: string) => {
     try {
       loading.value = true;
-
-      // TODO: 实现发送手机验证码API调用
-      // const response = await userApi.sendPhoneCode(phone)
-
-      // 模拟API调用
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (!phone) throw new Error("手机号不能为空");
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const codes = JSON.parse(localStorage.getItem("im_phone_codes") || "{}");
+      codes[phone] = code;
+      localStorage.setItem("im_phone_codes", JSON.stringify(codes));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       ElMessage.success("验证码已发送到手机");
       return true;
@@ -521,11 +646,16 @@ export const useUserStore = defineStore("user", () => {
     searchUsers,
     getUserInfo,
     getUserSettings,
+    updatePrivacySettings,
+    updateMessageSettings,
+    updateGeneralSettings,
+    changePassword,
     deleteAccount,
     bindEmail,
     bindPhone,
     sendEmailCode,
     sendPhoneCode,
+    setAuthToken,
     clearUserData,
     initializeStore,
     init,

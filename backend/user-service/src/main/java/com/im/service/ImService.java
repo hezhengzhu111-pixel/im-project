@@ -1,7 +1,6 @@
 package com.im.service;
 
 import com.im.dto.MessageDTO;
-import com.im.entity.Message;
 
 import java.util.List;
 import java.util.Map;
@@ -29,6 +28,8 @@ public interface ImService {
      * @param userId 用户ID
      */
     void userOffline(String userId);
+
+    boolean touchHeartbeat(String userId);
 
     /**
      * 检查用户在线状态

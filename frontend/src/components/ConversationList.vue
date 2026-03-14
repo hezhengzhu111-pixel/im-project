@@ -35,7 +35,9 @@
             <span class="conversation-name">{{ conversation.targetName }}</span>
             <span class="conversation-time">{{
               formatTime(
-                conversation.lastMessage?.sendTime || conversation.updateTime,
+                conversation.lastMessage?.sendTime ||
+                  conversation.updateTime ||
+                  Date.now(),
               )
             }}</span>
           </div>
@@ -45,8 +47,8 @@
               getLastMessageText(conversation)
             }}</span>
             <el-badge
-              v-if="conversation.unreadCount > 0"
-              :value="conversation.unreadCount"
+              v-if="(conversation.unreadCount || 0) > 0"
+              :value="conversation.unreadCount || 0"
               :max="99"
               class="unread-badge"
             />

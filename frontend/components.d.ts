@@ -31,17 +31,13 @@ declare module 'vue' {
     ElInput: typeof import('element-plus/es')['ElInput']
     ElLink: typeof import('element-plus/es')['ElLink']
     ElOption: typeof import('element-plus/es')['ElOption']
-    ElProgress: typeof import('element-plus/es')['ElProgress']
     ElRadio: typeof import('element-plus/es')['ElRadio']
     ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
     ElSelect: typeof import('element-plus/es')['ElSelect']
     ElSkeleton: typeof import('element-plus/es')['ElSkeleton']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
-    ElTabPane: typeof import('element-plus/es')['ElTabPane']
-    ElTabs: typeof import('element-plus/es')['ElTabs']
     ElTag: typeof import('element-plus/es')['ElTag']
     ElTransfer: typeof import('element-plus/es')['ElTransfer']
-    ElUpload: typeof import('element-plus/es')['ElUpload']
     GroupList: typeof import('./src/components/GroupList.vue')['default']
     MessageItem: typeof import('./src/components/MessageItem.vue')['default']
     PerformanceMonitor: typeof import('./src/components/PerformanceMonitor.vue')['default']
@@ -49,5 +45,8 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     SideNavBar: typeof import('./src/components/layout/SideNavBar.vue')['default']
     UserProfile: typeof import('./src/components/UserProfile.vue')['default']
+  }
+  export interface ComponentCustomProperties {
+    vLoading: typeof import('element-plus/es')['ElLoadingDirective']
   }
 }

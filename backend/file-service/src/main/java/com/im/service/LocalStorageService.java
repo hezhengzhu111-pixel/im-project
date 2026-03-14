@@ -79,6 +79,12 @@ public class LocalStorageService implements StorageService {
         return new StorageObject(is, contentType, length);
     }
 
+    @Override
+    public boolean deleteObject(String category, String date, String filename) throws Exception {
+        Path path = resolvePath(category, date, filename);
+        return Files.deleteIfExists(path);
+    }
+
     private Path resolvePath(String category, String date, String filename) {
         String cat = safeSegment(category);
         String d = safeSegment(date);

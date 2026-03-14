@@ -178,7 +178,7 @@ const registerForm = reactive<RegisterForm>({
 });
 
 // 表单验证规则
-const registerRules = {
+const registerRules: any = {
   username: [
     { required: true, message: "请输入用户名", trigger: "blur" },
     {
@@ -236,14 +236,19 @@ const registerRules = {
 // 处理注册
 const handleRegister = async () => {
   if (!registerFormRef.value) return;
+  if (userStore.loading) return;
 
   try {
     const valid = await registerFormRef.value.validate();
     if (!valid) return;
 
-    await userStore.register(registerForm);
-
-    ElMessage.success("注册成功，请登录");
+    const success = await userStore.register({
+      username: registerForm.username.trim(),
+      password: registerForm.password,
+      email: registerForm.email.trim(),
+      nickname: registerForm.username.trim(),
+    });
+    if (!success) return;
 
     // 跳转到登录页面
     router.push("/login");

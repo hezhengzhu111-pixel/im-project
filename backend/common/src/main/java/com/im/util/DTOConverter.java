@@ -48,7 +48,7 @@ public class DTOConverter {
         boolean isOnline = false;
         if (imServerFeignClient != null) {
             try {
-                ApiResponse<Map<String, Boolean>> resp = imServerFeignClient.heartbeat(
+                ApiResponse<Map<String, Boolean>> resp = imServerFeignClient.onlineStatus(
                         Collections.singletonList(friendUser.getId().toString())
                 );
                 Map<String, Boolean> onlineStatus = resp == null ? null : resp.getData();

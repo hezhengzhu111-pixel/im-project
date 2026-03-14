@@ -107,6 +107,13 @@
             ><Warning
           /></el-icon>
           <span
+            v-else-if="isGroupMessage && groupReadCount > 0"
+            class="status-group-read"
+            :title="`群成员已读 ${groupReadCount} 人`"
+            @click.stop="handleShowGroupReaders"
+            >已读{{ groupReadCount }}</span
+          >
+          <span
             v-else-if="
               message.status === 'READ' ||
               message.readStatus === 1 ||
@@ -178,17 +185,19 @@ const messageType = computed(() => {
 // Custom directive for clicking outside
 const vClickOutside = {
   mounted(el: HTMLElement, binding: any) {
-    el._clickOutside = (event: Event) => {
+    const target = el as any;
+    target._clickOutside = (event: Event) => {
       if (!(el === event.target || el.contains(event.target as Node))) {
         binding.value(event);
       }
     };
-    document.addEventListener("click", el._clickOutside);
-    document.addEventListener("contextmenu", el._clickOutside);
+    document.addEventListener("click", target._clickOutside);
+    document.addEventListener("contextmenu", target._clickOutside);
   },
   unmounted(el: HTMLElement) {
-    document.removeEventListener("click", el._clickOutside);
-    document.removeEventListener("contextmenu", el._clickOutside);
+    const target = el as any;
+    document.removeEventListener("click", target._clickOutside);
+    document.removeEventListener("contextmenu", target._clickOutside);
   },
 };
 
@@ -203,6 +212,9 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   showSenderInfo: true,
 });
+const emit = defineEmits<{
+  (e: "show-group-readers", message: Message): void;
+}>();
 
 const {
   getMessageSenderAvatar,
@@ -255,6 +267,28 @@ const isDeleted = computed(() => {
   const s: any = (props.message as any).status;
   return s === "DELETED" || s === 5;
 });
+
+const isGroupMessage = computed(() => {
+  const msg: any = props.message as any;
+  return !!(msg?.groupId || msg?.group_id);
+});
+
+const groupReadCount = computed(() => {
+  const msg: any = props.message as any;
+  const count = Number(msg?.readByCount ?? msg?.read_by_count);
+  if (Number.isFinite(count) && count > 0) {
+    return count;
+  }
+  const readBy = Array.isArray(msg?.readBy) ? msg.readBy : [];
+  return readBy.length;
+});
+
+const handleShowGroupReaders = () => {
+  if (!isGroupMessage.value || groupReadCount.value <= 0) {
+    return;
+  }
+  emit("show-group-readers", props.message);
+};
 
 // Context Menu Logic
 const showContextMenu = (event: MouseEvent) => {
@@ -649,6 +683,12 @@ const currentUserAvatarText = computed(() => {
 
   .status-read {
     color: #67c23a;
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .status-group-read {
+    color: #409eff;
     font-size: 12px;
     line-height: 16px;
   }
