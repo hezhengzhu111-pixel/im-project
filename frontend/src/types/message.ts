@@ -50,6 +50,8 @@ export interface Message {
   read_status?: number;
   readAt?: string;
   read_at?: string;
+  readBy?: Array<string | number>;
+  readByCount?: number;
   extra?: string; // 扩展信息JSON字符串
   sender?: {
     id: string | number;

@@ -9,13 +9,16 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 @Component
 @RequiredArgsConstructor
@@ -23,9 +26,25 @@ import java.nio.charset.StandardCharsets;
 public class JwtAuthInterceptor implements HandlerInterceptor {
 
     private final ObjectMapper objectMapper;
+    private final ObjectProvider<StringRedisTemplate> stringRedisTemplateProvider;
 
     @Value("${im.security.mode:gateway}")
     private String securityMode;
+
+    @Value("${im.security.gateway-only.enabled:false}")
+    private boolean gatewayOnlyEnabled;
+
+    @Value("${im.security.gateway-fallback-jwt.enabled:true}")
+    private boolean gatewayFallbackJwtEnabled;
+
+    @Value("${im.security.replay-protection.enabled:true}")
+    private boolean replayProtectionEnabled;
+
+    @Value("${im.security.replay-protection.ttl-seconds:300}")
+    private long replayProtectionTtlSeconds;
+
+    @Value("${im.security.replay-protection.key-prefix:im:auth:replay:}")
+    private String replayProtectionKeyPrefix;
 
     @Value("${im.gateway.user-id-header:X-User-Id}")
     private String gatewayUserIdHeader;
@@ -62,12 +81,20 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        // 尝试从 Gateway header 获取
         if (isGatewayMode() && applyIdentityFromGatewayHeaders(request)) {
             return true;
         }
 
-        // 备选：从 Authorization header 解析 token
+        if (isGatewayMode() && gatewayOnlyEnabled) {
+            writeUnauthorized(response, "仅允许网关转发请求");
+            return false;
+        }
+
+        if (!gatewayFallbackJwtEnabled) {
+            writeUnauthorized(response, "认证失败");
+            return false;
+        }
+
         String authHeader = request.getHeader(JWT_HEADER);
         if (authHeader != null && authHeader.startsWith(JWT_PREFIX)) {
             String token = authHeader.substring(JWT_PREFIX.length()).trim();
@@ -141,6 +168,9 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             if (Math.abs(now - tsLong) > maxSkewMs) {
                 return false;
             }
+            if (replayProtectionEnabled && !tryAcquireReplayGuard(userIdValue.trim(), tsLong, nonce)) {
+                return false;
+            }
             boolean ok = AuthHeaderUtil.verifyHmacSha256(gatewayAuthSecret,
                     AuthHeaderUtil.buildSignedFields(userIdValue.trim(), usernameValue.trim(), userB64, permsB64, dataB64, ts, nonce),
                     sign);
@@ -173,6 +203,23 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             request.setAttribute("authPermissions", perms);
             request.setAttribute("authDataScopes", dataScopes);
             return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean tryAcquireReplayGuard(String userId, long ts, String nonce) {
+        if (nonce == null || nonce.isBlank()) {
+            return false;
+        }
+        StringRedisTemplate redisTemplate = stringRedisTemplateProvider.getIfAvailable();
+        if (redisTemplate == null) {
+            return true;
+        }
+        String key = replayProtectionKeyPrefix + userId + ":" + ts + ":" + nonce;
+        try {
+            Boolean ok = redisTemplate.opsForValue().setIfAbsent(key, "1", Duration.ofSeconds(Math.max(1, replayProtectionTtlSeconds)));
+            return Boolean.TRUE.equals(ok);
         } catch (Exception e) {
             return false;
         }

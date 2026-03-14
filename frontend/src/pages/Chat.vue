@@ -178,7 +178,7 @@
           <div class="chat-title">
             {{ currentSession.targetName }}
             <span v-if="currentSession.type === 'group'"
-              >({{ currentSession.memberCount || 0 }})</span
+              >({{ (currentSession as any).memberCount || 0 }})</span
             >
           </div>
           <div class="chat-actions">
@@ -203,6 +203,7 @@
               userStore.userInfo?.username || userStore.nickname
             "
             :current-user-avatar="userStore.avatar"
+            @show-group-readers="openGroupReadDialog"
           />
         </div>
 
@@ -366,6 +367,26 @@
         <el-button type="primary" @click="createGroup">创建群组</el-button>
       </template>
     </el-dialog>
+    <el-dialog
+      v-model="showGroupReadDialog"
+      :title="groupReadDialogTitle"
+      width="360px"
+      append-to-body
+    >
+      <div v-if="groupReadUsers.length === 0" class="group-read-empty">
+        暂无已读成员
+      </div>
+      <div v-else class="group-read-list">
+        <div
+          v-for="reader in groupReadUsers"
+          :key="reader.userId"
+          class="group-read-item"
+        >
+          <span class="group-read-name">{{ reader.displayName }}</span>
+          <span class="group-read-id">ID: {{ reader.userId }}</span>
+        </div>
+      </div>
+    </el-dialog>
 
     <!-- 隐藏的文件输入 -->
     <input
@@ -468,9 +489,13 @@ const currentSession = computed(() => {
   return chatStore.currentSession;
 });
 
+const showGroupReadDialog = ref(false);
+const groupReadDialogTitle = ref("群消息已读成员");
+const groupReadUsers = ref<Array<{ userId: string; displayName: string }>>([]);
+
 const pendingRequestsCount = computed(() => {
   return (
-    chatStore.friendRequests?.filter((req) => req.status === "待处理").length ||
+    chatStore.friendRequests?.filter((req) => req.status === "PENDING").length ||
     0
   );
 });
@@ -496,13 +521,7 @@ const clearSession = () => {
   chatStore.currentSession = null;
 };
 
-const startChat = (
-  contact: Friendship & {
-    avatar?: string;
-    username?: string;
-    nickname?: string;
-  },
-) => {
+const startChat = (contact: any) => {
   const session = chatStore.createOrGetSession(
     "private",
     contact.friendId,
@@ -673,6 +692,54 @@ const formatTime = (time: string | Date) => {
   if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`;
 
   return date.toLocaleDateString();
+};
+
+const openGroupReadDialog = (message: any) => {
+  const readBy: string[] = Array.isArray(message?.readBy)
+    ? message.readBy.map((id: any) => String(id))
+    : [];
+  const uniqueUserIds: string[] = Array.from(
+    new Set(readBy.filter((id): id is string => !!id)),
+  );
+  const userNameMap = new Map<string, string>();
+  const currentUserId = String(userStore.userId || "");
+  if (currentUserId) {
+    userNameMap.set(
+      currentUserId,
+      userStore.userInfo?.nickname ||
+        userStore.userInfo?.username ||
+        userStore.nickname ||
+        currentUserId,
+    );
+  }
+  for (const friend of chatStore.friends) {
+    const friendId = String(friend.friendId || "");
+    if (!friendId) continue;
+    userNameMap.set(
+      friendId,
+      friend.remark ||
+        friend.friend?.nickname ||
+        friend.friend?.username ||
+        friend.nickname ||
+        friend.username ||
+        friendId,
+    );
+  }
+  for (const msg of currentMessages.value as any[]) {
+    const senderId = String(msg?.senderId || "");
+    if (!senderId) continue;
+    const senderName = String(msg?.senderName || msg?.sender?.username || "")
+      .trim();
+    if (senderName) {
+      userNameMap.set(senderId, senderName);
+    }
+  }
+  groupReadUsers.value = uniqueUserIds.map((userId) => ({
+    userId,
+    displayName: userNameMap.get(userId) || `用户${userId}`,
+  }));
+  groupReadDialogTitle.value = `群消息已读成员（${groupReadUsers.value.length}）`;
+  showGroupReadDialog.value = true;
 };
 
 const getLastMessagePreview = (msg: any) => {
@@ -1047,6 +1114,35 @@ onUnmounted(() => {
   50% {
     height: 100%;
   }
+}
+
+.group-read-empty {
+  color: #909399;
+  text-align: center;
+  padding: 12px 0;
+}
+
+.group-read-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.group-read-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 2px;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+.group-read-name {
+  color: #303133;
+  font-size: 14px;
+}
+
+.group-read-id {
+  color: #909399;
+  font-size: 12px;
 }
 
 /* Mobile Responsive Styles */

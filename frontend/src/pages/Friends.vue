@@ -36,17 +36,19 @@
             :key="request.id"
             class="request-item"
           >
-            <el-avatar :size="40" :src="request.avatar">
+            <el-avatar :size="40" :src="request.avatar || request.fromUser?.avatar">
               {{
                 request.nickname?.charAt(0) ||
+                request.fromUser?.nickname?.charAt(0) ||
                 request.username?.charAt(0) ||
+                request.fromUser?.username?.charAt(0) ||
                 "U"
               }}
             </el-avatar>
 
             <div class="request-info">
               <div class="request-name">
-                {{ request.nickname || request.username }}
+                {{ request.nickname || request.fromUser?.nickname || request.username || request.fromUser?.username }}
               </div>
               <div class="request-message">
                 {{ request.message || "请求添加您为好友" }}
@@ -142,7 +144,7 @@
 
             <div class="friend-actions">
               <el-dropdown
-                @command="(command) => handleFriendAction(command, friend)"
+                @command="handleFriendAction($event, friend)"
               >
                 <el-button link :icon="MoreFilled" />
                 <template #dropdown>
@@ -558,13 +560,16 @@ const rejectFriendRequest = async (requestId: string) => {
 
 const openChat = (friend: Friend) => {
   chatStore.setCurrentSession({
-    id: friend.id,
+    id: `private_${friend.friendId}`,
     type: "private",
-    name: friend.nickname || friend.username || "",
-    avatar: friend.avatar,
+    targetId: friend.friendId,
+    targetName: friend.nickname || friend.username || "",
+    targetAvatar: friend.avatar,
     lastMessage: "",
-    lastMessageTime: "",
+    lastActiveTime: "",
     unreadCount: 0,
+    isPinned: false,
+    isMuted: false,
   });
 
   router.push("/chat");
@@ -577,8 +582,10 @@ const handleFriendAction = async (command: string, friend: Friend) => {
       break;
 
     case "profile":
-      // TODO: 查看好友资料
-      ElMessage.info("查看资料功能开发中");
+      router.push({
+        path: "/profile",
+        query: { userId: friend.friendId },
+      });
       break;
 
     case "remark":

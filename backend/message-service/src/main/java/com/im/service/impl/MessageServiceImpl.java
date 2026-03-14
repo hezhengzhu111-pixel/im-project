@@ -25,6 +25,7 @@ import com.im.util.MessageConverter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -35,6 +36,7 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.time.LocalDateTime;
@@ -67,50 +69,51 @@ public class MessageServiceImpl implements MessageService {
     @Value("${im.message.text.max-length:2000}")
     private int textMaxLength;
 
+    @Value("${im.message.lock.ttl-seconds:5}")
+    private long conversationLockTtlSeconds;
+
     @Override
     @Transactional
     @CacheEvict(value = "conversations", key = "#senderId")
     public MessageDTO sendPrivateMessage(Long senderId, SendPrivateMessageRequest request) {
-        // 检查消息限流
-        if (!messageRateLimiter.canSendMessage(senderId)) {
-            throw new BusinessException("发送消息过于频繁，请稍后再试");
-        }
-        
         Long receiverId = Long.valueOf(request.getReceiverId());
-        var sender = userProfileCache.getUser(senderId);
-        var receiver = userProfileCache.getUser(receiverId);
-        if (sender == null || receiver == null) {
-            throw new BusinessException("用户不存在");
-        }
-        
-        // 检查是否为好友关系
-        if (!Boolean.TRUE.equals(userServiceFeignClient.isFriend(senderId, receiverId))) {
-            throw new BusinessException("只能向好友发送消息");
-        }
-        
-        // 验证消息内容
-        validateMessageContent(request.getMessageType(), request.getContent(), request.getMediaUrl());
-        
-        // 创建消息
-        Message messageData = createMessageData(request, senderId, receiverId);
-        messageData.setIsGroupChat(false);
-        
-        messageMapper.insert(messageData);
-        Message savedMessage = messageData;
-        
-        // 记录消息发送
-        messageRateLimiter.recordMessage(senderId);
-        
-        // 清除相关缓存
-        clearConversationCache(senderId, receiverId, true);
+        String lockKey = buildConversationLockKey(true, senderId, receiverId);
+        String lockToken = acquireConversationLock(lockKey);
+        try {
+            if (!messageRateLimiter.canSendMessage(senderId)) {
+                throw new BusinessException("发送消息过于频繁，请稍后再试");
+            }
 
-        MessageDTO messageDTO = MessageConverter.convertToDTO(savedMessage, sender.getUsername(), sender.getAvatar(), receiver.getUsername(), receiver.getAvatar(), null);
-        // 设置 isGroup 为 false，确保推送时前端能正确识别为私聊
-        messageDTO.setGroup(false);
-        String payload = com.alibaba.fastjson2.JSON.toJSONString(messageDTO);
-        String key = buildPrivateConversationKey(senderId, receiverId);
-        outboxService.enqueueAfterCommit("im-private-message-topic", key, payload, savedMessage.getId());
-        return messageDTO;
+            var sender = userProfileCache.getUser(senderId);
+            var receiver = userProfileCache.getUser(receiverId);
+            if (sender == null || receiver == null) {
+                throw new BusinessException("用户不存在");
+            }
+
+            if (!Boolean.TRUE.equals(userServiceFeignClient.isFriend(senderId, receiverId))) {
+                throw new BusinessException("只能向好友发送消息");
+            }
+
+            validateMessageContent(request.getMessageType(), request.getContent(), request.getMediaUrl());
+
+            Message messageData = createMessageData(request, senderId, receiverId);
+            messageData.setIsGroupChat(false);
+
+            messageMapper.insert(messageData);
+            Message savedMessage = messageData;
+
+            messageRateLimiter.recordMessage(senderId);
+            clearConversationCache(senderId, receiverId, true);
+
+            MessageDTO messageDTO = MessageConverter.convertToDTO(savedMessage, sender.getUsername(), sender.getAvatar(), receiver.getUsername(), receiver.getAvatar(), null);
+            messageDTO.setGroup(false);
+            String payload = com.alibaba.fastjson2.JSON.toJSONString(messageDTO);
+            String key = buildPrivateConversationKey(senderId, receiverId);
+            outboxService.enqueueAfterCommit("im-private-message-topic", key, payload, savedMessage.getId());
+            return messageDTO;
+        } finally {
+            releaseConversationLock(lockKey, lockToken);
+        }
     }
 
     private Message createMessageData(SendPrivateMessageRequest request, Long senderId, Long receiverId)  {
@@ -132,53 +135,53 @@ public class MessageServiceImpl implements MessageService {
     @Transactional
     @CacheEvict(value = "conversations", key = "#senderId")
     public MessageDTO sendGroupMessage(Long senderId, SendGroupMessageRequest request) {
-        // 检查消息限流
-        if (!messageRateLimiter.canSendMessage(senderId)) {
-            throw new BusinessException("发送消息过于频繁，请稍后再试");
-        }
-        
-        var sender = userProfileCache.getUser(senderId);
-        if (sender == null) {
-            throw new BusinessException("用户不存在");
-        }
         String groupId = request.getGroupId();
         if (!StringUtils.hasText(groupId)) {
             throw new BusinessException("群组ID不能为空");
         }
         Long groupIdLong = Long.valueOf(groupId);
-        if (!Boolean.TRUE.equals(groupServiceFeignClient.exists(groupIdLong))) {
-            throw new BusinessException("群组不存在");
-        }
-        if (!Boolean.TRUE.equals(groupServiceFeignClient.isMember(groupIdLong, senderId))) {
-            throw new BusinessException("只有群成员才能发送消息");
-        }
-        
-        // 验证消息内容
-        validateMessageContent(request.getMessageType(), request.getContent(), request.getMediaUrl());
-        
-        // 创建消息
-        Message messageData = createMessageData(request, senderId);
-        messageMapper.insert(messageData);
-        Message savedMessage = messageData;
-        
-        // 记录消息发送
-        messageRateLimiter.recordMessage(senderId);
-        
-        // 清除群组相关缓存
-        clearConversationCache(null, groupIdLong, false);
-        
-        List<Long> memberIds = groupServiceFeignClient.memberIds(groupIdLong);
-        List<GroupMemberDTO> groupMembers = memberIds == null ? null : memberIds.stream()
-                .filter(id -> id != null && !id.equals(senderId))
-                .map(id -> GroupMemberDTO.builder().groupId(groupIdLong).userId(id).build())
-                .collect(Collectors.toList());
+        String lockKey = buildConversationLockKey(false, null, groupIdLong);
+        String lockToken = acquireConversationLock(lockKey);
+        try {
+            if (!messageRateLimiter.canSendMessage(senderId)) {
+                throw new BusinessException("发送消息过于频繁，请稍后再试");
+            }
 
-        MessageDTO messageDTO = MessageConverter.convertToDTO(savedMessage, sender.getUsername(), sender.getAvatar(), null, null, null);
-        messageDTO.setGroupMembers(groupMembers);
-        String payload = com.alibaba.fastjson2.JSON.toJSONString(messageDTO);
-        String key = buildGroupConversationKey(groupIdLong);
-        outboxService.enqueueAfterCommit("im-group-message-topic", key, payload, savedMessage.getId());
-        return messageDTO;
+            var sender = userProfileCache.getUser(senderId);
+            if (sender == null) {
+                throw new BusinessException("用户不存在");
+            }
+            if (!Boolean.TRUE.equals(groupServiceFeignClient.exists(groupIdLong))) {
+                throw new BusinessException("群组不存在");
+            }
+            if (!Boolean.TRUE.equals(groupServiceFeignClient.isMember(groupIdLong, senderId))) {
+                throw new BusinessException("只有群成员才能发送消息");
+            }
+
+            validateMessageContent(request.getMessageType(), request.getContent(), request.getMediaUrl());
+
+            Message messageData = createMessageData(request, senderId);
+            messageMapper.insert(messageData);
+            Message savedMessage = messageData;
+
+            messageRateLimiter.recordMessage(senderId);
+            clearConversationCache(null, groupIdLong, false);
+
+            List<Long> memberIds = groupServiceFeignClient.memberIds(groupIdLong);
+            List<GroupMemberDTO> groupMembers = memberIds == null ? null : memberIds.stream()
+                    .filter(id -> id != null && !id.equals(senderId))
+                    .map(id -> GroupMemberDTO.builder().groupId(groupIdLong).userId(id).build())
+                    .collect(Collectors.toList());
+
+            MessageDTO messageDTO = MessageConverter.convertToDTO(savedMessage, sender.getUsername(), sender.getAvatar(), null, null, null);
+            messageDTO.setGroupMembers(groupMembers);
+            String payload = com.alibaba.fastjson2.JSON.toJSONString(messageDTO);
+            String key = buildGroupConversationKey(groupIdLong);
+            outboxService.enqueueAfterCommit("im-group-message-topic", key, payload, savedMessage.getId());
+            return messageDTO;
+        } finally {
+            releaseConversationLock(lockKey, lockToken);
+        }
     }
 
     private Message createMessageData(SendGroupMessageRequest request, Long senderId) {
@@ -208,8 +211,6 @@ public class MessageServiceImpl implements MessageService {
             return cachedConversations;
         }
         
-        List<ConversationDTO> conversations = new ArrayList<>();
-
         List<com.im.dto.UserDTO> friends = userServiceFeignClient.friendList(userId);
         List<com.im.dto.GroupInfoDTO> groups = groupServiceFeignClient.listUserGroups(userId);
         if (friends == null) {
@@ -219,124 +220,15 @@ public class MessageServiceImpl implements MessageService {
             groups = List.of();
         }
 
-        if (!friends.isEmpty()) {
-                // 批量查询私聊最后消息
-                List<Long> friendIds = friends.stream()
-                        .map(com.im.dto.UserDTO::getId)
-                        .filter(StringUtils::hasText)
-                        .map(Long::valueOf)
-                        .collect(Collectors.toList());
-                List<Message> lastPrivateMessages = friendIds.isEmpty()
-                        ? List.of()
-                        : messageMapper.selectLastPrivateMessagesBatch(userId, friendIds);
-                Map<Long, Message> lastMessageMap = new HashMap<>();
-                
-                for (Message message : lastPrivateMessages) {
-                    Long friendId = message.getSenderId().equals(userId) ? message.getReceiverId() : message.getSenderId();
-                    lastMessageMap.put(friendId, message);
-                }
-                
-                // 批量统计未读消息
-                List<MessageMapper.CountPair> unreadCounts = friendIds.isEmpty()
-                        ? List.of()
-                        : messageMapper.countUnreadPrivateMessagesBatch(userId, friendIds);
-                Map<Long, Integer> unreadCountMap = new HashMap<>();
-                for (MessageMapper.CountPair result : unreadCounts) {
-                    if (result.getSenderId() != null && result.getCnt() != null) {
-                        unreadCountMap.put(result.getSenderId(), result.getCnt().intValue());
-                    }
-                }
-                
-                // 构建私聊会话
-                for (com.im.dto.UserDTO friend : friends) {
-                    Long friendIdLong = friend.getId() == null ? null : Long.valueOf(friend.getId());
-                    // 如果是自己，跳过（不应该在好友列表中出现自己，但为了保险起见）
-                    if (friendIdLong != null && friendIdLong.equals(userId)) {
-                        continue;
-                    }
-                    
-                    Message lastMessage = friendIdLong == null ? null : lastMessageMap.get(friendIdLong);
-                    Integer unreadCount = friendIdLong == null ? 0 : unreadCountMap.getOrDefault(friendIdLong, 0);
-                    
-                    ConversationDTO conversation = ConversationDTO.builder()
-                        .conversationId(friend.getId())
-                        .conversationType(1) // 私聊
-                        .conversationName(friend.getNickname() != null ? friend.getNickname() : friend.getUsername())
-                        .conversationAvatar(friend.getAvatar())
-                        .lastMessage(lastMessage != null ? lastMessage.getContent() : "")
-                        .lastMessageType(lastMessage != null ? lastMessage.getMessageType() : null)
-                        .lastMessageSenderId(lastMessage != null ? lastMessage.getSenderId().toString() : null)
-                        .lastMessageSenderName(lastMessage != null ? 
-                            (lastMessage.getSenderId().equals(userId) ? "我" : friend.getNickname()) : null)
-                        .lastMessageTime(lastMessage != null ? lastMessage.getCreatedTime() : null)
-                        .unreadCount(unreadCount.longValue())
-                        .isOnline(false) // TODO: 实现在线状态
-                        .isPinned(false) // TODO: 实现置顶功能
-                        .isMuted(false) // TODO: 实现免打扰功能
-                        .build();
-                        
-                    conversations.add(conversation);
-                }
-        }
-        
-        if (!groups.isEmpty()) {
-                // 批量查询群聊最后消息
-                List<Long> groupIds = groups.stream().map(com.im.dto.GroupInfoDTO::getId).collect(Collectors.toList());
-                List<Message> lastGroupMessages = groupIds.isEmpty()
-                        ? List.of()
-                        : messageMapper.selectLastGroupMessagesBatch(groupIds);
-                Map<Long, Message> lastGroupMessageMap = new HashMap<>();
-                
-                for (Message message : lastGroupMessages) {
-                    lastGroupMessageMap.put(message.getGroupId(), message);
-                }
-                
-                // 批量统计群聊未读消息
-                List<MessageMapper.CountPair> groupUnreadCounts = groupIds.isEmpty()
-                        ? List.of()
-                        : messageMapper.countUnreadGroupMessagesBatch(groupIds, userId, null);
-                Map<Long, Integer> groupUnreadCountMap = new HashMap<>();
-                for (MessageMapper.CountPair result : groupUnreadCounts) {
-                    if (result.getGroupId() != null && result.getCnt() != null) {
-                        groupUnreadCountMap.put(result.getGroupId(), result.getCnt().intValue());
-                    }
-                }
-                
-                // 构建群聊会话
-                for (com.im.dto.GroupInfoDTO group : groups) {
-                    Message lastMessage = lastGroupMessageMap.get(group.getId());
-                    Integer unreadCount = groupUnreadCountMap.getOrDefault(group.getId(), 0);
-                    
-                    ConversationDTO conversation = ConversationDTO.builder()
-                        .conversationId(group.getId().toString())
-                        .conversationType(2) // 群聊
-                        .conversationName(group.getName())
-                        .conversationAvatar(group.getAvatar())
-                        .lastMessage(lastMessage != null ? lastMessage.getContent() : "")
-                        .lastMessageType(lastMessage != null ? lastMessage.getMessageType() : null)
-                        .lastMessageSenderId(lastMessage != null ? lastMessage.getSenderId().toString() : null)
-                        .lastMessageSenderName(lastMessage != null ? 
-                            (lastMessage.getSenderId().equals(userId) ? "我" : "群成员") : null)
-                        .lastMessageTime(lastMessage != null ? lastMessage.getCreatedTime() : null)
-                        .unreadCount(unreadCount.longValue())
-                        .isOnline(false) // 群聊不需要在线状态
-                        .isPinned(false) // TODO: 实现置顶功能
-                        .isMuted(false) // TODO: 实现免打扰功能
-                        .build();
-                        
-                    conversations.add(conversation);
-                }
-        }
-        
-        // 按最后消息时间排序
-        conversations = conversations.stream()
-            .sorted((c1, c2) -> {
-                if (c1.getLastMessageTime() == null && c2.getLastMessageTime() == null) return 0;
-                if (c1.getLastMessageTime() == null) return 1;
-                if (c2.getLastMessageTime() == null) return -1;
-                return c2.getLastMessageTime().compareTo(c1.getLastMessageTime());
-            })
-            .collect(Collectors.toList());
+        List<ConversationDTO> conversations = new ArrayList<>();
+        conversations.addAll(buildPrivateConversations(userId, friends));
+        conversations.addAll(buildGroupConversations(userId, groups));
+        conversations.sort((c1, c2) -> {
+            if (c1.getLastMessageTime() == null && c2.getLastMessageTime() == null) return 0;
+            if (c1.getLastMessageTime() == null) return 1;
+            if (c2.getLastMessageTime() == null) return -1;
+            return c2.getLastMessageTime().compareTo(c1.getLastMessageTime());
+        });
         
         redisTemplate.opsForValue().set(cacheKey, conversations, CACHE_EXPIRE_HOURS, TimeUnit.HOURS);
         
@@ -390,71 +282,35 @@ public class MessageServiceImpl implements MessageService {
     @Transactional
     public void markAsRead(Long userId, String conversationId) {
         try {
-            int updatedCount = 0;
             LocalDateTime now = LocalDateTime.now();
-            Long notifyUserId = null;
-            String normalizedConversationId = conversationId;
-            
-            if (conversationId.startsWith("group_")) {
-                // 群聊消息标记已读
-                String groupIdStr = conversationId.substring(6); // 移除"group_"前缀
-                Long groupId = Long.parseLong(groupIdStr);
-                GroupReadCursor cursor = groupReadCursorMapper.selectOne(new LambdaQueryWrapper<GroupReadCursor>()
-                        .eq(GroupReadCursor::getGroupId, groupId)
-                        .eq(GroupReadCursor::getUserId, userId)
-                        .last("limit 1"));
-                if (cursor == null) {
-                    cursor = new GroupReadCursor();
-                    cursor.setGroupId(groupId);
-                    cursor.setUserId(userId);
-                }
-                cursor.setLastReadAt(now);
-                if (cursor.getId() == null) {
-                    groupReadCursorMapper.insert(cursor);
-                } else {
-                    groupReadCursorMapper.updateById(cursor);
-                }
-                updatedCount = 0;
-            } else if (conversationId.contains("_")) {
-                // 私聊消息标记已读，格式为"userId1_userId2"
-                String[] parts = conversationId.split("_");
-                if (parts.length == 2) {
-                    Long userId1 = Long.parseLong(parts[0]);
-                    Long userId2 = Long.parseLong(parts[1]);
-                    
-                    // 确定对方用户ID
-                    Long targetUserId = userId.equals(userId1) ? userId2 : userId1;
-                    notifyUserId = targetUserId;
-                    updatedCount = messageMapper.update(null, new LambdaUpdateWrapper<Message>()
-                            .eq(Message::getReceiverId, userId)
-                            .eq(Message::getSenderId, targetUserId)
-                            .eq(Message::getIsGroupChat, false)
-                            .in(Message::getStatus, 1, 2)
-                            .set(Message::getStatus, Message.MessageStatus.READ)
-                            .set(Message::getUpdatedTime, now));
-                } else {
-                    throw new BusinessException("私聊会话ID格式错误");
-                }
+            ReadConversationTarget target = parseReadConversationTarget(userId, conversationId);
+            if (target.isGroup()) {
+                validateGroupConversationAccess(userId, target.groupId());
             } else {
-                // 兼容旧格式，直接解析为Long
-                Long convId = Long.parseLong(conversationId);
-                notifyUserId = convId;
-                normalizedConversationId = buildPrivateConversationKey(userId, convId);
-                updatedCount = messageMapper.update(null, new LambdaUpdateWrapper<Message>()
-                        .eq(Message::getReceiverId, userId)
-                        .eq(Message::getSenderId, convId)
-                        .eq(Message::getIsGroupChat, false)
-                        .in(Message::getStatus, 1, 2)
-                        .set(Message::getStatus, Message.MessageStatus.READ)
-                        .set(Message::getUpdatedTime, now));
+                validatePrivateConversationAccess(userId, target.targetUserId());
             }
-            
+            String lockKey = target.isGroup()
+                    ? buildConversationLockKey(false, null, target.groupId())
+                    : buildConversationLockKey(true, userId, target.targetUserId());
+            String lockToken = acquireConversationLock(lockKey);
+            int updatedCount;
+            try {
+                if (target.isGroup()) {
+                    updateGroupReadCursor(userId, target.groupId(), now);
+                    updatedCount = 0;
+                } else {
+                    updatedCount = markPrivateConversationRead(userId, target.targetUserId(), now);
+                }
+            } finally {
+                releaseConversationLock(lockKey, lockToken);
+            }
+
             log.info("用户 {} 标记会话 {} 的消息为已读，更新了 {} 条消息", userId, conversationId, updatedCount);
 
-            if (updatedCount > 0 && notifyUserId != null && !conversationId.startsWith("group_")) {
+            if (updatedCount > 0 && !target.isGroup() && target.targetUserId() != null) {
                 Message lastRead = messageMapper.selectOne(new LambdaQueryWrapper<Message>()
                         .eq(Message::getReceiverId, userId)
-                        .eq(Message::getSenderId, notifyUserId)
+                        .eq(Message::getSenderId, target.targetUserId())
                         .eq(Message::getIsGroupChat, false)
                         .eq(Message::getStatus, Message.MessageStatus.READ)
                         .orderByDesc(Message::getId)
@@ -462,14 +318,40 @@ public class MessageServiceImpl implements MessageService {
                 Long lastReadMessageId = lastRead == null ? null : lastRead.getId();
 
                 ReadReceiptDTO receipt = ReadReceiptDTO.builder()
-                        .conversationId(normalizedConversationId)
+                        .conversationId(target.normalizedConversationId())
                         .readerId(userId)
-                        .toUserId(notifyUserId)
+                        .toUserId(target.targetUserId())
                         .readAt(now)
                         .lastReadMessageId(lastReadMessageId)
                         .build();
                 String payload = com.alibaba.fastjson2.JSON.toJSONString(receipt);
-                outboxService.enqueueAfterCommit("im-read-receipt-topic", "rr_" + notifyUserId, payload, lastReadMessageId);
+                outboxService.enqueueAfterCommit("im-read-receipt-topic", "rr_" + target.targetUserId(), payload, lastReadMessageId);
+            }
+            if (target.isGroup() && target.groupId() != null) {
+                Message lastRead = messageMapper.selectOne(new LambdaQueryWrapper<Message>()
+                        .eq(Message::getGroupId, target.groupId())
+                        .eq(Message::getIsGroupChat, true)
+                        .ne(Message::getStatus, Message.MessageStatus.DELETED)
+                        .orderByDesc(Message::getId)
+                        .last("limit 1"));
+                Long lastReadMessageId = lastRead == null ? null : lastRead.getId();
+                List<Long> memberIds = groupServiceFeignClient.memberIds(target.groupId());
+                if (memberIds != null) {
+                    for (Long memberId : memberIds) {
+                        if (memberId == null || memberId.equals(userId)) {
+                            continue;
+                        }
+                        ReadReceiptDTO receipt = ReadReceiptDTO.builder()
+                                .conversationId("group_" + target.groupId())
+                                .readerId(userId)
+                                .toUserId(memberId)
+                                .readAt(now)
+                                .lastReadMessageId(lastReadMessageId)
+                                .build();
+                        String payload = com.alibaba.fastjson2.JSON.toJSONString(receipt);
+                        outboxService.enqueueAfterCommit("im-read-receipt-topic", "grr_" + target.groupId() + "_" + memberId, payload, lastReadMessageId);
+                    }
+                }
             }
 
             try {
@@ -484,6 +366,169 @@ public class MessageServiceImpl implements MessageService {
             log.error("标记消息已读失败，用户ID: {}, 会话ID: {}", userId, conversationId, e);
             throw new BusinessException("标记消息已读失败");
         }
+    }
+
+    private List<ConversationDTO> buildPrivateConversations(Long userId, List<com.im.dto.UserDTO> friends) {
+        if (friends == null || friends.isEmpty()) {
+            return List.of();
+        }
+        List<Long> friendIds = friends.stream()
+                .map(com.im.dto.UserDTO::getId)
+                .filter(StringUtils::hasText)
+                .map(Long::valueOf)
+                .collect(Collectors.toList());
+        List<Message> lastPrivateMessages = friendIds.isEmpty()
+                ? List.of()
+                : messageMapper.selectLastPrivateMessagesBatch(userId, friendIds);
+        Map<Long, Message> lastMessageMap = new HashMap<>();
+        for (Message message : lastPrivateMessages) {
+            Long friendId = message.getSenderId().equals(userId) ? message.getReceiverId() : message.getSenderId();
+            lastMessageMap.put(friendId, message);
+        }
+
+        List<MessageMapper.CountPair> unreadCounts = friendIds.isEmpty()
+                ? List.of()
+                : messageMapper.countUnreadPrivateMessagesBatch(userId, friendIds);
+        Map<Long, Integer> unreadCountMap = new HashMap<>();
+        for (MessageMapper.CountPair result : unreadCounts) {
+            if (result.getSenderId() != null && result.getCnt() != null) {
+                unreadCountMap.put(result.getSenderId(), result.getCnt().intValue());
+            }
+        }
+
+        List<ConversationDTO> conversations = new ArrayList<>();
+        for (com.im.dto.UserDTO friend : friends) {
+            Long friendIdLong = friend.getId() == null ? null : Long.valueOf(friend.getId());
+            if (friendIdLong != null && friendIdLong.equals(userId)) {
+                continue;
+            }
+            Message lastMessage = friendIdLong == null ? null : lastMessageMap.get(friendIdLong);
+            Integer unreadCount = friendIdLong == null ? 0 : unreadCountMap.getOrDefault(friendIdLong, 0);
+            ConversationDTO conversation = ConversationDTO.builder()
+                    .conversationId(friend.getId())
+                    .conversationType(1)
+                    .conversationName(friend.getNickname() != null ? friend.getNickname() : friend.getUsername())
+                    .conversationAvatar(friend.getAvatar())
+                    .lastMessage(lastMessage != null ? lastMessage.getContent() : "")
+                    .lastMessageType(lastMessage != null ? lastMessage.getMessageType() : null)
+                    .lastMessageSenderId(lastMessage != null ? lastMessage.getSenderId().toString() : null)
+                    .lastMessageSenderName(lastMessage != null
+                            ? (lastMessage.getSenderId().equals(userId) ? "我" : friend.getNickname()) : null)
+                    .lastMessageTime(lastMessage != null ? lastMessage.getCreatedTime() : null)
+                    .unreadCount(unreadCount.longValue())
+                    .isOnline(false)
+                    .isPinned(false)
+                    .isMuted(false)
+                    .build();
+            conversations.add(conversation);
+        }
+        return conversations;
+    }
+
+    private List<ConversationDTO> buildGroupConversations(Long userId, List<com.im.dto.GroupInfoDTO> groups) {
+        if (groups == null || groups.isEmpty()) {
+            return List.of();
+        }
+        List<Long> groupIds = groups.stream().map(com.im.dto.GroupInfoDTO::getId).collect(Collectors.toList());
+        List<Message> lastGroupMessages = groupIds.isEmpty()
+                ? List.of()
+                : messageMapper.selectLastGroupMessagesBatch(groupIds);
+        Map<Long, Message> lastGroupMessageMap = new HashMap<>();
+        for (Message message : lastGroupMessages) {
+            lastGroupMessageMap.put(message.getGroupId(), message);
+        }
+
+        List<MessageMapper.CountPair> groupUnreadCounts = groupIds.isEmpty()
+                ? List.of()
+                : messageMapper.countUnreadGroupMessagesByUserCursors(groupIds, userId);
+        Map<Long, Integer> groupUnreadCountMap = new HashMap<>();
+        for (MessageMapper.CountPair result : groupUnreadCounts) {
+            if (result.getGroupId() != null && result.getCnt() != null) {
+                groupUnreadCountMap.put(result.getGroupId(), result.getCnt().intValue());
+            }
+        }
+
+        List<ConversationDTO> conversations = new ArrayList<>();
+        for (com.im.dto.GroupInfoDTO group : groups) {
+            Message lastMessage = lastGroupMessageMap.get(group.getId());
+            Integer unreadCount = groupUnreadCountMap.getOrDefault(group.getId(), 0);
+            ConversationDTO conversation = ConversationDTO.builder()
+                    .conversationId(group.getId().toString())
+                    .conversationType(2)
+                    .conversationName(group.getName())
+                    .conversationAvatar(group.getAvatar())
+                    .lastMessage(lastMessage != null ? lastMessage.getContent() : "")
+                    .lastMessageType(lastMessage != null ? lastMessage.getMessageType() : null)
+                    .lastMessageSenderId(lastMessage != null ? lastMessage.getSenderId().toString() : null)
+                    .lastMessageSenderName(lastMessage != null
+                            ? (lastMessage.getSenderId().equals(userId) ? "我" : "群成员") : null)
+                    .lastMessageTime(lastMessage != null ? lastMessage.getCreatedTime() : null)
+                    .unreadCount(unreadCount.longValue())
+                    .isOnline(false)
+                    .isPinned(false)
+                    .isMuted(false)
+                    .build();
+            conversations.add(conversation);
+        }
+        return conversations;
+    }
+
+    private ReadConversationTarget parseReadConversationTarget(Long userId, String conversationId) {
+        if (conversationId.startsWith("group_")) {
+            Long groupId = Long.parseLong(conversationId.substring(6));
+            return new ReadConversationTarget(true, groupId, null, conversationId);
+        }
+        if (conversationId.contains("_")) {
+            String[] parts = conversationId.split("_");
+            if (parts.length != 2) {
+                throw new BusinessException("私聊会话ID格式错误");
+            }
+            Long userId1 = Long.parseLong(parts[0]);
+            Long userId2 = Long.parseLong(parts[1]);
+            Long targetUserId = userId.equals(userId1) ? userId2 : userId1;
+            String normalizedConversationId = buildPrivateConversationKey(userId, targetUserId);
+            return new ReadConversationTarget(false, null, targetUserId, normalizedConversationId);
+        }
+        Long targetUserId = Long.parseLong(conversationId);
+        String normalizedConversationId = buildPrivateConversationKey(userId, targetUserId);
+        return new ReadConversationTarget(false, null, targetUserId, normalizedConversationId);
+    }
+
+    private void updateGroupReadCursor(Long userId, Long groupId, LocalDateTime now) {
+        GroupReadCursor cursor = groupReadCursorMapper.selectOne(new LambdaQueryWrapper<GroupReadCursor>()
+                .eq(GroupReadCursor::getGroupId, groupId)
+                .eq(GroupReadCursor::getUserId, userId)
+                .last("limit 1"));
+        if (cursor != null) {
+            cursor.setLastReadAt(now);
+            groupReadCursorMapper.updateById(cursor);
+            return;
+        }
+        GroupReadCursor created = new GroupReadCursor();
+        created.setGroupId(groupId);
+        created.setUserId(userId);
+        created.setLastReadAt(now);
+        try {
+            groupReadCursorMapper.insert(created);
+        } catch (DuplicateKeyException ex) {
+            groupReadCursorMapper.update(null, new LambdaUpdateWrapper<GroupReadCursor>()
+                    .eq(GroupReadCursor::getGroupId, groupId)
+                    .eq(GroupReadCursor::getUserId, userId)
+                    .set(GroupReadCursor::getLastReadAt, now));
+        }
+    }
+
+    private int markPrivateConversationRead(Long userId, Long targetUserId, LocalDateTime now) {
+        return messageMapper.update(null, new LambdaUpdateWrapper<Message>()
+                .eq(Message::getReceiverId, userId)
+                .eq(Message::getSenderId, targetUserId)
+                .eq(Message::getIsGroupChat, false)
+                .in(Message::getStatus, 1, 2)
+                .set(Message::getStatus, Message.MessageStatus.READ)
+                .set(Message::getUpdatedTime, now));
+    }
+
+    private record ReadConversationTarget(boolean isGroup, Long groupId, Long targetUserId, String normalizedConversationId) {
     }
     
     /**
@@ -549,27 +594,38 @@ public class MessageServiceImpl implements MessageService {
         return "g_" + (groupId == null ? "0" : groupId.toString());
     }
 
-    private void sendKafkaAfterCommit(String topic, String key, String payload) {
-        outboxService.enqueueAfterCommit(topic, key, payload, null);
+    private String buildConversationLockKey(boolean isPrivate, Long id1, Long id2) {
+        if (isPrivate) {
+            return "msg:lock:" + buildPrivateConversationKey(id1, id2);
+        }
+        return "msg:lock:" + buildGroupConversationKey(id2);
     }
+
+    private String acquireConversationLock(String lockKey) {
+        String token = UUID.randomUUID().toString();
+        Boolean locked = redisTemplate.opsForValue().setIfAbsent(lockKey, token, conversationLockTtlSeconds, TimeUnit.SECONDS);
+        if (!Boolean.TRUE.equals(locked)) {
+            throw new BusinessException("会话处理中，请稍后重试");
+        }
+        return token;
+    }
+
+    private void releaseConversationLock(String lockKey, String token) {
+        try {
+            Object current = redisTemplate.opsForValue().get(lockKey);
+            if (current != null && String.valueOf(current).equals(token)) {
+                redisTemplate.delete(lockKey);
+            }
+        } catch (Exception ex) {
+            log.warn("释放会话锁失败: key={}", lockKey, ex);
+        }
+    }
+
     
     @Override
     public List<MessageDTO> getPrivateMessages(Long userId, Long friendId, int page, int size) {
         log.info("获取私聊消息历史: userId={}, friendId={}, page={}, size={}", userId, friendId, page, size);
-        
-        // 验证用户是否存在
-        if (!Boolean.TRUE.equals(userServiceFeignClient.exists(userId))) {
-            throw new BusinessException("用户不存在");
-        }
-        
-        if (!Boolean.TRUE.equals(userServiceFeignClient.exists(friendId))) {
-            throw new BusinessException("好友不存在");
-        }
-        
-        // 验证好友关系
-        if (!Boolean.TRUE.equals(userServiceFeignClient.isFriend(userId, friendId))) {
-            throw new BusinessException("不是好友关系，无法查看聊天记录");
-        }
+        validatePrivateConversationAccess(userId, friendId);
         
         Page<Message> mpPage = new Page<>(Math.max(1, page + 1L), Math.max(1, size));
         LambdaQueryWrapper<Message> wrapper = new LambdaQueryWrapper<Message>()
@@ -583,46 +639,13 @@ public class MessageServiceImpl implements MessageService {
         List<Message> messages = result.getRecords();
         
         log.info("获取到私聊消息数量: {}", messages.size());
-        var me = userProfileCache.getUser(userId);
-        var friend = userProfileCache.getUser(friendId);
-        return messages.stream()
-                .map(m -> {
-                    var sender = m.getSenderId() != null && m.getSenderId().equals(userId) ? me : friend;
-                    var receiver = m.getSenderId() != null && m.getSenderId().equals(userId) ? friend : me;
-                    MessageDTO dto = MessageConverter.convertToDTO(
-                            m,
-                            sender == null ? null : sender.getUsername(),
-                            sender == null ? null : sender.getAvatar(),
-                            receiver == null ? null : receiver.getUsername(),
-                            receiver == null ? null : receiver.getAvatar(),
-                            null
-                    );
-                    if (dto != null) {
-                        dto.setGroup(false);
-                    }
-                    return dto;
-                })
-                .collect(Collectors.toList());
+        return toPrivateMessageDTOs(messages, userId, friendId);
     }
     
     @Override
     public List<MessageDTO> getGroupMessages(Long userId, Long groupId, int page, int size) {
         log.info("获取群聊消息历史: userId={}, groupId={}, page={}, size={}", userId, groupId, page, size);
-        
-        // 验证用户是否存在
-        if (!Boolean.TRUE.equals(userServiceFeignClient.exists(userId))) {
-            throw new BusinessException("用户不存在");
-        }
-        
-        // 验证群组是否存在
-        if (!Boolean.TRUE.equals(groupServiceFeignClient.exists(groupId))) {
-            throw new BusinessException("群组不存在");
-        }
-        
-        // 验证用户是否为群成员
-        if (!Boolean.TRUE.equals(groupServiceFeignClient.isMember(groupId, userId))) {
-            throw new BusinessException("不是群成员，无法查看群聊记录");
-        }
+        validateGroupConversationAccess(userId, groupId);
         
         Page<Message> mpPage = new Page<>(Math.max(1, page + 1L), Math.max(1, size));
         LambdaQueryWrapper<Message> wrapper = new LambdaQueryWrapper<Message>()
@@ -634,23 +657,7 @@ public class MessageServiceImpl implements MessageService {
         List<Message> messages = result.getRecords();
         
         log.info("获取到群聊消息数量: {}", messages.size());
-        return messages.stream()
-                .map(m -> {
-                    var sender = userProfileCache.getUser(m.getSenderId());
-                    MessageDTO dto = MessageConverter.convertToDTO(
-                            m,
-                            sender == null ? null : sender.getUsername(),
-                            sender == null ? null : sender.getAvatar(),
-                            null,
-                            null,
-                            null
-                    );
-                    if (dto != null) {
-                        dto.setGroup(true);
-                    }
-                    return dto;
-                })
-                .collect(Collectors.toList());
+        return toGroupMessageDTOs(messages);
     }
 
     @Override
@@ -661,16 +668,7 @@ public class MessageServiceImpl implements MessageService {
                                                      Long afterMessageId,
                                                      int limit) {
         int realLimit = Math.min(Math.max(1, limit), 200);
-
-        if (!Boolean.TRUE.equals(userServiceFeignClient.exists(userId))) {
-            throw new BusinessException("用户不存在");
-        }
-        if (!Boolean.TRUE.equals(userServiceFeignClient.exists(friendId))) {
-            throw new BusinessException("好友不存在");
-        }
-        if (!Boolean.TRUE.equals(userServiceFeignClient.isFriend(userId, friendId))) {
-            throw new BusinessException("不是好友关系，无法查看聊天记录");
-        }
+        validatePrivateConversationAccess(userId, friendId);
 
         LambdaQueryWrapper<Message> wrapper = new LambdaQueryWrapper<Message>()
                 .eq(Message::getIsGroupChat, false)
@@ -692,6 +690,104 @@ public class MessageServiceImpl implements MessageService {
         }
 
         List<Message> messages = messageMapper.selectList(wrapper);
+        return toPrivateMessageDTOs(messages, userId, friendId);
+    }
+
+    @Override
+    public List<MessageDTO> getGroupMessagesCursor(Long userId,
+                                                   Long groupId,
+                                                   Long lastMessageId,
+                                                   LocalDateTime beforeTimestamp,
+                                                   Long afterMessageId,
+                                                   int limit) {
+        int realLimit = Math.min(Math.max(1, limit), 200);
+        validateGroupConversationAccess(userId, groupId);
+
+        LambdaQueryWrapper<Message> wrapper = new LambdaQueryWrapper<Message>()
+                .eq(Message::getGroupId, groupId)
+                .eq(Message::getIsGroupChat, true)
+                .ne(Message::getStatus, 5);
+
+        if (afterMessageId != null) {
+            wrapper.gt(Message::getId, afterMessageId).orderByAsc(Message::getId).last("limit " + realLimit);
+        } else {
+            if (lastMessageId != null) {
+                wrapper.lt(Message::getId, lastMessageId);
+            }
+            if (beforeTimestamp != null) {
+                wrapper.lt(Message::getCreatedTime, beforeTimestamp);
+            }
+            wrapper.orderByDesc(Message::getId).last("limit " + realLimit);
+        }
+
+        List<Message> messages = messageMapper.selectList(wrapper);
+        return toGroupMessageDTOs(messages);
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = "conversations", key = "#userId")
+    public MessageDTO recallMessage(Long userId, Long messageId) {
+        if (userId == null || messageId == null) {
+            throw new IllegalArgumentException("参数不能为空");
+        }
+
+        Message msg = messageMapper.selectById(messageId);
+        if (msg == null || msg.getStatus() == Message.MessageStatus.DELETED) {
+            throw new BusinessException("消息不存在");
+        }
+        if (msg.getSenderId() == null || !msg.getSenderId().equals(userId)) {
+            throw new SecurityException("只能撤回自己发送的消息");
+        }
+        if (msg.getCreatedTime() != null && msg.getCreatedTime().plusMinutes(2).isBefore(LocalDateTime.now())) {
+            throw new BusinessException("只能撤回2分钟内的消息");
+        }
+        return applyMessageStatusAndPublish(msg, Message.MessageStatus.RECALLED);
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = "conversations", key = "#userId")
+    public MessageDTO deleteMessage(Long userId, Long messageId) {
+        if (userId == null || messageId == null) {
+            throw new IllegalArgumentException("参数不能为空");
+        }
+
+        Message msg = messageMapper.selectById(messageId);
+        if (msg == null) {
+            throw new BusinessException("消息不存在");
+        }
+        if (msg.getSenderId() == null || !msg.getSenderId().equals(userId)) {
+            throw new SecurityException("只能删除自己发送的消息");
+        }
+        return applyMessageStatusAndPublish(msg, Message.MessageStatus.DELETED);
+    }
+
+    private void validatePrivateConversationAccess(Long userId, Long friendId) {
+        if (!Boolean.TRUE.equals(userServiceFeignClient.exists(userId))) {
+            throw new BusinessException("用户不存在");
+        }
+        if (!Boolean.TRUE.equals(userServiceFeignClient.exists(friendId))) {
+            throw new BusinessException("好友不存在");
+        }
+        if (!Boolean.TRUE.equals(userServiceFeignClient.isFriend(userId, friendId))) {
+            throw new BusinessException("不是好友关系，无法查看聊天记录");
+        }
+    }
+
+    private void validateGroupConversationAccess(Long userId, Long groupId) {
+        if (!Boolean.TRUE.equals(userServiceFeignClient.exists(userId))) {
+            throw new BusinessException("用户不存在");
+        }
+        if (!Boolean.TRUE.equals(groupServiceFeignClient.exists(groupId))) {
+            throw new BusinessException("群组不存在");
+        }
+        if (!Boolean.TRUE.equals(groupServiceFeignClient.isMember(groupId, userId))) {
+            throw new BusinessException("不是群成员，无法查看群聊记录");
+        }
+    }
+
+    private List<MessageDTO> toPrivateMessageDTOs(List<Message> messages, Long userId, Long friendId) {
         var me = userProfileCache.getUser(userId);
         var friend = userProfileCache.getUser(friendId);
         return messages.stream()
@@ -714,43 +810,7 @@ public class MessageServiceImpl implements MessageService {
                 .collect(Collectors.toList());
     }
 
-    @Override
-    public List<MessageDTO> getGroupMessagesCursor(Long userId,
-                                                   Long groupId,
-                                                   Long lastMessageId,
-                                                   LocalDateTime beforeTimestamp,
-                                                   Long afterMessageId,
-                                                   int limit) {
-        int realLimit = Math.min(Math.max(1, limit), 200);
-
-        if (!Boolean.TRUE.equals(userServiceFeignClient.exists(userId))) {
-            throw new BusinessException("用户不存在");
-        }
-        if (!Boolean.TRUE.equals(groupServiceFeignClient.exists(groupId))) {
-            throw new BusinessException("群组不存在");
-        }
-        if (!Boolean.TRUE.equals(groupServiceFeignClient.isMember(groupId, userId))) {
-            throw new BusinessException("不是群成员，无法查看群聊记录");
-        }
-
-        LambdaQueryWrapper<Message> wrapper = new LambdaQueryWrapper<Message>()
-                .eq(Message::getGroupId, groupId)
-                .eq(Message::getIsGroupChat, true)
-                .ne(Message::getStatus, 5);
-
-        if (afterMessageId != null) {
-            wrapper.gt(Message::getId, afterMessageId).orderByAsc(Message::getId).last("limit " + realLimit);
-        } else {
-            if (lastMessageId != null) {
-                wrapper.lt(Message::getId, lastMessageId);
-            }
-            if (beforeTimestamp != null) {
-                wrapper.lt(Message::getCreatedTime, beforeTimestamp);
-            }
-            wrapper.orderByDesc(Message::getId).last("limit " + realLimit);
-        }
-
-        List<Message> messages = messageMapper.selectList(wrapper);
+    private List<MessageDTO> toGroupMessageDTOs(List<Message> messages) {
         return messages.stream()
                 .map(m -> {
                     var sender = userProfileCache.getUser(m.getSenderId());
@@ -770,33 +830,16 @@ public class MessageServiceImpl implements MessageService {
                 .collect(Collectors.toList());
     }
 
-    @Override
-    @Transactional
-    @CacheEvict(value = "conversations", key = "#userId")
-    public MessageDTO recallMessage(Long userId, Long messageId) {
-        if (userId == null || messageId == null) {
-            throw new IllegalArgumentException("参数不能为空");
-        }
-
-        Message msg = messageMapper.selectById(messageId);
-        if (msg == null || msg.getStatus() == Message.MessageStatus.DELETED) {
-            throw new BusinessException("消息不存在");
-        }
-        if (msg.getSenderId() == null || !msg.getSenderId().equals(userId)) {
-            throw new SecurityException("只能撤回自己发送的消息");
-        }
-        if (msg.getCreatedTime() != null && msg.getCreatedTime().plusMinutes(2).isBefore(LocalDateTime.now())) {
-            throw new BusinessException("只能撤回2分钟内的消息");
-        }
-
+    private MessageDTO applyMessageStatusAndPublish(Message msg, Integer status) {
+        LocalDateTime now = LocalDateTime.now();
         LambdaUpdateWrapper<Message> uw = new LambdaUpdateWrapper<Message>()
-                .eq(Message::getId, messageId)
-                .set(Message::getStatus, Message.MessageStatus.RECALLED)
-                .set(Message::getUpdatedTime, LocalDateTime.now());
+                .eq(Message::getId, msg.getId())
+                .set(Message::getStatus, status)
+                .set(Message::getUpdatedTime, now);
         messageMapper.update(null, uw);
 
-        msg.setStatus(Message.MessageStatus.RECALLED);
-        msg.setUpdatedTime(LocalDateTime.now());
+        msg.setStatus(status);
+        msg.setUpdatedTime(now);
 
         boolean isGroup = Boolean.TRUE.equals(msg.getIsGroupChat());
         if (isGroup) {
@@ -807,63 +850,6 @@ public class MessageServiceImpl implements MessageService {
 
         var sender = userProfileCache.getUser(msg.getSenderId());
         var receiver = !isGroup && msg.getReceiverId() != null ? userProfileCache.getUser(msg.getReceiverId()) : null;
-
-        MessageDTO dto = MessageConverter.convertToDTO(
-                msg,
-                sender == null ? null : sender.getUsername(),
-                sender == null ? null : sender.getAvatar(),
-                receiver == null ? null : receiver.getUsername(),
-                receiver == null ? null : receiver.getAvatar(),
-                null
-        );
-        if (dto != null) {
-            dto.setGroup(isGroup);
-        }
-
-        String payload = com.alibaba.fastjson2.JSON.toJSONString(dto);
-        if (isGroup) {
-            outboxService.enqueueAfterCommit("im-group-message-topic", buildGroupConversationKey(msg.getGroupId()), payload, msg.getId());
-        } else {
-            outboxService.enqueueAfterCommit("im-private-message-topic", buildPrivateConversationKey(msg.getSenderId(), msg.getReceiverId()), payload, msg.getId());
-        }
-        return dto;
-    }
-
-    @Override
-    @Transactional
-    @CacheEvict(value = "conversations", key = "#userId")
-    public MessageDTO deleteMessage(Long userId, Long messageId) {
-        if (userId == null || messageId == null) {
-            throw new IllegalArgumentException("参数不能为空");
-        }
-
-        Message msg = messageMapper.selectById(messageId);
-        if (msg == null) {
-            throw new BusinessException("消息不存在");
-        }
-        if (msg.getSenderId() == null || !msg.getSenderId().equals(userId)) {
-            throw new SecurityException("只能删除自己发送的消息");
-        }
-
-        LambdaUpdateWrapper<Message> uw = new LambdaUpdateWrapper<Message>()
-                .eq(Message::getId, messageId)
-                .set(Message::getStatus, Message.MessageStatus.DELETED)
-                .set(Message::getUpdatedTime, LocalDateTime.now());
-        messageMapper.update(null, uw);
-
-        msg.setStatus(Message.MessageStatus.DELETED);
-        msg.setUpdatedTime(LocalDateTime.now());
-
-        boolean isGroup = Boolean.TRUE.equals(msg.getIsGroupChat());
-        if (isGroup) {
-            clearConversationCache(null, msg.getGroupId(), false);
-        } else {
-            clearConversationCache(msg.getSenderId(), msg.getReceiverId(), true);
-        }
-
-        var sender = userProfileCache.getUser(msg.getSenderId());
-        var receiver = !isGroup && msg.getReceiverId() != null ? userProfileCache.getUser(msg.getReceiverId()) : null;
-
         MessageDTO dto = MessageConverter.convertToDTO(
                 msg,
                 sender == null ? null : sender.getUsername(),

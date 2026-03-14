@@ -6,20 +6,29 @@ export type ConversationType = "PRIVATE" | "GROUP";
 // 会话实体
 export interface Conversation {
   id: string;
-  type: ConversationType;
+  type: ConversationType | "private" | "group";
+  conversationType?: ConversationType | "private" | "group";
   targetId: string; // 私聊时为好友ID，群聊时为群组ID
   targetName: string; // 私聊时为好友昵称，群聊时为群组名称
-  targetAvatar: string; // 私聊时为好友头像，群聊时为群组头像
+  targetAvatar?: string; // 私聊时为好友头像，群聊时为群组头像
+  name?: string;
+  avatar?: string;
+  memberCount?: number;
+  isPinned?: boolean;
+  isMuted?: boolean;
   lastMessage?: {
-    id: string;
-    content: string;
-    sendTime: string;
-    senderName: string;
+    id?: string;
+    content?: string;
+    sendTime?: string;
+    senderName?: string;
+    messageType?: string;
+    senderId?: string | number;
   };
-  unreadCount: number;
-  updateTime: string;
-  pinned: boolean; // 是否置顶
-  muted: boolean; // 是否静音
+  unreadCount?: number;
+  updateTime?: string;
+  lastActiveTime?: string;
+  pinned?: boolean; // 是否置顶
+  muted?: boolean; // 是否静音
 }
 
 // 聊天会话状态

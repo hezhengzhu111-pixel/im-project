@@ -126,10 +126,13 @@ watch(
   () => router.currentRoute.value,
   (to) => {
     // 更新页面标题
-    if (to.meta?.title) {
-      document.title = `${to.meta.title} - ${APP_CONFIG.APP_NAME}`;
+    const pageTitle =
+      typeof to.meta?.title === "string" ? to.meta.title : undefined;
+    const appName = String(APP_CONFIG.NAME || "IM");
+    if (pageTitle) {
+      document.title = `${pageTitle} - ${appName}`;
     } else {
-      document.title = APP_CONFIG.APP_NAME;
+      document.title = appName;
     }
   },
   { immediate: true },

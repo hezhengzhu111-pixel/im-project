@@ -1,5 +1,5 @@
 import { http } from "@/utils/request";
-import type { TokenParseResultDTO } from "@/types/user";
+import type { TokenParseResultDTO, TokenPairDTO } from "@/types/user";
 
 export const authService = {
   parseAccessToken: (token: string, allowExpired: boolean = true) =>
@@ -7,4 +7,6 @@ export const authService = {
       token,
       allowExpired,
     }),
+  refreshAccessToken: (refreshToken: string) =>
+    http.post<TokenPairDTO>("/auth/refresh", { refreshToken }),
 };

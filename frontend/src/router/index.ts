@@ -3,7 +3,12 @@
  * 定义应用的所有路由规则
  */
 
-import { createRouter, createWebHistory } from "vue-router";
+import {
+  createRouter,
+  createWebHistory,
+  isNavigationFailure,
+  NavigationFailureType,
+} from "vue-router";
 import type { RouteRecordRaw } from "vue-router";
 import { useUserStore } from "@/stores/user";
 import { ElMessage } from "element-plus";
@@ -149,7 +154,11 @@ router.afterEach((to, from, failure) => {
   // 结束进度条
   NProgress.done();
 
-  if (failure) {
+  if (
+    failure &&
+    !isNavigationFailure(failure, NavigationFailureType.duplicated) &&
+    !isNavigationFailure(failure, NavigationFailureType.cancelled)
+  ) {
     console.error("路由跳转失败:", failure);
   }
 });

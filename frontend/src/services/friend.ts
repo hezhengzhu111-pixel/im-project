@@ -22,5 +22,7 @@ export const friendService = {
   delete: (friendId: string) =>
     http.delete<void>("/friend/remove", { friendUserId: friendId }),
   updateRemark: (friendId: string, remark: string) =>
-    http.put<void>("/friend/remark", { friendUserId: friendId, remark }),
+    http.put<void>("/friend/remark", undefined, {
+      params: { friendUserId: friendId, remark },
+    }),
 };

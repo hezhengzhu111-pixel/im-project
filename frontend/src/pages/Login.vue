@@ -81,9 +81,6 @@ const userStore = useUserStore();
 // 表单引用
 const loginFormRef = ref<InstanceType<typeof ElForm>>();
 
-// 登录状态标志
-const isLoggingIn = ref(false);
-
 // 登录表单数据
 const loginForm = reactive<LoginForm>({
   username: "",
@@ -110,11 +107,12 @@ const loginRules = {
 
 // 登录处理
 const handleLogin = async () => {
+  if (userStore.loading) return;
   try {
+    if (!loginFormRef.value) return;
     const valid = await loginFormRef.value.validate();
     if (!valid) return;
-
-    isLoggingIn.value = true;
+    loginForm.username = loginForm.username.trim();
     // 处理重定向路径
     let redirectPath = (route.query.redirect as string) || "/chat";
     if (redirectPath.includes("?")) {
@@ -131,15 +129,13 @@ const handleLogin = async () => {
   } catch (error: any) {
     console.error("登录流程失败:", error);
     // 错误消息已在 store 中处理
-  } finally {
-    isLoggingIn.value = false;
   }
 };
 
 // 组件挂载时的处理
 onMounted(() => {
-  // 如果已经登录且不在登录过程中，直接跳转到目标页面
-  if (userStore.isLoggedIn && !isLoggingIn.value) {
+  // 如果已经登录，直接跳转到目标页面
+  if (userStore.isLoggedIn) {
     const redirectPath = (route.query.redirect as string) || "/chat";
     router.replace(redirectPath);
   }

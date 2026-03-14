@@ -17,7 +17,7 @@ export const userService = {
     http.put<boolean>("/user/profile", data),
   search: (keyword: string, type: string = "username") =>
     http.get<UserDTO[]>("/user/search", { params: { keyword, type } }),
-  logout: () => http.post<string>("/user/offline"),
+  logout: () => http.post<string>("/user/logout"),
   heartbeat: (userIds: string[]) =>
     http.post<Record<string, boolean>>("/user/heartbeat", userIds),
   online: () => http.post<string>("/user/online"),

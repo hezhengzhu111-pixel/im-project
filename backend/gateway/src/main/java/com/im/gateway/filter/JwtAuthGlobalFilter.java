@@ -45,6 +45,9 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     @Value("${auth.service.url:http://im-auth:8084}")
     private String authServiceUrl;
 
+    @Value("${im.security.token-revocation-check.enabled:true}")
+    private boolean tokenRevocationCheckEnabled;
+
     @Value("${jwt.header:Authorization}")
     private String jwtHeader;
 
@@ -159,6 +162,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 .post()
                 .uri(authServiceUrl + "/api/auth/internal/validate-token")
                 .header(internalHeaderName, internalSecret)
+                .header("X-Check-Revoked", String.valueOf(tokenRevocationCheckEnabled))
                 .bodyValue(token)
                 .retrieve()
                 .bodyToMono(TokenParseResultDTO.class)

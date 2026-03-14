@@ -42,7 +42,7 @@ export function useChatLogic() {
     let contacts = chatStore.friends;
     if (searchKeyword.value) {
       contacts = chatStore.friends.filter((contact) =>
-        contact.nickname
+        (contact.nickname || contact.friend?.nickname || contact.username || "")
           .toLowerCase()
           .includes(searchKeyword.value.toLowerCase()),
       );
@@ -90,7 +90,9 @@ export function useChatLogic() {
   const filteredGroups = computed(() => {
     if (!searchKeyword.value) return chatStore.groups;
     return chatStore.groups.filter((group) =>
-      group.name?.toLowerCase().includes(searchKeyword.value.toLowerCase()),
+      (group.groupName || group.name || "")
+        .toLowerCase()
+        .includes(searchKeyword.value.toLowerCase()),
     );
   });
 

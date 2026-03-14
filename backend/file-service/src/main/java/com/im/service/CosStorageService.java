@@ -82,6 +82,16 @@ public class CosStorageService implements StorageService {
         return new StorageObject(cosObject.getObjectContent(), contentType, len, cosObject);
     }
 
+    @Override
+    public boolean deleteObject(String category, String date, String filename) throws Exception {
+        String key = buildKey(category, date, filename);
+        if (!cosClient.doesObjectExist(props.getBucket(), key)) {
+            return false;
+        }
+        cosClient.deleteObject(props.getBucket(), key);
+        return true;
+    }
+
     public String buildPublicUrl(String key) {
         String normalizedKey = key.startsWith("/") ? key.substring(1) : key;
         if (StringUtils.hasText(props.getPublicDomain())) {
