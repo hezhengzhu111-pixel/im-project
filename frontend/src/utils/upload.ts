@@ -4,9 +4,9 @@ import type { FileUploadResponse } from "@/types/api";
 // 上传结果接口
 export interface UploadResult {
   url: string;
-  filename: string;
+  fileName: string;
   size: number;
-  contentType: string;
+  fileType: string;
 }
 
 // 文件验证结果接口
@@ -115,9 +115,9 @@ export async function uploadFile(file: File): Promise<UploadResult> {
       // 转换为UploadResult格式
       return {
         url: response.data.url,
-        filename: response.data.filename,
-        size: response.data.size,
-        contentType: response.data.contentType,
+        fileName: response.data.fileName || file.name,
+        size: response.data.size || file.size,
+        fileType: response.data.fileType || file.type,
       };
     } else {
       throw new Error(response.message || "上传失败");

@@ -13,6 +13,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
+import com.im.dto.response.FileUploadResponse;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.test.util.ReflectionTestUtils;
+
 @ExtendWith(MockitoExtension.class)
 class FileControllerTest {
 
@@ -21,6 +32,24 @@ class FileControllerTest {
 
     @InjectMocks
     private FileController fileController;
+
+    @BeforeEach
+    void setUp() {
+        ReflectionTestUtils.setField(fileController, "maxFileSize", 10485760L);
+    }
+
+    @Test
+    void uploadFileReturnsSuccess() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.pdf", "application/pdf", "test".getBytes());
+        FileUploadResponse uploadResponse = new FileUploadResponse();
+        uploadResponse.setUrl("url");
+        when(storageService.upload(any(MultipartFile.class), anyString(), anyLong())).thenReturn(uploadResponse);
+
+        ApiResponse<FileUploadResponse> response = fileController.uploadFile(file, 1L);
+
+        assertEquals(200, response.getCode());
+        assertEquals("url", response.getData().getUrl());
+    }
 
     @Test
     void deleteFileReturnsSuccessWhenDeleted() throws Exception {

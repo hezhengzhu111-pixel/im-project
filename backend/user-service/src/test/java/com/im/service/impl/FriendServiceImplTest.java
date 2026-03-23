@@ -11,8 +11,10 @@ import com.im.mapper.FriendRequestMapper;
 import com.im.mapper.UserMapper;
 import com.im.service.ImService;
 import com.im.util.DTOConverter;
+import com.im.dto.FriendRequestResponseDTO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -21,7 +23,9 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -114,5 +118,52 @@ class FriendServiceImplTest {
 
         assertEquals(1, list.size());
         assertFalse(Boolean.TRUE.equals(list.get(0).getIsOnline()));
+    }
+
+    @Test
+    void sendFriendRequest_ShouldFailIfTargetUserDoesNotExist() {
+        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService);
+        when(userMapper.selectCount(any())).thenReturn(0L);
+        
+        FriendRequestResponseDTO response = service.sendFriendRequest(1L, 2L, "hello");
+        
+        assertFalse(response.isSuccess());
+        assertEquals("目标用户不存在", response.getMessage());
+    }
+
+    @Test
+    void sendFriendRequest_ShouldFailIfAlreadyPending() {
+        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService);
+        when(userMapper.selectCount(any())).thenReturn(1L);
+        when(friendMapper.selectCount(any())).thenReturn(0L); // Not friends
+        
+        // Mock dual direction pending check
+        when(friendRequestMapper.selectCount(any())).thenReturn(1L); // Has pending
+        
+        FriendRequestResponseDTO response = service.sendFriendRequest(1L, 2L, "hello");
+        
+        assertFalse(response.isSuccess());
+        assertEquals("已有待处理的好友申请", response.getMessage());
+        verify(friendRequestMapper, never()).insert(any(FriendRequest.class));
+    }
+
+    @Test
+    void sendFriendRequest_ShouldSuccessAndSendSystemNotice() {
+        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService);
+        when(userMapper.selectCount(any())).thenReturn(1L);
+        when(friendMapper.selectCount(any())).thenReturn(0L); // Not friends
+        
+        // No pending requests
+        when(friendRequestMapper.selectCount(any())).thenReturn(0L);
+        
+        when(friendRequestMapper.insert(any(FriendRequest.class))).thenReturn(1);
+        
+        FriendRequestResponseDTO response = service.sendFriendRequest(1L, 2L, "hello");
+        
+        assertTrue(response.isSuccess());
+        assertEquals("好友申请发送成功", response.getMessage());
+        
+        // Verify bidirectional system notice
+        verify(imService, times(2)).sendMessage(any());
     }
 }

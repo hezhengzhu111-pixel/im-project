@@ -69,4 +69,39 @@ public interface UserService {
      * @return 修改结果
      */
     Boolean updateProfile(Long userId, UserDTO userDTO);
+
+    /**
+     * 修改密码
+     */
+    Boolean changePassword(Long userId, String currentPassword, String newPassword);
+
+    /**
+     * 发送验证码（手机/邮箱）
+     */
+    void sendVerificationCode(String target);
+
+    /**
+     * 绑定手机号
+     */
+    Boolean bindPhone(Long userId, String phone, String code);
+
+    /**
+     * 绑定邮箱
+     */
+    Boolean bindEmail(Long userId, String email, String code);
+
+    /**
+     * 注销账户
+     */
+    Boolean deleteAccount(Long userId, String password);
+
+    /**
+     * 获取用户设置
+     */
+    com.im.dto.UserSettingsDTO getUserSettings(Long userId);
+
+    /**
+     * 更新用户设置（全量/部分）
+     */
+    Boolean updateUserSettings(Long userId, String type, java.util.Map<String, Object> settings);
 }

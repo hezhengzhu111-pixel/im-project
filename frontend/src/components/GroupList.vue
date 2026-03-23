@@ -287,8 +287,8 @@ const filteredGroups = computed(() => {
   const keyword = searchKeyword.value.toLowerCase();
   return props.groups.filter((group) => {
     return (
-      group.groupName.toLowerCase().includes(keyword) ||
-      (group.description && group.description.toLowerCase().includes(keyword))
+      (group.groupName || "").toLowerCase().includes(keyword) ||
+      (group.description || "").toLowerCase().includes(keyword)
     );
   });
 });

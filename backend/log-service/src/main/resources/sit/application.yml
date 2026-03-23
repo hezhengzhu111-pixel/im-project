@@ -1,0 +1,35 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: im-log-service
+  config:
+    import:
+      - optional:nacos:application-kafka.yml
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:im-nacos:8848}
+        namespace: ${NACOS_NAMESPACE:}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:im-nacos:8848}
+        namespace: ${NACOS_NAMESPACE:}
+        file-extension: yml
+        import-check:
+          enabled: false
+        shared-configs:
+          - data-id: application-kafka.yml
+            refresh: true
+
+  elasticsearch:
+    uris: http://admin-es:9200
+
+  kafka:
+    consumer:
+      group-id: log-service-group
+      auto-offset-reset: earliest
+
+im:
+  jwt:
+    enabled: false

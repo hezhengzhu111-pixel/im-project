@@ -29,3 +29,12 @@ export interface PageResponse<T> {
   first: boolean;
   last: boolean;
 }
+
+export interface FileUploadResponse {
+  url: string;
+  thumbnailUrl?: string;
+  size?: number;
+  fileName?: string;
+  fileType?: string;
+}
+
