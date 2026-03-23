@@ -1,4 +1,5 @@
 import { http } from "@/utils/request";
+import { useUserStore } from "@/stores/user";
 import type {
   Group,
   GroupMember,
@@ -73,8 +74,12 @@ export const groupService = {
   join: (groupId: string) => http.post<void>(`/group/${groupId}/join`),
   quit: (groupId: string) => http.post<void>(`/group/${groupId}/leave`),
   dismiss: (groupId: string) => http.delete<void>(`/group/${groupId}`),
-  update: (groupId: string, data: UpdateGroupRequest) =>
-    http.put<RawGroup>(`/group/${groupId}`, data).then((response) => {
+  update: (groupId: string, data: UpdateGroupRequest, operatorId?: string) =>
+    http.put<RawGroup>(`/group/${groupId}`, {
+      ...data,
+      groupId: Number(groupId),
+      operatorId: Number(operatorId || useUserStore().userId || 0)
+    }).then((response) => {
       if (response.code === 200 && response.data) {
         return { ...response, data: normalizeGroup(response.data) };
       }

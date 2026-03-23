@@ -48,6 +48,30 @@ export interface SendMessageRequest {
   extra?: Record<string, unknown>;
 }
 
+export interface SendPrivateMessageRequest {
+  receiverId: string | number;
+  messageType: string;
+  content?: string;
+  mediaUrl?: string;
+  mediaSize?: number;
+  mediaName?: string;
+  thumbnailUrl?: string;
+  duration?: number;
+  locationInfo?: string;
+}
+
+export interface SendGroupMessageRequest {
+  groupId: string | number;
+  messageType: string;
+  content?: string;
+  mediaUrl?: string;
+  mediaSize?: number;
+  mediaName?: string;
+  thumbnailUrl?: string;
+  duration?: number;
+  locationInfo?: string;
+}
+
 /** 消息搜索结果 */
 export interface MessageSearchResult {
   message: Message;

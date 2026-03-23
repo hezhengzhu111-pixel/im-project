@@ -4,8 +4,26 @@ server:
 spring:
   application:
     name: im-registry-monitor
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+      config:
+        server-addr: 127.0.0.1:8848
+        file-extension: yml
+        shared-configs:
+          - data-id: application-mysql.yml
+            refresh: true
+          - data-id: application-redis.yml
+            refresh: true
+          - data-id: application-kafka.yml
+            refresh: true
   config:
     import:
+      - optional:nacos:application-mysql.yml
+      - optional:nacos:application-redis.yml
+      - optional:nacos:application-kafka.yml
+      - optional:nacos:application-nacos.yml
       - optional:classpath:dev/application-mysql.yml
       - optional:classpath:dev/application-redis.yml
       - optional:classpath:dev/application-kafka.yml

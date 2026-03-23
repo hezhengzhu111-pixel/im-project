@@ -51,13 +51,17 @@ public class RegistryPoller {
     }
 
     private void pollHealth(RestClient client) throws Exception {
-        String body = client.get()
-                .uri("/v1/console/health")
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .body(String.class);
-        if (body == null || body.isBlank()) {
-            throw new IllegalStateException("注册中心健康检查返回为空");
+        try {
+            String body = client.get()
+                    .uri("/v1/console/health")
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .body(String.class);
+            if (body == null || body.isBlank()) {
+                throw new IllegalStateException("注册中心健康检查返回为空");
+            }
+        } catch (Exception e) {
+            log.warn("Nacos health check failed, but continuing instance poll. Error: {}", e.getMessage());
         }
     }
 
@@ -83,6 +87,9 @@ public class RegistryPoller {
         for (JsonNode serviceNode : serviceListNode) {
             String raw = serviceNode.asText();
             ServiceKey serviceKey = ServiceKey.parse(raw);
+            if (serviceKey.serviceName == null || serviceKey.serviceName.isEmpty()) {
+                continue;
+            }
 
             String instanceJson = client.get()
                     .uri(uriBuilder -> uriBuilder.path("/v1/ns/instance/list")

@@ -22,6 +22,14 @@ export const userApi = {
   searchUsers: (keyword: string) => userService.search(keyword),
   online: () => userService.online(),
   logout: () => userService.logout(),
+  changePassword: (data: any) => userService.changePassword(data),
+  sendPhoneCode: (phone: string) => userService.sendPhoneCode(phone),
+  bindPhone: (data: any) => userService.bindPhone(data),
+  sendEmailCode: (email: string) => userService.sendEmailCode(email),
+  bindEmail: (data: any) => userService.bindEmail(data),
+  deleteAccount: (data: any) => userService.deleteAccount(data),
+  getSettings: () => userService.getSettings(),
+  updateSettings: (type: string, data: any) => userService.updateSettings(type, data),
 };
 
 export const messageApi = {

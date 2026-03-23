@@ -42,7 +42,7 @@ export function useChatLogic() {
     let contacts = chatStore.friends;
     if (searchKeyword.value) {
       contacts = chatStore.friends.filter((contact) =>
-        (contact.nickname || contact.friend?.nickname || contact.username || "")
+        (contact.nickname || contact.username || "")
           .toLowerCase()
           .includes(searchKeyword.value.toLowerCase()),
       );

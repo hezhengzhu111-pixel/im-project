@@ -495,7 +495,7 @@ const groupReadUsers = ref<Array<{ userId: string; displayName: string }>>([]);
 
 const pendingRequestsCount = computed(() => {
   return (
-    chatStore.friendRequests?.filter((req) => req.status === "PENDING")
+    chatStore.friendRequests?.filter((req) => req.status === "PENDING" || req.status === "待处理" || req.status === 0)
       .length || 0
   );
 });
@@ -718,8 +718,6 @@ const openGroupReadDialog = (message: any) => {
     userNameMap.set(
       friendId,
       friend.remark ||
-        friend.friend?.nickname ||
-        friend.friend?.username ||
         friend.nickname ||
         friend.username ||
         friendId,

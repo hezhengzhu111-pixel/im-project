@@ -4,7 +4,13 @@ import com.im.dto.ApiResponse;
 import com.im.dto.UserAuthResponseDTO;
 import com.im.dto.UserDTO;
 import com.im.feign.AuthServiceFeignClient;
+import com.im.dto.request.BindEmailRequest;
+import com.im.dto.request.BindPhoneRequest;
+import com.im.dto.request.ChangePasswordRequest;
+import com.im.dto.request.DeleteAccountRequest;
+import com.im.dto.request.SendCodeRequest;
 import com.im.dto.request.LoginRequest;
+import com.im.dto.UserSettingsDTO;
 import com.im.service.ImService;
 import com.im.service.UserService;
 import com.im.validation.group.RegisterGroup;
@@ -172,5 +178,58 @@ public class UserController {
             log.error("搜索用户失败", e);
             return ApiResponse.error(e.getMessage());
         }
+    }
+
+    @PutMapping("/password")
+    @Operation(summary = "修改密码", description = "修改用户密码")
+    public ApiResponse<Boolean> changePassword(@RequestAttribute("userId") Long userId, @RequestBody @Validated ChangePasswordRequest request) {
+        return ApiResponse.success(userService.changePassword(userId, request.getCurrentPassword(), request.getNewPassword()));
+    }
+
+    @PostMapping("/phone/code")
+    @Operation(summary = "发送手机验证码", description = "发送手机验证码")
+    public ApiResponse<String> sendPhoneCode(@RequestBody @Validated SendCodeRequest request) {
+        userService.sendVerificationCode(request.getTarget());
+        return ApiResponse.success("验证码已发送", null);
+    }
+
+    @PostMapping("/phone/bind")
+    @Operation(summary = "绑定手机号", description = "验证并绑定手机号")
+    public ApiResponse<Boolean> bindPhone(@RequestAttribute("userId") Long userId, @RequestBody @Validated BindPhoneRequest request) {
+        return ApiResponse.success(userService.bindPhone(userId, request.getPhone(), request.getCode()));
+    }
+
+    @PostMapping("/email/code")
+    @Operation(summary = "发送邮箱验证码", description = "发送邮箱验证码")
+    public ApiResponse<String> sendEmailCode(@RequestBody @Validated SendCodeRequest request) {
+        userService.sendVerificationCode(request.getTarget());
+        return ApiResponse.success("验证码已发送", null);
+    }
+
+    @PostMapping("/email/bind")
+    @Operation(summary = "绑定邮箱", description = "验证并绑定邮箱")
+    public ApiResponse<Boolean> bindEmail(@RequestAttribute("userId") Long userId, @RequestBody @Validated BindEmailRequest request) {
+        return ApiResponse.success(userService.bindEmail(userId, request.getEmail(), request.getCode()));
+    }
+
+    @DeleteMapping("/account")
+    @Operation(summary = "注销账户", description = "验证密码后注销账户")
+    public ApiResponse<Boolean> deleteAccount(@RequestAttribute("userId") Long userId, @RequestBody @Validated DeleteAccountRequest request) {
+        return ApiResponse.success(userService.deleteAccount(userId, request.getPassword()));
+    }
+
+    @GetMapping("/settings")
+    @Operation(summary = "获取用户设置", description = "获取用户的隐私、消息、通用设置")
+    public ApiResponse<UserSettingsDTO> getUserSettings(@RequestAttribute("userId") Long userId) {
+        return ApiResponse.success(userService.getUserSettings(userId));
+    }
+
+    @PutMapping("/settings/{type}")
+    @Operation(summary = "更新用户设置", description = "更新指定类型的用户设置(privacy, message, general)")
+    public ApiResponse<Boolean> updateUserSettings(
+            @RequestAttribute("userId") Long userId,
+            @PathVariable("type") String type,
+            @RequestBody Map<String, Object> settings) {
+        return ApiResponse.success(userService.updateUserSettings(userId, type, settings));
     }
 }

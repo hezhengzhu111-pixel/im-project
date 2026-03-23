@@ -19,8 +19,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 
 @Component
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @RequiredArgsConstructor
 @Slf4j
 public class JwtAuthInterceptor implements HandlerInterceptor {

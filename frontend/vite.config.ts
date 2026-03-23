@@ -9,7 +9,7 @@ import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const gatewayHost = env.VITE_GATEWAY_HOST || env.GATEWAY_HOST || "127.0.0.1";
-  const gatewayPort = env.VITE_GATEWAY_PORT || env.GATEWAY_PORT || "8080";
+  const gatewayPort = env.VITE_GATEWAY_PORT || env.GATEWAY_PORT || "8082";
   const apiTarget = `http://${gatewayHost}:${gatewayPort}`;
   const wsTarget = `ws://${gatewayHost}:${gatewayPort}`;
 

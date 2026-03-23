@@ -9,13 +9,22 @@ import type { Group } from './group';
 /** 聊天会话 */
 export interface ChatSession {
   id: string;
-  type: 'private' | 'group';
+  conversationId?: string;
+  type: 'private' | 'group' | 'PRIVATE' | 'GROUP' | string | number;
+  conversationType?: string | number;
   targetId: string;
   targetName: string;
+  conversationName?: string;
   name?: string;
   avatar?: string;
+  conversationAvatar?: string;
   targetAvatar?: string;
-  lastMessage?: (Partial<Message> & Record<string, unknown>) | string;
+  lastMessage?: Message | string | any;
+  lastMessageType?: string;
+  lastMessageSenderId?: string;
+  lastMessageSenderName?: string;
+  lastMessageTime?: string;
+  sendTime?: string;
   unreadCount: number;
   lastActiveTime: string;
   updateTime?: string;
@@ -52,3 +61,6 @@ export interface WebSocketMessage {
   data: unknown;
   timestamp: number;
 }
+
+export type Conversation = ChatSession;
+

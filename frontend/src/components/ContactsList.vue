@@ -204,7 +204,7 @@ const loadPendingRequests = async () => {
     if (response.code === 200) {
       const requests = (response.data as any).content || response.data || [];
       pendingRequestsCount.value = requests.filter(
-        (req: any) => req.status === "PENDING",
+        (req: any) => req.status === "PENDING" || req.status === "待处理" || req.status === 0,
       ).length;
     }
   } catch (error) {
@@ -234,8 +234,8 @@ const startChat = (friend: Friendship) => {
   const session = chatStore.createOrGetSession(
     "private",
     friend.friendId,
-    friend.remark || friend.friend.nickname || friend.friend.username,
-    friend.friend.avatar,
+    friend.remark || friend.nickname || friend.username,
+    friend.avatar,
   );
   if (session) {
     chatStore.setCurrentSession(session);
