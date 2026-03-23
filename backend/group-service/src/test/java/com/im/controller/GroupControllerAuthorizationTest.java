@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -95,5 +96,37 @@ class GroupControllerAuthorizationTest {
                 .andExpect(jsonPath("$.code").value(403));
 
         verify(groupService, never()).getGroupInfo(anyLong());
+    }
+
+    @Test
+    void createGroupShouldReturnSuccess() throws Exception {
+        com.im.dto.request.CreateGroupRequest request = new com.im.dto.request.CreateGroupRequest();
+        request.setName("Test Group");
+        request.setType(1);
+        
+        com.im.dto.GroupInfoDTO groupInfo = new com.im.dto.GroupInfoDTO();
+        groupInfo.setId(88L);
+        groupInfo.setName("Test Group");
+        
+        when(groupService.createGroup(eq(1L), eq("Test Group"), eq(1), any())).thenReturn(groupInfo);
+
+        mockMvc.perform(post("/s/create")
+                        .requestAttr("userId", 1L)
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value(88));
+    }
+
+    @Test
+    void joinGroupShouldReturnSuccess() throws Exception {
+        mockMvc.perform(post("/s/88/join")
+                        .requestAttr("userId", 1L)
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(groupService).joinGroup(88L, 1L);
     }
 }

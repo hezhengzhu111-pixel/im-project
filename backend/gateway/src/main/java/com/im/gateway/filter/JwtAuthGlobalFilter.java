@@ -75,7 +75,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     public JwtAuthGlobalFilter(ReactiveStringRedisTemplate redisTemplate,
                                ObjectMapper objectMapper,
                                WebClient.Builder webClientBuilder,
-                               @Value("${im.gateway.auth-service-url:http://auth-service}") String authServiceUrl) {
+                               @Value("${im.gateway.auth-service-url:http://im-auth-service}") String authServiceUrl) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.webClient = webClientBuilder.baseUrl(authServiceUrl).build();

@@ -5,4 +5,3 @@ spring:
       port: 6379
       database: ${REDIS_DB:0}
       timeout: ${REDIS_TIMEOUT:3000ms}
-      password: ${REDIS_PASSWORD:}

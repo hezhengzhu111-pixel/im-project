@@ -42,7 +42,7 @@ const promptReLogin = () => {
   ElMessage.warning("登录状态已过期，已为您跳转到登录页");
   Promise.resolve()
     .then(() => {
-      if (router.currentRoute.value.path !== "/login") {
+      if (router.currentRoute?.value?.path !== "/login") {
         return router.push("/login");
       }
       return undefined;

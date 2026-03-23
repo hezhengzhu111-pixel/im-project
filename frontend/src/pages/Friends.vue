@@ -22,66 +22,90 @@
       </div>
 
       <!-- 好友申请 -->
-      <el-card v-if="friendRequests.length > 0" class="requests-card">
+      <el-card class="requests-card">
         <template #header>
           <div class="card-header">
-            <span>好友申请</span>
+            <span>好友申请 (调试可见)</span>
             <el-badge :value="friendRequests.length" class="badge" />
           </div>
         </template>
+        
+        <div v-if="friendRequests.length === 0" style="padding: 20px; text-align: center; color: #999;">
+          暂无好友申请数据，或正在加载...
+        </div>
 
-        <div class="request-list">
+        <div class="request-list" v-else>
           <div
             v-for="request in friendRequests"
             :key="request.id"
             class="request-item"
           >
+            <!-- 头像和信息展示：如果是别人发给我的，显示申请人；如果是我发给别人的，显示目标用户 -->
             <el-avatar
-              :size="40"
-              :src="request.avatar || request.fromUser?.avatar"
-            >
-              {{
-                request.nickname?.charAt(0) ||
-                request.fromUser?.nickname?.charAt(0) ||
-                request.username?.charAt(0) ||
-                request.fromUser?.username?.charAt(0) ||
-                "U"
-              }}
-            </el-avatar>
-
-            <div class="request-info">
-              <div class="request-name">
+                :size="40"
+                :src="String(request.applicantId) === String(userStore.userId) ? request.targetAvatar : (request.applicantAvatar || request.avatar || request.fromUser?.avatar)"
+              >
                 {{
-                  request.nickname ||
-                  request.fromUser?.nickname ||
-                  request.username ||
-                  request.fromUser?.username
+                  String(request.applicantId) === String(userStore.userId) ?
+                  (request.targetNickname?.charAt(0) || request.targetUsername?.charAt(0) || "?") :
+                  (request.applicantNickname?.charAt(0) ||
+                  request.applicantUsername?.charAt(0) ||
+                  request.nickname?.charAt(0) ||
+                  request.fromUser?.nickname?.charAt(0) ||
+                  request.username?.charAt(0) ||
+                  request.fromUser?.username?.charAt(0) ||
+                  "?")
                 }}
-              </div>
-              <div class="request-message">
-                {{ request.message || "请求添加您为好友" }}
-              </div>
+              </el-avatar>
+              <div class="request-info">
+                <div class="request-name">
+                  <span v-if="String(request.applicantId) === String(userStore.userId)" style="color: #909399; font-size: 12px; margin-right: 4px;">发给:</span>
+                  {{
+                    String(request.applicantId) === String(userStore.userId) ?
+                    (request.targetNickname || request.targetUsername) :
+                    (request.applicantNickname ||
+                    request.applicantUsername ||
+                    request.nickname ||
+                    request.fromUser?.nickname ||
+                    request.username ||
+                    request.fromUser?.username)
+                  }}
+                </div>
+                <div class="request-message">
+                  {{ request.reason || request.message || "请求添加为好友" }}
+                </div>
               <div class="request-time">
                 {{ formatTime(request.createTime) }}
               </div>
             </div>
 
+            <!-- 操作按钮：只允许操作别人发给我的请求，且状态为待处理(0/待处理) -->
             <div class="request-actions">
-              <el-button
-                type="primary"
-                size="small"
-                @click="acceptFriendRequest(request.id)"
-                :loading="processingRequest === request.id"
-              >
-                同意
-              </el-button>
-              <el-button
-                size="small"
-                @click="rejectFriendRequest(request.id)"
-                :loading="processingRequest === request.id"
-              >
-                拒绝
-              </el-button>
+              <template v-if="String(request.applicantId) !== String(userStore.userId) && (request.status === 0 || request.status === '待处理' || request.status === 'PENDING')">
+                <el-button
+                  type="primary"
+                  size="small"
+                  @click="acceptFriendRequest(request.id)"
+                  :loading="processingRequest === request.id"
+                >
+                  同意
+                </el-button>
+                <el-button
+                  size="small"
+                  @click="rejectFriendRequest(request.id)"
+                  :loading="processingRequest === request.id"
+                >
+                  拒绝
+                </el-button>
+              </template>
+              <template v-else-if="String(request.applicantId) === String(userStore.userId) && (request.status === 0 || request.status === '待处理' || request.status === 'PENDING')">
+                <el-tag type="info" size="small">等待验证</el-tag>
+              </template>
+              <template v-else>
+                <el-tag :type="request.status === 1 || request.status === '已同意' || request.status === 'ACCEPTED' ? 'success' : 'danger'" size="small">
+                  {{ request.status === 1 || request.status === '已同意' || request.status === 'ACCEPTED' ? '已同意' : '已拒绝' }}
+                </el-tag>
+              </template>
             </div>
           </div>
         </div>
@@ -132,7 +156,7 @@
                   "U"
                 }}
               </el-avatar>
-              <div v-if="isOnline(friend.id)" class="online-indicator"></div>
+              <div v-if="isOnline(friend.friendId)" class="online-indicator"></div>
             </div>
 
             <div class="friend-info">
@@ -140,7 +164,7 @@
                 {{ friend.nickname || friend.username }}
               </div>
               <div class="friend-status">
-                <span v-if="isOnline(friend.id)" class="online-text">在线</span>
+                <span v-if="isOnline(friend.friendId)" class="online-text">在线</span>
                 <span v-else class="offline-text">{{
                   getLastSeenText(friend.lastSeen)
                 }}</span>
@@ -317,6 +341,7 @@ import {
   ArrowDown,
 } from "@element-plus/icons-vue";
 import { useChatStore } from "@/stores/chat";
+import { useUserStore } from "@/stores/user";
 import { useWebSocketStore } from "@/stores/websocket";
 import type { Friend, UserInfo } from "@/types";
 
@@ -325,6 +350,7 @@ const router = useRouter();
 
 // 状态管理
 const chatStore = useChatStore();
+const userStore = useUserStore();
 const wsStore = useWebSocketStore();
 
 // 引用
@@ -388,8 +414,8 @@ const filteredFriends = computed(() => {
           new Date(a.createTime || 0).getTime()
         );
       case "online": {
-        const aOnline = isOnline(a.id);
-        const bOnline = isOnline(b.id);
+        const aOnline = isOnline(a.friendId);
+        const bOnline = isOnline(b.friendId);
         if (aOnline && !bOnline) return -1;
         if (!aOnline && bOnline) return 1;
         return 0;
@@ -524,6 +550,9 @@ const sendFriendRequest = async () => {
 
     ElMessage.success("好友申请已发送");
     showAddFriend.value = false;
+
+    // 主动刷新好友申请列表
+    await chatStore.loadFriendRequests();
 
     // 重置表单
     Object.assign(addFriendForm, {

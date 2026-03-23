@@ -118,6 +118,10 @@ public class ImServiceImpl implements IImService {
 
     @Override
     public void sendPrivateMessage(MessageDTO message) {
+        if (message.getMessageType() == com.im.enums.MessageType.SYSTEM) {
+            pushToUser(message, message.getReceiverId());
+            return;
+        }
         pushToUser(message, message.getReceiverId());
     }
 
@@ -148,7 +152,11 @@ public class ImServiceImpl implements IImService {
         }
         
         Map<String, Object> wsMessage = new HashMap<>();
-        wsMessage.put("type", "MESSAGE");
+        if (message.getMessageType() == com.im.enums.MessageType.SYSTEM) {
+            wsMessage.put("type", "SYSTEM");
+        } else {
+            wsMessage.put("type", "MESSAGE");
+        }
         wsMessage.put("data", message);
         wsMessage.put("timestamp", System.currentTimeMillis());
         

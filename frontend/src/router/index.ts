@@ -121,6 +121,15 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
+    path: "/admin/logs",
+    name: "LogMonitor",
+    component: () => import("@/pages/LogMonitor.vue"),
+    meta: {
+      title: "日志监控",
+      requiresAuth: true,
+    },
+  },
+  {
     path: "/:pathMatch(.*)*",
     name: "NotFound",
     component: () => import("@/pages/NotFound.vue"),

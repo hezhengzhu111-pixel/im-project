@@ -418,7 +418,24 @@ export const useUserStore = defineStore("user", () => {
     },
   };
 
-  const readSettings = () => {
+  const readSettings = async () => {
+    try {
+      const response = await userApi.getSettings();
+      if (response.code === 200 && response.data) {
+        const parsed = response.data;
+        const settings = {
+          ...defaultSettings,
+          general: { ...defaultSettings.general, ...(parsed.general || {}) },
+          privacy: { ...defaultSettings.privacy, ...(parsed.privacy || {}) },
+          message: { ...defaultSettings.message, ...(parsed.message || {}) },
+        };
+        localStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(settings));
+        return settings;
+      }
+    } catch (error) {
+      console.error("从服务端获取设置失败，降级使用本地配置:", error);
+    }
+
     const raw = localStorage.getItem(USER_SETTINGS_KEY);
     if (!raw) return { ...defaultSettings };
     try {
@@ -445,7 +462,7 @@ export const useUserStore = defineStore("user", () => {
 
   const getUserSettings = async () => {
     try {
-      return readSettings();
+      return await readSettings();
     } catch (error: any) {
       console.error("获取用户设置失败:", error);
       return {};
@@ -453,24 +470,51 @@ export const useUserStore = defineStore("user", () => {
   };
 
   const updatePrivacySettings = async (data: Record<string, boolean>) => {
-    const settings = readSettings();
-    settings.privacy = { ...settings.privacy, ...data };
-    saveSettings(settings);
-    return true;
+    try {
+      const response = await userApi.updateSettings("privacy", data);
+      if (response.code === 200) {
+        const settings = await readSettings();
+        settings.privacy = { ...settings.privacy, ...data };
+        saveSettings(settings);
+        return true;
+      }
+      throw new Error(response.message || "更新隐私设置失败");
+    } catch (error: any) {
+      console.error("更新隐私设置失败:", error);
+      throw error;
+    }
   };
 
   const updateMessageSettings = async (data: Record<string, boolean>) => {
-    const settings = readSettings();
-    settings.message = { ...settings.message, ...data };
-    saveSettings(settings);
-    return true;
+    try {
+      const response = await userApi.updateSettings("message", data);
+      if (response.code === 200) {
+        const settings = await readSettings();
+        settings.message = { ...settings.message, ...data };
+        saveSettings(settings);
+        return true;
+      }
+      throw new Error(response.message || "更新消息设置失败");
+    } catch (error: any) {
+      console.error("更新消息设置失败:", error);
+      throw error;
+    }
   };
 
   const updateGeneralSettings = async (data: Record<string, any>) => {
-    const settings = readSettings();
-    settings.general = { ...settings.general, ...data };
-    saveSettings(settings);
-    return true;
+    try {
+      const response = await userApi.updateSettings("general", data);
+      if (response.code === 200) {
+        const settings = await readSettings();
+        settings.general = { ...settings.general, ...data };
+        saveSettings(settings);
+        return true;
+      }
+      throw new Error(response.message || "更新通用设置失败");
+    } catch (error: any) {
+      console.error("更新通用设置失败:", error);
+      throw error;
+    }
   };
 
   const changePassword = async (data: {
@@ -483,8 +527,16 @@ export const useUserStore = defineStore("user", () => {
     if (data.currentPassword === data.newPassword) {
       throw new Error("新密码不能与旧密码相同");
     }
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    return true;
+    try {
+      const response = await userApi.changePassword(data);
+      if (response.code === 200) {
+        return true;
+      }
+      throw new Error(response.message || "修改密码失败");
+    } catch (error: any) {
+      console.error("修改密码失败:", error);
+      throw error;
+    }
   };
 
   // 删除账户
@@ -494,7 +546,11 @@ export const useUserStore = defineStore("user", () => {
       if (!data.password) {
         throw new Error("请输入登录密码");
       }
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      const response = await userApi.deleteAccount({ password: data.password });
+      if (response.code !== 200) {
+        throw new Error(response.message || "删除账户失败");
+      }
+      
       clearUserData();
       localStorage.removeItem(USER_SETTINGS_KEY);
       localStorage.removeItem("im_phone_codes");
@@ -518,11 +574,11 @@ export const useUserStore = defineStore("user", () => {
       if (!data.email || !data.code) {
         throw new Error("请填写完整邮箱验证信息");
       }
-      const codes = JSON.parse(localStorage.getItem("im_email_codes") || "{}");
-      if (codes[data.email] && codes[data.email] !== data.code) {
-        throw new Error("邮箱验证码错误");
+      
+      const response = await userApi.bindEmail(data);
+      if (response.code !== 200) {
+        throw new Error(response.message || "绑定邮箱失败");
       }
-      await updateUserInfo({ email: data.email });
 
       // 更新用户信息中的邮箱
       if (userInfo.value) {
@@ -551,11 +607,11 @@ export const useUserStore = defineStore("user", () => {
       if (!data.phone || !data.code) {
         throw new Error("请填写完整手机验证信息");
       }
-      const codes = JSON.parse(localStorage.getItem("im_phone_codes") || "{}");
-      if (codes[data.phone] && codes[data.phone] !== data.code) {
-        throw new Error("手机验证码错误");
+      
+      const response = await userApi.bindPhone(data);
+      if (response.code !== 200) {
+        throw new Error(response.message || "绑定手机号失败");
       }
-      await updateUserInfo({ phone: data.phone });
 
       // 更新用户信息中的手机号
       if (userInfo.value) {
@@ -582,11 +638,11 @@ export const useUserStore = defineStore("user", () => {
     try {
       loading.value = true;
       if (!email) throw new Error("邮箱不能为空");
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      const codes = JSON.parse(localStorage.getItem("im_email_codes") || "{}");
-      codes[email] = code;
-      localStorage.setItem("im_email_codes", JSON.stringify(codes));
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      
+      const response = await userApi.sendEmailCode(email);
+      if (response.code !== 200) {
+        throw new Error(response.message || "发送验证码失败");
+      }
 
       ElMessage.success("验证码已发送到邮箱");
       return true;
@@ -604,11 +660,11 @@ export const useUserStore = defineStore("user", () => {
     try {
       loading.value = true;
       if (!phone) throw new Error("手机号不能为空");
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      const codes = JSON.parse(localStorage.getItem("im_phone_codes") || "{}");
-      codes[phone] = code;
-      localStorage.setItem("im_phone_codes", JSON.stringify(codes));
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      
+      const response = await userApi.sendPhoneCode(phone);
+      if (response.code !== 200) {
+        throw new Error(response.message || "发送验证码失败");
+      }
 
       ElMessage.success("验证码已发送到手机");
       return true;

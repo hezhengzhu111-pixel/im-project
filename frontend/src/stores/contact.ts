@@ -16,9 +16,10 @@ export const useContactStore = defineStore("contact", {
           this.pendingRequests = (response.data || []).map((item: any) => ({
             id: String(item.id || ""),
             applicantId: String(item.fromUserId || item.applicantId || ""),
-            applicantName:
+            applicantUsername: String(item.fromUser?.username || item.applicantUsername || ""),
+            applicantNickname:
               item.fromUser?.nickname ||
-              item.fromUser?.username ||
+              item.applicantNickname ||
               item.applicantName ||
               "",
             applicantAvatar:

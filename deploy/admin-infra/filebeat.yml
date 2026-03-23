@@ -1,0 +1,21 @@
+filebeat.inputs:
+- type: filestream
+  id: im-services-logs
+  enabled: true
+  paths:
+    - /var/log/im-project/**/*.log
+  parsers:
+    - multiline:
+        type: pattern
+        pattern: '^\d{4}-\d{2}-\d{2}'
+        negate: true
+        match: after
+
+output.kafka:
+  hosts: ["host.docker.internal:9092"]
+  topic: 'im-service-logs'
+  partition.round_robin:
+    reachable_only: false
+  required_acks: 1
+  compression: gzip
+  max_message_bytes: 1000000
