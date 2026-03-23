@@ -1,168 +1,59 @@
-// 用户DTO - 对应后端UserDTO
-export interface UserDTO {
-  id?: string;
-  password?: string;
+/**
+ * 用户相关类型定义
+ */
+
+/** 用户状态 */
+export type UserStatus = 'ONLINE' | 'OFFLINE' | 'BUSY' | 'AWAY' | 'online' | 'offline' | 'busy' | 'away';
+
+/** 用户信息 */
+export interface User {
+  id: string;
+  userId?: string;
   username: string;
-  nickname?: string;
+  nickname: string;
   avatar?: string;
   email?: string;
   phone?: string;
-  status?: number;
   gender?: string;
   birthday?: string;
   signature?: string;
   location?: string;
+  lastSeen?: string;
+  status: UserStatus;
   lastLoginTime?: string;
   createTime?: string;
-  updateTime?: string;
 }
 
-// 用户认证响应 - 对应后端UserAuthResponseDTO
-export interface UserAuthResponse {
-  success: boolean;
-  message: string;
-  user?: UserDTO;
-  token?: string;
-  refreshToken?: string;
-  expiresInMs?: number;
-  refreshExpiresInMs?: number;
-  imToken?: string;
+/** 用户信息别名，向后兼容 */
+export type UserInfo = User;
+
+/** 登录请求 */
+export interface LoginRequest {
+  username: string;
+  password: string;
 }
 
-export interface TokenPairDTO {
-  accessToken: string;
-  refreshToken: string;
-  expiresInMs?: number;
-  refreshExpiresInMs?: number;
+/** 登录表单 */
+export interface LoginForm extends LoginRequest {
+  rememberMe?: boolean;
 }
 
-// 注册请求
+/** 注册请求 */
 export interface RegisterRequest {
   username: string;
   password: string;
-  nickname?: string;
+  nickname: string;
   email?: string;
   phone?: string;
 }
 
-// 登录请求
-export interface LoginRequest {
+/** 注册表单 */
+export interface RegisterForm {
   username: string;
-  password?: string;
-  token?: string;
-}
-
-// 更新用户信息请求
-export interface UpdateUserRequest {
-  nickname?: string;
-  avatar?: string;
-  email?: string;
-  phone?: string;
-}
-
-// 用户在线状态
-export interface UserOnlineStatus {
-  [userId: string]: boolean;
-}
-
-// 扩展的用户接口
-export interface User extends UserDTO {
-  userId?: string;
-  birthday?: string;
-  signature?: string;
-  location?: string;
-  lastSeen?: string;
-}
-
-// 修改密码请求
-export interface ChangePasswordRequest {
-  oldPassword: string;
-  newPassword: string;
+  email: string;
+  password: string;
   confirmPassword: string;
-}
-
-// 用户简要信息（用于好友列表等）
-export interface UserBrief {
-  id: string;
-  username: string;
-  nickname: string;
-  avatar?: string;
-  onlineStatus:
-    | "ONLINE"
-    | "OFFLINE"
-    | "BUSY"
-    | "AWAY"
-    | "online"
-    | "offline"
-    | "busy"
-    | "away";
-  lastSeen?: string;
-  signature?: string;
-}
-
-// 用户搜索结果
-export interface UserSearchResult {
-  id: string;
-  username: string;
-  nickname: string;
-  avatar?: string;
-  signature?: string;
-  isFriend: boolean;
-}
-
-// 好友关系
-export interface Friendship {
-  id: string;
-  userId: string;
-  friendId: string;
-  username?: string;
+  agreement: boolean;
   nickname?: string;
-  avatar?: string;
-  signature?: string;
-  lastSeen?: string;
-  remark?: string;
-  groupName?: string;
-  createTime: string;
-  friend: UserBrief;
-}
-
-// 好友申请
-export interface FriendRequest {
-  id: string;
-  fromUserId: string;
-  toUserId: string;
-  message: string;
-  reason?: string;
-  status: "PENDING" | "ACCEPTED" | "REJECTED";
-  createTime: string;
-  updateTime: string;
-  fromUser: UserBrief;
-  avatar?: string;
-  nickname?: string;
-  username?: string;
-}
-
-// 添加好友请求
-export interface AddFriendRequest {
-  userId: string;
-  message?: string;
-}
-
-// 处理好友申请请求
-export interface HandleFriendRequestRequest {
-  requestId: string;
-  action: "ACCEPT" | "REJECT";
-  remark?: string;
-}
-
-export interface TokenParseResultDTO {
-  valid: boolean;
-  expired: boolean;
-  error?: string;
-  userId?: number;
-  username?: string;
-  issuedAtEpochMs?: number;
-  expiresAtEpochMs?: number;
-  jti?: string;
-  tokenType?: string;
+  phone?: string;
 }

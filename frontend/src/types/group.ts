@@ -1,10 +1,14 @@
-// 群组相关类型定义
+/**
+ * 群组相关类型定义
+ */
 
-// 群组实体
+import type { User } from './user';
+
+/** 群组信息 */
 export interface Group {
   id: string;
   name?: string;
-  groupName: string;
+  groupName?: string;
   description?: string;
   announcement?: string;
   type?: string | number;
@@ -18,36 +22,15 @@ export interface Group {
   lastActivityAt?: string;
   members?: Array<{ userId: string | number; role?: string | number }>;
   createTime: string;
-  status: GroupStatus;
 }
 
-// 群组状态
-export type GroupStatus = "NORMAL" | "DISABLED" | "DELETED";
-
-// 群组成员
+/** 群组成员 */
 export interface GroupMember {
+  id: string;
+  groupId: string;
   userId: string;
-  username: string;
-  nickname: string;
-  avatar: string;
-  role: string;
+  userInfo: User;
+  role: 'OWNER' | 'ADMIN' | 'MEMBER';
+  nickname?: string;
   joinTime: string;
-}
-
-// 群组角色
-export type GroupRole = "OWNER" | "ADMIN" | "MEMBER";
-
-// 创建群组请求
-export interface CreateGroupRequest {
-  name: string;
-  type?: number;
-  announcement?: string;
-  memberIds?: string[];
-}
-
-// 更新群组请求
-export interface UpdateGroupRequest {
-  groupName?: string;
-  description?: string;
-  avatar?: string;
 }

@@ -55,18 +55,18 @@ public class UserController {
      */
     @PostMapping("/login")
     @Operation(summary = "用户登录", description = "支持密码或Token登录")
-    public UserAuthResponseDTO login(@RequestBody @Validated LoginRequest loginRequest) {
+    public ApiResponse<UserAuthResponseDTO> login(@RequestBody @Validated LoginRequest loginRequest) {
         log.info("Login request received: username={}", loginRequest == null ? null : loginRequest.getUsername());
 
         // 判断登录方式
         if (loginRequest.getPassword() != null && !loginRequest.getPassword().trim().isEmpty()) {
             // 用户名+密码登录
-            return userService.loginWithPassword(loginRequest.getUsername(), loginRequest.getPassword());
+            return ApiResponse.success(userService.loginWithPassword(loginRequest.getUsername(), loginRequest.getPassword()));
         } else if (loginRequest.getToken() != null && !loginRequest.getToken().trim().isEmpty()) {
             // 用户名+token登录
-            return userService.loginWithToken(loginRequest.getUsername(), loginRequest.getToken());
+            return ApiResponse.success(userService.loginWithToken(loginRequest.getUsername(), loginRequest.getToken()));
         } else {
-            return UserAuthResponseDTO.error("请提供密码或token进行登录");
+            throw new com.im.exception.BusinessException("请提供密码或token进行登录");
         }
     }
 

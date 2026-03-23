@@ -1,0 +1,114 @@
+server:
+  port: 8083
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: im-server
+  config:
+    import:
+      - optional:classpath:sit/application-mysql.yml
+      - optional:classpath:sit/application-redis.yml
+      - optional:classpath:sit/application-kafka.yml
+      - optional:classpath:sit/application-nacos.yml
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:default}
+  threads:
+    virtual:
+      enabled: ${SPRING_THREADS_VIRTUAL_ENABLED:false}
+  main:
+    allow-bean-definition-overriding: true
+    allow-circular-references: true
+  cloud:
+    loadbalancer:
+      enabled: true
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+  jwt:
+    secret: OtB6MEakowaNzTiiGE1G4NpFGz4rzNUOrYO7URJk6m1oKpamZQZpgoUdNpSOonX7
+    expiration: 86400000
+
+im:
+  internal:
+    header: ${IM_INTERNAL_HEADER:X-Internal-Secret}
+    secret: ${IM_INTERNAL_SECRET:im-internal-secret}
+  virtual-threads:
+    enabled: ${IM_VIRTUAL_THREADS_ENABLED:true}
+  server:
+    executor:
+      virtual-preferred: ${IM_SERVER_VIRTUAL_EXECUTOR_PREFERRED:true}
+      max-concurrency: ${IM_SERVER_EXECUTOR_MAX_CONCURRENCY:2000}
+      queue-capacity: ${IM_SERVER_EXECUTOR_QUEUE_CAPACITY:2000}
+  heartbeat:
+    interval: 30000
+    timeout: 90000
+  groupMessage:
+    timeout: 86400000
+    listNum: 20
+  groupList:
+    updateRate: 5000
+  group:
+    autoJoin: 1
+    loginAuth: 1
+  message:
+    offline:
+      expire-time: 604800
+      max-count: 1000
+      max-content-length: 10000
+  retry:
+    push-interval-ms: ${IM_RETRY_PUSH_INTERVAL_MS:1000}
+  websocket:
+    endpoint: "/websocket"
+    allowed-origins: "*"
+    connection-timeout: 30000
+    cleanup-interval-ms: ${IM_WS_CLEANUP_INTERVAL_MS:60000}
+    max-text-message-size: 8192
+    max-binary-message-size: 8192
+  service:
+    url: ${IM_SERVICE_URL:http://127.0.0.1:8083}
+    max-group-member-size: 500
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.im: info
+    org.springframework.web.socket: info
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/im-server.log
+    max-size: 10MB
+    max-history: 30
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+  application:
+    name: im-server
+
+server:
+  servlet:
+    context-path: /im
+
+im:
+  heartbeat:
+    timeout: 60000
+    interval: 30000
+  message:
+    offline:
+      expire-time: 86400
+      max-count: 100

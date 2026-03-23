@@ -13,8 +13,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 
-@FeignClient(name = "im-auth-service", path = "/api/auth/internal", url = "${auth.service.url:http://im-auth:8084}", configuration = FeignInternalAuthConfig.class)
+@FeignClient(name = "im-auth-service", path = "/api/auth/internal", configuration = FeignInternalAuthConfig.class)
 public interface AuthServiceFeignClient {
 
     @PostMapping("/token")
@@ -24,7 +25,12 @@ public interface AuthServiceFeignClient {
     AuthUserResourceDTO getUserResource(@PathVariable("userId") Long userId);
 
     @PostMapping("/validate-token")
-    TokenParseResultDTO validateToken(@RequestBody String token);
+    TokenParseResultDTO validateToken(@RequestHeader(value = "X-Check-Revoked", required = false) String checkRevoked,
+                                      @RequestBody String token);
+
+    default TokenParseResultDTO validateToken(@RequestBody String token) {
+        return validateToken(null, token);
+    }
 
     @PostMapping("/check-permission")
     PermissionCheckResultDTO checkPermission(@RequestBody CheckPermissionRequest request);

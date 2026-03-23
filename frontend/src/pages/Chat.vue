@@ -495,8 +495,8 @@ const groupReadUsers = ref<Array<{ userId: string; displayName: string }>>([]);
 
 const pendingRequestsCount = computed(() => {
   return (
-    chatStore.friendRequests?.filter((req) => req.status === "PENDING").length ||
-    0
+    chatStore.friendRequests?.filter((req) => req.status === "PENDING")
+      .length || 0
   );
 });
 
@@ -728,8 +728,9 @@ const openGroupReadDialog = (message: any) => {
   for (const msg of currentMessages.value as any[]) {
     const senderId = String(msg?.senderId || "");
     if (!senderId) continue;
-    const senderName = String(msg?.senderName || msg?.sender?.username || "")
-      .trim();
+    const senderName = String(
+      msg?.senderName || msg?.sender?.username || "",
+    ).trim();
     if (senderName) {
       userNameMap.set(senderId, senderName);
     }

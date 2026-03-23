@@ -8,23 +8,23 @@ import com.im.dto.request.GetGroupMembersRequest;
 import com.im.dto.request.GetUserRoleRequest;
 import com.im.exception.BusinessException;
 import com.im.service.GroupService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Positive;
 import java.util.List;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/s")
 @Slf4j
 @Validated
+@RequiredArgsConstructor
 public class GroupController {
 
-    @Autowired
-    private GroupService groupService;
+    private final GroupService groupService;
 
     /**
      * 创建群组
@@ -130,7 +130,9 @@ public class GroupController {
      */
     @PostMapping("/members/list")
     public ApiResponse<GroupMemberPageDTO> getGroupMembers(
+            @RequestAttribute("userId") Long currentUserId,
             @Valid @RequestBody GetGroupMembersRequest request) {
+        requireGroupMemberAccess(currentUserId, request.getGroupId());
         GroupMemberPageDTO result = groupService.getGroupMembers(request.getGroupId(), request.getCursor(), request.getLimit());
         return ApiResponse.success("获取成功", result);
     }
@@ -153,7 +155,9 @@ public class GroupController {
      * 获取用户加入的群组列表
      */
     @GetMapping("/user/{userId}")
-    public ApiResponse<List<GroupInfoDTO>> getUserGroups(@PathVariable("userId") Long userId) {
+    public ApiResponse<List<GroupInfoDTO>> getUserGroups(@PathVariable("userId") Long userId,
+                                                         @RequestAttribute("userId") Long currentUserId) {
+        requireSelfAccess(currentUserId, userId);
         List<GroupInfoDTO> result = groupService.getUserGroups(userId);
         return ApiResponse.success("获取成功", result);
     }
@@ -162,7 +166,9 @@ public class GroupController {
      * 获取群组详细信息
      */
     @GetMapping("/{groupId}/info")
-    public ApiResponse<GroupInfoDTO> getGroupInfo(@PathVariable("groupId") Long groupId) {
+    public ApiResponse<GroupInfoDTO> getGroupInfo(@PathVariable("groupId") Long groupId,
+                                                  @RequestAttribute("userId") Long currentUserId) {
+        requireGroupMemberAccess(currentUserId, groupId);
         GroupInfoDTO result = groupService.getGroupInfo(groupId);
         return ApiResponse.success("获取成功", result);
     }
@@ -172,9 +178,24 @@ public class GroupController {
      */
     @PostMapping("/role/get")
     public ApiResponse<Integer> getUserRole(
+            @RequestAttribute("userId") Long currentUserId,
             @Valid @RequestBody GetUserRoleRequest request) {
-        Integer role = groupService.getUserRoleInGroup(request.getGroupId(), request.getUserId());
+        requireSelfAccess(currentUserId, request.getUserId());
+        Integer role = groupService.getUserRoleInGroup(request.getGroupId(), currentUserId);
         return ApiResponse.success("获取成功", role);
+    }
+
+    private void requireSelfAccess(Long currentUserId, Long requestedUserId) {
+        if (!Objects.equals(currentUserId, requestedUserId)) {
+            throw new SecurityException("无权访问其他用户的群组数据");
+        }
+    }
+
+    private void requireGroupMemberAccess(Long currentUserId, Long groupId) {
+        Integer role = groupService.getUserRoleInGroup(groupId, currentUserId);
+        if (role == null || role <= 0) {
+            throw new SecurityException("非群成员无法访问群组信息");
+        }
     }
 
 

@@ -1,40 +1,54 @@
-// 聊天会话相关类型定义
+/**
+ * 聊天会话相关类型定义
+ */
 
-// 会话类型
-export type ConversationType = "PRIVATE" | "GROUP";
+import type { Message } from './message';
+import type { User } from './user';
+import type { Group } from './group';
 
-// 会话实体
-export interface Conversation {
+/** 聊天会话 */
+export interface ChatSession {
   id: string;
-  type: ConversationType | "private" | "group";
-  conversationType?: ConversationType | "private" | "group";
-  targetId: string; // 私聊时为好友ID，群聊时为群组ID
-  targetName: string; // 私聊时为好友昵称，群聊时为群组名称
-  targetAvatar?: string; // 私聊时为好友头像，群聊时为群组头像
+  type: 'private' | 'group';
+  targetId: string;
+  targetName: string;
   name?: string;
   avatar?: string;
-  memberCount?: number;
-  isPinned?: boolean;
-  isMuted?: boolean;
-  lastMessage?: {
-    id?: string;
-    content?: string;
-    sendTime?: string;
-    senderName?: string;
-    messageType?: string;
-    senderId?: string | number;
-  };
-  unreadCount?: number;
+  targetAvatar?: string;
+  lastMessage?: (Partial<Message> & Record<string, unknown>) | string;
+  unreadCount: number;
+  lastActiveTime: string;
   updateTime?: string;
-  lastActiveTime?: string;
-  pinned?: boolean; // 是否置顶
-  muted?: boolean; // 是否静音
+  memberCount?: number;
+  isPinned: boolean;
+  pinned?: boolean;
+  isMuted: boolean;
+  muted?: boolean;
 }
 
-// 聊天会话状态
-export interface ChatState {
-  currentConversation: Conversation | null;
-  conversations: Conversation[];
-  messages: Record<string, any[]>; // 按会话ID存储消息
-  typing: Record<string, boolean>; // 正在输入状态
+/** 聊天项 */
+export interface ChatItem {
+  id: string;
+  type: 'PRIVATE' | 'GROUP';
+  targetId: string;
+  targetInfo: User | Group;
+  lastMessage?: Message;
+  unreadCount: number;
+  lastActiveTime: string;
+  isPinned: boolean;
+  isMuted: boolean;
+}
+
+/** 在线状态 */
+export interface OnlineStatus {
+  userId: string;
+  status: 'ONLINE' | 'OFFLINE';
+  lastSeen?: string;
+}
+
+/** WebSocket 消息 */
+export interface WebSocketMessage {
+  type: 'MESSAGE' | 'HEARTBEAT' | 'ONLINE_STATUS' | 'READ_RECEIPT' | 'SYSTEM';
+  data: unknown;
+  timestamp: number;
 }

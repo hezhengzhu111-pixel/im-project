@@ -1,0 +1,64 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: im-user-service
+  config:
+    import:
+      - optional:classpath:sit/application-mysql.yml
+      - optional:classpath:sit/application-redis.yml
+      - optional:classpath:sit/application-kafka.yml
+      - optional:classpath:sit/application-nacos.yml
+  threads:
+    virtual:
+      enabled: ${SPRING_THREADS_VIRTUAL_ENABLED:false}
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.r2dbc.R2dbcAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.r2dbc.R2dbcDataAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.r2dbc.R2dbcRepositoriesAutoConfiguration
+  main:
+    allow-bean-definition-overriding: true
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:default}
+  feign:
+    client:
+      config:
+        default:
+          loggerLevel: FULL
+    httpclient:
+      enabled: true
+    hystrix:
+      enabled: false
+
+logging:
+  level:
+    com.im.feign: DEBUG
+    feign: DEBUG
+
+jwt:
+  secret: ${JWT_SECRET:im-backend-secret-key-for-jwt-token-generation-im-backend-secret-key-2026}
+  expiration: 86400000
+
+im:
+  jwt:
+    enabled: ${IM_JWT_ENABLED:true}
+  security:
+    mode: ${IM_SECURITY_MODE:gateway}
+  internal:
+    header: X-Internal-Secret
+    secret: ${IM_INTERNAL_SECRET:im-internal-secret}
+  gateway:
+    auth:
+      secret: ${IM_GATEWAY_AUTH_SECRET:im-gateway-auth-secret}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true

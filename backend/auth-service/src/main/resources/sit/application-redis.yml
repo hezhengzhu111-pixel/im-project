@@ -1,0 +1,8 @@
+spring:
+  data:
+    redis:
+      host: im-redis
+      port: 6379
+      timeout: 3000ms
+      database: 0
+      password:

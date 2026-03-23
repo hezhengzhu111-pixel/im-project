@@ -36,7 +36,10 @@
             :key="request.id"
             class="request-item"
           >
-            <el-avatar :size="40" :src="request.avatar || request.fromUser?.avatar">
+            <el-avatar
+              :size="40"
+              :src="request.avatar || request.fromUser?.avatar"
+            >
               {{
                 request.nickname?.charAt(0) ||
                 request.fromUser?.nickname?.charAt(0) ||
@@ -48,7 +51,12 @@
 
             <div class="request-info">
               <div class="request-name">
-                {{ request.nickname || request.fromUser?.nickname || request.username || request.fromUser?.username }}
+                {{
+                  request.nickname ||
+                  request.fromUser?.nickname ||
+                  request.username ||
+                  request.fromUser?.username
+                }}
               </div>
               <div class="request-message">
                 {{ request.message || "请求添加您为好友" }}
@@ -143,9 +151,7 @@
             </div>
 
             <div class="friend-actions">
-              <el-dropdown
-                @command="handleFriendAction($event, friend)"
-              >
+              <el-dropdown @command="handleFriendAction($event, friend)">
                 <el-button link :icon="MoreFilled" />
                 <template #dropdown>
                   <el-dropdown-menu>
