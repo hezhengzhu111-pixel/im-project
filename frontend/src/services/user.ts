@@ -23,4 +23,16 @@ export const userService = {
   online: () => http.post<string>("/user/online"),
   checkOnlineStatus: (userIds: string[]) =>
     http.post<Record<string, boolean>>("/user/online-status", userIds),
+
+  // 账号安全相关
+  changePassword: (data: any) => http.put<boolean>("/user/password", data),
+  sendPhoneCode: (target: string) => http.post<string>("/user/phone/code", { target }),
+  bindPhone: (data: any) => http.post<boolean>("/user/phone/bind", data),
+  sendEmailCode: (target: string) => http.post<string>("/user/email/code", { target }),
+  bindEmail: (data: any) => http.post<boolean>("/user/email/bind", data),
+  deleteAccount: (data: any) => http.delete<boolean>("/user/account", { data }),
+
+  // 设置相关
+  getSettings: () => http.get<any>("/user/settings"),
+  updateSettings: (type: string, data: any) => http.put<boolean>(`/user/settings/${type}`, data),
 };

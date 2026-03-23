@@ -4,7 +4,7 @@
     <el-avatar
       v-if="!isMine"
       :size="36"
-      :src="message.senderAvatar || message.sender?.avatar"
+      :src="message.senderAvatar"
       class="message-avatar"
       shape="square"
     >
@@ -116,8 +116,7 @@
           <span
             v-else-if="
               message.status === 'READ' ||
-              message.readStatus === 1 ||
-              message.read_status === 1
+              message.readStatus === 1
             "
             class="status-read"
             title="对方已读"

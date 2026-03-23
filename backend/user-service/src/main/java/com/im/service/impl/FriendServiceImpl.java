@@ -87,15 +87,10 @@ public class FriendServiceImpl implements FriendService {
             friendRequestMapper.insert(request);
             FriendRequest savedRequest = request;
             
-            // 构造系统通知消息
-            MessageDTO messageDTO = new MessageDTO();
-            messageDTO.setMessageType(MessageType.SYSTEM);
-            messageDTO.setReceiverId(targetUserId);
-            // 携带特殊指令，前端识别后自动刷新好友申请列表
-            messageDTO.setContent("收到新的好友申请::CMD:REFRESH_FRIEND_REQUESTS");
-            messageDTO.setCreatedTime(LocalDateTime.now());
-            // 发送通知
-            imService.sendMessage(messageDTO);
+            // 给目标用户发送通知
+            sendSystemNotice(targetUserId, "收到新的好友申请::CMD:REFRESH_FRIEND_REQUESTS");
+            // 给申请人发送通知
+            sendSystemNotice(applicantId, "好友申请发送成功::CMD:REFRESH_FRIEND_REQUESTS");
             
             return FriendRequestResponseDTO.success("好友申请发送成功", savedRequest.getId());
         } catch (Exception e) {
@@ -278,13 +273,17 @@ public class FriendServiceImpl implements FriendService {
         if (cursor != null && !cursor.isEmpty()) {
             Long cursorId = Long.parseLong(cursor);
             requests = friendRequestMapper.selectList(new LambdaQueryWrapper<FriendRequest>()
-                    .eq(FriendRequest::getTargetUserId, userId)
+                    .and(w -> w.eq(FriendRequest::getTargetUserId, userId)
+                              .or()
+                              .eq(FriendRequest::getApplicantId, userId))
                     .lt(FriendRequest::getId, cursorId)
                     .orderByDesc(FriendRequest::getId)
                     .last("limit " + pageSize));
         } else {
             requests = friendRequestMapper.selectList(new LambdaQueryWrapper<FriendRequest>()
-                    .eq(FriendRequest::getTargetUserId, userId)
+                    .and(w -> w.eq(FriendRequest::getTargetUserId, userId)
+                              .or()
+                              .eq(FriendRequest::getApplicantId, userId))
                     .orderByDesc(FriendRequest::getId)
                     .last("limit " + pageSize));
         }

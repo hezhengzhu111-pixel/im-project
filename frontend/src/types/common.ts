@@ -2,7 +2,7 @@
  * 公共类型定义
  */
 
-import type { User, UserInfo } from './user';
+import type { User, UserInfo, Friendship } from './user';
 import type { Group } from './group';
 import type { Message } from './message';
 
@@ -95,32 +95,5 @@ export interface EventData {
   timestamp: number;
 }
 
-/** 好友信息 */
-export interface Friend {
-  id: string;
-  userId: string;
-  friendId: string;
-  friendInfo?: User;
-  friend?: UserInfo;
-  username?: string;
-  nickname?: string;
-  avatar?: string;
-  signature?: string;
-  lastSeen?: string;
-  remark?: string;
-  createTime: string;
-}
-
 /** 好友列表 DTO */
-export type FriendListDTO = Friend;
-
-/** 好友请求 */
-export interface FriendRequest {
-  id: string;
-  applicantId: string;
-  applicantName: string;
-  applicantAvatar: string;
-  reason: string;
-  status: string;
-  createTime: string;
-}
+export type FriendListDTO = Friendship;

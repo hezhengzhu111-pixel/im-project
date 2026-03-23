@@ -12,12 +12,14 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @Slf4j
 public class GlobalExceptionHandler {
 

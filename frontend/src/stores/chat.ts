@@ -795,10 +795,12 @@ export const useChatStore = defineStore("chat", () => {
   const loadFriendRequests = async () => {
     try {
       const response = await friendService.getRequests();
+      console.log("loadFriendRequests response:", response);
 
       if (response.code === 200 && response.data) {
-        friendRequests.value =
-          (response.data as any).content || response.data || [];
+        const data = response.data as any;
+        friendRequests.value = Array.isArray(data) ? data : (data?.content || []);
+        console.log("friendRequests.value updated:", friendRequests.value);
       }
     } catch (error) {
       console.error("加载好友申请列表失败:", error);
@@ -922,8 +924,8 @@ export const useChatStore = defineStore("chat", () => {
         if (session) {
           session.targetName =
             remark ||
-            friend?.friend.nickname ||
-            friend?.friend.username ||
+            friend?.nickname ||
+            friend?.username ||
             session.targetName;
         }
       } else {

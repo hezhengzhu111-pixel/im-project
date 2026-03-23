@@ -243,25 +243,25 @@
               <div class="friend-title">选择好友</div>
               <div class="friend-items">
                 <div
-                  v-for="friend in filteredFriends"
-                  :key="friend.id"
-                  class="friend-item"
-                  :class="{ selected: isSelected(friend.id) }"
-                  @click="toggleMember(friend)"
-                >
-                  <el-avatar :size="30" :src="friend.avatar">
-                    {{
-                      friend.nickname?.charAt(0) ||
-                      friend.username?.charAt(0) ||
-                      "U"
-                    }}
-                  </el-avatar>
-                  <span class="friend-name">{{
-                    friend.nickname || friend.username
-                  }}</span>
-                  <el-icon v-if="isSelected(friend.id)" class="check-icon"
-                    ><Check
-                  /></el-icon>
+                    v-for="friend in filteredFriends"
+                    :key="friend.friendId"
+                    class="friend-item"
+                    :class="{ selected: isSelected(friend.friendId) }"
+                    @click="toggleMember(friend)"
+                  >
+                    <el-avatar :size="30" :src="friend.avatar">
+                      {{
+                        friend.nickname?.charAt(0) ||
+                        friend.username?.charAt(0) ||
+                        "U"
+                      }}
+                    </el-avatar>
+                    <span class="friend-name">{{
+                      friend.nickname || friend.username
+                    }}</span>
+                    <el-icon v-if="isSelected(friend.friendId)" class="check-icon"
+                      ><Check
+                    /></el-icon>
                 </div>
               </div>
             </div>

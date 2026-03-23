@@ -10,15 +10,24 @@ import com.im.entity.User;
 import com.im.exception.BusinessException;
 import com.im.feign.AuthServiceFeignClient;
 import com.im.mapper.UserMapper;
+import com.im.mapper.UserSettingsMapper;
 import com.im.service.UserService;
 import com.im.util.DTOConverter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.im.dto.UserSettingsDTO;
+import com.im.entity.UserSettings;
+
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -27,8 +36,13 @@ import java.util.stream.Collectors;
 public class UserServiceImpl implements UserService {
 
     private final UserMapper userMapper;
+    private final UserSettingsMapper userSettingsMapper;
     private final DTOConverter dtoConverter;
     private final AuthServiceFeignClient authServiceFeignClient;
+    private final StringRedisTemplate redisTemplate;
+    private final ObjectMapper objectMapper;
+
+    private static final String VERIFY_CODE_PREFIX = "im:verify:code:";
 
     @Override
     @Transactional
@@ -220,6 +234,142 @@ public class UserServiceImpl implements UserService {
         return users.stream()
                 .map(dtoConverter::toUserDTO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public Boolean changePassword(Long userId, String currentPassword, String newPassword) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        if (!BCrypt.checkpw(currentPassword, user.getPassword())) {
+            throw new BusinessException("原密码错误");
+        }
+        user.setPassword(BCrypt.hashpw(newPassword, BCrypt.gensalt()));
+        user.setUpdatedTime(LocalDateTime.now());
+        userMapper.updateById(user);
+        return true;
+    }
+
+    @Override
+    public void sendVerificationCode(String target) {
+        String code = String.format("%06d", new Random().nextInt(1000000));
+        redisTemplate.opsForValue().set(VERIFY_CODE_PREFIX + target, code, 5, TimeUnit.MINUTES);
+        log.info("【模拟发送】向 {} 发送了验证码: {}", target, code);
+    }
+
+    @Override
+    public Boolean bindPhone(Long userId, String phone, String code) {
+        String key = VERIFY_CODE_PREFIX + phone;
+        String cachedCode = redisTemplate.opsForValue().get(key);
+        if (cachedCode == null || !cachedCode.equals(code)) {
+            throw new BusinessException("验证码错误或已过期");
+        }
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        user.setPhone(phone);
+        user.setUpdatedTime(LocalDateTime.now());
+        userMapper.updateById(user);
+        redisTemplate.delete(key);
+        return true;
+    }
+
+    @Override
+    public Boolean bindEmail(Long userId, String email, String code) {
+        String key = VERIFY_CODE_PREFIX + email;
+        String cachedCode = redisTemplate.opsForValue().get(key);
+        if (cachedCode == null || !cachedCode.equals(code)) {
+            throw new BusinessException("验证码错误或已过期");
+        }
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        user.setEmail(email);
+        user.setUpdatedTime(LocalDateTime.now());
+        userMapper.updateById(user);
+        redisTemplate.delete(key);
+        return true;
+    }
+
+    @Override
+    @Transactional
+    public Boolean deleteAccount(Long userId, String password) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        if (!BCrypt.checkpw(password, user.getPassword())) {
+            throw new BusinessException("密码错误");
+        }
+        user.setStatus(0); // 禁用
+        user.setUpdatedTime(LocalDateTime.now());
+        userMapper.updateById(user);
+        try {
+            authServiceFeignClient.revokeUserTokens(userId);
+        } catch (Exception e) {
+            log.error("注销时撤销Token失败", e);
+        }
+        return true;
+    }
+
+    @Override
+    public UserSettingsDTO getUserSettings(Long userId) {
+        UserSettings userSettings = userSettingsMapper.selectById(userId);
+        UserSettingsDTO dto = new UserSettingsDTO();
+        if (userSettings == null) {
+            return dto;
+        }
+        try {
+            if (userSettings.getPrivacySettings() != null) {
+                dto.setPrivacy(objectMapper.readValue(userSettings.getPrivacySettings(), Map.class));
+            }
+            if (userSettings.getMessageSettings() != null) {
+                dto.setMessage(objectMapper.readValue(userSettings.getMessageSettings(), Map.class));
+            }
+            if (userSettings.getGeneralSettings() != null) {
+                dto.setGeneral(objectMapper.readValue(userSettings.getGeneralSettings(), Map.class));
+            }
+        } catch (Exception e) {
+            log.error("解析用户设置JSON失败", e);
+        }
+        return dto;
+    }
+
+    @Override
+    @Transactional
+    public Boolean updateUserSettings(Long userId, String type, Map<String, Object> settings) {
+        UserSettings userSettings = userSettingsMapper.selectById(userId);
+        if (userSettings == null) {
+            userSettings = new UserSettings();
+            userSettings.setUserId(userId);
+            userSettings.setCreatedTime(LocalDateTime.now());
+            userSettingsMapper.insert(userSettings);
+        }
+        try {
+            String json = objectMapper.writeValueAsString(settings);
+            switch (type) {
+                case "privacy":
+                    userSettings.setPrivacySettings(json);
+                    break;
+                case "message":
+                    userSettings.setMessageSettings(json);
+                    break;
+                case "general":
+                    userSettings.setGeneralSettings(json);
+                    break;
+                default:
+                    throw new BusinessException("未知的设置类型");
+            }
+            userSettings.setUpdatedTime(LocalDateTime.now());
+            userSettingsMapper.updateById(userSettings);
+            return true;
+        } catch (Exception e) {
+            log.error("更新用户设置失败", e);
+            throw new BusinessException("更新设置失败");
+        }
     }
 
     private String generateIMToken(String username) {

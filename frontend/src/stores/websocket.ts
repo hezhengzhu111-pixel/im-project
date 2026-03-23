@@ -117,8 +117,8 @@ export const useWebSocketStore = defineStore("websocket", () => {
         // 清除连接缓存
         clearConnectionCache();
 
-        // 如果不是主动关闭，尝试重连
-        if (!manualDisconnect.value) {
+        // 如果不是主动关闭，且不是被后端"新连接建立"挤下线，尝试重连
+        if (!manualDisconnect.value && event.reason !== "新连接建立") {
           scheduleReconnect(userId);
         }
       };
@@ -191,7 +191,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
     switch (data.type) {
       case "MESSAGE":
         if (data.data) {
-          const msg = data.data;
+          const msg = data.data as Record<string, any>;
           const isSystem =
             msg.messageType === "SYSTEM" || msg.type === "SYSTEM";
           if (isSystem) {
@@ -246,20 +246,20 @@ export const useWebSocketStore = defineStore("websocket", () => {
       case "ONLINE_STATUS":
         // 处理在线状态
         if (data.data) {
-          updateOnlineStatus(data.data);
+          updateOnlineStatus(data.data as any);
         }
         break;
 
       case "READ_RECEIPT":
         if (data.data) {
-          chatStore.applyReadReceipt(data.data);
+          chatStore.applyReadReceipt(data.data as any);
         }
         break;
 
       case "SYSTEM":
         // 处理系统消息
         if (data.data) {
-          const systemMsg = data.data;
+          const systemMsg = data.data as Record<string, any>;
           const content = systemMsg.content || "";
 
           // 解析指令

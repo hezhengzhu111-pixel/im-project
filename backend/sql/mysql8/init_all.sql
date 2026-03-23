@@ -55,6 +55,16 @@ CREATE TABLE IF NOT EXISTS friend_request (
   KEY idx_friend_request_applicant (applicant_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='好友申请表';
 
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id BIGINT NOT NULL COMMENT '用户ID',
+  privacy_settings JSON NULL COMMENT '隐私设置',
+  message_settings JSON NULL COMMENT '消息设置',
+  general_settings JSON NULL COMMENT '通用设置',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户设置表';
+
 USE service_group_service_db;
 
 CREATE TABLE IF NOT EXISTS im_group (

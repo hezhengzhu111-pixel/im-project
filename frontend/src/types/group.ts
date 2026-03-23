@@ -17,6 +17,7 @@ export interface Group {
   memberCount: number;
   maxMembers?: number;
   isPublic?: boolean;
+  status?: string | number;
   unreadCount?: number;
   lastMessageTime?: string;
   lastActivityAt?: string;
@@ -26,11 +27,30 @@ export interface Group {
 
 /** 群组成员 */
 export interface GroupMember {
-  id: string;
-  groupId: string;
+  id?: string;
+  groupId?: string;
   userId: string;
-  userInfo: User;
-  role: 'OWNER' | 'ADMIN' | 'MEMBER';
+  userInfo?: User;
+  username?: string;
+  avatar?: string;
+  role: 'OWNER' | 'ADMIN' | 'MEMBER' | string;
   nickname?: string;
   joinTime: string;
+}
+
+export interface CreateGroupRequest {
+  name?: string;
+  type?: number | string;
+  announcement?: string;
+  groupName?: string;
+  description?: string;
+  avatar?: string;
+  memberIds?: string[];
+}
+
+export interface UpdateGroupRequest {
+  groupId?: string;
+  groupName?: string;
+  description?: string;
+  avatar?: string;
 }
