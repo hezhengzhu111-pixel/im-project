@@ -58,10 +58,32 @@ export default defineConfig(({ mode }) => {
           chunkFileNames: "js/[name]-[hash].js",
           entryFileNames: "js/[name]-[hash].js",
           assetFileNames: "[ext]/[name]-[hash].[ext]",
-          manualChunks: {
-            "vue-vendor": ["vue", "vue-router", "pinia"],
-            "element-plus": ["element-plus"],
-            utils: ["dayjs", "axios", "crypto-js"],
+          manualChunks(id) {
+            if (!id.includes("node_modules")) {
+              return;
+            }
+            if (
+              id.includes("/vue/") ||
+              id.includes("/vue-router/") ||
+              id.includes("/pinia/")
+            ) {
+              return "vue-vendor";
+            }
+            if (id.includes("/element-plus/")) {
+              return "element-plus";
+            }
+            if (id.includes("/@element-plus/icons-vue/")) {
+              return "element-plus-icons";
+            }
+            if (
+              id.includes("/axios/") ||
+              id.includes("/dayjs/") ||
+              id.includes("/crypto-js/") ||
+              id.includes("/qs/")
+            ) {
+              return "utils";
+            }
+            return "vendor";
           },
         },
       },
@@ -91,10 +113,13 @@ export default defineConfig(({ mode }) => {
         reporter: ["text", "html", "json-summary"],
         include: [
           "src/router/**",
-          "src/stores/**",
-          "src/utils/**",
-          "src/pages/**",
-          "src/components/**",
+          "src/stores/chat.ts",
+          "src/stores/user.ts",
+          "src/stores/websocket.ts",
+          "src/utils/request.ts",
+          "src/utils/messageNormalize.ts",
+          "src/utils/messageRepo.ts",
+          "src/pages/Friends.vue",
         ],
       },
     },

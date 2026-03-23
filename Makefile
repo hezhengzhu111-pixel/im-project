@@ -1,11 +1,24 @@
-lint:
-	python3 -m flake8 scripts tests run_all_tests.py
+BACKEND_DIR := backend
+FRONTEND_DIR := frontend
 
-test:
-	python3 run_all_tests.py
+.PHONY: backend-test frontend-install frontend-typecheck frontend-test frontend-build quality clean
+
+backend-test:
+	mvn -f $(BACKEND_DIR)/pom.xml test
+
+frontend-install:
+	npm --prefix $(FRONTEND_DIR) ci
+
+frontend-typecheck:
+	npm --prefix $(FRONTEND_DIR) run typecheck
+
+frontend-test:
+	npm --prefix $(FRONTEND_DIR) run test
+
+frontend-build:
+	npm --prefix $(FRONTEND_DIR) run build
+
+quality: backend-test frontend-typecheck frontend-test frontend-build
 
 clean:
-	find . -name "__pycache__" -type d -prune -exec rm -rf {} +
-	find . -name "*.pyc" -type f -delete
-	find . -name "*.log" -type f -delete
-	find . -name "*.tmp" -type f -delete
+	mvn -f $(BACKEND_DIR)/pom.xml clean

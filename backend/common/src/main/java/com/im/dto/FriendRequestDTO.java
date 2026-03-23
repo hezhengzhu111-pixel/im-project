@@ -23,6 +23,7 @@ public class FriendRequestDTO {
     private String targetUserId;
     private String targetUsername;
     private String targetNickname;
+    private String targetAvatar;
     private String reason;
     private String status; // 待处理, 已同意, 已拒绝
     private String rejectReason;

@@ -23,10 +23,10 @@ im:
     mode: ${IM_SECURITY_MODE:gateway}
   internal:
     header: X-Internal-Secret
-    secret: ${IM_INTERNAL_SECRET:im-internal-secret}
+    secret: ${IM_INTERNAL_SECRET}
   gateway:
     auth:
-      secret: ${IM_GATEWAY_AUTH_SECRET:im-gateway-auth-secret}
+      secret: ${IM_GATEWAY_AUTH_SECRET}
 
 management:
   endpoints:

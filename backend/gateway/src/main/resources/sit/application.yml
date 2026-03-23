@@ -122,9 +122,15 @@ spring:
         wiretap: true
 
 jwt:
-  secret: ${JWT_SECRET:im-backend-secret-key-for-jwt-token-generation-im-backend-secret-key-2026}
+  secret: ${JWT_SECRET}
 
 im:
+  internal:
+    header: ${IM_INTERNAL_HEADER:X-Internal-Secret}
+    secret: ${IM_INTERNAL_SECRET}
+  gateway:
+    auth:
+      secret: ${IM_GATEWAY_AUTH_SECRET}
   routing:
     host:
       auth: im-auth

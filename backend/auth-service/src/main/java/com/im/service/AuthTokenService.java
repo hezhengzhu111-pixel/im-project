@@ -2,6 +2,8 @@ package com.im.service;
 
 import com.im.dto.TokenPairDTO;
 import com.im.dto.TokenParseResultDTO;
+import com.im.dto.WsTicketConsumeResultDTO;
+import com.im.dto.WsTicketDTO;
 import com.im.dto.request.RefreshTokenRequest;
 import com.im.util.TokenParser;
 import io.jsonwebtoken.Jwts;
@@ -28,22 +30,26 @@ import java.util.UUID;
 public class AuthTokenService {
 
     private static final String REFRESH_JTI_KEY_PREFIX = "auth:refresh:jti:";
+    private static final String WS_TICKET_KEY_PREFIX = "auth:ws:ticket:";
 
     private final StringRedisTemplate stringRedisTemplate;
     private final AuthUserResourceService authUserResourceService;
     private final TokenParser tokenParser;
 
-    @Value("${jwt.secret:im-backend-secret-key-for-jwt-token-generation-im-backend-secret-key-2026}")
+    @Value("${jwt.secret}")
     private String accessSecret;
 
     @Value("${jwt.expiration:86400000}")
     private long accessExpirationMs;
 
-    @Value("${auth.refresh.secret:im-backend-refresh-secret-key}")
+    @Value("${auth.refresh.secret}")
     private String refreshSecret;
 
     @Value("${auth.refresh.expiration:604800000}")
     private long refreshExpirationMs;
+
+    @Value("${auth.ws-ticket.ttl-seconds:30}")
+    private long wsTicketTtlSeconds;
 
     public TokenPairDTO issueTokenPair(Long userId, String username) {
         if (userId == null || username == null || username.trim().isEmpty()) {
@@ -65,6 +71,50 @@ public class AuthTokenService {
         dto.setExpiresInMs(accessExpirationMs);
         dto.setRefreshExpiresInMs(refreshExpirationMs);
         return dto;
+    }
+
+    public WsTicketDTO issueWsTicket(Long userId, String username) {
+        if (userId == null || username == null || username.trim().isEmpty()) {
+            throw new IllegalArgumentException("userId/username不能为空");
+        }
+        String ticket = UUID.randomUUID().toString();
+        String key = WS_TICKET_KEY_PREFIX + ticket;
+        String value = userId + "\n" + username.trim();
+        stringRedisTemplate.opsForValue().set(key, value, Duration.ofSeconds(wsTicketTtlSeconds));
+        return WsTicketDTO.builder()
+                .ticket(ticket)
+                .expiresInMs(Duration.ofSeconds(wsTicketTtlSeconds).toMillis())
+                .build();
+    }
+
+    public WsTicketConsumeResultDTO consumeWsTicket(String ticket, Long expectedUserId) {
+        if (ticket == null || ticket.trim().isEmpty()) {
+            return invalidWsTicket("ticket不能为空");
+        }
+        if (expectedUserId == null) {
+            return invalidWsTicket("userId不能为空");
+        }
+        String payload = stringRedisTemplate.opsForValue().getAndDelete(WS_TICKET_KEY_PREFIX + ticket.trim());
+        if (payload == null || payload.isBlank()) {
+            return invalidWsTicket("ticket无效或已过期");
+        }
+        WsTicketPayload parsed = parseWsTicketPayload(payload);
+        if (parsed == null) {
+            return invalidWsTicket("ticket数据无效");
+        }
+        if (!expectedUserId.equals(parsed.userId())) {
+            return WsTicketConsumeResultDTO.builder()
+                    .valid(false)
+                    .userId(parsed.userId())
+                    .username(parsed.username())
+                    .error("ticket与userId不匹配")
+                    .build();
+        }
+        return WsTicketConsumeResultDTO.builder()
+                .valid(true)
+                .userId(parsed.userId())
+                .username(parsed.username())
+                .build();
     }
 
     public TokenPairDTO refresh(RefreshTokenRequest request) {
@@ -213,9 +263,31 @@ public class AuthTokenService {
         return t;
     }
 
+    private WsTicketConsumeResultDTO invalidWsTicket(String error) {
+        return WsTicketConsumeResultDTO.builder()
+                .valid(false)
+                .error(error)
+                .build();
+    }
+
+    private WsTicketPayload parseWsTicketPayload(String payload) {
+        String[] parts = payload.split("\\n", 2);
+        if (parts.length != 2) {
+            return null;
+        }
+        try {
+            return new WsTicketPayload(Long.valueOf(parts[0].trim()), parts[1].trim());
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
     private record RefreshRequestInput(String refreshToken, String accessToken) {
     }
 
     private record RefreshTokenProcessContext(Long userId, String username) {
+    }
+
+    private record WsTicketPayload(Long userId, String username) {
     }
 }
