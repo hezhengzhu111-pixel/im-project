@@ -44,7 +44,7 @@ public class GroupServiceImpl implements GroupService {
         if (type == null) {
             throw new IllegalArgumentException("群类型不能为空");
         }
-        validateUserExists(ownerId);
+        requireUserExists(ownerId);
         
         // 创建群组实体
         Group group = buildGroupEntity(ownerId, name, type, announcement);
@@ -62,16 +62,24 @@ public class GroupServiceImpl implements GroupService {
     @Transactional
     public void addGroupMembers(Long groupId, Long operatorId, List<Long> memberIds) {
         validateGroupExists(groupId);
+        requireUserExists(operatorId);
         validateUserPermission(operatorId, groupId, 2); // 至少是管理员
 
         if (memberIds == null || memberIds.isEmpty()) {
             return;
         }
 
+        List<Long> normalizedMemberIds = memberIds.stream()
+                .distinct()
+                .collect(Collectors.toList());
+        for (Long memberId : normalizedMemberIds) {
+            requireUserExists(memberId);
+        }
+
         Group group = findGroupById(groupId);
 
-        for (Long memberId : memberIds) {
-            if (Boolean.TRUE.equals(userServiceFeignClient.exists(memberId)) && !isMember(groupId, memberId)) {
+        for (Long memberId : normalizedMemberIds) {
+            if (!isMember(groupId, memberId)) {
                 if (group.getMemberCount() >= group.getMaxMembers()) {
                     log.warn("群组 {} 成员已满，无法添加新成员 {}", groupId, memberId);
                     continue; // 或者抛出异常，取决于业务需求
@@ -81,14 +89,14 @@ public class GroupServiceImpl implements GroupService {
                 group.setMemberCount(group.getMemberCount() + 1);
             }
         }
-        log.info("操作员 {} 批量添加群成员到群组 {}: {}", operatorId, groupId, memberIds);
+        log.info("操作员 {} 批量添加群成员到群组 {}: {}", operatorId, groupId, normalizedMemberIds);
     }
     
     @Override
     @Transactional
     public void joinGroup(Long groupId, Long userId) {
         validateGroupExists(groupId);
-        validateUserExists(userId);
+        requireUserExists(userId);
 
         Group group = findGroupById(groupId);
 
@@ -122,7 +130,7 @@ public class GroupServiceImpl implements GroupService {
     @Transactional
     public void leaveGroup(Long groupId, Long userId) {
         validateGroupExists(groupId);
-        validateUserExists(userId);
+        requireUserExists(userId);
 
         if (isOwner(groupId, userId)) {
             throw new IllegalStateException("群主不能退出群组，请先转让群主或解散群组");
@@ -142,8 +150,8 @@ public class GroupServiceImpl implements GroupService {
     @Transactional
     public void removeMember(Long groupId, Long operatorId, Long memberId) {
         validateGroupExists(groupId);
-        validateUserExists(operatorId);
-        validateUserExists(memberId);
+        requireUserExists(operatorId);
+        requireUserExists(memberId);
 
         if (Objects.equals(operatorId, memberId)) {
             throw new IllegalArgumentException("不能移除自己");
@@ -170,7 +178,7 @@ public class GroupServiceImpl implements GroupService {
     @Transactional
     public void dismissGroup(Long groupId, Long operatorId) {
         validateGroupExists(groupId);
-        validateUserExists(operatorId);
+        requireUserExists(operatorId);
 
         if (!isOwner(groupId, operatorId)) {
             throw new SecurityException("只有群主才能解散群组");
@@ -186,8 +194,8 @@ public class GroupServiceImpl implements GroupService {
     @Transactional
     public void setAdmin(Long groupId, Long operatorId, Long userId, Boolean isAdmin) {
         validateGroupExists(groupId);
-        validateUserExists(operatorId);
-        validateUserExists(userId);
+        requireUserExists(operatorId);
+        requireUserExists(userId);
 
         if (!isOwner(groupId, operatorId)) {
             throw new SecurityException("只有群主才能设置管理员");
@@ -211,6 +219,7 @@ public class GroupServiceImpl implements GroupService {
     @Transactional
     public GroupInfoDTO updateGroupInfo(Long groupId, Long operatorId, String groupName, String description) {
         validateGroupExists(groupId);
+        requireUserExists(operatorId);
         validateUserPermission(operatorId, groupId, 2); // 至少是管理员
 
         Group group = findGroupById(groupId);
@@ -237,16 +246,20 @@ public class GroupServiceImpl implements GroupService {
         if (cursor == null) {
             members = groupMemberMapper.selectList(new LambdaQueryWrapper<GroupMember>()
                     .eq(GroupMember::getGroupId, groupId)
+                    .eq(GroupMember::getStatus, true)
                     .orderByDesc(GroupMember::getJoinTime)
                     .last("limit " + pageSize));
         } else {
             GroupMember cursorMember = groupMemberMapper.selectById(cursor);
-            if (cursorMember == null) {
+            if (cursorMember == null
+                    || !Objects.equals(cursorMember.getGroupId(), groupId)
+                    || !Boolean.TRUE.equals(cursorMember.getStatus())) {
                 throw new IllegalArgumentException("无效的cursor");
             }
             LocalDateTime cursorTime = cursorMember.getJoinTime();
             members = groupMemberMapper.selectList(new LambdaQueryWrapper<GroupMember>()
                     .eq(GroupMember::getGroupId, groupId)
+                    .eq(GroupMember::getStatus, true)
                     .lt(GroupMember::getJoinTime, cursorTime)
                     .orderByDesc(GroupMember::getJoinTime)
                     .last("limit " + pageSize));
@@ -254,6 +267,7 @@ public class GroupServiceImpl implements GroupService {
 
         List<GroupMemberDTO> memberDTOs = members.stream()
                 .map(this::convertToGroupMemberDTO)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
         Long nextCursor = null;
@@ -272,7 +286,10 @@ public class GroupServiceImpl implements GroupService {
     
     @Override
     public List<GroupInfoDTO> getUserGroups(Long userId) {
-        validateUserExists(userId);
+        if (!userExists(userId)) {
+            log.warn("getUserGroups: 用户不存在 userId={}", userId);
+            return List.of();
+        }
         
         List<Group> groups = groupMapper.selectGroupsByUserId(userId);
         
@@ -316,11 +333,15 @@ public class GroupServiceImpl implements GroupService {
     @Override
     public Integer getUserRoleInGroup(Long groupId, Long userId) {
         validateGroupExists(groupId);
-        validateUserExists(userId);
+        if (!userExists(userId)) {
+            log.warn("getUserRoleInGroup: 用户不存在 userId={}", userId);
+            return 0;
+        }
         // 0 表示非成员
         GroupMember member = groupMemberMapper.selectOne(new LambdaQueryWrapper<GroupMember>()
                 .eq(GroupMember::getGroupId, groupId)
                 .eq(GroupMember::getUserId, userId)
+                .eq(GroupMember::getStatus, true)
                 .last("limit 1"));
         return member == null ? 0 : member.getRole();
     }
@@ -343,14 +364,17 @@ public class GroupServiceImpl implements GroupService {
     /**
      * 验证用户是否存在
      */
-    private void validateUserExists(Long userId) {
-        // 在获取群组列表场景下，我们不应该因为用户检查而抛出异常
-        // 如果前端传来的userId对应的用户不存在（可能是缓存数据），直接返回空列表是更合理的做法
-        // 但由于方法签名限制，这里我们只做记录，不再抛出阻断性异常
-        if (!Boolean.TRUE.equals(userServiceFeignClient.exists(userId))) {
-             log.warn("validateUserExists: 用户不存在, userId={}", userId);
-             // throw new RuntimeException("用户不存在");
+    private void requireUserExists(Long userId) {
+        if (userId == null) {
+            throw new IllegalArgumentException("用户ID不能为空");
         }
+        if (!userExists(userId)) {
+            throw new IllegalArgumentException("用户不存在: " + userId);
+        }
+    }
+
+    private boolean userExists(Long userId) {
+        return userId != null && Boolean.TRUE.equals(userServiceFeignClient.exists(userId));
     }
     
     /**
@@ -409,14 +433,18 @@ public class GroupServiceImpl implements GroupService {
      * 转换Group实体为GroupInfoDTO
      */
     private GroupInfoDTO convertToGroupInfoDTO(Group group) {
+        UserDTO owner = group.getOwnerId() == null ? null : userServiceFeignClient.getUser(group.getOwnerId());
         return GroupInfoDTO.builder()
                 .id(group.getId())
                 .name(group.getName())
                 .type(Integer.valueOf(group.getType()))
                 .announcement(group.getAnnouncement())
+                .avatar(group.getAvatar())
                 .ownerId(group.getOwnerId())
+                .ownerName(owner == null ? null : Optional.ofNullable(owner.getNickname()).orElse(owner.getUsername()))
                 .memberCount(group.getMemberCount())
                 .maxMembers(group.getMaxMembers())
+                .isMuted(false)
                 .createTime(group.getCreatedTime())
                 .updateTime(group.getUpdatedTime())
                 .build();
@@ -431,15 +459,28 @@ public class GroupServiceImpl implements GroupService {
             return null;
         }
         return GroupMemberDTO.builder()
-                .userId(member.getId())
                 .groupId(member.getGroupId())
                 .userId(member.getUserId())
                 .username(user.getUsername())
                 .nickname(user.getNickname())
                 .avatar(user.getAvatar())
                 .role(member.getRole())
+                .roleName(resolveRoleName(member.getRole()))
+                .isOnline(false)
                 .joinTime(member.getJoinTime())
+                .lastActiveTime(user.getLastLoginTime())
                 .build();
+    }
+
+    private String resolveRoleName(Integer role) {
+        if (role == null) {
+            return "普通成员";
+        }
+        return switch (role) {
+            case 2 -> "管理员";
+            case 3 -> "群主";
+            default -> "普通成员";
+        };
     }
 
     private GroupMember findGroupMember(Long groupId, Long userId) {

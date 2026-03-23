@@ -20,7 +20,7 @@ import static com.im.service.AuthTokenService.getSecretKey;
 @Component
 public class TokenParser {
 
-    @Value("${jwt.secret:im-backend-secret-key-for-jwt-token-generation}")
+    @Value("${jwt.secret:im-backend-secret-key-for-jwt-token-generation-im-backend-secret-key-2026}")
     private String accessSecret;
 
     @Value("${auth.refresh.secret:im-backend-refresh-secret-key}")

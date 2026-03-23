@@ -1,0 +1,44 @@
+server:
+  port: 8088
+
+spring:
+  application:
+    name: im-file-service
+  config:
+    import:
+      - optional:classpath:sit/application-mysql.yml
+      - optional:classpath:sit/application-redis.yml
+      - optional:classpath:sit/application-kafka.yml
+      - optional:classpath:sit/application-nacos.yml
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:default}
+  threads:
+    virtual:
+      enabled: ${SPRING_THREADS_VIRTUAL_ENABLED:false}
+
+im:
+  jwt:
+    enabled: ${IM_JWT_ENABLED:true}
+  security:
+    mode: ${IM_SECURITY_MODE:gateway}
+  internal:
+    header: X-Internal-Secret
+    secret: ${IM_INTERNAL_SECRET:im-internal-secret}
+  gateway:
+    auth:
+      secret: ${IM_GATEWAY_AUTH_SECRET:im-gateway-auth-secret}
+  cos:
+    enabled: ${IM_COS_ENABLED:false}
+    https: true
+    secret-id: ${COS_SECRET_ID:}
+    secret-key: ${COS_SECRET_KEY:}
+    region: ${COS_REGION:}
+    bucket: ${COS_BUCKET:}
+    public-domain: ${COS_PUBLIC_DOMAIN:}
+    path-prefix: ${COS_PATH_PREFIX:im}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

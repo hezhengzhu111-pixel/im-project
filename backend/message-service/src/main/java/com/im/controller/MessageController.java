@@ -22,6 +22,9 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.time.LocalDateTime;
 
+import com.im.handler.PrivateMessageHandler;
+import com.im.handler.GroupMessageHandler;
+
 /**
  * 消息控制器
  */
@@ -32,6 +35,12 @@ public class MessageController {
 
     @Autowired
     private MessageService messageService;
+
+    @Autowired
+    private PrivateMessageHandler privateMessageHandler;
+
+    @Autowired
+    private GroupMessageHandler groupMessageHandler;
 
     @Value("${im.message.text.enforce:true}")
     private boolean textEnforce;
@@ -55,7 +64,7 @@ public class MessageController {
             @RequestAttribute("userId") Long userId,
             @Valid @RequestBody SendPrivateMessageRequest request) {
         try {
-            MessageDTO dto = messageService.sendPrivateMessage(userId, request);
+            MessageDTO dto = privateMessageHandler.handle(userId, request);
             return ApiResponse.success("发送私聊消息成功", dto);
         } catch (BusinessException | IllegalArgumentException e) {
             return ApiResponse.badRequest(e.getMessage());
@@ -74,7 +83,7 @@ public class MessageController {
             @RequestAttribute("userId") Long userId,
             @Valid @RequestBody SendGroupMessageRequest request) {
         try {
-            MessageDTO dto = messageService.sendGroupMessage(userId, request);
+            MessageDTO dto = groupMessageHandler.handle(userId, request);
             return ApiResponse.success("发送群聊消息成功", dto);
         } catch (BusinessException | IllegalArgumentException e) {
             return ApiResponse.badRequest(e.getMessage());

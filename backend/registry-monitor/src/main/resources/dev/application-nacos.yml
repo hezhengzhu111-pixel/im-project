@@ -1,0 +1,4 @@
+im:
+  registry-monitor:
+    nacos:
+      base-url: http://127.0.0.1:8848/nacos

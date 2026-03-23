@@ -1,28 +1,52 @@
 package com.im.security;
 
+import java.util.List;
+
 public final class SecurityPaths {
 
     private SecurityPaths() {
     }
 
+    private static final List<String> GATEWAY_WHITELIST_PREFIXES = List.of(
+            "/actuator",
+            "/v3/api-docs",
+            "/swagger-ui",
+            "/swagger-ui.html",
+            "/api/user/login",
+            "/api/user/register",
+            "/api/user/check-username",
+            "/api/auth/refresh",
+            "/api/auth/parse",
+            "/auth/refresh",
+            "/auth/parse",
+            "/websocket"
+    );
+
+    private static final List<String> SERVICE_WHITELIST_PREFIXES = List.of(
+            "/actuator",
+            "/api/actuator",
+            "/v3/api-docs",
+            "/swagger-ui",
+            "/swagger-ui.html",
+            "/api/user/register",
+            "/api/user/login",
+            "/user/register",
+            "/user/login",
+            "/api/user/check-username",
+            "/user/check-username",
+            "/api/user/internal",
+            "/api/group/internal",
+            "/static",
+            "/css",
+            "/js",
+            "/images"
+    );
+
     public static boolean isGatewayWhiteList(String path) {
         if (path == null) {
             return true;
         }
-        if (path.startsWith("/actuator")) {
-            return true;
-        }
-        if (path.startsWith("/v3/api-docs") || path.startsWith("/swagger-ui") || path.startsWith("/swagger-ui.html")) {
-            return true;
-        }
-        if (path.startsWith("/api/user/login") || path.startsWith("/api/user/register") || path.startsWith("/api/user/check-username")) {
-            return true;
-        }
-        if (path.startsWith("/api/auth/refresh") || path.startsWith("/api/auth/parse")
-                || path.startsWith("/auth/refresh") || path.startsWith("/auth/parse")) {
-            return true;
-        }
-        return path.startsWith("/websocket");
+        return hasAnyPrefix(path, GATEWAY_WHITELIST_PREFIXES);
     }
 
     public static boolean isGatewayInternalPath(String path) {
@@ -38,27 +62,19 @@ public final class SecurityPaths {
         if (requestURI == null) {
             return true;
         }
-        if (requestURI.startsWith("/actuator") || requestURI.startsWith("/api/actuator")) {
-            return true;
-        }
-        if (requestURI.startsWith("/v3/api-docs") || requestURI.startsWith("/swagger-ui") || requestURI.startsWith("/swagger-ui.html")) {
-            return true;
-        }
         if (requestURI.equals("/health") || requestURI.equals("/ready")) {
             return true;
         }
-        if (requestURI.startsWith("/api/user/register") || requestURI.startsWith("/api/user/login")
-                || requestURI.startsWith("/user/register") || requestURI.startsWith("/user/login")
-                || requestURI.startsWith("/api/user/check-username") || requestURI.startsWith("/user/check-username")) {
-            return true;
+        return hasAnyPrefix(requestURI, SERVICE_WHITELIST_PREFIXES);
+    }
+
+    private static boolean hasAnyPrefix(String path, List<String> prefixes) {
+        for (String prefix : prefixes) {
+            if (path.startsWith(prefix)) {
+                return true;
+            }
         }
-        if (requestURI.startsWith("/api/user/internal") || requestURI.startsWith("/api/group/internal")) {
-            return true;
-        }
-        return requestURI.startsWith("/static")
-                || requestURI.startsWith("/css")
-                || requestURI.startsWith("/js")
-                || requestURI.startsWith("/images");
+        return false;
     }
 }
 

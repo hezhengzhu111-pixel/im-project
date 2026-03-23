@@ -4,16 +4,14 @@ import com.im.dto.TokenPairDTO;
 import com.im.dto.TokenParseResultDTO;
 import com.im.dto.request.RefreshTokenRequest;
 import com.im.util.TokenParser;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.checkerframework.checker.nullness.qual.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
@@ -35,7 +33,7 @@ public class AuthTokenService {
     private final AuthUserResourceService authUserResourceService;
     private final TokenParser tokenParser;
 
-    @Value("${jwt.secret:im-backend-secret-key-for-jwt-token-generation}")
+    @Value("${jwt.secret:im-backend-secret-key-for-jwt-token-generation-im-backend-secret-key-2026}")
     private String accessSecret;
 
     @Value("${jwt.expiration:86400000}")
@@ -70,44 +68,9 @@ public class AuthTokenService {
     }
 
     public TokenPairDTO refresh(RefreshTokenRequest request) {
-        if (request == null || request.getRefreshToken() == null || request.getRefreshToken().trim().isEmpty()) {
-            throw new IllegalArgumentException("refreshToken不能为空");
-        }
-
-        TokenParser.TokenParseInfo refreshParsed = tokenParser.parseRefreshToken(request.getRefreshToken());
-        if (refreshParsed.isExpired()) {
-            throw new SecurityException("refreshToken已过期");
-        }
-        if (!refreshParsed.isValid()) {
-            throw new SecurityException(refreshParsed.getError() == null ? "refreshToken无效" : refreshParsed.getError());
-        }
-        if (!"refresh".equals(refreshParsed.getTokenType())) {
-            throw new SecurityException("token类型错误");
-        }
-
-        Long userId = refreshParsed.getUserId();
-        String username = refreshParsed.getUsername();
-        String refreshJti = refreshParsed.getJti();
-        if (userId == null || username == null || refreshJti == null) {
-            throw new SecurityException("refreshToken解析失败");
-        }
-
-        String storedJti = stringRedisTemplate.opsForValue().get(REFRESH_JTI_KEY_PREFIX + userId);
-        if (storedJti == null || !storedJti.equals(refreshJti)) {
-            throw new SecurityException("refreshToken已失效");
-        }
-
-        if (request.getAccessToken() != null && !request.getAccessToken().trim().isEmpty()) {
-            TokenParser.TokenParseInfo accessParsed = tokenParser.parseAccessToken(request.getAccessToken());
-            if (accessParsed.getUserId() != null && !userId.equals(accessParsed.getUserId())) {
-                throw new SecurityException("accessToken与refreshToken不匹配");
-            }
-            if (accessParsed.getUsername() != null && !username.equals(accessParsed.getUsername())) {
-                throw new SecurityException("accessToken与refreshToken不匹配");
-            }
-        }
-
-        return issueTokenPair(userId, username);
+        RefreshRequestInput input = refreshInput(request);
+        RefreshTokenProcessContext context = refreshProcess(input);
+        return refreshOutput(context);
     }
 
     public TokenParseResultDTO parseAccessToken(String token, boolean allowExpired) {
@@ -146,6 +109,65 @@ public class AuthTokenService {
 
     private void storeRefreshJti(Long userId, String refreshJti) {
         stringRedisTemplate.opsForValue().set(REFRESH_JTI_KEY_PREFIX + userId, refreshJti, Duration.ofMillis(refreshExpirationMs));
+    }
+
+    private RefreshRequestInput refreshInput(RefreshTokenRequest request) {
+        if (request == null || request.getRefreshToken() == null || request.getRefreshToken().trim().isEmpty()) {
+            throw new IllegalArgumentException("refreshToken不能为空");
+        }
+        return new RefreshRequestInput(request.getRefreshToken(), request.getAccessToken());
+    }
+
+    private RefreshTokenProcessContext refreshProcess(RefreshRequestInput input) {
+        TokenParser.TokenParseInfo refreshParsed = tokenParser.parseRefreshToken(input.refreshToken());
+        validateRefreshParsed(refreshParsed);
+
+        Long userId = refreshParsed.getUserId();
+        String username = refreshParsed.getUsername();
+        String refreshJti = refreshParsed.getJti();
+        if (userId == null || username == null || refreshJti == null) {
+            throw new SecurityException("refreshToken解析失败");
+        }
+
+        validateStoredRefreshJti(userId, refreshJti);
+        validateAccessTokenMatch(input.accessToken(), userId, username);
+        return new RefreshTokenProcessContext(userId, username);
+    }
+
+    private TokenPairDTO refreshOutput(RefreshTokenProcessContext context) {
+        return issueTokenPair(context.userId(), context.username());
+    }
+
+    private void validateRefreshParsed(TokenParser.TokenParseInfo refreshParsed) {
+        if (refreshParsed.isExpired()) {
+            throw new SecurityException("refreshToken已过期");
+        }
+        if (!refreshParsed.isValid()) {
+            throw new SecurityException(refreshParsed.getError() == null ? "refreshToken无效" : refreshParsed.getError());
+        }
+        if (!"refresh".equals(refreshParsed.getTokenType())) {
+            throw new SecurityException("token类型错误");
+        }
+    }
+
+    private void validateStoredRefreshJti(Long userId, String refreshJti) {
+        String storedJti = stringRedisTemplate.opsForValue().get(REFRESH_JTI_KEY_PREFIX + userId);
+        if (storedJti == null || !storedJti.equals(refreshJti)) {
+            throw new SecurityException("refreshToken已失效");
+        }
+    }
+
+    private void validateAccessTokenMatch(String accessToken, Long userId, String username) {
+        if (accessToken == null || accessToken.trim().isEmpty()) {
+            return;
+        }
+        TokenParser.TokenParseInfo accessParsed = tokenParser.parseAccessToken(accessToken);
+        if (accessParsed.getUserId() != null && !userId.equals(accessParsed.getUserId())) {
+            throw new SecurityException("accessToken与refreshToken不匹配");
+        }
+        if (accessParsed.getUsername() != null && !username.equals(accessParsed.getUsername())) {
+            throw new SecurityException("accessToken与refreshToken不匹配");
+        }
     }
 
     private String buildToken(String secret, long expirationMs, Long userId, String username, String typ, String jti) {
@@ -189,5 +211,11 @@ public class AuthTokenService {
             t = t.substring("Bearer ".length()).trim();
         }
         return t;
+    }
+
+    private record RefreshRequestInput(String refreshToken, String accessToken) {
+    }
+
+    private record RefreshTokenProcessContext(Long userId, String username) {
     }
 }

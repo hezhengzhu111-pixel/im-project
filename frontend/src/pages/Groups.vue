@@ -111,7 +111,9 @@
                 {{ group.groupName?.charAt(0) || "G" }}
               </el-avatar>
               <div v-if="(group.unreadCount || 0) > 0" class="unread-badge">
-                {{ (group.unreadCount || 0) > 99 ? "99+" : group.unreadCount || 0 }}
+                {{
+                  (group.unreadCount || 0) > 99 ? "99+" : group.unreadCount || 0
+                }}
               </div>
             </div>
 
@@ -129,9 +131,7 @@
             </div>
 
             <div class="group-actions">
-              <el-dropdown
-                @command="handleGroupAction($event, group)"
-              >
+              <el-dropdown @command="handleGroupAction($event, group)">
                 <el-button link :icon="MoreFilled" />
                 <template #dropdown>
                   <el-dropdown-menu>
@@ -624,7 +624,11 @@ const viewMembers = async (group?: Group) => {
             .slice(0, 50)
             .map((m: any) => {
               const roleLabel =
-                m.role === "OWNER" ? "群主" : m.role === "ADMIN" ? "管理员" : "成员";
+                m.role === "OWNER"
+                  ? "群主"
+                  : m.role === "ADMIN"
+                    ? "管理员"
+                    : "成员";
               return `${m.nickname || m.username || m.userId}（${roleLabel}）`;
             })
             .join("\n");

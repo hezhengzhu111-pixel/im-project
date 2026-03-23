@@ -72,7 +72,9 @@
 
       <div class="detail-item">
         <span class="detail-label">注册时间:</span>
-        <span class="detail-value">{{ formatTime(userInfo?.createTime || "") }}</span>
+        <span class="detail-value">{{
+          formatTime(userInfo?.createTime || "")
+        }}</span>
       </div>
 
       <div class="detail-item">

@@ -55,7 +55,9 @@ export const normalizeMessageBase = (
     messageType: message.messageType || message.type || "TEXT",
     type: message.type || message.messageType || "TEXT",
     senderName:
-      message.senderName || message.sender?.nickname || message.sender?.username,
+      message.senderName ||
+      message.sender?.nickname ||
+      message.sender?.username,
     senderAvatar: message.senderAvatar || message.sender?.avatar,
     content: typeof message.content === "string" ? message.content : "",
     sendTime: normalizeMessageSendTime(message, fallbackSendTime),

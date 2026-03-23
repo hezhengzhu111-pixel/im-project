@@ -52,4 +52,5 @@ public class UserDTO implements Serializable {
     private Integer status;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
+    private LocalDateTime lastLoginTime;
 }

@@ -1,21 +1,15 @@
 package com.im.interceptor;
 
 import com.im.dto.TokenParseResultDTO;
+import com.im.feign.AuthServiceFeignClient;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpStatusCodeException;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 
@@ -27,16 +21,7 @@ import java.util.Map;
 public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
 
     @Autowired
-    private RestTemplate restTemplate;
-
-    @Value("${im.internal.header:X-Internal-Secret}")
-    private String internalHeaderName;
-
-    @Value("${im.internal.secret:im-internal-secret}")
-    private String internalSecret;
-
-    @Value("${auth.service.url:http://im-auth-service}")
-    private String authServiceUrl;
+    private AuthServiceFeignClient authServiceFeignClient;
 
     @Override
     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
@@ -83,22 +68,9 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
 
     private TokenParseResultDTO validateToken(String token) {
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.TEXT_PLAIN);
-            headers.set(internalHeaderName, internalSecret);
-            HttpEntity<String> entity = new HttpEntity<>(token, headers);
-
-            ResponseEntity<TokenParseResultDTO> resp = restTemplate.postForEntity(
-                    authServiceUrl + "/api/auth/internal/validate-token",
-                    entity,
-                    TokenParseResultDTO.class
-            );
-            return resp.getBody();
-        } catch (HttpStatusCodeException e) {
-            log.warn("验证Token失败: status={} body={}", e.getStatusCode(), e.getResponseBodyAsString());
-            return null;
+            return authServiceFeignClient.validateToken(token);
         } catch (Exception e) {
-            log.error("验证Token失败", e);
+            log.warn("验证Token失败: {}", e.getMessage());
             return null;
         }
     }

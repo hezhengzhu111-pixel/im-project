@@ -102,7 +102,9 @@ describe("file service resolve/delete", () => {
 
   it("rejects invalid file ref", async () => {
     const { fileService } = await import("@/services/file");
-    await expect(fileService.delete("invalid")).rejects.toThrow("无法解析文件路径");
+    await expect(fileService.delete("invalid")).rejects.toThrow(
+      "无法解析文件路径",
+    );
     expect(deleteMock).not.toHaveBeenCalled();
   });
 });

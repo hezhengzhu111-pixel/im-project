@@ -3,7 +3,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
-RUN npm run build
+ARG FRONTEND_BUILD_MODE=sit
+RUN npm run build -- --mode ${FRONTEND_BUILD_MODE}
 
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html

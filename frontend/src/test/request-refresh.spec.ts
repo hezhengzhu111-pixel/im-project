@@ -196,7 +196,10 @@ describe("request refresh and retry", () => {
         ),
     );
     const { http } = await import("@/utils/request");
-    const [a, b] = await Promise.all([http.get("/secure-a"), http.get("/secure-b")]);
+    const [a, b] = await Promise.all([
+      http.get("/secure-a"),
+      http.get("/secure-b"),
+    ]);
     expect(a.code).toBe(200);
     expect(b.code).toBe(200);
     expect(axiosPost).toHaveBeenCalledTimes(1);

@@ -254,13 +254,20 @@ public class FriendServiceImpl implements FriendService {
         List<Friend> friends = friendMapper.selectList(new LambdaQueryWrapper<Friend>()
                 .eq(Friend::getUserId, userId)
                 .eq(Friend::getStatus, 1));
-        
-        return friends.stream().map(friend -> {
-            User friendUser = userMapper.selectById(friend.getFriendId());
-            if (friendUser == null) return null;
-            
-            return dtoConverter.toFriendListDTO(friend, friendUser);
-        }).filter(Objects::nonNull).collect(Collectors.toList());
+        if (friends == null || friends.isEmpty()) {
+            return List.of();
+        }
+        List<Long> friendIds = friends.stream()
+                .map(Friend::getFriendId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, User> userMap = loadUsersByIds(friendIds);
+        Map<String, Boolean> onlineStatusMap = loadOnlineStatusMap(friendIds);
+        return friends.stream()
+                .map(friend -> buildFriendListDTO(friend, userMap.get(friend.getFriendId()), onlineStatusMap))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
     }
     
     @Override
@@ -282,13 +289,23 @@ public class FriendServiceImpl implements FriendService {
                     .last("limit " + pageSize));
         }
         
-        List<FriendRequestDTO> requestList = requests.stream().map(request -> {
-            User applicant = userMapper.selectById(request.getApplicantId());
-            User target = userMapper.selectById(request.getTargetUserId());
-            if (applicant == null) return null;
-            
-            return dtoConverter.toFriendRequestDTO(request, applicant, target);
-        }).filter(Objects::nonNull).collect(Collectors.toList());
+        List<Long> relatedUserIds = requests.stream()
+                .flatMap(request -> Arrays.stream(new Long[]{request.getApplicantId(), request.getTargetUserId()}))
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, User> userMap = loadUsersByIds(relatedUserIds);
+        List<FriendRequestDTO> requestList = requests.stream()
+                .map(request -> {
+                    User applicant = userMap.get(request.getApplicantId());
+                    User target = userMap.get(request.getTargetUserId());
+                    if (applicant == null) {
+                        return null;
+                    }
+                    return dtoConverter.toFriendRequestDTO(request, applicant, target);
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
         
         String nextCursor = null;
         boolean hasNext = false;
@@ -305,13 +322,20 @@ public class FriendServiceImpl implements FriendService {
         List<Friend> blockedUsers = friendMapper.selectList(new LambdaQueryWrapper<Friend>()
                 .eq(Friend::getUserId, userId)
                 .eq(Friend::getStatus, 3));
-        
-        return blockedUsers.stream().map(friend -> {
-            User blockedUser = userMapper.selectById(friend.getFriendId());
-            if (blockedUser == null) return null;
-            
-            return dtoConverter.toFriendListDTO(friend, blockedUser);
-        }).filter(Objects::nonNull).collect(Collectors.toList());
+        if (blockedUsers == null || blockedUsers.isEmpty()) {
+            return List.of();
+        }
+        List<Long> blockedIds = blockedUsers.stream()
+                .map(Friend::getFriendId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, User> userMap = loadUsersByIds(blockedIds);
+        Map<String, Boolean> onlineStatusMap = loadOnlineStatusMap(blockedIds);
+        return blockedUsers.stream()
+                .map(friend -> buildFriendListDTO(friend, userMap.get(friend.getFriendId()), onlineStatusMap))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
     }
     
     @Override
@@ -422,5 +446,46 @@ public class FriendServiceImpl implements FriendService {
         } catch (Exception e) {
             log.warn("发送系统通知失败: receiverId={}, content={}", receiverId, content, e);
         }
+    }
+
+    private Map<Long, User> loadUsersByIds(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        List<User> users = userMapper.selectBatchIds(userIds);
+        if (users == null || users.isEmpty()) {
+            return Map.of();
+        }
+        return users.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toMap(User::getId, user -> user, (a, b) -> a));
+    }
+
+    private Map<String, Boolean> loadOnlineStatusMap(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        List<String> ids = userIds.stream()
+                .filter(Objects::nonNull)
+                .map(String::valueOf)
+                .collect(Collectors.toList());
+        Map<String, Boolean> onlineStatusMap = imService.checkUsersOnlineStatus(ids);
+        return onlineStatusMap == null ? Map.of() : onlineStatusMap;
+    }
+
+    private FriendListDTO buildFriendListDTO(Friend friend, User friendUser, Map<String, Boolean> onlineStatusMap) {
+        if (friend == null || friendUser == null) {
+            return null;
+        }
+        return FriendListDTO.builder()
+                .friendId(friendUser.getId() == null ? null : friendUser.getId().toString())
+                .username(friendUser.getUsername())
+                .nickname(friendUser.getNickname())
+                .avatar(friendUser.getAvatar())
+                .remark(friend.getRemark())
+                .isOnline(Boolean.TRUE.equals(onlineStatusMap.getOrDefault(String.valueOf(friendUser.getId()), false)))
+                .lastActiveTime(friendUser.getLastLoginTime())
+                .createdAt(friend.getCreatedTime())
+                .build();
     }
 }

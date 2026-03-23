@@ -1,8 +1,10 @@
 package com.im.controller;
 
 import com.im.dto.GroupInfoDTO;
+import com.im.dto.UserDTO;
 import com.im.entity.Group;
 import com.im.entity.GroupMember;
+import com.im.feign.UserServiceFeignClient;
 import com.im.mapper.GroupMapper;
 import com.im.mapper.GroupMemberMapper;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +25,7 @@ public class GroupInternalController {
 
     private final GroupMapper groupMapper;
     private final GroupMemberMapper groupMemberMapper;
+    private final UserServiceFeignClient userServiceFeignClient;
 
     @Value("${im.internal.secret:im-internal-secret}")
     private String internalSecret;
@@ -75,6 +78,7 @@ public class GroupInternalController {
     }
 
     private GroupInfoDTO toGroupInfoDTO(Group group) {
+        UserDTO owner = group.getOwnerId() == null ? null : userServiceFeignClient.getUser(group.getOwnerId());
         return GroupInfoDTO.builder()
                 .id(group.getId())
                 .name(group.getName())
@@ -82,8 +86,10 @@ public class GroupInternalController {
                 .announcement(group.getAnnouncement())
                 .avatar(group.getAvatar())
                 .ownerId(group.getOwnerId())
+                .ownerName(owner == null ? null : (owner.getNickname() != null ? owner.getNickname() : owner.getUsername()))
                 .memberCount(group.getMemberCount())
                 .maxMembers(group.getMaxMembers())
+                .isMuted(false)
                 .createTime(group.getCreatedTime())
                 .updateTime(group.getUpdatedTime())
                 .build();
