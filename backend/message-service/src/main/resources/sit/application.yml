@@ -27,10 +27,10 @@ im:
       max-length: ${IM_MESSAGE_TEXT_MAX_LENGTH:2000}
   internal:
     header: X-Internal-Secret
-    secret: ${IM_INTERNAL_SECRET:im-internal-secret}
+    secret: ${IM_INTERNAL_SECRET}
   gateway:
     auth:
-      secret: ${IM_GATEWAY_AUTH_SECRET:im-gateway-auth-secret}
+      secret: ${IM_GATEWAY_AUTH_SECRET}
   outbox:
     max-attempts: ${IM_OUTBOX_MAX_ATTEMPTS:20}
     batch-size: ${IM_OUTBOX_BATCH_SIZE:100}

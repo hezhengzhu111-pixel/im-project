@@ -24,7 +24,7 @@ public class UserInternalController {
     private final DTOConverter dtoConverter;
     private final FriendService friendService;
 
-    @Value("${im.internal.secret:im-internal-secret}")
+    @Value("${im.internal.secret}")
     private String internalSecret;
 
     @GetMapping("/exists/{userId}")

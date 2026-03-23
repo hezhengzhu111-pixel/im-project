@@ -3,6 +3,7 @@ package com.im.controller;
 import com.im.dto.ApiResponse;
 import com.im.dto.TokenPairDTO;
 import com.im.dto.TokenParseResultDTO;
+import com.im.dto.WsTicketDTO;
 import com.im.dto.request.ParseTokenRequest;
 import com.im.dto.request.RefreshTokenRequest;
 import com.im.service.AuthTokenService;
@@ -11,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,5 +35,11 @@ public class AuthController {
         boolean allowExpired = request.getAllowExpired() != null && request.getAllowExpired();
         TokenParseResultDTO dto = authTokenService.parseAccessToken(request.getToken(), allowExpired);
         return ApiResponse.success(dto);
+    }
+
+    @PostMapping("/ws-ticket")
+    public ApiResponse<WsTicketDTO> issueWsTicket(@RequestAttribute("userId") Long userId,
+                                                  @RequestAttribute("username") String username) {
+        return ApiResponse.success(authTokenService.issueWsTicket(userId, username));
     }
 }

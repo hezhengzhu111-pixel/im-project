@@ -89,6 +89,7 @@ public class DTOConverter {
                 .targetUserId(request.getTargetUserId().toString())
                 .targetUsername(target != null ? target.getUsername() : null)
                 .targetNickname(target != null ? target.getNickname() : null)
+                .targetAvatar(target != null ? target.getAvatar() : null)
                 .reason(request.getApplyReason())
                 .status(convertStatusToString(request.getStatus()))
                 .rejectReason(request.getRejectReason())

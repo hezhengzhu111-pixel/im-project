@@ -38,7 +38,7 @@ logging:
     feign: DEBUG
 
 jwt:
-  secret: ${JWT_SECRET:im-backend-secret-key-for-jwt-token-generation-im-backend-secret-key-2026}
+  secret: ${JWT_SECRET}
   expiration: 86400000
 
 im:
@@ -48,10 +48,10 @@ im:
     mode: ${IM_SECURITY_MODE:gateway}
   internal:
     header: X-Internal-Secret
-    secret: ${IM_INTERNAL_SECRET:im-internal-secret}
+    secret: ${IM_INTERNAL_SECRET}
   gateway:
     auth:
-      secret: ${IM_GATEWAY_AUTH_SECRET:im-gateway-auth-secret}
+      secret: ${IM_GATEWAY_AUTH_SECRET}
 
 management:
   endpoints:

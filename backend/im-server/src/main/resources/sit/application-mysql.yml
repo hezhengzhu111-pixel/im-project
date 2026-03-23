@@ -1,5 +1,5 @@
 spring:
   datasource:
-    url: jdbc:mysql://im-mysql:3306/service_im_server_db?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
-    username: root
-    password: root123
+    url: ${IM_SERVER_DATASOURCE_URL:jdbc:mysql://im-mysql:3306/service_im_server_db?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
+    username: ${IM_SERVER_DATASOURCE_USERNAME:root}
+    password: ${IM_SERVER_DATASOURCE_PASSWORD}

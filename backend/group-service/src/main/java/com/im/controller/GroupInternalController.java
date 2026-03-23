@@ -27,7 +27,7 @@ public class GroupInternalController {
     private final GroupMemberMapper groupMemberMapper;
     private final UserServiceFeignClient userServiceFeignClient;
 
-    @Value("${im.internal.secret:im-internal-secret}")
+    @Value("${im.internal.secret}")
     private String internalSecret;
 
     @GetMapping("/exists/{groupId}")

@@ -5,7 +5,9 @@ import com.im.dto.PermissionCheckResultDTO;
 import com.im.dto.TokenPairDTO;
 import com.im.dto.TokenParseResultDTO;
 import com.im.dto.TokenRevokeResultDTO;
+import com.im.dto.WsTicketConsumeResultDTO;
 import com.im.dto.request.CheckPermissionRequest;
+import com.im.dto.request.ConsumeWsTicketRequest;
 import com.im.dto.request.IssueTokenRequest;
 import com.im.dto.request.RevokeTokenRequest;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -40,4 +42,7 @@ public interface AuthServiceFeignClient {
 
     @PostMapping("/revoke-user-tokens/{userId}")
     void revokeUserTokens(@PathVariable("userId") Long userId);
+
+    @PostMapping("/ws-ticket/consume")
+    WsTicketConsumeResultDTO consumeWsTicket(@RequestBody ConsumeWsTicketRequest request);
 }
