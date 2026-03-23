@@ -28,13 +28,13 @@ spring:
     time-zone: GMT+8
     default-property-inclusion: non_null
   jwt:
-    secret: OtB6MEakowaNzTiiGE1G4NpFGz4rzNUOrYO7URJk6m1oKpamZQZpgoUdNpSOonX7
-    expiration: 86400000
+    secret: ${JWT_SECRET}
+    expiration: ${JWT_EXPIRATION_MS:86400000}
 
 im:
   internal:
     header: ${IM_INTERNAL_HEADER:X-Internal-Secret}
-    secret: ${IM_INTERNAL_SECRET:im-internal-secret}
+    secret: ${IM_INTERNAL_SECRET}
   virtual-threads:
     enabled: ${IM_VIRTUAL_THREADS_ENABLED:true}
   server:

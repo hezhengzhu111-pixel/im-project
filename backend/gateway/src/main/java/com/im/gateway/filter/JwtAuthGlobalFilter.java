@@ -51,7 +51,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     @Value("${im.internal.header:X-Internal-Secret}")
     private String internalHeaderName;
 
-    @Value("${im.internal.secret:im-internal-secret}")
+    @Value("${im.internal.secret}")
     private String internalSecret;
 
     @Value("${im.gateway.auth.user-resource-key-prefix:auth:user:}")
@@ -60,7 +60,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     @Value("${im.gateway.auth.cache-ttl-seconds:3600}")
     private long cacheTtlSeconds;
 
-    @Value("${im.gateway.auth.secret:im-gateway-auth-secret}")
+    @Value("${im.gateway.auth.secret}")
     private String gatewayAuthSecret;
 
     @Value("${im.security.token-revocation-check.enabled:true}")

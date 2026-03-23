@@ -1,59 +1,59 @@
-/**
- * WebSocket状态管理
- * 管理WebSocket连接、消息收发、在线状态等
- */
-
+import { computed, ref } from "vue";
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
-import { WS_CONFIG, STORAGE_CONFIG } from "@/config";
-import { imApi } from "@/services";
-import type { Message, OnlineStatus, WebSocketMessage } from "@/types";
 import { ElMessage, ElNotification } from "element-plus";
+import { STORAGE_CONFIG, WS_CONFIG } from "@/config";
+import { authApi, imApi } from "@/services";
+import type { Message, OnlineStatus, WebSocketMessage } from "@/types";
+import { normalizeMessageBase } from "@/utils/messageNormalize";
 import { useChatStore } from "./chat";
 import { useUserStore } from "./user";
-import { normalizeMessageBase } from "@/utils/messageNormalize";
+
+type TimerHandle = ReturnType<typeof setInterval>;
+
+const DUPLICATE_CONNECTION_REASON = "duplicate_connection";
+
+export const createTicketedWebSocketUrl = (
+  userId: string,
+  ticket: string,
+): string => {
+  const isDev = import.meta.env.DEV;
+  const wsBaseUrl = isDev ? "" : WS_CONFIG.BASE_URL;
+  const baseUrl = `${wsBaseUrl}/websocket/${userId}`;
+  return `${baseUrl}?ticket=${encodeURIComponent(ticket)}`;
+};
 
 export const useWebSocketStore = defineStore("websocket", () => {
-  // 状态
   const socket = ref<WebSocket | null>(null);
   const isConnected = ref(false);
   const isConnecting = ref(false);
   const onlineUsers = ref<Set<string>>(new Set());
   const reconnectAttempts = ref(0);
-  const heartbeatTimer = ref<NodeJS.Timeout | null>(null);
-  const reconnectTimer = ref<NodeJS.Timeout | null>(null);
+  const heartbeatTimer = ref<TimerHandle | null>(null);
+  const reconnectTimer = ref<TimerHandle | null>(null);
   const manualDisconnect = ref(false);
   const incomingProcessing = ref<Promise<void>>(Promise.resolve());
   const recentMessageIds = ref<Map<string, number>>(new Map());
 
-  // 计算属性
   const connectionStatus = computed(() => {
     if (isConnecting.value) return "connecting";
     if (isConnected.value) return "connected";
     return "disconnected";
   });
 
-  // 构建WebSocket URL
-  const buildWebSocketUrl = (userId: string): string => {
-    const userStore = useUserStore();
-    const token = userStore.token;
-
-    // 在开发环境中使用代理路径
-    const isDev = import.meta.env.DEV;
-    const wsBaseUrl = isDev ? "" : WS_CONFIG.BASE_URL;
-    const url = `${wsBaseUrl}/websocket/${userId}`;
-
-    if (token) {
-      // 使用 Sec-WebSocket-Protocol 需要后端支持，或者直接作为 Query Param
-      return `${url}?token=${encodeURIComponent(token)}`;
+  const requestWsTicket = async (): Promise<string> => {
+    const response = await authApi.issueWsTicket();
+    const ticket = response?.data?.ticket;
+    if (!ticket) {
+      throw new Error(response?.message || "Failed to issue websocket ticket");
     }
-    return url;
+    return ticket;
   };
 
-  // 连接WebSocket
-  const connect = (userId: string) => {
+  const connect = async (userId: string) => {
+    if (!userId) {
+      return;
+    }
     if (isConnected.value || isConnecting.value) {
-      console.log("WebSocket已连接或正在连接中");
       return;
     }
 
@@ -63,105 +63,87 @@ export const useWebSocketStore = defineStore("websocket", () => {
         clearTimeout(reconnectTimer.value);
         reconnectTimer.value = null;
       }
-      isConnecting.value = true;
-      const url = buildWebSocketUrl(userId);
 
-      console.log("正在连接WebSocket:", url);
+      isConnecting.value = true;
+      const ticket = await requestWsTicket();
+      const url = createTicketedWebSocketUrl(userId, ticket);
       socket.value = new WebSocket(url);
 
-      // 连接成功
       socket.value.onopen = () => {
-        console.log("WebSocket连接成功");
         isConnected.value = true;
         isConnecting.value = false;
         stopReconnect();
-
-        // 保存连接状态
         saveConnectionCache(userId);
-
-        // 开始心跳
         startHeartbeat();
 
         void useChatStore()
           .syncOfflineMessages()
           .catch((error) => {
-            console.error("同步离线消息失败:", error);
+            console.error("Failed to sync offline messages:", error);
           });
-
-        ElMessage.success("连接成功");
       };
 
-      // 接收消息
       socket.value.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data);
+          const data = JSON.parse(event.data) as WebSocketMessage;
           incomingProcessing.value = incomingProcessing.value
             .then(() => handleMessage(data))
             .catch((error) => {
-              console.error("处理WebSocket消息失败:", error);
+              console.error("Failed to handle websocket message:", error);
             });
         } catch (error) {
-          console.error("解析WebSocket消息失败:", error);
+          console.error("Failed to parse websocket payload:", error);
         }
       };
 
-      // 连接关闭
       socket.value.onclose = (event) => {
-        console.log("WebSocket连接关闭:", event.code, event.reason);
+        socket.value = null;
         isConnected.value = false;
         isConnecting.value = false;
-
-        // 停止心跳
         stopHeartbeat();
-
-        // 清除连接缓存
         clearConnectionCache();
 
-        // 如果不是主动关闭，且不是被后端"新连接建立"挤下线，尝试重连
-        if (!manualDisconnect.value && event.reason !== "新连接建立") {
+        if (
+          !manualDisconnect.value &&
+          event.reason !== DUPLICATE_CONNECTION_REASON
+        ) {
           scheduleReconnect(userId);
         }
       };
 
-      // 连接错误
       socket.value.onerror = (error) => {
-        console.error("WebSocket连接错误:", error);
+        console.error("WebSocket connection error:", error);
         isConnected.value = false;
         isConnecting.value = false;
-
-        ElMessage.error("连接失败");
       };
     } catch (error) {
-      console.error("创建WebSocket连接失败:", error);
+      console.error("Failed to create websocket connection:", error);
       isConnecting.value = false;
-      ElMessage.error("连接失败");
+      if (!manualDisconnect.value) {
+        scheduleReconnect(userId);
+      }
+      ElMessage.error("WebSocket connection failed");
     }
   };
 
-  // 断开连接
   const disconnect = () => {
     manualDisconnect.value = true;
+    stopHeartbeat();
+    stopReconnect();
+    clearConnectionCache();
+
     if (socket.value) {
-      socket.value.close(1000, "主动断开");
+      socket.value.close(1000, "manual_disconnect");
       socket.value = null;
     }
 
     isConnected.value = false;
     isConnecting.value = false;
-
-    // 停止心跳和重连
-    stopHeartbeat();
-    stopReconnect();
-
-    // 清除缓存
-    clearConnectionCache();
   };
 
-  // 发送消息
   const sendMessage = (message: Message) => {
     if (!isConnected.value || !socket.value) {
-      console.error("WebSocket未连接，无法发送消息");
-      ElMessage.error("连接已断开，请重新连接");
+      ElMessage.error("WebSocket is disconnected");
       return false;
     }
 
@@ -171,35 +153,33 @@ export const useWebSocketStore = defineStore("websocket", () => {
         data: message,
         timestamp: Date.now(),
       };
-
       socket.value.send(JSON.stringify(wsMessage));
-      console.log("发送WebSocket消息:", wsMessage);
       return true;
     } catch (error) {
-      console.error("发送WebSocket消息失败:", error);
-      ElMessage.error("发送失败");
+      console.error("Failed to send websocket message:", error);
+      ElMessage.error("Failed to send message");
       return false;
     }
   };
 
-  // 处理接收到的消息
   const handleMessage = async (data: WebSocketMessage) => {
-    console.log("收到WebSocket消息:", data);
-
     const chatStore = useChatStore();
 
     switch (data.type) {
       case "MESSAGE":
         if (data.data) {
-          const msg = data.data as Record<string, any>;
-          const isSystem =
-            msg.messageType === "SYSTEM" || msg.type === "SYSTEM";
-          if (isSystem) {
-            if (
-              msg.content &&
-              (msg.content.includes("好友申请") || msg.content.includes("同意"))
-            ) {
-              // 刷新好友列表、申请列表和会话列表，确保状态完全同步
+          const rawMessage = data.data as Record<string, unknown>;
+          const isSystemMessage =
+            rawMessage.messageType === "SYSTEM" || rawMessage.type === "SYSTEM";
+
+          if (isSystemMessage) {
+            const content = String(rawMessage.content || "");
+            const shouldRefreshFriendData =
+              content.includes("好友申请") ||
+              content.includes("同意") ||
+              content.toLowerCase().includes("friend request");
+
+            if (shouldRefreshFriendData) {
               await Promise.all([
                 chatStore.loadFriendRequests(),
                 chatStore.loadFriends(),
@@ -207,26 +187,30 @@ export const useWebSocketStore = defineStore("websocket", () => {
               ]);
 
               ElNotification({
-                title: "系统通知",
-                message: msg.content,
+                title: "System notification",
+                message: content,
                 type: "info",
                 duration: 3000,
               });
             }
           } else {
-            const normalizedMsg = normalizeMessageBase(msg) as Message;
-            const msgId = String(normalizedMsg.id || "");
-            if (msgId && !msgId.startsWith("local_")) {
+            const normalizedMessage = normalizeMessageBase(
+              rawMessage,
+            ) as Message;
+            const messageId = String(normalizedMessage.id || "");
+
+            if (messageId && !messageId.startsWith("local_")) {
               const now = Date.now();
-              const prev = recentMessageIds.value.get(msgId) || 0;
-              if (now - prev < 60000) {
+              const previous = recentMessageIds.value.get(messageId) || 0;
+              if (now - previous < 60_000) {
                 break;
               }
-              recentMessageIds.value.set(msgId, now);
+
+              recentMessageIds.value.set(messageId, now);
               if (recentMessageIds.value.size > 2000) {
-                const expiredBefore = now - 300000;
-                recentMessageIds.value.forEach((ts, id) => {
-                  if (ts < expiredBefore) {
+                const cutoff = now - 300_000;
+                recentMessageIds.value.forEach((timestamp, id) => {
+                  if (timestamp < cutoff) {
                     recentMessageIds.value.delete(id);
                   }
                 });
@@ -234,109 +218,85 @@ export const useWebSocketStore = defineStore("websocket", () => {
             }
 
             const isSelfMessage =
-              String(normalizedMsg.senderId) === String(useUserStore().userId);
-            chatStore.addMessage(normalizedMsg);
+              String(normalizedMessage.senderId) ===
+              String(useUserStore().userId);
+            chatStore.addMessage(normalizedMessage);
+
             if (!isSelfMessage) {
-              showMessageNotification(normalizedMsg);
+              showMessageNotification(normalizedMessage);
             }
           }
         }
         break;
 
       case "ONLINE_STATUS":
-        // 处理在线状态
         if (data.data) {
-          updateOnlineStatus(data.data as any);
+          updateOnlineStatus(data.data as OnlineStatus);
         }
         break;
 
       case "READ_RECEIPT":
         if (data.data) {
-          chatStore.applyReadReceipt(data.data as any);
+          chatStore.applyReadReceipt(data.data);
         }
         break;
 
       case "SYSTEM":
-        // 处理系统消息
         if (data.data) {
-          const systemMsg = data.data as Record<string, any>;
-          const content = systemMsg.content || "";
-
-          // 解析指令
+          const systemMessage = data.data as Record<string, unknown>;
+          const content = String(systemMessage.content || "");
           let command = "";
           let messageText = content;
 
           if (content.includes("::CMD:")) {
             const parts = content.split("::CMD:");
             messageText = parts[0];
-            command = parts[1];
+            command = parts[1] || "";
           }
 
-          // 如果有指令，优先执行指令逻辑
           if (command === "REFRESH_FRIEND_REQUESTS") {
-            // 刷新好友申请列表
             await chatStore.loadFriendRequests();
             ElNotification({
-              title: "好友通知",
-              message: messageText || "收到新的好友申请",
+              title: "Friend notification",
+              message: messageText || "Received a new friend request",
               type: "info",
               duration: 3000,
             });
           } else if (command === "REFRESH_FRIEND_LIST") {
-            // 刷新好友列表和会话
-            await Promise.all([
-              chatStore.loadFriends(),
-              chatStore.loadSessions(),
-            ]);
+            await Promise.all([chatStore.loadFriends(), chatStore.loadSessions()]);
             ElNotification({
-              title: "好友通知",
-              message: messageText || "已添加新好友",
+              title: "Friend notification",
+              message: messageText || "Friend list updated",
               type: "success",
               duration: 3000,
             });
-          } else if (content.includes("好友申请") || content.includes("同意")) {
-            // 兼容旧逻辑：模糊匹配
-            await Promise.all([
-              chatStore.loadFriendRequests(),
-              chatStore.loadFriends(),
-              chatStore.loadSessions(),
-            ]);
-
-            ElNotification({
-              title: "系统通知",
-              message: content,
-              type: "info",
-              duration: 3000,
-            });
-          } else if (systemMsg.message) {
-            ElMessage.info(systemMsg.message);
+          } else if (systemMessage.message) {
+            ElMessage.info(String(systemMessage.message));
           }
         }
         break;
 
       case "HEARTBEAT":
-        // 心跳响应
-        console.log("收到心跳响应");
         break;
 
       default:
-        console.log("未知消息类型:", data.type);
+        break;
     }
   };
 
-  // 显示消息通知
   const showMessageNotification = (message: Message) => {
-    if (document.hidden) {
-      ElNotification({
-        title: message.senderName || "新消息",
-        message: message.content,
-        type: "info",
-        duration: 3000,
-      });
+    if (!document.hidden) {
+      return;
     }
+
+    ElNotification({
+      title: message.senderName || "New message",
+      message: message.content,
+      type: "info",
+      duration: 3000,
+    });
   };
 
-  // 更新在线状态
   const updateOnlineStatus = (status: OnlineStatus) => {
     const wasOnline = onlineUsers.value.has(status.userId);
     const isNowOnline = status.status === "ONLINE";
@@ -347,9 +307,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
       onlineUsers.value.delete(status.userId);
     }
 
-    // 使用更精确的状态变化触发机制
     if (wasOnline !== isNowOnline) {
-      // 发送一个自定义事件来通知状态变化
       window.dispatchEvent(
         new CustomEvent("onlineStatusChanged", {
           detail: { userId: status.userId, isOnline: isNowOnline },
@@ -358,33 +316,32 @@ export const useWebSocketStore = defineStore("websocket", () => {
     }
   };
 
-  // 检查用户是否在线
   const isUserOnline = (userId: string): boolean => {
     return onlineUsers.value.has(userId);
   };
 
-  // 开始心跳
   const startHeartbeat = () => {
     stopHeartbeat();
 
     heartbeatTimer.value = setInterval(() => {
-      if (isConnected.value && socket.value) {
-        const heartbeatMessage: WebSocketMessage = {
-          type: "HEARTBEAT",
-          data: { timestamp: Date.now() },
-          timestamp: Date.now(),
-        };
+      if (!isConnected.value || !socket.value) {
+        return;
+      }
 
-        try {
-          socket.value.send(JSON.stringify(heartbeatMessage));
-        } catch (error) {
-          console.error("发送心跳失败:", error);
-        }
+      const heartbeatMessage: WebSocketMessage = {
+        type: "HEARTBEAT",
+        data: { timestamp: Date.now() },
+        timestamp: Date.now(),
+      };
+
+      try {
+        socket.value.send(JSON.stringify(heartbeatMessage));
+      } catch (error) {
+        console.error("Failed to send heartbeat:", error);
       }
     }, WS_CONFIG.HEARTBEAT_INTERVAL);
   };
 
-  // 停止心跳
   const stopHeartbeat = () => {
     if (heartbeatTimer.value) {
       clearInterval(heartbeatTimer.value);
@@ -392,32 +349,25 @@ export const useWebSocketStore = defineStore("websocket", () => {
     }
   };
 
-  // 安排重连
   const scheduleReconnect = (userId: string) => {
-    if (manualDisconnect.value) {
+    if (manualDisconnect.value || reconnectTimer.value) {
       return;
     }
-    if (reconnectTimer.value) {
-      return;
-    }
+
     if (reconnectAttempts.value >= WS_CONFIG.RECONNECT_ATTEMPTS) {
-      console.log("重连次数已达上限，停止重连");
-      ElMessage.error("连接失败，请手动重新连接");
+      ElMessage.error("WebSocket reconnect limit reached");
       return;
     }
 
-    reconnectAttempts.value++;
+    reconnectAttempts.value += 1;
     const delay = WS_CONFIG.RECONNECT_INTERVAL * reconnectAttempts.value;
-
-    console.log(`第${reconnectAttempts.value}次重连，${delay}ms后开始`);
 
     reconnectTimer.value = setTimeout(() => {
       reconnectTimer.value = null;
-      connect(userId);
+      void connect(userId);
     }, delay);
   };
 
-  // 停止重连
   const stopReconnect = () => {
     if (reconnectTimer.value) {
       clearTimeout(reconnectTimer.value);
@@ -426,7 +376,6 @@ export const useWebSocketStore = defineStore("websocket", () => {
     reconnectAttempts.value = 0;
   };
 
-  // 保存连接缓存
   const saveConnectionCache = (userId: string) => {
     const cacheData = {
       userId,
@@ -439,7 +388,6 @@ export const useWebSocketStore = defineStore("websocket", () => {
     );
   };
 
-  // 加载连接缓存
   const loadConnectionCache = () => {
     try {
       const cached = localStorage.getItem(STORAGE_CONFIG.WS_CACHE_KEY);
@@ -447,24 +395,20 @@ export const useWebSocketStore = defineStore("websocket", () => {
         return JSON.parse(cached);
       }
     } catch (error) {
-      console.error("加载连接缓存失败:", error);
+      console.error("Failed to load websocket cache:", error);
     }
     return null;
   };
 
-  // 清除连接缓存
   const clearConnectionCache = () => {
     localStorage.removeItem(STORAGE_CONFIG.WS_CACHE_KEY);
   };
 
-  // 心跳检测API
   const heartbeat = async (userIds: string[]) => {
     try {
       const response = await imApi.heartbeat(userIds);
-
       if (response && response.code === 200 && response.data) {
-        // 更新在线状态
-        const statusMap = response.data as unknown as Record<string, boolean>;
+        const statusMap = response.data as Record<string, boolean>;
         Object.entries(statusMap).forEach(([userId, isOnline]) => {
           if (isOnline) {
             onlineUsers.value.add(userId);
@@ -472,27 +416,21 @@ export const useWebSocketStore = defineStore("websocket", () => {
             onlineUsers.value.delete(userId);
           }
         });
-
         return statusMap;
       }
     } catch (error) {
-      console.error("心跳检测失败:", error);
+      console.error("Failed to query heartbeat:", error);
     }
     return {};
   };
 
   return {
-    // 状态
     socket,
     isConnected,
     isConnecting,
     onlineUsers,
     reconnectAttempts,
-
-    // 计算属性
     connectionStatus,
-
-    // 方法
     connect,
     disconnect,
     sendMessage,

@@ -92,6 +92,11 @@ export interface TokenPairDTO {
   refreshExpiresInMs: number;
 }
 
+export interface WsTicketDTO {
+  ticket: string;
+  expiresInMs: number;
+}
+
 export interface TokenParseResultDTO {
   valid: boolean;
   expired: boolean;
@@ -133,6 +138,7 @@ export interface FriendRequest {
   targetUserId?: string;
   targetUsername?: string;
   targetNickname?: string;
+  targetAvatar?: string;
   reason?: string;
   status: string | number;
   createTime: string;

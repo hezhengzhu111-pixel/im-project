@@ -57,16 +57,16 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
     @Value("${im.internal.header:X-Internal-Secret}")
     private String internalHeaderName;
 
-    @Value("${im.internal.secret:im-internal-secret}")
+    @Value("${im.internal.secret}")
     private String internalSecret;
 
-    @Value("${im.gateway.auth.secret:im-gateway-auth-secret}")
+    @Value("${im.gateway.auth.secret}")
     private String gatewayAuthSecret;
 
     @Value("${im.gateway.auth.max-skew-ms:300000}")
     private long maxSkewMs;
 
-    @Value("${jwt.secret:im-backend-secret-key-for-jwt-token-generation-im-backend-secret-key-2026}")
+    @Value("${jwt.secret}")
     private String jwtSecret;
 
     private static final String JWT_HEADER = "Authorization";

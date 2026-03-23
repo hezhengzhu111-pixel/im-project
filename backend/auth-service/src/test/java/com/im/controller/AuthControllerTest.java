@@ -3,6 +3,7 @@ package com.im.controller;
 import com.im.dto.ApiResponse;
 import com.im.dto.TokenPairDTO;
 import com.im.dto.TokenParseResultDTO;
+import com.im.dto.WsTicketDTO;
 import com.im.dto.request.ParseTokenRequest;
 import com.im.dto.request.RefreshTokenRequest;
 import com.im.service.AuthTokenService;
@@ -56,5 +57,19 @@ class AuthControllerTest {
         
         assertEquals(200, response.getCode());
         assertEquals(true, response.getData().isValid());
+    }
+
+    @Test
+    void issueWsTicket_Success() {
+        WsTicketDTO dto = new WsTicketDTO();
+        dto.setTicket("ticket-1");
+        dto.setExpiresInMs(30000L);
+
+        when(authTokenService.issueWsTicket(1L, "alice")).thenReturn(dto);
+
+        ApiResponse<WsTicketDTO> response = authController.issueWsTicket(1L, "alice");
+
+        assertEquals(200, response.getCode());
+        assertEquals("ticket-1", response.getData().getTicket());
     }
 }

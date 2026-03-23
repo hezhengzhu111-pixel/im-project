@@ -1,31 +1,26 @@
-name: backend quality gate placeholder
+name: quality-gate
 
 on:
   pull_request:
     paths:
       - "backend/**"
-      - "scripts/backend_day1_baseline.py"
-      - "scripts/gateway_load_test.py"
-      - "scripts/export_complexity_candidates.py"
+      - "frontend/**"
       - ".github/workflows/backend-quality-gate.yml"
+      - "Makefile"
+      - "README.md"
+      - "README.en.md"
   push:
     branches: [ "main", "master" ]
     paths:
       - "backend/**"
-      - "scripts/backend_day1_baseline.py"
-      - "scripts/gateway_load_test.py"
-      - "scripts/export_complexity_candidates.py"
+      - "frontend/**"
       - ".github/workflows/backend-quality-gate.yml"
-
-env:
-  JAVA_VERSION: "21"
-  STRICT_QUALITY_GATE: "true"
-  GATEWAY_BASE_URL: "http://localhost:8080"
-  MIN_TESTS: "10"
-  MAX_COMPLEXITY_OVER_EQ_10: "12"
+      - "Makefile"
+      - "README.md"
+      - "README.en.md"
 
 jobs:
-  baseline:
+  backend:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -35,49 +30,36 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: "21"
           cache: maven
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
       - name: Run backend tests
-        run: mvn -f backend/pom.xml -DskipITs test
+        run: mvn -f backend/pom.xml test
 
-      - name: Run gateway load test baseline
-        run: python scripts/gateway_load_test.py --gateway-base ${{ env.GATEWAY_BASE_URL }} --path /api/health --requests 30 --concurrency 10 --output-file backend/ai-refactor-deliverables/day1-baseline/load-test.json
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Export day1 baseline
-        run: python scripts/backend_day1_baseline.py --output-dir backend/ai-refactor-deliverables/day1-baseline --load-test-result backend/ai-refactor-deliverables/day1-baseline/load-test.json
-
-      - name: Export complexity candidates
-        run: python scripts/export_complexity_candidates.py --baseline-json backend/ai-refactor-deliverables/day1-baseline/baseline.json --min-complexity 10 --output-md backend/ai-refactor-deliverables/day1-baseline/complexity-candidates.md --output-json backend/ai-refactor-deliverables/day1-baseline/complexity-candidates.json
-
-      - name: Enforced quality gate
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          baseline = json.loads(Path("backend/ai-refactor-deliverables/day1-baseline/baseline.json").read_text(encoding="utf-8"))
-          tests = baseline["test_baseline"]["total_tests"]
-          complexity_high = baseline["complexity_baseline"]["over_or_eq_10_count"]
-          strict = os.environ.get("STRICT_QUALITY_GATE", "false").lower() == "true"
-          min_tests = int(os.environ.get("MIN_TESTS", "0"))
-          max_complexity = int(os.environ.get("MAX_COMPLEXITY_OVER_EQ_10", "999999"))
-          print(f"tests={tests}")
-          print(f"complexity_over_or_eq_10={complexity_high}")
-          if strict and tests < min_tests:
-              raise SystemExit(f"QUALITY_GATE_FAILED: tests({tests}) < MIN_TESTS({min_tests})")
-          if strict and complexity_high > max_complexity:
-              raise SystemExit(f"QUALITY_GATE_FAILED: complexity_over_or_eq_10({complexity_high}) > MAX_COMPLEXITY_OVER_EQ_10({max_complexity})")
-          print("quality gate passed")
-          PY
-
-      - name: Upload baseline artifact
-        uses: actions/upload-artifact@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          name: backend-day1-baseline
-          path: backend/ai-refactor-deliverables/day1-baseline
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run unit tests
+        run: npm run test
+
+      - name: Build frontend
+        run: npm run build

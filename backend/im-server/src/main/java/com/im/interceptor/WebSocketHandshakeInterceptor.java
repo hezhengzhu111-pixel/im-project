@@ -1,7 +1,9 @@
 package com.im.interceptor;
 
-import com.im.dto.TokenParseResultDTO;
+import com.im.dto.WsTicketConsumeResultDTO;
+import com.im.dto.request.ConsumeWsTicketRequest;
 import com.im.feign.AuthServiceFeignClient;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,7 +15,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 
-import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 
 @Slf4j
@@ -25,73 +26,70 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
 
     @Override
     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
-                                   WebSocketHandler wsHandler, Map<String, Object> attributes) throws Exception {
-        if (request instanceof ServletServerHttpRequest) {
-            ServletServerHttpRequest servletRequest = (ServletServerHttpRequest) request;
-            HttpServletRequest httpRequest = servletRequest.getServletRequest();
-            String token = extractToken(httpRequest, response);
-
-            if (StringUtils.isBlank(token)) {
-                log.warn("WebSocket连接被拒绝: 未提供Token");
-                response.setStatusCode(HttpStatus.UNAUTHORIZED);
-                return false;
-            }
-
-            TokenParseResultDTO result = validateToken(token);
-            if (result == null || !result.isValid() || result.isExpired()) {
-                log.warn("WebSocket连接被拒绝: Token无效");
-                response.setStatusCode(HttpStatus.UNAUTHORIZED);
-                return false;
-            }
-
-            String userIdFromUrl = extractUserIdFromUrl(httpRequest.getRequestURI());
-            Long userIdFromToken = result.getUserId();
-
-            if (userIdFromToken == null) {
-                 log.warn("WebSocket连接被拒绝: Token中不包含用户ID. UrlId={}", userIdFromUrl);
-                 response.setStatusCode(HttpStatus.FORBIDDEN);
-                 return false;
-            }
-
-            if (!userIdFromUrl.equals(userIdFromToken.toString())) {
-                log.warn("WebSocket连接被拒绝: 用户ID不匹配. UrlId={}, TokenId={}", userIdFromUrl, userIdFromToken);
-                response.setStatusCode(HttpStatus.FORBIDDEN);
-                return false;
-            }
-
-            attributes.put("userId", userIdFromUrl);
-
-            return true;
+                                   WebSocketHandler wsHandler, Map<String, Object> attributes) {
+        if (!(request instanceof ServletServerHttpRequest servletRequest)) {
+            return false;
         }
-        return false;
+
+        HttpServletRequest httpRequest = servletRequest.getServletRequest();
+        String ticket = extractTicket(httpRequest);
+        if (StringUtils.isBlank(ticket)) {
+            log.warn("WebSocket connection rejected: missing ticket");
+            response.setStatusCode(HttpStatus.UNAUTHORIZED);
+            return false;
+        }
+
+        String userIdFromUrl = extractUserIdFromUrl(httpRequest.getRequestURI());
+        Long expectedUserId = parseUserId(userIdFromUrl);
+        if (expectedUserId == null) {
+            log.warn("WebSocket connection rejected: invalid userId path");
+            response.setStatusCode(HttpStatus.BAD_REQUEST);
+            return false;
+        }
+
+        WsTicketConsumeResultDTO result = consumeWsTicket(ticket, expectedUserId);
+        if (result == null || !result.isValid()) {
+            String error = result == null ? "ticket validation failed" : result.getError();
+            log.warn("WebSocket connection rejected: {}", error);
+            response.setStatusCode(isUserMismatch(result) ? HttpStatus.FORBIDDEN : HttpStatus.UNAUTHORIZED);
+            return false;
+        }
+
+        attributes.put("userId", userIdFromUrl);
+        return true;
     }
 
-    private TokenParseResultDTO validateToken(String token) {
+    private WsTicketConsumeResultDTO consumeWsTicket(String ticket, Long userId) {
         try {
-            return authServiceFeignClient.validateToken(token);
+            ConsumeWsTicketRequest request = new ConsumeWsTicketRequest();
+            request.setTicket(ticket);
+            request.setUserId(userId);
+            return authServiceFeignClient.consumeWsTicket(request);
         } catch (Exception e) {
-            log.warn("验证Token失败: {}", e.getMessage());
+            log.warn("Failed to consume ws ticket: {}", e.getMessage());
             return null;
         }
     }
 
-    private String extractToken(HttpServletRequest httpRequest, ServerHttpResponse response) {
-        String token = httpRequest.getParameter("token");
-        if (StringUtils.isNotBlank(token)) {
-            return token;
-        }
+    private boolean isUserMismatch(WsTicketConsumeResultDTO result) {
+        return result != null
+                && result.getError() != null
+                && result.getError().contains("userId");
+    }
 
-        String protocol = httpRequest.getHeader("Sec-WebSocket-Protocol");
-        if (StringUtils.isNotBlank(protocol)) {
-            response.getHeaders().set("Sec-WebSocket-Protocol", protocol);
-            return protocol;
-        }
+    private String extractTicket(HttpServletRequest httpRequest) {
+        return httpRequest.getParameter("ticket");
+    }
 
-        String authHeader = httpRequest.getHeader("Authorization");
-        if (StringUtils.isNotBlank(authHeader) && authHeader.startsWith("Bearer ")) {
-            return authHeader.substring(7);
+    private Long parseUserId(String userIdFromUrl) {
+        if (StringUtils.isBlank(userIdFromUrl)) {
+            return null;
         }
-        return null;
+        try {
+            return Long.valueOf(userIdFromUrl);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private String extractUserIdFromUrl(String requestUri) {

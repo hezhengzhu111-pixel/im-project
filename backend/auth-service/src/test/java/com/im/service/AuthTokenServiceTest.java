@@ -1,6 +1,8 @@
 package com.im.service;
 
 import com.im.dto.TokenPairDTO;
+import com.im.dto.WsTicketConsumeResultDTO;
+import com.im.dto.WsTicketDTO;
 import com.im.dto.request.RefreshTokenRequest;
 import com.im.util.TokenParser;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +19,7 @@ import java.time.Duration;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -112,5 +115,36 @@ class AuthTokenServiceTest {
         info.setUsername(username);
         info.setJti(jti);
         return info;
+    }
+    @Test
+    void issueWsTicket_ShouldPersistOneTimeTicket() {
+        ReflectionTestUtils.setField(service, "wsTicketTtlSeconds", 30L);
+
+        WsTicketDTO result = service.issueWsTicket(1004L, "dora");
+
+        assertNotNull(result.getTicket());
+        assertEquals(30000L, result.getExpiresInMs());
+        verify(valueOperations).set(eq("auth:ws:ticket:" + result.getTicket()), eq("1004\ndora"), any(Duration.class));
+    }
+
+    @Test
+    void consumeWsTicket_ShouldDeleteAndValidateTicket() {
+        when(valueOperations.getAndDelete("auth:ws:ticket:ticket-1")).thenReturn("1005\nerin");
+
+        WsTicketConsumeResultDTO result = service.consumeWsTicket("ticket-1", 1005L);
+
+        assertTrue(result.isValid());
+        assertEquals(1005L, result.getUserId());
+        assertEquals("erin", result.getUsername());
+    }
+
+    @Test
+    void consumeWsTicket_ShouldRejectUserMismatch() {
+        when(valueOperations.getAndDelete("auth:ws:ticket:ticket-2")).thenReturn("1006\nfrank");
+
+        WsTicketConsumeResultDTO result = service.consumeWsTicket("ticket-2", 2000L);
+
+        assertEquals(false, result.isValid());
+        assertEquals("ticket与userId不匹配", result.getError());
     }
 }
