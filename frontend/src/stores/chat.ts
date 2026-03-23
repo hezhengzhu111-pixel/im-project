@@ -1098,10 +1098,7 @@ export const useChatStore = defineStore("chat", () => {
     const updated = list.map((m: any) => {
       const isMine = String(m.senderId) === currentUserId;
       if (!isMine) return m;
-      if (
-        !(m.status === "SENT" || m.status === "DELIVERED") &&
-        !isGroupReceipt
-      )
+      if (!(m.status === "SENT" || m.status === "DELIVERED") && !isGroupReceipt)
         return m;
       if (lastId != null) {
         const msgId = toBigIntId(m.id);
@@ -1207,7 +1204,9 @@ export const useChatStore = defineStore("chat", () => {
       needSync.push(currentSession.value.id);
     }
     const uniqueSessionIds = Array.from(new Set(needSync.filter(Boolean)));
-    await Promise.all(uniqueSessionIds.map((sessionId) => loadMessages(sessionId, 0, size)));
+    await Promise.all(
+      uniqueSessionIds.map((sessionId) => loadMessages(sessionId, 0, size)),
+    );
   };
 
   // 初始化

@@ -58,13 +58,18 @@ const tryRefreshAccessToken = async (): Promise<string | null> => {
   if (!refreshToken) return null;
   refreshInFlight = (async () => {
     try {
-      const response = await refreshAccessTokenRaw(refreshToken, createTraceId());
+      const response = await refreshAccessTokenRaw(
+        refreshToken,
+        createTraceId(),
+      );
       const payload = response?.data;
       if (payload?.code !== 200 || !payload?.data?.accessToken) {
         return null;
       }
       const accessToken = String(payload.data.accessToken);
-      const nextRefreshToken = String(payload.data.refreshToken || refreshToken);
+      const nextRefreshToken = String(
+        payload.data.refreshToken || refreshToken,
+      );
       localStorage.setItem(STORAGE_CONFIG.TOKEN_KEY, accessToken);
       localStorage.setItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY, nextRefreshToken);
       try {

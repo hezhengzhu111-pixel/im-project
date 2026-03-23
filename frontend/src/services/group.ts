@@ -57,17 +57,19 @@ export const groupService = {
     return response as unknown as ApiResponse<Group[]>;
   },
   getMembers: (groupId: string) =>
-    http.post<{ members?: Record<string, any>[] }>("/group/members/list", {
-      groupId: Number(groupId),
-    }).then((response) => {
-      if (response.code === 200) {
-        const members = (response.data?.members || []).map((item) =>
-          normalizeGroupMember(item),
-        );
-        return { ...response, data: members } as ApiResponse<GroupMember[]>;
-      }
-      return response as unknown as ApiResponse<GroupMember[]>;
-    }),
+    http
+      .post<{ members?: Record<string, any>[] }>("/group/members/list", {
+        groupId: Number(groupId),
+      })
+      .then((response) => {
+        if (response.code === 200) {
+          const members = (response.data?.members || []).map((item) =>
+            normalizeGroupMember(item),
+          );
+          return { ...response, data: members } as ApiResponse<GroupMember[]>;
+        }
+        return response as unknown as ApiResponse<GroupMember[]>;
+      }),
   join: (groupId: string) => http.post<void>(`/group/${groupId}/join`),
   quit: (groupId: string) => http.post<void>(`/group/${groupId}/leave`),
   dismiss: (groupId: string) => http.delete<void>(`/group/${groupId}`),

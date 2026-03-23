@@ -1,0 +1,39 @@
+spring:
+  kafka:
+    bootstrap-servers: localhost:9094
+    consumer:
+      group-id: im-websocket-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+      auto-commit-interval: 300000
+      heartbeat-interval: 30000
+      session-timeout: 300000
+      max-poll-records: 100
+      max-poll-interval: 300000
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      batch-size: 16384
+      linger-ms: 1
+      buffer-memory: 33554432
+
+im:
+  kafka:
+    topic:
+      private-message: im-private-message-topic
+      group-message: im-group-message-topic
+      offline-message: im-offline-message-topic
+    consumer:
+      concurrency: 3
+      poll-timeout: 1000
+    idempotency:
+      ttl-ms: ${IM_KAFKA_IDEMPOTENCY_TTL_MS:600000}
+      cleanup-interval-ms: ${IM_KAFKA_IDEMPOTENCY_CLEANUP_INTERVAL_MS:60000}
+
+logging:
+  level:
+    org.apache.kafka: INFO

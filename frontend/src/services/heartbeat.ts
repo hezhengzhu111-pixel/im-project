@@ -31,7 +31,10 @@ export class HeartbeatService {
   }
 
   private handleOnlineStatusChanged = (event: Event) => {
-    const customEvent = event as CustomEvent<{ userId: string; isOnline: boolean }>;
+    const customEvent = event as CustomEvent<{
+      userId: string;
+      isOnline: boolean;
+    }>;
     const userId = customEvent?.detail?.userId;
     if (!userId) {
       return;

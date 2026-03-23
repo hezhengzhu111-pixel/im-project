@@ -1,52 +1,35 @@
 package com.im.service;
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.redisson.api.RMapCache;
+import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Component;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import jakarta.annotation.PostConstruct;
+import java.util.concurrent.TimeUnit;
 
 @Component
 public class ProcessedMessageDeduplicator {
 
-    private final Map<String, Long> processedAtMs = new ConcurrentHashMap<>();
+    private static final String CACHE_NAME = "im:message:processed:cache";
+    private final RedissonClient redissonClient;
+    private RMapCache<String, Boolean> processedCache;
 
-    private final long ttlMs;
-
-    public ProcessedMessageDeduplicator(
-            @Value("${im.kafka.idempotency.ttl-ms:600000}") long ttlMs) {
-        this.ttlMs = Math.max(1_000, ttlMs);
+    public ProcessedMessageDeduplicator(RedissonClient redissonClient) {
+        this.redissonClient = redissonClient;
     }
 
-    public boolean tryMarkProcessed(String messageId) {
-        if (messageId == null || messageId.isBlank()) {
-            return true;
-        }
-        long now = System.currentTimeMillis();
-        Long existing = processedAtMs.putIfAbsent(messageId, now);
-        if (existing == null) {
-            return true;
-        }
-        if (now - existing > ttlMs) {
-            processedAtMs.put(messageId, now);
-            return true;
-        }
-        return false;
+    @PostConstruct
+    public void init() {
+        processedCache = redissonClient.getMapCache(CACHE_NAME);
     }
 
-    @Scheduled(fixedDelayString = "${im.kafka.idempotency.cleanup-interval-ms:60000}")
-    public void cleanup() {
-        long now = System.currentTimeMillis();
-        for (Map.Entry<String, Long> entry : processedAtMs.entrySet()) {
-            if (entry.getValue() == null) {
-                processedAtMs.remove(entry.getKey());
-                continue;
-            }
-            if (now - entry.getValue() > ttlMs) {
-                processedAtMs.remove(entry.getKey());
-            }
+    public boolean tryMarkProcessed(String messageIdAndStatus) {
+        if (messageIdAndStatus == null) {
+            return false;
         }
+        // If putIfAbsent returns null, the key was not present, so we successfully marked it.
+        // We set TTL to 10 minutes to avoid memory leak.
+        return processedCache.putIfAbsent(messageIdAndStatus, Boolean.TRUE, 10, TimeUnit.MINUTES) == null;
     }
 }
 

@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.List;
 
-@FeignClient(name = "im-user-service", path = "/api/user/internal", url = "${user.service.url:http://im-user:8085}", configuration = FeignInternalAuthConfig.class)
+@FeignClient(name = "im-user-service", path = "/api/user/internal", configuration = FeignInternalAuthConfig.class)
 public interface UserServiceFeignClient {
 
     @GetMapping("/exists/{userId}")
