@@ -23,6 +23,7 @@ public interface GroupMemberMapper extends BaseMapper<GroupMember> {
     @Select("""
             SELECT * FROM im_group_member
             WHERE group_id = #{groupId}
+              AND status = 1
             """)
     List<GroupMember> selectMembersByGroupId(@Param("groupId") Long groupId);
 }

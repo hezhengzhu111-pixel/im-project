@@ -20,7 +20,7 @@ public class GroupMemberDTO {
     private String username;
     private String nickname;
     private String avatar;
-    private Integer role; // 0-普通成员, 1-管理员, 2-群主
+    private Integer role; // 0-非成员, 1-普通成员, 2-管理员, 3-群主
     private String roleName;
     private Boolean isOnline;
     private LocalDateTime joinTime;

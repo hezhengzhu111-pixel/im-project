@@ -18,105 +18,134 @@ public class AuthPermissionService {
     private final AuthUserResourceService authUserResourceService;
 
     public PermissionCheckResultDTO checkPermission(CheckPermissionRequest request) {
-        PermissionCheckResultDTO result = new PermissionCheckResultDTO();
-        result.setUserId(request.getUserId());
-        result.setPermission(request.getPermission());
-        result.setResource(request.getResource());
-        result.setAction(request.getAction());
-
-        if (request.getUserId() == null) {
-            result.setGranted(false);
-            result.setReason("用户ID不能为空");
-            return result;
+        PermissionCheckInput input = permissionCheckInput(request);
+        if (input.userId() == null) {
+            return permissionCheckOutput(input, false, "用户ID不能为空");
         }
-
         try {
-            AuthUserResourceDTO userResource = authUserResourceService.getOrLoad(request.getUserId());
-            if (userResource == null) {
-                result.setGranted(false);
-                result.setReason("用户资源信息不存在");
-                return result;
-            }
-
-            List<String> permissions = userResource.getResourcePermissions();
-            if (permissions == null || permissions.isEmpty()) {
-                result.setGranted(false);
-                result.setReason("用户没有任何权限");
-                return result;
-            }
-
-            boolean hasPermission = checkPermission(permissions, request);
-            result.setGranted(hasPermission);
-            result.setReason(hasPermission ? "权限验证通过" : "权限不足");
-            return result;
+            PermissionCheckProcessResult processResult = permissionCheckProcess(input);
+            return permissionCheckOutput(input, processResult.granted(), processResult.reason());
         } catch (Exception e) {
-            log.error("检查权限失败，userId={}, permission={}", request.getUserId(), request.getPermission(), e);
-            result.setGranted(false);
-            result.setReason("权限检查失败：" + e.getMessage());
-            return result;
+            log.error("检查权限失败，userId={}, permission={}", input.userId(), input.permission(), e);
+            return permissionCheckOutput(input, false, "权限检查失败：" + e.getMessage());
         }
     }
 
     public boolean hasDataScope(Long userId, String scopeKey, Object scopeValue) {
-        if (userId == null) {
+        DataScopeInput input = dataScopeInput(userId, scopeKey, scopeValue);
+        if (input.userId() == null) {
             return false;
         }
-
         try {
-            AuthUserResourceDTO userResource = authUserResourceService.getOrLoad(userId);
-            if (userResource == null) {
-                return false;
-            }
-
-            Map<String, Object> dataScopes = userResource.getDataScopes();
-            if (dataScopes == null || dataScopes.isEmpty()) {
-                return false;
-            }
-
-            Object value = dataScopes.get(scopeKey);
-            if (value == null) {
-                return false;
-            }
-
-            if (value instanceof List) {
-                List<?> list = (List<?>) value;
-                return list.contains(scopeValue);
-            } else {
-                return value.equals(scopeValue);
-            }
+            return hasDataScopeProcess(input);
         } catch (Exception e) {
-            log.error("检查数据范围失败，userId={}, scopeKey={}", userId, scopeKey, e);
+            log.error("检查数据范围失败，userId={}, scopeKey={}", input.userId(), input.scopeKey(), e);
             return false;
         }
     }
 
-    private boolean checkPermission(List<String> permissions, CheckPermissionRequest request) {
-        String permission = request.getPermission();
-        String resource = request.getResource();
-        String action = request.getAction();
-
-        if (permission != null && !permission.isEmpty()) {
-            if (permissions.contains("*") || permissions.contains("admin")) {
-                return true;
-            }
-            if (permissions.contains(permission)) {
-                return true;
-            }
+    private PermissionCheckInput permissionCheckInput(CheckPermissionRequest request) {
+        if (request == null) {
+            return new PermissionCheckInput(null, null, null, null);
         }
+        return new PermissionCheckInput(
+                request.getUserId(),
+                request.getPermission(),
+                request.getResource(),
+                request.getAction()
+        );
+    }
 
-        if (resource != null && action != null) {
-            String resourceAction = resource + ":" + action;
-            if (permissions.contains("*") || permissions.contains("admin")) {
-                return true;
-            }
-            if (permissions.contains(resourceAction)) {
-                return true;
-            }
-            if (permissions.contains(resource + ":*")) {
-                return true;
-            }
+    private PermissionCheckProcessResult permissionCheckProcess(PermissionCheckInput input) {
+        AuthUserResourceDTO userResource = authUserResourceService.getOrLoad(input.userId());
+        if (userResource == null) {
+            return new PermissionCheckProcessResult(false, "用户资源信息不存在");
         }
+        List<String> permissions = userResource.getResourcePermissions();
+        if (permissions == null || permissions.isEmpty()) {
+            return new PermissionCheckProcessResult(false, "用户没有任何权限");
+        }
+        boolean granted = checkPermissionProcess(permissions, input);
+        return new PermissionCheckProcessResult(granted, granted ? "权限验证通过" : "权限不足");
+    }
 
-        return false;
+    private PermissionCheckResultDTO permissionCheckOutput(PermissionCheckInput input, boolean granted, String reason) {
+        PermissionCheckResultDTO result = new PermissionCheckResultDTO();
+        result.setUserId(input.userId());
+        result.setPermission(input.permission());
+        result.setResource(input.resource());
+        result.setAction(input.action());
+        result.setGranted(granted);
+        result.setReason(reason);
+        return result;
+    }
+
+    private DataScopeInput dataScopeInput(Long userId, String scopeKey, Object scopeValue) {
+        return new DataScopeInput(userId, scopeKey, scopeValue);
+    }
+
+    private boolean hasDataScopeProcess(DataScopeInput input) {
+        AuthUserResourceDTO userResource = authUserResourceService.getOrLoad(input.userId());
+        if (userResource == null) {
+            return false;
+        }
+        Map<String, Object> dataScopes = userResource.getDataScopes();
+        if (dataScopes == null || dataScopes.isEmpty()) {
+            return false;
+        }
+        Object value = dataScopes.get(input.scopeKey());
+        return matchDataScope(value, input.scopeValue());
+    }
+
+    private boolean matchDataScope(Object configuredValue, Object expectedValue) {
+        if (configuredValue == null) {
+            return false;
+        }
+        if (configuredValue instanceof List<?> list) {
+            return list.contains(expectedValue);
+        }
+        return configuredValue.equals(expectedValue);
+    }
+
+    private boolean checkPermissionProcess(List<String> permissions, PermissionCheckInput input) {
+        if (hasGlobalPermission(permissions)) {
+            return true;
+        }
+        if (hasExactPermission(permissions, input.permission())) {
+            return true;
+        }
+        return hasResourcePermission(permissions, input.resource(), input.action());
+    }
+
+    private boolean hasGlobalPermission(List<String> permissions) {
+        return permissions.contains("*") || permissions.contains("admin");
+    }
+
+    private boolean hasExactPermission(List<String> permissions, String permission) {
+        if (isBlank(permission)) {
+            return false;
+        }
+        return permissions.contains(permission);
+    }
+
+    private boolean hasResourcePermission(List<String> permissions, String resource, String action) {
+        if (isBlank(resource) || isBlank(action)) {
+            return false;
+        }
+        String resourceAction = resource + ":" + action;
+        return permissions.contains(resourceAction) || permissions.contains(resource + ":*");
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private record PermissionCheckInput(Long userId, String permission, String resource, String action) {
+    }
+
+    private record PermissionCheckProcessResult(boolean granted, String reason) {
+    }
+
+    private record DataScopeInput(Long userId, String scopeKey, Object scopeValue) {
     }
 }

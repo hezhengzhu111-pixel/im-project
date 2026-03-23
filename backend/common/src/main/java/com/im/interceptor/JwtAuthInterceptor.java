@@ -64,7 +64,7 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
     @Value("${im.gateway.auth.max-skew-ms:300000}")
     private long maxSkewMs;
 
-    @Value("${jwt.secret:im-backend-secret-key-for-jwt-token-generation}")
+    @Value("${jwt.secret:im-backend-secret-key-for-jwt-token-generation-im-backend-secret-key-2026}")
     private String jwtSecret;
 
     private static final String JWT_HEADER = "Authorization";
@@ -134,52 +134,17 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
     }
 
     private boolean applyIdentityFromGatewayHeaders(HttpServletRequest request) {
-        String internalHeaderValue = request.getHeader(internalHeaderName);
-        if (internalHeaderValue == null || !internalSecret.equals(internalHeaderValue)) {
+        if (!hasValidInternalSecret(request)) {
             return false;
         }
         String userIdValue = request.getHeader(gatewayUserIdHeader);
         String usernameValue = request.getHeader(gatewayUsernameHeader);
-        if (userIdValue == null || userIdValue.trim().isEmpty()) {
+        if (!hasGatewayIdentityHeaders(userIdValue, usernameValue)) {
             return false;
         }
-        if (usernameValue == null || usernameValue.trim().isEmpty()) {
+        GatewayAuthHeaders authHeaders = readGatewayAuthHeaders(request);
+        if (authHeaders.hasAny() && !applySignedGatewayAuth(request, userIdValue.trim(), usernameValue.trim(), authHeaders)) {
             return false;
-        }
-
-        String userB64 = request.getHeader("X-Auth-User");
-        String permsB64 = request.getHeader("X-Auth-Perms");
-        String dataB64 = request.getHeader("X-Auth-Data");
-        String ts = request.getHeader("X-Auth-Ts");
-        String nonce = request.getHeader("X-Auth-Nonce");
-        String sign = request.getHeader("X-Auth-Sign");
-        boolean hasAnyAuthHeaders = (userB64 != null || permsB64 != null || dataB64 != null || ts != null || nonce != null || sign != null);
-        if (hasAnyAuthHeaders) {
-            if (userB64 == null || permsB64 == null || dataB64 == null || ts == null || nonce == null || sign == null) {
-                return false;
-            }
-            Long tsLong;
-            try {
-                tsLong = Long.valueOf(ts);
-            } catch (Exception e) {
-                return false;
-            }
-            long now = System.currentTimeMillis();
-            if (Math.abs(now - tsLong) > maxSkewMs) {
-                return false;
-            }
-            if (replayProtectionEnabled && !tryAcquireReplayGuard(userIdValue.trim(), tsLong, nonce)) {
-                return false;
-            }
-            boolean ok = AuthHeaderUtil.verifyHmacSha256(gatewayAuthSecret,
-                    AuthHeaderUtil.buildSignedFields(userIdValue.trim(), usernameValue.trim(), userB64, permsB64, dataB64, ts, nonce),
-                    sign);
-            if (!ok) {
-                return false;
-            }
-            if (!applyAuthObjectsToRequest(request, userB64, permsB64, dataB64)) {
-                return false;
-            }
         }
         try {
             Long userId = Long.valueOf(userIdValue.trim());
@@ -189,6 +154,80 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private boolean hasValidInternalSecret(HttpServletRequest request) {
+        String internalHeaderValue = request.getHeader(internalHeaderName);
+        return internalHeaderValue != null && internalSecret.equals(internalHeaderValue);
+    }
+
+    private boolean hasGatewayIdentityHeaders(String userIdValue, String usernameValue) {
+        if (userIdValue == null || userIdValue.trim().isEmpty()) {
+            return false;
+        }
+        return usernameValue != null && !usernameValue.trim().isEmpty();
+    }
+
+    private GatewayAuthHeaders readGatewayAuthHeaders(HttpServletRequest request) {
+        return new GatewayAuthHeaders(
+                request.getHeader("X-Auth-User"),
+                request.getHeader("X-Auth-Perms"),
+                request.getHeader("X-Auth-Data"),
+                request.getHeader("X-Auth-Ts"),
+                request.getHeader("X-Auth-Nonce"),
+                request.getHeader("X-Auth-Sign")
+        );
+    }
+
+    private boolean applySignedGatewayAuth(
+            HttpServletRequest request,
+            String userIdValue,
+            String usernameValue,
+            GatewayAuthHeaders authHeaders
+    ) {
+        if (!authHeaders.isComplete()) {
+            return false;
+        }
+        Long tsLong = parseTimestamp(authHeaders.ts());
+        if (tsLong == null) {
+            return false;
+        }
+        if (!withinAllowedClockSkew(tsLong)) {
+            return false;
+        }
+        if (replayProtectionEnabled && !tryAcquireReplayGuard(userIdValue, tsLong, authHeaders.nonce())) {
+            return false;
+        }
+        boolean ok = AuthHeaderUtil.verifyHmacSha256(
+                gatewayAuthSecret,
+                AuthHeaderUtil.buildSignedFields(
+                        userIdValue,
+                        usernameValue,
+                        authHeaders.userB64(),
+                        authHeaders.permsB64(),
+                        authHeaders.dataB64(),
+                        authHeaders.ts(),
+                        authHeaders.nonce()
+                ),
+                authHeaders.sign()
+        );
+        if (!ok) {
+            return false;
+        }
+        return applyAuthObjectsToRequest(request, authHeaders.userB64(), authHeaders.permsB64(), authHeaders.dataB64());
+    }
+
+    private Long parseTimestamp(String ts) {
+        try {
+            return Long.valueOf(ts);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private boolean withinAllowedClockSkew(Long tsLong) {
+        long now = System.currentTimeMillis();
+        return Math.abs(now - tsLong) <= maxSkewMs;
     }
 
     private boolean applyAuthObjectsToRequest(HttpServletRequest request, String userB64, String permsB64, String dataB64) {
@@ -222,6 +261,23 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             return Boolean.TRUE.equals(ok);
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    private record GatewayAuthHeaders(
+            String userB64,
+            String permsB64,
+            String dataB64,
+            String ts,
+            String nonce,
+            String sign
+    ) {
+        private boolean hasAny() {
+            return userB64 != null || permsB64 != null || dataB64 != null || ts != null || nonce != null || sign != null;
+        }
+
+        private boolean isComplete() {
+            return userB64 != null && permsB64 != null && dataB64 != null && ts != null && nonce != null && sign != null;
         }
     }
 

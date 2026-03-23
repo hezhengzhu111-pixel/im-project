@@ -37,7 +37,9 @@ export const resolveFilePath = (
     !normalized.startsWith("/") &&
     normalized.split("/").filter(Boolean).length >= 3
   ) {
-    return extractFromSegments(normalizePath(normalized).split("/").filter(Boolean));
+    return extractFromSegments(
+      normalizePath(normalized).split("/").filter(Boolean),
+    );
   }
   try {
     const url = new URL(normalized, window.location.origin);

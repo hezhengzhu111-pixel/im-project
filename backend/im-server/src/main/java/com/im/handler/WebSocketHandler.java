@@ -54,6 +54,9 @@ public class WebSocketHandler implements org.springframework.web.socket.WebSocke
         log.debug("WebSocket连接建立: userId={}, sessionId={}", userId, session.getId());
     }
     
+    @Autowired
+    private WsMessageDispatcher dispatcher;
+
     @Override
     public void handleMessage(WebSocketSession session, WebSocketMessage<?> message) {
         String userId = extractUserIdFromSession(session);
@@ -71,40 +74,7 @@ public class WebSocketHandler implements org.springframework.web.socket.WebSocke
         String payload = message.getPayload() == null ? "" : message.getPayload().toString().trim();
         userSession.setLastHeartbeat(LocalDateTime.now());
 
-        if (isHeartbeat(payload)) {
-            handleHeartbeat(session, userId);
-        }
-    }
-    
-    private boolean isHeartbeat(String payload) {
-        if ("PING".equals(payload) || ImConstants.Heartbeat.PING_MESSAGE.equals(payload)) {
-            return true;
-        }
-        if (payload != null && payload.startsWith("{") && payload.endsWith("}")) {
-            try {
-                JSONObject json = JSON.parseObject(payload);
-                return "HEARTBEAT".equals(json.getString("type"));
-            } catch (Exception ignored) {
-                return false;
-            }
-        }
-        return false;
-    }
-
-    private void handleHeartbeat(WebSocketSession session, String userId) {
-        try {
-            if (session.isOpen()) {
-                Map<String, String> response = new HashMap<>();
-                response.put("type", "HEARTBEAT");
-                response.put("content", "PONG");
-                session.sendMessage(new TextMessage(JSON.toJSONString(response)));
-            } else {
-                log.warn("会话已关闭，无法发送心跳响应: userId={}", userId);
-                cleanupSession(session);
-            }
-        } catch (Exception e) {
-            log.error("发送心跳响应失败: userId={}", userId, e);
-        }
+        dispatcher.dispatch(session, userId, payload);
     }
     
     @Override

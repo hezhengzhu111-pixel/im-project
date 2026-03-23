@@ -208,10 +208,7 @@ export const useUserStore = defineStore("user", () => {
         throw new Error("请输入用户名和密码");
       }
 
-      const response: any = await userApi.loginWithPassword(
-        username,
-        password,
-      );
+      const response: any = await userApi.loginWithPassword(username, password);
 
       const authPayload: any =
         response?.data?.success !== undefined ? response.data : response;
@@ -257,7 +254,9 @@ export const useUserStore = defineStore("user", () => {
         nickname:
           String(registerForm.nickname || "").trim() ||
           String(registerForm.username || "").trim(),
-        phone: registerForm.phone ? String(registerForm.phone).trim() : undefined,
+        phone: registerForm.phone
+          ? String(registerForm.phone).trim()
+          : undefined,
       };
 
       const response = await userApi.register(userDTO);

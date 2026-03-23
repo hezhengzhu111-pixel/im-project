@@ -15,6 +15,33 @@ import { ElMessage } from "element-plus";
 import NProgress from "nprogress";
 import "nprogress/nprogress.css";
 
+const CHUNK_RELOAD_KEY = "im_chunk_reload_path";
+
+const isDynamicImportError = (error: unknown): boolean => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  return (
+    message.includes("Failed to fetch dynamically imported module") ||
+    message.includes("Importing a module script failed") ||
+    message.includes("Loading chunk") ||
+    message.includes("ChunkLoadError")
+  );
+};
+
+const appendReloadNonce = (fullPath: string): string => {
+  const [pathPart, hashPart] = fullPath.split("#");
+  const [pathname, queryString] = pathPart.split("?");
+  const params = new URLSearchParams(queryString || "");
+  params.set("_r", String(Date.now()));
+  const query = params.toString();
+  const hash = hashPart ? `#${hashPart}` : "";
+  return `${pathname}${query ? `?${query}` : ""}${hash}`;
+};
+
 // 配置NProgress
 NProgress.configure({
   showSpinner: false,
@@ -161,11 +188,27 @@ router.afterEach((to, from, failure) => {
   ) {
     console.error("路由跳转失败:", failure);
   }
+  if (!failure) {
+    sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+  }
 });
 
 // 路由错误处理
-router.onError((error) => {
+router.onError((error, to) => {
   console.error("路由错误:", error);
+  if (isDynamicImportError(error)) {
+    const targetPath =
+      to?.fullPath ||
+      router.currentRoute.value.fullPath ||
+      `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const retriedPath = sessionStorage.getItem(CHUNK_RELOAD_KEY);
+    if (retriedPath !== targetPath) {
+      sessionStorage.setItem(CHUNK_RELOAD_KEY, targetPath);
+      window.location.assign(appendReloadNonce(targetPath));
+      return;
+    }
+    sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+  }
   ElMessage.error("页面加载失败");
   NProgress.done();
 });
