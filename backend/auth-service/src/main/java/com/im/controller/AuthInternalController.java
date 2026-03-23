@@ -5,7 +5,9 @@ import com.im.dto.PermissionCheckResultDTO;
 import com.im.dto.TokenPairDTO;
 import com.im.dto.TokenParseResultDTO;
 import com.im.dto.TokenRevokeResultDTO;
+import com.im.dto.WsTicketConsumeResultDTO;
 import com.im.dto.request.CheckPermissionRequest;
+import com.im.dto.request.ConsumeWsTicketRequest;
 import com.im.dto.request.IssueTokenRequest;
 import com.im.dto.request.RevokeTokenRequest;
 import com.im.service.AuthPermissionService;
@@ -31,7 +33,7 @@ public class AuthInternalController {
     private final AuthPermissionService authPermissionService;
     private final AuthTokenRevokeService authTokenRevokeService;
 
-    @org.springframework.beans.factory.annotation.Value("${im.internal.secret:im-internal-secret}")
+    @org.springframework.beans.factory.annotation.Value("${im.internal.secret}")
     private String internalSecret;
 
     @org.springframework.beans.factory.annotation.Value("${im.internal.header:X-Internal-Secret}")
@@ -106,11 +108,16 @@ public class AuthInternalController {
         authTokenRevokeService.revokeAllUserTokens(userId);
     }
 
+    @PostMapping("/ws-ticket/consume")
+    @Operation(summary = "Consume WebSocket ticket", description = "Validate and consume a one-time WebSocket ticket")
+    public WsTicketConsumeResultDTO consumeWsTicket(HttpServletRequest httpRequest,
+                                                    @Validated @RequestBody ConsumeWsTicketRequest request) {
+        verify(httpRequest);
+        return authTokenService.consumeWsTicket(request.getTicket(), request.getUserId());
+    }
+
     private void verify(HttpServletRequest httpRequest) {
         String secret = httpRequest.getHeader(internalHeader);
-        if (secret == null) {
-            secret = httpRequest.getHeader("X-Internal-Secret");
-        }
         if (secret == null || !internalSecret.equals(secret)) {
             throw new SecurityException("Forbidden");
         }

@@ -17,12 +17,12 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE:default}
 
 jwt:
-  secret: ${JWT_SECRET:im-backend-secret-key-for-jwt-token-generation-im-backend-secret-key-2026}
+  secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION_MS:86400000}
 
 auth:
   refresh:
-    secret: ${JWT_REFRESH_SECRET:im-backend-refresh-secret-key}
+    secret: ${JWT_REFRESH_SECRET}
     expiration: ${JWT_REFRESH_EXPIRATION_MS:604800000}
   resource-cache:
     ttl-seconds: ${AUTH_RESOURCE_CACHE_TTL_SECONDS:3600}
@@ -32,7 +32,7 @@ im:
     enabled: false
   internal:
     header: X-Internal-Secret
-    secret: ${IM_INTERNAL_SECRET:im-internal-secret}
+    secret: ${IM_INTERNAL_SECRET}
 
 management:
   endpoints:

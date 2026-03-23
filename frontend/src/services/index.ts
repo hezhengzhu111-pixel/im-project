@@ -68,4 +68,5 @@ export const imApi = {
 export const authApi = {
   parseAccessToken: (token: string, allowExpired: boolean = true) =>
     authService.parseAccessToken(token, allowExpired),
+  issueWsTicket: () => authService.issueWsTicket(),
 };

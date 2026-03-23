@@ -15,7 +15,6 @@
     <module>file-service</module>
     <module>im-server</module>
     <module>log-service</module>
-    <module>admin-service</module>
   </modules>
   <properties>
     <java.version>21</java.version>

@@ -2,6 +2,8 @@ package com.im.controller;
 
 import com.im.dto.TokenPairDTO;
 import com.im.dto.TokenParseResultDTO;
+import com.im.dto.WsTicketConsumeResultDTO;
+import com.im.dto.request.ConsumeWsTicketRequest;
 import com.im.dto.request.IssueTokenRequest;
 import com.im.service.AuthPermissionService;
 import com.im.service.AuthTokenRevokeService;
@@ -98,5 +100,23 @@ class AuthInternalControllerTest {
         
         assertFalse(result.isValid());
         assertEquals("token已吊销", result.getError());
+    }
+    @Test
+    void consumeWsTicket_ShouldVerifyAndDelegate() {
+        ConsumeWsTicketRequest request = new ConsumeWsTicketRequest();
+        request.setTicket("ticket-1");
+        request.setUserId(1L);
+
+        WsTicketConsumeResultDTO dto = WsTicketConsumeResultDTO.builder()
+                .valid(true)
+                .userId(1L)
+                .username("alice")
+                .build();
+        when(authTokenService.consumeWsTicket("ticket-1", 1L)).thenReturn(dto);
+
+        WsTicketConsumeResultDTO result = controller.consumeWsTicket(httpRequest, request);
+
+        assertEquals(true, result.isValid());
+        assertEquals(1L, result.getUserId());
     }
 }

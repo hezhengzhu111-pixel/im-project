@@ -1,36 +1,77 @@
-# new-im-project
+# IM Project
 
-#### Description
-端对端加密即时通信系统
+An instant messaging system built with Java microservices and a Vue 3 frontend.
 
-#### Software Architecture
-Software architecture description
+## Current boundaries
 
-#### Installation
+- `auth-service` is the single token service for issuing, parsing, refreshing, revoking, and minting WebSocket tickets.
+- `admin-service` has been removed from the main build, startup scripts, and CI.
+- WebSocket connections now use short-lived one-time `ticket` values instead of putting JWTs in the URL.
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+## Repository layout
 
-#### Instructions
+- `backend/`: Spring Boot services and shared modules
+- `frontend/`: Vue 3 + Vite client
+- `.github/workflows/`: CI pipelines
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+## Required environment variables
 
-#### Contribution
+Copy `.env.example` and provide values for:
 
-1.  Fork the repository
-2.  Create Feat_xxx branch
-3.  Commit your code
-4.  Create Pull Request
+- `JWT_SECRET`
+- `JWT_REFRESH_SECRET`
+- `IM_INTERNAL_SECRET`
+- `IM_GATEWAY_AUTH_SECRET`
+- `GROUP_SERVICE_DATASOURCE_PASSWORD`
+- `MESSAGE_SERVICE_DATASOURCE_PASSWORD`
+- `USER_SERVICE_DATASOURCE_PASSWORD`
+- `IM_SERVER_DATASOURCE_PASSWORD`
 
+## Local development
 
-#### Gitee Feature
+Frontend:
 
-1.  You can use Readme\_XXX.md to support different languages, such as Readme\_en.md, Readme\_zh.md
-2.  Gitee blog [blog.gitee.com](https://blog.gitee.com)
-3.  Explore open source project [https://gitee.com/explore](https://gitee.com/explore)
-4.  The most valuable open source project [GVP](https://gitee.com/gvp)
-5.  The manual of Gitee [https://gitee.com/help](https://gitee.com/help)
-6.  The most popular members  [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+```powershell
+cd frontend
+npm ci
+npm run dev
+```
+
+Backend verification:
+
+```powershell
+mvn -f backend/pom.xml test
+```
+
+Frontend verification:
+
+```powershell
+cd frontend
+npm run typecheck
+npm run test
+npm run build
+```
+
+Start backend services in bulk:
+
+```powershell
+pwsh backend/start_all_services.ps1
+```
+
+## Common commands
+
+- `make backend-test`
+- `make frontend-typecheck`
+- `make frontend-test`
+- `make frontend-build`
+- `make quality`
+
+## CI
+
+The default quality gate runs:
+
+- `mvn -f backend/pom.xml test`
+- `npm ci`
+- `npm run typecheck`
+- `npm run test`
+- `npm run build`

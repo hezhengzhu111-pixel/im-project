@@ -7,8 +7,7 @@ $services = @(
     "file-service",
     "message-service",
     "im-server",
-    "log-service",
-    "admin-service"
+    "log-service"
 )
 
 Write-Host "Starting all IM backend services..."
