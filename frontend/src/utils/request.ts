@@ -32,7 +32,9 @@ const shouldSkipRefresh = (url?: string) => {
     url.includes("/user/login") ||
     url.includes("/user/register") ||
     url.includes("/user/logout") ||
-    url.includes("/user/offline")
+    url.includes("/user/offline") ||
+    url.includes("/user/online") ||
+    url.includes("/user/heartbeat")
   );
 };
 
@@ -197,7 +199,9 @@ request.interceptors.response.use(
       const userStore = useUserStore();
       if (
         !response.config.url?.includes("/user/offline") &&
-        !response.config.url?.includes("/user/logout")
+        !response.config.url?.includes("/user/logout") &&
+        !response.config.url?.includes("/user/online") &&
+        !response.config.url?.includes("/user/heartbeat")
       ) {
         userStore.logout();
       }
@@ -254,7 +258,9 @@ request.interceptors.response.use(
         const userStore = useUserStore();
         if (
           !error.config?.url?.includes("/user/offline") &&
-          !error.config?.url?.includes("/user/logout")
+          !error.config?.url?.includes("/user/logout") &&
+          !error.config?.url?.includes("/user/online") &&
+          !error.config?.url?.includes("/user/heartbeat")
         ) {
           userStore.logout();
         }

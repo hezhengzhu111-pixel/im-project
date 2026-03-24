@@ -3,6 +3,7 @@ package com.im.log.controller;
 
 import com.im.dto.ApiResponse;
 import com.im.log.entity.LogDocument;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
@@ -29,9 +30,12 @@ import java.util.stream.Stream;
 public class LogQueryController {
 
     private final ElasticsearchOperations elasticsearchOperations;
+    private final String logRootDir;
 
-    public LogQueryController(ElasticsearchOperations elasticsearchOperations) {
+    public LogQueryController(ElasticsearchOperations elasticsearchOperations,
+                              @Value("${im.logging.root-dir:/var/log/im-project}") String logRootDir) {
         this.elasticsearchOperations = elasticsearchOperations;
+        this.logRootDir = logRootDir;
     }
 
     @GetMapping("/query")
@@ -71,7 +75,7 @@ public class LogQueryController {
 
     private List<LogDocument> fallbackQuery(String traceId, String level, String keyword, int page, int size) {
         List<LogDocument> results = new ArrayList<>();
-        Path logDir = Paths.get("/var/log/im-project");
+        Path logDir = Paths.get(logRootDir);
         if (!Files.exists(logDir)) {
             return results;
         }

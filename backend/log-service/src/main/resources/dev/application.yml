@@ -1,37 +1,58 @@
 server:
-  port: 8090
+  port: 8091
 
 spring:
   application:
     name: im-log-service
   config:
     import:
-      - optional:nacos:application-kafka.yml
-  cloud:
-    nacos:
-      discovery:
-        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
-        namespace: ${NACOS_NAMESPACE:}
-      config:
-        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
-        namespace: ${NACOS_NAMESPACE:}
-        file-extension: yml
-        import-check:
-          enabled: false
-        shared-configs:
-          - data-id: application-kafka.yml
-            refresh: true
+      - optional:classpath:dev/application-mysql.yml
+      - optional:classpath:dev/application-redis.yml
+      - optional:classpath:dev/application-kafka.yml
+      - optional:classpath:dev/application-es.yml
+      - optional:classpath:dev/application-nacos.yml
+  profiles:
+    active: default
+  threads:
+    virtual:
+      enabled: false
 
-  elasticsearch:
-    uris: http://localhost:9200
-
-  kafka:
-    consumer:
-      group-id: log-service-group
-      auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+jwt:
+  secret: ${JWT_SECRET:im-access-secret-im-access-secret-im-access-secret-im-access-secret}
+  expiration: 86400000
+  header: Authorization
+  prefix: "Bearer "
 
 im:
   jwt:
-    enabled: false # log service does not need standard jwt filter if it's internal or admin-only
+    enabled: false
+  virtual-threads:
+    enabled: false
+  logging:
+    root-dir: ../logs
+  snowflake:
+    worker-id: 8
+    datacenter-id: 1
+  security:
+    mode: gateway
+  internal:
+    header: X-Internal-Secret
+    secret: ${IM_INTERNAL_SECRET:im-internal-secret-im-internal-secret-im-internal-secret-im}
+  gateway:
+    user-id-header: X-User-Id
+    username-header: X-Username
+    auth:
+      secret: ${IM_GATEWAY_AUTH_SECRET:im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret}
+      max-skew-ms: 300000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+logging:
+  level:
+    root: INFO
+    com.im: INFO
+    org.apache.kafka: INFO

@@ -28,6 +28,11 @@ public interface MessageService {
      * @return 消息对象
      */
     MessageDTO sendGroupMessage(Long senderId, SendGroupMessageRequest request);
+
+    /**
+     * Send system private message and persist it as regular message data.
+     */
+    MessageDTO sendSystemMessage(Long receiverId, String content, Long senderId);
     
     /**
      * 获取用户的会话列表

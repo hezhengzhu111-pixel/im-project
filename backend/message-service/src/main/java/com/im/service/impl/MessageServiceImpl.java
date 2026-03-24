@@ -30,8 +30,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 // 移除未使用的 Cacheable 导入
 import org.springframework.cache.annotation.CacheEvict;
@@ -40,7 +38,6 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.HashMap;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.time.LocalDateTime;
@@ -58,7 +55,6 @@ public class MessageServiceImpl implements MessageService {
     private final GroupServiceFeignClient groupServiceFeignClient;
     private final RedisTemplate<String, Object> redisTemplate;
     private final MessageRateLimiter messageRateLimiter;
-    private final org.springframework.kafka.core.KafkaTemplate<String, String> kafkaTemplate;
     private final OutboxService outboxService;
     private final GroupReadCursorMapper groupReadCursorMapper;
     private final UserProfileCache userProfileCache;
@@ -76,6 +72,18 @@ public class MessageServiceImpl implements MessageService {
 
     @Value("${im.message.lock.ttl-seconds:5}")
     private long conversationLockTtlSeconds;
+
+    @Value("${im.kafka.topic.private-message:im-private-message-topic}")
+    private String privateMessageTopic = "im-private-message-topic";
+
+    @Value("${im.kafka.topic.group-message:im-group-message-topic}")
+    private String groupMessageTopic = "im-group-message-topic";
+
+    @Value("${im.kafka.topic.read-receipt:im-read-receipt-topic}")
+    private String readReceiptTopic = "im-read-receipt-topic";
+
+    @Value("${im.message.system.sender-id:0}")
+    private Long defaultSystemSenderId;
 
     @Override
     @Transactional
@@ -128,6 +136,53 @@ public class MessageServiceImpl implements MessageService {
         }
     }
 
+    @Override
+    @Transactional
+    public MessageDTO sendSystemMessage(Long receiverId, String content, Long senderId) {
+        if (receiverId == null || receiverId <= 0) {
+            throw new IllegalArgumentException("receiverId cannot be null");
+        }
+        Long actualSenderId = senderId == null ? defaultSystemSenderId : senderId;
+        validateMessageContent(MessageType.SYSTEM, content, null);
+
+        if (!Boolean.TRUE.equals(userServiceFeignClient.exists(receiverId))) {
+            throw new BusinessException("receiver user not exists");
+        }
+
+        String lockKey = buildConversationLockKey(true, actualSenderId, receiverId);
+        RLock conversationLock = acquireConversationLock(lockKey);
+        try {
+            SendPrivateMessageRequest request = new SendPrivateMessageRequest();
+            request.setReceiverId(String.valueOf(receiverId));
+            request.setMessageType(MessageType.SYSTEM);
+            request.setContent(content);
+
+            Message messageData = createMessageData(request, actualSenderId, receiverId);
+            messageData.setIsGroupChat(false);
+            messageMapper.insert(messageData);
+            clearConversationCache(actualSenderId, receiverId, true);
+
+            var sender = userProfileCache.getUser(actualSenderId);
+            var receiver = userProfileCache.getUser(receiverId);
+            MessageDTO messageDTO = MessageConverter.convertToDTO(
+                    messageData,
+                    sender == null ? "SYSTEM" : sender.getUsername(),
+                    sender == null ? null : sender.getAvatar(),
+                    receiver == null ? null : receiver.getUsername(),
+                    receiver == null ? null : receiver.getAvatar(),
+                    null
+            );
+            messageDTO.setGroup(false);
+
+            String payload = com.alibaba.fastjson2.JSON.toJSONString(messageDTO);
+            String key = buildPrivateConversationKey(actualSenderId, receiverId);
+            outboxService.enqueueAfterCommit(privateMessageTopic, key, payload, messageData.getId());
+            return messageDTO;
+        } finally {
+            releaseConversationLock(conversationLock);
+        }
+    }
+
     private PrivateSendInput privateSendInput(Long senderId, Long receiverId, SendPrivateMessageRequest request) {
         if (!messageRateLimiter.canSendMessage(senderId)) {
             throw new BusinessException("发送消息过于频繁，请稍后再试");
@@ -165,13 +220,7 @@ public class MessageServiceImpl implements MessageService {
         messageDTO.setGroup(false);
         String payload = com.alibaba.fastjson2.JSON.toJSONString(messageDTO);
         String key = buildPrivateConversationKey(input.senderId(), input.receiverId());
-        outboxService.enqueueAfterCommit("im-private-message-topic", key, payload, savedMessage.getId());
-        
-        Map<String, Object> redisMsg = new java.util.HashMap<>();
-        redisMsg.put("type", "MESSAGE");
-        redisMsg.put("data", messageDTO);
-        publishToRedis(input.receiverId().toString(), com.alibaba.fastjson2.JSON.toJSONString(redisMsg));
-        
+        outboxService.enqueueAfterCommit(privateMessageTopic, key, payload, savedMessage.getId());
         return messageDTO;
     }
 
@@ -215,48 +264,8 @@ public class MessageServiceImpl implements MessageService {
         messageDTO.setGroupMembers(groupMembers);
         String payload = com.alibaba.fastjson2.JSON.toJSONString(messageDTO);
         String key = buildGroupConversationKey(input.groupId());
-        outboxService.enqueueAfterCommit("im-group-message-topic", key, payload, savedMessage.getId());
-        
-        if (input.memberIds() != null) {
-            Map<String, Object> redisMsg = new java.util.HashMap<>();
-            redisMsg.put("type", "MESSAGE");
-            redisMsg.put("data", messageDTO);
-            String redisPayload = com.alibaba.fastjson2.JSON.toJSONString(redisMsg);
-            
-            for (Long memberId : input.memberIds()) {
-                if (!memberId.equals(input.senderId())) {
-                    publishToRedis(memberId.toString(), redisPayload);
-                }
-            }
-        }
-        
+        outboxService.enqueueAfterCommit(groupMessageTopic, key, payload, savedMessage.getId());
         return messageDTO;
-    }
-
-    private void publishToRedis(String userId, String payload) {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    doPublishToRedis(userId, payload);
-                }
-            });
-        } else {
-            doPublishToRedis(userId, payload);
-        }
-    }
-
-    private void doPublishToRedis(String userId, String payload) {
-        try {
-            Object routeInstanceIdObj = redisTemplate.opsForValue().get("im:route:user:" + userId);
-            if (routeInstanceIdObj != null) {
-                String instanceId = String.valueOf(routeInstanceIdObj);
-                redisTemplate.convertAndSend("im:msg:channel:" + instanceId, payload);
-                log.debug("Published message to Redis channel im:msg:channel:{} for user {}", instanceId, userId);
-            }
-        } catch (Exception e) {
-            log.error("Failed to publish message to Redis for user {}", userId, e);
-        }
     }
 
     private record PrivateSendInput(
@@ -1002,14 +1011,7 @@ public class MessageServiceImpl implements MessageService {
                 .lastReadMessageId(processResult.lastReadMessageId())
                 .build();
         String payload = com.alibaba.fastjson2.JSON.toJSONString(receipt);
-        outboxService.enqueueAfterCommit("im-read-receipt-topic", "rr_" + input.target().targetUserId(), payload, processResult.lastReadMessageId());
-        
-        // Push read receipt to Redis for real-time delivery
-        Map<String, Object> wsMessage = new java.util.HashMap<>();
-        wsMessage.put("type", "READ_RECEIPT");
-        wsMessage.put("data", receipt);
-        wsMessage.put("timestamp", System.currentTimeMillis());
-        publishToRedis(input.target().targetUserId().toString(), com.alibaba.fastjson2.JSON.toJSONString(wsMessage, com.alibaba.fastjson2.JSONWriter.Feature.WriteLongAsString));
+        outboxService.enqueueAfterCommit(readReceiptTopic, "rr_" + input.target().targetUserId(), payload, processResult.lastReadMessageId());
     }
 
     private void publishGroupReadReceipts(ReadMarkInput input, ReadMarkProcessResult processResult) {
@@ -1032,14 +1034,7 @@ public class MessageServiceImpl implements MessageService {
                     .lastReadMessageId(processResult.lastReadMessageId())
                     .build();
             String payload = com.alibaba.fastjson2.JSON.toJSONString(receipt);
-            outboxService.enqueueAfterCommit("im-read-receipt-topic", "grr_" + input.target().groupId() + "_" + memberId, payload, processResult.lastReadMessageId());
-            
-            // Push read receipt to Redis for real-time delivery
-            Map<String, Object> wsMessage = new java.util.HashMap<>();
-            wsMessage.put("type", "READ_RECEIPT");
-            wsMessage.put("data", receipt);
-            wsMessage.put("timestamp", System.currentTimeMillis());
-            publishToRedis(memberId.toString(), com.alibaba.fastjson2.JSON.toJSONString(wsMessage, com.alibaba.fastjson2.JSONWriter.Feature.WriteLongAsString));
+            outboxService.enqueueAfterCommit(readReceiptTopic, "grr_" + input.target().groupId() + "_" + memberId, payload, processResult.lastReadMessageId());
         }
     }
 
@@ -1096,12 +1091,10 @@ public class MessageServiceImpl implements MessageService {
         boolean isGroup = Boolean.TRUE.equals(msg.getIsGroupChat());
         String payload = com.alibaba.fastjson2.JSON.toJSONString(dto);
         if (isGroup) {
-            outboxService.enqueueAfterCommit("im-group-message-topic", buildGroupConversationKey(msg.getGroupId()), payload, msg.getId());
-            publishGroupRealtimeMessage(dto);
+            outboxService.enqueueAfterCommit(groupMessageTopic, buildGroupConversationKey(msg.getGroupId()), payload, msg.getId());
             return;
         }
-        outboxService.enqueueAfterCommit("im-private-message-topic", buildPrivateConversationKey(msg.getSenderId(), msg.getReceiverId()), payload, msg.getId());
-        publishPrivateRealtimeMessage(dto);
+        outboxService.enqueueAfterCommit(privateMessageTopic, buildPrivateConversationKey(msg.getSenderId(), msg.getReceiverId()), payload, msg.getId());
     }
 
     private List<GroupMemberDTO> buildGroupRecipients(Long groupId, Long senderId, List<Long> memberIds) {
@@ -1112,30 +1105,5 @@ public class MessageServiceImpl implements MessageService {
                 .filter(id -> id != null && !id.equals(senderId))
                 .map(id -> GroupMemberDTO.builder().groupId(groupId).userId(id).build())
                 .collect(Collectors.toList());
-    }
-
-    private void publishPrivateRealtimeMessage(MessageDTO dto) {
-        if (dto == null || dto.getReceiverId() == null) {
-            return;
-        }
-        Map<String, Object> redisMsg = new HashMap<>();
-        redisMsg.put("type", "MESSAGE");
-        redisMsg.put("data", dto);
-        publishToRedis(dto.getReceiverId().toString(), com.alibaba.fastjson2.JSON.toJSONString(redisMsg));
-    }
-
-    private void publishGroupRealtimeMessage(MessageDTO dto) {
-        if (dto == null || dto.getGroupMembers() == null) {
-            return;
-        }
-        Map<String, Object> redisMsg = new HashMap<>();
-        redisMsg.put("type", "MESSAGE");
-        redisMsg.put("data", dto);
-        String redisPayload = com.alibaba.fastjson2.JSON.toJSONString(redisMsg);
-        for (GroupMemberDTO member : dto.getGroupMembers()) {
-            if (member != null && member.getUserId() != null) {
-                publishToRedis(member.getUserId().toString(), redisPayload);
-            }
-        }
     }
 }

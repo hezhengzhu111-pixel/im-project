@@ -14,8 +14,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
@@ -61,15 +61,32 @@ class AuthControllerTest {
 
     @Test
     void issueWsTicket_Success() {
+        TokenParseResultDTO parseResult = new TokenParseResultDTO();
+        parseResult.setValid(true);
+        parseResult.setExpired(false);
+        parseResult.setUserId(1L);
+        parseResult.setUsername("alice");
+
         WsTicketDTO dto = new WsTicketDTO();
         dto.setTicket("ticket-1");
         dto.setExpiresInMs(30000L);
 
+        when(authTokenService.parseAccessToken("Bearer token", false)).thenReturn(parseResult);
         when(authTokenService.issueWsTicket(1L, "alice")).thenReturn(dto);
 
-        ApiResponse<WsTicketDTO> response = authController.issueWsTicket(1L, "alice");
+        ApiResponse<WsTicketDTO> response = authController.issueWsTicket("Bearer token");
 
         assertEquals(200, response.getCode());
         assertEquals("ticket-1", response.getData().getTicket());
+    }
+
+    @Test
+    void issueWsTicket_InvalidToken_ShouldThrowSecurityException() {
+        TokenParseResultDTO parseResult = new TokenParseResultDTO();
+        parseResult.setValid(false);
+
+        when(authTokenService.parseAccessToken("Bearer bad", false)).thenReturn(parseResult);
+
+        assertThrows(SecurityException.class, () -> authController.issueWsTicket("Bearer bad"));
     }
 }

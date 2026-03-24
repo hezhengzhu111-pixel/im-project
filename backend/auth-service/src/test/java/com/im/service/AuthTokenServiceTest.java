@@ -1,5 +1,6 @@
 package com.im.service;
 
+import com.im.dto.AuthUserResourceDTO;
 import com.im.dto.TokenPairDTO;
 import com.im.dto.WsTicketConsumeResultDTO;
 import com.im.dto.WsTicketDTO;
@@ -15,6 +16,7 @@ import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
+import java.util.HashMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -125,6 +127,21 @@ class AuthTokenServiceTest {
         assertNotNull(result.getTicket());
         assertEquals(30000L, result.getExpiresInMs());
         verify(valueOperations).set(eq("auth:ws:ticket:" + result.getTicket()), eq("1004\ndora"), any(Duration.class));
+    }
+
+    @Test
+    void issueWsTicket_ShouldFallbackUsernameFromUserInfo() {
+        ReflectionTestUtils.setField(service, "wsTicketTtlSeconds", 30L);
+        AuthUserResourceDTO resource = new AuthUserResourceDTO();
+        resource.setUserId(1007L);
+        HashMap<String, Object> userInfo = new HashMap<>();
+        userInfo.put("username", "cached-user");
+        resource.setUserInfo(userInfo);
+        when(authUserResourceService.getOrLoad(1007L)).thenReturn(resource);
+
+        WsTicketDTO result = service.issueWsTicket(1007L, " ");
+
+        verify(valueOperations).set(eq("auth:ws:ticket:" + result.getTicket()), eq("1007\ncached-user"), any(Duration.class));
     }
 
     @Test

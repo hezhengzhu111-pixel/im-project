@@ -1,6 +1,7 @@
 package com.im.service;
 
 import com.im.dto.MessageDTO;
+import com.im.dto.ReadReceiptDTO;
 import com.im.entity.UserSession;
 
 import java.util.List;
@@ -37,6 +38,10 @@ public interface IImService {
      */
     void sendGroupMessage(MessageDTO message);
 
+    void pushMessageToUser(MessageDTO message, Long userId);
+
+    void pushReadReceiptToUser(ReadReceiptDTO receipt, Long userId);
+
     /**
      * 检查多个用户的在线状态
      * 
@@ -46,6 +51,8 @@ public interface IImService {
     Map<String, Boolean> checkUsersOnlineStatus(List<String> userIds);
 
     boolean touchUserHeartbeat(String userId);
+
+    void refreshRouteHeartbeat(String userId);
     
     /**
      * 获取用户会话信息

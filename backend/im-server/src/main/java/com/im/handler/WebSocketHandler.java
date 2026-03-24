@@ -72,7 +72,7 @@ public class WebSocketHandler implements org.springframework.web.socket.WebSocke
         }
 
         String payload = message.getPayload() == null ? "" : message.getPayload().toString().trim();
-        userSession.setLastHeartbeat(LocalDateTime.now());
+        imService.refreshRouteHeartbeat(userId);
 
         dispatcher.dispatch(session, userId, payload);
     }

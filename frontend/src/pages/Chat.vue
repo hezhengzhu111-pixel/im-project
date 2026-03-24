@@ -791,13 +791,6 @@ watch(
   { deep: true },
 );
 
-onMounted(async () => {
-  await chatStore.init();
-  if (userStore.isLoggedIn && userStore.userId) {
-    wsStore.connect(userStore.userId);
-  }
-});
-
 const tryAckRead = () => {
   if (document.hidden) return;
   if (!currentSession.value?.id) return;
