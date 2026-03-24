@@ -4,6 +4,7 @@ import com.im.dto.TokenPairDTO;
 import com.im.dto.TokenParseResultDTO;
 import com.im.dto.WsTicketConsumeResultDTO;
 import com.im.dto.WsTicketDTO;
+import com.im.dto.AuthUserResourceDTO;
 import com.im.dto.request.RefreshTokenRequest;
 import com.im.util.TokenParser;
 import io.jsonwebtoken.Jwts;
@@ -74,12 +75,13 @@ public class AuthTokenService {
     }
 
     public WsTicketDTO issueWsTicket(Long userId, String username) {
-        if (userId == null || username == null || username.trim().isEmpty()) {
-            throw new IllegalArgumentException("userId/username不能为空");
+        if (userId == null) {
+            throw new IllegalArgumentException("userId不能为空");
         }
+        String normalizedUsername = resolveWsTicketUsername(userId, username);
         String ticket = UUID.randomUUID().toString();
         String key = WS_TICKET_KEY_PREFIX + ticket;
-        String value = userId + "\n" + username.trim();
+        String value = userId + "\n" + normalizedUsername;
         stringRedisTemplate.opsForValue().set(key, value, Duration.ofSeconds(wsTicketTtlSeconds));
         return WsTicketDTO.builder()
                 .ticket(ticket)
@@ -268,6 +270,46 @@ public class AuthTokenService {
                 .valid(false)
                 .error(error)
                 .build();
+    }
+
+    private String resolveWsTicketUsername(Long userId, String username) {
+        String normalized = normalizeUsername(username);
+        if (normalized != null) {
+            return normalized;
+        }
+
+        try {
+            AuthUserResourceDTO resource = authUserResourceService.getOrLoad(userId);
+            if (resource != null) {
+                normalized = normalizeUsername(resource.getUsername());
+                if (normalized != null) {
+                    return normalized;
+                }
+                normalized = normalizeUsername(resolveUsernameFromUserInfo(resource.getUserInfo()));
+                if (normalized != null) {
+                    return normalized;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("ws-ticket用户名回填失败，userId={}", userId, e);
+        }
+        return "user-" + userId;
+    }
+
+    private String resolveUsernameFromUserInfo(Map<String, Object> userInfo) {
+        if (userInfo == null) {
+            return null;
+        }
+        Object username = userInfo.get("username");
+        return username == null ? null : username.toString();
+    }
+
+    private String normalizeUsername(String username) {
+        if (username == null) {
+            return null;
+        }
+        String trimmed = username.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private WsTicketPayload parseWsTicketPayload(String payload) {

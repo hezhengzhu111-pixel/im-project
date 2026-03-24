@@ -7,6 +7,7 @@ import com.im.dto.AuthUserResourceDTO;
 import com.im.dto.TokenParseResultDTO;
 import com.im.security.SecurityPaths;
 import com.im.util.AuthHeaderUtil;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
@@ -74,11 +75,23 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
     public JwtAuthGlobalFilter(ReactiveStringRedisTemplate redisTemplate,
                                ObjectMapper objectMapper,
-                               WebClient.Builder webClientBuilder,
-                               @Value("${im.gateway.auth-service-url:http://im-auth-service}") String authServiceUrl) {
+                               @Qualifier("plainWebClientBuilder") WebClient.Builder plainWebClientBuilder,
+                               @Qualifier("loadBalancedWebClientBuilder") WebClient.Builder loadBalancedWebClientBuilder,
+                               @Value("${im.gateway.auth-service-url:http://127.0.0.1:8084}") String authServiceUrl) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
-        this.webClient = webClientBuilder.baseUrl(authServiceUrl).build();
+        this.webClient = (useLoadBalancedClient(authServiceUrl)
+                ? loadBalancedWebClientBuilder
+                : plainWebClientBuilder)
+                .baseUrl(authServiceUrl)
+                .build();
+    }
+
+    private boolean useLoadBalancedClient(String authServiceUrl) {
+        if (authServiceUrl == null) {
+            return false;
+        }
+        return authServiceUrl.trim().startsWith("lb://");
     }
 
     @Override

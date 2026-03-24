@@ -80,4 +80,15 @@ class JwtAuthInterceptorTest {
 
         assertTrue(ok);
     }
+
+    @Test
+    void preHandle_shouldAllowInternalSecretPath() throws Exception {
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getRequestURI()).thenReturn("/api/im/online-status");
+        when(request.getHeader("X-Internal-Secret")).thenReturn("im-internal-secret");
+
+        boolean ok = interceptor.preHandle(request, response, new Object());
+
+        assertTrue(ok);
+    }
 }

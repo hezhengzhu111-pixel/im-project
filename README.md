@@ -2,34 +2,28 @@
 
 一个基于 Java 微服务和 Vue 3 的即时通讯项目。
 
-## 当前约束
+## 当前约定
 
-- `auth-service` 是唯一的 Token 服务，负责签发、解析、刷新、吊销和 WebSocket ticket。
-- `admin-service` 已从主工程移除，不再参与构建、启动和 CI。
-- WebSocket 握手只接受短期一次性 `ticket`，不再支持把 JWT 放到 URL 查询参数中。
+- `auth-service` 是唯一的 Token 服务，负责签发、解析、刷新、吊销，以及生成 WebSocket ticket。
+- `admin-service` 已从主工程、启动脚本和 CI 中移除。
+- WebSocket 握手使用短期一次性 `ticket`，不再把 JWT 放进 URL。
 
-## 项目结构
+## 环境约定
+
+- `dev` 用于本地启动，服务地址使用 `127.0.0.1` 这类本机地址。
+- `sit` 用于 Docker 部署，服务地址使用 `im-mysql`、`im-nacos` 这类容器服务名。
+- 后端 `dev` 和 `sit` 配置直接提交在 `backend/*/src/main/resources/{dev,sit}`。
+- 根目录 `.env.example` 现在只保留前端可选覆盖项。
+
+## 仓库结构
 
 - `backend/`: Spring Boot 微服务与公共模块
 - `frontend/`: Vue 3 + Vite 前端
 - `.github/workflows/`: 持续集成配置
 
-## 环境变量
-
-复制根目录的 `.env.example`，按你的环境注入这些值:
-
-- `JWT_SECRET`
-- `JWT_REFRESH_SECRET`
-- `IM_INTERNAL_SECRET`
-- `IM_GATEWAY_AUTH_SECRET`
-- `GROUP_SERVICE_DATASOURCE_PASSWORD`
-- `MESSAGE_SERVICE_DATASOURCE_PASSWORD`
-- `USER_SERVICE_DATASOURCE_PASSWORD`
-- `IM_SERVER_DATASOURCE_PASSWORD`
-
 ## 本地开发
 
-前端:
+前端：
 
 ```powershell
 cd frontend
@@ -37,13 +31,13 @@ npm ci
 npm run dev
 ```
 
-后端质量检查:
+后端校验：
 
 ```powershell
 mvn -f backend/pom.xml test
 ```
 
-前端质量检查:
+前端校验：
 
 ```powershell
 cd frontend
@@ -52,7 +46,7 @@ npm run test
 npm run build
 ```
 
-批量启动后端服务:
+批量启动后端服务：
 
 ```powershell
 pwsh backend/start_all_services.ps1
@@ -68,7 +62,7 @@ pwsh backend/start_all_services.ps1
 
 ## CI
 
-仓库默认质量门禁会执行:
+默认质量门禁会执行：
 
 - `mvn -f backend/pom.xml test`
 - `npm ci`

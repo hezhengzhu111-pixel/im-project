@@ -1,1 +1,7 @@
-{}
+spring:
+  data:
+    redis:
+      host: ${IM_REDIS_HOST:im-redis}
+      port: ${IM_REDIS_PORT:6379}
+      database: 0
+      timeout: 3000ms

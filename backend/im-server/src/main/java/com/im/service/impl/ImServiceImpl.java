@@ -2,11 +2,13 @@ package com.im.service.impl;
 
 import com.alibaba.fastjson2.JSON;
 import com.im.dto.MessageDTO;
+import com.im.dto.ReadReceiptDTO;
 import com.im.entity.UserSession;
 import com.im.enums.UserStatus;
 import com.im.service.IImService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -19,17 +21,19 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
 public class ImServiceImpl implements IImService {
     private static final Duration HEARTBEAT_TIMEOUT = Duration.ofMinutes(5);
-    private static final String ROUTE_KEY_PREFIX = "im:route:user:";
-
-    private final String instanceId = UUID.randomUUID().toString();
     private final Map<String, UserSession> sessionUserMap = new ConcurrentHashMap<>();
+
+    @Value("${im.route.user-key-prefix:im:route:user:}")
+    private String routeUserKeyPrefix;
+
+    @Value("${im.instance-id:${HOSTNAME:${spring.application.name:im-server}}}")
+    private String instanceId;
 
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
@@ -49,7 +53,7 @@ public class ImServiceImpl implements IImService {
                 continue;
             }
             String userId = rawUserId.trim();
-            Boolean hasKey = stringRedisTemplate.hasKey(ROUTE_KEY_PREFIX + userId);
+            Boolean hasKey = stringRedisTemplate.hasKey(routeUserKeyPrefix + userId);
             userStatusMap.put(userId, Boolean.TRUE.equals(hasKey));
         }
         return userStatusMap;
@@ -72,8 +76,22 @@ public class ImServiceImpl implements IImService {
         userSession.setStatus(UserStatus.ONLINE);
         userSession.setLastHeartbeat(LocalDateTime.now());
         // 更新 Redis 中的心跳 TTL
-        stringRedisTemplate.expire(ROUTE_KEY_PREFIX + normalizedUserId, HEARTBEAT_TIMEOUT);
+        stringRedisTemplate.expire(routeUserKeyPrefix + normalizedUserId, HEARTBEAT_TIMEOUT);
         return true;
+    }
+
+    @Override
+    public void refreshRouteHeartbeat(String userId) {
+        if (StringUtils.isBlank(userId)) {
+            return;
+        }
+        String normalizedUserId = userId.trim();
+        UserSession userSession = sessionUserMap.get(normalizedUserId);
+        if (userSession != null) {
+            userSession.setLastHeartbeat(LocalDateTime.now());
+            userSession.setStatus(UserStatus.ONLINE);
+        }
+        stringRedisTemplate.opsForValue().set(routeUserKeyPrefix + normalizedUserId, instanceId, HEARTBEAT_TIMEOUT);
     }
 
     @Override
@@ -86,9 +104,9 @@ public class ImServiceImpl implements IImService {
             UserSession removedSession = sessionUserMap.remove(normalizedUserId);
             
             // 从 Redis 中移除路由信息 (如果是当前实例)
-            String routeInstanceId = stringRedisTemplate.opsForValue().get(ROUTE_KEY_PREFIX + normalizedUserId);
+            String routeInstanceId = stringRedisTemplate.opsForValue().get(routeUserKeyPrefix + normalizedUserId);
             if (instanceId.equals(routeInstanceId)) {
-                stringRedisTemplate.delete(ROUTE_KEY_PREFIX + normalizedUserId);
+                stringRedisTemplate.delete(routeUserKeyPrefix + normalizedUserId);
             }
 
             if (removedSession != null) {
@@ -118,15 +136,14 @@ public class ImServiceImpl implements IImService {
 
     @Override
     public void sendPrivateMessage(MessageDTO message) {
-        if (message.getMessageType() == com.im.enums.MessageType.SYSTEM) {
-            pushToUser(message, message.getReceiverId());
-            return;
-        }
-        pushToUser(message, message.getReceiverId());
+        pushMessageToUser(message, message == null ? null : message.getReceiverId());
     }
 
     @Override
     public void sendGroupMessage(MessageDTO message) {
+        if (message == null) {
+            return;
+        }
         if (message.getGroupMembers() == null) {
             return;
         }
@@ -137,8 +154,13 @@ public class ImServiceImpl implements IImService {
             if (member.getUserId().equals(message.getSenderId())) {
                 continue;
             }
-            pushToUser(message, member.getUserId());
+            pushMessageToUser(message, member.getUserId());
         }
+    }
+
+    @Override
+    public void pushMessageToUser(MessageDTO message, Long userId) {
+        pushToUser(message, userId);
     }
 
     private void pushToUser(MessageDTO message, Long userId) {
@@ -187,7 +209,7 @@ public class ImServiceImpl implements IImService {
         sessionUserMap.put(normalizedUserId, userSession);
         
         // 写入 Redis
-        stringRedisTemplate.opsForValue().set(ROUTE_KEY_PREFIX + normalizedUserId, instanceId, HEARTBEAT_TIMEOUT);
+        stringRedisTemplate.opsForValue().set(routeUserKeyPrefix + normalizedUserId, instanceId, HEARTBEAT_TIMEOUT);
 
         broadcastOnlineStatus(normalizedUserId, UserStatus.ONLINE);
     }
@@ -196,9 +218,9 @@ public class ImServiceImpl implements IImService {
     public boolean removeSessionMapping(String key) {
         boolean removed = sessionUserMap.remove(key) != null;
         if (removed) {
-            String routeInstanceId = stringRedisTemplate.opsForValue().get(ROUTE_KEY_PREFIX + key);
+            String routeInstanceId = stringRedisTemplate.opsForValue().get(routeUserKeyPrefix + key);
             if (instanceId.equals(routeInstanceId)) {
-                stringRedisTemplate.delete(ROUTE_KEY_PREFIX + key);
+                stringRedisTemplate.delete(routeUserKeyPrefix + key);
             }
         }
         return removed;
@@ -258,9 +280,15 @@ public class ImServiceImpl implements IImService {
         }
     }
 
-    public void pushReadReceipt(com.im.dto.ReadReceiptDTO receipt) {
-        Long userId = receipt.getToUserId();
-        if (userId == null) return;
+    public void pushReadReceipt(ReadReceiptDTO receipt) {
+        pushReadReceiptToUser(receipt, receipt == null ? null : receipt.getToUserId());
+    }
+
+    @Override
+    public void pushReadReceiptToUser(ReadReceiptDTO receipt, Long userId) {
+        if (receipt == null || userId == null) {
+            return;
+        }
         String userIdStr = userId.toString();
         UserSession userSession = sessionUserMap.get(userIdStr);
 

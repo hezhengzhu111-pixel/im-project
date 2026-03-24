@@ -10,9 +10,11 @@ spring:
       - optional:classpath:sit/application-redis.yml
       - optional:classpath:sit/application-kafka.yml
       - optional:classpath:sit/application-nacos.yml
+  profiles:
+    active: default
   threads:
     virtual:
-      enabled: ${SPRING_THREADS_VIRTUAL_ENABLED:false}
+      enabled: false
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.r2dbc.R2dbcAutoConfiguration
@@ -20,8 +22,6 @@ spring:
       - org.springframework.boot.autoconfigure.data.r2dbc.R2dbcRepositoriesAutoConfiguration
   main:
     allow-bean-definition-overriding: true
-  profiles:
-    active: ${SPRING_PROFILES_ACTIVE:default}
   feign:
     client:
       config:
@@ -32,26 +32,41 @@ spring:
     hystrix:
       enabled: false
 
-logging:
-  level:
-    com.im.feign: DEBUG
-    feign: DEBUG
-
 jwt:
-  secret: ${JWT_SECRET}
+  secret: ${JWT_SECRET:im-access-secret-im-access-secret-im-access-secret-im-access-secret}
   expiration: 86400000
+  header: Authorization
+  prefix: "Bearer "
 
 im:
   jwt:
-    enabled: ${IM_JWT_ENABLED:true}
+    enabled: true
+  virtual-threads:
+    enabled: false
+  logging:
+    root-dir: /var/log/im-project
+  snowflake:
+    worker-id: 3
+    datacenter-id: 2
   security:
-    mode: ${IM_SECURITY_MODE:gateway}
+    mode: gateway
+    gateway-only:
+      enabled: false
+    gateway-fallback-jwt:
+      enabled: true
+    replay-protection:
+      enabled: true
+      ttl-seconds: 300
+      key-prefix: "im:auth:replay:"
   internal:
     header: X-Internal-Secret
-    secret: ${IM_INTERNAL_SECRET}
+    secret: ${IM_INTERNAL_SECRET:im-internal-secret-im-internal-secret-im-internal-secret-im}
   gateway:
+    user-id-header: X-User-Id
+    username-header: X-Username
     auth:
-      secret: ${IM_GATEWAY_AUTH_SECRET}
+      secret: ${IM_GATEWAY_AUTH_SECRET:im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret}
+      max-skew-ms: 300000
 
 management:
   endpoints:
@@ -62,3 +77,10 @@ management:
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
+
+logging:
+  level:
+    root: INFO
+    com.im: INFO
+    com.im.feign: DEBUG
+    feign: DEBUG

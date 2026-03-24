@@ -60,8 +60,6 @@ class MessageServiceImplTest {
     @Mock
     private MessageRateLimiter messageRateLimiter;
     @Mock
-    private org.springframework.kafka.core.KafkaTemplate<String, String> kafkaTemplate;
-    @Mock
     private OutboxService outboxService;
     @Mock
     private GroupReadCursorMapper groupReadCursorMapper;
@@ -85,7 +83,6 @@ class MessageServiceImplTest {
                 groupServiceFeignClient,
                 redisTemplate,
                 messageRateLimiter,
-                kafkaTemplate,
                 outboxService,
                 groupReadCursorMapper,
                 userProfileCache,
@@ -189,14 +186,13 @@ class MessageServiceImplTest {
         when(messageMapper.selectById(302L)).thenReturn(message);
         when(userProfileCache.getUser(1L)).thenReturn(user(1L, "sender"));
         when(userProfileCache.getUser(2L)).thenReturn(user(2L, "receiver"));
-        when(valueOperations.get("im:route:user:2")).thenReturn("private-node");
 
         MessageDTO result = service.deleteMessage(1L, 302L);
 
         assertEquals("DELETED", result.getStatus());
         assertEquals(2L, result.getReceiverId());
         verify(outboxService).enqueueAfterCommit(eq("im-private-message-topic"), eq("p_1_2"), anyString(), eq(302L));
-        verify(redisTemplate).convertAndSend(eq("im:msg:channel:private-node"), anyString());
+        verify(redisTemplate, never()).convertAndSend(anyString(), anyString());
     }
 
     @Test
@@ -211,8 +207,6 @@ class MessageServiceImplTest {
         when(messageMapper.selectById(401L)).thenReturn(message);
         when(userProfileCache.getUser(1L)).thenReturn(user(1L, "sender"));
         when(groupServiceFeignClient.memberIds(8L)).thenReturn(List.of(1L, 2L, 3L));
-        when(valueOperations.get("im:route:user:2")).thenReturn("group-node-2");
-        when(valueOperations.get("im:route:user:3")).thenReturn("group-node-3");
 
         MessageDTO result = service.recallMessage(1L, 401L);
 
@@ -220,8 +214,7 @@ class MessageServiceImplTest {
         assertTrue(result.isGroup());
         assertEquals(2, result.getGroupMembers().size());
         verify(outboxService).enqueueAfterCommit(eq("im-group-message-topic"), eq("g_8"), anyString(), eq(401L));
-        verify(redisTemplate).convertAndSend(eq("im:msg:channel:group-node-2"), anyString());
-        verify(redisTemplate).convertAndSend(eq("im:msg:channel:group-node-3"), anyString());
+        verify(redisTemplate, never()).convertAndSend(anyString(), anyString());
     }
 
     @Test

@@ -205,7 +205,7 @@ class JwtAuthGlobalFilterTest {
 
     private JwtAuthGlobalFilter newFilter(ExchangeFunction exchangeFunction) {
         WebClient.Builder builder = WebClient.builder().exchangeFunction(exchangeFunction);
-        JwtAuthGlobalFilter filter = new JwtAuthGlobalFilter(redisTemplate, objectMapper, builder, "http://im-auth-service");
+        JwtAuthGlobalFilter filter = new JwtAuthGlobalFilter(redisTemplate, objectMapper, builder, builder, "http://im-auth-service");
         ReflectionTestUtils.setField(filter, "internalHeaderName", "X-Internal-Secret");
         ReflectionTestUtils.setField(filter, "internalSecret", "internal-value");
         ReflectionTestUtils.setField(filter, "userResourceKeyPrefix", "auth:user:");

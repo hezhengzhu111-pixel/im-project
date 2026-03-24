@@ -5,6 +5,7 @@ import com.im.entity.MessageOutboxEvent;
 import com.im.mapper.MessageOutboxMapper;
 import com.im.service.OutboxService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,15 +18,19 @@ public class MessageRetryController {
 
     private final MessageOutboxMapper outboxMapper;
     private final OutboxService outboxService;
+    @Value("${im.kafka.topic.private-message:im-private-message-topic}")
+    private String privateMessageTopic = "im-private-message-topic";
+    @Value("${im.kafka.topic.group-message:im-group-message-topic}")
+    private String groupMessageTopic = "im-group-message-topic";
 
     @PostMapping("/private/{messageId}")
     public ApiResponse<Void> retryPrivate(@PathVariable("messageId") Long messageId) {
-        return retryByTopic(messageId, "im-private-message-topic");
+        return retryByTopic(messageId, privateMessageTopic);
     }
 
     @PostMapping("/group/{messageId}")
     public ApiResponse<Void> retryGroup(@PathVariable("messageId") Long messageId) {
-        return retryByTopic(messageId, "im-group-message-topic");
+        return retryByTopic(messageId, groupMessageTopic);
     }
 
     private ApiResponse<Void> retryByTopic(Long messageId, String topic) {
