@@ -13,10 +13,10 @@ spring:
       - optional:classpath:dev/application-kafka.yml
       - optional:classpath:dev/application-nacos.yml
   profiles:
-    active: ${SPRING_PROFILES_ACTIVE:default}
+    active: default
   threads:
     virtual:
-      enabled: ${SPRING_THREADS_VIRTUAL_ENABLED:false}
+      enabled: false
   main:
     allow-bean-definition-overriding: true
     allow-circular-references: true
@@ -27,21 +27,48 @@ spring:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: GMT+8
     default-property-inclusion: non_null
-  jwt:
-    secret: ${JWT_SECRET}
-    expiration: ${JWT_EXPIRATION_MS:86400000}
+
+jwt:
+  secret: ${JWT_SECRET:im-access-secret-im-access-secret-im-access-secret-im-access-secret}
+  expiration: 86400000
+  header: Authorization
+  prefix: "Bearer "
 
 im:
-  internal:
-    header: ${IM_INTERNAL_HEADER:X-Internal-Secret}
-    secret: ${IM_INTERNAL_SECRET}
+  instance-id: ${HOSTNAME:${spring.application.name}}
+  jwt:
+    enabled: true
   virtual-threads:
-    enabled: ${IM_VIRTUAL_THREADS_ENABLED:true}
+    enabled: true
+  logging:
+    root-dir: ../logs
+  snowflake:
+    worker-id: 7
+    datacenter-id: 1
+  security:
+    mode: gateway
+    gateway-only:
+      enabled: false
+    gateway-fallback-jwt:
+      enabled: true
+    replay-protection:
+      enabled: true
+      ttl-seconds: 300
+      key-prefix: "im:auth:replay:"
+  internal:
+    header: X-Internal-Secret
+    secret: ${IM_INTERNAL_SECRET:im-internal-secret-im-internal-secret-im-internal-secret-im}
+  gateway:
+    user-id-header: X-User-Id
+    username-header: X-Username
+    auth:
+      secret: ${IM_GATEWAY_AUTH_SECRET:im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret}
+      max-skew-ms: 300000
   server:
     executor:
-      virtual-preferred: ${IM_SERVER_VIRTUAL_EXECUTOR_PREFERRED:true}
-      max-concurrency: ${IM_SERVER_EXECUTOR_MAX_CONCURRENCY:2000}
-      queue-capacity: ${IM_SERVER_EXECUTOR_QUEUE_CAPACITY:2000}
+      virtual-preferred: true
+      max-concurrency: 2000
+      queue-capacity: 2000
   heartbeat:
     interval: 30000
     timeout: 90000
@@ -59,17 +86,19 @@ im:
       max-count: 1000
       max-content-length: 10000
   retry:
-    push-interval-ms: ${IM_RETRY_PUSH_INTERVAL_MS:1000}
+    push-interval-ms: 1000
   websocket:
-    endpoint: "/websocket"
+    endpoint: /websocket
     allowed-origins: "*"
     connection-timeout: 30000
-    cleanup-interval-ms: ${IM_WS_CLEANUP_INTERVAL_MS:60000}
+    cleanup-interval-ms: 60000
     max-text-message-size: 8192
     max-binary-message-size: 8192
   service:
-    url: ${IM_SERVICE_URL:http://127.0.0.1:8083}
+    url: ${IM_SELF_URL:http://127.0.0.1:8083}
     max-group-member-size: 500
+  route:
+    user-key-prefix: "im:route:user:"
 
 management:
   endpoints:
@@ -82,15 +111,9 @@ management:
 
 logging:
   level:
-    com.im: info
-    org.springframework.web.socket: info
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-  file:
-    name: logs/im-server.log
-    max-size: 10MB
-    max-history: 30
+    root: INFO
+    com.im: INFO
+    org.springframework.web.socket: INFO
 
 ---
 spring:

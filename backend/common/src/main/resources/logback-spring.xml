@@ -3,10 +3,10 @@
     <conversionRule conversionWord="dmsg" class="com.im.log.DesensitizationConverter" />
 
     <springProperty scope="context" name="springAppName" source="spring.application.name"/>
+    <springProperty scope="context" name="logRootDir" source="im.logging.root-dir" defaultValue="logs"/>
 
     <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [traceId=%X{traceId}] %logger{36} - %dmsg%n"/>
-    
-    <property name="LOG_FILE_PATH" value="/var/log/im-project/${springAppName}.log"/>
+    <property name="LOG_FILE_PATH" value="${logRootDir}/${springAppName}.log"/>
 
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
@@ -17,7 +17,7 @@
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${LOG_FILE_PATH}</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>/var/log/im-project/${springAppName}-%d{yyyy-MM-dd}.log</fileNamePattern>
+            <fileNamePattern>${logRootDir}/${springAppName}-%d{yyyy-MM-dd}.log</fileNamePattern>
             <maxHistory>30</maxHistory>
         </rollingPolicy>
         <encoder>

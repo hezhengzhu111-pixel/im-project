@@ -42,6 +42,14 @@ public final class SecurityPaths {
             "/images"
     );
 
+    private static final List<String> INTERNAL_SECRET_ONLY_PREFIXES = List.of(
+            "/api/user/internal",
+            "/api/group/internal",
+            "/api/auth/internal",
+            "/internal/message",
+            "/api/im"
+    );
+
     public static boolean isGatewayWhiteList(String path) {
         if (path == null) {
             return true;
@@ -66,6 +74,13 @@ public final class SecurityPaths {
             return true;
         }
         return hasAnyPrefix(requestURI, SERVICE_WHITELIST_PREFIXES);
+    }
+
+    public static boolean isInternalSecretPath(String path) {
+        if (path == null) {
+            return false;
+        }
+        return hasAnyPrefix(path, INTERNAL_SECRET_ONLY_PREFIXES);
     }
 
     private static boolean hasAnyPrefix(String path, List<String> prefixes) {

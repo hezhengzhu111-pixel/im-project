@@ -6,26 +6,20 @@ An instant messaging system built with Java microservices and a Vue 3 frontend.
 
 - `auth-service` is the single token service for issuing, parsing, refreshing, revoking, and minting WebSocket tickets.
 - `admin-service` has been removed from the main build, startup scripts, and CI.
-- WebSocket connections now use short-lived one-time `ticket` values instead of putting JWTs in the URL.
+- WebSocket connections use short-lived one-time `ticket` values instead of putting JWTs in the URL.
+
+## Environment convention
+
+- `dev` is for local startup. Service addresses use localhost-style endpoints such as `127.0.0.1`.
+- `sit` is for Docker deployment. Service addresses use container names such as `im-mysql` and `im-nacos`.
+- Backend `dev` and `sit` settings are committed directly in `backend/*/src/main/resources/{dev,sit}`.
+- The root `.env.example` is now only for optional frontend overrides.
 
 ## Repository layout
 
 - `backend/`: Spring Boot services and shared modules
 - `frontend/`: Vue 3 + Vite client
 - `.github/workflows/`: CI pipelines
-
-## Required environment variables
-
-Copy `.env.example` and provide values for:
-
-- `JWT_SECRET`
-- `JWT_REFRESH_SECRET`
-- `IM_INTERNAL_SECRET`
-- `IM_GATEWAY_AUTH_SECRET`
-- `GROUP_SERVICE_DATASOURCE_PASSWORD`
-- `MESSAGE_SERVICE_DATASOURCE_PASSWORD`
-- `USER_SERVICE_DATASOURCE_PASSWORD`
-- `IM_SERVER_DATASOURCE_PASSWORD`
 
 ## Local development
 

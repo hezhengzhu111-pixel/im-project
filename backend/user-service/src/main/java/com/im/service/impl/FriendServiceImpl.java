@@ -136,7 +136,7 @@ public class FriendServiceImpl implements FriendService {
             // 携带特殊指令，前端识别后自动刷新好友列表
             messageDTO.setContent("您的好友申请已被同意::CMD:REFRESH_FRIEND_LIST");
             messageDTO.setCreatedTime(LocalDateTime.now());
-            imService.sendMessage(messageDTO);
+            imService.sendSystemMessage(messageDTO.getReceiverId(), messageDTO.getContent());
             
             log.info("用户{}同意了用户{}的好友申请", currentUserId, request.getApplicantId());
             
@@ -441,7 +441,7 @@ public class FriendServiceImpl implements FriendService {
             messageDTO.setReceiverId(receiverId);
             messageDTO.setContent(content);
             messageDTO.setCreatedTime(LocalDateTime.now());
-            imService.sendMessage(messageDTO);
+            imService.sendSystemMessage(messageDTO.getReceiverId(), messageDTO.getContent());
         } catch (Exception e) {
             log.warn("发送系统通知失败: receiverId={}, content={}", receiverId, content, e);
         }

@@ -1,5 +1,6 @@
 package com.im.gateway.filter;
 
+import com.im.security.SecurityPaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
@@ -59,6 +60,10 @@ public class TraceIdRouteHeaderFilter implements GlobalFilter, Ordered {
         if (path == null) {
             return false;
         }
+        // Public/whitelist routes (login/register/refresh/etc.) should not require gateway route header.
+        if (SecurityPaths.isGatewayWhiteList(path)) {
+            return false;
+        }
         if (path.startsWith("/actuator")) {
             return false;
         }
@@ -76,4 +81,3 @@ public class TraceIdRouteHeaderFilter implements GlobalFilter, Ordered {
         return -200;
     }
 }
-

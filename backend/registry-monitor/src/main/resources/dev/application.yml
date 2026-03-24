@@ -4,35 +4,29 @@ server:
 spring:
   application:
     name: im-registry-monitor
-  cloud:
-    nacos:
-      discovery:
-        server-addr: 127.0.0.1:8848
-      config:
-        server-addr: 127.0.0.1:8848
-        file-extension: yml
-        shared-configs:
-          - data-id: application-mysql.yml
-            refresh: true
-          - data-id: application-redis.yml
-            refresh: true
-          - data-id: application-kafka.yml
-            refresh: true
   config:
     import:
-      - optional:nacos:application-mysql.yml
-      - optional:nacos:application-redis.yml
-      - optional:nacos:application-kafka.yml
-      - optional:nacos:application-nacos.yml
       - optional:classpath:dev/application-mysql.yml
       - optional:classpath:dev/application-redis.yml
       - optional:classpath:dev/application-kafka.yml
       - optional:classpath:dev/application-nacos.yml
   profiles:
-    active: ${SPRING_PROFILES_ACTIVE:default}
+    active: default
   threads:
     virtual:
-      enabled: ${SPRING_THREADS_VIRTUAL_ENABLED:false}
+      enabled: false
+
+im:
+  logging:
+    root-dir: ../logs
+  snowflake:
+    worker-id: 9
+    datacenter-id: 1
+  registry-monitor:
+    poll:
+      interval-ms: 5000
+    alert:
+      fluctuation-threshold: 0.2
 
 management:
   endpoints:
@@ -43,9 +37,7 @@ management:
     health:
       show-details: always
 
-im:
-  registry-monitor:
-    poll:
-      interval-ms: ${REGISTRY_MONITOR_POLL_INTERVAL_MS:5000}
-    alert:
-      fluctuation-threshold: ${REGISTRY_MONITOR_FLUCTUATION_THRESHOLD:0.2}
+logging:
+  level:
+    root: INFO
+    com.im.registry: INFO

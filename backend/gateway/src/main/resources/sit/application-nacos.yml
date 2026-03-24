@@ -1,1 +1,17 @@
-{}
+spring:
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        server-addr: ${IM_NACOS_SERVER_ADDR:im-nacos:8848}
+        service: im-gateway
+        namespace: public
+        group: DEFAULT_GROUP
+        metadata:
+          env: sit
+          transport: docker
+        heart-beat-interval: 1000
+        heart-beat-timeout: 90000
+        ip-delete-timeout: 120000
+        naming-load-cache-at-start: false
