@@ -1,19 +1,21 @@
 im:
   registry-monitor:
     nacos:
-      base-url: http://127.0.0.1:8848/nacos
+      base-url: ${IM_REGISTRY_MONITOR_NACOS_BASE_URL:http://127.0.0.1:8848/nacos}
 spring:
   cloud:
     nacos:
-      discovery:
-        server-addr: 127.0.0.1:8848
       config:
-        server-addr: 127.0.0.1:8848
-        file-extension: yml
-        shared-configs:
-          - data-id: application-mysql.yml
-            refresh: true
-          - data-id: application-redis.yml
-            refresh: true
-          - data-id: application-kafka.yml
-            refresh: true
+        enabled: false
+      discovery:
+        server-addr: ${IM_NACOS_SERVER_ADDR:127.0.0.1:8848}
+        service: im-registry-monitor
+        namespace: public
+        group: DEFAULT_GROUP
+        metadata:
+          env: dev
+          transport: local
+        heart-beat-interval: 1000
+        heart-beat-timeout: 90000
+        ip-delete-timeout: 120000
+        naming-load-cache-at-start: false

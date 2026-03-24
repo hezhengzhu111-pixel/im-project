@@ -60,7 +60,7 @@ export const groupService = {
   getMembers: (groupId: string) =>
     http
       .post<{ members?: Record<string, any>[] }>("/group/members/list", {
-        groupId: Number(groupId),
+        groupId: String(groupId),
       })
       .then((response) => {
         if (response.code === 200) {
@@ -77,8 +77,8 @@ export const groupService = {
   update: (groupId: string, data: UpdateGroupRequest, operatorId?: string) =>
     http.put<RawGroup>(`/group/${groupId}`, {
       ...data,
-      groupId: Number(groupId),
-      operatorId: Number(operatorId || useUserStore().userId || 0)
+      groupId: String(groupId),
+      operatorId: String(operatorId || useUserStore().userId || "")
     }).then((response) => {
       if (response.code === 200 && response.data) {
         return { ...response, data: normalizeGroup(response.data) };
@@ -87,8 +87,8 @@ export const groupService = {
     }),
   addMembers: (groupId: string, memberIds: string[], operatorId: string) =>
     http.post<void>(`/group/${groupId}/members`, {
-      groupId: Number(groupId),
-      operatorId: Number(operatorId),
-      memberIds: memberIds.map((item) => Number(item)),
+      groupId: String(groupId),
+      operatorId: String(operatorId),
+      memberIds: memberIds.map((item) => String(item)),
     }),
 };

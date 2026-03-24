@@ -13,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
@@ -43,6 +44,8 @@ class ImServiceImplTest {
     @BeforeEach
     void setUp() {
         lenient().when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        ReflectionTestUtils.setField(imService, "routeUserKeyPrefix", "im:route:user:");
+        ReflectionTestUtils.setField(imService, "instanceId", "im-node-1");
     }
 
     @Test
@@ -183,5 +186,18 @@ class ImServiceImplTest {
 
         assertNull(imService.getSessionUserMap().get("1"));
         verify(stringRedisTemplate).delete("im:route:user:1");
+    }
+
+    @Test
+    void refreshRouteHeartbeat_ShouldRefreshSessionAndRedisRoute() {
+        UserSession session = new UserSession();
+        session.setStatus(UserStatus.OFFLINE);
+        imService.getSessionUserMap().put("1", session);
+
+        imService.refreshRouteHeartbeat("1");
+
+        assertEquals(UserStatus.ONLINE, session.getStatus());
+        assertNotNull(session.getLastHeartbeat());
+        verify(valueOperations).set(eq("im:route:user:1"), eq(imService.getInstanceId()), any(Duration.class));
     }
 }

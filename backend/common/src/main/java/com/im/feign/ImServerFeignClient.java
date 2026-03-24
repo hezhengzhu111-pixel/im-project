@@ -14,6 +14,7 @@ import java.util.Map;
 public interface ImServerFeignClient {
 
     @PostMapping("/sendMessage")
+    @Deprecated
     ApiResponse<Boolean> sendMessage(@RequestBody MessageDTO message);
 
     @PostMapping("/online/{userId}")

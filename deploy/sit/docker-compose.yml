@@ -1,0 +1,286 @@
+services:
+  im-mysql:
+    image: mysql:8.0.39
+    container_name: im-mysql
+    command:
+      - mysqld
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../../backend/sql/mysql8/init_all.sql:/docker-entrypoint-initdb.d/01-init_all.sql:ro
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+  im-redis:
+    image: redis:7.2-alpine
+    container_name: im-redis
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+  im-nacos:
+    image: nacos/nacos-server:v2.4.2-slim
+    container_name: im-nacos
+    environment:
+      MODE: standalone
+      PREFER_HOST_MODE: hostname
+      NACOS_AUTH_ENABLE: "false"
+    ports:
+      - "8848:8848"
+    volumes:
+      - nacos_data:/home/nacos/data
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+  im-kafka:
+    image: apache/kafka:3.7.0
+    container_name: im-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://im-kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@im-kafka:9093
+      KAFKA_CLUSTER_ID: 5L6g3nShT-eMCtK--X86sw
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+  admin-es:
+    image: elasticsearch:8.10.4
+    container_name: admin-es
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+  admin-kibana:
+    image: kibana:8.10.4
+    container_name: admin-kibana
+    depends_on:
+      - admin-es
+    environment:
+      ELASTICSEARCH_HOSTS: http://admin-es:9200
+    ports:
+      - "5601:5601"
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+  admin-filebeat:
+    image: docker.elastic.co/beats/filebeat:8.10.4
+    container_name: admin-filebeat
+    depends_on:
+      - im-kafka
+    user: root
+    command: filebeat -e -strict.perms=false
+    volumes:
+      - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - im_logs:/var/log/im-project:ro
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+  im-gateway:
+    build:
+      context: ../../backend/gateway
+    container_name: im-gateway
+    depends_on:
+      - im-redis
+      - im-nacos
+    environment:
+      IM_GATEWAY_AUTH_SERVICE_URL: lb://im-auth-service
+    command:
+      - --spring.config.location=classpath:/sit/
+    ports:
+      - "8082:8082"
+    volumes:
+      - im_logs:/var/log/im-project
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+  im-auth:
+    build:
+      context: ../../backend/auth-service
+    container_name: im-auth
+    depends_on:
+      - im-redis
+      - im-nacos
+    command:
+      - --spring.config.location=classpath:/sit/
+    ports:
+      - "8084:8084"
+    volumes:
+      - im_logs:/var/log/im-project
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+  im-user:
+    build:
+      context: ../../backend/user-service
+    container_name: im-user
+    depends_on:
+      - im-mysql
+      - im-redis
+      - im-kafka
+      - im-nacos
+    command:
+      - --spring.config.location=classpath:/sit/
+    ports:
+      - "8085:8085"
+    volumes:
+      - im_logs:/var/log/im-project
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+  im-group:
+    build:
+      context: ../../backend/group-service
+    container_name: im-group
+    depends_on:
+      - im-mysql
+      - im-nacos
+    command:
+      - --spring.config.location=classpath:/sit/
+    ports:
+      - "8086:8086"
+    volumes:
+      - im_logs:/var/log/im-project
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+  im-message:
+    build:
+      context: ../../backend/message-service
+    container_name: im-message
+    depends_on:
+      - im-mysql
+      - im-redis
+      - im-kafka
+      - im-nacos
+    command:
+      - --spring.config.location=classpath:/sit/
+    ports:
+      - "8087:8087"
+    volumes:
+      - im_logs:/var/log/im-project
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+  im-file:
+    build:
+      context: ../../backend/file-service
+    container_name: im-file
+    depends_on:
+      - im-nacos
+    command:
+      - --spring.config.location=classpath:/sit/
+    ports:
+      - "8088:8088"
+    volumes:
+      - im_logs:/var/log/im-project
+      - im_files:/data/im-files
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+  im-server:
+    build:
+      context: ../../backend/im-server
+    container_name: im-server
+    depends_on:
+      - im-redis
+      - im-kafka
+      - im-nacos
+    command:
+      - --spring.config.location=classpath:/sit/
+    ports:
+      - "8083:8083"
+    volumes:
+      - im_logs:/var/log/im-project
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+  im-registry-monitor:
+    build:
+      context: ../../backend/registry-monitor
+    container_name: im-registry-monitor
+    depends_on:
+      - im-nacos
+    command:
+      - --spring.config.location=classpath:/sit/
+    ports:
+      - "8090:8090"
+    volumes:
+      - im_logs:/var/log/im-project
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+  im-log-service:
+    build:
+      context: ../../backend/log-service
+    container_name: im-log-service
+    depends_on:
+      - im-kafka
+      - im-nacos
+      - admin-es
+    command:
+      - --spring.config.location=classpath:/sit/
+    ports:
+      - "8091:8091"
+    volumes:
+      - im_logs:/var/log/im-project
+    networks:
+      - im-sit-network
+    restart: unless-stopped
+
+networks:
+  im-sit-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  redis_data:
+  nacos_data:
+  es_data:
+  im_logs:
+  im_files:

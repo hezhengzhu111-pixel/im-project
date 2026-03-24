@@ -115,7 +115,7 @@ class WebSocketHandlerTest {
         handler.handleMessage(session, message);
         
         verify(dispatcher).dispatch(session, "123", "ping");
-        assertNotNull(userSession.getLastHeartbeat());
+        verify(imService).refreshRouteHeartbeat("123");
     }
 
     @Test

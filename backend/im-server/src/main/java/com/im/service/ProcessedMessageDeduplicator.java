@@ -2,6 +2,7 @@ package com.im.service;
 
 import org.redisson.api.RMapCache;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
@@ -13,6 +14,9 @@ public class ProcessedMessageDeduplicator {
     private static final String CACHE_NAME = "im:message:processed:cache";
     private final RedissonClient redissonClient;
     private RMapCache<String, Boolean> processedCache;
+
+    @Value("${im.kafka.idempotency.ttl-ms:600000}")
+    private long ttlMs;
 
     public ProcessedMessageDeduplicator(RedissonClient redissonClient) {
         this.redissonClient = redissonClient;
@@ -27,9 +31,8 @@ public class ProcessedMessageDeduplicator {
         if (messageIdAndStatus == null) {
             return false;
         }
-        // If putIfAbsent returns null, the key was not present, so we successfully marked it.
-        // We set TTL to 10 minutes to avoid memory leak.
-        return processedCache.putIfAbsent(messageIdAndStatus, Boolean.TRUE, 10, TimeUnit.MINUTES) == null;
+        long safeTtlMs = Math.max(1000L, ttlMs);
+        return processedCache.putIfAbsent(messageIdAndStatus, Boolean.TRUE, safeTtlMs, TimeUnit.MILLISECONDS) == null;
     }
 }
 

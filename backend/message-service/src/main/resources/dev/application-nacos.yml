@@ -4,8 +4,13 @@ spring:
       config:
         enabled: false
       discovery:
-        server-addr: 127.0.0.1:8848
-        service: ${spring.application.name}
+        server-addr: ${IM_NACOS_SERVER_ADDR:127.0.0.1:8848}
+        service: im-message-service
+        namespace: public
+        group: DEFAULT_GROUP
+        metadata:
+          env: dev
+          transport: local
         heart-beat-interval: 1000
         heart-beat-timeout: 90000
         ip-delete-timeout: 120000

@@ -35,7 +35,10 @@ public class KafkaLogConsumer {
         this.elasticsearchOperations = elasticsearchOperations;
     }
 
-    @KafkaListener(topics = "im-service-logs", groupId = "log-service-group")
+    @KafkaListener(
+            topics = "${im.logging.kafka.topic:im-service-logs}",
+            groupId = "${im.logging.kafka.group-id:log-service-group}"
+    )
     public void consume(String message) {
         // 1. Dispatch to SSE
         sseLogController.dispatchLog(message);

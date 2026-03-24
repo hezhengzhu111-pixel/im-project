@@ -83,6 +83,10 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        if (SecurityPaths.isInternalSecretPath(requestURI) && hasValidInternalSecret(request)) {
+            return true;
+        }
+
         if (isGatewayMode() && applyIdentityFromGatewayHeaders(request)) {
             return true;
         }

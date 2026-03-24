@@ -30,4 +30,11 @@ class SecurityPathsTest {
         assertTrue(SecurityPaths.isGatewayInternalPath("/api/group/internal/members"));
         assertFalse(SecurityPaths.isGatewayInternalPath("/api/user/login"));
     }
+
+    @Test
+    void internalSecretPath_shouldMatchExpectedPaths() {
+        assertTrue(SecurityPaths.isInternalSecretPath("/api/im/online-status"));
+        assertTrue(SecurityPaths.isInternalSecretPath("/internal/message/system/private"));
+        assertFalse(SecurityPaths.isInternalSecretPath("/api/user/login"));
+    }
 }

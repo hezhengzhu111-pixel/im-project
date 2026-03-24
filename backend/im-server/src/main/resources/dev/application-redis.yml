@@ -1,6 +1,7 @@
 spring:
   data:
     redis:
-      host: 127.0.0.1
-      port: 6379
-      database: ${SPRING_DATA_REDIS_DATABASE:0}
+      host: ${IM_REDIS_HOST:127.0.0.1}
+      port: ${IM_REDIS_PORT:6379}
+      database: 0
+      timeout: 3000ms

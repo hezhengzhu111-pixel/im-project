@@ -12,7 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestAttribute;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -38,8 +38,16 @@ public class AuthController {
     }
 
     @PostMapping("/ws-ticket")
-    public ApiResponse<WsTicketDTO> issueWsTicket(@RequestAttribute("userId") Long userId,
-                                                  @RequestAttribute("username") String username) {
-        return ApiResponse.success(authTokenService.issueWsTicket(userId, username));
+    public ApiResponse<WsTicketDTO> issueWsTicket(
+            @RequestHeader(value = "Authorization", required = false) String accessToken
+    ) {
+        TokenParseResultDTO parseResult = authTokenService.parseAccessToken(accessToken, false);
+        if (parseResult == null
+                || !parseResult.isValid()
+                || parseResult.isExpired()
+                || parseResult.getUserId() == null) {
+            throw new SecurityException("认证失败");
+        }
+        return ApiResponse.success(authTokenService.issueWsTicket(parseResult.getUserId(), parseResult.getUsername()));
     }
 }
