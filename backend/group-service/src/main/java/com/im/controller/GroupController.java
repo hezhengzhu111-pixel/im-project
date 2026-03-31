@@ -38,7 +38,8 @@ public class GroupController {
                     userId,
                     request.getName(),
                     request.getType(),
-                    request.getAnnouncement()
+                    request.getAnnouncement(),
+                    request.getAvatar()
             );
             return ApiResponse.success("创建群组成功", result);
         } catch (BusinessException | IllegalArgumentException e) {

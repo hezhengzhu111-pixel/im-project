@@ -39,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
@@ -227,6 +228,33 @@ class MessageServiceImplTest {
         assertThrows(BusinessException.class, () -> service.markAsRead(1L, "2"));
 
         verify(messageMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void markAsReadShouldPublishCanonicalGroupReadReceiptConversationId() {
+        Message lastMessage = new Message();
+        lastMessage.setId(900L);
+        when(userServiceFeignClient.exists(1L)).thenReturn(true);
+        when(groupServiceFeignClient.exists(8L)).thenReturn(true);
+        when(groupServiceFeignClient.isMember(8L, 1L)).thenReturn(true);
+        when(groupServiceFeignClient.memberIds(8L)).thenReturn(List.of(1L, 2L, 3L));
+        when(groupReadCursorMapper.selectOne(any())).thenReturn(null);
+        when(messageMapper.selectOne(any())).thenReturn(lastMessage);
+
+        service.markAsRead(1L, "group_8");
+
+        verify(outboxService).enqueueAfterCommit(
+                eq("im-read-receipt-topic"),
+                eq("grr_8_2"),
+                argThat(payload -> payload != null && payload.contains("\"conversationId\":\"group_8\"")),
+                eq(900L)
+        );
+        verify(outboxService).enqueueAfterCommit(
+                eq("im-read-receipt-topic"),
+                eq("grr_8_3"),
+                argThat(payload -> payload != null && payload.contains("\"conversationId\":\"group_8\"")),
+                eq(900L)
+        );
     }
 
     @Test

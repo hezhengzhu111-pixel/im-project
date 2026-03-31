@@ -341,6 +341,23 @@
       append-to-body
     >
       <el-form :model="createGroupForm" label-width="80px">
+        <el-form-item label="群组头像">
+          <div class="create-group-avatar">
+            <el-avatar :size="48" :src="createGroupForm.avatar" shape="square">
+              {{ createGroupForm.name?.charAt(0) || "G" }}
+            </el-avatar>
+            <el-button size="small" @click="selectCreateGroupAvatar">
+              选择头像
+            </el-button>
+            <input
+              ref="createGroupAvatarInputRef"
+              type="file"
+              accept="image/*"
+              style="display: none"
+              @change="handleCreateGroupAvatarChange"
+            />
+          </div>
+        </el-form-item>
         <el-form-item label="群组名称">
           <el-input
             v-model="createGroupForm.name"
@@ -407,7 +424,6 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, watch, computed } from "vue";
-import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   ChatDotRound,
@@ -421,25 +437,19 @@ import {
   ArrowLeft,
 } from "@element-plus/icons-vue";
 import { useUserStore } from "@/stores/user";
-import { useWebSocketStore } from "@/stores/websocket";
 import { useChatStore } from "@/stores/chat";
 import { fileService } from "@/services";
 import MessageItem from "@/components/MessageItem.vue";
 import SideNavBar from "@/components/layout/SideNavBar.vue";
-import type { ChatSession, UserInfo } from "@/types";
-import type { Friendship } from "@/types/user";
+import type { ChatSession } from "@/types";
 import type { Group } from "@/types/group";
 
 // Composables
 import { useVoice } from "@/hooks/useVoice";
 import { useChatLogic } from "@/hooks/useChatLogic";
 
-// 路由
-const router = useRouter();
-
 // 状态管理
 const userStore = useUserStore();
-const wsStore = useWebSocketStore();
 const chatStore = useChatStore();
 
 // Composable usage
@@ -475,6 +485,7 @@ const {
 const messageListRef = ref<HTMLElement>();
 const imageInputRef = ref<HTMLInputElement>();
 const fileInputRef = ref<HTMLInputElement>();
+const createGroupAvatarInputRef = ref<HTMLInputElement>();
 
 // 响应式数据
 const messageInput = ref("");
@@ -518,7 +529,7 @@ const selectSession = (session: ChatSession) => {
 };
 
 const clearSession = () => {
-  chatStore.currentSession = null;
+  chatStore.clearCurrentSession();
 };
 
 const startChat = (contact: any) => {
@@ -541,17 +552,33 @@ const startChat = (contact: any) => {
 };
 
 const startGroupChat = (group: Group) => {
-  const session = chatStore.createOrGetSession(
-    "group",
-    group.id?.toString() || "",
-    group.groupName || "",
-    group.avatar,
-  );
+  const session = chatStore.openGroupSession(group);
   if (session) {
-    selectSession(session);
     activeTab.value = "chat";
   } else {
     ElMessage.error("无法创建群聊会话，请先登录");
+  }
+};
+
+const selectCreateGroupAvatar = () => {
+  createGroupAvatarInputRef.value?.click();
+};
+
+const handleCreateGroupAvatarChange = async (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const file = target.files?.[0];
+  if (!file) return;
+
+  try {
+    const response = await fileService.uploadImage(file);
+    if (response.code !== 200 || !response.data?.url) {
+      throw new Error(response.message || "群头像上传失败");
+    }
+    createGroupForm.avatar = response.data.url;
+  } catch (error: any) {
+    ElMessage.error(error.message || "群头像上传失败");
+  } finally {
+    target.value = "";
   }
 };
 
@@ -850,6 +877,12 @@ onUnmounted(() => {
 .friend-request-alert {
   padding: 10px;
   cursor: pointer;
+}
+
+.create-group-avatar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .session-list,
