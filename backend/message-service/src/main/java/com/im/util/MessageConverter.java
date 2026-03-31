@@ -40,6 +40,7 @@ public class MessageConverter {
                 .locationInfo(message.getLocationInfo())
                 .status(getStatusString(message.getStatus()))
                 .isGroupMessage(groupMessage)
+                .isGroupChat(groupMessage)
                 .isGroup(groupMessage)
                 .replyToMessageId(message.getReplyToMessageId())
                 .createdTime(message.getCreatedTime())

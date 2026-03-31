@@ -1,10 +1,9 @@
 package com.im.dto.request;
 
-import lombok.Data;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import java.util.List;
+import lombok.Data;
 
 /**
  * 创建群组请求DTO
@@ -30,4 +29,10 @@ public class CreateGroupRequest {
      */
     @Size(max = 500, message = "群公告不能超过500个字符")
     String announcement;
+
+    /**
+     * 群头像
+     */
+    @Size(max = 500, message = "群头像地址不能超过500个字符")
+    String avatar;
 }

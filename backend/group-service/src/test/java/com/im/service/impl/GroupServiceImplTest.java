@@ -5,9 +5,11 @@ import com.im.entity.GroupMember;
 import com.im.feign.UserServiceFeignClient;
 import com.im.mapper.GroupMapper;
 import com.im.mapper.GroupMemberMapper;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -43,10 +45,21 @@ class GroupServiceImplTest {
     void createGroupShouldRejectUnknownOwner() {
         when(userServiceFeignClient.exists(10L)).thenReturn(false);
 
-        assertThrows(IllegalArgumentException.class, () -> service.createGroup(10L, "test", 1, null));
+        assertThrows(IllegalArgumentException.class, () -> service.createGroup(10L, "test", 1, null, null));
 
         verify(groupMapper, never()).insert(any(Group.class));
         verify(groupMemberMapper, never()).insert(any(GroupMember.class));
+    }
+
+    @Test
+    void createGroupShouldPersistAvatar() {
+        when(userServiceFeignClient.exists(10L)).thenReturn(true);
+
+        service.createGroup(10L, "test", 1, "notice", "https://cdn.example.com/group.png");
+
+        ArgumentCaptor<Group> groupCaptor = ArgumentCaptor.forClass(Group.class);
+        verify(groupMapper).insert(groupCaptor.capture());
+        Assertions.assertEquals("https://cdn.example.com/group.png", groupCaptor.getValue().getAvatar());
     }
 
     @Test

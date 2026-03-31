@@ -67,6 +67,8 @@ const splitTextByCodePoints = (text: string, maxLen: number): string[] => {
   return chunks;
 };
 
+const CURRENT_SESSION_STORAGE_KEY = "im_current_session";
+
 export const useChatStore = defineStore("chat", () => {
   // 状态
   const currentSession = ref<ChatSession | null>(null);
@@ -75,7 +77,6 @@ export const useChatStore = defineStore("chat", () => {
   const friends = ref<Friendship[]>([]);
   const friendRequests = ref<FriendRequest[]>([]);
   const groups = ref<Group[]>([]);
-  const groupInvites = ref<any[]>([]);
   const loading = ref(false);
   const searchResults = ref<MessageSearchResult[]>([]);
   const unreadCounts = ref<Map<string, number>>(new Map());
@@ -103,9 +104,135 @@ export const useChatStore = defineStore("chat", () => {
     return [...sessions.value].sort((a, b) => {
       const aTime = new Date(a.lastActiveTime || 0).getTime();
       const bTime = new Date(b.lastActiveTime || 0).getTime();
-      return bTime - aTime;
+      const safeATime = Number.isFinite(aTime) ? aTime : 0;
+      const safeBTime = Number.isFinite(bTime) ? bTime : 0;
+      return safeBTime - safeATime;
     });
   });
+
+  const syncUnreadCountsFromSessions = () => {
+    unreadCounts.value = new Map(
+      sessions.value.map((session) => [session.id, Number(session.unreadCount || 0)]),
+    );
+  };
+
+  const syncGroupSessionsFromGroups = () => {
+    if (groups.value.length === 0 || sessions.value.length === 0) {
+      return;
+    }
+    sessions.value = sessions.value.map((session) => {
+      if (session.type !== "group") {
+        return session;
+      }
+      const group = groups.value.find(
+        (item) => String(item.id || "") === String(session.targetId || ""),
+      );
+      if (!group) {
+        return session;
+      }
+      return {
+        ...session,
+        targetName: group.groupName || group.name || session.targetName,
+        targetAvatar: group.avatar || session.targetAvatar || "",
+        memberCount:
+          group.memberCount != null
+            ? Number(group.memberCount)
+            : session.memberCount,
+      };
+    });
+    if (currentSession.value) {
+      const matched = sessions.value.find(
+        (item) => item.id === currentSession.value?.id,
+      );
+      if (matched) {
+        currentSession.value = matched;
+      }
+    }
+  };
+
+  const syncGroupConversationMeta = () => {
+    if (groups.value.length === 0) {
+      return;
+    }
+    groups.value = groups.value.map((group) => {
+      const session = sessions.value.find(
+        (item) =>
+          item.type === "group" &&
+          String(item.targetId || "") === String(group.id || ""),
+      );
+      const sessionTime = session?.lastActiveTime || "";
+      const normalizedSessionTime = Number.isFinite(
+        new Date(sessionTime).getTime(),
+      )
+        ? sessionTime
+        : "";
+      const derivedTime =
+        normalizedSessionTime || group.lastMessageTime || group.lastActivityAt || "";
+      return {
+        ...group,
+        unreadCount: session?.unreadCount || 0,
+        lastMessageTime: derivedTime,
+        lastActivityAt: derivedTime,
+      };
+    });
+  };
+
+  const persistCurrentSession = (session: ChatSession | null) => {
+    if (!session) {
+      localStorage.removeItem(CURRENT_SESSION_STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(
+      CURRENT_SESSION_STORAGE_KEY,
+      JSON.stringify({
+        type: session.type === "group" ? "group" : "private",
+        targetId: String(session.targetId || ""),
+      }),
+    );
+  };
+
+  const restorePersistedCurrentSession = () => {
+    try {
+      const raw = localStorage.getItem(CURRENT_SESSION_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        type?: "private" | "group";
+        targetId?: string;
+      };
+      if (!parsed?.type || !parsed?.targetId) {
+        localStorage.removeItem(CURRENT_SESSION_STORAGE_KEY);
+        return;
+      }
+
+      if (parsed.type === "group") {
+        const group =
+          groups.value.find((item) => String(item.id) === String(parsed.targetId)) ||
+          null;
+        if (group) {
+          void openGroupSession(group);
+        } else {
+          localStorage.removeItem(CURRENT_SESSION_STORAGE_KEY);
+        }
+        return;
+      }
+
+      const friend =
+        friends.value.find(
+          (item) => String(item.friendId || "") === String(parsed.targetId),
+        ) || null;
+      const session = createOrGetSession(
+        "private",
+        parsed.targetId,
+        friend?.remark || friend?.nickname || friend?.username || parsed.targetId,
+        friend?.avatar || "",
+      );
+      if (session) {
+        setCurrentSession(session);
+      }
+    } catch {
+      localStorage.removeItem(CURRENT_SESSION_STORAGE_KEY);
+    }
+  };
 
   // 获取会话ID
   const getSessionId = (
@@ -160,11 +287,19 @@ export const useChatStore = defineStore("chat", () => {
         targetAvatar: targetAvatar || "",
         lastMessage: undefined,
         unreadCount: 0,
-        lastActiveTime: new Date().toISOString(),
+        lastActiveTime: "",
         isPinned: false,
         isMuted: false,
       };
       sessions.value.push(session);
+      unreadCounts.value.set(session.id, 0);
+    } else {
+      if (targetName) {
+        session.targetName = targetName;
+      }
+      if (targetAvatar) {
+        session.targetAvatar = targetAvatar;
+      }
     }
 
     return session;
@@ -172,14 +307,44 @@ export const useChatStore = defineStore("chat", () => {
 
   // 设置当前会话
   const setCurrentSession = (session: ChatSession) => {
-    currentSession.value = session;
+    const matched = sessions.value.find((item) => item.id === session.id) || session;
+    currentSession.value = matched;
+    persistCurrentSession(matched);
 
-    if (session.unreadCount > 0) {
-      session.unreadCount = 0;
-      unreadCounts.value.set(session.id, 0);
+    if (matched.unreadCount > 0) {
+      matched.unreadCount = 0;
+      unreadCounts.value.set(matched.id, 0);
+      syncGroupConversationMeta();
     }
 
-    loadMessages(session.id);
+    loadMessages(matched.id);
+  };
+
+  const clearCurrentSession = () => {
+    currentSession.value = null;
+    persistCurrentSession(null);
+  };
+
+  const openGroupSession = (group: Group) => {
+    const groupId = String(group.id || "").trim();
+    if (!groupId) {
+      return null;
+    }
+    const session = createOrGetSession(
+      "group",
+      groupId,
+      group.groupName || group.name || groupId,
+      group.avatar,
+    );
+    if (!session) {
+      return null;
+    }
+    if (group.memberCount != null) {
+      session.memberCount = Number(group.memberCount);
+    }
+    setCurrentSession(session);
+    syncGroupConversationMeta();
+    return session;
   };
 
   // 加载消息
@@ -325,6 +490,10 @@ export const useChatStore = defineStore("chat", () => {
       }
 
       if (response.code === 200 && response.data) {
+        const latestSession = sessions.value.find((s) => s.id === sessionId);
+        if (!latestSession) {
+          return;
+        }
         const existingMessages = messages.value.get(sessionId) || [];
 
         const normalizedMessages = response.data.map((msg: any) => {
@@ -570,7 +739,13 @@ export const useChatStore = defineStore("chat", () => {
   // 添加消息
   const addMessage = (message: Message) => {
     let sessionId = "";
-    if (message.isGroupChat && message.groupId) {
+    const isGroupMessage = Boolean(
+      message.isGroupChat ||
+        (message as any).isGroupMessage ||
+        (message as any).isGroup ||
+        message.groupId,
+    );
+    if (isGroupMessage && message.groupId) {
       sessionId = getSessionId("group", message.groupId.toString());
       if (!sessions.value.find((s) => s.id === sessionId)) {
         const group = groups.value.find(
@@ -643,6 +818,7 @@ export const useChatStore = defineStore("chat", () => {
         unreadCounts.value.set(sessionId, session.unreadCount);
       }
     }
+    syncGroupConversationMeta();
   };
 
   // 加载会话列表
@@ -748,7 +924,29 @@ export const useChatStore = defineStore("chat", () => {
             }
           });
 
-        sessions.value = Array.from(uniqueSessions.values());
+        sessions.value = Array.from(uniqueSessions.values()).map((session) => {
+          if (session.type !== "group") {
+            return session;
+          }
+          const group = groups.value.find(
+            (item) => String(item.id || "") === String(session.targetId || ""),
+          );
+          if (group?.memberCount != null) {
+            session.memberCount = Number(group.memberCount);
+          }
+          return session;
+        });
+        syncGroupSessionsFromGroups();
+        syncUnreadCountsFromSessions();
+        syncGroupConversationMeta();
+        if (currentSession.value) {
+          const matched = sessions.value.find(
+            (item) => item.id === currentSession.value?.id,
+          );
+          if (matched) {
+            currentSession.value = matched;
+          }
+        }
       }
     } catch (error) {
       console.error("加载会话列表失败:", error);
@@ -782,6 +980,8 @@ export const useChatStore = defineStore("chat", () => {
 
       if (response.code === 200 && response.data) {
         groups.value = response.data;
+        syncGroupSessionsFromGroups();
+        syncGroupConversationMeta();
       }
     } catch (error) {
       console.error("加载群组列表失败:", error);
@@ -896,7 +1096,7 @@ export const useChatStore = defineStore("chat", () => {
           currentSession.value?.type === "private" &&
           currentSession.value.targetId === friendId
         ) {
-          currentSession.value = null;
+          clearCurrentSession();
         }
       } else {
         throw new Error(response.message || "删除失败");
@@ -949,6 +1149,7 @@ export const useChatStore = defineStore("chat", () => {
         name: params.name,
         type: 1,
         announcement: params.description,
+        avatar: params.avatar,
         memberIds: params.memberIds,
       });
 
@@ -961,7 +1162,14 @@ export const useChatStore = defineStore("chat", () => {
             String(useUserStore().userId || ""),
           );
         }
-        await loadGroups();
+        await Promise.all([loadGroups(), loadSessions()]);
+        if (response.data) {
+          const refreshedGroup =
+            groups.value.find((item) => String(item.id) === String(groupId)) ||
+            response.data;
+          openGroupSession(refreshedGroup);
+        }
+        return response.data;
       } else {
         throw new Error(response.message || "创建群组失败");
       }
@@ -1143,50 +1351,27 @@ export const useChatStore = defineStore("chat", () => {
     }
   };
 
-  // 加载群组邀请
-  const loadGroupInvites = async () => {
-    try {
-      groupInvites.value = [];
-    } catch (error) {
-      console.error("加载群组邀请失败:", error);
-    }
-  };
-
-  // 接受群组邀请
-  const acceptGroupInvite = async (inviteId: string) => {
-    try {
-      void inviteId;
-      await Promise.all([loadGroups(), loadGroupInvites()]);
-    } catch (error) {
-      console.error("接受群组邀请失败:", error);
-      throw error;
-    }
-  };
-
-  // 拒绝群组邀请
-  const rejectGroupInvite = async (inviteId: string) => {
-    try {
-      void inviteId;
-      await loadGroupInvites();
-    } catch (error) {
-      console.error("拒绝群组邀请失败:", error);
-      throw error;
-    }
-  };
-
   // 退出群组
   const leaveGroup = async (groupId: string) => {
     try {
       const response = await groupService.quit(groupId);
       if (response.code === 200) {
+        const sessionId = getSessionId("group", groupId);
         groups.value = groups.value.filter((g) => g.id !== groupId);
+        sessions.value = sessions.value.filter((session) => session.id !== sessionId);
+        unreadCounts.value.delete(sessionId);
+        readSessionLastAt.value.delete(sessionId);
+        readSessionLocks.value.delete(sessionId);
+        messages.value.delete(sessionId);
+        await messageRepo.clearConversation(sessionId);
         // 如果当前会话是该群组，则清除当前会话
         if (
           currentSession.value?.type === "group" &&
           currentSession.value.targetId === groupId
         ) {
-          currentSession.value = null;
+          clearCurrentSession();
         }
+        syncGroupConversationMeta();
       } else {
         throw new Error(response.message || "退出失败");
       }
@@ -1219,17 +1404,20 @@ export const useChatStore = defineStore("chat", () => {
       loadGroups(),
       loadSessions(),
     ]);
+    restorePersistedCurrentSession();
   };
 
   // 清空状态
   const clear = () => {
-    currentSession.value = null;
+    clearCurrentSession();
     sessions.value = [];
     messages.value.clear();
     friends.value = [];
     groups.value = [];
     searchResults.value = [];
     unreadCounts.value.clear();
+    readSessionLocks.value.clear();
+    readSessionLastAt.value.clear();
   };
 
   return {
@@ -1239,7 +1427,6 @@ export const useChatStore = defineStore("chat", () => {
     friends,
     friendRequests,
     groups,
-    groupInvites,
     loading,
     searchResults,
     unreadCounts,
@@ -1247,7 +1434,9 @@ export const useChatStore = defineStore("chat", () => {
     totalUnreadCount,
     sortedSessions,
     createOrGetSession,
+    openGroupSession,
     setCurrentSession,
+    clearCurrentSession,
     loadMessages,
     sendMessage,
     addMessage,
@@ -1262,9 +1451,6 @@ export const useChatStore = defineStore("chat", () => {
     updateFriendRemark,
     createGroup,
     loadGroups,
-    loadGroupInvites,
-    acceptGroupInvite,
-    rejectGroupInvite,
     leaveGroup,
     searchMessages,
     deleteMessage,
