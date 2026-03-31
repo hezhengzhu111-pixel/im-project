@@ -55,6 +55,8 @@ class MessageConverterContractTest {
 
         assertNotNull(dto);
         assertEquals(true, dto.getIsGroupMessage());
+        assertEquals(true, dto.getIsGroupChat());
+        assertEquals(true, dto.isGroup());
         assertNotNull(dto.getGroupMembers());
         assertEquals(3, dto.getGroupMembers().size());
         assertEquals("普通成员", dto.getGroupMembers().get(0).getRoleName());

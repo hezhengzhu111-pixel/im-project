@@ -108,7 +108,7 @@ class GroupControllerAuthorizationTest {
         groupInfo.setId(88L);
         groupInfo.setName("Test Group");
         
-        when(groupService.createGroup(eq(1L), eq("Test Group"), eq(1), any())).thenReturn(groupInfo);
+        when(groupService.createGroup(eq(1L), eq("Test Group"), eq(1), any(), any())).thenReturn(groupInfo);
 
         mockMvc.perform(post("/s/create")
                         .requestAttr("userId", 1L)
