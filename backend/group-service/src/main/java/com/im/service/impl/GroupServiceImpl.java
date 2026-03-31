@@ -34,7 +34,7 @@ public class GroupServiceImpl implements GroupService {
     
     @Override
     @Transactional
-    public GroupInfoDTO createGroup(Long ownerId, String name, Integer type, String announcement) {
+    public GroupInfoDTO createGroup(Long ownerId, String name, Integer type, String announcement, String avatar) {
         if (ownerId == null) {
             throw new IllegalArgumentException("群主不能为空");
         }
@@ -47,7 +47,7 @@ public class GroupServiceImpl implements GroupService {
         requireUserExists(ownerId);
         
         // 创建群组实体
-        Group group = buildGroupEntity(ownerId, name, type, announcement);
+        Group group = buildGroupEntity(ownerId, name, type, announcement, avatar);
         groupMapper.insert(group);
         Group savedGroup = group;
         
@@ -380,7 +380,7 @@ public class GroupServiceImpl implements GroupService {
     /**
      * 构建群组实体
      */
-    private Group buildGroupEntity(Long ownerId, String name, Integer type, String announcement) {
+    private Group buildGroupEntity(Long ownerId, String name, Integer type, String announcement, String avatar) {
         Group group = new Group();
         group.setName(name);
         group.setOwnerId(ownerId);
@@ -389,6 +389,9 @@ public class GroupServiceImpl implements GroupService {
         group.setStatus(true);
         if (announcement != null) {
             group.setAnnouncement(announcement);
+        }
+        if (avatar != null && !avatar.isBlank()) {
+            group.setAvatar(avatar.trim());
         }
         return group;
     }

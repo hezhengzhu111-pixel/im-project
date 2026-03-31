@@ -21,6 +21,8 @@ export interface Message {
   groupName?: string;
   groupAvatar?: string;
   isGroupChat?: boolean;
+  isGroupMessage?: boolean;
+  isGroup?: boolean;
   type?: MessageType;
   messageType: MessageType;
   content: string;

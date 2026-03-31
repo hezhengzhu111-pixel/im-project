@@ -21,54 +21,6 @@
         />
       </div>
 
-      <!-- 群组邀请 -->
-      <el-card v-if="groupInvites.length > 0" class="invites-card">
-        <template #header>
-          <div class="card-header">
-            <span>群组邀请</span>
-            <el-badge :value="groupInvites.length" class="badge" />
-          </div>
-        </template>
-
-        <div class="invite-list">
-          <div
-            v-for="invite in groupInvites"
-            :key="invite.id"
-            class="invite-item"
-          >
-            <el-avatar :size="40" :src="invite.groupAvatar">
-              {{ invite.groupName?.charAt(0) || "G" }}
-            </el-avatar>
-
-            <div class="invite-info">
-              <div class="invite-group">{{ invite.groupName }}</div>
-              <div class="invite-inviter">
-                {{ invite.inviterName }} 邀请您加入群组
-              </div>
-              <div class="invite-time">{{ formatTime(invite.createTime) }}</div>
-            </div>
-
-            <div class="invite-actions">
-              <el-button
-                type="primary"
-                size="small"
-                @click="acceptGroupInvite(invite.id)"
-                :loading="processingInvite === invite.id"
-              >
-                同意
-              </el-button>
-              <el-button
-                size="small"
-                @click="rejectGroupInvite(invite.id)"
-                :loading="processingInvite === invite.id"
-              >
-                拒绝
-              </el-button>
-            </div>
-          </div>
-        </div>
-      </el-card>
-
       <!-- 群组列表 -->
       <el-card class="groups-card">
         <template #header>
@@ -229,9 +181,9 @@
               <div class="selected-list">
                 <el-tag
                   v-for="member in selectedMembers"
-                  :key="member.id"
+                  :key="member.friendId"
                   closable
-                  @close="removeMember(member.id)"
+                  @close="removeMember(member.friendId)"
                   class="member-tag"
                 >
                   {{ member.nickname || member.username }}
@@ -351,7 +303,6 @@ const avatarInputRef = ref<HTMLInputElement>();
 // 响应式数据
 const loading = ref(false);
 const creating = ref(false);
-const processingInvite = ref("");
 const showCreateGroup = ref(false);
 const showGroupInfo = ref(false);
 const searchKeyword = ref("");
@@ -369,9 +320,10 @@ const createGroupForm = reactive({
 
 // 计算属性
 const groups = computed(() => chatStore.groups || []);
-const groupInvites = computed(() => chatStore.groupInvites || []);
 const friends = computed(() => chatStore.friends || []);
-const currentUserId = computed(() => userStore.userInfo?.id || "");
+const currentUserId = computed(
+  () => String(userStore.userId || userStore.userInfo?.id || ""),
+);
 
 const filteredGroups = computed(() => {
   let result = [...groups.value];
@@ -448,7 +400,7 @@ const isGroupOwner = (group: Group): boolean => {
 };
 
 const isSelected = (friendId: string): boolean => {
-  return selectedMembers.value.some((member) => member.id === friendId);
+  return selectedMembers.value.some((member) => member.friendId === friendId);
 };
 
 const handleSearch = () => {
@@ -465,7 +417,7 @@ const searchFriends = () => {
 
 const toggleMember = (friend: Friend) => {
   const index = selectedMembers.value.findIndex(
-    (member) => member.id === friend.id,
+    (member) => member.friendId === friend.friendId,
   );
   if (index > -1) {
     selectedMembers.value.splice(index, 1);
@@ -476,7 +428,7 @@ const toggleMember = (friend: Friend) => {
 
 const removeMember = (friendId: string) => {
   const index = selectedMembers.value.findIndex(
-    (member) => member.id === friendId,
+    (member) => member.friendId === friendId,
   );
   if (index > -1) {
     selectedMembers.value.splice(index, 1);
@@ -519,11 +471,12 @@ const createGroup = async () => {
       name: createGroupForm.name,
       description: createGroupForm.description,
       avatar: createGroupForm.avatar,
-      memberIds: selectedMembers.value.map((member) => member.id),
+      memberIds: selectedMembers.value.map((member) => member.friendId),
     });
 
     ElMessage.success("群组创建成功");
     showCreateGroup.value = false;
+    await router.push("/chat");
 
     // 重置表单
     Object.assign(createGroupForm, {
@@ -540,45 +493,12 @@ const createGroup = async () => {
   }
 };
 
-const acceptGroupInvite = async (inviteId: string) => {
-  try {
-    processingInvite.value = inviteId;
-
-    await chatStore.acceptGroupInvite(inviteId);
-    ElMessage.success("已加入群组");
-  } catch (error: any) {
-    ElMessage.error(error.message || "处理群组邀请失败");
-  } finally {
-    processingInvite.value = "";
-  }
-};
-
-const rejectGroupInvite = async (inviteId: string) => {
-  try {
-    processingInvite.value = inviteId;
-
-    await chatStore.rejectGroupInvite(inviteId);
-    ElMessage.success("已拒绝群组邀请");
-  } catch (error: any) {
-    ElMessage.error(error.message || "处理群组邀请失败");
-  } finally {
-    processingInvite.value = "";
-  }
-};
-
 const openChat = (group: Group) => {
-  chatStore.setCurrentSession({
-    id: group.id,
-    type: "group",
-    targetId: group.id, // Add targetId
-    targetName: group.groupName || "", // Use targetName
-    targetAvatar: group.avatar,
-    lastMessage: undefined,
-    lastActiveTime: "",
-    unreadCount: 0,
-    isPinned: false,
-    isMuted: false,
-  });
+  const session = chatStore.openGroupSession(group);
+  if (!session) {
+    ElMessage.error("无法打开群聊");
+    return;
+  }
 
   router.push("/chat");
 };
@@ -701,7 +621,6 @@ const loadGroups = async () => {
   try {
     loading.value = true;
     await chatStore.loadGroups();
-    await chatStore.loadGroupInvites();
   } catch (error: any) {
     ElMessage.error(error.message || "加载群组列表失败");
   } finally {

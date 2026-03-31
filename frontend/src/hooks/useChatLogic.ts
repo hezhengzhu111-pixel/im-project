@@ -25,6 +25,7 @@ export function useChatLogic() {
   const createGroupForm = reactive({
     name: "",
     description: "",
+    avatar: "",
     memberIds: [] as string[],
   });
 
@@ -161,13 +162,16 @@ export function useChatLogic() {
       await chatStore.createGroup({
         name: createGroupForm.name,
         description: createGroupForm.description,
+        avatar: createGroupForm.avatar,
         memberIds: createGroupForm.memberIds,
       });
       ElMessage.success("群组创建成功");
       showCreateGroup.value = false;
+      activeTab.value = "chat";
       Object.assign(createGroupForm, {
         name: "",
         description: "",
+        avatar: "",
         memberIds: [],
       });
     } catch (error: any) {

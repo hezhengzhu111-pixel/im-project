@@ -49,9 +49,20 @@ export const normalizeMessageBase = (
   message: RawMessage,
   fallbackSendTime?: string,
 ) => {
+  const receiverId =
+    message.receiverId ?? message.receiver?.id ?? message.receiver_id;
+  const groupId = message.groupId ?? message.group?.id ?? message.group_id;
+  const isGroupMessage =
+    message.isGroupChat ??
+    message.isGroupMessage ??
+    message.isGroup ??
+    (groupId != null && groupId !== "");
+
   return {
     ...message,
     senderId: message.senderId || message.sender?.id || message.sender_id,
+    receiverId,
+    groupId,
     messageType: message.messageType || message.type || "TEXT",
     type: message.type || message.messageType || "TEXT",
     senderName:
@@ -59,6 +70,9 @@ export const normalizeMessageBase = (
       message.sender?.nickname ||
       message.sender?.username,
     senderAvatar: message.senderAvatar || message.sender?.avatar,
+    isGroupChat: Boolean(isGroupMessage),
+    isGroupMessage: Boolean(isGroupMessage),
+    isGroup: Boolean(isGroupMessage),
     content: typeof message.content === "string" ? message.content : "",
     sendTime: normalizeMessageSendTime(message, fallbackSendTime),
     status: normalizeMessageStatus(message.status),

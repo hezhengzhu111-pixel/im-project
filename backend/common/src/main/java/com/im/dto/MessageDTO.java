@@ -62,7 +62,10 @@ public class MessageDTO {
     // 消息的状态，如发送中、已发送等
     private String status;
     // 标识是否为群消息
+    @JsonProperty("isGroupMessage")
     private Boolean isGroupMessage;
+    @JsonProperty("isGroupChat")
+    private Boolean isGroupChat;
     // 如果消息是对另一条消息的回复，则为被回复消息的ID
     @JsonSerialize(using = ToStringSerializer.class)
     private Long replyToMessageId;
@@ -79,6 +82,7 @@ public class MessageDTO {
     @JsonProperty("read_at")
     private LocalDateTime readAt;
     // 标识是否为群聊消息
+    @JsonProperty("isGroup")
     private boolean isGroup;
     // 如果是群消息，包含群成员的信息
     private List<GroupMemberDTO> groupMembers;

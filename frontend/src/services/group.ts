@@ -25,8 +25,8 @@ const normalizeGroup = (raw: RawGroup): Group => {
 };
 
 const normalizeMemberRole = (role: unknown): string => {
-  if (role === 2 || role === "2" || role === "OWNER") return "OWNER";
-  if (role === 1 || role === "1" || role === "ADMIN") return "ADMIN";
+  if (role === 3 || role === "3" || role === "OWNER") return "OWNER";
+  if (role === 2 || role === "2" || role === "ADMIN") return "ADMIN";
   return "MEMBER";
 };
 
