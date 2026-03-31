@@ -4,8 +4,7 @@ import org.springframework.boot.availability.ApplicationAvailability;
 import org.springframework.boot.availability.ReadinessState;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
-import org.springframework.kafka.listener.MessageListenerContainer;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -17,11 +16,12 @@ import java.util.Map;
 public class HealthController {
 
     private final ApplicationAvailability availability;
-    private final KafkaListenerEndpointRegistry kafkaRegistry;
+    private final RedisMessageListenerContainer redisMessageListenerContainer;
 
-    public HealthController(ApplicationAvailability availability, KafkaListenerEndpointRegistry kafkaRegistry) {
+    public HealthController(ApplicationAvailability availability,
+                            RedisMessageListenerContainer redisMessageListenerContainer) {
         this.availability = availability;
-        this.kafkaRegistry = kafkaRegistry;
+        this.redisMessageListenerContainer = redisMessageListenerContainer;
     }
 
     @GetMapping("/health")
@@ -36,21 +36,15 @@ public class HealthController {
     @GetMapping("/ready")
     public ResponseEntity<Map<String, Object>> ready() {
         boolean acceptingTraffic = availability.getReadinessState() == ReadinessState.ACCEPTING_TRAFFIC;
-        boolean kafkaRunning = true;
-        for (MessageListenerContainer container : kafkaRegistry.getListenerContainers()) {
-            if (!container.isRunning()) {
-                kafkaRunning = false;
-                break;
-            }
-        }
+        boolean redisSubscriberRunning = redisMessageListenerContainer.isRunning();
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("service", "im-server");
         body.put("time", Instant.now().toString());
         body.put("readinessState", availability.getReadinessState().name());
-        body.put("kafkaListenersRunning", kafkaRunning);
+        body.put("redisSubscriberRunning", redisSubscriberRunning);
 
-        if (acceptingTraffic && kafkaRunning) {
+        if (acceptingTraffic && redisSubscriberRunning) {
             body.put("status", "READY");
             return ResponseEntity.ok(body);
         }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 
 const issueWsTicket = vi.fn();
-const heartbeat = vi.fn();
+const checkOnlineStatus = vi.fn();
 const syncOfflineMessages = vi.fn();
 const addMessage = vi.fn();
 const loadFriendRequests = vi.fn();
@@ -18,17 +18,8 @@ class FakeWebSocket {
 
   url: string;
   onopen: (() => void) | null = null;
-  onmessage:
-    | ((event: {
-        data: string;
-      }) => void)
-    | null = null;
-  onclose:
-    | ((event: {
-        code: number;
-        reason: string;
-      }) => void)
-    | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onclose: ((event: { code: number; reason: string }) => void) | null = null;
   onerror: ((event: unknown) => void) | null = null;
   sent: string[] = [];
 
@@ -55,11 +46,11 @@ vi.mock("element-plus", () => ({
 }));
 
 vi.mock("@/services", () => ({
-  authApi: {
+  authService: {
     issueWsTicket,
   },
-  imApi: {
-    heartbeat,
+  userService: {
+    checkOnlineStatus,
   },
 }));
 
@@ -87,7 +78,7 @@ describe("websocket store", () => {
     setActivePinia(createPinia());
     FakeWebSocket.instances = [];
     issueWsTicket.mockReset();
-    heartbeat.mockReset();
+    checkOnlineStatus.mockReset();
     syncOfflineMessages.mockReset();
     addMessage.mockReset();
     loadFriendRequests.mockReset();
@@ -107,7 +98,7 @@ describe("websocket store", () => {
       code: 200,
       data: {
         ticket: "ticket-123",
-        expiresInMs: 30000,
+        expiresInMs: 30_000,
       },
     });
 
@@ -136,7 +127,7 @@ describe("websocket store", () => {
         code: 200,
         data: {
           ticket: "ticket-456",
-          expiresInMs: 30000,
+          expiresInMs: 30_000,
         },
       });
 

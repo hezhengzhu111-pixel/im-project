@@ -18,10 +18,10 @@ public class MessageRetryController {
 
     private final MessageOutboxMapper outboxMapper;
     private final OutboxService outboxService;
-    @Value("${im.kafka.topic.private-message:im-private-message-topic}")
-    private String privateMessageTopic = "im-private-message-topic";
-    @Value("${im.kafka.topic.group-message:im-group-message-topic}")
-    private String groupMessageTopic = "im-group-message-topic";
+    @Value("${im.outbox.topic.private-message:PRIVATE_MESSAGE}")
+    private String privateMessageTopic = "PRIVATE_MESSAGE";
+    @Value("${im.outbox.topic.group-message:GROUP_MESSAGE}")
+    private String groupMessageTopic = "GROUP_MESSAGE";
 
     @PostMapping("/private/{messageId}")
     public ApiResponse<Void> retryPrivate(@PathVariable("messageId") Long messageId) {
@@ -42,7 +42,7 @@ public class MessageRetryController {
             if (latest == null) {
                 return ApiResponse.notFound("未找到可重投的消息事件");
             }
-            outboxService.enqueueAfterCommit(latest.getTopic(), latest.getMessageKey(), latest.getPayload(), messageId);
+            outboxService.enqueueAfterCommit(latest);
             return ApiResponse.success("已触发重投", null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.badRequest(e.getMessage());

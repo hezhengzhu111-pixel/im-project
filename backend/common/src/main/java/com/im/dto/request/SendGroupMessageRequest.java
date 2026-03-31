@@ -14,6 +14,9 @@ public class SendGroupMessageRequest {
     
     @NotNull(message = "群组ID不能为空")
     private String groupId;
+
+    @Size(max = 64, message = "clientMessageId过长")
+    private String clientMessageId;
     
     private MessageType messageType = MessageType.TEXT;
     

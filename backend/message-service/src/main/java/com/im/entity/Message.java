@@ -32,6 +32,12 @@ public class Message extends BaseEntity {
      */
     @TableField("group_id")
     private Long groupId;
+
+    /**
+     * 客户端生成的幂等消息ID
+     */
+    @TableField("client_message_id")
+    private String clientMessageId;
     
     /**
      * 消息类型：1-文本，2-图片，3-文件，4-语音，5-视频，6-位置，7-系统消息

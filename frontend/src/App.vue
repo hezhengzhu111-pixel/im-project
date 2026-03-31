@@ -24,11 +24,12 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
 import { useUserStore } from "@/stores/user";
 import { useWebSocketStore } from "@/stores/websocket";
 import { useChatStore } from "@/stores/chat";
 import { APP_CONFIG } from "@/config";
-import { ElMessage } from "element-plus";
+import { logger } from "@/utils/logger";
 
 // 状态
 const loading = ref(false);
@@ -38,6 +39,7 @@ const router = useRouter();
 const userStore = useUserStore();
 const webSocketStore = useWebSocketStore();
 const chatStore = useChatStore();
+const bootstrapped = ref(false);
 
 // 页面可见性状态
 let isPageVisible = true;
@@ -55,7 +57,7 @@ const initApp = async () => {
       await initUserServices();
     }
   } catch (error) {
-    console.error("应用初始化失败:", error);
+    logger.error("app initialization failed", error);
     ElMessage.error("应用初始化失败");
   } finally {
     loading.value = false;
@@ -64,17 +66,23 @@ const initApp = async () => {
 
 // 初始化用户相关服务
 const initUserServices = async () => {
-  try {
-    // 初始化聊天数据
-    await chatStore.init();
-
-    // 连接WebSocket
-    if (userStore.userId) {
-      webSocketStore.connect(userStore.userId);
-    }
-  } catch (error) {
-    console.error("用户服务初始化失败:", error);
+  if (!userStore.isLoggedIn || !userStore.userId || bootstrapped.value) {
+    return;
   }
+  try {
+    await chatStore.initChatBootstrap();
+
+    await webSocketStore.connect(String(userStore.userId));
+    bootstrapped.value = true;
+  } catch (error) {
+    logger.error("failed to initialize authenticated services", error);
+  }
+};
+
+const resetUserServices = () => {
+  bootstrapped.value = false;
+  webSocketStore.disconnect();
+  chatStore.clear();
 };
 
 // 处理页面可见性变化
@@ -86,14 +94,9 @@ const handleVisibilityChange = () => {
 
     if (userStore.isLoggedIn && userStore.userId) {
       if (isVisible) {
-        // 页面变为可见，重新连接WebSocket
         if (!webSocketStore.isConnected) {
-          console.log("页面变为可见，重新连接WebSocket");
-          webSocketStore.connect(userStore.userId);
+          void webSocketStore.connect(String(userStore.userId));
         }
-      } else {
-        // 页面变为隐藏，保持连接但可以降低心跳频率
-        console.log("页面变为隐藏");
       }
     }
   }
@@ -111,12 +114,9 @@ watch(
   () => userStore.isLoggedIn,
   async (isLoggedIn) => {
     if (isLoggedIn) {
-      // 用户登录，初始化服务
       await initUserServices();
     } else {
-      // 用户登出，清理状态
-      webSocketStore.disconnect();
-      chatStore.clear();
+      resetUserServices();
     }
   },
 );
@@ -140,33 +140,25 @@ watch(
 
 // 组件挂载
 onMounted(async () => {
-  // 初始化应用
   await initApp();
 
-  // 添加事件监听器
   document.addEventListener("visibilitychange", handleVisibilityChange);
   window.addEventListener("beforeunload", handleBeforeUnload);
 
-  // 请求通知权限
   if ("Notification" in window && Notification.permission === "default") {
     try {
       await Notification.requestPermission();
     } catch (error) {
-      console.warn("请求通知权限失败:", error);
+      logger.warn("notification permission request failed", error);
     }
   }
 });
 
-// 组件卸载
 onUnmounted(() => {
-  // 移除事件监听器
   document.removeEventListener("visibilitychange", handleVisibilityChange);
   window.removeEventListener("beforeunload", handleBeforeUnload);
 
-  // 断开WebSocket连接
-  if (webSocketStore.isConnected) {
-    webSocketStore.disconnect();
-  }
+  resetUserServices();
 });
 </script>
 

@@ -3,6 +3,7 @@ package com.im.gateway.filter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.im.dto.ApiResponse;
 import com.im.dto.AuthUserResourceDTO;
 import com.im.dto.TokenParseResultDTO;
 import com.im.security.SecurityPaths;
@@ -16,6 +17,7 @@ import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
@@ -73,6 +75,9 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     @Value("${jwt.prefix:Bearer }")
     private String jwtPrefix;
 
+    @Value("${im.auth.cookie.access-token-name:IM_ACCESS_TOKEN}")
+    private String accessTokenCookieName;
+
     public JwtAuthGlobalFilter(ReactiveStringRedisTemplate redisTemplate,
                                ObjectMapper objectMapper,
                                @Qualifier("plainWebClientBuilder") WebClient.Builder plainWebClientBuilder,
@@ -113,8 +118,21 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         String path = exchange.getRequest().getURI().getPath();
         String internalHeaderValue = exchange.getRequest().getHeaders().getFirst(internalHeaderName);
         String authHeader = exchange.getRequest().getHeaders().getFirst(jwtHeader);
-        String token = extractTokenFromHeader(authHeader);
+        String token = extractToken(exchange, authHeader);
         return new FilterInput(path, internalHeaderValue, token);
+    }
+
+    private String extractToken(ServerWebExchange exchange, String authHeader) {
+        String token = extractTokenFromHeader(authHeader);
+        if (token != null && !token.isBlank()) {
+            return token;
+        }
+        var cookie = exchange.getRequest().getCookies().getFirst(accessTokenCookieName);
+        if (cookie == null) {
+            return null;
+        }
+        String value = cookie.getValue();
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private InputStageResult filterInputStage(FilterInput input) {
@@ -265,7 +283,8 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 .header("X-Check-Revoked", String.valueOf(tokenRevocationCheckEnabled))
                 .bodyValue(token)
                 .retrieve()
-                .bodyToMono(TokenParseResultDTO.class)
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<TokenParseResultDTO>>() {})
+                .flatMap(this::extractApiData)
                 .doOnNext(res -> {
                     if (res != null) {
                         tokenCache.put(token, res);
@@ -297,7 +316,8 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                         .build(userId))
                 .header(internalHeaderName, internalSecret)
                 .retrieve()
-                .bodyToMono(AuthUserResourceDTO.class)
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<AuthUserResourceDTO>>() {})
+                .flatMap(this::extractApiData)
                 .doOnNext(res -> {
                     if (res != null) {
                         resourceCache.put(userId, res);
@@ -324,6 +344,13 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         } catch (Exception e) {
             return "null";
         }
+    }
+
+    private <T> Mono<T> extractApiData(ApiResponse<T> response) {
+        if (response == null || !Integer.valueOf(200).equals(response.getCode()) || response.getData() == null) {
+            return Mono.empty();
+        }
+        return Mono.just(response.getData());
     }
 
     private String extractTokenFromHeader(String authHeader) {

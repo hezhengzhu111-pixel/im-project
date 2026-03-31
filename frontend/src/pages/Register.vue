@@ -154,6 +154,7 @@ import { useRouter } from "vue-router";
 import { ElMessage, ElForm } from "element-plus";
 import { useUserStore } from "@/stores/user";
 import type { RegisterForm } from "@/types";
+import { logger } from "@/utils/logger";
 
 // 路由
 const router = useRouter();
@@ -253,7 +254,7 @@ const handleRegister = async () => {
     // 跳转到登录页面
     router.push("/login");
   } catch (error: any) {
-    console.error("注册失败:", error);
+    logger.error("register flow failed", error);
     ElMessage.error(error.message || "注册失败，请重试");
   }
 };

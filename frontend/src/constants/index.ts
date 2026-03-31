@@ -81,15 +81,6 @@ export const WS_EVENTS = {
   HEARTBEAT: "heartbeat",
 } as const;
 
-// 本地存储键名
-export const STORAGE_KEYS = {
-  TOKEN: "access_token",
-  REFRESH_TOKEN: "refresh_token",
-  USER_INFO: "user_info",
-  CHAT_SETTINGS: "chat_settings",
-  THEME: "theme",
-} as const;
-
 // API响应状态码
 export const API_CODES = {
   SUCCESS: 200,

@@ -70,6 +70,7 @@ import { useRouter, useRoute } from "vue-router";
 import { ElForm } from "element-plus";
 import { useUserStore } from "@/stores/user";
 import type { LoginForm } from "@/types";
+import { logger } from "@/utils/logger";
 
 // 路由
 const router = useRouter();
@@ -127,7 +128,7 @@ const handleLogin = async () => {
       router.replace(redirectPath);
     }
   } catch (error: any) {
-    console.error("登录流程失败:", error);
+    logger.error("login flow failed", error);
     // 错误消息已在 store 中处理
   }
 };

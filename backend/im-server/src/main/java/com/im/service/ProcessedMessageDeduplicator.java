@@ -15,7 +15,7 @@ public class ProcessedMessageDeduplicator {
     private final RedissonClient redissonClient;
     private RMapCache<String, Boolean> processedCache;
 
-    @Value("${im.kafka.idempotency.ttl-ms:600000}")
+    @Value("${im.ws.idempotency.ttl-ms:600000}")
     private long ttlMs;
 
     public ProcessedMessageDeduplicator(RedissonClient redissonClient) {
@@ -27,7 +27,14 @@ public class ProcessedMessageDeduplicator {
         processedCache = redissonClient.getMapCache(CACHE_NAME);
     }
 
-    public boolean tryMarkProcessed(String messageIdAndStatus) {
+    public boolean isProcessed(String messageIdAndStatus) {
+        if (messageIdAndStatus == null) {
+            return false;
+        }
+        return processedCache.containsKey(messageIdAndStatus);
+    }
+
+    public boolean markProcessed(String messageIdAndStatus) {
         if (messageIdAndStatus == null) {
             return false;
         }

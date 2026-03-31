@@ -2,11 +2,12 @@ import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 import { ElMessage, ElNotification } from "element-plus";
 import { STORAGE_CONFIG, WS_CONFIG } from "@/config";
-import { authApi, imApi } from "@/services";
+import { authService, userService } from "@/services";
+import { normalizeMessage } from "@/normalizers/message";
 import type { Message, OnlineStatus, WebSocketMessage } from "@/types";
-import { normalizeMessageBase } from "@/utils/messageNormalize";
-import { useChatStore } from "./chat";
-import { useUserStore } from "./user";
+import { useChatStore } from "@/stores/chat";
+import { useUserStore } from "@/stores/user";
+import { logger } from "@/utils/logger";
 
 type TimerHandle = ReturnType<typeof setInterval>;
 
@@ -41,7 +42,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
   });
 
   const requestWsTicket = async (): Promise<string> => {
-    const response = await authApi.issueWsTicket();
+    const response = await authService.issueWsTicket();
     const ticket = response?.data?.ticket;
     if (!ticket) {
       throw new Error(response?.message || "Failed to issue websocket ticket");
@@ -50,10 +51,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
   };
 
   const connect = async (userId: string) => {
-    if (!userId) {
-      return;
-    }
-    if (isConnected.value || isConnecting.value) {
+    if (!userId || isConnected.value || isConnecting.value) {
       return;
     }
 
@@ -66,8 +64,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
 
       isConnecting.value = true;
       const ticket = await requestWsTicket();
-      const url = createTicketedWebSocketUrl(userId, ticket);
-      socket.value = new WebSocket(url);
+      socket.value = new WebSocket(createTicketedWebSocketUrl(userId, ticket));
 
       socket.value.onopen = () => {
         isConnected.value = true;
@@ -75,12 +72,9 @@ export const useWebSocketStore = defineStore("websocket", () => {
         stopReconnect();
         saveConnectionCache(userId);
         startHeartbeat();
-
-        void useChatStore()
-          .syncOfflineMessages()
-          .catch((error) => {
-            console.error("Failed to sync offline messages:", error);
-          });
+        void useChatStore().syncOfflineMessages().catch((error) => {
+          logger.warn("failed to sync offline messages", error);
+        });
       };
 
       socket.value.onmessage = (event) => {
@@ -89,10 +83,10 @@ export const useWebSocketStore = defineStore("websocket", () => {
           incomingProcessing.value = incomingProcessing.value
             .then(() => handleMessage(data))
             .catch((error) => {
-              console.error("Failed to handle websocket message:", error);
+              logger.error("failed to handle websocket message", error);
             });
         } catch (error) {
-          console.error("Failed to parse websocket payload:", error);
+          logger.warn("failed to parse websocket payload", error);
         }
       };
 
@@ -102,22 +96,18 @@ export const useWebSocketStore = defineStore("websocket", () => {
         isConnecting.value = false;
         stopHeartbeat();
         clearConnectionCache();
-
-        if (
-          !manualDisconnect.value &&
-          event.reason !== DUPLICATE_CONNECTION_REASON
-        ) {
+        if (!manualDisconnect.value && event.reason !== DUPLICATE_CONNECTION_REASON) {
           scheduleReconnect(userId);
         }
       };
 
       socket.value.onerror = (error) => {
-        console.error("WebSocket connection error:", error);
+        logger.warn("websocket connection error", error);
         isConnected.value = false;
         isConnecting.value = false;
       };
     } catch (error) {
-      console.error("Failed to create websocket connection:", error);
+      logger.warn("failed to create websocket connection", error);
       isConnecting.value = false;
       if (!manualDisconnect.value) {
         scheduleReconnect(userId);
@@ -141,146 +131,116 @@ export const useWebSocketStore = defineStore("websocket", () => {
     isConnecting.value = false;
   };
 
-  const sendMessage = (message: Message) => {
-    if (!isConnected.value || !socket.value) {
-      ElMessage.error("WebSocket is disconnected");
-      return false;
-    }
-
-    try {
-      const wsMessage: WebSocketMessage = {
-        type: "MESSAGE",
-        data: message,
-        timestamp: Date.now(),
-      };
-      socket.value.send(JSON.stringify(wsMessage));
-      return true;
-    } catch (error) {
-      console.error("Failed to send websocket message:", error);
-      ElMessage.error("Failed to send message");
-      return false;
-    }
-  };
-
   const handleMessage = async (data: WebSocketMessage) => {
     const chatStore = useChatStore();
 
     switch (data.type) {
-      case "MESSAGE":
-        if (data.data) {
-          const rawMessage = data.data as Record<string, unknown>;
-          const isSystemMessage =
-            rawMessage.messageType === "SYSTEM" || rawMessage.type === "SYSTEM";
+      case "MESSAGE": {
+        if (!data.data) {
+          return;
+        }
+        const rawMessage = data.data as Record<string, unknown>;
+        const isSystemMessage =
+          rawMessage.messageType === "SYSTEM" || rawMessage.type === "SYSTEM";
 
-          if (isSystemMessage) {
-            const content = String(rawMessage.content || "");
-            const shouldRefreshFriendData =
-              content.includes("好友申请") ||
-              content.includes("同意") ||
-              content.toLowerCase().includes("friend request");
+        if (isSystemMessage) {
+          const content = String(rawMessage.content || "");
+          const shouldRefreshFriendData =
+            content.includes("好友申请") ||
+            content.includes("同意") ||
+            content.toLowerCase().includes("friend request");
 
-            if (shouldRefreshFriendData) {
-              await Promise.all([
-                chatStore.loadFriendRequests(),
-                chatStore.loadFriends(),
-                chatStore.loadSessions(),
-              ]);
+          if (shouldRefreshFriendData) {
+            await Promise.all([
+              chatStore.loadFriendRequests(),
+              chatStore.loadFriends(),
+              chatStore.loadSessions(),
+            ]);
+            ElNotification({
+              title: "System notification",
+              message: content,
+              type: "info",
+              duration: 3000,
+            });
+          }
+          return;
+        }
 
-              ElNotification({
-                title: "System notification",
-                message: content,
-                type: "info",
-                duration: 3000,
-              });
-            }
-          } else {
-            const normalizedMessage = normalizeMessageBase(
-              rawMessage,
-            ) as Message;
-            const messageId = String(normalizedMessage.id || "");
-
-            if (messageId && !messageId.startsWith("local_")) {
-              const now = Date.now();
-              const previous = recentMessageIds.value.get(messageId) || 0;
-              if (now - previous < 60_000) {
-                break;
+        const normalizedMessage = normalizeMessage(rawMessage);
+        const messageId = String(normalizedMessage.id || "");
+        if (messageId && !messageId.startsWith("local_")) {
+          const now = Date.now();
+          const previous = recentMessageIds.value.get(messageId) || 0;
+          if (now - previous < 60_000) {
+            return;
+          }
+          recentMessageIds.value.set(messageId, now);
+          if (recentMessageIds.value.size > 2000) {
+            const cutoff = now - 300_000;
+            recentMessageIds.value.forEach((timestamp, id) => {
+              if (timestamp < cutoff) {
+                recentMessageIds.value.delete(id);
               }
-
-              recentMessageIds.value.set(messageId, now);
-              if (recentMessageIds.value.size > 2000) {
-                const cutoff = now - 300_000;
-                recentMessageIds.value.forEach((timestamp, id) => {
-                  if (timestamp < cutoff) {
-                    recentMessageIds.value.delete(id);
-                  }
-                });
-              }
-            }
-
-            const isSelfMessage =
-              String(normalizedMessage.senderId) ===
-              String(useUserStore().userId);
-            chatStore.addMessage(normalizedMessage);
-
-            if (!isSelfMessage) {
-              showMessageNotification(normalizedMessage);
-            }
+            });
           }
         }
-        break;
 
+        const isSelfMessage =
+          String(normalizedMessage.senderId) === String(useUserStore().userId);
+        await chatStore.addMessage(normalizedMessage);
+        if (!isSelfMessage) {
+          showMessageNotification(normalizedMessage);
+        }
+        return;
+      }
       case "ONLINE_STATUS":
         if (data.data) {
           updateOnlineStatus(data.data as OnlineStatus);
         }
-        break;
-
+        return;
       case "READ_RECEIPT":
         if (data.data) {
-          chatStore.applyReadReceipt(data.data);
+          await chatStore.applyReadReceipt(data.data);
         }
-        break;
-
-      case "SYSTEM":
-        if (data.data) {
-          const systemMessage = data.data as Record<string, unknown>;
-          const content = String(systemMessage.content || "");
-          let command = "";
-          let messageText = content;
-
-          if (content.includes("::CMD:")) {
-            const parts = content.split("::CMD:");
-            messageText = parts[0];
-            command = parts[1] || "";
-          }
-
-          if (command === "REFRESH_FRIEND_REQUESTS") {
-            await chatStore.loadFriendRequests();
-            ElNotification({
-              title: "Friend notification",
-              message: messageText || "Received a new friend request",
-              type: "info",
-              duration: 3000,
-            });
-          } else if (command === "REFRESH_FRIEND_LIST") {
-            await Promise.all([chatStore.loadFriends(), chatStore.loadSessions()]);
-            ElNotification({
-              title: "Friend notification",
-              message: messageText || "Friend list updated",
-              type: "success",
-              duration: 3000,
-            });
-          } else if (systemMessage.message) {
-            ElMessage.info(String(systemMessage.message));
-          }
+        return;
+      case "SYSTEM": {
+        if (!data.data) {
+          return;
         }
-        break;
+        const systemMessage = data.data as Record<string, unknown>;
+        const content = String(systemMessage.content || "");
+        const [messageText, command = ""] = content.includes("::CMD:")
+          ? content.split("::CMD:")
+          : [content, ""];
 
+        if (command === "REFRESH_FRIEND_REQUESTS") {
+          await chatStore.loadFriendRequests();
+          ElNotification({
+            title: "Friend notification",
+            message: messageText || "Received a new friend request",
+            type: "info",
+            duration: 3000,
+          });
+          return;
+        }
+        if (command === "REFRESH_FRIEND_LIST") {
+          await Promise.all([chatStore.loadFriends(), chatStore.loadSessions()]);
+          ElNotification({
+            title: "Friend notification",
+            message: messageText || "Friend list updated",
+            type: "success",
+            duration: 3000,
+          });
+          return;
+        }
+        if (systemMessage.message) {
+          ElMessage.info(String(systemMessage.message));
+        }
+        return;
+      }
       case "HEARTBEAT":
-        break;
-
       default:
-        break;
+        return;
     }
   };
 
@@ -288,7 +248,6 @@ export const useWebSocketStore = defineStore("websocket", () => {
     if (!document.hidden) {
       return;
     }
-
     ElNotification({
       title: message.senderName || "New message",
       message: message.content,
@@ -322,22 +281,20 @@ export const useWebSocketStore = defineStore("websocket", () => {
 
   const startHeartbeat = () => {
     stopHeartbeat();
-
     heartbeatTimer.value = setInterval(() => {
       if (!isConnected.value || !socket.value) {
         return;
       }
-
-      const heartbeatMessage: WebSocketMessage = {
-        type: "HEARTBEAT",
-        data: { timestamp: Date.now() },
-        timestamp: Date.now(),
-      };
-
       try {
-        socket.value.send(JSON.stringify(heartbeatMessage));
+        socket.value.send(
+          JSON.stringify({
+            type: "HEARTBEAT",
+            data: { timestamp: Date.now() },
+            timestamp: Date.now(),
+          } satisfies WebSocketMessage),
+        );
       } catch (error) {
-        console.error("Failed to send heartbeat:", error);
+        logger.warn("failed to send heartbeat", error);
       }
     }, WS_CONFIG.HEARTBEAT_INTERVAL);
   };
@@ -353,19 +310,15 @@ export const useWebSocketStore = defineStore("websocket", () => {
     if (manualDisconnect.value || reconnectTimer.value) {
       return;
     }
-
     if (reconnectAttempts.value >= WS_CONFIG.RECONNECT_ATTEMPTS) {
       ElMessage.error("WebSocket reconnect limit reached");
       return;
     }
-
     reconnectAttempts.value += 1;
-    const delay = WS_CONFIG.RECONNECT_INTERVAL * reconnectAttempts.value;
-
     reconnectTimer.value = setTimeout(() => {
       reconnectTimer.value = null;
       void connect(userId);
-    }, delay);
+    }, WS_CONFIG.RECONNECT_INTERVAL * reconnectAttempts.value);
   };
 
   const stopReconnect = () => {
@@ -377,27 +330,24 @@ export const useWebSocketStore = defineStore("websocket", () => {
   };
 
   const saveConnectionCache = (userId: string) => {
-    const cacheData = {
-      userId,
-      timestamp: Date.now(),
-      isActive: true,
-    };
     localStorage.setItem(
       STORAGE_CONFIG.WS_CACHE_KEY,
-      JSON.stringify(cacheData),
+      JSON.stringify({
+        userId,
+        timestamp: Date.now(),
+        isActive: true,
+      }),
     );
   };
 
   const loadConnectionCache = () => {
     try {
       const cached = localStorage.getItem(STORAGE_CONFIG.WS_CACHE_KEY);
-      if (cached) {
-        return JSON.parse(cached);
-      }
+      return cached ? JSON.parse(cached) : null;
     } catch (error) {
-      console.error("Failed to load websocket cache:", error);
+      logger.warn("failed to load websocket cache", error);
+      return null;
     }
-    return null;
   };
 
   const clearConnectionCache = () => {
@@ -406,20 +356,19 @@ export const useWebSocketStore = defineStore("websocket", () => {
 
   const heartbeat = async (userIds: string[]) => {
     try {
-      const response = await imApi.heartbeat(userIds);
-      if (response && response.code === 200 && response.data) {
-        const statusMap = response.data as Record<string, boolean>;
-        Object.entries(statusMap).forEach(([userId, isOnline]) => {
+      const response = await userService.checkOnlineStatus(userIds);
+      if (response.code === 200 && response.data) {
+        Object.entries(response.data).forEach(([userId, isOnline]) => {
           if (isOnline) {
             onlineUsers.value.add(userId);
           } else {
             onlineUsers.value.delete(userId);
           }
         });
-        return statusMap;
+        return response.data;
       }
     } catch (error) {
-      console.error("Failed to query heartbeat:", error);
+      logger.warn("failed to query heartbeat", error);
     }
     return {};
   };
@@ -433,7 +382,6 @@ export const useWebSocketStore = defineStore("websocket", () => {
     connectionStatus,
     connect,
     disconnect,
-    sendMessage,
     isUserOnline,
     heartbeat,
     loadConnectionCache,

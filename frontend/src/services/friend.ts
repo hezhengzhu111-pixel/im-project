@@ -1,4 +1,5 @@
 import { http } from "@/utils/request";
+import { normalizeFriendRequest, normalizeFriendship } from "@/normalizers/user";
 import type {
   Friendship,
   FriendRequest,
@@ -7,13 +8,29 @@ import type {
 } from "@/types/user";
 
 export const friendService = {
-  getList: () => http.get<Friendship[]>("/friend/list"),
+  async getList() {
+    const response = await http.get<unknown[]>("/friend/list");
+    return {
+      ...response,
+      data: Array.isArray(response.data)
+        ? response.data.map((item) => normalizeFriendship(item))
+        : [],
+    } as typeof response & { data: Friendship[] };
+  },
   add: (data: AddFriendRequest) =>
     http.post<void>("/friend/request", {
       targetUserId: data.userId,
       reason: data.message,
     }),
-  getRequests: () => http.get<FriendRequest[]>("/friend/requests"),
+  async getRequests() {
+    const response = await http.get<unknown[]>("/friend/requests");
+    return {
+      ...response,
+      data: Array.isArray(response.data)
+        ? response.data.map((item) => normalizeFriendRequest(item))
+        : [],
+    } as typeof response & { data: FriendRequest[] };
+  },
   handleRequest: (data: HandleFriendRequestRequest) =>
     http.post<void>(
       data.action === "ACCEPT" ? "/friend/accept" : "/friend/reject",

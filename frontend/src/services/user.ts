@@ -1,38 +1,70 @@
+import { normalizeUser, normalizeUserAuthResponse, normalizeUserSettings } from "@/normalizers/user";
 import { http } from "@/utils/request";
 import type {
-  UserDTO,
+  BindEmailRequest,
+  BindPhoneRequest,
+  ChangePasswordRequest,
+  DeleteAccountRequest,
   LoginRequest,
-  UserAuthResponse,
   RegisterRequest,
   UpdateUserRequest,
-  UserSearchResult,
-} from "@/types/user";
+  User,
+  UserAuthResponse,
+  UserSettings,
+} from "@/types";
 
 export const userService = {
-  login: (data: LoginRequest) =>
-    http.post<UserAuthResponse>("/user/login", data),
-  register: (data: RegisterRequest) =>
-    http.post<UserDTO>("/user/register", data),
-  updateProfile: (data: UpdateUserRequest) =>
-    http.put<boolean>("/user/profile", data),
-  search: (keyword: string, type: string = "username") =>
-    http.get<UserDTO[]>("/user/search", { params: { keyword, type } }),
+  async login(data: LoginRequest): Promise<UserAuthResponse> {
+    const response = await http.post<unknown>("/user/login", data);
+    return {
+      ...response,
+      data: normalizeUserAuthResponse(response.data),
+    } as typeof response & { data: UserAuthResponse };
+  },
+  register: (data: RegisterRequest) => http.post<User>("/user/register", data),
+  updateProfile: async (data: UpdateUserRequest) => {
+    const response = await http.put<unknown>("/user/profile", data);
+    return {
+      ...response,
+      data: normalizeUser(response.data),
+    } as typeof response & { data: User };
+  },
+  async search(keyword: string, type = "username") {
+    const response = await http.get<unknown[]>("/user/search", {
+      params: { keyword, type },
+    });
+    return {
+      ...response,
+      data: Array.isArray(response.data)
+        ? response.data.map((item) => normalizeUser(item))
+        : [],
+    } as typeof response & { data: User[] };
+  },
   logout: () => http.post<string>("/user/logout"),
   heartbeat: (userIds: string[]) =>
     http.post<Record<string, boolean>>("/user/heartbeat", userIds),
   online: () => http.post<string>("/user/online"),
   checkOnlineStatus: (userIds: string[]) =>
     http.post<Record<string, boolean>>("/user/online-status", userIds),
-
-  // 账号安全相关
-  changePassword: (data: any) => http.put<boolean>("/user/password", data),
-  sendPhoneCode: (target: string) => http.post<string>("/user/phone/code", { target }),
-  bindPhone: (data: any) => http.post<boolean>("/user/phone/bind", data),
-  sendEmailCode: (target: string) => http.post<string>("/user/email/code", { target }),
-  bindEmail: (data: any) => http.post<boolean>("/user/email/bind", data),
-  deleteAccount: (data: any) => http.delete<boolean>("/user/account", { data }),
-
-  // 设置相关
-  getSettings: () => http.get<any>("/user/settings"),
-  updateSettings: (type: string, data: any) => http.put<boolean>(`/user/settings/${type}`, data),
+  changePassword: (data: ChangePasswordRequest) =>
+    http.put<boolean>("/user/password", data),
+  sendPhoneCode: (target: string) =>
+    http.post<string>("/user/phone/code", { target }),
+  bindPhone: (data: BindPhoneRequest) =>
+    http.post<boolean>("/user/phone/bind", data),
+  sendEmailCode: (target: string) =>
+    http.post<string>("/user/email/code", { target }),
+  bindEmail: (data: BindEmailRequest) =>
+    http.post<boolean>("/user/email/bind", data),
+  deleteAccount: (data: DeleteAccountRequest) =>
+    http.delete<boolean>("/user/account", undefined, { data }),
+  async getSettings() {
+    const response = await http.get<unknown>("/user/settings");
+    return {
+      ...response,
+      data: normalizeUserSettings(response.data),
+    } as typeof response & { data: UserSettings };
+  },
+  updateSettings: (type: string, data: Record<string, unknown>) =>
+    http.put<boolean>(`/user/settings/${type}`, data),
 };

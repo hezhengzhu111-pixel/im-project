@@ -38,9 +38,9 @@ public interface IImService {
      */
     void sendGroupMessage(MessageDTO message);
 
-    void pushMessageToUser(MessageDTO message, Long userId);
+    boolean pushMessageToUser(MessageDTO message, Long userId);
 
-    void pushReadReceiptToUser(ReadReceiptDTO receipt, Long userId);
+    boolean pushReadReceiptToUser(ReadReceiptDTO receipt, Long userId);
 
     /**
      * 检查多个用户的在线状态
@@ -53,6 +53,12 @@ public interface IImService {
     boolean touchUserHeartbeat(String userId);
 
     void refreshRouteHeartbeat(String userId);
+
+    boolean hasLocalSession(String userId);
+
+    boolean isRouteOwnedByCurrentInstance(String userId);
+
+    String getCurrentInstanceId();
     
     /**
      * 获取用户会话信息

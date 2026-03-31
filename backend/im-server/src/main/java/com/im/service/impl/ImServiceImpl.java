@@ -4,17 +4,17 @@ import com.alibaba.fastjson2.JSON;
 import com.im.dto.MessageDTO;
 import com.im.dto.ReadReceiptDTO;
 import com.im.entity.UserSession;
+import com.im.enums.MessageType;
 import com.im.enums.UserStatus;
 import com.im.service.IImService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -26,6 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 @Service
 public class ImServiceImpl implements IImService {
+
     private static final Duration HEARTBEAT_TIMEOUT = Duration.ofMinutes(5);
     private final Map<String, UserSession> sessionUserMap = new ConcurrentHashMap<>();
 
@@ -53,7 +54,7 @@ public class ImServiceImpl implements IImService {
                 continue;
             }
             String userId = rawUserId.trim();
-            Boolean hasKey = stringRedisTemplate.hasKey(routeUserKeyPrefix + userId);
+            Boolean hasKey = stringRedisTemplate.hasKey(routeKey(userId));
             userStatusMap.put(userId, Boolean.TRUE.equals(hasKey));
         }
         return userStatusMap;
@@ -75,8 +76,7 @@ public class ImServiceImpl implements IImService {
         }
         userSession.setStatus(UserStatus.ONLINE);
         userSession.setLastHeartbeat(LocalDateTime.now());
-        // 更新 Redis 中的心跳 TTL
-        stringRedisTemplate.expire(routeUserKeyPrefix + normalizedUserId, HEARTBEAT_TIMEOUT);
+        stringRedisTemplate.expire(routeKey(normalizedUserId), HEARTBEAT_TIMEOUT);
         return true;
     }
 
@@ -91,7 +91,7 @@ public class ImServiceImpl implements IImService {
             userSession.setLastHeartbeat(LocalDateTime.now());
             userSession.setStatus(UserStatus.ONLINE);
         }
-        stringRedisTemplate.opsForValue().set(routeUserKeyPrefix + normalizedUserId, instanceId, HEARTBEAT_TIMEOUT);
+        stringRedisTemplate.opsForValue().set(routeKey(normalizedUserId), instanceId, HEARTBEAT_TIMEOUT);
     }
 
     @Override
@@ -102,22 +102,13 @@ public class ImServiceImpl implements IImService {
             }
             String normalizedUserId = userId.trim();
             UserSession removedSession = sessionUserMap.remove(normalizedUserId);
-            
-            // 从 Redis 中移除路由信息 (如果是当前实例)
-            String routeInstanceId = stringRedisTemplate.opsForValue().get(routeUserKeyPrefix + normalizedUserId);
-            if (instanceId.equals(routeInstanceId)) {
-                stringRedisTemplate.delete(routeUserKeyPrefix + normalizedUserId);
+
+            if (isRouteOwnedByCurrentInstance(normalizedUserId)) {
+                stringRedisTemplate.delete(routeKey(normalizedUserId));
             }
 
             if (removedSession != null) {
-                WebSocketSession webSocketSession = removedSession.getWebSocketSession();
-                if (webSocketSession != null && webSocketSession.isOpen()) {
-                    try {
-                        webSocketSession.close();
-                    } catch (Exception closeError) {
-                        log.debug("关闭离线用户会话失败: userId={}", normalizedUserId, closeError);
-                    }
-                }
+                closeSessionQuietly(normalizedUserId, removedSession.getWebSocketSession());
                 LocalDateTime connectTime = removedSession.getConnectTime();
                 if (connectTime != null) {
                     log.debug("清理用户会话信息: userId={}, 会话时长={}分钟",
@@ -133,7 +124,6 @@ public class ImServiceImpl implements IImService {
         }
     }
 
-
     @Override
     public void sendPrivateMessage(MessageDTO message) {
         pushMessageToUser(message, message == null ? null : message.getReceiverId());
@@ -141,17 +131,11 @@ public class ImServiceImpl implements IImService {
 
     @Override
     public void sendGroupMessage(MessageDTO message) {
-        if (message == null) {
-            return;
-        }
-        if (message.getGroupMembers() == null) {
+        if (message == null || message.getGroupMembers() == null) {
             return;
         }
         for (com.im.dto.GroupMemberDTO member : message.getGroupMembers()) {
-            if (member == null || member.getUserId() == null) {
-                continue;
-            }
-            if (member.getUserId().equals(message.getSenderId())) {
+            if (member == null || member.getUserId() == null || member.getUserId().equals(message.getSenderId())) {
                 continue;
             }
             pushMessageToUser(message, member.getUserId());
@@ -159,37 +143,20 @@ public class ImServiceImpl implements IImService {
     }
 
     @Override
-    public void pushMessageToUser(MessageDTO message, Long userId) {
-        pushToUser(message, userId);
+    public boolean pushMessageToUser(MessageDTO message, Long userId) {
+        if (message == null || userId == null) {
+            return false;
+        }
+        String wsType = message.getMessageType() == MessageType.SYSTEM ? "SYSTEM" : "MESSAGE";
+        return pushPayloadToUser(userId, wsType, message);
     }
 
-    private void pushToUser(MessageDTO message, Long userId) {
-        if (userId == null) return;
-        String userIdStr = userId.toString();
-        
-        UserSession userSession = sessionUserMap.get(userIdStr);
-        if (userSession == null || userSession.getWebSocketSession() == null || !userSession.getWebSocketSession().isOpen()) {
-            log.debug("用户 {} 不在线或连接断开，消息未推送", userIdStr);
-            return;
+    @Override
+    public boolean pushReadReceiptToUser(ReadReceiptDTO receipt, Long userId) {
+        if (receipt == null || userId == null) {
+            return false;
         }
-        
-        Map<String, Object> wsMessage = new HashMap<>();
-        if (message.getMessageType() == com.im.enums.MessageType.SYSTEM) {
-            wsMessage.put("type", "SYSTEM");
-        } else {
-            wsMessage.put("type", "MESSAGE");
-        }
-        wsMessage.put("data", message);
-        wsMessage.put("timestamp", System.currentTimeMillis());
-        
-        String textMessage = JSON.toJSONString(wsMessage, com.alibaba.fastjson2.JSONWriter.Feature.WriteLongAsString);
-
-        try {
-            userSession.getWebSocketSession().sendMessage(new TextMessage(textMessage));
-            log.debug("消息已推送给用户: {} -> {}", message.getSenderId(), userIdStr);
-        } catch (Exception e) {
-            log.error("推送消息失败: {}", e.getMessage(), e);
-        }
+        return pushPayloadToUser(userId, "READ_RECEIPT", receipt);
     }
 
     @Override
@@ -207,35 +174,44 @@ public class ImServiceImpl implements IImService {
         userSession.setStatus(UserStatus.ONLINE);
         userSession.setLastHeartbeat(LocalDateTime.now());
         sessionUserMap.put(normalizedUserId, userSession);
-        
-        // 写入 Redis
-        stringRedisTemplate.opsForValue().set(routeUserKeyPrefix + normalizedUserId, instanceId, HEARTBEAT_TIMEOUT);
-
+        stringRedisTemplate.opsForValue().set(routeKey(normalizedUserId), instanceId, HEARTBEAT_TIMEOUT);
         broadcastOnlineStatus(normalizedUserId, UserStatus.ONLINE);
     }
 
     @Override
     public boolean removeSessionMapping(String key) {
-        boolean removed = sessionUserMap.remove(key) != null;
-        if (removed) {
-            String routeInstanceId = stringRedisTemplate.opsForValue().get(routeUserKeyPrefix + key);
-            if (instanceId.equals(routeInstanceId)) {
-                stringRedisTemplate.delete(routeUserKeyPrefix + key);
-            }
+        if (StringUtils.isBlank(key)) {
+            return false;
+        }
+        String normalizedUserId = key.trim();
+        boolean removed = sessionUserMap.remove(normalizedUserId) != null;
+        if (removed && isRouteOwnedByCurrentInstance(normalizedUserId)) {
+            stringRedisTemplate.delete(routeKey(normalizedUserId));
         }
         return removed;
     }
 
-
-    private boolean isSessionOnline(String userId, UserSession userSession) {
-        if (StringUtils.isBlank(userId) || userSession == null) {
+    @Override
+    public boolean hasLocalSession(String userId) {
+        if (StringUtils.isBlank(userId)) {
             return false;
         }
-        boolean online = isSessionOpenAndFresh(userSession, LocalDateTime.now());
-        if (!online) {
-            userOffline(userId);
+        UserSession session = sessionUserMap.get(userId.trim());
+        return session != null && isSessionOpenAndFresh(session, LocalDateTime.now());
+    }
+
+    @Override
+    public boolean isRouteOwnedByCurrentInstance(String userId) {
+        if (StringUtils.isBlank(userId)) {
+            return false;
         }
-        return online;
+        String routeInstanceId = stringRedisTemplate.opsForValue().get(routeKey(userId.trim()));
+        return instanceId.equals(routeInstanceId);
+    }
+
+    @Override
+    public String getCurrentInstanceId() {
+        return instanceId;
     }
 
     private boolean isSessionOpenAndFresh(UserSession userSession, LocalDateTime now) {
@@ -250,6 +226,29 @@ public class ImServiceImpl implements IImService {
             return false;
         }
         return !lastHeartbeat.isBefore(now.minus(HEARTBEAT_TIMEOUT));
+    }
+
+    private boolean pushPayloadToUser(Long userId, String wsType, Object payloadData) {
+        String userIdStr = String.valueOf(userId);
+        UserSession userSession = sessionUserMap.get(userIdStr);
+        if (userSession == null || userSession.getWebSocketSession() == null || !userSession.getWebSocketSession().isOpen()) {
+            log.debug("用户 {} 不在线或连接断开，事件未推送, type={}", userIdStr, wsType);
+            return false;
+        }
+
+        Map<String, Object> wsMessage = new HashMap<>();
+        wsMessage.put("type", wsType);
+        wsMessage.put("data", payloadData);
+        wsMessage.put("timestamp", System.currentTimeMillis());
+        String textMessage = JSON.toJSONString(wsMessage, com.alibaba.fastjson2.JSONWriter.Feature.WriteLongAsString);
+
+        try {
+            userSession.getWebSocketSession().sendMessage(new TextMessage(textMessage));
+            return true;
+        } catch (Exception e) {
+            log.warn("推送事件失败: userId={}, type={}, error={}", userIdStr, wsType, e.getMessage());
+            return false;
+        }
     }
 
     private void broadcastOnlineStatus(String userId, UserStatus status) {
@@ -280,33 +279,18 @@ public class ImServiceImpl implements IImService {
         }
     }
 
-    public void pushReadReceipt(ReadReceiptDTO receipt) {
-        pushReadReceiptToUser(receipt, receipt == null ? null : receipt.getToUserId());
+    private void closeSessionQuietly(String userId, WebSocketSession webSocketSession) {
+        if (webSocketSession == null || !webSocketSession.isOpen()) {
+            return;
+        }
+        try {
+            webSocketSession.close();
+        } catch (Exception closeError) {
+            log.debug("关闭离线用户会话失败: userId={}", userId, closeError);
+        }
     }
 
-    @Override
-    public void pushReadReceiptToUser(ReadReceiptDTO receipt, Long userId) {
-        if (receipt == null || userId == null) {
-            return;
-        }
-        String userIdStr = userId.toString();
-        UserSession userSession = sessionUserMap.get(userIdStr);
-
-        if (userSession == null || userSession.getWebSocketSession() == null || !userSession.getWebSocketSession().isOpen()) {
-            return;
-        }
-
-        Map<String, Object> wsMessage = new HashMap<>();
-        wsMessage.put("type", "READ_RECEIPT");
-        wsMessage.put("data", receipt);
-        wsMessage.put("timestamp", System.currentTimeMillis());
-
-        String textMessage = JSON.toJSONString(wsMessage, com.alibaba.fastjson2.JSONWriter.Feature.WriteLongAsString);
-
-        try {
-            userSession.getWebSocketSession().sendMessage(new TextMessage(textMessage));
-        } catch (Exception e) {
-            log.error("推送已读回执失败: {}", e.getMessage(), e);
-        }
+    private String routeKey(String userId) {
+        return routeUserKeyPrefix + userId;
     }
 }

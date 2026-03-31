@@ -8,7 +8,6 @@ spring:
     import:
       - optional:classpath:dev/application-mysql.yml
       - optional:classpath:dev/application-redis.yml
-      - optional:classpath:dev/application-kafka.yml
       - optional:classpath:dev/application-nacos.yml
   profiles:
     active: default

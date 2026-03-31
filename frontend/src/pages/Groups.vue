@@ -1,158 +1,109 @@
 <template>
-  <div class="groups-container">
-    <div class="groups-header">
+  <div class="groups-page">
+    <div class="page-header">
       <el-button link :icon="ArrowLeft" @click="$router.back()">返回</el-button>
       <h2>群组</h2>
-      <el-button type="primary" :icon="Plus" @click="showCreateGroup = true"
-        >创建群组</el-button
-      >
+      <el-button type="primary" :icon="Plus" @click="showCreateGroup = true">
+        创建群组
+      </el-button>
     </div>
 
-    <div class="groups-content">
-      <!-- 搜索栏 -->
-      <div class="search-section">
-        <el-input
-          v-model="searchKeyword"
-          placeholder="搜索群组"
-          :prefix-icon="Search"
-          clearable
-          @input="handleSearch"
-          class="search-input"
-        />
+    <div class="toolbar">
+      <el-input
+        v-model="searchKeyword"
+        placeholder="搜索群组"
+        :prefix-icon="Search"
+        clearable
+      />
+      <el-select v-model="sortBy" class="sort-select">
+        <el-option label="按名称" value="name" />
+        <el-option label="按创建时间" value="time" />
+        <el-option label="按成员数量" value="members" />
+      </el-select>
+    </div>
+
+    <el-card class="panel-card">
+      <template #header>
+        <div class="card-header">
+          <span>我的群组</span>
+          <span class="subtle-text">{{ filteredGroups.length }} 个群聊</span>
+        </div>
+      </template>
+
+      <div v-if="loading" class="loading-block">
+        <el-skeleton :rows="5" animated />
       </div>
 
-      <!-- 群组列表 -->
-      <el-card class="groups-card">
-        <template #header>
-          <div class="card-header">
-            <span>我的群组 ({{ filteredGroups.length }})</span>
-            <el-dropdown @command="handleSortCommand">
-              <el-button link :icon="Sort">
-                排序 <el-icon class="el-icon--right"><arrow-down /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="name">按名称</el-dropdown-item>
-                  <el-dropdown-item command="time">按创建时间</el-dropdown-item>
-                  <el-dropdown-item command="members"
-                    >按成员数量</el-dropdown-item
-                  >
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+      <div v-else-if="filteredGroups.length === 0" class="empty-state">
+        暂无群组
+      </div>
+
+      <div v-else class="group-list">
+        <div
+          v-for="group in filteredGroups"
+          :key="group.id"
+          class="group-item"
+          @click="openChat(group)"
+        >
+          <div class="group-avatar-wrap">
+            <el-avatar :size="52" :src="group.avatar" shape="square">
+              {{ (group.groupName || group.name || "G").charAt(0) }}
+            </el-avatar>
+            <el-badge
+              v-if="(group.unreadCount || 0) > 0"
+              :value="group.unreadCount"
+              :max="99"
+              class="group-unread"
+            />
           </div>
-        </template>
 
-        <div v-if="loading" class="loading-container">
-          <el-skeleton :rows="5" animated />
-        </div>
-
-        <div v-else-if="filteredGroups.length === 0" class="empty-container">
-          <el-empty description="暂无群组" />
-        </div>
-
-        <div v-else class="groups-list">
-          <div
-            v-for="group in filteredGroups"
-            :key="group.id"
-            class="group-item"
-            @click="openChat(group)"
-          >
-            <div class="group-avatar-container">
-              <el-avatar :size="50" :src="group.avatar">
-                {{ group.groupName?.charAt(0) || "G" }}
-              </el-avatar>
-              <div v-if="(group.unreadCount || 0) > 0" class="unread-badge">
-                {{
-                  (group.unreadCount || 0) > 99 ? "99+" : group.unreadCount || 0
-                }}
+          <div class="group-main">
+            <div class="group-title-row">
+              <div class="group-name">{{ group.groupName || group.name }}</div>
+              <div class="group-time">
+                {{ formatTime(group.lastMessageTime || group.lastActivityAt || group.createTime) }}
               </div>
             </div>
-
-            <div class="group-info">
-              <div class="group-name">{{ group.groupName }}</div>
-              <div class="group-desc">
-                {{ group.description || "暂无群组描述" }}
-              </div>
-              <div class="group-meta">
-                <span class="member-count">{{ group.memberCount }} 人</span>
-                <span class="last-message-time">{{
-                  formatTime(group.lastMessageTime)
-                }}</span>
-              </div>
+            <div class="group-desc">
+              {{ group.description || group.announcement || "暂无群组描述" }}
             </div>
-
-            <div class="group-actions">
-              <el-dropdown @command="handleGroupAction($event, group)">
-                <el-button link :icon="MoreFilled" />
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="chat">
-                      <el-icon><ChatDotRound /></el-icon>
-                      进入群聊
-                    </el-dropdown-item>
-                    <el-dropdown-item command="info">
-                      <el-icon><InfoFilled /></el-icon>
-                      群组信息
-                    </el-dropdown-item>
-                    <el-dropdown-item command="members">
-                      <el-icon><User /></el-icon>
-                      群组成员
-                    </el-dropdown-item>
-                    <el-dropdown-item
-                      v-if="isGroupOwner(group)"
-                      command="manage"
-                    >
-                      <el-icon><Setting /></el-icon>
-                      群组管理
-                    </el-dropdown-item>
-                    <el-dropdown-item command="leave" divided>
-                      <el-icon><SwitchButton /></el-icon>
-                      退出群组
-                    </el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
+            <div class="group-meta">
+              {{ group.memberCount || 0 }} 位成员
             </div>
           </div>
-        </div>
-      </el-card>
-    </div>
 
-    <!-- 创建群组对话框 -->
-    <el-dialog v-model="showCreateGroup" title="创建群组" width="600px">
+          <el-dropdown trigger="click" @command="handleGroupAction($event, group)">
+            <el-button link :icon="MoreFilled" @click.stop />
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="chat">进入群聊</el-dropdown-item>
+                <el-dropdown-item command="members">查看成员</el-dropdown-item>
+                <el-dropdown-item command="leave" divided>
+                  退出群组
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </div>
+    </el-card>
+
+    <el-dialog v-model="showCreateGroup" title="创建群组" width="620px">
       <el-form
         ref="createGroupFormRef"
         :model="createGroupForm"
         :rules="createGroupRules"
-        label-width="100px"
+        label-width="90px"
       >
-        <el-form-item label="群组名称" prop="name">
-          <el-input
-            v-model="createGroupForm.name"
-            placeholder="请输入群组名称"
-            maxlength="20"
-            show-word-limit
-          />
-        </el-form-item>
-
-        <el-form-item label="群组描述" prop="description">
-          <el-input
-            v-model="createGroupForm.description"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入群组描述（可选）"
-            maxlength="100"
-            show-word-limit
-          />
-        </el-form-item>
-
         <el-form-item label="群组头像">
           <div class="avatar-upload">
-            <el-avatar :size="80" :src="createGroupForm.avatar">
-              {{ createGroupForm.name?.charAt(0) || "G" }}
+            <el-avatar :size="64" :src="createGroupForm.avatar" shape="square">
+              {{ (createGroupForm.name || "G").charAt(0) }}
             </el-avatar>
-            <el-button size="small" @click="selectAvatar">选择头像</el-button>
+            <div class="avatar-actions">
+              <el-button @click="openAvatarPicker">上传头像</el-button>
+              <span class="subtle-text">建议上传正方形图片</span>
+            </div>
             <input
               ref="avatarInputRef"
               type="file"
@@ -163,827 +114,398 @@
           </div>
         </el-form-item>
 
-        <el-form-item label="邀请成员">
-          <div class="member-selection">
-            <el-input
-              v-model="memberSearchKeyword"
-              placeholder="搜索好友"
-              :prefix-icon="Search"
-              clearable
-              @input="searchFriends"
-              class="member-search"
-            />
+        <el-form-item label="群组名称" prop="name">
+          <el-input
+            v-model="createGroupForm.name"
+            maxlength="20"
+            show-word-limit
+            placeholder="请输入群组名称"
+          />
+        </el-form-item>
 
-            <div class="selected-members">
-              <div class="selected-title">
-                已选择成员 ({{ selectedMembers.length }})
-              </div>
-              <div class="selected-list">
-                <el-tag
-                  v-for="member in selectedMembers"
-                  :key="member.friendId"
-                  closable
-                  @close="removeMember(member.friendId)"
-                  class="member-tag"
-                >
-                  {{ member.nickname || member.username }}
-                </el-tag>
-              </div>
-            </div>
+        <el-form-item label="群组描述">
+          <el-input
+            v-model="createGroupForm.description"
+            type="textarea"
+            :rows="3"
+            maxlength="100"
+            show-word-limit
+            placeholder="请输入群组描述"
+          />
+        </el-form-item>
 
-            <div class="friend-list">
-              <div class="friend-title">选择好友</div>
-              <div class="friend-items">
-                <div
-                    v-for="friend in filteredFriends"
-                    :key="friend.friendId"
-                    class="friend-item"
-                    :class="{ selected: isSelected(friend.friendId) }"
-                    @click="toggleMember(friend)"
-                  >
-                    <el-avatar :size="30" :src="friend.avatar">
-                      {{
-                        friend.nickname?.charAt(0) ||
-                        friend.username?.charAt(0) ||
-                        "U"
-                      }}
-                    </el-avatar>
-                    <span class="friend-name">{{
-                      friend.nickname || friend.username
-                    }}</span>
-                    <el-icon v-if="isSelected(friend.friendId)" class="check-icon"
-                      ><Check
-                    /></el-icon>
-                </div>
-              </div>
-            </div>
-          </div>
+        <el-form-item label="选择成员">
+          <el-transfer
+            v-model="createGroupForm.memberIds"
+            :data="transferFriends"
+            :titles="['可选联系人', '已选成员']"
+            filterable
+          />
         </el-form-item>
       </el-form>
 
       <template #footer>
         <el-button @click="showCreateGroup = false">取消</el-button>
-        <el-button type="primary" @click="createGroup" :loading="creating">
+        <el-button type="primary" :loading="creating" @click="createGroup">
           创建群组
         </el-button>
       </template>
-    </el-dialog>
-
-    <!-- 群组信息对话框 -->
-    <el-dialog v-model="showGroupInfo" title="群组信息" width="500px">
-      <div v-if="currentGroup" class="group-info-content">
-        <div class="group-header">
-          <el-avatar :size="80" :src="currentGroup.avatar">
-            {{ currentGroup.groupName?.charAt(0) || "G" }}
-          </el-avatar>
-          <div class="group-details">
-            <h3>{{ currentGroup.groupName }}</h3>
-            <p>{{ currentGroup.description || "暂无群组描述" }}</p>
-            <div class="group-stats">
-              <span>成员: {{ currentGroup.memberCount }}</span>
-              <span>创建时间: {{ formatTime(currentGroup.createTime) }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="group-actions-section">
-          <el-button @click="viewMembers">查看成员</el-button>
-          <el-button v-if="isGroupOwner(currentGroup)" @click="manageGroup"
-            >群组管理</el-button
-          >
-          <el-button type="danger" @click="leaveGroup(currentGroup)"
-            >退出群组</el-button
-          >
-        </div>
-      </div>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
-  ElMessage,
   ElMessageBox,
   type FormInstance,
   type FormRules,
 } from "element-plus";
-import {
-  ArrowLeft,
-  Plus,
-  Search,
-  Sort,
-  MoreFilled,
-  ChatDotRound,
-  InfoFilled,
-  User,
-  Setting,
-  SwitchButton,
-  ArrowDown,
-  Check,
-} from "@element-plus/icons-vue";
-import { useChatStore } from "@/stores/chat";
-import { useUserStore } from "@/stores/user";
-import { groupService } from "@/services/group";
+import { ArrowLeft, MoreFilled, Plus, Search } from "@element-plus/icons-vue";
 import { fileService } from "@/services/file";
-import type { Group, Friend } from "@/types";
+import { groupService } from "@/services/group";
+import { useChatStore } from "@/stores/chat";
+import type { Group } from "@/types";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
 
-// 路由
+type SortMode = "name" | "time" | "members";
+
 const router = useRouter();
-
-// 状态管理
 const chatStore = useChatStore();
-const userStore = useUserStore();
+const { capture, notifySuccess } = useErrorHandler("groups-page");
 
-// 引用
-const createGroupFormRef = ref<FormInstance>();
-const avatarInputRef = ref<HTMLInputElement>();
+const createGroupFormRef = ref<FormInstance | null>(null);
+const avatarInputRef = ref<HTMLInputElement | null>(null);
 
-// 响应式数据
 const loading = ref(false);
 const creating = ref(false);
 const showCreateGroup = ref(false);
-const showGroupInfo = ref(false);
 const searchKeyword = ref("");
-const memberSearchKeyword = ref("");
-const sortBy = ref("name");
-const currentGroup = ref<Group | null>(null);
-const selectedMembers = ref<Friend[]>([]);
+const sortBy = ref<SortMode>("name");
 
-// 表单数据
 const createGroupForm = reactive({
   name: "",
   description: "",
   avatar: "",
+  memberIds: [] as string[],
 });
 
-// 计算属性
-const groups = computed(() => chatStore.groups || []);
-const friends = computed(() => chatStore.friends || []);
-const currentUserId = computed(
-  () => String(userStore.userId || userStore.userInfo?.id || ""),
-);
-
-const filteredGroups = computed(() => {
-  let result = [...groups.value];
-
-  // 搜索过滤
-  if (searchKeyword.value) {
-    const keyword = searchKeyword.value.toLowerCase();
-    result = result.filter(
-      (group) =>
-        (group.groupName || "").toLowerCase().includes(keyword) ||
-        (group.description || "").toLowerCase().includes(keyword),
-    );
-  }
-
-  // 排序
-  result.sort((a, b) => {
-    switch (sortBy.value) {
-      case "name":
-        return (a.groupName || "").localeCompare(b.groupName || "");
-      case "time":
-        return (
-          new Date(b.createTime || 0).getTime() -
-          new Date(a.createTime || 0).getTime()
-        );
-      case "members":
-        return (b.memberCount || 0) - (a.memberCount || 0);
-      default:
-        return 0;
-    }
-  });
-
-  return result;
-});
-
-const filteredFriends = computed(() => {
-  if (!memberSearchKeyword.value) return friends.value;
-
-  const keyword = memberSearchKeyword.value.toLowerCase();
-  return friends.value.filter((friend) =>
-    (friend.nickname || friend.username || "").toLowerCase().includes(keyword),
-  );
-});
-
-// 表单验证规则
 const createGroupRules: FormRules = {
   name: [
     { required: true, message: "请输入群组名称", trigger: "blur" },
-    {
-      min: 2,
-      max: 20,
-      message: "群组名称长度在 2 到 20 个字符",
-      trigger: "blur",
-    },
+    { min: 2, max: 20, message: "群组名称长度为 2 到 20 个字符", trigger: "blur" },
   ],
 };
 
-// 方法
-const formatTime = (time?: string): string => {
-  if (!time) return "";
+const transferFriends = computed(() =>
+  chatStore.friends.map((friend) => ({
+    key: friend.friendId,
+    label: friend.remark || friend.nickname || friend.username || friend.friendId,
+  })),
+);
 
-  const date = new Date(time);
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
+const filteredGroups = computed(() => {
+  const keyword = searchKeyword.value.trim().toLowerCase();
+  const list = chatStore.groups.filter((group) => {
+    if (!keyword) {
+      return true;
+    }
+    return [group.groupName, group.name, group.description, group.announcement]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(keyword));
+  });
 
-  if (diff < 60000) return "刚刚";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
+  return list.slice().sort((left, right) => {
+    if (sortBy.value === "time") {
+      return (
+        new Date(right.createTime || right.lastActivityAt || 0).getTime() -
+        new Date(left.createTime || left.lastActivityAt || 0).getTime()
+      );
+    }
+    if (sortBy.value === "members") {
+      return (right.memberCount || 0) - (left.memberCount || 0);
+    }
+    return String(left.groupName || left.name || "").localeCompare(
+      String(right.groupName || right.name || ""),
+      "zh-CN",
+    );
+  });
+});
 
-  return date.toLocaleDateString("zh-CN");
+const formatTime = (value?: string) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 };
 
-const isGroupOwner = (group: Group): boolean => {
-  return group.ownerId === currentUserId.value;
-};
-
-const isSelected = (friendId: string): boolean => {
-  return selectedMembers.value.some((member) => member.friendId === friendId);
-};
-
-const handleSearch = () => {
-  // 实时搜索，这里可以添加防抖逻辑
-};
-
-const handleSortCommand = (command: string) => {
-  sortBy.value = command;
-};
-
-const searchFriends = () => {
-  // 搜索好友逻辑已在计算属性中处理
-};
-
-const toggleMember = (friend: Friend) => {
-  const index = selectedMembers.value.findIndex(
-    (member) => member.friendId === friend.friendId,
-  );
-  if (index > -1) {
-    selectedMembers.value.splice(index, 1);
-  } else {
-    selectedMembers.value.push(friend);
+const loadData = async () => {
+  loading.value = true;
+  try {
+    await Promise.all([chatStore.loadGroups(), chatStore.loadFriends()]);
+  } catch (error) {
+    capture(error, "加载群组失败");
+  } finally {
+    loading.value = false;
   }
 };
 
-const removeMember = (friendId: string) => {
-  const index = selectedMembers.value.findIndex(
-    (member) => member.friendId === friendId,
-  );
-  if (index > -1) {
-    selectedMembers.value.splice(index, 1);
-  }
-};
-
-const selectAvatar = () => {
+const openAvatarPicker = () => {
   avatarInputRef.value?.click();
 };
 
-const handleAvatarChange = (event: Event) => {
-  const target = event.target as HTMLInputElement;
-  const file = target.files?.[0];
-  if (file) {
-    void (async () => {
-      try {
-        const resp = await fileService.uploadImage(file);
-        if (resp.code === 200 && resp.data?.url) {
-          createGroupForm.avatar = resp.data.url;
-        } else {
-          throw new Error(resp.message || "上传群头像失败");
-        }
-      } catch (error: any) {
-        ElMessage.error(error.message || "上传群头像失败");
-      } finally {
-        target.value = "";
-      }
-    })();
+const handleAvatarChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) {
+    return;
+  }
+  try {
+    const response = await fileService.uploadImage(file);
+    if (response.code !== 200 || !response.data?.url) {
+      throw new Error(response.message || "头像上传失败");
+    }
+    createGroupForm.avatar = response.data.url;
+  } catch (error) {
+    capture(error, "头像上传失败");
   }
 };
 
 const createGroup = async () => {
-  if (!createGroupFormRef.value) return;
-
+  if (!createGroupFormRef.value) {
+    return;
+  }
   try {
     await createGroupFormRef.value.validate();
     creating.value = true;
-
     await chatStore.createGroup({
-      name: createGroupForm.name,
-      description: createGroupForm.description,
+      name: createGroupForm.name.trim(),
+      description: createGroupForm.description.trim(),
       avatar: createGroupForm.avatar,
-      memberIds: selectedMembers.value.map((member) => member.friendId),
+      memberIds: createGroupForm.memberIds,
     });
-
-    ElMessage.success("群组创建成功");
+    notifySuccess("群组创建成功");
     showCreateGroup.value = false;
-    await router.push("/chat");
-
-    // 重置表单
     Object.assign(createGroupForm, {
       name: "",
       description: "",
       avatar: "",
+      memberIds: [],
     });
-    selectedMembers.value = [];
-    memberSearchKeyword.value = "";
-  } catch (error: any) {
-    ElMessage.error(error.message || "创建群组失败");
+    await router.push("/chat");
+  } catch (error) {
+    capture(error, "创建群组失败");
   } finally {
     creating.value = false;
   }
 };
 
-const openChat = (group: Group) => {
-  const session = chatStore.openGroupSession(group);
-  if (!session) {
-    ElMessage.error("无法打开群聊");
-    return;
-  }
-
-  router.push("/chat");
-};
-
-const handleGroupAction = async (command: string, group: Group) => {
-  switch (command) {
-    case "chat":
-      openChat(group);
-      break;
-
-    case "info":
-      currentGroup.value = group;
-      showGroupInfo.value = true;
-      break;
-
-    case "members":
-      viewMembers(group);
-      break;
-
-    case "manage":
-      manageGroup(group);
-      break;
-
-    case "leave":
-      await leaveGroup(group);
-      break;
-  }
-};
-
-const viewMembers = async (group?: Group) => {
-  const target = group || currentGroup.value;
-  if (!target) return;
+const openChat = async (group: Group) => {
   try {
-    const resp = await groupService.getMembers(target.id);
-    if (resp.code !== 200) {
-      throw new Error(resp.message || "加载成员失败");
-    }
-    const members = resp.data || [];
+    await chatStore.openGroupSession(group);
+    await router.push("/chat");
+  } catch (error) {
+    capture(error, "打开群聊失败");
+  }
+};
+
+const viewMembers = async (group: Group) => {
+  try {
+    const response = await groupService.getMembers(group.id);
     const content =
-      members.length === 0
+      response.data.length === 0
         ? "暂无成员"
-        : members
-            .slice(0, 50)
-            .map((m: any) => {
-              const roleLabel =
-                m.role === "OWNER"
+        : response.data
+            .slice(0, 100)
+            .map((member) => {
+              const role =
+                member.role === "OWNER"
                   ? "群主"
-                  : m.role === "ADMIN"
+                  : member.role === "ADMIN"
                     ? "管理员"
                     : "成员";
-              return `${m.nickname || m.username || m.userId}（${roleLabel}）`;
+              return `${member.nickname || member.username || member.userId}（${role}）`;
             })
             .join("\n");
-    await ElMessageBox.alert(content, `${target.groupName} 成员列表`, {
+    await ElMessageBox.alert(content, `${group.groupName || group.name} 成员列表`, {
       confirmButtonText: "关闭",
     });
-  } catch (error: any) {
-    ElMessage.error(error.message || "查看成员失败");
-  }
-};
-
-const manageGroup = async (group?: Group) => {
-  const target = group || currentGroup.value;
-  if (!target) return;
-  try {
-    const namePrompt = await ElMessageBox.prompt("请输入群组名称", "群组管理", {
-      inputValue: target.groupName || "",
-      confirmButtonText: "下一步",
-      cancelButtonText: "取消",
-    });
-    const descPrompt = await ElMessageBox.prompt("请输入群组描述", "群组管理", {
-      inputValue: target.description || "",
-      confirmButtonText: "保存",
-      cancelButtonText: "取消",
-    });
-    const response = await groupService.update(target.id, {
-      groupName: namePrompt.value || target.groupName,
-      description: descPrompt.value || "",
-    });
-    if (response.code !== 200) {
-      throw new Error(response.message || "群组更新失败");
-    }
-    await loadGroups();
-    currentGroup.value = {
-      ...target,
-      groupName: namePrompt.value || target.groupName,
-      description: descPrompt.value || "",
-    };
-    ElMessage.success("群组信息已更新");
-  } catch (error: any) {
-    if (error !== "cancel" && error !== "close") {
-      ElMessage.error(error.message || "群组更新失败");
-    }
+  } catch (error) {
+    capture(error, "加载群成员失败");
   }
 };
 
 const leaveGroup = async (group: Group) => {
   try {
     await ElMessageBox.confirm(
-      `确定要退出群组 "${group.groupName}" 吗？`,
+      `确定退出群组“${group.groupName || group.name}”吗？`,
       "退出群组",
       {
+        type: "warning",
         confirmButtonText: "确定",
         cancelButtonText: "取消",
-        type: "warning",
       },
     );
-
     await chatStore.leaveGroup(group.id);
-    ElMessage.success("已退出群组");
-    showGroupInfo.value = false;
-  } catch (error: any) {
-    if (error !== "cancel") {
-      ElMessage.error(error.message || "退出群组失败");
+    notifySuccess("已退出群组");
+  } catch (error) {
+    if (error !== "cancel" && error !== "close") {
+      capture(error, "退出群组失败");
     }
   }
 };
 
-const loadGroups = async () => {
-  try {
-    loading.value = true;
-    await chatStore.loadGroups();
-  } catch (error: any) {
-    ElMessage.error(error.message || "加载群组列表失败");
-  } finally {
-    loading.value = false;
+const handleGroupAction = async (command: string, group: Group) => {
+  if (command === "chat") {
+    await openChat(group);
+    return;
+  }
+  if (command === "members") {
+    await viewMembers(group);
+    return;
+  }
+  if (command === "leave") {
+    await leaveGroup(group);
   }
 };
 
-// 监听搜索关键词变化，清空选中成员
-watch(memberSearchKeyword, () => {
-  // 可以在这里添加防抖逻辑
-});
-
-// 组件挂载
 onMounted(() => {
-  loadGroups();
+  void loadData();
 });
 </script>
 
-<style scoped>
-.groups-container {
-  min-height: 100vh;
-  background: #f5f5f5;
+<style scoped lang="scss">
+.groups-page {
+  min-height: 100%;
   padding: 20px;
+  background: #f5f7fa;
 }
 
-.groups-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-  padding: 0 20px;
-}
-
-.groups-header h2 {
-  margin: 0;
-  color: #2c3e50;
-  font-weight: 500;
-}
-
-.groups-content {
-  max-width: 1000px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.search-section {
-  display: flex;
-  justify-content: center;
-}
-
-.search-input {
-  max-width: 400px;
-}
-
-.invites-card,
-.groups-card {
-  padding: 20px;
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-weight: 500;
-  color: #2c3e50;
-}
-
-.badge {
-  margin-left: 8px;
-}
-
-.loading-container,
-.empty-container {
-  padding: 40px 0;
-  text-align: center;
-}
-
-.invite-list {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-.invite-item {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  padding: 15px;
-  background: #f8f9fa;
-  border-radius: 8px;
-  border: 1px solid #e9ecef;
-}
-
-.invite-info {
-  flex: 1;
-}
-
-.invite-group {
-  font-weight: 500;
-  color: #2c3e50;
-  margin-bottom: 4px;
-}
-
-.invite-inviter {
-  color: #6c757d;
-  font-size: 14px;
-  margin-bottom: 4px;
-}
-
-.invite-time {
-  color: #95a5a6;
-  font-size: 12px;
-}
-
-.invite-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.groups-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.group-item {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  padding: 15px;
-  background: white;
-  border-radius: 8px;
-  border: 1px solid #e9ecef;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.group-item:hover {
-  background: #f8f9fa;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.group-avatar-container {
-  position: relative;
-}
-
-.unread-badge {
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  background: #f56c6c;
-  color: white;
-  border-radius: 10px;
-  padding: 2px 6px;
-  font-size: 12px;
-  min-width: 18px;
-  text-align: center;
-}
-
-.group-info {
-  flex: 1;
-}
-
-.group-name {
-  font-weight: 500;
-  color: #2c3e50;
-  margin-bottom: 4px;
-}
-
-.group-desc {
-  color: #6c757d;
-  font-size: 13px;
-  margin-bottom: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.group-meta {
-  display: flex;
-  gap: 15px;
-  font-size: 12px;
-  color: #95a5a6;
-}
-
-.group-actions {
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.group-item:hover .group-actions {
-  opacity: 1;
-}
-
+.page-header,
+.toolbar,
+.card-header,
+.group-item,
+.group-title-row,
 .avatar-upload {
   display: flex;
   align-items: center;
-  gap: 15px;
 }
 
-.member-selection {
-  border: 1px solid #e9ecef;
-  border-radius: 8px;
-  padding: 15px;
-  background: #f8f9fa;
+.page-header {
+  justify-content: space-between;
+  margin-bottom: 20px;
 }
 
-.member-search {
-  margin-bottom: 15px;
-}
-
-.selected-members {
-  margin-bottom: 15px;
-}
-
-.selected-title,
-.friend-title {
-  font-weight: 500;
-  color: #2c3e50;
-  margin-bottom: 10px;
-}
-
-.selected-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-height: 32px;
-  padding: 8px;
-  border: 1px solid #e9ecef;
-  border-radius: 4px;
-  background: white;
-}
-
-.member-tag {
+.page-header h2 {
   margin: 0;
 }
 
-.friend-list {
-  border-top: 1px solid #e9ecef;
-  padding-top: 15px;
+.toolbar {
+  gap: 12px;
+  margin-bottom: 20px;
 }
 
-.friend-items {
-  max-height: 200px;
-  overflow-y: auto;
+.sort-select {
+  width: 140px;
+}
+
+.panel-card {
+  border-radius: 16px;
+}
+
+.card-header {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.subtle-text {
+  color: #909399;
+  font-size: 13px;
+}
+
+.group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.group-item {
+  gap: 14px;
+  padding: 16px;
+  border-radius: 12px;
+  background: #f8fafc;
+  cursor: pointer;
+}
+
+.group-item:hover {
+  background: #eef5ff;
+}
+
+.group-avatar-wrap {
+  position: relative;
+}
+
+.group-unread {
+  position: absolute;
+  right: -4px;
+  top: -4px;
+}
+
+.group-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.group-name {
+  font-weight: 600;
+  color: #303133;
+}
+
+.group-time,
+.group-desc,
+.group-meta {
+  color: #909399;
+  font-size: 13px;
+}
+
+.group-desc {
+  margin-top: 4px;
+}
+
+.loading-block,
+.empty-state {
+  padding: 24px 0;
+}
+
+.avatar-upload {
+  gap: 16px;
+}
+
+.avatar-actions {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.friend-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
-}
-
-.friend-item:hover {
-  background: #e9ecef;
-}
-
-.friend-item.selected {
-  background: #e7f3ff;
-  border: 1px solid #409eff;
-}
-
-.friend-name {
-  flex: 1;
-  font-size: 14px;
-}
-
-.check-icon {
-  color: #409eff;
-}
-
-.group-info-content {
-  padding: 20px 0;
-}
-
-.group-header {
-  display: flex;
-  gap: 20px;
-  margin-bottom: 30px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #e9ecef;
-}
-
-.group-details {
-  flex: 1;
-}
-
-.group-details h3 {
-  margin: 0 0 10px 0;
-  color: #2c3e50;
-}
-
-.group-details p {
-  margin: 0 0 15px 0;
-  color: #6c757d;
-  line-height: 1.5;
-}
-
-.group-stats {
-  display: flex;
-  gap: 20px;
-  font-size: 14px;
-  color: #95a5a6;
-}
-
-.group-actions-section {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-}
-
-/* 响应式设计 */
 @media (max-width: 768px) {
-  .groups-container {
-    padding: 10px;
+  .groups-page {
+    padding: 16px;
   }
 
-  .groups-header {
-    padding: 0 10px;
+  .toolbar {
     flex-direction: column;
-    gap: 10px;
     align-items: stretch;
   }
 
-  .invite-item,
-  .group-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .invite-actions {
+  .sort-select {
     width: 100%;
-    justify-content: flex-end;
-  }
-
-  .group-actions {
-    opacity: 1;
-  }
-
-  .avatar-upload {
-    flex-direction: column;
-    text-align: center;
-  }
-
-  .group-header {
-    flex-direction: column;
-    text-align: center;
-  }
-
-  .group-actions-section {
-    flex-direction: column;
   }
 }
 </style>

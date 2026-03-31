@@ -1,12 +1,14 @@
 <template>
-  <div class="settings-container">
-    <div class="settings-header">
+  <div class="settings-page">
+    <div class="page-header">
       <el-button link :icon="ArrowLeft" @click="$router.back()">返回</el-button>
       <h2>设置</h2>
+      <el-button type="danger" :loading="loggingOut" @click="logout">
+        退出登录
+      </el-button>
     </div>
 
-    <div class="settings-content">
-      <!-- 账户设置 -->
+    <div class="settings-grid">
       <el-card class="settings-card">
         <template #header>
           <div class="card-header">
@@ -15,42 +17,39 @@
           </div>
         </template>
 
-        <div class="settings-list">
-          <div class="setting-item" @click="$router.push('/profile')">
-            <div class="setting-info">
-              <div class="setting-title">个人资料</div>
-              <div class="setting-desc">修改头像、昵称、个人信息等</div>
-            </div>
-            <el-icon class="setting-arrow"><ArrowRight /></el-icon>
+        <div class="setting-row" @click="$router.push('/profile')">
+          <div>
+            <div class="setting-title">个人资料</div>
+            <div class="setting-desc">修改头像、昵称和个人信息</div>
           </div>
+          <el-icon><ArrowRight /></el-icon>
+        </div>
 
-          <div class="setting-item" @click="showChangePassword = true">
-            <div class="setting-info">
-              <div class="setting-title">修改密码</div>
-              <div class="setting-desc">更改登录密码</div>
-            </div>
-            <el-icon class="setting-arrow"><ArrowRight /></el-icon>
+        <div class="setting-row" @click="showChangePassword = true">
+          <div>
+            <div class="setting-title">修改密码</div>
+            <div class="setting-desc">定期更换密码可提升账户安全</div>
           </div>
+          <el-icon><ArrowRight /></el-icon>
+        </div>
 
-          <div class="setting-item" @click="showBindPhone = true">
-            <div class="setting-info">
-              <div class="setting-title">手机号绑定</div>
-              <div class="setting-desc">{{ userInfo?.phone || "未绑定" }}</div>
-            </div>
-            <el-icon class="setting-arrow"><ArrowRight /></el-icon>
+        <div class="setting-row" @click="showBindPhone = true">
+          <div>
+            <div class="setting-title">绑定手机号</div>
+            <div class="setting-desc">{{ userInfo?.phone || '未绑定' }}</div>
           </div>
+          <el-icon><ArrowRight /></el-icon>
+        </div>
 
-          <div class="setting-item" @click="showBindEmail = true">
-            <div class="setting-info">
-              <div class="setting-title">邮箱绑定</div>
-              <div class="setting-desc">{{ userInfo?.email || "未绑定" }}</div>
-            </div>
-            <el-icon class="setting-arrow"><ArrowRight /></el-icon>
+        <div class="setting-row" @click="showBindEmail = true">
+          <div>
+            <div class="setting-title">绑定邮箱</div>
+            <div class="setting-desc">{{ userInfo?.email || '未绑定' }}</div>
           </div>
+          <el-icon><ArrowRight /></el-icon>
         </div>
       </el-card>
 
-      <!-- 隐私设置 -->
       <el-card class="settings-card">
         <template #header>
           <div class="card-header">
@@ -59,54 +58,51 @@
           </div>
         </template>
 
-        <div class="settings-list">
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">允许陌生人添加</div>
-              <div class="setting-desc">允许陌生人通过搜索添加您为好友</div>
-            </div>
-            <el-switch
-              v-model="privacySettings.allowStrangerAdd"
-              @change="updatePrivacySetting('allowStrangerAdd', $event)"
-            />
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">允许陌生人添加</div>
+            <div class="setting-desc">允许通过搜索发起好友申请</div>
           </div>
+          <el-switch
+            v-model="privacySettings.allowStrangerAdd"
+            @change="updatePrivacySetting('allowStrangerAdd', $event)"
+          />
+        </div>
 
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">显示在线状态</div>
-              <div class="setting-desc">向好友显示您的在线状态</div>
-            </div>
-            <el-switch
-              v-model="privacySettings.showOnlineStatus"
-              @change="updatePrivacySetting('showOnlineStatus', $event)"
-            />
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">显示在线状态</div>
+            <div class="setting-desc">允许好友看到在线状态</div>
           </div>
+          <el-switch
+            v-model="privacySettings.showOnlineStatus"
+            @change="updatePrivacySetting('showOnlineStatus', $event)"
+          />
+        </div>
 
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">允许查看朋友圈</div>
-              <div class="setting-desc">允许好友查看您的朋友圈动态</div>
-            </div>
-            <el-switch
-              v-model="privacySettings.allowViewMoments"
-              @change="updatePrivacySetting('allowViewMoments', $event)"
-            />
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">允许查看朋友圈</div>
+            <div class="setting-desc">控制朋友圈可见范围</div>
           </div>
+          <el-switch
+            v-model="privacySettings.allowViewMoments"
+            @change="updatePrivacySetting('allowViewMoments', $event)"
+          />
+        </div>
 
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">消息已读回执</div>
-              <div class="setting-desc">向对方显示消息已读状态</div>
-            </div>
-            <el-switch
-              v-model="privacySettings.messageReadReceipt"
-              @change="updatePrivacySetting('messageReadReceipt', $event)"
-            />
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">已读回执</div>
+            <div class="setting-desc">向对方展示消息已读状态</div>
           </div>
+          <el-switch
+            v-model="privacySettings.messageReadReceipt"
+            @change="updatePrivacySetting('messageReadReceipt', $event)"
+          />
         </div>
       </el-card>
 
-      <!-- 消息设置 -->
       <el-card class="settings-card">
         <template #header>
           <div class="card-header">
@@ -115,65 +111,62 @@
           </div>
         </template>
 
-        <div class="settings-list">
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">消息通知</div>
-              <div class="setting-desc">接收新消息时显示通知</div>
-            </div>
-            <el-switch
-              v-model="messageSettings.enableNotification"
-              @change="updateMessageSetting('enableNotification', $event)"
-            />
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">消息通知</div>
+            <div class="setting-desc">收到新消息时弹出提醒</div>
           </div>
+          <el-switch
+            v-model="messageSettings.enableNotification"
+            @change="updateMessageSetting('enableNotification', $event)"
+          />
+        </div>
 
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">声音提醒</div>
-              <div class="setting-desc">接收新消息时播放提示音</div>
-            </div>
-            <el-switch
-              v-model="messageSettings.enableSound"
-              @change="updateMessageSetting('enableSound', $event)"
-            />
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">声音提醒</div>
+            <div class="setting-desc">收到新消息时播放声音</div>
           </div>
+          <el-switch
+            v-model="messageSettings.enableSound"
+            @change="updateMessageSetting('enableSound', $event)"
+          />
+        </div>
 
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">震动提醒</div>
-              <div class="setting-desc">接收新消息时震动提醒（移动设备）</div>
-            </div>
-            <el-switch
-              v-model="messageSettings.enableVibration"
-              @change="updateMessageSetting('enableVibration', $event)"
-            />
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">震动提醒</div>
+            <div class="setting-desc">移动端收到消息时触发震动</div>
           </div>
+          <el-switch
+            v-model="messageSettings.enableVibration"
+            @change="updateMessageSetting('enableVibration', $event)"
+          />
+        </div>
 
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">群组消息免打扰</div>
-              <div class="setting-desc">群组消息不显示通知</div>
-            </div>
-            <el-switch
-              v-model="messageSettings.muteGroupMessages"
-              @change="updateMessageSetting('muteGroupMessages', $event)"
-            />
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">群消息免打扰</div>
+            <div class="setting-desc">关闭群组通知但保留未读数</div>
           </div>
+          <el-switch
+            v-model="messageSettings.muteGroupMessages"
+            @change="updateMessageSetting('muteGroupMessages', $event)"
+          />
+        </div>
 
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">自动下载图片</div>
-              <div class="setting-desc">自动下载聊天中的图片</div>
-            </div>
-            <el-switch
-              v-model="messageSettings.autoDownloadImages"
-              @change="updateMessageSetting('autoDownloadImages', $event)"
-            />
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">自动下载图片</div>
+            <div class="setting-desc">在聊天中预加载图片资源</div>
           </div>
+          <el-switch
+            v-model="messageSettings.autoDownloadImages"
+            @change="updateMessageSetting('autoDownloadImages', $event)"
+          />
         </div>
       </el-card>
 
-      <!-- 通用设置 -->
       <el-card class="settings-card">
         <template #header>
           <div class="card-header">
@@ -182,79 +175,76 @@
           </div>
         </template>
 
-        <div class="settings-list">
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">语言</div>
-              <div class="setting-desc">选择界面语言</div>
-            </div>
-            <el-select
-              v-model="generalSettings.language"
-              @change="updateGeneralSetting('language', $event)"
-              style="width: 120px"
-            >
-              <el-option label="中文" value="zh-CN" />
-              <el-option label="English" value="en-US" />
-            </el-select>
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">语言</div>
+            <div class="setting-desc">切换界面语言</div>
           </div>
+          <el-select
+            v-model="generalSettings.language"
+            class="select-control"
+            @change="updateGeneralSetting('language', $event)"
+          >
+            <el-option label="中文" value="zh-CN" />
+            <el-option label="English" value="en-US" />
+          </el-select>
+        </div>
 
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">主题</div>
-              <div class="setting-desc">选择界面主题</div>
-            </div>
-            <el-select
-              v-model="generalSettings.theme"
-              @change="updateGeneralSetting('theme', $event)"
-              style="width: 120px"
-            >
-              <el-option label="浅色" value="light" />
-              <el-option label="深色" value="dark" />
-              <el-option label="自动" value="auto" />
-            </el-select>
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">主题</div>
+            <div class="setting-desc">切换界面主题</div>
           </div>
+          <el-select
+            v-model="generalSettings.theme"
+            class="select-control"
+            @change="updateGeneralSetting('theme', $event)"
+          >
+            <el-option label="浅色" value="light" />
+            <el-option label="深色" value="dark" />
+            <el-option label="自动" value="auto" />
+          </el-select>
+        </div>
 
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">字体大小</div>
-              <div class="setting-desc">调整界面字体大小</div>
-            </div>
-            <el-select
-              v-model="generalSettings.fontSize"
-              @change="updateGeneralSetting('fontSize', $event)"
-              style="width: 120px"
-            >
-              <el-option label="小" value="small" />
-              <el-option label="中" value="medium" />
-              <el-option label="大" value="large" />
-            </el-select>
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">字体大小</div>
+            <div class="setting-desc">调整聊天与设置页的文字密度</div>
           </div>
+          <el-select
+            v-model="generalSettings.fontSize"
+            class="select-control"
+            @change="updateGeneralSetting('fontSize', $event)"
+          >
+            <el-option label="小" value="small" />
+            <el-option label="中" value="medium" />
+            <el-option label="大" value="large" />
+          </el-select>
+        </div>
 
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">自动登录</div>
-              <div class="setting-desc">启动时自动登录</div>
-            </div>
-            <el-switch
-              v-model="generalSettings.autoLogin"
-              @change="updateGeneralSetting('autoLogin', $event)"
-            />
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">自动登录</div>
+            <div class="setting-desc">浏览器会话恢复时自动恢复登录状态</div>
           </div>
+          <el-switch
+            v-model="generalSettings.autoLogin"
+            @change="updateGeneralSetting('autoLogin', $event)"
+          />
+        </div>
 
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">启动时最小化</div>
-              <div class="setting-desc">启动时最小化到系统托盘</div>
-            </div>
-            <el-switch
-              v-model="generalSettings.minimizeOnStart"
-              @change="updateGeneralSetting('minimizeOnStart', $event)"
-            />
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">启动时最小化</div>
+            <div class="setting-desc">桌面环境下以最小化方式打开应用</div>
           </div>
+          <el-switch
+            v-model="generalSettings.minimizeOnStart"
+            @change="updateGeneralSetting('minimizeOnStart', $event)"
+          />
         </div>
       </el-card>
 
-      <!-- 数据管理 -->
       <el-card class="settings-card">
         <template #header>
           <div class="card-header">
@@ -263,120 +253,57 @@
           </div>
         </template>
 
-        <div class="settings-list">
-          <div class="setting-item" @click="clearCache">
-            <div class="setting-info">
-              <div class="setting-title">清理缓存</div>
-              <div class="setting-desc">清理应用缓存数据</div>
-            </div>
-            <el-icon class="setting-arrow"><ArrowRight /></el-icon>
+        <div class="setting-row" @click="clearCache">
+          <div>
+            <div class="setting-title">清理缓存</div>
+            <div class="setting-desc">清理非敏感本地缓存与页面状态</div>
           </div>
+          <el-icon><ArrowRight /></el-icon>
+        </div>
 
-          <div class="setting-item" @click="exportData">
-            <div class="setting-info">
-              <div class="setting-title">导出数据</div>
-              <div class="setting-desc">导出聊天记录和个人数据</div>
-            </div>
-            <el-icon class="setting-arrow"><ArrowRight /></el-icon>
+        <div class="setting-row" @click="exportData">
+          <div>
+            <div class="setting-title">导出数据</div>
+            <div class="setting-desc">导出用户资料与设置快照</div>
           </div>
+          <el-icon><ArrowRight /></el-icon>
+        </div>
 
-          <div class="setting-item" @click="showDeleteAccount = true">
-            <div class="setting-info">
-              <div class="setting-title">注销账户</div>
-              <div class="setting-desc">永久删除账户和所有数据</div>
-            </div>
-            <el-icon class="setting-arrow"><ArrowRight /></el-icon>
+        <div class="setting-row danger" @click="showDeleteAccount = true">
+          <div>
+            <div class="setting-title">注销账户</div>
+            <div class="setting-desc">永久删除账户和数据，无法恢复</div>
           </div>
+          <el-icon><ArrowRight /></el-icon>
         </div>
       </el-card>
-
-      <!-- 关于 -->
-      <el-card class="settings-card">
-        <template #header>
-          <div class="card-header">
-            <el-icon><InfoFilled /></el-icon>
-            <span>关于</span>
-          </div>
-        </template>
-
-        <div class="settings-list">
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">版本信息</div>
-              <div class="setting-desc">v1.0.0</div>
-            </div>
-          </div>
-
-          <div class="setting-item" @click="checkUpdate">
-            <div class="setting-info">
-              <div class="setting-title">检查更新</div>
-              <div class="setting-desc">检查是否有新版本</div>
-            </div>
-            <el-icon class="setting-arrow"><ArrowRight /></el-icon>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">用户协议</div>
-              <div class="setting-desc">查看用户服务协议</div>
-            </div>
-            <el-icon class="setting-arrow"><ArrowRight /></el-icon>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-title">隐私政策</div>
-              <div class="setting-desc">查看隐私保护政策</div>
-            </div>
-            <el-icon class="setting-arrow"><ArrowRight /></el-icon>
-          </div>
-        </div>
-      </el-card>
-
-      <!-- 退出登录 -->
-      <div class="logout-section">
-        <el-button
-          type="danger"
-          size="large"
-          @click="logout"
-          :loading="loggingOut"
-        >
-          退出登录
-        </el-button>
-      </div>
     </div>
 
-    <!-- 修改密码对话框 -->
-    <el-dialog v-model="showChangePassword" title="修改密码" width="400px">
+    <el-dialog v-model="showChangePassword" title="修改密码" width="420px">
       <el-form
         ref="passwordFormRef"
         :model="passwordForm"
         :rules="passwordRules"
-        label-width="100px"
+        label-width="90px"
       >
         <el-form-item label="当前密码" prop="currentPassword">
           <el-input
             v-model="passwordForm.currentPassword"
             type="password"
-            placeholder="请输入当前密码"
             show-password
           />
         </el-form-item>
-
         <el-form-item label="新密码" prop="newPassword">
           <el-input
             v-model="passwordForm.newPassword"
             type="password"
-            placeholder="请输入新密码"
             show-password
           />
         </el-form-item>
-
         <el-form-item label="确认密码" prop="confirmPassword">
           <el-input
             v-model="passwordForm.confirmPassword"
             type="password"
-            placeholder="请再次输入新密码"
             show-password
           />
         </el-form-item>
@@ -384,47 +311,22 @@
 
       <template #footer>
         <el-button @click="showChangePassword = false">取消</el-button>
-        <el-button
-          type="primary"
-          @click="changePassword"
-          :loading="changingPassword"
-        >
-          确定
+        <el-button type="primary" :loading="changingPassword" @click="changePassword">
+          保存
         </el-button>
       </template>
     </el-dialog>
 
-    <!-- 绑定手机号对话框 -->
-    <el-dialog v-model="showBindPhone" title="绑定手机号" width="400px">
-      <el-form
-        ref="phoneFormRef"
-        :model="phoneForm"
-        :rules="phoneRules"
-        label-width="100px"
-      >
+    <el-dialog v-model="showBindPhone" title="绑定手机号" width="420px">
+      <el-form ref="phoneFormRef" :model="phoneForm" :rules="phoneRules" label-width="90px">
         <el-form-item label="手机号" prop="phone">
-          <el-input
-            v-model="phoneForm.phone"
-            placeholder="请输入手机号"
-            maxlength="11"
-          />
+          <el-input v-model="phoneForm.phone" maxlength="11" />
         </el-form-item>
-
         <el-form-item label="验证码" prop="code">
-          <div class="code-input">
-            <el-input
-              v-model="phoneForm.code"
-              placeholder="请输入验证码"
-              maxlength="6"
-            />
-            <el-button
-              @click="sendPhoneCode"
-              :disabled="phoneCodeCountdown > 0"
-              :loading="sendingPhoneCode"
-            >
-              {{
-                phoneCodeCountdown > 0 ? `${phoneCodeCountdown}s` : "发送验证码"
-              }}
+          <div class="code-row">
+            <el-input v-model="phoneForm.code" maxlength="6" />
+            <el-button :disabled="phoneCodeCountdown > 0" :loading="sendingPhoneCode" @click="sendPhoneCode">
+              {{ phoneCodeCountdown > 0 ? `${phoneCodeCountdown}s` : '发送验证码' }}
             </el-button>
           </div>
         </el-form-item>
@@ -432,39 +334,22 @@
 
       <template #footer>
         <el-button @click="showBindPhone = false">取消</el-button>
-        <el-button type="primary" @click="bindPhone" :loading="bindingPhone">
-          确定
+        <el-button type="primary" :loading="bindingPhone" @click="bindPhone">
+          绑定
         </el-button>
       </template>
     </el-dialog>
 
-    <!-- 绑定邮箱对话框 -->
-    <el-dialog v-model="showBindEmail" title="绑定邮箱" width="400px">
-      <el-form
-        ref="emailFormRef"
-        :model="emailForm"
-        :rules="emailRules"
-        label-width="100px"
-      >
+    <el-dialog v-model="showBindEmail" title="绑定邮箱" width="420px">
+      <el-form ref="emailFormRef" :model="emailForm" :rules="emailRules" label-width="90px">
         <el-form-item label="邮箱" prop="email">
-          <el-input v-model="emailForm.email" placeholder="请输入邮箱地址" />
+          <el-input v-model="emailForm.email" />
         </el-form-item>
-
         <el-form-item label="验证码" prop="code">
-          <div class="code-input">
-            <el-input
-              v-model="emailForm.code"
-              placeholder="请输入验证码"
-              maxlength="6"
-            />
-            <el-button
-              @click="sendEmailCode"
-              :disabled="emailCodeCountdown > 0"
-              :loading="sendingEmailCode"
-            >
-              {{
-                emailCodeCountdown > 0 ? `${emailCodeCountdown}s` : "发送验证码"
-              }}
+          <div class="code-row">
+            <el-input v-model="emailForm.code" maxlength="6" />
+            <el-button :disabled="emailCodeCountdown > 0" :loading="sendingEmailCode" @click="sendEmailCode">
+              {{ emailCodeCountdown > 0 ? `${emailCodeCountdown}s` : '发送验证码' }}
             </el-button>
           </div>
         </el-form-item>
@@ -472,55 +357,39 @@
 
       <template #footer>
         <el-button @click="showBindEmail = false">取消</el-button>
-        <el-button type="primary" @click="bindEmail" :loading="bindingEmail">
-          确定
+        <el-button type="primary" :loading="bindingEmail" @click="bindEmail">
+          绑定
         </el-button>
       </template>
     </el-dialog>
 
-    <!-- 注销账户确认对话框 -->
-    <el-dialog v-model="showDeleteAccount" title="注销账户" width="400px">
-      <div class="delete-account-content">
-        <el-alert
-          title="警告"
-          type="warning"
-          description="注销账户将永久删除您的所有数据，包括聊天记录、好友关系等，此操作不可恢复！"
-          show-icon
-          :closable="false"
-        />
+    <el-dialog v-model="showDeleteAccount" title="注销账户" width="420px">
+      <el-alert
+        title="该操作不可恢复"
+        description="账户、好友关系和聊天数据都会被永久删除。"
+        type="warning"
+        show-icon
+        :closable="false"
+      />
 
-        <el-form
-          ref="deleteFormRef"
-          :model="deleteForm"
-          :rules="deleteRules"
-          label-width="100px"
-          style="margin-top: 20px"
-        >
-          <el-form-item label="确认密码" prop="password">
-            <el-input
-              v-model="deleteForm.password"
-              type="password"
-              placeholder="请输入登录密码确认"
-              show-password
-            />
-          </el-form-item>
-
-          <el-form-item label="确认操作" prop="confirm">
-            <el-input
-              v-model="deleteForm.confirm"
-              placeholder="请输入 '确认注销' 来确认操作"
-            />
-          </el-form-item>
-        </el-form>
-      </div>
+      <el-form
+        ref="deleteFormRef"
+        :model="deleteForm"
+        :rules="deleteRules"
+        label-width="90px"
+        class="delete-form"
+      >
+        <el-form-item label="登录密码" prop="password">
+          <el-input v-model="deleteForm.password" type="password" show-password />
+        </el-form-item>
+        <el-form-item label="确认操作" prop="confirm">
+          <el-input v-model="deleteForm.confirm" placeholder="请输入“确认注销”" />
+        </el-form-item>
+      </el-form>
 
       <template #footer>
         <el-button @click="showDeleteAccount = false">取消</el-button>
-        <el-button
-          type="danger"
-          @click="deleteAccount"
-          :loading="deletingAccount"
-        >
+        <el-button type="danger" :loading="deletingAccount" @click="deleteAccount">
           确认注销
         </el-button>
       </template>
@@ -529,9 +398,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
+import { useRouter } from "vue-router";
 import {
-  ElMessage,
   ElMessageBox,
   type FormInstance,
   type FormRules,
@@ -539,26 +408,35 @@ import {
 import {
   ArrowLeft,
   ArrowRight,
-  User,
-  Lock,
   ChatDotRound,
-  Setting,
   FolderOpened,
-  InfoFilled,
+  Lock,
+  Setting,
+  User,
 } from "@element-plus/icons-vue";
+import type { UserSettings } from "@/types";
+import { defaultUserSettings } from "@/normalizers/user";
 import { useUserStore } from "@/stores/user";
-import { STORAGE_CONFIG } from "@/config";
+import { useUserSettingsStore } from "@/stores/user-settings";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
 
-// 状态管理
+type PrivacyKey = keyof UserSettings["privacy"];
+type MessageKey = keyof UserSettings["message"];
+type GeneralKey = keyof UserSettings["general"];
+type TimerHandle = ReturnType<typeof setInterval>;
+
+const router = useRouter();
 const userStore = useUserStore();
+const settingsStore = useUserSettingsStore();
+const { capture, notifySuccess } = useErrorHandler("settings-page");
 
-// 引用
-const passwordFormRef = ref<FormInstance>();
-const phoneFormRef = ref<FormInstance>();
-const emailFormRef = ref<FormInstance>();
-const deleteFormRef = ref<FormInstance>();
+const defaults = defaultUserSettings();
 
-// 响应式数据
+const passwordFormRef = ref<FormInstance | null>(null);
+const phoneFormRef = ref<FormInstance | null>(null);
+const emailFormRef = ref<FormInstance | null>(null);
+const deleteFormRef = ref<FormInstance | null>(null);
+
 const loggingOut = ref(false);
 const changingPassword = ref(false);
 const bindingPhone = ref(false);
@@ -569,37 +447,15 @@ const sendingEmailCode = ref(false);
 const phoneCodeCountdown = ref(0);
 const emailCodeCountdown = ref(0);
 
-// 对话框状态
 const showChangePassword = ref(false);
 const showBindPhone = ref(false);
 const showBindEmail = ref(false);
 const showDeleteAccount = ref(false);
 
-// 设置数据
-const privacySettings = reactive({
-  allowStrangerAdd: true,
-  showOnlineStatus: true,
-  allowViewMoments: true,
-  messageReadReceipt: true,
-});
+const privacySettings = reactive({ ...defaults.privacy });
+const messageSettings = reactive({ ...defaults.message });
+const generalSettings = reactive({ ...defaults.general });
 
-const messageSettings = reactive({
-  enableNotification: true,
-  enableSound: true,
-  enableVibration: true,
-  muteGroupMessages: false,
-  autoDownloadImages: true,
-});
-
-const generalSettings = reactive({
-  language: "zh-CN",
-  theme: "light",
-  fontSize: "medium",
-  autoLogin: true,
-  minimizeOnStart: false,
-});
-
-// 表单数据
 const passwordForm = reactive({
   currentPassword: "",
   newPassword: "",
@@ -621,27 +477,23 @@ const deleteForm = reactive({
   confirm: "",
 });
 
-// 计算属性
 const userInfo = computed(() => userStore.userInfo);
 
-// 表单验证规则
 const passwordRules: FormRules = {
-  currentPassword: [
-    { required: true, message: "请输入当前密码", trigger: "blur" },
-  ],
+  currentPassword: [{ required: true, message: "请输入当前密码", trigger: "blur" }],
   newPassword: [
     { required: true, message: "请输入新密码", trigger: "blur" },
-    { min: 6, max: 20, message: "密码长度在 6 到 20 个字符", trigger: "blur" },
+    { min: 6, max: 20, message: "密码长度为 6 到 20 个字符", trigger: "blur" },
   ],
   confirmPassword: [
-    { required: true, message: "请确认新密码", trigger: "blur" },
+    { required: true, message: "请再次输入新密码", trigger: "blur" },
     {
-      validator: (rule, value, callback) => {
+      validator: (_rule, value, callback) => {
         if (value !== passwordForm.newPassword) {
           callback(new Error("两次输入的密码不一致"));
-        } else {
-          callback();
+          return;
         }
+        callback();
       },
       trigger: "blur",
     },
@@ -651,15 +503,11 @@ const passwordRules: FormRules = {
 const phoneRules: FormRules = {
   phone: [
     { required: true, message: "请输入手机号", trigger: "blur" },
-    {
-      pattern: /^1[3-9]\d{9}$/,
-      message: "请输入正确的手机号",
-      trigger: "blur",
-    },
+    { pattern: /^1[3-9]\d{9}$/, message: "请输入正确的手机号", trigger: "blur" },
   ],
   code: [
     { required: true, message: "请输入验证码", trigger: "blur" },
-    { len: 6, message: "验证码为6位数字", trigger: "blur" },
+    { len: 6, message: "验证码长度为 6 位", trigger: "blur" },
   ],
 };
 
@@ -670,7 +518,7 @@ const emailRules: FormRules = {
   ],
   code: [
     { required: true, message: "请输入验证码", trigger: "blur" },
-    { len: 6, message: "验证码为6位数字", trigger: "blur" },
+    { len: 6, message: "验证码长度为 6 位", trigger: "blur" },
   ],
 };
 
@@ -679,87 +527,123 @@ const deleteRules: FormRules = {
   confirm: [
     { required: true, message: "请输入确认文字", trigger: "blur" },
     {
-      validator: (rule, value, callback) => {
+      validator: (_rule, value, callback) => {
         if (value !== "确认注销") {
-          callback(new Error('请输入 "确认注销"'));
-        } else {
-          callback();
+          callback(new Error('请输入“确认注销”'));
+          return;
         }
+        callback();
       },
       trigger: "blur",
     },
   ],
 };
 
-// 定时器
-let phoneTimer: NodeJS.Timeout | null = null;
-let emailTimer: NodeJS.Timeout | null = null;
+let phoneTimer: TimerHandle | null = null;
+let emailTimer: TimerHandle | null = null;
 
-// 方法
-const updatePrivacySetting = async (key: string, value: boolean) => {
-  try {
-    await userStore.updatePrivacySettings({ [key]: value });
-    ElMessage.success("设置已更新");
-  } catch (error: any) {
-    ElMessage.error(error.message || "更新设置失败");
-    // 恢复原值
-    (privacySettings as any)[key] = !value;
-  }
-};
-
-const updateMessageSetting = async (key: string, value: boolean) => {
-  try {
-    await userStore.updateMessageSettings({ [key]: value });
-    ElMessage.success("设置已更新");
-  } catch (error: any) {
-    ElMessage.error(error.message || "更新设置失败");
-    // 恢复原值
-    (messageSettings as any)[key] = !value;
-  }
-};
-
-const updateGeneralSetting = async (key: string, value: any) => {
-  try {
-    await userStore.updateGeneralSettings({ [key]: value });
-    ElMessage.success("设置已更新");
-
-    // 应用主题变化
-    if (key === "theme") {
-      applyTheme(value);
-    }
-  } catch (error: any) {
-    ElMessage.error(error.message || "更新设置失败");
-  }
-};
-
-const applyTheme = (theme: string) => {
+const applyTheme = (theme: UserSettings["general"]["theme"]) => {
   document.documentElement.setAttribute("data-theme", theme);
   document.body.classList.toggle("theme-dark", theme === "dark");
 };
 
-const changePassword = async () => {
-  if (!passwordFormRef.value) return;
+const syncSettingsState = (settings: UserSettings) => {
+  Object.assign(privacySettings, settings.privacy);
+  Object.assign(messageSettings, settings.message);
+  Object.assign(generalSettings, settings.general);
+  applyTheme(settings.general.theme);
+};
 
+const loadSettings = async () => {
+  try {
+    const settings = await settingsStore.getUserSettings();
+    syncSettingsState(settings);
+  } catch (error) {
+    capture(error, "加载设置失败");
+  }
+};
+
+const updatePrivacySetting = async (key: PrivacyKey, value: boolean) => {
+  const previous = privacySettings[key];
+  try {
+    await settingsStore.updatePrivacySettings({ [key]: value });
+    notifySuccess("隐私设置已更新");
+  } catch (error) {
+    privacySettings[key] = previous;
+    capture(error, "更新隐私设置失败");
+  }
+};
+
+const updateMessageSetting = async (key: MessageKey, value: boolean) => {
+  const previous = messageSettings[key];
+  try {
+    await settingsStore.updateMessageSettings({ [key]: value });
+    notifySuccess("消息设置已更新");
+  } catch (error) {
+    messageSettings[key] = previous;
+    capture(error, "更新消息设置失败");
+  }
+};
+
+const updateGeneralSetting = async (
+  key: GeneralKey,
+  value: UserSettings["general"][GeneralKey],
+) => {
+  const previous = generalSettings[key];
+  try {
+    await settingsStore.updateGeneralSettings({ [key]: value });
+    if (key === "theme") {
+      applyTheme(value as UserSettings["general"]["theme"]);
+    }
+    notifySuccess("通用设置已更新");
+  } catch (error) {
+    generalSettings[key] = previous;
+    capture(error, "更新通用设置失败");
+  }
+};
+
+const startCountdown = (target: "phone" | "email") => {
+  const countdown = target === "phone" ? phoneCodeCountdown : emailCodeCountdown;
+  const timerRef = target === "phone" ? "phone" : "email";
+  countdown.value = 60;
+  const timer = setInterval(() => {
+    countdown.value -= 1;
+    if (countdown.value <= 0) {
+      clearInterval(timer);
+      if (timerRef === "phone") {
+        phoneTimer = null;
+      } else {
+        emailTimer = null;
+      }
+    }
+  }, 1000);
+  if (timerRef === "phone") {
+    phoneTimer = timer;
+  } else {
+    emailTimer = timer;
+  }
+};
+
+const changePassword = async () => {
+  if (!passwordFormRef.value) {
+    return;
+  }
   try {
     await passwordFormRef.value.validate();
     changingPassword.value = true;
-
-    await userStore.changePassword({
+    await settingsStore.changePassword({
       currentPassword: passwordForm.currentPassword,
       newPassword: passwordForm.newPassword,
     });
-
-    ElMessage.success("密码修改成功");
+    notifySuccess("密码修改成功");
     showChangePassword.value = false;
-
-    // 重置表单
     Object.assign(passwordForm, {
       currentPassword: "",
       newPassword: "",
       confirmPassword: "",
     });
-  } catch (error: any) {
-    ElMessage.error(error.message || "密码修改失败");
+  } catch (error) {
+    capture(error, "修改密码失败");
   } finally {
     changingPassword.value = false;
   }
@@ -767,32 +651,19 @@ const changePassword = async () => {
 
 const sendPhoneCode = async () => {
   if (!phoneForm.phone) {
-    ElMessage.error("请先输入手机号");
+    capture(new Error("请先输入手机号"), "请先输入手机号");
     return;
   }
-
-  if (!/^1[3-9]\d{9}$/.test(phoneForm.phone)) {
-    ElMessage.error("请输入正确的手机号");
-    return;
-  }
-
   try {
     sendingPhoneCode.value = true;
-    await userStore.sendPhoneCode(phoneForm.phone);
-
-    ElMessage.success("验证码已发送");
-
-    // 开始倒计时
-    phoneCodeCountdown.value = 60;
-    phoneTimer = setInterval(() => {
-      phoneCodeCountdown.value--;
-      if (phoneCodeCountdown.value <= 0) {
-        clearInterval(phoneTimer!);
-        phoneTimer = null;
-      }
-    }, 1000);
-  } catch (error: any) {
-    ElMessage.error(error.message || "发送验证码失败");
+    await settingsStore.sendPhoneCode(phoneForm.phone);
+    notifySuccess("验证码已发送");
+    if (phoneTimer) {
+      clearInterval(phoneTimer);
+    }
+    startCountdown("phone");
+  } catch (error) {
+    capture(error, "发送手机号验证码失败");
   } finally {
     sendingPhoneCode.value = false;
   }
@@ -800,86 +671,61 @@ const sendPhoneCode = async () => {
 
 const sendEmailCode = async () => {
   if (!emailForm.email) {
-    ElMessage.error("请先输入邮箱地址");
+    capture(new Error("请先输入邮箱地址"), "请先输入邮箱地址");
     return;
   }
-
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailForm.email)) {
-    ElMessage.error("请输入正确的邮箱地址");
-    return;
-  }
-
   try {
     sendingEmailCode.value = true;
-    await userStore.sendEmailCode(emailForm.email);
-
-    ElMessage.success("验证码已发送");
-
-    // 开始倒计时
-    emailCodeCountdown.value = 60;
-    emailTimer = setInterval(() => {
-      emailCodeCountdown.value--;
-      if (emailCodeCountdown.value <= 0) {
-        clearInterval(emailTimer!);
-        emailTimer = null;
-      }
-    }, 1000);
-  } catch (error: any) {
-    ElMessage.error(error.message || "发送验证码失败");
+    await settingsStore.sendEmailCode(emailForm.email);
+    notifySuccess("验证码已发送");
+    if (emailTimer) {
+      clearInterval(emailTimer);
+    }
+    startCountdown("email");
+  } catch (error) {
+    capture(error, "发送邮箱验证码失败");
   } finally {
     sendingEmailCode.value = false;
   }
 };
 
 const bindPhone = async () => {
-  if (!phoneFormRef.value) return;
-
+  if (!phoneFormRef.value) {
+    return;
+  }
   try {
     await phoneFormRef.value.validate();
     bindingPhone.value = true;
-
-    await userStore.bindPhone({
+    await settingsStore.bindPhone({
       phone: phoneForm.phone,
       code: phoneForm.code,
     });
-
-    ElMessage.success("手机号绑定成功");
+    notifySuccess("手机号绑定成功");
     showBindPhone.value = false;
-
-    // 重置表单
-    Object.assign(phoneForm, {
-      phone: "",
-      code: "",
-    });
-  } catch (error: any) {
-    ElMessage.error(error.message || "手机号绑定失败");
+    Object.assign(phoneForm, { phone: "", code: "" });
+  } catch (error) {
+    capture(error, "绑定手机号失败");
   } finally {
     bindingPhone.value = false;
   }
 };
 
 const bindEmail = async () => {
-  if (!emailFormRef.value) return;
-
+  if (!emailFormRef.value) {
+    return;
+  }
   try {
     await emailFormRef.value.validate();
     bindingEmail.value = true;
-
-    await userStore.bindEmail({
+    await settingsStore.bindEmail({
       email: emailForm.email,
       code: emailForm.code,
     });
-
-    ElMessage.success("邮箱绑定成功");
+    notifySuccess("邮箱绑定成功");
     showBindEmail.value = false;
-
-    // 重置表单
-    Object.assign(emailForm, {
-      email: "",
-      code: "",
-    });
-  } catch (error: any) {
-    ElMessage.error(error.message || "邮箱绑定失败");
+    Object.assign(emailForm, { email: "", code: "" });
+  } catch (error) {
+    capture(error, "绑定邮箱失败");
   } finally {
     bindingEmail.value = false;
   }
@@ -888,301 +734,198 @@ const bindEmail = async () => {
 const clearCache = async () => {
   try {
     await ElMessageBox.confirm(
-      "确定要清理缓存吗？这将清除所有本地缓存数据。",
+      "确定清理浏览器缓存吗？这不会影响当前 HttpOnly 登录态。",
       "清理缓存",
       {
+        type: "warning",
         confirmButtonText: "确定",
         cancelButtonText: "取消",
-        type: "warning",
       },
     );
-
-    const keepToken = localStorage.getItem(STORAGE_CONFIG.TOKEN_KEY);
-    const keepUser = localStorage.getItem(STORAGE_CONFIG.USER_INFO_KEY);
     localStorage.clear();
     sessionStorage.clear();
-    if (keepToken) localStorage.setItem(STORAGE_CONFIG.TOKEN_KEY, keepToken);
-    if (keepUser) localStorage.setItem(STORAGE_CONFIG.USER_INFO_KEY, keepUser);
-
-    ElMessage.success("缓存清理成功");
+    notifySuccess("缓存已清理");
   } catch (error) {
-    // 用户取消
+    if (error !== "cancel" && error !== "close") {
+      capture(error, "清理缓存失败");
+    }
   }
 };
 
 const exportData = async () => {
   try {
+    const settings = await settingsStore.getUserSettings();
     const payload = {
       exportedAt: new Date().toISOString(),
       user: userStore.userInfo,
-      settings: await userStore.getUserSettings(),
+      settings,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `im-settings-${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `im-export-${Date.now()}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
     URL.revokeObjectURL(url);
-    ElMessage.success("数据导出成功");
-  } catch (error: any) {
-    ElMessage.error(error.message || "数据导出失败");
+    notifySuccess("数据导出成功");
+  } catch (error) {
+    capture(error, "导出数据失败");
   }
 };
 
 const deleteAccount = async () => {
-  if (!deleteFormRef.value) return;
-
+  if (!deleteFormRef.value) {
+    return;
+  }
   try {
     await deleteFormRef.value.validate();
     deletingAccount.value = true;
-
-    await userStore.deleteAccount({
+    await settingsStore.deleteAccount({
       password: deleteForm.password,
     });
-
-    ElMessage.success("账户注销成功");
-
-    // 清理本地数据并跳转到登录页
-    await userStore.logout();
-  } catch (error: any) {
-    ElMessage.error(error.message || "账户注销失败");
+    notifySuccess("账户已注销");
+    showDeleteAccount.value = false;
+    await router.push("/login");
+  } catch (error) {
+    capture(error, "注销账户失败");
   } finally {
     deletingAccount.value = false;
-  }
-};
-
-const checkUpdate = async () => {
-  try {
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    ElMessage.info("当前已是最新版本");
-  } catch (error: any) {
-    ElMessage.error(error.message || "检查更新失败");
   }
 };
 
 const logout = async () => {
   try {
     await ElMessageBox.confirm("确定要退出登录吗？", "退出登录", {
+      type: "warning",
       confirmButtonText: "确定",
       cancelButtonText: "取消",
-      type: "warning",
     });
-
     loggingOut.value = true;
-
     await userStore.logout();
   } catch (error) {
-    // 用户取消
+    if (error !== "cancel" && error !== "close") {
+      capture(error, "退出登录失败");
+    }
   } finally {
     loggingOut.value = false;
   }
 };
 
-const loadSettings = async () => {
-  try {
-    const settings = await userStore.getUserSettings();
-
-    if (settings.privacy) {
-      Object.assign(privacySettings, settings.privacy);
-    }
-
-    if (settings.message) {
-      Object.assign(messageSettings, settings.message);
-    }
-
-    if (settings.general) {
-      Object.assign(generalSettings, settings.general);
-      applyTheme(settings.general.theme);
-    }
-  } catch (error: any) {
-    console.error("加载设置失败:", error);
-  }
-};
-
-// 组件挂载
 onMounted(() => {
-  loadSettings();
+  void loadSettings();
 });
 
-// 组件卸载
 onUnmounted(() => {
-  if (phoneTimer) {
-    clearInterval(phoneTimer);
-  }
-  if (emailTimer) {
-    clearInterval(emailTimer);
-  }
+  if (phoneTimer) clearInterval(phoneTimer);
+  if (emailTimer) clearInterval(emailTimer);
 });
 </script>
 
-<style scoped>
-.settings-container {
-  height: 100%;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  background: #f5f5f5;
+<style scoped lang="scss">
+.settings-page {
+  min-height: 100%;
   padding: 20px;
+  background: #f5f7fa;
 }
 
-.settings-header {
+.page-header,
+.card-header,
+.setting-row,
+.code-row {
   display: flex;
   align-items: center;
-  gap: 20px;
+}
+
+.page-header {
+  justify-content: space-between;
   margin-bottom: 20px;
-  padding: 0 20px;
 }
 
-.settings-header h2 {
+.page-header h2 {
   margin: 0;
-  color: #2c3e50;
-  font-weight: 500;
 }
 
-.settings-content {
-  max-width: 800px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
 }
 
 .settings-card {
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 16px;
 }
 
 .card-header {
-  display: flex;
-  align-items: center;
   gap: 10px;
-  font-weight: 500;
-  color: #2c3e50;
+  font-weight: 600;
 }
 
-.settings-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.setting-item {
-  display: flex;
-  align-items: center;
+.setting-row {
   justify-content: space-between;
+  gap: 16px;
   padding: 16px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+.setting-row:last-child {
+  border-bottom: 0;
+}
+
+.setting-row:has(.el-icon):not(:has(.el-switch)):not(:has(.el-select)) {
   cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.setting-item:last-child {
-  border-bottom: none;
-}
-
-.setting-item:hover {
-  background: #f8f9fa;
-  margin: 0 -20px;
-  padding-left: 20px;
-  padding-right: 20px;
-}
-
-.setting-info {
-  flex: 1;
 }
 
 .setting-title {
-  font-weight: 500;
-  color: #2c3e50;
-  margin-bottom: 4px;
+  color: #303133;
+  font-weight: 600;
 }
 
 .setting-desc {
+  margin-top: 4px;
+  color: #909399;
   font-size: 13px;
-  color: #6c757d;
-  line-height: 1.4;
 }
 
-.setting-arrow {
-  color: #c0c4cc;
-  font-size: 14px;
+.select-control {
+  width: 120px;
 }
 
-.logout-section {
-  display: flex;
-  justify-content: center;
-  padding: 20px 0;
-}
-
-.code-input {
-  display: flex;
+.code-row {
+  width: 100%;
   gap: 10px;
 }
 
-.code-input .el-input {
+.code-row .el-input {
   flex: 1;
 }
 
-.delete-account-content {
-  padding: 10px 0;
+.delete-form {
+  margin-top: 20px;
 }
 
-/* 响应式设计 */
+.setting-row.danger .setting-title,
+.setting-row.danger .el-icon {
+  color: #f56c6c;
+}
+
+@media (max-width: 960px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 768px) {
-  .settings-container {
-    padding: 10px;
+  .settings-page {
+    padding: 16px;
   }
 
-  .settings-header {
-    padding: 0 10px;
+  .page-header {
+    flex-wrap: wrap;
+    gap: 12px;
   }
-
-  .setting-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .setting-item:hover {
-    margin: 0;
-    padding: 16px 0;
-  }
-
-  .code-input {
-    flex-direction: column;
-  }
-}
-
-/* 主题样式 */
-[data-theme="dark"] .settings-container {
-  background: #1a1a1a;
-}
-
-[data-theme="dark"] .settings-card {
-  background: #2d2d2d;
-  border-color: #404040;
-}
-
-[data-theme="dark"] .card-header {
-  color: #e0e0e0;
-}
-
-[data-theme="dark"] .setting-title {
-  color: #e0e0e0;
-}
-
-[data-theme="dark"] .setting-desc {
-  color: #a0a0a0;
-}
-
-[data-theme="dark"] .setting-item {
-  border-bottom-color: #404040;
-}
-
-[data-theme="dark"] .setting-item:hover {
-  background: #3a3a3a;
 }
 </style>
