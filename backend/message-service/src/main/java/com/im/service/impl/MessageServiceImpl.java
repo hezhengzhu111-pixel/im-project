@@ -50,6 +50,8 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class MessageServiceImpl implements MessageService {
     
+    private static final String EVENT_TYPE_MESSAGE = "MESSAGE";
+    private static final String EVENT_TYPE_READ_RECEIPT = "READ_RECEIPT";
     private final MessageMapper messageMapper;
     private final UserServiceFeignClient userServiceFeignClient;
     private final GroupServiceFeignClient groupServiceFeignClient;
@@ -73,14 +75,14 @@ public class MessageServiceImpl implements MessageService {
     @Value("${im.message.lock.ttl-seconds:5}")
     private long conversationLockTtlSeconds;
 
-    @Value("${im.kafka.topic.private-message:im-private-message-topic}")
-    private String privateMessageTopic = "im-private-message-topic";
+    @Value("${im.outbox.topic.private-message:PRIVATE_MESSAGE}")
+    private String privateMessageTopic = "PRIVATE_MESSAGE";
 
-    @Value("${im.kafka.topic.group-message:im-group-message-topic}")
-    private String groupMessageTopic = "im-group-message-topic";
+    @Value("${im.outbox.topic.group-message:GROUP_MESSAGE}")
+    private String groupMessageTopic = "GROUP_MESSAGE";
 
-    @Value("${im.kafka.topic.read-receipt:im-read-receipt-topic}")
-    private String readReceiptTopic = "im-read-receipt-topic";
+    @Value("${im.outbox.topic.read-receipt:READ_RECEIPT}")
+    private String readReceiptTopic = "READ_RECEIPT";
 
     @Value("${im.message.system.sender-id:0}")
     private Long defaultSystemSenderId;
@@ -90,12 +92,16 @@ public class MessageServiceImpl implements MessageService {
     @CacheEvict(value = "conversations", key = "#senderId")
     public MessageDTO sendPrivateMessage(Long senderId, SendPrivateMessageRequest request) {
         Long receiverId = Long.valueOf(request.getReceiverId());
+        PrivateSendInput input = privateSendInput(senderId, receiverId, request);
         String lockKey = buildConversationLockKey(true, senderId, receiverId);
         RLock conversationLock = acquireConversationLock(lockKey);
         try {
-            PrivateSendInput input = privateSendInput(senderId, receiverId, request);
+            Message existingMessage = findExistingMessageByClientMessageId(senderId, request.getClientMessageId());
+            if (existingMessage != null) {
+                return privateSendOutput(input, existingMessage, false);
+            }
             Message savedMessage = privateSendProcess(input);
-            return privateSendOutput(input, savedMessage);
+            return privateSendOutput(input, savedMessage, true);
         } finally {
             releaseConversationLock(conversationLock);
         }
@@ -105,6 +111,7 @@ public class MessageServiceImpl implements MessageService {
         Message message = new Message();
         message.setSenderId(senderId);
         message.setReceiverId(receiverId);
+        message.setClientMessageId(normalizeClientMessageId(request.getClientMessageId()));
         message.setMessageType(request.getMessageType());
         if (request.getMessageType() == MessageType.TEXT || request.getMessageType() == MessageType.SYSTEM) {
             message.setContent(request.getContent());
@@ -125,12 +132,16 @@ public class MessageServiceImpl implements MessageService {
             throw new BusinessException("群组ID不能为空");
         }
         Long groupIdLong = Long.valueOf(groupId);
+        GroupSendInput input = groupSendInput(senderId, groupIdLong, request);
         String lockKey = buildConversationLockKey(false, null, groupIdLong);
         RLock conversationLock = acquireConversationLock(lockKey);
         try {
-            GroupSendInput input = groupSendInput(senderId, groupIdLong, request);
+            Message existingMessage = findExistingMessageByClientMessageId(senderId, request.getClientMessageId());
+            if (existingMessage != null) {
+                return groupSendOutput(input, existingMessage, false);
+            }
             Message savedMessage = groupSendProcess(input);
-            return groupSendOutput(input, savedMessage);
+            return groupSendOutput(input, savedMessage, true);
         } finally {
             releaseConversationLock(conversationLock);
         }
@@ -160,7 +171,7 @@ public class MessageServiceImpl implements MessageService {
             Message messageData = createMessageData(request, actualSenderId, receiverId);
             messageData.setIsGroupChat(false);
             messageMapper.insert(messageData);
-            clearConversationCache(actualSenderId, receiverId, true);
+            clearConversationCache(actualSenderId, receiverId, true, null);
 
             var sender = userProfileCache.getUser(actualSenderId);
             var receiver = userProfileCache.getUser(receiverId);
@@ -176,7 +187,14 @@ public class MessageServiceImpl implements MessageService {
 
             String payload = com.alibaba.fastjson2.JSON.toJSONString(messageDTO);
             String key = buildPrivateConversationKey(actualSenderId, receiverId);
-            outboxService.enqueueAfterCommit(privateMessageTopic, key, payload, messageData.getId());
+            outboxService.enqueueAfterCommit(
+                    privateMessageTopic,
+                    EVENT_TYPE_MESSAGE,
+                    key,
+                    payload,
+                    messageData.getId(),
+                    List.of(receiverId)
+            );
             return messageDTO;
         } finally {
             releaseConversationLock(conversationLock);
@@ -204,11 +222,11 @@ public class MessageServiceImpl implements MessageService {
         messageData.setIsGroupChat(false);
         messageMapper.insert(messageData);
         messageRateLimiter.recordMessage(input.senderId());
-        clearConversationCache(input.senderId(), input.receiverId(), true);
+        clearConversationCache(input.senderId(), input.receiverId(), true, null);
         return messageData;
     }
 
-    private MessageDTO privateSendOutput(PrivateSendInput input, Message savedMessage) {
+    private MessageDTO privateSendOutput(PrivateSendInput input, Message savedMessage, boolean publishEvent) {
         MessageDTO messageDTO = MessageConverter.convertToDTO(
                 savedMessage,
                 input.sender().getUsername(),
@@ -218,9 +236,18 @@ public class MessageServiceImpl implements MessageService {
                 null
         );
         messageDTO.setGroup(false);
-        String payload = com.alibaba.fastjson2.JSON.toJSONString(messageDTO);
-        String key = buildPrivateConversationKey(input.senderId(), input.receiverId());
-        outboxService.enqueueAfterCommit(privateMessageTopic, key, payload, savedMessage.getId());
+        if (publishEvent) {
+            String payload = com.alibaba.fastjson2.JSON.toJSONString(messageDTO);
+            String key = buildPrivateConversationKey(input.senderId(), input.receiverId());
+            outboxService.enqueueAfterCommit(
+                    privateMessageTopic,
+                    EVENT_TYPE_MESSAGE,
+                    key,
+                    payload,
+                    savedMessage.getId(),
+                    List.of(input.receiverId())
+            );
+        }
         return messageDTO;
     }
 
@@ -247,11 +274,11 @@ public class MessageServiceImpl implements MessageService {
         Message messageData = createMessageData(input.request(), input.senderId());
         messageMapper.insert(messageData);
         messageRateLimiter.recordMessage(input.senderId());
-        clearConversationCache(null, input.groupId(), false);
+        clearConversationCache(null, input.groupId(), false, input.memberIds());
         return messageData;
     }
 
-    private MessageDTO groupSendOutput(GroupSendInput input, Message savedMessage) {
+    private MessageDTO groupSendOutput(GroupSendInput input, Message savedMessage, boolean publishEvent) {
         List<GroupMemberDTO> groupMembers = buildGroupRecipients(input.groupId(), input.senderId(), input.memberIds());
         MessageDTO messageDTO = MessageConverter.convertToDTO(
                 savedMessage,
@@ -262,9 +289,19 @@ public class MessageServiceImpl implements MessageService {
                 null
         );
         messageDTO.setGroupMembers(groupMembers);
-        String payload = com.alibaba.fastjson2.JSON.toJSONString(messageDTO);
-        String key = buildGroupConversationKey(input.groupId());
-        outboxService.enqueueAfterCommit(groupMessageTopic, key, payload, savedMessage.getId());
+        messageDTO.setGroup(true);
+        if (publishEvent) {
+            String payload = com.alibaba.fastjson2.JSON.toJSONString(messageDTO);
+            String key = buildGroupConversationKey(input.groupId());
+            outboxService.enqueueAfterCommit(
+                    groupMessageTopic,
+                    EVENT_TYPE_MESSAGE,
+                    key,
+                    payload,
+                    savedMessage.getId(),
+                    filterMessageTargets(input.memberIds(), input.senderId())
+            );
+        }
         return messageDTO;
     }
 
@@ -289,6 +326,7 @@ public class MessageServiceImpl implements MessageService {
     private Message createMessageData(SendGroupMessageRequest request, Long senderId) {
         Message message = new Message();
         message.setSenderId(senderId);
+        message.setClientMessageId(normalizeClientMessageId(request.getClientMessageId()));
         message.setMessageType(request.getMessageType());
         if (request.getMessageType() == MessageType.TEXT || request.getMessageType() == MessageType.SYSTEM) {
             message.setContent(request.getContent());
@@ -557,7 +595,7 @@ public class MessageServiceImpl implements MessageService {
     /**
      * 清除会话相关缓存
      */
-    private void clearConversationCache(Long userId1, Long userId2, boolean isPrivate) {
+    private void clearConversationCache(Long userId1, Long userId2, boolean isPrivate, List<Long> cachedGroupMemberIds) {
         try {
             if (isPrivate && userId1 != null && userId2 != null) {
                 // 清除私聊相关缓存
@@ -570,7 +608,7 @@ public class MessageServiceImpl implements MessageService {
                 String conversationKey = "group_" + userId2;
                 redisTemplate.delete(LAST_MESSAGE_CACHE_KEY + conversationKey);
                 // 清除所有群成员的会话缓存
-                List<Long> memberIds = groupServiceFeignClient.memberIds(userId2);
+                List<Long> memberIds = cachedGroupMemberIds != null ? cachedGroupMemberIds : groupServiceFeignClient.memberIds(userId2);
                 if (memberIds != null) {
                     for (Long memberId : memberIds) {
                         if (memberId != null) {
@@ -1011,7 +1049,14 @@ public class MessageServiceImpl implements MessageService {
                 .lastReadMessageId(processResult.lastReadMessageId())
                 .build();
         String payload = com.alibaba.fastjson2.JSON.toJSONString(receipt);
-        outboxService.enqueueAfterCommit(readReceiptTopic, "rr_" + input.target().targetUserId(), payload, processResult.lastReadMessageId());
+        outboxService.enqueueAfterCommit(
+                readReceiptTopic,
+                EVENT_TYPE_READ_RECEIPT,
+                "rr_" + input.target().targetUserId(),
+                payload,
+                processResult.lastReadMessageId(),
+                List.of(input.target().targetUserId())
+        );
     }
 
     private void publishGroupReadReceipts(ReadMarkInput input, ReadMarkProcessResult processResult) {
@@ -1022,20 +1067,53 @@ public class MessageServiceImpl implements MessageService {
         if (memberIds == null) {
             return;
         }
-        for (Long memberId : memberIds) {
-            if (memberId == null || memberId.equals(input.userId())) {
-                continue;
-            }
-            ReadReceiptDTO receipt = ReadReceiptDTO.builder()
-                    .conversationId("group_" + input.target().groupId())
-                    .readerId(input.userId())
-                    .toUserId(memberId)
-                    .readAt(input.now())
-                    .lastReadMessageId(processResult.lastReadMessageId())
-                    .build();
-            String payload = com.alibaba.fastjson2.JSON.toJSONString(receipt);
-            outboxService.enqueueAfterCommit(readReceiptTopic, "grr_" + input.target().groupId() + "_" + memberId, payload, processResult.lastReadMessageId());
+        List<Long> targets = filterMessageTargets(memberIds, input.userId());
+        if (targets.isEmpty()) {
+            return;
         }
+        ReadReceiptDTO receipt = ReadReceiptDTO.builder()
+                .conversationId("group_" + input.target().groupId())
+                .readerId(input.userId())
+                .readAt(input.now())
+                .lastReadMessageId(processResult.lastReadMessageId())
+                .build();
+        String payload = com.alibaba.fastjson2.JSON.toJSONString(receipt);
+        outboxService.enqueueAfterCommit(
+                readReceiptTopic,
+                EVENT_TYPE_READ_RECEIPT,
+                "grr_" + input.target().groupId(),
+                payload,
+                processResult.lastReadMessageId(),
+                targets
+        );
+    }
+
+    private Message findExistingMessageByClientMessageId(Long senderId, String clientMessageId) {
+        String normalizedClientMessageId = normalizeClientMessageId(clientMessageId);
+        if (senderId == null || !StringUtils.hasText(normalizedClientMessageId)) {
+            return null;
+        }
+        return messageMapper.selectOne(new LambdaQueryWrapper<Message>()
+                .eq(Message::getSenderId, senderId)
+                .eq(Message::getClientMessageId, normalizedClientMessageId)
+                .last("limit 1"));
+    }
+
+    private String normalizeClientMessageId(String clientMessageId) {
+        if (!StringUtils.hasText(clientMessageId)) {
+            return null;
+        }
+        return clientMessageId.trim();
+    }
+
+    private List<Long> filterMessageTargets(List<Long> targetUserIds, Long excludeUserId) {
+        if (targetUserIds == null) {
+            return List.of();
+        }
+        return targetUserIds.stream()
+                .filter(userId -> userId != null && !userId.equals(excludeUserId))
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     private void clearConversationListCache(Long userId) {
@@ -1060,10 +1138,10 @@ public class MessageServiceImpl implements MessageService {
     private void clearStatusChangeConversationCache(Message msg) {
         boolean isGroup = Boolean.TRUE.equals(msg.getIsGroupChat());
         if (isGroup) {
-            clearConversationCache(null, msg.getGroupId(), false);
+            clearConversationCache(null, msg.getGroupId(), false, groupServiceFeignClient.memberIds(msg.getGroupId()));
             return;
         }
-        clearConversationCache(msg.getSenderId(), msg.getReceiverId(), true);
+        clearConversationCache(msg.getSenderId(), msg.getReceiverId(), true, null);
     }
 
     private MessageDTO buildStatusChangedMessageDTO(Message msg) {
@@ -1091,10 +1169,30 @@ public class MessageServiceImpl implements MessageService {
         boolean isGroup = Boolean.TRUE.equals(msg.getIsGroupChat());
         String payload = com.alibaba.fastjson2.JSON.toJSONString(dto);
         if (isGroup) {
-            outboxService.enqueueAfterCommit(groupMessageTopic, buildGroupConversationKey(msg.getGroupId()), payload, msg.getId());
+            outboxService.enqueueAfterCommit(
+                    groupMessageTopic,
+                    EVENT_TYPE_MESSAGE,
+                    buildGroupConversationKey(msg.getGroupId()),
+                    payload,
+                    msg.getId(),
+                    dto == null || dto.getGroupMembers() == null
+                            ? List.of()
+                            : dto.getGroupMembers().stream()
+                            .map(GroupMemberDTO::getUserId)
+                            .filter(userId -> userId != null)
+                            .distinct()
+                            .collect(Collectors.toList())
+            );
             return;
         }
-        outboxService.enqueueAfterCommit(privateMessageTopic, buildPrivateConversationKey(msg.getSenderId(), msg.getReceiverId()), payload, msg.getId());
+        outboxService.enqueueAfterCommit(
+                privateMessageTopic,
+                EVENT_TYPE_MESSAGE,
+                buildPrivateConversationKey(msg.getSenderId(), msg.getReceiverId()),
+                payload,
+                msg.getId(),
+                msg.getReceiverId() == null ? List.of() : List.of(msg.getReceiverId())
+        );
     }
 
     private List<GroupMemberDTO> buildGroupRecipients(Long groupId, Long senderId, List<Long> memberIds) {

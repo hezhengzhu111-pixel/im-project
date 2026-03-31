@@ -6,6 +6,8 @@
   <packaging>pom</packaging>
   <modules>
     <module>common</module>
+    <module>internal-client</module>
+    <module>persistence-common</module>
     <module>gateway</module>
     <module>registry-monitor</module>
     <module>auth-service</module>

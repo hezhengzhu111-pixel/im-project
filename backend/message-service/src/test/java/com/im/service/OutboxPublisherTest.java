@@ -1,7 +1,6 @@
 package com.im.service;
 
 import com.alibaba.fastjson2.JSON;
-import com.im.dto.MessageDTO;
 import com.im.entity.MessageOutboxEvent;
 import com.im.mapper.MessageOutboxMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,11 +11,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
-import java.util.concurrent.CompletableFuture;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -27,9 +25,6 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class OutboxPublisherTest {
-
-    @Mock
-    private KafkaTemplate<String, String> kafkaTemplate;
 
     @Mock
     private MessageOutboxMapper outboxMapper;
@@ -47,51 +42,40 @@ class OutboxPublisherTest {
     void setUp() {
         ReflectionTestUtils.setField(outboxPublisher, "maxAttempts", 20);
         ReflectionTestUtils.setField(outboxPublisher, "baseBackoffMs", 1000L);
-        ReflectionTestUtils.setField(outboxPublisher, "sendTimeoutMs", 30000L);
-        ReflectionTestUtils.setField(outboxPublisher, "wsPushTopicPrefix", "im-ws-push-");
+        ReflectionTestUtils.setField(outboxPublisher, "wsChannelPrefix", "im:ws:push:");
         ReflectionTestUtils.setField(outboxPublisher, "routeUserKeyPrefix", "im:route:user:");
-        ReflectionTestUtils.setField(outboxPublisher, "privateMessageTopic", "im-private-message-topic");
-        ReflectionTestUtils.setField(outboxPublisher, "groupMessageTopic", "im-group-message-topic");
-        ReflectionTestUtils.setField(outboxPublisher, "readReceiptTopic", "im-read-receipt-topic");
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
     }
 
     @Test
-    void publishById_shouldRouteAndSendToKafka() {
-        MessageDTO dto = new MessageDTO();
-        dto.setId(100L);
-        dto.setReceiverId(2L);
-        dto.setContent("hello");
-
+    void publishById_shouldRouteAndPublishToRedisChannel() {
         MessageOutboxEvent event = new MessageOutboxEvent();
         event.setId(1L);
-        event.setTopic("im-private-message-topic");
+        event.setEventType("MESSAGE");
         event.setMessageKey("p_1_2");
-        event.setPayload(JSON.toJSONString(dto));
+        event.setTargetsJson(JSON.toJSONString(List.of(2L)));
+        event.setPayload("{\"id\":\"100\",\"receiverId\":\"2\",\"content\":\"hello\"}");
+        event.setRelatedMessageId(100L);
 
         when(outboxMapper.claimEventForSending(eq(1L), any(LocalDateTime.class), eq(20))).thenReturn(1);
         when(outboxMapper.selectById(1L)).thenReturn(event);
         when(valueOperations.get("im:route:user:2")).thenReturn("node-a");
-        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(CompletableFuture.completedFuture(null));
 
         outboxPublisher.publishById(1L);
 
-        verify(kafkaTemplate).send(eq("im-ws-push-node-a"), eq("p_1_2:node-a"), anyString());
+        verify(stringRedisTemplate).convertAndSend(eq("im:ws:push:node-a"), anyString());
         verify(outboxMapper).markSent(eq(1L), any(LocalDateTime.class));
     }
 
     @Test
     void publishById_shouldMarkSentWhenTargetOffline() {
-        MessageDTO dto = new MessageDTO();
-        dto.setId(101L);
-        dto.setReceiverId(3L);
-        dto.setContent("offline");
-
         MessageOutboxEvent event = new MessageOutboxEvent();
         event.setId(2L);
-        event.setTopic("im-private-message-topic");
+        event.setEventType("MESSAGE");
         event.setMessageKey("p_1_3");
-        event.setPayload(JSON.toJSONString(dto));
+        event.setTargetsJson(JSON.toJSONString(List.of(3L)));
+        event.setPayload("{\"id\":\"101\",\"receiverId\":\"3\",\"content\":\"offline\"}");
+        event.setRelatedMessageId(101L);
 
         when(outboxMapper.claimEventForSending(eq(2L), any(LocalDateTime.class), eq(20))).thenReturn(1);
         when(outboxMapper.selectById(2L)).thenReturn(event);
@@ -99,7 +83,7 @@ class OutboxPublisherTest {
 
         outboxPublisher.publishById(2L);
 
-        verify(kafkaTemplate, never()).send(anyString(), anyString(), anyString());
+        verify(stringRedisTemplate, never()).convertAndSend(anyString(), anyString());
         verify(outboxMapper).markSent(eq(2L), any(LocalDateTime.class));
     }
 }

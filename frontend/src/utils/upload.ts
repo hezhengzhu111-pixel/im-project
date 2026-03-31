@@ -1,5 +1,6 @@
 import { http } from "./request";
 import type { FileUploadResponse } from "@/types/api";
+import { logger } from "@/utils/logger";
 
 // 上传结果接口
 export interface UploadResult {
@@ -123,7 +124,7 @@ export async function uploadFile(file: File): Promise<UploadResult> {
       throw new Error(response.message || "上传失败");
     }
   } catch (error: any) {
-    console.error("文件上传失败:", error);
+    logger.error("legacy upload failed", error);
     throw new Error(error.message || "文件上传失败");
   }
 }

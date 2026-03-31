@@ -14,6 +14,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -35,6 +38,13 @@ class UserControllerTest {
 
     @InjectMocks
     private UserController userController;
+
+    @BeforeEach
+    void setUp() {
+        ReflectionTestUtils.setField(userController, "accessTokenCookieName", "IM_ACCESS_TOKEN");
+        ReflectionTestUtils.setField(userController, "refreshTokenCookieName", "IM_REFRESH_TOKEN");
+        ReflectionTestUtils.setField(userController, "authCookieSameSite", "Lax");
+    }
 
     @Test
     void register_ShouldReturnSuccess() {
@@ -61,13 +71,17 @@ class UserControllerTest {
         
         UserAuthResponseDTO authResponse = new UserAuthResponseDTO();
         authResponse.setToken("token_123");
+        authResponse.setRefreshToken("refresh_123");
+        authResponse.setExpiresInMs(60000L);
+        authResponse.setRefreshExpiresInMs(120000L);
         
         when(userService.loginWithPassword("testUser", "password123")).thenReturn(authResponse);
         
-        ApiResponse<UserAuthResponseDTO> response = userController.login(request);
+        ApiResponse<UserAuthResponseDTO> response =
+                userController.login(request, new MockHttpServletRequest(), new MockHttpServletResponse());
         
         assertEquals(200, response.getCode());
-        assertEquals("token_123", response.getData().getToken());
+        assertEquals(60000L, response.getData().getExpiresInMs());
     }
 
     @Test
@@ -78,13 +92,17 @@ class UserControllerTest {
         
         UserAuthResponseDTO authResponse = new UserAuthResponseDTO();
         authResponse.setToken("new_token");
+        authResponse.setRefreshToken("refresh_456");
+        authResponse.setExpiresInMs(60000L);
+        authResponse.setRefreshExpiresInMs(120000L);
         
         when(userService.loginWithToken("testUser", "old_token")).thenReturn(authResponse);
         
-        ApiResponse<UserAuthResponseDTO> response = userController.login(request);
+        ApiResponse<UserAuthResponseDTO> response =
+                userController.login(request, new MockHttpServletRequest(), new MockHttpServletResponse());
         
         assertEquals(200, response.getCode());
-        assertEquals("new_token", response.getData().getToken());
+        assertEquals(120000L, response.getData().getRefreshExpiresInMs());
     }
 
     @Test
@@ -93,7 +111,7 @@ class UserControllerTest {
         request.setUsername("testUser");
         
         BusinessException exception = assertThrows(BusinessException.class, () -> {
-            userController.login(request);
+            userController.login(request, new MockHttpServletRequest(), new MockHttpServletResponse());
         });
         
         assertEquals("请提供密码或token进行登录", exception.getMessage());

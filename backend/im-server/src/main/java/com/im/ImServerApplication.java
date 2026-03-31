@@ -9,7 +9,7 @@ import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 
 /**
  * 即时通讯服务器启动类
- * 提供完整的IM基础服务平台，支持多种消息推送方式
+ * 提供完整的IM基础服务平台，支持集群路由与实时消息推送
  * 
  * @author IM Team
  * @version 2.0.0
@@ -35,7 +35,7 @@ public class ImServerApplication {
         System.out.println("支持的服务调用方式:");
         System.out.println("1. REST API接口: http://localhost:8080/api/im");
         System.out.println("2. WebSocket连接: ws://localhost:8080/websocket/{userId}");
-        System.out.println("3. Kafka消息队列: im-message-topic");
+        System.out.println("3. Redis Pub/Sub 推送通道: im:ws:push:{instanceId}");
         System.out.println("4. Feign远程调用: ImServiceFeign");
         System.out.println("========================================");
     }

@@ -55,6 +55,6 @@ class MessageRetryControllerTest {
         ApiResponse<Void> response = controller.retryPrivate(100L);
         
         assertEquals(200, response.getCode());
-        verify(outboxService).enqueueAfterCommit("topic", "key", "payload", 100L);
+        verify(outboxService).enqueueAfterCommit(event);
     }
 }

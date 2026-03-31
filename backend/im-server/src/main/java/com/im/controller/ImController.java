@@ -2,8 +2,6 @@ package com.im.controller;
 
 import com.im.dto.ApiResponse;
 import com.im.dto.MessageDTO;
-import com.im.entity.UserSession;
-import com.im.enums.UserStatus;
 import com.im.service.IImService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -47,20 +45,7 @@ public class ImController {
         if (userId == null || userId.trim().isEmpty()) {
             return ApiResponse.error("userId cannot be blank");
         }
-        UserSession session = imService.getSessionUserMap().get(userId);
-        if (session == null) {
-            session = UserSession.builder()
-                    .userId(userId)
-                    .status(UserStatus.ONLINE)
-                    .connectTime(java.time.LocalDateTime.now())
-                    .lastHeartbeat(java.time.LocalDateTime.now())
-                    .build();
-            imService.putSessionMapping(userId, session);
-        } else {
-            session.setStatus(UserStatus.ONLINE);
-            session.setLastHeartbeat(java.time.LocalDateTime.now());
-        }
-        return ApiResponse.success("user online success");
+        return ApiResponse.success("user online acknowledged");
     }
 
     @PostMapping("/heartbeat/{userId}")

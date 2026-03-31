@@ -5,7 +5,6 @@ import com.im.dto.ConversationDTO;
 import com.im.dto.MessageDTO;
 import com.im.dto.request.SendGroupMessageRequest;
 import com.im.dto.request.SendPrivateMessageRequest;
-import com.im.exception.BusinessException;
 import com.im.service.MessageService;
 
 import java.util.List;
@@ -63,16 +62,8 @@ public class MessageController {
     public ApiResponse<MessageDTO> sendPrivateMessage(
             @RequestAttribute("userId") Long userId,
             @Valid @RequestBody SendPrivateMessageRequest request) {
-        try {
-            MessageDTO dto = privateMessageHandler.handle(userId, request);
-            return ApiResponse.success("发送私聊消息成功", dto);
-        } catch (BusinessException | IllegalArgumentException e) {
-            return ApiResponse.badRequest(e.getMessage());
-        } catch (SecurityException e) {
-            return ApiResponse.forbidden(e.getMessage());
-        } catch (Exception e) {
-            return ApiResponse.error("系统异常，请联系管理员");
-        }
+        MessageDTO dto = privateMessageHandler.handle(userId, request);
+        return ApiResponse.success("发送私聊消息成功", dto);
     }
 
     /**
@@ -82,16 +73,8 @@ public class MessageController {
     public ApiResponse<MessageDTO> sendGroupMessage(
             @RequestAttribute("userId") Long userId,
             @Valid @RequestBody SendGroupMessageRequest request) {
-        try {
-            MessageDTO dto = groupMessageHandler.handle(userId, request);
-            return ApiResponse.success("发送群聊消息成功", dto);
-        } catch (BusinessException | IllegalArgumentException e) {
-            return ApiResponse.badRequest(e.getMessage());
-        } catch (SecurityException e) {
-            return ApiResponse.forbidden(e.getMessage());
-        } catch (Exception e) {
-            return ApiResponse.error("系统异常，请联系管理员");
-        }
+        MessageDTO dto = groupMessageHandler.handle(userId, request);
+        return ApiResponse.success("发送群聊消息成功", dto);
     }
     
     /**
@@ -99,16 +82,8 @@ public class MessageController {
      */
     @GetMapping("/conversations")
     public ApiResponse<List<ConversationDTO>> getConversations(@RequestAttribute("userId") Long userId) {
-        try {
-            List<ConversationDTO> conversations = messageService.getConversations(userId);
-            return ApiResponse.success("获取会话列表成功", conversations);
-        } catch (BusinessException | IllegalArgumentException e) {
-            return ApiResponse.badRequest(e.getMessage());
-        } catch (SecurityException e) {
-            return ApiResponse.forbidden(e.getMessage());
-        } catch (Exception e) {
-            return ApiResponse.error("系统异常，请联系管理员");
-        }
+        List<ConversationDTO> conversations = messageService.getConversations(userId);
+        return ApiResponse.success("获取会话列表成功", conversations);
     }
     
     /**
@@ -120,16 +95,8 @@ public class MessageController {
             @PathVariable("friendId") Long friendId,
             @RequestParam(value = "page", defaultValue = "0") @Min(value = 0, message = "page不能小于0") int page,
             @RequestParam(value = "size", defaultValue = "50") @Min(value = 1, message = "size不能小于1") @Max(value = 200, message = "size不能大于200") int size) {
-        try {
-            List<MessageDTO> messages = messageService.getPrivateMessages(userId, friendId, page, size);
-            return ApiResponse.success("获取私聊消息成功", messages);
-        } catch (BusinessException | IllegalArgumentException e) {
-            return ApiResponse.badRequest(e.getMessage());
-        } catch (SecurityException e) {
-            return ApiResponse.forbidden(e.getMessage());
-        } catch (Exception e) {
-            return ApiResponse.error("系统异常，请联系管理员");
-        }
+        List<MessageDTO> messages = messageService.getPrivateMessages(userId, friendId, page, size);
+        return ApiResponse.success("获取私聊消息成功", messages);
     }
 
     @GetMapping("/private/{friendId}/cursor")
@@ -140,16 +107,8 @@ public class MessageController {
             @RequestParam(value = "before_timestamp", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime beforeTimestamp,
             @RequestParam(value = "after_message_id", required = false) Long afterMessageId,
             @RequestParam(value = "limit", defaultValue = "20") @Min(value = 1, message = "limit不能小于1") @Max(value = 200, message = "limit不能大于200") int limit) {
-        try {
-            List<MessageDTO> messages = messageService.getPrivateMessagesCursor(userId, friendId, lastMessageId, beforeTimestamp, afterMessageId, limit);
-            return ApiResponse.success("获取私聊消息成功", messages);
-        } catch (BusinessException | IllegalArgumentException e) {
-            return ApiResponse.badRequest(e.getMessage());
-        } catch (SecurityException e) {
-            return ApiResponse.forbidden(e.getMessage());
-        } catch (Exception e) {
-            return ApiResponse.error("系统异常，请联系管理员");
-        }
+        List<MessageDTO> messages = messageService.getPrivateMessagesCursor(userId, friendId, lastMessageId, beforeTimestamp, afterMessageId, limit);
+        return ApiResponse.success("获取私聊消息成功", messages);
     }
     
     /**
@@ -161,16 +120,8 @@ public class MessageController {
             @PathVariable("groupId") Long groupId,
             @RequestParam(value = "page", defaultValue = "0") @Min(value = 0, message = "page不能小于0") int page,
             @RequestParam(value = "size", defaultValue = "50") @Min(value = 1, message = "size不能小于1") @Max(value = 200, message = "size不能大于200") int size) {
-        try {
-            List<MessageDTO> messages = messageService.getGroupMessages(userId, groupId, page, size);
-            return ApiResponse.success("获取群聊消息成功", messages);
-        } catch (BusinessException | IllegalArgumentException e) {
-            return ApiResponse.badRequest(e.getMessage());
-        } catch (SecurityException e) {
-            return ApiResponse.forbidden(e.getMessage());
-        } catch (Exception e) {
-            return ApiResponse.error("系统异常，请联系管理员");
-        }
+        List<MessageDTO> messages = messageService.getGroupMessages(userId, groupId, page, size);
+        return ApiResponse.success("获取群聊消息成功", messages);
     }
 
     @GetMapping("/group/{groupId}/cursor")
@@ -181,16 +132,8 @@ public class MessageController {
             @RequestParam(value = "before_timestamp", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime beforeTimestamp,
             @RequestParam(value = "after_message_id", required = false) Long afterMessageId,
             @RequestParam(value = "limit", defaultValue = "20") @Min(value = 1, message = "limit不能小于1") @Max(value = 200, message = "limit不能大于200") int limit) {
-        try {
-            List<MessageDTO> messages = messageService.getGroupMessagesCursor(userId, groupId, lastMessageId, beforeTimestamp, afterMessageId, limit);
-            return ApiResponse.success("获取群聊消息成功", messages);
-        } catch (BusinessException | IllegalArgumentException e) {
-            return ApiResponse.badRequest(e.getMessage());
-        } catch (SecurityException e) {
-            return ApiResponse.forbidden(e.getMessage());
-        } catch (Exception e) {
-            return ApiResponse.error("系统异常，请联系管理员");
-        }
+        List<MessageDTO> messages = messageService.getGroupMessagesCursor(userId, groupId, lastMessageId, beforeTimestamp, afterMessageId, limit);
+        return ApiResponse.success("获取群聊消息成功", messages);
     }
     
     /**
@@ -200,15 +143,7 @@ public class MessageController {
     public ApiResponse<String> markAsRead(
             @RequestAttribute("userId") Long userId,
             @PathVariable("conversationId") String conversationId) {
-        try {
-            messageService.markAsRead(userId, conversationId);
-            return ApiResponse.success("标记已读成功", "消息已标记为已读");
-        } catch (BusinessException | IllegalArgumentException e) {
-            return ApiResponse.badRequest(e.getMessage());
-        } catch (SecurityException e) {
-            return ApiResponse.forbidden(e.getMessage());
-        } catch (Exception e) {
-            return ApiResponse.error("系统异常，请联系管理员");
-        }
+        messageService.markAsRead(userId, conversationId);
+        return ApiResponse.success("标记已读成功", "消息已标记为已读");
     }
 }

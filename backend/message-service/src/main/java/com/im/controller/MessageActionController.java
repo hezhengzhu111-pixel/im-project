@@ -2,7 +2,6 @@ package com.im.controller;
 
 import com.im.dto.ApiResponse;
 import com.im.dto.MessageDTO;
-import com.im.exception.BusinessException;
 import com.im.service.MessageService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
@@ -23,32 +22,16 @@ public class MessageActionController {
     public ApiResponse<MessageDTO> recall(
             @RequestAttribute("userId") Long userId,
             @PathVariable("messageId") Long messageId) {
-        try {
-            MessageDTO dto = messageService.recallMessage(userId, messageId);
-            return ApiResponse.success("撤回成功", dto);
-        } catch (BusinessException | IllegalArgumentException e) {
-            return ApiResponse.badRequest(e.getMessage());
-        } catch (SecurityException e) {
-            return ApiResponse.forbidden(e.getMessage());
-        } catch (Exception e) {
-            return ApiResponse.error("系统异常，请联系管理员");
-        }
+        MessageDTO dto = messageService.recallMessage(userId, messageId);
+        return ApiResponse.success("撤回成功", dto);
     }
 
     @PostMapping("/delete/{messageId}")
     public ApiResponse<MessageDTO> delete(
             @RequestAttribute("userId") Long userId,
             @PathVariable("messageId") Long messageId) {
-        try {
-            MessageDTO dto = messageService.deleteMessage(userId, messageId);
-            return ApiResponse.success("删除成功", dto);
-        } catch (BusinessException | IllegalArgumentException e) {
-            return ApiResponse.badRequest(e.getMessage());
-        } catch (SecurityException e) {
-            return ApiResponse.forbidden(e.getMessage());
-        } catch (Exception e) {
-            return ApiResponse.error("系统异常，请联系管理员");
-        }
+        MessageDTO dto = messageService.deleteMessage(userId, messageId);
+        return ApiResponse.success("删除成功", dto);
     }
 }
 

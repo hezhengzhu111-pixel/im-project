@@ -21,6 +21,12 @@ public class MessageOutboxEvent extends BaseEntity {
     @TableField("payload")
     private String payload;
 
+    @TableField("event_type")
+    private String eventType;
+
+    @TableField("targets_json")
+    private String targetsJson;
+
     @TableField("status")
     private String status;
 
@@ -58,5 +64,21 @@ public class MessageOutboxEvent extends BaseEntity {
 
     public void setPayload(String payload) {
         this.payload = payload;
+    }
+
+    public String getEventType() {
+        return eventType;
+    }
+
+    public void setEventType(String eventType) {
+        this.eventType = eventType;
+    }
+
+    public String getTargetsJson() {
+        return targetsJson;
+    }
+
+    public void setTargetsJson(String targetsJson) {
+        this.targetsJson = targetsJson;
     }
 }

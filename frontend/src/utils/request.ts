@@ -12,8 +12,8 @@ import { useUserStore } from "@/stores/user";
 import type { ApiResponse } from "@/types/api";
 import router from "@/router";
 import NProgress from "nprogress";
-import { STORAGE_CONFIG } from "@/config";
 import { refreshAccessTokenRaw } from "@/services/auth-refresh";
+import { logger } from "@/utils/logger";
 
 function createTraceId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -22,8 +22,22 @@ function createTraceId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-let refreshInFlight: Promise<string | null> | null = null;
+let refreshInFlight: Promise<boolean> | null = null;
 let reauthPromptInFlight = false;
+
+const clearAuthSession = async () => {
+  const userStore = useUserStore() as {
+    clearSession?: () => void;
+    logout?: () => Promise<unknown> | unknown;
+  };
+  if (typeof userStore.clearSession === "function") {
+    userStore.clearSession();
+    return;
+  }
+  if (typeof userStore.logout === "function") {
+    await userStore.logout();
+  }
+};
 
 const shouldSkipRefresh = (url?: string) => {
   if (!url) return false;
@@ -54,33 +68,24 @@ const promptReLogin = () => {
     });
 };
 
-const tryRefreshAccessToken = async (): Promise<string | null> => {
+const tryRefreshAccessToken = async (): Promise<boolean> => {
   if (refreshInFlight) return refreshInFlight;
-  const refreshToken = localStorage.getItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY);
-  if (!refreshToken) return null;
   refreshInFlight = (async () => {
     try {
-      const response = await refreshAccessTokenRaw(
-        refreshToken,
-        createTraceId(),
-      );
+      const response = await refreshAccessTokenRaw(createTraceId());
       const payload = response?.data;
-      if (payload?.code !== 200 || !payload?.data?.accessToken) {
-        return null;
+      if (payload?.code !== 200) {
+        return false;
       }
-      const accessToken = String(payload.data.accessToken);
-      const nextRefreshToken = String(
-        payload.data.refreshToken || refreshToken,
-      );
-      localStorage.setItem(STORAGE_CONFIG.TOKEN_KEY, accessToken);
-      localStorage.setItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY, nextRefreshToken);
       try {
         const userStore = useUserStore();
-        userStore.setAuthToken(accessToken, nextRefreshToken);
-      } catch {}
-      return accessToken;
+        await userStore.restoreSession();
+      } catch {
+        return false;
+      }
+      return true;
     } catch {
-      return null;
+      return false;
     } finally {
       refreshInFlight = null;
     }
@@ -92,6 +97,7 @@ const tryRefreshAccessToken = async (): Promise<string | null> => {
 const request: AxiosInstance = axios.create({
   baseURL: "/api",
   timeout: 10000,
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json;charset=UTF-8",
   },
@@ -105,15 +111,6 @@ request.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // 显示进度条
     NProgress.start();
-
-    // 添加认证token
-    const userStore = useUserStore();
-    const token =
-      userStore.token || localStorage.getItem(STORAGE_CONFIG.TOKEN_KEY) || "";
-
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
 
     if (config.headers) {
       config.headers["X-Gateway-Route"] = "true";
@@ -137,17 +134,17 @@ request.interceptors.request.use(
   },
   (error) => {
     NProgress.done();
-    console.error("请求拦截器错误:", error);
+    logger.error("request interceptor failed", error);
     return Promise.reject(error);
   },
 );
 
 // 响应拦截器
 request.interceptors.response.use(
-  async (response: AxiosResponse<any>) => {
+  async (response: AxiosResponse<unknown>) => {
     NProgress.done();
 
-    const responseData = response.data;
+    const responseData = response.data as Record<string, unknown>;
 
     // 处理UserAuthResponse格式（登录接口）
     if (
@@ -183,7 +180,7 @@ request.interceptors.response.use(
         data: responseData,
         success: true,
         timestamp: Date.now(),
-      } as any; // 强转以适配拦截器返回类型预期
+      } as ApiResponse<unknown>;
     }
 
     // 业务错误
@@ -196,14 +193,13 @@ request.interceptors.response.use(
           return request(config);
         }
       }
-      const userStore = useUserStore();
       if (
         !response.config.url?.includes("/user/offline") &&
         !response.config.url?.includes("/user/logout") &&
         !response.config.url?.includes("/user/online") &&
         !response.config.url?.includes("/user/heartbeat")
       ) {
-        userStore.logout();
+        await clearAuthSession();
       }
       promptReLogin();
 
@@ -232,7 +228,7 @@ request.interceptors.response.use(
   async (error) => {
     NProgress.done();
 
-    console.error("响应拦截器错误:", error);
+    logger.error("response interceptor failed", error);
 
     // 网络错误
     if (!error.response) {
@@ -255,14 +251,13 @@ request.interceptors.response.use(
             return request(config);
           }
         }
-        const userStore = useUserStore();
         if (
           !error.config?.url?.includes("/user/offline") &&
           !error.config?.url?.includes("/user/logout") &&
           !error.config?.url?.includes("/user/online") &&
           !error.config?.url?.includes("/user/heartbeat")
         ) {
-          userStore.logout();
+          await clearAuthSession();
         }
         promptReLogin();
         break;
@@ -298,46 +293,50 @@ request.interceptors.response.use(
 
 // 请求方法封装
 export const http = {
-  get<T = any>(
+  get<T = unknown>(
     url: string,
     config?: AxiosRequestConfig,
   ): Promise<ApiResponse<T>> {
     return request.get(url, config);
   },
 
-  post<T = any>(
+  post<T = unknown>(
     url: string,
-    data?: any,
+    data?: unknown,
     config?: AxiosRequestConfig,
   ): Promise<ApiResponse<T>> {
     return request.post(url, data, config);
   },
 
-  put<T = any>(
+  put<T = unknown>(
     url: string,
-    data?: any,
+    data?: unknown,
     config?: AxiosRequestConfig,
   ): Promise<ApiResponse<T>> {
     return request.put(url, data, config);
   },
 
-  delete<T = any>(
+  delete<T = unknown>(
     url: string,
-    params?: any,
+    params?: unknown,
     config?: AxiosRequestConfig,
   ): Promise<ApiResponse<T>> {
-    return request.delete(url, { params, ...config });
+    const requestConfig: AxiosRequestConfig = { ...config };
+    if (params !== undefined) {
+      requestConfig.params = params;
+    }
+    return request.delete(url, requestConfig);
   },
 
-  patch<T = any>(
+  patch<T = unknown>(
     url: string,
-    data?: any,
+    data?: unknown,
     config?: AxiosRequestConfig,
   ): Promise<ApiResponse<T>> {
     return request.patch(url, data, config);
   },
 
-  upload<T = any>(
+  upload<T = unknown>(
     url: string,
     file: File,
     onProgress?: (progress: number) => void,

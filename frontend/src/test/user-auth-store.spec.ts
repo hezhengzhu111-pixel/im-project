@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 
-const loginWithPassword = vi.fn();
+const login = vi.fn();
 const register = vi.fn();
 const logout = vi.fn();
 const online = vi.fn();
@@ -17,13 +17,13 @@ vi.mock("element-plus", () => ({
 }));
 
 vi.mock("@/services", () => ({
-  userApi: {
-    loginWithPassword,
+  userService: {
+    login,
     register,
     logout,
     online,
   },
-  authApi: {
+  authService: {
     parseAccessToken,
   },
 }));
@@ -35,42 +35,51 @@ vi.mock("@/router", () => ({
   },
 }));
 
-describe("user auth store optimize", () => {
+describe("user auth store", () => {
   beforeEach(() => {
-    localStorage.clear();
     setActivePinia(createPinia());
-    loginWithPassword.mockReset();
+    login.mockReset();
     register.mockReset();
     logout.mockReset();
-    parseAccessToken.mockReset();
     online.mockReset();
+    parseAccessToken.mockReset();
     push.mockReset();
   });
 
   it("trims username before login", async () => {
-    loginWithPassword.mockResolvedValue({
-      success: true,
-      user: { id: "1", username: "u1", nickname: "u1", status: "OFFLINE" },
-      token: "token",
-      refreshToken: "refresh-token",
+    login.mockResolvedValue({
+      code: 200,
+      data: {
+        success: true,
+        user: {
+          id: "1",
+          username: "u1",
+          nickname: "u1",
+          status: "offline",
+        },
+      },
     });
     online.mockResolvedValue({ code: 200, data: "ok" });
+
     const { useUserStore } = await import("@/stores/user");
     const store = useUserStore();
 
     const ok = await store.login({
       username: "  u1  ",
       password: "123456",
-    } as any);
+    });
 
     expect(ok).toBe(true);
-    expect(loginWithPassword).toHaveBeenCalledWith("u1", "123456");
-    expect(online).toHaveBeenCalledTimes(1);
-    expect(localStorage.getItem("im_refresh_token")).toBe("refresh-token");
+    expect(login).toHaveBeenCalledWith({
+      username: "u1",
+      password: "123456",
+    });
+    expect(store.currentUser?.id).toBe("1");
   });
 
   it("returns false when register failed", async () => {
     register.mockRejectedValue(new Error("用户名已存在"));
+
     const { useUserStore } = await import("@/stores/user");
     const store = useUserStore();
 
@@ -79,22 +88,26 @@ describe("user auth store optimize", () => {
       password: "123456",
       email: "u1@test.com",
       nickname: "u1",
-    } as any);
+    });
 
     expect(ok).toBe(false);
   });
 
-  it("clears local session even when server logout fails", async () => {
+  it("clears local auth state even when server logout fails", async () => {
     logout.mockRejectedValue(new Error("network"));
-    localStorage.setItem("im_token", "token");
-    localStorage.setItem("im_user_info", JSON.stringify({ id: "1" }));
+
     const { useUserStore } = await import("@/stores/user");
     const store = useUserStore();
-    store.init();
+    store.currentUser = {
+      id: "1",
+      username: "u1",
+      nickname: "u1",
+      status: "offline",
+    };
 
     await store.logout();
 
-    expect(localStorage.getItem("im_token")).toBeNull();
+    expect(store.currentUser).toBeNull();
     expect(push).toHaveBeenCalled();
   });
 });

@@ -38,23 +38,23 @@ class ProcessedMessageDeduplicatorTest {
     }
 
     @Test
-    void tryMarkProcessed_NullKey_ShouldReturnFalse() {
-        assertFalse(deduplicator.tryMarkProcessed(null));
+    void markProcessed_NullKey_ShouldReturnFalse() {
+        assertFalse(deduplicator.markProcessed(null));
     }
 
     @Test
-    void tryMarkProcessed_NewKey_ShouldReturnTrue() {
+    void markProcessed_NewKey_ShouldReturnTrue() {
         when(mapCache.putIfAbsent(eq("msg1"), eq(Boolean.TRUE), eq(600000L), eq(TimeUnit.MILLISECONDS)))
                 .thenReturn(null);
         
-        assertTrue(deduplicator.tryMarkProcessed("msg1"));
+        assertTrue(deduplicator.markProcessed("msg1"));
     }
 
     @Test
-    void tryMarkProcessed_ExistingKey_ShouldReturnFalse() {
+    void markProcessed_ExistingKey_ShouldReturnFalse() {
         when(mapCache.putIfAbsent(eq("msg1"), eq(Boolean.TRUE), eq(600000L), eq(TimeUnit.MILLISECONDS)))
                 .thenReturn(Boolean.TRUE);
         
-        assertFalse(deduplicator.tryMarkProcessed("msg1"));
+        assertFalse(deduplicator.markProcessed("msg1"));
     }
 }

@@ -37,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -117,7 +118,14 @@ class MessageServiceImplTest {
         assertNotNull(result);
         assertEquals("hello", result.getContent());
         assertEquals(2L, result.getReceiverId());
-        verify(outboxService).enqueueAfterCommit(eq("im-private-message-topic"), eq("p_1_2"), anyString(), eq(100L));
+        verify(outboxService).enqueueAfterCommit(
+                eq("PRIVATE_MESSAGE"),
+                eq("MESSAGE"),
+                eq("p_1_2"),
+                anyString(),
+                eq(100L),
+                eq(List.of(2L))
+        );
         verify(redissonClient).getLock("msg:lock:p_1_2");
         verify(conversationLock).unlock();
     }
@@ -144,6 +152,10 @@ class MessageServiceImplTest {
     @Test
     void sendPrivateMessageShouldRejectWhenConversationBusy() throws InterruptedException {
         SendPrivateMessageRequest request = privateText("2", "hello");
+        when(messageRateLimiter.canSendMessage(1L)).thenReturn(true);
+        when(userProfileCache.getUser(1L)).thenReturn(user(1L, "u1"));
+        when(userProfileCache.getUser(2L)).thenReturn(user(2L, "u2"));
+        when(userServiceFeignClient.isFriend(1L, 2L)).thenReturn(true);
         when(conversationLock.tryLock(eq(0L), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(false);
 
         assertThrows(BusinessException.class, () -> service.sendPrivateMessage(1L, request));
@@ -171,7 +183,14 @@ class MessageServiceImplTest {
         assertNotNull(result);
         assertTrue(result.isGroup());
         assertEquals(2, result.getGroupMembers().size());
-        verify(outboxService).enqueueAfterCommit(eq("im-group-message-topic"), eq("g_8"), anyString(), eq(200L));
+        verify(outboxService).enqueueAfterCommit(
+                eq("GROUP_MESSAGE"),
+                eq("MESSAGE"),
+                eq("g_8"),
+                anyString(),
+                eq(200L),
+                eq(List.of(2L, 3L))
+        );
         verify(redissonClient).getLock("msg:lock:g_8");
         verify(conversationLock).unlock();
     }
@@ -192,7 +211,14 @@ class MessageServiceImplTest {
 
         assertEquals("DELETED", result.getStatus());
         assertEquals(2L, result.getReceiverId());
-        verify(outboxService).enqueueAfterCommit(eq("im-private-message-topic"), eq("p_1_2"), anyString(), eq(302L));
+        verify(outboxService).enqueueAfterCommit(
+                eq("PRIVATE_MESSAGE"),
+                eq("MESSAGE"),
+                eq("p_1_2"),
+                anyString(),
+                eq(302L),
+                eq(List.of(2L))
+        );
         verify(redisTemplate, never()).convertAndSend(anyString(), anyString());
     }
 
@@ -214,7 +240,14 @@ class MessageServiceImplTest {
         assertEquals("RECALLED", result.getStatus());
         assertTrue(result.isGroup());
         assertEquals(2, result.getGroupMembers().size());
-        verify(outboxService).enqueueAfterCommit(eq("im-group-message-topic"), eq("g_8"), anyString(), eq(401L));
+        verify(outboxService).enqueueAfterCommit(
+                eq("GROUP_MESSAGE"),
+                eq("MESSAGE"),
+                eq("g_8"),
+                anyString(),
+                eq(401L),
+                eq(List.of(2L, 3L))
+        );
         verify(redisTemplate, never()).convertAndSend(anyString(), anyString());
     }
 
@@ -244,16 +277,12 @@ class MessageServiceImplTest {
         service.markAsRead(1L, "group_8");
 
         verify(outboxService).enqueueAfterCommit(
-                eq("im-read-receipt-topic"),
-                eq("grr_8_2"),
+                eq("READ_RECEIPT"),
+                eq("READ_RECEIPT"),
+                eq("grr_8"),
                 argThat(payload -> payload != null && payload.contains("\"conversationId\":\"group_8\"")),
-                eq(900L)
-        );
-        verify(outboxService).enqueueAfterCommit(
-                eq("im-read-receipt-topic"),
-                eq("grr_8_3"),
-                argThat(payload -> payload != null && payload.contains("\"conversationId\":\"group_8\"")),
-                eq(900L)
+                eq(900L),
+                eq(List.of(2L, 3L))
         );
     }
 

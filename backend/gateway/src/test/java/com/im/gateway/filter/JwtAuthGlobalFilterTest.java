@@ -1,6 +1,7 @@
 package com.im.gateway.filter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.im.dto.ApiResponse;
 import com.im.dto.AuthUserResourceDTO;
 import com.im.dto.TokenParseResultDTO;
 import org.junit.jupiter.api.BeforeEach;
@@ -94,7 +95,7 @@ class JwtAuthGlobalFilterTest {
             validateRequest.set(request);
             TokenParseResultDTO invalid = new TokenParseResultDTO();
             invalid.setValid(false);
-            return Mono.just(jsonResponse(HttpStatus.OK, invalid));
+            return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(invalid)));
         });
         MockServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/group/list")
@@ -140,11 +141,11 @@ class JwtAuthGlobalFilterTest {
             String path = request.url().getPath();
             if ("/api/auth/internal/validate-token".equals(path)) {
                 validateRequest.set(request);
-                return Mono.just(jsonResponse(HttpStatus.OK, validToken(2001L, "neo")));
+                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(validToken(2001L, "neo"))));
             }
             if ("/api/auth/internal/user-resource/2001".equals(path)) {
                 resourceRequest.set(request);
-                return Mono.just(jsonResponse(HttpStatus.OK, userResource(2001L)));
+                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(userResource(2001L))));
             }
             return Mono.error(new AssertionError("unexpected path: " + path));
         });
@@ -182,7 +183,7 @@ class JwtAuthGlobalFilterTest {
         JwtAuthGlobalFilter filter = newFilter(request -> {
             String path = request.url().getPath();
             if ("/api/auth/internal/validate-token".equals(path)) {
-                return Mono.just(jsonResponse(HttpStatus.OK, validToken(3001L, "trinity")));
+                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(validToken(3001L, "trinity"))));
             }
             if ("/api/auth/internal/user-resource/3001".equals(path)) {
                 resourceRequest.set(request);

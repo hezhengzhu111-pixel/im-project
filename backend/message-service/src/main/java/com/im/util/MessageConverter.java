@@ -23,6 +23,7 @@ public class MessageConverter {
 
         return MessageDTO.builder()
                 .id(message.getId())
+                .clientMessageId(message.getClientMessageId())
                 .senderId(message.getSenderId())
                 .senderName(senderName)
                 .senderAvatar(senderAvatar)

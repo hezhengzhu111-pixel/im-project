@@ -10,7 +10,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -22,7 +21,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -35,7 +33,6 @@ public class OutboxPublisher {
     private static final int WS_PUSH_EVENT_VERSION = 1;
     private static final int MAX_ERROR_LEN = 1024;
 
-    private final KafkaTemplate<String, String> kafkaTemplate;
     private final MessageOutboxMapper outboxMapper;
     private final StringRedisTemplate stringRedisTemplate;
 
@@ -48,26 +45,14 @@ public class OutboxPublisher {
     @Value("${im.outbox.base-backoff-ms:1000}")
     private long baseBackoffMs;
 
-    @Value("${im.outbox.send-timeout-ms:30000}")
-    private long sendTimeoutMs;
-
     @Value("${im.outbox.recover-sending-timeout-ms:120000}")
     private long recoverSendingTimeoutMs;
 
-    @Value("${im.kafka.topic.push-prefix:im-ws-push-}")
-    private String wsPushTopicPrefix;
+    @Value("${im.ws.channel-prefix:im:ws:push:}")
+    private String wsChannelPrefix;
 
     @Value("${im.route.user-key-prefix:im:route:user:}")
     private String routeUserKeyPrefix;
-
-    @Value("${im.kafka.topic.private-message:im-private-message-topic}")
-    private String privateMessageTopic;
-
-    @Value("${im.kafka.topic.group-message:im-group-message-topic}")
-    private String groupMessageTopic;
-
-    @Value("${im.kafka.topic.read-receipt:im-read-receipt-topic}")
-    private String readReceiptTopic;
 
     public void publishById(Long outboxId) {
         if (outboxId == null) {
@@ -99,10 +84,7 @@ public class OutboxPublisher {
                         .createdAt(LocalDateTime.now())
                         .version(WS_PUSH_EVENT_VERSION)
                         .build();
-                String kafkaPayload = JSON.toJSONString(wsPushEvent);
-                String key = buildKafkaKey(event.getMessageKey(), dispatch.routeInstanceId());
-                kafkaTemplate.send(dispatch.topic(), key, kafkaPayload)
-                        .get(Math.max(1000L, sendTimeoutMs), TimeUnit.MILLISECONDS);
+                stringRedisTemplate.convertAndSend(dispatch.channel(), JSON.toJSONString(wsPushEvent));
             }
             markSent(outboxId);
         } catch (Exception ex) {
@@ -148,8 +130,8 @@ public class OutboxPublisher {
         }
         int updated = outboxMapper.markFailed(outboxId, err, nextRetryAt);
         if (updated > 0) {
-            log.warn("Outbox publish failed. id={}, attempts={}, topic={}, err={}",
-                    outboxId, attemptsAfterUpdate, snapshot == null ? null : snapshot.getTopic(), err);
+            log.warn("Outbox publish failed. id={}, attempts={}, eventType={}, err={}",
+                    outboxId, attemptsAfterUpdate, snapshot == null ? null : snapshot.getEventType(), err);
         } else {
             log.debug("Outbox markFailed skipped due to status mismatch. id={}", outboxId);
         }
@@ -179,7 +161,7 @@ public class OutboxPublisher {
         }
         return usersByInstance.entrySet().stream()
                 .map(entry -> new RouteDispatch(
-                        wsPushTopicPrefix + entry.getKey(),
+                        wsChannelPrefix + entry.getKey(),
                         entry.getKey(),
                         eventPayload.eventType(),
                         eventPayload.messageId(),
@@ -188,38 +170,21 @@ public class OutboxPublisher {
     }
 
     private EventPayload parseEventPayload(MessageOutboxEvent event) {
-        String topic = event.getTopic();
-        if (readReceiptTopic.equals(topic)) {
-            ReadReceiptDTO receipt = JSON.parseObject(event.getPayload(), ReadReceiptDTO.class);
-            List<Long> targets = receipt == null || receipt.getToUserId() == null
-                    ? List.of()
-                    : List.of(receipt.getToUserId());
-            Long messageId = receipt == null ? null : receipt.getLastReadMessageId();
-            return new EventPayload(EVENT_TYPE_READ_RECEIPT, messageId, targets);
+        String eventType = normalizeEventType(event.getEventType());
+        List<Long> targets = JSON.parseArray(event.getTargetsJson(), Long.class);
+        if (targets == null) {
+            targets = List.of();
         }
-        if (privateMessageTopic.equals(topic) || groupMessageTopic.equals(topic)) {
+        Long messageId = event.getRelatedMessageId();
+        if (messageId == null && EVENT_TYPE_MESSAGE.equals(eventType)) {
             MessageDTO messageDTO = JSON.parseObject(event.getPayload(), MessageDTO.class);
-            List<Long> targets = extractMessageTargets(messageDTO);
-            Long messageId = messageDTO == null ? null : messageDTO.getId();
-            return new EventPayload(EVENT_TYPE_MESSAGE, messageId, targets);
+            messageId = messageDTO == null ? null : messageDTO.getId();
         }
-        throw new IllegalArgumentException("unsupported outbox topic: " + topic);
-    }
-
-    private List<Long> extractMessageTargets(MessageDTO messageDTO) {
-        if (messageDTO == null) {
-            return List.of();
+        if (messageId == null && EVENT_TYPE_READ_RECEIPT.equals(eventType)) {
+            ReadReceiptDTO receipt = JSON.parseObject(event.getPayload(), ReadReceiptDTO.class);
+            messageId = receipt == null ? null : receipt.getLastReadMessageId();
         }
-        if (messageDTO.getReceiverId() != null) {
-            return List.of(messageDTO.getReceiverId());
-        }
-        if (messageDTO.getGroupMembers() == null || messageDTO.getGroupMembers().isEmpty()) {
-            return List.of();
-        }
-        return messageDTO.getGroupMembers().stream()
-                .filter(member -> member != null && member.getUserId() != null)
-                .map(member -> member.getUserId())
-                .collect(Collectors.toList());
+        return new EventPayload(eventType, messageId, deduplicate(targets));
     }
 
     private String resolveRouteInstance(Long userId) {
@@ -229,18 +194,18 @@ public class OutboxPublisher {
         return stringRedisTemplate.opsForValue().get(routeUserKeyPrefix + userId);
     }
 
+    private String normalizeEventType(String eventType) {
+        if (!StringUtils.hasText(eventType)) {
+            return EVENT_TYPE_MESSAGE;
+        }
+        return eventType.trim().toUpperCase();
+    }
+
     private List<Long> deduplicate(List<Long> source) {
         if (source == null || source.isEmpty()) {
             return List.of();
         }
-        return source.stream().distinct().collect(Collectors.toList());
-    }
-
-    private String buildKafkaKey(String originalKey, String routeInstanceId) {
-        if (!StringUtils.hasText(originalKey)) {
-            return routeInstanceId;
-        }
-        return originalKey + ":" + routeInstanceId;
+        return source.stream().filter(item -> item != null).distinct().collect(Collectors.toList());
     }
 
     private long calculateBackoffMs(int attempts) {
@@ -252,7 +217,10 @@ public class OutboxPublisher {
     private record EventPayload(String eventType, Long messageId, List<Long> targetUserIds) {
     }
 
-    private record RouteDispatch(String topic, String routeInstanceId, String eventType, Long messageId,
+    private record RouteDispatch(String channel,
+                                 String routeInstanceId,
+                                 String eventType,
+                                 Long messageId,
                                  List<Long> targetUserIds) {
     }
 }

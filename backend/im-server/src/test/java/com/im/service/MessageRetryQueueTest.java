@@ -1,6 +1,6 @@
 package com.im.service;
 
-import com.im.dto.MessageDTO;
+import com.im.dto.WsPushEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -11,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RBlockingQueue;
 import org.redisson.api.RDelayedQueue;
 import org.redisson.api.RedissonClient;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.concurrent.TimeUnit;
 
@@ -37,6 +38,8 @@ class MessageRetryQueueTest {
 
     @BeforeEach
     void setUp() {
+        ReflectionTestUtils.setField(retryQueue, "baseBackoffMs", 500L);
+        ReflectionTestUtils.setField(retryQueue, "maxAttempts", 20);
         when(redissonClient.<MessageRetryQueue.RetryItem>getBlockingQueue("im:message:retry:queue")).thenReturn(blockingQueue);
         when(redissonClient.getDelayedQueue(blockingQueue)).thenReturn(delayedQueue);
         retryQueue.init();
@@ -44,24 +47,24 @@ class MessageRetryQueueTest {
 
     @Test
     void enqueue_ValidInput_ShouldOfferToDelayedQueue() {
-        MessageDTO message = new MessageDTO();
+        WsPushEvent event = WsPushEvent.builder().eventId("evt-1").eventType("MESSAGE").build();
         
-        retryQueue.enqueue("user1", message, "reason");
+        retryQueue.enqueue("user1", event, "reason");
         
         ArgumentCaptor<MessageRetryQueue.RetryItem> itemCaptor = ArgumentCaptor.forClass(MessageRetryQueue.RetryItem.class);
         verify(delayedQueue).offer(itemCaptor.capture(), eq(500L), eq(TimeUnit.MILLISECONDS));
         
         MessageRetryQueue.RetryItem item = itemCaptor.getValue();
         assertEquals("user1", item.getUserId());
-        assertEquals(message, item.getMessage());
+        assertEquals(event, item.getEvent());
         assertEquals(0, item.getAttempts());
         assertEquals("reason", item.getLastError());
     }
 
     @Test
     void enqueue_InvalidInput_ShouldReturn() {
-        retryQueue.enqueue(null, new MessageDTO(), "reason");
-        retryQueue.enqueue(" ", new MessageDTO(), "reason");
+        retryQueue.enqueue(null, WsPushEvent.builder().eventId("evt-2").build(), "reason");
+        retryQueue.enqueue(" ", WsPushEvent.builder().eventId("evt-3").build(), "reason");
         retryQueue.enqueue("user1", null, "reason");
         
         verify(delayedQueue, never()).offer(any(), anyLong(), any());

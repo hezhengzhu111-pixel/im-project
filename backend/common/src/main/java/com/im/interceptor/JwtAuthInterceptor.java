@@ -1,6 +1,7 @@
 package com.im.interceptor;
 
 import com.im.util.AuthHeaderUtil;
+import com.im.util.AuthCookieUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.dto.ApiResponse;
 import com.im.security.SecurityPaths;
@@ -69,6 +70,9 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
     @Value("${jwt.secret}")
     private String jwtSecret;
 
+    @Value("${im.auth.cookie.access-token-name:IM_ACCESS_TOKEN}")
+    private String accessTokenCookieName;
+
     private static final String JWT_HEADER = "Authorization";
     private static final String JWT_PREFIX = "Bearer ";
 
@@ -101,9 +105,8 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        String authHeader = request.getHeader(JWT_HEADER);
-        if (authHeader != null && authHeader.startsWith(JWT_PREFIX)) {
-            String token = authHeader.substring(JWT_PREFIX.length()).trim();
+        String token = resolveAccessToken(request);
+        if (token != null && !token.isBlank()) {
             try {
                 Claims claims = Jwts.parser()
                         .verifyWith(Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8)))
@@ -133,6 +136,14 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
 
         writeUnauthorized(response, "认证失败");
         return false;
+    }
+
+    private String resolveAccessToken(HttpServletRequest request) {
+        String authHeader = request.getHeader(JWT_HEADER);
+        if (authHeader != null && authHeader.startsWith(JWT_PREFIX)) {
+            return authHeader.substring(JWT_PREFIX.length()).trim();
+        }
+        return AuthCookieUtil.getCookieValue(request, accessTokenCookieName);
     }
 
     private boolean isGatewayMode() {

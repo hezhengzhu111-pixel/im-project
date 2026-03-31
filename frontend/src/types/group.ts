@@ -2,7 +2,7 @@
  * 群组相关类型定义
  */
 
-import type { User } from './user';
+import type { User } from "./user";
 
 /** 群组信息 */
 export interface Group {
@@ -25,6 +25,24 @@ export interface Group {
   createTime: string;
 }
 
+export interface RawGroupDTO {
+  id?: string | number;
+  name?: string;
+  groupName?: string;
+  description?: string;
+  announcement?: string;
+  type?: string | number;
+  avatar?: string;
+  ownerId?: string | number;
+  memberCount?: string | number;
+  maxMembers?: string | number;
+  status?: string | number;
+  unreadCount?: string | number;
+  lastMessageTime?: string;
+  lastActivityAt?: string;
+  createTime?: string;
+}
+
 /** 群组成员 */
 export interface GroupMember {
   id?: string;
@@ -36,6 +54,17 @@ export interface GroupMember {
   role: 'OWNER' | 'ADMIN' | 'MEMBER' | string;
   nickname?: string;
   joinTime: string;
+}
+
+export interface RawGroupMemberDTO {
+  id?: string | number;
+  groupId?: string | number;
+  userId?: string | number;
+  username?: string;
+  nickname?: string;
+  avatar?: string;
+  role?: string | number;
+  joinTime?: string;
 }
 
 export interface CreateGroupRequest {

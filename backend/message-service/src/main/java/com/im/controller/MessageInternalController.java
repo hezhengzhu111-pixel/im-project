@@ -3,7 +3,6 @@ package com.im.controller;
 import com.im.dto.ApiResponse;
 import com.im.dto.MessageDTO;
 import com.im.dto.request.SendSystemMessageRequest;
-import com.im.exception.BusinessException;
 import com.im.service.MessageService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,17 +31,9 @@ public class MessageInternalController {
             @Valid @RequestBody SendSystemMessageRequest request) {
         // Keep fixed header binding for compatibility with existing internal callers.
         if (secret == null || !secret.equals(internalSecret)) {
-            return ApiResponse.forbidden("forbidden");
+            throw new SecurityException("forbidden");
         }
-        try {
-            MessageDTO dto = messageService.sendSystemMessage(request.getReceiverId(), request.getContent(), request.getSenderId());
-            return ApiResponse.success("system message sent", dto);
-        } catch (BusinessException | IllegalArgumentException e) {
-            return ApiResponse.badRequest(e.getMessage());
-        } catch (SecurityException e) {
-            return ApiResponse.forbidden(e.getMessage());
-        } catch (Exception e) {
-            return ApiResponse.error("internal system error");
-        }
+        MessageDTO dto = messageService.sendSystemMessage(request.getReceiverId(), request.getContent(), request.getSenderId());
+        return ApiResponse.success("system message sent", dto);
     }
 }
