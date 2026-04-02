@@ -1,10 +1,12 @@
 package com.im.service.impl;
 
+import com.alibaba.fastjson2.JSON;
 import com.im.dto.GroupMemberDTO;
 import com.im.dto.MessageDTO;
 import com.im.entity.UserSession;
 import com.im.enums.MessageType;
 import com.im.enums.UserStatus;
+import com.im.service.RouteSessionInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,6 +47,8 @@ class ImServiceImplTest {
     void setUp() {
         lenient().when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         ReflectionTestUtils.setField(imService, "routeUserKeyPrefix", "im:route:user:");
+        ReflectionTestUtils.setField(imService, "routeSessionKeyPrefix", "im:route:session:");
+        ReflectionTestUtils.setField(imService, "wsChannelPrefix", "im:ws:push:");
         ReflectionTestUtils.setField(imService, "instanceId", "im-node-1");
     }
 
@@ -76,6 +80,7 @@ class ImServiceImplTest {
         UserSession session = new UserSession();
         WebSocketSession wsSession = mock(WebSocketSession.class);
         when(wsSession.isOpen()).thenReturn(true);
+        when(wsSession.getId()).thenReturn("session-1");
         session.setWebSocketSession(wsSession);
         session.setLastHeartbeat(LocalDateTime.now());
         session.setStatus(UserStatus.ONLINE);
@@ -83,7 +88,8 @@ class ImServiceImplTest {
         imService.getSessionUserMap().put("1", session);
 
         assertTrue(imService.touchUserHeartbeat("1"));
-        verify(stringRedisTemplate).expire(eq("im:route:user:1"), any(Duration.class));
+        verify(valueOperations).set(eq("im:route:user:1"), eq(imService.getInstanceId()), any(Duration.class));
+        verify(valueOperations).set(eq("im:route:session:1"), anyString(), any(Duration.class));
     }
 
     @Test
@@ -98,9 +104,10 @@ class ImServiceImplTest {
         when(valueOperations.get("im:route:user:1")).thenReturn(imService.getInstanceId());
 
         assertTrue(imService.userOffline("1"));
-        
+
         assertNull(imService.getSessionUserMap().get("1"));
         verify(stringRedisTemplate).delete("im:route:user:1");
+        verify(stringRedisTemplate).delete("im:route:session:1");
         verify(wsSession).close();
     }
 
@@ -171,10 +178,14 @@ class ImServiceImplTest {
     @Test
     void putSessionMapping_ShouldAddToMapAndRedis() {
         UserSession session = new UserSession();
+        WebSocketSession wsSession = mock(WebSocketSession.class);
+        when(wsSession.getId()).thenReturn("session-1");
+        session.setWebSocketSession(wsSession);
         imService.putSessionMapping("1", session);
 
         assertEquals(session, imService.getSessionUserMap().get("1"));
         verify(valueOperations).set(eq("im:route:user:1"), eq(imService.getInstanceId()), any(Duration.class));
+        verify(valueOperations).set(eq("im:route:session:1"), anyString(), any(Duration.class));
     }
 
     @Test
@@ -186,18 +197,69 @@ class ImServiceImplTest {
 
         assertNull(imService.getSessionUserMap().get("1"));
         verify(stringRedisTemplate).delete("im:route:user:1");
+        verify(stringRedisTemplate).delete("im:route:session:1");
     }
 
     @Test
     void refreshRouteHeartbeat_ShouldRefreshSessionAndRedisRoute() {
         UserSession session = new UserSession();
         session.setStatus(UserStatus.OFFLINE);
+        WebSocketSession wsSession = mock(WebSocketSession.class);
+        when(wsSession.getId()).thenReturn("session-1");
+        session.setWebSocketSession(wsSession);
         imService.getSessionUserMap().put("1", session);
 
-        imService.refreshRouteHeartbeat("1");
+        imService.refreshRouteHeartbeat("1", "session-1");
 
         assertEquals(UserStatus.ONLINE, session.getStatus());
         assertNotNull(session.getLastHeartbeat());
         verify(valueOperations).set(eq("im:route:user:1"), eq(imService.getInstanceId()), any(Duration.class));
+        verify(valueOperations).set(eq("im:route:session:1"), anyString(), any(Duration.class));
+    }
+
+    @Test
+    void refreshRouteHeartbeat_ShouldIgnoreStaleSessionId() {
+        UserSession session = new UserSession();
+        WebSocketSession wsSession = mock(WebSocketSession.class);
+        when(wsSession.getId()).thenReturn("active-session");
+        session.setWebSocketSession(wsSession);
+        imService.getSessionUserMap().put("1", session);
+
+        imService.refreshRouteHeartbeat("1", "stale-session");
+
+        verify(valueOperations, never()).set(eq("im:route:user:1"), eq(imService.getInstanceId()), any(Duration.class));
+    }
+
+    @Test
+    void getRouteSessionInfo_ShouldReadSessionMetadata() {
+        when(valueOperations.get("im:route:session:1"))
+                .thenReturn(JSON.toJSONString(new RouteSessionInfo("im-node-2", "session-2")));
+
+        RouteSessionInfo info = imService.getRouteSessionInfo("1");
+
+        assertNotNull(info);
+        assertEquals("im-node-2", info.getInstanceId());
+        assertEquals("session-2", info.getSessionId());
+    }
+
+    @Test
+    void publishSessionKickout_ShouldSendToTargetInstanceChannel() {
+        imService.publishSessionKickout("im-node-2", "1", "session-2", "新连接建立");
+
+        verify(stringRedisTemplate).convertAndSend(eq("im:ws:push:im-node-2"), contains("\"eventType\":\"SESSION_KICKOUT\""));
+    }
+
+    @Test
+    void disconnectLocalSessionIfMatch_ShouldIgnoreStaleSessionId() throws Exception {
+        UserSession session = new UserSession();
+        WebSocketSession wsSession = mock(WebSocketSession.class);
+        when(wsSession.getId()).thenReturn("active-session");
+        session.setWebSocketSession(wsSession);
+        imService.getSessionUserMap().put("1", session);
+
+        assertFalse(imService.disconnectLocalSessionIfMatch("1", "stale-session", "新连接建立"));
+
+        assertSame(session, imService.getSessionUserMap().get("1"));
+        verify(wsSession, never()).close(any(org.springframework.web.socket.CloseStatus.class));
     }
 }

@@ -109,6 +109,7 @@ public class AuthController {
 
     private TokenPairDTO sanitizeTokenPair(TokenPairDTO source) {
         TokenPairDTO sanitized = new TokenPairDTO();
+        sanitized.setAccessToken(source.getAccessToken());
         sanitized.setExpiresInMs(source.getExpiresInMs());
         sanitized.setRefreshExpiresInMs(source.getRefreshExpiresInMs());
         return sanitized;

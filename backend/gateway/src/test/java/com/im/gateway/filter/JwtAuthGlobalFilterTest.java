@@ -66,14 +66,19 @@ class JwtAuthGlobalFilterTest {
     @Test
     void filterShouldBypassWhitelistPath() {
         JwtAuthGlobalFilter filter = newFilter(request -> Mono.error(new AssertionError("auth service should not be called")));
+        AtomicReference<ServerWebExchange> forwardedExchange = new AtomicReference<>();
         MockServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/auth/refresh").build()
         );
-        when(chain.filter(any(ServerWebExchange.class))).thenReturn(Mono.empty());
+        when(chain.filter(any(ServerWebExchange.class))).thenAnswer(invocation -> {
+            forwardedExchange.set(invocation.getArgument(0));
+            return Mono.empty();
+        });
 
         filter.filter(exchange, chain).block();
 
         verify(chain).filter(any(ServerWebExchange.class));
+        assertNotNull(forwardedExchange.get());
     }
 
     @Test
@@ -87,6 +92,41 @@ class JwtAuthGlobalFilterTest {
 
         assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
         verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    @Test
+    void filterShouldRejectInternalPathEvenWithCorrectSecret() {
+        JwtAuthGlobalFilter filter = newFilter(request -> Mono.error(new AssertionError("auth service should not be called")));
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/user/internal/profile")
+                        .header("X-Internal-Secret", "internal-value")
+                        .build()
+        );
+
+        filter.filter(exchange, chain).block();
+
+        assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
+        verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    @Test
+    void filterShouldStripExternalInternalSecretOnWhitelistPassThrough() {
+        JwtAuthGlobalFilter filter = newFilter(request -> Mono.error(new AssertionError("auth service should not be called")));
+        AtomicReference<ServerWebExchange> forwardedExchange = new AtomicReference<>();
+        when(chain.filter(any(ServerWebExchange.class))).thenAnswer(invocation -> {
+            forwardedExchange.set(invocation.getArgument(0));
+            return Mono.empty();
+        });
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/auth/refresh")
+                        .header("X-Internal-Secret", "forged-secret")
+                        .build()
+        );
+
+        filter.filter(exchange, chain).block();
+
+        assertNotNull(forwardedExchange.get());
+        assertTrue(!forwardedExchange.get().getRequest().getHeaders().containsKey("X-Internal-Secret"));
     }
 
     @Test
@@ -149,6 +189,48 @@ class JwtAuthGlobalFilterTest {
     }
 
     @Test
+    void filterShouldNotCacheFailedTokenValidation() {
+        AtomicInteger validateCalls = new AtomicInteger();
+        AtomicReference<ServerWebExchange> forwardedExchange = new AtomicReference<>();
+        JwtAuthGlobalFilter filter = newFilter(request -> {
+            String path = request.url().getPath();
+            if ("/api/auth/internal/validate-token".equals(path)) {
+                if (validateCalls.incrementAndGet() == 1) {
+                    return Mono.error(new RuntimeException("temporary auth failure"));
+                }
+                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(validToken(5001L, "oracle"))));
+            }
+            if ("/api/auth/internal/user-resource/5001".equals(path)) {
+                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(userResource(5001L))));
+            }
+            return Mono.error(new AssertionError("unexpected path: " + path));
+        });
+        when(chain.filter(any(ServerWebExchange.class))).thenAnswer(invocation -> {
+            forwardedExchange.set(invocation.getArgument(0));
+            return Mono.empty();
+        });
+
+        MockServerWebExchange firstExchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/message/list")
+                        .header("Authorization", "Bearer same-token")
+                        .build()
+        );
+        filter.filter(firstExchange, chain).block();
+        assertEquals(HttpStatus.UNAUTHORIZED, firstExchange.getResponse().getStatusCode());
+
+        MockServerWebExchange secondExchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/message/list")
+                        .header("Authorization", "Bearer same-token")
+                        .build()
+        );
+        filter.filter(secondExchange, chain).block();
+
+        assertEquals(2, validateCalls.get());
+        assertNotNull(forwardedExchange.get());
+        assertEquals("5001", forwardedExchange.get().getRequest().getHeaders().getFirst("X-User-Id"));
+    }
+
+    @Test
     void filterShouldInjectAuthHeadersWhenTokenAndUserResourceAreValid() {
         AtomicReference<ClientRequest> validateRequest = new AtomicReference<>();
         AtomicReference<ClientRequest> resourceRequest = new AtomicReference<>();
@@ -171,6 +253,7 @@ class JwtAuthGlobalFilterTest {
         });
         MockServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/message/list")
+                        .header("X-Internal-Secret", "forged-secret")
                         .header("Authorization", "Bearer ok-token")
                         .build()
         );
@@ -187,6 +270,7 @@ class JwtAuthGlobalFilterTest {
         assertEquals("2001", request.getHeaders().getFirst("X-User-Id"));
         assertEquals("neo", request.getHeaders().getFirst("X-Username"));
         assertEquals("internal-value", request.getHeaders().getFirst("X-Internal-Secret"));
+        assertTrue(!"forged-secret".equals(request.getHeaders().getFirst("X-Internal-Secret")));
         assertTrue(request.getHeaders().containsKey("X-Auth-User"));
         assertTrue(request.getHeaders().containsKey("X-Auth-Perms"));
         assertTrue(request.getHeaders().containsKey("X-Auth-Data"));
@@ -218,6 +302,48 @@ class JwtAuthGlobalFilterTest {
         assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
         assertEquals("/api/auth/internal/user-resource/3001", resourceRequest.get().url().getPath());
         verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    @Test
+    void filterShouldNotCacheFailedUserResourceLoad() {
+        AtomicInteger resourceCalls = new AtomicInteger();
+        AtomicReference<ServerWebExchange> forwardedExchange = new AtomicReference<>();
+        JwtAuthGlobalFilter filter = newFilter(request -> {
+            String path = request.url().getPath();
+            if ("/api/auth/internal/validate-token".equals(path)) {
+                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(validToken(7001L, "switch"))));
+            }
+            if ("/api/auth/internal/user-resource/7001".equals(path)) {
+                if (resourceCalls.incrementAndGet() == 1) {
+                    return Mono.error(new RuntimeException("temporary resource failure"));
+                }
+                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(userResource(7001L))));
+            }
+            return Mono.error(new AssertionError("unexpected path: " + path));
+        });
+        when(chain.filter(any(ServerWebExchange.class))).thenAnswer(invocation -> {
+            forwardedExchange.set(invocation.getArgument(0));
+            return Mono.empty();
+        });
+
+        MockServerWebExchange firstExchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/message/list")
+                        .header("Authorization", "Bearer stable-token")
+                        .build()
+        );
+        filter.filter(firstExchange, chain).block();
+        assertEquals(HttpStatus.UNAUTHORIZED, firstExchange.getResponse().getStatusCode());
+
+        MockServerWebExchange secondExchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/message/list")
+                        .header("Authorization", "Bearer stable-token")
+                        .build()
+        );
+        filter.filter(secondExchange, chain).block();
+
+        assertEquals(2, resourceCalls.get());
+        assertNotNull(forwardedExchange.get());
+        assertEquals("7001", forwardedExchange.get().getRequest().getHeaders().getFirst("X-User-Id"));
     }
 
     @Test

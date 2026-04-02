@@ -1,5 +1,6 @@
 import { normalizeUser, normalizeUserAuthResponse, normalizeUserSettings } from "@/normalizers/user";
 import { http } from "@/utils/request";
+import type { ApiResponse } from "@/types/api";
 import type {
   BindEmailRequest,
   BindPhoneRequest,
@@ -14,7 +15,7 @@ import type {
 } from "@/types";
 
 export const userService = {
-  async login(data: LoginRequest): Promise<UserAuthResponse> {
+  async login(data: LoginRequest): Promise<ApiResponse<UserAuthResponse>> {
     const response = await http.post<unknown>("/user/login", data);
     return {
       ...response,
@@ -26,7 +27,7 @@ export const userService = {
     const response = await http.put<unknown>("/user/profile", data);
     return {
       ...response,
-      data: normalizeUser(response.data),
+      data: normalizeUser(response.data as User),
     } as typeof response & { data: User };
   },
   async search(keyword: string, type = "username") {
@@ -36,7 +37,7 @@ export const userService = {
     return {
       ...response,
       data: Array.isArray(response.data)
-        ? response.data.map((item) => normalizeUser(item))
+        ? response.data.map((item) => normalizeUser(item as User))
         : [],
     } as typeof response & { data: User[] };
   },

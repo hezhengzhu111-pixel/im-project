@@ -300,6 +300,7 @@ public class UserController {
                 .success(source.isSuccess())
                 .message(source.getMessage())
                 .user(source.getUser())
+                .token(source.getToken())
                 .expiresInMs(source.getExpiresInMs())
                 .refreshExpiresInMs(source.getRefreshExpiresInMs())
                 .imToken(source.getImToken())

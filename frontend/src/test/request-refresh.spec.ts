@@ -7,6 +7,7 @@ const restoreSession = vi.fn();
 const clearSession = vi.fn();
 const logout = vi.fn();
 const refreshAccessTokenRaw = vi.fn();
+let currentAccessToken = "";
 
 type MockItem = {
   status?: number;
@@ -15,17 +16,31 @@ type MockItem = {
 };
 
 const responseQueue: Record<string, MockItem[]> = {};
+const observedRequests: Record<string, Array<{ headers: Record<string, unknown> }>> = {};
 let requestOnFulfilled: ((config: Record<string, unknown>) => unknown) | null = null;
 let responseOnFulfilled:
   | ((response: { data: unknown; status: number; config: Record<string, unknown> }) => unknown)
   | null = null;
 let responseOnRejected: ((error: unknown) => unknown) | null = null;
 
+const snapshotHeaders = (headers: unknown): Record<string, unknown> => {
+  if (!headers || typeof headers !== "object") {
+    return {};
+  }
+  return { ...(headers as Record<string, unknown>) };
+};
+
 const dispatch = async (config: Record<string, unknown>) => {
   const nextConfig = requestOnFulfilled
     ? ((await requestOnFulfilled(config)) as Record<string, unknown>)
     : config;
   const url = String(nextConfig.url || "");
+  if (!observedRequests[url]) {
+    observedRequests[url] = [];
+  }
+  observedRequests[url].push({
+    headers: snapshotHeaders(nextConfig.headers),
+  });
   const queue = responseQueue[url] || [];
   const item = queue.shift();
   if (!item) {
@@ -130,6 +145,11 @@ vi.mock("element-plus", () => ({
 
 vi.mock("@/stores/user", () => ({
   useUserStore: () => ({
+    accessToken: currentAccessToken,
+    getAccessToken: () => currentAccessToken,
+    setAccessToken: (token?: string | null) => {
+      currentAccessToken = typeof token === "string" ? token : "";
+    },
     restoreSession,
     clearSession,
     logout,
@@ -155,6 +175,7 @@ describe("request refresh and retry", () => {
   beforeEach(() => {
     vi.resetModules();
     Object.keys(responseQueue).forEach((key) => delete responseQueue[key]);
+    Object.keys(observedRequests).forEach((key) => delete observedRequests[key]);
     requestOnFulfilled = null;
     responseOnFulfilled = null;
     responseOnRejected = null;
@@ -165,10 +186,13 @@ describe("request refresh and retry", () => {
     push.mockReset();
     warning.mockReset();
     error.mockReset();
+    currentAccessToken = "";
+    localStorage.clear();
     restoreSession.mockResolvedValue(true);
   });
 
-  it("refreshes session and retries once on 401 business response", async () => {
+  it("refreshes session and retries once on 401 business response with latest token", async () => {
+    currentAccessToken = "old-token";
     responseQueue["/secure"] = [
       { data: { code: 401, message: "未授权" } },
       { data: { code: 200, message: "ok", data: { ok: true } } },
@@ -177,6 +201,7 @@ describe("request refresh and retry", () => {
       data: {
         code: 200,
         data: {
+          accessToken: "new-token",
           expiresInMs: 60_000,
         },
       },
@@ -192,6 +217,10 @@ describe("request refresh and retry", () => {
     expect(restoreSession).toHaveBeenCalledTimes(1);
     expect(clearSession).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
+    expect(observedRequests["/secure"]).toHaveLength(2);
+    expect(observedRequests["/secure"][0].headers.Authorization).toBe("Bearer old-token");
+    expect(observedRequests["/secure"][1].headers.Authorization).toBe("Bearer new-token");
+    expect(currentAccessToken).toBe("new-token");
   });
 
   it("clears session and redirects to login when refresh failed", async () => {
@@ -208,7 +237,37 @@ describe("request refresh and retry", () => {
     expect(push).toHaveBeenCalledWith("/login");
   });
 
+  it("retries HTTP 401 requests with the refreshed token", async () => {
+    currentAccessToken = "expired-token";
+    responseQueue["/secure-http"] = [
+      { httpError: true, status: 401 },
+      { data: { code: 200, message: "ok", data: { ok: true } } },
+    ];
+    refreshAccessTokenRaw.mockResolvedValue({
+      data: {
+        code: 200,
+        data: {
+          accessToken: "fresh-token",
+          expiresInMs: 60_000,
+        },
+      },
+    });
+
+    const { http } = await import("@/utils/request");
+    const response = await http.get<{ ok: boolean }>("/secure-http");
+
+    expect(response.code).toBe(200);
+    expect(observedRequests["/secure-http"]).toHaveLength(2);
+    expect(observedRequests["/secure-http"][0].headers.Authorization).toBe(
+      "Bearer expired-token",
+    );
+    expect(observedRequests["/secure-http"][1].headers.Authorization).toBe(
+      "Bearer fresh-token",
+    );
+  });
+
   it("shares a single refresh request for concurrent 401 responses", async () => {
+    currentAccessToken = "old-token";
     responseQueue["/secure-a"] = [
       { data: { code: 401, message: "未授权" } },
       { data: { code: 200, message: "ok", data: { ok: "a" } } },
@@ -226,6 +285,7 @@ describe("request refresh and retry", () => {
                 data: {
                   code: 200,
                   data: {
+                    accessToken: "shared-token",
                     expiresInMs: 60_000,
                   },
                 },
@@ -245,5 +305,27 @@ describe("request refresh and retry", () => {
     expect(responseB.code).toBe(200);
     expect(refreshAccessTokenRaw).toHaveBeenCalledTimes(1);
     expect(restoreSession).toHaveBeenCalledTimes(1);
+    expect(observedRequests["/secure-a"][1].headers.Authorization).toBe(
+      "Bearer shared-token",
+    );
+    expect(observedRequests["/secure-b"][1].headers.Authorization).toBe(
+      "Bearer shared-token",
+    );
+  });
+
+  it("clears auth session only once for concurrent 401 failures", async () => {
+    currentAccessToken = "expired-token";
+    responseQueue["/secure-a"] = [{ data: { code: 401, message: "未授权" } }];
+    responseQueue["/secure-b"] = [{ data: { code: 401, message: "未授权" } }];
+    refreshAccessTokenRaw.mockResolvedValue({
+      data: { code: 500, message: "refresh failed" },
+    });
+
+    const { http } = await import("@/utils/request");
+    await Promise.allSettled([http.get("/secure-a"), http.get("/secure-b")]);
+
+    expect(refreshAccessTokenRaw).toHaveBeenCalledTimes(1);
+    expect(clearSession).toHaveBeenCalledTimes(1);
+    expect(warning).toHaveBeenCalledTimes(1);
   });
 });
