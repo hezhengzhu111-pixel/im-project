@@ -96,7 +96,7 @@ class MessageServiceImplTest {
 
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(redissonClient.getLock(anyString())).thenReturn(conversationLock);
-        lenient().when(conversationLock.tryLock(eq(0L), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(true);
+        lenient().when(conversationLock.tryLock(eq(2L), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(true);
         lenient().when(conversationLock.isHeldByCurrentThread()).thenReturn(true);
     }
 
@@ -156,7 +156,7 @@ class MessageServiceImplTest {
         when(userProfileCache.getUser(1L)).thenReturn(user(1L, "u1"));
         when(userProfileCache.getUser(2L)).thenReturn(user(2L, "u2"));
         when(userServiceFeignClient.isFriend(1L, 2L)).thenReturn(true);
-        when(conversationLock.tryLock(eq(0L), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(false);
+        when(conversationLock.tryLock(eq(2L), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(false);
 
         assertThrows(BusinessException.class, () -> service.sendPrivateMessage(1L, request));
 
@@ -256,7 +256,7 @@ class MessageServiceImplTest {
         when(userServiceFeignClient.exists(1L)).thenReturn(true);
         when(userServiceFeignClient.exists(2L)).thenReturn(true);
         when(userServiceFeignClient.isFriend(1L, 2L)).thenReturn(true);
-        when(conversationLock.tryLock(eq(0L), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(false);
+        when(conversationLock.tryLock(eq(2L), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(false);
 
         assertThrows(BusinessException.class, () -> service.markAsRead(1L, "2"));
 

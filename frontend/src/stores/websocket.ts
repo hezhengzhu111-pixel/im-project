@@ -4,6 +4,7 @@ import { ElMessage, ElNotification } from "element-plus";
 import { STORAGE_CONFIG, WS_CONFIG } from "@/config";
 import { authService, userService } from "@/services";
 import { normalizeMessage } from "@/normalizers/message";
+import { buildSessionId } from "@/normalizers/chat";
 import type { Message, OnlineStatus, WebSocketMessage } from "@/types";
 import { useChatStore } from "@/stores/chat";
 import { useUserStore } from "@/stores/user";
@@ -12,6 +13,7 @@ import { logger } from "@/utils/logger";
 type TimerHandle = ReturnType<typeof setInterval>;
 
 const DUPLICATE_CONNECTION_REASON = "duplicate_connection";
+const FRIEND_REFRESH_DEBOUNCE_MS = 1500;
 
 export const createTicketedWebSocketUrl = (
   userId: string,
@@ -34,6 +36,159 @@ export const useWebSocketStore = defineStore("websocket", () => {
   const manualDisconnect = ref(false);
   const incomingProcessing = ref<Promise<void>>(Promise.resolve());
   const recentMessageIds = ref<Map<string, number>>(new Map());
+
+  const createAsyncDebounce = <TArgs extends unknown[]>(
+    handler: (...args: TArgs) => Promise<void>,
+    waitMs: number,
+  ) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let latestArgs: TArgs | null = null;
+    let pendingResolvers: Array<{
+      resolve: () => void;
+      reject: (error: unknown) => void;
+    }> = [];
+
+    return (...args: TArgs): Promise<void> => {
+      latestArgs = args;
+      return new Promise<void>((resolve, reject) => {
+        pendingResolvers.push({ resolve, reject });
+        if (timer) {
+          clearTimeout(timer);
+        }
+        timer = setTimeout(() => {
+          timer = null;
+          const argsToUse = latestArgs as TArgs;
+          latestArgs = null;
+          const resolvers = pendingResolvers;
+          pendingResolvers = [];
+          Promise.resolve()
+            .then(() => handler(...argsToUse))
+            .then(() => {
+              resolvers.forEach((entry) => entry.resolve());
+            })
+            .catch((error) => {
+              resolvers.forEach((entry) => entry.reject(error));
+            });
+        }, waitMs);
+      });
+    };
+  };
+
+  const cleanupRecentMessageIds = (now: number) => {
+    if (recentMessageIds.value.size <= 2000) {
+      return;
+    }
+    const cutoff = now - 300_000;
+    recentMessageIds.value.forEach((timestamp, id) => {
+      if (timestamp < cutoff) {
+        recentMessageIds.value.delete(id);
+      }
+    });
+  };
+
+  const resolveMessageSessionId = (
+    message: Message,
+    currentUserId: string,
+  ): string | null => {
+    if (message.isGroupChat && message.groupId) {
+      return buildSessionId("group", currentUserId, message.groupId);
+    }
+    if (message.senderId && message.receiverId) {
+      const targetId =
+        message.senderId === currentUserId ? message.receiverId : message.senderId;
+      if (targetId) {
+        return buildSessionId("private", currentUserId, targetId);
+      }
+    }
+    return null;
+  };
+
+  const hasMessageInLocalState = (
+    chatStore: ReturnType<typeof useChatStore>,
+    message: Message,
+    currentUserId: string,
+  ): boolean => {
+    const messageId = String(message.id || "");
+    if (!messageId) {
+      return false;
+    }
+    const allMessages = chatStore.messages as Map<string, Message[]>;
+    if (!(allMessages instanceof Map)) {
+      return false;
+    }
+    const sessionId = resolveMessageSessionId(message, currentUserId);
+    if (sessionId) {
+      return (allMessages.get(sessionId) || []).some(
+        (item) => String(item.id) === messageId,
+      );
+    }
+    for (const list of allMessages.values()) {
+      if (list.some((item) => String(item.id) === messageId)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const shouldProcessSequentially = (message: WebSocketMessage): boolean => {
+    if (message.type !== "MESSAGE" || !message.data) {
+      return false;
+    }
+    const rawMessage = message.data as Record<string, unknown>;
+    const normalizedMessageType = String(
+      rawMessage.messageType || rawMessage.type || "",
+    ).toUpperCase();
+    return normalizedMessageType !== "SYSTEM";
+  };
+
+  const debouncedRefreshFriendRequests = createAsyncDebounce(
+    async (messageText: string) => {
+      const chatStore = useChatStore();
+      // OPTIMIZE: 对连续系统通知做防抖，避免短时间内重复请求好友申请接口。
+      await chatStore.loadFriendRequests();
+      ElNotification({
+        title: "Friend notification",
+        message: messageText || "Received a new friend request",
+        type: "info",
+        duration: 3000,
+      });
+    },
+    FRIEND_REFRESH_DEBOUNCE_MS,
+  );
+
+  const debouncedRefreshFriendList = createAsyncDebounce(
+    async (messageText: string) => {
+      const chatStore = useChatStore();
+      // OPTIMIZE: 对连续系统通知做防抖，避免短时间内重复刷新好友列表与会话列表。
+      await Promise.all([chatStore.loadFriends(), chatStore.loadSessions()]);
+      ElNotification({
+        title: "Friend notification",
+        message: messageText || "Friend list updated",
+        type: "success",
+        duration: 3000,
+      });
+    },
+    FRIEND_REFRESH_DEBOUNCE_MS,
+  );
+
+  const debouncedRefreshFriendData = createAsyncDebounce(
+    async (messageText: string) => {
+      const chatStore = useChatStore();
+      // OPTIMIZE: 对好友关系相关系统消息做防抖，避免瞬时通知风暴压垮前端 API。
+      await Promise.all([
+        chatStore.loadFriendRequests(),
+        chatStore.loadFriends(),
+        chatStore.loadSessions(),
+      ]);
+      ElNotification({
+        title: "System notification",
+        message: messageText,
+        type: "info",
+        duration: 3000,
+      });
+    },
+    FRIEND_REFRESH_DEBOUNCE_MS,
+  );
 
   const connectionStatus = computed(() => {
     if (isConnecting.value) return "connecting";
@@ -80,11 +235,19 @@ export const useWebSocketStore = defineStore("websocket", () => {
       socket.value.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data) as WebSocketMessage;
-          incomingProcessing.value = incomingProcessing.value
-            .then(() => handleMessage(data))
-            .catch((error) => {
-              logger.error("failed to handle websocket message", error);
-            });
+          if (shouldProcessSequentially(data)) {
+            // FIX: 普通聊天消息保留串行处理，确保时序敏感消息仍按顺序落库与渲染。
+            incomingProcessing.value = incomingProcessing.value
+              .then(() => handleMessage(data))
+              .catch((error) => {
+                logger.error("failed to handle websocket message", error);
+              });
+            return;
+          }
+          // FIX: 系统消息、心跳和在线状态消息跳过串行队列，避免无关消息被长链路阻塞。
+          void handleMessage(data).catch((error) => {
+            logger.error("failed to handle websocket message", error);
+          });
         } catch (error) {
           logger.warn("failed to parse websocket payload", error);
         }
@@ -141,7 +304,8 @@ export const useWebSocketStore = defineStore("websocket", () => {
         }
         const rawMessage = data.data as Record<string, unknown>;
         const isSystemMessage =
-          rawMessage.messageType === "SYSTEM" || rawMessage.type === "SYSTEM";
+          String(rawMessage.messageType || rawMessage.type || "").toUpperCase() ===
+          "SYSTEM";
 
         if (isSystemMessage) {
           const content = String(rawMessage.content || "");
@@ -151,22 +315,13 @@ export const useWebSocketStore = defineStore("websocket", () => {
             content.toLowerCase().includes("friend request");
 
           if (shouldRefreshFriendData) {
-            await Promise.all([
-              chatStore.loadFriendRequests(),
-              chatStore.loadFriends(),
-              chatStore.loadSessions(),
-            ]);
-            ElNotification({
-              title: "System notification",
-              message: content,
-              type: "info",
-              duration: 3000,
-            });
+            await debouncedRefreshFriendData(content);
           }
           return;
         }
 
         const normalizedMessage = normalizeMessage(rawMessage);
+        const currentUserId = String(useUserStore().userId || "");
         const messageId = String(normalizedMessage.id || "");
         if (messageId && !messageId.startsWith("local_")) {
           const now = Date.now();
@@ -174,19 +329,16 @@ export const useWebSocketStore = defineStore("websocket", () => {
           if (now - previous < 60_000) {
             return;
           }
-          recentMessageIds.value.set(messageId, now);
-          if (recentMessageIds.value.size > 2000) {
-            const cutoff = now - 300_000;
-            recentMessageIds.value.forEach((timestamp, id) => {
-              if (timestamp < cutoff) {
-                recentMessageIds.value.delete(id);
-              }
-            });
+          // FIX: 除内存去重外，再检查本地消息状态，避免服务端重试导致重复渲染和重复提示。
+          if (hasMessageInLocalState(chatStore, normalizedMessage, currentUserId)) {
+            return;
           }
+          recentMessageIds.value.set(messageId, now);
+          cleanupRecentMessageIds(now);
         }
 
         const isSelfMessage =
-          String(normalizedMessage.senderId) === String(useUserStore().userId);
+          String(normalizedMessage.senderId) === currentUserId;
         await chatStore.addMessage(normalizedMessage);
         if (!isSelfMessage) {
           showMessageNotification(normalizedMessage);
@@ -214,23 +366,13 @@ export const useWebSocketStore = defineStore("websocket", () => {
           : [content, ""];
 
         if (command === "REFRESH_FRIEND_REQUESTS") {
-          await chatStore.loadFriendRequests();
-          ElNotification({
-            title: "Friend notification",
-            message: messageText || "Received a new friend request",
-            type: "info",
-            duration: 3000,
-          });
+          await debouncedRefreshFriendRequests(
+            messageText || "Received a new friend request",
+          );
           return;
         }
         if (command === "REFRESH_FRIEND_LIST") {
-          await Promise.all([chatStore.loadFriends(), chatStore.loadSessions()]);
-          ElNotification({
-            title: "Friend notification",
-            message: messageText || "Friend list updated",
-            type: "success",
-            duration: 3000,
-          });
+          await debouncedRefreshFriendList(messageText || "Friend list updated");
           return;
         }
         if (systemMessage.message) {

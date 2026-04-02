@@ -30,6 +30,7 @@ import reactor.core.publisher.Mono;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -133,6 +134,21 @@ class JwtAuthGlobalFilterTest {
     }
 
     @Test
+    void filterShouldRejectWhenValidateEndpointTimesOut() {
+        JwtAuthGlobalFilter filter = newFilter(request -> Mono.never());
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/message/list")
+                        .header("Authorization", "Bearer timeout-token")
+                        .build()
+        );
+
+        filter.filter(exchange, chain).block();
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+        verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    @Test
     void filterShouldInjectAuthHeadersWhenTokenAndUserResourceAreValid() {
         AtomicReference<ClientRequest> validateRequest = new AtomicReference<>();
         AtomicReference<ClientRequest> resourceRequest = new AtomicReference<>();
@@ -202,6 +218,50 @@ class JwtAuthGlobalFilterTest {
         assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
         assertEquals("/api/auth/internal/user-resource/3001", resourceRequest.get().url().getPath());
         verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    @Test
+    void filterShouldReuseInflightAuthRequestsForSameTokenAndUserResource() {
+        AtomicInteger validateCalls = new AtomicInteger();
+        AtomicInteger resourceCalls = new AtomicInteger();
+        JwtAuthGlobalFilter filter = newFilter(request -> {
+            String path = request.url().getPath();
+            if ("/api/auth/internal/validate-token".equals(path)) {
+                return Mono.defer(() -> {
+                    validateCalls.incrementAndGet();
+                    return Mono.delay(Duration.ofMillis(100))
+                            .map(ignore -> jsonResponse(HttpStatus.OK, ApiResponse.success(validToken(9001L, "morpheus"))));
+                });
+            }
+            if ("/api/auth/internal/user-resource/9001".equals(path)) {
+                return Mono.defer(() -> {
+                    resourceCalls.incrementAndGet();
+                    return Mono.delay(Duration.ofMillis(100))
+                            .map(ignore -> jsonResponse(HttpStatus.OK, ApiResponse.success(userResource(9001L))));
+                });
+            }
+            return Mono.error(new AssertionError("unexpected path: " + path));
+        });
+        when(chain.filter(any(ServerWebExchange.class))).thenReturn(Mono.empty());
+
+        MockServerWebExchange exchangeOne = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/message/list")
+                        .header("Authorization", "Bearer same-token")
+                        .build()
+        );
+        MockServerWebExchange exchangeTwo = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/message/list")
+                        .header("Authorization", "Bearer same-token")
+                        .build()
+        );
+
+        Mono.when(
+                filter.filter(exchangeOne, chain),
+                filter.filter(exchangeTwo, chain)
+        ).block();
+
+        assertEquals(1, validateCalls.get());
+        assertEquals(1, resourceCalls.get());
     }
 
     private JwtAuthGlobalFilter newFilter(ExchangeFunction exchangeFunction) {

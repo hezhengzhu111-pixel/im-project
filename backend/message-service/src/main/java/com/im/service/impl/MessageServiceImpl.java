@@ -31,8 +31,6 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-// 移除未使用的 Cacheable 导入
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.redis.core.RedisTemplate;
 import java.util.List;
 import java.util.ArrayList;
@@ -49,9 +47,11 @@ import java.time.LocalDateTime;
 @Service
 @RequiredArgsConstructor
 public class MessageServiceImpl implements MessageService {
-    
+
     private static final String EVENT_TYPE_MESSAGE = "MESSAGE";
     private static final String EVENT_TYPE_READ_RECEIPT = "READ_RECEIPT";
+    // FIX: 高并发下允许短暂等待锁，避免零等待导致正常请求直接失败。
+    private static final long CONVERSATION_LOCK_WAIT_SECONDS = 2L;
     private final MessageMapper messageMapper;
     private final UserServiceFeignClient userServiceFeignClient;
     private final GroupServiceFeignClient groupServiceFeignClient;
@@ -89,7 +89,6 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "conversations", key = "#senderId")
     public MessageDTO sendPrivateMessage(Long senderId, SendPrivateMessageRequest request) {
         Long receiverId = Long.valueOf(request.getReceiverId());
         PrivateSendInput input = privateSendInput(senderId, receiverId, request);
@@ -125,7 +124,6 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "conversations", key = "#senderId")
     public MessageDTO sendGroupMessage(Long senderId, SendGroupMessageRequest request) {
         String groupId = request.getGroupId();
         if (!StringUtils.hasText(groupId)) {
@@ -210,6 +208,7 @@ public class MessageServiceImpl implements MessageService {
         if (sender == null || receiver == null) {
             throw new BusinessException("用户不存在");
         }
+        // OPTIMIZE: TODO: 优化此处同步 Feign 调用，建议引入本地 Caffeine 缓存或 Redis 缓存监听成员关系变更，防止拖垮消息发送性能。
         if (!Boolean.TRUE.equals(userServiceFeignClient.isFriend(senderId, receiverId))) {
             throw new BusinessException("只能向好友发送消息");
         }
@@ -262,6 +261,7 @@ public class MessageServiceImpl implements MessageService {
         if (!Boolean.TRUE.equals(groupServiceFeignClient.exists(groupIdLong))) {
             throw new BusinessException("群组不存在");
         }
+        // OPTIMIZE: TODO: 优化此处同步 Feign 调用，建议引入本地 Caffeine 缓存或 Redis 缓存监听成员关系变更，防止拖垮消息发送性能。
         if (!Boolean.TRUE.equals(groupServiceFeignClient.isMember(groupIdLong, senderId))) {
             throw new BusinessException("只有群成员才能发送消息");
         }
@@ -598,23 +598,22 @@ public class MessageServiceImpl implements MessageService {
     private void clearConversationCache(Long userId1, Long userId2, boolean isPrivate, List<Long> cachedGroupMemberIds) {
         try {
             if (isPrivate && userId1 != null && userId2 != null) {
-                // 清除私聊相关缓存
-                String conversationKey = "private_" + Math.min(userId1, userId2) + "_" + Math.max(userId1, userId2);
+                // FIX: 私聊缓存 Key 与锁/事件使用同一套会话标识，避免删错或漏删。
+                String conversationKey = buildPrivateConversationKey(userId1, userId2);
                 redisTemplate.delete(LAST_MESSAGE_CACHE_KEY + conversationKey);
                 redisTemplate.delete(CONVERSATION_CACHE_KEY + userId1);
                 redisTemplate.delete(CONVERSATION_CACHE_KEY + userId2);
             } else if (!isPrivate && userId2 != null) {
-                // 清除群聊相关缓存
-                String conversationKey = "group_" + userId2;
+                // FIX: 群聊缓存 Key 与锁/事件使用同一套会话标识，避免命名不一致导致缓存残留。
+                String conversationKey = buildGroupConversationKey(userId2);
                 redisTemplate.delete(LAST_MESSAGE_CACHE_KEY + conversationKey);
-                // 清除所有群成员的会话缓存
+                // FIX: 清除所有群成员的会话缓存，确保成员列表中的重复值不会造成重复删除开销。
                 List<Long> memberIds = cachedGroupMemberIds != null ? cachedGroupMemberIds : groupServiceFeignClient.memberIds(userId2);
                 if (memberIds != null) {
-                    for (Long memberId : memberIds) {
-                        if (memberId != null) {
-                            redisTemplate.delete(CONVERSATION_CACHE_KEY + memberId);
-                        }
-                    }
+                    memberIds.stream()
+                            .filter(memberId -> memberId != null)
+                            .distinct()
+                            .forEach(memberId -> redisTemplate.delete(CONVERSATION_CACHE_KEY + memberId));
                 }
             }
         } catch (Exception e) {
@@ -666,7 +665,8 @@ public class MessageServiceImpl implements MessageService {
         RLock lock = redissonClient.getLock(lockKey);
         boolean locked;
         try {
-            locked = lock.tryLock(0L, conversationLockTtlSeconds, TimeUnit.SECONDS);
+            // FIX: 高并发下允许短暂等待锁，减少正常并发请求因为瞬时竞争被直接拒绝。
+            locked = lock.tryLock(CONVERSATION_LOCK_WAIT_SECONDS, conversationLockTtlSeconds, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new BusinessException("会话处理中，请稍后重试", e);
@@ -689,8 +689,12 @@ public class MessageServiceImpl implements MessageService {
         }
     }
 
-    
+
+    /**
+     * @deprecated OPTIMIZE: 强制建议前端改用 getPrivateMessagesCursor(...)，避免继续使用深度分页接口。
+     */
     @Override
+    @Deprecated
     public List<MessageDTO> getPrivateMessages(Long userId, Long friendId, int page, int size) {
         log.info("获取私聊消息历史: userId={}, friendId={}, page={}, size={}", userId, friendId, page, size);
         validatePrivateConversationAccess(userId, friendId);
@@ -709,8 +713,12 @@ public class MessageServiceImpl implements MessageService {
         log.info("获取到私聊消息数量: {}", messages.size());
         return toPrivateMessageDTOs(messages, userId, friendId);
     }
-    
+
+    /**
+     * @deprecated OPTIMIZE: 强制建议前端改用 getGroupMessagesCursor(...)，避免继续使用深度分页接口。
+     */
     @Override
+    @Deprecated
     public List<MessageDTO> getGroupMessages(Long userId, Long groupId, int page, int size) {
         log.info("获取群聊消息历史: userId={}, groupId={}, page={}, size={}", userId, groupId, page, size);
         validateGroupConversationAccess(userId, groupId);
@@ -794,7 +802,6 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "conversations", key = "#userId")
     public MessageDTO recallMessage(Long userId, Long messageId) {
         Message recallTarget = recallInput(userId, messageId);
         MessageDTO result = statusChangeProcess(recallTarget, Message.MessageStatus.RECALLED);
@@ -803,7 +810,6 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "conversations", key = "#userId")
     public MessageDTO deleteMessage(Long userId, Long messageId) {
         Message deleteTarget = deleteInput(userId, messageId);
         MessageDTO result = statusChangeProcess(deleteTarget, Message.MessageStatus.DELETED);
