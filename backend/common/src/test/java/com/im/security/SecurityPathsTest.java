@@ -18,6 +18,8 @@ class SecurityPathsTest {
     @Test
     void serviceWhiteList_shouldMatchExpectedPaths() {
         assertTrue(SecurityPaths.isServiceWhiteList("/actuator/health"));
+        assertTrue(SecurityPaths.isServiceWhiteList("/api/auth/parse"));
+        assertTrue(SecurityPaths.isServiceWhiteList("/auth/refresh"));
         assertTrue(SecurityPaths.isServiceWhiteList("/api/user/register"));
         assertTrue(SecurityPaths.isServiceWhiteList("/health"));
         assertTrue(SecurityPaths.isServiceWhiteList("/images/logo.png"));

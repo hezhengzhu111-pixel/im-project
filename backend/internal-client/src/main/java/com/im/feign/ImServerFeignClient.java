@@ -1,7 +1,6 @@
 package com.im.feign;
 
 import com.im.dto.ApiResponse;
-import com.im.dto.MessageDTO;
 import com.im.exception.BusinessException;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -13,13 +12,6 @@ import java.util.Map;
 
 @FeignClient(name = "im-server", path = "/api/im", configuration = FeignInternalAuthConfig.class)
 public interface ImServerFeignClient {
-
-    @PostMapping("/sendMessage")
-    @Deprecated
-    ApiResponse<Boolean> sendMessage(@RequestBody MessageDTO message);
-
-    @PostMapping("/online/{userId}")
-    ApiResponse<String> userOnline(@PathVariable("userId") String userId);
 
     @PostMapping("/offline/{userId}")
     ApiResponse<String> userOffline(@PathVariable("userId") String userId);

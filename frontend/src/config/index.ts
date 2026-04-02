@@ -67,10 +67,14 @@ export const STORAGE_CONFIG = {
   WS_CACHE_KEY: "im_ws_cache",
   // Access Token 持久化键
   ACCESS_TOKEN_KEY: "im_access_token",
+  // 用户快照持久化键
+  USER_SNAPSHOT_KEY: "im_user_snapshot",
   // 心跳时间戳键
   HEARTBEAT_KEY: "im_heartbeat",
   // 聊天记录缓存键
   CHAT_CACHE_KEY: "im_chat_cache",
+  // 本地清空聊天记录游标键
+  CHAT_CLEAR_MARKERS_KEY: "im_chat_clear_markers",
   // 设置存储键
   SETTINGS_KEY: "im_settings",
 };

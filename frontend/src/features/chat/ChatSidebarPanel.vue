@@ -62,22 +62,41 @@
           :class="{ active: currentSessionId === session.id }"
           @click="emit('select-session', session)"
         >
-          <el-avatar :size="40" :src="session.targetAvatar" shape="square">
-            {{ session.targetName?.charAt(0) || "U" }}
-          </el-avatar>
+          <div class="session-avatar-wrap">
+            <el-avatar :size="40" :src="session.targetAvatar" shape="square">
+              {{ session.targetName?.charAt(0) || "U" }}
+            </el-avatar>
+            <span
+              v-if="session.type === 'private'"
+              class="presence-dot"
+              :class="{ online: isSessionOnline(session) }"
+            ></span>
+          </div>
           <div class="session-info">
             <div class="session-header">
-              <span class="session-name">{{ session.targetName }}</span>
+              <div class="session-title">
+                <span class="session-name">{{ session.targetName }}</span>
+                <span
+                  v-if="session.type === 'private'"
+                  class="session-presence"
+                  :class="{ online: isSessionOnline(session) }"
+                >
+                  {{ isSessionOnline(session) ? "在线" : "离线" }}
+                </span>
+              </div>
               <span class="session-time">{{ formatTime(session.lastActiveTime) }}</span>
             </div>
             <div class="session-content">
-              <span class="last-message">{{ previewMessage(session.lastMessage) }}</span>
-              <el-badge
+              <span class="last-message">
+                {{ sessionPreview(session) }}
+              </span>
+              <span
                 v-if="session.unreadCount > 0"
-                :value="session.unreadCount"
                 class="unread-badge"
-                :max="99"
-              />
+                :aria-label="`${session.unreadCount}条未读消息`"
+              >
+                {{ session.unreadCount > 99 ? "99+" : session.unreadCount }}
+              </span>
             </div>
           </div>
         </button>
@@ -145,6 +164,7 @@ import { computed, ref, watch } from "vue";
 import { Plus } from "@element-plus/icons-vue";
 import { pinyin } from "pinyin-pro";
 import SideNavBar from "@/components/layout/SideNavBar.vue";
+import { useWebSocketStore } from "@/stores/websocket";
 import type { ChatSession, Friend, Group } from "@/types";
 
 interface Props {
@@ -163,6 +183,7 @@ const props = withDefaults(defineProps<Props>(), {
   currentSessionId: "",
   searchKeyword: "",
 });
+const webSocketStore = useWebSocketStore();
 
 const emit = defineEmits<{
   (e: "change-tab", tab: "chat" | "contacts" | "groups"): void;
@@ -268,6 +289,24 @@ const previewMessage = (message?: ChatSession["lastMessage"]) => {
       return message.content || "";
   }
 };
+
+const isSessionOnline = (session: ChatSession) =>
+  session.type === "private" &&
+  webSocketStore.isUserOnline(String(session.targetId));
+
+const sessionPreview = (session: ChatSession) => {
+  const messagePreview = previewMessage(session.lastMessage);
+  if (messagePreview) {
+    return messagePreview;
+  }
+  if (session.type === "private") {
+    return isSessionOnline(session) ? "在线" : "离线";
+  }
+  if (session.memberCount && session.memberCount > 0) {
+    return `${session.memberCount}人群聊`;
+  }
+  return "暂无消息";
+};
 </script>
 
 <style scoped lang="scss">
@@ -329,6 +368,11 @@ const previewMessage = (message?: ChatSession["lastMessage"]) => {
   }
 }
 
+.session-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .session-info,
 .contact-info,
 .group-info {
@@ -342,11 +386,33 @@ const previewMessage = (message?: ChatSession["lastMessage"]) => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 4px;
+  gap: 8px;
+}
+
+.session-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .session-name {
+  min-width: 0;
   font-weight: 500;
   color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-presence {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #909399;
+}
+
+.session-presence.online {
+  color: #67c23a;
 }
 
 .session-time,
@@ -355,17 +421,51 @@ const previewMessage = (message?: ChatSession["lastMessage"]) => {
   color: #909399;
 }
 
+.session-time {
+  flex-shrink: 0;
+}
+
 .session-content {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 10px;
 }
 
 .last-message {
   flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.unread-badge {
+  flex-shrink: 0;
+  min-width: 22px;
+  padding: 0 7px;
+  height: 20px;
+  border-radius: 999px;
+  background: #f56c6c;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+}
+
+.presence-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #c0c4cc;
+  border: 2px solid #fff;
+}
+
+.presence-dot.online {
+  background: #67c23a;
 }
 
 .contact-group .group-header {

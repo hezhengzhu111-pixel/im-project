@@ -44,7 +44,6 @@ export const userService = {
   logout: () => http.post<string>("/user/logout"),
   heartbeat: (userIds: string[]) =>
     http.post<Record<string, boolean>>("/user/heartbeat", userIds),
-  online: () => http.post<string>("/user/online"),
   checkOnlineStatus: (userIds: string[]) =>
     http.post<Record<string, boolean>>("/user/online-status", userIds),
   changePassword: (data: ChangePasswordRequest) =>

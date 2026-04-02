@@ -74,11 +74,11 @@ public class MessageCleanupTask {
             String placeholders = String.join(",", ids.stream().map(x -> "?").toList());
             String insertSql = """
                     INSERT IGNORE INTO messages_archive (
-                      id, sender_id, receiver_id, group_id, message_type, content, media_url, media_size, media_name,
+                      id, sender_id, receiver_id, group_id, client_message_id, message_type, content, media_url, media_size, media_name,
                       thumbnail_url, duration, location_info, status, is_group_chat, reply_to_message_id, created_time, updated_time, archived_time
                     )
                     SELECT
-                      id, sender_id, receiver_id, group_id, message_type, content, media_url, media_size, media_name,
+                      id, sender_id, receiver_id, group_id, client_message_id, message_type, content, media_url, media_size, media_name,
                       thumbnail_url, duration, location_info, status, is_group_chat, reply_to_message_id, created_time, updated_time, NOW()
                     FROM messages
                     WHERE id IN (""" + placeholders + ")";

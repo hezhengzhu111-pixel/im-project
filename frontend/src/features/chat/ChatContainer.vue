@@ -38,7 +38,16 @@
             </span>
           </div>
           <div class="chat-actions">
-            <el-button link :icon="MoreFilled" aria-label="更多选项" />
+            <el-dropdown trigger="click" @command="handleSessionAction">
+              <el-button link :icon="MoreFilled" aria-label="更多选项" />
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="clear-history">
+                    清空聊天记录
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
 
@@ -72,16 +81,19 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { ArrowLeft, ChatDotRound, MoreFilled } from "@element-plus/icons-vue";
+import { ElMessageBox } from "element-plus";
 import ChatComposer from "@/features/chat/ChatComposer.vue";
 import ChatDialogs from "@/features/chat/ChatDialogs.vue";
 import ChatMessageList from "@/features/chat/ChatMessageList.vue";
 import ChatSidebarPanel from "@/features/chat/ChatSidebarPanel.vue";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
 import { useChatStore } from "@/stores/chat";
 import { useUserStore } from "@/stores/user";
 import type { Friend, Group, GroupReadUser, Message } from "@/types";
 
 const userStore = useUserStore();
 const chatStore = useChatStore();
+const { capture } = useErrorHandler("chat-container");
 const activeTab = ref<"chat" | "contacts" | "groups">("chat");
 const showAddFriend = ref(false);
 const showCreateGroup = ref(false);
@@ -119,6 +131,28 @@ const startGroupChat = async (group: Group) => {
   const session = await chatStore.openGroupSession(group);
   if (session) {
     activeTab.value = "chat";
+  }
+};
+
+const handleSessionAction = async (command: string | number | object) => {
+  if (command !== "clear-history" || !currentSession.value?.id) {
+    return;
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确定清空与“${currentSession.value.targetName}”的聊天记录吗？`,
+      "清空聊天记录",
+      {
+        type: "warning",
+        confirmButtonText: "确定",
+        cancelButtonText: "取消",
+      },
+    );
+    await chatStore.clearMessages(currentSession.value.id);
+  } catch (error) {
+    if (error !== "cancel" && error !== "close") {
+      capture(error, "清空聊天记录失败");
+    }
   }
 };
 

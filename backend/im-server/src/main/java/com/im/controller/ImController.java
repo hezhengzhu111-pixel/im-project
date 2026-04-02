@@ -1,12 +1,10 @@
 package com.im.controller;
 
 import com.im.dto.ApiResponse;
-import com.im.dto.MessageDTO;
 import com.im.service.IImService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -16,7 +14,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Map;
 
-@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/im")
@@ -25,27 +22,11 @@ public class ImController {
 
     private final IImService imService;
 
-    @PostMapping("/sendMessage")
-    @Operation(summary = "Deprecated endpoint")
-    public ApiResponse<Boolean> sendMessage(@RequestBody MessageDTO message) {
-        log.warn("Deprecated /api/im/sendMessage called. messageId={}", message == null ? null : message.getId());
-        return ApiResponse.forbidden("deprecated endpoint, use message-service send APIs");
-    }
-
     @PostMapping("/offline/{userId}")
     @Operation(summary = "User offline")
     public ApiResponse<String> userOffline(@PathVariable("userId") String userId) {
         imService.userOffline(userId);
         return ApiResponse.success("user offline success");
-    }
-
-    @PostMapping("/online/{userId}")
-    @Operation(summary = "User online")
-    public ApiResponse<String> userOnline(@PathVariable("userId") String userId) {
-        if (userId == null || userId.trim().isEmpty()) {
-            return ApiResponse.error("userId cannot be blank");
-        }
-        return ApiResponse.success("user online acknowledged");
     }
 
     @PostMapping("/heartbeat/{userId}")

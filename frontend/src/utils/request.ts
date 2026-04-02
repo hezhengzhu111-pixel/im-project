@@ -143,12 +143,12 @@ const clearAuthSession = async () => {
 const shouldSkipRefresh = (url?: string) => {
   if (!url) return false;
   return (
+    url.includes("/auth/parse") ||
     url.includes("/auth/refresh") ||
     url.includes("/user/login") ||
     url.includes("/user/register") ||
     url.includes("/user/logout") ||
     url.includes("/user/offline") ||
-    url.includes("/user/online") ||
     url.includes("/user/heartbeat")
   );
 };
@@ -208,7 +208,6 @@ const tryRefreshAccessToken = async (): Promise<boolean> => {
 const shouldClearSession = (url?: string) =>
   !url?.includes("/user/offline") &&
   !url?.includes("/user/logout") &&
-  !url?.includes("/user/online") &&
   !url?.includes("/user/heartbeat");
 
 const retryWithFreshAccessToken = async (config?: Record<string, unknown>) => {
@@ -334,6 +333,9 @@ request.interceptors.response.use(
 
     // 业务错误
     if (code === 401) {
+      if (shouldSkipRefresh(response.config?.url)) {
+        return Promise.reject(new Error(messageText || "未授权"));
+      }
       const config = response.config as any;
       const retried = await retryWithFreshAccessToken(config);
       if (retried) {
@@ -369,21 +371,26 @@ request.interceptors.response.use(
   async (error) => {
     NProgress.done();
 
-    logger.error("response interceptor failed", error);
-
     // 网络错误
     if (!error.response) {
+      logger.error("response interceptor failed", error);
       ElMessage.error("网络连接失败，请检查网络设置");
       return Promise.reject(error);
     }
 
     const { status, statusText } = error.response;
+    if (!(status === 401 && shouldSkipRefresh(error.config?.url))) {
+      logger.error("response interceptor failed", error);
+    }
 
     switch (status) {
       case 400:
         ElMessage.error("请求参数错误");
         break;
       case 401: {
+        if (shouldSkipRefresh(error.config?.url)) {
+          break;
+        }
         const config = error.config as any;
         const retried = await retryWithFreshAccessToken(config);
         if (retried) {

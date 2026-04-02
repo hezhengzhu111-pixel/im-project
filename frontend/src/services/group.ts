@@ -1,6 +1,5 @@
 import { http } from "@/utils/request";
 import { normalizeGroup, normalizeGroupMember } from "@/normalizers/group";
-import { useUserStore } from "@/stores/user";
 import type {
   Group,
   GroupMember,
@@ -49,17 +48,11 @@ export const groupService = {
     http.put<RawGroupDTO>(`/group/${groupId}`, {
       ...data,
       groupId: String(groupId),
-      operatorId: String(operatorId || useUserStore().userId || ""),
+      operatorId: String(operatorId || ""),
     }).then((response) => {
       if (response.code === 200 && response.data) {
         return { ...response, data: normalizeGroup(response.data) };
       }
       return response as unknown as ApiResponse<Group>;
-    }),
-  addMembers: (groupId: string, memberIds: string[], operatorId: string) =>
-    http.post<void>(`/group/${groupId}/members`, {
-      groupId: String(groupId),
-      operatorId: String(operatorId),
-      memberIds: memberIds.map((item) => String(item)),
     }),
 };

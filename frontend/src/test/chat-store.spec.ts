@@ -33,7 +33,6 @@ const friendServiceMock = {
 const groupServiceMock = {
   getList: vi.fn(),
   create: vi.fn(),
-  addMembers: vi.fn(),
   quit: vi.fn(),
 };
 
@@ -117,7 +116,6 @@ describe("chat store", () => {
     friendServiceMock.handleRequest.mockReset();
     groupServiceMock.getList.mockReset();
     groupServiceMock.create.mockReset();
-    groupServiceMock.addMembers.mockReset();
     groupServiceMock.quit.mockReset();
     userServiceMock.search.mockReset();
     messageRepoMock.listConversation.mockReset();
@@ -317,6 +315,57 @@ describe("chat store", () => {
     expect(messageRepoMock.clearConversation).toHaveBeenCalledWith("group_9");
   });
 
+  it("keeps cleared conversation empty across reloads until new messages arrive", async () => {
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    const session = store.createOrGetSession("private", "2", "u2", "");
+    store.messages.set(session!.id, [
+      {
+        id: "100",
+        senderId: "1",
+        receiverId: "2",
+        isGroupChat: false,
+        messageType: "TEXT",
+        content: "old",
+        sendTime: "2026-02-07T10:00:00.100Z",
+        status: "SENT",
+      },
+    ]);
+
+    await store.clearMessages(session!.id);
+
+    messageServiceMock.getPrivateHistoryCursor.mockResolvedValue({
+      code: 200,
+      data: [
+        {
+          id: "100",
+          senderId: "1",
+          receiverId: "2",
+          isGroupChat: false,
+          messageType: "TEXT",
+          content: "old",
+          sendTime: "2026-02-07T10:00:00.100Z",
+          status: "SENT",
+        },
+        {
+          id: "101",
+          senderId: "2",
+          receiverId: "1",
+          isGroupChat: false,
+          messageType: "TEXT",
+          content: "new",
+          sendTime: "2026-02-07T10:00:01.100Z",
+          status: "SENT",
+        },
+      ],
+    });
+
+    await store.loadMessages(session!.id, 0, 20);
+
+    expect(store.messages.get(session!.id)?.map((item) => item.id)).toEqual(["101"]);
+  });
+
   it("passes avatar through createGroup and opens the refreshed group session", async () => {
     const { useChatStore } = await import("@/stores/chat");
     const store = useChatStore();
@@ -332,7 +381,6 @@ describe("chat store", () => {
         createTime: "2026-02-07T10:00:00.000Z",
       },
     });
-    groupServiceMock.addMembers.mockResolvedValue({ code: 200 });
     groupServiceMock.getList.mockResolvedValue({
       code: 200,
       data: [
@@ -372,7 +420,11 @@ describe("chat store", () => {
         avatar: "upload.png",
       }),
     );
-    expect(groupServiceMock.addMembers).toHaveBeenCalledWith("9", ["2", "3"], "1");
+    expect(groupServiceMock.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        memberIds: ["2", "3"],
+      }),
+    );
     expect(group?.id).toBe("9");
     expect(store.currentSession?.id).toBe("group_9");
     expect(store.currentSession?.targetAvatar).toBe("fresh.png");

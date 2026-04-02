@@ -45,7 +45,7 @@ class GroupServiceImplTest {
     void createGroupShouldRejectUnknownOwner() {
         when(userServiceFeignClient.exists(10L)).thenReturn(false);
 
-        assertThrows(IllegalArgumentException.class, () -> service.createGroup(10L, "test", 1, null, null));
+        assertThrows(IllegalArgumentException.class, () -> service.createGroup(10L, "test", 1, null, null, null));
 
         verify(groupMapper, never()).insert(any(Group.class));
         verify(groupMemberMapper, never()).insert(any(GroupMember.class));
@@ -55,11 +55,31 @@ class GroupServiceImplTest {
     void createGroupShouldPersistAvatar() {
         when(userServiceFeignClient.exists(10L)).thenReturn(true);
 
-        service.createGroup(10L, "test", 1, "notice", "https://cdn.example.com/group.png");
+        service.createGroup(10L, "test", 1, "notice", "https://cdn.example.com/group.png", null);
 
         ArgumentCaptor<Group> groupCaptor = ArgumentCaptor.forClass(Group.class);
         verify(groupMapper).insert(groupCaptor.capture());
         Assertions.assertEquals("https://cdn.example.com/group.png", groupCaptor.getValue().getAvatar());
+    }
+
+    @Test
+    void createGroupShouldPersistInitialMembersAtomically() {
+        when(userServiceFeignClient.exists(10L)).thenReturn(true);
+        when(userServiceFeignClient.exists(11L)).thenReturn(true);
+        when(userServiceFeignClient.exists(12L)).thenReturn(true);
+
+        service.createGroup(10L, "test", 1, "notice", null, List.of(10L, 11L, 12L, 11L));
+
+        ArgumentCaptor<Group> groupCaptor = ArgumentCaptor.forClass(Group.class);
+        verify(groupMapper).insert(groupCaptor.capture());
+        assertEquals(3, groupCaptor.getValue().getMemberCount());
+
+        ArgumentCaptor<GroupMember> memberCaptor = ArgumentCaptor.forClass(GroupMember.class);
+        verify(groupMemberMapper, org.mockito.Mockito.times(3)).insert(memberCaptor.capture());
+        List<GroupMember> insertedMembers = memberCaptor.getAllValues();
+        assertEquals(10L, insertedMembers.get(0).getUserId());
+        assertTrue(insertedMembers.stream().anyMatch(member -> member.getUserId().equals(11L)));
+        assertTrue(insertedMembers.stream().anyMatch(member -> member.getUserId().equals(12L)));
     }
 
     @Test

@@ -449,8 +449,12 @@ public class MessageServiceImpl implements MessageService {
                 releaseConversationLock(conversationLock);
             }
         } catch (NumberFormatException e) {
-            log.error("会话ID格式错误: {}", conversationId, e);
+            log.warn("会话ID格式错误: {}", conversationId);
             throw new BusinessException("会话ID格式错误");
+        } catch (BusinessException e) {
+            log.warn("标记消息已读失败，用户ID: {}, 会话ID: {}, reason: {}",
+                    userId, conversationId, e.getMessage());
+            throw e;
         } catch (Exception e) {
             log.error("标记消息已读失败，用户ID: {}, 会话ID: {}", userId, conversationId, e);
             throw new BusinessException("标记消息已读失败");
@@ -708,12 +712,7 @@ public class MessageServiceImpl implements MessageService {
         }
     }
 
-
-    /**
-     * @deprecated OPTIMIZE: 强制建议前端改用 getPrivateMessagesCursor(...)，避免继续使用深度分页接口。
-     */
     @Override
-    @Deprecated
     public List<MessageDTO> getPrivateMessages(Long userId, Long friendId, int page, int size) {
         log.info("获取私聊消息历史: userId={}, friendId={}, page={}, size={}", userId, friendId, page, size);
         validatePrivateConversationAccess(userId, friendId);
@@ -732,12 +731,7 @@ public class MessageServiceImpl implements MessageService {
         log.info("获取到私聊消息数量: {}", messages.size());
         return toPrivateMessageDTOs(messages, userId, friendId);
     }
-
-    /**
-     * @deprecated OPTIMIZE: 强制建议前端改用 getGroupMessagesCursor(...)，避免继续使用深度分页接口。
-     */
     @Override
-    @Deprecated
     public List<MessageDTO> getGroupMessages(Long userId, Long groupId, int page, int size) {
         log.info("获取群聊消息历史: userId={}, groupId={}, page={}, size={}", userId, groupId, page, size);
         validateGroupConversationAccess(userId, groupId);

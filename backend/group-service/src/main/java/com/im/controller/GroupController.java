@@ -37,7 +37,8 @@ public class GroupController {
                 request.getName(),
                 request.getType(),
                 request.getAnnouncement(),
-                request.getAvatar()
+                request.getAvatar(),
+                request.getMemberIds()
         );
         return ApiResponse.success("创建群组成功", result);
     }

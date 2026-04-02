@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS messages_archive (
   sender_id BIGINT NOT NULL COMMENT '发送者用户ID',
   receiver_id BIGINT NULL COMMENT '接收者用户ID（私聊）',
   group_id BIGINT NULL COMMENT '群组ID（群聊）',
+  client_message_id VARCHAR(64) NULL COMMENT '客户端幂等消息ID',
   message_type INT NOT NULL COMMENT '消息类型编码（见 MessageType.code）',
   content TEXT NULL COMMENT '消息内容',
   media_url VARCHAR(500) NULL COMMENT '媒体文件URL',
