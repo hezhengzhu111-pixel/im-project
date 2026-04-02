@@ -48,12 +48,22 @@ class WebSocketHandlerTest {
     @Test
     void afterConnectionEstablished_NoUserId_ShouldCloseSession() throws Exception {
         when(session.getAttributes()).thenReturn(attributes);
-        
+
         handler.afterConnectionEstablished(session);
         
         ArgumentCaptor<CloseStatus> statusCaptor = ArgumentCaptor.forClass(CloseStatus.class);
         verify(session).close(statusCaptor.capture());
         assertEquals(CloseStatus.BAD_DATA.getCode(), statusCaptor.getValue().getCode());
+    }
+
+    @Test
+    void afterConnectionEstablished_ShouldNotFallbackToUriUserId() throws Exception {
+        when(session.getAttributes()).thenReturn(attributes);
+
+        handler.afterConnectionEstablished(session);
+
+        verify(session).close(any(CloseStatus.class));
+        verify(imService, never()).putSessionMapping(any(), any(UserSession.class));
     }
 
     @Test
@@ -73,22 +83,29 @@ class WebSocketHandlerTest {
     void afterConnectionEstablished_ExistingSession_ShouldKickOut() throws Exception {
         attributes.put("userId", "123");
         when(session.getAttributes()).thenReturn(attributes);
-        
+
         Map<String, UserSession> sessionMap = new HashMap<>();
         UserSession existingUserSession = new UserSession();
         WebSocketSession oldSession = mock(WebSocketSession.class);
         when(oldSession.isOpen()).thenReturn(true);
         existingUserSession.setWebSocketSession(oldSession);
         sessionMap.put("123", existingUserSession);
-        
+
         when(imService.getSessionUserMap()).thenReturn(sessionMap);
-        
+        doAnswer(invocation -> {
+            String userId = invocation.getArgument(0);
+            UserSession newSession = invocation.getArgument(1);
+            sessionMap.put(userId, newSession);
+            return null;
+        }).when(imService).putSessionMapping(eq("123"), any(UserSession.class));
+
         handler.afterConnectionEstablished(session);
-        
+
         ArgumentCaptor<CloseStatus> statusCaptor = ArgumentCaptor.forClass(CloseStatus.class);
         verify(oldSession).close(statusCaptor.capture());
         assertEquals("新连接建立", statusCaptor.getValue().getReason());
         verify(imService).putSessionMapping(eq("123"), any(UserSession.class));
+        assertSame(session, sessionMap.get("123").getWebSocketSession());
     }
 
     @Test

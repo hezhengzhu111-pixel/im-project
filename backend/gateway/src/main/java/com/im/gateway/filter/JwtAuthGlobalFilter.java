@@ -35,18 +35,21 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private static final String HEADER_AUTH_TS = "X-Auth-Ts";
     private static final String HEADER_AUTH_NONCE = "X-Auth-Nonce";
     private static final String HEADER_AUTH_SIGN = "X-Auth-Sign";
+    // FIX: 为 Auth 服务调用设置统一超时时间，避免无响应时拖垮网关线程。
+    private static final Duration AUTH_SERVICE_TIMEOUT = Duration.ofSeconds(3);
 
     private final ReactiveStringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
     private final WebClient webClient;
     
-    // Caffeine 缓存：10秒过期，防止频繁请求 Auth 服务
-    private final Cache<String, TokenParseResultDTO> tokenCache = Caffeine.newBuilder()
+    // FIX: 缓存响应式 Mono，复用同一 token 的 in-flight 校验请求，防止缓存击穿。
+    private final Cache<String, Mono<TokenParseResultDTO>> tokenCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofSeconds(10))
             .maximumSize(10000)
             .build();
-            
-    private final Cache<Long, AuthUserResourceDTO> resourceCache = Caffeine.newBuilder()
+
+    // FIX: 缓存响应式 Mono，复用同一 userId 的 in-flight 资源加载请求，防止缓存击穿。
+    private final Cache<Long, Mono<AuthUserResourceDTO>> resourceCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofSeconds(10))
             .maximumSize(10000)
             .build();
@@ -272,11 +275,11 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private Mono<TokenParseResultDTO> validateToken(String token) {
-        TokenParseResultDTO cached = tokenCache.getIfPresent(token);
-        if (cached != null) {
-            return Mono.just(cached);
-        }
+        // FIX: 同一 token 并发校验时只触发一次远端调用，其余请求复用同一个响应式结果。
+        return tokenCache.get(token, this::buildValidateTokenMono);
+    }
 
+    private Mono<TokenParseResultDTO> buildValidateTokenMono(String token) {
         return webClient.post()
                 .uri("/api/auth/internal/validate-token")
                 .header(internalHeaderName, internalSecret)
@@ -284,13 +287,17 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 .bodyValue(token)
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<TokenParseResultDTO>>() {})
+                .timeout(AUTH_SERVICE_TIMEOUT)
                 .flatMap(this::extractApiData)
-                .doOnNext(res -> {
-                    if (res != null) {
-                        tokenCache.put(token, res);
-                    }
+                .switchIfEmpty(Mono.defer(() -> {
+                    tokenCache.invalidate(token);
+                    return Mono.empty();
+                }))
+                .onErrorResume(e -> {
+                    tokenCache.invalidate(token);
+                    return Mono.empty();
                 })
-                .onErrorResume(e -> Mono.empty());
+                .cache();
     }
 
     private AuthUserResourceDTO tryParseUserResource(String json) {
@@ -305,11 +312,11 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private Mono<AuthUserResourceDTO> loadUserResourceFromAuthService(Long userId) {
-        AuthUserResourceDTO cached = resourceCache.getIfPresent(userId);
-        if (cached != null) {
-            return Mono.just(cached);
-        }
+        // FIX: 同一 userId 并发加载资源时只触发一次远端调用，其余请求复用同一个响应式结果。
+        return resourceCache.get(userId, this::buildLoadUserResourceMono);
+    }
 
+    private Mono<AuthUserResourceDTO> buildLoadUserResourceMono(Long userId) {
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/api/auth/internal/user-resource/{userId}")
@@ -317,13 +324,17 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 .header(internalHeaderName, internalSecret)
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<AuthUserResourceDTO>>() {})
+                .timeout(AUTH_SERVICE_TIMEOUT)
                 .flatMap(this::extractApiData)
-                .doOnNext(res -> {
-                    if (res != null) {
-                        resourceCache.put(userId, res);
-                    }
+                .switchIfEmpty(Mono.defer(() -> {
+                    resourceCache.invalidate(userId);
+                    return Mono.empty();
+                }))
+                .onErrorResume(e -> {
+                    resourceCache.invalidate(userId);
+                    return Mono.empty();
                 })
-                .onErrorResume(e -> Mono.empty());
+                .cache();
     }
 
     private Mono<AuthUserResourceDTO> cacheAndReturn(String cacheKey, AuthUserResourceDTO dto) {
