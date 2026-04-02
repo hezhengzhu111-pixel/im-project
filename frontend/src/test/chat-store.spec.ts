@@ -263,6 +263,26 @@ describe("chat store", () => {
     expect(store.currentSession?.memberCount).toBe(8);
   });
 
+  it("marks private sessions as read with the backend target user id", async () => {
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    const session = store.createOrGetSession("private", "2", "u2", "");
+    await store.markAsRead(session!.id);
+
+    expect(messageServiceMock.markRead).toHaveBeenCalledWith("2");
+  });
+
+  it("marks group sessions as read with the backend group conversation id", async () => {
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    const session = store.createOrGetSession("group", "9", "项目群", "");
+    await store.markAsRead(session!.id);
+
+    expect(messageServiceMock.markRead).toHaveBeenCalledWith("group_9");
+  });
+
   it("clears group session state when leaving a group", async () => {
     const { useChatStore } = await import("@/stores/chat");
     const store = useChatStore();

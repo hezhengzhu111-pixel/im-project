@@ -2,6 +2,7 @@ package com.im.entity;
 
 import com.im.dto.GroupMemberDTO;
 import com.im.enums.MessageType;
+import com.im.typehandler.MessageTypeTypeHandler;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -12,7 +13,7 @@ import lombok.EqualsAndHashCode;
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("messages")
+@TableName(value = "messages", autoResultMap = true)
 public class Message extends BaseEntity {
     
     /**
@@ -42,7 +43,7 @@ public class Message extends BaseEntity {
     /**
      * 消息类型：1-文本，2-图片，3-文件，4-语音，5-视频，6-位置，7-系统消息
      */
-    @TableField("message_type")
+    @TableField(value = "message_type", typeHandler = MessageTypeTypeHandler.class)
     private MessageType messageType;
     
     /**
