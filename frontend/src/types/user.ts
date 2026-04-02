@@ -75,6 +75,7 @@ export interface UserAuthResponse {
   success: boolean;
   message: string;
   user: User;
+  token?: string;
   expiresInMs?: number;
   refreshExpiresInMs?: number;
 }

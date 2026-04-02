@@ -104,4 +104,19 @@ class WsPushEventDispatcherTest {
         verify(imService).pushReadReceiptToUser(any(ReadReceiptDTO.class), eq(2L));
         verify(deduplicator).markProcessed("evt-rr:2");
     }
+
+    @Test
+    void dispatchEvent_sessionKickout_shouldDisconnectMatchingSession() {
+        WsPushEvent event = WsPushEvent.builder()
+                .eventId("evt-kick")
+                .eventType("SESSION_KICKOUT")
+                .payload("{\"userId\":\"2\",\"sessionId\":\"session-2\",\"reason\":\"新连接建立\"}")
+                .build();
+
+        dispatcher.dispatchEvent(event);
+
+        verify(imService).disconnectLocalSessionIfMatch("2", "session-2", "新连接建立");
+        verify(deduplicator, never()).isProcessed(any());
+        verify(retryQueue, never()).enqueue(any(), any(), any());
+    }
 }

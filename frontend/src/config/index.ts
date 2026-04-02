@@ -65,6 +65,8 @@ export const APP_CONFIG = {
 export const STORAGE_CONFIG = {
   // WebSocket缓存键
   WS_CACHE_KEY: "im_ws_cache",
+  // Access Token 持久化键
+  ACCESS_TOKEN_KEY: "im_access_token",
   // 心跳时间戳键
   HEARTBEAT_KEY: "im_heartbeat",
   // 聊天记录缓存键

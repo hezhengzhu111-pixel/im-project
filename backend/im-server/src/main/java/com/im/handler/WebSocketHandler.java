@@ -1,34 +1,34 @@
 package com.im.handler;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
-import com.im.constants.ImConstants;
 import com.im.entity.UserSession;
 import com.im.enums.UserStatus;
 import com.im.service.IImService;
+import com.im.service.RouteSessionInfo;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
 public class WebSocketHandler implements org.springframework.web.socket.WebSocketHandler {
 
-    // FIX: 使用固定条带锁按 userId 串行化注册流程，避免并发建连时相互覆盖映射。
-    private static final int SESSION_REGISTRATION_LOCK_STRIPES = 256;
+    private static final long SESSION_REGISTRATION_LOCK_WAIT_SECONDS = 2L;
+    private static final long SESSION_REGISTRATION_LOCK_LEASE_SECONDS = 10L;
+    private static final String SESSION_REPLACED_REASON = "新连接建立";
 
     @Autowired
     private IImService imService;
 
-    // FIX: 预分配固定数量锁对象，避免按 userId 动态建锁造成长期内存膨胀。
-    private final Object[] sessionRegistrationLocks = initSessionRegistrationLocks();
+    @Autowired
+    private RedissonClient redissonClient;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
@@ -47,26 +47,46 @@ public class WebSocketHandler implements org.springframework.web.socket.WebSocke
                 .webSocketSession(session)
                 .build();
 
-        WebSocketSession replacedSession = null;
-        synchronized (resolveSessionRegistrationLock(userId)) {
-            UserSession existingSession = imService.getSessionUserMap().get(userId);
-            if (existingSession != null && existingSession.getWebSocketSession() != null) {
-                WebSocketSession existingWebSocketSession = existingSession.getWebSocketSession();
-                if (existingWebSocketSession != session && existingWebSocketSession.isOpen()) {
-                    // FIX: 先在同一 userId 的串行临界区内确定待替换旧连接，避免并发连接互相覆盖。
-                    replacedSession = existingWebSocketSession;
-                }
+        RLock registrationLock = redissonClient.getLock(buildSessionRegistrationLockKey(userId));
+        boolean locked = false;
+        try {
+            locked = registrationLock.tryLock(
+                    SESSION_REGISTRATION_LOCK_WAIT_SECONDS,
+                    SESSION_REGISTRATION_LOCK_LEASE_SECONDS,
+                    TimeUnit.SECONDS
+            );
+            if (!locked) {
+                log.warn("WebSocket连接失败: 会话注册锁获取超时, userId={}, sessionId={}", userId, session.getId());
+                closeSessionQuietly(session, CloseStatus.SERVER_ERROR.withReason("会话注册冲突，请重试"));
+                return;
             }
-            // FIX: 同一 userId 的注册过程串行化，确保映射最终只保留最新连接。
-            imService.putSessionMapping(userId, userSession);
-        }
 
-        if (replacedSession != null) {
-            try {
-                // FIX: 新连接注册完成后再关闭旧连接，避免旧连接仍作为当前映射残留。
-                replacedSession.close(CloseStatus.NORMAL.withReason("新连接建立"));
-            } catch (Exception e) {
-                log.debug("关闭旧连接失败: userId={}", userId, e);
+            RouteSessionInfo existingRoute = imService.getRouteSessionInfo(userId);
+            WebSocketSession replacedSession = resolveLocalReplacedSession(userId, session);
+            imService.putSessionMapping(userId, userSession);
+            if (replacedSession != null) {
+                closeSessionQuietly(replacedSession, CloseStatus.NORMAL.withReason(SESSION_REPLACED_REASON));
+            }
+            if (shouldKickRemoteSession(existingRoute)) {
+                imService.publishSessionKickout(
+                        existingRoute.getInstanceId(),
+                        userId,
+                        existingRoute.getSessionId(),
+                        SESSION_REPLACED_REASON
+                );
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("WebSocket连接失败: 会话注册被中断, userId={}, sessionId={}", userId, session.getId(), e);
+            closeSessionQuietly(session, CloseStatus.SERVER_ERROR.withReason("会话注册被中断，请重试"));
+            return;
+        } catch (Exception e) {
+            log.error("WebSocket连接失败: 会话注册异常, userId={}, sessionId={}", userId, session.getId(), e);
+            closeSessionQuietly(session, CloseStatus.SERVER_ERROR.withReason("会话注册失败，请重试"));
+            return;
+        } finally {
+            if (locked && registrationLock.isHeldByCurrentThread()) {
+                registrationLock.unlock();
             }
         }
         log.debug("WebSocket连接建立: userId={}, sessionId={}", userId, session.getId());
@@ -84,13 +104,13 @@ public class WebSocketHandler implements org.springframework.web.socket.WebSocke
         }
 
         UserSession userSession = imService.getSessionUserMap().get(userId);
-        if (userSession == null) {
+        if (userSession == null || userSession.getWebSocketSession() != session) {
             log.debug("用户会话不存在: userId={}", userId);
             return;
         }
 
         String payload = message.getPayload() == null ? "" : message.getPayload().toString().trim();
-        imService.refreshRouteHeartbeat(userId);
+        imService.refreshRouteHeartbeat(userId, session.getId());
 
         dispatcher.dispatch(session, userId, payload);
     }
@@ -120,17 +140,27 @@ public class WebSocketHandler implements org.springframework.web.socket.WebSocke
         return false;
     }
 
-    private Object[] initSessionRegistrationLocks() {
-        Object[] locks = new Object[SESSION_REGISTRATION_LOCK_STRIPES];
-        for (int i = 0; i < locks.length; i++) {
-            locks[i] = new Object();
+    private WebSocketSession resolveLocalReplacedSession(String userId, WebSocketSession currentSession) {
+        UserSession existingSession = imService.getSessionUserMap().get(userId);
+        if (existingSession == null || existingSession.getWebSocketSession() == null) {
+            return null;
         }
-        return locks;
+        WebSocketSession existingWebSocketSession = existingSession.getWebSocketSession();
+        if (existingWebSocketSession == currentSession || !existingWebSocketSession.isOpen()) {
+            return null;
+        }
+        return existingWebSocketSession;
     }
 
-    private Object resolveSessionRegistrationLock(String userId) {
-        int index = Math.floorMod(userId.hashCode(), SESSION_REGISTRATION_LOCK_STRIPES);
-        return sessionRegistrationLocks[index];
+    private boolean shouldKickRemoteSession(RouteSessionInfo routeSessionInfo) {
+        return routeSessionInfo != null
+                && StringUtils.isNotBlank(routeSessionInfo.getInstanceId())
+                && StringUtils.isNotBlank(routeSessionInfo.getSessionId())
+                && !StringUtils.equals(routeSessionInfo.getInstanceId(), imService.getCurrentInstanceId());
+    }
+
+    private String buildSessionRegistrationLockKey(String userId) {
+        return "ws:reg:" + userId;
     }
 
     private String extractUserIdFromSession(WebSocketSession session) {
@@ -158,6 +188,17 @@ public class WebSocketHandler implements org.springframework.web.socket.WebSocke
                 imService.userOffline(userId);
                 log.debug("WebSocket连接已清理: userId={}", userId);
             }
+        }
+    }
+
+    private void closeSessionQuietly(WebSocketSession session, CloseStatus status) {
+        if (session == null || !session.isOpen()) {
+            return;
+        }
+        try {
+            session.close(status);
+        } catch (Exception e) {
+            log.debug("关闭WebSocket连接失败: sessionId={}", session.getId(), e);
         }
     }
 }

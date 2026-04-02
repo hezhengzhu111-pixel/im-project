@@ -5,11 +5,31 @@ import router from "@/router";
 import { authService, userService } from "@/services";
 import { normalizeUser } from "@/normalizers/user";
 import type { LoginRequest, RegisterRequest, UpdateUserRequest, User } from "@/types";
-import { APP_CONFIG } from "@/config";
+import { APP_CONFIG, STORAGE_CONFIG } from "@/config";
 import { logger } from "@/utils/logger";
+
+const readPersistedAccessToken = (): string => {
+  if (typeof localStorage === "undefined") {
+    return "";
+  }
+  const token = localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY);
+  return typeof token === "string" ? token.trim() : "";
+};
+
+const persistAccessToken = (token: string): void => {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  if (token) {
+    localStorage.setItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY, token);
+    return;
+  }
+  localStorage.removeItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY);
+};
 
 export const useUserStore = defineStore("user", () => {
   const currentUser = ref<User | null>(null);
+  const accessToken = ref(readPersistedAccessToken());
   const loading = ref(false);
   const authReady = ref(false);
   const lastSessionCheckAt = ref(0);
@@ -27,8 +47,26 @@ export const useUserStore = defineStore("user", () => {
   const userId = computed(() => currentUser.value?.id || "");
   const userInfo = computed(() => currentUser.value);
 
+  const setAccessToken = (token?: string | null) => {
+    const normalized = typeof token === "string" ? token.trim() : "";
+    accessToken.value = normalized;
+    persistAccessToken(normalized);
+  };
+
+  const getAccessToken = (): string => {
+    if (accessToken.value) {
+      return accessToken.value;
+    }
+    const persisted = readPersistedAccessToken();
+    if (persisted) {
+      accessToken.value = persisted;
+    }
+    return persisted;
+  };
+
   const clearSession = () => {
     currentUser.value = null;
+    setAccessToken("");
     lastSessionCheckAt.value = 0;
     lastSessionValid.value = false;
     authReady.value = true;
@@ -53,6 +91,7 @@ export const useUserStore = defineStore("user", () => {
         authReady.value = true;
         if (!isValid) {
           currentUser.value = null;
+          setAccessToken("");
           return false;
         }
         if (!currentUser.value || currentUser.value.id !== String(result.userId)) {
@@ -95,6 +134,7 @@ export const useUserStore = defineStore("user", () => {
       if (!response.data.success) {
         throw new Error(response.data.message || "登录失败");
       }
+      setAccessToken(response.data.token);
       currentUser.value = response.data.user;
       lastSessionCheckAt.value = Date.now();
       lastSessionValid.value = true;
@@ -183,6 +223,7 @@ export const useUserStore = defineStore("user", () => {
 
   return {
     currentUser,
+    accessToken,
     userInfo,
     loading,
     authReady,
@@ -199,6 +240,8 @@ export const useUserStore = defineStore("user", () => {
     init,
     restoreSession,
     ensureAuthenticated,
+    setAccessToken,
+    getAccessToken,
     clearSession,
   };
 });

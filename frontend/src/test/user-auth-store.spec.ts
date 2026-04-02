@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
+import { STORAGE_CONFIG } from "@/config";
 
 const login = vi.fn();
 const register = vi.fn();
@@ -44,6 +45,7 @@ describe("user auth store", () => {
     online.mockReset();
     parseAccessToken.mockReset();
     push.mockReset();
+    localStorage.clear();
   });
 
   it("trims username before login", async () => {
@@ -51,6 +53,7 @@ describe("user auth store", () => {
       code: 200,
       data: {
         success: true,
+        token: "access-token-1",
         user: {
           id: "1",
           username: "u1",
@@ -75,6 +78,10 @@ describe("user auth store", () => {
       password: "123456",
     });
     expect(store.currentUser?.id).toBe("1");
+    expect(store.accessToken).toBe("access-token-1");
+    expect(localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY)).toBe(
+      "access-token-1",
+    );
   });
 
   it("returns false when register failed", async () => {
@@ -98,6 +105,7 @@ describe("user auth store", () => {
 
     const { useUserStore } = await import("@/stores/user");
     const store = useUserStore();
+    store.setAccessToken("to-be-cleared");
     store.currentUser = {
       id: "1",
       username: "u1",
@@ -108,6 +116,8 @@ describe("user auth store", () => {
     await store.logout();
 
     expect(store.currentUser).toBeNull();
+    expect(store.accessToken).toBe("");
+    expect(localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY)).toBeNull();
     expect(push).toHaveBeenCalled();
   });
 });

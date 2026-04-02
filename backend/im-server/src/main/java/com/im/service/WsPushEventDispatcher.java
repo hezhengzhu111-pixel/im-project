@@ -1,6 +1,7 @@
 package com.im.service;
 
 import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONObject;
 import com.im.dto.MessageDTO;
 import com.im.dto.ReadReceiptDTO;
 import com.im.dto.WsPushEvent;
@@ -19,6 +20,7 @@ public class WsPushEventDispatcher {
 
     private static final String EVENT_TYPE_MESSAGE = "MESSAGE";
     private static final String EVENT_TYPE_READ_RECEIPT = "READ_RECEIPT";
+    private static final String EVENT_TYPE_SESSION_KICKOUT = "SESSION_KICKOUT";
 
     private final IImService imService;
     private final ProcessedMessageDeduplicator deduplicator;
@@ -33,7 +35,14 @@ public class WsPushEventDispatcher {
     }
 
     public void dispatchEvent(WsPushEvent event) {
-        if (event == null || CollectionUtils.isEmpty(event.getTargetUserIds())) {
+        if (event == null) {
+            return;
+        }
+        if (EVENT_TYPE_SESSION_KICKOUT.equals(normalizeEventType(event.getEventType()))) {
+            dispatchSessionKickout(event);
+            return;
+        }
+        if (CollectionUtils.isEmpty(event.getTargetUserIds())) {
             return;
         }
         for (Long userId : event.getTargetUserIds()) {
@@ -98,6 +107,18 @@ public class WsPushEventDispatcher {
             return EVENT_TYPE_MESSAGE;
         }
         return eventType.trim().toUpperCase();
+    }
+
+    private void dispatchSessionKickout(WsPushEvent event) {
+        JSONObject payload = JSON.parseObject(event.getPayload());
+        if (payload == null) {
+            return;
+        }
+        imService.disconnectLocalSessionIfMatch(
+                payload.getString("userId"),
+                payload.getString("sessionId"),
+                payload.getString("reason")
+        );
     }
 
     private String resolveEventId(WsPushEvent event) {

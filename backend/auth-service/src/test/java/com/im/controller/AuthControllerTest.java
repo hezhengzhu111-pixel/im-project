@@ -55,7 +55,9 @@ class AuthControllerTest {
         ApiResponse<TokenPairDTO> response = authController.refresh(request, httpRequest, httpResponse);
 
         assertEquals(200, response.getCode());
+        assertEquals("new_access", response.getData().getAccessToken());
         assertEquals(60000L, response.getData().getExpiresInMs());
+        assertEquals(null, response.getData().getRefreshToken());
     }
 
     @Test

@@ -103,6 +103,7 @@ export const normalizeUserAuthResponse = (raw: unknown): UserAuthResponse => {
     success: asBoolean(record.success, false),
     message: asString(record.message, "操作失败"),
     user: normalizeUser(record.user as RawUserDTO),
+    token: asString(record.token) || undefined,
     expiresInMs: Number.isFinite(asNumber(record.expiresInMs, Number.NaN))
       ? asNumber(record.expiresInMs, 0)
       : undefined,

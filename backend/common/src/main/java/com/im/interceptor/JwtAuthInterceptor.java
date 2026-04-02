@@ -27,6 +27,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 @RequiredArgsConstructor
 @Slf4j
 public class JwtAuthInterceptor implements HandlerInterceptor {
+    private static final long REPLAY_GUARD_TTL_GRACE_SECONDS = 10L;
 
     private final ObjectMapper objectMapper;
     private final ObjectProvider<StringRedisTemplate> stringRedisTemplateProvider;
@@ -160,7 +161,7 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             return false;
         }
         GatewayAuthHeaders authHeaders = readGatewayAuthHeaders(request);
-        if (authHeaders.hasAny() && !applySignedGatewayAuth(request, userIdValue.trim(), usernameValue.trim(), authHeaders)) {
+        if (!authHeaders.isComplete() || !applySignedGatewayAuth(request, userIdValue.trim(), usernameValue.trim(), authHeaders)) {
             return false;
         }
         try {
@@ -274,7 +275,10 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
         }
         String key = replayProtectionKeyPrefix + userId + ":" + ts + ":" + nonce;
         try {
-            Boolean ok = redisTemplate.opsForValue().setIfAbsent(key, "1", Duration.ofSeconds(Math.max(1, replayProtectionTtlSeconds)));
+            long now = System.currentTimeMillis();
+            long remainingSeconds = Math.max(1L, (ts + maxSkewMs - now) / 1000L);
+            long ttlSeconds = Math.max(replayProtectionTtlSeconds, remainingSeconds) + REPLAY_GUARD_TTL_GRACE_SECONDS;
+            Boolean ok = redisTemplate.opsForValue().setIfAbsent(key, "1", Duration.ofSeconds(ttlSeconds));
             return Boolean.TRUE.equals(ok);
         } catch (Exception e) {
             return false;
@@ -289,10 +293,6 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             String nonce,
             String sign
     ) {
-        private boolean hasAny() {
-            return userB64 != null || permsB64 != null || dataB64 != null || ts != null || nonce != null || sign != null;
-        }
-
         private boolean isComplete() {
             return userB64 != null && permsB64 != null && dataB64 != null && ts != null && nonce != null && sign != null;
         }

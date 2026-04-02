@@ -81,7 +81,9 @@ class UserControllerTest {
                 userController.login(request, new MockHttpServletRequest(), new MockHttpServletResponse());
         
         assertEquals(200, response.getCode());
+        assertEquals("token_123", response.getData().getToken());
         assertEquals(60000L, response.getData().getExpiresInMs());
+        assertEquals(null, response.getData().getRefreshToken());
     }
 
     @Test
@@ -102,7 +104,9 @@ class UserControllerTest {
                 userController.login(request, new MockHttpServletRequest(), new MockHttpServletResponse());
         
         assertEquals(200, response.getCode());
+        assertEquals("new_token", response.getData().getToken());
         assertEquals(120000L, response.getData().getRefreshExpiresInMs());
+        assertEquals(null, response.getData().getRefreshToken());
     }
 
     @Test

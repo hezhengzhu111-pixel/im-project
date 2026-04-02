@@ -52,13 +52,19 @@ public interface IImService {
 
     boolean touchUserHeartbeat(String userId);
 
-    void refreshRouteHeartbeat(String userId);
+    void refreshRouteHeartbeat(String userId, String sessionId);
 
     boolean hasLocalSession(String userId);
 
     boolean isRouteOwnedByCurrentInstance(String userId);
 
     String getCurrentInstanceId();
+
+    RouteSessionInfo getRouteSessionInfo(String userId);
+
+    void publishSessionKickout(String targetInstanceId, String userId, String sessionId, String reason);
+
+    boolean disconnectLocalSessionIfMatch(String userId, String sessionId, String reason);
     
     /**
      * 获取用户会话信息

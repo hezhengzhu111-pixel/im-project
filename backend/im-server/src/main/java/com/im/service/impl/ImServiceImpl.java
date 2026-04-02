@@ -3,16 +3,19 @@ package com.im.service.impl;
 import com.alibaba.fastjson2.JSON;
 import com.im.dto.MessageDTO;
 import com.im.dto.ReadReceiptDTO;
+import com.im.dto.WsPushEvent;
 import com.im.entity.UserSession;
 import com.im.enums.MessageType;
 import com.im.enums.UserStatus;
 import com.im.service.IImService;
+import com.im.service.RouteSessionInfo;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
@@ -28,10 +31,18 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ImServiceImpl implements IImService {
 
     private static final Duration HEARTBEAT_TIMEOUT = Duration.ofMinutes(5);
+    private static final String EVENT_TYPE_SESSION_KICKOUT = "SESSION_KICKOUT";
+    private static final int WS_PUSH_EVENT_VERSION = 1;
     private final Map<String, UserSession> sessionUserMap = new ConcurrentHashMap<>();
 
     @Value("${im.route.user-key-prefix:im:route:user:}")
     private String routeUserKeyPrefix;
+
+    @Value("${im.route.session-key-prefix:im:route:session:}")
+    private String routeSessionKeyPrefix;
+
+    @Value("${im.ws.channel-prefix:im:ws:push:}")
+    private String wsChannelPrefix;
 
     @Value("${im.instance-id:${HOSTNAME:${spring.application.name:im-server}}}")
     private String instanceId;
@@ -76,22 +87,27 @@ public class ImServiceImpl implements IImService {
         }
         userSession.setStatus(UserStatus.ONLINE);
         userSession.setLastHeartbeat(LocalDateTime.now());
-        stringRedisTemplate.expire(routeKey(normalizedUserId), HEARTBEAT_TIMEOUT);
+        storeRouteState(normalizedUserId, resolveSessionId(userSession));
         return true;
     }
 
     @Override
-    public void refreshRouteHeartbeat(String userId) {
-        if (StringUtils.isBlank(userId)) {
+    public void refreshRouteHeartbeat(String userId, String sessionId) {
+        if (StringUtils.isBlank(userId) || StringUtils.isBlank(sessionId)) {
             return;
         }
         String normalizedUserId = userId.trim();
         UserSession userSession = sessionUserMap.get(normalizedUserId);
-        if (userSession != null) {
-            userSession.setLastHeartbeat(LocalDateTime.now());
-            userSession.setStatus(UserStatus.ONLINE);
+        if (userSession == null) {
+            return;
         }
-        stringRedisTemplate.opsForValue().set(routeKey(normalizedUserId), instanceId, HEARTBEAT_TIMEOUT);
+        String currentSessionId = resolveSessionId(userSession);
+        if (!sessionId.trim().equals(currentSessionId)) {
+            return;
+        }
+        userSession.setLastHeartbeat(LocalDateTime.now());
+        userSession.setStatus(UserStatus.ONLINE);
+        storeRouteState(normalizedUserId, currentSessionId);
     }
 
     @Override
@@ -105,6 +121,7 @@ public class ImServiceImpl implements IImService {
 
             if (isRouteOwnedByCurrentInstance(normalizedUserId)) {
                 stringRedisTemplate.delete(routeKey(normalizedUserId));
+                stringRedisTemplate.delete(routeSessionKey(normalizedUserId));
             }
 
             if (removedSession != null) {
@@ -174,7 +191,7 @@ public class ImServiceImpl implements IImService {
         userSession.setStatus(UserStatus.ONLINE);
         userSession.setLastHeartbeat(LocalDateTime.now());
         sessionUserMap.put(normalizedUserId, userSession);
-        stringRedisTemplate.opsForValue().set(routeKey(normalizedUserId), instanceId, HEARTBEAT_TIMEOUT);
+        storeRouteState(normalizedUserId, resolveSessionId(userSession));
         broadcastOnlineStatus(normalizedUserId, UserStatus.ONLINE);
     }
 
@@ -187,6 +204,7 @@ public class ImServiceImpl implements IImService {
         boolean removed = sessionUserMap.remove(normalizedUserId) != null;
         if (removed && isRouteOwnedByCurrentInstance(normalizedUserId)) {
             stringRedisTemplate.delete(routeKey(normalizedUserId));
+            stringRedisTemplate.delete(routeSessionKey(normalizedUserId));
         }
         return removed;
     }
@@ -212,6 +230,76 @@ public class ImServiceImpl implements IImService {
     @Override
     public String getCurrentInstanceId() {
         return instanceId;
+    }
+
+    @Override
+    public RouteSessionInfo getRouteSessionInfo(String userId) {
+        if (StringUtils.isBlank(userId)) {
+            return null;
+        }
+        String raw = stringRedisTemplate.opsForValue().get(routeSessionKey(userId.trim()));
+        if (StringUtils.isBlank(raw)) {
+            return null;
+        }
+        try {
+            RouteSessionInfo info = JSON.parseObject(raw, RouteSessionInfo.class);
+            if (info == null || StringUtils.isBlank(info.getInstanceId()) || StringUtils.isBlank(info.getSessionId())) {
+                return null;
+            }
+            return info;
+        } catch (Exception ex) {
+            log.debug("解析路由会话信息失败: userId={}", userId, ex);
+            return null;
+        }
+    }
+
+    @Override
+    public void publishSessionKickout(String targetInstanceId, String userId, String sessionId, String reason) {
+        if (StringUtils.isBlank(targetInstanceId) || StringUtils.isBlank(userId) || StringUtils.isBlank(sessionId)) {
+            return;
+        }
+        try {
+            WsPushEvent event = WsPushEvent.builder()
+                    .eventId("kickout:" + userId.trim() + ":" + sessionId.trim() + ":" + System.currentTimeMillis())
+                    .eventType(EVENT_TYPE_SESSION_KICKOUT)
+                    .payload(JSON.toJSONString(Map.of(
+                            "userId", userId.trim(),
+                            "sessionId", sessionId.trim(),
+                            "reason", StringUtils.defaultIfBlank(reason, "新连接建立")
+                    )))
+                    .createdAt(LocalDateTime.now())
+                    .version(WS_PUSH_EVENT_VERSION)
+                    .build();
+            stringRedisTemplate.convertAndSend(wsChannelPrefix + targetInstanceId.trim(), JSON.toJSONString(event));
+        } catch (Exception ex) {
+            log.warn("发布跨实例踢下线事件失败: targetInstanceId={}, userId={}", targetInstanceId, userId, ex);
+        }
+    }
+
+    @Override
+    public boolean disconnectLocalSessionIfMatch(String userId, String sessionId, String reason) {
+        if (StringUtils.isBlank(userId) || StringUtils.isBlank(sessionId)) {
+            return false;
+        }
+        String normalizedUserId = userId.trim();
+        UserSession currentSession = sessionUserMap.get(normalizedUserId);
+        if (currentSession == null) {
+            return false;
+        }
+        String currentSessionId = resolveSessionId(currentSession);
+        if (!sessionId.trim().equals(currentSessionId)) {
+            return false;
+        }
+        boolean removed = sessionUserMap.remove(normalizedUserId, currentSession);
+        if (!removed) {
+            return false;
+        }
+        closeSessionQuietly(
+                normalizedUserId,
+                currentSession.getWebSocketSession(),
+                CloseStatus.NORMAL.withReason(StringUtils.defaultIfBlank(reason, "新连接建立"))
+        );
+        return true;
     }
 
     private boolean isSessionOpenAndFresh(UserSession userSession, LocalDateTime now) {
@@ -279,12 +367,39 @@ public class ImServiceImpl implements IImService {
         }
     }
 
+    private void storeRouteState(String userId, String sessionId) {
+        if (StringUtils.isBlank(userId) || StringUtils.isBlank(sessionId)) {
+            return;
+        }
+        stringRedisTemplate.opsForValue().set(routeKey(userId), instanceId, HEARTBEAT_TIMEOUT);
+        stringRedisTemplate.opsForValue().set(
+                routeSessionKey(userId),
+                JSON.toJSONString(new RouteSessionInfo(instanceId, sessionId)),
+                HEARTBEAT_TIMEOUT
+        );
+    }
+
+    private String resolveSessionId(UserSession userSession) {
+        if (userSession == null || userSession.getWebSocketSession() == null) {
+            return null;
+        }
+        return userSession.getWebSocketSession().getId();
+    }
+
     private void closeSessionQuietly(String userId, WebSocketSession webSocketSession) {
+        closeSessionQuietly(userId, webSocketSession, null);
+    }
+
+    private void closeSessionQuietly(String userId, WebSocketSession webSocketSession, CloseStatus status) {
         if (webSocketSession == null || !webSocketSession.isOpen()) {
             return;
         }
         try {
-            webSocketSession.close();
+            if (status == null) {
+                webSocketSession.close();
+            } else {
+                webSocketSession.close(status);
+            }
         } catch (Exception closeError) {
             log.debug("关闭离线用户会话失败: userId={}", userId, closeError);
         }
@@ -292,5 +407,9 @@ public class ImServiceImpl implements IImService {
 
     private String routeKey(String userId) {
         return routeUserKeyPrefix + userId;
+    }
+
+    private String routeSessionKey(String userId) {
+        return routeSessionKeyPrefix + userId;
     }
 }

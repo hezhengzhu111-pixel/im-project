@@ -42,14 +42,26 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private final ObjectMapper objectMapper;
     private final WebClient webClient;
     
-    // FIX: 缓存响应式 Mono，复用同一 token 的 in-flight 校验请求，防止缓存击穿。
-    private final Cache<String, Mono<TokenParseResultDTO>> tokenCache = Caffeine.newBuilder()
+    // FIX: 仅缓存成功且可用的 token 校验结果，避免把空结果或异常路径缓存成大面积 401。
+    private final Cache<String, TokenParseResultDTO> tokenCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofSeconds(10))
             .maximumSize(10000)
             .build();
 
-    // FIX: 缓存响应式 Mono，复用同一 userId 的 in-flight 资源加载请求，防止缓存击穿。
-    private final Cache<Long, Mono<AuthUserResourceDTO>> resourceCache = Caffeine.newBuilder()
+    // FIX: 仅复用 in-flight 远程校验请求，结束后立即移除，避免失败结果长期驻留。
+    private final Cache<String, Mono<TokenParseResultDTO>> tokenInflightCache = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofSeconds(10))
+            .maximumSize(10000)
+            .build();
+
+    // FIX: 本地只缓存成功的用户资源结果，失败场景允许后续重新拉取。
+    private final Cache<Long, AuthUserResourceDTO> resourceCache = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofSeconds(10))
+            .maximumSize(10000)
+            .build();
+
+    // FIX: 仅复用同一 userId 的 in-flight 资源加载请求，完成后立即清理。
+    private final Cache<Long, Mono<AuthUserResourceDTO>> resourceInflightCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofSeconds(10))
             .maximumSize(10000)
             .build();
@@ -104,25 +116,35 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-        FilterInput input = filterInput(exchange);
+        ServerWebExchange sanitizedExchange = sanitizeIncomingExchange(exchange);
+        FilterInput input = filterInput(sanitizedExchange);
         InputStageResult inputStageResult = filterInputStage(input);
-        Mono<Void> inputOutput = filterInputOutput(exchange, chain, inputStageResult);
+        Mono<Void> inputOutput = filterInputOutput(sanitizedExchange, chain, inputStageResult);
         if (inputOutput != null) {
             return inputOutput;
         }
-        return filterProcess(exchange, chain, input)
+        return filterProcess(sanitizedExchange, chain, input)
                 .onErrorResume(e -> {
-                    exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-                    return exchange.getResponse().setComplete();
+                    sanitizedExchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+                    return sanitizedExchange.getResponse().setComplete();
                 });
     }
 
     private FilterInput filterInput(ServerWebExchange exchange) {
         String path = exchange.getRequest().getURI().getPath();
-        String internalHeaderValue = exchange.getRequest().getHeaders().getFirst(internalHeaderName);
         String authHeader = exchange.getRequest().getHeaders().getFirst(jwtHeader);
         String token = extractToken(exchange, authHeader);
-        return new FilterInput(path, internalHeaderValue, token);
+        return new FilterInput(path, token);
+    }
+
+    private ServerWebExchange sanitizeIncomingExchange(ServerWebExchange exchange) {
+        if (exchange.getRequest().getHeaders().getFirst(internalHeaderName) == null) {
+            return exchange;
+        }
+        ServerHttpRequest sanitizedRequest = exchange.getRequest().mutate()
+                .headers(headers -> headers.remove(internalHeaderName))
+                .build();
+        return exchange.mutate().request(sanitizedRequest).build();
     }
 
     private String extractToken(ServerWebExchange exchange, String authHeader) {
@@ -143,10 +165,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             return InputStageResult.passThrough();
         }
         if (SecurityPaths.isGatewayInternalPath(input.path())) {
-            if (input.internalHeaderValue() == null || !input.internalHeaderValue().equals(internalSecret)) {
-                return InputStageResult.reject(HttpStatus.FORBIDDEN);
-            }
-            return InputStageResult.passThrough();
+            return InputStageResult.reject(HttpStatus.FORBIDDEN);
         }
         if (input.token() == null || input.token().trim().isEmpty()) {
             return InputStageResult.reject(HttpStatus.UNAUTHORIZED);
@@ -208,13 +227,18 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private Mono<AuthUserResourceDTO> resolveUserResource(Long userId) {
+        AuthUserResourceDTO localCached = resourceCache.getIfPresent(userId);
+        if (isCacheableUserResource(localCached, userId)) {
+            return Mono.just(localCached);
+        }
         String cacheKey = userResourceKeyPrefix + userId;
         return redisTemplate.opsForValue().get(cacheKey)
                 .flatMap(json -> {
                     AuthUserResourceDTO dto = tryParseUserResource(json);
-                    if (dto == null || dto.getUserId() == null || !userId.equals(dto.getUserId())) {
+                    if (!isCacheableUserResource(dto, userId)) {
                         return loadUserResourceFromAuthService(userId).flatMap(loaded -> cacheAndReturn(cacheKey, loaded));
                     }
+                    resourceCache.put(userId, dto);
                     return Mono.just(dto);
                 })
                 .switchIfEmpty(loadUserResourceFromAuthService(userId).flatMap(loaded -> cacheAndReturn(cacheKey, loaded)));
@@ -275,8 +299,18 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private Mono<TokenParseResultDTO> validateToken(String token) {
-        // FIX: 同一 token 并发校验时只触发一次远端调用，其余请求复用同一个响应式结果。
-        return tokenCache.get(token, this::buildValidateTokenMono);
+        TokenParseResultDTO cached = tokenCache.getIfPresent(token);
+        if (isCacheableTokenResult(cached)) {
+            return Mono.just(cached);
+        }
+        return tokenInflightCache.asMap().computeIfAbsent(token, key -> buildValidateTokenMono(key)
+                .doOnNext(result -> {
+                    if (isCacheableTokenResult(result)) {
+                        tokenCache.put(key, result);
+                    }
+                })
+                .doFinally(signalType -> tokenInflightCache.invalidate(key))
+                .cache());
     }
 
     private Mono<TokenParseResultDTO> buildValidateTokenMono(String token) {
@@ -288,16 +322,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<TokenParseResultDTO>>() {})
                 .timeout(AUTH_SERVICE_TIMEOUT)
-                .flatMap(this::extractApiData)
-                .switchIfEmpty(Mono.defer(() -> {
-                    tokenCache.invalidate(token);
-                    return Mono.empty();
-                }))
-                .onErrorResume(e -> {
-                    tokenCache.invalidate(token);
-                    return Mono.empty();
-                })
-                .cache();
+                .flatMap(this::extractApiData);
     }
 
     private AuthUserResourceDTO tryParseUserResource(String json) {
@@ -312,8 +337,18 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private Mono<AuthUserResourceDTO> loadUserResourceFromAuthService(Long userId) {
-        // FIX: 同一 userId 并发加载资源时只触发一次远端调用，其余请求复用同一个响应式结果。
-        return resourceCache.get(userId, this::buildLoadUserResourceMono);
+        AuthUserResourceDTO cached = resourceCache.getIfPresent(userId);
+        if (isCacheableUserResource(cached, userId)) {
+            return Mono.just(cached);
+        }
+        return resourceInflightCache.asMap().computeIfAbsent(userId, key -> buildLoadUserResourceMono(key)
+                .doOnNext(dto -> {
+                    if (isCacheableUserResource(dto, key)) {
+                        resourceCache.put(key, dto);
+                    }
+                })
+                .doFinally(signalType -> resourceInflightCache.invalidate(key))
+                .cache());
     }
 
     private Mono<AuthUserResourceDTO> buildLoadUserResourceMono(Long userId) {
@@ -325,16 +360,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<AuthUserResourceDTO>>() {})
                 .timeout(AUTH_SERVICE_TIMEOUT)
-                .flatMap(this::extractApiData)
-                .switchIfEmpty(Mono.defer(() -> {
-                    resourceCache.invalidate(userId);
-                    return Mono.empty();
-                }))
-                .onErrorResume(e -> {
-                    resourceCache.invalidate(userId);
-                    return Mono.empty();
-                })
-                .cache();
+                .flatMap(this::extractApiData);
     }
 
     private Mono<AuthUserResourceDTO> cacheAndReturn(String cacheKey, AuthUserResourceDTO dto) {
@@ -364,6 +390,14 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         return Mono.just(response.getData());
     }
 
+    private boolean isCacheableTokenResult(TokenParseResultDTO result) {
+        return validateAuthContext(result) != null;
+    }
+
+    private boolean isCacheableUserResource(AuthUserResourceDTO dto, Long expectedUserId) {
+        return dto != null && dto.getUserId() != null && expectedUserId != null && expectedUserId.equals(dto.getUserId());
+    }
+
     private String extractTokenFromHeader(String authHeader) {
         if (authHeader == null) {
             return null;
@@ -380,7 +414,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         return -100;
     }
 
-    private record FilterInput(String path, String internalHeaderValue, String token) {
+    private record FilterInput(String path, String token) {
     }
 
     private record AuthContext(Long userId, String username) {
