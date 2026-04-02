@@ -45,6 +45,17 @@ export const useMessageStore = defineStore("message", () => {
     return sessionStore.sessions.find((item) => item.id === sessionId);
   };
 
+  const resolveReadConversationId = (sessionId: string): string => {
+    const session = resolveSession(sessionId);
+    if (!session) {
+      return sessionId;
+    }
+    if (session.type === "group") {
+      return `group_${session.targetId}`;
+    }
+    return session.conversationId || session.targetId || sessionId;
+  };
+
   const saveConversationMessages = async (
     sessionId: string,
     list: Message[],
@@ -485,7 +496,7 @@ export const useMessageStore = defineStore("message", () => {
     }
     readSessionLocks.value.add(sessionId);
     try {
-      await messageService.markRead(sessionId);
+      await messageService.markRead(resolveReadConversationId(sessionId));
       readSessionLastAt.value.set(sessionId, now);
       sessionStore.markSessionReadLocally(sessionId);
     } finally {
