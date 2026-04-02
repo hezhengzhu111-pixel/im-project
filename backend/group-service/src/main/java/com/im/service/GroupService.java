@@ -17,13 +17,15 @@ public interface GroupService {
      * @param type         群组类型
      * @param announcement 群公告
      * @param avatar       群头像
+     * @param memberIds    初始成员ID列表
      * @return 创建的群组信息
      */
     GroupInfoDTO createGroup(Long ownerId,
                              String name,
                              Integer type,
                              @Size(max = 500, message = "群公告不能超过500个字符") String announcement,
-                             @Size(max = 500, message = "群头像地址不能超过500个字符") String avatar);
+                             @Size(max = 500, message = "群头像地址不能超过500个字符") String avatar,
+                             List<Long> memberIds);
 
     /**
      * 批量添加群成员

@@ -328,4 +328,22 @@ describe("request refresh and retry", () => {
     expect(clearSession).toHaveBeenCalledTimes(1);
     expect(warning).toHaveBeenCalledTimes(1);
   });
+
+  it("does not refresh or prompt relogin for auth parse probes", async () => {
+    responseQueue["/auth/parse"] = [{ httpError: true, status: 401 }];
+
+    const { http } = await import("@/utils/request");
+    await expect(
+      http.post("/auth/parse", { allowExpired: true }),
+    ).rejects.toMatchObject({
+      response: {
+        status: 401,
+      },
+    });
+
+    expect(refreshAccessTokenRaw).not.toHaveBeenCalled();
+    expect(clearSession).not.toHaveBeenCalled();
+    expect(warning).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+  });
 });

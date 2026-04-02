@@ -1,13 +1,9 @@
 package com.im.interceptor;
 
 import com.im.util.AuthHeaderUtil;
-import com.im.util.AuthCookieUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.dto.ApiResponse;
 import com.im.security.SecurityPaths;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -18,7 +14,6 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 
@@ -37,9 +32,6 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
 
     @Value("${im.security.gateway-only.enabled:false}")
     private boolean gatewayOnlyEnabled;
-
-    @Value("${im.security.gateway-fallback-jwt.enabled:true}")
-    private boolean gatewayFallbackJwtEnabled;
 
     @Value("${im.security.replay-protection.enabled:true}")
     private boolean replayProtectionEnabled;
@@ -68,15 +60,6 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
     @Value("${im.gateway.auth.max-skew-ms:300000}")
     private long maxSkewMs;
 
-    @Value("${jwt.secret}")
-    private String jwtSecret;
-
-    @Value("${im.auth.cookie.access-token-name:IM_ACCESS_TOKEN}")
-    private String accessTokenCookieName;
-
-    private static final String JWT_HEADER = "Authorization";
-    private static final String JWT_PREFIX = "Bearer ";
-
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
@@ -100,51 +83,8 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             writeUnauthorized(response, "仅允许网关转发请求");
             return false;
         }
-
-        if (!gatewayFallbackJwtEnabled) {
-            writeUnauthorized(response, "认证失败");
-            return false;
-        }
-
-        String token = resolveAccessToken(request);
-        if (token != null && !token.isBlank()) {
-            try {
-                Claims claims = Jwts.parser()
-                        .verifyWith(Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8)))
-                        .build()
-                        .parseSignedClaims(token)
-                        .getPayload();
-
-                Object userIdObj = claims.get("userId");
-                if (userIdObj != null) {
-                    Long userId;
-                    if (userIdObj instanceof Number) {
-                        userId = ((Number) userIdObj).longValue();
-                    } else {
-                        userId = Long.valueOf(userIdObj.toString());
-                    }
-                    String username = claims.getSubject();
-                    
-                    request.setAttribute("userId", userId);
-                    request.setAttribute("username", username);
-                    log.debug("从 Token 解析: userId={}, username={}", userId, username);
-                    return true;
-                }
-            } catch (Exception e) {
-                log.warn("Token 解析失败: {}", e.getMessage());
-            }
-        }
-
         writeUnauthorized(response, "认证失败");
         return false;
-    }
-
-    private String resolveAccessToken(HttpServletRequest request) {
-        String authHeader = request.getHeader(JWT_HEADER);
-        if (authHeader != null && authHeader.startsWith(JWT_PREFIX)) {
-            return authHeader.substring(JWT_PREFIX.length()).trim();
-        }
-        return AuthCookieUtil.getCookieValue(request, accessTokenCookieName);
     }
 
     private boolean isGatewayMode() {

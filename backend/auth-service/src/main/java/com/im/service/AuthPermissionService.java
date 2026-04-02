@@ -26,7 +26,9 @@ public class AuthPermissionService {
             PermissionCheckProcessResult processResult = permissionCheckProcess(input);
             return permissionCheckOutput(input, processResult.granted(), processResult.reason());
         } catch (Exception e) {
-            log.error("检查权限失败，userId={}, permission={}", input.userId(), input.permission(), e);
+            log.warn("检查权限失败，userId={}, permission={}, reason={}",
+                    input.userId(), input.permission(), e.getMessage());
+            log.debug("检查权限失败详情，userId={}, permission={}", input.userId(), input.permission(), e);
             return permissionCheckOutput(input, false, "权限检查失败：" + e.getMessage());
         }
     }
@@ -39,7 +41,9 @@ public class AuthPermissionService {
         try {
             return hasDataScopeProcess(input);
         } catch (Exception e) {
-            log.error("检查数据范围失败，userId={}, scopeKey={}", input.userId(), input.scopeKey(), e);
+            log.warn("检查数据范围失败，userId={}, scopeKey={}, reason={}",
+                    input.userId(), input.scopeKey(), e.getMessage());
+            log.debug("检查数据范围失败详情，userId={}, scopeKey={}", input.userId(), input.scopeKey(), e);
             return false;
         }
     }

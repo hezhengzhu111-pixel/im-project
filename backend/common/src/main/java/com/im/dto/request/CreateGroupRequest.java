@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
+import java.util.List;
+
 /**
  * 创建群组请求DTO
  */
@@ -35,4 +37,10 @@ public class CreateGroupRequest {
      */
     @Size(max = 500, message = "群头像地址不能超过500个字符")
     String avatar;
+
+    /**
+     * 初始成员ID列表（不含群主）
+     */
+    @Size(max = 499, message = "群初始成员不能超过499人")
+    List<Long> memberIds;
 }

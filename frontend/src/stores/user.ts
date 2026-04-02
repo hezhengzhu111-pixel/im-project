@@ -27,8 +27,38 @@ const persistAccessToken = (token: string): void => {
   localStorage.removeItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY);
 };
 
+const readPersistedUser = (): User | null => {
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+  const raw = localStorage.getItem(STORAGE_CONFIG.USER_SNAPSHOT_KEY);
+  if (!raw) {
+    return null;
+  }
+  try {
+    return normalizeUser(JSON.parse(raw) as User);
+  } catch {
+    localStorage.removeItem(STORAGE_CONFIG.USER_SNAPSHOT_KEY);
+    return null;
+  }
+};
+
+const persistUser = (user: User | null): void => {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  if (!user) {
+    localStorage.removeItem(STORAGE_CONFIG.USER_SNAPSHOT_KEY);
+    return;
+  }
+  localStorage.setItem(
+    STORAGE_CONFIG.USER_SNAPSHOT_KEY,
+    JSON.stringify(user),
+  );
+};
+
 export const useUserStore = defineStore("user", () => {
-  const currentUser = ref<User | null>(null);
+  const currentUser = ref<User | null>(readPersistedUser());
   const accessToken = ref(readPersistedAccessToken());
   const loading = ref(false);
   const authReady = ref(false);
@@ -53,6 +83,12 @@ export const useUserStore = defineStore("user", () => {
     persistAccessToken(normalized);
   };
 
+  const setCurrentUser = (user?: User | null) => {
+    const normalized = user ? normalizeUser(user) : null;
+    currentUser.value = normalized;
+    persistUser(normalized);
+  };
+
   const getAccessToken = (): string => {
     if (accessToken.value) {
       return accessToken.value;
@@ -65,7 +101,7 @@ export const useUserStore = defineStore("user", () => {
   };
 
   const clearSession = () => {
-    currentUser.value = null;
+    setCurrentUser(null);
     setAccessToken("");
     lastSessionCheckAt.value = 0;
     lastSessionValid.value = false;
@@ -74,38 +110,71 @@ export const useUserStore = defineStore("user", () => {
 
   const restoreSession = async (): Promise<boolean> => {
     const now = Date.now();
-    if (authReady.value && lastSessionValid.value && now - lastSessionCheckAt.value < 60_000) {
-      return true;
+    if (authReady.value && now - lastSessionCheckAt.value < 60_000) {
+      return lastSessionValid.value;
     }
     if (sessionCheckInFlight) {
       return sessionCheckInFlight;
     }
     sessionCheckInFlight = (async () => {
       try {
-        const response = await authService.parseAccessToken(undefined, true);
-        const result = response.data;
-        const isValid =
+        const persistedToken = getAccessToken();
+        const persistedUser = readPersistedUser();
+        if (!persistedToken) {
+          if (persistedUser) {
+            clearSession();
+          } else {
+            lastSessionCheckAt.value = Date.now();
+            lastSessionValid.value = false;
+            authReady.value = true;
+          }
+          return false;
+        }
+        let response = await authService.parseAccessToken(
+          persistedToken || undefined,
+          true,
+        );
+        let result = response.data;
+        let isValid =
           !!result && result.valid && !result.expired && result.userId != null;
+        if (!isValid && persistedToken) {
+          setAccessToken("");
+          response = await authService.parseAccessToken(undefined, true);
+          result = response.data;
+          isValid =
+            !!result && result.valid && !result.expired && result.userId != null;
+        }
         lastSessionCheckAt.value = Date.now();
         lastSessionValid.value = isValid;
         authReady.value = true;
         if (!isValid) {
-          currentUser.value = null;
+          setCurrentUser(null);
           setAccessToken("");
           return false;
         }
-        if (!currentUser.value || currentUser.value.id !== String(result.userId)) {
-          currentUser.value = normalizeUser({
+        if (persistedUser && persistedUser.id === String(result.userId)) {
+          setCurrentUser(persistedUser);
+          return true;
+        }
+        setCurrentUser({
             id: String(result.userId),
             username: result.username || String(result.userId),
             nickname: result.username || String(result.userId),
             avatar: APP_CONFIG.DEFAULT_AVATAR,
             status: "offline",
           });
-        }
         return true;
       } catch (error) {
         logger.warn("restoreSession failed", error);
+        const persistedToken = getAccessToken();
+        const persistedUser = readPersistedUser();
+        if (persistedToken && persistedUser) {
+          setCurrentUser(persistedUser);
+          lastSessionCheckAt.value = Date.now();
+          lastSessionValid.value = true;
+          authReady.value = true;
+          return true;
+        }
         clearSession();
         return false;
       } finally {
@@ -135,7 +204,7 @@ export const useUserStore = defineStore("user", () => {
         throw new Error(response.data.message || "登录失败");
       }
       setAccessToken(response.data.token);
-      currentUser.value = response.data.user;
+      setCurrentUser(response.data.user);
       lastSessionCheckAt.value = Date.now();
       lastSessionValid.value = true;
       authReady.value = true;
@@ -205,7 +274,7 @@ export const useUserStore = defineStore("user", () => {
     loading.value = true;
     try {
       const response = await userService.updateProfile(userData);
-      currentUser.value = response.data;
+      setCurrentUser(response.data);
       ElMessage.success("更新成功");
       return true;
     } catch (error) {
@@ -241,6 +310,7 @@ export const useUserStore = defineStore("user", () => {
     restoreSession,
     ensureAuthenticated,
     setAccessToken,
+    setCurrentUser,
     getAccessToken,
     clearSession,
   };

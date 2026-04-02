@@ -228,9 +228,14 @@ const handleCreateGroupAvatarChange = async (event: Event) => {
 
 const createGroup = async () => {
   try {
+    const name = createGroupForm.name.trim();
+    if (!name) {
+      capture(new Error("请输入群组名称"), "请输入群组名称");
+      return;
+    }
     await chatStore.createGroup({
-      name: createGroupForm.name,
-      description: createGroupForm.description,
+      name,
+      description: createGroupForm.description.trim(),
       avatar: createGroupForm.avatar,
       memberIds: createGroupForm.memberIds,
     });

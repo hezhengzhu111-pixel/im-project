@@ -44,15 +44,7 @@ export const useGroupStore = defineStore("group", () => {
         avatar: params.avatar,
         memberIds: params.memberIds,
       });
-      const createdGroup = response.data;
-      if (createdGroup.id && params.memberIds.length > 0) {
-        await groupService.addMembers(
-          createdGroup.id,
-          params.memberIds,
-          String(useUserStore().userId || ""),
-        );
-      }
-      return createdGroup;
+      return response.data;
     } catch (error) {
       capture(error, "创建群组失败");
       throw error;

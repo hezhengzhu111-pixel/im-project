@@ -1,5 +1,6 @@
 package com.im.enums;
 
+import com.baomidou.mybatisplus.annotation.EnumValue;
 import lombok.Getter;
 
 import java.util.Arrays;
@@ -16,6 +17,7 @@ public enum MessageType {
     VIDEO(5, "视频消息"),
     SYSTEM(7, "系统消息");
 
+    @EnumValue
     private final Integer code;
     private final String description;
 

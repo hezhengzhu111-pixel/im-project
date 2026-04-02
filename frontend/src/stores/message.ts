@@ -16,10 +16,33 @@ import type {
 import { useUserStore } from "@/stores/user";
 import { useSessionStore } from "@/stores/session";
 import { useGroupStore } from "@/stores/group";
+import { STORAGE_CONFIG } from "@/config";
 
 const DEFAULT_MESSAGE_CONFIG: MessageConfig = {
   textEnforce: true,
   textMaxLength: 2000,
+};
+
+type ConversationClearMarker = {
+  clearedAtMs: number;
+  lastServerMessageId?: string;
+};
+
+const readPersistedClearMarkers = (): Record<string, ConversationClearMarker> => {
+  if (typeof localStorage === "undefined") {
+    return {};
+  }
+  const raw = localStorage.getItem(STORAGE_CONFIG.CHAT_CLEAR_MARKERS_KEY);
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw) as Record<string, ConversationClearMarker>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    localStorage.removeItem(STORAGE_CONFIG.CHAT_CLEAR_MARKERS_KEY);
+    return {};
+  }
 };
 
 export const useMessageStore = defineStore("message", () => {
@@ -30,9 +53,62 @@ export const useMessageStore = defineStore("message", () => {
   const sendingSessionLocks = ref<Set<string>>(new Set());
   const readSessionLocks = ref<Set<string>>(new Set());
   const readSessionLastAt = ref<Map<string, number>>(new Map());
+  const clearMarkers = ref<Map<string, ConversationClearMarker>>(
+    new Map(Object.entries(readPersistedClearMarkers())),
+  );
 
   const sessionStore = useSessionStore();
   const groupStore = useGroupStore();
+
+  const getClearMarkerStorageKey = (sessionId: string): string => {
+    const userStore = useUserStore();
+    return `${String(userStore.userId || "anonymous")}:${sessionId}`;
+  };
+
+  const persistClearMarkers = () => {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+    localStorage.setItem(
+      STORAGE_CONFIG.CHAT_CLEAR_MARKERS_KEY,
+      JSON.stringify(Object.fromEntries(clearMarkers.value.entries())),
+    );
+  };
+
+  const getClearMarker = (sessionId: string): ConversationClearMarker | undefined => {
+    return clearMarkers.value.get(getClearMarkerStorageKey(sessionId));
+  };
+
+  const setClearMarker = (
+    sessionId: string,
+    marker?: ConversationClearMarker,
+  ) => {
+    const storageKey = getClearMarkerStorageKey(sessionId);
+    if (marker) {
+      clearMarkers.value.set(storageKey, marker);
+    } else {
+      clearMarkers.value.delete(storageKey);
+    }
+    persistClearMarkers();
+  };
+
+  const shouldHideClearedMessage = (sessionId: string, message: Message): boolean => {
+    const marker = getClearMarker(sessionId);
+    if (!marker) {
+      return false;
+    }
+    const markerId = toBigIntId(marker.lastServerMessageId);
+    const messageId = toBigIntId(message.id);
+    if (markerId != null && messageId != null) {
+      return messageId <= markerId;
+    }
+    const messageTime = new Date(message.sendTime).getTime();
+    return Number.isFinite(messageTime) && messageTime <= marker.clearedAtMs;
+  };
+
+  const filterClearedMessages = (sessionId: string, list: Message[]): Message[] => {
+    return list.filter((message) => !shouldHideClearedMessage(sessionId, message));
+  };
 
   const currentMessages = computed(() => {
     if (!sessionStore.currentSession) {
@@ -193,6 +269,7 @@ export const useMessageStore = defineStore("message", () => {
           new Date(left.sendTime).getTime() - new Date(right.sendTime).getTime()
         );
       });
+      const visibleMessages = filterClearedMessages(sessionId, normalizedMessages);
 
       if (page === 0) {
         const pending = existingMessages.filter((message) =>
@@ -202,8 +279,8 @@ export const useMessageStore = defineStore("message", () => {
           (message) => !String(message.id).startsWith("local_"),
         );
         const mergedSource = maxServerId != null
-          ? [...serverMessages, ...normalizedMessages]
-          : normalizedMessages;
+          ? [...serverMessages, ...visibleMessages]
+          : visibleMessages;
         const byId = new Map<string, Message>();
         for (const message of mergedSource) {
           byId.set(String(message.id), message);
@@ -215,7 +292,7 @@ export const useMessageStore = defineStore("message", () => {
           );
         });
         const serverClientIds = new Set(
-          normalizedMessages
+          visibleMessages
             .map((message) => message.clientMessageId)
             .filter((item): item is string => Boolean(item)),
         );
@@ -232,7 +309,7 @@ export const useMessageStore = defineStore("message", () => {
           }),
         );
       } else {
-        const merged = [...normalizedMessages, ...existingMessages].sort(
+        const merged = [...visibleMessages, ...existingMessages].sort(
           (left, right) => {
             return (
               new Date(left.sendTime).getTime() -
@@ -290,6 +367,9 @@ export const useMessageStore = defineStore("message", () => {
     }
 
     if (!sessionId) {
+      return;
+    }
+    if (shouldHideClearedMessage(sessionId, message)) {
       return;
     }
 
@@ -582,7 +662,26 @@ export const useMessageStore = defineStore("message", () => {
   };
 
   const clearMessages = async (sessionId: string) => {
+    const list = messages.value.get(sessionId) || [];
+    const latestServerMessageId = list
+      .map((message) => toBigIntId(message.id))
+      .filter((item): item is bigint => item != null)
+      .reduce<bigint | null>((maxId, currentId) => {
+        if (maxId == null || currentId > maxId) {
+          return currentId;
+        }
+        return maxId;
+      }, null);
+    const latestMessageTimestamp = list
+      .map((message) => new Date(message.sendTime).getTime())
+      .filter((item) => Number.isFinite(item))
+      .reduce((maxTime, currentTime) => Math.max(maxTime, currentTime), 0);
+    setClearMarker(sessionId, {
+      clearedAtMs: latestMessageTimestamp > 0 ? latestMessageTimestamp : Date.now(),
+      lastServerMessageId: latestServerMessageId?.toString(),
+    });
     messages.value.set(sessionId, []);
+    sessionStore.clearSessionConversationState(sessionId);
     await messageRepo.clearConversation(sessionId);
   };
 

@@ -49,7 +49,6 @@ class JwtAuthInterceptorTest {
         interceptor = new JwtAuthInterceptor(objectMapper, redisTemplateProvider);
         ReflectionTestUtils.setField(interceptor, "securityMode", "gateway");
         ReflectionTestUtils.setField(interceptor, "gatewayOnlyEnabled", false);
-        ReflectionTestUtils.setField(interceptor, "gatewayFallbackJwtEnabled", false);
         ReflectionTestUtils.setField(interceptor, "internalHeaderName", "X-Internal-Secret");
         ReflectionTestUtils.setField(interceptor, "internalSecret", "im-internal-secret");
         ReflectionTestUtils.setField(interceptor, "gatewayUserIdHeader", "X-User-Id");
@@ -142,6 +141,16 @@ class JwtAuthInterceptorTest {
     void preHandle_shouldAllowServiceWhitelist() throws Exception {
         when(request.getMethod()).thenReturn("GET");
         when(request.getRequestURI()).thenReturn("/actuator/health");
+
+        boolean ok = interceptor.preHandle(request, response, new Object());
+
+        assertTrue(ok);
+    }
+
+    @Test
+    void preHandle_shouldAllowAuthParseProbe() throws Exception {
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getRequestURI()).thenReturn("/auth/parse");
 
         boolean ok = interceptor.preHandle(request, response, new Object());
 

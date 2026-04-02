@@ -27,9 +27,15 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     resolve: {
-      alias: {
-        "@": resolve(__dirname, "src"),
-      },
+      alias: [
+        {
+          find: "@",
+          replacement: resolve(__dirname, "src"),
+        },
+      ],
+    },
+    optimizeDeps: {
+      exclude: ["vue-virtual-scroller"],
     },
     server: {
       host: "0.0.0.0",

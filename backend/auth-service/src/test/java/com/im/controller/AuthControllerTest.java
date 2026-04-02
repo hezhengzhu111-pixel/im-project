@@ -97,4 +97,9 @@ class AuthControllerTest {
 
         assertThrows(SecurityException.class, () -> authController.issueWsTicket(1L, "alice"));
     }
+
+    @Test
+    void issueWsTicket_MissingIdentity_ShouldThrowSecurityException() {
+        assertThrows(SecurityException.class, () -> authController.issueWsTicket(null, " "));
+    }
 }

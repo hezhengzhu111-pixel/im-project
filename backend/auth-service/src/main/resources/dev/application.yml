@@ -34,8 +34,6 @@ auth:
     token-ttl-seconds: 86400
 
 im:
-  jwt:
-    enabled: false
   virtual-threads:
     enabled: false
   logging:

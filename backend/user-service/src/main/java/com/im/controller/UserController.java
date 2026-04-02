@@ -93,7 +93,18 @@ public class UserController {
         }
 
         writeAuthCookies(response, request, authResponse);
-        return ApiResponse.success(sanitizeAuthResponse(authResponse));
+        if (authResponse == null) {
+            return ApiResponse.success(null);
+        }
+        return ApiResponse.success(UserAuthResponseDTO.builder()
+                .success(authResponse.isSuccess())
+                .message(authResponse.getMessage())
+                .user(authResponse.getUser())
+                .token(authResponse.getToken())
+                .expiresInMs(authResponse.getExpiresInMs())
+                .refreshExpiresInMs(authResponse.getRefreshExpiresInMs())
+                .imToken(authResponse.getImToken())
+                .build());
     }
 
     /**
@@ -130,16 +141,6 @@ public class UserController {
         imService.userOffline(userId.toString());
         clearAuthCookies(response, request);
         return ApiResponse.success("用户登出成功", "用户登出成功");
-    }
-
-    /**
-     * 用户上线
-     */
-    @PostMapping("/online")
-    @Operation(summary = "用户上线", description = "用户上线")
-    public ApiResponse<String> userOnline(@RequestAttribute("userId") Long userId) {
-        log.debug("兼容 /user/online 调用已忽略，真实在线状态以 WebSocket 建连为准: userId={}", userId);
-        return ApiResponse.success("用户上线兼容接口已接收", "用户上线兼容接口已接收");
     }
 
     /**
@@ -292,18 +293,4 @@ public class UserController {
         return seconds > 0 ? seconds : 1;
     }
 
-    private UserAuthResponseDTO sanitizeAuthResponse(UserAuthResponseDTO source) {
-        if (source == null) {
-            return null;
-        }
-        return UserAuthResponseDTO.builder()
-                .success(source.isSuccess())
-                .message(source.getMessage())
-                .user(source.getUser())
-                .token(source.getToken())
-                .expiresInMs(source.getExpiresInMs())
-                .refreshExpiresInMs(source.getRefreshExpiresInMs())
-                .imToken(source.getImToken())
-                .build();
-    }
 }

@@ -53,7 +53,11 @@ public class AuthController {
         }
         TokenPairDTO dto = authTokenService.refresh(effectiveRequest);
         writeAuthCookies(httpResponse, httpRequest, dto);
-        return ApiResponse.success(sanitizeTokenPair(dto));
+        TokenPairDTO tokenPairDTO = new TokenPairDTO();
+        tokenPairDTO.setAccessToken(dto.getAccessToken());
+        tokenPairDTO.setExpiresInMs(dto.getExpiresInMs());
+        tokenPairDTO.setRefreshExpiresInMs(dto.getRefreshExpiresInMs());
+        return ApiResponse.success(tokenPairDTO);
     }
 
     @PostMapping("/parse")
@@ -73,9 +77,12 @@ public class AuthController {
 
     @PostMapping("/ws-ticket")
     public ApiResponse<WsTicketDTO> issueWsTicket(
-            @RequestAttribute("userId") Long userId,
-            @RequestAttribute("username") String username
+            @RequestAttribute(value = "userId", required = false) Long userId,
+            @RequestAttribute(value = "username", required = false) String username
     ) {
+        if (userId == null || username == null || username.isBlank()) {
+            throw new SecurityException("认证失败");
+        }
         return ApiResponse.success(authTokenService.issueWsTicket(userId, username));
     }
 
@@ -105,14 +112,6 @@ public class AuthController {
                         authCookieSameSite
                 ).toString()
         );
-    }
-
-    private TokenPairDTO sanitizeTokenPair(TokenPairDTO source) {
-        TokenPairDTO sanitized = new TokenPairDTO();
-        sanitized.setAccessToken(source.getAccessToken());
-        sanitized.setExpiresInMs(source.getExpiresInMs());
-        sanitized.setRefreshExpiresInMs(source.getRefreshExpiresInMs());
-        return sanitized;
     }
 
     private long toSeconds(Long millis) {

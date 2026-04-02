@@ -307,6 +307,20 @@ export const useSessionStore = defineStore("session", () => {
     unreadCounts.value.set(session.id, 0);
   };
 
+  const clearSessionConversationState = (sessionId: string) => {
+    const session = sessions.value.find((item) => item.id === sessionId);
+    if (!session) {
+      return;
+    }
+    session.lastMessage = undefined;
+    session.lastMessageTime = undefined;
+    session.lastMessageSenderId = undefined;
+    session.lastMessageSenderName = undefined;
+    session.lastActiveTime = "";
+    session.unreadCount = 0;
+    unreadCounts.value.set(session.id, 0);
+  };
+
   const clear = () => {
     clearCurrentSession();
     sessions.value = [];
@@ -333,6 +347,7 @@ export const useSessionStore = defineStore("session", () => {
     restorePersistedCurrentSession,
     loadSessions,
     markSessionReadLocally,
+    clearSessionConversationState,
     clear,
   };
 });
