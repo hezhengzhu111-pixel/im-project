@@ -1,4 +1,5 @@
 import { http } from "@/utils/request";
+import { extractFriendRequestList } from "@/normalizers/friendRequest";
 import { normalizeFriendRequest, normalizeFriendship } from "@/normalizers/user";
 import type {
   Friendship,
@@ -23,12 +24,11 @@ export const friendService = {
       reason: data.message,
     }),
   async getRequests() {
-    const response = await http.get<unknown[]>("/friend/requests");
+    const response = await http.get<unknown>("/friend/requests");
+    const requestList = extractFriendRequestList(response.data);
     return {
       ...response,
-      data: Array.isArray(response.data)
-        ? response.data.map((item) => normalizeFriendRequest(item))
-        : [],
+      data: requestList.map((item) => normalizeFriendRequest(item)),
     } as typeof response & { data: FriendRequest[] };
   },
   handleRequest: (data: HandleFriendRequestRequest) =>

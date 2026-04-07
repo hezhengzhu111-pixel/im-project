@@ -76,10 +76,10 @@ export const normalizeMessageSendTime = (
 };
 
 export const normalizeMessage = (
-  raw: RawMessageDTO,
+  raw: RawMessageDTO | unknown,
   fallbackSendTime?: string,
 ): Message => {
-  const record = isRawMessage(raw) ? raw : {};
+  const record: RawMessageDTO = isRawMessage(raw) ? raw : {};
   const receiverId =
     record.receiverId ?? record.receiver?.id ?? record.receiver_id;
   const groupId = record.groupId ?? record.group?.id ?? record.group_id;

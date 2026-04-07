@@ -452,9 +452,9 @@ const showBindPhone = ref(false);
 const showBindEmail = ref(false);
 const showDeleteAccount = ref(false);
 
-const privacySettings = reactive({ ...defaults.privacy });
-const messageSettings = reactive({ ...defaults.message });
-const generalSettings = reactive({ ...defaults.general });
+const privacySettings = reactive<UserSettings["privacy"]>({ ...defaults.privacy });
+const messageSettings = reactive<UserSettings["message"]>({ ...defaults.message });
+const generalSettings = reactive<UserSettings["general"]>({ ...defaults.general });
 
 const passwordForm = reactive({
   currentPassword: "",
@@ -563,10 +563,10 @@ const loadSettings = async () => {
   }
 };
 
-const updatePrivacySetting = async (key: PrivacyKey, value: boolean) => {
+const updatePrivacySetting = async <K extends PrivacyKey>(key: K, value: boolean) => {
   const previous = privacySettings[key];
   try {
-    await settingsStore.updatePrivacySettings({ [key]: value });
+    await settingsStore.updatePrivacySettings({ [key]: value } as Pick<UserSettings["privacy"], K>);
     notifySuccess("隐私设置已更新");
   } catch (error) {
     privacySettings[key] = previous;
@@ -574,10 +574,10 @@ const updatePrivacySetting = async (key: PrivacyKey, value: boolean) => {
   }
 };
 
-const updateMessageSetting = async (key: MessageKey, value: boolean) => {
+const updateMessageSetting = async <K extends MessageKey>(key: K, value: boolean) => {
   const previous = messageSettings[key];
   try {
-    await settingsStore.updateMessageSettings({ [key]: value });
+    await settingsStore.updateMessageSettings({ [key]: value } as Pick<UserSettings["message"], K>);
     notifySuccess("消息设置已更新");
   } catch (error) {
     messageSettings[key] = previous;
@@ -585,13 +585,13 @@ const updateMessageSetting = async (key: MessageKey, value: boolean) => {
   }
 };
 
-const updateGeneralSetting = async (
-  key: GeneralKey,
-  value: UserSettings["general"][GeneralKey],
+const updateGeneralSetting = async <K extends GeneralKey>(
+  key: K,
+  value: UserSettings["general"][K],
 ) => {
   const previous = generalSettings[key];
   try {
-    await settingsStore.updateGeneralSettings({ [key]: value });
+    await settingsStore.updateGeneralSettings({ [key]: value } as Pick<UserSettings["general"], K>);
     if (key === "theme") {
       applyTheme(value as UserSettings["general"]["theme"]);
     }

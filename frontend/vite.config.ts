@@ -59,38 +59,14 @@ export default defineConfig(({ mode }) => {
       outDir: "dist",
       assetsDir: "assets",
       sourcemap: false,
+      // esbuild minification breaks the bundled Element Plus runtime in this project
+      // and results in a blank page after deployment, so keep the SIT/prod bundle readable.
+      minify: false,
       rollupOptions: {
         output: {
           chunkFileNames: "js/[name]-[hash].js",
           entryFileNames: "js/[name]-[hash].js",
           assetFileNames: "[ext]/[name]-[hash].[ext]",
-          manualChunks(id) {
-            if (!id.includes("node_modules")) {
-              return;
-            }
-            if (
-              id.includes("/vue/") ||
-              id.includes("/vue-router/") ||
-              id.includes("/pinia/")
-            ) {
-              return "vue-vendor";
-            }
-            if (id.includes("/element-plus/")) {
-              return "element-plus";
-            }
-            if (id.includes("/@element-plus/icons-vue/")) {
-              return "element-plus-icons";
-            }
-            if (
-              id.includes("/axios/") ||
-              id.includes("/dayjs/") ||
-              id.includes("/crypto-js/") ||
-              id.includes("/qs/")
-            ) {
-              return "utils";
-            }
-            return "vendor";
-          },
         },
       },
     },

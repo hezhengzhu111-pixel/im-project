@@ -4,8 +4,8 @@
       :active-tab="activeTab"
       :unread-count="totalUnreadCount"
       :pending-requests="pendingRequestsCount"
-      @change-tab="emit('change-tab', $event)"
-      @settings="emit('open-settings')"
+      @change-tab="handleChangeTab"
+      @settings="handleOpenSettings"
       class="side-nav-bar"
     />
 
@@ -26,7 +26,7 @@
             circle
             aria-label="添加好友"
             title="添加好友"
-            @click="emit('open-add-friend')"
+            @click="handleOpenAddFriend"
           />
           <el-button
             v-if="activeTab === 'groups'"
@@ -35,7 +35,7 @@
             circle
             aria-label="创建群组"
             title="创建群组"
-            @click="emit('open-create-group')"
+            @click="handleOpenCreateGroup"
           />
         </div>
       </div>
@@ -60,7 +60,7 @@
           type="button"
           class="session-item interactive-reset"
           :class="{ active: currentSessionId === session.id }"
-          @click="emit('select-session', session)"
+          @click="handleSelectSession(session)"
         >
           <div class="session-avatar-wrap">
             <el-avatar :size="40" :src="session.targetAvatar" shape="square">
@@ -120,7 +120,7 @@
               :key="contact.friendId"
               type="button"
               class="contact-item interactive-reset"
-              @click="emit('start-private-chat', contact)"
+              @click="handleStartPrivateChat(contact)"
             >
               <el-avatar :size="36" :src="contact.avatar" shape="square">
                 {{ contact.nickname?.charAt(0) || "U" }}
@@ -140,7 +140,7 @@
           :key="group.id"
           type="button"
           class="group-item interactive-reset"
-          @click="emit('start-group-chat', group)"
+          @click="handleStartGroupChat(group)"
         >
           <el-avatar :size="36" :src="group.avatar" shape="square">
             {{ group.groupName?.charAt(0) || "G" }}
@@ -196,6 +196,36 @@ const emit = defineEmits<{
 }>();
 
 const localSearchKeyword = ref(props.searchKeyword);
+
+const handleChangeTab = (tab: string) => {
+  if (tab === "chat" || tab === "contacts" || tab === "groups") {
+    emit("change-tab", tab);
+  }
+};
+
+const handleOpenSettings = () => {
+  emit("open-settings");
+};
+
+const handleOpenAddFriend = () => {
+  emit("open-add-friend");
+};
+
+const handleOpenCreateGroup = () => {
+  emit("open-create-group");
+};
+
+const handleSelectSession = (session: ChatSession) => {
+  emit("select-session", session);
+};
+
+const handleStartPrivateChat = (contact: Friend) => {
+  emit("start-private-chat", contact);
+};
+
+const handleStartGroupChat = (group: Group) => {
+  emit("start-group-chat", group);
+};
 
 watch(
   () => props.searchKeyword,

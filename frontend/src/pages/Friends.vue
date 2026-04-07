@@ -276,7 +276,7 @@ const router = useRouter();
 const chatStore = useChatStore();
 const userStore = useUserStore();
 const wsStore = useWebSocketStore();
-const { capture, notifySuccess } = useErrorHandler("friends-page");
+const { capture, notifyInfo, notifySuccess } = useErrorHandler("friends-page");
 
 const addFriendFormRef = ref<FormInstance | null>(null);
 const remarkFormRef = ref<FormInstance | null>(null);
@@ -448,6 +448,14 @@ const sendFriendRequest = async () => {
     });
     await chatStore.loadFriendRequests();
   } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "发送好友申请失败";
+    if (message.includes("已有待处理的好友申请")) {
+      await chatStore.loadFriendRequests().catch(() => undefined);
+      notifyInfo("已有待处理的好友申请，已同步到好友申请列表");
+      showAddFriend.value = false;
+      return;
+    }
     capture(error, "发送好友申请失败");
   } finally {
     sendingRequest.value = false;
