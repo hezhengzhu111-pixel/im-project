@@ -27,7 +27,7 @@ export const groupService = {
     }
     return response as unknown as ApiResponse<Group[]>;
   },
-  getMembers: (groupId: string) =>
+  getMembers: (groupId: string): Promise<ApiResponse<GroupMember[]>> =>
     http
       .post<{ members?: unknown[] }>("/group/members/list", {
         groupId: String(groupId),

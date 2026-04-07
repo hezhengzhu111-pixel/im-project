@@ -131,7 +131,7 @@ const emit = defineEmits<{
 
 const chatStore = useChatStore();
 const userStore = useUserStore();
-const { capture, notifySuccess } = useErrorHandler("chat-dialogs");
+const { capture, notifyInfo, notifySuccess } = useErrorHandler("chat-dialogs");
 const { upload } = useFileMessageUpload();
 
 const showAddFriend = computed({
@@ -204,6 +204,14 @@ const addFriend = async () => {
     addFriendForm.message = "我想加您为好友";
     userSearchResults.value = [];
   } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "添加好友失败";
+    if (message.includes("已有待处理的好友申请")) {
+      await chatStore.loadFriendRequests().catch(() => undefined);
+      notifyInfo("已有待处理的好友申请，已同步到新的朋友");
+      showAddFriend.value = false;
+      return;
+    }
     capture(error, "添加好友失败");
   }
 };

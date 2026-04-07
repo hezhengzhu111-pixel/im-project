@@ -7,7 +7,7 @@ const normalizeMemberRole = (role: unknown): GroupMember["role"] => {
   return "MEMBER";
 };
 
-export const normalizeGroup = (raw: RawGroupDTO | Group): Group => {
+export const normalizeGroup = (raw: RawGroupDTO | Group | unknown): Group => {
   const record = isRawGroup(raw) ? raw : {};
   const groupName = asString(record.groupName ?? record.name);
   return {
@@ -34,9 +34,9 @@ export const normalizeGroup = (raw: RawGroupDTO | Group): Group => {
 };
 
 export const normalizeGroupMember = (
-  raw: RawGroupMemberDTO | GroupMember,
+  raw: RawGroupMemberDTO | GroupMember | unknown,
 ): GroupMember => {
-  const record = isRawGroupMember(raw) ? raw : {};
+  const record: RawGroupMemberDTO = isRawGroupMember(raw) ? raw : {};
   return {
     id: asString(record.id) || undefined,
     groupId: asString(record.groupId) || undefined,

@@ -37,13 +37,13 @@
     </DynamicScroller>
 
     <div
-      v-if="contextMenu.visible && contextMenu.targetMessage"
+      v-if="contextMenu.visible && contextTargetMessage"
       class="context-menu"
       :style="{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }"
       @click.self="contextMenu.close()"
     >
       <div
-        v-if="contextMenu.targetMessage.messageType === 'TEXT'"
+        v-if="contextTargetMessage?.messageType === 'TEXT'"
         class="menu-item"
         @click="handleCopy"
       >
@@ -79,12 +79,13 @@ const emit = defineEmits<{
   (e: "show-group-readers", message: Message): void;
 }>();
 
-const scrollerRef = ref<InstanceType<typeof DynamicScroller> | null>(null);
+const scrollerRef = ref<{ scrollToItem?: (index: number) => void } | null>(null);
 const scrollContainerRef = ref<HTMLElement | null>(null);
 const loadingHistory = ref(false);
 const { playingMessageId, toggle: toggleAudio, stop } = useAudioPlayer();
 const { copy, recall, remove } = useMessageActions();
 const contextMenu = useMessageContextMenu();
+const contextTargetMessage = computed(() => contextMenu.targetMessage.value);
 
 const canRecall = computed(() => {
   const message = contextMenu.targetMessage.value;
@@ -140,7 +141,7 @@ const playVideo = (_message: Message) => {
 const scrollToBottom = async () => {
   await nextTick();
   const scroller = scrollerRef.value;
-  if (scroller && props.messages.length > 0) {
+  if (scroller?.scrollToItem && props.messages.length > 0) {
     scroller.scrollToItem(props.messages.length - 1);
   }
 };

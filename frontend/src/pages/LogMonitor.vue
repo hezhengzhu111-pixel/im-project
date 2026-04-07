@@ -32,6 +32,7 @@ const logs = ref<any[]>([]);
 const filterKeyword = ref('');
 const filterLevel = ref('');
 let eventSource: EventSource | null = null;
+const sseEndpoint = `${import.meta.env.VITE_API_BASE_URL || "/api"}/logs/stream`;
 
 const filteredLogs = computed(() => {
   return logs.value.filter(log => {
@@ -43,8 +44,8 @@ const filteredLogs = computed(() => {
 
 const connectSSE = () => {
   if (eventSource) return;
-  
-  eventSource = new EventSource('http://localhost:8090/api/logs/stream');
+
+  eventSource = new EventSource(sseEndpoint);
   
   eventSource.onmessage = (event) => {
     // 假设后端传过来的格式是原始字符串，前端做简单正则解析，或者后端传 JSON

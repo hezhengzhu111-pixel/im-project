@@ -1,56 +1,85 @@
+x-java-service: &java-service
+  restart: unless-stopped
+  networks:
+    - im-sit-network
+  environment:
+    TZ: Asia/Shanghai
+    SPRING_PROFILES_ACTIVE: sit
+    SPRING_CONFIG_ADDITIONAL_LOCATION: classpath:/sit/
+
 services:
   im-mysql:
     image: mysql:8.0.39
-    container_name: im-mysql
+    restart: unless-stopped
     command:
       - mysqld
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_0900_ai_ci
+      - --log-error=/var/log/mysql/error.log
     environment:
+      TZ: Asia/Shanghai
       MYSQL_ROOT_PASSWORD: root123
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ../../backend/sql/mysql8/init_all.sql:/docker-entrypoint-initdb.d/01-init_all.sql:ro
+      - ${HOST_LOG_ROOT}/im-mysql:/var/log/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
     networks:
       - im-sit-network
-    restart: unless-stopped
 
   im-redis:
     image: redis:7.2-alpine
-    container_name: im-redis
+    restart: unless-stopped
     command:
       - redis-server
       - --appendonly
       - "yes"
+      - --logfile
+      - /var/log/redis/redis-server.log
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
+      - ${HOST_LOG_ROOT}/im-redis:/var/log/redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
     networks:
       - im-sit-network
-    restart: unless-stopped
 
   im-nacos:
     image: nacos/nacos-server:v2.4.2-slim
-    container_name: im-nacos
+    restart: unless-stopped
     environment:
+      TZ: Asia/Shanghai
       MODE: standalone
       PREFER_HOST_MODE: hostname
       NACOS_AUTH_ENABLE: "false"
+      JVM_XMS: 256m
+      JVM_XMX: 256m
+      JVM_XMN: 128m
     ports:
       - "8848:8848"
     volumes:
       - nacos_data:/home/nacos/data
+      - ${HOST_LOG_ROOT}/im-nacos:/home/nacos/logs
     networks:
       - im-sit-network
-    restart: unless-stopped
 
   im-kafka:
     image: apache/kafka:3.7.0
-    container_name: im-kafka
+    restart: unless-stopped
     environment:
+      TZ: Asia/Shanghai
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
@@ -67,14 +96,16 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     ports:
       - "9092:9092"
+    volumes:
+      - ${HOST_LOG_ROOT}/im-kafka:/opt/kafka/logs
     networks:
       - im-sit-network
-    restart: unless-stopped
 
   admin-es:
     image: elasticsearch:8.10.4
-    container_name: admin-es
+    restart: unless-stopped
     environment:
+      TZ: Asia/Shanghai
       discovery.type: single-node
       xpack.security.enabled: "false"
       ES_JAVA_OPTS: -Xms512m -Xmx512m
@@ -82,199 +113,260 @@ services:
       - "9200:9200"
     volumes:
       - es_data:/usr/share/elasticsearch/data
+      - ${HOST_LOG_ROOT}/admin-es:/usr/share/elasticsearch/logs
     networks:
       - im-sit-network
-    restart: unless-stopped
 
   admin-kibana:
     image: kibana:8.10.4
-    container_name: admin-kibana
+    restart: unless-stopped
     depends_on:
-      - admin-es
+      admin-es:
+        condition: service_started
     environment:
+      TZ: Asia/Shanghai
       ELASTICSEARCH_HOSTS: http://admin-es:9200
     ports:
       - "5601:5601"
+    volumes:
+      - ${HOST_LOG_ROOT}/admin-kibana:/usr/share/kibana/logs
     networks:
       - im-sit-network
-    restart: unless-stopped
 
   admin-filebeat:
     image: docker.elastic.co/beats/filebeat:8.10.4
-    container_name: admin-filebeat
+    restart: unless-stopped
     depends_on:
-      - im-kafka
+      im-kafka:
+        condition: service_started
     user: root
     command: filebeat -e -strict.perms=false
     volumes:
       - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - im_logs:/var/log/im-project:ro
+      - ${HOST_LOG_ROOT}:/home/project/log:ro
+      - ${HOST_LOG_ROOT}/admin-filebeat:/usr/share/filebeat/logs
     networks:
       - im-sit-network
-    restart: unless-stopped
 
-  im-gateway:
-    build:
-      context: ../../backend/gateway
-    container_name: im-gateway
-    depends_on:
-      - im-redis
-      - im-nacos
-    environment:
-      IM_GATEWAY_AUTH_SERVICE_URL: lb://im-auth-service
-    command:
-      - --spring.config.location=classpath:/sit/
-    ports:
-      - "8082:8082"
-    volumes:
-      - im_logs:/var/log/im-project
-    networks:
-      - im-sit-network
-    restart: unless-stopped
-
-  im-auth:
+  im-auth-service:
+    <<: *java-service
+    image: im-project-sit/im-auth-service:latest
     build:
       context: ../../backend/auth-service
-    container_name: im-auth
+      args:
+        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
     depends_on:
-      - im-redis
-      - im-nacos
-    command:
-      - --spring.config.location=classpath:/sit/
+      im-mysql:
+        condition: service_healthy
+      im-redis:
+        condition: service_healthy
+      im-kafka:
+        condition: service_started
+      im-nacos:
+        condition: service_started
     ports:
       - "8084:8084"
     volumes:
-      - im_logs:/var/log/im-project
-    networks:
-      - im-sit-network
-    restart: unless-stopped
+      - ${HOST_LOG_ROOT}/im-auth-service:/var/log/im-project
 
-  im-user:
+  im-user-service:
+    <<: *java-service
+    image: im-project-sit/im-user-service:latest
     build:
       context: ../../backend/user-service
-    container_name: im-user
+      args:
+        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
     depends_on:
-      - im-mysql
-      - im-redis
-      - im-kafka
-      - im-nacos
-    command:
-      - --spring.config.location=classpath:/sit/
+      im-mysql:
+        condition: service_healthy
+      im-redis:
+        condition: service_healthy
+      im-kafka:
+        condition: service_started
+      im-nacos:
+        condition: service_started
     ports:
       - "8085:8085"
     volumes:
-      - im_logs:/var/log/im-project
-    networks:
-      - im-sit-network
-    restart: unless-stopped
+      - ${HOST_LOG_ROOT}/im-user-service:/var/log/im-project
 
-  im-group:
+  im-group-service:
+    <<: *java-service
+    image: im-project-sit/im-group-service:latest
     build:
       context: ../../backend/group-service
-    container_name: im-group
+      args:
+        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
     depends_on:
-      - im-mysql
-      - im-nacos
-    command:
-      - --spring.config.location=classpath:/sit/
+      im-mysql:
+        condition: service_healthy
+      im-redis:
+        condition: service_healthy
+      im-kafka:
+        condition: service_started
+      im-nacos:
+        condition: service_started
     ports:
       - "8086:8086"
     volumes:
-      - im_logs:/var/log/im-project
-    networks:
-      - im-sit-network
-    restart: unless-stopped
+      - ${HOST_LOG_ROOT}/im-group-service:/var/log/im-project
 
-  im-message:
+  im-message-service:
+    <<: *java-service
+    image: im-project-sit/im-message-service:latest
     build:
       context: ../../backend/message-service
-    container_name: im-message
+      args:
+        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
     depends_on:
-      - im-mysql
-      - im-redis
-      - im-kafka
-      - im-nacos
-    command:
-      - --spring.config.location=classpath:/sit/
+      im-mysql:
+        condition: service_healthy
+      im-redis:
+        condition: service_healthy
+      im-nacos:
+        condition: service_started
     ports:
       - "8087:8087"
     volumes:
-      - im_logs:/var/log/im-project
-    networks:
-      - im-sit-network
-    restart: unless-stopped
+      - ${HOST_LOG_ROOT}/im-message-service:/var/log/im-project
 
-  im-file:
+  im-file-service:
+    <<: *java-service
+    image: im-project-sit/im-file-service:latest
     build:
       context: ../../backend/file-service
-    container_name: im-file
+      args:
+        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
     depends_on:
-      - im-nacos
-    command:
-      - --spring.config.location=classpath:/sit/
+      im-mysql:
+        condition: service_healthy
+      im-redis:
+        condition: service_healthy
+      im-kafka:
+        condition: service_started
+      im-nacos:
+        condition: service_started
     ports:
       - "8088:8088"
     volumes:
-      - im_logs:/var/log/im-project
+      - ${HOST_LOG_ROOT}/im-file-service:/var/log/im-project
       - im_files:/data/im-files
-    networks:
-      - im-sit-network
-    restart: unless-stopped
 
   im-server:
+    <<: *java-service
+    image: im-project-sit/im-server:latest
     build:
       context: ../../backend/im-server
-    container_name: im-server
+      args:
+        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
     depends_on:
-      - im-redis
-      - im-kafka
-      - im-nacos
-    command:
-      - --spring.config.location=classpath:/sit/
+      im-mysql:
+        condition: service_healthy
+      im-redis:
+        condition: service_healthy
+      im-nacos:
+        condition: service_started
     ports:
       - "8083:8083"
     volumes:
-      - im_logs:/var/log/im-project
-    networks:
-      - im-sit-network
-    restart: unless-stopped
+      - ${HOST_LOG_ROOT}/im-server:/var/log/im-project
 
   im-registry-monitor:
+    <<: *java-service
+    image: im-project-sit/im-registry-monitor:latest
     build:
       context: ../../backend/registry-monitor
-    container_name: im-registry-monitor
+      args:
+        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
     depends_on:
-      - im-nacos
-    command:
-      - --spring.config.location=classpath:/sit/
+      im-mysql:
+        condition: service_healthy
+      im-redis:
+        condition: service_healthy
+      im-kafka:
+        condition: service_started
+      im-nacos:
+        condition: service_started
     ports:
       - "8090:8090"
     volumes:
-      - im_logs:/var/log/im-project
-    networks:
-      - im-sit-network
-    restart: unless-stopped
+      - ${HOST_LOG_ROOT}/im-registry-monitor:/var/log/im-project
 
   im-log-service:
+    <<: *java-service
+    image: im-project-sit/im-log-service:latest
     build:
       context: ../../backend/log-service
-    container_name: im-log-service
+      args:
+        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
     depends_on:
-      - im-kafka
-      - im-nacos
-      - admin-es
-    command:
-      - --spring.config.location=classpath:/sit/
+      im-mysql:
+        condition: service_healthy
+      im-redis:
+        condition: service_healthy
+      im-kafka:
+        condition: service_started
+      im-nacos:
+        condition: service_started
+      admin-es:
+        condition: service_started
     ports:
       - "8091:8091"
     volumes:
-      - im_logs:/var/log/im-project
+      - ${HOST_LOG_ROOT}/im-log-service:/var/log/im-project
+
+  im-gateway:
+    <<: *java-service
+    image: im-project-sit/im-gateway:latest
+    build:
+      context: ../../backend/gateway
+      args:
+        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
+    depends_on:
+      im-redis:
+        condition: service_healthy
+      im-nacos:
+        condition: service_started
+      im-auth-service:
+        condition: service_started
+      im-user-service:
+        condition: service_started
+      im-group-service:
+        condition: service_started
+      im-message-service:
+        condition: service_started
+      im-file-service:
+        condition: service_started
+      im-server:
+        condition: service_started
+    ports:
+      - "8082:8082"
+    volumes:
+      - ${HOST_LOG_ROOT}/im-gateway:/var/log/im-project
+
+  im-frontend:
+    image: im-project-sit/im-frontend:latest
+    build:
+      context: ../../frontend
+      args:
+        FRONTEND_BUILD_MODE: sit
+        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
+    restart: unless-stopped
+    depends_on:
+      im-gateway:
+        condition: service_started
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "80:80"
+    volumes:
+      - ${HOST_LOG_ROOT}/im-frontend:/var/log/nginx
     networks:
       - im-sit-network
-    restart: unless-stopped
 
 networks:
   im-sit-network:
+    name: im-sit-network
     driver: bridge
 
 volumes:
@@ -282,5 +374,4 @@ volumes:
   redis_data:
   nacos_data:
   es_data:
-  im_logs:
   im_files:

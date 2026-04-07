@@ -7,6 +7,7 @@ import {
   normalizeMessageConfig,
 } from "@/normalizers/message";
 import { http } from "@/utils/request";
+import type { ApiResponse } from "@/types/api";
 import type {
   ChatSession,
   Message,
@@ -23,33 +24,36 @@ const normalizeMessages = (raw: unknown): Message[] => {
 };
 
 export const messageService = {
-  async sendPrivate(data: SendPrivateMessageRequest) {
+  async sendPrivate(data: SendPrivateMessageRequest): Promise<ApiResponse<Message>> {
     const response = await http.post<unknown>("/message/send/private", data);
     return {
       ...response,
       data: normalizeMessage(response.data, new Date().toISOString()),
-    } as typeof response & { data: Message };
+    } as ApiResponse<Message>;
   },
-  async sendGroup(data: SendGroupMessageRequest) {
+  async sendGroup(data: SendGroupMessageRequest): Promise<ApiResponse<Message>> {
     const response = await http.post<unknown>("/message/send/group", data);
     return {
       ...response,
       data: normalizeMessage(response.data, new Date().toISOString()),
-    } as typeof response & { data: Message };
+    } as ApiResponse<Message>;
   },
-  async getPrivateHistory(friendId: string, params: Record<string, unknown>) {
+  async getPrivateHistory(
+    friendId: string,
+    params: Record<string, unknown>,
+  ): Promise<ApiResponse<Message[]>> {
     const response = await http.get<unknown[]>(`/message/private/${friendId}`, {
       params,
     });
     return {
       ...response,
       data: normalizeMessages(response.data),
-    } as typeof response & { data: Message[] };
+    } as ApiResponse<Message[]>;
   },
   async getPrivateHistoryCursor(
     friendId: string,
     params: Record<string, unknown>,
-  ) {
+  ): Promise<ApiResponse<Message[]>> {
     const response = await http.get<unknown[]>(
       `/message/private/${friendId}/cursor`,
       { params },
@@ -57,21 +61,24 @@ export const messageService = {
     return {
       ...response,
       data: normalizeMessages(response.data),
-    } as typeof response & { data: Message[] };
+    } as ApiResponse<Message[]>;
   },
-  async getGroupHistory(groupId: string, params: Record<string, unknown>) {
+  async getGroupHistory(
+    groupId: string,
+    params: Record<string, unknown>,
+  ): Promise<ApiResponse<Message[]>> {
     const response = await http.get<unknown[]>(`/message/group/${groupId}`, {
       params,
     });
     return {
       ...response,
       data: normalizeMessages(response.data),
-    } as typeof response & { data: Message[] };
+    } as ApiResponse<Message[]>;
   },
   async getGroupHistoryCursor(
     groupId: string,
     params: Record<string, unknown>,
-  ) {
+  ): Promise<ApiResponse<Message[]>> {
     const response = await http.get<unknown[]>(
       `/message/group/${groupId}/cursor`,
       { params },
@@ -79,14 +86,14 @@ export const messageService = {
     return {
       ...response,
       data: normalizeMessages(response.data),
-    } as typeof response & { data: Message[] };
+    } as ApiResponse<Message[]>;
   },
   markRead: (conversationId: string) => http.post(`/message/read/${conversationId}`),
   recallMessage: (messageId: string) =>
     http.post<Message>(`/message/recall/${messageId}`),
   deleteMessage: (messageId: string) =>
     http.post<Message>(`/message/delete/${messageId}`),
-  async getConversations(currentUserId: string) {
+  async getConversations(currentUserId: string): Promise<ApiResponse<ChatSession[]>> {
     const response = await http.get<unknown[]>("/message/conversations");
     const data = Array.isArray(response.data)
       ? response.data
@@ -100,13 +107,13 @@ export const messageService = {
     return {
       ...response,
       data,
-    } as typeof response & { data: ChatSession[] };
+    } as ApiResponse<ChatSession[]>;
   },
-  async getConfig() {
+  async getConfig(): Promise<ApiResponse<MessageConfig>> {
     const response = await http.get<unknown>("/message/config");
     return {
       ...response,
       data: normalizeMessageConfig(response.data),
-    } as typeof response & { data: MessageConfig };
+    } as ApiResponse<MessageConfig>;
   },
 };

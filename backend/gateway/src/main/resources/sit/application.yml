@@ -67,6 +67,16 @@ spring:
             - Path=/file/**,/api/file/**
           filters:
             - RewritePath=/(?<prefix>api/)?file(?<segment>/.*), $\{segment}
+        - id: log-service
+          uri: lb://im-log-service
+          predicates:
+            - Path=/api/logs/**
+        - id: registry-monitor
+          uri: lb://im-registry-monitor
+          predicates:
+            - Path=/registry/**,/api/registry/**
+          filters:
+            - RewritePath=/(?<prefix>api/)?registry(?<segment>/.*), $\{segment}
         - id: im-server
           uri: lb://im-server
           predicates:
@@ -143,7 +153,7 @@ im:
   gateway:
     user-id-header: X-User-Id
     username-header: X-Username
-    auth-service-url: ${IM_GATEWAY_AUTH_SERVICE_URL:http://127.0.0.1:8084}
+    auth-service-url: ${IM_GATEWAY_AUTH_SERVICE_URL:lb://im-auth-service}
     auth:
       secret: ${IM_GATEWAY_AUTH_SECRET:im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret}
       user-resource-key-prefix: "auth:user:"
@@ -153,11 +163,11 @@ im:
       enabled: true
   routing:
     host:
-      auth: ${IM_ROUTE_AUTH_HOST:im-auth}
-      user: ${IM_ROUTE_USER_HOST:im-user}
-      group: ${IM_ROUTE_GROUP_HOST:im-group}
-      message: ${IM_ROUTE_MESSAGE_HOST:im-message}
-      file: ${IM_ROUTE_FILE_HOST:im-file}
+      auth: ${IM_ROUTE_AUTH_HOST:im-auth-service}
+      user: ${IM_ROUTE_USER_HOST:im-user-service}
+      group: ${IM_ROUTE_GROUP_HOST:im-group-service}
+      message: ${IM_ROUTE_MESSAGE_HOST:im-message-service}
+      file: ${IM_ROUTE_FILE_HOST:im-file-service}
       imServer: ${IM_ROUTE_IM_SERVER_HOST:im-server}
 
 management:
