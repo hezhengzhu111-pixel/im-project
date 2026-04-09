@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM docker.m.daocloud.io/library/node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm config set registry https://registry.npmjs.org/ \
@@ -22,7 +22,7 @@ RUN if [ "${FRONTEND_BUILD_MODE}" = "dev" ]; then npm run build:dev; \
     else npm run build; \
     fi
 
-FROM nginx:alpine
+FROM docker.m.daocloud.io/library/nginx:1.27-alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
