@@ -4,6 +4,7 @@ import com.im.dto.request.SendGroupMessageRequest;
 import com.im.dto.request.SendPrivateMessageRequest;
 import com.im.dto.MessageDTO;
 import com.im.dto.ConversationDTO;
+import com.im.service.command.SendMessageCommand;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -12,6 +13,8 @@ import java.util.List;
  * 消息服务接口
  */
 public interface MessageService {
+
+    MessageDTO sendMessage(SendMessageCommand command);
     
     /**
      * 发送私聊消息

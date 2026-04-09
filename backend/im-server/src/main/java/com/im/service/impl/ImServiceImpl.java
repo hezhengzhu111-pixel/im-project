@@ -1,19 +1,22 @@
 package com.im.service.impl;
 
 import com.alibaba.fastjson2.JSON;
+import com.im.config.ImNodeIdentity;
+import com.im.dto.GroupMemberDTO;
 import com.im.dto.MessageDTO;
 import com.im.dto.ReadReceiptDTO;
-import com.im.dto.WsPushEvent;
 import com.im.entity.UserSession;
 import com.im.enums.MessageType;
 import com.im.enums.UserStatus;
 import com.im.service.IImService;
-import com.im.service.RouteSessionInfo;
+import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.redisson.api.RBucket;
+import org.redisson.api.RSetMultimap;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -21,124 +24,84 @@ import org.springframework.web.socket.WebSocketSession;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class ImServiceImpl implements IImService {
 
-    private static final Duration HEARTBEAT_TIMEOUT = Duration.ofMinutes(5);
-    private static final String EVENT_TYPE_SESSION_KICKOUT = "SESSION_KICKOUT";
-    private static final int WS_PUSH_EVENT_VERSION = 1;
-    private final Map<String, UserSession> sessionUserMap = new ConcurrentHashMap<>();
+    private static final String LEASE_VALUE = "1";
 
-    @Value("${im.route.user-key-prefix:im:route:user:}")
-    private String routeUserKeyPrefix;
+    private final RedissonClient redissonClient;
+    private final ImNodeIdentity nodeIdentity;
+    private final Map<String, UserSession> sessionsById = new ConcurrentHashMap<>();
+    private final Map<String, Set<String>> sessionIdsByUser = new ConcurrentHashMap<>();
+    private final Map<String, ReentrantLock> userLocks = new ConcurrentHashMap<>();
 
-    @Value("${im.route.session-key-prefix:im:route:session:}")
-    private String routeSessionKeyPrefix;
+    @Value("${im.route.users-key:im:route:users}")
+    private String routeUsersKey;
 
-    @Value("${im.ws.channel-prefix:im:ws:push:}")
-    private String wsChannelPrefix;
+    @Value("${im.route.lease-key-prefix:im:route:lease:}")
+    private String routeLeaseKeyPrefix;
 
-    @Value("${im.instance-id:${HOSTNAME:${spring.application.name:im-server}}}")
-    private String instanceId;
+    @Value("${im.route.lease-ttl-ms:120000}")
+    private long routeLeaseTtlMs;
 
-    @Autowired
-    private StringRedisTemplate stringRedisTemplate;
+    @Value("${im.heartbeat.timeout:90000}")
+    private long heartbeatTimeoutMs;
 
-    public String getInstanceId() {
-        return instanceId;
-    }
+    private RSetMultimap<String, String> routeMultimap;
 
-    @Override
-    public Map<String, Boolean> checkUsersOnlineStatus(List<String> userIds) {
-        Map<String, Boolean> userStatusMap = new HashMap<>();
-        if (userIds == null || userIds.isEmpty()) {
-            return userStatusMap;
-        }
-        for (String rawUserId : userIds) {
-            if (StringUtils.isBlank(rawUserId)) {
-                continue;
-            }
-            String userId = rawUserId.trim();
-            Boolean hasKey = stringRedisTemplate.hasKey(routeKey(userId));
-            userStatusMap.put(userId, Boolean.TRUE.equals(hasKey));
-        }
-        return userStatusMap;
-    }
-
-    @Override
-    public boolean touchUserHeartbeat(String userId) {
-        if (StringUtils.isBlank(userId)) {
-            return false;
-        }
-        String normalizedUserId = userId.trim();
-        UserSession userSession = sessionUserMap.get(normalizedUserId);
-        if (userSession == null) {
-            return false;
-        }
-        if (!isSessionOpenAndFresh(userSession, LocalDateTime.now())) {
-            userOffline(normalizedUserId);
-            return false;
-        }
-        userSession.setStatus(UserStatus.ONLINE);
-        userSession.setLastHeartbeat(LocalDateTime.now());
-        storeRouteState(normalizedUserId, resolveSessionId(userSession));
-        return true;
-    }
-
-    @Override
-    public void refreshRouteHeartbeat(String userId, String sessionId) {
-        if (StringUtils.isBlank(userId) || StringUtils.isBlank(sessionId)) {
-            return;
-        }
-        String normalizedUserId = userId.trim();
-        UserSession userSession = sessionUserMap.get(normalizedUserId);
-        if (userSession == null) {
-            return;
-        }
-        String currentSessionId = resolveSessionId(userSession);
-        if (!sessionId.trim().equals(currentSessionId)) {
-            return;
-        }
-        userSession.setLastHeartbeat(LocalDateTime.now());
-        userSession.setStatus(UserStatus.ONLINE);
-        storeRouteState(normalizedUserId, currentSessionId);
+    @PostConstruct
+    public void init() {
+        routeMultimap = redissonClient.getSetMultimap(routeUsersKey);
     }
 
     @Override
     public boolean userOffline(String userId) {
-        try {
-            if (StringUtils.isBlank(userId)) {
-                return false;
-            }
-            String normalizedUserId = userId.trim();
-            UserSession removedSession = sessionUserMap.remove(normalizedUserId);
-
-            if (isRouteOwnedByCurrentInstance(normalizedUserId)) {
-                stringRedisTemplate.delete(routeKey(normalizedUserId));
-                stringRedisTemplate.delete(routeSessionKey(normalizedUserId));
-            }
-
-            if (removedSession != null) {
-                closeSessionQuietly(normalizedUserId, removedSession.getWebSocketSession());
-                LocalDateTime connectTime = removedSession.getConnectTime();
-                if (connectTime != null) {
-                    log.debug("清理用户会话信息: userId={}, 会话时长={}分钟",
-                            normalizedUserId,
-                            Duration.between(connectTime, LocalDateTime.now()).toMinutes());
-                }
-            }
-            broadcastOnlineStatus(normalizedUserId, UserStatus.OFFLINE);
-            return true;
-        } catch (Exception e) {
-            log.error("用户下线处理异常: userId={}", userId, e);
+        String normalizedUserId = normalizeUserId(userId);
+        if (normalizedUserId == null) {
             return false;
         }
+
+        List<UserSession> removedSessions = new ArrayList<>();
+        boolean removed = withUserLock(normalizedUserId, () -> {
+            Set<String> sessionIds = sessionIdsByUser.remove(normalizedUserId);
+            if (sessionIds == null || sessionIds.isEmpty()) {
+                return false;
+            }
+            for (String sessionId : new HashSet<>(sessionIds)) {
+                UserSession session = sessionsById.remove(sessionId);
+                if (session != null) {
+                    removedSessions.add(session);
+                }
+            }
+            removeRouteRegistration(normalizedUserId);
+            return !removedSessions.isEmpty();
+        });
+
+        if (!removed) {
+            return false;
+        }
+
+        for (UserSession removedSession : removedSessions) {
+            closeSessionQuietly(normalizedUserId, removedSession.getWebSocketSession(), null);
+        }
+        if (!isUserGloballyOnline(normalizedUserId)) {
+            broadcastOnlineStatus(normalizedUserId, UserStatus.OFFLINE);
+        }
+        return true;
     }
 
     @Override
@@ -151,7 +114,7 @@ public class ImServiceImpl implements IImService {
         if (message == null || message.getGroupMembers() == null) {
             return;
         }
-        for (com.im.dto.GroupMemberDTO member : message.getGroupMembers()) {
+        for (GroupMemberDTO member : message.getGroupMembers()) {
             if (member == null || member.getUserId() == null || member.getUserId().equals(message.getSenderId())) {
                 continue;
             }
@@ -165,7 +128,14 @@ public class ImServiceImpl implements IImService {
             return false;
         }
         String wsType = message.getMessageType() == MessageType.SYSTEM ? "SYSTEM" : "MESSAGE";
-        boolean success = pushPayloadToUser(userId, wsType, message);
+        boolean success = false;
+        for (UserSession userSession : getLocalSessions(String.valueOf(userId))) {
+            String sessionId = resolveSessionId(userSession);
+            if (StringUtils.isBlank(sessionId)) {
+                continue;
+            }
+            success = pushPayloadToSession(sessionId, wsType, message) || success;
+        }
         logPushMessageResult(message, userId, success);
         return success;
     }
@@ -175,154 +145,279 @@ public class ImServiceImpl implements IImService {
         if (receipt == null || userId == null) {
             return false;
         }
-        return pushPayloadToUser(userId, "READ_RECEIPT", receipt);
+        boolean success = false;
+        for (UserSession userSession : getLocalSessions(String.valueOf(userId))) {
+            String sessionId = resolveSessionId(userSession);
+            if (StringUtils.isBlank(sessionId)) {
+                continue;
+            }
+            success = pushPayloadToSession(sessionId, "READ_RECEIPT", receipt) || success;
+        }
+        return success;
     }
 
     @Override
-    public Map<String, UserSession> getSessionUserMap() {
-        return sessionUserMap;
+    public boolean pushMessageToSession(MessageDTO message, String sessionId) {
+        if (message == null || StringUtils.isBlank(sessionId)) {
+            return false;
+        }
+        String wsType = message.getMessageType() == MessageType.SYSTEM ? "SYSTEM" : "MESSAGE";
+        return pushPayloadToSession(sessionId.trim(), wsType, message);
     }
 
     @Override
-    public void putSessionMapping(String key, UserSession userSession) {
-        if (StringUtils.isBlank(key) || userSession == null) {
+    public boolean pushReadReceiptToSession(ReadReceiptDTO receipt, String sessionId) {
+        if (receipt == null || StringUtils.isBlank(sessionId)) {
+            return false;
+        }
+        return pushPayloadToSession(sessionId.trim(), "READ_RECEIPT", receipt);
+    }
+
+    @Override
+    public Map<String, Boolean> checkUsersOnlineStatus(List<String> userIds) {
+        Map<String, Boolean> userStatusMap = new HashMap<>();
+        if (userIds == null || userIds.isEmpty()) {
+            return userStatusMap;
+        }
+        for (String rawUserId : userIds) {
+            String normalizedUserId = normalizeUserId(rawUserId);
+            if (normalizedUserId == null) {
+                continue;
+            }
+            userStatusMap.put(normalizedUserId, isUserGloballyOnline(normalizedUserId));
+        }
+        return userStatusMap;
+    }
+
+    @Override
+    public boolean touchUserHeartbeat(String userId) {
+        String normalizedUserId = normalizeUserId(userId);
+        if (normalizedUserId == null) {
+            return false;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        boolean touched = withUserLock(normalizedUserId, () -> {
+            Set<String> sessionIds = sessionIdsByUser.get(normalizedUserId);
+            if (sessionIds == null || sessionIds.isEmpty()) {
+                return false;
+            }
+            boolean updated = false;
+            for (String sessionId : new HashSet<>(sessionIds)) {
+                UserSession userSession = sessionsById.get(sessionId);
+                if (userSession == null) {
+                    continue;
+                }
+                WebSocketSession webSocketSession = userSession.getWebSocketSession();
+                if (webSocketSession == null || !webSocketSession.isOpen()) {
+                    continue;
+                }
+                userSession.setStatus(UserStatus.ONLINE);
+                userSession.setLastHeartbeat(now);
+                updated = true;
+            }
+            return updated;
+        });
+
+        if (!touched) {
+            userOffline(normalizedUserId);
+        }
+        return touched;
+    }
+
+    @Override
+    public void refreshRouteHeartbeat(String userId, String sessionId) {
+        String normalizedUserId = normalizeUserId(userId);
+        if (normalizedUserId == null || StringUtils.isBlank(sessionId)) {
             return;
         }
-        String normalizedUserId = key.trim();
-        userSession.setUserId(normalizedUserId);
-        userSession.setStatus(UserStatus.ONLINE);
-        userSession.setLastHeartbeat(LocalDateTime.now());
-        sessionUserMap.put(normalizedUserId, userSession);
-        storeRouteState(normalizedUserId, resolveSessionId(userSession));
-        broadcastOnlineStatus(normalizedUserId, UserStatus.ONLINE);
-    }
-
-    @Override
-    public boolean removeSessionMapping(String key) {
-        if (StringUtils.isBlank(key)) {
-            return false;
-        }
-        String normalizedUserId = key.trim();
-        boolean removed = sessionUserMap.remove(normalizedUserId) != null;
-        if (removed && isRouteOwnedByCurrentInstance(normalizedUserId)) {
-            stringRedisTemplate.delete(routeKey(normalizedUserId));
-            stringRedisTemplate.delete(routeSessionKey(normalizedUserId));
-        }
-        return removed;
-    }
-
-    @Override
-    public boolean hasLocalSession(String userId) {
-        if (StringUtils.isBlank(userId)) {
-            return false;
-        }
-        UserSession session = sessionUserMap.get(userId.trim());
-        return session != null && isSessionOpenAndFresh(session, LocalDateTime.now());
-    }
-
-    @Override
-    public boolean isRouteOwnedByCurrentInstance(String userId) {
-        if (StringUtils.isBlank(userId)) {
-            return false;
-        }
-        String routeInstanceId = stringRedisTemplate.opsForValue().get(routeKey(userId.trim()));
-        return instanceId.equals(routeInstanceId);
+        withUserLock(normalizedUserId, () -> {
+            UserSession userSession = sessionsById.get(sessionId.trim());
+            if (userSession == null || !normalizedUserId.equals(normalizeUserId(userSession.getUserId()))) {
+                return null;
+            }
+            WebSocketSession webSocketSession = userSession.getWebSocketSession();
+            if (webSocketSession == null || !webSocketSession.isOpen()) {
+                return null;
+            }
+            userSession.setLastHeartbeat(LocalDateTime.now());
+            userSession.setStatus(UserStatus.ONLINE);
+            return null;
+        });
     }
 
     @Override
     public String getCurrentInstanceId() {
-        return instanceId;
+        return nodeIdentity.getInstanceId();
     }
 
     @Override
-    public RouteSessionInfo getRouteSessionInfo(String userId) {
-        if (StringUtils.isBlank(userId)) {
+    public boolean isSessionActive(String userId, String sessionId) {
+        String normalizedUserId = normalizeUserId(userId);
+        if (normalizedUserId == null || StringUtils.isBlank(sessionId)) {
+            return false;
+        }
+        UserSession userSession = sessionsById.get(sessionId.trim());
+        return userSession != null
+                && normalizedUserId.equals(normalizeUserId(userSession.getUserId()))
+                && isSessionOpenAndFresh(userSession, LocalDateTime.now());
+    }
+
+    @Override
+    public UserSession getSession(String sessionId) {
+        if (StringUtils.isBlank(sessionId)) {
             return null;
         }
-        String raw = stringRedisTemplate.opsForValue().get(routeSessionKey(userId.trim()));
-        if (StringUtils.isBlank(raw)) {
-            return null;
+        return sessionsById.get(sessionId.trim());
+    }
+
+    @Override
+    public Map<String, UserSession> getSessionsById() {
+        return sessionsById;
+    }
+
+    @Override
+    public List<UserSession> getLocalSessions(String userId) {
+        String normalizedUserId = normalizeUserId(userId);
+        if (normalizedUserId == null) {
+            return List.of();
         }
-        try {
-            RouteSessionInfo info = JSON.parseObject(raw, RouteSessionInfo.class);
-            if (info == null || StringUtils.isBlank(info.getInstanceId()) || StringUtils.isBlank(info.getSessionId())) {
-                return null;
+        Set<String> sessionIds = sessionIdsByUser.get(normalizedUserId);
+        if (sessionIds == null || sessionIds.isEmpty()) {
+            return List.of();
+        }
+        LocalDateTime now = LocalDateTime.now();
+        List<UserSession> sessions = new ArrayList<>();
+        for (String sessionId : new HashSet<>(sessionIds)) {
+            UserSession userSession = sessionsById.get(sessionId);
+            if (userSession != null && isSessionOpenAndFresh(userSession, now)) {
+                sessions.add(userSession);
             }
-            return info;
-        } catch (Exception ex) {
-            log.debug("解析路由会话信息失败: userId={}", userId, ex);
-            return null;
         }
+        return sessions;
     }
 
     @Override
-    public void publishSessionKickout(String targetInstanceId, String userId, String sessionId, String reason) {
-        if (StringUtils.isBlank(targetInstanceId) || StringUtils.isBlank(userId) || StringUtils.isBlank(sessionId)) {
+    public Set<String> getLocallyOnlineUserIds() {
+        Set<String> userIds = new LinkedHashSet<>();
+        for (String userId : sessionIdsByUser.keySet()) {
+            if (!getLocalSessions(userId).isEmpty()) {
+                userIds.add(userId);
+            }
+        }
+        return userIds;
+    }
+
+    @Override
+    public void registerSession(String userId, UserSession userSession) {
+        String normalizedUserId = normalizeUserId(userId);
+        String sessionId = resolveSessionId(userSession);
+        if (normalizedUserId == null || StringUtils.isBlank(sessionId) || userSession == null) {
             return;
         }
-        try {
-            WsPushEvent event = WsPushEvent.builder()
-                    .eventId("kickout:" + userId.trim() + ":" + sessionId.trim() + ":" + System.currentTimeMillis())
-                    .eventType(EVENT_TYPE_SESSION_KICKOUT)
-                    .payload(JSON.toJSONString(Map.of(
-                            "userId", userId.trim(),
-                            "sessionId", sessionId.trim(),
-                            "reason", StringUtils.defaultIfBlank(reason, "新连接建立")
-                    )))
-                    .createdAt(LocalDateTime.now())
-                    .version(WS_PUSH_EVENT_VERSION)
-                    .build();
-            stringRedisTemplate.convertAndSend(wsChannelPrefix + targetInstanceId.trim(), JSON.toJSONString(event));
-        } catch (Exception ex) {
-            log.warn("发布跨实例踢下线事件失败: targetInstanceId={}, userId={}", targetInstanceId, userId, ex);
+
+        LocalDateTime now = LocalDateTime.now();
+        boolean firstLocalSession = withUserLock(normalizedUserId, () -> {
+            userSession.setUserId(normalizedUserId);
+            userSession.setStatus(UserStatus.ONLINE);
+            userSession.setLastHeartbeat(now);
+
+            Set<String> sessionIds = sessionIdsByUser.computeIfAbsent(normalizedUserId, key -> ConcurrentHashMap.newKeySet());
+            boolean firstLocal = sessionIds.isEmpty();
+            sessionIds.add(sessionId);
+            sessionsById.put(sessionId, userSession);
+
+            if (firstLocal) {
+                upsertRouteRegistration(normalizedUserId);
+            }
+            return firstLocal;
+        });
+
+        if (firstLocalSession) {
+            broadcastOnlineStatus(normalizedUserId, UserStatus.ONLINE);
         }
     }
 
     @Override
-    public boolean disconnectLocalSessionIfMatch(String userId, String sessionId, String reason) {
-        if (StringUtils.isBlank(userId) || StringUtils.isBlank(sessionId)) {
+    public boolean unregisterSession(String userId, String sessionId, CloseStatus closeStatus) {
+        if (StringUtils.isBlank(sessionId)) {
             return false;
         }
-        String normalizedUserId = userId.trim();
-        UserSession currentSession = sessionUserMap.get(normalizedUserId);
-        if (currentSession == null) {
+
+        String normalizedUserId = normalizeUserId(userId);
+        if (normalizedUserId == null) {
+            UserSession existingSession = sessionsById.get(sessionId.trim());
+            normalizedUserId = existingSession == null ? null : normalizeUserId(existingSession.getUserId());
+        }
+        if (normalizedUserId == null) {
             return false;
         }
-        String currentSessionId = resolveSessionId(currentSession);
-        if (!sessionId.trim().equals(currentSessionId)) {
-            return false;
-        }
-        boolean removed = sessionUserMap.remove(normalizedUserId, currentSession);
+
+        String lockedUserId = normalizedUserId;
+        List<UserSession> removedSessions = new ArrayList<>(1);
+        boolean[] lastLocalSession = new boolean[1];
+        boolean removed = withUserLock(lockedUserId, () -> {
+            UserSession existingSession = sessionsById.get(sessionId.trim());
+            if (existingSession == null) {
+                return false;
+            }
+            if (!lockedUserId.equals(normalizeUserId(existingSession.getUserId()))) {
+                return false;
+            }
+
+            UserSession removedSession = sessionsById.remove(sessionId.trim());
+            if (removedSession == null) {
+                return false;
+            }
+            removedSessions.add(removedSession);
+
+            Set<String> sessionIds = sessionIdsByUser.get(lockedUserId);
+            if (sessionIds != null) {
+                sessionIds.remove(sessionId.trim());
+                if (sessionIds.isEmpty()) {
+                    sessionIdsByUser.remove(lockedUserId);
+                    removeRouteRegistration(lockedUserId);
+                    lastLocalSession[0] = true;
+                }
+            }
+            return true;
+        });
+
         if (!removed) {
             return false;
         }
-        closeSessionQuietly(
-                normalizedUserId,
-                currentSession.getWebSocketSession(),
-                CloseStatus.NORMAL.withReason(StringUtils.defaultIfBlank(reason, "新连接建立"))
-        );
+
+        UserSession removedSession = removedSessions.get(0);
+        closeSessionQuietly(lockedUserId, removedSession.getWebSocketSession(), closeStatus);
+        if (lastLocalSession[0] && !isUserGloballyOnline(lockedUserId)) {
+            broadcastOnlineStatus(lockedUserId, UserStatus.OFFLINE);
+        }
         return true;
     }
 
     private boolean isSessionOpenAndFresh(UserSession userSession, LocalDateTime now) {
-        if (userSession.getStatus() != UserStatus.ONLINE) {
+        if (userSession == null || userSession.getStatus() != UserStatus.ONLINE) {
             return false;
         }
-        if (userSession.getWebSocketSession() == null || !userSession.getWebSocketSession().isOpen()) {
+        WebSocketSession webSocketSession = userSession.getWebSocketSession();
+        if (webSocketSession == null || !webSocketSession.isOpen()) {
             return false;
         }
         LocalDateTime lastHeartbeat = userSession.getLastHeartbeat();
         if (lastHeartbeat == null) {
             return false;
         }
-        return !lastHeartbeat.isBefore(now.minus(HEARTBEAT_TIMEOUT));
+        return !lastHeartbeat.isBefore(now.minus(resolveHeartbeatTimeout()));
     }
 
-    private boolean pushPayloadToUser(Long userId, String wsType, Object payloadData) {
-        String userIdStr = String.valueOf(userId);
-        UserSession userSession = sessionUserMap.get(userIdStr);
-        if (userSession == null || userSession.getWebSocketSession() == null || !userSession.getWebSocketSession().isOpen()) {
-            log.debug("用户 {} 不在线或连接断开，事件未推送, type={}", userIdStr, wsType);
+    private boolean pushPayloadToSession(String sessionId, String wsType, Object payloadData) {
+        UserSession userSession = sessionsById.get(sessionId);
+        if (userSession == null) {
+            return false;
+        }
+
+        WebSocketSession webSocketSession = userSession.getWebSocketSession();
+        if (webSocketSession == null || !webSocketSession.isOpen()) {
             return false;
         }
 
@@ -333,10 +428,11 @@ public class ImServiceImpl implements IImService {
         String textMessage = JSON.toJSONString(wsMessage, com.alibaba.fastjson2.JSONWriter.Feature.WriteLongAsString);
 
         try {
-            userSession.getWebSocketSession().sendMessage(new TextMessage(textMessage));
+            webSocketSession.sendMessage(new TextMessage(textMessage));
             return true;
         } catch (Exception e) {
-            log.warn("推送事件失败: userId={}, type={}, error={}", userIdStr, wsType, e.getMessage());
+            log.warn("Push websocket payload failed. userId={}, sessionId={}, type={}, error={}",
+                    userSession.getUserId(), sessionId, wsType, e.getMessage());
             return false;
         }
     }
@@ -348,7 +444,8 @@ public class ImServiceImpl implements IImService {
                 .replace("\r", " ")
                 .replace("\n", " ");
         String status = success ? "success" : "fail";
-        log.info("发送id【{}】，接收id【{}】，消息内容【{}】状态【{}】", senderId, targetUserId, content, status);
+        log.info("Message push result. senderId={}, receiverId={}, content={}, status={}",
+                senderId, targetUserId, content, status);
     }
 
     private void broadcastOnlineStatus(String userId, UserStatus status) {
@@ -363,7 +460,7 @@ public class ImServiceImpl implements IImService {
         payload.put("timestamp", System.currentTimeMillis());
         String text = JSON.toJSONString(payload);
 
-        for (UserSession session : sessionUserMap.values()) {
+        for (UserSession session : sessionsById.values()) {
             if (session == null) {
                 continue;
             }
@@ -374,21 +471,53 @@ public class ImServiceImpl implements IImService {
             try {
                 webSocketSession.sendMessage(new TextMessage(text));
             } catch (Exception e) {
-                log.debug("广播在线状态失败: targetUserId={}", session.getUserId(), e);
+                log.debug("Broadcast online status failed. targetUserId={}", session.getUserId(), e);
             }
         }
     }
 
-    private void storeRouteState(String userId, String sessionId) {
-        if (StringUtils.isBlank(userId) || StringUtils.isBlank(sessionId)) {
-            return;
+    private void upsertRouteRegistration(String userId) {
+        createLease(userId);
+        routeMultimap.put(userId, getCurrentInstanceId());
+    }
+
+    private void removeRouteRegistration(String userId) {
+        routeMultimap.remove(userId, getCurrentInstanceId());
+        redissonClient.getBucket(leaseKey(userId, getCurrentInstanceId())).delete();
+    }
+
+    private boolean isUserGloballyOnline(String userId) {
+        Set<String> instanceIds = new LinkedHashSet<>(routeMultimap.getAll(userId));
+        if (instanceIds.isEmpty()) {
+            return false;
         }
-        stringRedisTemplate.opsForValue().set(routeKey(userId), instanceId, HEARTBEAT_TIMEOUT);
-        stringRedisTemplate.opsForValue().set(
-                routeSessionKey(userId),
-                JSON.toJSONString(new RouteSessionInfo(instanceId, sessionId)),
-                HEARTBEAT_TIMEOUT
-        );
+        boolean online = false;
+        for (String instanceId : instanceIds) {
+            if (StringUtils.isBlank(instanceId)) {
+                continue;
+            }
+            String normalizedInstanceId = instanceId.trim();
+            if (hasLiveLease(userId, normalizedInstanceId)) {
+                online = true;
+                continue;
+            }
+            routeMultimap.remove(userId, normalizedInstanceId);
+        }
+        return online;
+    }
+
+    private boolean hasLiveLease(String userId, String instanceId) {
+        RBucket<String> bucket = redissonClient.getBucket(leaseKey(userId, instanceId));
+        return bucket.isExists();
+    }
+
+    private void createLease(String userId) {
+        redissonClient.getBucket(leaseKey(userId, getCurrentInstanceId()))
+                .set(LEASE_VALUE, Math.max(1000L, routeLeaseTtlMs), TimeUnit.MILLISECONDS);
+    }
+
+    private String leaseKey(String userId, String instanceId) {
+        return routeLeaseKeyPrefix + userId + ":" + instanceId;
     }
 
     private String resolveSessionId(UserSession userSession) {
@@ -396,10 +525,6 @@ public class ImServiceImpl implements IImService {
             return null;
         }
         return userSession.getWebSocketSession().getId();
-    }
-
-    private void closeSessionQuietly(String userId, WebSocketSession webSocketSession) {
-        closeSessionQuietly(userId, webSocketSession, null);
     }
 
     private void closeSessionQuietly(String userId, WebSocketSession webSocketSession, CloseStatus status) {
@@ -413,15 +538,25 @@ public class ImServiceImpl implements IImService {
                 webSocketSession.close(status);
             }
         } catch (Exception closeError) {
-            log.debug("关闭离线用户会话失败: userId={}", userId, closeError);
+            log.debug("Close websocket session failed. userId={}", userId, closeError);
         }
     }
 
-    private String routeKey(String userId) {
-        return routeUserKeyPrefix + userId;
+    private Duration resolveHeartbeatTimeout() {
+        return Duration.ofMillis(Math.max(1000L, heartbeatTimeoutMs));
     }
 
-    private String routeSessionKey(String userId) {
-        return routeSessionKeyPrefix + userId;
+    private String normalizeUserId(String userId) {
+        return StringUtils.isBlank(userId) ? null : userId.trim();
+    }
+
+    private <T> T withUserLock(String userId, Supplier<T> supplier) {
+        ReentrantLock lock = userLocks.computeIfAbsent(userId, key -> new ReentrantLock());
+        lock.lock();
+        try {
+            return supplier.get();
+        } finally {
+            lock.unlock();
+        }
     }
 }

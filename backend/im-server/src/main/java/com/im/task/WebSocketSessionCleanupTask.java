@@ -4,10 +4,10 @@ import com.im.entity.UserSession;
 import com.im.service.IImService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
-import org.springframework.web.socket.WebSocketSession;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -19,13 +19,14 @@ public class WebSocketSessionCleanupTask {
 
     private final IImService imService;
 
+    @Value("${im.heartbeat.timeout:90000}")
+    private long heartbeatTimeoutMs;
+
     @Scheduled(fixedDelayString = "${im.websocket.cleanup-interval-ms:60000}")
     public void cleanupInactiveSessions() {
-        LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(5);
-        Map<String, UserSession> sessionMap = imService.getSessionUserMap();
-
-        for (Map.Entry<String, UserSession> entry : sessionMap.entrySet()) {
-            String userId = entry.getKey();
+        LocalDateTime cutoffTime = LocalDateTime.now().minusNanos(Math.max(1000L, heartbeatTimeoutMs) * 1_000_000);
+        for (Map.Entry<String, UserSession> entry : imService.getSessionsById().entrySet()) {
+            String sessionId = entry.getKey();
             UserSession userSession = entry.getValue();
             if (userSession == null || userSession.getLastHeartbeat() == null) {
                 continue;
@@ -33,17 +34,7 @@ public class WebSocketSessionCleanupTask {
             if (userSession.getLastHeartbeat().isAfter(cutoffTime)) {
                 continue;
             }
-
-            WebSocketSession webSocketSession = userSession.getWebSocketSession();
-            if (webSocketSession != null && webSocketSession.isOpen()) {
-                try {
-                    webSocketSession.close(CloseStatus.GOING_AWAY.withReason("会话超时"));
-                } catch (Exception e) {
-                    log.debug("关闭超时会话失败: userId={}", userId, e);
-                }
-            }
-            imService.userOffline(userId);
+            imService.unregisterSession(userSession.getUserId(), sessionId, CloseStatus.GOING_AWAY.withReason("session timeout"));
         }
     }
 }
-

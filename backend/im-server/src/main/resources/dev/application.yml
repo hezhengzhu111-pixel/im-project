@@ -34,7 +34,7 @@ jwt:
   prefix: "Bearer "
 
 im:
-  instance-id: ${HOSTNAME:${spring.application.name}}
+  instance-id: ${IM_INSTANCE_ID:}
   jwt:
     enabled: true
   virtual-threads:
@@ -84,6 +84,16 @@ im:
       max-content-length: 10000
   retry:
     push-interval-ms: 1000
+    item-expire-ms: 60000
+    janitor-initial-delay-ms: 15000
+    janitor-interval-ms: 300000
+  ws:
+    channel-prefix: "im:channel:"
+    retry:
+      max-attempts: 20
+      base-backoff-ms: 500
+    idempotency:
+      ttl-ms: 300000
   websocket:
     endpoint: /websocket
     allowed-origins: "*"
@@ -95,7 +105,10 @@ im:
     url: ${IM_SELF_URL:http://127.0.0.1:8083}
     max-group-member-size: 500
   route:
-    user-key-prefix: "im:route:user:"
+    users-key: "im:route:users"
+    lease-key-prefix: "im:route:lease:"
+    lease-ttl-ms: 120000
+    lease-renew-interval-ms: 30000
 
 management:
   endpoints:

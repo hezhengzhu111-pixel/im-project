@@ -1,7 +1,7 @@
 package com.im.service.impl;
 
-import com.im.entity.Group;
-import com.im.entity.GroupMember;
+import com.im.group.entity.Group;
+import com.im.group.entity.GroupMember;
 import com.im.feign.UserServiceFeignClient;
 import com.im.mapper.GroupMapper;
 import com.im.mapper.GroupMemberMapper;

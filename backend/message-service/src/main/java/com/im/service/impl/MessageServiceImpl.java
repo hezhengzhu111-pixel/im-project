@@ -9,17 +9,19 @@ import com.im.dto.MessageDTO;
 import com.im.dto.ReadReceiptDTO;
 import com.im.dto.request.SendGroupMessageRequest;
 import com.im.dto.request.SendPrivateMessageRequest;
-import com.im.entity.Message;
 import com.im.dto.ConversationDTO;
 import com.im.enums.MessageType;
+import com.im.handler.MessageHandler;
+import com.im.message.entity.GroupReadCursor;
+import com.im.message.entity.Message;
 import com.im.exception.BusinessException;
 import com.im.feign.GroupServiceFeignClient;
 import com.im.feign.UserServiceFeignClient;
-import com.im.entity.GroupReadCursor;
 import com.im.mapper.GroupReadCursorMapper;
 import com.im.mapper.MessageMapper;
 import com.im.service.OutboxService;
 import com.im.service.MessageService;
+import com.im.service.command.SendMessageCommand;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
 import lombok.RequiredArgsConstructor;
@@ -64,6 +66,7 @@ public class MessageServiceImpl implements MessageService {
     private final UserProfileCache userProfileCache;
     private final RedissonClient redissonClient;
     private final TransactionTemplate transactionTemplate;
+    private final List<MessageHandler> messageHandlers;
     
     private static final String CONVERSATION_CACHE_KEY = "conversations:user:";
     private static final String LAST_MESSAGE_CACHE_KEY = "last_message:";
@@ -92,32 +95,11 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     public MessageDTO sendPrivateMessage(Long senderId, SendPrivateMessageRequest request) {
-        Long receiverId = Long.valueOf(request.getReceiverId());
-        String clientMessageId = requireClientMessageId(request.getClientMessageId());
-        request.setClientMessageId(clientMessageId);
-        PrivateSendInput input = privateSendInput(senderId, receiverId, request);
-        String lockKey = buildSendMessageLockKey(senderId, clientMessageId);
-        RLock conversationLock = acquireConversationLock(lockKey);
-        try {
-            SendMessageTxResult txResult = transactionTemplate.execute(status -> {
-                Message existingMessage = findExistingMessageByClientMessageId(senderId, input.request().getClientMessageId());
-                if (existingMessage != null) {
-                    return new SendMessageTxResult(existingMessage, false);
-                }
-                Message savedMessage = privateSendProcess(input);
-                enqueuePrivateMessage(input, savedMessage);
-                return new SendMessageTxResult(savedMessage, true);
-            });
-            if (txResult == null) {
+        return sendMessage(toPrivateCommand(senderId, request));
+        /*
                 throw new BusinessException("发送消息失败");
             }
-            if (txResult.created()) {
-                clearConversationCache(input.senderId(), input.receiverId(), true);
-            }
-            return buildPrivateMessageDTO(input, txResult.message());
-        } finally {
-            releaseConversationLock(conversationLock);
-        }
+        */
     }
 
     private Message createMessageData(SendPrivateMessageRequest request, Long senderId, Long receiverId)  {
@@ -138,7 +120,8 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     public MessageDTO sendGroupMessage(Long senderId, SendGroupMessageRequest request) {
-        String groupId = request.getGroupId();
+        return sendMessage(toGroupCommand(senderId, request));
+        /*
         if (!StringUtils.hasText(groupId)) {
             throw new BusinessException("群组ID不能为空");
         }
@@ -168,10 +151,13 @@ public class MessageServiceImpl implements MessageService {
         } finally {
             releaseConversationLock(conversationLock);
         }
+        */
     }
 
     @Override
     public MessageDTO sendSystemMessage(Long receiverId, String content, Long senderId) {
+        return sendMessage(toSystemCommand(receiverId, content, senderId));
+        /*
         if (receiverId == null || receiverId <= 0) {
             throw new IllegalArgumentException("receiverId cannot be null");
         }
@@ -193,7 +179,7 @@ public class MessageServiceImpl implements MessageService {
 
                 Message messageData = createMessageData(request, actualSenderId, receiverId);
                 messageData.setIsGroupChat(false);
-                messageMapper.insert(messageData);
+                persistMessage(messageData, receiverId);
                 enqueueSystemMessage(actualSenderId, receiverId, messageData);
                 return new SendMessageTxResult(messageData, true);
             });
@@ -205,6 +191,67 @@ public class MessageServiceImpl implements MessageService {
         } finally {
             releaseConversationLock(conversationLock);
         }
+        */
+    }
+
+    @Override
+    public MessageDTO sendMessage(SendMessageCommand command) {
+        MessageHandler matchedHandler = messageHandlers.stream()
+                .filter(messageHandler -> messageHandler.supports(command))
+                .findFirst()
+                /*
+                .orElseThrow(() -> new BusinessException("未找到匹配的消息处理器"))
+                */
+                .orElseThrow(() -> new BusinessException("no matching message handler"));
+        return matchedHandler.handle(command);
+    }
+
+    private SendMessageCommand toPrivateCommand(Long senderId, SendPrivateMessageRequest request) {
+        return SendMessageCommand.builder()
+                .senderId(senderId)
+                .receiverId(request == null || !StringUtils.hasText(request.getReceiverId()) ? null : Long.valueOf(request.getReceiverId()))
+                .isGroup(false)
+                .messageType(request == null ? null : request.getMessageType())
+                .clientMessageId(request == null ? null : request.getClientMessageId())
+                .content(request == null ? null : request.getContent())
+                .extra(request == null ? null : request.getExtra())
+                .mediaUrl(request == null ? null : request.getMediaUrl())
+                .mediaSize(request == null ? null : request.getMediaSize())
+                .mediaName(request == null ? null : request.getMediaName())
+                .thumbnailUrl(request == null ? null : request.getThumbnailUrl())
+                .duration(request == null ? null : request.getDuration())
+                .locationInfo(request == null ? null : request.getLocationInfo())
+                .replyToMessageId(request == null ? null : request.getReplyToMessageId())
+                .build();
+    }
+
+    private SendMessageCommand toGroupCommand(Long senderId, SendGroupMessageRequest request) {
+        return SendMessageCommand.builder()
+                .senderId(senderId)
+                .groupId(request == null || !StringUtils.hasText(request.getGroupId()) ? null : Long.valueOf(request.getGroupId()))
+                .isGroup(true)
+                .messageType(request == null ? null : request.getMessageType())
+                .clientMessageId(request == null ? null : request.getClientMessageId())
+                .content(request == null ? null : request.getContent())
+                .extra(request == null ? null : request.getExtra())
+                .mediaUrl(request == null ? null : request.getMediaUrl())
+                .mediaSize(request == null ? null : request.getMediaSize())
+                .mediaName(request == null ? null : request.getMediaName())
+                .thumbnailUrl(request == null ? null : request.getThumbnailUrl())
+                .duration(request == null ? null : request.getDuration())
+                .locationInfo(request == null ? null : request.getLocationInfo())
+                .replyToMessageId(request == null ? null : request.getReplyToMessageId())
+                .build();
+    }
+
+    private SendMessageCommand toSystemCommand(Long receiverId, String content, Long senderId) {
+        return SendMessageCommand.builder()
+                .senderId(senderId)
+                .receiverId(receiverId)
+                .isGroup(false)
+                .messageType(MessageType.SYSTEM)
+                .content(content)
+                .build();
     }
 
     private PrivateSendInput privateSendInput(Long senderId, Long receiverId, SendPrivateMessageRequest request) {
@@ -227,7 +274,7 @@ public class MessageServiceImpl implements MessageService {
     private Message privateSendProcess(PrivateSendInput input) {
         Message messageData = createMessageData(input.request(), input.senderId(), input.receiverId());
         messageData.setIsGroupChat(false);
-        messageMapper.insert(messageData);
+        persistMessage(messageData, input.receiverId());
         messageRateLimiter.recordMessage(input.senderId());
         return messageData;
     }
@@ -282,7 +329,7 @@ public class MessageServiceImpl implements MessageService {
 
     private Message groupSendProcess(GroupSendInput input) {
         Message messageData = createMessageData(input.request(), input.senderId());
-        messageMapper.insert(messageData);
+        persistMessage(messageData, input.groupId());
         messageRateLimiter.recordMessage(input.senderId());
         return messageData;
     }
@@ -337,6 +384,39 @@ public class MessageServiceImpl implements MessageService {
             Message message,
             boolean created
     ) {
+    }
+
+    private void persistMessage(Message message, Long targetId) {
+        try {
+            messageMapper.insert(message);
+            logMessageSaveResult(message == null ? null : message.getSenderId(), targetId, resolveMessageLogContent(message), true);
+        } catch (Exception exception) {
+            logMessageSaveResult(message == null ? null : message.getSenderId(), targetId, resolveMessageLogContent(message), false);
+            throw exception;
+        }
+    }
+
+    private String resolveMessageLogContent(Message message) {
+        if (message == null) {
+            return "";
+        }
+        String rawContent = StringUtils.hasText(message.getContent()) ? message.getContent() : message.getMediaUrl();
+        if (!StringUtils.hasText(rawContent)) {
+            return "";
+        }
+        return rawContent.replace("\r", " ").replace("\n", " ");
+    }
+
+    private void logMessageSaveResult(Long senderId, Long targetId, String content, boolean success) {
+        String senderIdText = senderId == null ? "" : String.valueOf(senderId);
+        String targetIdText = targetId == null ? "" : String.valueOf(targetId);
+        String safeContent = content == null ? "" : content;
+        String status = success ? "success" : "fail";
+        log.info("\u53d1\u9001id\u3010{}\u3011\uff0c\u63a5\u6536id\u3010{}\u3011\uff0c\u6d88\u606f\u5185\u5bb9\u3010{}\u3011\u72b6\u6001\u3010{}\u3011",
+                senderIdText,
+                targetIdText,
+                safeContent,
+                status);
     }
 
     private Message createMessageData(SendGroupMessageRequest request, Long senderId) {

@@ -15,7 +15,7 @@ public class ProcessedMessageDeduplicator {
     private final RedissonClient redissonClient;
     private RMapCache<String, Boolean> processedCache;
 
-    @Value("${im.ws.idempotency.ttl-ms:600000}")
+    @Value("${im.ws.idempotency.ttl-ms:300000}")
     private long ttlMs;
 
     public ProcessedMessageDeduplicator(RedissonClient redissonClient) {

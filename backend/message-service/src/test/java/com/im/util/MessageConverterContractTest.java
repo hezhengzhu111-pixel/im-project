@@ -2,7 +2,7 @@ package com.im.util;
 
 import com.im.dto.MessageDTO;
 import com.im.dto.GroupMemberDTO;
-import com.im.entity.Message;
+import com.im.message.entity.Message;
 import com.im.enums.MessageType;
 import org.junit.jupiter.api.Test;
 

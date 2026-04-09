@@ -23,7 +23,6 @@ public class MessageRetryTask {
 
     @Scheduled(fixedDelayString = "${im.retry.push-interval-ms:1000}")
     public void retryPush() {
-        // 每次定时任务尝试处理最多 100 条重试消息
         for (int i = 0; i < 100; i++) {
             MessageRetryQueue.RetryItem item = retryQueue.pollReady();
             if (item == null) {
@@ -32,7 +31,8 @@ public class MessageRetryTask {
             try {
                 imServerExecutor.execute(() -> processRetryItem(item));
             } catch (Exception e) {
-                log.warn("WebSocket重试任务提交失败: userId={}, error={}", item.getUserId(), e.getMessage());
+                log.warn("WebSocket retry task submission failed. userId={}, sessionId={}, error={}",
+                        item.getUserId(), item.getSessionId(), e.getMessage());
                 retryQueue.requeue(item, "executor_rejected");
             }
         }
@@ -46,8 +46,8 @@ public class MessageRetryTask {
             }
         } catch (Exception e) {
             retryQueue.requeue(item, e.getMessage());
-            log.debug("WebSocket重试推送失败: userId={}, attempts={}, error={}",
-                    item.getUserId(), item.getAttempts(), e.getMessage());
+            log.debug("WebSocket retry push failed. userId={}, sessionId={}, attempts={}, error={}",
+                    item.getUserId(), item.getSessionId(), item.getAttempts(), e.getMessage());
         }
     }
 }

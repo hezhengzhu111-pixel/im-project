@@ -5,7 +5,10 @@ import com.im.dto.ConversationDTO;
 import com.im.dto.MessageDTO;
 import com.im.dto.request.SendGroupMessageRequest;
 import com.im.dto.request.SendPrivateMessageRequest;
+import com.im.enums.MessageType;
+import com.im.exception.BusinessException;
 import com.im.service.MessageService;
+import com.im.service.command.SendMessageCommand;
 
 import java.util.List;
 import java.util.HashMap;
@@ -21,9 +24,6 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.time.LocalDateTime;
 
-import com.im.handler.PrivateMessageHandler;
-import com.im.handler.GroupMessageHandler;
-
 /**
  * 消息控制器
  */
@@ -34,12 +34,6 @@ public class MessageController {
 
     @Autowired
     private MessageService messageService;
-
-    @Autowired
-    private PrivateMessageHandler privateMessageHandler;
-
-    @Autowired
-    private GroupMessageHandler groupMessageHandler;
 
     @Value("${im.message.text.enforce:true}")
     private boolean textEnforce;
@@ -62,7 +56,8 @@ public class MessageController {
     public ApiResponse<MessageDTO> sendPrivateMessage(
             @RequestAttribute("userId") Long userId,
             @Valid @RequestBody SendPrivateMessageRequest request) {
-        MessageDTO dto = privateMessageHandler.handle(userId, request);
+        rejectSystemMessage(request.getMessageType());
+        MessageDTO dto = messageService.sendMessage(toPrivateCommand(userId, request));
         return ApiResponse.success("发送私聊消息成功", dto);
     }
 
@@ -73,7 +68,8 @@ public class MessageController {
     public ApiResponse<MessageDTO> sendGroupMessage(
             @RequestAttribute("userId") Long userId,
             @Valid @RequestBody SendGroupMessageRequest request) {
-        MessageDTO dto = groupMessageHandler.handle(userId, request);
+        rejectSystemMessage(request.getMessageType());
+        MessageDTO dto = messageService.sendMessage(toGroupCommand(userId, request));
         return ApiResponse.success("发送群聊消息成功", dto);
     }
     
@@ -145,5 +141,48 @@ public class MessageController {
             @PathVariable("conversationId") String conversationId) {
         messageService.markAsRead(userId, conversationId);
         return ApiResponse.success("标记已读成功", "消息已标记为已读");
+    }
+    private void rejectSystemMessage(MessageType messageType) {
+        if (messageType == MessageType.SYSTEM) {
+            throw new BusinessException("SYSTEM message is only allowed via internal API");
+        }
+    }
+
+    private SendMessageCommand toPrivateCommand(Long userId, SendPrivateMessageRequest request) {
+        return SendMessageCommand.builder()
+                .senderId(userId)
+                .receiverId(request == null ? null : Long.valueOf(request.getReceiverId()))
+                .isGroup(false)
+                .messageType(request == null ? null : request.getMessageType())
+                .clientMessageId(request == null ? null : request.getClientMessageId())
+                .content(request == null ? null : request.getContent())
+                .extra(request == null ? null : request.getExtra())
+                .mediaUrl(request == null ? null : request.getMediaUrl())
+                .mediaSize(request == null ? null : request.getMediaSize())
+                .mediaName(request == null ? null : request.getMediaName())
+                .thumbnailUrl(request == null ? null : request.getThumbnailUrl())
+                .duration(request == null ? null : request.getDuration())
+                .locationInfo(request == null ? null : request.getLocationInfo())
+                .replyToMessageId(request == null ? null : request.getReplyToMessageId())
+                .build();
+    }
+
+    private SendMessageCommand toGroupCommand(Long userId, SendGroupMessageRequest request) {
+        return SendMessageCommand.builder()
+                .senderId(userId)
+                .groupId(request == null ? null : Long.valueOf(request.getGroupId()))
+                .isGroup(true)
+                .messageType(request == null ? null : request.getMessageType())
+                .clientMessageId(request == null ? null : request.getClientMessageId())
+                .content(request == null ? null : request.getContent())
+                .extra(request == null ? null : request.getExtra())
+                .mediaUrl(request == null ? null : request.getMediaUrl())
+                .mediaSize(request == null ? null : request.getMediaSize())
+                .mediaName(request == null ? null : request.getMediaName())
+                .thumbnailUrl(request == null ? null : request.getThumbnailUrl())
+                .duration(request == null ? null : request.getDuration())
+                .locationInfo(request == null ? null : request.getLocationInfo())
+                .replyToMessageId(request == null ? null : request.getReplyToMessageId())
+                .build();
     }
 }

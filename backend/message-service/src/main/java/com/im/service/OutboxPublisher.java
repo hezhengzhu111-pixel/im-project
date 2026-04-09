@@ -4,12 +4,14 @@ import com.alibaba.fastjson2.JSON;
 import com.im.dto.MessageDTO;
 import com.im.dto.ReadReceiptDTO;
 import com.im.dto.WsPushEvent;
-import com.im.entity.MessageOutboxEvent;
 import com.im.mapper.MessageOutboxMapper;
+import com.im.message.entity.MessageOutboxEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RSetMultimap;
+import org.redisson.api.RTopic;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -19,8 +21,10 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -34,7 +38,7 @@ public class OutboxPublisher {
     private static final int MAX_ERROR_LEN = 1024;
 
     private final MessageOutboxMapper outboxMapper;
-    private final StringRedisTemplate stringRedisTemplate;
+    private final RedissonClient redissonClient;
 
     @Value("${im.outbox.max-attempts:20}")
     private int maxAttempts;
@@ -48,11 +52,14 @@ public class OutboxPublisher {
     @Value("${im.outbox.recover-sending-timeout-ms:120000}")
     private long recoverSendingTimeoutMs;
 
-    @Value("${im.ws.channel-prefix:im:ws:push:}")
+    @Value("${im.ws.channel-prefix:im:channel:}")
     private String wsChannelPrefix;
 
-    @Value("${im.route.user-key-prefix:im:route:user:}")
-    private String routeUserKeyPrefix;
+    @Value("${im.route.users-key:im:route:users}")
+    private String routeUsersKey;
+
+    @Value("${im.route.lease-key-prefix:im:route:lease:}")
+    private String routeLeaseKeyPrefix;
 
     public void publishById(Long outboxId) {
         if (outboxId == null) {
@@ -84,7 +91,8 @@ public class OutboxPublisher {
                         .createdAt(LocalDateTime.now())
                         .version(WS_PUSH_EVENT_VERSION)
                         .build();
-                stringRedisTemplate.convertAndSend(dispatch.channel(), JSON.toJSONString(wsPushEvent));
+                RTopic topic = redissonClient.getTopic(dispatch.channel());
+                topic.publish(wsPushEvent);
             }
             markSent(outboxId);
         } catch (Exception ex) {
@@ -142,16 +150,20 @@ public class OutboxPublisher {
         if (eventPayload.targetUserIds().isEmpty()) {
             return List.of();
         }
+
         Map<String, List<Long>> usersByInstance = new LinkedHashMap<>();
         List<Long> unroutableUserIds = new ArrayList<>();
         for (Long userId : eventPayload.targetUserIds()) {
-            String instanceId = resolveRouteInstance(userId);
-            if (!StringUtils.hasText(instanceId)) {
+            Set<String> instanceIds = resolveRouteInstances(userId);
+            if (instanceIds.isEmpty()) {
                 unroutableUserIds.add(userId);
                 continue;
             }
-            usersByInstance.computeIfAbsent(instanceId, key -> new ArrayList<>()).add(userId);
+            for (String instanceId : instanceIds) {
+                usersByInstance.computeIfAbsent(instanceId, key -> new ArrayList<>()).add(userId);
+            }
         }
+
         if (!unroutableUserIds.isEmpty()) {
             log.warn("Skip ws push due to missing route. outboxId={}, eventType={}, users={}",
                     event.getId(), eventPayload.eventType(), unroutableUserIds);
@@ -162,7 +174,6 @@ public class OutboxPublisher {
         return usersByInstance.entrySet().stream()
                 .map(entry -> new RouteDispatch(
                         wsChannelPrefix + entry.getKey(),
-                        entry.getKey(),
                         eventPayload.eventType(),
                         eventPayload.messageId(),
                         deduplicate(entry.getValue())))
@@ -187,11 +198,30 @@ public class OutboxPublisher {
         return new EventPayload(eventType, messageId, deduplicate(targets));
     }
 
-    private String resolveRouteInstance(Long userId) {
+    private Set<String> resolveRouteInstances(Long userId) {
         if (userId == null) {
-            return null;
+            return Set.of();
         }
-        return stringRedisTemplate.opsForValue().get(routeUserKeyPrefix + userId);
+        String userIdStr = String.valueOf(userId);
+        RSetMultimap<String, String> routeMultimap = redissonClient.getSetMultimap(routeUsersKey);
+        Set<String> routeInstances = new LinkedHashSet<>(routeMultimap.getAll(userIdStr));
+        if (routeInstances.isEmpty()) {
+            return Set.of();
+        }
+
+        Set<String> liveInstances = new LinkedHashSet<>();
+        for (String instanceId : routeInstances) {
+            if (!StringUtils.hasText(instanceId)) {
+                continue;
+            }
+            String normalizedInstanceId = instanceId.trim();
+            if (redissonClient.getBucket(routeLeaseKeyPrefix + userIdStr + ":" + normalizedInstanceId).isExists()) {
+                liveInstances.add(normalizedInstanceId);
+                continue;
+            }
+            routeMultimap.remove(userIdStr, normalizedInstanceId);
+        }
+        return liveInstances;
     }
 
     private String normalizeEventType(String eventType) {
@@ -218,7 +248,6 @@ public class OutboxPublisher {
     }
 
     private record RouteDispatch(String channel,
-                                 String routeInstanceId,
                                  String eventType,
                                  Long messageId,
                                  List<Long> targetUserIds) {
