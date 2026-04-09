@@ -116,9 +116,13 @@ export async function uploadFile(file: File): Promise<UploadResult> {
       // 转换为UploadResult格式
       return {
         url: response.data.url,
-        fileName: response.data.fileName || file.name,
+        fileName:
+          response.data.fileName ||
+          response.data.filename ||
+          response.data.originalFilename ||
+          file.name,
         size: response.data.size || file.size,
-        fileType: response.data.fileType || file.type,
+        fileType: response.data.fileType || response.data.contentType || file.type,
       };
     } else {
       throw new Error(response.message || "上传失败");
