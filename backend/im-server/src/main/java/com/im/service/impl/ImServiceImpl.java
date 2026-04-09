@@ -165,7 +165,9 @@ public class ImServiceImpl implements IImService {
             return false;
         }
         String wsType = message.getMessageType() == MessageType.SYSTEM ? "SYSTEM" : "MESSAGE";
-        return pushPayloadToUser(userId, wsType, message);
+        boolean success = pushPayloadToUser(userId, wsType, message);
+        logPushMessageResult(message, userId, success);
+        return success;
     }
 
     @Override
@@ -337,6 +339,16 @@ public class ImServiceImpl implements IImService {
             log.warn("推送事件失败: userId={}, type={}, error={}", userIdStr, wsType, e.getMessage());
             return false;
         }
+    }
+
+    private void logPushMessageResult(MessageDTO message, Long receiverId, boolean success) {
+        String senderId = message.getSenderId() == null ? "" : String.valueOf(message.getSenderId());
+        String targetUserId = receiverId == null ? "" : String.valueOf(receiverId);
+        String content = StringUtils.defaultString(message.getContent())
+                .replace("\r", " ")
+                .replace("\n", " ");
+        String status = success ? "success" : "fail";
+        log.info("发送id【{}】，接收id【{}】，消息内容【{}】状态【{}】", senderId, targetUserId, content, status);
     }
 
     private void broadcastOnlineStatus(String userId, UserStatus status) {
