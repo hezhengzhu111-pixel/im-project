@@ -1,4 +1,4 @@
-package com.im.entity;
+package com.im.persistence.entity;
 
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;

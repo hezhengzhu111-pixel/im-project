@@ -1,6 +1,6 @@
 package com.im.service;
 
-import com.im.entity.MessageOutboxEvent;
+import com.im.message.entity.MessageOutboxEvent;
 import com.im.mapper.MessageOutboxMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

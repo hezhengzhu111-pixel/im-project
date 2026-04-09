@@ -1,10 +1,10 @@
 package com.im.service;
 
 import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
 import com.im.dto.MessageDTO;
 import com.im.dto.ReadReceiptDTO;
 import com.im.dto.WsPushEvent;
+import com.im.entity.UserSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -20,7 +20,6 @@ public class WsPushEventDispatcher {
 
     private static final String EVENT_TYPE_MESSAGE = "MESSAGE";
     private static final String EVENT_TYPE_READ_RECEIPT = "READ_RECEIPT";
-    private static final String EVENT_TYPE_SESSION_KICKOUT = "SESSION_KICKOUT";
 
     private final IImService imService;
     private final ProcessedMessageDeduplicator deduplicator;
@@ -35,70 +34,101 @@ public class WsPushEventDispatcher {
     }
 
     public void dispatchEvent(WsPushEvent event) {
-        if (event == null) {
+        if (event == null || CollectionUtils.isEmpty(event.getTargetUserIds())) {
             return;
         }
-        if (EVENT_TYPE_SESSION_KICKOUT.equals(normalizeEventType(event.getEventType()))) {
-            dispatchSessionKickout(event);
-            return;
-        }
-        if (CollectionUtils.isEmpty(event.getTargetUserIds())) {
-            return;
-        }
+
+        String eventType = normalizeEventType(event.getEventType());
+        MessageDTO message = EVENT_TYPE_READ_RECEIPT.equals(eventType)
+                ? null
+                : JSON.parseObject(event.getPayload(), MessageDTO.class);
+        ReadReceiptDTO receipt = EVENT_TYPE_READ_RECEIPT.equals(eventType)
+                ? JSON.parseObject(event.getPayload(), ReadReceiptDTO.class)
+                : null;
+
         for (Long userId : event.getTargetUserIds()) {
             if (userId == null) {
                 continue;
             }
-            dispatchToSingleUser(event, userId, true);
+            String userIdStr = String.valueOf(userId);
+            for (UserSession userSession : imService.getLocalSessions(userIdStr)) {
+                String sessionId = resolveSessionId(userSession);
+                if (!StringUtils.hasText(sessionId)) {
+                    continue;
+                }
+                dispatchToSession(event, eventType, userIdStr, sessionId, message, receipt, true);
+            }
         }
     }
 
     public boolean dispatchRetryItem(MessageRetryQueue.RetryItem item) {
-        if (item == null || item.getEvent() == null || !StringUtils.hasText(item.getUserId())) {
+        if (item == null
+                || item.getEvent() == null
+                || !StringUtils.hasText(item.getUserId())
+                || !StringUtils.hasText(item.getSessionId())) {
             return true;
         }
-        if (!imService.hasLocalSession(item.getUserId()) || !imService.isRouteOwnedByCurrentInstance(item.getUserId())) {
+        if (retryQueue.isExpired(item)) {
             return true;
         }
-        Long userId = Long.valueOf(item.getUserId());
-        return dispatchToSingleUser(item.getEvent(), userId, false);
+        if (StringUtils.hasText(item.getInstanceId())
+                && !item.getInstanceId().equals(imService.getCurrentInstanceId())) {
+            return true;
+        }
+        if (!imService.isSessionActive(item.getUserId(), item.getSessionId())) {
+            return true;
+        }
+
+        String eventType = normalizeEventType(item.getEvent().getEventType());
+        MessageDTO message = EVENT_TYPE_READ_RECEIPT.equals(eventType)
+                ? null
+                : JSON.parseObject(item.getEvent().getPayload(), MessageDTO.class);
+        ReadReceiptDTO receipt = EVENT_TYPE_READ_RECEIPT.equals(eventType)
+                ? JSON.parseObject(item.getEvent().getPayload(), ReadReceiptDTO.class)
+                : null;
+        return dispatchToSession(item.getEvent(), eventType, item.getUserId(), item.getSessionId(), message, receipt, false);
     }
 
-    private boolean dispatchToSingleUser(WsPushEvent event, Long userId, boolean allowRetry) {
-        String dedupKey = resolveEventId(event) + ":" + userId;
+    private boolean dispatchToSession(WsPushEvent event,
+                                      String eventType,
+                                      String userId,
+                                      String sessionId,
+                                      MessageDTO message,
+                                      ReadReceiptDTO receipt,
+                                      boolean allowRetry) {
+        String dedupKey = resolveEventId(event) + ":" + userId + ":" + sessionId;
         if (deduplicator.isProcessed(dedupKey)) {
             return true;
         }
-
-        String eventType = normalizeEventType(event.getEventType());
-        boolean success;
-        if (EVENT_TYPE_READ_RECEIPT.equals(eventType)) {
-            ReadReceiptDTO receipt = JSON.parseObject(event.getPayload(), ReadReceiptDTO.class);
-            success = imService.pushReadReceiptToUser(receipt, userId);
-        } else {
-            MessageDTO messageDTO = JSON.parseObject(event.getPayload(), MessageDTO.class);
-            success = imService.pushMessageToUser(messageDTO, userId);
+        if (!imService.isSessionActive(userId, sessionId)) {
+            return true;
         }
 
+        boolean success = EVENT_TYPE_READ_RECEIPT.equals(eventType)
+                ? imService.pushReadReceiptToSession(receipt, sessionId)
+                : imService.pushMessageToSession(message, sessionId);
         if (success) {
             deduplicator.markProcessed(dedupKey);
             return true;
         }
+        if (!imService.isSessionActive(userId, sessionId)) {
+            return true;
+        }
         if (allowRetry) {
-            retryQueue.enqueue(String.valueOf(userId), copyForUser(event, userId), "ws_push_failed");
+            retryQueue.enqueue(userId, sessionId, copyForSession(event, userId, sessionId), "ws_push_failed");
         }
         return false;
     }
 
-    private WsPushEvent copyForUser(WsPushEvent event, Long userId) {
+    private WsPushEvent copyForSession(WsPushEvent event, String userId, String sessionId) {
         return WsPushEvent.builder()
                 .eventId(resolveEventId(event))
-                .eventType(normalizeEventType(event.getEventType()))
-                .messageId(event.getMessageId())
-                .targetUserIds(List.of(userId))
-                .payload(event.getPayload())
-                .createdAt(event.getCreatedAt())
-                .version(event.getVersion())
+                .eventType(normalizeEventType(event == null ? null : event.getEventType()))
+                .messageId(event == null ? null : event.getMessageId())
+                .targetUserIds(StringUtils.hasText(userId) ? List.of(Long.valueOf(userId)) : List.of())
+                .payload(event == null ? null : event.getPayload())
+                .createdAt(event == null ? null : event.getCreatedAt())
+                .version(event == null ? null : event.getVersion())
                 .build();
     }
 
@@ -109,23 +139,20 @@ public class WsPushEventDispatcher {
         return eventType.trim().toUpperCase();
     }
 
-    private void dispatchSessionKickout(WsPushEvent event) {
-        JSONObject payload = JSON.parseObject(event.getPayload());
-        if (payload == null) {
-            return;
-        }
-        imService.disconnectLocalSessionIfMatch(
-                payload.getString("userId"),
-                payload.getString("sessionId"),
-                payload.getString("reason")
-        );
-    }
-
     private String resolveEventId(WsPushEvent event) {
         if (event != null && StringUtils.hasText(event.getEventId())) {
             return event.getEventId();
         }
         Long messageId = event == null ? null : event.getMessageId();
-        return normalizeEventType(event == null ? null : event.getEventType()) + ":" + (messageId == null ? "unknown" : messageId);
+        return normalizeEventType(event == null ? null : event.getEventType())
+                + ":"
+                + (messageId == null ? "unknown" : messageId);
+    }
+
+    private String resolveSessionId(UserSession userSession) {
+        if (userSession == null || userSession.getWebSocketSession() == null) {
+            return null;
+        }
+        return userSession.getWebSocketSession().getId();
     }
 }

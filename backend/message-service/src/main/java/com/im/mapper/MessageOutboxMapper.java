@@ -1,7 +1,7 @@
 package com.im.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.im.entity.MessageOutboxEvent;
+import com.im.message.entity.MessageOutboxEvent;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;

@@ -4,9 +4,9 @@ import com.im.common.PageResult;
 import com.im.dto.FriendRequestResponseDTO;
 import com.im.dto.FriendListDTO;
 import com.im.dto.FriendRequestDTO;
-import com.im.entity.Friend;
-import com.im.entity.FriendRequest;
-import com.im.entity.User;
+import com.im.user.entity.Friend;
+import com.im.user.entity.FriendRequest;
+import com.im.user.entity.User;
 
 import java.util.List;
 

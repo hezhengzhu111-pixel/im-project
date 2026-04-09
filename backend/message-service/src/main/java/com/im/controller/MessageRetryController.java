@@ -1,7 +1,7 @@
 package com.im.controller;
 
 import com.im.dto.ApiResponse;
-import com.im.entity.MessageOutboxEvent;
+import com.im.message.entity.MessageOutboxEvent;
 import com.im.mapper.MessageOutboxMapper;
 import com.im.service.OutboxService;
 import lombok.RequiredArgsConstructor;

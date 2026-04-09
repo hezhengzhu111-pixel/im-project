@@ -1,7 +1,7 @@
 package com.im.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.im.entity.Message;
+import com.im.message.entity.Message;
 import lombok.Data;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Delete;

@@ -4,11 +4,13 @@ import com.alibaba.fastjson2.JSON;
 import com.im.dto.MessageDTO;
 import com.im.dto.ReadReceiptDTO;
 import com.im.dto.WsPushEvent;
+import com.im.entity.UserSession;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.socket.WebSocketSession;
 
 import java.util.List;
 
@@ -34,60 +36,78 @@ class WsPushEventDispatcherTest {
     private WsPushEventDispatcher dispatcher;
 
     @Test
-    void dispatchEvent_messageEvent_shouldPushToTargets() {
-        MessageDTO messageDTO = new MessageDTO();
-        messageDTO.setId(100L);
-        messageDTO.setContent("hello");
-
+    void dispatchEvent_shouldFanOutMessageToAllLocalSessions() {
+        UserSession sessionA = session("session-a");
+        UserSession sessionB = session("session-b");
         WsPushEvent event = WsPushEvent.builder()
                 .eventId("evt-1")
                 .eventType("MESSAGE")
                 .messageId(100L)
-                .targetUserIds(List.of(2L, 3L))
-                .payload(JSON.toJSONString(messageDTO))
+                .targetUserIds(List.of(2L))
+                .payload(JSON.toJSONString(new MessageDTO()))
                 .build();
-
-        when(deduplicator.isProcessed("evt-1:2")).thenReturn(false);
-        when(deduplicator.isProcessed("evt-1:3")).thenReturn(false);
-        when(imService.pushMessageToUser(any(MessageDTO.class), eq(2L))).thenReturn(true);
-        when(imService.pushMessageToUser(any(MessageDTO.class), eq(3L))).thenReturn(true);
+        when(imService.getLocalSessions("2")).thenReturn(List.of(sessionA, sessionB));
+        when(deduplicator.isProcessed("evt-1:2:session-a")).thenReturn(false);
+        when(deduplicator.isProcessed("evt-1:2:session-b")).thenReturn(false);
+        when(imService.isSessionActive("2", "session-a")).thenReturn(true);
+        when(imService.isSessionActive("2", "session-b")).thenReturn(true);
+        when(imService.pushMessageToSession(any(MessageDTO.class), eq("session-a"))).thenReturn(true);
+        when(imService.pushMessageToSession(any(MessageDTO.class), eq("session-b"))).thenReturn(true);
 
         dispatcher.dispatchEvent(event);
 
-        verify(imService).pushMessageToUser(any(MessageDTO.class), eq(2L));
-        verify(imService).pushMessageToUser(any(MessageDTO.class), eq(3L));
-        verify(deduplicator).markProcessed("evt-1:2");
-        verify(deduplicator).markProcessed("evt-1:3");
+        verify(imService).pushMessageToSession(any(MessageDTO.class), eq("session-a"));
+        verify(imService).pushMessageToSession(any(MessageDTO.class), eq("session-b"));
+        verify(deduplicator).markProcessed("evt-1:2:session-a");
+        verify(deduplicator).markProcessed("evt-1:2:session-b");
     }
 
     @Test
-    void dispatchEvent_duplicateEvent_shouldSkipPush() {
-        MessageDTO messageDTO = new MessageDTO();
-        messageDTO.setId(101L);
-
+    void dispatchEvent_shouldSkipAlreadyProcessedSessionDelivery() {
+        UserSession sessionA = session("session-a");
         WsPushEvent event = WsPushEvent.builder()
                 .eventId("evt-dup")
                 .eventType("MESSAGE")
-                .messageId(101L)
                 .targetUserIds(List.of(2L))
-                .payload(JSON.toJSONString(messageDTO))
+                .payload(JSON.toJSONString(new MessageDTO()))
                 .build();
-
-        when(deduplicator.isProcessed("evt-dup:2")).thenReturn(true);
+        when(imService.getLocalSessions("2")).thenReturn(List.of(sessionA));
+        when(deduplicator.isProcessed("evt-dup:2:session-a")).thenReturn(true);
 
         dispatcher.dispatchEvent(event);
 
-        verify(imService, never()).pushMessageToUser(any(MessageDTO.class), eq(2L));
-        verify(retryQueue, never()).enqueue(any(), any(), any());
+        verify(imService, never()).pushMessageToSession(any(), any());
+        verify(retryQueue, never()).enqueue(any(), any(), any(), any());
     }
 
     @Test
-    void dispatchEvent_readReceiptEvent_shouldPushToTargets() {
+    void dispatchEvent_shouldRetryOnlyFailedSession() {
+        UserSession sessionA = session("session-a");
+        WsPushEvent event = WsPushEvent.builder()
+                .eventId("evt-fail")
+                .eventType("MESSAGE")
+                .messageId(101L)
+                .targetUserIds(List.of(2L))
+                .payload(JSON.toJSONString(new MessageDTO()))
+                .build();
+        when(imService.getLocalSessions("2")).thenReturn(List.of(sessionA));
+        when(deduplicator.isProcessed("evt-fail:2:session-a")).thenReturn(false);
+        when(imService.isSessionActive("2", "session-a")).thenReturn(true);
+        when(imService.pushMessageToSession(any(MessageDTO.class), eq("session-a"))).thenReturn(false);
+
+        dispatcher.dispatchEvent(event);
+
+        verify(retryQueue).enqueue(eq("2"), eq("session-a"), any(WsPushEvent.class), eq("ws_push_failed"));
+        verify(deduplicator, never()).markProcessed("evt-fail:2:session-a");
+    }
+
+    @Test
+    void dispatchEvent_shouldPushReadReceiptBySession() {
+        UserSession sessionA = session("session-a");
         ReadReceiptDTO receiptDTO = ReadReceiptDTO.builder()
                 .toUserId(2L)
                 .lastReadMessageId(200L)
                 .build();
-
         WsPushEvent event = WsPushEvent.builder()
                 .eventId("evt-rr")
                 .eventType("READ_RECEIPT")
@@ -95,28 +115,20 @@ class WsPushEventDispatcherTest {
                 .targetUserIds(List.of(2L))
                 .payload(JSON.toJSONString(receiptDTO))
                 .build();
-
-        when(deduplicator.isProcessed("evt-rr:2")).thenReturn(false);
-        when(imService.pushReadReceiptToUser(any(ReadReceiptDTO.class), eq(2L))).thenReturn(true);
+        when(imService.getLocalSessions("2")).thenReturn(List.of(sessionA));
+        when(deduplicator.isProcessed("evt-rr:2:session-a")).thenReturn(false);
+        when(imService.isSessionActive("2", "session-a")).thenReturn(true);
+        when(imService.pushReadReceiptToSession(any(ReadReceiptDTO.class), eq("session-a"))).thenReturn(true);
 
         dispatcher.dispatchEvent(event);
 
-        verify(imService).pushReadReceiptToUser(any(ReadReceiptDTO.class), eq(2L));
-        verify(deduplicator).markProcessed("evt-rr:2");
+        verify(imService).pushReadReceiptToSession(any(ReadReceiptDTO.class), eq("session-a"));
+        verify(deduplicator).markProcessed("evt-rr:2:session-a");
     }
 
-    @Test
-    void dispatchEvent_sessionKickout_shouldDisconnectMatchingSession() {
-        WsPushEvent event = WsPushEvent.builder()
-                .eventId("evt-kick")
-                .eventType("SESSION_KICKOUT")
-                .payload("{\"userId\":\"2\",\"sessionId\":\"session-2\",\"reason\":\"新连接建立\"}")
-                .build();
-
-        dispatcher.dispatchEvent(event);
-
-        verify(imService).disconnectLocalSessionIfMatch("2", "session-2", "新连接建立");
-        verify(deduplicator, never()).isProcessed(any());
-        verify(retryQueue, never()).enqueue(any(), any(), any());
+    private UserSession session(String sessionId) {
+        WebSocketSession webSocketSession = org.mockito.Mockito.mock(WebSocketSession.class);
+        when(webSocketSession.getId()).thenReturn(sessionId);
+        return UserSession.builder().webSocketSession(webSocketSession).build();
     }
 }

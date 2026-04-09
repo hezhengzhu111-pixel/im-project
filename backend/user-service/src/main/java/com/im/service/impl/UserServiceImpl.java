@@ -6,7 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.im.dto.TokenParseResultDTO;
 import com.im.dto.UserAuthResponseDTO;
 import com.im.dto.UserDTO;
-import com.im.entity.User;
+import com.im.user.entity.User;
 import com.im.exception.BusinessException;
 import com.im.feign.AuthServiceFeignClient;
 import com.im.mapper.UserMapper;
@@ -21,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.dto.UserSettingsDTO;
-import com.im.entity.UserSettings;
+import com.im.user.entity.UserSettings;
 
 import java.time.LocalDateTime;
 import java.util.List;
