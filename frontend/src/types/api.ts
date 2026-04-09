@@ -34,6 +34,13 @@ export interface FileUploadResponse {
   url: string;
   thumbnailUrl?: string;
   size?: number;
+  originalFilename?: string;
+  filename?: string;
+  contentType?: string;
+  category?: string;
+  uploadDate?: string;
+  uploadTime?: number;
+  uploaderId?: number | string;
   fileName?: string;
   fileType?: string;
 }
