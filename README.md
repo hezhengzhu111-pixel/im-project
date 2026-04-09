@@ -69,3 +69,13 @@ pwsh backend/start_all_services.ps1
 - `npm run typecheck`
 - `npm run test`
 - `npm run build`
+
+## SIT Compose
+
+- Copy `.env.example` to `.env`, then run:
+
+```powershell
+docker compose --env-file .env -f deploy/sit/docker-compose.yml up -d
+```
+
+- This makes `deploy/sit/docker-compose.yml` consume the same ports, passwords, secrets, and build arguments documented in the root `.env`.

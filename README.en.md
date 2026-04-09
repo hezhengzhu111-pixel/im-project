@@ -13,7 +13,7 @@ An instant messaging system built with Java microservices and a Vue 3 frontend.
 - `dev` is for local startup. Service addresses use localhost-style endpoints such as `127.0.0.1`.
 - `sit` is for Docker deployment. Service addresses use container names such as `im-mysql` and `im-nacos`.
 - Backend `dev` and `sit` settings are committed directly in `backend/*/src/main/resources/{dev,sit}`.
-- The root `.env.example` is now only for optional frontend overrides.
+- The root `.env.example` documents deployment-script defaults and compose overrides.
 
 ## Repository layout
 
@@ -69,3 +69,14 @@ The default quality gate runs:
 - `npm run typecheck`
 - `npm run test`
 - `npm run build`
+
+## SIT Compose
+
+- The root `.env.example` now documents deployment-script defaults and `deploy/sit/docker-compose.yml` overrides.
+- Copy `.env.example` to `.env`, then run:
+
+```powershell
+docker compose --env-file .env -f deploy/sit/docker-compose.yml up -d
+```
+
+- This makes the `deploy/sit` compose stack consume the same ports, passwords, secrets, and build arguments documented in the root `.env`.
