@@ -7,7 +7,17 @@ const register = vi.fn();
 const logout = vi.fn();
 const online = vi.fn();
 const parseAccessToken = vi.fn();
+const refreshAccessToken = vi.fn();
 const push = vi.fn();
+
+const createUnsignedAccessToken = (payload: Record<string, unknown>) => {
+  const encode = (value: Record<string, unknown>) =>
+    btoa(JSON.stringify(value))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+  return `${encode({ alg: "none", typ: "JWT" })}.${encode(payload)}.sig`;
+};
 
 vi.mock("element-plus", () => ({
   ElMessage: {
@@ -26,6 +36,7 @@ vi.mock("@/services", () => ({
   },
   authService: {
     parseAccessToken,
+    refreshAccessToken,
   },
 }));
 
@@ -44,8 +55,10 @@ describe("user auth store", () => {
     logout.mockReset();
     online.mockReset();
     parseAccessToken.mockReset();
+    refreshAccessToken.mockReset();
     push.mockReset();
     localStorage.clear();
+    refreshAccessToken.mockResolvedValue({ code: 500, data: {} });
   });
 
   it("trims username before login", async () => {
@@ -174,9 +187,114 @@ describe("user auth store", () => {
     expect(ok).toBe(true);
     expect(parseAccessToken).toHaveBeenNthCalledWith(1, "stale-token", true);
     expect(parseAccessToken).toHaveBeenNthCalledWith(2, undefined, true);
+    expect(refreshAccessToken).toHaveBeenCalledTimes(1);
     expect(store.currentUser?.id).toBe("2");
     expect(store.accessToken).toBe("");
     expect(localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY)).toBeNull();
+  });
+
+  it("refreshes an expired persisted access token when restoring session", async () => {
+    localStorage.setItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY, "expired-token");
+    parseAccessToken
+      .mockResolvedValueOnce({
+        code: 200,
+        data: {
+          valid: false,
+          expired: true,
+          userId: "3",
+          username: "u3",
+        },
+      })
+      .mockResolvedValueOnce({
+        code: 200,
+        data: {
+          valid: true,
+          expired: false,
+          userId: "3",
+          username: "u3",
+        },
+      });
+    refreshAccessToken.mockResolvedValue({
+      code: 200,
+      data: {
+        accessToken: "fresh-token",
+        expiresInMs: 60_000,
+      },
+    });
+
+    const { useUserStore } = await import("@/stores/user");
+    const store = useUserStore();
+
+    const ok = await store.restoreSession();
+
+    expect(ok).toBe(true);
+    expect(refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(parseAccessToken).toHaveBeenNthCalledWith(1, "expired-token", true);
+    expect(parseAccessToken).toHaveBeenNthCalledWith(2, "fresh-token", true);
+    expect(store.currentUser?.id).toBe("3");
+    expect(store.accessToken).toBe("fresh-token");
+    expect(localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY)).toBe(
+      "fresh-token",
+    );
+  });
+
+  it("keeps local snapshot when startup probes cannot revalidate immediately", async () => {
+    localStorage.setItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY, "possibly-valid-token");
+    localStorage.setItem(
+      STORAGE_CONFIG.USER_SNAPSHOT_KEY,
+      JSON.stringify({
+        id: "4",
+        username: "u4",
+        nickname: "u4",
+        status: "offline",
+      }),
+    );
+    parseAccessToken.mockResolvedValue({
+      code: 200,
+      data: {
+        valid: false,
+        expired: false,
+        userId: null,
+      },
+    });
+    refreshAccessToken.mockResolvedValue({ code: 500, data: {} });
+
+    const { useUserStore } = await import("@/stores/user");
+    const store = useUserStore();
+
+    const ok = await store.restoreSession();
+
+    expect(ok).toBe(true);
+    expect(store.currentUser?.id).toBe("4");
+    expect(store.accessToken).toBe("possibly-valid-token");
+    expect(parseAccessToken).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY)).toBe(
+      "possibly-valid-token",
+    );
+    expect(localStorage.getItem(STORAGE_CONFIG.USER_SNAPSHOT_KEY)).toContain(
+      '"id":"4"',
+    );
+  });
+
+  it("restores from persisted access token when user snapshot is missing", async () => {
+    localStorage.setItem(
+      STORAGE_CONFIG.ACCESS_TOKEN_KEY,
+      createUnsignedAccessToken({
+        userId: 5,
+        username: "u5",
+        typ: "access",
+      }),
+    );
+
+    const { useUserStore } = await import("@/stores/user");
+    const store = useUserStore();
+
+    const ok = await store.restoreSession();
+
+    expect(ok).toBe(true);
+    expect(store.currentUser?.id).toBe("5");
+    expect(store.currentUser?.username).toBe("u5");
+    expect(parseAccessToken).not.toHaveBeenCalled();
   });
 
   it("does not probe auth parse when there is no local auth state", async () => {
