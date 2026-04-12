@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 from deploy_utils import (
     ELASTICSEARCH_CONTAINER_NAME,
@@ -36,11 +37,11 @@ class ServiceDefinition:
     container_name: str
     image_name: str
     kind: str
-    module_dir: str | None = None
+    module_dir: Optional[str] = None
     required_containers: tuple[str, ...] = ()
     extra_env: dict[str, str] = field(default_factory=dict)
-    volume_name: str | None = None
-    volume_target: str | None = None
+    volume_name: Optional[str] = None
+    volume_target: Optional[str] = None
 
 
 SERVICE_ORDER: list[ServiceDefinition] = [

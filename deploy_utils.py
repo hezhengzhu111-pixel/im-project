@@ -9,9 +9,40 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Any, Mapping, NoReturn, Sequence
+from typing import IO, Any, Mapping, NoReturn, Optional, Sequence, Union
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv as _load_dotenv
+except ImportError:
+    _load_dotenv = None
+
+
+def load_dotenv(dotenv_path: Path, override: bool = False) -> None:
+    if _load_dotenv is not None:
+        _load_dotenv(dotenv_path, override=override)
+        return
+
+    with Path(dotenv_path).open("r", encoding="utf-8") as env_stream:
+        for raw_line in env_stream:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            if not key or (not override and key in os.environ):
+                continue
+            value = _strip_env_value(value.strip())
+            os.environ[key] = value
+
+
+def _strip_env_value(value: str) -> str:
+    if not value:
+        return ""
+    if (value[0], value[-1:]) in {('"', '"'), ("'", "'")}:
+        return value[1:-1]
+    if " #" in value:
+        value = value.split(" #", 1)[0].rstrip()
+    return value
 
 MYSQL_CONTAINER_NAME = "im-mysql"
 REDIS_CONTAINER_NAME = "im-redis"
@@ -89,7 +120,7 @@ def fatal(message: str) -> NoReturn:
     sys.exit(1)
 
 
-def load_config(base_dir: Path | None = None) -> DeploymentConfig:
+def load_config(base_dir: Optional[Path] = None) -> DeploymentConfig:
     project_dir = (base_dir or Path.cwd()).resolve()
     env_file = project_dir / ".env"
     if not env_file.is_file():
@@ -201,12 +232,12 @@ def resolve_docker_compose_command(docker_cmd: str) -> list[str]:
 
 
 def run_command(
-    command: Sequence[str | Path],
+    command: Sequence[Union[str, Path]],
     *,
-    cwd: Path | None = None,
-    env: Mapping[str, str] | None = None,
+    cwd: Optional[Path] = None,
+    env: Optional[Mapping[str, str]] = None,
     capture_output: bool = False,
-    stdin: IO[Any] | None = None,
+    stdin: Optional[IO[Any]] = None,
     check: bool = True,
 ) -> subprocess.CompletedProcess[Any]:
     command_parts = [str(part) for part in command]
@@ -318,7 +349,7 @@ def assert_container_running(docker_cmd: str, container_name: str) -> None:
         fatal(f"容器未处于运行状态: {container_name}")
 
 
-def get_container_state(docker_cmd: str, container_name: str) -> dict[str, Any] | None:
+def get_container_state(docker_cmd: str, container_name: str) -> Optional[dict[str, Any]]:
     completed = run_command(
         [docker_cmd, "inspect", container_name, "--format", "{{json .State}}"],
         capture_output=True,
