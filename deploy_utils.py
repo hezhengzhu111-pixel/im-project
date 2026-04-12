@@ -298,21 +298,54 @@ def ensure_frontend_layout(config: DeploymentConfig) -> None:
 
 
 def ensure_docker_network(docker_cmd: str, network_name: str) -> None:
-    if docker_network_exists(docker_cmd, network_name):
+    network_details = get_docker_network_details(docker_cmd, network_name)
+    if network_details:
+        validate_docker_network_attachable(network_name, network_details)
         print(f"Docker 网络已存在: {network_name}")
         return
 
-    run_command([docker_cmd, "network", "create", network_name])
+    run_command([docker_cmd, "network", "create", "--driver", "bridge", network_name])
     print(f"Docker 网络已创建: {network_name}")
 
 
 def docker_network_exists(docker_cmd: str, network_name: str) -> bool:
+    return get_docker_network_details(docker_cmd, network_name) is not None
+
+
+def get_docker_network_details(docker_cmd: str, network_name: str) -> Optional[dict[str, Any]]:
     completed = run_command(
-        [docker_cmd, "network", "inspect", network_name],
+        [docker_cmd, "network", "inspect", network_name, "--format", "{{json .}}"],
         capture_output=True,
         check=False,
     )
-    return completed.returncode == 0
+    if completed.returncode != 0:
+        return None
+    try:
+        return json.loads(completed.stdout.strip())
+    except json.JSONDecodeError:
+        fatal(f"Docker 网络信息解析失败: {network_name}")
+
+
+def validate_docker_network_attachable(network_name: str, details: dict[str, Any]) -> None:
+    driver = str(details.get("Driver") or "")
+    scope = str(details.get("Scope") or "")
+    attachable = bool(details.get("Attachable"))
+    if driver == "overlay" and scope == "swarm" and not attachable:
+        containers = details.get("Containers") or {}
+        container_names = [
+            str(item.get("Name") or container_id)
+            for container_id, item in containers.items()
+            if isinstance(item, dict)
+        ]
+        occupied = f"\n当前网络内已有容器: {', '.join(container_names)}" if container_names else ""
+        fatal(
+            f"Docker 网络 {network_name} 是非 attachable 的 swarm/overlay 网络，"
+            "普通 docker compose 容器无法加入该网络。"
+            f"{occupied}\n"
+            "请先删除或重建该网络，例如:\n"
+            f"  docker network rm {network_name}\n"
+            f"  docker network create --driver bridge {network_name}"
+        )
 
 
 def docker_volume_exists(docker_cmd: str, volume_name: str) -> bool:
