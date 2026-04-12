@@ -4,7 +4,13 @@ import { ElMessage } from "element-plus";
 import router from "@/router";
 import { authService, userService } from "@/services";
 import { normalizeUser } from "@/normalizers/user";
-import type { LoginRequest, RegisterRequest, UpdateUserRequest, User } from "@/types";
+import type {
+  LoginRequest,
+  RegisterRequest,
+  TokenParseResultDTO,
+  UpdateUserRequest,
+  User,
+} from "@/types";
 import { APP_CONFIG, STORAGE_CONFIG } from "@/config";
 import { logger } from "@/utils/logger";
 
@@ -55,6 +61,49 @@ const persistUser = (user: User | null): void => {
     STORAGE_CONFIG.USER_SNAPSHOT_KEY,
     JSON.stringify(user),
   );
+};
+
+const isValidTokenResult = (
+  result?: TokenParseResultDTO | null,
+): result is TokenParseResultDTO & { userId: number } => {
+  return !!result && result.valid && !result.expired && result.userId != null;
+};
+
+const readUserFromAccessToken = (token: string): User | null => {
+  const normalized = token.trim().replace(/^Bearer\s+/i, "");
+  const [, payload] = normalized.split(".");
+  if (!payload || typeof atob === "undefined") {
+    return null;
+  }
+  try {
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(
+      base64.length + ((4 - (base64.length % 4)) % 4),
+      "=",
+    );
+    const claims = JSON.parse(atob(padded)) as Record<string, unknown>;
+    const rawUserId = claims.userId;
+    const userId =
+      typeof rawUserId === "number" || typeof rawUserId === "string"
+        ? String(rawUserId)
+        : "";
+    if (!userId) {
+      return null;
+    }
+    const username =
+      typeof claims.username === "string" && claims.username.trim()
+        ? claims.username.trim()
+        : userId;
+    return {
+      id: userId,
+      username,
+      nickname: username,
+      avatar: APP_CONFIG.DEFAULT_AVATAR,
+      status: "offline",
+    };
+  } catch {
+    return null;
+  }
 };
 
 export const useUserStore = defineStore("user", () => {
@@ -108,6 +157,89 @@ export const useUserStore = defineStore("user", () => {
     authReady.value = true;
   };
 
+  const markSessionValid = () => {
+    lastSessionCheckAt.value = Date.now();
+    lastSessionValid.value = true;
+    authReady.value = true;
+  };
+
+  const markSessionInvalid = () => {
+    lastSessionCheckAt.value = Date.now();
+    lastSessionValid.value = false;
+    authReady.value = true;
+  };
+
+  const applyTokenResultUser = (
+    result: TokenParseResultDTO & { userId: number },
+    persistedUser?: User | null,
+  ) => {
+    if (persistedUser && persistedUser.id === String(result.userId)) {
+      setCurrentUser(persistedUser);
+      return;
+    }
+    setCurrentUser({
+      id: String(result.userId),
+      username: result.username || String(result.userId),
+      nickname: result.username || String(result.userId),
+      avatar: APP_CONFIG.DEFAULT_AVATAR,
+      status: "offline",
+    });
+  };
+
+  const restoreFromLocalSnapshot = (persistedUser?: User | null): boolean => {
+    const persistedToken = getAccessToken();
+    if (!persistedToken || !persistedUser) {
+      return false;
+    }
+    setCurrentUser(persistedUser);
+    markSessionValid();
+    return true;
+  };
+
+  const restoreFromLocalToken = (): boolean => {
+    const persistedToken = getAccessToken();
+    if (!persistedToken) {
+      return false;
+    }
+    const tokenUser = readUserFromAccessToken(persistedToken);
+    if (!tokenUser) {
+      return false;
+    }
+    setCurrentUser(tokenUser);
+    markSessionValid();
+    return true;
+  };
+
+  const refreshPersistedSession = async (
+    persistedUser?: User | null,
+  ): Promise<boolean> => {
+    try {
+      const refreshResponse = await authService.refreshAccessToken();
+      const nextAccessToken =
+        typeof refreshResponse?.data?.accessToken === "string"
+          ? refreshResponse.data.accessToken.trim()
+          : "";
+      if (!nextAccessToken) {
+        return false;
+      }
+      const parseResponse = await authService.parseAccessToken(
+        nextAccessToken,
+        true,
+      );
+      const result = parseResponse.data;
+      if (!isValidTokenResult(result)) {
+        return false;
+      }
+      setAccessToken(nextAccessToken);
+      applyTokenResultUser(result, persistedUser);
+      markSessionValid();
+      return true;
+    } catch (error) {
+      logger.warn("refreshPersistedSession failed", error);
+      return false;
+    }
+  };
+
   const restoreSession = async (): Promise<boolean> => {
     const now = Date.now();
     if (authReady.value && now - lastSessionCheckAt.value < 60_000) {
@@ -120,14 +252,18 @@ export const useUserStore = defineStore("user", () => {
       try {
         const persistedToken = getAccessToken();
         const persistedUser = readPersistedUser();
+        if (persistedUser) {
+          setCurrentUser(persistedUser);
+          markSessionValid();
+          void refreshPersistedSession(persistedUser);
+          return true;
+        }
+        if (restoreFromLocalToken()) {
+          void refreshPersistedSession(currentUser.value);
+          return true;
+        }
         if (!persistedToken) {
-          if (persistedUser) {
-            clearSession();
-          } else {
-            lastSessionCheckAt.value = Date.now();
-            lastSessionValid.value = false;
-            authReady.value = true;
-          }
+          markSessionInvalid();
           return false;
         }
         let response = await authService.parseAccessToken(
@@ -135,44 +271,35 @@ export const useUserStore = defineStore("user", () => {
           true,
         );
         let result = response.data;
-        let isValid =
-          !!result && result.valid && !result.expired && result.userId != null;
-        if (!isValid && persistedToken) {
-          setAccessToken("");
-          response = await authService.parseAccessToken(undefined, true);
-          result = response.data;
-          isValid =
-            !!result && result.valid && !result.expired && result.userId != null;
-        }
-        lastSessionCheckAt.value = Date.now();
-        lastSessionValid.value = isValid;
-        authReady.value = true;
-        if (!isValid) {
-          setCurrentUser(null);
-          setAccessToken("");
-          return false;
-        }
-        if (persistedUser && persistedUser.id === String(result.userId)) {
-          setCurrentUser(persistedUser);
+        let restoredFromCookieSession = false;
+        if (
+          !isValidTokenResult(result) &&
+          (await refreshPersistedSession(persistedUser))
+        ) {
           return true;
         }
-        setCurrentUser({
-            id: String(result.userId),
-            username: result.username || String(result.userId),
-            nickname: result.username || String(result.userId),
-            avatar: APP_CONFIG.DEFAULT_AVATAR,
-            status: "offline",
-          });
+        if (!isValidTokenResult(result) && persistedToken) {
+          response = await authService.parseAccessToken(undefined, true);
+          result = response.data;
+          restoredFromCookieSession = isValidTokenResult(result);
+        }
+        if (!isValidTokenResult(result)) {
+          if (restoreFromLocalSnapshot(persistedUser)) {
+            return true;
+          }
+          clearSession();
+          return false;
+        }
+        if (restoredFromCookieSession) {
+          setAccessToken("");
+        }
+        applyTokenResultUser(result, persistedUser);
+        markSessionValid();
         return true;
       } catch (error) {
         logger.warn("restoreSession failed", error);
-        const persistedToken = getAccessToken();
         const persistedUser = readPersistedUser();
-        if (persistedToken && persistedUser) {
-          setCurrentUser(persistedUser);
-          lastSessionCheckAt.value = Date.now();
-          lastSessionValid.value = true;
-          authReady.value = true;
+        if (restoreFromLocalSnapshot(persistedUser)) {
           return true;
         }
         clearSession();
