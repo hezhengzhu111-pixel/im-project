@@ -186,6 +186,8 @@ CREATE TABLE IF NOT EXISTS group_read_cursor (
 
 CREATE TABLE IF NOT EXISTS message_outbox (
   id BIGINT NOT NULL COMMENT '事件ID（雪花ID）',
+  topic VARCHAR(64) NOT NULL COMMENT 'Outbox topic',
+  message_key VARCHAR(128) NOT NULL COMMENT 'Outbox message key',
   payload TEXT NOT NULL COMMENT '事件载荷（JSON）',
   event_type VARCHAR(64) NOT NULL COMMENT '传输事件类型',
   targets_json JSON NOT NULL COMMENT '目标用户ID列表',
