@@ -1,8 +1,8 @@
 package com.im.util;
 
 import com.im.dto.FriendRequestDTO;
-import com.im.entity.FriendRequest;
-import com.im.entity.User;
+import com.im.user.entity.FriendRequest;
+import com.im.user.entity.User;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;

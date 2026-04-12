@@ -1,8 +1,11 @@
 package com.im.gateway.filter;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.benmanes.caffeine.cache.AsyncCache;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.im.dto.ApiResponse;
 import com.im.dto.AuthUserResourceDTO;
 import com.im.dto.TokenParseResultDTO;
 import com.im.security.SecurityPaths;
@@ -12,7 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
-import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
@@ -20,8 +23,14 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.Base64;
 import java.util.UUID;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
 @Component
 public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
@@ -33,33 +42,29 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private static final String HEADER_AUTH_TS = "X-Auth-Ts";
     private static final String HEADER_AUTH_NONCE = "X-Auth-Nonce";
     private static final String HEADER_AUTH_SIGN = "X-Auth-Sign";
+    private static final int MAX_CACHE_SIZE = 10_000;
+    private static final Duration INFLIGHT_CACHE_TTL = Duration.ofSeconds(30);
+    private static final ParameterizedTypeReference<ApiResponse<TokenParseResultDTO>> TOKEN_RESPONSE_TYPE =
+            new ParameterizedTypeReference<ApiResponse<TokenParseResultDTO>>() {
+            };
+    private static final ParameterizedTypeReference<ApiResponse<AuthUserResourceDTO>> USER_RESOURCE_RESPONSE_TYPE =
+            new ParameterizedTypeReference<ApiResponse<AuthUserResourceDTO>>() {
+            };
 
-    private final ReactiveStringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
     private final WebClient webClient;
-    
-    // Caffeine 缓存：10秒过期，防止频繁请求 Auth 服务
-    private final Cache<String, TokenParseResultDTO> tokenCache = Caffeine.newBuilder()
-            .expireAfterWrite(Duration.ofSeconds(10))
-            .maximumSize(10000)
-            .build();
-            
-    private final Cache<Long, AuthUserResourceDTO> resourceCache = Caffeine.newBuilder()
-            .expireAfterWrite(Duration.ofSeconds(10))
-            .maximumSize(10000)
-            .build();
+    private final Duration authServiceTimeout;
+    private final Cache<String, TokenParseResultDTO> tokenCache;
+    private final Cache<String, InvalidTokenMarker> invalidTokenCache;
+    private final Cache<Long, AuthUserResourceDTO> userResourceCache;
+    private final AsyncCache<String, TokenValidationOutcome> tokenValidationInflight;
+    private final AsyncCache<Long, UserResourceLoadOutcome> userResourceInflight;
 
     @Value("${im.internal.header:X-Internal-Secret}")
     private String internalHeaderName;
 
     @Value("${im.internal.secret}")
     private String internalSecret;
-
-    @Value("${im.gateway.auth.user-resource-key-prefix:auth:user:}")
-    private String userResourceKeyPrefix;
-
-    @Value("${im.gateway.auth.cache-ttl-seconds:3600}")
-    private long cacheTtlSeconds;
 
     @Value("${im.gateway.auth.secret}")
     private String gatewayAuthSecret;
@@ -73,48 +78,97 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     @Value("${jwt.prefix:Bearer }")
     private String jwtPrefix;
 
-    public JwtAuthGlobalFilter(ReactiveStringRedisTemplate redisTemplate,
-                               ObjectMapper objectMapper,
+    @Value("${im.auth.cookie.access-token-name:IM_ACCESS_TOKEN}")
+    private String accessTokenCookieName;
+
+    public JwtAuthGlobalFilter(ObjectMapper objectMapper,
                                @Qualifier("plainWebClientBuilder") WebClient.Builder plainWebClientBuilder,
                                @Qualifier("loadBalancedWebClientBuilder") WebClient.Builder loadBalancedWebClientBuilder,
-                               @Value("${im.gateway.auth-service-url:http://127.0.0.1:8084}") String authServiceUrl) {
-        this.redisTemplate = redisTemplate;
+                               @Value("${im.gateway.auth-service-url:http://127.0.0.1:8084}") String authServiceUrl,
+                               @Value("${im.gateway.auth.request-timeout-ms:3000}") long requestTimeoutMs,
+                               @Value("${im.gateway.auth.token-cache-ttl-seconds:10}") long tokenCacheTtlSeconds,
+                               @Value("${im.gateway.auth.token-negative-cache-ttl-seconds:5}") long tokenNegativeCacheTtlSeconds,
+                               @Value("${im.gateway.auth.user-resource-cache-ttl-seconds:15}") long userResourceCacheTtlSeconds) {
         this.objectMapper = objectMapper;
         this.webClient = (useLoadBalancedClient(authServiceUrl)
                 ? loadBalancedWebClientBuilder
                 : plainWebClientBuilder)
                 .baseUrl(authServiceUrl)
                 .build();
+        this.authServiceTimeout = Duration.ofMillis(Math.max(1L, requestTimeoutMs));
+        this.tokenCache = Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofSeconds(Math.max(1L, tokenCacheTtlSeconds)))
+                .maximumSize(MAX_CACHE_SIZE)
+                .build();
+        this.invalidTokenCache = Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofSeconds(Math.max(1L, tokenNegativeCacheTtlSeconds)))
+                .maximumSize(MAX_CACHE_SIZE)
+                .build();
+        this.userResourceCache = Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofSeconds(Math.max(1L, userResourceCacheTtlSeconds)))
+                .maximumSize(MAX_CACHE_SIZE)
+                .build();
+        this.tokenValidationInflight = Caffeine.newBuilder()
+                .expireAfterWrite(INFLIGHT_CACHE_TTL)
+                .maximumSize(MAX_CACHE_SIZE)
+                .buildAsync();
+        this.userResourceInflight = Caffeine.newBuilder()
+                .expireAfterWrite(INFLIGHT_CACHE_TTL)
+                .maximumSize(MAX_CACHE_SIZE)
+                .buildAsync();
     }
 
     private boolean useLoadBalancedClient(String authServiceUrl) {
-        if (authServiceUrl == null) {
-            return false;
-        }
-        return authServiceUrl.trim().startsWith("lb://");
+        return authServiceUrl != null && authServiceUrl.trim().startsWith("lb://");
     }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-        FilterInput input = filterInput(exchange);
+        ServerWebExchange sanitizedExchange = sanitizeIncomingExchange(exchange);
+        FilterInput input = filterInput(sanitizedExchange);
         InputStageResult inputStageResult = filterInputStage(input);
-        Mono<Void> inputOutput = filterInputOutput(exchange, chain, inputStageResult);
+        Mono<Void> inputOutput = filterInputOutput(sanitizedExchange, chain, inputStageResult);
         if (inputOutput != null) {
             return inputOutput;
         }
-        return filterProcess(exchange, chain, input)
-                .onErrorResume(e -> {
-                    exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-                    return exchange.getResponse().setComplete();
-                });
+
+        Mono<ServerWebExchange> authenticatedExchange = authenticateAndDecorate(sanitizedExchange, input.token())
+                .onErrorResume(GatewayAuthException.class,
+                        ex -> writeStatus(sanitizedExchange, ex.status()).then(Mono.empty()))
+                .onErrorResume(Throwable.class,
+                        ex -> writeStatus(sanitizedExchange, HttpStatus.SERVICE_UNAVAILABLE).then(Mono.empty()));
+
+        return authenticatedExchange.flatMap(chain::filter);
     }
 
     private FilterInput filterInput(ServerWebExchange exchange) {
         String path = exchange.getRequest().getURI().getPath();
-        String internalHeaderValue = exchange.getRequest().getHeaders().getFirst(internalHeaderName);
         String authHeader = exchange.getRequest().getHeaders().getFirst(jwtHeader);
+        String token = extractToken(exchange, authHeader);
+        return new FilterInput(path, token);
+    }
+
+    private ServerWebExchange sanitizeIncomingExchange(ServerWebExchange exchange) {
+        if (exchange.getRequest().getHeaders().getFirst(internalHeaderName) == null) {
+            return exchange;
+        }
+        ServerHttpRequest sanitizedRequest = exchange.getRequest().mutate()
+                .headers(headers -> headers.remove(internalHeaderName))
+                .build();
+        return exchange.mutate().request(sanitizedRequest).build();
+    }
+
+    private String extractToken(ServerWebExchange exchange, String authHeader) {
         String token = extractTokenFromHeader(authHeader);
-        return new FilterInput(path, internalHeaderValue, token);
+        if (token != null && !token.isBlank()) {
+            return token;
+        }
+        var cookie = exchange.getRequest().getCookies().getFirst(accessTokenCookieName);
+        if (cookie == null) {
+            return null;
+        }
+        String value = cookie.getValue();
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private InputStageResult filterInputStage(FilterInput input) {
@@ -122,10 +176,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             return InputStageResult.passThrough();
         }
         if (SecurityPaths.isGatewayInternalPath(input.path())) {
-            if (input.internalHeaderValue() == null || !input.internalHeaderValue().equals(internalSecret)) {
-                return InputStageResult.reject(HttpStatus.FORBIDDEN);
-            }
-            return InputStageResult.passThrough();
+            return InputStageResult.reject(HttpStatus.FORBIDDEN);
         }
         if (input.token() == null || input.token().trim().isEmpty()) {
             return InputStageResult.reject(HttpStatus.UNAUTHORIZED);
@@ -140,69 +191,27 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         if (stageResult.shouldPassThrough()) {
             return chain.filter(exchange);
         }
-        exchange.getResponse().setStatusCode(stageResult.rejectStatus());
-        return exchange.getResponse().setComplete();
+        return writeStatus(exchange, stageResult.rejectStatus());
     }
 
-    private Mono<Void> filterProcess(ServerWebExchange exchange, GatewayFilterChain chain, FilterInput input) {
-        return filterProcessInput(input)
-                .flatMap(context -> filterProcessOutput(exchange, chain, context))
-                .switchIfEmpty(Mono.defer(() -> unauthorized(exchange)));
+    private Mono<ServerWebExchange> authenticateAndDecorate(ServerWebExchange exchange, String token) {
+        return validateToken(token)
+                .flatMap(this::buildAuthContext)
+                .flatMap(context -> resolveUserResource(context.userId())
+                        .map(userResource -> mutateExchange(exchange, context, userResource)));
     }
 
-    private Mono<AuthContext> filterProcessInput(FilterInput input) {
-        return validateToken(input.token())
-                .flatMap(parseResult -> {
-                    AuthContext context = validateAuthContext(parseResult);
-                    if (context == null) {
-                        return Mono.empty();
-                    }
-                    return Mono.just(context);
-                });
-    }
-
-    private Mono<Void> filterProcessOutput(ServerWebExchange exchange, GatewayFilterChain chain, AuthContext context) {
-        return resolveUserResource(context.userId())
-                .flatMap(userResource -> filterOutput(exchange, chain, context, userResource))
-                .switchIfEmpty(Mono.defer(() -> {
-                    return unauthorized(exchange);
-                }));
-    }
-
-    private Mono<Void> unauthorized(ServerWebExchange exchange) {
-        exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-        return exchange.getResponse().setComplete();
-    }
-
-    private AuthContext validateAuthContext(TokenParseResultDTO parseResult) {
-        if (parseResult == null || !parseResult.isValid() || parseResult.isExpired()) {
-            return null;
+    private Mono<AuthContext> buildAuthContext(TokenParseResultDTO parseResult) {
+        AuthContext context = validateAuthContext(parseResult);
+        if (context == null) {
+            return Mono.error(GatewayAuthException.serviceUnavailable("auth response missing user context"));
         }
-        Long userId = parseResult.getUserId();
-        String username = parseResult.getUsername();
-        if (userId == null || username == null) {
-            return null;
-        }
-        return new AuthContext(userId, username);
+        return Mono.just(context);
     }
 
-    private Mono<AuthUserResourceDTO> resolveUserResource(Long userId) {
-        String cacheKey = userResourceKeyPrefix + userId;
-        return redisTemplate.opsForValue().get(cacheKey)
-                .flatMap(json -> {
-                    AuthUserResourceDTO dto = tryParseUserResource(json);
-                    if (dto == null || dto.getUserId() == null || !userId.equals(dto.getUserId())) {
-                        return loadUserResourceFromAuthService(userId).flatMap(loaded -> cacheAndReturn(cacheKey, loaded));
-                    }
-                    return Mono.just(dto);
-                })
-                .switchIfEmpty(loadUserResourceFromAuthService(userId).flatMap(loaded -> cacheAndReturn(cacheKey, loaded)));
-    }
-
-    private Mono<Void> filterOutput(ServerWebExchange exchange,
-                                    GatewayFilterChain chain,
-                                    AuthContext context,
-                                    AuthUserResourceDTO userResource) {
+    private ServerWebExchange mutateExchange(ServerWebExchange exchange,
+                                             AuthContext context,
+                                             AuthUserResourceDTO userResource) {
         SignedAuthHeaders signedHeaders = buildSignedAuthHeaders(context, userResource);
         ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
                 .headers(headers -> {
@@ -226,7 +235,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                     headers.set(HEADER_AUTH_SIGN, signedHeaders.signature());
                 })
                 .build();
-        return chain.filter(exchange.mutate().request(mutatedRequest).build());
+        return exchange.mutate().request(mutatedRequest).build();
     }
 
     private SignedAuthHeaders buildSignedAuthHeaders(AuthContext context, AuthUserResourceDTO userResource) {
@@ -254,67 +263,168 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private Mono<TokenParseResultDTO> validateToken(String token) {
+        String localFailureReason = inspectTokenPayload(token);
+        if (localFailureReason != null) {
+            cacheInvalidToken(token, localFailureReason);
+            return Mono.error(GatewayAuthException.unauthorized(localFailureReason));
+        }
+
+        InvalidTokenMarker invalidMarker = invalidTokenCache.getIfPresent(token);
+        if (invalidMarker != null) {
+            return Mono.error(GatewayAuthException.unauthorized(invalidMarker.reason()));
+        }
+
         TokenParseResultDTO cached = tokenCache.getIfPresent(token);
-        if (cached != null) {
+        if (isCacheableTokenResult(cached)) {
             return Mono.just(cached);
         }
 
-        return webClient.post()
-                .uri("/api/auth/internal/validate-token")
-                .header(internalHeaderName, internalSecret)
-                .header("X-Check-Revoked", String.valueOf(tokenRevocationCheckEnabled))
-                .bodyValue(token)
-                .retrieve()
-                .bodyToMono(TokenParseResultDTO.class)
-                .doOnNext(res -> {
-                    if (res != null) {
-                        tokenCache.put(token, res);
-                    }
-                })
-                .onErrorResume(e -> Mono.empty());
+        return Mono.fromFuture(tokenValidationInflight.get(token, (key, executor) -> buildValidateTokenOutcomeMono(key).toFuture()))
+                .doOnNext(ignore -> tokenValidationInflight.synchronous().invalidate(token))
+                .doOnError(ignore -> tokenValidationInflight.synchronous().invalidate(token))
+                .onErrorMap(this::unwrapAsyncException)
+                .flatMap(outcome -> applyTokenValidationOutcome(token, outcome));
     }
 
-    private AuthUserResourceDTO tryParseUserResource(String json) {
-        if (json == null || json.isEmpty()) {
-            return null;
-        }
-        try {
-            return objectMapper.readValue(json, AuthUserResourceDTO.class);
-        } catch (Exception e) {
-            return null;
-        }
+    private Mono<TokenValidationOutcome> buildValidateTokenOutcomeMono(String token) {
+        return exchangeForApiResponse(webClient.post()
+                        .uri("/api/auth/internal/validate-token")
+                        .header(internalHeaderName, internalSecret)
+                        .header("X-Check-Revoked", String.valueOf(tokenRevocationCheckEnabled))
+                        .bodyValue(token), TOKEN_RESPONSE_TYPE)
+                .map(response -> toTokenValidationOutcome(extractApiData(response)))
+                .onErrorResume(GatewayAuthException.class,
+                        ex -> Mono.just(TokenValidationOutcome.failure(ex.status(), ex.getMessage())));
     }
 
-    private Mono<AuthUserResourceDTO> loadUserResourceFromAuthService(Long userId) {
-        AuthUserResourceDTO cached = resourceCache.getIfPresent(userId);
-        if (cached != null) {
+    private Mono<AuthUserResourceDTO> resolveUserResource(Long userId) {
+        AuthUserResourceDTO cached = userResourceCache.getIfPresent(userId);
+        if (isCacheableUserResource(cached, userId)) {
             return Mono.just(cached);
         }
 
-        return webClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/api/auth/internal/user-resource/{userId}")
-                        .build(userId))
-                .header(internalHeaderName, internalSecret)
-                .retrieve()
-                .bodyToMono(AuthUserResourceDTO.class)
-                .doOnNext(res -> {
-                    if (res != null) {
-                        resourceCache.put(userId, res);
-                    }
-                })
-                .onErrorResume(e -> Mono.empty());
+        return Mono.fromFuture(userResourceInflight.get(userId, (key, executor) -> buildLoadUserResourceOutcomeMono(key).toFuture()))
+                .doOnNext(ignore -> userResourceInflight.synchronous().invalidate(userId))
+                .doOnError(ignore -> userResourceInflight.synchronous().invalidate(userId))
+                .onErrorMap(this::unwrapAsyncException)
+                .flatMap(this::applyUserResourceLoadOutcome);
     }
 
-    private Mono<AuthUserResourceDTO> cacheAndReturn(String cacheKey, AuthUserResourceDTO dto) {
+    private Mono<UserResourceLoadOutcome> buildLoadUserResourceOutcomeMono(Long userId) {
+        return exchangeForApiResponse(webClient.get()
+                        .uri(uriBuilder -> uriBuilder.path("/api/auth/internal/user-resource/{userId}").build(userId))
+                        .header(internalHeaderName, internalSecret), USER_RESOURCE_RESPONSE_TYPE)
+                .map(response -> toUserResourceLoadOutcome(userId, extractApiData(response)))
+                .onErrorResume(GatewayAuthException.class,
+                        ex -> Mono.just(UserResourceLoadOutcome.failure(ex.status(), ex.getMessage())));
+    }
+
+    private <T> Mono<ApiResponse<T>> exchangeForApiResponse(WebClient.RequestHeadersSpec<?> requestSpec,
+                                                            ParameterizedTypeReference<ApiResponse<T>> responseType) {
+        return requestSpec.exchangeToMono(response -> {
+                    if (response.statusCode().is2xxSuccessful()) {
+                        return response.bodyToMono(responseType)
+                                .switchIfEmpty(Mono.error(GatewayAuthException.serviceUnavailable("auth service empty response")));
+                    }
+                    return response.releaseBody()
+                            .then(Mono.error(GatewayAuthException.serviceUnavailable(
+                                    "auth service transport error: " + response.statusCode().value())));
+                })
+                .timeout(authServiceTimeout)
+                .onErrorMap(this::mapAuthServiceError);
+    }
+
+    private Throwable mapAuthServiceError(Throwable throwable) {
+        Throwable unwrapped = unwrapAsyncException(throwable);
+        if (unwrapped instanceof GatewayAuthException) {
+            return unwrapped;
+        }
+        if (unwrapped instanceof TimeoutException) {
+            return GatewayAuthException.gatewayTimeout("auth service timeout");
+        }
+        return GatewayAuthException.serviceUnavailable("auth service unavailable");
+    }
+
+    private Throwable unwrapAsyncException(Throwable throwable) {
+        Throwable current = throwable;
+        while ((current instanceof CompletionException || current instanceof ExecutionException) && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private void cacheValidToken(String token, TokenParseResultDTO result) {
+        tokenCache.put(token, result);
+        invalidTokenCache.invalidate(token);
+    }
+
+    private void cacheInvalidToken(String token, String reason) {
+        tokenCache.invalidate(token);
+        invalidTokenCache.put(token, new InvalidTokenMarker(reason == null ? "invalid token" : reason));
+    }
+
+    private TokenValidationOutcome toTokenValidationOutcome(TokenParseResultDTO result) {
+        if (result == null) {
+            return TokenValidationOutcome.failure(HttpStatus.SERVICE_UNAVAILABLE, "auth validate response missing body");
+        }
+        if (result.isExpired() || !result.isValid()) {
+            return TokenValidationOutcome.invalid(result.getError());
+        }
+        if (validateAuthContext(result) == null) {
+            return TokenValidationOutcome.failure(HttpStatus.SERVICE_UNAVAILABLE, "auth validate response missing subject");
+        }
+        return TokenValidationOutcome.valid(result);
+    }
+
+    private Mono<TokenParseResultDTO> applyTokenValidationOutcome(String token, TokenValidationOutcome outcome) {
+        if (outcome.result() != null) {
+            cacheValidToken(token, outcome.result());
+            return Mono.just(outcome.result());
+        }
+        if (HttpStatus.UNAUTHORIZED.equals(outcome.status())) {
+            cacheInvalidToken(token, outcome.message());
+        }
+        return Mono.error(new GatewayAuthException(outcome.status(), outcome.message()));
+    }
+
+    private UserResourceLoadOutcome toUserResourceLoadOutcome(Long userId, AuthUserResourceDTO dto) {
+        if (!isCacheableUserResource(dto, userId)) {
+            return UserResourceLoadOutcome.failure(HttpStatus.SERVICE_UNAVAILABLE, "auth user resource response invalid");
+        }
+        return UserResourceLoadOutcome.success(dto);
+    }
+
+    private Mono<AuthUserResourceDTO> applyUserResourceLoadOutcome(UserResourceLoadOutcome outcome) {
+        if (outcome.result() != null) {
+            userResourceCache.put(outcome.result().getUserId(), outcome.result());
+            return Mono.just(outcome.result());
+        }
+        return Mono.error(new GatewayAuthException(outcome.status(), outcome.message()));
+    }
+
+    private String inspectTokenPayload(String token) {
+        String[] segments = token.split("\\.", -1);
+        if (segments.length != 3) {
+            return "malformed jwt";
+        }
         try {
-            String json = objectMapper.writeValueAsString(dto);
-            return redisTemplate.opsForValue()
-                    .set(cacheKey, json, Duration.ofSeconds(cacheTtlSeconds))
-                    .onErrorResume(e -> Mono.just(false))
-                    .thenReturn(dto);
-        } catch (Exception e) {
-            return Mono.just(dto);
+            byte[] payloadBytes = Base64.getUrlDecoder().decode(segments[1]);
+            JsonNode payload = objectMapper.readTree(new String(payloadBytes, StandardCharsets.UTF_8));
+            if (payload == null || !payload.isObject()) {
+                return "invalid jwt payload";
+            }
+            JsonNode expNode = payload.get("exp");
+            if (expNode != null && expNode.canConvertToLong()) {
+                long nowEpochSeconds = Instant.now().getEpochSecond();
+                if (expNode.asLong() <= nowEpochSeconds) {
+                    return "jwt expired";
+                }
+            }
+            return null;
+        } catch (IllegalArgumentException ex) {
+            return "invalid jwt payload encoding";
+        } catch (Exception ex) {
+            return "invalid jwt payload";
         }
     }
 
@@ -324,6 +434,38 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         } catch (Exception e) {
             return "null";
         }
+    }
+
+    private <T> T extractApiData(ApiResponse<T> response) {
+        if (response == null || !Integer.valueOf(200).equals(response.getCode()) || response.getData() == null) {
+            return null;
+        }
+        return response.getData();
+    }
+
+    private Mono<Void> writeStatus(ServerWebExchange exchange, HttpStatus status) {
+        exchange.getResponse().setStatusCode(status);
+        return exchange.getResponse().setComplete();
+    }
+
+    private AuthContext validateAuthContext(TokenParseResultDTO parseResult) {
+        if (parseResult == null || !parseResult.isValid() || parseResult.isExpired()) {
+            return null;
+        }
+        Long userId = parseResult.getUserId();
+        String username = parseResult.getUsername();
+        if (userId == null || username == null || username.isBlank()) {
+            return null;
+        }
+        return new AuthContext(userId, username);
+    }
+
+    private boolean isCacheableTokenResult(TokenParseResultDTO result) {
+        return validateAuthContext(result) != null;
+    }
+
+    private boolean isCacheableUserResource(AuthUserResourceDTO dto, Long expectedUserId) {
+        return dto != null && dto.getUserId() != null && expectedUserId != null && expectedUserId.equals(dto.getUserId());
     }
 
     private String extractTokenFromHeader(String authHeader) {
@@ -342,7 +484,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         return -100;
     }
 
-    private record FilterInput(String path, String internalHeaderValue, String token) {
+    private record FilterInput(String path, String token) {
     }
 
     private record AuthContext(Long userId, String username) {
@@ -364,5 +506,57 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                                      String ts,
                                      String nonce,
                                      String signature) {
+    }
+
+    private record InvalidTokenMarker(String reason) {
+    }
+
+    private record TokenValidationOutcome(TokenParseResultDTO result, HttpStatus status, String message) {
+        private static TokenValidationOutcome valid(TokenParseResultDTO result) {
+            return new TokenValidationOutcome(result, null, null);
+        }
+
+        private static TokenValidationOutcome invalid(String message) {
+            return new TokenValidationOutcome(null, HttpStatus.UNAUTHORIZED, message == null ? "invalid token" : message);
+        }
+
+        private static TokenValidationOutcome failure(HttpStatus status, String message) {
+            return new TokenValidationOutcome(null, status, message);
+        }
+    }
+
+    private record UserResourceLoadOutcome(AuthUserResourceDTO result, HttpStatus status, String message) {
+        private static UserResourceLoadOutcome success(AuthUserResourceDTO result) {
+            return new UserResourceLoadOutcome(result, null, null);
+        }
+
+        private static UserResourceLoadOutcome failure(HttpStatus status, String message) {
+            return new UserResourceLoadOutcome(null, status, message);
+        }
+    }
+
+    private static final class GatewayAuthException extends RuntimeException {
+        private final HttpStatus status;
+
+        private GatewayAuthException(HttpStatus status, String message) {
+            super(message);
+            this.status = status;
+        }
+
+        private HttpStatus status() {
+            return status;
+        }
+
+        private static GatewayAuthException unauthorized(String message) {
+            return new GatewayAuthException(HttpStatus.UNAUTHORIZED, message);
+        }
+
+        private static GatewayAuthException gatewayTimeout(String message) {
+            return new GatewayAuthException(HttpStatus.GATEWAY_TIMEOUT, message);
+        }
+
+        private static GatewayAuthException serviceUnavailable(String message) {
+            return new GatewayAuthException(HttpStatus.SERVICE_UNAVAILABLE, message);
+        }
     }
 }

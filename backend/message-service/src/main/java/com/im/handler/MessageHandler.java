@@ -1,5 +1,11 @@
 package com.im.handler;
 
-public interface MessageHandler<T, R> {
-    R handle(Long senderId, T request);
+import com.im.dto.MessageDTO;
+import com.im.service.command.SendMessageCommand;
+
+public interface MessageHandler {
+
+    boolean supports(SendMessageCommand command);
+
+    MessageDTO handle(SendMessageCommand command);
 }

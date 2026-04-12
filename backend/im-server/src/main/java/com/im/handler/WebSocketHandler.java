@@ -1,45 +1,33 @@
 package com.im.handler;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
-import com.im.constants.ImConstants;
 import com.im.entity.UserSession;
 import com.im.enums.UserStatus;
 import com.im.service.IImService;
-
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import org.springframework.web.socket.*;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.WebSocketMessage;
+import org.springframework.web.socket.WebSocketSession;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class WebSocketHandler implements org.springframework.web.socket.WebSocketHandler {
-    
-    @Autowired
-    private IImService imService;
+
+    private final IImService imService;
+    private final WsMessageDispatcher dispatcher;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         String userId = extractUserIdFromSession(session);
         if (StringUtils.isBlank(userId)) {
-            log.warn("WebSocket连接失败: 用户ID无效, session={}", session.getId());
-            session.close(CloseStatus.BAD_DATA.withReason("用户ID无效"));
+            log.warn("WebSocket connect rejected due to missing userId. session={}", session.getId());
+            session.close(CloseStatus.BAD_DATA.withReason("invalid userId"));
             return;
-        }
-
-        UserSession existingSession = imService.getSessionUserMap().get(userId);
-        if (existingSession != null && existingSession.getWebSocketSession() != null && existingSession.getWebSocketSession().isOpen()) {
-            try {
-                existingSession.getWebSocketSession().close(CloseStatus.NORMAL.withReason("新连接建立"));
-            } catch (Exception e) {
-                log.debug("关闭旧连接失败: userId={}", userId, e);
-            }
         }
 
         UserSession userSession = UserSession.builder()
@@ -49,91 +37,65 @@ public class WebSocketHandler implements org.springframework.web.socket.WebSocke
                 .lastHeartbeat(LocalDateTime.now())
                 .webSocketSession(session)
                 .build();
-
-        imService.putSessionMapping(userId, userSession);
-        log.debug("WebSocket连接建立: userId={}, sessionId={}", userId, session.getId());
+        imService.registerSession(userId, userSession);
+        log.debug("WebSocket connection established. userId={}, sessionId={}", userId, session.getId());
     }
-    
-    @Autowired
-    private WsMessageDispatcher dispatcher;
 
     @Override
     public void handleMessage(WebSocketSession session, WebSocketMessage<?> message) {
         String userId = extractUserIdFromSession(session);
-        if (userId == null) {
-            log.warn("无法提取用户ID: session={}", session.getId());
+        if (StringUtils.isBlank(userId)) {
+            log.warn("Unable to resolve userId from websocket session. session={}", session == null ? null : session.getId());
             return;
         }
-
-        UserSession userSession = imService.getSessionUserMap().get(userId);
-        if (userSession == null) {
-            log.debug("用户会话不存在: userId={}", userId);
+        if (!imService.isSessionActive(userId, session.getId())) {
+            log.debug("Ignore websocket message from stale session. userId={}, sessionId={}", userId, session.getId());
             return;
         }
 
         String payload = message.getPayload() == null ? "" : message.getPayload().toString().trim();
-        imService.refreshRouteHeartbeat(userId);
-
+        imService.refreshRouteHeartbeat(userId, session.getId());
         dispatcher.dispatch(session, userId, payload);
     }
-    
+
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) {
         String userId = extractUserIdFromSession(session);
-        log.error("WebSocket传输错误: userId={}, error={}", userId, exception.getMessage());
-        cleanupSession(session);
+        log.error("WebSocket transport error. userId={}, sessionId={}, error={}",
+                userId, session == null ? null : session.getId(), exception == null ? null : exception.getMessage());
+        cleanupSession(session, CloseStatus.SERVER_ERROR.withReason("transport error"));
     }
-    
+
     @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus closeStatus) throws Exception {
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus closeStatus) {
         String userId = extractUserIdFromSession(session);
-        log.debug("WebSocket连接关闭: userId={}, closeStatus={}", userId, closeStatus);
-        cleanupSession(session);
+        log.debug("WebSocket connection closed. userId={}, sessionId={}, closeStatus={}",
+                userId, session == null ? null : session.getId(), closeStatus);
+        cleanupSession(session, closeStatus);
     }
-    
-    /**
-     * 是否支持部分消息
-     * 返回false表示不支持部分消息传输，必须接收完整消息
-     * 
-     * @return false - 不支持部分消息
-     */
+
     @Override
     public boolean supportsPartialMessages() {
         return false;
     }
-    
+
     private String extractUserIdFromSession(WebSocketSession session) {
         if (session == null) {
             return null;
         }
-        // 优先从Attribute中获取
         Object userIdAttr = session.getAttributes().get("userId");
-        if (userIdAttr != null) {
-            return userIdAttr.toString();
-        }
-        
-        // 降级：尝试从URI获取
-        if (session.getUri() == null) {
+        if (userIdAttr == null) {
             return null;
         }
-        String path = session.getUri().getPath();
-        if (path != null && path.startsWith("/websocket/")) {
-            return path.substring("/websocket/".length());
-        }
-        return null;
+        String userId = userIdAttr.toString().trim();
+        return StringUtils.isBlank(userId) ? null : userId;
     }
-    private void cleanupSession(WebSocketSession session) {
+
+    private void cleanupSession(WebSocketSession session, CloseStatus closeStatus) {
         if (session == null) {
             return;
         }
-        
         String userId = extractUserIdFromSession(session);
-        if (userId != null) {
-            UserSession userSession = imService.getSessionUserMap().get(userId);
-            if (userSession != null && userSession.getWebSocketSession() == session) {
-                imService.userOffline(userId);
-                log.debug("WebSocket连接已清理: userId={}", userId);
-            }
-        }
+        imService.unregisterSession(userId, session.getId(), closeStatus);
     }
 }

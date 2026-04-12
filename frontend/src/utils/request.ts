@@ -12,8 +12,9 @@ import { useUserStore } from "@/stores/user";
 import type { ApiResponse } from "@/types/api";
 import router from "@/router";
 import NProgress from "nprogress";
-import { STORAGE_CONFIG } from "@/config";
 import { refreshAccessTokenRaw } from "@/services/auth-refresh";
+import { logger } from "@/utils/logger";
+import { STORAGE_CONFIG } from "@/config";
 
 function createTraceId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -22,18 +23,132 @@ function createTraceId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-let refreshInFlight: Promise<string | null> | null = null;
+let refreshInFlight: Promise<boolean> | null = null;
 let reauthPromptInFlight = false;
+let clearAuthSessionInFlight: Promise<void> | null = null;
+
+type UserStoreLike = {
+  accessToken?: string;
+  getAccessToken?: () => string;
+  setAccessToken?: (token?: string | null) => void;
+  restoreSession?: () => Promise<boolean> | boolean;
+  clearSession?: () => void;
+  logout?: () => Promise<unknown> | unknown;
+};
+
+type HeaderBag = Record<string, unknown> & {
+  get?: (name: string) => unknown;
+  set?: (name: string, value: string) => unknown;
+  delete?: (name: string) => unknown;
+};
+
+const getUserStore = (): UserStoreLike => useUserStore() as UserStoreLike;
+
+const readPersistedAccessToken = (): string => {
+  if (typeof localStorage === "undefined") {
+    return "";
+  }
+  const token = localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY);
+  return typeof token === "string" ? token.trim() : "";
+};
+
+const writePersistedAccessToken = (token?: string | null) => {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  const normalized = typeof token === "string" ? token.trim() : "";
+  if (normalized) {
+    localStorage.setItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY, normalized);
+    return;
+  }
+  localStorage.removeItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY);
+};
+
+const storeLatestAccessToken = (token?: string | null) => {
+  const normalized = typeof token === "string" ? token.trim() : "";
+  const userStore = getUserStore();
+  if (typeof userStore.setAccessToken === "function") {
+    userStore.setAccessToken(normalized);
+    return;
+  }
+  if ("accessToken" in userStore) {
+    userStore.accessToken = normalized;
+  }
+  writePersistedAccessToken(normalized);
+};
+
+const getLatestAccessToken = (): string => {
+  const userStore = getUserStore();
+  if (typeof userStore.getAccessToken === "function") {
+    return String(userStore.getAccessToken() || "").trim();
+  }
+  if (typeof userStore.accessToken === "string" && userStore.accessToken.trim()) {
+    return userStore.accessToken.trim();
+  }
+  return readPersistedAccessToken();
+};
+
+const getHeaderValue = (headers: HeaderBag | undefined, name: string): string => {
+  if (!headers) {
+    return "";
+  }
+  if (typeof headers.get === "function") {
+    const value = headers.get(name);
+    return value == null ? "" : String(value).trim();
+  }
+  const directValue = headers[name] ?? headers[name.toLowerCase()];
+  return directValue == null ? "" : String(directValue).trim();
+};
+
+const setHeaderValue = (headers: HeaderBag | undefined, name: string, value?: string) => {
+  if (!headers) {
+    return;
+  }
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (typeof headers.set === "function") {
+    if (normalized) {
+      headers.set(name, normalized);
+    } else if (typeof headers.delete === "function") {
+      headers.delete(name);
+    }
+    return;
+  }
+  if (normalized) {
+    headers[name] = normalized;
+    return;
+  }
+  delete headers[name];
+  delete headers[name.toLowerCase()];
+};
+
+const clearAuthSession = async () => {
+  if (clearAuthSessionInFlight) {
+    return clearAuthSessionInFlight;
+  }
+  clearAuthSessionInFlight = (async () => {
+    const userStore = getUserStore();
+    if (typeof userStore.clearSession === "function") {
+      userStore.clearSession();
+      return;
+    }
+    if (typeof userStore.logout === "function") {
+      await userStore.logout();
+    }
+  })().finally(() => {
+    clearAuthSessionInFlight = null;
+  });
+  return clearAuthSessionInFlight;
+};
 
 const shouldSkipRefresh = (url?: string) => {
   if (!url) return false;
   return (
+    url.includes("/auth/parse") ||
     url.includes("/auth/refresh") ||
     url.includes("/user/login") ||
     url.includes("/user/register") ||
     url.includes("/user/logout") ||
     url.includes("/user/offline") ||
-    url.includes("/user/online") ||
     url.includes("/user/heartbeat")
   );
 };
@@ -51,36 +166,38 @@ const promptReLogin = () => {
     })
     .finally(() => {
       reauthPromptInFlight = false;
-    });
+  });
 };
 
-const tryRefreshAccessToken = async (): Promise<string | null> => {
+const tryRefreshAccessToken = async (): Promise<boolean> => {
   if (refreshInFlight) return refreshInFlight;
-  const refreshToken = localStorage.getItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY);
-  if (!refreshToken) return null;
   refreshInFlight = (async () => {
     try {
-      const response = await refreshAccessTokenRaw(
-        refreshToken,
-        createTraceId(),
-      );
+      const response = await refreshAccessTokenRaw(createTraceId());
       const payload = response?.data;
-      if (payload?.code !== 200 || !payload?.data?.accessToken) {
-        return null;
+      if (payload?.code !== 200) {
+        return false;
       }
-      const accessToken = String(payload.data.accessToken);
-      const nextRefreshToken = String(
-        payload.data.refreshToken || refreshToken,
-      );
-      localStorage.setItem(STORAGE_CONFIG.TOKEN_KEY, accessToken);
-      localStorage.setItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY, nextRefreshToken);
       try {
-        const userStore = useUserStore();
-        userStore.setAuthToken(accessToken, nextRefreshToken);
-      } catch {}
-      return accessToken;
+        const nextAccessToken =
+          typeof payload?.data === "object" && payload.data !== null
+            ? String((payload.data as { accessToken?: string }).accessToken || "").trim()
+            : "";
+        storeLatestAccessToken(nextAccessToken);
+        const userStore = getUserStore();
+        const restored =
+          typeof userStore.restoreSession === "function"
+            ? await userStore.restoreSession()
+            : true;
+        if (restored === false) {
+          return false;
+        }
+      } catch {
+        return false;
+      }
+      return true;
     } catch {
-      return null;
+      return false;
     } finally {
       refreshInFlight = null;
     }
@@ -88,10 +205,36 @@ const tryRefreshAccessToken = async (): Promise<string | null> => {
   return refreshInFlight;
 };
 
+const shouldClearSession = (url?: string) =>
+  !url?.includes("/user/offline") &&
+  !url?.includes("/user/logout") &&
+  !url?.includes("/user/heartbeat");
+
+const retryWithFreshAccessToken = async (config?: Record<string, unknown>) => {
+  if (!config || config.__retry401 || shouldSkipRefresh(String(config.url || ""))) {
+    return null;
+  }
+  config.__retry401 = true;
+  const refreshed = await tryRefreshAccessToken();
+  if (!refreshed) {
+    return null;
+  }
+  const headers = (config.headers || {}) as HeaderBag;
+  config.headers = headers;
+  const latestAccessToken = getLatestAccessToken();
+  if (latestAccessToken) {
+    setHeaderValue(headers, "Authorization", `Bearer ${latestAccessToken}`);
+  } else {
+    setHeaderValue(headers, "Authorization");
+  }
+  return request(config);
+};
+
 // 创建axios实例
 const request: AxiosInstance = axios.create({
   baseURL: "/api",
   timeout: 10000,
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json;charset=UTF-8",
   },
@@ -106,23 +249,19 @@ request.interceptors.request.use(
     // 显示进度条
     NProgress.start();
 
-    // 添加认证token
-    const userStore = useUserStore();
-    const token =
-      userStore.token || localStorage.getItem(STORAGE_CONFIG.TOKEN_KEY) || "";
+    const headers = (config.headers || {}) as HeaderBag;
+    config.headers = headers as InternalAxiosRequestConfig["headers"];
 
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
-    if (config.headers) {
-      config.headers["X-Gateway-Route"] = "true";
-      const existingTraceId =
-        config.headers["X-Trace-Id"] ||
-        (typeof config.headers.get === "function"
-          ? config.headers.get("X-Trace-Id")
-          : undefined);
-      config.headers["X-Trace-Id"] = String(existingTraceId || createTraceId());
+    if (headers) {
+      setHeaderValue(headers, "X-Gateway-Route", "true");
+      const existingTraceId = getHeaderValue(headers, "X-Trace-Id");
+      setHeaderValue(config.headers as HeaderBag, "X-Trace-Id", existingTraceId || createTraceId());
+      if (!getHeaderValue(headers, "Authorization")) {
+        const accessToken = getLatestAccessToken();
+        if (accessToken) {
+          setHeaderValue(headers, "Authorization", `Bearer ${accessToken}`);
+        }
+      }
     }
 
     // 添加请求时间戳（防止缓存）
@@ -137,33 +276,39 @@ request.interceptors.request.use(
   },
   (error) => {
     NProgress.done();
-    console.error("请求拦截器错误:", error);
+    logger.error("request interceptor failed", error);
     return Promise.reject(error);
   },
 );
 
 // 响应拦截器
 request.interceptors.response.use(
-  async (response: AxiosResponse<any>) => {
+  async (response: AxiosResponse<unknown>): Promise<any> => {
     NProgress.done();
 
-    const responseData = response.data;
+    const responseData =
+      response.data && typeof response.data === "object"
+        ? (response.data as Record<string, unknown>)
+        : {};
 
     // 处理UserAuthResponse格式（登录接口）
     if (
       "success" in responseData &&
       typeof responseData.success === "boolean"
     ) {
+      const authMessage =
+        typeof responseData.message === "string" ? responseData.message : "操作失败";
       if (responseData.success) {
         return responseData;
       } else {
-        ElMessage.error(responseData.message || "操作失败");
-        return Promise.reject(new Error(responseData.message || "操作失败"));
+        ElMessage.error(authMessage);
+        return Promise.reject(new Error(authMessage));
       }
     }
 
     // 处理ApiResponse格式（其他接口）
     const { code, message } = responseData;
+    const messageText = typeof message === "string" ? message : "";
 
     // 成功响应
     if (code === 200) {
@@ -183,86 +328,76 @@ request.interceptors.response.use(
         data: responseData,
         success: true,
         timestamp: Date.now(),
-      } as any; // 强转以适配拦截器返回类型预期
+      } as ApiResponse<unknown>;
     }
 
     // 业务错误
     if (code === 401) {
-      const config = response.config as any;
-      if (!config?.__retry401 && !shouldSkipRefresh(response.config.url)) {
-        config.__retry401 = true;
-        const refreshed = await tryRefreshAccessToken();
-        if (refreshed) {
-          return request(config);
-        }
+      if (shouldSkipRefresh(response.config?.url)) {
+        return Promise.reject(new Error(messageText || "未授权"));
       }
-      const userStore = useUserStore();
-      if (
-        !response.config.url?.includes("/user/offline") &&
-        !response.config.url?.includes("/user/logout") &&
-        !response.config.url?.includes("/user/online") &&
-        !response.config.url?.includes("/user/heartbeat")
-      ) {
-        userStore.logout();
+      const config = response.config as any;
+      const retried = await retryWithFreshAccessToken(config);
+      if (retried) {
+        return retried;
+      }
+      if (shouldClearSession(response.config.url)) {
+        await clearAuthSession();
       }
       promptReLogin();
 
-      return Promise.reject(new Error(message || "未授权"));
+      return Promise.reject(new Error(messageText || "未授权"));
     }
 
     if (code === 403) {
       ElMessage.error("权限不足");
-      return Promise.reject(new Error(message || "权限不足"));
+      return Promise.reject(new Error(messageText || "权限不足"));
     }
 
     if (code === 404) {
       ElMessage.error("请求的资源不存在");
-      return Promise.reject(new Error(message || "资源不存在"));
+      return Promise.reject(new Error(messageText || "资源不存在"));
     }
 
     if (code === 500) {
       ElMessage.error("服务器内部错误");
-      return Promise.reject(new Error(message || "服务器错误"));
+      return Promise.reject(new Error(messageText || "服务器错误"));
     }
 
     // 其他业务错误
-    ElMessage.error(message || "请求失败");
-    return Promise.reject(new Error(message || "请求失败"));
+    ElMessage.error(messageText || "请求失败");
+    return Promise.reject(new Error(messageText || "请求失败"));
   },
   async (error) => {
     NProgress.done();
 
-    console.error("响应拦截器错误:", error);
-
     // 网络错误
     if (!error.response) {
+      logger.error("response interceptor failed", error);
       ElMessage.error("网络连接失败，请检查网络设置");
       return Promise.reject(error);
     }
 
     const { status, statusText } = error.response;
+    if (!(status === 401 && shouldSkipRefresh(error.config?.url))) {
+      logger.error("response interceptor failed", error);
+    }
 
     switch (status) {
       case 400:
         ElMessage.error("请求参数错误");
         break;
       case 401: {
-        const config = error.config as any;
-        if (!config?.__retry401 && !shouldSkipRefresh(config?.url)) {
-          config.__retry401 = true;
-          const refreshed = await tryRefreshAccessToken();
-          if (refreshed) {
-            return request(config);
-          }
+        if (shouldSkipRefresh(error.config?.url)) {
+          break;
         }
-        const userStore = useUserStore();
-        if (
-          !error.config?.url?.includes("/user/offline") &&
-          !error.config?.url?.includes("/user/logout") &&
-          !error.config?.url?.includes("/user/online") &&
-          !error.config?.url?.includes("/user/heartbeat")
-        ) {
-          userStore.logout();
+        const config = error.config as any;
+        const retried = await retryWithFreshAccessToken(config);
+        if (retried) {
+          return retried;
+        }
+        if (shouldClearSession(error.config?.url)) {
+          await clearAuthSession();
         }
         promptReLogin();
         break;
@@ -298,46 +433,50 @@ request.interceptors.response.use(
 
 // 请求方法封装
 export const http = {
-  get<T = any>(
+  get<T = unknown>(
     url: string,
     config?: AxiosRequestConfig,
   ): Promise<ApiResponse<T>> {
     return request.get(url, config);
   },
 
-  post<T = any>(
+  post<T = unknown>(
     url: string,
-    data?: any,
+    data?: unknown,
     config?: AxiosRequestConfig,
   ): Promise<ApiResponse<T>> {
     return request.post(url, data, config);
   },
 
-  put<T = any>(
+  put<T = unknown>(
     url: string,
-    data?: any,
+    data?: unknown,
     config?: AxiosRequestConfig,
   ): Promise<ApiResponse<T>> {
     return request.put(url, data, config);
   },
 
-  delete<T = any>(
+  delete<T = unknown>(
     url: string,
-    params?: any,
+    params?: unknown,
     config?: AxiosRequestConfig,
   ): Promise<ApiResponse<T>> {
-    return request.delete(url, { params, ...config });
+    const requestConfig: AxiosRequestConfig = { ...config };
+    if (params !== undefined) {
+      requestConfig.params = params;
+    }
+    return request.delete(url, requestConfig);
   },
 
-  patch<T = any>(
+  patch<T = unknown>(
     url: string,
-    data?: any,
+    data?: unknown,
     config?: AxiosRequestConfig,
   ): Promise<ApiResponse<T>> {
     return request.patch(url, data, config);
   },
 
-  upload<T = any>(
+  upload<T = unknown>(
     url: string,
     file: File,
     onProgress?: (progress: number) => void,

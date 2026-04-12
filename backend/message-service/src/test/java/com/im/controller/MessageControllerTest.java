@@ -4,21 +4,24 @@ import com.im.dto.ApiResponse;
 import com.im.dto.MessageDTO;
 import com.im.dto.request.SendGroupMessageRequest;
 import com.im.dto.request.SendPrivateMessageRequest;
+import com.im.enums.MessageType;
 import com.im.exception.BusinessException;
-import com.im.handler.GroupMessageHandler;
-import com.im.handler.PrivateMessageHandler;
 import com.im.service.MessageService;
+import com.im.service.command.SendMessageCommand;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -26,12 +29,6 @@ class MessageControllerTest {
 
     @Mock
     private MessageService messageService;
-
-    @Mock
-    private PrivateMessageHandler privateMessageHandler;
-
-    @Mock
-    private GroupMessageHandler groupMessageHandler;
 
     @InjectMocks
     private MessageController messageController;
@@ -43,39 +40,66 @@ class MessageControllerTest {
     }
 
     @Test
-    void sendPrivateMessage_Success() {
+    void sendPrivateMessageSuccess() {
         SendPrivateMessageRequest request = new SendPrivateMessageRequest();
+        request.setReceiverId("2");
+        request.setMessageType(MessageType.TEXT);
+        request.setContent("hello");
         MessageDTO dto = new MessageDTO();
         dto.setId(100L);
-        when(privateMessageHandler.handle(eq(1L), any())).thenReturn(dto);
+        when(messageService.sendMessage(any(SendMessageCommand.class))).thenReturn(dto);
 
         ApiResponse<MessageDTO> response = messageController.sendPrivateMessage(1L, request);
 
         assertEquals(200, response.getCode());
         assertEquals(100L, response.getData().getId());
+        ArgumentCaptor<SendMessageCommand> captor = ArgumentCaptor.forClass(SendMessageCommand.class);
+        verify(messageService).sendMessage(captor.capture());
+        assertEquals(1L, captor.getValue().getSenderId());
+        assertEquals(2L, captor.getValue().getReceiverId());
+        assertTrue(!captor.getValue().isGroup());
     }
 
     @Test
-    void sendPrivateMessage_BusinessException() {
+    void sendPrivateMessageBusinessException() {
         SendPrivateMessageRequest request = new SendPrivateMessageRequest();
-        when(privateMessageHandler.handle(eq(1L), any())).thenThrow(new BusinessException("Rate limit"));
+        request.setReceiverId("2");
+        request.setMessageType(MessageType.TEXT);
+        when(messageService.sendMessage(any(SendMessageCommand.class))).thenThrow(new BusinessException("Rate limit"));
 
-        ApiResponse<MessageDTO> response = messageController.sendPrivateMessage(1L, request);
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> messageController.sendPrivateMessage(1L, request));
 
-        assertEquals(400, response.getCode());
-        assertEquals("Rate limit", response.getMessage());
+        assertEquals("Rate limit", exception.getMessage());
     }
 
     @Test
-    void sendGroupMessage_Success() {
+    void sendPrivateMessageShouldRejectSystemType() {
+        SendPrivateMessageRequest request = new SendPrivateMessageRequest();
+        request.setReceiverId("2");
+        request.setMessageType(MessageType.SYSTEM);
+
+        assertThrows(BusinessException.class, () -> messageController.sendPrivateMessage(1L, request));
+    }
+
+    @Test
+    void sendGroupMessageSuccess() {
         SendGroupMessageRequest request = new SendGroupMessageRequest();
+        request.setGroupId("8");
+        request.setMessageType(MessageType.TEXT);
+        request.setContent("group-hi");
         MessageDTO dto = new MessageDTO();
         dto.setId(200L);
-        when(groupMessageHandler.handle(eq(1L), any())).thenReturn(dto);
+        when(messageService.sendMessage(any(SendMessageCommand.class))).thenReturn(dto);
 
         ApiResponse<MessageDTO> response = messageController.sendGroupMessage(1L, request);
 
         assertEquals(200, response.getCode());
         assertEquals(200L, response.getData().getId());
+        ArgumentCaptor<SendMessageCommand> captor = ArgumentCaptor.forClass(SendMessageCommand.class);
+        verify(messageService).sendMessage(captor.capture());
+        assertEquals(1L, captor.getValue().getSenderId());
+        assertEquals(8L, captor.getValue().getGroupId());
+        assertTrue(captor.getValue().isGroup());
     }
 }

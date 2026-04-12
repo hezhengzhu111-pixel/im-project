@@ -40,15 +40,6 @@ public class ImServiceImpl implements ImService {
     }
 
     @Override
-    public void userOnline(String userId) {
-        try {
-            imServerFeignClient.userOnline(userId);
-        } catch (Exception e) {
-            log.error("notify im-server user online failed", e);
-        }
-    }
-
-    @Override
     public void userOffline(String userId) {
         try {
             imServerFeignClient.userOffline(userId);

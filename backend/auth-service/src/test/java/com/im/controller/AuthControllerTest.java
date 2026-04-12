@@ -7,6 +7,10 @@ import com.im.dto.WsTicketDTO;
 import com.im.dto.request.ParseTokenRequest;
 import com.im.dto.request.RefreshTokenRequest;
 import com.im.service.AuthTokenService;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -28,18 +32,32 @@ class AuthControllerTest {
     @InjectMocks
     private AuthController authController;
 
+    @BeforeEach
+    void setUp() {
+        ReflectionTestUtils.setField(authController, "accessTokenCookieName", "IM_ACCESS_TOKEN");
+        ReflectionTestUtils.setField(authController, "refreshTokenCookieName", "IM_REFRESH_TOKEN");
+        ReflectionTestUtils.setField(authController, "authCookieSameSite", "Lax");
+    }
+
     @Test
     void refresh_Success() {
         RefreshTokenRequest request = new RefreshTokenRequest();
         TokenPairDTO pair = new TokenPairDTO();
         pair.setAccessToken("new_access");
-        
+        pair.setRefreshToken("new_refresh");
+        pair.setExpiresInMs(60000L);
+        pair.setRefreshExpiresInMs(120000L);
+
         when(authTokenService.refresh(any())).thenReturn(pair);
-        
-        ApiResponse<TokenPairDTO> response = authController.refresh(request);
-        
+
+        MockHttpServletRequest httpRequest = new MockHttpServletRequest();
+        MockHttpServletResponse httpResponse = new MockHttpServletResponse();
+        ApiResponse<TokenPairDTO> response = authController.refresh(request, httpRequest, httpResponse);
+
         assertEquals(200, response.getCode());
         assertEquals("new_access", response.getData().getAccessToken());
+        assertEquals(60000L, response.getData().getExpiresInMs());
+        assertEquals(null, response.getData().getRefreshToken());
     }
 
     @Test
@@ -50,31 +68,24 @@ class AuthControllerTest {
         
         TokenParseResultDTO result = new TokenParseResultDTO();
         result.setValid(true);
-        
+
         when(authTokenService.parseAccessToken(eq("token"), eq(true))).thenReturn(result);
-        
-        ApiResponse<TokenParseResultDTO> response = authController.parse(request);
-        
+
+        ApiResponse<TokenParseResultDTO> response = authController.parse(request, new MockHttpServletRequest());
+
         assertEquals(200, response.getCode());
         assertEquals(true, response.getData().isValid());
     }
 
     @Test
     void issueWsTicket_Success() {
-        TokenParseResultDTO parseResult = new TokenParseResultDTO();
-        parseResult.setValid(true);
-        parseResult.setExpired(false);
-        parseResult.setUserId(1L);
-        parseResult.setUsername("alice");
-
         WsTicketDTO dto = new WsTicketDTO();
         dto.setTicket("ticket-1");
         dto.setExpiresInMs(30000L);
 
-        when(authTokenService.parseAccessToken("Bearer token", false)).thenReturn(parseResult);
         when(authTokenService.issueWsTicket(1L, "alice")).thenReturn(dto);
 
-        ApiResponse<WsTicketDTO> response = authController.issueWsTicket("Bearer token");
+        ApiResponse<WsTicketDTO> response = authController.issueWsTicket(1L, "alice");
 
         assertEquals(200, response.getCode());
         assertEquals("ticket-1", response.getData().getTicket());
@@ -82,11 +93,13 @@ class AuthControllerTest {
 
     @Test
     void issueWsTicket_InvalidToken_ShouldThrowSecurityException() {
-        TokenParseResultDTO parseResult = new TokenParseResultDTO();
-        parseResult.setValid(false);
+        when(authTokenService.issueWsTicket(1L, "alice")).thenThrow(new SecurityException("invalid"));
 
-        when(authTokenService.parseAccessToken("Bearer bad", false)).thenReturn(parseResult);
+        assertThrows(SecurityException.class, () -> authController.issueWsTicket(1L, "alice"));
+    }
 
-        assertThrows(SecurityException.class, () -> authController.issueWsTicket("Bearer bad"));
+    @Test
+    void issueWsTicket_MissingIdentity_ShouldThrowSecurityException() {
+        assertThrows(SecurityException.class, () -> authController.issueWsTicket(null, " "));
     }
 }

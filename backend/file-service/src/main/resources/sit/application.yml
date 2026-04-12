@@ -17,8 +17,8 @@ spring:
       enabled: false
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
+      max-file-size: ${IM_FILE_MULTIPART_MAX_FILE_SIZE:50MB}
+      max-request-size: ${IM_FILE_MULTIPART_MAX_REQUEST_SIZE:50MB}
 
 jwt:
   secret: ${JWT_SECRET:im-access-secret-im-access-secret-im-access-secret-im-access-secret}
@@ -28,7 +28,11 @@ jwt:
 
 app:
   file:
-    max-size: 10485760
+    image-max-size: ${IM_FILE_IMAGE_MAX_SIZE:5242880}
+    file-max-size: ${IM_FILE_FILE_MAX_SIZE:10485760}
+    audio-max-size: ${IM_FILE_AUDIO_MAX_SIZE:20971520}
+    video-max-size: ${IM_FILE_VIDEO_MAX_SIZE:52428800}
+    avatar-max-size: ${IM_FILE_AVATAR_MAX_SIZE:2097152}
 
 im:
   jwt:
@@ -44,8 +48,6 @@ im:
     mode: gateway
     gateway-only:
       enabled: false
-    gateway-fallback-jwt:
-      enabled: true
     replay-protection:
       enabled: true
       ttl-seconds: 300
@@ -61,16 +63,16 @@ im:
       max-skew-ms: 300000
   storage:
     local:
-      base-dir: /data/im-files
+      base-dir: ${IM_STORAGE_LOCAL_BASE_DIR:/data/im-files}
   cos:
-    enabled: false
-    https: true
-    secret-id: ""
-    secret-key: ""
-    region: ""
-    bucket: ""
-    public-domain: ""
-    path-prefix: im
+    enabled: ${IM_COS_ENABLED:false}
+    https: ${IM_COS_HTTPS:true}
+    secret-id: ${IM_COS_SECRET_ID:}
+    secret-key: ${IM_COS_SECRET_KEY:}
+    region: ${IM_COS_REGION:}
+    bucket: ${IM_COS_BUCKET:}
+    public-domain: ${IM_COS_PUBLIC_DOMAIN:}
+    path-prefix: ${IM_COS_PATH_PREFIX:im}
 
 management:
   endpoints:

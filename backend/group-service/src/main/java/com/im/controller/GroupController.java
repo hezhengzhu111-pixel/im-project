@@ -6,7 +6,6 @@ import com.im.dto.GroupMemberPageDTO;
 import com.im.dto.request.*;
 import com.im.dto.request.GetGroupMembersRequest;
 import com.im.dto.request.GetUserRoleRequest;
-import com.im.exception.BusinessException;
 import com.im.service.GroupService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,23 +32,15 @@ public class GroupController {
     public ApiResponse<GroupInfoDTO> createGroup(
             @RequestAttribute("userId") Long userId,
             @Valid @RequestBody CreateGroupRequest request) {
-        try {
-            GroupInfoDTO result = groupService.createGroup(
-                    userId,
-                    request.getName(),
-                    request.getType(),
-                    request.getAnnouncement(),
-                    request.getAvatar()
-            );
-            return ApiResponse.success("创建群组成功", result);
-        } catch (BusinessException | IllegalArgumentException e) {
-            return ApiResponse.badRequest(e.getMessage());
-        } catch (SecurityException e) {
-            return ApiResponse.forbidden(e.getMessage());
-        } catch (Exception e) {
-            log.error("创建群组失败: userId={}, name={}", userId, request == null ? null : request.getName(), e);
-            return ApiResponse.error("系统异常，请联系管理员");
-        }
+        GroupInfoDTO result = groupService.createGroup(
+                userId,
+                request.getName(),
+                request.getType(),
+                request.getAnnouncement(),
+                request.getAvatar(),
+                request.getMemberIds()
+        );
+        return ApiResponse.success("创建群组成功", result);
     }
 
     /**

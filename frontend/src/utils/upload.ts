@@ -1,5 +1,6 @@
 import { http } from "./request";
 import type { FileUploadResponse } from "@/types/api";
+import { logger } from "@/utils/logger";
 
 // 上传结果接口
 export interface UploadResult {
@@ -115,15 +116,19 @@ export async function uploadFile(file: File): Promise<UploadResult> {
       // 转换为UploadResult格式
       return {
         url: response.data.url,
-        fileName: response.data.fileName || file.name,
+        fileName:
+          response.data.fileName ||
+          response.data.filename ||
+          response.data.originalFilename ||
+          file.name,
         size: response.data.size || file.size,
-        fileType: response.data.fileType || file.type,
+        fileType: response.data.fileType || response.data.contentType || file.type,
       };
     } else {
       throw new Error(response.message || "上传失败");
     }
   } catch (error: any) {
-    console.error("文件上传失败:", error);
+    logger.error("legacy upload failed", error);
     throw new Error(error.message || "文件上传失败");
   }
 }

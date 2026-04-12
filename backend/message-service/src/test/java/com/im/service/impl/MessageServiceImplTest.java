@@ -1,47 +1,51 @@
 package com.im.service.impl;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.im.component.MessageRateLimiter;
 import com.im.dto.MessageDTO;
 import com.im.dto.UserDTO;
-import com.im.dto.request.SendGroupMessageRequest;
-import com.im.dto.request.SendPrivateMessageRequest;
-import com.im.entity.Message;
-import com.im.enums.MessageType;
 import com.im.exception.BusinessException;
 import com.im.feign.GroupServiceFeignClient;
 import com.im.feign.UserServiceFeignClient;
+import com.im.handler.MessageHandler;
 import com.im.mapper.GroupReadCursorMapper;
 import com.im.mapper.MessageMapper;
+import com.im.message.entity.Message;
 import com.im.service.OutboxService;
 import com.im.service.support.UserProfileCache;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -72,6 +76,12 @@ class MessageServiceImplTest {
     private RedissonClient redissonClient;
     @Mock
     private RLock conversationLock;
+    @Mock
+    private TransactionTemplate transactionTemplate;
+    @Mock
+    private TransactionStatus transactionStatus;
+    @Mock
+    private MessageHandler messageHandler;
 
     private MessageServiceImpl service;
 
@@ -87,93 +97,19 @@ class MessageServiceImplTest {
                 outboxService,
                 groupReadCursorMapper,
                 userProfileCache,
-                redissonClient
+                redissonClient,
+                transactionTemplate,
+                List.of(messageHandler)
         );
-        ReflectionTestUtils.setField(service, "textEnforce", true);
-        ReflectionTestUtils.setField(service, "textMaxLength", 2000);
-        ReflectionTestUtils.setField(service, "conversationLockTtlSeconds", 5L);
 
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(redissonClient.getLock(anyString())).thenReturn(conversationLock);
-        lenient().when(conversationLock.tryLock(eq(0L), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(true);
+        lenient().when(conversationLock.tryLock(eq(2L), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(true);
         lenient().when(conversationLock.isHeldByCurrentThread()).thenReturn(true);
-    }
-
-    @Test
-    void sendPrivateMessageShouldPublishOutbox() {
-        SendPrivateMessageRequest request = privateText("2", "hello");
-        when(messageRateLimiter.canSendMessage(1L)).thenReturn(true);
-        when(userProfileCache.getUser(1L)).thenReturn(user(1L, "u1"));
-        when(userProfileCache.getUser(2L)).thenReturn(user(2L, "u2"));
-        when(userServiceFeignClient.isFriend(1L, 2L)).thenReturn(true);
-        doAnswer(invocation -> {
-            Message msg = invocation.getArgument(0);
-            msg.setId(100L);
-            return 1;
-        }).when(messageMapper).insert(any(Message.class));
-
-        MessageDTO result = service.sendPrivateMessage(1L, request);
-
-        assertNotNull(result);
-        assertEquals("hello", result.getContent());
-        assertEquals(2L, result.getReceiverId());
-        verify(outboxService).enqueueAfterCommit(eq("im-private-message-topic"), eq("p_1_2"), anyString(), eq(100L));
-        verify(redissonClient).getLock("msg:lock:p_1_2");
-        verify(conversationLock).unlock();
-    }
-
-    @Test
-    void sendPrivateMessageShouldNotUnlockWhenLockNoLongerHeld() {
-        SendPrivateMessageRequest request = privateText("2", "hello");
-        when(conversationLock.isHeldByCurrentThread()).thenReturn(false);
-        when(messageRateLimiter.canSendMessage(1L)).thenReturn(true);
-        when(userProfileCache.getUser(1L)).thenReturn(user(1L, "u1"));
-        when(userProfileCache.getUser(2L)).thenReturn(user(2L, "u2"));
-        when(userServiceFeignClient.isFriend(1L, 2L)).thenReturn(true);
-        doAnswer(invocation -> {
-            Message msg = invocation.getArgument(0);
-            msg.setId(101L);
-            return 1;
-        }).when(messageMapper).insert(any(Message.class));
-
-        service.sendPrivateMessage(1L, request);
-
-        verify(conversationLock, never()).unlock();
-    }
-
-    @Test
-    void sendPrivateMessageShouldRejectWhenConversationBusy() throws InterruptedException {
-        SendPrivateMessageRequest request = privateText("2", "hello");
-        when(conversationLock.tryLock(eq(0L), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(false);
-
-        assertThrows(BusinessException.class, () -> service.sendPrivateMessage(1L, request));
-
-        verify(messageMapper, never()).insert(any(Message.class));
-        verify(conversationLock, never()).unlock();
-    }
-
-    @Test
-    void sendGroupMessageShouldPublishOutbox() {
-        SendGroupMessageRequest request = groupText("8", "group-hi");
-        when(messageRateLimiter.canSendMessage(1L)).thenReturn(true);
-        when(userProfileCache.getUser(1L)).thenReturn(user(1L, "u1"));
-        when(groupServiceFeignClient.exists(8L)).thenReturn(true);
-        when(groupServiceFeignClient.isMember(8L, 1L)).thenReturn(true);
-        when(groupServiceFeignClient.memberIds(8L)).thenReturn(List.of(1L, 2L, 3L));
-        doAnswer(invocation -> {
-            Message msg = invocation.getArgument(0);
-            msg.setId(200L);
-            return 1;
-        }).when(messageMapper).insert(any(Message.class));
-
-        MessageDTO result = service.sendGroupMessage(1L, request);
-
-        assertNotNull(result);
-        assertTrue(result.isGroup());
-        assertEquals(2, result.getGroupMembers().size());
-        verify(outboxService).enqueueAfterCommit(eq("im-group-message-topic"), eq("g_8"), anyString(), eq(200L));
-        verify(redissonClient).getLock("msg:lock:g_8");
-        verify(conversationLock).unlock();
+        lenient().doAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(transactionStatus);
+        }).when(transactionTemplate).execute(any());
     }
 
     @Test
@@ -192,7 +128,14 @@ class MessageServiceImplTest {
 
         assertEquals("DELETED", result.getStatus());
         assertEquals(2L, result.getReceiverId());
-        verify(outboxService).enqueueAfterCommit(eq("im-private-message-topic"), eq("p_1_2"), anyString(), eq(302L));
+        verify(outboxService).enqueueAfterCommit(
+                eq("PRIVATE_MESSAGE"),
+                eq("MESSAGE"),
+                eq("p_1_2"),
+                anyString(),
+                eq(302L),
+                eq(List.of(2L))
+        );
         verify(redisTemplate, never()).convertAndSend(anyString(), anyString());
     }
 
@@ -213,8 +156,19 @@ class MessageServiceImplTest {
 
         assertEquals("RECALLED", result.getStatus());
         assertTrue(result.isGroup());
-        assertEquals(2, result.getGroupMembers().size());
-        verify(outboxService).enqueueAfterCommit(eq("im-group-message-topic"), eq("g_8"), anyString(), eq(401L));
+        assertNull(result.getGroupMembers());
+        verify(outboxService).enqueueAfterCommit(
+                eq("GROUP_MESSAGE"),
+                eq("MESSAGE"),
+                eq("g_8"),
+                anyString(),
+                eq(401L),
+                eq(List.of(2L, 3L))
+        );
+        verify(redisTemplate).delete("last_message:g_8");
+        verify(redisTemplate, never()).delete("conversations:user:1");
+        verify(redisTemplate, never()).delete("conversations:user:2");
+        verify(redisTemplate, never()).delete("conversations:user:3");
         verify(redisTemplate, never()).convertAndSend(anyString(), anyString());
     }
 
@@ -223,38 +177,63 @@ class MessageServiceImplTest {
         when(userServiceFeignClient.exists(1L)).thenReturn(true);
         when(userServiceFeignClient.exists(2L)).thenReturn(true);
         when(userServiceFeignClient.isFriend(1L, 2L)).thenReturn(true);
-        when(conversationLock.tryLock(eq(0L), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(false);
+        when(conversationLock.tryLock(eq(2L), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(false);
 
         assertThrows(BusinessException.class, () -> service.markAsRead(1L, "2"));
 
         verify(messageMapper, never()).update(any(), any());
+        verify(transactionTemplate, never()).execute(any());
     }
 
     @Test
-    void markAsReadShouldPublishCanonicalGroupReadReceiptConversationId() {
+    void markAsReadShouldNotPublishGroupReadReceiptBroadcast() {
         Message lastMessage = new Message();
         lastMessage.setId(900L);
         when(userServiceFeignClient.exists(1L)).thenReturn(true);
         when(groupServiceFeignClient.exists(8L)).thenReturn(true);
         when(groupServiceFeignClient.isMember(8L, 1L)).thenReturn(true);
-        when(groupServiceFeignClient.memberIds(8L)).thenReturn(List.of(1L, 2L, 3L));
         when(groupReadCursorMapper.selectOne(any())).thenReturn(null);
         when(messageMapper.selectOne(any())).thenReturn(lastMessage);
 
         service.markAsRead(1L, "group_8");
 
-        verify(outboxService).enqueueAfterCommit(
-                eq("im-read-receipt-topic"),
-                eq("grr_8_2"),
-                argThat(payload -> payload != null && payload.contains("\"conversationId\":\"group_8\"")),
-                eq(900L)
+        verify(outboxService, never()).enqueueAfterCommit(
+                eq("READ_RECEIPT"),
+                eq("READ_RECEIPT"),
+                anyString(),
+                anyString(),
+                anyLong(),
+                anyList()
         );
+    }
+
+    @Test
+    void markAsReadShouldUnlockAfterTransactionTemplateAndLimitPrivateBatchUpdate() {
+        Message lastRead = new Message();
+        lastRead.setId(901L);
+        when(userServiceFeignClient.exists(1L)).thenReturn(true);
+        when(userServiceFeignClient.exists(2L)).thenReturn(true);
+        when(userServiceFeignClient.isFriend(1L, 2L)).thenReturn(true);
+        when(messageMapper.update(any(), any())).thenReturn(1);
+        when(messageMapper.selectOne(any())).thenReturn(lastRead);
+
+        service.markAsRead(1L, "2");
+
+        @SuppressWarnings("unchecked")
+        var updateWrapperCaptor = org.mockito.ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(messageMapper).update(isNull(), updateWrapperCaptor.capture());
+        assertTrue(updateWrapperCaptor.getValue().getSqlSegment().contains("LIMIT 1000"));
         verify(outboxService).enqueueAfterCommit(
-                eq("im-read-receipt-topic"),
-                eq("grr_8_3"),
-                argThat(payload -> payload != null && payload.contains("\"conversationId\":\"group_8\"")),
-                eq(900L)
+                eq("READ_RECEIPT"),
+                eq("READ_RECEIPT"),
+                eq("rr_2"),
+                anyString(),
+                eq(901L),
+                eq(List.of(2L))
         );
+        InOrder inOrder = inOrder(transactionTemplate, conversationLock);
+        inOrder.verify(transactionTemplate).execute(any());
+        inOrder.verify(conversationLock).unlock();
     }
 
     @Test
@@ -292,22 +271,6 @@ class MessageServiceImplTest {
     @Test
     void markAsReadShouldRejectInvalidConversationId() {
         assertThrows(BusinessException.class, () -> service.markAsRead(1L, "a_b"));
-    }
-
-    private SendPrivateMessageRequest privateText(String receiverId, String content) {
-        SendPrivateMessageRequest request = new SendPrivateMessageRequest();
-        request.setReceiverId(receiverId);
-        request.setMessageType(MessageType.TEXT);
-        request.setContent(content);
-        return request;
-    }
-
-    private SendGroupMessageRequest groupText(String groupId, String content) {
-        SendGroupMessageRequest request = new SendGroupMessageRequest();
-        request.setGroupId(groupId);
-        request.setMessageType(MessageType.TEXT);
-        request.setContent(content);
-        return request;
     }
 
     private UserDTO user(Long id, String username) {

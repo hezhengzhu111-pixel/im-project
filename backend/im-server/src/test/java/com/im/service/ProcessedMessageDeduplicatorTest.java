@@ -3,7 +3,6 @@ package com.im.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RMapCache;
@@ -14,8 +13,8 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -27,34 +26,30 @@ class ProcessedMessageDeduplicatorTest {
     @Mock
     private RMapCache<String, Boolean> mapCache;
 
-    @InjectMocks
     private ProcessedMessageDeduplicator deduplicator;
 
     @BeforeEach
     void setUp() {
+        deduplicator = new ProcessedMessageDeduplicator(redissonClient);
+        ReflectionTestUtils.setField(deduplicator, "ttlMs", 300000L);
         when(redissonClient.<String, Boolean>getMapCache("im:message:processed:cache")).thenReturn(mapCache);
-        ReflectionTestUtils.setField(deduplicator, "ttlMs", 600000L);
         deduplicator.init();
     }
 
     @Test
-    void tryMarkProcessed_NullKey_ShouldReturnFalse() {
-        assertFalse(deduplicator.tryMarkProcessed(null));
-    }
-
-    @Test
-    void tryMarkProcessed_NewKey_ShouldReturnTrue() {
-        when(mapCache.putIfAbsent(eq("msg1"), eq(Boolean.TRUE), eq(600000L), eq(TimeUnit.MILLISECONDS)))
+    void markProcessed_shouldUseShortTtlWindow() {
+        when(mapCache.putIfAbsent(eq("evt-1:2:session-a"), eq(Boolean.TRUE), eq(300000L), eq(TimeUnit.MILLISECONDS)))
                 .thenReturn(null);
-        
-        assertTrue(deduplicator.tryMarkProcessed("msg1"));
+
+        assertTrue(deduplicator.markProcessed("evt-1:2:session-a"));
+        verify(mapCache).putIfAbsent("evt-1:2:session-a", Boolean.TRUE, 300000L, TimeUnit.MILLISECONDS);
     }
 
     @Test
-    void tryMarkProcessed_ExistingKey_ShouldReturnFalse() {
-        when(mapCache.putIfAbsent(eq("msg1"), eq(Boolean.TRUE), eq(600000L), eq(TimeUnit.MILLISECONDS)))
-                .thenReturn(Boolean.TRUE);
-        
-        assertFalse(deduplicator.tryMarkProcessed("msg1"));
+    void isProcessed_shouldReadFromCache() {
+        when(mapCache.containsKey("evt-1:2:session-a")).thenReturn(true);
+
+        assertTrue(deduplicator.isProcessed("evt-1:2:session-a"));
+        assertFalse(deduplicator.isProcessed(null));
     }
 }

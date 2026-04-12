@@ -2,7 +2,7 @@ package com.im.util;
 
 import com.im.dto.GroupMemberDTO;
 import com.im.dto.MessageDTO;
-import com.im.entity.Message;
+import com.im.message.entity.Message;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -23,6 +23,7 @@ public class MessageConverter {
 
         return MessageDTO.builder()
                 .id(message.getId())
+                .clientMessageId(message.getClientMessageId())
                 .senderId(message.getSenderId())
                 .senderName(senderName)
                 .senderAvatar(senderAvatar)

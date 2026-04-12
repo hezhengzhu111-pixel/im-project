@@ -3,7 +3,7 @@ filebeat.inputs:
     id: im-services-logs
     enabled: true
     paths:
-      - /var/log/im-project/**/*.log
+      - /home/project/log/**/*.log
     parsers:
       - multiline:
           type: pattern

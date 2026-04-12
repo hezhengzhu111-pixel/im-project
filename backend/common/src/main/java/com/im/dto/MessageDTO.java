@@ -26,6 +26,8 @@ public class MessageDTO {
     // 消息的唯一标识符
     @JsonSerialize(using = ToStringSerializer.class)
     private Long id;
+    // 客户端生成的幂等消息ID
+    private String clientMessageId;
     // 发送者的唯一标识符
     @JsonSerialize(using = ToStringSerializer.class)
     private Long senderId;

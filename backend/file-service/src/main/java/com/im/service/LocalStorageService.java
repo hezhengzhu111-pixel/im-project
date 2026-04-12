@@ -2,12 +2,6 @@ package com.im.service;
 
 import com.im.dto.response.FileInfoResponse;
 import com.im.dto.response.FileUploadResponse;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
-import org.springframework.web.multipart.MultipartFile;
-
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,10 +9,20 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.util.UriComponentsBuilder;
 
+@Slf4j
 @Service
 @ConditionalOnProperty(name = "im.cos.enabled", havingValue = "false")
 public class LocalStorageService implements StorageService {
+
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     @Value("${im.storage.local.base-dir:/data/im-files}")
     private String baseDir;
@@ -27,8 +31,8 @@ public class LocalStorageService implements StorageService {
     public FileUploadResponse upload(MultipartFile file, String category, Long userId) throws Exception {
         String originalFilename = file.getOriginalFilename();
         String extension = getFileExtension(originalFilename);
-        String filename = UUID.randomUUID().toString() + extension;
-        String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        String filename = UUID.randomUUID() + extension;
+        String dateStr = LocalDate.now().format(DATE_FORMATTER);
 
         Path target = resolvePath(category, dateStr, filename);
         Files.createDirectories(target.getParent());
@@ -37,7 +41,14 @@ public class LocalStorageService implements StorageService {
             Files.copy(is, target, StandardCopyOption.REPLACE_EXISTING);
         }
 
-        String url = "/api/file/download";
+        String url = UriComponentsBuilder.fromPath("/api/file/download")
+                .queryParam("category", category)
+                .queryParam("date", dateStr)
+                .queryParam("filename", filename)
+                .build()
+                .encode()
+                .toUriString();
+
         return new FileUploadResponse(
                 originalFilename,
                 filename,
@@ -56,14 +67,15 @@ public class LocalStorageService implements StorageService {
         try {
             Path path = resolvePath(category, date, filename);
             if (!Files.exists(path)) {
-                return new FileInfoResponse(filename, 0L, null, null);
+                return null;
             }
             long size = Files.size(path);
             String contentType = Files.probeContentType(path);
             long lastModified = Files.getLastModifiedTime(path).toMillis();
             return new FileInfoResponse(filename, size, contentType, lastModified);
         } catch (Exception e) {
-            return new FileInfoResponse(filename, 0L, null, null);
+            log.error("Failed to read file info from local storage: {}/{}/{}", category, date, filename, e);
+            throw new IllegalStateException("Failed to read file info", e);
         }
     }
 
@@ -92,11 +104,14 @@ public class LocalStorageService implements StorageService {
         return Path.of(baseDir).resolve(cat).resolve(d).resolve(fn);
     }
 
-    private String safeSegment(String s) {
-        if (!StringUtils.hasText(s)) {
+    private String safeSegment(String value) {
+        if (!StringUtils.hasText(value)) {
             return "_";
         }
-        return s.replace("..", "_").replace("\\", "_").replace("/", "_").trim();
+        return value.replace("..", "_")
+                .replace("\\", "_")
+                .replace("/", "_")
+                .trim();
     }
 
     private String getFileExtension(String filename) {
@@ -107,4 +122,3 @@ public class LocalStorageService implements StorageService {
         return lastDotIndex > 0 ? filename.substring(lastDotIndex) : "";
     }
 }
-
