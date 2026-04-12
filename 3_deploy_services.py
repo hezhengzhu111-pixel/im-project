@@ -291,7 +291,6 @@ def deploy_backend_service(
 def deploy_frontend(
     config: DeploymentConfig,
     docker_cmd: str,
-    npm_cmd: str,
     definition: ServiceDefinition,
 ) -> None:
     frontend_root = config.frontend_root
@@ -302,8 +301,7 @@ def deploy_frontend(
     remove_container_if_exists(docker_cmd, definition.container_name)
     remove_image_if_exists(docker_cmd, definition.image_name)
 
-    run_command([npm_cmd, "install"], cwd=frontend_root)
-    run_command([npm_cmd, "run", "build:sit"], cwd=frontend_root)
+    print("前端将通过 Dockerfile 的 Node builder 阶段完成依赖安装和构建，宿主机无需 npm。")
     run_command(
         [
             docker_cmd,
@@ -343,13 +341,11 @@ def main() -> None:
     args = parser.parse_args()
     definitions = selected_services(args)
     needs_backend = any(definition.kind == "backend" for definition in definitions)
-    needs_frontend = any(definition.kind == "frontend" for definition in definitions)
 
     config = load_config()
     docker_cmd = resolve_executable("Docker", ["docker"])
     git_cmd = resolve_executable("Git", ["git"])
     mvn_cmd = ensure_maven_ready() if needs_backend else ""
-    npm_cmd = resolve_executable("npm", ["npm", "npm.cmd"]) if needs_frontend else ""
 
     synchronize_repository(config, git_cmd)
     ensure_backend_layout(config)
@@ -363,7 +359,7 @@ def main() -> None:
         if definition.kind == "backend":
             deploy_backend_service(config, docker_cmd, mvn_cmd, definition)
         else:
-            deploy_frontend(config, docker_cmd, npm_cmd, definition)
+            deploy_frontend(config, docker_cmd, definition)
 
     print("\n服务部署完成。")
 
