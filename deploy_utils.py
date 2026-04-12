@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import platform
+import re
 import shlex
 import shutil
 import subprocess
 import sys
+import tarfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -58,6 +61,27 @@ ZOOKEEPER_INTERNAL_PORT = 2181
 KAFKA_INTERNAL_PORT = 29092
 KAFKA_EXTERNAL_PORT = 9092
 ELASTICSEARCH_INTERNAL_PORT = 9200
+
+JAVA_REQUIRED_MAJOR = 21
+JAVA_INSTALL_ROOT = Path("/opt")
+JAVA_HOME_SYMLINK = JAVA_INSTALL_ROOT / "jdk-21"
+JAVA_PROFILE_FILE = Path("/etc/profile.d/im-project-java.sh")
+JAVA_ARCHIVE_NAMES = {
+    "x64": "openjdk-21_linux-x64_bin.tar.gz",
+    "aarch64": "openjdk-21_linux-aarch64_bin.tar.gz",
+}
+JAVA_DOWNLOAD_URLS = {
+    "x64": [
+        "https://mirrors.huaweicloud.com/openjdk/21/openjdk-21_linux-x64_bin.tar.gz",
+        "https://repo.huaweicloud.com/openjdk/21/openjdk-21_linux-x64_bin.tar.gz",
+        "https://aka.ms/download-jdk/microsoft-jdk-21-linux-x64.tar.gz",
+    ],
+    "aarch64": [
+        "https://mirrors.huaweicloud.com/openjdk/21/openjdk-21_linux-aarch64_bin.tar.gz",
+        "https://repo.huaweicloud.com/openjdk/21/openjdk-21_linux-aarch64_bin.tar.gz",
+        "https://aka.ms/download-jdk/microsoft-jdk-21-linux-aarch64.tar.gz",
+    ],
+}
 
 MAVEN_VERSION = "3.9.14"
 MAVEN_LOCAL_REPOSITORY = Path("/home/maven")
@@ -227,6 +251,8 @@ def resolve_executable(display_name: str, candidates: Sequence[str]) -> str:
 
 
 def ensure_maven_ready() -> str:
+    ensure_java_ready()
+
     mvn_cmd = shutil.which("mvn") or shutil.which("mvn.cmd")
     if mvn_cmd:
         print(f"Maven 已存在: {mvn_cmd}")
@@ -237,6 +263,183 @@ def ensure_maven_ready() -> str:
     ensure_maven_settings()
     run_command([mvn_cmd, "-s", MAVEN_SETTINGS_FILE, "-v"])
     return mvn_cmd
+
+
+def ensure_java_ready() -> None:
+    java_home = find_usable_java_home()
+    if java_home:
+        configure_java_home(java_home)
+        print(f"JDK {JAVA_REQUIRED_MAJOR}+ 已存在: {java_home}")
+        return
+
+    print(f"未检测到可用 JDK {JAVA_REQUIRED_MAJOR}+，开始自动安装 Java 环境。")
+    java_home = install_java()
+    configure_java_home(java_home)
+    verify_java_home(java_home)
+
+
+def find_usable_java_home() -> Optional[Path]:
+    java_home_env = os.getenv("JAVA_HOME", "").strip()
+    if java_home_env:
+        java_home = Path(java_home_env)
+        if is_usable_java_home(java_home):
+            return java_home
+
+    candidates = [JAVA_HOME_SYMLINK]
+    for binary_name in ("javac", "java"):
+        binary_path = shutil.which(binary_name)
+        if not binary_path:
+            continue
+        inferred_home = infer_java_home_from_binary(Path(binary_path))
+        if inferred_home:
+            candidates.append(inferred_home)
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        candidate = candidate.resolve()
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if is_usable_java_home(candidate):
+            return candidate
+    return None
+
+
+def infer_java_home_from_binary(binary_path: Path) -> Optional[Path]:
+    resolved = binary_path.resolve()
+    if resolved.parent.name != "bin":
+        return None
+    return resolved.parent.parent
+
+
+def is_usable_java_home(java_home: Path) -> bool:
+    java_cmd = java_home / "bin" / "java"
+    javac_cmd = java_home / "bin" / "javac"
+    if not java_cmd.is_file() or not javac_cmd.is_file():
+        return False
+    return get_java_major_version(java_cmd) >= JAVA_REQUIRED_MAJOR
+
+
+def get_java_major_version(java_cmd: Path) -> int:
+    result = run_command([java_cmd, "-version"], capture_output=True, check=False)
+    output = f"{result.stdout}\n{result.stderr}"
+    match = re.search(r'version "(\d+)(?:\.(\d+))?', output)
+    if not match:
+        return 0
+    major = int(match.group(1))
+    if major == 1 and match.group(2):
+        return int(match.group(2))
+    return major
+
+
+def install_java() -> Path:
+    if os.name != "posix":
+        fatal(f"当前系统未检测到 JDK {JAVA_REQUIRED_MAJOR}+，自动安装仅支持 Linux/macOS，请手动安装后重试。")
+
+    if install_java_with_package_manager():
+        java_home = find_usable_java_home()
+        if java_home:
+            return java_home
+        print("系统包管理器安装完成，但仍未找到可用 JDK，继续使用压缩包方式安装。")
+
+    return install_java_from_archive()
+
+
+def install_java_with_package_manager() -> bool:
+    package_manager_commands = [
+        ("apt-get", [["apt-get", "update"], ["apt-get", "install", "-y", "openjdk-21-jdk"]]),
+        ("dnf", [["dnf", "install", "-y", "java-21-openjdk-devel"]]),
+        ("yum", [["yum", "install", "-y", "java-21-openjdk-devel"]]),
+        ("apk", [["apk", "add", "--no-cache", "openjdk21"]]),
+    ]
+
+    for executable, commands in package_manager_commands:
+        if not shutil.which(executable):
+            continue
+
+        print(f"检测到包管理器 {executable}，尝试自动安装 JDK {JAVA_REQUIRED_MAJOR}。")
+        succeeded = True
+        for command in commands:
+            result = run_privileged_command(command, check=False)
+            if result.returncode != 0:
+                succeeded = False
+                break
+        if succeeded:
+            return True
+
+        print(f"通过 {executable} 安装 JDK 失败，尝试下一种安装方式。")
+        continue
+
+    print("未检测到可用包管理器，或包管理器安装均失败，改用压缩包方式安装 JDK。")
+    return False
+
+
+def install_java_from_archive() -> Path:
+    java_arch = resolve_java_architecture()
+    archive_name = JAVA_ARCHIVE_NAMES[java_arch]
+    archive_path = Path("/tmp") / archive_name
+    downloader = resolve_downloader()
+
+    for download_url in JAVA_DOWNLOAD_URLS[java_arch]:
+        print(f"开始下载 JDK {JAVA_REQUIRED_MAJOR}: {download_url}")
+        if download_archive(downloader, download_url, archive_path):
+            break
+        print("当前 JDK 下载地址不可用，尝试下一个镜像。")
+    else:
+        fatal("所有 JDK 下载地址均不可用，请检查服务器网络或稍后重试。")
+
+    extracted_dir_name = get_archive_top_level_dir(archive_path)
+    if not extracted_dir_name:
+        fatal(f"无法识别 JDK 压缩包顶层目录: {archive_path}")
+
+    extracted_home = JAVA_INSTALL_ROOT / extracted_dir_name
+    run_privileged_command(["mkdir", "-p", str(JAVA_INSTALL_ROOT)])
+    run_privileged_command(["tar", "-xzf", str(archive_path), "-C", str(JAVA_INSTALL_ROOT)])
+    run_privileged_command(["ln", "-sfn", str(extracted_home), str(JAVA_HOME_SYMLINK)])
+    return JAVA_HOME_SYMLINK
+
+
+def resolve_java_architecture() -> str:
+    machine = platform.machine().lower()
+    if machine in {"x86_64", "amd64"}:
+        return "x64"
+    if machine in {"aarch64", "arm64"}:
+        return "aarch64"
+    fatal(f"当前 CPU 架构暂不支持自动安装 JDK: {platform.machine()}")
+
+
+def get_archive_top_level_dir(archive_path: Path) -> Optional[str]:
+    with tarfile.open(archive_path, "r:gz") as archive:
+        for member in archive:
+            parts = Path(member.name).parts
+            if parts:
+                return parts[0]
+    return None
+
+
+def configure_java_home(java_home: Path) -> None:
+    java_home_text = str(java_home)
+    java_bin = str(java_home / "bin")
+    os.environ["JAVA_HOME"] = java_home_text
+    path_parts = os.environ.get("PATH", "").split(os.pathsep)
+    if java_bin not in path_parts:
+        os.environ["PATH"] = os.pathsep.join([java_bin] + path_parts)
+
+    profile_content = (
+        f"export JAVA_HOME={shlex.quote(java_home_text)}\n"
+        "export PATH=\"$JAVA_HOME/bin:$PATH\"\n"
+    )
+    try:
+        write_text_file(JAVA_PROFILE_FILE, profile_content)
+    except PermissionError:
+        print(f"警告: 无法写入 {JAVA_PROFILE_FILE}，当前部署进程已设置 JAVA_HOME，但重新登录后可能需要手动配置。")
+
+
+def verify_java_home(java_home: Path) -> None:
+    if not is_usable_java_home(java_home):
+        fatal(f"JDK 安装完成但校验失败，请检查 JAVA_HOME={java_home}")
+    run_command([java_home / "bin" / "java", "-version"])
+    run_command([java_home / "bin" / "javac", "-version"])
 
 
 def install_maven() -> str:
@@ -286,7 +489,7 @@ def install_maven_from_archive() -> str:
     downloader = resolve_downloader()
     for download_url in MAVEN_DOWNLOAD_URLS:
         print(f"开始下载 Maven {MAVEN_VERSION}: {download_url}")
-        if download_maven_archive(downloader, download_url, archive_path):
+        if download_archive(downloader, download_url, archive_path):
             break
         print("当前 Maven 下载地址不可用，尝试下一个镜像。")
     else:
@@ -304,7 +507,7 @@ def install_maven_from_archive() -> str:
     return mvn_cmd
 
 
-def download_maven_archive(downloader: str, download_url: str, archive_path: Path) -> bool:
+def download_archive(downloader: str, download_url: str, archive_path: Path) -> bool:
     if archive_path.exists():
         archive_path.unlink()
 
