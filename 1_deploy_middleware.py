@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from textwrap import dedent
+from typing import Union
 
 from deploy_utils import (
     ELASTICSEARCH_CONTAINER_NAME,
@@ -28,7 +29,7 @@ from deploy_utils import (
 )
 
 
-def quote_yaml(value: str | int) -> str:
+def quote_yaml(value: Union[str, int]) -> str:
     return json.dumps(str(value))
 
 
