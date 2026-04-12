@@ -59,6 +59,18 @@ KAFKA_INTERNAL_PORT = 29092
 KAFKA_EXTERNAL_PORT = 9092
 ELASTICSEARCH_INTERNAL_PORT = 9200
 
+MAVEN_VERSION = "3.9.9"
+MAVEN_LOCAL_REPOSITORY = Path("/home/maven")
+MAVEN_SETTINGS_FILE = MAVEN_LOCAL_REPOSITORY / "settings.xml"
+MAVEN_INSTALL_ROOT = Path("/opt")
+MAVEN_INSTALL_DIR = MAVEN_INSTALL_ROOT / f"apache-maven-{MAVEN_VERSION}"
+MAVEN_SYMLINK = MAVEN_INSTALL_ROOT / "maven"
+MAVEN_BIN_SYMLINK = Path("/usr/local/bin/mvn")
+MAVEN_DOWNLOAD_URL = (
+    f"https://mirrors.aliyun.com/apache/maven/maven-3/{MAVEN_VERSION}/"
+    f"binaries/apache-maven-{MAVEN_VERSION}-bin.tar.gz"
+)
+
 
 @dataclass(frozen=True)
 class DeploymentConfig:
@@ -206,6 +218,165 @@ def resolve_executable(display_name: str, candidates: Sequence[str]) -> str:
         if resolved:
             return resolved
     fatal(f"未找到 {display_name} 命令，请确认它已经安装并且在 PATH 中可用。")
+
+
+def ensure_maven_ready() -> str:
+    mvn_cmd = shutil.which("mvn") or shutil.which("mvn.cmd")
+    if mvn_cmd:
+        print(f"Maven 已存在: {mvn_cmd}")
+    else:
+        print("未检测到 Maven，开始自动安装 Maven。")
+        mvn_cmd = install_maven()
+
+    ensure_maven_settings()
+    run_command([mvn_cmd, "-s", MAVEN_SETTINGS_FILE, "-v"])
+    return mvn_cmd
+
+
+def install_maven() -> str:
+    if os.name != "posix":
+        fatal("当前系统未检测到 Maven，自动安装仅支持 Linux/macOS，请手动安装 Maven 后重试。")
+
+    if install_maven_with_package_manager():
+        mvn_cmd = shutil.which("mvn")
+        if mvn_cmd:
+            return mvn_cmd
+        print("系统包管理器安装完成，但 PATH 中仍未找到 mvn，继续使用压缩包方式安装。")
+
+    return install_maven_from_archive()
+
+
+def install_maven_with_package_manager() -> bool:
+    package_manager_commands = [
+        ("apt-get", [["apt-get", "update"], ["apt-get", "install", "-y", "maven"]]),
+        ("dnf", [["dnf", "install", "-y", "maven"]]),
+        ("yum", [["yum", "install", "-y", "maven"]]),
+        ("apk", [["apk", "add", "--no-cache", "maven"]]),
+    ]
+
+    for executable, commands in package_manager_commands:
+        if not shutil.which(executable):
+            continue
+
+        print(f"检测到包管理器 {executable}，尝试自动安装 Maven。")
+        succeeded = True
+        for command in commands:
+            result = run_privileged_command(command, check=False)
+            if result.returncode != 0:
+                succeeded = False
+                break
+        if succeeded:
+            return True
+
+        print(f"通过 {executable} 安装 Maven 失败，尝试下一种安装方式。")
+        return False
+
+    print("未检测到可用包管理器，改用压缩包方式安装 Maven。")
+    return False
+
+
+def install_maven_from_archive() -> str:
+    archive_path = Path("/tmp") / f"apache-maven-{MAVEN_VERSION}-bin.tar.gz"
+    downloader = resolve_downloader()
+    print(f"开始从国内镜像下载 Maven {MAVEN_VERSION}: {MAVEN_DOWNLOAD_URL}")
+
+    if downloader == "curl":
+        run_command(["curl", "-fL", MAVEN_DOWNLOAD_URL, "-o", archive_path])
+    else:
+        run_command(["wget", "-O", archive_path, MAVEN_DOWNLOAD_URL])
+
+    run_privileged_command(["mkdir", "-p", str(MAVEN_INSTALL_ROOT)])
+    run_privileged_command(["mkdir", "-p", str(MAVEN_BIN_SYMLINK.parent)])
+    run_privileged_command(["tar", "-xzf", str(archive_path), "-C", str(MAVEN_INSTALL_ROOT)])
+    run_privileged_command(["ln", "-sfn", str(MAVEN_INSTALL_DIR), str(MAVEN_SYMLINK)])
+    run_privileged_command(["ln", "-sfn", str(MAVEN_SYMLINK / "bin" / "mvn"), str(MAVEN_BIN_SYMLINK)])
+
+    mvn_cmd = shutil.which("mvn") or str(MAVEN_SYMLINK / "bin" / "mvn")
+    if not Path(mvn_cmd).exists() and not shutil.which(mvn_cmd):
+        fatal("Maven 压缩包安装完成后仍未找到 mvn 命令，请检查 /opt/maven/bin/mvn。")
+    return mvn_cmd
+
+
+def resolve_downloader() -> str:
+    if shutil.which("curl"):
+        return "curl"
+    if shutil.which("wget"):
+        return "wget"
+    fatal("自动下载 Maven 需要 curl 或 wget，请先安装其中任意一个后重试。")
+
+
+def run_privileged_command(command: Sequence[str], *, check: bool = True) -> subprocess.CompletedProcess[Any]:
+    if os.name == "posix" and hasattr(os, "geteuid") and os.geteuid() != 0:
+        sudo_cmd = shutil.which("sudo")
+        if not sudo_cmd:
+            fatal("自动安装 Maven 需要 root 权限，当前用户不是 root，且未找到 sudo。")
+        command = [sudo_cmd] + list(command)
+    return run_command(command, check=check)
+
+
+def ensure_maven_settings() -> None:
+    settings_content = build_maven_settings_xml(MAVEN_LOCAL_REPOSITORY)
+    try:
+        write_text_file(MAVEN_SETTINGS_FILE, settings_content)
+    except PermissionError:
+        fatal(f"无法写入 Maven 配置目录 {MAVEN_LOCAL_REPOSITORY}，请使用 root 用户或授予写入权限。")
+
+    print(f"Maven 国内源配置已生成: {MAVEN_SETTINGS_FILE}")
+    print(f"Maven 本地仓库目录: {MAVEN_LOCAL_REPOSITORY}")
+
+
+def build_maven_settings_xml(local_repository: Path) -> str:
+    local_repository_text = str(local_repository)
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 https://maven.apache.org/xsd/settings-1.2.0.xsd">
+  <localRepository>{local_repository_text}</localRepository>
+
+  <mirrors>
+    <mirror>
+      <id>aliyunmaven</id>
+      <name>Aliyun Maven Repository</name>
+      <url>https://maven.aliyun.com/repository/public</url>
+      <mirrorOf>*</mirrorOf>
+    </mirror>
+  </mirrors>
+
+  <profiles>
+    <profile>
+      <id>aliyun-public</id>
+      <repositories>
+        <repository>
+          <id>aliyun-public</id>
+          <url>https://maven.aliyun.com/repository/public</url>
+          <releases>
+            <enabled>true</enabled>
+          </releases>
+          <snapshots>
+            <enabled>true</enabled>
+          </snapshots>
+        </repository>
+      </repositories>
+      <pluginRepositories>
+        <pluginRepository>
+          <id>aliyun-public</id>
+          <url>https://maven.aliyun.com/repository/public</url>
+          <releases>
+            <enabled>true</enabled>
+          </releases>
+          <snapshots>
+            <enabled>true</enabled>
+          </snapshots>
+        </pluginRepository>
+      </pluginRepositories>
+    </profile>
+  </profiles>
+
+  <activeProfiles>
+    <activeProfile>aliyun-public</activeProfile>
+  </activeProfiles>
+</settings>
+"""
 
 
 def resolve_docker_compose_command(docker_cmd: str) -> list[str]:

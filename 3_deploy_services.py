@@ -8,6 +8,7 @@ from typing import Optional
 from deploy_utils import (
     ELASTICSEARCH_CONTAINER_NAME,
     KAFKA_CONTAINER_NAME,
+    MAVEN_SETTINGS_FILE,
     MYSQL_CONTAINER_NAME,
     NACOS_CONTAINER_NAME,
     REDIS_CONTAINER_NAME,
@@ -17,6 +18,7 @@ from deploy_utils import (
     ensure_docker_network,
     ensure_docker_volume,
     ensure_frontend_layout,
+    ensure_maven_ready,
     fatal,
     load_config,
     remove_container_if_exists,
@@ -242,6 +244,8 @@ def deploy_backend_service(
     run_command(
         [
             mvn_cmd,
+            "-s",
+            MAVEN_SETTINGS_FILE,
             "-f",
             config.backend_code_root / "pom.xml",
             "clean",
@@ -337,19 +341,20 @@ def deploy_frontend(
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+    definitions = selected_services(args)
+    needs_backend = any(definition.kind == "backend" for definition in definitions)
+    needs_frontend = any(definition.kind == "frontend" for definition in definitions)
 
     config = load_config()
     docker_cmd = resolve_executable("Docker", ["docker"])
     git_cmd = resolve_executable("Git", ["git"])
-    mvn_cmd = resolve_executable("Maven", ["mvn", "mvn.cmd"])
-    npm_cmd = resolve_executable("npm", ["npm", "npm.cmd"])
+    mvn_cmd = ensure_maven_ready() if needs_backend else ""
+    npm_cmd = resolve_executable("npm", ["npm", "npm.cmd"]) if needs_frontend else ""
 
     synchronize_repository(config, git_cmd)
     ensure_backend_layout(config)
     ensure_frontend_layout(config)
     ensure_docker_network(docker_cmd, config.global_docker_network)
-
-    definitions = selected_services(args)
     print("本次部署目标:")
     for definition in definitions:
         print(f"  - {definition.key}")
