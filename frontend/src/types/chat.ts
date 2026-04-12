@@ -9,6 +9,9 @@ export interface ChatSession {
   targetId: string;
   targetName: string;
   targetAvatar?: string;
+  name?: string;
+  avatar?: string;
+  conversationType?: "PRIVATE" | "GROUP";
   conversationName?: string;
   conversationAvatar?: string;
   lastMessage?: Message;
@@ -20,6 +23,7 @@ export interface ChatSession {
   updateTime?: string;
   memberCount?: number;
   isPinned: boolean;
+  pinned?: boolean;
   isMuted: boolean;
 }
 

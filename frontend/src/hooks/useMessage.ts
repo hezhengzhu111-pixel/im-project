@@ -1,5 +1,5 @@
 import { ref, computed } from "vue";
-import { messageApi } from "@/services";
+import { messageService } from "@/services/message";
 import { formatTime, getAvatarText } from "@/utils/common";
 import { MESSAGE_TYPES, MESSAGE_STATUS } from "@/constants";
 import type {
@@ -23,7 +23,7 @@ export function useMessage() {
   ): Promise<void> => {
     sending.value = true;
     try {
-      const response = await messageApi.sendPrivateMessage(data);
+      const response = await messageService.sendPrivate(data);
       if (response.code !== 200) {
         throw new Error(response.message || "消息发送失败");
       }
@@ -40,7 +40,7 @@ export function useMessage() {
   ): Promise<void> => {
     sending.value = true;
     try {
-      const response = await messageApi.sendGroupMessage(data);
+      const response = await messageService.sendGroup(data);
       if (response.code !== 200) {
         throw new Error(response.message || "消息发送失败");
       }
@@ -53,7 +53,7 @@ export function useMessage() {
    * 撤回消息
    */
   const recallMessage = async (messageId: string): Promise<void> => {
-    const response = await messageApi.recallMessage(messageId);
+    const response = await messageService.recallMessage(messageId);
     if (response.code !== 200) {
       throw new Error(response.message || "撤回失败");
     }
@@ -63,7 +63,7 @@ export function useMessage() {
    * 标记消息为已读
    */
   const markAsRead = async (conversationId: string): Promise<void> => {
-    const response = await messageApi.markAsRead(conversationId);
+    const response = await messageService.markRead(conversationId);
     if (response.code !== 200) {
       // 在这里，我们选择静默失败，因为标记已读不是关键操作
       console.error("标记已读失败:", response.message);

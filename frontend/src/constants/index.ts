@@ -91,6 +91,12 @@ export const API_CODES = {
 } as const;
 
 // 时间格式
+export const STORAGE_KEYS = {
+  TOKEN: "im_access_token",
+  REFRESH_TOKEN: "im_refresh_token",
+  USER_INFO: "im_user_snapshot",
+} as const;
+
 export const DATE_FORMATS = {
   FULL: "YYYY-MM-DD HH:mm:ss",
   DATE: "YYYY-MM-DD",

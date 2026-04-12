@@ -56,7 +56,7 @@
         </div>
 
         <!-- 置顶标识 -->
-        <el-icon v-if="conversation.pinned" class="pin-icon">
+        <el-icon v-if="conversation.isPinned" class="pin-icon">
           <Top />
         </el-icon>
       </div>

@@ -1,12 +1,12 @@
 <template>
   <div class="chat-header">
     <div class="chat-info">
-      <el-avatar :size="36" :src="conversation?.avatar" class="chat-avatar">
-        {{ getAvatarText(conversation?.name) }}
+      <el-avatar :size="36" :src="conversation?.targetAvatar" class="chat-avatar">
+        {{ getAvatarText(conversation?.targetName) }}
       </el-avatar>
 
       <div class="chat-details">
-        <div class="chat-name">{{ conversation?.name || "未知用户" }}</div>
+        <div class="chat-name">{{ conversation?.targetName || "未知用户" }}</div>
         <div class="chat-status" :class="`status-${onlineStatus}`">
           <el-icon class="status-icon">
             <SuccessFilled v-if="onlineStatus === 'online'" />
@@ -109,7 +109,7 @@ const emit = defineEmits<Emits>();
 
 // 计算属性
 const isGroupChat = computed(() => {
-  return props.conversation?.conversationType === "GROUP";
+  return props.conversation?.type === "group";
 });
 
 // 方法
