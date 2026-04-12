@@ -7,6 +7,11 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
+    ChatHeader: typeof import('./src/components/ChatHeader.vue')['default']
+    ChatInput: typeof import('./src/components/ChatInput.vue')['default']
+    ChatSidebar: typeof import('./src/components/ChatSidebar.vue')['default']
+    ContactsList: typeof import('./src/components/ContactsList.vue')['default']
+    ConversationList: typeof import('./src/components/ConversationList.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElAvatar: typeof import('element-plus/es')['ElAvatar']
     ElBadge: typeof import('element-plus/es')['ElBadge']
@@ -33,11 +38,13 @@ declare module 'vue' {
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
     ElTag: typeof import('element-plus/es')['ElTag']
     ElTransfer: typeof import('element-plus/es')['ElTransfer']
+    GroupList: typeof import('./src/components/GroupList.vue')['default']
     MessageItem: typeof import('./src/components/MessageItem.vue')['default']
     PerformanceMonitor: typeof import('./src/components/PerformanceMonitor.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SideNavBar: typeof import('./src/components/layout/SideNavBar.vue')['default']
+    UserProfile: typeof import('./src/components/UserProfile.vue')['default']
   }
   export interface ComponentCustomProperties {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

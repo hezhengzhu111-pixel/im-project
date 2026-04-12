@@ -3,7 +3,7 @@ import { pinyin } from "pinyin-pro";
 import { useChatStore } from "@/stores/chat";
 import { useUserStore } from "@/stores/user";
 import { ElMessage } from "element-plus";
-import type { UserInfo, FriendListDTO } from "@/types"; // Adjust path if needed
+import type { Friend, User } from "@/types";
 
 export function useChatLogic() {
   const chatStore = useChatStore();
@@ -13,7 +13,7 @@ export function useChatLogic() {
   const searchKeyword = ref("");
   const showAddFriend = ref(false);
   const showCreateGroup = ref(false);
-  const userSearchResults = ref<UserInfo[]>([]);
+  const userSearchResults = ref<User[]>([]);
   const isSearchingUsers = ref(false);
 
   // Forms
@@ -52,7 +52,7 @@ export function useChatLogic() {
   });
 
   const groupedContacts = computed(() => {
-    const groups: Record<string, FriendListDTO[]> = {};
+    const groups: Record<string, Friend[]> = {};
     const contacts = filteredContacts.value;
 
     contacts.forEach((contact) => {

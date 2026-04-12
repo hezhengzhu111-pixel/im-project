@@ -147,9 +147,8 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { ElMessage } from "element-plus";
 import { Plus, Setting, Search } from "@element-plus/icons-vue";
 import { friendService } from "@/services/friend";
-import type { Friendship } from "@/types/user";
+import type { Friendship, User } from "@/types/user";
 import { userService } from "@/services/user";
-import type { UserDTO } from "@/types/user";
 import { useChatStore } from "@/stores/chat";
 import { useWebSocketStore } from "@/stores/websocket";
 import { useRouter } from "vue-router";
@@ -173,7 +172,7 @@ const addFriendForm = ref({
 
 // 搜索用户相关
 const searchLoading = ref(false);
-const searchResults = ref<UserDTO[]>([]);
+const searchResults = ref<User[]>([]);
 
 // 计算属性
 const filteredFriends = computed(() => {
@@ -222,7 +221,7 @@ const getFriendOnlineStatus = (friendId: string) => {
 const handleOnlineStatusChange = (event: CustomEvent) => {
   const { userId, isOnline } = event.detail;
   const friendIndex = friends.value.findIndex(
-    (friend) => friend.userId === userId,
+    (friend) => friend.friendId === userId,
   );
   if (friendIndex !== -1) {
     pendingRequestsCount.value = pendingRequestsCount.value + 0;

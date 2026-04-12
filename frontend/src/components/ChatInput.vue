@@ -171,13 +171,13 @@ const handleSend = async (event?: KeyboardEvent) => {
   inputMessage.value = "";
 
   try {
-    if (conversation.type === "PRIVATE") {
+    if (conversation.type === "private") {
       await sendPrivateMessage({
         receiverId: conversation.targetId,
         content: originalContent,
         messageType: MESSAGE_TYPES.TEXT,
       });
-    } else if (conversation.type === "GROUP") {
+    } else if (conversation.type === "group") {
       await sendGroupMessage({
         groupId: conversation.targetId,
         content: originalContent,
@@ -192,9 +192,9 @@ const handleSend = async (event?: KeyboardEvent) => {
       content: originalContent,
       messageType: MESSAGE_TYPES.TEXT,
       receiverId:
-        conversation.type === "PRIVATE" ? conversation.targetId : undefined,
+        conversation.type === "private" ? conversation.targetId : undefined,
       groupId:
-        conversation.type === "GROUP" ? conversation.targetId : undefined,
+        conversation.type === "group" ? conversation.targetId : undefined,
     });
   } catch (error: any) {
     // 发送失败时恢复输入框内容
@@ -270,13 +270,13 @@ const handleFileUpload = async (files: File[], messageType: MessageType) => {
       const result = await uploadFile(file);
 
       // 发送文件消息
-      if (conversation.type === "PRIVATE") {
+      if (conversation.type === "private") {
         await sendPrivateMessage({
           receiverId: conversation.targetId,
           mediaUrl: result.url,
           messageType,
         });
-      } else if (conversation.type === "GROUP") {
+      } else if (conversation.type === "group") {
         await sendGroupMessage({
           groupId: conversation.targetId,
           mediaUrl: result.url,
@@ -291,9 +291,9 @@ const handleFileUpload = async (files: File[], messageType: MessageType) => {
         content: result.url,
         messageType,
         receiverId:
-          conversation.type === "PRIVATE" ? conversation.targetId : undefined,
+          conversation.type === "private" ? conversation.targetId : undefined,
         groupId:
-          conversation.type === "GROUP" ? conversation.targetId : undefined,
+          conversation.type === "group" ? conversation.targetId : undefined,
       });
 
       return { success: true, fileName: file.name };

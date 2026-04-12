@@ -121,13 +121,19 @@ export const normalizeConversation = (
 
   const lastActiveTime = asString(record.lastMessageTime);
   const type: ChatSessionType = isGroup ? "group" : "private";
+  const targetName = asString(record.conversationName, targetId);
+  const targetAvatar = asString(record.conversationAvatar) || undefined;
+  const isPinned = asBoolean(record.isPinned ?? record.pinned, false);
   return {
     id: buildSessionId(type, currentUserId, targetId),
     conversationId: conversationId || undefined,
     type,
     targetId,
-    targetName: asString(record.conversationName, targetId),
-    targetAvatar: asString(record.conversationAvatar) || undefined,
+    targetName,
+    targetAvatar,
+    name: targetName,
+    avatar: targetAvatar,
+    conversationType: isGroup ? "GROUP" : "PRIVATE",
     conversationName: asString(record.conversationName) || undefined,
     conversationAvatar: asString(record.conversationAvatar) || undefined,
     lastMessage: normalizeLastMessage(record, lastActiveTime),
@@ -137,7 +143,8 @@ export const normalizeConversation = (
     unreadCount: asNumber(record.unreadCount, 0),
     lastActiveTime,
     updateTime: lastActiveTime || undefined,
-    isPinned: asBoolean(record.isPinned ?? record.pinned, false),
+    isPinned,
+    pinned: isPinned,
     isMuted: asBoolean(record.isMuted ?? record.muted, false),
   };
 };

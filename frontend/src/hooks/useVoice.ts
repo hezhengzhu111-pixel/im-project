@@ -1,6 +1,6 @@
 import { ref } from "vue";
 import { ElMessage } from "element-plus";
-import { fileApi } from "@/services";
+import { fileService as fileApi } from "@/services/file";
 import { useChatStore } from "@/stores/chat";
 
 export function useVoice() {

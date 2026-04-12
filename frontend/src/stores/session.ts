@@ -15,6 +15,14 @@ const normalizeSessionTime = (value?: string): string => {
   return Number.isFinite(next) ? value : "";
 };
 
+const withLegacySessionAliases = (session: ChatSession): ChatSession => ({
+  ...session,
+  name: session.targetName,
+  avatar: session.targetAvatar,
+  conversationType: session.type === "group" ? "GROUP" : "PRIVATE",
+  pinned: session.isPinned,
+});
+
 export const useSessionStore = defineStore("session", () => {
   const currentSession = ref<ChatSession | null>(null);
   const sessions = ref<ChatSession[]>([]);
@@ -64,20 +72,20 @@ export const useSessionStore = defineStore("session", () => {
   const ensureSession = (session: ChatSession): ChatSession => {
     const existing = sessions.value.find((item) => item.id === session.id);
     if (existing) {
-      Object.assign(existing, session, {
+      Object.assign(existing, withLegacySessionAliases(session), {
         lastActiveTime:
           normalizeSessionTime(session.lastActiveTime) || existing.lastActiveTime,
       });
       unreadCounts.value.set(existing.id, existing.unreadCount || 0);
       return existing;
     }
-    const created: ChatSession = {
+    const created: ChatSession = withLegacySessionAliases({
       ...session,
       unreadCount: session.unreadCount || 0,
       lastActiveTime: normalizeSessionTime(session.lastActiveTime),
       isPinned: Boolean(session.isPinned),
       isMuted: Boolean(session.isMuted),
-    };
+    });
     sessions.value.push(created);
     unreadCounts.value.set(created.id, created.unreadCount || 0);
     return created;
@@ -170,11 +178,11 @@ export const useSessionStore = defineStore("session", () => {
       if (session.type !== "private" || session.targetId !== targetId) {
         return session;
       }
-      return {
+      return withLegacySessionAliases({
         ...session,
         targetName: targetName || session.targetName,
         targetAvatar: targetAvatar || session.targetAvatar,
-      };
+      });
     });
     if (
       currentSession.value?.type === "private" &&
@@ -197,7 +205,7 @@ export const useSessionStore = defineStore("session", () => {
       if (!group) {
         return session;
       }
-      return {
+      return withLegacySessionAliases({
         ...session,
         targetName: group.groupName || group.name || session.targetName,
         targetAvatar: group.avatar || session.targetAvatar,
@@ -208,7 +216,7 @@ export const useSessionStore = defineStore("session", () => {
         unreadCount: group.unreadCount ?? session.unreadCount,
         lastActiveTime:
           group.lastMessageTime || group.lastActivityAt || session.lastActiveTime,
-      };
+      });
     });
     syncUnreadCounts();
   };
@@ -284,7 +292,7 @@ export const useSessionStore = defineStore("session", () => {
           byId.set(next.id, next);
         }
       }
-      sessions.value = Array.from(byId.values());
+      sessions.value = Array.from(byId.values()).map(withLegacySessionAliases);
       mergeGroupMetadata(groups);
       syncUnreadCounts();
       if (currentSession.value) {
