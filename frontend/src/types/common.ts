@@ -1,10 +1,6 @@
-/**
- * 公共类型定义
- */
-
-import type { User, UserInfo, Friendship } from './user';
-import type { Group } from './group';
-import type { Message } from './message';
+import type { User, Friendship } from "./user";
+import type { Group } from "./group";
+import type { Message } from "./message";
 
 /** 文件信息 */
 export interface FileInfo {
@@ -24,27 +20,6 @@ export interface UploadProgress {
   status: 'UPLOADING' | 'SUCCESS' | 'ERROR';
   url?: string;
   error?: string;
-}
-
-/** 用户设置 */
-export interface UserSettings {
-  theme: 'light' | 'dark' | 'auto';
-  language: 'zh-CN' | 'en-US';
-  notifications: {
-    sound: boolean;
-    desktop: boolean;
-    preview: boolean;
-  };
-  privacy: {
-    showOnlineStatus: boolean;
-    allowSearchByPhone: boolean;
-    allowSearchByEmail: boolean;
-  };
-  chat: {
-    enterToSend: boolean;
-    showTimestamp: boolean;
-    fontSize: 'small' | 'medium' | 'large';
-  };
 }
 
 /** 搜索结果 */
@@ -95,5 +70,4 @@ export interface EventData {
   timestamp: number;
 }
 
-/** 好友列表 DTO */
 export type FriendListDTO = Friendship;

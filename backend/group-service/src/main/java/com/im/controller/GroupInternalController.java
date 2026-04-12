@@ -1,9 +1,10 @@
 package com.im.controller;
 
+import com.im.dto.ApiResponse;
 import com.im.dto.GroupInfoDTO;
 import com.im.dto.UserDTO;
-import com.im.entity.Group;
-import com.im.entity.GroupMember;
+import com.im.group.entity.Group;
+import com.im.group.entity.GroupMember;
 import com.im.feign.UserServiceFeignClient;
 import com.im.mapper.GroupMapper;
 import com.im.mapper.GroupMemberMapper;
@@ -31,44 +32,44 @@ public class GroupInternalController {
     private String internalSecret;
 
     @GetMapping("/exists/{groupId}")
-    public Boolean exists(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
-                          @PathVariable("groupId") Long groupId) {
+    public ApiResponse<Boolean> exists(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
+                                       @PathVariable("groupId") Long groupId) {
         verify(secret);
-        return groupId != null && groupMapper.selectById(groupId) != null;
+        return ApiResponse.success(groupId != null && groupMapper.selectById(groupId) != null);
     }
 
     @GetMapping("/list/{userId}")
-    public List<GroupInfoDTO> listUserGroups(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
-                                             @PathVariable("userId") Long userId) {
+    public ApiResponse<List<GroupInfoDTO>> listUserGroups(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
+                                                          @PathVariable("userId") Long userId) {
         verify(secret);
         if (userId == null) {
-            return List.of();
+            return ApiResponse.success(List.of());
         }
-        return groupMapper.selectGroupsByUserId(userId).stream()
+        return ApiResponse.success(groupMapper.selectGroupsByUserId(userId).stream()
                 .map(this::toGroupInfoDTO)
-                .collect(Collectors.toList());
+                .collect(Collectors.toList()));
     }
 
     @GetMapping("/isMember/{groupId}/{userId}")
-    public Boolean isMember(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
-                            @PathVariable("groupId") Long groupId,
-                            @PathVariable("userId") Long userId) {
+    public ApiResponse<Boolean> isMember(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
+                                         @PathVariable("groupId") Long groupId,
+                                         @PathVariable("userId") Long userId) {
         verify(secret);
         if (groupId == null || userId == null) {
-            return false;
+            return ApiResponse.success(false);
         }
-        return groupMemberMapper.existsActiveMember(groupId, userId);
+        return ApiResponse.success(groupMemberMapper.existsActiveMember(groupId, userId));
     }
 
     @GetMapping("/memberIds/{groupId}")
-    public List<Long> memberIds(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
-                                @PathVariable("groupId") Long groupId) {
+    public ApiResponse<List<Long>> memberIds(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
+                                             @PathVariable("groupId") Long groupId) {
         verify(secret);
         if (groupId == null) {
-            return List.of();
+            return ApiResponse.success(List.of());
         }
         List<GroupMember> members = groupMemberMapper.selectMembersByGroupId(groupId);
-        return members.stream().map(GroupMember::getUserId).collect(Collectors.toList());
+        return ApiResponse.success(members.stream().map(GroupMember::getUserId).collect(Collectors.toList()));
     }
 
     private void verify(String secret) {

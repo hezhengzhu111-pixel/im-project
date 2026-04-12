@@ -67,6 +67,7 @@ import { ElMessage } from "element-plus";
 import { Close, Monitor } from "@element-plus/icons-vue";
 import { MemoryMonitor, CacheManager } from "@/utils/performance";
 import { useChatStore } from "@/stores/chat";
+import { logger } from "@/utils/logger";
 
 // 响应式数据
 const showMonitor = ref(false);
@@ -136,7 +137,7 @@ const measureNetworkLatency = async () => {
       networkLatency.value = Math.round(performance.now() - start);
     }
   } catch (error) {
-    console.warn("网络延迟测量失败:", error);
+    logger.warn("network latency measurement failed", error);
   }
 };
 

@@ -1,5 +1,6 @@
 package com.im.controller;
 
+import com.im.dto.ApiResponse;
 import com.im.dto.TokenPairDTO;
 import com.im.dto.TokenParseResultDTO;
 import com.im.dto.WsTicketConsumeResultDTO;
@@ -67,9 +68,9 @@ class AuthInternalControllerTest {
         pair.setAccessToken("token");
         when(authTokenService.issueTokenPair(1L, "user")).thenReturn(pair);
         
-        TokenPairDTO result = controller.issueToken(httpRequest, request);
+        ApiResponse<TokenPairDTO> result = controller.issueToken(httpRequest, request);
         
-        assertEquals("token", result.getAccessToken());
+        assertEquals("token", result.getData().getAccessToken());
         verify(authUserResourceService).upsertFromIssueTokenRequest(request);
     }
 
@@ -82,9 +83,9 @@ class AuthInternalControllerTest {
         when(authTokenService.parseAccessToken("token", false)).thenReturn(parseResult);
         when(authTokenRevokeService.isTokenRevoked("token")).thenReturn(false);
         
-        TokenParseResultDTO result = controller.validateToken(httpRequest, null, "token");
+        ApiResponse<TokenParseResultDTO> result = controller.validateToken(httpRequest, null, "token");
         
-        assertEquals(true, result.isValid());
+        assertEquals(true, result.getData().isValid());
     }
 
     @Test
@@ -96,10 +97,10 @@ class AuthInternalControllerTest {
         when(authTokenService.parseAccessToken("token", false)).thenReturn(parseResult);
         when(authTokenRevokeService.isTokenRevoked("token")).thenReturn(true);
         
-        TokenParseResultDTO result = controller.validateToken(httpRequest, null, "token");
+        ApiResponse<TokenParseResultDTO> result = controller.validateToken(httpRequest, null, "token");
         
-        assertFalse(result.isValid());
-        assertEquals("token已吊销", result.getError());
+        assertFalse(result.getData().isValid());
+        assertEquals("token已吊销", result.getData().getError());
     }
     @Test
     void consumeWsTicket_ShouldVerifyAndDelegate() {
@@ -114,9 +115,9 @@ class AuthInternalControllerTest {
                 .build();
         when(authTokenService.consumeWsTicket("ticket-1", 1L)).thenReturn(dto);
 
-        WsTicketConsumeResultDTO result = controller.consumeWsTicket(httpRequest, request);
+        ApiResponse<WsTicketConsumeResultDTO> result = controller.consumeWsTicket(httpRequest, request);
 
-        assertEquals(true, result.isValid());
-        assertEquals(1L, result.getUserId());
+        assertEquals(true, result.getData().isValid());
+        assertEquals(1L, result.getData().getUserId());
     }
 }

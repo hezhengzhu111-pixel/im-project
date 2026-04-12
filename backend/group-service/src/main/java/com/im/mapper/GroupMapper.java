@@ -1,7 +1,7 @@
 package com.im.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.im.entity.Group;
+import com.im.group.entity.Group;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;

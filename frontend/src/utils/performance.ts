@@ -1,3 +1,5 @@
+import { logger } from "@/utils/logger";
+
 /**
  * 性能优化工具函数
  */
@@ -119,7 +121,7 @@ export class MemoryMonitor {
 
       // 如果内存使用率过高，发出警告
       if (usage > 0.8) {
-        console.warn("内存使用率过高:", (usage * 100).toFixed(2) + "%");
+        logger.warn("memory usage is high", `${(usage * 100).toFixed(2)}%`);
       }
     }
   }

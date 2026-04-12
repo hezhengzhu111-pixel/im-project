@@ -19,7 +19,6 @@ import com.im.dto.response.FileUploadResponse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -35,7 +34,11 @@ class FileControllerTest {
 
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(fileController, "maxFileSize", 10485760L);
+        ReflectionTestUtils.setField(fileController, "imageMaxSize", 5 * 1024 * 1024L);
+        ReflectionTestUtils.setField(fileController, "fileMaxSize", 10 * 1024 * 1024L);
+        ReflectionTestUtils.setField(fileController, "audioMaxSize", 20 * 1024 * 1024L);
+        ReflectionTestUtils.setField(fileController, "videoMaxSize", 50 * 1024 * 1024L);
+        ReflectionTestUtils.setField(fileController, "avatarMaxSize", 2 * 1024 * 1024L);
     }
 
     @Test
@@ -49,6 +52,17 @@ class FileControllerTest {
 
         assertEquals(200, response.getCode());
         assertEquals("url", response.getData().getUrl());
+    }
+
+    @Test
+    void uploadVideoReturnsBadRequestWhenOversized() {
+        byte[] payload = new byte[11];
+        MockMultipartFile file = new MockMultipartFile("file", "test.mp4", "video/mp4", payload);
+        ReflectionTestUtils.setField(fileController, "videoMaxSize", 10L);
+
+        ApiResponse<FileUploadResponse> response = fileController.uploadVideo(file, 1L);
+
+        assertEquals(400, response.getCode());
     }
 
     @Test

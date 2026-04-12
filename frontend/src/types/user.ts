@@ -1,14 +1,9 @@
-/**
- * 用户相关类型定义
- */
+export type UserPresence = "online" | "offline" | "busy" | "away";
 
-/** 用户状态 */
-export type UserStatus = 'ONLINE' | 'OFFLINE' | 'BUSY' | 'AWAY' | 'online' | 'offline' | 'busy' | 'away';
+export type FriendRequestStatus = "PENDING" | "ACCEPTED" | "REJECTED";
 
-/** 用户信息 */
 export interface User {
   id: string;
-  userId?: string;
   username: string;
   nickname: string;
   avatar?: string;
@@ -19,26 +14,26 @@ export interface User {
   signature?: string;
   location?: string;
   lastSeen?: string;
-  status: UserStatus;
+  status: UserPresence;
   lastLoginTime?: string;
   createTime?: string;
 }
 
-/** 用户信息别名，向后兼容 */
-export type UserInfo = User;
+export interface AuthSession {
+  currentUser: User | null;
+  isAuthenticated: boolean;
+  authReady: boolean;
+}
 
-/** 登录请求 */
 export interface LoginRequest {
   username: string;
   password: string;
 }
 
-/** 登录表单 */
 export interface LoginForm extends LoginRequest {
   rememberMe?: boolean;
 }
 
-/** 注册请求 */
 export interface RegisterRequest {
   username: string;
   password: string;
@@ -47,7 +42,6 @@ export interface RegisterRequest {
   phone?: string;
 }
 
-/** 注册表单 */
 export interface RegisterForm {
   username: string;
   email: string;
@@ -58,36 +52,37 @@ export interface RegisterForm {
   phone?: string;
 }
 
-export interface UserDTO {
-  id?: string;
-  username: string;
-  password?: string;
+export interface RawUserDTO {
+  id?: string | number;
+  userId?: string | number;
+  username?: string;
   nickname?: string;
   avatar?: string;
   email?: string;
   phone?: string;
-  status?: number | string;
+  gender?: string;
+  birthday?: string;
+  signature?: string;
+  location?: string;
+  status?: string | number;
+  lastSeen?: string;
+  lastLoginTime?: string;
   createTime?: string;
   updateTime?: string;
-  lastLoginTime?: string;
 }
 
 export interface UserAuthResponse {
   success: boolean;
   message: string;
-  user: UserDTO;
-  token: string;
-  refreshToken?: string;
+  user: User;
+  token?: string;
   expiresInMs?: number;
   refreshExpiresInMs?: number;
-  imToken?: string;
 }
 
-export type UserSearchResult = UserDTO[];
-
 export interface TokenPairDTO {
-  accessToken: string;
-  refreshToken: string;
+  accessToken?: string;
+  refreshToken?: string;
   expiresInMs: number;
   refreshExpiresInMs: number;
 }
@@ -109,12 +104,15 @@ export interface TokenParseResultDTO {
   tokenType?: string;
 }
 
-export type UpdateUserRequest = Partial<UserDTO>;
-export type Friend = Friendship;
+export type UpdateUserRequest = Partial<
+  Pick<
+    User,
+    "nickname" | "avatar" | "email" | "phone" | "gender" | "birthday" | "signature" | "location"
+  >
+>;
 
 export interface Friendship {
   id: string;
-  userId?: string;
   friendId: string;
   username: string;
   nickname?: string;
@@ -123,11 +121,12 @@ export interface Friendship {
   isOnline?: boolean;
   lastActiveTime?: string;
   createdAt?: string;
-  status?: number;
   createTime?: string;
   signature?: string;
   lastSeen?: string;
 }
+
+export type Friend = Friendship;
 
 export interface FriendRequest {
   id: string;
@@ -140,18 +139,9 @@ export interface FriendRequest {
   targetNickname?: string;
   targetAvatar?: string;
   reason?: string;
-  status: string | number;
+  status: FriendRequestStatus;
   createTime: string;
   updateTime?: string;
-
-  // 兼容老代码
-  avatar?: string;
-  fromUser?: any;
-  nickname?: string;
-  username?: string;
-  message?: string;
-  senderId?: string;
-  receiverId?: string;
 }
 
 export interface AddFriendRequest {
@@ -161,6 +151,60 @@ export interface AddFriendRequest {
 
 export interface HandleFriendRequestRequest {
   requestId: string;
-  action: string;
+  action: "ACCEPT" | "REJECT";
 }
 
+export interface PrivacySettings {
+  allowStrangerAdd: boolean;
+  showOnlineStatus: boolean;
+  allowViewMoments: boolean;
+  messageReadReceipt: boolean;
+}
+
+export interface MessagePreferenceSettings {
+  enableNotification: boolean;
+  enableSound: boolean;
+  enableVibration: boolean;
+  muteGroupMessages: boolean;
+  autoDownloadImages: boolean;
+}
+
+export interface GeneralSettings {
+  language: "zh-CN" | "en-US";
+  theme: "light" | "dark" | "auto";
+  fontSize: "small" | "medium" | "large";
+  autoLogin: boolean;
+  minimizeOnStart: boolean;
+}
+
+export interface NotificationSettings {
+  sound: boolean;
+  desktop: boolean;
+  preview: boolean;
+}
+
+export interface UserSettings {
+  general: GeneralSettings;
+  privacy: PrivacySettings;
+  message: MessagePreferenceSettings;
+  notifications: NotificationSettings;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface BindPhoneRequest {
+  phone: string;
+  code: string;
+}
+
+export interface BindEmailRequest {
+  email: string;
+  code: string;
+}
+
+export interface DeleteAccountRequest {
+  password: string;
+}

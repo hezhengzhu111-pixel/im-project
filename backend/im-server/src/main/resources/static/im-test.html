@@ -644,7 +644,7 @@ user003</textarea>
                     isConnected = true;
                     updateConnectionStatus(true);
                     addSystemMessage(`WebSocket 连接成功！用户: ${currentUser}`);
-                    addSystemMessage('现在可以通过REST API发送消息，消息将通过Kafka流转发到WebSocket');
+                    addSystemMessage('现在可以通过REST API发送消息，消息将通过 Redis Pub/Sub 定向推送到 WebSocket');
                     
                     // 更新连接按钮状态
                     connectBtn.disabled = true;

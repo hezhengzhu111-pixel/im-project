@@ -14,6 +14,7 @@ import { useUserStore } from "@/stores/user";
 import { ElMessage } from "element-plus";
 import NProgress from "nprogress";
 import "nprogress/nprogress.css";
+import { logger } from "@/utils/logger";
 
 const CHUNK_RELOAD_KEY = "im_chunk_reload_path";
 
@@ -155,7 +156,6 @@ const router = createRouter({
 
 // 全局前置守卫
 router.beforeEach(async (to, from, next) => {
-  console.log("Navigating from:", from.fullPath, "to:", to.fullPath);
   // 开始进度条
   NProgress.start();
 
@@ -179,7 +179,11 @@ router.beforeEach(async (to, from, next) => {
 
     next();
   } catch (error) {
-    console.error("路由守卫错误:", error);
+    logger.error("route guard failed", {
+      error,
+      from: from.fullPath,
+      to: to.fullPath,
+    });
     ElMessage.error("页面跳转失败");
     next(false);
   }
@@ -195,7 +199,7 @@ router.afterEach((to, from, failure) => {
     !isNavigationFailure(failure, NavigationFailureType.duplicated) &&
     !isNavigationFailure(failure, NavigationFailureType.cancelled)
   ) {
-    console.error("路由跳转失败:", failure);
+    logger.warn("route navigation failed", failure);
   }
   if (!failure) {
     sessionStorage.removeItem(CHUNK_RELOAD_KEY);
@@ -204,7 +208,10 @@ router.afterEach((to, from, failure) => {
 
 // 路由错误处理
 router.onError((error, to) => {
-  console.error("路由错误:", error);
+  logger.error("router error", {
+    error,
+    to: to?.fullPath,
+  });
   if (isDynamicImportError(error)) {
     const targetPath =
       to?.fullPath ||

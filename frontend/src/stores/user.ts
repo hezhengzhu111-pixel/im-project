@@ -1,719 +1,444 @@
-/**
- * 用户状态管理
- * 管理用户登录、注册、个人信息等状态
- */
-
+import { computed, ref } from "vue";
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
-import { userApi, authApi } from "@/services";
-import { STORAGE_CONFIG, APP_CONFIG } from "@/config";
-import type { User, LoginRequest, RegisterRequest } from "@/types";
-import type { UserDTO } from "@/types/user";
 import { ElMessage } from "element-plus";
 import router from "@/router";
+import { authService, userService } from "@/services";
+import { normalizeUser } from "@/normalizers/user";
+import type {
+  LoginRequest,
+  RegisterRequest,
+  TokenParseResultDTO,
+  UpdateUserRequest,
+  User,
+} from "@/types";
+import { APP_CONFIG, STORAGE_CONFIG } from "@/config";
+import { logger } from "@/utils/logger";
 
-export const useUserStore = defineStore("user", () => {
-  // 状态
-  const userInfo = ref<User | null>(null);
-  const token = ref<string>("");
-  const loading = ref(false);
-  const lastSessionCheckAt = ref<number>(0);
-  const lastSessionValid = ref<boolean>(false);
-  let sessionCheckInFlight: Promise<boolean> | null = null;
+const readPersistedAccessToken = (): string => {
+  if (typeof localStorage === "undefined") {
+    return "";
+  }
+  const token = localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY);
+  return typeof token === "string" ? token.trim() : "";
+};
 
-  // 计算属性
-  const isLoggedIn = computed(() => !!token.value && !!userInfo.value);
-  const avatar = computed(
-    () => userInfo.value?.avatar || APP_CONFIG.DEFAULT_AVATAR,
+const persistAccessToken = (token: string): void => {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  if (token) {
+    localStorage.setItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY, token);
+    return;
+  }
+  localStorage.removeItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY);
+};
+
+const readPersistedUser = (): User | null => {
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+  const raw = localStorage.getItem(STORAGE_CONFIG.USER_SNAPSHOT_KEY);
+  if (!raw) {
+    return null;
+  }
+  try {
+    return normalizeUser(JSON.parse(raw) as User);
+  } catch {
+    localStorage.removeItem(STORAGE_CONFIG.USER_SNAPSHOT_KEY);
+    return null;
+  }
+};
+
+const persistUser = (user: User | null): void => {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  if (!user) {
+    localStorage.removeItem(STORAGE_CONFIG.USER_SNAPSHOT_KEY);
+    return;
+  }
+  localStorage.setItem(
+    STORAGE_CONFIG.USER_SNAPSHOT_KEY,
+    JSON.stringify(user),
   );
-  const nickname = computed(
-    () => userInfo.value?.nickname || userInfo.value?.username || "未知用户",
-  );
-  const userId = computed(() => userInfo.value?.id || "");
+};
 
-  const clearSessionOnly = () => {
-    userInfo.value = null;
-    token.value = "";
-    lastSessionCheckAt.value = 0;
-    lastSessionValid.value = false;
-    localStorage.removeItem(STORAGE_CONFIG.TOKEN_KEY);
-    localStorage.removeItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY);
-    localStorage.removeItem(STORAGE_CONFIG.USER_INFO_KEY);
-  };
+const isValidTokenResult = (
+  result?: TokenParseResultDTO | null,
+): result is TokenParseResultDTO & { userId: number } => {
+  return !!result && result.valid && !result.expired && result.userId != null;
+};
 
-  // 初始化状态
-  const initializeStore = () => {
-    try {
-      const savedToken = localStorage.getItem(STORAGE_CONFIG.TOKEN_KEY);
-      const savedUserInfo = localStorage.getItem(STORAGE_CONFIG.USER_INFO_KEY);
-
-      if (savedToken) {
-        token.value = savedToken;
-      }
-
-      if (savedUserInfo) {
-        userInfo.value = JSON.parse(savedUserInfo);
-      }
-      if (!localStorage.getItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY)) {
-        localStorage.removeItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY);
-      }
-      lastSessionValid.value = !!savedToken && !!savedUserInfo;
-    } catch (error) {
-      console.error("初始化用户状态失败:", error);
-      clearUserData();
-    }
-  };
-
-  // 初始化方法（别名）
-  const init = initializeStore;
-
-  // 清除用户数据
-  const clearUserData = () => {
-    userInfo.value = null;
-    token.value = "";
-    lastSessionCheckAt.value = 0;
-    lastSessionValid.value = false;
-    localStorage.removeItem(STORAGE_CONFIG.TOKEN_KEY);
-    localStorage.removeItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY);
-    localStorage.removeItem(STORAGE_CONFIG.USER_INFO_KEY);
-  };
-
-  // 保存用户数据
-  const saveUserData = (
-    user: User,
-    authToken: string,
-    refreshToken?: string,
-  ) => {
-    userInfo.value = user;
-    token.value = authToken;
-    lastSessionCheckAt.value = Date.now();
-    lastSessionValid.value = true;
-    localStorage.setItem(STORAGE_CONFIG.TOKEN_KEY, authToken);
-    if (refreshToken) {
-      localStorage.setItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY, refreshToken);
-    }
-    localStorage.setItem(STORAGE_CONFIG.USER_INFO_KEY, JSON.stringify(user));
-  };
-
-  const setAuthToken = (accessToken: string, refreshToken?: string) => {
-    token.value = accessToken;
-    localStorage.setItem(STORAGE_CONFIG.TOKEN_KEY, accessToken);
-    if (refreshToken) {
-      localStorage.setItem(STORAGE_CONFIG.REFRESH_TOKEN_KEY, refreshToken);
-    }
-    lastSessionCheckAt.value = Date.now();
-    lastSessionValid.value = true;
-  };
-
-  const tryDecodeJwtPayload = (jwt: string): any | null => {
-    try {
-      const parts = jwt.split(".");
-      if (parts.length < 2) return null;
-      const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-      const pad =
-        payload.length % 4 === 0 ? "" : "=".repeat(4 - (payload.length % 4));
-      const json = decodeURIComponent(
-        Array.prototype.map
-          .call(
-            atob(payload + pad),
-            (c: string) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`,
-          )
-          .join(""),
-      );
-      return JSON.parse(json);
-    } catch {
+const readUserFromAccessToken = (token: string): User | null => {
+  const normalized = token.trim().replace(/^Bearer\s+/i, "");
+  const [, payload] = normalized.split(".");
+  if (!payload || typeof atob === "undefined") {
+    return null;
+  }
+  try {
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(
+      base64.length + ((4 - (base64.length % 4)) % 4),
+      "=",
+    );
+    const claims = JSON.parse(atob(padded)) as Record<string, unknown>;
+    const rawUserId = claims.userId;
+    const userId =
+      typeof rawUserId === "number" || typeof rawUserId === "string"
+        ? String(rawUserId)
+        : "";
+    if (!userId) {
       return null;
     }
+    const username =
+      typeof claims.username === "string" && claims.username.trim()
+        ? claims.username.trim()
+        : userId;
+    return {
+      id: userId,
+      username,
+      nickname: username,
+      avatar: APP_CONFIG.DEFAULT_AVATAR,
+      status: "offline",
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const useUserStore = defineStore("user", () => {
+  const currentUser = ref<User | null>(readPersistedUser());
+  const accessToken = ref(readPersistedAccessToken());
+  const loading = ref(false);
+  const authReady = ref(false);
+  const lastSessionCheckAt = ref(0);
+  const lastSessionValid = ref(false);
+  let sessionCheckInFlight: Promise<boolean> | null = null;
+
+  const isAuthenticated = computed(() => lastSessionValid.value && !!currentUser.value);
+  const isLoggedIn = computed(() => isAuthenticated.value);
+  const avatar = computed(
+    () => currentUser.value?.avatar || APP_CONFIG.DEFAULT_AVATAR,
+  );
+  const nickname = computed(
+    () => currentUser.value?.nickname || currentUser.value?.username || "未知用户",
+  );
+  const userId = computed(() => currentUser.value?.id || "");
+  const userInfo = computed(() => currentUser.value);
+
+  const setAccessToken = (token?: string | null) => {
+    const normalized = typeof token === "string" ? token.trim() : "";
+    accessToken.value = normalized;
+    persistAccessToken(normalized);
   };
 
-  const isTokenExpired = (jwt: string): boolean => {
-    const payload = tryDecodeJwtPayload(jwt);
-    const exp = payload?.exp;
-    if (!exp || typeof exp !== "number") return false;
-    const expMs = exp * 1000;
-    return Date.now() > expMs - 5000;
+  const setCurrentUser = (user?: User | null) => {
+    const normalized = user ? normalizeUser(user) : null;
+    currentUser.value = normalized;
+    persistUser(normalized);
   };
 
-  const ensureAuthenticated = async (): Promise<boolean> => {
-    const currentToken =
-      token.value || localStorage.getItem(STORAGE_CONFIG.TOKEN_KEY) || "";
-    if (!currentToken) {
-      clearSessionOnly();
-      return false;
+  const getAccessToken = (): string => {
+    if (accessToken.value) {
+      return accessToken.value;
     }
-    if (isTokenExpired(currentToken)) {
-      clearSessionOnly();
-      return false;
+    const persisted = readPersistedAccessToken();
+    if (persisted) {
+      accessToken.value = persisted;
     }
+    return persisted;
+  };
 
-    const now = Date.now();
-    if (lastSessionValid.value && now - lastSessionCheckAt.value < 60_000) {
+  const clearSession = () => {
+    setCurrentUser(null);
+    setAccessToken("");
+    lastSessionCheckAt.value = 0;
+    lastSessionValid.value = false;
+    authReady.value = true;
+  };
+
+  const markSessionValid = () => {
+    lastSessionCheckAt.value = Date.now();
+    lastSessionValid.value = true;
+    authReady.value = true;
+  };
+
+  const markSessionInvalid = () => {
+    lastSessionCheckAt.value = Date.now();
+    lastSessionValid.value = false;
+    authReady.value = true;
+  };
+
+  const applyTokenResultUser = (
+    result: TokenParseResultDTO & { userId: number },
+    persistedUser?: User | null,
+  ) => {
+    if (persistedUser && persistedUser.id === String(result.userId)) {
+      setCurrentUser(persistedUser);
+      return;
+    }
+    setCurrentUser({
+      id: String(result.userId),
+      username: result.username || String(result.userId),
+      nickname: result.username || String(result.userId),
+      avatar: APP_CONFIG.DEFAULT_AVATAR,
+      status: "offline",
+    });
+  };
+
+  const restoreFromLocalSnapshot = (persistedUser?: User | null): boolean => {
+    const persistedToken = getAccessToken();
+    if (!persistedToken || !persistedUser) {
+      return false;
+    }
+    setCurrentUser(persistedUser);
+    markSessionValid();
+    return true;
+  };
+
+  const restoreFromLocalToken = (): boolean => {
+    const persistedToken = getAccessToken();
+    if (!persistedToken) {
+      return false;
+    }
+    const tokenUser = readUserFromAccessToken(persistedToken);
+    if (!tokenUser) {
+      return false;
+    }
+    setCurrentUser(tokenUser);
+    markSessionValid();
+    return true;
+  };
+
+  const refreshPersistedSession = async (
+    persistedUser?: User | null,
+  ): Promise<boolean> => {
+    try {
+      const refreshResponse = await authService.refreshAccessToken();
+      const nextAccessToken =
+        typeof refreshResponse?.data?.accessToken === "string"
+          ? refreshResponse.data.accessToken.trim()
+          : "";
+      if (!nextAccessToken) {
+        return false;
+      }
+      const parseResponse = await authService.parseAccessToken(
+        nextAccessToken,
+        true,
+      );
+      const result = parseResponse.data;
+      if (!isValidTokenResult(result)) {
+        return false;
+      }
+      setAccessToken(nextAccessToken);
+      applyTokenResultUser(result, persistedUser);
+      markSessionValid();
       return true;
+    } catch (error) {
+      logger.warn("refreshPersistedSession failed", error);
+      return false;
+    }
+  };
+
+  const restoreSession = async (): Promise<boolean> => {
+    const now = Date.now();
+    if (authReady.value && now - lastSessionCheckAt.value < 60_000) {
+      return lastSessionValid.value;
     }
     if (sessionCheckInFlight) {
       return sessionCheckInFlight;
     }
-
     sessionCheckInFlight = (async () => {
       try {
-        const resp = await authApi.parseAccessToken(currentToken, true);
-        const result = resp?.data;
-        const ok =
-          !!result && result.valid && !result.expired && !!result.userId;
-        lastSessionCheckAt.value = Date.now();
-        lastSessionValid.value = ok;
-        if (!ok) {
-          clearSessionOnly();
+        const persistedToken = getAccessToken();
+        const persistedUser = readPersistedUser();
+        if (persistedUser) {
+          setCurrentUser(persistedUser);
+          markSessionValid();
+          void refreshPersistedSession(persistedUser);
+          return true;
+        }
+        if (restoreFromLocalToken()) {
+          void refreshPersistedSession(currentUser.value);
+          return true;
+        }
+        if (!persistedToken) {
+          markSessionInvalid();
           return false;
         }
-
-        if (!userInfo.value) {
-          const minimalUser: User = {
-            id: String(result.userId),
-            username: result.username || String(result.userId),
-            nickname: result.username || String(result.userId),
-            avatar: APP_CONFIG.DEFAULT_AVATAR,
-            status: "OFFLINE",
-          };
-          userInfo.value = minimalUser;
-          token.value = currentToken;
-          localStorage.setItem(STORAGE_CONFIG.TOKEN_KEY, currentToken);
-          localStorage.setItem(
-            STORAGE_CONFIG.USER_INFO_KEY,
-            JSON.stringify(minimalUser),
-          );
+        let response = await authService.parseAccessToken(
+          persistedToken || undefined,
+          true,
+        );
+        let result = response.data;
+        let restoredFromCookieSession = false;
+        if (
+          !isValidTokenResult(result) &&
+          (await refreshPersistedSession(persistedUser))
+        ) {
+          return true;
         }
+        if (!isValidTokenResult(result) && persistedToken) {
+          response = await authService.parseAccessToken(undefined, true);
+          result = response.data;
+          restoredFromCookieSession = isValidTokenResult(result);
+        }
+        if (!isValidTokenResult(result)) {
+          if (restoreFromLocalSnapshot(persistedUser)) {
+            return true;
+          }
+          clearSession();
+          return false;
+        }
+        if (restoredFromCookieSession) {
+          setAccessToken("");
+        }
+        applyTokenResultUser(result, persistedUser);
+        markSessionValid();
         return true;
-      } catch {
-        lastSessionCheckAt.value = Date.now();
-        lastSessionValid.value = false;
-        clearSessionOnly();
+      } catch (error) {
+        logger.warn("restoreSession failed", error);
+        const persistedUser = readPersistedUser();
+        if (restoreFromLocalSnapshot(persistedUser)) {
+          return true;
+        }
+        clearSession();
         return false;
       } finally {
         sessionCheckInFlight = null;
       }
     })();
-
     return sessionCheckInFlight;
   };
 
-  // 登录
+  const initializeStore = async () => {
+    await restoreSession();
+  };
+
+  const init = initializeStore;
+
   const login = async (loginForm: LoginRequest) => {
     if (loading.value) return false;
+    loading.value = true;
     try {
-      loading.value = true;
       const username = String(loginForm.username || "").trim();
       const password = String(loginForm.password || "");
       if (!username || !password) {
         throw new Error("请输入用户名和密码");
       }
-
-      const response: any = await userApi.loginWithPassword(username, password);
-
-      const authPayload: any =
-        response?.data?.success !== undefined ? response.data : response;
-      if (authPayload?.success && authPayload.user && authPayload.token) {
-        saveUserData(
-          authPayload.user,
-          authPayload.token,
-          authPayload.refreshToken,
-        );
-        try {
-          await userApi.online();
-        } catch (error) {
-          console.warn("用户上线通知失败:", error);
-        }
-        ElMessage.success("登录成功");
-        return true;
-      } else {
-        throw new Error(authPayload?.message || "登录失败");
+      const response = await userService.login({ username, password });
+      if (!response.data.success) {
+        throw new Error(response.data.message || "登录失败");
       }
-    } catch (error: any) {
-      console.error("登录失败:", error);
-      ElMessage.error(error.message || "登录失败");
+      setAccessToken(response.data.token);
+      setCurrentUser(response.data.user);
+      lastSessionCheckAt.value = Date.now();
+      lastSessionValid.value = true;
+      authReady.value = true;
+      ElMessage.success("登录成功");
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "登录失败";
+      ElMessage.error(message);
       return false;
     } finally {
       loading.value = false;
     }
   };
 
-  // 注册
   const register = async (registerForm: RegisterRequest) => {
     if (loading.value) return false;
+    loading.value = true;
     try {
-      loading.value = true;
-
-      // 转换 RegisterRequest 到 UserDTO
-      // 注意：registerForm 包含 confirmPassword 和 agreement，这些不应该发送给后端接口（如果后端严格校验）
-      // 但通常 Jackson 配置了 fail-on-unknown-properties: false，所以多余字段会被忽略
-      // 这里我们还是显式构造一个 UserDTO 对象比较规范
-      const userDTO: UserDTO = {
+      const response = await userService.register({
         username: String(registerForm.username || "").trim(),
         password: registerForm.password,
-        email: String(registerForm.email || "").trim(),
         nickname:
           String(registerForm.nickname || "").trim() ||
           String(registerForm.username || "").trim(),
-        phone: registerForm.phone
-          ? String(registerForm.phone).trim()
-          : undefined,
-      };
-
-      const response = await userApi.register(userDTO);
-
-      if (response.code === 200) {
-        ElMessage.success("注册成功，请登录");
-        return true;
-      } else {
+        email: registerForm.email?.trim(),
+        phone: registerForm.phone?.trim(),
+      });
+      if (response.code !== 200) {
         throw new Error(response.message || "注册失败");
       }
-    } catch (error: any) {
-      console.error("注册失败:", error);
-      ElMessage.error(error.message || "注册失败");
+      ElMessage.success("注册成功，请登录");
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "注册失败";
+      ElMessage.error(message);
       return false;
     } finally {
       loading.value = false;
     }
   };
 
-  // 登出
   const logout = async () => {
-    if (loading.value) return;
+    if (loading.value) {
+      return;
+    }
+    loading.value = true;
     let serverLogoutOk = false;
     try {
-      loading.value = true;
-      // 通知服务器用户下线
-      const response = await userApi.logout();
+      const response = await userService.logout();
       serverLogoutOk = response.code === 200;
-    } catch (error: any) {
-      console.error("下线通知失败:", error);
+    } catch (error) {
+      logger.warn("logout failed on server", error);
       serverLogoutOk = false;
     } finally {
-      const redirect = router.currentRoute.value.fullPath || "/chat";
-      clearUserData();
+      clearSession();
       if (serverLogoutOk) {
         ElMessage.success("已退出登录");
       } else {
         ElMessage.warning("已退出本地登录，服务端会话稍后失效");
       }
-      router.push({ name: "Login", query: { redirect } });
+      await router.push({ name: "Login" });
       loading.value = false;
     }
   };
 
-  // 更新用户信息
-  const updateUserInfo = async (userData: Partial<User>) => {
+  const updateUserInfo = async (userData: UpdateUserRequest) => {
+    loading.value = true;
     try {
-      loading.value = true;
-
-      const response = await userApi.updateUserInfo(userData);
-
-      if (response.code === 200 && response.data) {
-        const patchData =
-          typeof response.data === "object" && response.data !== null
-            ? (response.data as Record<string, any>)
-            : {};
-        const updatedUser = {
-          ...(userInfo.value || {}),
-          ...patchData,
-        };
-        userInfo.value = updatedUser as User;
-        localStorage.setItem(
-          STORAGE_CONFIG.USER_INFO_KEY,
-          JSON.stringify(updatedUser),
-        );
-
-        ElMessage.success("更新成功");
-        return true;
-      } else {
-        throw new Error(response.message || "更新失败");
-      }
-    } catch (error: any) {
-      console.error("更新用户信息失败:", error);
-      ElMessage.error(error.message || "更新失败");
-      return false;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // 检查登录状态
-  const checkLoginStatus = () => {
-    const savedToken = localStorage.getItem(STORAGE_CONFIG.TOKEN_KEY);
-    const savedUserInfo = localStorage.getItem(STORAGE_CONFIG.USER_INFO_KEY);
-
-    if (!savedToken || !savedUserInfo) {
-      clearUserData();
-      return false;
-    }
-
-    try {
-      const user = JSON.parse(savedUserInfo);
-      if (!user || !user.id) {
-        clearUserData();
-        return false;
-      }
-
-      token.value = savedToken;
-      userInfo.value = user;
+      const response = await userService.updateProfile(userData);
+      setCurrentUser(response.data);
+      ElMessage.success("更新成功");
       return true;
     } catch (error) {
-      console.error("检查登录状态失败:", error);
-      clearUserData();
+      const message = error instanceof Error ? error.message : "更新失败";
+      ElMessage.error(message);
       return false;
-    }
-  };
-
-  // 搜索用户
-  const searchUsers = async (keyword: string) => {
-    try {
-      const response = await userApi.searchUsers(keyword);
-
-      if (response.code === 200) {
-        return response.data || [];
-      } else {
-        throw new Error(response.message || "搜索失败");
-      }
-    } catch (error: any) {
-      console.error("搜索用户失败:", error);
-      ElMessage.error(error.message || "搜索失败");
-      return [];
-    }
-  };
-
-  // 获取用户信息
-  const getUserInfo = async (userId: string) => {
-    try {
-      const current = userInfo.value;
-      if (current && String(current.id) === String(userId)) {
-        return current;
-      }
-      return null;
-    } catch (error: any) {
-      console.error("获取用户信息失败:", error);
-      return null;
-    }
-  };
-
-  const USER_SETTINGS_KEY = `${STORAGE_CONFIG.USER_INFO_KEY}_SETTINGS`;
-  const defaultSettings = {
-    general: {
-      theme: "light",
-      language: "zh-CN",
-    },
-    privacy: {
-      showOnlineStatus: true,
-      allowSearchByPhone: true,
-      allowSearchByEmail: true,
-    },
-    message: {
-      enterToSend: true,
-      showTimestamp: true,
-      fontSize: "medium",
-    },
-    notifications: {
-      sound: true,
-      desktop: true,
-      preview: true,
-    },
-  };
-
-  const readSettings = async () => {
-    try {
-      const response = await userApi.getSettings();
-      if (response.code === 200 && response.data) {
-        const parsed = response.data;
-        const settings = {
-          ...defaultSettings,
-          general: { ...defaultSettings.general, ...(parsed.general || {}) },
-          privacy: { ...defaultSettings.privacy, ...(parsed.privacy || {}) },
-          message: { ...defaultSettings.message, ...(parsed.message || {}) },
-        };
-        localStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(settings));
-        return settings;
-      }
-    } catch (error) {
-      console.error("从服务端获取设置失败，降级使用本地配置:", error);
-    }
-
-    const raw = localStorage.getItem(USER_SETTINGS_KEY);
-    if (!raw) return { ...defaultSettings };
-    try {
-      const parsed = JSON.parse(raw);
-      return {
-        ...defaultSettings,
-        ...parsed,
-        general: { ...defaultSettings.general, ...(parsed.general || {}) },
-        privacy: { ...defaultSettings.privacy, ...(parsed.privacy || {}) },
-        message: { ...defaultSettings.message, ...(parsed.message || {}) },
-        notifications: {
-          ...defaultSettings.notifications,
-          ...(parsed.notifications || {}),
-        },
-      };
-    } catch {
-      return { ...defaultSettings };
-    }
-  };
-
-  const saveSettings = (settings: any) => {
-    localStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(settings));
-  };
-
-  const getUserSettings = async () => {
-    try {
-      return await readSettings();
-    } catch (error: any) {
-      console.error("获取用户设置失败:", error);
-      return {};
-    }
-  };
-
-  const updatePrivacySettings = async (data: Record<string, boolean>) => {
-    try {
-      const response = await userApi.updateSettings("privacy", data);
-      if (response.code === 200) {
-        const settings = await readSettings();
-        settings.privacy = { ...settings.privacy, ...data };
-        saveSettings(settings);
-        return true;
-      }
-      throw new Error(response.message || "更新隐私设置失败");
-    } catch (error: any) {
-      console.error("更新隐私设置失败:", error);
-      throw error;
-    }
-  };
-
-  const updateMessageSettings = async (data: Record<string, boolean>) => {
-    try {
-      const response = await userApi.updateSettings("message", data);
-      if (response.code === 200) {
-        const settings = await readSettings();
-        settings.message = { ...settings.message, ...data };
-        saveSettings(settings);
-        return true;
-      }
-      throw new Error(response.message || "更新消息设置失败");
-    } catch (error: any) {
-      console.error("更新消息设置失败:", error);
-      throw error;
-    }
-  };
-
-  const updateGeneralSettings = async (data: Record<string, any>) => {
-    try {
-      const response = await userApi.updateSettings("general", data);
-      if (response.code === 200) {
-        const settings = await readSettings();
-        settings.general = { ...settings.general, ...data };
-        saveSettings(settings);
-        return true;
-      }
-      throw new Error(response.message || "更新通用设置失败");
-    } catch (error: any) {
-      console.error("更新通用设置失败:", error);
-      throw error;
-    }
-  };
-
-  const changePassword = async (data: {
-    currentPassword: string;
-    newPassword: string;
-  }) => {
-    if (!data.currentPassword || !data.newPassword) {
-      throw new Error("请输入完整的密码信息");
-    }
-    if (data.currentPassword === data.newPassword) {
-      throw new Error("新密码不能与旧密码相同");
-    }
-    try {
-      const response = await userApi.changePassword(data);
-      if (response.code === 200) {
-        return true;
-      }
-      throw new Error(response.message || "修改密码失败");
-    } catch (error: any) {
-      console.error("修改密码失败:", error);
-      throw error;
-    }
-  };
-
-  // 删除账户
-  const deleteAccount = async (data: { password: string }) => {
-    try {
-      loading.value = true;
-      if (!data.password) {
-        throw new Error("请输入登录密码");
-      }
-      const response = await userApi.deleteAccount({ password: data.password });
-      if (response.code !== 200) {
-        throw new Error(response.message || "删除账户失败");
-      }
-      
-      clearUserData();
-      localStorage.removeItem(USER_SETTINGS_KEY);
-      localStorage.removeItem("im_phone_codes");
-      localStorage.removeItem("im_email_codes");
-
-      ElMessage.success("账户删除成功");
-      return true;
-    } catch (error: any) {
-      console.error("删除账户失败:", error);
-      ElMessage.error(error.message || "删除账户失败");
-      throw error;
     } finally {
       loading.value = false;
     }
   };
 
-  // 绑定邮箱
-  const bindEmail = async (data: { email: string; code: string }) => {
-    try {
-      loading.value = true;
-      if (!data.email || !data.code) {
-        throw new Error("请填写完整邮箱验证信息");
-      }
-      
-      const response = await userApi.bindEmail(data);
-      if (response.code !== 200) {
-        throw new Error(response.message || "绑定邮箱失败");
-      }
-
-      // 更新用户信息中的邮箱
-      if (userInfo.value) {
-        userInfo.value.email = data.email;
-        localStorage.setItem(
-          STORAGE_CONFIG.USER_INFO_KEY,
-          JSON.stringify(userInfo.value),
-        );
-      }
-
-      ElMessage.success("邮箱绑定成功");
-      return true;
-    } catch (error: any) {
-      console.error("绑定邮箱失败:", error);
-      ElMessage.error(error.message || "绑定邮箱失败");
-      throw error;
-    } finally {
-      loading.value = false;
-    }
+  const ensureAuthenticated = async (): Promise<boolean> => {
+    return restoreSession();
   };
-
-  // 绑定手机号
-  const bindPhone = async (data: { phone: string; code: string }) => {
-    try {
-      loading.value = true;
-      if (!data.phone || !data.code) {
-        throw new Error("请填写完整手机验证信息");
-      }
-      
-      const response = await userApi.bindPhone(data);
-      if (response.code !== 200) {
-        throw new Error(response.message || "绑定手机号失败");
-      }
-
-      // 更新用户信息中的手机号
-      if (userInfo.value) {
-        userInfo.value.phone = data.phone;
-        localStorage.setItem(
-          STORAGE_CONFIG.USER_INFO_KEY,
-          JSON.stringify(userInfo.value),
-        );
-      }
-
-      ElMessage.success("手机号绑定成功");
-      return true;
-    } catch (error: any) {
-      console.error("绑定手机号失败:", error);
-      ElMessage.error(error.message || "绑定手机号失败");
-      throw error;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // 发送邮箱验证码
-  const sendEmailCode = async (email: string) => {
-    try {
-      loading.value = true;
-      if (!email) throw new Error("邮箱不能为空");
-      
-      const response = await userApi.sendEmailCode(email);
-      if (response.code !== 200) {
-        throw new Error(response.message || "发送验证码失败");
-      }
-
-      ElMessage.success("验证码已发送到邮箱");
-      return true;
-    } catch (error: any) {
-      console.error("发送邮箱验证码失败:", error);
-      ElMessage.error(error.message || "发送验证码失败");
-      throw error;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // 发送手机验证码
-  const sendPhoneCode = async (phone: string) => {
-    try {
-      loading.value = true;
-      if (!phone) throw new Error("手机号不能为空");
-      
-      const response = await userApi.sendPhoneCode(phone);
-      if (response.code !== 200) {
-        throw new Error(response.message || "发送验证码失败");
-      }
-
-      ElMessage.success("验证码已发送到手机");
-      return true;
-    } catch (error: any) {
-      console.error("发送手机验证码失败:", error);
-      ElMessage.error(error.message || "发送验证码失败");
-      throw error;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // 立即初始化
-  initializeStore();
 
   return {
-    // 状态
+    currentUser,
+    accessToken,
     userInfo,
-    token,
     loading,
-
-    // 计算属性
+    authReady,
+    isAuthenticated,
     isLoggedIn,
     avatar,
     nickname,
     userId,
-
-    // 方法
     login,
     register,
     logout,
     updateUserInfo,
-    checkLoginStatus,
-    searchUsers,
-    getUserInfo,
-    getUserSettings,
-    updatePrivacySettings,
-    updateMessageSettings,
-    updateGeneralSettings,
-    changePassword,
-    deleteAccount,
-    bindEmail,
-    bindPhone,
-    sendEmailCode,
-    sendPhoneCode,
-    setAuthToken,
-    clearUserData,
     initializeStore,
     init,
+    restoreSession,
     ensureAuthenticated,
+    setAccessToken,
+    setCurrentUser,
+    getAccessToken,
+    clearSession,
   };
 });

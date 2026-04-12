@@ -3,6 +3,8 @@ package com.im.enums;
 import com.baomidou.mybatisplus.annotation.EnumValue;
 import lombok.Getter;
 
+import java.util.Arrays;
+
 /**
  * 消息类型枚举
  */
@@ -13,7 +15,7 @@ public enum MessageType {
     FILE(3, "文件消息"),
     VOICE(4, "语音消息"),
     VIDEO(5, "视频消息"),
-    SYSTEM(5, "系统消息");
+    SYSTEM(7, "系统消息");
 
     @EnumValue
     private final Integer code;
@@ -22,6 +24,16 @@ public enum MessageType {
     MessageType(Integer code, String description) {
         this.code = code;
         this.description = description;
+    }
+
+    public static MessageType fromCode(Integer code) {
+        if (code == null) {
+            return null;
+        }
+        return Arrays.stream(values())
+                .filter(item -> item.code.equals(code))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Unknown message type code: " + code));
     }
 
 }

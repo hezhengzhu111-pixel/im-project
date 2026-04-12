@@ -1,7 +1,7 @@
 package com.im.controller;
 
 import com.im.dto.ApiResponse;
-import com.im.entity.MessageOutboxEvent;
+import com.im.message.entity.MessageOutboxEvent;
 import com.im.mapper.MessageOutboxMapper;
 import com.im.service.OutboxService;
 import org.junit.jupiter.api.Test;
@@ -55,6 +55,6 @@ class MessageRetryControllerTest {
         ApiResponse<Void> response = controller.retryPrivate(100L);
         
         assertEquals(200, response.getCode());
-        verify(outboxService).enqueueAfterCommit("topic", "key", "payload", 100L);
+        verify(outboxService).enqueueAfterCommit(event);
     }
 }

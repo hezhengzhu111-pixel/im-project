@@ -14,6 +14,9 @@ public class SendPrivateMessageRequest {
     
     @NotNull(message = "接收者ID不能为空")
     private String receiverId;
+
+    @Size(max = 64, message = "clientMessageId过长")
+    private String clientMessageId;
     
     private MessageType messageType = MessageType.TEXT;
     

@@ -1,5 +1,6 @@
 package com.im.controller;
 
+import com.im.dto.ApiResponse;
 import com.im.dto.UserDTO;
 import com.im.mapper.UserMapper;
 import com.im.service.FriendService;
@@ -28,39 +29,39 @@ public class UserInternalController {
     private String internalSecret;
 
     @GetMapping("/exists/{userId}")
-    public Boolean exists(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
-                          @PathVariable("userId") Long userId) {
+    public ApiResponse<Boolean> exists(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
+                                       @PathVariable("userId") Long userId) {
         verify(secret);
-        return userId != null && userMapper.selectById(userId) != null;
+        return ApiResponse.success(userId != null && userMapper.selectById(userId) != null);
     }
 
     @GetMapping("/{userId}")
-    public UserDTO getUser(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
-                           @PathVariable("userId") Long userId) {
+    public ApiResponse<UserDTO> getUser(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
+                                        @PathVariable("userId") Long userId) {
         verify(secret);
         var user = userMapper.selectById(userId);
-        return user == null ? null : dtoConverter.toUserDTO(user);
+        return ApiResponse.success(user == null ? null : dtoConverter.toUserDTO(user));
     }
 
     @GetMapping("/friend/isFriend/{userId}/{friendId}")
-    public Boolean isFriend(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
-                            @PathVariable("userId") Long userId,
-                            @PathVariable("friendId") Long friendId) {
+    public ApiResponse<Boolean> isFriend(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
+                                         @PathVariable("userId") Long userId,
+                                         @PathVariable("friendId") Long friendId) {
         verify(secret);
         if (userId == null || friendId == null) {
-            return false;
+            return ApiResponse.success(false);
         }
-        return friendService.isFriend(userId, friendId);
+        return ApiResponse.success(friendService.isFriend(userId, friendId));
     }
 
     @GetMapping("/friend/list/{userId}")
-    public List<UserDTO> friendList(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
-                                    @PathVariable("userId") Long userId) {
+    public ApiResponse<List<UserDTO>> friendList(@RequestHeader(value = "X-Internal-Secret", required = false) String secret,
+                                                 @PathVariable("userId") Long userId) {
         verify(secret);
         if (userId == null) {
-            return List.of();
+            return ApiResponse.success(List.of());
         }
-        return friendService.getFriends(userId).stream().map(dtoConverter::toUserDTO).collect(Collectors.toList());
+        return ApiResponse.success(friendService.getFriends(userId).stream().map(dtoConverter::toUserDTO).collect(Collectors.toList()));
     }
 
     private void verify(String secret) {

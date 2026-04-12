@@ -22,6 +22,18 @@
         </dependency>
 
         <dependency>
+            <groupId>com.im</groupId>
+            <artifactId>im-internal-client</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.im</groupId>
+            <artifactId>im-persistence-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
         </dependency>

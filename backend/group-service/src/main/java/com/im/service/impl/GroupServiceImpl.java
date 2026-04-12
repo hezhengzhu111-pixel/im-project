@@ -6,8 +6,8 @@ import com.im.dto.GroupInfoDTO;
 import com.im.dto.GroupMemberDTO;
 import com.im.dto.GroupMemberPageDTO;
 import com.im.dto.UserDTO;
-import com.im.entity.Group;
-import com.im.entity.GroupMember;
+import com.im.group.entity.Group;
+import com.im.group.entity.GroupMember;
 import com.im.feign.UserServiceFeignClient;
 import com.im.mapper.GroupMapper;
 import com.im.mapper.GroupMemberMapper;
@@ -34,7 +34,12 @@ public class GroupServiceImpl implements GroupService {
     
     @Override
     @Transactional
-    public GroupInfoDTO createGroup(Long ownerId, String name, Integer type, String announcement, String avatar) {
+    public GroupInfoDTO createGroup(Long ownerId,
+                                    String name,
+                                    Integer type,
+                                    String announcement,
+                                    String avatar,
+                                    List<Long> memberIds) {
         if (ownerId == null) {
             throw new IllegalArgumentException("群主不能为空");
         }
@@ -45,15 +50,22 @@ public class GroupServiceImpl implements GroupService {
             throw new IllegalArgumentException("群类型不能为空");
         }
         requireUserExists(ownerId);
-        
+        List<Long> normalizedMemberIds = normalizeInitialMemberIds(ownerId, memberIds);
+        for (Long memberId : normalizedMemberIds) {
+            requireUserExists(memberId);
+        }
+
         // 创建群组实体
-        Group group = buildGroupEntity(ownerId, name, type, announcement, avatar);
+        Group group = buildGroupEntity(ownerId, name, type, announcement, avatar, normalizedMemberIds.size());
         groupMapper.insert(group);
         Group savedGroup = group;
-        
+
         // 添加群主为成员
         addOwnerAsMember(savedGroup.getId(), ownerId);
-        
+        for (Long memberId : normalizedMemberIds) {
+            addMemberToGroup(savedGroup.getId(), memberId, 1);
+        }
+
         log.info("用户{}创建群组: {}", ownerId, name);
         return convertToGroupInfoDTO(savedGroup);
     }
@@ -380,20 +392,36 @@ public class GroupServiceImpl implements GroupService {
     /**
      * 构建群组实体
      */
-    private Group buildGroupEntity(Long ownerId, String name, Integer type, String announcement, String avatar) {
+    private Group buildGroupEntity(Long ownerId,
+                                   String name,
+                                   Integer type,
+                                   String announcement,
+                                   String avatar,
+                                   int initialMemberCount) {
         Group group = new Group();
-        group.setName(name);
+        group.setName(name.trim());
         group.setOwnerId(ownerId);
         group.setType(type);
-        group.setMemberCount(1);
+        group.setMemberCount(initialMemberCount + 1);
         group.setStatus(true);
-        if (announcement != null) {
-            group.setAnnouncement(announcement);
+        if (announcement != null && !announcement.isBlank()) {
+            group.setAnnouncement(announcement.trim());
         }
         if (avatar != null && !avatar.isBlank()) {
             group.setAvatar(avatar.trim());
         }
         return group;
+    }
+
+    private List<Long> normalizeInitialMemberIds(Long ownerId, List<Long> memberIds) {
+        if (memberIds == null || memberIds.isEmpty()) {
+            return List.of();
+        }
+        return memberIds.stream()
+                .filter(Objects::nonNull)
+                .filter(memberId -> !Objects.equals(memberId, ownerId))
+                .distinct()
+                .collect(Collectors.toList());
     }
     
     /**

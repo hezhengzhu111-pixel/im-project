@@ -21,13 +21,15 @@ public class CosConfig {
     public COSClient cosClient(CosProperties props) {
         if (!StringUtils.hasText(props.getSecretId())
                 || !StringUtils.hasText(props.getSecretKey())
-                || !StringUtils.hasText(props.getRegion())) {
-            throw new IllegalArgumentException("COS配置缺失: im.cos.secret-id/secret-key/region");
+                || !StringUtils.hasText(props.getRegion())
+                || !StringUtils.hasText(props.getBucket())) {
+            throw new IllegalArgumentException(
+                    "COS config is incomplete: im.cos.secret-id/secret-key/region/bucket");
         }
 
-        COSCredentials cred = new BasicCOSCredentials(props.getSecretId(), props.getSecretKey());
+        COSCredentials credentials = new BasicCOSCredentials(props.getSecretId(), props.getSecretKey());
         ClientConfig clientConfig = new ClientConfig(new Region(props.getRegion()));
         clientConfig.setHttpProtocol(props.isHttps() ? HttpProtocol.https : HttpProtocol.http);
-        return new COSClient(cred, clientConfig);
+        return new COSClient(credentials, clientConfig);
     }
 }

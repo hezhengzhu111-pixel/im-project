@@ -67,6 +67,16 @@ spring:
             - Path=/file/**,/api/file/**
           filters:
             - RewritePath=/(?<prefix>api/)?file(?<segment>/.*), $\{segment}
+        - id: log-service
+          uri: lb://im-log-service
+          predicates:
+            - Path=/api/logs/**
+        - id: registry-monitor
+          uri: lb://im-registry-monitor
+          predicates:
+            - Path=/registry/**,/api/registry/**
+          filters:
+            - RewritePath=/(?<prefix>api/)?registry(?<segment>/.*), $\{segment}
         - id: im-server
           uri: lb://im-server
           predicates:
@@ -145,9 +155,11 @@ im:
     username-header: X-Username
     auth-service-url: ${IM_GATEWAY_AUTH_SERVICE_URL:http://127.0.0.1:8084}
     auth:
+      request-timeout-ms: ${IM_GATEWAY_AUTH_REQUEST_TIMEOUT_MS:3000}
       secret: ${IM_GATEWAY_AUTH_SECRET:im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret}
-      user-resource-key-prefix: "auth:user:"
-      cache-ttl-seconds: 3600
+      token-cache-ttl-seconds: ${IM_GATEWAY_AUTH_TOKEN_CACHE_TTL_SECONDS:10}
+      token-negative-cache-ttl-seconds: ${IM_GATEWAY_AUTH_TOKEN_NEGATIVE_CACHE_TTL_SECONDS:5}
+      user-resource-cache-ttl-seconds: ${IM_GATEWAY_AUTH_USER_RESOURCE_CACHE_TTL_SECONDS:15}
   security:
     token-revocation-check:
       enabled: true

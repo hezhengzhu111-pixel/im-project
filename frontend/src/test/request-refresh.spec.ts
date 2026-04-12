@@ -1,43 +1,59 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const push = vi.fn();
-const logout = vi.fn(async () => true);
-const setAuthToken = vi.fn();
 const warning = vi.fn();
 const error = vi.fn();
-
-const mockStore = {
-  token: "old-access",
-  logout,
-  setAuthToken,
-};
+const restoreSession = vi.fn();
+const clearSession = vi.fn();
+const logout = vi.fn();
+const refreshAccessTokenRaw = vi.fn();
+let currentAccessToken = "";
 
 type MockItem = {
   status?: number;
-  data?: any;
+  data?: unknown;
   httpError?: boolean;
 };
 
 const responseQueue: Record<string, MockItem[]> = {};
-let requestOnFulfilled: ((config: any) => any) | null = null;
-let requestOnRejected: ((error: any) => any) | null = null;
-let responseOnFulfilled: ((response: any) => any) | null = null;
-let responseOnRejected: ((error: any) => any) | null = null;
-const axiosPost = vi.fn();
+const observedRequests: Record<string, Array<{ headers: Record<string, unknown> }>> = {};
+let requestOnFulfilled: ((config: Record<string, unknown>) => unknown) | null = null;
+let responseOnFulfilled:
+  | ((response: { data: unknown; status: number; config: Record<string, unknown> }) => unknown)
+  | null = null;
+let responseOnRejected: ((error: unknown) => unknown) | null = null;
 
-const dispatch = async (config: any) => {
-  let nextConfig = config;
-  if (requestOnFulfilled) {
-    nextConfig = await requestOnFulfilled(nextConfig);
+const snapshotHeaders = (headers: unknown): Record<string, unknown> => {
+  if (!headers || typeof headers !== "object") {
+    return {};
   }
-  const url = String(nextConfig?.url || "");
-  const q = responseQueue[url] || [];
-  const item = q.shift();
+  return { ...(headers as Record<string, unknown>) };
+};
+
+const dispatch = async (config: Record<string, unknown>) => {
+  const nextConfig = requestOnFulfilled
+    ? ((await requestOnFulfilled(config)) as Record<string, unknown>)
+    : config;
+  const url = String(nextConfig.url || "");
+  if (!observedRequests[url]) {
+    observedRequests[url] = [];
+  }
+  observedRequests[url].push({
+    headers: snapshotHeaders(nextConfig.headers),
+  });
+  const queue = responseQueue[url] || [];
+  const item = queue.shift();
   if (!item) {
-    const fallbackError = { response: { status: 500, statusText: "NoMock" } };
-    if (responseOnRejected) return responseOnRejected(fallbackError);
+    const fallbackError = {
+      response: { status: 500, statusText: "NoMock" },
+      config: nextConfig,
+    };
+    if (responseOnRejected) {
+      return responseOnRejected(fallbackError);
+    }
     throw fallbackError;
   }
+
   if (item.httpError) {
     const httpError = {
       response: {
@@ -46,38 +62,60 @@ const dispatch = async (config: any) => {
       },
       config: nextConfig,
     };
-    if (responseOnRejected) return responseOnRejected(httpError);
+    if (responseOnRejected) {
+      return responseOnRejected(httpError);
+    }
     throw httpError;
   }
+
   const response = {
     data: item.data,
     status: item.status || 200,
     config: nextConfig,
   };
-  if (responseOnFulfilled) return responseOnFulfilled(response);
+  if (responseOnFulfilled) {
+    return responseOnFulfilled(response);
+  }
   return response;
 };
 
-const requestInstance: any = vi.fn((config: any) => dispatch(config));
-requestInstance.get = (url: string, config?: any) =>
+const requestInstance: Record<string, unknown> = vi.fn((config: Record<string, unknown>) =>
+  dispatch(config),
+) as unknown as Record<string, unknown>;
+(requestInstance as any).get = (url: string, config?: Record<string, unknown>) =>
   dispatch({ ...(config || {}), method: "get", url });
-requestInstance.post = (url: string, data?: any, config?: any) =>
-  dispatch({ ...(config || {}), method: "post", url, data });
-requestInstance.put = (url: string, data?: any, config?: any) =>
-  dispatch({ ...(config || {}), method: "put", url, data });
-requestInstance.delete = (url: string, config?: any) =>
+(requestInstance as any).post = (
+  url: string,
+  data?: unknown,
+  config?: Record<string, unknown>,
+) => dispatch({ ...(config || {}), method: "post", url, data });
+(requestInstance as any).put = (
+  url: string,
+  data?: unknown,
+  config?: Record<string, unknown>,
+) => dispatch({ ...(config || {}), method: "put", url, data });
+(requestInstance as any).delete = (url: string, config?: Record<string, unknown>) =>
   dispatch({ ...(config || {}), method: "delete", url });
-requestInstance.patch = (url: string, data?: any, config?: any) =>
-  dispatch({ ...(config || {}), method: "patch", url, data });
-requestInstance.interceptors = {
+(requestInstance as any).patch = (
+  url: string,
+  data?: unknown,
+  config?: Record<string, unknown>,
+) => dispatch({ ...(config || {}), method: "patch", url, data });
+(requestInstance as any).interceptors = {
   request: {
-    use: (ok: any, fail: any) => {
+    use: (ok: (config: Record<string, unknown>) => unknown) => {
       requestOnFulfilled = ok;
-      requestOnRejected = fail;
     },
   },
   response: {
-    use: (ok: any, fail: any) => {
+    use: (
+      ok: (response: {
+        data: unknown;
+        status: number;
+        config: Record<string, unknown>;
+      }) => unknown,
+      fail: (error: unknown) => unknown,
+    ) => {
       responseOnFulfilled = ok;
       responseOnRejected = fail;
     },
@@ -87,7 +125,14 @@ requestInstance.interceptors = {
 vi.mock("axios", () => ({
   default: {
     create: vi.fn(() => requestInstance),
-    post: axiosPost,
+  },
+}));
+
+vi.mock("nprogress", () => ({
+  default: {
+    configure: vi.fn(),
+    start: vi.fn(),
+    done: vi.fn(),
   },
 }));
 
@@ -99,11 +144,29 @@ vi.mock("element-plus", () => ({
 }));
 
 vi.mock("@/stores/user", () => ({
-  useUserStore: () => mockStore,
+  useUserStore: () => ({
+    accessToken: currentAccessToken,
+    getAccessToken: () => currentAccessToken,
+    setAccessToken: (token?: string | null) => {
+      currentAccessToken = typeof token === "string" ? token : "";
+    },
+    restoreSession,
+    clearSession,
+    logout,
+  }),
+}));
+
+vi.mock("@/services/auth-refresh", () => ({
+  refreshAccessTokenRaw,
 }));
 
 vi.mock("@/router", () => ({
   default: {
+    currentRoute: {
+      value: {
+        path: "/chat",
+      },
+    },
     push,
   },
 }));
@@ -111,64 +174,100 @@ vi.mock("@/router", () => ({
 describe("request refresh and retry", () => {
   beforeEach(() => {
     vi.resetModules();
-    Object.keys(responseQueue).forEach((k) => delete responseQueue[k]);
+    Object.keys(responseQueue).forEach((key) => delete responseQueue[key]);
+    Object.keys(observedRequests).forEach((key) => delete observedRequests[key]);
     requestOnFulfilled = null;
-    requestOnRejected = null;
     responseOnFulfilled = null;
     responseOnRejected = null;
-    axiosPost.mockReset();
+    refreshAccessTokenRaw.mockReset();
+    restoreSession.mockReset();
+    clearSession.mockReset();
     logout.mockReset();
-    setAuthToken.mockReset();
     push.mockReset();
     warning.mockReset();
     error.mockReset();
+    currentAccessToken = "";
     localStorage.clear();
-    mockStore.token = "old-access";
+    restoreSession.mockResolvedValue(true);
   });
 
-  it("refreshes token and retries once on 401 business response", async () => {
-    localStorage.setItem("im_refresh_token", "old-refresh");
+  it("refreshes session and retries once on 401 business response with latest token", async () => {
+    currentAccessToken = "old-token";
     responseQueue["/secure"] = [
       { data: { code: 401, message: "未授权" } },
       { data: { code: 200, message: "ok", data: { ok: true } } },
     ];
-    axiosPost.mockResolvedValue({
+    refreshAccessTokenRaw.mockResolvedValue({
       data: {
         code: 200,
         data: {
-          accessToken: "new-access",
-          refreshToken: "new-refresh",
+          accessToken: "new-token",
+          expiresInMs: 60_000,
         },
       },
     });
+
     const { http } = await import("@/utils/request");
-    const resp = await http.get<{ ok: boolean }>("/secure");
-    expect(resp.code).toBe(200);
-    expect(resp.data.ok).toBe(true);
-    expect(axiosPost).toHaveBeenCalledWith(
-      "/api/auth/refresh",
-      { refreshToken: "old-refresh" },
-      expect.any(Object),
-    );
-    expect(setAuthToken).toHaveBeenCalledWith("new-access", "new-refresh");
-    expect(logout).not.toHaveBeenCalled();
+    const response = await http.get<{ ok: boolean }>("/secure");
+
+    expect(response.code).toBe(200);
+    expect(response.data.ok).toBe(true);
+    expect(refreshAccessTokenRaw).toHaveBeenCalledTimes(1);
+    expect(refreshAccessTokenRaw).toHaveBeenCalledWith(expect.any(String));
+    expect(restoreSession).toHaveBeenCalledTimes(1);
+    expect(clearSession).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+    expect(observedRequests["/secure"]).toHaveLength(2);
+    expect(observedRequests["/secure"][0].headers.Authorization).toBe("Bearer old-token");
+    expect(observedRequests["/secure"][1].headers.Authorization).toBe("Bearer new-token");
+    expect(currentAccessToken).toBe("new-token");
   });
 
-  it("silently redirects to login when refresh failed", async () => {
-    localStorage.setItem("im_refresh_token", "old-refresh");
+  it("clears session and redirects to login when refresh failed", async () => {
     responseQueue["/secure"] = [{ data: { code: 401, message: "未授权" } }];
-    axiosPost.mockResolvedValue({
+    refreshAccessTokenRaw.mockResolvedValue({
       data: { code: 500, message: "refresh failed" },
     });
+
     const { http } = await import("@/utils/request");
-    await expect(http.get("/secure")).rejects.toThrow();
-    expect(logout).toHaveBeenCalledTimes(1);
+    await expect(http.get("/secure")).rejects.toThrow("未授权");
+
+    expect(clearSession).toHaveBeenCalledTimes(1);
     expect(warning).toHaveBeenCalledTimes(1);
     expect(push).toHaveBeenCalledWith("/login");
   });
 
-  it("shares one refresh call for concurrent 401 requests", async () => {
-    localStorage.setItem("im_refresh_token", "old-refresh");
+  it("retries HTTP 401 requests with the refreshed token", async () => {
+    currentAccessToken = "expired-token";
+    responseQueue["/secure-http"] = [
+      { httpError: true, status: 401 },
+      { data: { code: 200, message: "ok", data: { ok: true } } },
+    ];
+    refreshAccessTokenRaw.mockResolvedValue({
+      data: {
+        code: 200,
+        data: {
+          accessToken: "fresh-token",
+          expiresInMs: 60_000,
+        },
+      },
+    });
+
+    const { http } = await import("@/utils/request");
+    const response = await http.get<{ ok: boolean }>("/secure-http");
+
+    expect(response.code).toBe(200);
+    expect(observedRequests["/secure-http"]).toHaveLength(2);
+    expect(observedRequests["/secure-http"][0].headers.Authorization).toBe(
+      "Bearer expired-token",
+    );
+    expect(observedRequests["/secure-http"][1].headers.Authorization).toBe(
+      "Bearer fresh-token",
+    );
+  });
+
+  it("shares a single refresh request for concurrent 401 responses", async () => {
+    currentAccessToken = "old-token";
     responseQueue["/secure-a"] = [
       { data: { code: 401, message: "未授权" } },
       { data: { code: 200, message: "ok", data: { ok: "a" } } },
@@ -177,7 +276,7 @@ describe("request refresh and retry", () => {
       { data: { code: 401, message: "未授权" } },
       { data: { code: 200, message: "ok", data: { ok: "b" } } },
     ];
-    axiosPost.mockImplementation(
+    refreshAccessTokenRaw.mockImplementation(
       async () =>
         await new Promise((resolve) =>
           setTimeout(
@@ -186,8 +285,8 @@ describe("request refresh and retry", () => {
                 data: {
                   code: 200,
                   data: {
-                    accessToken: "new-access",
-                    refreshToken: "new-refresh",
+                    accessToken: "shared-token",
+                    expiresInMs: 60_000,
                   },
                 },
               }),
@@ -195,14 +294,56 @@ describe("request refresh and retry", () => {
           ),
         ),
     );
+
     const { http } = await import("@/utils/request");
-    const [a, b] = await Promise.all([
-      http.get("/secure-a"),
-      http.get("/secure-b"),
+    const [responseA, responseB] = await Promise.all([
+      http.get<{ ok: string }>("/secure-a"),
+      http.get<{ ok: string }>("/secure-b"),
     ]);
-    expect(a.code).toBe(200);
-    expect(b.code).toBe(200);
-    expect(axiosPost).toHaveBeenCalledTimes(1);
-    expect(setAuthToken).toHaveBeenCalledWith("new-access", "new-refresh");
+
+    expect(responseA.code).toBe(200);
+    expect(responseB.code).toBe(200);
+    expect(refreshAccessTokenRaw).toHaveBeenCalledTimes(1);
+    expect(restoreSession).toHaveBeenCalledTimes(1);
+    expect(observedRequests["/secure-a"][1].headers.Authorization).toBe(
+      "Bearer shared-token",
+    );
+    expect(observedRequests["/secure-b"][1].headers.Authorization).toBe(
+      "Bearer shared-token",
+    );
+  });
+
+  it("clears auth session only once for concurrent 401 failures", async () => {
+    currentAccessToken = "expired-token";
+    responseQueue["/secure-a"] = [{ data: { code: 401, message: "未授权" } }];
+    responseQueue["/secure-b"] = [{ data: { code: 401, message: "未授权" } }];
+    refreshAccessTokenRaw.mockResolvedValue({
+      data: { code: 500, message: "refresh failed" },
+    });
+
+    const { http } = await import("@/utils/request");
+    await Promise.allSettled([http.get("/secure-a"), http.get("/secure-b")]);
+
+    expect(refreshAccessTokenRaw).toHaveBeenCalledTimes(1);
+    expect(clearSession).toHaveBeenCalledTimes(1);
+    expect(warning).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refresh or prompt relogin for auth parse probes", async () => {
+    responseQueue["/auth/parse"] = [{ httpError: true, status: 401 }];
+
+    const { http } = await import("@/utils/request");
+    await expect(
+      http.post("/auth/parse", { allowExpired: true }),
+    ).rejects.toMatchObject({
+      response: {
+        status: 401,
+      },
+    });
+
+    expect(refreshAccessTokenRaw).not.toHaveBeenCalled();
+    expect(clearSession).not.toHaveBeenCalled();
+    expect(warning).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
   });
 });

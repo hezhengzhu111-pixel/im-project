@@ -1,7 +1,7 @@
 package com.im.service;
 
 import com.im.dto.UserDTO;
-import com.im.entity.User;
+import com.im.user.entity.User;
 import com.im.dto.UserAuthResponseDTO;
 
 import java.util.List;

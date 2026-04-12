@@ -1,0 +1,132 @@
+services:
+  mysql:
+    image: mysql:8.0.39
+    container_name: im-mysql
+    hostname: im-mysql
+    restart: unless-stopped
+    command:
+      - mysqld
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    environment:
+      TZ: "Asia/Shanghai"
+      MYSQL_ROOT_PASSWORD: "root123"
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      im-network:
+        aliases:
+          - im-mysql
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: im-redis
+    hostname: im-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - "root123"
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "root123", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks:
+      im-network:
+        aliases:
+          - im-redis
+
+  nacos-standalone:
+    image: nacos/nacos-server:v2.4.2-slim
+    container_name: im-nacos
+    hostname: im-nacos
+    restart: unless-stopped
+    environment:
+      TZ: "Asia/Shanghai"
+      MODE: "standalone"
+      PREFER_HOST_MODE: "hostname"
+      NACOS_AUTH_ENABLE: "false"
+      JVM_XMS: "256m"
+      JVM_XMX: "256m"
+      JVM_XMN: "128m"
+    ports:
+      - "8848:8848"
+    volumes:
+      - nacos_data:/home/nacos/data
+    networks:
+      im-network:
+        aliases:
+          - im-nacos
+
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: im-kafka
+    hostname: im-kafka
+    restart: unless-stopped
+    environment:
+      TZ: "Asia/Shanghai"
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_LISTENERS: "INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://im-kafka:29092,EXTERNAL://localhost:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@im-kafka:9093"
+      KAFKA_CLUSTER_ID: "5L6g3nShT-eMCtK--X86sw"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    networks:
+      im-network:
+        aliases:
+          - im-kafka
+
+  elasticsearch:
+    image: elasticsearch:8.10.4
+    container_name: admin-es
+    hostname: admin-es
+    restart: unless-stopped
+    environment:
+      TZ: "Asia/Shanghai"
+      discovery.type: "single-node"
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      im-network:
+        aliases:
+          - admin-es
+
+networks:
+  im-network:
+    external: true
+    name: "im-network"
+
+volumes:
+  mysql_data:
+  redis_data:
+  nacos_data:
+  es_data:

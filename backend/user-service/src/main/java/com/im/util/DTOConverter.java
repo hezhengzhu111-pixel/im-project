@@ -1,8 +1,10 @@
 package com.im.util;
 
 import com.im.dto.*;
-import com.im.entity.*;
 import com.im.feign.ImServerFeignClient;
+import com.im.user.entity.Friend;
+import com.im.user.entity.FriendRequest;
+import com.im.user.entity.User;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;

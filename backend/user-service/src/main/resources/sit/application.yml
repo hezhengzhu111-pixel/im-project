@@ -52,8 +52,6 @@ im:
     mode: gateway
     gateway-only:
       enabled: false
-    gateway-fallback-jwt:
-      enabled: true
     replay-protection:
       enabled: true
       ttl-seconds: 300

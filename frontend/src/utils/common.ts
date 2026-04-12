@@ -1,5 +1,6 @@
 import dayjs from "dayjs";
 import { DATE_FORMATS, FILE_TYPES, FILE_SIZE_LIMITS } from "@/constants";
+import { logger } from "@/utils/logger";
 
 /**
  * 格式化时间
@@ -216,7 +217,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     document.body.removeChild(textArea);
     return success;
   } catch (error) {
-    console.error("复制失败:", error);
+    logger.warn("copy to clipboard failed", error);
     return false;
   }
 }

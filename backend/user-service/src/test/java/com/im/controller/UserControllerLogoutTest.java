@@ -4,13 +4,18 @@ import com.im.dto.ApiResponse;
 import com.im.feign.AuthServiceFeignClient;
 import com.im.service.ImService;
 import com.im.service.UserService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -30,12 +35,20 @@ class UserControllerLogoutTest {
     @InjectMocks
     private UserController userController;
 
+    @BeforeEach
+    void setUp() {
+        ReflectionTestUtils.setField(userController, "accessTokenCookieName", "IM_ACCESS_TOKEN");
+        ReflectionTestUtils.setField(userController, "refreshTokenCookieName", "IM_REFRESH_TOKEN");
+        ReflectionTestUtils.setField(userController, "authCookieSameSite", "Lax");
+    }
+
     @Test
     void userLogoutRevokesTokensAndOfflineWhenSuccess() {
         doNothing().when(authServiceFeignClient).revokeUserTokens(1L);
         doNothing().when(imService).userOffline("1");
 
-        ApiResponse<String> response = userController.userLogout(1L);
+        ApiResponse<String> response =
+                userController.userLogout(1L, new MockHttpServletRequest(), new MockHttpServletResponse());
 
         assertEquals(200, response.getCode());
         verify(authServiceFeignClient).revokeUserTokens(1L);
@@ -43,12 +56,13 @@ class UserControllerLogoutTest {
     }
 
     @Test
-    void userLogoutReturnsErrorWhenRevokeFailed() {
+    void userLogoutThrowsWhenRevokeFailed() {
         doThrow(new RuntimeException("revoke fail")).when(authServiceFeignClient).revokeUserTokens(1L);
 
-        ApiResponse<String> response = userController.userLogout(1L);
-
-        assertEquals(500, response.getCode());
+        assertThrows(
+                RuntimeException.class,
+                () -> userController.userLogout(1L, new MockHttpServletRequest(), new MockHttpServletResponse())
+        );
     }
 
     @Test
@@ -56,7 +70,8 @@ class UserControllerLogoutTest {
         doNothing().when(authServiceFeignClient).revokeUserTokens(2L);
         doNothing().when(imService).userOffline("2");
 
-        ApiResponse<String> response = userController.userOffline(2L);
+        ApiResponse<String> response =
+                userController.userOffline(2L, new MockHttpServletRequest(), new MockHttpServletResponse());
 
         assertEquals(200, response.getCode());
         verify(authServiceFeignClient).revokeUserTokens(2L);
