@@ -59,17 +59,23 @@ KAFKA_INTERNAL_PORT = 29092
 KAFKA_EXTERNAL_PORT = 9092
 ELASTICSEARCH_INTERNAL_PORT = 9200
 
-MAVEN_VERSION = "3.9.9"
+MAVEN_VERSION = "3.9.14"
 MAVEN_LOCAL_REPOSITORY = Path("/home/maven")
 MAVEN_SETTINGS_FILE = MAVEN_LOCAL_REPOSITORY / "settings.xml"
 MAVEN_INSTALL_ROOT = Path("/opt")
 MAVEN_INSTALL_DIR = MAVEN_INSTALL_ROOT / f"apache-maven-{MAVEN_VERSION}"
 MAVEN_SYMLINK = MAVEN_INSTALL_ROOT / "maven"
 MAVEN_BIN_SYMLINK = Path("/usr/local/bin/mvn")
-MAVEN_DOWNLOAD_URL = (
-    f"https://mirrors.aliyun.com/apache/maven/maven-3/{MAVEN_VERSION}/"
-    f"binaries/apache-maven-{MAVEN_VERSION}-bin.tar.gz"
-)
+MAVEN_ARCHIVE_NAME = f"apache-maven-{MAVEN_VERSION}-bin.tar.gz"
+MAVEN_DOWNLOAD_URLS = [
+    f"https://mirrors.aliyun.com/apache/maven/maven-3/{MAVEN_VERSION}/binaries/{MAVEN_ARCHIVE_NAME}",
+    f"https://repo.huaweicloud.com/apache/maven/maven-3/{MAVEN_VERSION}/binaries/{MAVEN_ARCHIVE_NAME}",
+    f"https://mirrors.cloud.tencent.com/apache/maven/maven-3/{MAVEN_VERSION}/binaries/{MAVEN_ARCHIVE_NAME}",
+    f"https://mirrors.tuna.tsinghua.edu.cn/apache/maven/maven-3/{MAVEN_VERSION}/binaries/{MAVEN_ARCHIVE_NAME}",
+    f"https://downloads.apache.org/maven/maven-3/{MAVEN_VERSION}/binaries/{MAVEN_ARCHIVE_NAME}",
+    f"https://dlcdn.apache.org/maven/maven-3/{MAVEN_VERSION}/binaries/{MAVEN_ARCHIVE_NAME}",
+    f"https://archive.apache.org/dist/maven/maven-3/{MAVEN_VERSION}/binaries/{MAVEN_ARCHIVE_NAME}",
+]
 
 
 @dataclass(frozen=True)
@@ -269,21 +275,22 @@ def install_maven_with_package_manager() -> bool:
             return True
 
         print(f"通过 {executable} 安装 Maven 失败，尝试下一种安装方式。")
-        return False
+        continue
 
-    print("未检测到可用包管理器，改用压缩包方式安装 Maven。")
+    print("未检测到可用包管理器，或包管理器安装均失败，改用压缩包方式安装 Maven。")
     return False
 
 
 def install_maven_from_archive() -> str:
-    archive_path = Path("/tmp") / f"apache-maven-{MAVEN_VERSION}-bin.tar.gz"
+    archive_path = Path("/tmp") / MAVEN_ARCHIVE_NAME
     downloader = resolve_downloader()
-    print(f"开始从国内镜像下载 Maven {MAVEN_VERSION}: {MAVEN_DOWNLOAD_URL}")
-
-    if downloader == "curl":
-        run_command(["curl", "-fL", MAVEN_DOWNLOAD_URL, "-o", archive_path])
+    for download_url in MAVEN_DOWNLOAD_URLS:
+        print(f"开始下载 Maven {MAVEN_VERSION}: {download_url}")
+        if download_maven_archive(downloader, download_url, archive_path):
+            break
+        print("当前 Maven 下载地址不可用，尝试下一个镜像。")
     else:
-        run_command(["wget", "-O", archive_path, MAVEN_DOWNLOAD_URL])
+        fatal("所有 Maven 下载地址均不可用，请检查服务器网络或稍后重试。")
 
     run_privileged_command(["mkdir", "-p", str(MAVEN_INSTALL_ROOT)])
     run_privileged_command(["mkdir", "-p", str(MAVEN_BIN_SYMLINK.parent)])
@@ -295,6 +302,24 @@ def install_maven_from_archive() -> str:
     if not Path(mvn_cmd).exists() and not shutil.which(mvn_cmd):
         fatal("Maven 压缩包安装完成后仍未找到 mvn 命令，请检查 /opt/maven/bin/mvn。")
     return mvn_cmd
+
+
+def download_maven_archive(downloader: str, download_url: str, archive_path: Path) -> bool:
+    if archive_path.exists():
+        archive_path.unlink()
+
+    if downloader == "curl":
+        command = ["curl", "-fL", download_url, "-o", archive_path]
+    else:
+        command = ["wget", "-O", archive_path, download_url]
+
+    result = run_command(command, check=False)
+    if result.returncode == 0 and archive_path.is_file() and archive_path.stat().st_size > 0:
+        return True
+
+    if archive_path.exists():
+        archive_path.unlink()
+    return False
 
 
 def resolve_downloader() -> str:
