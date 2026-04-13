@@ -99,10 +99,15 @@ const loginRules = {
       message: "用户名长度在 3 到 20 个字符",
       trigger: "blur",
     },
+    {
+      pattern: /^[a-zA-Z0-9_]+$/,
+      message: "用户名只能包含字母、数字和下划线",
+      trigger: "blur",
+    },
   ],
   password: [
     { required: true, message: "请输入密码", trigger: "blur" },
-    { min: 6, max: 20, message: "密码长度在 6 到 20 个字符", trigger: "blur" },
+    { min: 8, max: 64, message: "密码长度在 8 到 64 个字符", trigger: "blur" },
   ],
 };
 
@@ -134,9 +139,9 @@ const handleLogin = async () => {
 };
 
 // 组件挂载时的处理
-onMounted(() => {
+onMounted(async () => {
   // 如果已经登录，直接跳转到目标页面
-  if (userStore.isLoggedIn) {
+  if (await userStore.ensureAuthenticated()) {
     const redirectPath = (route.query.redirect as string) || "/chat";
     router.replace(redirectPath);
   }

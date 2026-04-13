@@ -42,6 +42,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private static final String HEADER_AUTH_TS = "X-Auth-Ts";
     private static final String HEADER_AUTH_NONCE = "X-Auth-Nonce";
     private static final String HEADER_AUTH_SIGN = "X-Auth-Sign";
+    private static final String HEADER_GATEWAY_ROUTE = "X-Gateway-Route";
     private static final int MAX_CACHE_SIZE = 10_000;
     private static final Duration INFLIGHT_CACHE_TTL = Duration.ofSeconds(30);
     private static final ParameterizedTypeReference<ApiResponse<TokenParseResultDTO>> TOKEN_RESPONSE_TYPE =
@@ -80,6 +81,9 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
     @Value("${im.auth.cookie.access-token-name:IM_ACCESS_TOKEN}")
     private String accessTokenCookieName;
+
+    @Value("${im.auth.cookie.refresh-token-name:IM_REFRESH_TOKEN}")
+    private String refreshTokenCookieName;
 
     public JwtAuthGlobalFilter(ObjectMapper objectMapper,
                                @Qualifier("plainWebClientBuilder") WebClient.Builder plainWebClientBuilder,
@@ -145,7 +149,10 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         String path = exchange.getRequest().getURI().getPath();
         String authHeader = exchange.getRequest().getHeaders().getFirst(jwtHeader);
         String token = extractToken(exchange, authHeader);
-        return new FilterInput(path, token);
+        boolean authCookiePresent = hasCookie(exchange, accessTokenCookieName) || hasCookie(exchange, refreshTokenCookieName);
+        boolean gatewayRouteHeaderPresent = exchange.getRequest().getHeaders().getFirst(HEADER_GATEWAY_ROUTE) != null;
+        String method = exchange.getRequest().getMethod() == null ? "" : exchange.getRequest().getMethod().name();
+        return new FilterInput(path, token, authCookiePresent, gatewayRouteHeaderPresent, method);
     }
 
     private ServerWebExchange sanitizeIncomingExchange(ServerWebExchange exchange) {
@@ -172,6 +179,9 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private InputStageResult filterInputStage(FilterInput input) {
+        if (requiresCookieCsrfCheck(input)) {
+            return InputStageResult.reject(HttpStatus.FORBIDDEN);
+        }
         if (SecurityPaths.isGatewayWhiteList(input.path())) {
             return InputStageResult.passThrough();
         }
@@ -182,6 +192,23 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             return InputStageResult.reject(HttpStatus.UNAUTHORIZED);
         }
         return null;
+    }
+
+    private boolean hasCookie(ServerWebExchange exchange, String name) {
+        return name != null && exchange.getRequest().getCookies().getFirst(name) != null;
+    }
+
+    private boolean requiresCookieCsrfCheck(FilterInput input) {
+        return input.authCookiePresent()
+                && isUnsafeMethod(input.method())
+                && !input.gatewayRouteHeaderPresent();
+    }
+
+    private boolean isUnsafeMethod(String method) {
+        return "POST".equalsIgnoreCase(method)
+                || "PUT".equalsIgnoreCase(method)
+                || "PATCH".equalsIgnoreCase(method)
+                || "DELETE".equalsIgnoreCase(method);
     }
 
     private Mono<Void> filterInputOutput(ServerWebExchange exchange, GatewayFilterChain chain, InputStageResult stageResult) {
@@ -484,7 +511,8 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         return -100;
     }
 
-    private record FilterInput(String path, String token) {
+    private record FilterInput(String path, String token, boolean authCookiePresent, boolean gatewayRouteHeaderPresent,
+                               String method) {
     }
 
     private record AuthContext(Long userId, String username) {

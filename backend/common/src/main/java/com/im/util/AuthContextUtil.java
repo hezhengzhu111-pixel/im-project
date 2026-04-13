@@ -5,6 +5,10 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public final class AuthContextUtil {
 
@@ -47,6 +51,40 @@ public final class AuthContextUtil {
     public static Object getAuthPermissions() {
         HttpServletRequest request = currentRequest();
         return request == null ? null : request.getAttribute("authPermissions");
+    }
+
+    public static List<String> getPermissionList() {
+        Object permissions = getAuthPermissions();
+        if (permissions instanceof Collection<?> collection) {
+            return collection.stream()
+                    .map(item -> item == null ? "" : String.valueOf(item).trim())
+                    .filter(item -> !item.isEmpty())
+                    .collect(Collectors.toList());
+        }
+        return Collections.emptyList();
+    }
+
+    public static boolean hasPermission(String permission) {
+        if (permission == null || permission.isBlank()) {
+            return true;
+        }
+        List<String> permissions = getPermissionList();
+        String normalized = permission.trim();
+        return permissions.contains("*")
+                || permissions.contains("admin")
+                || permissions.contains(normalized);
+    }
+
+    public static boolean hasAnyPermission(String... requiredPermissions) {
+        if (requiredPermissions == null || requiredPermissions.length == 0) {
+            return true;
+        }
+        for (String permission : requiredPermissions) {
+            if (hasPermission(permission)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static Object getAuthDataScopes() {

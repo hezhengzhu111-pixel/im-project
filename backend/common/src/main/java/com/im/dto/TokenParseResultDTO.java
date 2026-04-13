@@ -2,6 +2,8 @@ package com.im.dto;
 
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 public class TokenParseResultDTO {
     private boolean valid;
@@ -13,5 +15,6 @@ public class TokenParseResultDTO {
     private Long expiresAtEpochMs;
     private String jti;
     private String tokenType;
+    private List<String> permissions;
 }
 

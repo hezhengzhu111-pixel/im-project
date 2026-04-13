@@ -4,6 +4,8 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseCookie;
 
+import java.util.Locale;
+
 public final class AuthCookieUtil {
 
     private AuthCookieUtil() {
@@ -43,5 +45,29 @@ public final class AuthCookieUtil {
 
     public static ResponseCookie clearCookie(String cookieName, boolean secure, String sameSite) {
         return buildTokenCookie(cookieName, "", 0, secure, sameSite);
+    }
+
+    public static boolean resolveSecure(HttpServletRequest request, String secureMode) {
+        String mode = secureMode == null || secureMode.isBlank()
+                ? "auto"
+                : secureMode.trim().toLowerCase(Locale.ROOT);
+        if ("true".equals(mode) || "always".equals(mode)) {
+            return true;
+        }
+        if ("false".equals(mode) || "never".equals(mode)) {
+            return false;
+        }
+        if (request == null) {
+            return false;
+        }
+        if (request.isSecure()) {
+            return true;
+        }
+        String forwardedProto = request.getHeader("X-Forwarded-Proto");
+        if (forwardedProto != null && forwardedProto.toLowerCase(Locale.ROOT).contains("https")) {
+            return true;
+        }
+        String forwarded = request.getHeader("Forwarded");
+        return forwarded != null && forwarded.toLowerCase(Locale.ROOT).contains("proto=https");
     }
 }

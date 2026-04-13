@@ -23,6 +23,7 @@ export interface AuthSession {
   currentUser: User | null;
   isAuthenticated: boolean;
   authReady: boolean;
+  permissions?: string[];
 }
 
 export interface LoginRequest {
@@ -78,6 +79,7 @@ export interface UserAuthResponse {
   token?: string;
   expiresInMs?: number;
   refreshExpiresInMs?: number;
+  permissions?: string[];
 }
 
 export interface TokenPairDTO {
@@ -102,6 +104,7 @@ export interface TokenParseResultDTO {
   expiresAtEpochMs?: number;
   jti?: string;
   tokenType?: string;
+  permissions?: string[];
 }
 
 export type UpdateUserRequest = Partial<

@@ -1,5 +1,6 @@
 import axios from "axios";
 import { http } from "@/utils/request";
+import { refreshAccessTokenCoordinated } from "@/services/auth-refresh";
 import type { ApiResponse } from "@/types/api";
 import type { TokenParseResultDTO, TokenPairDTO, WsTicketDTO } from "@/types";
 
@@ -53,5 +54,25 @@ export const authService = {
     }
   },
   issueWsTicket: () => http.post<WsTicketDTO>("/auth/ws-ticket"),
-  refreshAccessToken: () => http.post<TokenPairDTO>("/auth/refresh", {}),
+  async refreshAccessToken(): Promise<ApiResponse<TokenPairDTO>> {
+    const result = await refreshAccessTokenCoordinated();
+    if (result.status !== "success") {
+      return {
+        code: result.status === "authInvalid" ? 401 : 503,
+        message: result.message || "refresh failed",
+        data: {} as TokenPairDTO,
+        timestamp: Date.now(),
+      };
+    }
+    return {
+      code: 200,
+      message: "ok",
+      data: {
+        accessToken: result.accessToken,
+        expiresInMs: result.expiresInMs || 0,
+        refreshExpiresInMs: result.refreshExpiresInMs || 0,
+      },
+      timestamp: Date.now(),
+    };
+  },
 };

@@ -10,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpCookie;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -72,6 +73,36 @@ class JwtAuthGlobalFilterTest {
         MockServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/user/internal/profile")
                         .header("X-Internal-Secret", "forged-secret")
+                        .build()
+        );
+
+        filter.filter(exchange, chain).block();
+
+        assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
+        verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    @Test
+    void filterShouldRejectImInternalPathWithoutForwarding() {
+        JwtAuthGlobalFilter filter = newFilter(request -> Mono.error(new AssertionError("auth service should not be called")));
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.post("/api/im/offline/42")
+                        .header("Authorization", "Bearer " + validJwtToken())
+                        .build()
+        );
+
+        filter.filter(exchange, chain).block();
+
+        assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
+        verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    @Test
+    void filterShouldRejectCookieUnsafeRequestWithoutGatewayRouteHeader() {
+        JwtAuthGlobalFilter filter = newFilter(request -> Mono.error(new AssertionError("auth service should not be called")));
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.post("/api/auth/refresh")
+                        .cookie(new HttpCookie("IM_REFRESH_TOKEN", "refresh-token"))
                         .build()
         );
 
@@ -432,6 +463,7 @@ class JwtAuthGlobalFilterTest {
         ReflectionTestUtils.setField(filter, "jwtHeader", "Authorization");
         ReflectionTestUtils.setField(filter, "jwtPrefix", "Bearer ");
         ReflectionTestUtils.setField(filter, "accessTokenCookieName", "IM_ACCESS_TOKEN");
+        ReflectionTestUtils.setField(filter, "refreshTokenCookieName", "IM_REFRESH_TOKEN");
         return filter;
     }
 

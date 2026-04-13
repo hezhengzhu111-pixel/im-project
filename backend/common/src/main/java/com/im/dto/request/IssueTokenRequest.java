@@ -5,6 +5,8 @@ import lombok.Data;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
+import java.util.List;
+
 @Data
 public class IssueTokenRequest {
     @NotNull
@@ -17,5 +19,6 @@ public class IssueTokenRequest {
     private String avatar;
     private String email;
     private String phone;
+    private List<String> permissions;
 }
 

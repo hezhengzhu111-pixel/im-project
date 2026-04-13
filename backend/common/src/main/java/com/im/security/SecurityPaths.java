@@ -67,7 +67,8 @@ public final class SecurityPaths {
         }
         return path.startsWith("/api/user/internal")
                 || path.startsWith("/api/group/internal")
-                || path.startsWith("/api/auth/internal");
+                || path.startsWith("/api/auth/internal")
+                || path.startsWith("/api/im");
     }
 
     public static boolean isServiceWhiteList(String requestURI) {

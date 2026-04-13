@@ -1,5 +1,6 @@
 package com.im.log.controller;
 
+import com.im.util.AuthContextUtil;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,6 +18,9 @@ public class SseLogController {
 
     @GetMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream() {
+        if (!AuthContextUtil.hasAnyPermission("log:read", "admin")) {
+            throw new SecurityException("log read permission required");
+        }
         SseEmitter emitter = new SseEmitter(0L); // Infinite timeout
         emitters.add(emitter);
 

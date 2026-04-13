@@ -128,6 +128,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       title: "日志监控",
       requiresAuth: true,
+      permission: "log:read",
     },
   },
   {
@@ -162,12 +163,23 @@ router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore();
   const requiresAuth = to.meta.requiresAuth;
   const hideForAuth = to.meta.hideForAuth;
+  const requiredPermission = String(to.meta.permission || "");
   try {
     const isAuthed = await userStore.ensureAuthenticated();
     // 如果需要认证但用户未登录
     if (requiresAuth && !isAuthed) {
       ElMessage.warning("请先登录");
       next({ name: "Login", query: { redirect: to.fullPath } });
+      return;
+    }
+
+    if (
+      requiresAuth &&
+      requiredPermission &&
+      !userStore.hasPermission(requiredPermission)
+    ) {
+      ElMessage.error("权限不足");
+      next({ name: "Chat" });
       return;
     }
 

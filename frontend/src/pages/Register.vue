@@ -189,8 +189,8 @@ const registerRules: any = {
       trigger: "blur",
     },
     {
-      pattern: /^[a-zA-Z0-9_\u4e00-\u9fa5]+$/,
-      message: "用户名只能包含字母、数字、下划线和中文",
+      pattern: /^[a-zA-Z0-9_]+$/,
+      message: "用户名只能包含字母、数字和下划线",
       trigger: "blur",
     },
   ],
@@ -200,7 +200,7 @@ const registerRules: any = {
   ],
   password: [
     { required: true, message: "请输入密码", trigger: "blur" },
-    { min: 6, max: 20, message: "密码长度在 6 到 20 个字符", trigger: "blur" },
+    { min: 8, max: 64, message: "密码长度在 8 到 64 个字符", trigger: "blur" },
     {
       pattern: /^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]+$/,
       message: "密码必须包含字母和数字",
@@ -260,9 +260,9 @@ const handleRegister = async () => {
 };
 
 // 组件挂载时的处理
-onMounted(() => {
+onMounted(async () => {
   // 如果已经登录，直接跳转到聊天页面
-  if (userStore.isLoggedIn) {
+  if (await userStore.ensureAuthenticated()) {
     router.push("/chat");
   }
 });

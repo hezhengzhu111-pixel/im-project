@@ -7,7 +7,10 @@ import com.im.dto.request.GetFileInfoRequest;
 import com.im.dto.response.FileInfoResponse;
 import com.im.dto.response.FileUploadResponse;
 import com.im.service.StorageObject;
+import com.im.service.FileMetadata;
+import com.im.service.FileMetadataService;
 import com.im.service.StorageService;
+import com.im.util.AuthContextUtil;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import java.io.InputStream;
@@ -91,6 +94,7 @@ public class FileController {
     );
 
     private final StorageService storageService;
+    private final FileMetadataService fileMetadataService;
 
     @Value("${app.file.image-max-size:5242880}")
     private long imageMaxSize;
@@ -143,18 +147,29 @@ public class FileController {
     }
 
     @GetMapping("/download")
-    public void downloadFileByQuery(@Valid DownloadFileRequest request, HttpServletResponse response) {
-        streamFile(request, response);
+    public void downloadFileByQuery(
+            @Valid DownloadFileRequest request,
+            @RequestAttribute("userId") Long userId,
+            HttpServletResponse response) {
+        streamFile(request, userId, response);
     }
 
     @PostMapping("/download")
-    public void downloadFile(@Valid @RequestBody DownloadFileRequest request, HttpServletResponse response) {
-        streamFile(request, response);
+    public void downloadFile(
+            @Valid @RequestBody DownloadFileRequest request,
+            @RequestAttribute("userId") Long userId,
+            HttpServletResponse response) {
+        streamFile(request, userId, response);
     }
 
     @PostMapping("/info")
-    public ApiResponse<FileInfoResponse> getFileInfo(@Valid @RequestBody GetFileInfoRequest request) {
+    public ApiResponse<FileInfoResponse> getFileInfo(
+            @Valid @RequestBody GetFileInfoRequest request,
+            @RequestAttribute("userId") Long userId) {
         try {
+            if (!canReadFile(userId, request.getCategory(), request.getDate(), request.getFilename())) {
+                return ApiResponse.forbidden("File access denied");
+            }
             FileInfoResponse fileInfo = storageService.getFileInfo(
                     request.getCategory(),
                     request.getDate(),
@@ -175,8 +190,13 @@ public class FileController {
     }
 
     @DeleteMapping("/delete")
-    public ApiResponse<Boolean> deleteFile(@Valid DeleteFileRequest request) {
+    public ApiResponse<Boolean> deleteFile(
+            @Valid DeleteFileRequest request,
+            @RequestAttribute("userId") Long userId) {
         try {
+            if (!canDeleteFile(userId, request.getCategory(), request.getDate(), request.getFilename())) {
+                return ApiResponse.forbidden("File delete denied");
+            }
             boolean deleted = storageService.deleteObject(
                     request.getCategory(),
                     request.getDate(),
@@ -185,6 +205,7 @@ public class FileController {
             if (!deleted) {
                 return ApiResponse.notFound("File not found");
             }
+            fileMetadataService.delete(request.getCategory(), request.getDate(), request.getFilename());
             return ApiResponse.success("File deleted", true);
         } catch (IllegalArgumentException e) {
             log.warn("Invalid delete request: {}/{}/{} - {}",
@@ -207,6 +228,7 @@ public class FileController {
         try {
             validateFile(file, allowedTypes, fileTypeName, maxSize);
             FileUploadResponse fileInfo = storageService.upload(file, category, userId);
+            fileMetadataService.save(fileInfo);
             return ApiResponse.success(fileTypeName + " upload success", fileInfo);
         } catch (IllegalArgumentException e) {
             log.warn("{} upload validation failed: {}", fileTypeName, e.getMessage());
@@ -217,8 +239,12 @@ public class FileController {
         }
     }
 
-    private void streamFile(DownloadFileRequest request, HttpServletResponse response) {
+    private void streamFile(DownloadFileRequest request, Long userId, HttpServletResponse response) {
         try {
+            if (!canReadFile(userId, request.getCategory(), request.getDate(), request.getFilename())) {
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                return;
+            }
             StorageObject storageObject = storageService.getObject(
                     request.getCategory(),
                     request.getDate(),
@@ -257,6 +283,26 @@ public class FileController {
             log.error("Failed to download file: {}/{}/{}", request.getCategory(), request.getDate(), request.getFilename(), e);
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private boolean canReadFile(Long userId, String category, String date, String filename) {
+        FileMetadata metadata = fileMetadataService.get(category, date, filename);
+        if (metadata == null) {
+            return AuthContextUtil.hasPermission("file:read");
+        }
+        return isOwner(userId, metadata) || AuthContextUtil.hasPermission("file:read");
+    }
+
+    private boolean canDeleteFile(Long userId, String category, String date, String filename) {
+        FileMetadata metadata = fileMetadataService.get(category, date, filename);
+        if (metadata == null) {
+            return AuthContextUtil.hasPermission("file:delete");
+        }
+        return isOwner(userId, metadata) || AuthContextUtil.hasPermission("file:delete");
+    }
+
+    private boolean isOwner(Long userId, FileMetadata metadata) {
+        return userId != null && metadata != null && userId.equals(metadata.getUploaderId());
     }
 
     private void validateFile(MultipartFile file, Set<String> allowedTypes, String fileTypeName, long maxSize) {

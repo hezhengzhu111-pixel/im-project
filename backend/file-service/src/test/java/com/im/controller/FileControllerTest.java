@@ -2,6 +2,8 @@ package com.im.controller;
 
 import com.im.dto.ApiResponse;
 import com.im.dto.request.DeleteFileRequest;
+import com.im.service.FileMetadata;
+import com.im.service.FileMetadataService;
 import com.im.service.StorageService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,6 +30,9 @@ class FileControllerTest {
 
     @Mock
     private StorageService storageService;
+
+    @Mock
+    private FileMetadataService fileMetadataService;
 
     @InjectMocks
     private FileController fileController;
@@ -71,9 +76,10 @@ class FileControllerTest {
         request.setCategory("images");
         request.setDate("2026-03-13");
         request.setFilename("a.png");
+        when(fileMetadataService.get("images", "2026-03-13", "a.png")).thenReturn(metadata(1L));
         when(storageService.deleteObject("images", "2026-03-13", "a.png")).thenReturn(true);
 
-        ApiResponse<Boolean> response = fileController.deleteFile(request);
+        ApiResponse<Boolean> response = fileController.deleteFile(request, 1L);
 
         assertEquals(200, response.getCode());
         assertTrue(Boolean.TRUE.equals(response.getData()));
@@ -85,9 +91,10 @@ class FileControllerTest {
         request.setCategory("images");
         request.setDate("2026-03-13");
         request.setFilename("missing.png");
+        when(fileMetadataService.get("images", "2026-03-13", "missing.png")).thenReturn(metadata(1L));
         when(storageService.deleteObject("images", "2026-03-13", "missing.png")).thenReturn(false);
 
-        ApiResponse<Boolean> response = fileController.deleteFile(request);
+        ApiResponse<Boolean> response = fileController.deleteFile(request, 1L);
 
         assertEquals(404, response.getCode());
     }
@@ -98,11 +105,31 @@ class FileControllerTest {
         request.setCategory("images");
         request.setDate("2026-03-13");
         request.setFilename("broken.png");
+        when(fileMetadataService.get("images", "2026-03-13", "broken.png")).thenReturn(metadata(1L));
         when(storageService.deleteObject("images", "2026-03-13", "broken.png"))
                 .thenThrow(new RuntimeException("boom"));
 
-        ApiResponse<Boolean> response = fileController.deleteFile(request);
+        ApiResponse<Boolean> response = fileController.deleteFile(request, 1L);
 
         assertEquals(500, response.getCode());
+    }
+
+    @Test
+    void deleteFileRejectsNonOwner() {
+        DeleteFileRequest request = new DeleteFileRequest();
+        request.setCategory("images");
+        request.setDate("2026-03-13");
+        request.setFilename("a.png");
+        when(fileMetadataService.get("images", "2026-03-13", "a.png")).thenReturn(metadata(2L));
+
+        ApiResponse<Boolean> response = fileController.deleteFile(request, 1L);
+
+        assertEquals(403, response.getCode());
+    }
+
+    private FileMetadata metadata(Long uploaderId) {
+        FileMetadata metadata = new FileMetadata();
+        metadata.setUploaderId(uploaderId);
+        return metadata;
     }
 }

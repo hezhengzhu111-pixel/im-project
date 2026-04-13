@@ -51,6 +51,7 @@ class AuthTokenServiceTest {
         ReflectionTestUtils.setField(service, "accessExpirationMs", 60000L);
         ReflectionTestUtils.setField(service, "refreshExpirationMs", 120000L);
         lenient().when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        lenient().when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true);
     }
 
     @Test
@@ -92,7 +93,6 @@ class AuthTokenServiceTest {
         accessInfo.setUserId(9999L);
         when(tokenParser.parseRefreshToken("refresh-token")).thenReturn(refreshInfo);
         when(tokenParser.parseAccessToken("access-token")).thenReturn(accessInfo);
-        when(valueOperations.get("auth:refresh:jti:1003")).thenReturn("jti-3");
 
         RefreshTokenRequest request = new RefreshTokenRequest();
         request.setRefreshToken("refresh-token");
@@ -106,6 +106,41 @@ class AuthTokenServiceTest {
     void refreshShouldRejectWhenRequestInvalid() {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.refresh(null));
         assertEquals("refreshToken不能为空", ex.getMessage());
+    }
+
+    @Test
+    void refreshShouldReturnPreviousGraceResultWhenOldJtiRepeated() {
+        TokenParser.TokenParseInfo refreshInfo = validRefreshInfo(1008L, "grace", "old-jti");
+        when(tokenParser.parseRefreshToken("refresh-token")).thenReturn(refreshInfo);
+        when(valueOperations.get("auth:refresh:jti:1008")).thenReturn("new-jti");
+        when(valueOperations.get("auth:refresh:previous:1008:old-jti"))
+                .thenReturn("access-again\nrefresh-again\n60000\n120000");
+
+        RefreshTokenRequest request = new RefreshTokenRequest();
+        request.setRefreshToken("refresh-token");
+
+        TokenPairDTO result = service.refresh(request);
+
+        assertEquals("access-again", result.getAccessToken());
+        assertEquals("refresh-again", result.getRefreshToken());
+    }
+
+    @Test
+    void refreshShouldWaitForPreviousGraceResultWhenConcurrentLockHeld() {
+        TokenParser.TokenParseInfo refreshInfo = validRefreshInfo(1009L, "locked", "old-jti");
+        when(tokenParser.parseRefreshToken("refresh-token")).thenReturn(refreshInfo);
+        when(valueOperations.get("auth:refresh:jti:1009")).thenReturn("old-jti");
+        when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(false);
+        when(valueOperations.get("auth:refresh:previous:1009:old-jti"))
+                .thenReturn("access-shared\nrefresh-shared\n60000\n120000");
+
+        RefreshTokenRequest request = new RefreshTokenRequest();
+        request.setRefreshToken("refresh-token");
+
+        TokenPairDTO result = service.refresh(request);
+
+        assertEquals("access-shared", result.getAccessToken());
+        assertEquals("refresh-shared", result.getRefreshToken());
     }
 
     private TokenParser.TokenParseInfo validRefreshInfo(Long userId, String username, String jti) {

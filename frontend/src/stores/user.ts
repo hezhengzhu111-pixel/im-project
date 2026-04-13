@@ -3,6 +3,10 @@ import { defineStore } from "pinia";
 import { ElMessage } from "element-plus";
 import router from "@/router";
 import { authService, userService } from "@/services";
+import {
+  refreshAccessTokenCoordinated,
+  type RefreshAccessTokenResult,
+} from "@/services/auth-refresh";
 import { normalizeUser } from "@/normalizers/user";
 import type {
   LoginRequest,
@@ -69,6 +73,17 @@ const isValidTokenResult = (
   return !!result && result.valid && !result.expired && result.userId != null;
 };
 
+const normalizePermissions = (permissions?: unknown): string[] => {
+  if (!Array.isArray(permissions)) {
+    return [];
+  }
+  return permissions
+    .map((permission) =>
+      typeof permission === "string" ? permission.trim() : "",
+    )
+    .filter(Boolean);
+};
+
 const decodeAccessTokenClaims = (token: string): Record<string, unknown> | null => {
   const normalized = token.trim().replace(/^Bearer\s+/i, "");
   const [, payload] = normalized.split(".");
@@ -102,45 +117,16 @@ const isAccessTokenExpiringSoon = (token: string, skewMs = 30_000): boolean => {
   return exp * 1000 <= Date.now() + skewMs;
 };
 
-const readUserFromAccessToken = (token: string): User | null => {
-  const claims = decodeAccessTokenClaims(token);
-  if (!claims) {
-    return null;
-  }
-  try {
-    const rawUserId = claims.userId;
-    const userId =
-      typeof rawUserId === "number" || typeof rawUserId === "string"
-        ? String(rawUserId)
-        : "";
-    if (!userId) {
-      return null;
-    }
-    const username =
-      typeof claims.username === "string" && claims.username.trim()
-        ? claims.username.trim()
-        : userId;
-    return {
-      id: userId,
-      username,
-      nickname: username,
-      avatar: APP_CONFIG.DEFAULT_AVATAR,
-      status: "offline",
-    };
-  } catch {
-    return null;
-  }
-};
-
 export const useUserStore = defineStore("user", () => {
   const currentUser = ref<User | null>(readPersistedUser());
   const accessToken = ref(readPersistedAccessToken());
+  const permissions = ref<string[]>([]);
   const loading = ref(false);
   const authReady = ref(false);
   const lastSessionCheckAt = ref(0);
   const lastSessionValid = ref(false);
+  const sessionGeneration = ref(0);
   let sessionCheckInFlight: Promise<boolean> | null = null;
-  let sessionRefreshInFlight: Promise<boolean> | null = null;
 
   const isAuthenticated = computed(() => lastSessionValid.value && !!currentUser.value);
   const isLoggedIn = computed(() => isAuthenticated.value);
@@ -152,6 +138,32 @@ export const useUserStore = defineStore("user", () => {
   );
   const userId = computed(() => currentUser.value?.id || "");
   const userInfo = computed(() => currentUser.value);
+
+  const setPermissions = (nextPermissions?: unknown) => {
+    permissions.value = normalizePermissions(nextPermissions);
+  };
+
+  const hasPermission = (permission: string): boolean => {
+    const normalized = permission.trim();
+    if (!normalized) {
+      return true;
+    }
+    return (
+      permissions.value.includes("*") ||
+      permissions.value.includes("admin") ||
+      permissions.value.includes(normalized)
+    );
+  };
+
+  const hasAnyPermission = (requiredPermissions?: string[] | string): boolean => {
+    if (!requiredPermissions) {
+      return true;
+    }
+    const list = Array.isArray(requiredPermissions)
+      ? requiredPermissions
+      : [requiredPermissions];
+    return list.some((permission) => hasPermission(permission));
+  };
 
   const setAccessToken = (token?: string | null) => {
     const normalized = typeof token === "string" ? token.trim() : "";
@@ -179,15 +191,18 @@ export const useUserStore = defineStore("user", () => {
   const clearSession = () => {
     setCurrentUser(null);
     setAccessToken("");
+    setPermissions([]);
     lastSessionCheckAt.value = 0;
     lastSessionValid.value = false;
     authReady.value = true;
+    sessionGeneration.value += 1;
   };
 
   const markSessionValid = () => {
     lastSessionCheckAt.value = Date.now();
     lastSessionValid.value = true;
     authReady.value = true;
+    sessionGeneration.value += 1;
   };
 
   const markSessionInvalid = () => {
@@ -195,6 +210,8 @@ export const useUserStore = defineStore("user", () => {
     lastSessionValid.value = false;
     authReady.value = true;
   };
+
+  const getSessionGeneration = () => sessionGeneration.value;
 
   const applyTokenResultUser = (
     result: TokenParseResultDTO & { userId: number },
@@ -213,66 +230,47 @@ export const useUserStore = defineStore("user", () => {
     });
   };
 
-  const restoreFromLocalSnapshot = (persistedUser?: User | null): boolean => {
-    const persistedToken = getAccessToken();
-    if (!persistedToken || !persistedUser) {
-      return false;
+  const applyValidatedSession = (
+    result: TokenParseResultDTO & { userId: number },
+    persistedUser?: User | null,
+    token?: string | null,
+  ) => {
+    if (token !== undefined) {
+      setAccessToken(token);
     }
-    setCurrentUser(persistedUser);
+    applyTokenResultUser(result, persistedUser);
+    setPermissions(result.permissions);
     markSessionValid();
-    return true;
-  };
-
-  const restoreFromLocalToken = (): boolean => {
-    const persistedToken = getAccessToken();
-    if (!persistedToken) {
-      return false;
-    }
-    const tokenUser = readUserFromAccessToken(persistedToken);
-    if (!tokenUser) {
-      return false;
-    }
-    setCurrentUser(tokenUser);
-    markSessionValid();
-    return true;
   };
 
   const refreshPersistedSession = async (
     persistedUser?: User | null,
-  ): Promise<boolean> => {
-    if (sessionRefreshInFlight) {
-      return sessionRefreshInFlight;
+  ): Promise<RefreshAccessTokenResult> => {
+    const refreshResult = await refreshAccessTokenCoordinated();
+    if (refreshResult.status !== "success" || !refreshResult.accessToken) {
+      return refreshResult;
     }
-    sessionRefreshInFlight = (async () => {
-      try {
-        const refreshResponse = await authService.refreshAccessToken();
-        const nextAccessToken =
-          typeof refreshResponse?.data?.accessToken === "string"
-            ? refreshResponse.data.accessToken.trim()
-            : "";
-        if (!nextAccessToken) {
-          return false;
-        }
-        const parseResponse = await authService.parseAccessToken(
-          nextAccessToken,
-          true,
-        );
-        const result = parseResponse.data;
-        if (!isValidTokenResult(result)) {
-          return false;
-        }
-        setAccessToken(nextAccessToken);
-        applyTokenResultUser(result, persistedUser);
-        markSessionValid();
-        return true;
-      } catch (error) {
-        logger.warn("refreshPersistedSession failed", error);
-        return false;
-      } finally {
-        sessionRefreshInFlight = null;
+    try {
+      const parseResponse = await authService.parseAccessToken(
+        refreshResult.accessToken,
+        true,
+      );
+      const result = parseResponse.data;
+      if (!isValidTokenResult(result)) {
+        return {
+          status: "authInvalid",
+          message: result?.error || "refreshed access token invalid",
+        };
       }
-    })();
-    return sessionRefreshInFlight;
+      applyValidatedSession(result, persistedUser, refreshResult.accessToken);
+      return refreshResult;
+    } catch (error) {
+      logger.warn("refreshPersistedSession parse failed", error);
+      return {
+        status: "transientError",
+        message: error instanceof Error ? error.message : "refresh parse failed",
+      };
+    }
   };
 
   const restoreSession = async (): Promise<boolean> => {
@@ -284,60 +282,54 @@ export const useUserStore = defineStore("user", () => {
       return sessionCheckInFlight;
     }
     sessionCheckInFlight = (async () => {
+      const persistedUser = readPersistedUser();
+      if (persistedUser) {
+        setCurrentUser(persistedUser);
+      }
       try {
         const persistedToken = getAccessToken();
-        const persistedUser = readPersistedUser();
-        if (persistedUser) {
-          setCurrentUser(persistedUser);
-          markSessionValid();
-          void refreshPersistedSession(persistedUser);
-          return true;
-        }
-        if (restoreFromLocalToken()) {
-          void refreshPersistedSession(currentUser.value);
-          return true;
-        }
-        if (!persistedToken) {
-          markSessionInvalid();
-          return false;
-        }
+
         let response = await authService.parseAccessToken(
           persistedToken || undefined,
           true,
         );
         let result = response.data;
-        let restoredFromCookieSession = false;
-        if (
-          !isValidTokenResult(result) &&
-          (await refreshPersistedSession(persistedUser))
-        ) {
+
+        if (isValidTokenResult(result)) {
+          applyValidatedSession(result, persistedUser, persistedToken || null);
           return true;
         }
-        if (!isValidTokenResult(result) && persistedToken) {
+
+        if (persistedToken) {
           response = await authService.parseAccessToken(undefined, true);
           result = response.data;
-          restoredFromCookieSession = isValidTokenResult(result);
-        }
-        if (!isValidTokenResult(result)) {
-          if (restoreFromLocalSnapshot(persistedUser)) {
+          if (isValidTokenResult(result)) {
+            applyValidatedSession(result, persistedUser, "");
             return true;
           }
+        }
+
+        const refreshResult = await refreshPersistedSession(persistedUser);
+        if (refreshResult.status === "success") {
+          return true;
+        }
+        if (refreshResult.status === "authInvalid") {
           clearSession();
           return false;
         }
-        if (restoredFromCookieSession) {
-          setAccessToken("");
-        }
-        applyTokenResultUser(result, persistedUser);
-        markSessionValid();
-        return true;
+        markSessionInvalid();
+        return false;
       } catch (error) {
         logger.warn("restoreSession failed", error);
-        const persistedUser = readPersistedUser();
-        if (restoreFromLocalSnapshot(persistedUser)) {
+        const refreshResult = await refreshPersistedSession(persistedUser);
+        if (refreshResult.status === "success") {
           return true;
         }
-        clearSession();
+        if (refreshResult.status === "authInvalid") {
+          clearSession();
+          return false;
+        }
+        markSessionInvalid();
         return false;
       } finally {
         sessionCheckInFlight = null;
@@ -359,35 +351,23 @@ export const useUserStore = defineStore("user", () => {
     }
 
     const tokenBeforeRefresh = getAccessToken();
-    const needsFreshToken =
-      !tokenBeforeRefresh || isAccessTokenExpiringSoon(tokenBeforeRefresh);
-    const refreshPromise = sessionRefreshInFlight;
-
-    if (refreshPromise) {
-      const refreshed = await refreshPromise;
-      if (refreshed) {
-        return true;
-      }
-      const latestToken = getAccessToken();
-      if (
-        !needsFreshToken &&
-        latestToken &&
-        !isAccessTokenExpiringSoon(latestToken)
-      ) {
-        return lastSessionValid.value && !!currentUser.value;
-      }
-      markSessionInvalid();
-      return false;
-    }
+    const needsFreshToken = !!tokenBeforeRefresh && isAccessTokenExpiringSoon(tokenBeforeRefresh);
 
     if (needsFreshToken) {
-      const refreshed = await refreshPersistedSession(
+      const refreshResult = await refreshPersistedSession(
         currentUser.value || readPersistedUser(),
       );
-      if (!refreshed) {
+      if (refreshResult.status === "success") {
+        return true;
+      }
+      if (refreshResult.status === "authInvalid") {
+        clearSession();
+        return false;
+      }
+      if (!lastSessionValid.value) {
         markSessionInvalid();
       }
-      return refreshed;
+      return lastSessionValid.value && !!currentUser.value;
     }
 
     return lastSessionValid.value && !!currentUser.value;
@@ -408,9 +388,8 @@ export const useUserStore = defineStore("user", () => {
       }
       setAccessToken(response.data.token);
       setCurrentUser(response.data.user);
-      lastSessionCheckAt.value = Date.now();
-      lastSessionValid.value = true;
-      authReady.value = true;
+      setPermissions(response.data.permissions);
+      markSessionValid();
       ElMessage.success("登录成功");
       return true;
     } catch (error) {
@@ -496,6 +475,7 @@ export const useUserStore = defineStore("user", () => {
   return {
     currentUser,
     accessToken,
+    permissions,
     userInfo,
     loading,
     authReady,
@@ -513,6 +493,10 @@ export const useUserStore = defineStore("user", () => {
     restoreSession,
     ensureFreshSession,
     ensureAuthenticated,
+    hasPermission,
+    hasAnyPermission,
+    setPermissions,
+    getSessionGeneration,
     setAccessToken,
     setCurrentUser,
     getAccessToken,
