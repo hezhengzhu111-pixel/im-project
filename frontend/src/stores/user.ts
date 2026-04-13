@@ -69,7 +69,7 @@ const isValidTokenResult = (
   return !!result && result.valid && !result.expired && result.userId != null;
 };
 
-const readUserFromAccessToken = (token: string): User | null => {
+const decodeAccessTokenClaims = (token: string): Record<string, unknown> | null => {
   const normalized = token.trim().replace(/^Bearer\s+/i, "");
   const [, payload] = normalized.split(".");
   if (!payload || typeof atob === "undefined") {
@@ -81,7 +81,33 @@ const readUserFromAccessToken = (token: string): User | null => {
       base64.length + ((4 - (base64.length % 4)) % 4),
       "=",
     );
-    const claims = JSON.parse(atob(padded)) as Record<string, unknown>;
+    return JSON.parse(atob(padded)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+};
+
+const isAccessTokenExpiringSoon = (token: string, skewMs = 30_000): boolean => {
+  const claims = decodeAccessTokenClaims(token);
+  const rawExp = claims?.exp;
+  const exp =
+    typeof rawExp === "number"
+      ? rawExp
+      : typeof rawExp === "string"
+        ? Number(rawExp)
+        : 0;
+  if (!Number.isFinite(exp) || exp <= 0) {
+    return false;
+  }
+  return exp * 1000 <= Date.now() + skewMs;
+};
+
+const readUserFromAccessToken = (token: string): User | null => {
+  const claims = decodeAccessTokenClaims(token);
+  if (!claims) {
+    return null;
+  }
+  try {
     const rawUserId = claims.userId;
     const userId =
       typeof rawUserId === "number" || typeof rawUserId === "string"
@@ -114,6 +140,7 @@ export const useUserStore = defineStore("user", () => {
   const lastSessionCheckAt = ref(0);
   const lastSessionValid = ref(false);
   let sessionCheckInFlight: Promise<boolean> | null = null;
+  let sessionRefreshInFlight: Promise<boolean> | null = null;
 
   const isAuthenticated = computed(() => lastSessionValid.value && !!currentUser.value);
   const isLoggedIn = computed(() => isAuthenticated.value);
@@ -213,31 +240,39 @@ export const useUserStore = defineStore("user", () => {
   const refreshPersistedSession = async (
     persistedUser?: User | null,
   ): Promise<boolean> => {
-    try {
-      const refreshResponse = await authService.refreshAccessToken();
-      const nextAccessToken =
-        typeof refreshResponse?.data?.accessToken === "string"
-          ? refreshResponse.data.accessToken.trim()
-          : "";
-      if (!nextAccessToken) {
-        return false;
-      }
-      const parseResponse = await authService.parseAccessToken(
-        nextAccessToken,
-        true,
-      );
-      const result = parseResponse.data;
-      if (!isValidTokenResult(result)) {
-        return false;
-      }
-      setAccessToken(nextAccessToken);
-      applyTokenResultUser(result, persistedUser);
-      markSessionValid();
-      return true;
-    } catch (error) {
-      logger.warn("refreshPersistedSession failed", error);
-      return false;
+    if (sessionRefreshInFlight) {
+      return sessionRefreshInFlight;
     }
+    sessionRefreshInFlight = (async () => {
+      try {
+        const refreshResponse = await authService.refreshAccessToken();
+        const nextAccessToken =
+          typeof refreshResponse?.data?.accessToken === "string"
+            ? refreshResponse.data.accessToken.trim()
+            : "";
+        if (!nextAccessToken) {
+          return false;
+        }
+        const parseResponse = await authService.parseAccessToken(
+          nextAccessToken,
+          true,
+        );
+        const result = parseResponse.data;
+        if (!isValidTokenResult(result)) {
+          return false;
+        }
+        setAccessToken(nextAccessToken);
+        applyTokenResultUser(result, persistedUser);
+        markSessionValid();
+        return true;
+      } catch (error) {
+        logger.warn("refreshPersistedSession failed", error);
+        return false;
+      } finally {
+        sessionRefreshInFlight = null;
+      }
+    })();
+    return sessionRefreshInFlight;
   };
 
   const restoreSession = async (): Promise<boolean> => {
@@ -316,6 +351,47 @@ export const useUserStore = defineStore("user", () => {
   };
 
   const init = initializeStore;
+
+  const ensureFreshSession = async (): Promise<boolean> => {
+    const restored = await restoreSession();
+    if (!restored) {
+      return false;
+    }
+
+    const tokenBeforeRefresh = getAccessToken();
+    const needsFreshToken =
+      !tokenBeforeRefresh || isAccessTokenExpiringSoon(tokenBeforeRefresh);
+    const refreshPromise = sessionRefreshInFlight;
+
+    if (refreshPromise) {
+      const refreshed = await refreshPromise;
+      if (refreshed) {
+        return true;
+      }
+      const latestToken = getAccessToken();
+      if (
+        !needsFreshToken &&
+        latestToken &&
+        !isAccessTokenExpiringSoon(latestToken)
+      ) {
+        return lastSessionValid.value && !!currentUser.value;
+      }
+      markSessionInvalid();
+      return false;
+    }
+
+    if (needsFreshToken) {
+      const refreshed = await refreshPersistedSession(
+        currentUser.value || readPersistedUser(),
+      );
+      if (!refreshed) {
+        markSessionInvalid();
+      }
+      return refreshed;
+    }
+
+    return lastSessionValid.value && !!currentUser.value;
+  };
 
   const login = async (loginForm: LoginRequest) => {
     if (loading.value) return false;
@@ -414,7 +490,7 @@ export const useUserStore = defineStore("user", () => {
   };
 
   const ensureAuthenticated = async (): Promise<boolean> => {
-    return restoreSession();
+    return ensureFreshSession();
   };
 
   return {
@@ -435,6 +511,7 @@ export const useUserStore = defineStore("user", () => {
     initializeStore,
     init,
     restoreSession,
+    ensureFreshSession,
     ensureAuthenticated,
     setAccessToken,
     setCurrentUser,

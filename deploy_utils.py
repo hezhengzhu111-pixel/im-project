@@ -9,7 +9,10 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
+import urllib.request
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any, Mapping, NoReturn, Optional, Sequence, Union
@@ -62,31 +65,60 @@ KAFKA_INTERNAL_PORT = 29092
 KAFKA_EXTERNAL_PORT = 9092
 ELASTICSEARCH_INTERNAL_PORT = 9200
 
+IS_WINDOWS = os.name == "nt"
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+
+def _path_from_env(name: str, default: Path) -> Path:
+    return Path(os.getenv(name, str(default))).expanduser()
+
+
 JAVA_REQUIRED_MAJOR = 21
-JAVA_INSTALL_ROOT = Path("/opt")
+DEFAULT_TOOLS_ROOT = PROJECT_ROOT / ".deploy-tools" if IS_WINDOWS else Path("/opt")
+TOOLS_ROOT = _path_from_env("IM_PROJECT_TOOLS_ROOT", DEFAULT_TOOLS_ROOT)
+JAVA_INSTALL_ROOT = _path_from_env(
+    "IM_JAVA_INSTALL_ROOT",
+    TOOLS_ROOT / "java" if IS_WINDOWS else Path("/opt"),
+)
 JAVA_HOME_SYMLINK = JAVA_INSTALL_ROOT / "jdk-21"
 JAVA_PROFILE_FILE = Path("/etc/profile.d/im-project-java.sh")
 JAVA_ARCHIVE_NAMES = {
-    "x64": "openjdk-21_linux-x64_bin.tar.gz",
-    "aarch64": "openjdk-21_linux-aarch64_bin.tar.gz",
+    ("linux", "x64"): "openjdk-21_linux-x64_bin.tar.gz",
+    ("linux", "aarch64"): "openjdk-21_linux-aarch64_bin.tar.gz",
+    ("windows", "x64"): "microsoft-jdk-21-windows-x64.zip",
+    ("windows", "aarch64"): "microsoft-jdk-21-windows-aarch64.zip",
 }
 JAVA_DOWNLOAD_URLS = {
-    "x64": [
+    ("linux", "x64"): [
         "https://mirrors.huaweicloud.com/openjdk/21/openjdk-21_linux-x64_bin.tar.gz",
         "https://repo.huaweicloud.com/openjdk/21/openjdk-21_linux-x64_bin.tar.gz",
         "https://aka.ms/download-jdk/microsoft-jdk-21-linux-x64.tar.gz",
     ],
-    "aarch64": [
+    ("linux", "aarch64"): [
         "https://mirrors.huaweicloud.com/openjdk/21/openjdk-21_linux-aarch64_bin.tar.gz",
         "https://repo.huaweicloud.com/openjdk/21/openjdk-21_linux-aarch64_bin.tar.gz",
         "https://aka.ms/download-jdk/microsoft-jdk-21-linux-aarch64.tar.gz",
     ],
+    ("windows", "x64"): [
+        "https://aka.ms/download-jdk/microsoft-jdk-21-windows-x64.zip",
+        "https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jdk/hotspot/normal/eclipse?project=jdk",
+    ],
+    ("windows", "aarch64"): [
+        "https://aka.ms/download-jdk/microsoft-jdk-21-windows-aarch64.zip",
+        "https://api.adoptium.net/v3/binary/latest/21/ga/windows/aarch64/jdk/hotspot/normal/eclipse?project=jdk",
+    ],
 }
 
 MAVEN_VERSION = "3.9.14"
-MAVEN_LOCAL_REPOSITORY = Path("/home/maven")
+MAVEN_LOCAL_REPOSITORY = _path_from_env(
+    "MAVEN_LOCAL_REPOSITORY",
+    PROJECT_ROOT / ".maven-repository" if IS_WINDOWS else Path("/home/maven"),
+)
 MAVEN_SETTINGS_FILE = MAVEN_LOCAL_REPOSITORY / "settings.xml"
-MAVEN_INSTALL_ROOT = Path("/opt")
+MAVEN_INSTALL_ROOT = _path_from_env(
+    "IM_MAVEN_INSTALL_ROOT",
+    TOOLS_ROOT / "maven" if IS_WINDOWS else Path("/opt"),
+)
 MAVEN_INSTALL_DIR = MAVEN_INSTALL_ROOT / f"apache-maven-{MAVEN_VERSION}"
 MAVEN_SYMLINK = MAVEN_INSTALL_ROOT / "maven"
 MAVEN_BIN_SYMLINK = Path("/usr/local/bin/mvn")
@@ -293,6 +325,7 @@ def find_usable_java_home() -> Optional[Path]:
         inferred_home = infer_java_home_from_binary(Path(binary_path))
         if inferred_home:
             candidates.append(inferred_home)
+    candidates.extend(find_common_java_homes())
 
     seen: set[Path] = set()
     for candidate in candidates:
@@ -312,9 +345,44 @@ def infer_java_home_from_binary(binary_path: Path) -> Optional[Path]:
     return resolved.parent.parent
 
 
+def find_common_java_homes() -> list[Path]:
+    candidates: list[Path] = []
+    if IS_WINDOWS:
+        roots = [
+            Path(os.getenv("ProgramFiles", r"C:\Program Files")) / "Microsoft",
+            Path(os.getenv("ProgramFiles", r"C:\Program Files")) / "Eclipse Adoptium",
+            Path(os.getenv("ProgramFiles", r"C:\Program Files")) / "Java",
+            Path(os.getenv("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Microsoft",
+            Path(os.getenv("LOCALAPPDATA", "")) / "Programs" / "Eclipse Adoptium",
+            JAVA_INSTALL_ROOT,
+        ]
+    else:
+        roots = [
+            JAVA_INSTALL_ROOT,
+            Path("/usr/lib/jvm"),
+            Path("/usr/java"),
+        ]
+
+    for root in roots:
+        if not root or not root.is_dir():
+            continue
+        for child in root.iterdir():
+            if not child.is_dir():
+                continue
+            name = child.name.lower()
+            if "jdk" in name or "java-21" in name or "openjdk-21" in name:
+                candidates.append(child)
+    return candidates
+
+
+def java_bin(java_home: Path, name: str) -> Path:
+    executable = f"{name}.exe" if IS_WINDOWS else name
+    return java_home / "bin" / executable
+
+
 def is_usable_java_home(java_home: Path) -> bool:
-    java_cmd = java_home / "bin" / "java"
-    javac_cmd = java_home / "bin" / "javac"
+    java_cmd = java_bin(java_home, "java")
+    javac_cmd = java_bin(java_home, "javac")
     if not java_cmd.is_file() or not javac_cmd.is_file():
         return False
     return get_java_major_version(java_cmd) >= JAVA_REQUIRED_MAJOR
@@ -333,6 +401,14 @@ def get_java_major_version(java_cmd: Path) -> int:
 
 
 def install_java() -> Path:
+    if IS_WINDOWS:
+        if install_java_with_windows_package_manager():
+            java_home = find_usable_java_home()
+            if java_home:
+                return java_home
+            print("Windows 包管理器安装完成，但仍未找到可用 JDK，继续使用压缩包方式安装。")
+        return install_java_from_archive()
+
     if os.name != "posix":
         fatal(f"当前系统未检测到 JDK {JAVA_REQUIRED_MAJOR}+，自动安装仅支持 Linux/macOS，请手动安装后重试。")
 
@@ -343,6 +419,47 @@ def install_java() -> Path:
         print("系统包管理器安装完成，但仍未找到可用 JDK，继续使用压缩包方式安装。")
 
     return install_java_from_archive()
+
+
+def install_java_with_windows_package_manager() -> bool:
+    package_manager_commands = [
+        (
+            "winget",
+            [
+                [
+                    "winget",
+                    "install",
+                    "--id",
+                    "Microsoft.OpenJDK.21",
+                    "-e",
+                    "--accept-package-agreements",
+                    "--accept-source-agreements",
+                    "--silent",
+                ]
+            ],
+        ),
+        ("choco", [["choco", "install", "-y", "microsoft-openjdk21"]]),
+        ("scoop", [["scoop", "install", "java/microsoft21-jdk"]]),
+    ]
+
+    for executable, commands in package_manager_commands:
+        if not shutil.which(executable):
+            continue
+
+        print(f"检测到 Windows 包管理器 {executable}，尝试自动安装 JDK {JAVA_REQUIRED_MAJOR}。")
+        succeeded = True
+        for command in commands:
+            result = run_command(command, check=False)
+            if result.returncode != 0:
+                succeeded = False
+                break
+        if succeeded:
+            return True
+
+        print(f"通过 {executable} 安装 JDK 失败，尝试下一种安装方式。")
+
+    print("未检测到可用 Windows 包管理器，或包管理器安装均失败，改用压缩包方式安装 JDK。")
+    return False
 
 
 def install_java_with_package_manager() -> bool:
@@ -375,12 +492,18 @@ def install_java_with_package_manager() -> bool:
 
 
 def install_java_from_archive() -> Path:
+    java_platform = resolve_java_platform()
     java_arch = resolve_java_architecture()
-    archive_name = JAVA_ARCHIVE_NAMES[java_arch]
-    archive_path = Path("/tmp") / archive_name
+    archive_key = (java_platform, java_arch)
+    archive_name = JAVA_ARCHIVE_NAMES.get(archive_key)
+    download_urls = JAVA_DOWNLOAD_URLS.get(archive_key)
+    if not archive_name or not download_urls:
+        fatal(f"当前系统暂不支持自动安装 JDK: {platform.system()} {platform.machine()}")
+
+    archive_path = Path(tempfile.gettempdir()) / archive_name
     downloader = resolve_downloader()
 
-    for download_url in JAVA_DOWNLOAD_URLS[java_arch]:
+    for download_url in download_urls:
         print(f"开始下载 JDK {JAVA_REQUIRED_MAJOR}: {download_url}")
         if download_archive(downloader, download_url, archive_path):
             break
@@ -393,10 +516,24 @@ def install_java_from_archive() -> Path:
         fatal(f"无法识别 JDK 压缩包顶层目录: {archive_path}")
 
     extracted_home = JAVA_INSTALL_ROOT / extracted_dir_name
+    if IS_WINDOWS:
+        ensure_directory(JAVA_INSTALL_ROOT)
+        shutil.unpack_archive(str(archive_path), str(JAVA_INSTALL_ROOT))
+        return extracted_home
+
     run_privileged_command(["mkdir", "-p", str(JAVA_INSTALL_ROOT)])
     run_privileged_command(["tar", "-xzf", str(archive_path), "-C", str(JAVA_INSTALL_ROOT)])
     run_privileged_command(["ln", "-sfn", str(extracted_home), str(JAVA_HOME_SYMLINK)])
     return JAVA_HOME_SYMLINK
+
+
+def resolve_java_platform() -> str:
+    system_name = platform.system().lower()
+    if system_name == "windows":
+        return "windows"
+    if system_name == "linux":
+        return "linux"
+    fatal(f"当前系统暂不支持自动安装 JDK: {platform.system()}")
 
 
 def resolve_java_architecture() -> str:
@@ -409,6 +546,14 @@ def resolve_java_architecture() -> str:
 
 
 def get_archive_top_level_dir(archive_path: Path) -> Optional[str]:
+    if archive_path.suffix.lower() == ".zip":
+        with zipfile.ZipFile(archive_path) as archive:
+            for member_name in archive.namelist():
+                parts = Path(member_name).parts
+                if parts:
+                    return parts[0]
+        return None
+
     with tarfile.open(archive_path, "r:gz") as archive:
         for member in archive:
             parts = Path(member.name).parts
@@ -425,6 +570,10 @@ def configure_java_home(java_home: Path) -> None:
     if java_bin not in path_parts:
         os.environ["PATH"] = os.pathsep.join([java_bin] + path_parts)
 
+    if IS_WINDOWS:
+        persist_windows_java_home(java_home_text)
+        return
+
     profile_content = (
         f"export JAVA_HOME={shlex.quote(java_home_text)}\n"
         "export PATH=\"$JAVA_HOME/bin:$PATH\"\n"
@@ -435,14 +584,33 @@ def configure_java_home(java_home: Path) -> None:
         print(f"警告: 无法写入 {JAVA_PROFILE_FILE}，当前部署进程已设置 JAVA_HOME，但重新登录后可能需要手动配置。")
 
 
+def persist_windows_java_home(java_home_text: str) -> None:
+    setx_cmd = shutil.which("setx")
+    if not setx_cmd:
+        print("警告: 当前进程已设置 JAVA_HOME，但未找到 setx，无法持久写入 Windows 用户环境变量。")
+        return
+
+    result = run_command([setx_cmd, "JAVA_HOME", java_home_text], capture_output=True, check=False)
+    if result.returncode != 0:
+        print("警告: 当前进程已设置 JAVA_HOME，但写入 Windows 用户环境变量失败。")
+
+
 def verify_java_home(java_home: Path) -> None:
     if not is_usable_java_home(java_home):
         fatal(f"JDK 安装完成但校验失败，请检查 JAVA_HOME={java_home}")
-    run_command([java_home / "bin" / "java", "-version"])
-    run_command([java_home / "bin" / "javac", "-version"])
+    run_command([java_bin(java_home, "java"), "-version"])
+    run_command([java_bin(java_home, "javac"), "-version"])
 
 
 def install_maven() -> str:
+    if IS_WINDOWS:
+        if install_maven_with_windows_package_manager():
+            mvn_cmd = shutil.which("mvn") or shutil.which("mvn.cmd")
+            if mvn_cmd:
+                return mvn_cmd
+            print("Windows 包管理器安装完成，但 PATH 中仍未找到 mvn，继续使用压缩包方式安装。")
+        return install_maven_from_archive()
+
     if os.name != "posix":
         fatal("当前系统未检测到 Maven，自动安装仅支持 Linux/macOS，请手动安装 Maven 后重试。")
 
@@ -453,6 +621,47 @@ def install_maven() -> str:
         print("系统包管理器安装完成，但 PATH 中仍未找到 mvn，继续使用压缩包方式安装。")
 
     return install_maven_from_archive()
+
+
+def install_maven_with_windows_package_manager() -> bool:
+    package_manager_commands = [
+        (
+            "winget",
+            [
+                [
+                    "winget",
+                    "install",
+                    "--id",
+                    "Apache.Maven",
+                    "-e",
+                    "--accept-package-agreements",
+                    "--accept-source-agreements",
+                    "--silent",
+                ]
+            ],
+        ),
+        ("choco", [["choco", "install", "-y", "maven"]]),
+        ("scoop", [["scoop", "install", "maven"]]),
+    ]
+
+    for executable, commands in package_manager_commands:
+        if not shutil.which(executable):
+            continue
+
+        print(f"检测到 Windows 包管理器 {executable}，尝试自动安装 Maven。")
+        succeeded = True
+        for command in commands:
+            result = run_command(command, check=False)
+            if result.returncode != 0:
+                succeeded = False
+                break
+        if succeeded:
+            return True
+
+        print(f"通过 {executable} 安装 Maven 失败，尝试下一种安装方式。")
+
+    print("未检测到可用 Windows 包管理器，或包管理器安装均失败，改用压缩包方式安装 Maven。")
+    return False
 
 
 def install_maven_with_package_manager() -> bool:
@@ -485,7 +694,7 @@ def install_maven_with_package_manager() -> bool:
 
 
 def install_maven_from_archive() -> str:
-    archive_path = Path("/tmp") / MAVEN_ARCHIVE_NAME
+    archive_path = Path(tempfile.gettempdir()) / MAVEN_ARCHIVE_NAME
     downloader = resolve_downloader()
     for download_url in MAVEN_DOWNLOAD_URLS:
         print(f"开始下载 Maven {MAVEN_VERSION}: {download_url}")
@@ -495,13 +704,17 @@ def install_maven_from_archive() -> str:
     else:
         fatal("所有 Maven 下载地址均不可用，请检查服务器网络或稍后重试。")
 
-    run_privileged_command(["mkdir", "-p", str(MAVEN_INSTALL_ROOT)])
-    run_privileged_command(["mkdir", "-p", str(MAVEN_BIN_SYMLINK.parent)])
-    run_privileged_command(["tar", "-xzf", str(archive_path), "-C", str(MAVEN_INSTALL_ROOT)])
-    run_privileged_command(["ln", "-sfn", str(MAVEN_INSTALL_DIR), str(MAVEN_SYMLINK)])
-    run_privileged_command(["ln", "-sfn", str(MAVEN_SYMLINK / "bin" / "mvn"), str(MAVEN_BIN_SYMLINK)])
-
-    mvn_cmd = shutil.which("mvn") or str(MAVEN_SYMLINK / "bin" / "mvn")
+    if IS_WINDOWS:
+        ensure_directory(MAVEN_INSTALL_ROOT)
+        shutil.unpack_archive(str(archive_path), str(MAVEN_INSTALL_ROOT))
+        mvn_cmd = str(MAVEN_INSTALL_DIR / "bin" / "mvn.cmd")
+    else:
+        run_privileged_command(["mkdir", "-p", str(MAVEN_INSTALL_ROOT)])
+        run_privileged_command(["mkdir", "-p", str(MAVEN_BIN_SYMLINK.parent)])
+        run_privileged_command(["tar", "-xzf", str(archive_path), "-C", str(MAVEN_INSTALL_ROOT)])
+        run_privileged_command(["ln", "-sfn", str(MAVEN_INSTALL_DIR), str(MAVEN_SYMLINK)])
+        run_privileged_command(["ln", "-sfn", str(MAVEN_SYMLINK / "bin" / "mvn"), str(MAVEN_BIN_SYMLINK)])
+        mvn_cmd = shutil.which("mvn") or str(MAVEN_SYMLINK / "bin" / "mvn")
     if not Path(mvn_cmd).exists() and not shutil.which(mvn_cmd):
         fatal("Maven 压缩包安装完成后仍未找到 mvn 命令，请检查 /opt/maven/bin/mvn。")
     return mvn_cmd
@@ -513,8 +726,16 @@ def download_archive(downloader: str, download_url: str, archive_path: Path) -> 
 
     if downloader == "curl":
         command = ["curl", "-fL", download_url, "-o", archive_path]
-    else:
+    elif downloader == "wget":
         command = ["wget", "-O", archive_path, download_url]
+    else:
+        try:
+            urllib.request.urlretrieve(download_url, str(archive_path))
+        except Exception:
+            if archive_path.exists():
+                archive_path.unlink()
+            return False
+        return archive_path.is_file() and archive_path.stat().st_size > 0
 
     result = run_command(command, check=False)
     if result.returncode == 0 and archive_path.is_file() and archive_path.stat().st_size > 0:
@@ -530,7 +751,7 @@ def resolve_downloader() -> str:
         return "curl"
     if shutil.which("wget"):
         return "wget"
-    fatal("自动下载 Maven 需要 curl 或 wget，请先安装其中任意一个后重试。")
+    return "python"
 
 
 def run_privileged_command(command: Sequence[str], *, check: bool = True) -> subprocess.CompletedProcess[Any]:

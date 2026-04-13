@@ -10,6 +10,8 @@ __pycache__/
 logs/
 test_reports/
 test_report_*.json
+.deploy-tools/
+.maven-repository/
 
 # Log file
 *.log
