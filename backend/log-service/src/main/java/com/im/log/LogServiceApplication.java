@@ -7,7 +7,7 @@ import org.springframework.context.annotation.ComponentScan;
 
 @SpringBootApplication
 @EnableDiscoveryClient
-@ComponentScan(basePackages = {"com.im.log", "com.im.config", "com.im.exception"})
+@ComponentScan(basePackages = {"com.im.log", "com.im.config", "com.im.exception", "com.im.interceptor"})
 public class LogServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(LogServiceApplication.class, args);
