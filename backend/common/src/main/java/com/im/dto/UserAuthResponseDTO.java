@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
 import lombok.Builder;
 
+import java.util.List;
+
 /**
  * 用户认证响应DTO
  */
@@ -21,6 +23,7 @@ public class UserAuthResponseDTO {
     private Long expiresInMs;
     private Long refreshExpiresInMs;
     private String imToken;
+    private List<String> permissions;
     
     public static UserAuthResponseDTO success(UserDTO user, String token, String imToken) {
         return UserAuthResponseDTO.builder()

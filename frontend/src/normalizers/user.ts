@@ -99,6 +99,11 @@ export const normalizeFriendRequest = (raw: unknown): FriendRequest => {
 
 export const normalizeUserAuthResponse = (raw: unknown): UserAuthResponse => {
   const record = isRecord(raw) ? raw : {};
+  const rawPermissions = Array.isArray(record.permissions)
+    ? record.permissions
+    : Array.isArray(record.resourcePermissions)
+      ? record.resourcePermissions
+      : [];
   return {
     success: asBoolean(record.success, false),
     message: asString(record.message, "操作失败"),
@@ -112,6 +117,7 @@ export const normalizeUserAuthResponse = (raw: unknown): UserAuthResponse => {
     )
       ? asNumber(record.refreshExpiresInMs, 0)
       : undefined,
+    permissions: rawPermissions.map((item) => asString(item)).filter(Boolean),
   };
 };
 

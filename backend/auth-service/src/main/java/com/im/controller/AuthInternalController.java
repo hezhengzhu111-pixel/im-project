@@ -72,7 +72,7 @@ public class AuthInternalController {
                 ? tokenRevocationCheckEnabled
                 : Boolean.parseBoolean(checkRevokedHeader);
         if (checkRevoked && result != null && result.isValid() && !result.isExpired()
-                && authTokenRevokeService.isTokenRevoked(normalizedToken)) {
+                && authTokenRevokeService.isTokenRevoked(normalizedToken, result)) {
             result.setValid(false);
             result.setError("token已吊销");
             result.setUserId(null);
@@ -81,6 +81,7 @@ public class AuthInternalController {
             result.setExpiresAtEpochMs(null);
             result.setJti(null);
             result.setTokenType(null);
+            result.setPermissions(null);
         }
         return ApiResponse.success(result);
     }

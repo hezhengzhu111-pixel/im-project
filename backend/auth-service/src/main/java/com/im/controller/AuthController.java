@@ -38,6 +38,9 @@ public class AuthController {
     @Value("${im.auth.cookie.same-site:Lax}")
     private String authCookieSameSite;
 
+    @Value("${im.auth.cookie.secure:auto}")
+    private String authCookieSecure;
+
     @PostMapping("/refresh")
     public ApiResponse<TokenPairDTO> refresh(
             @RequestBody(required = false) RefreshTokenRequest request,
@@ -91,7 +94,7 @@ public class AuthController {
             HttpServletRequest request,
             TokenPairDTO tokenPair
     ) {
-        boolean secure = request != null && request.isSecure();
+        boolean secure = AuthCookieUtil.resolveSecure(request, authCookieSecure);
         response.addHeader(
                 HttpHeaders.SET_COOKIE,
                 AuthCookieUtil.buildTokenCookie(

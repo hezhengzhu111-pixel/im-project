@@ -30,11 +30,13 @@ public class UserDTO implements Serializable {
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @ToString.Exclude
     @NotBlank(message = "密码不能为空", groups = RegisterGroup.class)
-    @Size(min = 6, max = 64, message = "密码长度需在6-64位", groups = RegisterGroup.class)
+    @Size(min = 8, max = 64, message = "密码长度需在8-64位", groups = RegisterGroup.class)
+    @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d).{8,64}$", message = "密码需包含字母和数字", groups = RegisterGroup.class)
     private String password;
 
     @NotBlank(message = "用户名不能为空", groups = RegisterGroup.class)
-    @Size(min = 3, max = 32, message = "用户名长度需在3-32位", groups = RegisterGroup.class)
+    @Size(min = 3, max = 20, message = "用户名长度需在3-20位", groups = RegisterGroup.class)
+    @Pattern(regexp = "^[a-zA-Z0-9_]{3,20}$", message = "用户名只能包含字母、数字和下划线", groups = RegisterGroup.class)
     private String username;
 
     @Size(max = 32, message = "昵称长度不能超过32位", groups = {RegisterGroup.class, UpdateGroup.class})

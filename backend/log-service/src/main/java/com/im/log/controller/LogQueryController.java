@@ -2,6 +2,7 @@ package com.im.log.controller;
 
 
 import com.im.dto.ApiResponse;
+import com.im.util.AuthContextUtil;
 import com.im.log.entity.LogDocument;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
@@ -46,6 +47,7 @@ public class LogQueryController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "100") int size) {
 
+        requireLogRead();
         try {
             Criteria criteria = new Criteria();
             if (StringUtils.hasText(traceId)) {
@@ -70,6 +72,12 @@ public class LogQueryController {
         } catch (Exception e) {
             // Fallback to local files
             return ApiResponse.success(fallbackQuery(traceId, level, keyword, page, size));
+        }
+    }
+
+    private void requireLogRead() {
+        if (!AuthContextUtil.hasAnyPermission("log:read", "admin")) {
+            throw new SecurityException("log read permission required");
         }
     }
 

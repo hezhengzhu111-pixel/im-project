@@ -31,6 +31,8 @@ import java.util.UUID;
 public class AuthTokenService {
 
     private static final String REFRESH_JTI_KEY_PREFIX = "auth:refresh:jti:";
+    private static final String PREVIOUS_REFRESH_KEY_PREFIX = "auth:refresh:previous:";
+    private static final String REFRESH_LOCK_KEY_PREFIX = "auth:refresh:lock:";
     private static final String WS_TICKET_KEY_PREFIX = "auth:ws:ticket:";
 
     private final StringRedisTemplate stringRedisTemplate;
@@ -49,10 +51,20 @@ public class AuthTokenService {
     @Value("${auth.refresh.expiration:604800000}")
     private long refreshExpirationMs;
 
+    @Value("${auth.refresh.previous-grace-seconds:10}")
+    private long previousRefreshGraceSeconds;
+
+    @Value("${auth.refresh.lock-seconds:5}")
+    private long refreshLockSeconds;
+
     @Value("${auth.ws-ticket.ttl-seconds:30}")
     private long wsTicketTtlSeconds;
 
     public TokenPairDTO issueTokenPair(Long userId, String username) {
+        return issueTokenPair(userId, username, null);
+    }
+
+    private TokenPairDTO issueTokenPair(Long userId, String username, String previousRefreshJti) {
         if (userId == null || username == null || username.trim().isEmpty()) {
             throw new IllegalArgumentException("userId/username不能为空");
         }
@@ -71,6 +83,7 @@ public class AuthTokenService {
         dto.setRefreshToken(refreshToken);
         dto.setExpiresInMs(accessExpirationMs);
         dto.setRefreshExpiresInMs(refreshExpirationMs);
+        storePreviousRefreshResult(userId, previousRefreshJti, dto);
         return dto;
     }
 
@@ -146,7 +159,15 @@ public class AuthTokenService {
         result.setJti(info.getJti());
         result.setIssuedAtEpochMs(info.getIssuedAtEpochMs());
         result.setExpiresAtEpochMs(info.getExpiresAtEpochMs());
-        
+        if (result.isValid() && !result.isExpired() && result.getUserId() != null) {
+            try {
+                AuthUserResourceDTO resource = authUserResourceService.getOrLoad(result.getUserId());
+                result.setPermissions(resource == null ? null : resource.getResourcePermissions());
+            } catch (Exception e) {
+                log.debug("load token permissions failed, userId={}", result.getUserId(), e);
+            }
+        }
+
         if (!allowExpired && result.isExpired()) {
             result.setUserId(null);
             result.setUsername(null);
@@ -161,6 +182,44 @@ public class AuthTokenService {
 
     private void storeRefreshJti(Long userId, String refreshJti) {
         stringRedisTemplate.opsForValue().set(REFRESH_JTI_KEY_PREFIX + userId, refreshJti, Duration.ofMillis(refreshExpirationMs));
+    }
+
+    private void storePreviousRefreshResult(Long userId, String previousRefreshJti, TokenPairDTO dto) {
+        if (userId == null || previousRefreshJti == null || previousRefreshJti.isBlank() || dto == null) {
+            return;
+        }
+        String key = PREVIOUS_REFRESH_KEY_PREFIX + userId + ":" + previousRefreshJti;
+        String value = String.join("\n",
+                safe(dto.getAccessToken()),
+                safe(dto.getRefreshToken()),
+                String.valueOf(dto.getExpiresInMs() == null ? 0L : dto.getExpiresInMs()),
+                String.valueOf(dto.getRefreshExpiresInMs() == null ? 0L : dto.getRefreshExpiresInMs())
+        );
+        stringRedisTemplate.opsForValue().set(
+                key,
+                value,
+                Duration.ofSeconds(Math.max(1L, previousRefreshGraceSeconds))
+        );
+    }
+
+    private TokenPairDTO readPreviousRefreshResult(Long userId, String refreshJti) {
+        if (userId == null || refreshJti == null || refreshJti.isBlank()) {
+            return null;
+        }
+        String payload = stringRedisTemplate.opsForValue().get(PREVIOUS_REFRESH_KEY_PREFIX + userId + ":" + refreshJti);
+        if (payload == null || payload.isBlank()) {
+            return null;
+        }
+        String[] parts = payload.split("\\n", -1);
+        if (parts.length < 4 || parts[0].isBlank() || parts[1].isBlank()) {
+            return null;
+        }
+        TokenPairDTO dto = new TokenPairDTO();
+        dto.setAccessToken(parts[0]);
+        dto.setRefreshToken(parts[1]);
+        dto.setExpiresInMs(parseLong(parts[2], accessExpirationMs));
+        dto.setRefreshExpiresInMs(parseLong(parts[3], refreshExpirationMs));
+        return dto;
     }
 
     private RefreshRequestInput refreshInput(RefreshTokenRequest request) {
@@ -181,13 +240,55 @@ public class AuthTokenService {
             throw new SecurityException("refreshToken解析失败");
         }
 
-        validateStoredRefreshJti(userId, refreshJti);
         validateAccessTokenMatch(input.accessToken(), userId, username);
-        return new RefreshTokenProcessContext(userId, username);
+        String storedJti = stringRedisTemplate.opsForValue().get(REFRESH_JTI_KEY_PREFIX + userId);
+        if (storedJti != null && storedJti.equals(refreshJti)) {
+            if (!tryAcquireRefreshLock(userId, refreshJti)) {
+                TokenPairDTO concurrentResult = waitForPreviousRefreshResult(userId, refreshJti);
+                if (concurrentResult != null) {
+                    return new RefreshTokenProcessContext(userId, username, refreshJti, concurrentResult);
+                }
+                throw new SecurityException("refreshToken正在刷新，请重试");
+            }
+            return new RefreshTokenProcessContext(userId, username, refreshJti, null);
+        }
+        TokenPairDTO previousResult = readPreviousRefreshResult(userId, refreshJti);
+        if (previousResult != null) {
+            return new RefreshTokenProcessContext(userId, username, refreshJti, previousResult);
+        }
+        throw new SecurityException("refreshToken已失效");
     }
 
     private TokenPairDTO refreshOutput(RefreshTokenProcessContext context) {
-        return issueTokenPair(context.userId(), context.username());
+        if (context.previousResult() != null) {
+            return context.previousResult();
+        }
+        return issueTokenPair(context.userId(), context.username(), context.refreshJti());
+    }
+
+    private boolean tryAcquireRefreshLock(Long userId, String refreshJti) {
+        Boolean acquired = stringRedisTemplate.opsForValue().setIfAbsent(
+                REFRESH_LOCK_KEY_PREFIX + userId + ":" + refreshJti,
+                "1",
+                Duration.ofSeconds(Math.max(1L, refreshLockSeconds))
+        );
+        return Boolean.TRUE.equals(acquired);
+    }
+
+    private TokenPairDTO waitForPreviousRefreshResult(Long userId, String refreshJti) {
+        for (int i = 0; i < 10; i++) {
+            TokenPairDTO previous = readPreviousRefreshResult(userId, refreshJti);
+            if (previous != null) {
+                return previous;
+            }
+            try {
+                Thread.sleep(25L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
+        return null;
     }
 
     private void validateRefreshParsed(TokenParser.TokenParseInfo refreshParsed) {
@@ -199,13 +300,6 @@ public class AuthTokenService {
         }
         if (!"refresh".equals(refreshParsed.getTokenType())) {
             throw new SecurityException("token类型错误");
-        }
-    }
-
-    private void validateStoredRefreshJti(Long userId, String refreshJti) {
-        String storedJti = stringRedisTemplate.opsForValue().get(REFRESH_JTI_KEY_PREFIX + userId);
-        if (storedJti == null || !storedJti.equals(refreshJti)) {
-            throw new SecurityException("refreshToken已失效");
         }
     }
 
@@ -263,6 +357,18 @@ public class AuthTokenService {
             t = t.substring("Bearer ".length()).trim();
         }
         return t;
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
+    }
+
+    private Long parseLong(String value, Long fallback) {
+        try {
+            return Long.valueOf(value);
+        } catch (Exception e) {
+            return fallback;
+        }
     }
 
     private WsTicketConsumeResultDTO invalidWsTicket(String error) {
@@ -327,7 +433,7 @@ public class AuthTokenService {
     private record RefreshRequestInput(String refreshToken, String accessToken) {
     }
 
-    private record RefreshTokenProcessContext(Long userId, String username) {
+    private record RefreshTokenProcessContext(Long userId, String username, String refreshJti, TokenPairDTO previousResult) {
     }
 
     private record WsTicketPayload(Long userId, String username) {

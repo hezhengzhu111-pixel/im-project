@@ -10,9 +10,14 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +31,12 @@ public class AuthUserResourceService {
 
     @Value("${auth.resource-cache.ttl-seconds:604800}")
     private long resourceCacheTtlSeconds;
+
+    @Value("${im.auth.admin-usernames:}")
+    private String adminUsernames;
+
+    @Value("${im.auth.admin-user-ids:}")
+    private String adminUserIds;
 
     public AuthUserResourceDTO getOrLoad(Long userId) {
         if (userId == null) {
@@ -61,7 +72,7 @@ public class AuthUserResourceService {
         AuthUserResourceDTO dto = new AuthUserResourceDTO();
         dto.setUserId(userId);
         dto.setUsername(request.getUsername());
-        dto.setResourcePermissions(Collections.emptyList());
+        dto.setResourcePermissions(resolvePermissions(request));
         dto.setDataScopes(Collections.emptyMap());
         dto.setUserInfo(buildUserInfo(request));
 
@@ -91,5 +102,55 @@ public class AuthUserResourceService {
         map.put("email", user.getEmail());
         map.put("phone", user.getPhone());
         return map;
+    }
+
+    private List<String> resolvePermissions(IssueTokenRequest request) {
+        Set<String> permissions = new LinkedHashSet<>();
+        if (request.getPermissions() != null) {
+            for (String permission : request.getPermissions()) {
+                if (permission != null && !permission.isBlank()) {
+                    permissions.add(permission.trim());
+                }
+            }
+        }
+        if (isConfiguredAdmin(request)) {
+            permissions.add("admin");
+            permissions.add("log:read");
+            permissions.add("file:delete");
+            permissions.add("file:read");
+        }
+        return new ArrayList<>(permissions);
+    }
+
+    private boolean isConfiguredAdmin(IssueTokenRequest request) {
+        if (request == null || request.getUserId() == null) {
+            return false;
+        }
+        String username = request.getUsername() == null
+                ? ""
+                : request.getUsername().trim().toLowerCase(Locale.ROOT);
+        return parseCsv(adminUserIds).contains(String.valueOf(request.getUserId()))
+                || (!username.isEmpty() && parseCsvLower(adminUsernames).contains(username));
+    }
+
+    private Set<String> parseCsv(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Collections.emptySet();
+        }
+        Set<String> values = new LinkedHashSet<>();
+        for (String item : raw.split(",")) {
+            if (item != null && !item.isBlank()) {
+                values.add(item.trim());
+            }
+        }
+        return values;
+    }
+
+    private Set<String> parseCsvLower(String raw) {
+        Set<String> values = new LinkedHashSet<>();
+        for (String item : parseCsv(raw)) {
+            values.add(item.toLowerCase(Locale.ROOT));
+        }
+        return values;
     }
 }

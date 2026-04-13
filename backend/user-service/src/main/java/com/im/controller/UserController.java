@@ -49,6 +49,9 @@ public class UserController {
     @Value("${im.auth.cookie.same-site:Lax}")
     private String authCookieSameSite;
 
+    @Value("${im.auth.cookie.secure:auto}")
+    private String authCookieSecure;
+
     private final UserService userService;
 
     private final ImService imService;
@@ -104,6 +107,7 @@ public class UserController {
                 .expiresInMs(authResponse.getExpiresInMs())
                 .refreshExpiresInMs(authResponse.getRefreshExpiresInMs())
                 .imToken(authResponse.getImToken())
+                .permissions(authResponse.getPermissions())
                 .build());
     }
 
@@ -187,8 +191,16 @@ public class UserController {
 
     @PutMapping("/password")
     @Operation(summary = "修改密码", description = "修改用户密码")
-    public ApiResponse<Boolean> changePassword(@RequestAttribute("userId") Long userId, @RequestBody @Validated ChangePasswordRequest request) {
-        return ApiResponse.success(userService.changePassword(userId, request.getCurrentPassword(), request.getNewPassword()));
+    public ApiResponse<Boolean> changePassword(
+            @RequestAttribute("userId") Long userId,
+            @RequestBody @Validated ChangePasswordRequest request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
+        Boolean changed = userService.changePassword(userId, request.getCurrentPassword(), request.getNewPassword());
+        if (Boolean.TRUE.equals(changed)) {
+            clearAuthCookies(httpResponse, httpRequest);
+        }
+        return ApiResponse.success(changed);
     }
 
     @PostMapping("/phone/code")
@@ -219,8 +231,16 @@ public class UserController {
 
     @DeleteMapping("/account")
     @Operation(summary = "注销账户", description = "验证密码后注销账户")
-    public ApiResponse<Boolean> deleteAccount(@RequestAttribute("userId") Long userId, @RequestBody @Validated DeleteAccountRequest request) {
-        return ApiResponse.success(userService.deleteAccount(userId, request.getPassword()));
+    public ApiResponse<Boolean> deleteAccount(
+            @RequestAttribute("userId") Long userId,
+            @RequestBody @Validated DeleteAccountRequest request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
+        Boolean deleted = userService.deleteAccount(userId, request.getPassword());
+        if (Boolean.TRUE.equals(deleted)) {
+            clearAuthCookies(httpResponse, httpRequest);
+        }
+        return ApiResponse.success(deleted);
     }
 
     @GetMapping("/settings")
@@ -246,7 +266,7 @@ public class UserController {
         if (authResponse == null) {
             return;
         }
-        boolean secure = request != null && request.isSecure();
+        boolean secure = AuthCookieUtil.resolveSecure(request, authCookieSecure);
         if (authResponse.getToken() != null && !authResponse.getToken().isBlank()) {
             response.addHeader(
                     HttpHeaders.SET_COOKIE,
@@ -274,7 +294,7 @@ public class UserController {
     }
 
     private void clearAuthCookies(HttpServletResponse response, HttpServletRequest request) {
-        boolean secure = request != null && request.isSecure();
+        boolean secure = AuthCookieUtil.resolveSecure(request, authCookieSecure);
         response.addHeader(
                 HttpHeaders.SET_COOKIE,
                 AuthCookieUtil.clearCookie(accessTokenCookieName, secure, authCookieSameSite).toString()

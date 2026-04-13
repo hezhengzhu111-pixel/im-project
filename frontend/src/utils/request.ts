@@ -12,7 +12,10 @@ import { useUserStore } from "@/stores/user";
 import type { ApiResponse } from "@/types/api";
 import router from "@/router";
 import NProgress from "nprogress";
-import { refreshAccessTokenRaw } from "@/services/auth-refresh";
+import {
+  refreshAccessTokenCoordinated,
+  type RefreshAccessTokenStatus,
+} from "@/services/auth-refresh";
 import { logger } from "@/utils/logger";
 import { STORAGE_CONFIG } from "@/config";
 
@@ -23,7 +26,6 @@ function createTraceId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-let refreshInFlight: Promise<boolean> | null = null;
 let reauthPromptInFlight = false;
 let clearAuthSessionInFlight: Promise<void> | null = null;
 
@@ -34,6 +36,7 @@ type UserStoreLike = {
   restoreSession?: () => Promise<boolean> | boolean;
   clearSession?: () => void;
   logout?: () => Promise<unknown> | unknown;
+  getSessionGeneration?: () => number;
 };
 
 type HeaderBag = Record<string, unknown> & {
@@ -169,40 +172,53 @@ const promptReLogin = () => {
   });
 };
 
-const tryRefreshAccessToken = async (): Promise<boolean> => {
-  if (refreshInFlight) return refreshInFlight;
-  refreshInFlight = (async () => {
-    try {
-      const response = await refreshAccessTokenRaw(createTraceId());
-      const payload = response?.data;
-      if (payload?.code !== 200) {
-        return false;
-      }
-      try {
-        const nextAccessToken =
-          typeof payload?.data === "object" && payload.data !== null
-            ? String((payload.data as { accessToken?: string }).accessToken || "").trim()
-            : "";
-        storeLatestAccessToken(nextAccessToken);
-        const userStore = getUserStore();
-        const restored =
-          typeof userStore.restoreSession === "function"
-            ? await userStore.restoreSession()
-            : true;
-        if (restored === false) {
-          return false;
-        }
-      } catch {
-        return false;
-      }
-      return true;
-    } catch {
-      return false;
-    } finally {
-      refreshInFlight = null;
+const getSessionGeneration = (): number => {
+  const userStore = getUserStore();
+  return typeof userStore.getSessionGeneration === "function"
+    ? userStore.getSessionGeneration()
+    : 0;
+};
+
+const hasSessionChangedSince = (tokenBeforeRefresh?: string, generationBeforeRefresh?: number) => {
+  const latestToken = getLatestAccessToken();
+  if (latestToken && latestToken !== (tokenBeforeRefresh || "")) {
+    return true;
+  }
+  return getSessionGeneration() > (generationBeforeRefresh || 0);
+};
+
+const tryRefreshAccessToken = async (
+  config?: Record<string, unknown>,
+): Promise<boolean> => {
+  const tokenBeforeRefresh = getLatestAccessToken();
+  const generationBeforeRefresh = getSessionGeneration();
+  if (config) {
+    config.__authTokenBeforeRefresh = tokenBeforeRefresh;
+    config.__authGenerationBeforeRefresh = generationBeforeRefresh;
+  }
+
+  const refreshResult = await refreshAccessTokenCoordinated(createTraceId());
+  if (config) {
+    config.__refreshStatus = refreshResult.status;
+  }
+  if (refreshResult.status !== "success" || !refreshResult.accessToken) {
+    return hasSessionChangedSince(tokenBeforeRefresh, generationBeforeRefresh);
+  }
+
+  storeLatestAccessToken(refreshResult.accessToken);
+  try {
+    const userStore = getUserStore();
+    const restored =
+      typeof userStore.restoreSession === "function"
+        ? await userStore.restoreSession()
+        : true;
+    if (restored === false) {
+      return hasSessionChangedSince(tokenBeforeRefresh, generationBeforeRefresh);
     }
-  })();
-  return refreshInFlight;
+  } catch {
+    return hasSessionChangedSince(tokenBeforeRefresh, generationBeforeRefresh);
+  }
+  return true;
 };
 
 const shouldClearSession = (url?: string) =>
@@ -215,7 +231,7 @@ const retryWithFreshAccessToken = async (config?: Record<string, unknown>) => {
     return null;
   }
   config.__retry401 = true;
-  const refreshed = await tryRefreshAccessToken();
+  const refreshed = await tryRefreshAccessToken(config);
   if (!refreshed) {
     return null;
   }
@@ -228,6 +244,28 @@ const retryWithFreshAccessToken = async (config?: Record<string, unknown>) => {
     setHeaderValue(headers, "Authorization");
   }
   return request(config);
+};
+
+const getRefreshStatus = (config?: Record<string, unknown>): RefreshAccessTokenStatus | "" => {
+  const status = config?.__refreshStatus;
+  return status === "success" || status === "authInvalid" || status === "transientError"
+    ? status
+    : "";
+};
+
+const shouldClearAfterRefreshFailure = (config?: Record<string, unknown>) => {
+  if (getRefreshStatus(config) !== "authInvalid") {
+    return false;
+  }
+  const tokenBeforeRefresh =
+    typeof config?.__authTokenBeforeRefresh === "string"
+      ? config.__authTokenBeforeRefresh
+      : "";
+  const generationBeforeRefresh =
+    typeof config?.__authGenerationBeforeRefresh === "number"
+      ? config.__authGenerationBeforeRefresh
+      : 0;
+  return !hasSessionChangedSince(tokenBeforeRefresh, generationBeforeRefresh);
 };
 
 // 创建axios实例
@@ -341,10 +379,10 @@ request.interceptors.response.use(
       if (retried) {
         return retried;
       }
-      if (shouldClearSession(response.config.url)) {
+      if (shouldClearSession(response.config.url) && shouldClearAfterRefreshFailure(config)) {
         await clearAuthSession();
+        promptReLogin();
       }
-      promptReLogin();
 
       return Promise.reject(new Error(messageText || "未授权"));
     }
@@ -396,10 +434,10 @@ request.interceptors.response.use(
         if (retried) {
           return retried;
         }
-        if (shouldClearSession(error.config?.url)) {
+        if (shouldClearSession(error.config?.url) && shouldClearAfterRefreshFailure(config)) {
           await clearAuthSession();
+          promptReLogin();
         }
-        promptReLogin();
         break;
       }
       case 403:

@@ -81,7 +81,7 @@ class AuthInternalControllerTest {
         parseResult.setExpired(false);
         
         when(authTokenService.parseAccessToken("token", false)).thenReturn(parseResult);
-        when(authTokenRevokeService.isTokenRevoked("token")).thenReturn(false);
+        when(authTokenRevokeService.isTokenRevoked(eq("token"), any(TokenParseResultDTO.class))).thenReturn(false);
         
         ApiResponse<TokenParseResultDTO> result = controller.validateToken(httpRequest, null, "token");
         
@@ -95,7 +95,7 @@ class AuthInternalControllerTest {
         parseResult.setExpired(false);
         
         when(authTokenService.parseAccessToken("token", false)).thenReturn(parseResult);
-        when(authTokenRevokeService.isTokenRevoked("token")).thenReturn(true);
+        when(authTokenRevokeService.isTokenRevoked(eq("token"), any(TokenParseResultDTO.class))).thenReturn(true);
         
         ApiResponse<TokenParseResultDTO> result = controller.validateToken(httpRequest, null, "token");
         

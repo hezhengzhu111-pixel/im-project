@@ -19,8 +19,7 @@ public class WhiteListAuthFilter implements GlobalFilter {
             "/api/user/register",
             "/api/user/check-username",
             "/api/auth/refresh",
-            "/api/auth/parse",
-            "/api/im"
+            "/api/auth/parse"
     );
 
     @Value("${im.internal.header:X-Internal-Secret}")

@@ -6,8 +6,9 @@ const error = vi.fn();
 const restoreSession = vi.fn();
 const clearSession = vi.fn();
 const logout = vi.fn();
-const refreshAccessTokenRaw = vi.fn();
+const refreshAccessTokenCoordinated = vi.fn();
 let currentAccessToken = "";
+let sessionGeneration = 0;
 
 type MockItem = {
   status?: number;
@@ -149,7 +150,9 @@ vi.mock("@/stores/user", () => ({
     getAccessToken: () => currentAccessToken,
     setAccessToken: (token?: string | null) => {
       currentAccessToken = typeof token === "string" ? token : "";
+      sessionGeneration += 1;
     },
+    getSessionGeneration: () => sessionGeneration,
     restoreSession,
     clearSession,
     logout,
@@ -157,7 +160,7 @@ vi.mock("@/stores/user", () => ({
 }));
 
 vi.mock("@/services/auth-refresh", () => ({
-  refreshAccessTokenRaw,
+  refreshAccessTokenCoordinated,
 }));
 
 vi.mock("@/router", () => ({
@@ -179,7 +182,7 @@ describe("request refresh and retry", () => {
     requestOnFulfilled = null;
     responseOnFulfilled = null;
     responseOnRejected = null;
-    refreshAccessTokenRaw.mockReset();
+    refreshAccessTokenCoordinated.mockReset();
     restoreSession.mockReset();
     clearSession.mockReset();
     logout.mockReset();
@@ -187,6 +190,7 @@ describe("request refresh and retry", () => {
     warning.mockReset();
     error.mockReset();
     currentAccessToken = "";
+    sessionGeneration = 0;
     localStorage.clear();
     restoreSession.mockResolvedValue(true);
   });
@@ -197,14 +201,10 @@ describe("request refresh and retry", () => {
       { data: { code: 401, message: "未授权" } },
       { data: { code: 200, message: "ok", data: { ok: true } } },
     ];
-    refreshAccessTokenRaw.mockResolvedValue({
-      data: {
-        code: 200,
-        data: {
-          accessToken: "new-token",
-          expiresInMs: 60_000,
-        },
-      },
+    refreshAccessTokenCoordinated.mockResolvedValue({
+      status: "success",
+      accessToken: "new-token",
+      expiresInMs: 60_000,
     });
 
     const { http } = await import("@/utils/request");
@@ -212,8 +212,7 @@ describe("request refresh and retry", () => {
 
     expect(response.code).toBe(200);
     expect(response.data.ok).toBe(true);
-    expect(refreshAccessTokenRaw).toHaveBeenCalledTimes(1);
-    expect(refreshAccessTokenRaw).toHaveBeenCalledWith(expect.any(String));
+    expect(refreshAccessTokenCoordinated).toHaveBeenCalledTimes(1);
     expect(restoreSession).toHaveBeenCalledTimes(1);
     expect(clearSession).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
@@ -225,8 +224,9 @@ describe("request refresh and retry", () => {
 
   it("clears session and redirects to login when refresh failed", async () => {
     responseQueue["/secure"] = [{ data: { code: 401, message: "未授权" } }];
-    refreshAccessTokenRaw.mockResolvedValue({
-      data: { code: 500, message: "refresh failed" },
+    refreshAccessTokenCoordinated.mockResolvedValue({
+      status: "authInvalid",
+      message: "refresh failed",
     });
 
     const { http } = await import("@/utils/request");
@@ -243,14 +243,10 @@ describe("request refresh and retry", () => {
       { httpError: true, status: 401 },
       { data: { code: 200, message: "ok", data: { ok: true } } },
     ];
-    refreshAccessTokenRaw.mockResolvedValue({
-      data: {
-        code: 200,
-        data: {
-          accessToken: "fresh-token",
-          expiresInMs: 60_000,
-        },
-      },
+    refreshAccessTokenCoordinated.mockResolvedValue({
+      status: "success",
+      accessToken: "fresh-token",
+      expiresInMs: 60_000,
     });
 
     const { http } = await import("@/utils/request");
@@ -276,24 +272,18 @@ describe("request refresh and retry", () => {
       { data: { code: 401, message: "未授权" } },
       { data: { code: 200, message: "ok", data: { ok: "b" } } },
     ];
-    refreshAccessTokenRaw.mockImplementation(
-      async () =>
-        await new Promise((resolve) =>
-          setTimeout(
-            () =>
-              resolve({
-                data: {
-                  code: 200,
-                  data: {
-                    accessToken: "shared-token",
-                    expiresInMs: 60_000,
-                  },
-                },
-              }),
-            10,
-          ),
-        ),
+    const sharedRefresh = new Promise((resolve) =>
+      setTimeout(
+        () =>
+          resolve({
+            status: "success",
+            accessToken: "shared-token",
+            expiresInMs: 60_000,
+          }),
+        10,
+      ),
     );
+    refreshAccessTokenCoordinated.mockReturnValue(sharedRefresh);
 
     const { http } = await import("@/utils/request");
     const [responseA, responseB] = await Promise.all([
@@ -303,8 +293,8 @@ describe("request refresh and retry", () => {
 
     expect(responseA.code).toBe(200);
     expect(responseB.code).toBe(200);
-    expect(refreshAccessTokenRaw).toHaveBeenCalledTimes(1);
-    expect(restoreSession).toHaveBeenCalledTimes(1);
+    expect(refreshAccessTokenCoordinated).toHaveBeenCalledTimes(2);
+    expect(restoreSession).toHaveBeenCalledTimes(2);
     expect(observedRequests["/secure-a"][1].headers.Authorization).toBe(
       "Bearer shared-token",
     );
@@ -317,16 +307,38 @@ describe("request refresh and retry", () => {
     currentAccessToken = "expired-token";
     responseQueue["/secure-a"] = [{ data: { code: 401, message: "未授权" } }];
     responseQueue["/secure-b"] = [{ data: { code: 401, message: "未授权" } }];
-    refreshAccessTokenRaw.mockResolvedValue({
-      data: { code: 500, message: "refresh failed" },
+    refreshAccessTokenCoordinated.mockResolvedValue({
+      status: "authInvalid",
+      message: "refresh failed",
     });
 
     const { http } = await import("@/utils/request");
     await Promise.allSettled([http.get("/secure-a"), http.get("/secure-b")]);
 
-    expect(refreshAccessTokenRaw).toHaveBeenCalledTimes(1);
+    expect(refreshAccessTokenCoordinated).toHaveBeenCalledTimes(2);
     expect(clearSession).toHaveBeenCalledTimes(1);
     expect(warning).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not clear session after refresh failure if another request already updated it", async () => {
+    currentAccessToken = "expired-token";
+    responseQueue["/secure"] = [
+      { data: { code: 401, message: "未授权" } },
+      { data: { code: 200, message: "ok", data: { ok: true } } },
+    ];
+    refreshAccessTokenCoordinated.mockImplementation(async () => {
+      currentAccessToken = "newer-token";
+      sessionGeneration += 1;
+      return { status: "authInvalid", message: "old refresh rejected" };
+    });
+
+    const { http } = await import("@/utils/request");
+    const response = await http.get<{ ok: boolean }>("/secure");
+
+    expect(response.code).toBe(200);
+    expect(clearSession).not.toHaveBeenCalled();
+    expect(warning).not.toHaveBeenCalled();
+    expect(currentAccessToken).toBe("newer-token");
   });
 
   it("does not refresh or prompt relogin for auth parse probes", async () => {
@@ -341,7 +353,7 @@ describe("request refresh and retry", () => {
       },
     });
 
-    expect(refreshAccessTokenRaw).not.toHaveBeenCalled();
+    expect(refreshAccessTokenCoordinated).not.toHaveBeenCalled();
     expect(clearSession).not.toHaveBeenCalled();
     expect(warning).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();

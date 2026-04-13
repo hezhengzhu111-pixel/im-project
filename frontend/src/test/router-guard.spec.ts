@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const ensureAuthenticated = vi.fn();
+const hasPermission = vi.fn();
 const warning = vi.fn();
+const error = vi.fn();
 
 let beforeEachGuard:
   | ((to: any, from: any, next: (payload?: unknown) => void) => unknown)
@@ -11,7 +13,7 @@ vi.mock("element-plus", () => ({
   ElMessage: {
     warning,
     success: vi.fn(),
-    error: vi.fn(),
+    error,
   },
 }));
 
@@ -43,6 +45,7 @@ vi.mock("vue-router", () => ({
 vi.mock("@/stores/user", () => ({
   useUserStore: () => ({
     ensureAuthenticated,
+    hasPermission,
   }),
 }));
 
@@ -50,8 +53,11 @@ describe("router auth guard", () => {
   beforeEach(async () => {
     vi.resetModules();
     ensureAuthenticated.mockReset();
+    hasPermission.mockReset();
     warning.mockReset();
+    error.mockReset();
     beforeEachGuard = null;
+    hasPermission.mockReturnValue(true);
     await import("@/router");
   });
 
@@ -105,5 +111,24 @@ describe("router auth guard", () => {
     );
 
     expect(next).toHaveBeenCalledWith();
+  });
+
+  it("blocks admin logs when authenticated user lacks log permission", async () => {
+    ensureAuthenticated.mockResolvedValue(true);
+    hasPermission.mockReturnValue(false);
+    const next = vi.fn();
+
+    await beforeEachGuard?.(
+      {
+        fullPath: "/admin/logs",
+        meta: { requiresAuth: true, hideForAuth: false, permission: "log:read" },
+      },
+      { fullPath: "/" },
+      next,
+    );
+
+    expect(hasPermission).toHaveBeenCalledWith("log:read");
+    expect(next).toHaveBeenCalledWith({ name: "Chat" });
+    expect(error).toHaveBeenCalledTimes(1);
   });
 });

@@ -10,6 +10,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -18,6 +19,10 @@ public class AuthTokenRevokeService {
 
     private static final String REVOKED_TOKEN_KEY_PREFIX = "auth:revoked:token:";
     private static final String REVOKED_USER_TOKENS_KEY_PREFIX = "auth:revoked:user:";
+    private static final String USER_REVOKE_AFTER_KEY_PREFIX = "auth:user:revoke_after:";
+    private static final String REFRESH_JTI_KEY_PREFIX = "auth:refresh:jti:";
+    private static final String PREVIOUS_REFRESH_KEY_PREFIX = "auth:refresh:previous:";
+    private static final String USER_RESOURCE_KEY_PREFIX = "auth:user:";
 
     private final StringRedisTemplate stringRedisTemplate;
     private final AuthTokenService authTokenService;
@@ -75,6 +80,15 @@ public class AuthTokenRevokeService {
     }
 
     public boolean isTokenRevoked(String token) {
+        TokenParseResultDTO parsed = null;
+        try {
+            parsed = authTokenService.parseAccessToken(token, true);
+        } catch (Exception ignored) {
+        }
+        return isTokenRevoked(token, parsed);
+    }
+
+    public boolean isTokenRevoked(String token, TokenParseResultDTO parsed) {
         if (token == null || token.trim().isEmpty()) {
             return false;
         }
@@ -82,10 +96,31 @@ public class AuthTokenRevokeService {
         try {
             String tokenHash = hashToken(token);
             String revokedKey = REVOKED_TOKEN_KEY_PREFIX + tokenHash;
-            return Boolean.TRUE.equals(stringRedisTemplate.hasKey(revokedKey));
+            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(revokedKey))) {
+                return true;
+            }
+            return isUserTokenRevoked(parsed);
         } catch (Exception e) {
             log.error("检查Token是否吊销失败", e);
             return false;
+        }
+    }
+
+    public boolean isUserTokenRevoked(TokenParseResultDTO parsed) {
+        if (parsed == null || parsed.getUserId() == null || parsed.getIssuedAtEpochMs() == null) {
+            return false;
+        }
+        try {
+            String revokeAfterValue = stringRedisTemplate.opsForValue()
+                    .get(USER_REVOKE_AFTER_KEY_PREFIX + parsed.getUserId());
+            if (revokeAfterValue == null || revokeAfterValue.isBlank()) {
+                return false;
+            }
+            long revokeAfterMs = Long.parseLong(revokeAfterValue.trim());
+            return parsed.getIssuedAtEpochMs() <= revokeAfterMs;
+        } catch (Exception e) {
+            log.error("检查用户Token撤销时间失败，userId={}", parsed.getUserId(), e);
+            return true;
         }
     }
 
@@ -95,12 +130,26 @@ public class AuthTokenRevokeService {
         }
 
         try {
-            String userRevokedKey = REVOKED_USER_TOKENS_KEY_PREFIX + userId;
-            stringRedisTemplate.delete(userRevokedKey);
+            stringRedisTemplate.opsForValue().set(
+                    USER_REVOKE_AFTER_KEY_PREFIX + userId,
+                    String.valueOf(System.currentTimeMillis()),
+                    Duration.ofSeconds(revokedTokenTtlSeconds)
+            );
+            stringRedisTemplate.delete(REFRESH_JTI_KEY_PREFIX + userId);
+            stringRedisTemplate.delete(USER_RESOURCE_KEY_PREFIX + userId);
+            deletePreviousRefreshKeys(userId);
             log.info("用户所有Token已吊销，userId={}", userId);
         } catch (Exception e) {
             log.error("吊销用户所有Token失败，userId={}", userId, e);
         }
+    }
+
+    private void deletePreviousRefreshKeys(Long userId) {
+        Set<String> keys = stringRedisTemplate.keys(PREVIOUS_REFRESH_KEY_PREFIX + userId + ":*");
+        if (keys != null && !keys.isEmpty()) {
+            stringRedisTemplate.delete(keys);
+        }
+        stringRedisTemplate.delete(REVOKED_USER_TOKENS_KEY_PREFIX + userId);
     }
 
     private String hashToken(String token) {
