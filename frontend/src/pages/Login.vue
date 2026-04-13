@@ -67,7 +67,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, nextTick } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { ElForm } from "element-plus";
+import { ElMessage, ElForm } from "element-plus";
 import { useUserStore } from "@/stores/user";
 import type { LoginForm } from "@/types";
 import { logger } from "@/utils/logger";
@@ -107,7 +107,6 @@ const loginRules = {
   ],
   password: [
     { required: true, message: "请输入密码", trigger: "blur" },
-    { min: 8, max: 64, message: "密码长度在 8 到 64 个字符", trigger: "blur" },
   ],
 };
 
@@ -116,8 +115,11 @@ const handleLogin = async () => {
   if (userStore.loading) return;
   try {
     if (!loginFormRef.value) return;
-    const valid = await loginFormRef.value.validate();
-    if (!valid) return;
+    const valid = await loginFormRef.value.validate().catch(() => false);
+    if (!valid) {
+      ElMessage.warning("请填写用户名和密码");
+      return;
+    }
     loginForm.username = loginForm.username.trim();
     // 处理重定向路径
     let redirectPath = (route.query.redirect as string) || "/chat";
