@@ -55,18 +55,23 @@ export default defineConfig(({ mode }) => {
       allowedHosts: ["413io39937.zicp.vip"],
     },
     build: {
-      target: "es2015",
+      target: "es2020",
       outDir: "dist",
       assetsDir: "assets",
       sourcemap: false,
-      // esbuild minification breaks the bundled Element Plus runtime in this project
-      // and results in a blank page after deployment, so keep the SIT/prod bundle readable.
-      minify: false,
+      minify: "esbuild",
       rollupOptions: {
         output: {
           chunkFileNames: "js/[name]-[hash].js",
           entryFileNames: "js/[name]-[hash].js",
           assetFileNames: "[ext]/[name]-[hash].[ext]",
+          manualChunks: {
+            vue: ["vue", "vue-router", "pinia"],
+            element: ["element-plus", "@element-plus/icons-vue"],
+            utilities: ["axios", "dayjs", "mitt", "nprogress", "qs"],
+            pinyin: ["pinyin-pro"],
+            virtualScroller: ["vue-virtual-scroller"],
+          },
         },
       },
     },

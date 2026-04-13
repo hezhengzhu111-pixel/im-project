@@ -1,0 +1,14 @@
+node_modules
+dist
+coverage
+.vite
+.cache
+.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.local
+*.log
+release
+out
