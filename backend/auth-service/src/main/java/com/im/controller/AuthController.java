@@ -41,6 +41,12 @@ public class AuthController {
     @Value("${im.auth.cookie.secure:auto}")
     private String authCookieSecure;
 
+    @Value("${im.auth.cookie.ws-ticket-name:IM_WS_TICKET}")
+    private String wsTicketCookieName;
+
+    @Value("${im.auth.cookie.ws-ticket-path:/websocket}")
+    private String wsTicketCookiePath;
+
     @PostMapping("/refresh")
     public ApiResponse<TokenPairDTO> refresh(
             @RequestBody(required = false) RefreshTokenRequest request,
@@ -81,12 +87,16 @@ public class AuthController {
     @PostMapping("/ws-ticket")
     public ApiResponse<WsTicketDTO> issueWsTicket(
             @RequestAttribute(value = "userId", required = false) Long userId,
-            @RequestAttribute(value = "username", required = false) String username
+            @RequestAttribute(value = "username", required = false) String username,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse
     ) {
         if (userId == null || username == null || username.isBlank()) {
             throw new SecurityException("认证失败");
         }
-        return ApiResponse.success(authTokenService.issueWsTicket(userId, username));
+        WsTicketDTO dto = authTokenService.issueWsTicket(userId, username);
+        writeWsTicketCookie(httpResponse, httpRequest, dto);
+        return ApiResponse.success(dto);
     }
 
     private void writeAuthCookies(
@@ -113,6 +123,31 @@ public class AuthController {
                         toSeconds(tokenPair.getRefreshExpiresInMs()),
                         secure,
                         authCookieSameSite
+                ).toString()
+        );
+    }
+
+    private void writeWsTicketCookie(
+            HttpServletResponse response,
+            HttpServletRequest request,
+            WsTicketDTO wsTicket
+    ) {
+        if (response == null
+                || wsTicket == null
+                || wsTicket.getTicket() == null
+                || wsTicket.getTicket().isBlank()) {
+            return;
+        }
+        boolean secure = AuthCookieUtil.resolveSecure(request, authCookieSecure);
+        response.addHeader(
+                HttpHeaders.SET_COOKIE,
+                AuthCookieUtil.buildTokenCookie(
+                        wsTicketCookieName,
+                        wsTicket.getTicket(),
+                        toSeconds(wsTicket.getExpiresInMs()),
+                        secure,
+                        authCookieSameSite,
+                        wsTicketCookiePath
                 ).toString()
         );
     }

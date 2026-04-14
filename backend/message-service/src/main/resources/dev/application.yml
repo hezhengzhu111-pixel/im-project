@@ -48,6 +48,23 @@ im:
     user-cache:
       key-prefix: "user:brief:"
       ttl-minutes: 10
+      l1-ttl-seconds: 60
+      l1-max-size: 10000
+    friend-cache:
+      key-prefix: "message:friend:"
+      l1-ttl-seconds: 30
+      l2-ttl-seconds: 60
+      l1-max-size: 20000
+    group-member-cache:
+      key-prefix: "message:group:member:"
+      l1-ttl-seconds: 30
+      l2-ttl-seconds: 60
+      l1-max-size: 30000
+    group-member-ids-cache:
+      key-prefix: "message:group:members:"
+      l1-ttl-seconds: 15
+      l2-ttl-seconds: 30
+      l1-max-size: 5000
   internal:
     header: X-Internal-Secret
     secret: ${IM_INTERNAL_SECRET:im-internal-secret-im-internal-secret-im-internal-secret-im}
@@ -75,7 +92,10 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
 
 mybatis-plus:
   configuration:

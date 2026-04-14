@@ -8,6 +8,7 @@ import com.im.dto.ReadReceiptDTO;
 import com.im.entity.UserSession;
 import com.im.enums.MessageType;
 import com.im.enums.UserStatus;
+import com.im.metrics.ImServerMetrics;
 import com.im.service.IImService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RBucket;
 import org.redisson.api.RSetMultimap;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.CloseStatus;
@@ -42,12 +44,15 @@ import java.util.function.Supplier;
 public class ImServiceImpl implements IImService {
 
     private static final String LEASE_VALUE = "1";
+    private static final int USER_LOCK_STRIPE_COUNT = 1024;
+    private static final CloseStatus SEND_FAILED_CLOSE_STATUS =
+            CloseStatus.SESSION_NOT_RELIABLE.withReason("send failed");
 
     private final RedissonClient redissonClient;
     private final ImNodeIdentity nodeIdentity;
     private final Map<String, UserSession> sessionsById = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> sessionIdsByUser = new ConcurrentHashMap<>();
-    private final Map<String, ReentrantLock> userLocks = new ConcurrentHashMap<>();
+    private final ReentrantLock[] userLocks = createUserLocks(USER_LOCK_STRIPE_COUNT);
 
     @Value("${im.route.users-key:im:route:users}")
     private String routeUsersKey;
@@ -61,11 +66,17 @@ public class ImServiceImpl implements IImService {
     @Value("${im.heartbeat.timeout:90000}")
     private long heartbeatTimeoutMs;
 
+    @Autowired(required = false)
+    private ImServerMetrics metrics;
+
     private RSetMultimap<String, String> routeMultimap;
 
     @PostConstruct
     public void init() {
         routeMultimap = redissonClient.getSetMultimap(routeUsersKey);
+        if (metrics != null) {
+            metrics.bindConnectionGauges(() -> sessionsById.size(), () -> sessionIdsByUser.size());
+        }
     }
 
     @Override
@@ -167,10 +178,15 @@ public class ImServiceImpl implements IImService {
 
     @Override
     public boolean pushReadReceiptToSession(ReadReceiptDTO receipt, String sessionId) {
+        return pushReadReceiptToSession(receipt, sessionId, "READ_RECEIPT");
+    }
+
+    @Override
+    public boolean pushReadReceiptToSession(ReadReceiptDTO receipt, String sessionId, String wsType) {
         if (receipt == null || StringUtils.isBlank(sessionId)) {
             return false;
         }
-        return pushPayloadToSession(sessionId.trim(), "READ_RECEIPT", receipt);
+        return pushPayloadToSession(sessionId.trim(), normalizeReadWsType(wsType), receipt);
     }
 
     @Override
@@ -411,13 +427,13 @@ public class ImServiceImpl implements IImService {
     }
 
     private boolean pushPayloadToSession(String sessionId, String wsType, Object payloadData) {
-        UserSession userSession = sessionsById.get(sessionId);
-        if (userSession == null) {
+        String normalizedSessionId = normalizeSessionId(sessionId);
+        if (normalizedSessionId == null) {
             return false;
         }
 
-        WebSocketSession webSocketSession = userSession.getWebSocketSession();
-        if (webSocketSession == null || !webSocketSession.isOpen()) {
+        UserSession userSession = sessionsById.get(normalizedSessionId);
+        if (userSession == null) {
             return false;
         }
 
@@ -427,14 +443,11 @@ public class ImServiceImpl implements IImService {
         wsMessage.put("timestamp", System.currentTimeMillis());
         String textMessage = JSON.toJSONString(wsMessage, com.alibaba.fastjson2.JSONWriter.Feature.WriteLongAsString);
 
-        try {
-            webSocketSession.sendMessage(new TextMessage(textMessage));
-            return true;
-        } catch (Exception e) {
-            log.warn("Push websocket payload failed. userId={}, sessionId={}, type={}, error={}",
-                    userSession.getUserId(), sessionId, wsType, e.getMessage());
-            return false;
-        }
+        return sendTextToSession(userSession, normalizedSessionId, wsType, textMessage);
+    }
+
+    private String normalizeReadWsType(String wsType) {
+        return "READ_SYNC".equalsIgnoreCase(wsType) ? "READ_SYNC" : "READ_RECEIPT";
     }
 
     private void logPushMessageResult(MessageDTO message, Long receiverId, boolean success) {
@@ -464,15 +477,52 @@ public class ImServiceImpl implements IImService {
             if (session == null) {
                 continue;
             }
-            WebSocketSession webSocketSession = session.getWebSocketSession();
-            if (webSocketSession == null || !webSocketSession.isOpen()) {
+            String sessionId = resolveSessionId(session);
+            if (StringUtils.isBlank(sessionId)) {
                 continue;
             }
-            try {
-                webSocketSession.sendMessage(new TextMessage(text));
-            } catch (Exception e) {
-                log.debug("Broadcast online status failed. targetUserId={}", session.getUserId(), e);
-            }
+            sendTextToSession(session, sessionId, "ONLINE_STATUS", text);
+        }
+    }
+
+    private boolean sendTextToSession(UserSession userSession, String sessionId, String wsType, String textMessage) {
+        long startNanos = System.nanoTime();
+        boolean success = false;
+        if (userSession == null || StringUtils.isBlank(sessionId)) {
+            recordPush(wsType, false, startNanos);
+            return false;
+        }
+        WebSocketSession webSocketSession = userSession.getWebSocketSession();
+        if (webSocketSession == null || !webSocketSession.isOpen()) {
+            recordPush(wsType, false, startNanos);
+            return false;
+        }
+        try {
+            webSocketSession.sendMessage(new TextMessage(textMessage));
+            success = true;
+            return true;
+        } catch (Exception e) {
+            handleSendFailure(userSession.getUserId(), sessionId, wsType, e);
+            return false;
+        } finally {
+            recordPush(wsType, success, startNanos);
+        }
+    }
+
+    private void recordPush(String wsType, boolean success, long startNanos) {
+        if (metrics != null) {
+            metrics.recordPush(wsType, success, Duration.ofNanos(System.nanoTime() - startNanos));
+        }
+    }
+
+    private void handleSendFailure(String userId, String sessionId, String wsType, Exception sendError) {
+        log.warn("WebSocket send failed. userId={}, sessionId={}, type={}, closeStatus={}, error={}",
+                userId, sessionId, wsType, SEND_FAILED_CLOSE_STATUS, sendError == null ? null : sendError.getMessage());
+        try {
+            unregisterSession(userId, sessionId, SEND_FAILED_CLOSE_STATUS);
+        } catch (Exception cleanupError) {
+            log.warn("Cleanup websocket session after send failure failed. userId={}, sessionId={}, closeStatus={}, error={}",
+                    userId, sessionId, SEND_FAILED_CLOSE_STATUS, cleanupError.getMessage());
         }
     }
 
@@ -538,7 +588,8 @@ public class ImServiceImpl implements IImService {
                 webSocketSession.close(status);
             }
         } catch (Exception closeError) {
-            log.debug("Close websocket session failed. userId={}", userId, closeError);
+            log.debug("Close websocket session failed. userId={}, sessionId={}, closeStatus={}",
+                    userId, webSocketSession.getId(), status, closeError);
         }
     }
 
@@ -550,13 +601,35 @@ public class ImServiceImpl implements IImService {
         return StringUtils.isBlank(userId) ? null : userId.trim();
     }
 
+    private String normalizeSessionId(String sessionId) {
+        return StringUtils.isBlank(sessionId) ? null : sessionId.trim();
+    }
+
     private <T> T withUserLock(String userId, Supplier<T> supplier) {
-        ReentrantLock lock = userLocks.computeIfAbsent(userId, key -> new ReentrantLock());
+        ReentrantLock lock = lockForUser(userId);
         lock.lock();
         try {
             return supplier.get();
         } finally {
             lock.unlock();
         }
+    }
+
+    private ReentrantLock lockForUser(String userId) {
+        int hash = userId == null ? 0 : userId.hashCode();
+        hash ^= (hash >>> 16);
+        // Different users may share a stripe; this keeps memory fixed while preserving per-user serialization.
+        return userLocks[Math.floorMod(hash, userLocks.length)];
+    }
+
+    private static ReentrantLock[] createUserLocks(int stripeCount) {
+        if (stripeCount <= 0) {
+            throw new IllegalArgumentException("stripeCount must be positive");
+        }
+        ReentrantLock[] locks = new ReentrantLock[stripeCount];
+        for (int i = 0; i < stripeCount; i++) {
+            locks[i] = new ReentrantLock();
+        }
+        return locks;
     }
 }

@@ -17,11 +17,14 @@ const FRIEND_REFRESH_DEBOUNCE_MS = 1500;
 
 export const createTicketedWebSocketUrl = (
   userId: string,
-  ticket: string,
+  ticket?: string,
 ): string => {
   const isDev = import.meta.env.DEV;
   const wsBaseUrl = isDev ? "" : WS_CONFIG.BASE_URL;
   const baseUrl = `${wsBaseUrl}/websocket/${userId}`;
+  if (!ticket) {
+    return baseUrl;
+  }
   return `${baseUrl}?ticket=${encodeURIComponent(ticket)}`;
 };
 
@@ -196,13 +199,12 @@ export const useWebSocketStore = defineStore("websocket", () => {
     return "disconnected";
   });
 
-  const requestWsTicket = async (): Promise<string> => {
+  const requestWsTicket = async (): Promise<void> => {
     const response = await authService.issueWsTicket();
     const ticket = response?.data?.ticket;
     if (!ticket) {
       throw new Error(response?.message || "Failed to issue websocket ticket");
     }
-    return ticket;
   };
 
   const connect = async (userId: string) => {
@@ -218,8 +220,8 @@ export const useWebSocketStore = defineStore("websocket", () => {
       }
 
       isConnecting.value = true;
-      const ticket = await requestWsTicket();
-      socket.value = new WebSocket(createTicketedWebSocketUrl(userId, ticket));
+      await requestWsTicket();
+      socket.value = new WebSocket(createTicketedWebSocketUrl(userId));
 
       socket.value.onopen = () => {
         isConnected.value = true;

@@ -64,12 +64,12 @@ public class GroupMessageHandler extends AbstractMessageHandler<GroupMessageHand
         if (!Boolean.TRUE.equals(groupServiceFeignClient.exists(groupId))) {
             throw new BusinessException("group not found");
         }
-        if (!Boolean.TRUE.equals(groupServiceFeignClient.isMember(groupId, senderId))) {
+        if (!Boolean.TRUE.equals(userProfileCache.isGroupMember(groupId, senderId))) {
             throw new BusinessException("sender is not a group member");
         }
         validateMessageContent(command.getMessageType(), command.getContent(), command.getMediaUrl());
         requireClientMessageId(command.getClientMessageId());
-        List<Long> memberIds = groupServiceFeignClient.memberIds(groupId);
+        List<Long> memberIds = userProfileCache.getGroupMemberIds(groupId);
         return new GroupMessageContext(senderId, groupId, sender, memberIds);
     }
 
@@ -125,7 +125,7 @@ public class GroupMessageHandler extends AbstractMessageHandler<GroupMessageHand
                 key,
                 payload,
                 message.getId(),
-                filterMessageTargets(context.memberIds(), context.senderId())
+                normalizeMessageTargets(context.memberIds())
         );
     }
 

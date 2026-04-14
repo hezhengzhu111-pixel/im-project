@@ -2,11 +2,13 @@ package com.im.service;
 
 import com.im.config.ImNodeIdentity;
 import com.im.dto.WsPushEvent;
+import com.im.metrics.ImServerMetrics;
 import jakarta.annotation.PostConstruct;
 import lombok.Data;
 import org.redisson.api.RBlockingQueue;
 import org.redisson.api.RDelayedQueue;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -22,6 +24,9 @@ public class MessageRetryQueue {
     private RBlockingQueue<RetryItem> blockingQueue;
     private RDelayedQueue<RetryItem> delayedQueue;
     private String queueName;
+
+    @Autowired(required = false)
+    private ImServerMetrics metrics;
 
     @Value("${im.ws.retry.max-attempts:20}")
     private int maxAttempts;
@@ -42,10 +47,14 @@ public class MessageRetryQueue {
         queueName = buildQueueName(nodeIdentity.getInstanceId());
         blockingQueue = redissonClient.getBlockingQueue(queueName);
         delayedQueue = redissonClient.getDelayedQueue(blockingQueue);
+        if (metrics != null) {
+            metrics.bindRetryQueueGauges(this::readyQueueSize, this::delayedQueueSize);
+        }
     }
 
     public void enqueue(String userId, String sessionId, WsPushEvent event, String reason) {
         if (userId == null || userId.isBlank() || sessionId == null || sessionId.isBlank() || event == null) {
+            recordRetry("drop", "invalid_item");
             return;
         }
         RetryItem item = new RetryItem();
@@ -58,6 +67,7 @@ public class MessageRetryQueue {
         item.setExpireAtMs(System.currentTimeMillis() + Math.max(1000L, retryItemExpireMs));
         item.setLastError(reason);
         delayedQueue.offer(item, Math.max(100L, baseBackoffMs), TimeUnit.MILLISECONDS);
+        recordRetry("enqueue", reason);
     }
 
     public RetryItem pollReady() {
@@ -70,16 +80,23 @@ public class MessageRetryQueue {
     }
 
     public void requeue(RetryItem item, String error) {
-        if (item == null || item.getUserId() == null || item.getSessionId() == null || isExpired(item)) {
+        if (item == null || item.getUserId() == null || item.getSessionId() == null) {
+            recordRetry("drop", "invalid_item");
+            return;
+        }
+        if (isExpired(item)) {
+            recordRetry("drop", "expired");
             return;
         }
         int attempts = item.getAttempts() + 1;
         if (attempts >= Math.max(1, maxAttempts)) {
+            recordRetry("drop", "max_attempts");
             return;
         }
         item.setAttempts(attempts);
         item.setLastError(error);
         delayedQueue.offer(item, calculateBackoffMs(attempts), TimeUnit.MILLISECONDS);
+        recordRetry("requeue", "retry_failed");
     }
 
     public boolean isExpired(RetryItem item) {
@@ -107,6 +124,28 @@ public class MessageRetryQueue {
     private long calculateBackoffMs(int attempts) {
         long multiplier = 1L << Math.min(10, Math.max(0, attempts - 1));
         return Math.min(Math.max(100L, baseBackoffMs) * multiplier, 60_000L);
+    }
+
+    private Number readyQueueSize() {
+        return queueSize(blockingQueue);
+    }
+
+    private Number delayedQueueSize() {
+        return queueSize(delayedQueue);
+    }
+
+    private Number queueSize(java.util.Collection<?> queue) {
+        try {
+            return queue == null ? 0 : queue.size();
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private void recordRetry(String action, String reason) {
+        if (metrics != null) {
+            metrics.recordRetry(action, reason);
+        }
     }
 
     @Data

@@ -25,6 +25,8 @@ public interface IImService {
 
     boolean pushReadReceiptToSession(ReadReceiptDTO receipt, String sessionId);
 
+    boolean pushReadReceiptToSession(ReadReceiptDTO receipt, String sessionId, String wsType);
+
     Map<String, Boolean> checkUsersOnlineStatus(List<String> userIds);
 
     boolean touchUserHeartbeat(String userId);

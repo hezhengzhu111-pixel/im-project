@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.util.HashMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -188,6 +189,20 @@ class AuthTokenServiceTest {
         assertTrue(result.isValid());
         assertEquals(1005L, result.getUserId());
         assertEquals("erin", result.getUsername());
+    }
+
+    @Test
+    void consumeWsTicket_ShouldOnlyConsumeOnce() {
+        when(valueOperations.getAndDelete("auth:ws:ticket:ticket-once"))
+                .thenReturn("1005\nerin")
+                .thenReturn(null);
+
+        WsTicketConsumeResultDTO first = service.consumeWsTicket("ticket-once", 1005L);
+        WsTicketConsumeResultDTO second = service.consumeWsTicket("ticket-once", 1005L);
+
+        assertTrue(first.isValid());
+        assertFalse(second.isValid());
+        assertEquals("ticket无效或已过期", second.getError());
     }
 
     @Test

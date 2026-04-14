@@ -134,7 +134,7 @@ class MessageServiceImplTest {
                 eq("p_1_2"),
                 anyString(),
                 eq(302L),
-                eq(List.of(2L))
+                eq(List.of(2L, 1L))
         );
         verify(redisTemplate, never()).convertAndSend(anyString(), anyString());
     }
@@ -150,7 +150,7 @@ class MessageServiceImplTest {
         message.setCreatedTime(LocalDateTime.now().minusMinutes(1));
         when(messageMapper.selectById(401L)).thenReturn(message);
         when(userProfileCache.getUser(1L)).thenReturn(user(1L, "sender"));
-        when(groupServiceFeignClient.memberIds(8L)).thenReturn(List.of(1L, 2L, 3L));
+        when(userProfileCache.getGroupMemberIds(8L)).thenReturn(List.of(1L, 2L, 3L));
 
         MessageDTO result = service.recallMessage(1L, 401L);
 
@@ -163,7 +163,7 @@ class MessageServiceImplTest {
                 eq("g_8"),
                 anyString(),
                 eq(401L),
-                eq(List.of(2L, 3L))
+                eq(List.of(1L, 2L, 3L))
         );
         verify(redisTemplate).delete("last_message:g_8");
         verify(redisTemplate, never()).delete("conversations:user:1");
@@ -176,7 +176,7 @@ class MessageServiceImplTest {
     void markAsReadShouldRejectWhenConversationBusy() throws InterruptedException {
         when(userServiceFeignClient.exists(1L)).thenReturn(true);
         when(userServiceFeignClient.exists(2L)).thenReturn(true);
-        when(userServiceFeignClient.isFriend(1L, 2L)).thenReturn(true);
+        when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
         when(conversationLock.tryLock(eq(2L), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(false);
 
         assertThrows(BusinessException.class, () -> service.markAsRead(1L, "2"));
@@ -191,7 +191,7 @@ class MessageServiceImplTest {
         lastMessage.setId(900L);
         when(userServiceFeignClient.exists(1L)).thenReturn(true);
         when(groupServiceFeignClient.exists(8L)).thenReturn(true);
-        when(groupServiceFeignClient.isMember(8L, 1L)).thenReturn(true);
+        when(userProfileCache.isGroupMember(8L, 1L)).thenReturn(true);
         when(groupReadCursorMapper.selectOne(any())).thenReturn(null);
         when(messageMapper.selectOne(any())).thenReturn(lastMessage);
 
@@ -213,7 +213,7 @@ class MessageServiceImplTest {
         lastRead.setId(901L);
         when(userServiceFeignClient.exists(1L)).thenReturn(true);
         when(userServiceFeignClient.exists(2L)).thenReturn(true);
-        when(userServiceFeignClient.isFriend(1L, 2L)).thenReturn(true);
+        when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
         when(messageMapper.update(any(), any())).thenReturn(1);
         when(messageMapper.selectOne(any())).thenReturn(lastRead);
 
@@ -263,7 +263,7 @@ class MessageServiceImplTest {
     void getPrivateMessagesShouldRejectWhenNotFriend() {
         when(userServiceFeignClient.exists(1L)).thenReturn(true);
         when(userServiceFeignClient.exists(2L)).thenReturn(true);
-        when(userServiceFeignClient.isFriend(1L, 2L)).thenReturn(false);
+        when(userProfileCache.isFriend(1L, 2L)).thenReturn(false);
 
         assertThrows(BusinessException.class, () -> service.getPrivateMessages(1L, 2L, 0, 20));
     }

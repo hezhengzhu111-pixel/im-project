@@ -6,11 +6,13 @@ import com.im.enums.MessageType;
 import com.im.exception.BusinessException;
 import com.im.mapper.MessageMapper;
 import com.im.message.entity.Message;
+import com.im.metrics.MessageServiceMetrics;
 import com.im.service.OutboxService;
 import com.im.service.command.SendMessageCommand;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -32,6 +34,9 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
     protected final OutboxService outboxService;
     protected final RedissonClient redissonClient;
     protected final TransactionTemplate transactionTemplate;
+
+    @Autowired(required = false)
+    protected MessageServiceMetrics metrics;
 
     @Value("${im.message.text.enforce:true}")
     private boolean textEnforce;
@@ -183,8 +188,10 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
     protected void persistMessage(Message message, Long targetId) {
         try {
             messageMapper.insert(message);
+            recordPersist(message, true);
             logMessageSaveResult(message == null ? null : message.getSenderId(), targetId, resolveMessageLogContent(message), true);
         } catch (Exception exception) {
+            recordPersist(message, false);
             logMessageSaveResult(message == null ? null : message.getSenderId(), targetId, resolveMessageLogContent(message), false);
             throw exception;
         }
@@ -196,6 +203,16 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
         }
         return targetUserIds.stream()
                 .filter(userId -> userId != null && !userId.equals(excludeUserId))
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    protected List<Long> normalizeMessageTargets(List<Long> targetUserIds) {
+        if (targetUserIds == null) {
+            return List.of();
+        }
+        return targetUserIds.stream()
+                .filter(userId -> userId != null && userId > 0)
                 .distinct()
                 .collect(Collectors.toList());
     }
@@ -287,6 +304,12 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
                 targetIdText,
                 safeContent,
                 status);
+    }
+
+    private void recordPersist(Message message, boolean success) {
+        if (metrics != null) {
+            metrics.recordPersist(message, success);
+        }
     }
 
     protected record SendTxResult(Message message, boolean created) {

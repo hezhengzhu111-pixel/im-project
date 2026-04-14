@@ -28,6 +28,17 @@ type ConversationClearMarker = {
   lastServerMessageId?: string;
 };
 
+const messageIdentityValues = (message: Message): string[] => {
+  return [message.id, message.messageId, message.clientMessageId]
+    .map((item) => String(item || ""))
+    .filter(Boolean);
+};
+
+const hasSameMessageIdentity = (left: Message, right: Message): boolean => {
+  const rightValues = new Set(messageIdentityValues(right));
+  return messageIdentityValues(left).some((item) => rightValues.has(item));
+};
+
 const readPersistedClearMarkers = (): Record<string, ConversationClearMarker> => {
   if (typeof localStorage === "undefined") {
     return {};
@@ -374,16 +385,9 @@ export const useMessageStore = defineStore("message", () => {
     }
 
     const list = messages.value.get(sessionId) || [];
-    const existingIndex = list.findIndex((item) => {
-      if (item.id === message.id) {
-        return true;
-      }
-      return Boolean(
-        item.clientMessageId &&
-          message.clientMessageId &&
-          item.clientMessageId === message.clientMessageId,
-      );
-    });
+    const existingIndex = list.findIndex((item) =>
+      hasSameMessageIdentity(item, message),
+    );
     if (existingIndex >= 0) {
       const previous = list[existingIndex];
       list[existingIndex] = {
@@ -584,6 +588,94 @@ export const useMessageStore = defineStore("message", () => {
     }
   };
 
+  const resolveReadReceiptSessionId = (
+    receipt: ReadReceipt,
+    currentUserId: string,
+  ): string => {
+    if (receipt.conversationId && receipt.conversationId.startsWith("group_")) {
+      return receipt.conversationId;
+    }
+    return buildSessionId("private", currentUserId, receipt.readerId);
+  };
+
+  const resolveReadSyncSessionId = (
+    receipt: ReadReceipt,
+    currentUserId: string,
+  ): string | null => {
+    if (receipt.conversationId && receipt.conversationId.startsWith("group_")) {
+      return receipt.conversationId;
+    }
+    const targetId =
+      receipt.toUserId && receipt.toUserId !== currentUserId
+        ? receipt.toUserId
+        : receipt.readerId !== currentUserId
+          ? receipt.readerId
+          : "";
+    return targetId ? buildSessionId("private", currentUserId, targetId) : null;
+  };
+
+  const applyReadSync = async (rawReceipt: unknown) => {
+    const receipt = normalizeReadReceipt(rawReceipt);
+    if (!receipt) {
+      return;
+    }
+    const userStore = useUserStore();
+    const currentUserId = String(userStore.userId || "");
+    if (!currentUserId || receipt.readerId !== currentUserId) {
+      return;
+    }
+    const sessionId = resolveReadSyncSessionId(receipt, currentUserId);
+    if (!sessionId) {
+      return;
+    }
+    sessionStore.markSessionReadLocally(sessionId);
+
+    const list = messages.value.get(sessionId) || [];
+    if (list.length === 0) {
+      return;
+    }
+    const lastReadMessageId = receipt.lastReadMessageId
+      ? toBigIntId(receipt.lastReadMessageId)
+      : null;
+    if (lastReadMessageId == null) {
+      return;
+    }
+    const readAtMilliseconds = receipt.readAt
+      ? new Date(receipt.readAt).getTime()
+      : Number.NaN;
+    let changed = false;
+    const updated = list.map((message) => {
+      if (message.senderId === currentUserId) {
+        return message;
+      }
+      const messageId = toBigIntId(message.id);
+      if (messageId == null || messageId > lastReadMessageId) {
+        return message;
+      }
+      const messageMilliseconds = new Date(message.sendTime).getTime();
+      if (
+        Number.isFinite(readAtMilliseconds) &&
+        Number.isFinite(messageMilliseconds) &&
+        messageMilliseconds > readAtMilliseconds
+      ) {
+        return message;
+      }
+
+      changed = true;
+      return {
+        ...message,
+        status: "READ" as const,
+        readStatus: 1,
+        readAt: receipt.readAt || message.readAt,
+      };
+    });
+    if (!changed) {
+      return;
+    }
+    messages.value.set(sessionId, updated);
+    await saveConversationMessages(sessionId, updated);
+  };
+
   const applyReadReceipt = async (rawReceipt: unknown) => {
     const receipt = normalizeReadReceipt(rawReceipt);
     if (!receipt) {
@@ -594,10 +686,11 @@ export const useMessageStore = defineStore("message", () => {
     if (!currentUserId) {
       return;
     }
-    const sessionId =
-      receipt.conversationId && receipt.conversationId.startsWith("group_")
-        ? receipt.conversationId
-        : buildSessionId("private", currentUserId, receipt.readerId);
+    if (receipt.readerId === currentUserId) {
+      await applyReadSync(receipt);
+      return;
+    }
+    const sessionId = resolveReadReceiptSessionId(receipt, currentUserId);
     const list = messages.value.get(sessionId) || [];
     const lastReadMessageId = receipt.lastReadMessageId
       ? toBigIntId(receipt.lastReadMessageId)
@@ -730,6 +823,7 @@ export const useMessageStore = defineStore("message", () => {
     addMessage,
     sendMessage,
     markAsRead,
+    applyReadSync,
     applyReadReceipt,
     deleteMessage,
     clearMessages,

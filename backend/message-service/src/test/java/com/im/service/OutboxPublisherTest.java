@@ -3,6 +3,8 @@ package com.im.service;
 import com.alibaba.fastjson2.JSON;
 import com.im.mapper.MessageOutboxMapper;
 import com.im.message.entity.MessageOutboxEvent;
+import com.im.metrics.MessageServiceMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -54,10 +56,13 @@ class OutboxPublisherTest {
     private RBucket<String> staleBucket;
 
     private OutboxPublisher outboxPublisher;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
         outboxPublisher = new OutboxPublisher(outboxMapper, redissonClient);
+        meterRegistry = new SimpleMeterRegistry();
+        ReflectionTestUtils.setField(outboxPublisher, "metrics", new MessageServiceMetrics(meterRegistry));
         ReflectionTestUtils.setField(outboxPublisher, "maxAttempts", 20);
         ReflectionTestUtils.setField(outboxPublisher, "baseBackoffMs", 1000L);
         ReflectionTestUtils.setField(outboxPublisher, "wsChannelPrefix", "im:channel:");
@@ -92,6 +97,12 @@ class OutboxPublisherTest {
         verify(topicB).publish(any());
         assertEquals(List.of(2L), captor.getValue().getTargetUserIds());
         verify(outboxMapper).markSent(eq(1L), any(LocalDateTime.class));
+        assertEquals(1.0, publishCount("success", "MESSAGE"));
+        assertEquals(1L, meterRegistry.get("im.message.outbox.publish.duration")
+                .tag("result", "success")
+                .tag("event_type", "MESSAGE")
+                .timer()
+                .count());
     }
 
     @Test
@@ -115,5 +126,34 @@ class OutboxPublisherTest {
         verify(topicA, never()).publish(any());
         verify(topicB, never()).publish(any());
         verify(outboxMapper).markSent(eq(2L), any(LocalDateTime.class));
+        assertEquals(1.0, publishCount("skipped", "MESSAGE"));
+    }
+
+    @Test
+    void publishById_shouldRecordFailureWhenPublishThrows() {
+        MessageOutboxEvent event = new MessageOutboxEvent();
+        event.setId(3L);
+        event.setEventType("MESSAGE");
+        event.setTargetsJson(JSON.toJSONString(List.of(4L)));
+        event.setPayload("{\"id\":\"102\",\"receiverId\":\"4\",\"content\":\"boom\"}");
+        event.setRelatedMessageId(102L);
+        event.setAttempts(0);
+
+        when(outboxMapper.claimEventForSending(eq(3L), any(LocalDateTime.class), eq(20))).thenReturn(1);
+        when(outboxMapper.selectById(3L)).thenReturn(event);
+        when(routeMultimap.getAll("4")).thenReturn(new LinkedHashSet<>(List.of("node-a")));
+        when(redissonClient.<String>getBucket("im:route:lease:4:node-a")).thenReturn(liveBucketA);
+        when(liveBucketA.isExists()).thenReturn(true);
+        when(redissonClient.getTopic("im:channel:node-a")).thenReturn(topicA);
+        org.mockito.Mockito.doThrow(new RuntimeException("publish failed")).when(topicA).publish(any());
+
+        outboxPublisher.publishById(3L);
+
+        verify(outboxMapper).markFailed(eq(3L), eq("publish failed"), any(LocalDateTime.class));
+        assertEquals(1.0, publishCount("failure", "MESSAGE"));
+    }
+
+    private double publishCount(String result, String eventType) {
+        return meterRegistry.counter("im.message.outbox.publish.total", "result", result, "event_type", eventType).count();
     }
 }

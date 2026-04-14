@@ -10,9 +10,11 @@ import com.im.exception.BusinessException;
 import com.im.feign.GroupServiceFeignClient;
 import com.im.mapper.MessageMapper;
 import com.im.message.entity.Message;
+import com.im.metrics.MessageServiceMetrics;
 import com.im.service.OutboxService;
 import com.im.service.command.SendMessageCommand;
 import com.im.service.support.UserProfileCache;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -71,6 +73,7 @@ class GroupMessageHandlerTest {
     private TransactionStatus transactionStatus;
 
     private GroupMessageHandler handler;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() throws InterruptedException {
@@ -85,6 +88,8 @@ class GroupMessageHandlerTest {
                 messageRateLimiter,
                 userProfileCache
         );
+        meterRegistry = new SimpleMeterRegistry();
+        ReflectionTestUtils.setField(handler, "metrics", new MessageServiceMetrics(meterRegistry));
         ReflectionTestUtils.setField(handler, "groupMessageTopic", "GROUP_MESSAGE");
         ReflectionTestUtils.setField(handler, "textEnforce", true);
         ReflectionTestUtils.setField(handler, "textMaxLength", 2000);
@@ -112,8 +117,8 @@ class GroupMessageHandlerTest {
         when(messageRateLimiter.canSendMessage(1L)).thenReturn(true);
         when(userProfileCache.getUser(1L)).thenReturn(user(1L, "u1"));
         when(groupServiceFeignClient.exists(8L)).thenReturn(true);
-        when(groupServiceFeignClient.isMember(8L, 1L)).thenReturn(true);
-        when(groupServiceFeignClient.memberIds(8L)).thenReturn(List.of(1L, 2L, 3L));
+        when(userProfileCache.isGroupMember(8L, 1L)).thenReturn(true);
+        when(userProfileCache.getGroupMemberIds(8L)).thenReturn(List.of(1L, 2L, 3L));
         doAnswer(invocation -> {
             Message msg = invocation.getArgument(0);
             msg.setId(200L);
@@ -130,9 +135,12 @@ class GroupMessageHandlerTest {
                 eq("g_8"),
                 argThat(payload -> payload != null && !payload.contains("groupMembers")),
                 eq(200L),
-                eq(List.of(2L, 3L))
+                eq(List.of(1L, 2L, 3L))
         );
+        assertEquals(1.0, persistCount("success", "group"));
         verify(redisTemplate).delete("last_message:g_8");
+        verify(groupServiceFeignClient, never()).isMember(anyLong(), anyLong());
+        verify(groupServiceFeignClient, never()).memberIds(anyLong());
         verify(redissonClient).getLock("msg:lock:send:1:group-8");
         InOrder inOrder = inOrder(transactionTemplate, redisTemplate, conversationLock);
         inOrder.verify(transactionTemplate).execute(any());
@@ -152,7 +160,7 @@ class GroupMessageHandlerTest {
         when(messageRateLimiter.canSendMessage(1L)).thenReturn(true);
         when(userProfileCache.getUser(1L)).thenReturn(user(1L, "u1"));
         when(groupServiceFeignClient.exists(8L)).thenReturn(true);
-        when(groupServiceFeignClient.isMember(8L, 1L)).thenReturn(true);
+        when(userProfileCache.isGroupMember(8L, 1L)).thenReturn(true);
 
         assertThrows(BusinessException.class, () -> handler.handle(command));
 
@@ -167,5 +175,9 @@ class GroupMessageHandlerTest {
                 .nickname(username)
                 .avatar("avatar-" + id)
                 .build();
+    }
+
+    private double persistCount(String result, String chatType) {
+        return meterRegistry.counter("im.message.persist.total", "result", result, "chat_type", chatType).count();
     }
 }
