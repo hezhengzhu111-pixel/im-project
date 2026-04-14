@@ -2,6 +2,7 @@ package com.im.config;
 
 import com.im.concurrent.BoundedExecutor;
 import com.im.concurrent.ManagedExecutor;
+import com.im.concurrent.MdcTaskDecorator;
 import com.im.concurrent.VirtualThreadExecutors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -40,6 +41,7 @@ public class ImServerAsyncConfig {
         executor.setMaxPoolSize(Math.max(4, Runtime.getRuntime().availableProcessors() * 2));
         executor.setQueueCapacity(Math.max(0, queueCapacity));
         executor.setThreadNamePrefix("im-server-");
+        executor.setTaskDecorator(new MdcTaskDecorator());
         executor.initialize();
         return new ManagedExecutor(executor, executor::shutdown);
     }

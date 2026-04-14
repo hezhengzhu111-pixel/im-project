@@ -305,6 +305,37 @@ describe("chat store", () => {
     expect(store.currentSession?.memberCount).toBe(8);
   });
 
+  it("exposes currentSessionId through the chat facade", async () => {
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    const session = store.createOrGetSession("private", "2", "u2", "");
+    await store.setCurrentSession(session!);
+
+    expect(store.currentSessionId).toBe(session!.id);
+  });
+
+  it("sorts pinned sessions before newer unpinned sessions", async () => {
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    const first = store.createOrGetSession("private", "2", "u2", "");
+    const second = store.createOrGetSession("private", "3", "u3", "");
+
+    store.sessions.find((item) => item.id === first!.id)!.lastActiveTime =
+      "2026-02-07T10:00:00.000Z";
+    store.sessions.find((item) => item.id === second!.id)!.lastActiveTime =
+      "2026-02-07T11:00:00.000Z";
+
+    store.toggleSessionPinned(first!.id, true);
+
+    expect(store.sortedSessions.map((item) => item.id)).toEqual([
+      first!.id,
+      second!.id,
+    ]);
+    expect(store.sessions.find((item) => item.id === first!.id)?.isPinned).toBe(true);
+  });
+
   it("marks private sessions as read with the backend target user id", async () => {
     const { useChatStore } = await import("@/stores/chat");
     const store = useChatStore();

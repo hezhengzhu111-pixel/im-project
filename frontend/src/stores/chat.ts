@@ -245,6 +245,7 @@ export const useChatStore = defineStore("chat", () => {
 
   return {
     currentSession: computed(() => sessionStore.currentSession),
+    currentSessionId: computed(() => sessionStore.currentSessionId),
     sessions: computed(() => sessionStore.sessions),
     sortedSessions: computed(() => sessionStore.sortedSessions),
     unreadCounts: computed(() => sessionStore.unreadCounts),
@@ -265,6 +266,8 @@ export const useChatStore = defineStore("chat", () => {
     loadGroups,
     setCurrentSession,
     clearCurrentSession: sessionStore.clearCurrentSession,
+    setSessionPinned: sessionStore.setSessionPinned,
+    toggleSessionPinned: sessionStore.toggleSessionPinned,
     createOrGetSession: (
       type: "private" | "group",
       targetId: string,
