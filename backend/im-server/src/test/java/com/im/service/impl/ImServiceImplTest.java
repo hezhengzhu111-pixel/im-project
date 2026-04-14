@@ -2,6 +2,7 @@ package com.im.service.impl;
 
 import com.im.config.ImNodeIdentity;
 import com.im.dto.MessageDTO;
+import com.im.dto.PresenceEvent;
 import com.im.entity.UserSession;
 import com.im.enums.MessageType;
 import com.im.enums.UserStatus;
@@ -13,12 +14,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RBucket;
+import org.redisson.api.RTopic;
 import org.redisson.api.RSetMultimap;
 import org.redisson.api.RedissonClient;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 
+import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -66,6 +69,9 @@ class ImServiceImplTest {
     @Mock
     private RBucket<String> staleLeaseBucket;
 
+    @Mock
+    private RTopic presenceTopic;
+
     private ImServiceImpl imService;
     private SimpleMeterRegistry meterRegistry;
 
@@ -76,11 +82,13 @@ class ImServiceImplTest {
         ReflectionTestUtils.setField(imService, "metrics", new ImServerMetrics(meterRegistry));
         ReflectionTestUtils.setField(imService, "routeUsersKey", "im:route:users");
         ReflectionTestUtils.setField(imService, "routeLeaseKeyPrefix", "im:route:lease:");
+        ReflectionTestUtils.setField(imService, "presenceChannel", "im:presence:broadcast");
         ReflectionTestUtils.setField(imService, "routeLeaseTtlMs", 120000L);
         ReflectionTestUtils.setField(imService, "heartbeatTimeoutMs", 90000L);
 
         lenient().when(nodeIdentity.getInstanceId()).thenReturn("im-node-1");
         lenient().when(redissonClient.<String, String>getSetMultimap("im:route:users")).thenReturn(routeMultimap);
+        lenient().when(redissonClient.getTopic("im:presence:broadcast")).thenReturn(presenceTopic);
         lenient().when(redissonClient.<String>getBucket("im:route:lease:1:im-node-1")).thenReturn(localLeaseBucket);
         lenient().when(redissonClient.<String>getBucket("im:route:lease:1:stale-node")).thenReturn(staleLeaseBucket);
         lenient().when(localLeaseBucket.isExists()).thenReturn(true);
@@ -103,6 +111,34 @@ class ImServiceImplTest {
         assertTrue(imService.getLocallyOnlineUserIds().contains("1"));
         assertEquals(1.0, meterRegistry.get("im.websocket.connections.current").gauge().value());
         assertEquals(1.0, meterRegistry.get("im.websocket.users.local").gauge().value());
+        verify(presenceTopic).publish(argThat(event -> {
+            PresenceEvent presenceEvent = (PresenceEvent) event;
+            return "1".equals(presenceEvent.getUserId())
+                    && "ONLINE".equals(presenceEvent.getStatus())
+                    && "im-node-1".equals(presenceEvent.getSourceInstanceId());
+        }));
+    }
+
+    @Test
+    void registerSession_shouldRefreshRouteWhenOnlyStaleLocalSessionExists() throws Exception {
+        WebSocketSession staleWebSocketSession = mockOpenSession("session-1");
+        UserSession staleSession = UserSession.builder().webSocketSession(staleWebSocketSession).build();
+        imService.registerSession("1", staleSession);
+        staleSession.setLastHeartbeat(LocalDateTime.now().minusMinutes(10));
+        clearInvocations(routeMultimap, localLeaseBucket, presenceTopic);
+
+        WebSocketSession freshWebSocketSession = mockOpenSession("session-2");
+        imService.registerSession("1", UserSession.builder().webSocketSession(freshWebSocketSession).build());
+
+        verify(localLeaseBucket).set("1", 120000L, TimeUnit.MILLISECONDS);
+        verify(routeMultimap).put("1", "im-node-1");
+        verify(presenceTopic).publish(argThat(event -> {
+            PresenceEvent presenceEvent = (PresenceEvent) event;
+            return "1".equals(presenceEvent.getUserId())
+                    && "ONLINE".equals(presenceEvent.getStatus())
+                    && "im-node-1".equals(presenceEvent.getSourceInstanceId());
+        }));
+        assertTrue(imService.isSessionActive("1", "session-2"));
     }
 
     @Test
@@ -118,9 +154,38 @@ class ImServiceImplTest {
         verify(routeMultimap).remove("1", "im-node-1");
         verify(localLeaseBucket).delete();
         verify(webSocketSession).close(CloseStatus.NORMAL);
+        verify(presenceTopic).publish(argThat(event -> {
+            PresenceEvent presenceEvent = (PresenceEvent) event;
+            return "1".equals(presenceEvent.getUserId())
+                    && "OFFLINE".equals(presenceEvent.getStatus())
+                    && "im-node-1".equals(presenceEvent.getSourceInstanceId());
+        }));
         assertFalse(imService.isSessionActive("1", "session-1"));
         assertEquals(0.0, meterRegistry.get("im.websocket.connections.current").gauge().value());
         assertEquals(0.0, meterRegistry.get("im.websocket.users.local").gauge().value());
+    }
+
+    @Test
+    void unregisterSession_shouldKeepUserOnlineWhenAnotherLocalSessionExists() throws Exception {
+        WebSocketSession firstSession = mockOpenSession("session-1");
+        WebSocketSession secondSession = mockOpenSession("session-2");
+        imService.registerSession("1", UserSession.builder().webSocketSession(firstSession).build());
+        imService.registerSession("1", UserSession.builder().webSocketSession(secondSession).build());
+        clearInvocations(routeMultimap, localLeaseBucket, firstSession, secondSession, presenceTopic);
+
+        boolean removed = imService.unregisterSession("1", "session-1", CloseStatus.NORMAL);
+
+        assertTrue(removed);
+        verify(routeMultimap, never()).remove("1", "im-node-1");
+        verify(localLeaseBucket, never()).delete();
+        verify(firstSession).close(CloseStatus.NORMAL);
+        verify(secondSession, never()).close(any(CloseStatus.class));
+        verify(secondSession, never()).close();
+        verify(presenceTopic, never()).publish(any());
+        assertFalse(imService.isSessionActive("1", "session-1"));
+        assertTrue(imService.isSessionActive("1", "session-2"));
+        assertEquals(1.0, meterRegistry.get("im.websocket.connections.current").gauge().value());
+        assertEquals(1.0, meterRegistry.get("im.websocket.users.local").gauge().value());
     }
 
     @Test

@@ -1,6 +1,5 @@
 import { computed } from "vue";
 import { defineStore } from "pinia";
-import { heartbeatService } from "@/services/heartbeat";
 import { groupService } from "@/services/group";
 import { useContactStore } from "@/stores/contact";
 import { useGroupStore } from "@/stores/group";
@@ -29,6 +28,41 @@ export const useChatStore = defineStore("chat", () => {
       sessionStore.loading ||
       messageStore.loading,
   );
+
+  const collectPresenceUserIds = () => {
+    const ids = new Set<string>();
+    contactStore.friends.forEach((friend) => {
+      const friendId = String(friend.friendId || "").trim();
+      if (friendId) {
+        ids.add(friendId);
+      }
+    });
+    sessionStore.sessions.forEach((session) => {
+      if (session.type !== "private") {
+        return;
+      }
+      const targetId = String(session.targetId || "").trim();
+      if (targetId) {
+        ids.add(targetId);
+      }
+    });
+    if (sessionStore.currentSession?.type === "private") {
+      const targetId = String(sessionStore.currentSession.targetId || "").trim();
+      if (targetId) {
+        ids.add(targetId);
+      }
+    }
+    return Array.from(ids);
+  };
+
+  const refreshOnlineStatuses = async () => {
+    const userIds = collectPresenceUserIds();
+    if (userIds.length === 0) {
+      return;
+    }
+    const { useWebSocketStore } = await import("@/stores/websocket");
+    await useWebSocketStore().refreshOnlineStatus(userIds);
+  };
 
   const restoreCurrentSession = async () => {
     const restored = sessionStore.restorePersistedCurrentSession(
@@ -66,7 +100,7 @@ export const useChatStore = defineStore("chat", () => {
     sessionStore.mergeGroupMetadata(groupStore.groups);
     await sessionStore.loadSessions(groupStore.groups);
     await restoreCurrentSession();
-    heartbeatService.refreshFriends();
+    await refreshOnlineStatuses();
   };
 
   const setCurrentSession = async (session: ChatSession) => {
@@ -103,10 +137,12 @@ export const useChatStore = defineStore("chat", () => {
 
   const loadSessions = async () => {
     await sessionStore.loadSessions(groupStore.groups);
+    await refreshOnlineStatuses();
   };
 
   const loadFriends = async () => {
     await contactStore.loadFriends();
+    await refreshOnlineStatuses();
   };
 
   const loadFriendRequests = async () => {
@@ -224,6 +260,7 @@ export const useChatStore = defineStore("chat", () => {
     initChatBootstrap,
     loadSessions,
     loadFriends,
+    refreshOnlineStatuses,
     loadFriendRequests,
     loadGroups,
     setCurrentSession,

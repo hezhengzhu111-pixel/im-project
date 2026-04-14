@@ -307,7 +307,6 @@ const remarkForm = reactive({
 const friends = computed(() => chatStore.friends);
 const friendRequests = computed(() => chatStore.friendRequests);
 const currentUserId = computed(() => String(userStore.userId || ""));
-const onlineUsers = computed(() => wsStore.onlineUsers);
 
 const searchPlaceholder = computed(() => {
   if (searchType.value === "email") return "请输入邮箱地址";
@@ -368,7 +367,7 @@ const requestStatusLabel = (status: FriendRequest["status"]) =>
 const isPendingIncomingRequest = (request: FriendRequest) =>
   isPendingIncomingFriendRequest(request, currentUserId.value);
 
-const isOnline = (userId: string) => onlineUsers.value.has(String(userId));
+const isOnline = (userId: string) => wsStore.isUserOnline(String(userId));
 
 const isFriend = (userId: string) =>
   friends.value.some((friend) => String(friend.friendId) === String(userId));
