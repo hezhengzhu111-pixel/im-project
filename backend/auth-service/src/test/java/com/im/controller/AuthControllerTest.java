@@ -16,9 +16,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpHeaders;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -37,6 +40,9 @@ class AuthControllerTest {
         ReflectionTestUtils.setField(authController, "accessTokenCookieName", "IM_ACCESS_TOKEN");
         ReflectionTestUtils.setField(authController, "refreshTokenCookieName", "IM_REFRESH_TOKEN");
         ReflectionTestUtils.setField(authController, "authCookieSameSite", "Lax");
+        ReflectionTestUtils.setField(authController, "authCookieSecure", "never");
+        ReflectionTestUtils.setField(authController, "wsTicketCookieName", "IM_WS_TICKET");
+        ReflectionTestUtils.setField(authController, "wsTicketCookiePath", "/websocket");
     }
 
     @Test
@@ -85,21 +91,39 @@ class AuthControllerTest {
 
         when(authTokenService.issueWsTicket(1L, "alice")).thenReturn(dto);
 
-        ApiResponse<WsTicketDTO> response = authController.issueWsTicket(1L, "alice");
+        MockHttpServletRequest httpRequest = new MockHttpServletRequest();
+        MockHttpServletResponse httpResponse = new MockHttpServletResponse();
+        ApiResponse<WsTicketDTO> response = authController.issueWsTicket(1L, "alice", httpRequest, httpResponse);
 
         assertEquals(200, response.getCode());
         assertEquals("ticket-1", response.getData().getTicket());
+        String setCookie = httpResponse.getHeader(HttpHeaders.SET_COOKIE);
+        assertNotNull(setCookie);
+        assertTrue(setCookie.contains("IM_WS_TICKET=ticket-1"));
+        assertTrue(setCookie.contains("Path=/websocket"));
+        assertTrue(setCookie.contains("Max-Age=30"));
+        assertTrue(setCookie.contains("HttpOnly"));
     }
 
     @Test
     void issueWsTicket_InvalidToken_ShouldThrowSecurityException() {
         when(authTokenService.issueWsTicket(1L, "alice")).thenThrow(new SecurityException("invalid"));
 
-        assertThrows(SecurityException.class, () -> authController.issueWsTicket(1L, "alice"));
+        assertThrows(SecurityException.class, () -> authController.issueWsTicket(
+                1L,
+                "alice",
+                new MockHttpServletRequest(),
+                new MockHttpServletResponse()
+        ));
     }
 
     @Test
     void issueWsTicket_MissingIdentity_ShouldThrowSecurityException() {
-        assertThrows(SecurityException.class, () -> authController.issueWsTicket(null, " "));
+        assertThrows(SecurityException.class, () -> authController.issueWsTicket(
+                null,
+                " ",
+                new MockHttpServletRequest(),
+                new MockHttpServletResponse()
+        ));
     }
 }

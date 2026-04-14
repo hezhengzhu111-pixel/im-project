@@ -99,6 +99,7 @@ const showAddFriend = ref(false);
 const showCreateGroup = ref(false);
 const showGroupReadDialog = ref(false);
 const groupReadUsers = ref<GroupReadUser[]>([]);
+const loadingMoreHistory = ref(false);
 
 const currentSession = computed(() => chatStore.currentSession);
 const pendingRequestsCount = computed(() => {
@@ -169,10 +170,15 @@ const sendMediaMessage = async (payload: {
 };
 
 const loadMoreHistory = async () => {
-  if (!currentSession.value?.id) {
+  if (!currentSession.value?.id || loadingMoreHistory.value) {
     return;
   }
-  await chatStore.loadMessages(currentSession.value.id, 1, 20);
+  loadingMoreHistory.value = true;
+  try {
+    await chatStore.loadMessages(currentSession.value.id, 1, 20);
+  } finally {
+    loadingMoreHistory.value = false;
+  }
 };
 
 const openGroupReadDialog = (message: Message) => {

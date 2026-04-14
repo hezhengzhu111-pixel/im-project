@@ -17,6 +17,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Component
@@ -80,7 +81,7 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
         if (sender == null || receiver == null) {
             throw new BusinessException("user not found");
         }
-        if (!Boolean.TRUE.equals(userServiceFeignClient.isFriend(senderId, receiverId))) {
+        if (!Boolean.TRUE.equals(userProfileCache.isFriend(senderId, receiverId))) {
             throw new BusinessException("receiver is not a friend");
         }
         validateMessageContent(command.getMessageType(), command.getContent(), command.getMediaUrl());
@@ -155,8 +156,17 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
                 key,
                 payload,
                 message.getId(),
-                List.of(context.receiverId())
+                privateMessageTargets(context)
         );
+    }
+
+    private List<Long> privateMessageTargets(PrivateMessageContext context) {
+        List<Long> targetUserIds = new ArrayList<>(2);
+        targetUserIds.add(context.receiverId());
+        if (!context.systemMessage()) {
+            targetUserIds.add(context.actualSenderId());
+        }
+        return normalizeMessageTargets(targetUserIds);
     }
 
     record PrivateMessageContext(

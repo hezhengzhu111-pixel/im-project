@@ -10,9 +10,11 @@ import com.im.exception.BusinessException;
 import com.im.feign.UserServiceFeignClient;
 import com.im.mapper.MessageMapper;
 import com.im.message.entity.Message;
+import com.im.metrics.MessageServiceMetrics;
 import com.im.service.OutboxService;
 import com.im.service.command.SendMessageCommand;
 import com.im.service.support.UserProfileCache;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -69,6 +71,7 @@ class PrivateMessageHandlerTest {
     private TransactionStatus transactionStatus;
 
     private PrivateMessageHandler handler;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() throws InterruptedException {
@@ -83,6 +86,8 @@ class PrivateMessageHandlerTest {
                 messageRateLimiter,
                 userProfileCache
         );
+        meterRegistry = new SimpleMeterRegistry();
+        ReflectionTestUtils.setField(handler, "metrics", new MessageServiceMetrics(meterRegistry));
         ReflectionTestUtils.setField(handler, "privateMessageTopic", "PRIVATE_MESSAGE");
         ReflectionTestUtils.setField(handler, "defaultSystemSenderId", 1L);
         ReflectionTestUtils.setField(handler, "textEnforce", true);
@@ -111,7 +116,7 @@ class PrivateMessageHandlerTest {
         when(messageRateLimiter.canSendMessage(1L)).thenReturn(true);
         when(userProfileCache.getUser(1L)).thenReturn(user(1L, "u1"));
         when(userProfileCache.getUser(2L)).thenReturn(user(2L, "u2"));
-        when(userServiceFeignClient.isFriend(1L, 2L)).thenReturn(true);
+        when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
         doAnswer(invocation -> {
             Message msg = invocation.getArgument(0);
             msg.setId(100L);
@@ -129,11 +134,13 @@ class PrivateMessageHandlerTest {
                 eq("p_1_2"),
                 anyString(),
                 eq(100L),
-                eq(java.util.List.of(2L))
+                eq(java.util.List.of(2L, 1L))
         );
+        assertEquals(1.0, persistCount("success", "private"));
         verify(redisTemplate).delete("last_message:p_1_2");
         verify(redisTemplate).delete("conversations:user:1");
         verify(redisTemplate).delete("conversations:user:2");
+        verify(userServiceFeignClient, never()).isFriend(anyLong(), anyLong());
         verify(redissonClient).getLock("msg:lock:send:1:private-2");
         InOrder inOrder = inOrder(transactionTemplate, redisTemplate, conversationLock);
         inOrder.verify(transactionTemplate).execute(any());
@@ -153,7 +160,7 @@ class PrivateMessageHandlerTest {
         when(messageRateLimiter.canSendMessage(1L)).thenReturn(true);
         when(userProfileCache.getUser(1L)).thenReturn(user(1L, "u1"));
         when(userProfileCache.getUser(2L)).thenReturn(user(2L, "u2"));
-        when(userServiceFeignClient.isFriend(1L, 2L)).thenReturn(true);
+        when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
 
         assertThrows(BusinessException.class, () -> handler.handle(command));
 
@@ -184,6 +191,7 @@ class PrivateMessageHandlerTest {
         assertNotNull(result);
         assertEquals("system-hi", result.getContent());
         verify(redissonClient).getLock("msg:lock:p_1_2");
+        assertEquals(1.0, persistCount("success", "system"));
         verify(userServiceFeignClient, never()).isFriend(anyLong(), anyLong());
         InOrder inOrder = inOrder(transactionTemplate, conversationLock);
         inOrder.verify(transactionTemplate).execute(any());
@@ -197,5 +205,9 @@ class PrivateMessageHandlerTest {
                 .nickname(username)
                 .avatar("avatar-" + id)
                 .build();
+    }
+
+    private double persistCount(String result, String chatType) {
+        return meterRegistry.counter("im.message.persist.total", "result", result, "chat_type", chatType).count();
     }
 }

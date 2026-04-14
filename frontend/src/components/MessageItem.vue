@@ -34,14 +34,26 @@
           v-else-if="message.messageType === 'IMAGE'"
           class="image-content interactive-reset"
           type="button"
+          aria-label="Preview image"
           @click="emit('preview-image', message)"
         >
           <el-image
             :src="message.mediaUrl || message.content"
             :preview-src-list="[]"
+            :scroll-container="imageScrollContainer || undefined"
             fit="cover"
+            lazy
             class="message-image"
-          />
+            @load="handleImageLoaded"
+            @error="handleImageLoaded"
+          >
+            <template #placeholder>
+              <div class="image-placeholder" />
+            </template>
+            <template #error>
+              <div class="image-error">!</div>
+            </template>
+          </el-image>
         </button>
 
         <div v-else-if="message.messageType === 'FILE'" class="file-content">
@@ -155,6 +167,7 @@ interface Props {
   currentUserAvatar?: string;
   showSenderInfo?: boolean;
   audioPlaying?: boolean;
+  imageScrollContainer?: HTMLElement | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -169,6 +182,7 @@ const emit = defineEmits<{
   (e: "download-file", message: Message): void;
   (e: "preview-image", message: Message): void;
   (e: "play-video", message: Message): void;
+  (e: "media-loaded", message: Message): void;
 }>();
 
 const senderDisplayName = computed(() => {
@@ -233,6 +247,10 @@ const fileSize = computed(() => {
 const currentUserAvatarText = computed(() => {
   return getAvatarText(props.currentUserName || props.currentUserId);
 });
+
+const handleImageLoaded = () => {
+  emit("media-loaded", props.message);
+};
 </script>
 
 <style lang="scss" scoped>
@@ -362,10 +380,36 @@ const currentUserAvatarText = computed(() => {
   line-height: 1.4;
 }
 
-.image-content .message-image {
-  max-width: 240px;
-  max-height: 240px;
+.image-content {
+  display: block;
+  width: min(240px, 60vw);
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
   border-radius: 6px;
+  background-color: #eef1f5;
+}
+
+.image-content .message-image,
+.image-placeholder,
+.image-error {
+  width: 100%;
+  height: 100%;
+}
+
+.image-content .message-image {
+  display: block;
+}
+
+.image-placeholder {
+  background-color: #eef1f5;
+}
+
+.image-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #909399;
+  background-color: #f5f7fa;
 }
 
 .file-content .file-info {

@@ -119,7 +119,7 @@ describe("websocket store", () => {
     expect(issueWsTicket).toHaveBeenCalledTimes(1);
     expect(FakeWebSocket.instances).toHaveLength(1);
     expect(FakeWebSocket.instances[0].url).toContain("/websocket/42");
-    expect(FakeWebSocket.instances[0].url).toContain("ticket=ticket-123");
+    expect(FakeWebSocket.instances[0].url).not.toContain("ticket=");
     expect(FakeWebSocket.instances[0].url).not.toContain("token=");
 
     FakeWebSocket.instances[0].onopen?.();
@@ -151,8 +151,17 @@ describe("websocket store", () => {
 
     expect(issueWsTicket).toHaveBeenCalledTimes(2);
     expect(FakeWebSocket.instances).toHaveLength(1);
-    expect(FakeWebSocket.instances[0].url).toContain("ticket=ticket-456");
+    expect(FakeWebSocket.instances[0].url).toContain("/websocket/42");
+    expect(FakeWebSocket.instances[0].url).not.toContain("ticket=");
     expect(messageError).toHaveBeenCalled();
+  });
+
+  it("keeps query ticket URL helper for fallback compatibility", async () => {
+    const { createTicketedWebSocketUrl } = await import("@/stores/websocket");
+
+    expect(createTicketedWebSocketUrl("42", "ticket-fallback")).toContain(
+      "/websocket/42?ticket=ticket-fallback",
+    );
   });
 
   it("skips duplicate server messages that already exist in local state", async () => {

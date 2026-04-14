@@ -139,6 +139,7 @@ export interface MessageSearchResult {
 
 export interface ReadReceipt {
   readerId: string;
+  toUserId?: string;
   conversationId?: string;
   lastReadMessageId?: string;
   readAt?: string;

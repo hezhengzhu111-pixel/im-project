@@ -4,7 +4,7 @@
     class="message-list"
     role="log"
     aria-live="polite"
-    @scroll="handleScroll"
+    @scroll.passive="handleScroll"
   >
     <DynamicScroller
       ref="scrollerRef"
@@ -31,6 +31,8 @@
             @download-file="downloadFile"
             @preview-image="previewImage"
             @play-video="playVideo"
+            @media-loaded="handleMediaLoaded"
+            :image-scroll-container="scrollContainerRef"
           />
         </DynamicScrollerItem>
       </template>
@@ -79,9 +81,32 @@ const emit = defineEmits<{
   (e: "show-group-readers", message: Message): void;
 }>();
 
-const scrollerRef = ref<{ scrollToItem?: (index: number) => void } | null>(null);
+type DynamicScrollerRef = {
+  scrollToItem?: (index: number) => void;
+  forceUpdate?: () => void;
+  $forceUpdate?: () => void;
+  updateVisibleItems?: (checkItem?: boolean) => void;
+};
+
+type HistoryAnchor = {
+  previousHeight: number;
+  previousTop: number;
+  firstMessageKey: string;
+  length: number;
+};
+
+const BOTTOM_FOLLOW_THRESHOLD = 180;
+const READ_ACK_BOTTOM_THRESHOLD = 120;
+const HISTORY_TRIGGER_TOP = 80;
+const HISTORY_FALLBACK_MS = 2000;
+
+const scrollerRef = ref<DynamicScrollerRef | null>(null);
 const scrollContainerRef = ref<HTMLElement | null>(null);
 const loadingHistory = ref(false);
+const nearBottom = ref(true);
+const pendingHistoryAnchor = ref<HistoryAnchor | null>(null);
+const historyFallbackTimer = ref<ReturnType<typeof setTimeout> | null>(null);
+const refreshScheduled = ref(false);
 const { playingMessageId, toggle: toggleAudio, stop } = useAudioPlayer();
 const { copy, recall, remove } = useMessageActions();
 const contextMenu = useMessageContextMenu();
@@ -98,6 +123,56 @@ const canRecall = computed(() => {
   const sentAt = new Date(message.sendTime).getTime();
   return Date.now() - sentAt <= 2 * 60 * 1000;
 });
+
+const messageKey = (message?: Message): string => {
+  if (!message) {
+    return "";
+  }
+  return String(message.id || message.messageId || message.clientMessageId || "");
+};
+
+const firstMessageKey = computed(() => messageKey(props.messages[0]));
+
+const tailMessageKey = computed(() => {
+  const message = props.messages[props.messages.length - 1];
+  if (!message) {
+    return "";
+  }
+  return [
+    messageKey(message),
+    message.clientMessageId || "",
+    message.status || "",
+    message.readStatus ?? "",
+    message.readByCount ?? "",
+  ].join(":");
+});
+
+const messageListSignal = computed(() => ({
+  length: props.messages.length,
+  first: firstMessageKey.value,
+  tail: tailMessageKey.value,
+}));
+
+const isNearBottom = (threshold = BOTTOM_FOLLOW_THRESHOLD) => {
+  const container = scrollContainerRef.value;
+  if (!container) {
+    return true;
+  }
+  return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+};
+
+const updateNearBottom = () => {
+  nearBottom.value = isNearBottom();
+};
+
+const nextFrame = () =>
+  new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => resolve());
+      return;
+    }
+    setTimeout(resolve, 0);
+  });
 
 const closeContextMenu = () => contextMenu.close();
 
@@ -144,6 +219,65 @@ const scrollToBottom = async () => {
   if (scroller?.scrollToItem && props.messages.length > 0) {
     scroller.scrollToItem(props.messages.length - 1);
   }
+  await nextFrame();
+  const container = scrollContainerRef.value;
+  if (container) {
+    container.scrollTop = container.scrollHeight;
+  }
+  nearBottom.value = true;
+};
+
+const clearHistoryFallbackTimer = () => {
+  if (historyFallbackTimer.value) {
+    clearTimeout(historyFallbackTimer.value);
+    historyFallbackTimer.value = null;
+  }
+};
+
+const releaseHistoryLoading = () => {
+  loadingHistory.value = false;
+  pendingHistoryAnchor.value = null;
+  clearHistoryFallbackTimer();
+};
+
+const scheduleHistoryFallback = () => {
+  clearHistoryFallbackTimer();
+  historyFallbackTimer.value = setTimeout(() => {
+    releaseHistoryLoading();
+  }, HISTORY_FALLBACK_MS);
+};
+
+const restoreHistoryAnchor = async (anchor: HistoryAnchor) => {
+  await nextTick();
+  await nextFrame();
+  const container = scrollContainerRef.value;
+  if (container) {
+    const heightDelta = container.scrollHeight - anchor.previousHeight;
+    container.scrollTop = anchor.previousTop + heightDelta;
+  }
+  releaseHistoryLoading();
+};
+
+const refreshScroller = async (stickToBottom: boolean) => {
+  if (refreshScheduled.value) {
+    return;
+  }
+  refreshScheduled.value = true;
+  await nextTick();
+  await nextFrame();
+  const scroller = scrollerRef.value;
+  scroller?.forceUpdate?.();
+  scroller?.$forceUpdate?.();
+  scroller?.updateVisibleItems?.(true);
+  refreshScheduled.value = false;
+  if (stickToBottom) {
+    await scrollToBottom();
+  }
+};
+
+const handleMediaLoaded = () => {
+  const shouldStickToBottom = nearBottom.value || isNearBottom();
+  void refreshScroller(shouldStickToBottom);
 };
 
 const handleScroll = async () => {
@@ -151,30 +285,42 @@ const handleScroll = async () => {
   if (!container) {
     return;
   }
-  if (!loadingHistory.value && container.scrollTop < 80) {
+  updateNearBottom();
+  if (!loadingHistory.value && container.scrollTop < HISTORY_TRIGGER_TOP) {
     loadingHistory.value = true;
-    const previousHeight = container.scrollHeight;
+    pendingHistoryAnchor.value = {
+      previousHeight: container.scrollHeight,
+      previousTop: container.scrollTop,
+      firstMessageKey: firstMessageKey.value,
+      length: props.messages.length,
+    };
     emit("request-history");
-    await nextTick();
-    container.scrollTop = container.scrollHeight - previousHeight + container.scrollTop;
-    loadingHistory.value = false;
+    scheduleHistoryFallback();
   }
   if (!document.hidden) {
-    const nearBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight < 120;
-    if (nearBottom) {
+    if (isNearBottom(READ_ACK_BOTTOM_THRESHOLD)) {
       emit("mark-read");
     }
   }
 };
 
 watch(
-  () => props.messages.map((item) => item.id).join("|"),
-  async (_, previousValue) => {
-    if (!previousValue) {
+  messageListSignal,
+  async (current, previous) => {
+    if (!previous || previous.length === 0) {
       await scrollToBottom();
       return;
     }
+
+    const anchor = pendingHistoryAnchor.value;
+    if (
+      anchor &&
+      (current.length > anchor.length || current.first !== anchor.firstMessageKey)
+    ) {
+      await restoreHistoryAnchor(anchor);
+      return;
+    }
+
     const lastMessage = props.messages[props.messages.length - 1];
     if (!lastMessage) {
       return;
@@ -185,12 +331,13 @@ watch(
       return;
     }
     const isSelfMessage = String(lastMessage.senderId) === props.currentUserId;
-    const nearBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight < 180;
-    if (isSelfMessage || nearBottom) {
+    if (isSelfMessage || nearBottom.value) {
       await scrollToBottom();
+      return;
     }
+    updateNearBottom();
   },
+  { flush: "post" },
 );
 
 onMounted(() => {
@@ -200,6 +347,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stop();
+  clearHistoryFallbackTimer();
   window.removeEventListener("click", closeContextMenu);
   window.removeEventListener("contextmenu", closeContextMenu);
 });

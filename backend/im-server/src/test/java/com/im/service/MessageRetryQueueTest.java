@@ -2,6 +2,8 @@ package com.im.service;
 
 import com.im.config.ImNodeIdentity;
 import com.im.dto.WsPushEvent;
+import com.im.metrics.ImServerMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,10 +43,13 @@ class MessageRetryQueueTest {
     private RDelayedQueue<MessageRetryQueue.RetryItem> delayedQueue;
 
     private MessageRetryQueue retryQueue;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
         retryQueue = new MessageRetryQueue(redissonClient, nodeIdentity);
+        meterRegistry = new SimpleMeterRegistry();
+        ReflectionTestUtils.setField(retryQueue, "metrics", new ImServerMetrics(meterRegistry));
         ReflectionTestUtils.setField(retryQueue, "baseBackoffMs", 500L);
         ReflectionTestUtils.setField(retryQueue, "maxAttempts", 20);
         ReflectionTestUtils.setField(retryQueue, "retryItemExpireMs", 60000L);
@@ -70,6 +75,7 @@ class MessageRetryQueueTest {
         assertEquals(event, item.getEvent());
         assertEquals("reason", item.getLastError());
         assertTrue(item.getExpireAtMs() > item.getCreatedAtMs());
+        assertEquals(1.0, retryCount("enqueue", "retry_failed"));
     }
 
     @Test
@@ -85,6 +91,7 @@ class MessageRetryQueueTest {
         assertEquals(1, item.getAttempts());
         assertEquals("error2", item.getLastError());
         verify(delayedQueue).offer(item, 500L, TimeUnit.MILLISECONDS);
+        assertEquals(1.0, retryCount("requeue", "retry_failed"));
     }
 
     @Test
@@ -98,6 +105,22 @@ class MessageRetryQueueTest {
 
         assertTrue(retryQueue.isExpired(item));
         verify(delayedQueue, never()).offer(any(), anyLong(), any());
+        assertEquals(1.0, retryCount("drop", "expired"));
+    }
+
+    @Test
+    void gauges_shouldExposeReadyAndDelayedQueueSizes() {
+        when(blockingQueue.size()).thenReturn(3);
+        when(delayedQueue.size()).thenReturn(4);
+
+        assertEquals(3.0, meterRegistry.get("im.websocket.retry.queue.size")
+                .tag("state", "ready")
+                .gauge()
+                .value());
+        assertEquals(4.0, meterRegistry.get("im.websocket.retry.queue.size")
+                .tag("state", "delayed")
+                .gauge()
+                .value());
     }
 
     @Test
@@ -106,5 +129,9 @@ class MessageRetryQueueTest {
 
         verify(redissonClient).getBlockingQueue("im:message:retry:queue:node-b");
         assertEquals("im:message:retry:queue:node-b", MessageRetryQueue.buildQueueName("node-b"));
+    }
+
+    private double retryCount(String action, String reason) {
+        return meterRegistry.counter("im.websocket.retry.total", "action", action, "reason", reason).count();
     }
 }

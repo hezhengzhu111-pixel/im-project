@@ -34,6 +34,12 @@ auth:
     token-ttl-seconds: 86400
 
 im:
+  auth:
+    cookie:
+      same-site: ${IM_AUTH_COOKIE_SAME_SITE:Lax}
+      secure: ${IM_AUTH_COOKIE_SECURE:auto}
+      ws-ticket-name: ${IM_WS_TICKET_COOKIE_NAME:IM_WS_TICKET}
+      ws-ticket-path: ${IM_WS_TICKET_COOKIE_PATH:/websocket}
   virtual-threads:
     enabled: false
   logging:

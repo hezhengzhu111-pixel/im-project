@@ -2,7 +2,9 @@ package com.im.service;
 
 import com.im.message.entity.MessageOutboxEvent;
 import com.im.mapper.MessageOutboxMapper;
+import com.im.metrics.MessageServiceMetrics;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -16,6 +18,9 @@ public class OutboxService {
 
     private final MessageOutboxMapper outboxMapper;
     private final OutboxPublisher outboxPublisher;
+
+    @Autowired(required = false)
+    private MessageServiceMetrics metrics;
 
     public void enqueueAfterCommit(String topic,
                                    String eventType,
@@ -34,6 +39,7 @@ public class OutboxService {
         event.setAttempts(0);
         event.setNextRetryAt(LocalDateTime.now());
         outboxMapper.insert(event);
+        recordOutboxEnqueue(eventType);
 
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -59,5 +65,11 @@ public class OutboxService {
                 source.getRelatedMessageId(),
                 com.alibaba.fastjson2.JSON.parseArray(source.getTargetsJson(), Long.class)
         );
+    }
+
+    private void recordOutboxEnqueue(String eventType) {
+        if (metrics != null) {
+            metrics.recordOutboxEnqueue(eventType);
+        }
     }
 }

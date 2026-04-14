@@ -56,7 +56,13 @@ export interface OnlineStatus {
 }
 
 export interface WebSocketMessage<TData = unknown> {
-  type: "MESSAGE" | "HEARTBEAT" | "ONLINE_STATUS" | "READ_RECEIPT" | "SYSTEM";
+  type:
+    | "MESSAGE"
+    | "HEARTBEAT"
+    | "ONLINE_STATUS"
+    | "READ_RECEIPT"
+    | "READ_SYNC"
+    | "SYSTEM";
   data: TData;
   timestamp: number;
 }

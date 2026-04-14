@@ -155,6 +155,7 @@ export const normalizeReadReceipt = (raw: unknown): ReadReceipt | null => {
   }
   return {
     readerId,
+    toUserId: asString(record.toUserId ?? record.to_user_id) || undefined,
     conversationId: asString(record.conversationId) || undefined,
     lastReadMessageId:
       asString(record.lastReadMessageId ?? record.last_read_message_id) ||

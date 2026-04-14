@@ -12,15 +12,18 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
 
 import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -66,18 +69,24 @@ class WebSocketHandlerTest {
         ArgumentCaptor<UserSession> captor = ArgumentCaptor.forClass(UserSession.class);
         verify(imService).registerSession(eq("123"), captor.capture());
         assertEquals("123", captor.getValue().getUserId());
-        assertSame(session, captor.getValue().getWebSocketSession());
+        WebSocketSession registeredSession = captor.getValue().getWebSocketSession();
+        assertInstanceOf(ConcurrentWebSocketSessionDecorator.class, registeredSession);
+        assertNotSame(session, registeredSession);
+        assertEquals("session-1", registeredSession.getId());
     }
 
     @Test
     void handleMessage_shouldDispatchForActiveSession() {
         attributes.put("userId", "123");
+        WebSocketSession registeredSession = mock(WebSocketSession.class);
         when(imService.isSessionActive("123", "session-1")).thenReturn(true);
+        when(imService.getSession("session-1"))
+                .thenReturn(UserSession.builder().webSocketSession(registeredSession).build());
 
         handler.handleMessage(session, new TextMessage("ping"));
 
         verify(imService).refreshRouteHeartbeat("123", "session-1");
-        verify(dispatcher).dispatch(session, "123", "ping");
+        verify(dispatcher).dispatch(registeredSession, "123", "ping");
     }
 
     @Test

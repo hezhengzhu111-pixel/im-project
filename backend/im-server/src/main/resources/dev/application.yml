@@ -35,6 +35,12 @@ jwt:
 
 im:
   instance-id: ${IM_INSTANCE_ID:}
+  auth:
+    cookie:
+      same-site: ${IM_AUTH_COOKIE_SAME_SITE:Lax}
+      secure: ${IM_AUTH_COOKIE_SECURE:auto}
+      ws-ticket-name: ${IM_WS_TICKET_COOKIE_NAME:IM_WS_TICKET}
+      ws-ticket-path: ${IM_WS_TICKET_COOKIE_PATH:/websocket}
   jwt:
     enabled: true
   virtual-threads:
@@ -96,9 +102,11 @@ im:
       ttl-ms: 300000
   websocket:
     endpoint: /websocket
-    allowed-origins: "*"
+    allowed-origins: "${IM_WEBSOCKET_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080}"
     connection-timeout: 30000
     cleanup-interval-ms: 60000
+    send-time-limit-ms: 10000
+    send-buffer-size-limit-bytes: 524288
     max-text-message-size: 8192
     max-binary-message-size: 8192
   service:
@@ -114,10 +122,13 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
 
 logging:
   level:

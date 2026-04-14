@@ -34,17 +34,32 @@ public final class AuthCookieUtil {
             boolean secure,
             String sameSite
     ) {
+        return buildTokenCookie(cookieName, value, maxAgeSeconds, secure, sameSite, "/");
+    }
+
+    public static ResponseCookie buildTokenCookie(
+            String cookieName,
+            String value,
+            long maxAgeSeconds,
+            boolean secure,
+            String sameSite,
+            String path
+    ) {
         return ResponseCookie.from(cookieName, value == null ? "" : value)
                 .httpOnly(true)
                 .secure(secure)
                 .sameSite(sameSite == null || sameSite.isBlank() ? "Lax" : sameSite)
-                .path("/")
+                .path(normalizePath(path))
                 .maxAge(maxAgeSeconds)
                 .build();
     }
 
     public static ResponseCookie clearCookie(String cookieName, boolean secure, String sameSite) {
-        return buildTokenCookie(cookieName, "", 0, secure, sameSite);
+        return clearCookie(cookieName, secure, sameSite, "/");
+    }
+
+    public static ResponseCookie clearCookie(String cookieName, boolean secure, String sameSite, String path) {
+        return buildTokenCookie(cookieName, "", 0, secure, sameSite, path);
     }
 
     public static boolean resolveSecure(HttpServletRequest request, String secureMode) {
@@ -69,5 +84,13 @@ public final class AuthCookieUtil {
         }
         String forwarded = request.getHeader("Forwarded");
         return forwarded != null && forwarded.toLowerCase(Locale.ROOT).contains("proto=https");
+    }
+
+    private static String normalizePath(String path) {
+        if (path == null || path.isBlank()) {
+            return "/";
+        }
+        String trimmed = path.trim();
+        return trimmed.startsWith("/") ? trimmed : "/" + trimmed;
     }
 }

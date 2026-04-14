@@ -19,6 +19,7 @@ import com.im.feign.GroupServiceFeignClient;
 import com.im.feign.UserServiceFeignClient;
 import com.im.mapper.GroupReadCursorMapper;
 import com.im.mapper.MessageMapper;
+import com.im.metrics.MessageServiceMetrics;
 import com.im.service.OutboxService;
 import com.im.service.MessageService;
 import com.im.service.command.SendMessageCommand;
@@ -28,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -54,6 +56,7 @@ public class MessageServiceImpl implements MessageService {
 
     private static final String EVENT_TYPE_MESSAGE = "MESSAGE";
     private static final String EVENT_TYPE_READ_RECEIPT = "READ_RECEIPT";
+    private static final String EVENT_TYPE_READ_SYNC = "READ_SYNC";
     // FIX: 高并发下允许短暂等待锁，避免零等待导致正常请求直接失败。
     private static final long CONVERSATION_LOCK_WAIT_SECONDS = 2L;
     private final MessageMapper messageMapper;
@@ -67,6 +70,9 @@ public class MessageServiceImpl implements MessageService {
     private final RedissonClient redissonClient;
     private final TransactionTemplate transactionTemplate;
     private final List<MessageHandler> messageHandlers;
+
+    @Autowired(required = false)
+    private MessageServiceMetrics metrics;
     
     private static final String CONVERSATION_CACHE_KEY = "conversations:user:";
     private static final String LAST_MESSAGE_CACHE_KEY = "last_message:";
@@ -264,7 +270,7 @@ public class MessageServiceImpl implements MessageService {
             throw new BusinessException("用户不存在");
         }
         // OPTIMIZE: TODO: 优化此处同步 Feign 调用，建议引入本地 Caffeine 缓存或 Redis 缓存监听成员关系变更，防止拖垮消息发送性能。
-        if (!Boolean.TRUE.equals(userServiceFeignClient.isFriend(senderId, receiverId))) {
+        if (!Boolean.TRUE.equals(userProfileCache.isFriend(senderId, receiverId))) {
             throw new BusinessException("只能向好友发送消息");
         }
         validateMessageContent(request.getMessageType(), request.getContent(), request.getMediaUrl());
@@ -302,7 +308,7 @@ public class MessageServiceImpl implements MessageService {
                 key,
                 payload,
                 savedMessage.getId(),
-                List.of(input.receiverId())
+                privateConversationTargets(input.senderId(), input.receiverId())
         );
     }
 
@@ -318,12 +324,12 @@ public class MessageServiceImpl implements MessageService {
             throw new BusinessException("群组不存在");
         }
         // OPTIMIZE: TODO: 优化此处同步 Feign 调用，建议引入本地 Caffeine 缓存或 Redis 缓存监听成员关系变更，防止拖垮消息发送性能。
-        if (!Boolean.TRUE.equals(groupServiceFeignClient.isMember(groupIdLong, senderId))) {
+        if (!Boolean.TRUE.equals(userProfileCache.isGroupMember(groupIdLong, senderId))) {
             throw new BusinessException("只有群成员才能发送消息");
         }
         validateMessageContent(request.getMessageType(), request.getContent(), request.getMediaUrl());
         // OPTIMIZE: 高并发发消息链路中强依赖同步调用 memberIds 会成为严重瓶颈。后续需重构为获取带本地过期机制的缓存，或由下层消费者去处理 Fan-out。
-        List<Long> memberIds = groupServiceFeignClient.memberIds(groupIdLong);
+        List<Long> memberIds = userProfileCache.getGroupMemberIds(groupIdLong);
         return new GroupSendInput(senderId, groupIdLong, request, sender, memberIds);
     }
 
@@ -358,7 +364,7 @@ public class MessageServiceImpl implements MessageService {
                 key,
                 payload,
                 savedMessage.getId(),
-                filterMessageTargets(input.memberIds(), input.senderId())
+                normalizeMessageTargets(input.memberIds())
         );
     }
 
@@ -389,10 +395,18 @@ public class MessageServiceImpl implements MessageService {
     private void persistMessage(Message message, Long targetId) {
         try {
             messageMapper.insert(message);
+            recordPersist(message, true);
             logMessageSaveResult(message == null ? null : message.getSenderId(), targetId, resolveMessageLogContent(message), true);
         } catch (Exception exception) {
+            recordPersist(message, false);
             logMessageSaveResult(message == null ? null : message.getSenderId(), targetId, resolveMessageLogContent(message), false);
             throw exception;
+        }
+    }
+
+    private void recordPersist(Message message, boolean success) {
+        if (metrics != null) {
+            metrics.recordPersist(message, success);
         }
     }
 
@@ -582,6 +596,7 @@ public class MessageServiceImpl implements MessageService {
             }
             ReadMarkProcessResult processResult = new ReadMarkProcessResult(updatedCount, lastReadMessageId);
             publishPrivateReadReceipt(input, processResult);
+            publishReadSync(input, processResult);
             return processResult;
         });
     }
@@ -955,7 +970,7 @@ public class MessageServiceImpl implements MessageService {
         if (!Boolean.TRUE.equals(userServiceFeignClient.exists(friendId))) {
             throw new BusinessException("好友不存在");
         }
-        if (!Boolean.TRUE.equals(userServiceFeignClient.isFriend(userId, friendId))) {
+        if (!Boolean.TRUE.equals(userProfileCache.isFriend(userId, friendId))) {
             throw new BusinessException("不是好友关系，无法查看聊天记录");
         }
     }
@@ -967,7 +982,7 @@ public class MessageServiceImpl implements MessageService {
         if (!Boolean.TRUE.equals(groupServiceFeignClient.exists(groupId))) {
             throw new BusinessException("群组不存在");
         }
-        if (!Boolean.TRUE.equals(groupServiceFeignClient.isMember(groupId, userId))) {
+        if (!Boolean.TRUE.equals(userProfileCache.isGroupMember(groupId, userId))) {
             throw new BusinessException("不是群成员，无法查看群聊记录");
         }
     }
@@ -1140,13 +1155,7 @@ public class MessageServiceImpl implements MessageService {
         if (processResult.updatedCount() <= 0 || input.target().isGroup() || input.target().targetUserId() == null) {
             return;
         }
-        ReadReceiptDTO receipt = ReadReceiptDTO.builder()
-                .conversationId(input.target().normalizedConversationId())
-                .readerId(input.userId())
-                .toUserId(input.target().targetUserId())
-                .readAt(input.now())
-                .lastReadMessageId(processResult.lastReadMessageId())
-                .build();
+        ReadReceiptDTO receipt = buildReadReceipt(input, processResult);
         String payload = com.alibaba.fastjson2.JSON.toJSONString(receipt);
         outboxService.enqueueAfterCommit(
                 readReceiptTopic,
@@ -1156,6 +1165,32 @@ public class MessageServiceImpl implements MessageService {
                 processResult.lastReadMessageId(),
                 List.of(input.target().targetUserId())
         );
+    }
+
+    private void publishReadSync(ReadMarkInput input, ReadMarkProcessResult processResult) {
+        if (input == null || input.userId() == null) {
+            return;
+        }
+        ReadReceiptDTO receipt = buildReadReceipt(input, processResult);
+        String payload = com.alibaba.fastjson2.JSON.toJSONString(receipt);
+        outboxService.enqueueAfterCommit(
+                readReceiptTopic,
+                EVENT_TYPE_READ_SYNC,
+                "rs_" + input.userId(),
+                payload,
+                processResult.lastReadMessageId(),
+                List.of(input.userId())
+        );
+    }
+
+    private ReadReceiptDTO buildReadReceipt(ReadMarkInput input, ReadMarkProcessResult processResult) {
+        return ReadReceiptDTO.builder()
+                .conversationId(input.target().normalizedConversationId())
+                .readerId(input.userId())
+                .toUserId(input.target().targetUserId())
+                .readAt(input.now())
+                .lastReadMessageId(processResult.lastReadMessageId())
+                .build();
     }
 
     private void publishGroupReadReceipts(ReadMarkInput input, ReadMarkProcessResult processResult) {
@@ -1288,14 +1323,14 @@ public class MessageServiceImpl implements MessageService {
         String payload = com.alibaba.fastjson2.JSON.toJSONString(dto);
         if (isGroup) {
             // FIX: 群状态变更的投递目标与 DTO payload 解耦，避免 payload 瘦身后丢失 Fan-out 目标。
-            List<Long> memberIds = groupServiceFeignClient.memberIds(msg.getGroupId());
+            List<Long> memberIds = userProfileCache.getGroupMemberIds(msg.getGroupId());
             outboxService.enqueueAfterCommit(
                     groupMessageTopic,
                     EVENT_TYPE_MESSAGE,
                     buildGroupConversationKey(msg.getGroupId()),
                     payload,
                     msg.getId(),
-                    filterMessageTargets(memberIds, msg.getSenderId())
+                    normalizeMessageTargets(memberIds)
             );
             return;
         }
@@ -1305,8 +1340,25 @@ public class MessageServiceImpl implements MessageService {
                 buildPrivateConversationKey(msg.getSenderId(), msg.getReceiverId()),
                 payload,
                 msg.getId(),
-                msg.getReceiverId() == null ? List.of() : List.of(msg.getReceiverId())
+                privateConversationTargets(msg.getSenderId(), msg.getReceiverId())
         );
+    }
+
+    private List<Long> privateConversationTargets(Long senderId, Long receiverId) {
+        List<Long> targetUserIds = new ArrayList<>(2);
+        targetUserIds.add(receiverId);
+        targetUserIds.add(senderId);
+        return normalizeMessageTargets(targetUserIds);
+    }
+
+    private List<Long> normalizeMessageTargets(List<Long> targetUserIds) {
+        if (targetUserIds == null) {
+            return List.of();
+        }
+        return targetUserIds.stream()
+                .filter(userId -> userId != null && userId > 0)
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     private List<GroupMemberDTO> buildGroupRecipients(Long groupId, Long senderId, List<Long> memberIds) {

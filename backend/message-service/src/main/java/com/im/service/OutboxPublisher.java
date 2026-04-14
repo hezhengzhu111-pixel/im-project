@@ -6,11 +6,13 @@ import com.im.dto.ReadReceiptDTO;
 import com.im.dto.WsPushEvent;
 import com.im.mapper.MessageOutboxMapper;
 import com.im.message.entity.MessageOutboxEvent;
+import com.im.metrics.MessageServiceMetrics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RSetMultimap;
 import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -18,6 +20,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -34,11 +37,15 @@ public class OutboxPublisher {
 
     private static final String EVENT_TYPE_MESSAGE = "MESSAGE";
     private static final String EVENT_TYPE_READ_RECEIPT = "READ_RECEIPT";
+    private static final String EVENT_TYPE_READ_SYNC = "READ_SYNC";
     private static final int WS_PUSH_EVENT_VERSION = 1;
     private static final int MAX_ERROR_LEN = 1024;
 
     private final MessageOutboxMapper outboxMapper;
     private final RedissonClient redissonClient;
+
+    @Autowired(required = false)
+    private MessageServiceMetrics metrics;
 
     @Value("${im.outbox.max-attempts:20}")
     private int maxAttempts;
@@ -65,20 +72,27 @@ public class OutboxPublisher {
         if (outboxId == null) {
             return;
         }
+        long startNanos = System.nanoTime();
+        String metricEventType = null;
+        String metricResult = null;
         LocalDateTime now = LocalDateTime.now();
         int claimed = outboxMapper.claimEventForSending(outboxId, now, maxAttempts);
         if (claimed <= 0) {
+            recordOutboxPublish(null, "skipped", startNanos);
             return;
         }
         MessageOutboxEvent event = outboxMapper.selectById(outboxId);
         if (event == null) {
             markFailed(outboxId, new IllegalStateException("outbox event missing after claim"));
+            recordOutboxPublish(null, "failure", startNanos);
             return;
         }
+        metricEventType = event.getEventType();
         try {
             List<RouteDispatch> dispatches = buildDispatches(event);
             if (dispatches.isEmpty()) {
                 markSent(outboxId);
+                metricResult = "skipped";
                 return;
             }
             for (RouteDispatch dispatch : dispatches) {
@@ -95,8 +109,14 @@ public class OutboxPublisher {
                 topic.publish(wsPushEvent);
             }
             markSent(outboxId);
+            metricResult = "success";
         } catch (Exception ex) {
             markFailed(outboxId, ex);
+            metricResult = "failure";
+        } finally {
+            if (metricResult != null) {
+                recordOutboxPublish(metricEventType, metricResult, startNanos);
+            }
         }
     }
 
@@ -191,11 +211,15 @@ public class OutboxPublisher {
             MessageDTO messageDTO = JSON.parseObject(event.getPayload(), MessageDTO.class);
             messageId = messageDTO == null ? null : messageDTO.getId();
         }
-        if (messageId == null && EVENT_TYPE_READ_RECEIPT.equals(eventType)) {
+        if (messageId == null && isReadEvent(eventType)) {
             ReadReceiptDTO receipt = JSON.parseObject(event.getPayload(), ReadReceiptDTO.class);
             messageId = receipt == null ? null : receipt.getLastReadMessageId();
         }
         return new EventPayload(eventType, messageId, deduplicate(targets));
+    }
+
+    private boolean isReadEvent(String eventType) {
+        return EVENT_TYPE_READ_RECEIPT.equals(eventType) || EVENT_TYPE_READ_SYNC.equals(eventType);
     }
 
     private Set<String> resolveRouteInstances(Long userId) {
@@ -242,6 +266,12 @@ public class OutboxPublisher {
         int normalized = Math.max(1, attempts);
         long multiplier = 1L << Math.min(10, normalized - 1);
         return baseBackoffMs * multiplier;
+    }
+
+    private void recordOutboxPublish(String eventType, String result, long startNanos) {
+        if (metrics != null) {
+            metrics.recordOutboxPublish(eventType, result, Duration.ofNanos(System.nanoTime() - startNanos));
+        }
     }
 
     private record EventPayload(String eventType, Long messageId, List<Long> targetUserIds) {
