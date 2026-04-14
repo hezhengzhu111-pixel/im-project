@@ -68,7 +68,7 @@ export default defineConfig(({ mode }) => {
           manualChunks: {
             vue: ["vue", "vue-router", "pinia"],
             element: ["element-plus", "@element-plus/icons-vue"],
-            utilities: ["axios", "dayjs", "mitt", "nprogress", "qs"],
+            utilities: ["axios", "dayjs", "mitt", "qs"],
             pinyin: ["pinyin-pro"],
             virtualScroller: ["vue-virtual-scroller"],
           },
@@ -92,7 +92,7 @@ export default defineConfig(({ mode }) => {
       restoreMocks: true,
       server: {
         deps: {
-          inline: ["element-plus", "nprogress"],
+          inline: ["element-plus"],
         },
       },
       coverage: {
