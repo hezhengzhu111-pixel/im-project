@@ -48,6 +48,8 @@ const messageRepoMock = {
   clearConversation: vi.fn(),
 };
 
+const refreshOnlineStatusMock = vi.fn();
+
 vi.mock("@/services/message", () => ({
   messageService: messageServiceMock,
 }));
@@ -69,6 +71,12 @@ vi.mock("@/services/heartbeat", () => ({
   heartbeatService: {
     refreshFriends: vi.fn(),
   },
+}));
+
+vi.mock("@/stores/websocket", () => ({
+  useWebSocketStore: () => ({
+    refreshOnlineStatus: refreshOnlineStatusMock,
+  }),
 }));
 
 vi.mock("@/stores/user", () => ({
@@ -123,6 +131,7 @@ describe("chat store", () => {
     messageRepoMock.upsertPendingMessage.mockReset();
     messageRepoMock.removePendingMessage.mockReset();
     messageRepoMock.clearConversation.mockReset();
+    refreshOnlineStatusMock.mockReset();
 
     messageServiceMock.getPrivateHistoryCursor.mockResolvedValue({ code: 200, data: [] });
     messageServiceMock.getGroupHistoryCursor.mockResolvedValue({ code: 200, data: [] });
@@ -141,6 +150,7 @@ describe("chat store", () => {
     messageRepoMock.upsertPendingMessage.mockResolvedValue(undefined);
     messageRepoMock.removePendingMessage.mockResolvedValue(undefined);
     messageRepoMock.clearConversation.mockResolvedValue(undefined);
+    refreshOnlineStatusMock.mockResolvedValue({});
   });
 
   it("sorts private history by send time ascending", async () => {
@@ -177,6 +187,40 @@ describe("chat store", () => {
 
     expect(list.map((item) => item.content)).toEqual(["a", "b"]);
     expect(list[0].sendTime.includes("2026-02-07T10:00:00.100")).toBe(true);
+  });
+
+  it("refreshes friend and private session online statuses after bootstrap", async () => {
+    friendServiceMock.getList.mockResolvedValue({
+      code: 200,
+      data: [
+        {
+          friendId: "2",
+          username: "u2",
+          nickname: "u2",
+        },
+      ],
+    });
+    messageServiceMock.getConversations.mockResolvedValue({
+      code: 200,
+      data: [
+        {
+          conversationId: "1_3",
+          conversationType: 1,
+          targetId: "3",
+          conversationName: "u3",
+          unreadCount: 0,
+        },
+      ],
+    });
+
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    await store.initChatBootstrap();
+
+    expect(refreshOnlineStatusMock).toHaveBeenCalledWith(
+      expect.arrayContaining(["2", "3"]),
+    );
   });
 
   it("applies read receipt to outgoing messages", async () => {

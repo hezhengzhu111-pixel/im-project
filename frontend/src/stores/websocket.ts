@@ -199,6 +199,70 @@ export const useWebSocketStore = defineStore("websocket", () => {
     return "disconnected";
   });
 
+  const normalizePresenceUserId = (userId: unknown): string =>
+    String(userId || "").trim();
+
+  const setUserOnline = (userId: unknown, isOnline: boolean) => {
+    const normalizedUserId = normalizePresenceUserId(userId);
+    if (!normalizedUserId) {
+      return;
+    }
+    const nextOnlineUsers = new Set(onlineUsers.value);
+    const wasOnline = nextOnlineUsers.has(normalizedUserId);
+    if (isOnline) {
+      nextOnlineUsers.add(normalizedUserId);
+    } else {
+      nextOnlineUsers.delete(normalizedUserId);
+    }
+    onlineUsers.value = nextOnlineUsers;
+
+    if (wasOnline !== isOnline) {
+      window.dispatchEvent(
+        new CustomEvent("onlineStatusChanged", {
+          detail: { userId: normalizedUserId, isOnline },
+        }),
+      );
+    }
+  };
+
+  const applyOnlineStatusMap = (statusMap: Record<string, boolean>) => {
+    Object.entries(statusMap || {}).forEach(([userId, isOnline]) => {
+      setUserOnline(userId, Boolean(isOnline));
+    });
+  };
+
+  const collectKnownPresenceUserIds = () => {
+    const chatStore = useChatStore();
+    const ids = new Set<string>();
+
+    (chatStore.friends || []).forEach((friend) => {
+      const friendId = normalizePresenceUserId(friend.friendId);
+      if (friendId) {
+        ids.add(friendId);
+      }
+    });
+
+    (chatStore.sessions || []).forEach((session) => {
+      if (session.type !== "private") {
+        return;
+      }
+      const targetId = normalizePresenceUserId(session.targetId);
+      if (targetId) {
+        ids.add(targetId);
+      }
+    });
+
+    const currentSession = chatStore.currentSession;
+    if (currentSession?.type === "private") {
+      const targetId = normalizePresenceUserId(currentSession.targetId);
+      if (targetId) {
+        ids.add(targetId);
+      }
+    }
+
+    return Array.from(ids);
+  };
+
   const requestWsTicket = async (): Promise<void> => {
     const response = await authService.issueWsTicket();
     const ticket = response?.data?.ticket;
@@ -229,6 +293,9 @@ export const useWebSocketStore = defineStore("websocket", () => {
         stopReconnect();
         saveConnectionCache(userId);
         startHeartbeat();
+        void refreshKnownOnlineStatus().catch((error) => {
+          logger.warn("failed to refresh known online status", error);
+        });
         void useChatStore().syncOfflineMessages().catch((error) => {
           logger.warn("failed to sync offline messages", error);
         });
@@ -401,26 +468,12 @@ export const useWebSocketStore = defineStore("websocket", () => {
   };
 
   const updateOnlineStatus = (status: OnlineStatus) => {
-    const wasOnline = onlineUsers.value.has(status.userId);
-    const isNowOnline = status.status === "ONLINE";
-
-    if (isNowOnline) {
-      onlineUsers.value.add(status.userId);
-    } else {
-      onlineUsers.value.delete(status.userId);
-    }
-
-    if (wasOnline !== isNowOnline) {
-      window.dispatchEvent(
-        new CustomEvent("onlineStatusChanged", {
-          detail: { userId: status.userId, isOnline: isNowOnline },
-        }),
-      );
-    }
+    setUserOnline(status.userId, status.status === "ONLINE");
   };
 
   const isUserOnline = (userId: string): boolean => {
-    return onlineUsers.value.has(userId);
+    const normalizedUserId = normalizePresenceUserId(userId);
+    return Boolean(normalizedUserId && onlineUsers.value.has(normalizedUserId));
   };
 
   const startHeartbeat = () => {
@@ -499,22 +552,32 @@ export const useWebSocketStore = defineStore("websocket", () => {
   };
 
   const heartbeat = async (userIds: string[]) => {
+    const normalizedUserIds = Array.from(
+      new Set(userIds.map(normalizePresenceUserId).filter(Boolean)),
+    );
+    if (normalizedUserIds.length === 0) {
+      return {};
+    }
     try {
-      const response = await userService.checkOnlineStatus(userIds);
+      const response = await userService.checkOnlineStatus(normalizedUserIds);
       if (response.code === 200 && response.data) {
-        Object.entries(response.data).forEach(([userId, isOnline]) => {
-          if (isOnline) {
-            onlineUsers.value.add(userId);
-          } else {
-            onlineUsers.value.delete(userId);
-          }
-        });
+        applyOnlineStatusMap(response.data);
         return response.data;
       }
     } catch (error) {
       logger.warn("failed to query heartbeat", error);
     }
     return {};
+  };
+
+  const refreshOnlineStatus = heartbeat;
+
+  const refreshKnownOnlineStatus = async () => {
+    const userIds = collectKnownPresenceUserIds();
+    if (userIds.length === 0) {
+      return {};
+    }
+    return heartbeat(userIds);
   };
 
   return {
@@ -528,6 +591,8 @@ export const useWebSocketStore = defineStore("websocket", () => {
     disconnect,
     isUserOnline,
     heartbeat,
+    refreshOnlineStatus,
+    refreshKnownOnlineStatus,
     loadConnectionCache,
     clearConnectionCache,
   };

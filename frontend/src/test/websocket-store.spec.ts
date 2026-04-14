@@ -164,6 +164,71 @@ describe("websocket store", () => {
     );
   });
 
+  it("hydrates the shared online status map from status query", async () => {
+    checkOnlineStatus.mockResolvedValue({
+      code: 200,
+      data: {
+        "2": true,
+        "3": false,
+      },
+    });
+
+    const { useWebSocketStore } = await import("@/stores/websocket");
+    const store = useWebSocketStore();
+
+    await store.refreshOnlineStatus(["2", "2", "3", ""]);
+
+    expect(checkOnlineStatus).toHaveBeenCalledWith(["2", "3"]);
+    expect(store.isUserOnline("2")).toBe(true);
+    expect(store.isUserOnline("3")).toBe(false);
+  });
+
+  it("updates the shared online status map from websocket presence events", async () => {
+    issueWsTicket.mockResolvedValue({
+      code: 200,
+      data: {
+        ticket: "ticket-presence",
+        expiresInMs: 30_000,
+      },
+    });
+
+    const { useWebSocketStore } = await import("@/stores/websocket");
+    const store = useWebSocketStore();
+
+    await store.connect("42");
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
+    await Promise.resolve();
+
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "ONLINE_STATUS",
+        data: {
+          userId: "2",
+          status: "ONLINE",
+          lastSeen: "2026-04-14T10:00:00",
+        },
+        timestamp: Date.now(),
+      }),
+    });
+
+    expect(store.isUserOnline("2")).toBe(true);
+
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "ONLINE_STATUS",
+        data: {
+          userId: "2",
+          status: "OFFLINE",
+          lastSeen: "2026-04-14T10:01:00",
+        },
+        timestamp: Date.now(),
+      }),
+    });
+
+    expect(store.isUserOnline("2")).toBe(false);
+  });
+
   it("skips duplicate server messages that already exist in local state", async () => {
     issueWsTicket.mockResolvedValue({
       code: 200,

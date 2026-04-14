@@ -32,10 +32,19 @@
             <el-icon><ArrowLeft /></el-icon>
           </div>
           <div class="chat-title">
-            {{ currentSession.targetName }}
-            <span v-if="currentSession.type === 'group'">
-              ({{ currentSession.memberCount || 0 }})
-            </span>
+            <div class="chat-title-main">
+              {{ currentSession.targetName }}
+              <span v-if="currentSession.type === 'group'">
+                ({{ currentSession.memberCount || 0 }})
+              </span>
+            </div>
+            <div
+              v-if="currentSession.type === 'private'"
+              class="chat-presence"
+              :class="{ online: currentSessionOnline }"
+            >
+              {{ currentSessionOnline ? "在线" : "离线" }}
+            </div>
           </div>
           <div class="chat-actions">
             <el-dropdown trigger="click" @command="handleSessionAction">
@@ -89,10 +98,12 @@ import ChatSidebarPanel from "@/features/chat/ChatSidebarPanel.vue";
 import { useErrorHandler } from "@/hooks/useErrorHandler";
 import { useChatStore } from "@/stores/chat";
 import { useUserStore } from "@/stores/user";
+import { useWebSocketStore } from "@/stores/websocket";
 import type { Friend, Group, GroupReadUser, Message } from "@/types";
 
 const userStore = useUserStore();
 const chatStore = useChatStore();
+const webSocketStore = useWebSocketStore();
 const { capture } = useErrorHandler("chat-container");
 const activeTab = ref<"chat" | "contacts" | "groups">("chat");
 const showAddFriend = ref(false);
@@ -106,6 +117,12 @@ const pendingRequestsCount = computed(() => {
   return chatStore.friendRequests.filter((item) => item.status === "PENDING").length;
 });
 const isChatActiveOnMobile = computed(() => Boolean(currentSession.value));
+const currentSessionOnline = computed(() => {
+  if (currentSession.value?.type !== "private") {
+    return false;
+  }
+  return webSocketStore.isUserOnline(String(currentSession.value.targetId || ""));
+});
 
 const handleTabChange = (tabName: "chat" | "contacts" | "groups") => {
   activeTab.value = tabName;
@@ -286,8 +303,27 @@ onUnmounted(() => {
 }
 
 .chat-title {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   font-size: 18px;
   font-weight: 500;
+  line-height: 1.25;
+}
+
+.chat-title-main {
+  color: #303133;
+}
+
+.chat-presence {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #909399;
+}
+
+.chat-presence.online {
+  color: #67c23a;
 }
 
 .mobile-back {

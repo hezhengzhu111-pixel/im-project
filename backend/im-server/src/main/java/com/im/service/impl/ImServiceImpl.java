@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSON;
 import com.im.config.ImNodeIdentity;
 import com.im.dto.GroupMemberDTO;
 import com.im.dto.MessageDTO;
+import com.im.dto.PresenceEvent;
 import com.im.dto.ReadReceiptDTO;
 import com.im.entity.UserSession;
 import com.im.enums.MessageType;
@@ -15,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RBucket;
+import org.redisson.api.RTopic;
 import org.redisson.api.RSetMultimap;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,6 +61,9 @@ public class ImServiceImpl implements IImService {
 
     @Value("${im.route.lease-key-prefix:im:route:lease:}")
     private String routeLeaseKeyPrefix;
+
+    @Value("${im.ws.presence-channel:im:presence:broadcast}")
+    private String presenceChannel;
 
     @Value("${im.route.lease-ttl-ms:120000}")
     private long routeLeaseTtlMs;
@@ -110,7 +115,7 @@ public class ImServiceImpl implements IImService {
             closeSessionQuietly(normalizedUserId, removedSession.getWebSocketSession(), null);
         }
         if (!isUserGloballyOnline(normalizedUserId)) {
-            broadcastOnlineStatus(normalizedUserId, UserStatus.OFFLINE);
+            publishAndBroadcastOnlineStatus(normalizedUserId, UserStatus.OFFLINE);
         }
         return true;
     }
@@ -339,7 +344,9 @@ public class ImServiceImpl implements IImService {
             userSession.setLastHeartbeat(now);
 
             Set<String> sessionIds = sessionIdsByUser.computeIfAbsent(normalizedUserId, key -> ConcurrentHashMap.newKeySet());
-            boolean firstLocal = sessionIds.isEmpty();
+            boolean firstLocal = sessionIds.stream()
+                    .map(sessionsById::get)
+                    .noneMatch(existingSession -> isSessionOpenAndFresh(existingSession, now));
             sessionIds.add(sessionId);
             sessionsById.put(sessionId, userSession);
 
@@ -350,7 +357,7 @@ public class ImServiceImpl implements IImService {
         });
 
         if (firstLocalSession) {
-            broadcastOnlineStatus(normalizedUserId, UserStatus.ONLINE);
+            publishAndBroadcastOnlineStatus(normalizedUserId, UserStatus.ONLINE);
         }
     }
 
@@ -406,7 +413,7 @@ public class ImServiceImpl implements IImService {
         UserSession removedSession = removedSessions.get(0);
         closeSessionQuietly(lockedUserId, removedSession.getWebSocketSession(), closeStatus);
         if (lastLocalSession[0] && !isUserGloballyOnline(lockedUserId)) {
-            broadcastOnlineStatus(lockedUserId, UserStatus.OFFLINE);
+            publishAndBroadcastOnlineStatus(lockedUserId, UserStatus.OFFLINE);
         }
         return true;
     }
@@ -461,11 +468,23 @@ public class ImServiceImpl implements IImService {
                 senderId, targetUserId, content, status);
     }
 
-    private void broadcastOnlineStatus(String userId, UserStatus status) {
+    private void publishAndBroadcastOnlineStatus(String userId, UserStatus status) {
+        String lastSeen = LocalDateTime.now().toString();
+        broadcastOnlineStatus(userId, status, lastSeen);
+        publishPresenceEvent(userId, status, lastSeen);
+    }
+
+    @Override
+    public void broadcastOnlineStatus(String userId, UserStatus status, String lastSeen) {
+        String normalizedUserId = normalizeUserId(userId);
+        if (normalizedUserId == null || status == null) {
+            return;
+        }
+        String resolvedLastSeen = StringUtils.defaultIfBlank(lastSeen, LocalDateTime.now().toString());
         Map<String, Object> data = new HashMap<>();
-        data.put("userId", userId);
+        data.put("userId", normalizedUserId);
         data.put("status", status == UserStatus.ONLINE ? "ONLINE" : "OFFLINE");
-        data.put("lastSeen", LocalDateTime.now().toString());
+        data.put("lastSeen", resolvedLastSeen);
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("type", "ONLINE_STATUS");
@@ -482,6 +501,26 @@ public class ImServiceImpl implements IImService {
                 continue;
             }
             sendTextToSession(session, sessionId, "ONLINE_STATUS", text);
+        }
+    }
+
+    private void publishPresenceEvent(String userId, UserStatus status, String lastSeen) {
+        String normalizedUserId = normalizeUserId(userId);
+        if (normalizedUserId == null || status == null) {
+            return;
+        }
+        try {
+            PresenceEvent event = PresenceEvent.builder()
+                    .userId(normalizedUserId)
+                    .status(status.name())
+                    .lastSeen(lastSeen)
+                    .sourceInstanceId(getCurrentInstanceId())
+                    .build();
+            RTopic topic = redissonClient.getTopic(presenceChannel);
+            topic.publish(event);
+        } catch (Exception e) {
+            log.warn("Publish presence event failed. userId={}, status={}, sourceInstanceId={}, error={}",
+                    normalizedUserId, status, getCurrentInstanceId(), e.getMessage());
         }
     }
 
@@ -537,7 +576,8 @@ public class ImServiceImpl implements IImService {
     }
 
     private boolean isUserGloballyOnline(String userId) {
-        Set<String> instanceIds = new LinkedHashSet<>(routeMultimap.getAll(userId));
+        Set<String> routeInstanceIds = routeMultimap == null ? null : routeMultimap.getAll(userId);
+        Set<String> instanceIds = routeInstanceIds == null ? new LinkedHashSet<>() : new LinkedHashSet<>(routeInstanceIds);
         if (instanceIds.isEmpty()) {
             return false;
         }

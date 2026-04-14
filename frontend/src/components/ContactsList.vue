@@ -152,7 +152,6 @@ import { userService } from "@/services/user";
 import { useChatStore } from "@/stores/chat";
 import { useWebSocketStore } from "@/stores/websocket";
 import { useRouter } from "vue-router";
-import { heartbeatService } from "@/services/heartbeat";
 
 const router = useRouter();
 const chatStore = useChatStore();

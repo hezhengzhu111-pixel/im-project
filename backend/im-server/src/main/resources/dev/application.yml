@@ -95,6 +95,7 @@ im:
     janitor-interval-ms: 300000
   ws:
     channel-prefix: "im:channel:"
+    presence-channel: "im:presence:broadcast"
     retry:
       max-attempts: 20
       base-backoff-ms: 500

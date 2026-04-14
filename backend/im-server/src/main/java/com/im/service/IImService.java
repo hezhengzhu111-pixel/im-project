@@ -3,6 +3,7 @@ package com.im.service;
 import com.im.dto.MessageDTO;
 import com.im.dto.ReadReceiptDTO;
 import com.im.entity.UserSession;
+import com.im.enums.UserStatus;
 import org.springframework.web.socket.CloseStatus;
 
 import java.util.List;
@@ -48,6 +49,8 @@ public interface IImService {
     void registerSession(String userId, UserSession userSession);
 
     boolean unregisterSession(String userId, String sessionId, CloseStatus closeStatus);
+
+    void broadcastOnlineStatus(String userId, UserStatus status, String lastSeen);
 
     default void sendOfflineMessage(MessageDTO message) {
     }
