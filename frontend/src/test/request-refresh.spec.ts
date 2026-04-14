@@ -129,14 +129,6 @@ vi.mock("axios", () => ({
   },
 }));
 
-vi.mock("nprogress", () => ({
-  default: {
-    configure: vi.fn(),
-    start: vi.fn(),
-    done: vi.fn(),
-  },
-}));
-
 vi.mock("element-plus", () => ({
   ElMessage: {
     warning,

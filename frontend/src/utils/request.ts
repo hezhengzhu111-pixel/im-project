@@ -11,7 +11,6 @@ import { ElMessage } from "element-plus";
 import { useUserStore } from "@/stores/user";
 import type { ApiResponse } from "@/types/api";
 import router from "@/router";
-import NProgress from "nprogress";
 import {
   refreshAccessTokenCoordinated,
   type RefreshAccessTokenStatus,
@@ -284,9 +283,6 @@ const request: AxiosInstance = axios.create({
 // 请求拦截器
 request.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // 显示进度条
-    NProgress.start();
-
     const headers = (config.headers || {}) as HeaderBag;
     config.headers = headers as InternalAxiosRequestConfig["headers"];
 
@@ -313,7 +309,6 @@ request.interceptors.request.use(
     return config;
   },
   (error) => {
-    NProgress.done();
     logger.error("request interceptor failed", error);
     return Promise.reject(error);
   },
@@ -322,8 +317,6 @@ request.interceptors.request.use(
 // 响应拦截器
 request.interceptors.response.use(
   async (response: AxiosResponse<unknown>): Promise<any> => {
-    NProgress.done();
-
     const responseData =
       response.data && typeof response.data === "object"
         ? (response.data as Record<string, unknown>)
@@ -407,8 +400,6 @@ request.interceptors.response.use(
     return Promise.reject(new Error(messageText || "请求失败"));
   },
   async (error) => {
-    NProgress.done();
-
     // 网络错误
     if (!error.response) {
       logger.error("response interceptor failed", error);

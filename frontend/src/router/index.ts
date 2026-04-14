@@ -12,8 +12,6 @@ import {
 import type { RouteRecordRaw } from "vue-router";
 import { useUserStore } from "@/stores/user";
 import { ElMessage } from "element-plus";
-import NProgress from "nprogress";
-import "nprogress/nprogress.css";
 import { logger } from "@/utils/logger";
 
 const CHUNK_RELOAD_KEY = "im_chunk_reload_path";
@@ -42,13 +40,6 @@ const appendReloadNonce = (fullPath: string): string => {
   const hash = hashPart ? `#${hashPart}` : "";
   return `${pathname}${query ? `?${query}` : ""}${hash}`;
 };
-
-// 配置NProgress
-NProgress.configure({
-  showSpinner: false,
-  minimum: 0.2,
-  speed: 500,
-});
 
 // 路由定义
 const routes: RouteRecordRaw[] = [
@@ -157,9 +148,6 @@ const router = createRouter({
 
 // 全局前置守卫
 router.beforeEach(async (to, from, next) => {
-  // 开始进度条
-  NProgress.start();
-
   const userStore = useUserStore();
   const requiresAuth = to.meta.requiresAuth;
   const hideForAuth = to.meta.hideForAuth;
@@ -203,9 +191,6 @@ router.beforeEach(async (to, from, next) => {
 
 // 全局后置钩子
 router.afterEach((to, from, failure) => {
-  // 结束进度条
-  NProgress.done();
-
   if (
     failure &&
     !isNavigationFailure(failure, NavigationFailureType.duplicated) &&
@@ -238,7 +223,6 @@ router.onError((error, to) => {
     sessionStorage.removeItem(CHUNK_RELOAD_KEY);
   }
   ElMessage.error("页面加载失败");
-  NProgress.done();
 });
 
 export default router;
