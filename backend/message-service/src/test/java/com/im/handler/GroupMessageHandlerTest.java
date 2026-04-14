@@ -162,6 +162,12 @@ class GroupMessageHandlerTest {
         verify(transactionTemplate, never()).execute(any());
     }
 
+    @Test
+    void supportsShouldIgnoreSystemMessageType() {
+        assertEquals(true, handler.supports(MessageType.TEXT));
+        assertEquals(false, handler.supports(MessageType.SYSTEM));
+    }
+
     private UserDTO user(Long id, String username) {
         return UserDTO.builder()
                 .id(String.valueOf(id))

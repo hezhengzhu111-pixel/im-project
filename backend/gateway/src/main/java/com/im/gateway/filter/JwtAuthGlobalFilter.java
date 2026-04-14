@@ -1,8 +1,6 @@
 package com.im.gateway.filter;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.benmanes.caffeine.cache.AsyncCache;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.im.config.GlobalRateLimitSwitch;
@@ -12,8 +10,9 @@ import com.im.dto.AuthUserResourceDTO;
 import com.im.dto.TokenParseResultDTO;
 import com.im.security.SecurityPaths;
 import com.im.util.AuthHeaderUtil;
-import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.loadbalancer.reactive.ReactorLoadBalancerExchangeFilterFunction;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -21,17 +20,14 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.ExchangeFunction;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.server.ServerWebExchange;
+import reactor.core.Exceptions;
 import reactor.core.publisher.Mono;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.time.Instant;
-import java.util.Base64;
 import java.util.UUID;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 
 @Component
@@ -46,8 +42,8 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private static final String HEADER_AUTH_SIGN = "X-Auth-Sign";
     private static final String HEADER_GATEWAY_ROUTE = "X-Gateway-Route";
     private static final String HEADER_RATE_LIMIT_GLOBAL_ENABLED = RateLimitGlobalProperties.SWITCH_HEADER;
-    private static final int MAX_CACHE_SIZE = 10_000;
-    private static final Duration INFLIGHT_CACHE_TTL = Duration.ofSeconds(30);
+    private static final int AUTH_CACHE_MAX_SIZE = 10_000;
+    private static final Duration AUTH_CACHE_TTL = Duration.ofSeconds(10);
     private static final ParameterizedTypeReference<ApiResponse<TokenParseResultDTO>> TOKEN_RESPONSE_TYPE =
             new ParameterizedTypeReference<ApiResponse<TokenParseResultDTO>>() {
             };
@@ -56,14 +52,10 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             };
 
     private final ObjectMapper objectMapper;
-    private final WebClient webClient;
     private final GlobalRateLimitSwitch globalRateLimitSwitch;
+    private final WebClient webClient;
     private final Duration authServiceTimeout;
-    private final Cache<String, TokenParseResultDTO> tokenCache;
-    private final Cache<String, InvalidTokenMarker> invalidTokenCache;
-    private final Cache<Long, AuthUserResourceDTO> userResourceCache;
-    private final AsyncCache<String, TokenValidationOutcome> tokenValidationInflight;
-    private final AsyncCache<Long, UserResourceLoadOutcome> userResourceInflight;
+    private final Cache<String, AuthenticatedSession> authResultCache;
 
     @Value("${im.internal.header:X-Internal-Secret}")
     private String internalHeaderName;
@@ -90,46 +82,58 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private String refreshTokenCookieName;
 
     public JwtAuthGlobalFilter(ObjectMapper objectMapper,
-                               @Qualifier("plainWebClientBuilder") WebClient.Builder plainWebClientBuilder,
-                               @Qualifier("loadBalancedWebClientBuilder") WebClient.Builder loadBalancedWebClientBuilder,
                                GlobalRateLimitSwitch globalRateLimitSwitch,
+                               ObjectProvider<ReactorLoadBalancerExchangeFilterFunction> loadBalancerFilterProvider,
                                @Value("${im.gateway.auth-service-url:http://127.0.0.1:8084}") String authServiceUrl,
-                               @Value("${im.gateway.auth.request-timeout-ms:3000}") long requestTimeoutMs,
-                               @Value("${im.gateway.auth.token-cache-ttl-seconds:10}") long tokenCacheTtlSeconds,
-                               @Value("${im.gateway.auth.token-negative-cache-ttl-seconds:5}") long tokenNegativeCacheTtlSeconds,
-                               @Value("${im.gateway.auth.user-resource-cache-ttl-seconds:15}") long userResourceCacheTtlSeconds) {
-        this.objectMapper = objectMapper;
-        this.globalRateLimitSwitch = globalRateLimitSwitch;
-        this.webClient = (useLoadBalancedClient(authServiceUrl)
-                ? loadBalancedWebClientBuilder
-                : plainWebClientBuilder)
-                .baseUrl(authServiceUrl)
-                .build();
-        this.authServiceTimeout = Duration.ofMillis(Math.max(1L, requestTimeoutMs));
-        this.tokenCache = Caffeine.newBuilder()
-                .expireAfterWrite(Duration.ofSeconds(Math.max(1L, tokenCacheTtlSeconds)))
-                .maximumSize(MAX_CACHE_SIZE)
-                .build();
-        this.invalidTokenCache = Caffeine.newBuilder()
-                .expireAfterWrite(Duration.ofSeconds(Math.max(1L, tokenNegativeCacheTtlSeconds)))
-                .maximumSize(MAX_CACHE_SIZE)
-                .build();
-        this.userResourceCache = Caffeine.newBuilder()
-                .expireAfterWrite(Duration.ofSeconds(Math.max(1L, userResourceCacheTtlSeconds)))
-                .maximumSize(MAX_CACHE_SIZE)
-                .build();
-        this.tokenValidationInflight = Caffeine.newBuilder()
-                .expireAfterWrite(INFLIGHT_CACHE_TTL)
-                .maximumSize(MAX_CACHE_SIZE)
-                .buildAsync();
-        this.userResourceInflight = Caffeine.newBuilder()
-                .expireAfterWrite(INFLIGHT_CACHE_TTL)
-                .maximumSize(MAX_CACHE_SIZE)
-                .buildAsync();
+                               @Value("${im.gateway.auth.request-timeout-ms:3000}") long requestTimeoutMs) {
+        this(objectMapper,
+                globalRateLimitSwitch,
+                requestTimeoutMs,
+                buildWebClient(authServiceUrl, loadBalancerFilterProvider.getIfAvailable(), null));
     }
 
-    private boolean useLoadBalancedClient(String authServiceUrl) {
-        return authServiceUrl != null && authServiceUrl.trim().startsWith("lb://");
+    JwtAuthGlobalFilter(ObjectMapper objectMapper,
+                        GlobalRateLimitSwitch globalRateLimitSwitch,
+                        String authServiceUrl,
+                        long requestTimeoutMs,
+                        ExchangeFunction exchangeFunction) {
+        this(objectMapper,
+                globalRateLimitSwitch,
+                requestTimeoutMs,
+                buildWebClient(authServiceUrl, null, exchangeFunction));
+    }
+
+    private JwtAuthGlobalFilter(ObjectMapper objectMapper,
+                                GlobalRateLimitSwitch globalRateLimitSwitch,
+                                long requestTimeoutMs,
+                                WebClient webClient) {
+        this.objectMapper = objectMapper;
+        this.globalRateLimitSwitch = globalRateLimitSwitch;
+        this.webClient = webClient;
+        this.authServiceTimeout = Duration.ofMillis(Math.max(1L, requestTimeoutMs));
+        this.authResultCache = Caffeine.newBuilder()
+                .maximumSize(AUTH_CACHE_MAX_SIZE)
+                .expireAfterWrite(AUTH_CACHE_TTL)
+                .build();
+    }
+
+    private static WebClient buildWebClient(String authServiceUrl,
+                                            ReactorLoadBalancerExchangeFilterFunction loadBalancerFilter,
+                                            ExchangeFunction exchangeFunction) {
+        WebClient.Builder builder = WebClient.builder();
+        if (exchangeFunction != null) {
+            builder.exchangeFunction(exchangeFunction);
+        }
+        String baseUrl = authServiceUrl == null || authServiceUrl.isBlank()
+                ? "http://127.0.0.1:8084"
+                : authServiceUrl.trim();
+        if (baseUrl.startsWith("lb://")) {
+            if (loadBalancerFilter != null) {
+                builder.filter(loadBalancerFilter);
+            }
+            baseUrl = "http://" + baseUrl.substring("lb://".length());
+        }
+        return builder.baseUrl(baseUrl).build();
     }
 
     @Override
@@ -238,24 +242,21 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private Mono<ServerWebExchange> authenticateAndDecorate(ServerWebExchange exchange, String token) {
-        return validateToken(token)
-                .flatMap(this::buildAuthContext)
-                .flatMap(context -> resolveUserResource(context.userId())
-                        .map(userResource -> mutateExchange(exchange, context, userResource)));
-    }
-
-    private Mono<AuthContext> buildAuthContext(TokenParseResultDTO parseResult) {
-        AuthContext context = validateAuthContext(parseResult);
-        if (context == null) {
-            return Mono.error(GatewayAuthException.serviceUnavailable("auth response missing user context"));
+        AuthenticatedSession cachedSession = authResultCache.getIfPresent(token);
+        if (cachedSession != null) {
+            return Mono.just(mutateExchange(exchange, cachedSession));
         }
-        return Mono.just(context);
+        return validateToken(token)
+                .flatMap(context -> resolveUserResource(context.userId())
+                        .map(userResource -> new AuthenticatedSession(context, userResource)))
+                .flatMap(session -> {
+                    authResultCache.put(token, session);
+                    return Mono.just(mutateExchange(exchange, session));
+                });
     }
 
-    private ServerWebExchange mutateExchange(ServerWebExchange exchange,
-                                             AuthContext context,
-                                             AuthUserResourceDTO userResource) {
-        SignedAuthHeaders signedHeaders = buildSignedAuthHeaders(context, userResource);
+    private ServerWebExchange mutateExchange(ServerWebExchange exchange, AuthenticatedSession session) {
+        SignedAuthHeaders signedHeaders = buildSignedAuthHeaders(session.context(), session.userResource());
         ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
                 .headers(headers -> {
                     headers.remove(HEADER_USER_ID);
@@ -268,8 +269,8 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                     headers.remove(HEADER_AUTH_NONCE);
                     headers.remove(HEADER_AUTH_SIGN);
                     headers.remove(HEADER_RATE_LIMIT_GLOBAL_ENABLED);
-                    headers.set(HEADER_USER_ID, String.valueOf(context.userId()));
-                    headers.set(HEADER_USERNAME, context.username());
+                    headers.set(HEADER_USER_ID, String.valueOf(session.context().userId()));
+                    headers.set(HEADER_USERNAME, session.context().username());
                     headers.set(internalHeaderName, internalSecret);
                     headers.set(HEADER_AUTH_USER, signedHeaders.userB64());
                     headers.set(HEADER_AUTH_PERMS, signedHeaders.permsB64());
@@ -307,61 +308,36 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         return new SignedAuthHeaders(userB64, permsB64, dataB64, ts, nonce, signature);
     }
 
-    private Mono<TokenParseResultDTO> validateToken(String token) {
-        String localFailureReason = inspectTokenPayload(token);
-        if (localFailureReason != null) {
-            cacheInvalidToken(token, localFailureReason);
-            return Mono.error(GatewayAuthException.unauthorized(localFailureReason));
-        }
-
-        InvalidTokenMarker invalidMarker = invalidTokenCache.getIfPresent(token);
-        if (invalidMarker != null) {
-            return Mono.error(GatewayAuthException.unauthorized(invalidMarker.reason()));
-        }
-
-        TokenParseResultDTO cached = tokenCache.getIfPresent(token);
-        if (isCacheableTokenResult(cached)) {
-            return Mono.just(cached);
-        }
-
-        return Mono.fromFuture(tokenValidationInflight.get(token, (key, executor) -> buildValidateTokenOutcomeMono(key).toFuture()))
-                .doOnNext(ignore -> tokenValidationInflight.synchronous().invalidate(token))
-                .doOnError(ignore -> tokenValidationInflight.synchronous().invalidate(token))
-                .onErrorMap(this::unwrapAsyncException)
-                .flatMap(outcome -> applyTokenValidationOutcome(token, outcome));
-    }
-
-    private Mono<TokenValidationOutcome> buildValidateTokenOutcomeMono(String token) {
+    private Mono<AuthContext> validateToken(String token) {
         return exchangeForApiResponse(webClient.post()
                         .uri("/api/auth/internal/validate-token")
                         .header(internalHeaderName, internalSecret)
                         .header("X-Check-Revoked", String.valueOf(tokenRevocationCheckEnabled))
                         .bodyValue(token), TOKEN_RESPONSE_TYPE)
-                .map(response -> toTokenValidationOutcome(extractApiData(response)))
-                .onErrorResume(GatewayAuthException.class,
-                        ex -> Mono.just(TokenValidationOutcome.failure(ex.status(), ex.getMessage())));
+                .map(this::extractApiData)
+                .flatMap(parseResult -> {
+                    AuthContext context = validateAuthContext(parseResult);
+                    if (context != null) {
+                        return Mono.just(context);
+                    }
+                    String message = parseResult == null || parseResult.getError() == null
+                            ? "invalid token"
+                            : parseResult.getError();
+                    return Mono.error(GatewayAuthException.unauthorized(message));
+                });
     }
 
     private Mono<AuthUserResourceDTO> resolveUserResource(Long userId) {
-        AuthUserResourceDTO cached = userResourceCache.getIfPresent(userId);
-        if (isCacheableUserResource(cached, userId)) {
-            return Mono.just(cached);
-        }
-
-        return Mono.fromFuture(userResourceInflight.get(userId, (key, executor) -> buildLoadUserResourceOutcomeMono(key).toFuture()))
-                .doOnNext(ignore -> userResourceInflight.synchronous().invalidate(userId))
-                .doOnError(ignore -> userResourceInflight.synchronous().invalidate(userId))
-                .onErrorMap(this::unwrapAsyncException)
-                .flatMap(this::applyUserResourceLoadOutcome);
-    }
-
-    private Mono<UserResourceLoadOutcome> buildLoadUserResourceOutcomeMono(Long userId) {
         return exchangeForApiResponse(webClient.get()
                         .uri(uriBuilder -> uriBuilder.path("/api/auth/internal/user-resource/{userId}").build(userId))
                         .header(internalHeaderName, internalSecret), USER_RESOURCE_RESPONSE_TYPE)
-                .map(response -> toUserResourceLoadOutcome(userId, extractApiData(response)))
-                .onErrorResume(GatewayAuthException.class,
-                        ex -> Mono.just(UserResourceLoadOutcome.failure(ex.status(), ex.getMessage())));
+                .map(this::extractApiData)
+                .flatMap(dto -> {
+                    if (isCacheableUserResource(dto, userId)) {
+                        return Mono.just(dto);
+                    }
+                    return Mono.error(GatewayAuthException.serviceUnavailable("auth user resource response invalid"));
+                });
     }
 
     private <T> Mono<ApiResponse<T>> exchangeForApiResponse(WebClient.RequestHeadersSpec<?> requestSpec,
@@ -380,7 +356,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private Throwable mapAuthServiceError(Throwable throwable) {
-        Throwable unwrapped = unwrapAsyncException(throwable);
+        Throwable unwrapped = Exceptions.unwrap(throwable);
         if (unwrapped instanceof GatewayAuthException) {
             return unwrapped;
         }
@@ -388,89 +364,6 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             return GatewayAuthException.gatewayTimeout("auth service timeout");
         }
         return GatewayAuthException.serviceUnavailable("auth service unavailable");
-    }
-
-    private Throwable unwrapAsyncException(Throwable throwable) {
-        Throwable current = throwable;
-        while ((current instanceof CompletionException || current instanceof ExecutionException) && current.getCause() != null) {
-            current = current.getCause();
-        }
-        return current;
-    }
-
-    private void cacheValidToken(String token, TokenParseResultDTO result) {
-        tokenCache.put(token, result);
-        invalidTokenCache.invalidate(token);
-    }
-
-    private void cacheInvalidToken(String token, String reason) {
-        tokenCache.invalidate(token);
-        invalidTokenCache.put(token, new InvalidTokenMarker(reason == null ? "invalid token" : reason));
-    }
-
-    private TokenValidationOutcome toTokenValidationOutcome(TokenParseResultDTO result) {
-        if (result == null) {
-            return TokenValidationOutcome.failure(HttpStatus.SERVICE_UNAVAILABLE, "auth validate response missing body");
-        }
-        if (result.isExpired() || !result.isValid()) {
-            return TokenValidationOutcome.invalid(result.getError());
-        }
-        if (validateAuthContext(result) == null) {
-            return TokenValidationOutcome.failure(HttpStatus.SERVICE_UNAVAILABLE, "auth validate response missing subject");
-        }
-        return TokenValidationOutcome.valid(result);
-    }
-
-    private Mono<TokenParseResultDTO> applyTokenValidationOutcome(String token, TokenValidationOutcome outcome) {
-        if (outcome.result() != null) {
-            cacheValidToken(token, outcome.result());
-            return Mono.just(outcome.result());
-        }
-        if (HttpStatus.UNAUTHORIZED.equals(outcome.status())) {
-            cacheInvalidToken(token, outcome.message());
-        }
-        return Mono.error(new GatewayAuthException(outcome.status(), outcome.message()));
-    }
-
-    private UserResourceLoadOutcome toUserResourceLoadOutcome(Long userId, AuthUserResourceDTO dto) {
-        if (!isCacheableUserResource(dto, userId)) {
-            return UserResourceLoadOutcome.failure(HttpStatus.SERVICE_UNAVAILABLE, "auth user resource response invalid");
-        }
-        return UserResourceLoadOutcome.success(dto);
-    }
-
-    private Mono<AuthUserResourceDTO> applyUserResourceLoadOutcome(UserResourceLoadOutcome outcome) {
-        if (outcome.result() != null) {
-            userResourceCache.put(outcome.result().getUserId(), outcome.result());
-            return Mono.just(outcome.result());
-        }
-        return Mono.error(new GatewayAuthException(outcome.status(), outcome.message()));
-    }
-
-    private String inspectTokenPayload(String token) {
-        String[] segments = token.split("\\.", -1);
-        if (segments.length != 3) {
-            return "malformed jwt";
-        }
-        try {
-            byte[] payloadBytes = Base64.getUrlDecoder().decode(segments[1]);
-            JsonNode payload = objectMapper.readTree(new String(payloadBytes, StandardCharsets.UTF_8));
-            if (payload == null || !payload.isObject()) {
-                return "invalid jwt payload";
-            }
-            JsonNode expNode = payload.get("exp");
-            if (expNode != null && expNode.canConvertToLong()) {
-                long nowEpochSeconds = Instant.now().getEpochSecond();
-                if (expNode.asLong() <= nowEpochSeconds) {
-                    return "jwt expired";
-                }
-            }
-            return null;
-        } catch (IllegalArgumentException ex) {
-            return "invalid jwt payload encoding";
-        } catch (Exception ex) {
-            return "invalid jwt payload";
-        }
     }
 
     private String safeWriteJson(Object obj) {
@@ -503,10 +396,6 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             return null;
         }
         return new AuthContext(userId, username);
-    }
-
-    private boolean isCacheableTokenResult(TokenParseResultDTO result) {
-        return validateAuthContext(result) != null;
     }
 
     private boolean isCacheableUserResource(AuthUserResourceDTO dto, Long expectedUserId) {
@@ -554,31 +443,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                                      String signature) {
     }
 
-    private record InvalidTokenMarker(String reason) {
-    }
-
-    private record TokenValidationOutcome(TokenParseResultDTO result, HttpStatus status, String message) {
-        private static TokenValidationOutcome valid(TokenParseResultDTO result) {
-            return new TokenValidationOutcome(result, null, null);
-        }
-
-        private static TokenValidationOutcome invalid(String message) {
-            return new TokenValidationOutcome(null, HttpStatus.UNAUTHORIZED, message == null ? "invalid token" : message);
-        }
-
-        private static TokenValidationOutcome failure(HttpStatus status, String message) {
-            return new TokenValidationOutcome(null, status, message);
-        }
-    }
-
-    private record UserResourceLoadOutcome(AuthUserResourceDTO result, HttpStatus status, String message) {
-        private static UserResourceLoadOutcome success(AuthUserResourceDTO result) {
-            return new UserResourceLoadOutcome(result, null, null);
-        }
-
-        private static UserResourceLoadOutcome failure(HttpStatus status, String message) {
-            return new UserResourceLoadOutcome(null, status, message);
-        }
+    private record AuthenticatedSession(AuthContext context, AuthUserResourceDTO userResource) {
     }
 
     private static final class GatewayAuthException extends RuntimeException {

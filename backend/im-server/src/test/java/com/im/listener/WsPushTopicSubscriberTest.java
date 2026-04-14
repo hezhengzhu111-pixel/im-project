@@ -43,7 +43,7 @@ class WsPushTopicSubscriberTest {
         meterRegistry = new SimpleMeterRegistry();
 
         when(nodeIdentity.getInstanceId()).thenReturn("node-1");
-        when(redissonClient.getTopic("im:channel:node-1")).thenReturn(topic);
+        when(redissonClient.getTopic("im:msg:channel:node-1")).thenReturn(topic);
         when(topic.addListener(eq(WsPushEvent.class), any())).thenReturn(7);
     }
 
@@ -54,7 +54,7 @@ class WsPushTopicSubscriberTest {
         WsPushEvent event = event("evt-1");
 
         subscriber.subscribe();
-        captureListener().onMessage("im:channel:node-1", event);
+        captureListener().onMessage("im:msg:channel:node-1", event);
 
         assertEquals(1, executor.tasks.size());
         verify(dispatcher, never()).dispatchEvent(any());
@@ -70,7 +70,7 @@ class WsPushTopicSubscriberTest {
         WsPushEvent event = event("evt-2");
 
         subscriber.subscribe();
-        captureListener().onMessage("im:channel:node-1", event);
+        captureListener().onMessage("im:msg:channel:node-1", event);
 
         verify(dispatcher).dispatchEvent(event);
     }
@@ -83,7 +83,7 @@ class WsPushTopicSubscriberTest {
 
         subscriber.subscribe();
 
-        assertDoesNotThrow(() -> captureListener().onMessage("im:channel:node-1", event));
+        assertDoesNotThrow(() -> captureListener().onMessage("im:msg:channel:node-1", event));
         verify(dispatcher).dispatchEvent(event);
         assertEquals(1.0, listenerCount("success", "accepted"));
         assertEquals(1.0, listenerCount("failure", "dispatch_failed"));
@@ -99,14 +99,14 @@ class WsPushTopicSubscriberTest {
 
         subscriber.subscribe();
 
-        assertDoesNotThrow(() -> captureListener().onMessage("im:channel:node-1", event));
+        assertDoesNotThrow(() -> captureListener().onMessage("im:msg:channel:node-1", event));
         verify(dispatcher, never()).dispatchEvent(any());
         assertEquals(1.0, listenerCount("failure", "executor_rejected"));
     }
 
     private WsPushTopicSubscriber subscriber(Executor executor) {
         WsPushTopicSubscriber subscriber = new WsPushTopicSubscriber(redissonClient, dispatcher, nodeIdentity, executor);
-        ReflectionTestUtils.setField(subscriber, "channelPrefix", "im:channel:");
+        ReflectionTestUtils.setField(subscriber, "channelPrefix", "im:msg:channel:");
         ReflectionTestUtils.setField(subscriber, "metrics", new ImServerMetrics(meterRegistry));
         return subscriber;
     }

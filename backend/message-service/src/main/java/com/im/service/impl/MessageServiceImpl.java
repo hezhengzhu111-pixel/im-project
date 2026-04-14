@@ -10,7 +10,10 @@ import com.im.dto.request.SendGroupMessageRequest;
 import com.im.dto.request.SendPrivateMessageRequest;
 import com.im.dto.ConversationDTO;
 import com.im.enums.MessageType;
+import com.im.handler.GroupMessageHandler;
 import com.im.handler.MessageHandler;
+import com.im.handler.PrivateMessageHandler;
+import com.im.handler.SystemMessageHandler;
 import com.im.message.entity.GroupReadCursor;
 import com.im.message.entity.Message;
 import com.im.exception.BusinessException;
@@ -37,8 +40,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
+import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +75,10 @@ public class MessageServiceImpl implements MessageService {
     private final TransactionTemplate transactionTemplate;
     private final List<MessageHandler> messageHandlers;
 
+    private Map<MessageType, MessageHandler> handlerCache = Collections.emptyMap();
+    private MessageHandler privateMessageHandler;
+    private MessageHandler groupMessageHandler;
+
     @Autowired(required = false)
     private MessageServiceMetrics metrics;
     
@@ -96,6 +106,34 @@ public class MessageServiceImpl implements MessageService {
 
     @Value("${im.message.system.sender-id:0}")
     private Long defaultSystemSenderId;
+
+    @PostConstruct
+    public void initHandlerCache() {
+        EnumMap<MessageType, MessageHandler> typeHandlers = new EnumMap<>(MessageType.class);
+        for (MessageHandler messageHandler : messageHandlers) {
+            if (messageHandler instanceof PrivateMessageHandler) {
+                this.privateMessageHandler = messageHandler;
+                for (MessageType type : MessageType.values()) {
+                    if (messageHandler.supports(type)) {
+                        typeHandlers.putIfAbsent(type, messageHandler);
+                    }
+                }
+                continue;
+            }
+            if (messageHandler instanceof GroupMessageHandler) {
+                this.groupMessageHandler = messageHandler;
+                continue;
+            }
+            if (messageHandler instanceof SystemMessageHandler) {
+                for (MessageType type : MessageType.values()) {
+                    if (messageHandler.supports(type)) {
+                        typeHandlers.put(type, messageHandler);
+                    }
+                }
+            }
+        }
+        this.handlerCache = Collections.unmodifiableMap(typeHandlers);
+    }
 
     @Override
     public MessageDTO sendPrivateMessage(Long senderId, SendPrivateMessageRequest request) {
@@ -200,14 +238,31 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     public MessageDTO sendMessage(SendMessageCommand command) {
-        MessageHandler matchedHandler = messageHandlers.stream()
-                .filter(messageHandler -> messageHandler.supports(command))
-                .findFirst()
-                /*
-                .orElseThrow(() -> new BusinessException("未找到匹配的消息处理器"))
-                */
-                .orElseThrow(() -> new BusinessException("no matching message handler"));
-        return matchedHandler.handle(command);
+        return resolveHandler(command).handle(command);
+    }
+
+    private MessageHandler resolveHandler(SendMessageCommand command) {
+        if (command == null || command.getMessageType() == null) {
+            throw new BusinessException("messageType cannot be null");
+        }
+        if (command.isSystemMessage()) {
+            MessageHandler messageHandler = handlerCache.get(MessageType.SYSTEM);
+            if (messageHandler == null) {
+                throw new BusinessException("no system message handler");
+            }
+            return messageHandler;
+        }
+        if (command.isGroup()) {
+            if (groupMessageHandler == null) {
+                throw new BusinessException("no group message handler");
+            }
+            return groupMessageHandler;
+        }
+        MessageHandler messageHandler = handlerCache.get(command.getMessageType());
+        if (messageHandler == null) {
+            throw new BusinessException("no matching message handler");
+        }
+        return messageHandler;
     }
 
     private SendMessageCommand toPrivateCommand(Long senderId, SendPrivateMessageRequest request) {

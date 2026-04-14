@@ -11,14 +11,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.redisson.api.RBucket;
-import org.redisson.api.RSetMultimap;
+import org.redisson.api.RMapCache;
 import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
-import java.util.LinkedHashSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -38,22 +36,13 @@ class OutboxPublisherTest {
     private RedissonClient redissonClient;
 
     @Mock
-    private RSetMultimap<String, String> routeMultimap;
+    private RMapCache<String, String> routeMap;
 
     @Mock
     private RTopic topicA;
 
     @Mock
     private RTopic topicB;
-
-    @Mock
-    private RBucket<String> liveBucketA;
-
-    @Mock
-    private RBucket<String> liveBucketB;
-
-    @Mock
-    private RBucket<String> staleBucket;
 
     private OutboxPublisher outboxPublisher;
     private SimpleMeterRegistry meterRegistry;
@@ -65,30 +54,26 @@ class OutboxPublisherTest {
         ReflectionTestUtils.setField(outboxPublisher, "metrics", new MessageServiceMetrics(meterRegistry));
         ReflectionTestUtils.setField(outboxPublisher, "maxAttempts", 20);
         ReflectionTestUtils.setField(outboxPublisher, "baseBackoffMs", 1000L);
-        ReflectionTestUtils.setField(outboxPublisher, "wsChannelPrefix", "im:channel:");
+        ReflectionTestUtils.setField(outboxPublisher, "wsChannelPrefix", "im:msg:channel:");
         ReflectionTestUtils.setField(outboxPublisher, "routeUsersKey", "im:route:users");
-        ReflectionTestUtils.setField(outboxPublisher, "routeLeaseKeyPrefix", "im:route:lease:");
-        when(redissonClient.<String, String>getSetMultimap("im:route:users")).thenReturn(routeMultimap);
+        when(redissonClient.<String, String>getMapCache("im:route:users")).thenReturn(routeMap);
     }
 
     @Test
-    void publishById_shouldPublishToEveryLiveInstanceTopic() {
+    void publishById_shouldPublishToEveryRoutedInstanceTopic() {
         MessageOutboxEvent event = new MessageOutboxEvent();
         event.setId(1L);
         event.setEventType("MESSAGE");
-        event.setTargetsJson(JSON.toJSONString(List.of(2L)));
+        event.setTargetsJson(JSON.toJSONString(List.of(2L, 3L)));
         event.setPayload("{\"id\":\"100\",\"receiverId\":\"2\",\"content\":\"hello\"}");
         event.setRelatedMessageId(100L);
 
         when(outboxMapper.claimEventForSending(eq(1L), any(LocalDateTime.class), eq(20))).thenReturn(1);
         when(outboxMapper.selectById(1L)).thenReturn(event);
-        when(routeMultimap.getAll("2")).thenReturn(new LinkedHashSet<>(List.of("node-a", "node-b")));
-        when(redissonClient.<String>getBucket("im:route:lease:2:node-a")).thenReturn(liveBucketA);
-        when(redissonClient.<String>getBucket("im:route:lease:2:node-b")).thenReturn(liveBucketB);
-        when(liveBucketA.isExists()).thenReturn(true);
-        when(liveBucketB.isExists()).thenReturn(true);
-        when(redissonClient.getTopic("im:channel:node-a")).thenReturn(topicA);
-        when(redissonClient.getTopic("im:channel:node-b")).thenReturn(topicB);
+        when(routeMap.get("2")).thenReturn("node-a");
+        when(routeMap.get("3")).thenReturn("node-b");
+        when(redissonClient.getTopic("im:msg:channel:node-a")).thenReturn(topicA);
+        when(redissonClient.getTopic("im:msg:channel:node-b")).thenReturn(topicB);
 
         outboxPublisher.publishById(1L);
 
@@ -116,13 +101,10 @@ class OutboxPublisherTest {
 
         when(outboxMapper.claimEventForSending(eq(2L), any(LocalDateTime.class), eq(20))).thenReturn(1);
         when(outboxMapper.selectById(2L)).thenReturn(event);
-        when(routeMultimap.getAll("3")).thenReturn(new LinkedHashSet<>(List.of("stale-node")));
-        when(redissonClient.<String>getBucket("im:route:lease:3:stale-node")).thenReturn(staleBucket);
-        when(staleBucket.isExists()).thenReturn(false);
+        when(routeMap.get("3")).thenReturn(null);
 
         outboxPublisher.publishById(2L);
 
-        verify(routeMultimap).remove("3", "stale-node");
         verify(topicA, never()).publish(any());
         verify(topicB, never()).publish(any());
         verify(outboxMapper).markSent(eq(2L), any(LocalDateTime.class));
@@ -141,10 +123,8 @@ class OutboxPublisherTest {
 
         when(outboxMapper.claimEventForSending(eq(3L), any(LocalDateTime.class), eq(20))).thenReturn(1);
         when(outboxMapper.selectById(3L)).thenReturn(event);
-        when(routeMultimap.getAll("4")).thenReturn(new LinkedHashSet<>(List.of("node-a")));
-        when(redissonClient.<String>getBucket("im:route:lease:4:node-a")).thenReturn(liveBucketA);
-        when(liveBucketA.isExists()).thenReturn(true);
-        when(redissonClient.getTopic("im:channel:node-a")).thenReturn(topicA);
+        when(routeMap.get("4")).thenReturn("node-a");
+        when(redissonClient.getTopic("im:msg:channel:node-a")).thenReturn(topicA);
         org.mockito.Mockito.doThrow(new RuntimeException("publish failed")).when(topicA).publish(any());
 
         outboxPublisher.publishById(3L);

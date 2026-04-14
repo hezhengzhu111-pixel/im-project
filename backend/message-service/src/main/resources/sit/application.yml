@@ -83,7 +83,7 @@ im:
     recover-sending-timeout-ms: 120000
     recover-sending-interval-ms: 60000
   ws:
-    channel-prefix: "im:channel:"
+    channel-prefix: "im:msg:channel:"
   route:
     users-key: "im:route:users"
     lease-key-prefix: "im:route:lease:"

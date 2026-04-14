@@ -13,6 +13,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.redisson.api.RMapCache;
+import org.redisson.api.RedissonClient;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.socket.WebSocketSession;
 
@@ -20,9 +22,11 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -40,6 +44,12 @@ class WsPushEventDispatcherTest {
     @Mock
     private MessageRetryQueue retryQueue;
 
+    @Mock
+    private RedissonClient redissonClient;
+
+    @Mock
+    private RMapCache<String, String> routeMap;
+
     @InjectMocks
     private WsPushEventDispatcher dispatcher;
 
@@ -49,6 +59,8 @@ class WsPushEventDispatcherTest {
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
         ReflectionTestUtils.setField(dispatcher, "metrics", new ImServerMetrics(meterRegistry));
+        ReflectionTestUtils.setField(dispatcher, "routeUsersKey", "im:route:users");
+        lenient().when(redissonClient.<String, String>getMapCache("im:route:users")).thenReturn(routeMap);
     }
 
     @Test
@@ -141,6 +153,28 @@ class WsPushEventDispatcherTest {
         verify(imService).pushReadReceiptToSession(any(ReadReceiptDTO.class), eq("session-a"), eq("READ_RECEIPT"));
         verify(deduplicator).markProcessed("evt-rr:2:session-a");
         assertEquals(1.0, dispatchCount("success", "session"));
+    }
+
+    @Test
+    void dispatchRetryItem_shouldDropWhenRouteMigratedToAnotherInstance() {
+        MessageRetryQueue.RetryItem item = new MessageRetryQueue.RetryItem();
+        item.setUserId("2");
+        item.setSessionId("session-a");
+        item.setInstanceId("im-node-1");
+        item.setExpireAtMs(System.currentTimeMillis() + 60000L);
+        item.setEvent(WsPushEvent.builder()
+                .eventId("evt-retry")
+                .eventType("MESSAGE")
+                .payload(JSON.toJSONString(new MessageDTO()))
+                .build());
+        when(imService.getCurrentInstanceId()).thenReturn("im-node-1");
+        when(imService.isSessionActive("2", "session-a")).thenReturn(true);
+        when(routeMap.get("2")).thenReturn("im-node-2");
+
+        boolean completed = dispatcher.dispatchRetryItem(item);
+
+        assertTrue(completed);
+        verify(imService, never()).pushMessageToSession(any(), any());
     }
 
     @Test

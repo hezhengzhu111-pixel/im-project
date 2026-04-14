@@ -9,7 +9,7 @@ import com.im.message.entity.MessageOutboxEvent;
 import com.im.metrics.MessageServiceMetrics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.api.RSetMultimap;
+import org.redisson.api.RMapCache;
 import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,14 +59,11 @@ public class OutboxPublisher {
     @Value("${im.outbox.recover-sending-timeout-ms:120000}")
     private long recoverSendingTimeoutMs;
 
-    @Value("${im.ws.channel-prefix:im:channel:}")
+    @Value("${im.ws.channel-prefix:im:msg:channel:}")
     private String wsChannelPrefix;
 
     @Value("${im.route.users-key:im:route:users}")
     private String routeUsersKey;
-
-    @Value("${im.route.lease-key-prefix:im:route:lease:}")
-    private String routeLeaseKeyPrefix;
 
     public void publishById(Long outboxId) {
         if (outboxId == null) {
@@ -171,17 +168,16 @@ public class OutboxPublisher {
             return List.of();
         }
 
+        RMapCache<String, String> routeMap = redissonClient.getMapCache(routeUsersKey);
         Map<String, List<Long>> usersByInstance = new LinkedHashMap<>();
         List<Long> unroutableUserIds = new ArrayList<>();
         for (Long userId : eventPayload.targetUserIds()) {
-            Set<String> instanceIds = resolveRouteInstances(userId);
-            if (instanceIds.isEmpty()) {
+            String instanceId = resolveRouteInstance(routeMap, userId);
+            if (!StringUtils.hasText(instanceId)) {
                 unroutableUserIds.add(userId);
                 continue;
             }
-            for (String instanceId : instanceIds) {
-                usersByInstance.computeIfAbsent(instanceId, key -> new ArrayList<>()).add(userId);
-            }
+            usersByInstance.computeIfAbsent(instanceId, key -> new ArrayList<>()).add(userId);
         }
 
         if (!unroutableUserIds.isEmpty()) {
@@ -222,30 +218,12 @@ public class OutboxPublisher {
         return EVENT_TYPE_READ_RECEIPT.equals(eventType) || EVENT_TYPE_READ_SYNC.equals(eventType);
     }
 
-    private Set<String> resolveRouteInstances(Long userId) {
-        if (userId == null) {
-            return Set.of();
+    private String resolveRouteInstance(RMapCache<String, String> routeMap, Long userId) {
+        if (routeMap == null || userId == null) {
+            return null;
         }
-        String userIdStr = String.valueOf(userId);
-        RSetMultimap<String, String> routeMultimap = redissonClient.getSetMultimap(routeUsersKey);
-        Set<String> routeInstances = new LinkedHashSet<>(routeMultimap.getAll(userIdStr));
-        if (routeInstances.isEmpty()) {
-            return Set.of();
-        }
-
-        Set<String> liveInstances = new LinkedHashSet<>();
-        for (String instanceId : routeInstances) {
-            if (!StringUtils.hasText(instanceId)) {
-                continue;
-            }
-            String normalizedInstanceId = instanceId.trim();
-            if (redissonClient.getBucket(routeLeaseKeyPrefix + userIdStr + ":" + normalizedInstanceId).isExists()) {
-                liveInstances.add(normalizedInstanceId);
-                continue;
-            }
-            routeMultimap.remove(userIdStr, normalizedInstanceId);
-        }
-        return liveInstances;
+        String instanceId = routeMap.get(String.valueOf(userId));
+        return StringUtils.hasText(instanceId) ? instanceId.trim() : null;
     }
 
     private String normalizeEventType(String eventType) {

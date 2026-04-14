@@ -13,9 +13,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.redisson.api.RBucket;
+import org.redisson.api.RMapCache;
 import org.redisson.api.RTopic;
-import org.redisson.api.RSetMultimap;
 import org.redisson.api.RedissonClient;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.socket.CloseStatus;
@@ -61,13 +60,7 @@ class ImServiceImplTest {
     private ImNodeIdentity nodeIdentity;
 
     @Mock
-    private RSetMultimap<String, String> routeMultimap;
-
-    @Mock
-    private RBucket<String> localLeaseBucket;
-
-    @Mock
-    private RBucket<String> staleLeaseBucket;
+    private RMapCache<String, String> routeMap;
 
     @Mock
     private RTopic presenceTopic;
@@ -81,18 +74,14 @@ class ImServiceImplTest {
         meterRegistry = new SimpleMeterRegistry();
         ReflectionTestUtils.setField(imService, "metrics", new ImServerMetrics(meterRegistry));
         ReflectionTestUtils.setField(imService, "routeUsersKey", "im:route:users");
-        ReflectionTestUtils.setField(imService, "routeLeaseKeyPrefix", "im:route:lease:");
         ReflectionTestUtils.setField(imService, "presenceChannel", "im:presence:broadcast");
         ReflectionTestUtils.setField(imService, "routeLeaseTtlMs", 120000L);
         ReflectionTestUtils.setField(imService, "heartbeatTimeoutMs", 90000L);
 
         lenient().when(nodeIdentity.getInstanceId()).thenReturn("im-node-1");
-        lenient().when(redissonClient.<String, String>getSetMultimap("im:route:users")).thenReturn(routeMultimap);
+        lenient().when(redissonClient.<String, String>getMapCache("im:route:users")).thenReturn(routeMap);
         lenient().when(redissonClient.getTopic("im:presence:broadcast")).thenReturn(presenceTopic);
-        lenient().when(redissonClient.<String>getBucket("im:route:lease:1:im-node-1")).thenReturn(localLeaseBucket);
-        lenient().when(redissonClient.<String>getBucket("im:route:lease:1:stale-node")).thenReturn(staleLeaseBucket);
-        lenient().when(localLeaseBucket.isExists()).thenReturn(true);
-        lenient().when(staleLeaseBucket.isExists()).thenReturn(false);
+        lenient().when(routeMap.get(anyString())).thenReturn(null);
 
         imService.init();
     }
@@ -104,8 +93,7 @@ class ImServiceImplTest {
 
         imService.registerSession("1", userSession);
 
-        verify(localLeaseBucket).set("1", 120000L, TimeUnit.MILLISECONDS);
-        verify(routeMultimap).put("1", "im-node-1");
+        verify(routeMap).fastPut("1", "im-node-1", 120000L, TimeUnit.MILLISECONDS);
         assertTrue(imService.isSessionActive("1", "session-1"));
         assertNotNull(userSession.getLastHeartbeat());
         assertTrue(imService.getLocallyOnlineUserIds().contains("1"));
@@ -125,13 +113,12 @@ class ImServiceImplTest {
         UserSession staleSession = UserSession.builder().webSocketSession(staleWebSocketSession).build();
         imService.registerSession("1", staleSession);
         staleSession.setLastHeartbeat(LocalDateTime.now().minusMinutes(10));
-        clearInvocations(routeMultimap, localLeaseBucket, presenceTopic);
+        clearInvocations(routeMap, presenceTopic);
 
         WebSocketSession freshWebSocketSession = mockOpenSession("session-2");
         imService.registerSession("1", UserSession.builder().webSocketSession(freshWebSocketSession).build());
 
-        verify(localLeaseBucket).set("1", 120000L, TimeUnit.MILLISECONDS);
-        verify(routeMultimap).put("1", "im-node-1");
+        verify(routeMap).fastPut("1", "im-node-1", 120000L, TimeUnit.MILLISECONDS);
         verify(presenceTopic).publish(argThat(event -> {
             PresenceEvent presenceEvent = (PresenceEvent) event;
             return "1".equals(presenceEvent.getUserId())
@@ -146,13 +133,13 @@ class ImServiceImplTest {
         WebSocketSession webSocketSession = mockOpenSession("session-1");
         UserSession userSession = UserSession.builder().webSocketSession(webSocketSession).build();
         imService.registerSession("1", userSession);
-        clearInvocations(routeMultimap, localLeaseBucket, webSocketSession);
+        when(routeMap.get("1")).thenReturn("im-node-1", null);
+        clearInvocations(routeMap, webSocketSession, presenceTopic);
 
         boolean removed = imService.unregisterSession("1", "session-1", CloseStatus.NORMAL);
 
         assertTrue(removed);
-        verify(routeMultimap).remove("1", "im-node-1");
-        verify(localLeaseBucket).delete();
+        verify(routeMap).fastRemove("1");
         verify(webSocketSession).close(CloseStatus.NORMAL);
         verify(presenceTopic).publish(argThat(event -> {
             PresenceEvent presenceEvent = (PresenceEvent) event;
@@ -171,13 +158,12 @@ class ImServiceImplTest {
         WebSocketSession secondSession = mockOpenSession("session-2");
         imService.registerSession("1", UserSession.builder().webSocketSession(firstSession).build());
         imService.registerSession("1", UserSession.builder().webSocketSession(secondSession).build());
-        clearInvocations(routeMultimap, localLeaseBucket, firstSession, secondSession, presenceTopic);
+        clearInvocations(routeMap, firstSession, secondSession, presenceTopic);
 
         boolean removed = imService.unregisterSession("1", "session-1", CloseStatus.NORMAL);
 
         assertTrue(removed);
-        verify(routeMultimap, never()).remove("1", "im-node-1");
-        verify(localLeaseBucket, never()).delete();
+        verify(routeMap, never()).fastRemove("1");
         verify(firstSession).close(CloseStatus.NORMAL);
         verify(secondSession, never()).close(any(CloseStatus.class));
         verify(secondSession, never()).close();
@@ -193,14 +179,12 @@ class ImServiceImplTest {
         WebSocketSession webSocketSession = mockOpenSession("session-1");
         UserSession userSession = UserSession.builder().webSocketSession(webSocketSession).build();
         imService.registerSession("1", userSession);
-        clearInvocations(routeMultimap, localLeaseBucket);
+        clearInvocations(routeMap);
 
         boolean touched = imService.touchUserHeartbeat("1");
 
         assertTrue(touched);
-        verify(routeMultimap, never()).put(anyString(), anyString());
-        verify(routeMultimap, never()).remove(anyString(), anyString());
-        verify(localLeaseBucket, never()).set(anyString(), anyLong(), any(TimeUnit.class));
+        verify(routeMap).fastPut("1", "im-node-1", 120000L, TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -209,7 +193,7 @@ class ImServiceImplTest {
         WebSocketSession healthySession = mockOpenSession("session-2");
         imService.registerSession("1", UserSession.builder().webSocketSession(failingSession).build());
         imService.registerSession("1", UserSession.builder().webSocketSession(healthySession).build());
-        clearInvocations(routeMultimap, localLeaseBucket, failingSession, healthySession);
+        clearInvocations(routeMap, failingSession, healthySession);
         doThrow(new IllegalStateException("send busy")).when(failingSession).sendMessage(any());
         MessageDTO message = MessageDTO.builder()
                 .senderId(2L)
@@ -225,8 +209,7 @@ class ImServiceImplTest {
                 && "send failed".equals(status.getReason())));
         verify(healthySession, never()).close(any(CloseStatus.class));
         verify(healthySession, never()).close();
-        verify(routeMultimap, never()).remove(anyString(), anyString());
-        verify(localLeaseBucket, never()).delete();
+        verify(routeMap, never()).fastRemove(anyString());
         assertFalse(imService.isSessionActive("1", "session-1"));
         assertTrue(imService.isSessionActive("1", "session-2"));
         assertEquals(1.0, pushCount("failure", "MESSAGE"));
@@ -238,13 +221,27 @@ class ImServiceImplTest {
     }
 
     @Test
-    void checkUsersOnlineStatus_shouldFilterStaleRoutesByLease() {
-        when(routeMultimap.getAll("1")).thenReturn(new LinkedHashSet<>(Set.of("im-node-1", "stale-node")));
+    void checkUsersOnlineStatus_shouldUseSingleRouteHash() {
+        when(routeMap.get("1")).thenReturn("im-node-1");
 
         Map<String, Boolean> result = imService.checkUsersOnlineStatus(List.of("1"));
 
         assertTrue(result.get("1"));
-        verify(routeMultimap).remove("1", "stale-node");
+        verify(routeMap).get("1");
+    }
+
+    @Test
+    void unregisterSession_shouldNotDeleteRouteWhenUserMigratedToAnotherInstance() throws Exception {
+        WebSocketSession webSocketSession = mockOpenSession("session-1");
+        imService.registerSession("1", UserSession.builder().webSocketSession(webSocketSession).build());
+        when(routeMap.get("1")).thenReturn("im-node-2");
+        clearInvocations(routeMap, webSocketSession, presenceTopic);
+
+        boolean removed = imService.unregisterSession("1", "session-1", CloseStatus.NORMAL);
+
+        assertTrue(removed);
+        verify(routeMap, never()).fastRemove("1");
+        verify(webSocketSession).close(CloseStatus.NORMAL);
     }
 
     @Test

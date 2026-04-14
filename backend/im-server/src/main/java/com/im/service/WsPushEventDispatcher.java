@@ -8,7 +8,10 @@ import com.im.entity.UserSession;
 import com.im.metrics.ImServerMetrics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RMapCache;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -27,9 +30,13 @@ public class WsPushEventDispatcher {
     private final IImService imService;
     private final ProcessedMessageDeduplicator deduplicator;
     private final MessageRetryQueue retryQueue;
+    private final RedissonClient redissonClient;
 
     @Autowired(required = false)
     private ImServerMetrics metrics;
+
+    @Value("${im.route.users-key:im:route:users}")
+    private String routeUsersKey;
 
     public void dispatchRaw(String raw) {
         if (!StringUtils.hasText(raw)) {
@@ -107,6 +114,9 @@ public class WsPushEventDispatcher {
             return true;
         }
         if (!imService.isSessionActive(item.getUserId(), item.getSessionId())) {
+            return true;
+        }
+        if (!isCurrentRouteOwner(item.getUserId())) {
             return true;
         }
 
@@ -256,6 +266,16 @@ public class WsPushEventDispatcher {
             return null;
         }
         return userSession.getWebSocketSession().getId();
+    }
+
+    private boolean isCurrentRouteOwner(String userId) {
+        if (!StringUtils.hasText(userId)) {
+            return false;
+        }
+        RMapCache<String, String> routeMap = redissonClient.getMapCache(routeUsersKey);
+        String routedInstanceId = routeMap.get(userId.trim());
+        return !StringUtils.hasText(routedInstanceId)
+                || imService.getCurrentInstanceId().equals(routedInstanceId.trim());
     }
 
     private void recordParseFailure(String stage) {

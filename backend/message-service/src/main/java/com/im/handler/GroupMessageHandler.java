@@ -42,8 +42,8 @@ public class GroupMessageHandler extends AbstractMessageHandler<GroupMessageHand
     }
 
     @Override
-    public boolean supports(SendMessageCommand command) {
-        return command != null && command.isGroup();
+    public boolean supports(com.im.enums.MessageType type) {
+        return type != null && type != com.im.enums.MessageType.SYSTEM;
     }
 
     @Override
