@@ -1,6 +1,8 @@
 package com.im.gateway.filter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.im.config.GlobalRateLimitSwitch;
+import com.im.config.RateLimitGlobalProperties;
 import com.im.dto.ApiResponse;
 import com.im.dto.AuthUserResourceDTO;
 import com.im.dto.TokenParseResultDTO;
@@ -16,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.mock.web.server.MockServerWebExchange;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.reactive.function.client.ClientRequest;
@@ -65,6 +68,27 @@ class JwtAuthGlobalFilterTest {
 
         verify(chain).filter(any(ServerWebExchange.class));
         assertNotNull(forwardedExchange.get());
+        assertEquals("true", forwardedExchange.get().getRequest().getHeaders().getFirst(RateLimitGlobalProperties.SWITCH_HEADER));
+    }
+
+    @Test
+    void filterShouldExposeDisabledGlobalSwitchHeader() {
+        JwtAuthGlobalFilter filter = newFilter(
+                request -> Mono.error(new AssertionError("auth service should not be called")),
+                false
+        );
+        AtomicReference<ServerWebExchange> forwardedExchange = new AtomicReference<>();
+        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/api/auth/refresh").build());
+        when(chain.filter(any(ServerWebExchange.class))).thenAnswer(invocation -> {
+            forwardedExchange.set(invocation.getArgument(0));
+            return Mono.empty();
+        });
+
+        filter.filter(exchange, chain).block();
+
+        assertNotNull(forwardedExchange.get());
+        assertEquals("false", forwardedExchange.get().getRequest().getHeaders().getFirst(RateLimitGlobalProperties.SWITCH_HEADER));
+        assertEquals("false", exchange.getResponse().getHeaders().getFirst(RateLimitGlobalProperties.SWITCH_HEADER));
     }
 
     @Test
@@ -434,7 +458,11 @@ class JwtAuthGlobalFilterTest {
     }
 
     private JwtAuthGlobalFilter newFilter(ExchangeFunction exchangeFunction) {
-        return newFilter(exchangeFunction, exchangeFunction, "http://im-auth-service", 200, 10, 5, 15);
+        return newFilter(exchangeFunction, true);
+    }
+
+    private JwtAuthGlobalFilter newFilter(ExchangeFunction exchangeFunction, boolean switchEnabled) {
+        return newFilter(exchangeFunction, exchangeFunction, "http://im-auth-service", 200, 10, 5, 15, switchEnabled);
     }
 
     private JwtAuthGlobalFilter newFilter(ExchangeFunction plainExchangeFunction,
@@ -444,12 +472,37 @@ class JwtAuthGlobalFilterTest {
                                           long tokenCacheTtlSeconds,
                                           long negativeCacheTtlSeconds,
                                           long userResourceCacheTtlSeconds) {
+        return newFilter(
+                plainExchangeFunction,
+                loadBalancedExchangeFunction,
+                authServiceUrl,
+                requestTimeoutMs,
+                tokenCacheTtlSeconds,
+                negativeCacheTtlSeconds,
+                userResourceCacheTtlSeconds,
+                true
+        );
+    }
+
+    private JwtAuthGlobalFilter newFilter(ExchangeFunction plainExchangeFunction,
+                                          ExchangeFunction loadBalancedExchangeFunction,
+                                          String authServiceUrl,
+                                          long requestTimeoutMs,
+                                          long tokenCacheTtlSeconds,
+                                          long negativeCacheTtlSeconds,
+                                          long userResourceCacheTtlSeconds,
+                                          boolean switchEnabled) {
         WebClient.Builder plainBuilder = WebClient.builder().exchangeFunction(plainExchangeFunction);
         WebClient.Builder loadBalancedBuilder = WebClient.builder().exchangeFunction(loadBalancedExchangeFunction);
+        MockEnvironment environment = new MockEnvironment();
+        environment.setProperty(RateLimitGlobalProperties.ENABLED_KEY, Boolean.toString(switchEnabled));
+        GlobalRateLimitSwitch globalRateLimitSwitch = new GlobalRateLimitSwitch(environment, new RateLimitGlobalProperties());
+        globalRateLimitSwitch.refreshFromEnvironment();
         JwtAuthGlobalFilter filter = new JwtAuthGlobalFilter(
                 objectMapper,
                 plainBuilder,
                 loadBalancedBuilder,
+                globalRateLimitSwitch,
                 authServiceUrl,
                 requestTimeoutMs,
                 tokenCacheTtlSeconds,

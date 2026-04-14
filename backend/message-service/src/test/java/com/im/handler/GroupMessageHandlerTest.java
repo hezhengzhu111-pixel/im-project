@@ -2,7 +2,6 @@ package com.im.handler;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
-import com.im.component.MessageRateLimiter;
 import com.im.dto.MessageDTO;
 import com.im.dto.UserDTO;
 import com.im.enums.MessageType;
@@ -64,8 +63,6 @@ class GroupMessageHandlerTest {
     @Mock
     private GroupServiceFeignClient groupServiceFeignClient;
     @Mock
-    private MessageRateLimiter messageRateLimiter;
-    @Mock
     private UserProfileCache userProfileCache;
     @Mock
     private RLock conversationLock;
@@ -85,7 +82,6 @@ class GroupMessageHandlerTest {
                 redissonClient,
                 transactionTemplate,
                 groupServiceFeignClient,
-                messageRateLimiter,
                 userProfileCache
         );
         meterRegistry = new SimpleMeterRegistry();
@@ -114,7 +110,6 @@ class GroupMessageHandlerTest {
                 .clientMessageId("group-8")
                 .content("group-hi")
                 .build();
-        when(messageRateLimiter.canSendMessage(1L)).thenReturn(true);
         when(userProfileCache.getUser(1L)).thenReturn(user(1L, "u1"));
         when(groupServiceFeignClient.exists(8L)).thenReturn(true);
         when(userProfileCache.isGroupMember(8L, 1L)).thenReturn(true);
@@ -157,7 +152,6 @@ class GroupMessageHandlerTest {
                 .messageType(MessageType.TEXT)
                 .content("group-hi")
                 .build();
-        when(messageRateLimiter.canSendMessage(1L)).thenReturn(true);
         when(userProfileCache.getUser(1L)).thenReturn(user(1L, "u1"));
         when(groupServiceFeignClient.exists(8L)).thenReturn(true);
         when(userProfileCache.isGroupMember(8L, 1L)).thenReturn(true);

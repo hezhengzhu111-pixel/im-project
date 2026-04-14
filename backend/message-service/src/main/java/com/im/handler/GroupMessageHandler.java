@@ -1,6 +1,5 @@
 package com.im.handler;
 
-import com.im.component.MessageRateLimiter;
 import com.im.dto.MessageDTO;
 import com.im.dto.UserDTO;
 import com.im.exception.BusinessException;
@@ -25,7 +24,6 @@ public class GroupMessageHandler extends AbstractMessageHandler<GroupMessageHand
     private static final String EVENT_TYPE_MESSAGE = "MESSAGE";
 
     private final GroupServiceFeignClient groupServiceFeignClient;
-    private final MessageRateLimiter messageRateLimiter;
     private final UserProfileCache userProfileCache;
 
     @Value("${im.outbox.topic.group-message:GROUP_MESSAGE}")
@@ -37,11 +35,9 @@ public class GroupMessageHandler extends AbstractMessageHandler<GroupMessageHand
                                RedissonClient redissonClient,
                                TransactionTemplate transactionTemplate,
                                GroupServiceFeignClient groupServiceFeignClient,
-                               MessageRateLimiter messageRateLimiter,
                                UserProfileCache userProfileCache) {
         super(messageMapper, redisTemplate, outboxService, redissonClient, transactionTemplate);
         this.groupServiceFeignClient = groupServiceFeignClient;
-        this.messageRateLimiter = messageRateLimiter;
         this.userProfileCache = userProfileCache;
     }
 
@@ -54,9 +50,6 @@ public class GroupMessageHandler extends AbstractMessageHandler<GroupMessageHand
     protected GroupMessageContext buildContext(SendMessageCommand command) {
         Long senderId = command.getSenderId();
         Long groupId = command.getGroupId();
-        if (!messageRateLimiter.canSendMessage(senderId)) {
-            throw new BusinessException("message rate limit exceeded");
-        }
         UserDTO sender = userProfileCache.getUser(senderId);
         if (sender == null) {
             throw new BusinessException("user not found");
@@ -89,7 +82,6 @@ public class GroupMessageHandler extends AbstractMessageHandler<GroupMessageHand
         message.setGroupId(context.groupId());
         message.setIsGroupChat(true);
         persistMessage(message, context.groupId());
-        messageRateLimiter.recordMessage(context.senderId());
         enqueueGroupMessage(message, context);
         return new SendTxResult(message, true);
     }

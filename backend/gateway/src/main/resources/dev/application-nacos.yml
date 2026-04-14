@@ -2,7 +2,7 @@ spring:
   cloud:
     nacos:
       config:
-        enabled: false
+        enabled: ${IM_NACOS_CONFIG_ENABLED:false}
       discovery:
         server-addr: ${IM_NACOS_SERVER_ADDR:127.0.0.1:8848}
         service: im-gateway

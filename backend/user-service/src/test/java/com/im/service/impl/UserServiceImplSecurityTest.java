@@ -20,12 +20,12 @@ import org.springframework.data.redis.core.ValueOperations;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -82,35 +82,23 @@ class UserServiceImplSecurityTest {
 
     @Test
     void loginUsesGenericErrorForMissingUser() {
-        when(valueOperations.get("im:login:fail:unknown:alice")).thenReturn(null);
         when(userMapper.selectOne(any())).thenReturn(null);
 
-        BusinessException ex = assertThrows(BusinessException.class,
+        BusinessException ex = org.junit.jupiter.api.Assertions.assertThrows(BusinessException.class,
                 () -> service.loginWithPassword(" Alice ", "bad-password"));
 
         assertEquals("用户名或密码错误", ex.getMessage());
-        verify(valueOperations).increment("im:login:fail:unknown:alice");
+        verify(valueOperations, never()).increment(any());
     }
 
     @Test
-    void loginRejectsWhenFailureLimitReached() {
-        when(valueOperations.get("im:login:fail:unknown:alice")).thenReturn("5");
-
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> service.loginWithPassword("alice", "abc12345"));
-
-        assertEquals("登录失败次数过多，请稍后再试", ex.getMessage());
-    }
-
-    @Test
-    void sendVerificationCodeRateLimitsAndStoresSecureCode() {
-        when(valueOperations.increment("im:verify:rate:minute:unknown:target@example.com")).thenReturn(1L);
-        when(valueOperations.increment("im:verify:rate:day:unknown:target@example.com")).thenReturn(1L);
+    void sendVerificationCodeStoresSecureCodeWithoutApplicationRateLimit() {
 
         service.sendVerificationCode(" Target@Example.com ");
 
         ArgumentCaptor<String> codeCaptor = ArgumentCaptor.forClass(String.class);
         verify(valueOperations).set(eq("im:verify:code:target@example.com"), codeCaptor.capture(), eq(5L), eq(TimeUnit.MINUTES));
         assertTrue(codeCaptor.getValue().matches("\\d{6}"));
+        verify(valueOperations, org.mockito.Mockito.never()).increment(any());
     }
 }

@@ -1,5 +1,6 @@
 package com.im.feign;
 
+import com.im.config.RateLimitGlobalProperties;
 import feign.RequestInterceptor;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,6 +14,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 public class FeignInternalAuthConfig implements RequestInterceptor {
 
     private static final String AUTHORIZATION_HEADER = "Authorization";
+    private static final String RATE_LIMIT_SWITCH_HEADER = RateLimitGlobalProperties.SWITCH_HEADER;
 
     @Value("${im.internal.header:X-Internal-Secret}")
     private String internalHeaderName;
@@ -33,6 +35,7 @@ public class FeignInternalAuthConfig implements RequestInterceptor {
         }
         propagateAuthorization(template);
         propagateGatewayIdentity(template);
+        propagateRateLimitSwitch(template);
         template.header("Content-Type", "application/json");
         template.header("Accept", "application/json");
     }
@@ -62,6 +65,17 @@ public class FeignInternalAuthConfig implements RequestInterceptor {
 
         template.header(gatewayUserIdHeader, userId.trim());
         template.header(gatewayUsernameHeader, username.trim());
+    }
+
+    private void propagateRateLimitSwitch(feign.RequestTemplate template) {
+        HttpServletRequest request = currentRequest();
+        if (request == null) {
+            return;
+        }
+        String switchValue = request.getHeader(RATE_LIMIT_SWITCH_HEADER);
+        if (StringUtils.hasText(switchValue)) {
+            template.header(RATE_LIMIT_SWITCH_HEADER, switchValue.trim());
+        }
     }
 
     private String readHeaderOrAttribute(HttpServletRequest request, String headerName, String attributeName) {

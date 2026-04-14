@@ -2,7 +2,6 @@ package com.im.handler;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
-import com.im.component.MessageRateLimiter;
 import com.im.dto.MessageDTO;
 import com.im.dto.UserDTO;
 import com.im.enums.MessageType;
@@ -62,8 +61,6 @@ class PrivateMessageHandlerTest {
     @Mock
     private UserServiceFeignClient userServiceFeignClient;
     @Mock
-    private MessageRateLimiter messageRateLimiter;
-    @Mock
     private UserProfileCache userProfileCache;
     @Mock
     private RLock conversationLock;
@@ -83,7 +80,6 @@ class PrivateMessageHandlerTest {
                 redissonClient,
                 transactionTemplate,
                 userServiceFeignClient,
-                messageRateLimiter,
                 userProfileCache
         );
         meterRegistry = new SimpleMeterRegistry();
@@ -113,7 +109,6 @@ class PrivateMessageHandlerTest {
                 .clientMessageId("private-2")
                 .content("hello")
                 .build();
-        when(messageRateLimiter.canSendMessage(1L)).thenReturn(true);
         when(userProfileCache.getUser(1L)).thenReturn(user(1L, "u1"));
         when(userProfileCache.getUser(2L)).thenReturn(user(2L, "u2"));
         when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
@@ -157,7 +152,6 @@ class PrivateMessageHandlerTest {
                 .messageType(MessageType.TEXT)
                 .content("hello")
                 .build();
-        when(messageRateLimiter.canSendMessage(1L)).thenReturn(true);
         when(userProfileCache.getUser(1L)).thenReturn(user(1L, "u1"));
         when(userProfileCache.getUser(2L)).thenReturn(user(2L, "u2"));
         when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);

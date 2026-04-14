@@ -160,6 +160,44 @@ im:
       token-cache-ttl-seconds: ${IM_GATEWAY_AUTH_TOKEN_CACHE_TTL_SECONDS:10}
       token-negative-cache-ttl-seconds: ${IM_GATEWAY_AUTH_TOKEN_NEGATIVE_CACHE_TTL_SECONDS:5}
       user-resource-cache-ttl-seconds: ${IM_GATEWAY_AUTH_USER_RESOURCE_CACHE_TTL_SECONDS:15}
+    rate-limit:
+      enabled: ${IM_GATEWAY_RATE_LIMIT_ENABLED:true}
+      mode: ${IM_GATEWAY_RATE_LIMIT_MODE:ENFORCE}
+      active-version: ${IM_GATEWAY_RATE_LIMIT_ACTIVE_VERSION:v1}
+      previous-version: ${IM_GATEWAY_RATE_LIMIT_PREVIOUS_VERSION:}
+      error:
+        code: ${IM_GATEWAY_RATE_LIMIT_ERROR_CODE:42901}
+        message: ${IM_GATEWAY_RATE_LIMIT_ERROR_MESSAGE:请求过于频繁，请稍后再试}
+      versions:
+        v1:
+          enabled: true
+          gray-percent: ${IM_GATEWAY_RATE_LIMIT_V1_GRAY_PERCENT:100}
+          gray-by: ${IM_GATEWAY_RATE_LIMIT_V1_GRAY_BY:IP}
+          rules:
+            - id: user-login-ip
+              order: 10
+              methods: [POST]
+              path-patterns: ["/api/user/login", "/user/login"]
+              dimension: IP_API
+              replenish-rate: ${IM_GATEWAY_RATE_LIMIT_LOGIN_QPS:20}
+              burst-capacity: ${IM_GATEWAY_RATE_LIMIT_LOGIN_BURST:40}
+              max-concurrency: ${IM_GATEWAY_RATE_LIMIT_LOGIN_CONCURRENCY:80}
+            - id: verify-code-ip
+              order: 20
+              methods: [POST]
+              path-patterns: ["/api/user/phone/code", "/api/user/email/code", "/user/phone/code", "/user/email/code"]
+              dimension: IP_API
+              replenish-rate: ${IM_GATEWAY_RATE_LIMIT_VERIFY_QPS:3}
+              burst-capacity: ${IM_GATEWAY_RATE_LIMIT_VERIFY_BURST:6}
+            - id: message-send-user
+              order: 30
+              methods: [POST]
+              path-patterns: ["/api/message/send/**", "/api/messages/send/**", "/message/send/**", "/messages/send/**"]
+              dimension: USER_API
+              replenish-rate: ${IM_GATEWAY_RATE_LIMIT_MESSAGE_QPS:30}
+              burst-capacity: ${IM_GATEWAY_RATE_LIMIT_MESSAGE_BURST:60}
+              max-concurrency: ${IM_GATEWAY_RATE_LIMIT_MESSAGE_CONCURRENCY:200}
+              concurrency-ttl-seconds: ${IM_GATEWAY_RATE_LIMIT_MESSAGE_CONCURRENCY_TTL:5}
   security:
     token-revocation-check:
       enabled: true
@@ -172,11 +210,16 @@ im:
       file: ${IM_ROUTE_FILE_HOST:127.0.0.1}
       imServer: ${IM_ROUTE_IM_SERVER_HOST:127.0.0.1}
 
+rate:
+  limit:
+    global:
+      enabled: ${RATE_LIMIT_GLOBAL_ENABLED:true}
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
 
 logging:
   level:

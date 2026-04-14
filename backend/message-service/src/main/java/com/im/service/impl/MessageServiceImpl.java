@@ -3,7 +3,6 @@ package com.im.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.im.component.MessageRateLimiter;
 import com.im.dto.GroupMemberDTO;
 import com.im.dto.MessageDTO;
 import com.im.dto.ReadReceiptDTO;
@@ -63,7 +62,6 @@ public class MessageServiceImpl implements MessageService {
     private final UserServiceFeignClient userServiceFeignClient;
     private final GroupServiceFeignClient groupServiceFeignClient;
     private final RedisTemplate<String, Object> redisTemplate;
-    private final MessageRateLimiter messageRateLimiter;
     private final OutboxService outboxService;
     private final GroupReadCursorMapper groupReadCursorMapper;
     private final UserProfileCache userProfileCache;
@@ -261,9 +259,6 @@ public class MessageServiceImpl implements MessageService {
     }
 
     private PrivateSendInput privateSendInput(Long senderId, Long receiverId, SendPrivateMessageRequest request) {
-        if (!messageRateLimiter.canSendMessage(senderId)) {
-            throw new BusinessException("发送消息过于频繁，请稍后再试");
-        }
         var sender = userProfileCache.getUser(senderId);
         var receiver = userProfileCache.getUser(receiverId);
         if (sender == null || receiver == null) {
@@ -281,7 +276,6 @@ public class MessageServiceImpl implements MessageService {
         Message messageData = createMessageData(input.request(), input.senderId(), input.receiverId());
         messageData.setIsGroupChat(false);
         persistMessage(messageData, input.receiverId());
-        messageRateLimiter.recordMessage(input.senderId());
         return messageData;
     }
 
@@ -313,9 +307,6 @@ public class MessageServiceImpl implements MessageService {
     }
 
     private GroupSendInput groupSendInput(Long senderId, Long groupIdLong, SendGroupMessageRequest request) {
-        if (!messageRateLimiter.canSendMessage(senderId)) {
-            throw new BusinessException("发送消息过于频繁，请稍后再试");
-        }
         var sender = userProfileCache.getUser(senderId);
         if (sender == null) {
             throw new BusinessException("用户不存在");
@@ -336,7 +327,6 @@ public class MessageServiceImpl implements MessageService {
     private Message groupSendProcess(GroupSendInput input) {
         Message messageData = createMessageData(input.request(), input.senderId());
         persistMessage(messageData, input.groupId());
-        messageRateLimiter.recordMessage(input.senderId());
         return messageData;
     }
 

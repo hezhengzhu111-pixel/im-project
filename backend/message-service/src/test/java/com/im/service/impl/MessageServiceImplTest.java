@@ -3,7 +3,6 @@ package com.im.service.impl;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
-import com.im.component.MessageRateLimiter;
 import com.im.dto.MessageDTO;
 import com.im.dto.UserDTO;
 import com.im.exception.BusinessException;
@@ -63,8 +62,6 @@ class MessageServiceImplTest {
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
-    private MessageRateLimiter messageRateLimiter;
-    @Mock
     private OutboxService outboxService;
     @Mock
     private GroupReadCursorMapper groupReadCursorMapper;
@@ -93,7 +90,6 @@ class MessageServiceImplTest {
                 userServiceFeignClient,
                 groupServiceFeignClient,
                 redisTemplate,
-                messageRateLimiter,
                 outboxService,
                 groupReadCursorMapper,
                 userProfileCache,
