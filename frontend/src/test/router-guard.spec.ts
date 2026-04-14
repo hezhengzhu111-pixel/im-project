@@ -17,14 +17,6 @@ vi.mock("element-plus", () => ({
   },
 }));
 
-vi.mock("nprogress", () => ({
-  default: {
-    configure: vi.fn(),
-    start: vi.fn(),
-    done: vi.fn(),
-  },
-}));
-
 vi.mock("vue-router", () => ({
   createWebHistory: vi.fn(() => ({})),
   createRouter: vi.fn(() => ({
