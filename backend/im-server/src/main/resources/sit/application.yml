@@ -94,7 +94,7 @@ im:
     janitor-initial-delay-ms: 15000
     janitor-interval-ms: 300000
   ws:
-    channel-prefix: "im:channel:"
+    channel-prefix: "im:msg:channel:"
     presence-channel: "im:presence:broadcast"
     retry:
       max-attempts: 20

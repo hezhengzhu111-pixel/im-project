@@ -5,7 +5,6 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.im.dto.MessageDTO;
 import com.im.dto.UserDTO;
 import com.im.enums.MessageType;
-import com.im.exception.BusinessException;
 import com.im.feign.UserServiceFeignClient;
 import com.im.mapper.MessageMapper;
 import com.im.message.entity.Message;
@@ -33,7 +32,6 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -46,7 +44,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class PrivateMessageHandlerTest {
+class SystemMessageHandlerTest {
 
     @Mock
     private MessageMapper messageMapper;
@@ -67,13 +65,13 @@ class PrivateMessageHandlerTest {
     @Mock
     private TransactionStatus transactionStatus;
 
-    private PrivateMessageHandler handler;
+    private SystemMessageHandler handler;
     private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() throws InterruptedException {
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), "private-handler-test"), Message.class);
-        handler = new PrivateMessageHandler(
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), "system-handler-test"), Message.class);
+        handler = new SystemMessageHandler(
                 messageMapper,
                 redisTemplate,
                 outboxService,
@@ -85,6 +83,7 @@ class PrivateMessageHandlerTest {
         meterRegistry = new SimpleMeterRegistry();
         ReflectionTestUtils.setField(handler, "metrics", new MessageServiceMetrics(meterRegistry));
         ReflectionTestUtils.setField(handler, "privateMessageTopic", "PRIVATE_MESSAGE");
+        ReflectionTestUtils.setField(handler, "defaultSystemSenderId", 1L);
         ReflectionTestUtils.setField(handler, "textEnforce", true);
         ReflectionTestUtils.setField(handler, "textMaxLength", 2000);
         ReflectionTestUtils.setField(handler, "conversationLockTtlSeconds", 5L);
@@ -99,72 +98,47 @@ class PrivateMessageHandlerTest {
     }
 
     @Test
-    void handlePrivateMessageShouldPublishOutbox() {
+    void handleSystemMessageShouldUseConversationLockAndSkipFriendCheck() {
         SendMessageCommand command = SendMessageCommand.builder()
                 .senderId(1L)
                 .receiverId(2L)
                 .isGroup(false)
-                .messageType(MessageType.TEXT)
-                .clientMessageId("private-2")
-                .content("hello")
+                .messageType(MessageType.SYSTEM)
+                .content("system-hi")
                 .build();
-        when(userProfileCache.getUser(1L)).thenReturn(user(1L, "u1"));
+        when(userServiceFeignClient.exists(2L)).thenReturn(true);
+        when(userProfileCache.getUser(1L)).thenReturn(user(1L, "system"));
         when(userProfileCache.getUser(2L)).thenReturn(user(2L, "u2"));
-        when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
         doAnswer(invocation -> {
             Message msg = invocation.getArgument(0);
-            msg.setId(100L);
+            msg.setId(250L);
             return 1;
         }).when(messageMapper).insert(any(Message.class));
 
         MessageDTO result = handler.handle(command);
 
         assertNotNull(result);
-        assertEquals("hello", result.getContent());
-        assertEquals(2L, result.getReceiverId());
+        assertEquals("system-hi", result.getContent());
+        verify(redissonClient).getLock("msg:lock:p_1_2");
+        assertEquals(1.0, persistCount("success", "system"));
+        verify(userServiceFeignClient, never()).isFriend(anyLong(), anyLong());
         verify(outboxService).enqueueAfterCommit(
                 eq("PRIVATE_MESSAGE"),
                 eq("MESSAGE"),
                 eq("p_1_2"),
                 anyString(),
-                eq(100L),
-                eq(java.util.List.of(2L, 1L))
+                eq(250L),
+                eq(java.util.List.of(2L))
         );
-        assertEquals(1.0, persistCount("success", "private"));
-        verify(redisTemplate).delete("last_message:p_1_2");
-        verify(redisTemplate).delete("conversations:user:1");
-        verify(redisTemplate).delete("conversations:user:2");
-        verify(userServiceFeignClient, never()).isFriend(anyLong(), anyLong());
-        verify(redissonClient).getLock("msg:lock:send:1:private-2");
-        InOrder inOrder = inOrder(transactionTemplate, redisTemplate, conversationLock);
+        InOrder inOrder = inOrder(transactionTemplate, conversationLock);
         inOrder.verify(transactionTemplate).execute(any());
-        inOrder.verify(redisTemplate).delete("last_message:p_1_2");
         inOrder.verify(conversationLock).unlock();
     }
 
     @Test
-    void handlePrivateMessageShouldRejectWhenClientMessageIdMissing() {
-        SendMessageCommand command = SendMessageCommand.builder()
-                .senderId(1L)
-                .receiverId(2L)
-                .isGroup(false)
-                .messageType(MessageType.TEXT)
-                .content("hello")
-                .build();
-        when(userProfileCache.getUser(1L)).thenReturn(user(1L, "u1"));
-        when(userProfileCache.getUser(2L)).thenReturn(user(2L, "u2"));
-        when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
-
-        assertThrows(BusinessException.class, () -> handler.handle(command));
-
-        verify(redissonClient, never()).getLock(anyString());
-        verify(transactionTemplate, never()).execute(any());
-    }
-
-    @Test
-    void supportsShouldRejectSystemMessageType() {
-        assertEquals(true, handler.supports(MessageType.TEXT));
-        assertEquals(false, handler.supports(MessageType.SYSTEM));
+    void supportsShouldOnlyMatchSystemType() {
+        assertEquals(true, handler.supports(MessageType.SYSTEM));
+        assertEquals(false, handler.supports(MessageType.TEXT));
     }
 
     private UserDTO user(Long id, String username) {

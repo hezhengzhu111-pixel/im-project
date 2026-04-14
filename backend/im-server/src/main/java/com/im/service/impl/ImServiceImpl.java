@@ -15,9 +15,8 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.redisson.api.RBucket;
+import org.redisson.api.RMapCache;
 import org.redisson.api.RTopic;
-import org.redisson.api.RSetMultimap;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,7 +44,6 @@ import java.util.function.Supplier;
 @RequiredArgsConstructor
 public class ImServiceImpl implements IImService {
 
-    private static final String LEASE_VALUE = "1";
     private static final int USER_LOCK_STRIPE_COUNT = 1024;
     private static final CloseStatus SEND_FAILED_CLOSE_STATUS =
             CloseStatus.SESSION_NOT_RELIABLE.withReason("send failed");
@@ -59,9 +57,6 @@ public class ImServiceImpl implements IImService {
     @Value("${im.route.users-key:im:route:users}")
     private String routeUsersKey;
 
-    @Value("${im.route.lease-key-prefix:im:route:lease:}")
-    private String routeLeaseKeyPrefix;
-
     @Value("${im.ws.presence-channel:im:presence:broadcast}")
     private String presenceChannel;
 
@@ -74,11 +69,11 @@ public class ImServiceImpl implements IImService {
     @Autowired(required = false)
     private ImServerMetrics metrics;
 
-    private RSetMultimap<String, String> routeMultimap;
+    private RMapCache<String, String> routeMap;
 
     @PostConstruct
     public void init() {
-        routeMultimap = redissonClient.getSetMultimap(routeUsersKey);
+        routeMap = redissonClient.getMapCache(routeUsersKey);
         if (metrics != null) {
             metrics.bindConnectionGauges(() -> sessionsById.size(), () -> sessionIdsByUser.size());
         }
@@ -242,6 +237,8 @@ public class ImServiceImpl implements IImService {
 
         if (!touched) {
             userOffline(normalizedUserId);
+        } else {
+            refreshRouteRegistration(normalizedUserId);
         }
         return touched;
     }
@@ -263,6 +260,7 @@ public class ImServiceImpl implements IImService {
             }
             userSession.setLastHeartbeat(LocalDateTime.now());
             userSession.setStatus(UserStatus.ONLINE);
+            refreshRouteRegistration(normalizedUserId);
             return null;
         });
     }
@@ -566,48 +564,31 @@ public class ImServiceImpl implements IImService {
     }
 
     private void upsertRouteRegistration(String userId) {
-        createLease(userId);
-        routeMultimap.put(userId, getCurrentInstanceId());
+        refreshRouteRegistration(userId);
     }
 
     private void removeRouteRegistration(String userId) {
-        routeMultimap.remove(userId, getCurrentInstanceId());
-        redissonClient.getBucket(leaseKey(userId, getCurrentInstanceId())).delete();
+        if (routeMap == null || StringUtils.isBlank(userId)) {
+            return;
+        }
+        String currentRouteInstance = routeMap.get(userId);
+        if (getCurrentInstanceId().equals(currentRouteInstance)) {
+            routeMap.fastRemove(userId);
+        }
     }
 
     private boolean isUserGloballyOnline(String userId) {
-        Set<String> routeInstanceIds = routeMultimap == null ? null : routeMultimap.getAll(userId);
-        Set<String> instanceIds = routeInstanceIds == null ? new LinkedHashSet<>() : new LinkedHashSet<>(routeInstanceIds);
-        if (instanceIds.isEmpty()) {
+        if (routeMap == null || StringUtils.isBlank(userId)) {
             return false;
         }
-        boolean online = false;
-        for (String instanceId : instanceIds) {
-            if (StringUtils.isBlank(instanceId)) {
-                continue;
-            }
-            String normalizedInstanceId = instanceId.trim();
-            if (hasLiveLease(userId, normalizedInstanceId)) {
-                online = true;
-                continue;
-            }
-            routeMultimap.remove(userId, normalizedInstanceId);
+        return StringUtils.isNotBlank(routeMap.get(userId));
+    }
+
+    private void refreshRouteRegistration(String userId) {
+        if (routeMap == null || StringUtils.isBlank(userId)) {
+            return;
         }
-        return online;
-    }
-
-    private boolean hasLiveLease(String userId, String instanceId) {
-        RBucket<String> bucket = redissonClient.getBucket(leaseKey(userId, instanceId));
-        return bucket.isExists();
-    }
-
-    private void createLease(String userId) {
-        redissonClient.getBucket(leaseKey(userId, getCurrentInstanceId()))
-                .set(LEASE_VALUE, Math.max(1000L, routeLeaseTtlMs), TimeUnit.MILLISECONDS);
-    }
-
-    private String leaseKey(String userId, String instanceId) {
-        return routeLeaseKeyPrefix + userId + ":" + instanceId;
+        routeMap.fastPut(userId, getCurrentInstanceId(), Math.max(1000L, routeLeaseTtlMs), TimeUnit.MILLISECONDS);
     }
 
     private String resolveSessionId(UserSession userSession) {

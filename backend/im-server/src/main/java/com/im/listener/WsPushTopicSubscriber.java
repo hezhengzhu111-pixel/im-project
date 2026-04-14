@@ -32,7 +32,7 @@ public class WsPushTopicSubscriber {
     @Autowired(required = false)
     private ImServerMetrics metrics;
 
-    @Value("${im.ws.channel-prefix:im:channel:}")
+    @Value("${im.ws.channel-prefix:im:msg:channel:}")
     private String channelPrefix;
 
     private volatile Integer listenerId;

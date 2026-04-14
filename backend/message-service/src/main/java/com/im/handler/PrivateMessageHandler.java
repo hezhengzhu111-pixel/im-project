@@ -46,28 +46,13 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
     }
 
     @Override
-    public boolean supports(SendMessageCommand command) {
-        return command != null && !command.isGroup();
+    public boolean supports(com.im.enums.MessageType type) {
+        return type != null && type != com.im.enums.MessageType.SYSTEM;
     }
 
     @Override
     protected PrivateMessageContext buildContext(SendMessageCommand command) {
         Long receiverId = command.getReceiverId();
-        if (command.isSystemMessage()) {
-            Long actualSenderId = command.getSenderId() == null ? defaultSystemSenderId : command.getSenderId();
-            validateMessageContent(command.getMessageType(), command.getContent(), command.getMediaUrl());
-            if (!Boolean.TRUE.equals(userServiceFeignClient.exists(receiverId))) {
-                throw new BusinessException("receiver user not exists");
-            }
-            return new PrivateMessageContext(
-                    actualSenderId,
-                    receiverId,
-                    userProfileCache.getUser(actualSenderId),
-                    userProfileCache.getUser(receiverId),
-                    true
-            );
-        }
-
         Long senderId = command.getSenderId();
         UserDTO sender = userProfileCache.getUser(senderId);
         UserDTO receiver = userProfileCache.getUser(receiverId);
@@ -79,24 +64,19 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
         }
         validateMessageContent(command.getMessageType(), command.getContent(), command.getMediaUrl());
         requireClientMessageId(command.getClientMessageId());
-        return new PrivateMessageContext(senderId, receiverId, sender, receiver, false);
+        return new PrivateMessageContext(senderId, receiverId, sender, receiver);
     }
 
     @Override
     protected String buildLockKey(SendMessageCommand command, PrivateMessageContext context) {
-        if (context.systemMessage()) {
-            return buildConversationLockKey(true, context.actualSenderId(), context.receiverId());
-        }
         return buildSendMessageLockKey(context.actualSenderId(), command.getClientMessageId());
     }
 
     @Override
     protected SendTxResult doInTransaction(SendMessageCommand command, PrivateMessageContext context) {
-        if (!context.systemMessage()) {
-            Message existingMessage = findExistingMessageByClientMessageId(context.actualSenderId(), command.getClientMessageId());
-            if (existingMessage != null) {
-                return new SendTxResult(existingMessage, false);
-            }
+        Message existingMessage = findExistingMessageByClientMessageId(context.actualSenderId(), command.getClientMessageId());
+        if (existingMessage != null) {
+            return new SendTxResult(existingMessage, false);
         }
 
         Message message = createBaseMessage(command, context.actualSenderId());
@@ -116,15 +96,12 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
 
     @Override
     protected MessageDTO buildResult(SendMessageCommand command, PrivateMessageContext context, Message message) {
-        String senderName = context.systemMessage() && context.sender() == null
-                ? "SYSTEM"
-                : context.sender() == null ? null : context.sender().getUsername();
         MessageDTO messageDTO = MessageConverter.convertToDTO(
                 message,
-                senderName,
-                context.sender() == null ? null : context.sender().getAvatar(),
-                context.receiver() == null ? null : context.receiver().getUsername(),
-                context.receiver() == null ? null : context.receiver().getAvatar(),
+                context.sender().getUsername(),
+                context.sender().getAvatar(),
+                context.receiver().getUsername(),
+                context.receiver().getAvatar(),
                 null
         );
         messageDTO.setGroup(false);
@@ -133,7 +110,7 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
 
     @Override
     protected String transactionFailureMessage(SendMessageCommand command) {
-        return command.isSystemMessage() ? "failed to send system message" : "failed to send message";
+        return "failed to send message";
     }
 
     private void enqueuePrivateMessage(Message message, PrivateMessageContext context) {
@@ -153,9 +130,7 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
     private List<Long> privateMessageTargets(PrivateMessageContext context) {
         List<Long> targetUserIds = new ArrayList<>(2);
         targetUserIds.add(context.receiverId());
-        if (!context.systemMessage()) {
-            targetUserIds.add(context.actualSenderId());
-        }
+        targetUserIds.add(context.actualSenderId());
         return normalizeMessageTargets(targetUserIds);
     }
 
@@ -163,8 +138,7 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
             Long actualSenderId,
             Long receiverId,
             UserDTO sender,
-            UserDTO receiver,
-            boolean systemMessage
+            UserDTO receiver
     ) {
     }
 }
