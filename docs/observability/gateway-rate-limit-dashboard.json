@@ -1,0 +1,44 @@
+{
+  "title": "Gateway Rate Limit",
+  "timezone": "browser",
+  "panels": [
+    {
+      "title": "Rate Limit Decisions",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(im_gateway_rate_limit_decisions_total[1m])) by (result, rule)"
+        }
+      ]
+    },
+    {
+      "title": "Redis Latency P99",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(im_gateway_rate_limit_redis_latency_seconds_bucket[5m])) by (le, operation))"
+        }
+      ]
+    },
+    {
+      "title": "Reject Reason",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(im_gateway_rate_limit_decisions_total{result=~\"reject|shadow_reject\"}[5m])) by (reason)"
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "rule",
+        "type": "query",
+        "query": "label_values(im_gateway_rate_limit_decisions_total, rule)"
+      }
+    ]
+  },
+  "schemaVersion": 39,
+  "version": 1
+}

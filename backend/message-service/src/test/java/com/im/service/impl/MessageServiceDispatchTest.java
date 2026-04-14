@@ -1,6 +1,5 @@
 package com.im.service.impl;
 
-import com.im.component.MessageRateLimiter;
 import com.im.dto.MessageDTO;
 import com.im.enums.MessageType;
 import com.im.exception.BusinessException;
@@ -40,8 +39,6 @@ class MessageServiceDispatchTest {
     private GroupServiceFeignClient groupServiceFeignClient;
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
-    @Mock
-    private MessageRateLimiter messageRateLimiter;
     @Mock
     private OutboxService outboxService;
     @Mock
@@ -125,7 +122,6 @@ class MessageServiceDispatchTest {
                 userServiceFeignClient,
                 groupServiceFeignClient,
                 redisTemplate,
-                messageRateLimiter,
                 outboxService,
                 groupReadCursorMapper,
                 userProfileCache,

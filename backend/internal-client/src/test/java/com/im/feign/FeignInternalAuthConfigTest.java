@@ -53,6 +53,7 @@ class FeignInternalAuthConfigTest {
         request.addHeader("Authorization", "Bearer token-123");
         request.addHeader("X-User-Id", "1001");
         request.addHeader("X-Username", "alice");
+        request.addHeader("X-Rate-Limit-Global-Enabled", "false");
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
 
         RequestTemplate template = new RequestTemplate();
@@ -61,6 +62,7 @@ class FeignInternalAuthConfigTest {
         assertEquals("Bearer token-123", firstHeader(template.headers(), "Authorization"));
         assertEquals("1001", firstHeader(template.headers(), "X-User-Id"));
         assertEquals("alice", firstHeader(template.headers(), "X-Username"));
+        assertEquals("false", firstHeader(template.headers(), "X-Rate-Limit-Global-Enabled"));
     }
 
     @Test

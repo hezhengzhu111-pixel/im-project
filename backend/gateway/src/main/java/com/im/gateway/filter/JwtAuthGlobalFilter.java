@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.AsyncCache;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.im.config.GlobalRateLimitSwitch;
+import com.im.config.RateLimitGlobalProperties;
 import com.im.dto.ApiResponse;
 import com.im.dto.AuthUserResourceDTO;
 import com.im.dto.TokenParseResultDTO;
@@ -43,6 +45,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private static final String HEADER_AUTH_NONCE = "X-Auth-Nonce";
     private static final String HEADER_AUTH_SIGN = "X-Auth-Sign";
     private static final String HEADER_GATEWAY_ROUTE = "X-Gateway-Route";
+    private static final String HEADER_RATE_LIMIT_GLOBAL_ENABLED = RateLimitGlobalProperties.SWITCH_HEADER;
     private static final int MAX_CACHE_SIZE = 10_000;
     private static final Duration INFLIGHT_CACHE_TTL = Duration.ofSeconds(30);
     private static final ParameterizedTypeReference<ApiResponse<TokenParseResultDTO>> TOKEN_RESPONSE_TYPE =
@@ -54,6 +57,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
     private final ObjectMapper objectMapper;
     private final WebClient webClient;
+    private final GlobalRateLimitSwitch globalRateLimitSwitch;
     private final Duration authServiceTimeout;
     private final Cache<String, TokenParseResultDTO> tokenCache;
     private final Cache<String, InvalidTokenMarker> invalidTokenCache;
@@ -88,12 +92,14 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     public JwtAuthGlobalFilter(ObjectMapper objectMapper,
                                @Qualifier("plainWebClientBuilder") WebClient.Builder plainWebClientBuilder,
                                @Qualifier("loadBalancedWebClientBuilder") WebClient.Builder loadBalancedWebClientBuilder,
+                               GlobalRateLimitSwitch globalRateLimitSwitch,
                                @Value("${im.gateway.auth-service-url:http://127.0.0.1:8084}") String authServiceUrl,
                                @Value("${im.gateway.auth.request-timeout-ms:3000}") long requestTimeoutMs,
                                @Value("${im.gateway.auth.token-cache-ttl-seconds:10}") long tokenCacheTtlSeconds,
                                @Value("${im.gateway.auth.token-negative-cache-ttl-seconds:5}") long tokenNegativeCacheTtlSeconds,
                                @Value("${im.gateway.auth.user-resource-cache-ttl-seconds:15}") long userResourceCacheTtlSeconds) {
         this.objectMapper = objectMapper;
+        this.globalRateLimitSwitch = globalRateLimitSwitch;
         this.webClient = (useLoadBalancedClient(authServiceUrl)
                 ? loadBalancedWebClientBuilder
                 : plainWebClientBuilder)
@@ -129,20 +135,30 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerWebExchange sanitizedExchange = sanitizeIncomingExchange(exchange);
-        FilterInput input = filterInput(sanitizedExchange);
+        ServerWebExchange switchAwareExchange = applyGlobalRateLimitHeader(sanitizedExchange);
+        FilterInput input = filterInput(switchAwareExchange);
         InputStageResult inputStageResult = filterInputStage(input);
-        Mono<Void> inputOutput = filterInputOutput(sanitizedExchange, chain, inputStageResult);
+        Mono<Void> inputOutput = filterInputOutput(switchAwareExchange, chain, inputStageResult);
         if (inputOutput != null) {
             return inputOutput;
         }
 
-        Mono<ServerWebExchange> authenticatedExchange = authenticateAndDecorate(sanitizedExchange, input.token())
+        Mono<ServerWebExchange> authenticatedExchange = authenticateAndDecorate(switchAwareExchange, input.token())
                 .onErrorResume(GatewayAuthException.class,
-                        ex -> writeStatus(sanitizedExchange, ex.status()).then(Mono.empty()))
+                        ex -> writeStatus(switchAwareExchange, ex.status()).then(Mono.empty()))
                 .onErrorResume(Throwable.class,
-                        ex -> writeStatus(sanitizedExchange, HttpStatus.SERVICE_UNAVAILABLE).then(Mono.empty()));
+                        ex -> writeStatus(switchAwareExchange, HttpStatus.SERVICE_UNAVAILABLE).then(Mono.empty()));
 
         return authenticatedExchange.flatMap(chain::filter);
+    }
+
+    private ServerWebExchange applyGlobalRateLimitHeader(ServerWebExchange exchange) {
+        String switchValue = Boolean.toString(globalRateLimitSwitch.isEnabled());
+        exchange.getResponse().getHeaders().set(HEADER_RATE_LIMIT_GLOBAL_ENABLED, switchValue);
+        ServerHttpRequest request = exchange.getRequest().mutate()
+                .headers(headers -> headers.set(HEADER_RATE_LIMIT_GLOBAL_ENABLED, switchValue))
+                .build();
+        return exchange.mutate().request(request).build();
     }
 
     private FilterInput filterInput(ServerWebExchange exchange) {
@@ -251,6 +267,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                     headers.remove(HEADER_AUTH_TS);
                     headers.remove(HEADER_AUTH_NONCE);
                     headers.remove(HEADER_AUTH_SIGN);
+                    headers.remove(HEADER_RATE_LIMIT_GLOBAL_ENABLED);
                     headers.set(HEADER_USER_ID, String.valueOf(context.userId()));
                     headers.set(HEADER_USERNAME, context.username());
                     headers.set(internalHeaderName, internalSecret);
@@ -260,6 +277,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                     headers.set(HEADER_AUTH_TS, signedHeaders.ts());
                     headers.set(HEADER_AUTH_NONCE, signedHeaders.nonce());
                     headers.set(HEADER_AUTH_SIGN, signedHeaders.signature());
+                    headers.set(HEADER_RATE_LIMIT_GLOBAL_ENABLED, Boolean.toString(globalRateLimitSwitch.isEnabled()));
                 })
                 .build();
         return exchange.mutate().request(mutatedRequest).build();

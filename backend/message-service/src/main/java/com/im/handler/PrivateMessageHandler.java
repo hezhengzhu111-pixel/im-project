@@ -1,6 +1,5 @@
 package com.im.handler;
 
-import com.im.component.MessageRateLimiter;
 import com.im.dto.MessageDTO;
 import com.im.dto.UserDTO;
 import com.im.exception.BusinessException;
@@ -26,7 +25,6 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
     private static final String EVENT_TYPE_MESSAGE = "MESSAGE";
 
     private final UserServiceFeignClient userServiceFeignClient;
-    private final MessageRateLimiter messageRateLimiter;
     private final UserProfileCache userProfileCache;
 
     @Value("${im.outbox.topic.private-message:PRIVATE_MESSAGE}")
@@ -41,11 +39,9 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
                                  RedissonClient redissonClient,
                                  TransactionTemplate transactionTemplate,
                                  UserServiceFeignClient userServiceFeignClient,
-                                 MessageRateLimiter messageRateLimiter,
                                  UserProfileCache userProfileCache) {
         super(messageMapper, redisTemplate, outboxService, redissonClient, transactionTemplate);
         this.userServiceFeignClient = userServiceFeignClient;
-        this.messageRateLimiter = messageRateLimiter;
         this.userProfileCache = userProfileCache;
     }
 
@@ -73,9 +69,6 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
         }
 
         Long senderId = command.getSenderId();
-        if (!messageRateLimiter.canSendMessage(senderId)) {
-            throw new BusinessException("message rate limit exceeded");
-        }
         UserDTO sender = userProfileCache.getUser(senderId);
         UserDTO receiver = userProfileCache.getUser(receiverId);
         if (sender == null || receiver == null) {
@@ -110,9 +103,6 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
         message.setReceiverId(context.receiverId());
         message.setIsGroupChat(false);
         persistMessage(message, context.receiverId());
-        if (!context.systemMessage()) {
-            messageRateLimiter.recordMessage(context.actualSenderId());
-        }
         enqueuePrivateMessage(message, context);
         return new SendTxResult(message, true);
     }

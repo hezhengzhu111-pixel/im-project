@@ -1,0 +1,53 @@
+im:
+  gateway:
+    rate-limit:
+      enabled: true
+      mode: ENFORCE
+      active-version: v2
+      previous-version: v1
+      error:
+        code: 42901
+        message: 请求过于频繁，请稍后再试
+      versions:
+        v1:
+          enabled: true
+          gray-percent: 100
+          gray-by: IP
+          rules:
+            - id: login-ip-v1
+              order: 10
+              methods: [POST]
+              path-patterns: ["/api/user/login"]
+              dimension: IP_API
+              replenish-rate: 100
+              burst-capacity: 200
+              max-concurrency: 300
+        v2:
+          enabled: true
+          gray-percent: 10
+          gray-by: IP
+          rules:
+            - id: login-ip-v2
+              order: 10
+              methods: [POST]
+              path-patterns: ["/api/user/login"]
+              dimension: IP_API
+              replenish-rate: 120
+              burst-capacity: 240
+              max-concurrency: 320
+            - id: verify-code-ip-v2
+              order: 20
+              methods: [POST]
+              path-patterns: ["/api/user/phone/code", "/api/user/email/code"]
+              dimension: IP_API
+              replenish-rate: 10
+              burst-capacity: 20
+            - id: message-send-user-v2
+              order: 30
+              methods: [POST]
+              path-patterns: ["/api/messages/send/**"]
+              dimension: USER_API
+              replenish-rate: 30
+              burst-capacity: 60
+              max-concurrency: 400
+              concurrency-ttl-seconds: 5
