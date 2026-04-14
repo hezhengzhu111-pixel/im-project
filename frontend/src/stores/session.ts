@@ -29,8 +29,13 @@ export const useSessionStore = defineStore("session", () => {
   const unreadCounts = ref<Map<string, number>>(new Map());
   const loading = ref(false);
 
+  const currentSessionId = computed(() => currentSession.value?.id || "");
+
   const sortedSessions = computed(() => {
     return [...sessions.value].sort((left, right) => {
+      if (Boolean(left.isPinned) !== Boolean(right.isPinned)) {
+        return left.isPinned ? -1 : 1;
+      }
       const leftTime = new Date(left.lastActiveTime || 0).getTime();
       const rightTime = new Date(right.lastActiveTime || 0).getTime();
       return (Number.isFinite(rightTime) ? rightTime : 0) -
@@ -194,6 +199,30 @@ export const useSessionStore = defineStore("session", () => {
     }
   };
 
+  const setSessionPinned = (sessionId: string, pinned: boolean) => {
+    const session = sessions.value.find((item) => item.id === sessionId);
+    if (!session) {
+      return;
+    }
+    session.isPinned = pinned;
+    session.pinned = pinned;
+    if (currentSession.value?.id === sessionId) {
+      currentSession.value = {
+        ...currentSession.value,
+        isPinned: pinned,
+        pinned,
+      };
+    }
+  };
+
+  const toggleSessionPinned = (sessionId: string, pinned?: boolean) => {
+    const session = sessions.value.find((item) => item.id === sessionId);
+    if (!session) {
+      return;
+    }
+    setSessionPinned(sessionId, pinned ?? !session.isPinned);
+  };
+
   const mergeGroupMetadata = (groups: Group[]) => {
     sessions.value = sessions.value.map((session) => {
       if (session.type !== "group") {
@@ -337,6 +366,7 @@ export const useSessionStore = defineStore("session", () => {
 
   return {
     currentSession,
+    currentSessionId,
     sessions,
     unreadCounts,
     loading,
@@ -349,6 +379,8 @@ export const useSessionStore = defineStore("session", () => {
     clearCurrentSession,
     applyMessageToSession,
     updatePrivateSessionDisplay,
+    setSessionPinned,
+    toggleSessionPinned,
     mergeGroupMetadata,
     removeSession,
     removeGroupSession,

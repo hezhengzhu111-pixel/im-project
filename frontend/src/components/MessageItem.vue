@@ -2,7 +2,7 @@
   <div
     class="message-item"
     :class="{ 'is-mine': isMine }"
-    @contextmenu.prevent="emit('open-context-menu', message, $event)"
+    @contextmenu.prevent="handleContextMenu"
   >
     <el-avatar
       v-if="!isMine"
@@ -71,9 +71,9 @@
 
         <div v-else-if="message.messageType === 'VOICE'" class="voice-content">
           <el-button
-            :icon="audioPlaying ? VideoPause : VideoPlay"
+            :icon="audioPlayingState ? VideoPause : VideoPlay"
             circle
-            @click="emit('toggle-audio', message)"
+            @click="handleAudioToggle"
           />
           <span class="voice-duration">{{ voiceDuration }}</span>
         </div>
@@ -157,6 +157,8 @@ import {
   VideoPlay,
   Warning,
 } from "@element-plus/icons-vue";
+import { useAudioPlayer } from "@/composables/useAudioPlayer";
+import { useContextMenu } from "@/composables/useContextMenu";
 import { formatFileSize, getAvatarText } from "@/utils/common";
 import type { Message } from "@/types";
 
@@ -184,6 +186,9 @@ const emit = defineEmits<{
   (e: "play-video", message: Message): void;
   (e: "media-loaded", message: Message): void;
 }>();
+
+const audioPlayer = useAudioPlayer();
+const contextMenu = useContextMenu();
 
 const senderDisplayName = computed(() => {
   return props.message.senderName || "未知用户";
@@ -228,6 +233,10 @@ const voiceDuration = computed(() => {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 });
 
+const audioPlayingState = computed(() => {
+  return props.audioPlaying || audioPlayer.isPlaying.value;
+});
+
 const fileName = computed(() => {
   if (props.message.mediaName) {
     return props.message.mediaName;
@@ -247,6 +256,41 @@ const fileSize = computed(() => {
 const currentUserAvatarText = computed(() => {
   return getAvatarText(props.currentUserName || props.currentUserId);
 });
+
+const createForwardedContextMenuEvent = (
+  originalEvent: MouseEvent,
+  x: number,
+  y: number,
+) => {
+  return new MouseEvent("contextmenu", {
+    bubbles: originalEvent.bubbles,
+    cancelable: originalEvent.cancelable,
+    composed: originalEvent.composed,
+    button: originalEvent.button,
+    buttons: originalEvent.buttons,
+    clientX: x,
+    clientY: y,
+    ctrlKey: originalEvent.ctrlKey,
+    shiftKey: originalEvent.shiftKey,
+    altKey: originalEvent.altKey,
+    metaKey: originalEvent.metaKey,
+    view: originalEvent.view || window,
+  });
+};
+
+const handleContextMenu = (event: MouseEvent) => {
+  const position = contextMenu.open(event);
+  emit(
+    "open-context-menu",
+    props.message,
+    createForwardedContextMenuEvent(event, position.x, position.y),
+  );
+};
+
+const handleAudioToggle = () => {
+  audioPlayer.stop();
+  emit("toggle-audio", props.message);
+};
 
 const handleImageLoaded = () => {
   emit("media-loaded", props.message);
