@@ -5,6 +5,7 @@ import com.im.dto.MessageEvent;
 import com.im.dto.StatusChangeEvent;
 import com.im.enums.MessageEventType;
 import com.im.enums.MessageType;
+import com.im.service.support.HotMessageRedisRepository;
 import com.im.service.support.UserProfileCache;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,7 @@ import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -26,13 +28,14 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,6 +47,9 @@ class ConversationCacheUpdaterTest {
 
     @Mock
     private UserProfileCache userProfileCache;
+
+    @Mock
+    private HotMessageRedisRepository hotMessageRedisRepository;
 
     @Mock
     private HashOperations<String, Object, Object> hashOperations;
@@ -58,12 +64,14 @@ class ConversationCacheUpdaterTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        updater = new ConversationCacheUpdater(redisTemplate, userProfileCache);
+        updater = new ConversationCacheUpdater(redisTemplate, userProfileCache, hotMessageRedisRepository);
         ReflectionTestUtils.setField(updater, "lastMessageKeyPrefix", "last_message:");
         ReflectionTestUtils.setField(updater, "userIndexKeyPrefix", "conversation:index:user:");
         ReflectionTestUtils.setField(updater, "userUnreadKeyPrefix", "conversation:unread:user:");
         ReflectionTestUtils.setField(updater, "legacyConversationListKeyPrefix", "conversations:user:");
+        ReflectionTestUtils.setField(updater, "unreadAppliedKeyPrefix", "conversation:unread:applied:");
         ReflectionTestUtils.setField(updater, "cacheTtlSeconds", 3600L);
+        ReflectionTestUtils.setField(updater, "unreadAppliedTtlSeconds", 86400L);
         when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         lenient().when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
         RedisSerializer<Object> serializer =
@@ -74,14 +82,18 @@ class ConversationCacheUpdaterTest {
             RedisCallback<?> callback = invocation.getArgument(0);
             return callback.doInRedis(redisConnection);
         }).when(redisTemplate).execute(any(RedisCallback.class));
+        lenient().doReturn(1L)
+                .when(redisTemplate)
+                .execute(any(RedisScript.class), anyList(), any(), any(), any(), any());
     }
 
     @Test
-    void updateMessagesShouldIncrementPrivateConversationCaches() {
+    void projectAcceptedMessageShouldUpdatePrivateConversationHotProjection() {
         MessageDTO payload = MessageDTO.builder()
                 .id(1001L)
                 .senderId(1L)
                 .receiverId(2L)
+                .clientMessageId("client-1")
                 .messageType(MessageType.TEXT)
                 .content("hello")
                 .build();
@@ -91,27 +103,57 @@ class ConversationCacheUpdaterTest {
                 .conversationId("p_1_2")
                 .senderId(1L)
                 .receiverId(2L)
+                .clientMessageId("client-1")
                 .messageType(MessageType.TEXT)
                 .content("hello")
                 .createdTime(LocalDateTime.of(2026, 4, 15, 18, 30))
                 .payload(payload)
                 .build();
 
-        updater.updateMessages(List.of(event));
+        updater.projectAcceptedMessage(event);
 
+        verify(hotMessageRedisRepository).addRecentMessage("p_1_2", 1001L, LocalDateTime.of(2026, 4, 15, 18, 30));
         verify(hashOperations).put("last_message:p_1_2", "message", payload);
         verify(redisTemplate).expire("last_message:p_1_2", Duration.ofSeconds(3600));
         verify(zSetOperations).add(eq("conversation:index:user:1"), eq("p_1_2"), anyDouble());
         verify(zSetOperations).add(eq("conversation:index:user:2"), eq("p_1_2"), anyDouble());
-        verify(redisTemplate).expire("conversation:index:user:1", Duration.ofSeconds(3600));
-        verify(redisTemplate).expire("conversation:index:user:2", Duration.ofSeconds(3600));
         verify(redisConnection.hashCommands()).hSetNX(any(), any(), any());
-        verify(redisConnection.hashCommands()).hIncrBy(any(), any(), eq(1L));
-        verify(redisConnection, org.mockito.Mockito.times(2)).expire(any(), anyLong());
+        verify(redisTemplate).execute(any(RedisScript.class), anyList(), any(), any(), any(), any());
+        verify(redisTemplate).delete("conversations:user:1");
+        verify(redisTemplate).delete("conversations:user:2");
     }
 
     @Test
-    void updateMessagesShouldIncrementGroupConversationCachesForAllMembersExceptSender() {
+    void projectAcceptedMessageShouldUseStableUnreadMarkerAcrossDuplicateReprojection() {
+        MessageEvent event = MessageEvent.builder()
+                .eventType(MessageEventType.MESSAGE)
+                .messageId(1002L)
+                .conversationId("p_1_2")
+                .senderId(1L)
+                .receiverId(2L)
+                .clientMessageId("client-dup")
+                .messageType(MessageType.TEXT)
+                .content("hello")
+                .createdTime(LocalDateTime.of(2026, 4, 15, 18, 32))
+                .build();
+
+        updater.projectAcceptedMessage(event);
+        updater.projectAcceptedMessage(event);
+
+        verify(redisTemplate, org.mockito.Mockito.times(2))
+                .execute(any(RedisScript.class),
+                        argThat(keys -> keys != null
+                                && keys.size() == 2
+                                && "conversation:unread:applied:2:p_1_2:1002".equals(keys.getFirst())
+                                && "conversation:unread:user:2".equals(keys.get(1))),
+                        eq("p_1_2"),
+                        eq("3600"),
+                        eq("86400"),
+                        eq("1"));
+    }
+
+    @Test
+    void projectAcceptedMessageShouldFanOutGroupProjectionToAllMembers() {
         MessageEvent event = MessageEvent.builder()
                 .eventType(MessageEventType.MESSAGE)
                 .messageId(2001L)
@@ -119,25 +161,29 @@ class ConversationCacheUpdaterTest {
                 .senderId(1L)
                 .groupId(8L)
                 .group(true)
+                .clientMessageId("client-2")
                 .messageType(MessageType.TEXT)
                 .content("group hello")
                 .createdTime(LocalDateTime.of(2026, 4, 15, 18, 31))
                 .build();
         when(userProfileCache.getGroupMemberIds(8L)).thenReturn(List.of(1L, 2L, 3L));
 
-        updater.updateMessages(List.of(event));
+        updater.projectAcceptedMessage(event);
 
-        verify(hashOperations).put(eq("last_message:g_8"), eq("message"), any(MessageDTO.class));
+        verify(hotMessageRedisRepository).addRecentMessage("g_8", 2001L, LocalDateTime.of(2026, 4, 15, 18, 31));
         verify(zSetOperations).add(eq("conversation:index:user:1"), eq("g_8"), anyDouble());
         verify(zSetOperations).add(eq("conversation:index:user:2"), eq("g_8"), anyDouble());
         verify(zSetOperations).add(eq("conversation:index:user:3"), eq("g_8"), anyDouble());
         verify(redisConnection.hashCommands()).hSetNX(any(), any(), any());
-        verify(redisConnection.hashCommands(), org.mockito.Mockito.times(2)).hIncrBy(any(), any(), eq(1L));
-        verify(redisConnection, org.mockito.Mockito.times(3)).expire(any(), anyLong());
+        verify(redisTemplate, org.mockito.Mockito.times(2))
+                .execute(any(RedisScript.class), anyList(), any(), any(), any(), any());
+        verify(redisTemplate).delete("conversations:user:1");
+        verify(redisTemplate).delete("conversations:user:2");
+        verify(redisTemplate).delete("conversations:user:3");
     }
 
     @Test
-    void applyStatusChangeShouldRefreshGroupLastMessageAndClearLegacyCachesForMembers() {
+    void applyStatusChangeShouldRefreshHotMessageAndLastMessage() {
         MessageDTO cachedPayload = MessageDTO.builder()
                 .id(3001L)
                 .groupId(8L)
@@ -166,6 +212,7 @@ class ConversationCacheUpdaterTest {
                 .payload(recalledPayload)
                 .build());
 
+        verify(hotMessageRedisRepository).saveHotMessage(recalledPayload);
         verify(hashOperations).put("last_message:g_8", "message", recalledPayload);
         verify(redisTemplate).delete("conversations:user:1");
         verify(redisTemplate).delete("conversations:user:2");

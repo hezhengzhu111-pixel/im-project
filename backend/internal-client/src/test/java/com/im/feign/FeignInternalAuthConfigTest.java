@@ -66,6 +66,20 @@ class FeignInternalAuthConfigTest {
     }
 
     @Test
+    void apply_shouldSkipRateLimitHeaderWhenMissing() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer token-123");
+        request.addHeader("X-User-Id", "1001");
+        request.addHeader("X-Username", "alice");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+
+        RequestTemplate template = new RequestTemplate();
+        interceptor.apply(template);
+
+        assertNull(firstHeader(template.headers(), "X-Rate-Limit-Global-Enabled"));
+    }
+
+    @Test
     void apply_shouldFallbackToRequestAttributesWhenIdentityHeadersMissing() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setAttribute("userId", 2002L);

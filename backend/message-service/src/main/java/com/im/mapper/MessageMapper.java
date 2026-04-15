@@ -135,6 +135,16 @@ public interface MessageMapper extends BaseMapper<Message> {
                                  @Param("startTime") LocalDateTime startTime,
                                  @Param("endTime") LocalDateTime endTime);
 
+    @Select("""
+            SELECT *
+            FROM messages
+            WHERE sender_id = #{senderId}
+              AND client_message_id = #{clientMessageId}
+            LIMIT 1
+            """)
+    Message selectBySenderIdAndClientMessageId(@Param("senderId") Long senderId,
+                                               @Param("clientMessageId") String clientMessageId);
+
     @Delete("""
             DELETE FROM messages
             WHERE status = 5 AND updated_time < #{expireTime}

@@ -10,6 +10,8 @@ import com.im.mapper.GroupReadCursorMapper;
 import com.im.mapper.MessageMapper;
 import com.im.mapper.PrivateReadCursorMapper;
 import com.im.message.entity.Message;
+import com.im.service.support.AcceptedMessageProjectionService;
+import com.im.service.support.HotMessageRedisRepository;
 import com.im.service.support.UserProfileCache;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -63,6 +65,12 @@ class MessageServiceStateKafkaTest {
     @Mock
     private KafkaTemplate<String, StatusChangeEvent> statusChangeEventKafkaTemplate;
 
+    @Mock
+    private HotMessageRedisRepository hotMessageRedisRepository;
+
+    @Mock
+    private AcceptedMessageProjectionService acceptedMessageProjectionService;
+
     private MessageServiceImpl messageService;
 
     @BeforeEach
@@ -77,7 +85,9 @@ class MessageServiceStateKafkaTest {
                 userProfileCache,
                 List.of(),
                 readEventKafkaTemplate,
-                statusChangeEventKafkaTemplate
+                statusChangeEventKafkaTemplate,
+                hotMessageRedisRepository,
+                acceptedMessageProjectionService
         );
         ReflectionTestUtils.setField(messageService, "readTopic", "im-read-topic");
         ReflectionTestUtils.setField(messageService, "statusTopic", "im-status-topic");

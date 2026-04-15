@@ -6,6 +6,7 @@ import com.im.dto.UserDTO;
 import com.im.exception.BusinessException;
 import com.im.message.entity.Message;
 import com.im.service.command.SendMessageCommand;
+import com.im.service.support.AcceptedMessageProjectionService;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
 import com.im.utils.SnowflakeIdGenerator;
@@ -21,8 +22,9 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
     public PrivateMessageHandler(RedisTemplate<String, Object> redisTemplate,
                                  KafkaTemplate<String, MessageEvent> kafkaTemplate,
                                  SnowflakeIdGenerator snowflakeIdGenerator,
+                                 AcceptedMessageProjectionService acceptedMessageProjectionService,
                                  UserProfileCache userProfileCache) {
-        super(redisTemplate, kafkaTemplate, snowflakeIdGenerator);
+        super(redisTemplate, kafkaTemplate, snowflakeIdGenerator, acceptedMessageProjectionService);
         this.userProfileCache = userProfileCache;
     }
 
@@ -59,11 +61,6 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
     @Override
     protected String buildConversationId(SendMessageCommand command, PrivateMessageContext context, Message message) {
         return buildPrivateConversationKey(context.actualSenderId(), context.receiverId());
-    }
-
-    @Override
-    protected void afterKafkaAck(SendMessageCommand command, PrivateMessageContext context, Message message) {
-        clearConversationCache(context.actualSenderId(), context.receiverId(), true);
     }
 
     @Override

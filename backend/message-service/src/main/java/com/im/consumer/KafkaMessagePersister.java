@@ -3,7 +3,6 @@ package com.im.consumer;
 import com.im.dto.MessageEvent;
 import com.im.enums.MessageEventType;
 import com.im.message.entity.Message;
-import com.im.service.ConversationCacheUpdater;
 import com.im.service.MessagePersistenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,7 +23,6 @@ import java.util.Objects;
 public class KafkaMessagePersister {
 
     private final MessagePersistenceService messagePersistenceService;
-    private final ConversationCacheUpdater conversationCacheUpdater;
 
     @KafkaListener(
             topics = "${im.kafka.chat-topic:im-chat-topic}",
@@ -62,9 +60,6 @@ public class KafkaMessagePersister {
             throw exception;
         }
 
-        if (!persistedCandidates.isEmpty()) {
-            conversationCacheUpdater.updateMessages(persistedCandidates.stream().map(PersistCandidate::event).toList());
-        }
     }
 
     private Message toMessage(MessageEvent event) {
