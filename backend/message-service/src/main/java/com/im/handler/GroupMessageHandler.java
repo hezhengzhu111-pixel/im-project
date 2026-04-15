@@ -1,42 +1,31 @@
 package com.im.handler;
 
 import com.im.dto.MessageDTO;
+import com.im.dto.MessageEvent;
 import com.im.dto.UserDTO;
 import com.im.exception.BusinessException;
 import com.im.feign.GroupServiceFeignClient;
-import com.im.mapper.MessageMapper;
 import com.im.message.entity.Message;
-import com.im.service.OutboxService;
 import com.im.service.command.SendMessageCommand;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
-import org.redisson.api.RedissonClient;
-import org.springframework.beans.factory.annotation.Value;
+import com.im.utils.SnowflakeIdGenerator;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionTemplate;
-
-import java.util.List;
 
 @Component
 public class GroupMessageHandler extends AbstractMessageHandler<GroupMessageHandler.GroupMessageContext> {
 
-    private static final String EVENT_TYPE_MESSAGE = "MESSAGE";
-
     private final GroupServiceFeignClient groupServiceFeignClient;
     private final UserProfileCache userProfileCache;
 
-    @Value("${im.outbox.topic.group-message:GROUP_MESSAGE}")
-    private String groupMessageTopic;
-
-    public GroupMessageHandler(MessageMapper messageMapper,
-                               RedisTemplate<String, Object> redisTemplate,
-                               OutboxService outboxService,
-                               RedissonClient redissonClient,
-                               TransactionTemplate transactionTemplate,
+    public GroupMessageHandler(RedisTemplate<String, Object> redisTemplate,
+                               KafkaTemplate<String, MessageEvent> kafkaTemplate,
+                               SnowflakeIdGenerator snowflakeIdGenerator,
                                GroupServiceFeignClient groupServiceFeignClient,
                                UserProfileCache userProfileCache) {
-        super(messageMapper, redisTemplate, outboxService, redissonClient, transactionTemplate);
+        super(redisTemplate, kafkaTemplate, snowflakeIdGenerator);
         this.groupServiceFeignClient = groupServiceFeignClient;
         this.userProfileCache = userProfileCache;
     }
@@ -62,35 +51,25 @@ public class GroupMessageHandler extends AbstractMessageHandler<GroupMessageHand
         }
         validateMessageContent(command.getMessageType(), command.getContent(), command.getMediaUrl());
         requireClientMessageId(command.getClientMessageId());
-        List<Long> memberIds = userProfileCache.getGroupMemberIds(groupId);
-        return new GroupMessageContext(senderId, groupId, sender, memberIds);
+        return new GroupMessageContext(senderId, groupId, sender);
     }
 
     @Override
-    protected String buildLockKey(SendMessageCommand command, GroupMessageContext context) {
-        return buildSendMessageLockKey(context.senderId(), command.getClientMessageId());
-    }
-
-    @Override
-    protected SendTxResult doInTransaction(SendMessageCommand command, GroupMessageContext context) {
-        Message existingMessage = findExistingMessageByClientMessageId(context.senderId(), command.getClientMessageId());
-        if (existingMessage != null) {
-            return new SendTxResult(existingMessage, false);
-        }
-
-        Message message = createBaseMessage(command, context.senderId());
+    protected Message buildMessage(SendMessageCommand command, GroupMessageContext context, Long messageId) {
+        Message message = createBaseMessage(command, messageId, context.senderId());
         message.setGroupId(context.groupId());
         message.setIsGroupChat(true);
-        persistMessage(message, context.groupId());
-        enqueueGroupMessage(message, context);
-        return new SendTxResult(message, true);
+        return message;
     }
 
     @Override
-    protected void afterTransaction(SendMessageCommand command, GroupMessageContext context, SendTxResult txResult) {
-        if (txResult.created()) {
-            clearConversationCache(null, context.groupId(), false);
-        }
+    protected String buildConversationId(SendMessageCommand command, GroupMessageContext context, Message message) {
+        return buildGroupConversationKey(context.groupId());
+    }
+
+    @Override
+    protected void afterKafkaAck(SendMessageCommand command, GroupMessageContext context, Message message) {
+        clearConversationCache(null, context.groupId(), false);
     }
 
     @Override
@@ -107,25 +86,10 @@ public class GroupMessageHandler extends AbstractMessageHandler<GroupMessageHand
         return messageDTO;
     }
 
-    private void enqueueGroupMessage(Message message, GroupMessageContext context) {
-        MessageDTO messageDTO = buildResult(null, context, message);
-        String payload = com.alibaba.fastjson2.JSON.toJSONString(messageDTO);
-        String key = buildGroupConversationKey(context.groupId());
-        outboxService.enqueueAfterCommit(
-                groupMessageTopic,
-                EVENT_TYPE_MESSAGE,
-                key,
-                payload,
-                message.getId(),
-                normalizeMessageTargets(context.memberIds())
-        );
-    }
-
     record GroupMessageContext(
             Long senderId,
             Long groupId,
-            UserDTO sender,
-            List<Long> memberIds
+            UserDTO sender
     ) {
     }
 }

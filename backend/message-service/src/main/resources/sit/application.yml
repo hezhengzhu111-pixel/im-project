@@ -9,6 +9,7 @@ spring:
       - optional:classpath:sit/application-mysql.yml
       - optional:classpath:sit/application-redis.yml
       - optional:classpath:sit/application-nacos.yml
+      - optional:classpath:sit/application-kafka.yml
   profiles:
     active: default
   threads:

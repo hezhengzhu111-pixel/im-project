@@ -10,19 +10,24 @@ spring:
       linger-ms: 1
       buffer-memory: 33554432
     consumer:
-      group-id: im-websocket-group-${im.instance-id}
+      group-id: im-ws-pusher-${random.uuid}
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       enable-auto-commit: false
       auto-commit-interval: 300000
       max-poll-records: 100
       max-poll-interval: 300000
+      properties:
+        spring.json.trusted.packages: com.im.dto,com.im.enums
+        spring.json.value.default.type: com.im.dto.MessageEvent
+        spring.json.use.type.headers: false
     listener:
       missing-topics-fatal: false
 
 im:
   kafka:
+    chat-topic: im-chat-topic
     topic:
       private-message: im-private-message-topic
       group-message: im-group-message-topic

@@ -1,47 +1,28 @@
 package com.im.handler;
 
 import com.im.dto.MessageDTO;
+import com.im.dto.MessageEvent;
 import com.im.dto.UserDTO;
 import com.im.exception.BusinessException;
-import com.im.feign.UserServiceFeignClient;
-import com.im.mapper.MessageMapper;
 import com.im.message.entity.Message;
-import com.im.service.OutboxService;
 import com.im.service.command.SendMessageCommand;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
-import org.redisson.api.RedissonClient;
-import org.springframework.beans.factory.annotation.Value;
+import com.im.utils.SnowflakeIdGenerator;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionTemplate;
-
-import java.util.ArrayList;
-import java.util.List;
 
 @Component
 public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessageHandler.PrivateMessageContext> {
 
-    private static final String EVENT_TYPE_MESSAGE = "MESSAGE";
-
-    private final UserServiceFeignClient userServiceFeignClient;
     private final UserProfileCache userProfileCache;
 
-    @Value("${im.outbox.topic.private-message:PRIVATE_MESSAGE}")
-    private String privateMessageTopic;
-
-    @Value("${im.message.system.sender-id:0}")
-    private Long defaultSystemSenderId;
-
-    public PrivateMessageHandler(MessageMapper messageMapper,
-                                 RedisTemplate<String, Object> redisTemplate,
-                                 OutboxService outboxService,
-                                 RedissonClient redissonClient,
-                                 TransactionTemplate transactionTemplate,
-                                 UserServiceFeignClient userServiceFeignClient,
+    public PrivateMessageHandler(RedisTemplate<String, Object> redisTemplate,
+                                 KafkaTemplate<String, MessageEvent> kafkaTemplate,
+                                 SnowflakeIdGenerator snowflakeIdGenerator,
                                  UserProfileCache userProfileCache) {
-        super(messageMapper, redisTemplate, outboxService, redissonClient, transactionTemplate);
-        this.userServiceFeignClient = userServiceFeignClient;
+        super(redisTemplate, kafkaTemplate, snowflakeIdGenerator);
         this.userProfileCache = userProfileCache;
     }
 
@@ -68,30 +49,21 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
     }
 
     @Override
-    protected String buildLockKey(SendMessageCommand command, PrivateMessageContext context) {
-        return buildSendMessageLockKey(context.actualSenderId(), command.getClientMessageId());
-    }
-
-    @Override
-    protected SendTxResult doInTransaction(SendMessageCommand command, PrivateMessageContext context) {
-        Message existingMessage = findExistingMessageByClientMessageId(context.actualSenderId(), command.getClientMessageId());
-        if (existingMessage != null) {
-            return new SendTxResult(existingMessage, false);
-        }
-
-        Message message = createBaseMessage(command, context.actualSenderId());
+    protected Message buildMessage(SendMessageCommand command, PrivateMessageContext context, Long messageId) {
+        Message message = createBaseMessage(command, messageId, context.actualSenderId());
         message.setReceiverId(context.receiverId());
         message.setIsGroupChat(false);
-        persistMessage(message, context.receiverId());
-        enqueuePrivateMessage(message, context);
-        return new SendTxResult(message, true);
+        return message;
     }
 
     @Override
-    protected void afterTransaction(SendMessageCommand command, PrivateMessageContext context, SendTxResult txResult) {
-        if (txResult.created()) {
-            clearConversationCache(context.actualSenderId(), context.receiverId(), true);
-        }
+    protected String buildConversationId(SendMessageCommand command, PrivateMessageContext context, Message message) {
+        return buildPrivateConversationKey(context.actualSenderId(), context.receiverId());
+    }
+
+    @Override
+    protected void afterKafkaAck(SendMessageCommand command, PrivateMessageContext context, Message message) {
+        clearConversationCache(context.actualSenderId(), context.receiverId(), true);
     }
 
     @Override
@@ -111,27 +83,6 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
     @Override
     protected String transactionFailureMessage(SendMessageCommand command) {
         return "failed to send message";
-    }
-
-    private void enqueuePrivateMessage(Message message, PrivateMessageContext context) {
-        MessageDTO messageDTO = buildResult(null, context, message);
-        String payload = com.alibaba.fastjson2.JSON.toJSONString(messageDTO);
-        String key = buildPrivateConversationKey(context.actualSenderId(), context.receiverId());
-        outboxService.enqueueAfterCommit(
-                privateMessageTopic,
-                EVENT_TYPE_MESSAGE,
-                key,
-                payload,
-                message.getId(),
-                privateMessageTargets(context)
-        );
-    }
-
-    private List<Long> privateMessageTargets(PrivateMessageContext context) {
-        List<Long> targetUserIds = new ArrayList<>(2);
-        targetUserIds.add(context.receiverId());
-        targetUserIds.add(context.actualSenderId());
-        return normalizeMessageTargets(targetUserIds);
     }
 
     record PrivateMessageContext(
