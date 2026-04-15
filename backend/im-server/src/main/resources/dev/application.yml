@@ -11,6 +11,7 @@ spring:
       - optional:classpath:dev/application-mysql.yml
       - optional:classpath:dev/application-redis.yml
       - optional:classpath:dev/application-nacos.yml
+      - optional:classpath:dev/application-kafka.yml
   profiles:
     active: default
   threads:
@@ -84,6 +85,9 @@ im:
     autoJoin: 1
     loginAuth: 1
   message:
+    group-member-ids-cache:
+      key-prefix: "message:group:members:"
+      l2-ttl-seconds: 30
     offline:
       expire-time: 604800
       max-count: 1000

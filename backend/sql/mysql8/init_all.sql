@@ -184,24 +184,6 @@ CREATE TABLE IF NOT EXISTS group_read_cursor (
   KEY idx_group_cursor_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='群聊阅读游标表';
 
-CREATE TABLE IF NOT EXISTS message_outbox (
-  id BIGINT NOT NULL COMMENT '事件ID（雪花ID）',
-  topic VARCHAR(64) NOT NULL COMMENT 'Outbox topic',
-  message_key VARCHAR(128) NOT NULL COMMENT 'Outbox message key',
-  payload TEXT NOT NULL COMMENT '事件载荷（JSON）',
-  event_type VARCHAR(64) NOT NULL COMMENT '传输事件类型',
-  targets_json JSON NOT NULL COMMENT '目标用户ID列表',
-  status VARCHAR(32) NOT NULL COMMENT '发送状态（PENDING/SENDING/FAILED/SENT）',
-  attempts INT NOT NULL COMMENT '已尝试次数',
-  next_retry_at DATETIME NOT NULL COMMENT '下次重试时间',
-  last_error TEXT NULL COMMENT '最后一次错误信息',
-  related_message_id BIGINT NULL COMMENT '关联的消息ID',
-  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (id),
-  KEY idx_outbox_status_retry (status, next_retry_at),
-  KEY idx_outbox_related_topic (related_message_id, topic)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='消息发件箱(outbox)事件表';
 
 SET FOREIGN_KEY_CHECKS = 1;
 

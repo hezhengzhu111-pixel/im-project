@@ -1,6 +1,5 @@
 package com.im.controller;
 
-import com.im.listener.WsPushTopicSubscriber;
 import org.springframework.boot.availability.ApplicationAvailability;
 import org.springframework.boot.availability.ReadinessState;
 import org.springframework.http.HttpStatus;
@@ -16,12 +15,9 @@ import java.util.Map;
 public class HealthController {
 
     private final ApplicationAvailability availability;
-    private final WsPushTopicSubscriber wsPushTopicSubscriber;
 
-    public HealthController(ApplicationAvailability availability,
-                            WsPushTopicSubscriber wsPushTopicSubscriber) {
+    public HealthController(ApplicationAvailability availability) {
         this.availability = availability;
-        this.wsPushTopicSubscriber = wsPushTopicSubscriber;
     }
 
     @GetMapping("/health")
@@ -36,15 +32,13 @@ public class HealthController {
     @GetMapping("/ready")
     public ResponseEntity<Map<String, Object>> ready() {
         boolean acceptingTraffic = availability.getReadinessState() == ReadinessState.ACCEPTING_TRAFFIC;
-        boolean topicSubscribed = wsPushTopicSubscriber.isSubscribed();
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("service", "im-server");
         body.put("time", Instant.now().toString());
         body.put("readinessState", availability.getReadinessState().name());
-        body.put("wsTopicSubscribed", topicSubscribed);
 
-        if (acceptingTraffic && topicSubscribed) {
+        if (acceptingTraffic) {
             body.put("status", "READY");
             return ResponseEntity.ok(body);
         }

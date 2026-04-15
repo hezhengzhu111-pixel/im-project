@@ -3,7 +3,7 @@ spring:
     bootstrap-servers: ${IM_KAFKA_BOOTSTRAP_SERVERS:im-kafka:29092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       acks: all
       retries: 10
       batch-size: 16384
@@ -13,20 +13,26 @@ spring:
         enable.idempotence: true
         max.in.flight.requests.per.connection: 5
         delivery.timeout.ms: 120000
+        spring.json.add.type.headers: false
     consumer:
       group-id: im-message-service-group
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       enable-auto-commit: false
       auto-commit-interval: 300000
       max-poll-records: 100
       max-poll-interval: 300000
+      properties:
+        spring.json.trusted.packages: com.im.dto,com.im.enums
+        spring.json.value.default.type: com.im.dto.MessageEvent
+        spring.json.use.type.headers: false
     listener:
       missing-topics-fatal: false
 
 im:
   kafka:
+    chat-topic: im-chat-topic
     topic:
       private-message: im-private-message-topic
       group-message: im-group-message-topic
