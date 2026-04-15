@@ -60,7 +60,7 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
         String conversationId = buildConversationId(command, context, message);
         MessageEvent event = buildMessageEvent(command, message, conversationId, result);
         publishMessageEvent(command, conversationId, event);
-        projectAcceptedMessage(command, event);
+            projectAcceptedFirstSeenMessage(command, event);
         return result;
     }
 
@@ -215,9 +215,9 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
                 .build();
     }
 
-    protected void projectAcceptedMessage(SendMessageCommand command, MessageEvent event) {
+    protected void projectAcceptedFirstSeenMessage(SendMessageCommand command, MessageEvent event) {
         try {
-            acceptedMessageProjectionService.projectAccepted(event);
+            acceptedMessageProjectionService.projectAcceptedFirstSeen(event);
         } catch (BusinessException exception) {
             throw exception;
         } catch (Exception exception) {

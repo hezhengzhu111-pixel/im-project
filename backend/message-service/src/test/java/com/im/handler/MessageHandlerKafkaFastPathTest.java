@@ -25,16 +25,10 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.concurrent.CompletableFuture;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class MessageHandlerKafkaFastPathTest {
@@ -95,7 +89,7 @@ class MessageHandlerKafkaFastPathTest {
         assertEquals(9001L, event.getPayload().getId());
         InOrder inOrder = org.mockito.Mockito.inOrder(kafkaTemplate, acceptedMessageProjectionService);
         inOrder.verify(kafkaTemplate).send(eq("im-chat-topic"), eq("p_1_2"), any(MessageEvent.class));
-        inOrder.verify(acceptedMessageProjectionService).projectAccepted(any(MessageEvent.class));
+        inOrder.verify(acceptedMessageProjectionService).projectAcceptedFirstSeen(any(MessageEvent.class));
     }
 
     @Test
@@ -124,7 +118,7 @@ class MessageHandlerKafkaFastPathTest {
         assertEquals(8L, event.getGroupId());
         assertEquals("group-hi", event.getContent());
         assertEquals(9002L, event.getPayload().getId());
-        verify(acceptedMessageProjectionService).projectAccepted(any(MessageEvent.class));
+        verify(acceptedMessageProjectionService).projectAcceptedFirstSeen(any(MessageEvent.class));
     }
 
     @Test
@@ -178,7 +172,7 @@ class MessageHandlerKafkaFastPathTest {
 
         assertThrows(BusinessException.class, () -> handler.handle(privateCommand()));
 
-        verify(acceptedMessageProjectionService, never()).projectAccepted(any(MessageEvent.class));
+        verify(acceptedMessageProjectionService, never()).projectAcceptedFirstSeen(any(MessageEvent.class));
     }
 
     @Test
@@ -201,7 +195,7 @@ class MessageHandlerKafkaFastPathTest {
 
         assertThrows(BusinessException.class, () -> handler.handle(privateCommand()));
 
-        verify(acceptedMessageProjectionService, never()).projectAccepted(any(MessageEvent.class));
+        verify(acceptedMessageProjectionService, never()).projectAcceptedFirstSeen(any(MessageEvent.class));
     }
 
     @Test
@@ -220,12 +214,12 @@ class MessageHandlerKafkaFastPathTest {
         stubKafkaSuccess("p_1_2");
         org.mockito.Mockito.doThrow(new BusinessException("redis failed"))
                 .when(acceptedMessageProjectionService)
-                .projectAccepted(any(MessageEvent.class));
+                .projectAcceptedFirstSeen(any(MessageEvent.class));
 
         assertThrows(BusinessException.class, () -> handler.handle(privateCommand()));
 
         verify(kafkaTemplate).send(eq("im-chat-topic"), eq("p_1_2"), any(MessageEvent.class));
-        verify(acceptedMessageProjectionService).projectAccepted(any(MessageEvent.class));
+        verify(acceptedMessageProjectionService).projectAcceptedFirstSeen(any(MessageEvent.class));
     }
 
     private void stubKafkaSuccess(String conversationId) {

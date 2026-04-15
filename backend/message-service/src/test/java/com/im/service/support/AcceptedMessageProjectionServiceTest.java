@@ -15,8 +15,7 @@ import java.time.LocalDateTime;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class AcceptedMessageProjectionServiceTest {
@@ -28,7 +27,7 @@ class AcceptedMessageProjectionServiceTest {
     private ConversationCacheUpdater conversationCacheUpdater;
 
     @Test
-    void projectAcceptedShouldWriteCoreHotKeysBeforeConversationProjectionAndPendingMarker() {
+    void projectAcceptedFirstSeenShouldWriteCoreHotKeysBeforeConversationProjectionAndPendingMarker() {
         AcceptedMessageProjectionService service =
                 new AcceptedMessageProjectionService(hotMessageRedisRepository, conversationCacheUpdater);
         MessageDTO payload = MessageDTO.builder()
@@ -54,17 +53,17 @@ class AcceptedMessageProjectionServiceTest {
                 .payload(payload)
                 .build();
 
-        service.projectAccepted(event);
+        service.projectAcceptedFirstSeen(event);
 
         InOrder inOrder = inOrder(hotMessageRedisRepository, conversationCacheUpdater);
         inOrder.verify(hotMessageRedisRepository).saveHotMessage(payload);
         inOrder.verify(hotMessageRedisRepository).saveClientMessageMapping(1L, "client-1", 1001L);
-        inOrder.verify(conversationCacheUpdater).projectAcceptedMessage(event);
+        inOrder.verify(conversationCacheUpdater).applyFirstSeenAcceptedMessage(event);
         inOrder.verify(hotMessageRedisRepository).addPendingPersistMessage(eq("p_1_2"), eq(1001L), any(LocalDateTime.class));
     }
 
     @Test
-    void projectAcceptedShouldDerivePayloadWhenEventPayloadIsMissing() {
+    void projectAcceptedFirstSeenShouldDerivePayloadWhenEventPayloadIsMissing() {
         AcceptedMessageProjectionService service =
                 new AcceptedMessageProjectionService(hotMessageRedisRepository, conversationCacheUpdater);
         MessageEvent event = MessageEvent.builder()
@@ -81,7 +80,7 @@ class AcceptedMessageProjectionServiceTest {
                 .statusText("SENT")
                 .build();
 
-        service.projectAccepted(event);
+        service.projectAcceptedFirstSeen(event);
 
         verify(hotMessageRedisRepository).saveHotMessage(org.mockito.ArgumentMatchers.argThat(message ->
                 message != null
@@ -89,5 +88,29 @@ class AcceptedMessageProjectionServiceTest {
                         && "client-2".equals(message.getClientMessageId())
                         && Boolean.TRUE.equals(message.isGroup())
                         && Long.valueOf(8L).equals(message.getGroupId())));
+    }
+
+    @Test
+    void rehydrateAcceptedProjectionShouldRestoreHotKeysWithoutPendingOrFirstSeenEffects() {
+        AcceptedMessageProjectionService service =
+                new AcceptedMessageProjectionService(hotMessageRedisRepository, conversationCacheUpdater);
+        MessageDTO message = MessageDTO.builder()
+                .id(3003L)
+                .senderId(1L)
+                .receiverId(2L)
+                .clientMessageId("client-3")
+                .messageType(MessageType.TEXT)
+                .content("rehydrate")
+                .createdTime(LocalDateTime.of(2026, 4, 15, 20, 10))
+                .build();
+
+        service.rehydrateAcceptedProjection(message);
+
+        InOrder inOrder = inOrder(hotMessageRedisRepository, conversationCacheUpdater);
+        inOrder.verify(hotMessageRedisRepository).saveHotMessage(message);
+        inOrder.verify(hotMessageRedisRepository).saveClientMessageMapping(1L, "client-3", 3003L);
+        inOrder.verify(conversationCacheUpdater).rehydrateAcceptedMessage(message);
+        verify(hotMessageRedisRepository, never()).addPendingPersistMessage(any(), any(), any());
+        verify(conversationCacheUpdater, never()).applyFirstSeenAcceptedMessage(any());
     }
 }
