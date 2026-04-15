@@ -28,12 +28,8 @@ spring:
 im:
   kafka:
     chat-topic: im-chat-topic
-    topic:
-      private-message: im-private-message-topic
-      group-message: im-group-message-topic
-      offline-message: im-offline-message-topic
-      push-prefix: im-ws-push-
-      push: ${im.kafka.topic.push-prefix}${im.instance-id}
+    read-topic: im-read-topic
+    status-topic: im-status-topic
     consumer:
       concurrency: 3
       poll-timeout: 1000

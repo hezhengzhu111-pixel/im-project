@@ -4,10 +4,11 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONException;
 import com.im.dto.MessageDTO;
 import com.im.dto.MessageEvent;
+import com.im.dto.ReadEvent;
 import com.im.dto.ReadReceiptDTO;
+import com.im.dto.StatusChangeEvent;
 import com.im.entity.UserSession;
 import com.im.enums.MessageEventType;
-import com.im.feign.GroupServiceFeignClient;
 import com.im.service.IImService;
 import com.im.service.ProcessedMessageDeduplicator;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +22,6 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.WebSocketSession;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -38,7 +38,6 @@ public class GatewayKafkaPusher {
 
     private final IImService imService;
     private final RedisTemplate<String, Object> redisTemplate;
-    private final GroupServiceFeignClient groupServiceFeignClient;
     private final ProcessedMessageDeduplicator deduplicator;
 
     @Value("${im.message.group-member-ids-cache.key-prefix:message:group:members:}")
@@ -58,6 +57,28 @@ public class GatewayKafkaPusher {
         handleEvent(record.value());
     }
 
+    @KafkaListener(
+            topics = "${im.kafka.read-topic:im-read-topic}",
+            containerFactory = "gatewayReadEventKafkaListenerContainerFactory"
+    )
+    public void onReadEvent(ConsumerRecord<String, ReadEvent> record) {
+        if (record == null) {
+            return;
+        }
+        handleReadEvent(record.value());
+    }
+
+    @KafkaListener(
+            topics = "${im.kafka.status-topic:im-status-topic}",
+            containerFactory = "gatewayStatusChangeEventKafkaListenerContainerFactory"
+    )
+    public void onStatusChangeEvent(ConsumerRecord<String, StatusChangeEvent> record) {
+        if (record == null) {
+            return;
+        }
+        handleStatusChangeEvent(record.value());
+    }
+
     void handleEvent(MessageEvent event) {
         if (event == null || event.getEventType() == null) {
             log.debug("Skip empty Kafka message event.");
@@ -68,6 +89,60 @@ public class GatewayKafkaPusher {
             case MESSAGE, MESSAGE_STATUS_CHANGED -> pushMessageEvent(event);
             case READ_RECEIPT, READ_SYNC -> pushReadEvent(event);
             default -> log.debug("Skip unsupported Kafka message event. eventType={}", event.getEventType());
+        }
+    }
+
+    void handleReadEvent(ReadEvent event) {
+        if (event == null || event.getUserId() == null || !StringUtils.hasText(event.getConversationId())) {
+            log.debug("Skip invalid read event.");
+            return;
+        }
+        ReadReceiptDTO receipt = ReadReceiptDTO.builder()
+                .conversationId(event.getConversationId())
+                .readerId(event.getUserId())
+                .toUserId(event.getTargetUserId())
+                .readAt(event.getTimestamp())
+                .lastReadMessageId(event.getLastReadMessageId())
+                .build();
+
+        if (Boolean.TRUE.equals(event.getGroup()) || event.getGroupId() != null) {
+            List<Long> memberIds = resolveGroupMemberIds(event.getGroupId());
+            if (memberIds.isEmpty()) {
+                return;
+            }
+            for (Long memberId : memberIds) {
+                pushReadReceiptToLocalUser("READ_RECEIPT", buildReadEventKey(event), receipt, memberId);
+            }
+            return;
+        }
+
+        pushReadReceiptToLocalUser("READ_RECEIPT", buildReadEventKey(event), receipt, event.getUserId());
+        if (event.getTargetUserId() != null && !event.getTargetUserId().equals(event.getUserId())) {
+            pushReadReceiptToLocalUser("READ_RECEIPT", buildReadEventKey(event), receipt, event.getTargetUserId());
+        }
+    }
+
+    void handleStatusChangeEvent(StatusChangeEvent event) {
+        if (event == null || event.getMessageId() == null || event.getPayload() == null) {
+            log.debug("Skip invalid status change event. messageId={}", event == null ? null : event.getMessageId());
+            return;
+        }
+        MessageDTO payload = event.getPayload();
+        if (Boolean.TRUE.equals(event.getGroup()) || event.getGroupId() != null || payload.isGroup()) {
+            List<Long> memberIds = resolveGroupMemberIds(firstNonNull(event.getGroupId(), payload.getGroupId()));
+            if (memberIds.isEmpty()) {
+                return;
+            }
+            for (Long memberId : memberIds) {
+                pushMessageToLocalUser("MESSAGE_STATUS_CHANGED", buildStatusEventKey(event), payload, memberId);
+            }
+            return;
+        }
+        Long senderId = firstNonNull(event.getSenderId(), payload.getSenderId());
+        Long receiverId = firstNonNull(event.getReceiverId(), payload.getReceiverId());
+        pushMessageToLocalUser("MESSAGE_STATUS_CHANGED", buildStatusEventKey(event), payload, senderId);
+        if (receiverId != null && !receiverId.equals(senderId)) {
+            pushMessageToLocalUser("MESSAGE_STATUS_CHANGED", buildStatusEventKey(event), payload, receiverId);
         }
     }
 
@@ -92,7 +167,7 @@ public class GatewayKafkaPusher {
             log.debug("Skip private Kafka message event without receiver. messageId={}", event.getMessageId());
             return;
         }
-        pushMessageToLocalUser(event, message, receiverId);
+        pushMessageToLocalUser(event.getEventType().name(), buildMessageEventKey(event), message, receiverId);
     }
 
     private void pushGroupMessage(MessageEvent event, MessageDTO message) {
@@ -113,15 +188,20 @@ public class GatewayKafkaPusher {
             if (memberId == null || memberId.equals(event.getSenderId())) {
                 continue;
             }
-            pushMessageToLocalUser(event, message, memberId);
+            pushMessageToLocalUser(event.getEventType().name(), buildMessageEventKey(event), message, memberId);
         }
     }
 
     private void pushMessageToLocalUser(MessageEvent event, MessageDTO message, Long targetUserId) {
+        pushMessageToLocalUser(event == null || event.getEventType() == null ? null : event.getEventType().name(),
+                buildMessageEventKey(event), message, targetUserId);
+    }
+
+    private void pushMessageToLocalUser(String eventType, String eventKey, MessageDTO message, Long targetUserId) {
         if (!hasLocalSessions(targetUserId)) {
             return;
         }
-        String deliveryKey = deliveryKey(event, targetUserId);
+        String deliveryKey = deliveryKey(eventType, eventKey, targetUserId, null);
         if (alreadyDelivered(deliveryKey)) {
             return;
         }
@@ -130,8 +210,8 @@ public class GatewayKafkaPusher {
         try {
             success = imService.pushMessageToUser(message, targetUserId);
         } catch (Exception exception) {
-            log.warn("Push Kafka message event to local user failed. messageId={}, targetUserId={}, error={}",
-                    event.getMessageId(), targetUserId, exception.getMessage(), exception);
+            log.warn("Push Kafka message to local user failed. eventType={}, eventKey={}, targetUserId={}, error={}",
+                    eventType, eventKey, targetUserId, exception.getMessage(), exception);
         }
         if (success) {
             markDelivered(deliveryKey);
@@ -146,31 +226,8 @@ public class GatewayKafkaPusher {
                     event.getEventType(), event.getMessageId());
             return;
         }
-
-        List<UserSession> sessions = localSessions(targetUserId);
-        if (sessions.isEmpty()) {
-            return;
-        }
-
         String wsType = event.getEventType() == MessageEventType.READ_SYNC ? "READ_SYNC" : "READ_RECEIPT";
-        for (UserSession session : sessions) {
-            String sessionId = resolveSessionId(session);
-            if (!StringUtils.hasText(sessionId)) {
-                continue;
-            }
-            String deliveryKey = deliveryKey(event, targetUserId, sessionId);
-            if (alreadyDelivered(deliveryKey)) {
-                continue;
-            }
-            try {
-                if (imService.pushReadReceiptToSession(receipt, sessionId, wsType)) {
-                    markDelivered(deliveryKey);
-                }
-            } catch (Exception exception) {
-                log.warn("Push Kafka read event to local session failed. eventType={}, messageId={}, targetUserId={}, sessionId={}, error={}",
-                        event.getEventType(), event.getMessageId(), targetUserId, sessionId, exception.getMessage(), exception);
-            }
-        }
+        pushReadReceiptToLocalUser(wsType, buildMessageEventKey(event), receipt, targetUserId);
     }
 
     private MessageDTO resolveMessagePayload(MessageEvent event) {
@@ -246,16 +303,7 @@ public class GatewayKafkaPusher {
 
     private List<Long> resolveGroupMemberIds(Long groupId) {
         String cacheKey = groupMembersCachePrefix + groupId;
-        List<Long> cachedMemberIds = readGroupMembersFromCache(cacheKey, groupId);
-        if (!cachedMemberIds.isEmpty()) {
-            return cachedMemberIds;
-        }
-
-        List<Long> fetchedMemberIds = fetchGroupMemberIds(groupId);
-        if (!fetchedMemberIds.isEmpty()) {
-            writeGroupMembersToCache(cacheKey, fetchedMemberIds, groupId);
-        }
-        return fetchedMemberIds;
+        return readGroupMembersFromCache(cacheKey, groupId);
     }
 
     private List<Long> readGroupMembersFromCache(String cacheKey, Long groupId) {
@@ -266,26 +314,6 @@ public class GatewayKafkaPusher {
             log.warn("Read group member cache failed. groupId={}, key={}, error={}",
                     groupId, cacheKey, exception.getMessage());
             return List.of();
-        }
-    }
-
-    private List<Long> fetchGroupMemberIds(Long groupId) {
-        try {
-            return normalizeMemberIds(groupServiceFeignClient.memberIds(groupId));
-        } catch (Exception exception) {
-            log.warn("Fetch group members from group-service failed. groupId={}, error={}",
-                    groupId, exception.getMessage(), exception);
-            return List.of();
-        }
-    }
-
-    private void writeGroupMembersToCache(String cacheKey, List<Long> memberIds, Long groupId) {
-        try {
-            long ttlSeconds = Math.max(1L, groupMembersCacheTtlSeconds);
-            redisTemplate.opsForValue().set(cacheKey, new ArrayList<>(memberIds), Duration.ofSeconds(ttlSeconds));
-        } catch (Exception exception) {
-            log.warn("Write group member cache failed. groupId={}, key={}, error={}",
-                    groupId, cacheKey, exception.getMessage());
         }
     }
 
@@ -388,6 +416,34 @@ public class GatewayKafkaPusher {
         }
     }
 
+    private void pushReadReceiptToLocalUser(String wsType,
+                                            String eventKey,
+                                            ReadReceiptDTO receipt,
+                                            Long targetUserId) {
+        List<UserSession> sessions = localSessions(targetUserId);
+        if (receipt == null || sessions.isEmpty()) {
+            return;
+        }
+        for (UserSession session : sessions) {
+            String sessionId = resolveSessionId(session);
+            if (!StringUtils.hasText(sessionId)) {
+                continue;
+            }
+            String deliveryKey = deliveryKey(wsType, eventKey, targetUserId, sessionId);
+            if (alreadyDelivered(deliveryKey)) {
+                continue;
+            }
+            try {
+                if (imService.pushReadReceiptToSession(receipt, sessionId, wsType)) {
+                    markDelivered(deliveryKey);
+                }
+            } catch (Exception exception) {
+                log.warn("Push Kafka read receipt to local session failed. wsType={}, eventKey={}, targetUserId={}, sessionId={}, error={}",
+                        wsType, eventKey, targetUserId, sessionId, exception.getMessage(), exception);
+            }
+        }
+    }
+
     private String deliveryKey(MessageEvent event, Long targetUserId) {
         return deliveryKey(event, targetUserId, null);
     }
@@ -396,14 +452,18 @@ public class GatewayKafkaPusher {
         if (event == null || targetUserId == null) {
             return null;
         }
-        String eventKey = event.getMessageId() == null
-                ? firstText(event.getClientMessageId(), event.getClientMsgId())
-                : String.valueOf(event.getMessageId());
-        if (!StringUtils.hasText(eventKey)) {
+        return deliveryKey(event.getEventType() == null ? null : event.getEventType().name(),
+                buildMessageEventKey(event),
+                targetUserId,
+                sessionId);
+    }
+
+    private String deliveryKey(String eventType, String eventKey, Long targetUserId, String sessionId) {
+        if (!StringUtils.hasText(eventType) || !StringUtils.hasText(eventKey) || targetUserId == null) {
             return null;
         }
         StringBuilder builder = new StringBuilder(DELIVERY_KEY_PREFIX)
-                .append(event.getEventType())
+                .append(eventType)
                 .append(':')
                 .append(eventKey)
                 .append(':')
@@ -412,6 +472,36 @@ public class GatewayKafkaPusher {
             builder.append(':').append(sessionId.trim());
         }
         return builder.toString();
+    }
+
+    private String buildMessageEventKey(MessageEvent event) {
+        if (event == null) {
+            return null;
+        }
+        if (event.getMessageId() != null) {
+            return String.valueOf(event.getMessageId());
+        }
+        return firstText(event.getClientMessageId(), event.getClientMsgId());
+    }
+
+    private String buildReadEventKey(ReadEvent event) {
+        if (event == null) {
+            return null;
+        }
+        if (event.getLastReadMessageId() != null) {
+            return String.valueOf(event.getLastReadMessageId());
+        }
+        if (event.getTimestamp() != null) {
+            return event.getConversationId() + ":" + event.getUserId() + ":" + event.getTimestamp();
+        }
+        return event.getConversationId() + ":" + event.getUserId();
+    }
+
+    private String buildStatusEventKey(StatusChangeEvent event) {
+        if (event == null || event.getMessageId() == null) {
+            return null;
+        }
+        return event.getMessageId() + ":" + event.getNewStatus();
     }
 
     private String resolveStatusText(MessageEvent event) {

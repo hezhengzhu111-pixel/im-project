@@ -8,32 +8,28 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class WsPushEvent {
-
-    private String eventId;
-
-    private String eventType;
+public class ReadEvent {
 
     @JsonSerialize(using = ToStringSerializer.class)
-    private Long messageId;
+    private Long userId;
 
-    private List<Long> targetUserIds;
+    private String conversationId;
 
-    /**
-     * JSON string payload.
-     * MESSAGE event => MessageDTO
-     * READ_RECEIPT event => ReadReceiptDTO
-     */
-    private String payload;
+    @JsonSerialize(using = ToStringSerializer.class)
+    private Long targetUserId;
 
-    private LocalDateTime createdAt;
+    @JsonSerialize(using = ToStringSerializer.class)
+    private Long groupId;
 
-    private Integer version;
+    private Boolean group;
+
+    @JsonSerialize(using = ToStringSerializer.class)
+    private Long lastReadMessageId;
+
+    private LocalDateTime timestamp;
 }
-

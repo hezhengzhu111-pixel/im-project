@@ -185,5 +185,17 @@ CREATE TABLE IF NOT EXISTS group_read_cursor (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='群聊阅读游标表';
 
 
+CREATE TABLE IF NOT EXISTS private_read_cursor (
+  id BIGINT NOT NULL COMMENT 'private read cursor id',
+  user_id BIGINT NOT NULL COMMENT 'current user id',
+  peer_user_id BIGINT NOT NULL COMMENT 'private conversation peer user id',
+  last_read_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'last read time',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created time',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated time',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_private_cursor_user_peer (user_id, peer_user_id),
+  KEY idx_private_cursor_peer (peer_user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='private read cursor';
+
 SET FOREIGN_KEY_CHECKS = 1;
 

@@ -92,17 +92,8 @@ im:
       expire-time: 604800
       max-count: 1000
       max-content-length: 10000
-  retry:
-    push-interval-ms: 1000
-    item-expire-ms: 60000
-    janitor-initial-delay-ms: 15000
-    janitor-interval-ms: 300000
   ws:
-    channel-prefix: "im:msg:channel:"
     presence-channel: "im:presence:broadcast"
-    retry:
-      max-attempts: 20
-      base-backoff-ms: 500
     idempotency:
       ttl-ms: 300000
   websocket:

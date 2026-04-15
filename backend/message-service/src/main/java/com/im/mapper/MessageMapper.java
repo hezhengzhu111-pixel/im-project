@@ -65,16 +65,20 @@ public interface MessageMapper extends BaseMapper<Message> {
 
     @Select({
             "<script>",
-            "SELECT sender_id AS senderId, COUNT(1) AS cnt",
-            "FROM messages",
-            "WHERE receiver_id = #{receiverId}",
-            "  AND sender_id IN",
+            "SELECT m.sender_id AS senderId, COUNT(1) AS cnt",
+            "FROM messages m",
+            "LEFT JOIN private_read_cursor prc",
+            "  ON prc.user_id = #{receiverId}",
+            " AND prc.peer_user_id = m.sender_id",
+            "WHERE m.receiver_id = #{receiverId}",
+            "  AND m.sender_id IN",
             "    <foreach collection='senderIds' item='sid' open='(' separator=',' close=')'>",
             "      #{sid}",
             "    </foreach>",
-            "  AND is_group_chat = 0",
-            "  AND status = 1",
-            "GROUP BY sender_id",
+            "  AND m.is_group_chat = 0",
+            "  AND m.status &lt;&gt; 5",
+            "  AND (prc.last_read_at IS NULL OR m.created_time &gt; prc.last_read_at)",
+            "GROUP BY m.sender_id",
             "</script>"
     })
     List<CountPair> countUnreadPrivateMessagesBatch(@Param("receiverId") Long receiverId, @Param("senderIds") List<Long> senderIds);

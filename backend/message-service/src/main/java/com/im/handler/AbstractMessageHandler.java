@@ -16,6 +16,8 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Slf4j
 public abstract class AbstractMessageHandler<C> implements MessageHandler {
@@ -36,6 +38,9 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
     @Value("${im.kafka.chat-topic:im-chat-topic}")
     private String chatTopic = "im-chat-topic";
 
+    @Value("${im.kafka.send-timeout-ms:2000}")
+    private long kafkaSendTimeoutMs = 2000L;
+
     protected AbstractMessageHandler(RedisTemplate<String, Object> redisTemplate,
                                      KafkaTemplate<String, MessageEvent> kafkaTemplate,
                                      SnowflakeIdGenerator snowflakeIdGenerator) {
@@ -53,7 +58,7 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
         MessageDTO result = buildResult(command, context, message);
         String conversationId = buildConversationId(command, context, message);
         MessageEvent event = buildMessageEvent(command, message, conversationId, result);
-        publishMessageEvent(conversationId, event);
+        publishMessageEvent(command, conversationId, event);
         afterKafkaAck(command, context, message);
         return result;
     }
@@ -154,18 +159,23 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
         return message;
     }
 
-    protected void publishMessageEvent(String conversationId, MessageEvent event) {
+    protected void publishMessageEvent(SendMessageCommand command, String conversationId, MessageEvent event) {
         try {
-            kafkaTemplate.send(chatTopic, conversationId, event).get();
+            kafkaTemplate.send(chatTopic, conversationId, event)
+                    .get(Math.max(1L, kafkaSendTimeoutMs), TimeUnit.MILLISECONDS);
             log.info("Published message event to Kafka. topic={}, conversationId={}, messageId={}",
                     chatTopic, conversationId, event.getMessageId());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new BusinessException(transactionFailureMessage(null), exception);
+            throw new BusinessException(transactionFailureMessage(command), exception);
+        } catch (TimeoutException exception) {
+            log.error("Timed out publishing message event to Kafka. topic={}, conversationId={}, messageId={}, timeoutMs={}",
+                    chatTopic, conversationId, event == null ? null : event.getMessageId(), kafkaSendTimeoutMs, exception);
+            throw new BusinessException(transactionFailureMessage(command), exception);
         } catch (ExecutionException exception) {
             log.error("Failed to publish message event to Kafka. topic={}, conversationId={}, messageId={}",
                     chatTopic, conversationId, event == null ? null : event.getMessageId(), exception);
-            throw new BusinessException(transactionFailureMessage(null), exception);
+            throw new BusinessException(transactionFailureMessage(command), exception);
         }
     }
 
@@ -194,6 +204,7 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
                 .statusText(payload == null ? null : payload.getStatus())
                 .group(Boolean.TRUE.equals(message.getIsGroupChat()))
                 .replyToMessageId(message.getReplyToMessageId())
+                .timestamp(message.getCreatedTime())
                 .createdTime(message.getCreatedTime())
                 .updatedTime(message.getUpdatedTime())
                 .senderName(payload == null ? null : payload.getSenderName())

@@ -44,8 +44,6 @@ im:
     text:
       enforce: true
       max-length: 2000
-    lock:
-      ttl-seconds: 5
     user-cache:
       key-prefix: "user:brief:"
       ttl-minutes: 10
@@ -75,14 +73,6 @@ im:
     auth:
       secret: ${IM_GATEWAY_AUTH_SECRET:im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret}
       max-skew-ms: 300000
-  outbox:
-    max-attempts: 20
-    batch-size: 100
-    base-backoff-ms: 1000
-    retry-interval-ms: 5000
-    send-timeout-ms: 30000
-    recover-sending-timeout-ms: 120000
-    recover-sending-interval-ms: 60000
   ws:
     channel-prefix: "im:msg:channel:"
   route:
