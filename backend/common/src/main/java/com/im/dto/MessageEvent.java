@@ -50,6 +50,7 @@ public class MessageEvent {
     @JsonSerialize(using = ToStringSerializer.class)
     private Long replyToMessageId;
 
+    private LocalDateTime timestamp;
     private LocalDateTime createdTime;
     private LocalDateTime updatedTime;
     private String senderName;

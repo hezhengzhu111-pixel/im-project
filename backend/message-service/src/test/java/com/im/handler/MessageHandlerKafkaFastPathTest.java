@@ -19,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -78,6 +79,7 @@ class MessageHandlerKafkaFastPathTest {
         assertEquals("client-1", event.getClientMsgId());
         assertEquals(MessageType.TEXT, event.getMessageType());
         assertEquals("hello", event.getContent());
+        assertNotNull(event.getTimestamp());
         assertNotNull(event.getCreatedTime());
         assertEquals(9001L, event.getPayload().getId());
         verify(redisTemplate).delete("last_message:p_1_2");
@@ -148,6 +150,23 @@ class MessageHandlerKafkaFastPathTest {
         failed.completeExceptionally(new IllegalStateException("kafka down"));
         when(kafkaTemplate.send(eq("im-chat-topic"), eq("p_1_2"), any(MessageEvent.class)))
                 .thenReturn(failed);
+
+        assertThrows(BusinessException.class, () -> handler.handle(privateCommand()));
+
+        verify(redisTemplate, never()).delete("last_message:p_1_2");
+    }
+
+    @Test
+    void kafkaTimeoutShouldSurfaceBusinessExceptionBeforeCacheInvalidation() {
+        PrivateMessageHandler handler = new PrivateMessageHandler(redisTemplate, kafkaTemplate, snowflakeIdGenerator, userProfileCache);
+        ReflectionTestUtils.setField(handler, "kafkaSendTimeoutMs", 1L);
+        when(snowflakeIdGenerator.nextId()).thenReturn(9005L);
+        when(userProfileCache.getUser(1L)).thenReturn(user("1", "alice"));
+        when(userProfileCache.getUser(2L)).thenReturn(user("2", "bob"));
+        when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
+        CompletableFuture<SendResult<String, MessageEvent>> timeoutFuture = new CompletableFuture<>();
+        when(kafkaTemplate.send(eq("im-chat-topic"), eq("p_1_2"), any(MessageEvent.class)))
+                .thenReturn(timeoutFuture);
 
         assertThrows(BusinessException.class, () -> handler.handle(privateCommand()));
 

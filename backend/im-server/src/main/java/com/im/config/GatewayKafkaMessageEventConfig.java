@@ -1,6 +1,8 @@
 package com.im.config;
 
 import com.im.dto.MessageEvent;
+import com.im.dto.ReadEvent;
+import com.im.dto.StatusChangeEvent;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,6 +29,81 @@ public class GatewayKafkaMessageEventConfig {
             @Value("${spring.kafka.consumer.max-poll-records:100}") Integer maxPollRecords,
             @Value("${im.kafka.consumer.concurrency:3}") Integer concurrency,
             @Value("${im.kafka.consumer.poll-timeout:1000}") Long pollTimeout) {
+        return singleRecordFactory(
+                bootstrapServers,
+                configuredGroupId,
+                autoOffsetReset,
+                maxPollRecords,
+                concurrency,
+                pollTimeout,
+                MessageEvent.class
+        );
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, ReadEvent> gatewayReadEventKafkaListenerContainerFactory(
+            @Value("${spring.kafka.bootstrap-servers:localhost:9092}") String bootstrapServers,
+            @Value("${spring.kafka.consumer.group-id:}") String configuredGroupId,
+            @Value("${spring.kafka.consumer.auto-offset-reset:earliest}") String autoOffsetReset,
+            @Value("${spring.kafka.consumer.max-poll-records:100}") Integer maxPollRecords,
+            @Value("${im.kafka.consumer.concurrency:3}") Integer concurrency,
+            @Value("${im.kafka.consumer.poll-timeout:1000}") Long pollTimeout) {
+        return singleRecordFactory(
+                bootstrapServers,
+                configuredGroupId,
+                autoOffsetReset,
+                maxPollRecords,
+                concurrency,
+                pollTimeout,
+                ReadEvent.class
+        );
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, StatusChangeEvent> gatewayStatusChangeEventKafkaListenerContainerFactory(
+            @Value("${spring.kafka.bootstrap-servers:localhost:9092}") String bootstrapServers,
+            @Value("${spring.kafka.consumer.group-id:}") String configuredGroupId,
+            @Value("${spring.kafka.consumer.auto-offset-reset:earliest}") String autoOffsetReset,
+            @Value("${spring.kafka.consumer.max-poll-records:100}") Integer maxPollRecords,
+            @Value("${im.kafka.consumer.concurrency:3}") Integer concurrency,
+            @Value("${im.kafka.consumer.poll-timeout:1000}") Long pollTimeout) {
+        return singleRecordFactory(
+                bootstrapServers,
+                configuredGroupId,
+                autoOffsetReset,
+                maxPollRecords,
+                concurrency,
+                pollTimeout,
+                StatusChangeEvent.class
+        );
+    }
+
+    private <T> ConcurrentKafkaListenerContainerFactory<String, T> singleRecordFactory(
+            String bootstrapServers,
+            String configuredGroupId,
+            String autoOffsetReset,
+            Integer maxPollRecords,
+            Integer concurrency,
+            Long pollTimeout,
+            Class<T> valueType) {
+        ConcurrentKafkaListenerContainerFactory<String, T> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(
+                consumerProperties(bootstrapServers, configuredGroupId, autoOffsetReset, maxPollRecords, valueType),
+                new StringDeserializer(),
+                jsonDeserializer(valueType)
+        ));
+        factory.setConcurrency(Math.max(1, concurrency == null ? 1 : concurrency));
+        factory.getContainerProperties().setPollTimeout(Math.max(100L, pollTimeout == null ? 1000L : pollTimeout));
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
+        return factory;
+    }
+
+    private Map<String, Object> consumerProperties(String bootstrapServers,
+                                                   String configuredGroupId,
+                                                   String autoOffsetReset,
+                                                   Integer maxPollRecords,
+                                                   Class<?> valueType) {
         Map<String, Object> properties = new HashMap<>();
         properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         properties.put(ConsumerConfig.GROUP_ID_CONFIG, resolveGroupId(configuredGroupId));
@@ -36,23 +113,15 @@ public class GatewayKafkaMessageEventConfig {
         properties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
         properties.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecords);
         properties.put(JsonDeserializer.TRUSTED_PACKAGES, "com.im.dto,com.im.enums");
-        properties.put(JsonDeserializer.VALUE_DEFAULT_TYPE, MessageEvent.class.getName());
+        properties.put(JsonDeserializer.VALUE_DEFAULT_TYPE, valueType.getName());
         properties.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
+        return properties;
+    }
 
-        JsonDeserializer<MessageEvent> valueDeserializer = new JsonDeserializer<>(MessageEvent.class, false);
+    private <T> JsonDeserializer<T> jsonDeserializer(Class<T> valueType) {
+        JsonDeserializer<T> valueDeserializer = new JsonDeserializer<>(valueType, false);
         valueDeserializer.addTrustedPackages("com.im.dto", "com.im.enums");
-
-        ConcurrentKafkaListenerContainerFactory<String, MessageEvent> factory =
-                new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(
-                properties,
-                new StringDeserializer(),
-                valueDeserializer
-        ));
-        factory.setConcurrency(Math.max(1, concurrency == null ? 1 : concurrency));
-        factory.getContainerProperties().setPollTimeout(Math.max(100L, pollTimeout == null ? 1000L : pollTimeout));
-        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
-        return factory;
+        return valueDeserializer;
     }
 
     private String resolveGroupId(String configuredGroupId) {

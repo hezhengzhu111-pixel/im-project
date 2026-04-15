@@ -4,6 +4,7 @@ import com.im.dto.MessageEvent;
 import com.im.enums.MessageEventType;
 import com.im.enums.MessageType;
 import com.im.message.entity.Message;
+import com.im.service.ConversationCacheUpdater;
 import com.im.service.MessagePersistenceService;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,8 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -30,9 +33,12 @@ class KafkaMessagePersisterTest {
     @Mock
     private MessagePersistenceService messagePersistenceService;
 
+    @Mock
+    private ConversationCacheUpdater conversationCacheUpdater;
+
     @Test
     void persistMessagesShouldConvertMessageEventsAndSaveBatch() {
-        KafkaMessagePersister persister = new KafkaMessagePersister(messagePersistenceService);
+        KafkaMessagePersister persister = new KafkaMessagePersister(messagePersistenceService, conversationCacheUpdater);
         LocalDateTime createdTime = LocalDateTime.of(2026, 4, 15, 15, 30);
         MessageEvent messageEvent = MessageEvent.builder()
                 .eventType(MessageEventType.MESSAGE)
@@ -69,11 +75,12 @@ class KafkaMessagePersisterTest {
         assertEquals(Message.MessageStatus.SENT, message.getStatus());
         assertEquals(false, message.getIsGroupChat());
         assertEquals(createdTime, message.getCreatedTime());
+        verify(conversationCacheUpdater).updateMessages(eq(List.of(messageEvent)));
     }
 
     @Test
     void persistMessagesShouldPersistGroupMessageFields() {
-        KafkaMessagePersister persister = new KafkaMessagePersister(messagePersistenceService);
+        KafkaMessagePersister persister = new KafkaMessagePersister(messagePersistenceService, conversationCacheUpdater);
         MessageEvent groupEvent = MessageEvent.builder()
                 .eventType(MessageEventType.MESSAGE)
                 .messageId(1002L)
@@ -99,30 +106,48 @@ class KafkaMessagePersisterTest {
         assertEquals("https://cdn/image.png", message.getMediaUrl());
         assertEquals(true, message.getIsGroupChat());
         assertEquals(Message.MessageStatus.SENT, message.getStatus());
+        verify(conversationCacheUpdater).updateMessages(eq(List.of(groupEvent)));
     }
 
     @Test
-    void persistMessagesShouldIgnoreDuplicateKeyException() {
-        KafkaMessagePersister persister = new KafkaMessagePersister(messagePersistenceService);
+    void persistMessagesShouldFallbackToSingleSaveAndIgnoreDuplicateRows() {
+        KafkaMessagePersister persister = new KafkaMessagePersister(messagePersistenceService, conversationCacheUpdater);
+        MessageEvent duplicated = minimalMessageEvent();
+        MessageEvent inserted = MessageEvent.builder()
+                .eventType(MessageEventType.MESSAGE)
+                .messageId(1001L)
+                .senderId(1L)
+                .receiverId(3L)
+                .clientMsgId("client-new")
+                .messageType(MessageType.TEXT)
+                .content("world")
+                .build();
         doThrow(new DuplicateKeyException("duplicate")).when(messagePersistenceService).saveBatch(any());
+        doThrow(new DuplicateKeyException("duplicate")).when(messagePersistenceService).save(any(Message.class));
+        when(messagePersistenceService.save(argThat(message -> message != null && Long.valueOf(1001L).equals(message.getId()))))
+                .thenReturn(true);
 
-        persister.persistMessages(List.of(record("p_1_2", minimalMessageEvent())));
+        persister.persistMessages(List.of(record("p_1_2", duplicated), record("p_1_3", inserted)));
 
         verify(messagePersistenceService).saveBatch(any());
+        verify(messagePersistenceService).save(argThat(message -> message != null && Long.valueOf(1000L).equals(message.getId())));
+        verify(messagePersistenceService).save(argThat(message -> message != null && Long.valueOf(1001L).equals(message.getId())));
+        verify(conversationCacheUpdater).updateMessages(eq(List.of(inserted)));
     }
 
     @Test
     void persistMessagesShouldRethrowNonDuplicateExceptionForKafkaRetry() {
-        KafkaMessagePersister persister = new KafkaMessagePersister(messagePersistenceService);
+        KafkaMessagePersister persister = new KafkaMessagePersister(messagePersistenceService, conversationCacheUpdater);
         doThrow(new IllegalStateException("db down")).when(messagePersistenceService).saveBatch(any());
 
         assertThrows(IllegalStateException.class,
                 () -> persister.persistMessages(List.of(record("p_1_2", minimalMessageEvent()))));
+        verify(conversationCacheUpdater, never()).updateMessages(any());
     }
 
     @Test
     void persistMessagesShouldSkipEmptyOrNonMessageBatch() {
-        KafkaMessagePersister persister = new KafkaMessagePersister(messagePersistenceService);
+        KafkaMessagePersister persister = new KafkaMessagePersister(messagePersistenceService, conversationCacheUpdater);
         MessageEvent readEvent = MessageEvent.builder()
                 .eventType(MessageEventType.READ_SYNC)
                 .messageId(2002L)
@@ -131,6 +156,7 @@ class KafkaMessagePersisterTest {
         persister.persistMessages(List.of(record("p_1_2", readEvent)));
 
         verify(messagePersistenceService, never()).saveBatch(any());
+        verify(conversationCacheUpdater, never()).updateMessages(any());
     }
 
     private ConsumerRecord<String, MessageEvent> record(String key, MessageEvent event) {

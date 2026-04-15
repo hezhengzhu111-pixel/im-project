@@ -21,7 +21,7 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       enable-auto-commit: false
       auto-commit-interval: 300000
-      max-poll-records: 100
+      max-poll-records: 500
       max-poll-interval: 300000
       properties:
         spring.json.trusted.packages: com.im.dto,com.im.enums
@@ -31,8 +31,17 @@ spring:
       missing-topics-fatal: false
 
 im:
+  message:
+    conversation-cache:
+      last-message-key-prefix: "last_message:"
+      user-index-key-prefix: "conversation:index:user:"
+      user-unread-key-prefix: "conversation:unread:user:"
+      ttl-seconds: 3600
   kafka:
+    send-timeout-ms: 2000
     chat-topic: im-chat-topic
+    read-topic: im-read-topic
+    status-topic: im-status-topic
     topic:
       private-message: im-private-message-topic
       group-message: im-group-message-topic

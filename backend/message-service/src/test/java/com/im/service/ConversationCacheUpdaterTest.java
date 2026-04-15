@@ -1,0 +1,174 @@
+package com.im.service;
+
+import com.im.dto.MessageDTO;
+import com.im.dto.MessageEvent;
+import com.im.dto.StatusChangeEvent;
+import com.im.enums.MessageEventType;
+import com.im.enums.MessageType;
+import com.im.service.support.UserProfileCache;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.core.HashOperations;
+import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.data.redis.serializer.RedisSerializer;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.List;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class ConversationCacheUpdaterTest {
+
+    @Mock
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Mock
+    private UserProfileCache userProfileCache;
+
+    @Mock
+    private HashOperations<String, Object, Object> hashOperations;
+
+    @Mock
+    private ZSetOperations<String, Object> zSetOperations;
+
+    private final RedisConnection redisConnection = org.mockito.Mockito.mock(RedisConnection.class, RETURNS_DEEP_STUBS);
+
+    private ConversationCacheUpdater updater;
+
+    @BeforeEach
+    @SuppressWarnings("unchecked")
+    void setUp() {
+        updater = new ConversationCacheUpdater(redisTemplate, userProfileCache);
+        ReflectionTestUtils.setField(updater, "lastMessageKeyPrefix", "last_message:");
+        ReflectionTestUtils.setField(updater, "userIndexKeyPrefix", "conversation:index:user:");
+        ReflectionTestUtils.setField(updater, "userUnreadKeyPrefix", "conversation:unread:user:");
+        ReflectionTestUtils.setField(updater, "legacyConversationListKeyPrefix", "conversations:user:");
+        ReflectionTestUtils.setField(updater, "cacheTtlSeconds", 3600L);
+        when(redisTemplate.opsForHash()).thenReturn(hashOperations);
+        lenient().when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        RedisSerializer<Object> serializer =
+                (RedisSerializer<Object>) (RedisSerializer<?>) new StringRedisSerializer();
+        lenient().doReturn(serializer).when(redisTemplate).getKeySerializer();
+        lenient().doReturn(serializer).when(redisTemplate).getHashKeySerializer();
+        lenient().doAnswer(invocation -> {
+            RedisCallback<?> callback = invocation.getArgument(0);
+            return callback.doInRedis(redisConnection);
+        }).when(redisTemplate).execute(any(RedisCallback.class));
+    }
+
+    @Test
+    void updateMessagesShouldIncrementPrivateConversationCaches() {
+        MessageDTO payload = MessageDTO.builder()
+                .id(1001L)
+                .senderId(1L)
+                .receiverId(2L)
+                .messageType(MessageType.TEXT)
+                .content("hello")
+                .build();
+        MessageEvent event = MessageEvent.builder()
+                .eventType(MessageEventType.MESSAGE)
+                .messageId(1001L)
+                .conversationId("p_1_2")
+                .senderId(1L)
+                .receiverId(2L)
+                .messageType(MessageType.TEXT)
+                .content("hello")
+                .createdTime(LocalDateTime.of(2026, 4, 15, 18, 30))
+                .payload(payload)
+                .build();
+
+        updater.updateMessages(List.of(event));
+
+        verify(hashOperations).put("last_message:p_1_2", "message", payload);
+        verify(redisTemplate).expire("last_message:p_1_2", Duration.ofSeconds(3600));
+        verify(zSetOperations).add(eq("conversation:index:user:1"), eq("p_1_2"), anyDouble());
+        verify(zSetOperations).add(eq("conversation:index:user:2"), eq("p_1_2"), anyDouble());
+        verify(redisTemplate).expire("conversation:index:user:1", Duration.ofSeconds(3600));
+        verify(redisTemplate).expire("conversation:index:user:2", Duration.ofSeconds(3600));
+        verify(redisConnection.hashCommands()).hSetNX(any(), any(), any());
+        verify(redisConnection.hashCommands()).hIncrBy(any(), any(), eq(1L));
+        verify(redisConnection, org.mockito.Mockito.times(2)).expire(any(), anyLong());
+    }
+
+    @Test
+    void updateMessagesShouldIncrementGroupConversationCachesForAllMembersExceptSender() {
+        MessageEvent event = MessageEvent.builder()
+                .eventType(MessageEventType.MESSAGE)
+                .messageId(2001L)
+                .conversationId("g_8")
+                .senderId(1L)
+                .groupId(8L)
+                .group(true)
+                .messageType(MessageType.TEXT)
+                .content("group hello")
+                .createdTime(LocalDateTime.of(2026, 4, 15, 18, 31))
+                .build();
+        when(userProfileCache.getGroupMemberIds(8L)).thenReturn(List.of(1L, 2L, 3L));
+
+        updater.updateMessages(List.of(event));
+
+        verify(hashOperations).put(eq("last_message:g_8"), eq("message"), any(MessageDTO.class));
+        verify(zSetOperations).add(eq("conversation:index:user:1"), eq("g_8"), anyDouble());
+        verify(zSetOperations).add(eq("conversation:index:user:2"), eq("g_8"), anyDouble());
+        verify(zSetOperations).add(eq("conversation:index:user:3"), eq("g_8"), anyDouble());
+        verify(redisConnection.hashCommands()).hSetNX(any(), any(), any());
+        verify(redisConnection.hashCommands(), org.mockito.Mockito.times(2)).hIncrBy(any(), any(), eq(1L));
+        verify(redisConnection, org.mockito.Mockito.times(3)).expire(any(), anyLong());
+    }
+
+    @Test
+    void applyStatusChangeShouldRefreshGroupLastMessageAndClearLegacyCachesForMembers() {
+        MessageDTO cachedPayload = MessageDTO.builder()
+                .id(3001L)
+                .groupId(8L)
+                .messageType(MessageType.TEXT)
+                .content("before recall")
+                .status("SENT")
+                .isGroup(true)
+                .build();
+        MessageDTO recalledPayload = MessageDTO.builder()
+                .id(3001L)
+                .groupId(8L)
+                .messageType(MessageType.TEXT)
+                .content("before recall")
+                .status("RECALLED")
+                .isGroup(true)
+                .build();
+        when(hashOperations.get("last_message:g_8", "message")).thenReturn(cachedPayload);
+        when(userProfileCache.getGroupMemberIds(8L)).thenReturn(List.of(1L, 2L, 3L));
+
+        updater.applyStatusChange(StatusChangeEvent.builder()
+                .messageId(3001L)
+                .conversationId("g_8")
+                .groupId(8L)
+                .group(true)
+                .newStatus(4)
+                .payload(recalledPayload)
+                .build());
+
+        verify(hashOperations).put("last_message:g_8", "message", recalledPayload);
+        verify(redisTemplate).delete("conversations:user:1");
+        verify(redisTemplate).delete("conversations:user:2");
+        verify(redisTemplate).delete("conversations:user:3");
+    }
+}

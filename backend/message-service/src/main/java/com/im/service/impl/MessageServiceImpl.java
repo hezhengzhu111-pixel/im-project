@@ -4,7 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.im.dto.MessageDTO;
-import com.im.dto.ReadReceiptDTO;
+import com.im.dto.ReadEvent;
+import com.im.dto.StatusChangeEvent;
 import com.im.dto.request.SendGroupMessageRequest;
 import com.im.dto.request.SendPrivateMessageRequest;
 import com.im.dto.ConversationDTO;
@@ -20,14 +21,16 @@ import com.im.feign.GroupServiceFeignClient;
 import com.im.feign.UserServiceFeignClient;
 import com.im.mapper.GroupReadCursorMapper;
 import com.im.mapper.MessageMapper;
+import com.im.mapper.PrivateReadCursorMapper;
 import com.im.service.MessageService;
 import com.im.service.command.SendMessageCommand;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
+import com.im.message.entity.PrivateReadCursor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,7 +44,9 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 /**
@@ -59,8 +64,11 @@ public class MessageServiceImpl implements MessageService {
     private final GroupServiceFeignClient groupServiceFeignClient;
     private final RedisTemplate<String, Object> redisTemplate;
     private final GroupReadCursorMapper groupReadCursorMapper;
+    private final PrivateReadCursorMapper privateReadCursorMapper;
     private final UserProfileCache userProfileCache;
     private final List<MessageHandler> messageHandlers;
+    private final KafkaTemplate<String, ReadEvent> readEventKafkaTemplate;
+    private final KafkaTemplate<String, StatusChangeEvent> statusChangeEventKafkaTemplate;
 
     private Map<MessageType, MessageHandler> handlerCache = Collections.emptyMap();
     private MessageHandler privateMessageHandler;
@@ -78,6 +86,15 @@ public class MessageServiceImpl implements MessageService {
 
     @Value("${im.message.system.sender-id:0}")
     private Long defaultSystemSenderId;
+
+    @Value("${im.kafka.read-topic:im-read-topic}")
+    private String readTopic;
+
+    @Value("${im.kafka.status-topic:im-status-topic}")
+    private String statusTopic;
+
+    @Value("${im.kafka.send-timeout-ms:2000}")
+    private long kafkaSendTimeoutMs = 2000L;
 
     @PostConstruct
     public void initHandlerCache() {
@@ -249,11 +266,20 @@ public class MessageServiceImpl implements MessageService {
                 return 0L;
             }
             if (isPrivate) {
-                Long cnt = messageMapper.selectCount(new LambdaQueryWrapper<Message>()
+                PrivateReadCursor cursor = privateReadCursorMapper.selectOne(new LambdaQueryWrapper<PrivateReadCursor>()
+                        .eq(PrivateReadCursor::getUserId, userId)
+                        .eq(PrivateReadCursor::getPeerUserId, targetId)
+                        .last("limit 1"));
+                LocalDateTime lastReadAt = cursor == null ? null : cursor.getLastReadAt();
+                LambdaQueryWrapper<Message> wrapper = new LambdaQueryWrapper<Message>()
                         .eq(Message::getReceiverId, userId)
                         .eq(Message::getSenderId, targetId)
                         .eq(Message::getIsGroupChat, false)
-                        .eq(Message::getStatus, 1));
+                        .ne(Message::getStatus, Message.MessageStatus.DELETED);
+                if (lastReadAt != null) {
+                    wrapper.gt(Message::getCreatedTime, lastReadAt);
+                }
+                Long cnt = messageMapper.selectCount(wrapper);
                 return cnt == null ? 0L : cnt;
             } else {
                 GroupReadCursor cursor = groupReadCursorMapper.selectOne(new LambdaQueryWrapper<GroupReadCursor>()
@@ -282,11 +308,15 @@ public class MessageServiceImpl implements MessageService {
     public void markAsRead(Long userId, String conversationId) {
         try {
             ReadMarkInput input = markReadInput(userId, conversationId);
-                ReadMarkProcessResult processResult = markReadProcess(input);
-                if (processResult == null) {
+            Long lastReadMessageId = resolveLastReadMessageId(input);
+            ReadEvent readEvent = buildReadEvent(input, lastReadMessageId);
+            publishReadEvent(readEvent, input.target().normalizedConversationId());
+            log.info("Accepted read event. userId={}, conversationId={}, lastReadMessageId={}",
+                    userId, input.target().normalizedConversationId(), lastReadMessageId);
+            if (false) {
                     throw new BusinessException("鏍囪娑堟伅宸茶澶辫触");
                 }
-                markReadOutput(input, processResult);
+            // legacy synchronous mark-read path removed
         } catch (NumberFormatException e) {
             log.warn("浼氳瘽ID鏍煎紡閿欒: {}", conversationId);
             throw new BusinessException("浼氳瘽ID鏍煎紡閿欒");
@@ -311,42 +341,40 @@ public class MessageServiceImpl implements MessageService {
         return new ReadMarkInput(userId, conversationId, now, target);
     }
 
-    private ReadMarkProcessResult markReadProcess(ReadMarkInput input) {
-        int updatedCount;
-        Long lastReadMessageId;
-            if (input.target().isGroup()) {
-                updateGroupReadCursor(input.userId(), input.target().groupId(), input.now());
-                updatedCount = 0;
-                Message lastRead = messageMapper.selectOne(new LambdaQueryWrapper<Message>()
-                        .eq(Message::getGroupId, input.target().groupId())
-                        .eq(Message::getIsGroupChat, true)
-                        .ne(Message::getStatus, Message.MessageStatus.DELETED)
-                        .orderByDesc(Message::getId)
-                        .last("limit 1"));
-                lastReadMessageId = lastRead == null ? null : lastRead.getId();
-            } else {
-                updatedCount = markPrivateConversationRead(input.userId(), input.target().targetUserId(), input.now());
-                Message lastRead = messageMapper.selectOne(new LambdaQueryWrapper<Message>()
-                        .eq(Message::getReceiverId, input.userId())
-                        .eq(Message::getSenderId, input.target().targetUserId())
-                        .eq(Message::getIsGroupChat, false)
-                        .eq(Message::getStatus, Message.MessageStatus.READ)
-                        .orderByDesc(Message::getId)
-                        .last("limit 1"));
-                lastReadMessageId = lastRead == null ? null : lastRead.getId();
-            }
-        ReadMarkProcessResult processResult = new ReadMarkProcessResult(updatedCount, lastReadMessageId);
-        publishPrivateReadReceipt(input, processResult);
-        publishReadSync(input, processResult);
-        return processResult;
+    private Long resolveLastReadMessageId(ReadMarkInput input) {
+        if (input == null || input.target() == null) {
+            return null;
+        }
+        if (input.target().isGroup()) {
+            Message lastMessage = messageMapper.selectOne(new LambdaQueryWrapper<Message>()
+                    .eq(Message::getGroupId, input.target().groupId())
+                    .eq(Message::getIsGroupChat, true)
+                    .ne(Message::getStatus, Message.MessageStatus.DELETED)
+                    .orderByDesc(Message::getId)
+                    .last("limit 1"));
+            return lastMessage == null ? null : lastMessage.getId();
+        }
+        Message lastMessage = messageMapper.selectOne(new LambdaQueryWrapper<Message>()
+                .eq(Message::getIsGroupChat, false)
+                .ne(Message::getStatus, Message.MessageStatus.DELETED)
+                .and(w -> w.eq(Message::getSenderId, input.userId()).eq(Message::getReceiverId, input.target().targetUserId())
+                        .or()
+                        .eq(Message::getSenderId, input.target().targetUserId()).eq(Message::getReceiverId, input.userId()))
+                .orderByDesc(Message::getId)
+                .last("limit 1"));
+        return lastMessage == null ? null : lastMessage.getId();
     }
 
-    private void markReadOutput(ReadMarkInput input, ReadMarkProcessResult processResult) {
-        log.info("User {} marked conversation {} as read, updated {} messages",
-                input.userId(), input.conversationId(), processResult.updatedCount());
-
-        publishGroupReadReceipts(input, processResult);
-        clearConversationListCache(input.userId());
+    private ReadEvent buildReadEvent(ReadMarkInput input, Long lastReadMessageId) {
+        return ReadEvent.builder()
+                .userId(input.userId())
+                .conversationId(input.target().normalizedConversationId())
+                .targetUserId(input.target().targetUserId())
+                .groupId(input.target().groupId())
+                .group(input.target().isGroup())
+                .lastReadMessageId(lastReadMessageId)
+                .timestamp(input.now())
+                .build();
     }
 
     private List<ConversationDTO> buildPrivateConversations(Long userId, List<com.im.dto.UserDTO> friends) {
@@ -385,6 +413,21 @@ public class MessageServiceImpl implements MessageService {
             Long groupId = Long.parseLong(conversationId.substring(6));
             return new ReadConversationTarget(true, groupId, null, conversationId);
         }
+        if (conversationId.startsWith("g_")) {
+            Long groupId = Long.parseLong(conversationId.substring(2));
+            return new ReadConversationTarget(true, groupId, null, "group_" + groupId);
+        }
+        if (conversationId.startsWith("p_")) {
+            String[] parts = conversationId.split("_");
+            if (parts.length != 3) {
+                throw new BusinessException("缁変浇浜版导姘崇樈ID閺嶇厧绱￠柨娆掝嚖");
+            }
+            Long userId1 = Long.parseLong(parts[1]);
+            Long userId2 = Long.parseLong(parts[2]);
+            Long targetUserId = userId.equals(userId1) ? userId2 : userId1;
+            String normalizedConversationId = buildPrivateConversationKey(userId, targetUserId);
+            return new ReadConversationTarget(false, null, targetUserId, normalizedConversationId);
+        }
         if (conversationId.contains("_")) {
             String[] parts = conversationId.split("_");
             if (parts.length != 2) {
@@ -401,42 +444,6 @@ public class MessageServiceImpl implements MessageService {
         return new ReadConversationTarget(false, null, targetUserId, normalizedConversationId);
     }
 
-    private void updateGroupReadCursor(Long userId, Long groupId, LocalDateTime now) {
-        GroupReadCursor cursor = groupReadCursorMapper.selectOne(new LambdaQueryWrapper<GroupReadCursor>()
-                .eq(GroupReadCursor::getGroupId, groupId)
-                .eq(GroupReadCursor::getUserId, userId)
-                .last("limit 1"));
-        if (cursor != null) {
-            cursor.setLastReadAt(now);
-            groupReadCursorMapper.updateById(cursor);
-            return;
-        }
-        GroupReadCursor created = new GroupReadCursor();
-        created.setGroupId(groupId);
-        created.setUserId(userId);
-        created.setLastReadAt(now);
-        try {
-            groupReadCursorMapper.insert(created);
-        } catch (DuplicateKeyException ex) {
-            groupReadCursorMapper.update(null, new LambdaUpdateWrapper<GroupReadCursor>()
-                    .eq(GroupReadCursor::getGroupId, groupId)
-                    .eq(GroupReadCursor::getUserId, userId)
-                    .set(GroupReadCursor::getLastReadAt, now));
-        }
-    }
-
-    private int markPrivateConversationRead(Long userId, Long targetUserId, LocalDateTime now) {
-        // TODO: replace private read state updates with a read-cursor model.
-        return messageMapper.update(null, new LambdaUpdateWrapper<Message>()
-                .eq(Message::getReceiverId, userId)
-                .eq(Message::getSenderId, targetUserId)
-                .eq(Message::getIsGroupChat, false)
-                .in(Message::getStatus, 1, 2)
-                .set(Message::getStatus, Message.MessageStatus.READ)
-                .set(Message::getUpdatedTime, now)
-                .last("LIMIT 1000"));
-    }
-
     private record ReadConversationTarget(boolean isGroup, Long groupId, Long targetUserId, String normalizedConversationId) {
     }
 
@@ -448,12 +455,7 @@ public class MessageServiceImpl implements MessageService {
     ) {
     }
 
-    private record ReadMarkProcessResult(
-            int updatedCount,
-            Long lastReadMessageId
-    ) {
-    }
-    
+
     /**
      * 娓呴櫎浼氳瘽鐩稿叧缂撳瓨
      */
@@ -609,11 +611,15 @@ public class MessageServiceImpl implements MessageService {
     }
 
     @Override
-    @Transactional
     public MessageDTO recallMessage(Long userId, Long messageId) {
         Message recallTarget = recallInput(userId, messageId);
-        MessageDTO result = statusChangeProcess(recallTarget, Message.MessageStatus.RECALLED);
-        return statusChangeOutput(result);
+        LocalDateTime now = LocalDateTime.now();
+        recallTarget.setStatus(Message.MessageStatus.RECALLED);
+        recallTarget.setUpdatedTime(now);
+        MessageDTO result = buildStatusChangedMessageDTO(recallTarget);
+        StatusChangeEvent statusChangeEvent = buildStatusChangeEvent(recallTarget, userId, result, now);
+        publishStatusChangeEvent(statusChangeEvent, statusChangeEvent.getConversationId());
+        return result;
     }
 
     @Override
@@ -851,41 +857,19 @@ public class MessageServiceImpl implements MessageService {
                 .build();
     }
 
-    private void publishPrivateReadReceipt(ReadMarkInput input, ReadMarkProcessResult processResult) {
-        if (processResult.updatedCount() <= 0 || input.target().isGroup() || input.target().targetUserId() == null) {
-            return;
+    private void publishReadEvent(ReadEvent readEvent, String routingKey) {
+        if (readEvent == null) {
+            throw new BusinessException("read event cannot be null");
         }
-        log.debug("Skip legacy read receipt realtime push. readerId={}, targetUserId={}, lastReadMessageId={}",
-                input.userId(), input.target().targetUserId(), processResult.lastReadMessageId());
-    }
-
-    private void publishReadSync(ReadMarkInput input, ReadMarkProcessResult processResult) {
-        if (input == null || input.userId() == null) {
-            return;
+        try {
+            readEventKafkaTemplate.send(readTopic, routingKey, readEvent)
+                    .get(Math.max(1L, kafkaSendTimeoutMs), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException("publish read event interrupted", e);
+        } catch (ExecutionException | TimeoutException e) {
+            throw new BusinessException("publish read event failed", e);
         }
-        log.debug("Skip legacy read sync realtime push. readerId={}, lastReadMessageId={}",
-                input.userId(), processResult.lastReadMessageId());
-    }
-
-    private ReadReceiptDTO buildReadReceipt(ReadMarkInput input, ReadMarkProcessResult processResult) {
-        return ReadReceiptDTO.builder()
-                .conversationId(input.target().normalizedConversationId())
-                .readerId(input.userId())
-                .toUserId(input.target().targetUserId())
-                .readAt(input.now())
-                .lastReadMessageId(processResult.lastReadMessageId())
-                .build();
-    }
-
-    private void publishGroupReadReceipts(ReadMarkInput input, ReadMarkProcessResult processResult) {
-        if (!input.target().isGroup() || input.target().groupId() == null) {
-            return;
-        }
-        log.debug(
-                "Skip legacy group read realtime broadcast: groupId={}, readerId={}",
-                input.target().groupId(),
-                input.userId()
-        );
     }
 
     private String requireClientMessageId(String clientMessageId) {
@@ -949,9 +933,48 @@ public class MessageServiceImpl implements MessageService {
         return dto;
     }
 
+    private StatusChangeEvent buildStatusChangeEvent(Message msg,
+                                                     Long operatorUserId,
+                                                     MessageDTO dto,
+                                                     LocalDateTime changedAt) {
+        boolean isGroup = Boolean.TRUE.equals(msg.getIsGroupChat());
+        return StatusChangeEvent.builder()
+                .messageId(msg.getId())
+                .conversationId(isGroup ? buildGroupConversationKey(msg.getGroupId()) : buildPrivateConversationKey(msg.getSenderId(), msg.getReceiverId()))
+                .operatorUserId(operatorUserId)
+                .senderId(msg.getSenderId())
+                .receiverId(msg.getReceiverId())
+                .groupId(msg.getGroupId())
+                .group(isGroup)
+                .newStatus(msg.getStatus())
+                .statusText(dto == null ? null : dto.getStatus())
+                .changedAt(changedAt)
+                .payload(dto)
+                .build();
+    }
+
+    private void publishStatusChangeEvent(StatusChangeEvent statusChangeEvent, String routingKey) {
+        if (statusChangeEvent == null) {
+            throw new BusinessException("status change event cannot be null");
+        }
+        try {
+            statusChangeEventKafkaTemplate.send(statusTopic, routingKey, statusChangeEvent)
+                    .get(Math.max(1L, kafkaSendTimeoutMs), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException("publish status change event interrupted", e);
+        } catch (ExecutionException | TimeoutException e) {
+            throw new BusinessException("publish status change event failed", e);
+        }
+    }
+
     private void publishStatusChangedMessage(Message msg, MessageDTO dto) {
-        log.debug("Skip legacy status-change realtime push. messageId={}, status={}",
-                msg == null ? null : msg.getId(), dto == null ? null : dto.getStatus());
+        if (msg == null) {
+            return;
+        }
+        LocalDateTime changedAt = msg.getUpdatedTime() == null ? LocalDateTime.now() : msg.getUpdatedTime();
+        StatusChangeEvent statusChangeEvent = buildStatusChangeEvent(msg, msg.getSenderId(), dto, changedAt);
+        publishStatusChangeEvent(statusChangeEvent, statusChangeEvent.getConversationId());
     }
 
 }
