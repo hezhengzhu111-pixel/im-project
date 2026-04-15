@@ -9,11 +9,13 @@ import com.im.exception.BusinessException;
 import com.im.feign.GroupServiceFeignClient;
 import com.im.feign.UserServiceFeignClient;
 import com.im.service.command.SendMessageCommand;
+import com.im.service.support.AcceptedMessageProjectionService;
 import com.im.service.support.UserProfileCache;
 import com.im.utils.SnowflakeIdGenerator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -47,6 +49,9 @@ class MessageHandlerKafkaFastPathTest {
     private SnowflakeIdGenerator snowflakeIdGenerator;
 
     @Mock
+    private AcceptedMessageProjectionService acceptedMessageProjectionService;
+
+    @Mock
     private UserProfileCache userProfileCache;
 
     @Mock
@@ -57,7 +62,13 @@ class MessageHandlerKafkaFastPathTest {
 
     @Test
     void privateMessageShouldPublishKafkaEventWithConversationKeyAndReturnGeneratedId() {
-        PrivateMessageHandler handler = new PrivateMessageHandler(redisTemplate, kafkaTemplate, snowflakeIdGenerator, userProfileCache);
+        PrivateMessageHandler handler = new PrivateMessageHandler(
+                redisTemplate,
+                kafkaTemplate,
+                snowflakeIdGenerator,
+                acceptedMessageProjectionService,
+                userProfileCache
+        );
         when(snowflakeIdGenerator.nextId()).thenReturn(9001L);
         when(userProfileCache.getUser(1L)).thenReturn(user("1", "alice"));
         when(userProfileCache.getUser(2L)).thenReturn(user("2", "bob"));
@@ -82,7 +93,9 @@ class MessageHandlerKafkaFastPathTest {
         assertNotNull(event.getTimestamp());
         assertNotNull(event.getCreatedTime());
         assertEquals(9001L, event.getPayload().getId());
-        verify(redisTemplate).delete("last_message:p_1_2");
+        InOrder inOrder = org.mockito.Mockito.inOrder(kafkaTemplate, acceptedMessageProjectionService);
+        inOrder.verify(kafkaTemplate).send(eq("im-chat-topic"), eq("p_1_2"), any(MessageEvent.class));
+        inOrder.verify(acceptedMessageProjectionService).projectAccepted(any(MessageEvent.class));
     }
 
     @Test
@@ -91,6 +104,7 @@ class MessageHandlerKafkaFastPathTest {
                 redisTemplate,
                 kafkaTemplate,
                 snowflakeIdGenerator,
+                acceptedMessageProjectionService,
                 groupServiceFeignClient,
                 userProfileCache
         );
@@ -110,15 +124,16 @@ class MessageHandlerKafkaFastPathTest {
         assertEquals(8L, event.getGroupId());
         assertEquals("group-hi", event.getContent());
         assertEquals(9002L, event.getPayload().getId());
-        verify(redisTemplate).delete("last_message:g_8");
+        verify(acceptedMessageProjectionService).projectAccepted(any(MessageEvent.class));
     }
 
     @Test
-    void systemMessageShouldPublishKafkaEventWithoutDatabasePath() {
+    void systemMessageShouldGenerateClientMessageIdWhenMissing() {
         SystemMessageHandler handler = new SystemMessageHandler(
                 redisTemplate,
                 kafkaTemplate,
                 snowflakeIdGenerator,
+                acceptedMessageProjectionService,
                 userServiceFeignClient,
                 userProfileCache
         );
@@ -137,11 +152,21 @@ class MessageHandlerKafkaFastPathTest {
         assertEquals(0L, event.getSenderId());
         assertEquals(2L, event.getReceiverId());
         assertEquals("system notice", event.getContent());
+        assertEquals("sys-9003", result.getClientMessageId());
+        assertEquals("sys-9003", event.getClientMessageId());
+        assertEquals("sys-9003", event.getClientMsgId());
+        assertEquals("sys-9003", event.getPayload().getClientMessageId());
     }
 
     @Test
-    void kafkaFailureShouldSurfaceBusinessExceptionBeforeCacheInvalidation() {
-        PrivateMessageHandler handler = new PrivateMessageHandler(redisTemplate, kafkaTemplate, snowflakeIdGenerator, userProfileCache);
+    void kafkaFailureShouldSurfaceBusinessExceptionBeforeProjection() {
+        PrivateMessageHandler handler = new PrivateMessageHandler(
+                redisTemplate,
+                kafkaTemplate,
+                snowflakeIdGenerator,
+                acceptedMessageProjectionService,
+                userProfileCache
+        );
         when(snowflakeIdGenerator.nextId()).thenReturn(9004L);
         when(userProfileCache.getUser(1L)).thenReturn(user("1", "alice"));
         when(userProfileCache.getUser(2L)).thenReturn(user("2", "bob"));
@@ -153,12 +178,18 @@ class MessageHandlerKafkaFastPathTest {
 
         assertThrows(BusinessException.class, () -> handler.handle(privateCommand()));
 
-        verify(redisTemplate, never()).delete("last_message:p_1_2");
+        verify(acceptedMessageProjectionService, never()).projectAccepted(any(MessageEvent.class));
     }
 
     @Test
-    void kafkaTimeoutShouldSurfaceBusinessExceptionBeforeCacheInvalidation() {
-        PrivateMessageHandler handler = new PrivateMessageHandler(redisTemplate, kafkaTemplate, snowflakeIdGenerator, userProfileCache);
+    void kafkaTimeoutShouldSurfaceBusinessExceptionBeforeProjection() {
+        PrivateMessageHandler handler = new PrivateMessageHandler(
+                redisTemplate,
+                kafkaTemplate,
+                snowflakeIdGenerator,
+                acceptedMessageProjectionService,
+                userProfileCache
+        );
         ReflectionTestUtils.setField(handler, "kafkaSendTimeoutMs", 1L);
         when(snowflakeIdGenerator.nextId()).thenReturn(9005L);
         when(userProfileCache.getUser(1L)).thenReturn(user("1", "alice"));
@@ -170,7 +201,31 @@ class MessageHandlerKafkaFastPathTest {
 
         assertThrows(BusinessException.class, () -> handler.handle(privateCommand()));
 
-        verify(redisTemplate, never()).delete("last_message:p_1_2");
+        verify(acceptedMessageProjectionService, never()).projectAccepted(any(MessageEvent.class));
+    }
+
+    @Test
+    void projectionFailureShouldSurfaceBusinessExceptionWithoutKafkaRetry() {
+        PrivateMessageHandler handler = new PrivateMessageHandler(
+                redisTemplate,
+                kafkaTemplate,
+                snowflakeIdGenerator,
+                acceptedMessageProjectionService,
+                userProfileCache
+        );
+        when(snowflakeIdGenerator.nextId()).thenReturn(9006L);
+        when(userProfileCache.getUser(1L)).thenReturn(user("1", "alice"));
+        when(userProfileCache.getUser(2L)).thenReturn(user("2", "bob"));
+        when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
+        stubKafkaSuccess("p_1_2");
+        org.mockito.Mockito.doThrow(new BusinessException("redis failed"))
+                .when(acceptedMessageProjectionService)
+                .projectAccepted(any(MessageEvent.class));
+
+        assertThrows(BusinessException.class, () -> handler.handle(privateCommand()));
+
+        verify(kafkaTemplate).send(eq("im-chat-topic"), eq("p_1_2"), any(MessageEvent.class));
+        verify(acceptedMessageProjectionService).projectAccepted(any(MessageEvent.class));
     }
 
     private void stubKafkaSuccess(String conversationId) {

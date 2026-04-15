@@ -7,6 +7,7 @@ import com.im.enums.MessageType;
 import com.im.exception.BusinessException;
 import com.im.message.entity.Message;
 import com.im.service.command.SendMessageCommand;
+import com.im.service.support.AcceptedMessageProjectionService;
 import com.im.utils.SnowflakeIdGenerator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,12 +23,10 @@ import java.util.concurrent.TimeoutException;
 @Slf4j
 public abstract class AbstractMessageHandler<C> implements MessageHandler {
 
-    private static final String CONVERSATION_CACHE_KEY = "conversations:user:";
-    private static final String LAST_MESSAGE_CACHE_KEY = "last_message:";
-
     protected final RedisTemplate<String, Object> redisTemplate;
     protected final KafkaTemplate<String, MessageEvent> kafkaTemplate;
     protected final SnowflakeIdGenerator snowflakeIdGenerator;
+    protected final AcceptedMessageProjectionService acceptedMessageProjectionService;
 
     @Value("${im.message.text.enforce:true}")
     private boolean textEnforce;
@@ -43,10 +42,12 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
 
     protected AbstractMessageHandler(RedisTemplate<String, Object> redisTemplate,
                                      KafkaTemplate<String, MessageEvent> kafkaTemplate,
-                                     SnowflakeIdGenerator snowflakeIdGenerator) {
+                                     SnowflakeIdGenerator snowflakeIdGenerator,
+                                     AcceptedMessageProjectionService acceptedMessageProjectionService) {
         this.redisTemplate = redisTemplate;
         this.kafkaTemplate = kafkaTemplate;
         this.snowflakeIdGenerator = snowflakeIdGenerator;
+        this.acceptedMessageProjectionService = acceptedMessageProjectionService;
     }
 
     @Override
@@ -59,7 +60,7 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
         String conversationId = buildConversationId(command, context, message);
         MessageEvent event = buildMessageEvent(command, message, conversationId, result);
         publishMessageEvent(command, conversationId, event);
-        afterKafkaAck(command, context, message);
+        projectAcceptedMessage(command, event);
         return result;
     }
 
@@ -68,8 +69,6 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
     protected abstract Message buildMessage(SendMessageCommand command, C context, Long messageId);
 
     protected abstract String buildConversationId(SendMessageCommand command, C context, Message message);
-
-    protected abstract void afterKafkaAck(SendMessageCommand command, C context, Message message);
 
     protected abstract MessageDTO buildResult(SendMessageCommand command, C context, Message message);
 
@@ -216,19 +215,17 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
                 .build();
     }
 
-    protected void clearConversationCache(Long userId1, Long userId2, boolean isPrivate) {
+    protected void projectAcceptedMessage(SendMessageCommand command, MessageEvent event) {
         try {
-            if (isPrivate && userId1 != null && userId2 != null) {
-                String conversationKey = buildPrivateConversationKey(userId1, userId2);
-                redisTemplate.delete(LAST_MESSAGE_CACHE_KEY + conversationKey);
-                redisTemplate.delete(CONVERSATION_CACHE_KEY + userId1);
-                redisTemplate.delete(CONVERSATION_CACHE_KEY + userId2);
-            } else if (!isPrivate && userId2 != null) {
-                String conversationKey = buildGroupConversationKey(userId2);
-                redisTemplate.delete(LAST_MESSAGE_CACHE_KEY + conversationKey);
-            }
-        } catch (Exception e) {
-            log.warn("failed to clear conversation cache", e);
+            acceptedMessageProjectionService.projectAccepted(event);
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            log.error("Failed to project accepted message. conversationId={}, messageId={}",
+                    event == null ? null : event.getConversationId(),
+                    event == null ? null : event.getMessageId(),
+                    exception);
+            throw new BusinessException(transactionFailureMessage(command), exception);
         }
     }
 

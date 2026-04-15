@@ -7,6 +7,7 @@ import com.im.exception.BusinessException;
 import com.im.feign.GroupServiceFeignClient;
 import com.im.message.entity.Message;
 import com.im.service.command.SendMessageCommand;
+import com.im.service.support.AcceptedMessageProjectionService;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
 import com.im.utils.SnowflakeIdGenerator;
@@ -23,9 +24,10 @@ public class GroupMessageHandler extends AbstractMessageHandler<GroupMessageHand
     public GroupMessageHandler(RedisTemplate<String, Object> redisTemplate,
                                KafkaTemplate<String, MessageEvent> kafkaTemplate,
                                SnowflakeIdGenerator snowflakeIdGenerator,
+                               AcceptedMessageProjectionService acceptedMessageProjectionService,
                                GroupServiceFeignClient groupServiceFeignClient,
                                UserProfileCache userProfileCache) {
-        super(redisTemplate, kafkaTemplate, snowflakeIdGenerator);
+        super(redisTemplate, kafkaTemplate, snowflakeIdGenerator, acceptedMessageProjectionService);
         this.groupServiceFeignClient = groupServiceFeignClient;
         this.userProfileCache = userProfileCache;
     }
@@ -65,11 +67,6 @@ public class GroupMessageHandler extends AbstractMessageHandler<GroupMessageHand
     @Override
     protected String buildConversationId(SendMessageCommand command, GroupMessageContext context, Message message) {
         return buildGroupConversationKey(context.groupId());
-    }
-
-    @Override
-    protected void afterKafkaAck(SendMessageCommand command, GroupMessageContext context, Message message) {
-        clearConversationCache(null, context.groupId(), false);
     }
 
     @Override

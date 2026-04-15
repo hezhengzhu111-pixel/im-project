@@ -8,6 +8,7 @@ import com.im.exception.BusinessException;
 import com.im.feign.UserServiceFeignClient;
 import com.im.message.entity.Message;
 import com.im.service.command.SendMessageCommand;
+import com.im.service.support.AcceptedMessageProjectionService;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
 import com.im.utils.SnowflakeIdGenerator;
@@ -28,9 +29,10 @@ public class SystemMessageHandler extends AbstractMessageHandler<SystemMessageHa
     public SystemMessageHandler(RedisTemplate<String, Object> redisTemplate,
                                 KafkaTemplate<String, MessageEvent> kafkaTemplate,
                                 SnowflakeIdGenerator snowflakeIdGenerator,
+                                AcceptedMessageProjectionService acceptedMessageProjectionService,
                                 UserServiceFeignClient userServiceFeignClient,
                                 UserProfileCache userProfileCache) {
-        super(redisTemplate, kafkaTemplate, snowflakeIdGenerator);
+        super(redisTemplate, kafkaTemplate, snowflakeIdGenerator, acceptedMessageProjectionService);
         this.userServiceFeignClient = userServiceFeignClient;
         this.userProfileCache = userProfileCache;
     }
@@ -59,6 +61,9 @@ public class SystemMessageHandler extends AbstractMessageHandler<SystemMessageHa
     @Override
     protected Message buildMessage(SendMessageCommand command, SystemMessageContext context, Long messageId) {
         Message message = createBaseMessage(command, messageId, context.actualSenderId());
+        if (!org.springframework.util.StringUtils.hasText(message.getClientMessageId())) {
+            message.setClientMessageId("sys-" + messageId);
+        }
         message.setReceiverId(context.receiverId());
         message.setIsGroupChat(false);
         return message;
@@ -67,11 +72,6 @@ public class SystemMessageHandler extends AbstractMessageHandler<SystemMessageHa
     @Override
     protected String buildConversationId(SendMessageCommand command, SystemMessageContext context, Message message) {
         return buildPrivateConversationKey(context.actualSenderId(), context.receiverId());
-    }
-
-    @Override
-    protected void afterKafkaAck(SendMessageCommand command, SystemMessageContext context, Message message) {
-        clearConversationCache(context.actualSenderId(), context.receiverId(), true);
     }
 
     @Override
