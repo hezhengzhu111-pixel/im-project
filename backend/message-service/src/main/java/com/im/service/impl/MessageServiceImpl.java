@@ -2,57 +2,44 @@ package com.im.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.im.dto.GroupInfoDTO;
-import com.im.dto.MessageDTO;
-import com.im.dto.MessageEvent;
-import com.im.dto.ReadEvent;
-import com.im.dto.StatusChangeEvent;
-import com.im.dto.UserDTO;
+import com.im.dto.*;
 import com.im.dto.request.SendGroupMessageRequest;
 import com.im.dto.request.SendPrivateMessageRequest;
-import com.im.dto.ConversationDTO;
-import com.im.enums.MessageEventType;
 import com.im.enums.MessageType;
+import com.im.exception.BusinessException;
+import com.im.feign.GroupServiceFeignClient;
+import com.im.feign.UserServiceFeignClient;
 import com.im.handler.GroupMessageHandler;
 import com.im.handler.MessageHandler;
 import com.im.handler.PrivateMessageHandler;
 import com.im.handler.SystemMessageHandler;
-import com.im.message.entity.GroupReadCursor;
-import com.im.message.entity.Message;
-import com.im.exception.BusinessException;
-import com.im.feign.GroupServiceFeignClient;
-import com.im.feign.UserServiceFeignClient;
 import com.im.mapper.GroupReadCursorMapper;
 import com.im.mapper.MessageMapper;
 import com.im.mapper.PrivateReadCursorMapper;
+import com.im.message.entity.GroupReadCursor;
+import com.im.message.entity.Message;
+import com.im.message.entity.PrivateReadCursor;
 import com.im.service.MessageService;
 import com.im.service.command.SendMessageCommand;
+import com.im.service.query.HotConversationReadService;
+import com.im.service.query.HotConversationReadService.HotConversationSkeleton;
+import com.im.service.query.HotRecentMessageReadService;
 import com.im.service.support.AcceptedMessageProjectionService;
 import com.im.service.support.HotMessageRedisRepository;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
-import com.im.message.entity.PrivateReadCursor;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.EnumMap;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -65,9 +52,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MessageServiceImpl implements MessageService {
 
-    private static final String EVENT_TYPE_MESSAGE = "MESSAGE";
-    private static final String EVENT_TYPE_READ_RECEIPT = "READ_RECEIPT";
-    private static final String EVENT_TYPE_READ_SYNC = "READ_SYNC";
     private final MessageMapper messageMapper;
     private final UserServiceFeignClient userServiceFeignClient;
     private final GroupServiceFeignClient groupServiceFeignClient;
@@ -80,13 +64,14 @@ public class MessageServiceImpl implements MessageService {
     private final KafkaTemplate<String, StatusChangeEvent> statusChangeEventKafkaTemplate;
     private final HotMessageRedisRepository hotMessageRedisRepository;
     private final AcceptedMessageProjectionService acceptedMessageProjectionService;
+    private final HotConversationReadService hotConversationReadService;
+    private final HotRecentMessageReadService hotRecentMessageReadService;
 
     private Map<MessageType, MessageHandler> handlerCache = Collections.emptyMap();
     private MessageHandler privateMessageHandler;
     private MessageHandler groupMessageHandler;
 
     private static final String CONVERSATION_CACHE_KEY = "conversations:user:";
-    private static final String LAST_MESSAGE_CACHE_KEY = "last_message:";
     private static final long CACHE_EXPIRE_HOURS = 1;
 
     @Value("${im.message.text.enforce:true}")
@@ -237,13 +222,7 @@ public class MessageServiceImpl implements MessageService {
     // 绉婚櫎 @Cacheable 娉ㄨВ锛屽畬鍏ㄧ敱鍐呴儴鎵嬪姩绠＄悊缂撳瓨锛岄伩鍏嶄笌鎵嬪姩閫昏緫鍐茬獊
     public List<ConversationDTO> getConversations(Long userId) {
         String cacheKey = CONVERSATION_CACHE_KEY + userId;
-        
-        @SuppressWarnings("unchecked")
-        List<ConversationDTO> cachedConversations = (List<ConversationDTO>) redisTemplate.opsForValue().get(cacheKey);
-        if (cachedConversations != null) {
-            return cachedConversations;
-        }
-        
+        List<HotConversationSkeleton> hotConversationSkeletons = hotConversationReadService.loadConversationSkeletons(userId, 500);
         List<com.im.dto.UserDTO> friends = userServiceFeignClient.friendList(userId);
         List<com.im.dto.GroupInfoDTO> groups = groupServiceFeignClient.listUserGroups(userId);
         if (friends == null) {
@@ -253,7 +232,7 @@ public class MessageServiceImpl implements MessageService {
             groups = List.of();
         }
 
-        List<ConversationDTO> hotConversations = buildHotConversations(userId, friends, groups);
+        List<ConversationDTO> hotConversations = buildHotConversationsFromSkeletons(userId, hotConversationSkeletons, friends, groups);
         List<ConversationDTO> fallbackConversations = new ArrayList<>();
         fallbackConversations.addAll(buildPrivateConversations(userId, friends));
         fallbackConversations.addAll(buildGroupConversations(userId, groups));
@@ -277,6 +256,8 @@ public class MessageServiceImpl implements MessageService {
     /**
      * 鑾峰彇鏈娑堟伅鏁伴噺
      */
+    // Legacy fallback kept only for compatibility; new read logic must use HotConversationReadService.
+    @Deprecated
     private Long getUnreadCount(Long userId, Long targetId, boolean isPrivate) {
         try {
             if (userId == null || targetId == null) {
@@ -362,24 +343,7 @@ public class MessageServiceImpl implements MessageService {
         if (input == null || input.target() == null) {
             return null;
         }
-        if (input.target().isGroup()) {
-            Message lastMessage = messageMapper.selectOne(new LambdaQueryWrapper<Message>()
-                    .eq(Message::getGroupId, input.target().groupId())
-                    .eq(Message::getIsGroupChat, true)
-                    .ne(Message::getStatus, Message.MessageStatus.DELETED)
-                    .orderByDesc(Message::getId)
-                    .last("limit 1"));
-            return lastMessage == null ? null : lastMessage.getId();
-        }
-        Message lastMessage = messageMapper.selectOne(new LambdaQueryWrapper<Message>()
-                .eq(Message::getIsGroupChat, false)
-                .ne(Message::getStatus, Message.MessageStatus.DELETED)
-                .and(w -> w.eq(Message::getSenderId, input.userId()).eq(Message::getReceiverId, input.target().targetUserId())
-                        .or()
-                        .eq(Message::getSenderId, input.target().targetUserId()).eq(Message::getReceiverId, input.userId()))
-                .orderByDesc(Message::getId)
-                .last("limit 1"));
-        return lastMessage == null ? null : lastMessage.getId();
+        return hotRecentMessageReadService.resolveLatestVisibleMessageId(input.target().normalizedConversationId());
     }
 
     private ReadEvent buildReadEvent(ReadMarkInput input, Long lastReadMessageId) {
@@ -407,20 +371,20 @@ public class MessageServiceImpl implements MessageService {
         if (mappedMessageId != null) {
             MessageDTO hotMessage = hotMessageRedisRepository.getHotMessage(mappedMessageId);
             if (hotMessage != null) {
-                return reprojectAcceptedMessage(hotMessage);
+                return hotMessage;
             }
             MessageDTO persistedMessage = loadPersistedAcceptedMessage(command.getSenderId(), clientMessageId);
             if (persistedMessage != null) {
-                return reprojectAcceptedMessage(persistedMessage);
+                return rehydrateAcceptedMessage(persistedMessage);
             }
-            throw new BusinessException("message already accepted but hot projection is not ready");
+            throw new BusinessException("message already accepted but hot projection and persistence are temporarily unavailable");
         }
 
         MessageDTO persistedMessage = loadPersistedAcceptedMessage(command.getSenderId(), clientMessageId);
         if (persistedMessage == null) {
             return null;
         }
-        return reprojectAcceptedMessage(persistedMessage);
+        return rehydrateAcceptedMessage(persistedMessage);
     }
 
     private MessageDTO loadPersistedAcceptedMessage(Long senderId, String clientMessageId) {
@@ -434,57 +398,16 @@ public class MessageServiceImpl implements MessageService {
         return buildMessageDTOFromMessage(persisted);
     }
 
-    private MessageDTO reprojectAcceptedMessage(MessageDTO message) {
-        acceptedMessageProjectionService.projectAccepted(buildAcceptedMessageEvent(message));
+    private MessageDTO rehydrateAcceptedMessage(MessageDTO message) {
+        acceptedMessageProjectionService.rehydrateAcceptedProjection(message);
         return message;
     }
 
-    private MessageEvent buildAcceptedMessageEvent(MessageDTO message) {
-        if (message == null || message.getId() == null) {
-            throw new IllegalArgumentException("message cannot be null");
-        }
-        boolean groupMessage = isGroupMessage(message);
-        LocalDateTime createdTime = resolveMessageTime(message);
-        return MessageEvent.builder()
-                .eventType(MessageEventType.MESSAGE)
-                .messageId(message.getId())
-                .conversationId(groupMessage
-                        ? buildGroupConversationKey(message.getGroupId())
-                        : buildPrivateConversationKey(message.getSenderId(), message.getReceiverId()))
-                .senderId(message.getSenderId())
-                .receiverId(message.getReceiverId())
-                .groupId(message.getGroupId())
-                .clientMessageId(message.getClientMessageId())
-                .clientMsgId(message.getClientMessageId())
-                .messageType(message.getMessageType())
-                .content(message.getContent())
-                .mediaUrl(message.getMediaUrl())
-                .mediaSize(message.getMediaSize())
-                .mediaName(message.getMediaName())
-                .thumbnailUrl(message.getThumbnailUrl())
-                .duration(message.getDuration())
-                .locationInfo(message.getLocationInfo())
-                .status(resolveStatusCode(message.getStatus()))
-                .statusText(message.getStatus())
-                .group(groupMessage)
-                .replyToMessageId(message.getReplyToMessageId())
-                .timestamp(createdTime)
-                .createdTime(createdTime)
-                .updatedTime(message.getUpdatedTime())
-                .senderName(message.getSenderName())
-                .senderAvatar(message.getSenderAvatar())
-                .receiverName(message.getReceiverName())
-                .receiverAvatar(message.getReceiverAvatar())
-                .payload(message)
-                .version(1)
-                .build();
-    }
-
-    private List<ConversationDTO> buildHotConversations(Long userId,
-                                                        List<UserDTO> friends,
-                                                        List<GroupInfoDTO> groups) {
-        List<String> conversationIds = hotMessageRedisRepository.getConversationIdsForUser(userId, 500);
-        if (conversationIds.isEmpty()) {
+    private List<ConversationDTO> buildHotConversationsFromSkeletons(Long userId,
+                                                                     List<HotConversationSkeleton> skeletons,
+                                                                     List<UserDTO> friends,
+                                                                     List<GroupInfoDTO> groups) {
+        if (skeletons == null || skeletons.isEmpty()) {
             return List.of();
         }
         Map<Long, UserDTO> friendMap = new HashMap<>();
@@ -498,18 +421,13 @@ public class MessageServiceImpl implements MessageService {
                 .filter(group -> group.getId() != null)
                 .collect(Collectors.toMap(GroupInfoDTO::getId, group -> group, (left, right) -> left));
         List<ConversationDTO> conversations = new ArrayList<>();
-        for (String conversationId : conversationIds) {
-            MessageDTO lastMessage = hotMessageRedisRepository.getLastMessage(conversationId);
-            if (lastMessage == null) {
-                List<MessageDTO> recentMessages = hotMessageRedisRepository.getRecentMessages(conversationId, 1);
-                lastMessage = recentMessages.isEmpty() ? null : recentMessages.getFirst();
-            }
-            if (lastMessage == null) {
+        for (HotConversationSkeleton skeleton : skeletons) {
+            if (skeleton == null || skeleton.lastMessage() == null) {
                 continue;
             }
-            ConversationDTO conversation = conversationId.startsWith("g_")
-                    ? buildHotGroupConversation(userId, conversationId, lastMessage, groupMap)
-                    : buildHotPrivateConversation(userId, conversationId, lastMessage, friendMap);
+            ConversationDTO conversation = skeleton.conversationType() == 2
+                    ? buildHotGroupConversation(userId, skeleton, groupMap)
+                    : buildHotPrivateConversation(userId, skeleton, friendMap);
             if (conversation != null) {
                 conversations.add(conversation);
             }
@@ -530,13 +448,13 @@ public class MessageServiceImpl implements MessageService {
     }
 
     private ConversationDTO buildHotPrivateConversation(Long userId,
-                                                        String conversationId,
-                                                        MessageDTO lastMessage,
+                                                        HotConversationSkeleton skeleton,
                                                         Map<Long, UserDTO> friendMap) {
-        Long peerUserId = resolvePeerUserId(userId, conversationId, lastMessage);
+        Long peerUserId = skeleton.peerUserId();
         if (peerUserId == null) {
             return null;
         }
+        MessageDTO lastMessage = skeleton.lastMessage();
         UserDTO peer = friendMap.get(peerUserId);
         if (peer == null && !isSystemConversationUser(peerUserId)) {
             peer = userProfileCache.getUser(peerUserId);
@@ -551,8 +469,8 @@ public class MessageServiceImpl implements MessageService {
                 .lastMessageType(lastMessage.getMessageType())
                 .lastMessageSenderId(lastMessage.getSenderId() == null ? null : lastMessage.getSenderId().toString())
                 .lastMessageSenderName(resolveLastMessageSenderName(userId, lastMessage, conversationName, false))
-                .lastMessageTime(resolveMessageTime(lastMessage))
-                .unreadCount(hotMessageRedisRepository.getUnreadCount(userId, conversationId))
+                .lastMessageTime(skeleton.lastMessageTime())
+                .unreadCount(skeleton.unreadCount())
                 .isOnline(false)
                 .isPinned(false)
                 .isMuted(false)
@@ -560,13 +478,13 @@ public class MessageServiceImpl implements MessageService {
     }
 
     private ConversationDTO buildHotGroupConversation(Long userId,
-                                                      String conversationId,
-                                                      MessageDTO lastMessage,
+                                                      HotConversationSkeleton skeleton,
                                                       Map<Long, GroupInfoDTO> groupMap) {
-        Long groupId = resolveGroupId(conversationId, lastMessage);
+        Long groupId = skeleton.groupId();
         if (groupId == null) {
             return null;
         }
+        MessageDTO lastMessage = skeleton.lastMessage();
         GroupInfoDTO group = groupMap.get(groupId);
         return ConversationDTO.builder()
                 .conversationId(groupId.toString())
@@ -577,117 +495,12 @@ public class MessageServiceImpl implements MessageService {
                 .lastMessageType(lastMessage.getMessageType())
                 .lastMessageSenderId(lastMessage.getSenderId() == null ? null : lastMessage.getSenderId().toString())
                 .lastMessageSenderName(resolveLastMessageSenderName(userId, lastMessage, "group member", true))
-                .lastMessageTime(resolveMessageTime(lastMessage))
-                .unreadCount(hotMessageRedisRepository.getUnreadCount(userId, conversationId))
+                .lastMessageTime(skeleton.lastMessageTime())
+                .unreadCount(skeleton.unreadCount())
                 .isOnline(false)
                 .isPinned(false)
                 .isMuted(false)
                 .build();
-    }
-
-    private List<MessageDTO> loadHotCursorMessages(String conversationId,
-                                                   Long lastMessageId,
-                                                   LocalDateTime beforeTimestamp,
-                                                   Long afterMessageId,
-                                                   int limit) {
-        List<MessageDTO> hotMessages = hotMessageRedisRepository.getRecentMessages(conversationId, 500);
-        boolean ascending = afterMessageId != null;
-        return hotMessages.stream()
-                .filter(message -> matchesCursorRequest(message, lastMessageId, beforeTimestamp, afterMessageId))
-                .sorted(cursorComparator(ascending))
-                .limit(limit)
-                .toList();
-    }
-
-    private List<MessageDTO> loadPrivateMessagesFromDbCursor(Long userId,
-                                                             Long friendId,
-                                                             Long lastMessageId,
-                                                             LocalDateTime beforeTimestamp,
-                                                             Long afterMessageId,
-                                                             int limit) {
-        LambdaQueryWrapper<Message> wrapper = new LambdaQueryWrapper<Message>()
-                .eq(Message::getIsGroupChat, false)
-                .ne(Message::getStatus, 5)
-                .and(w -> w.eq(Message::getSenderId, userId).eq(Message::getReceiverId, friendId)
-                        .or()
-                        .eq(Message::getSenderId, friendId).eq(Message::getReceiverId, userId));
-
-        if (afterMessageId != null) {
-            wrapper.gt(Message::getId, afterMessageId).orderByAsc(Message::getId).last("limit " + limit);
-        } else {
-            if (lastMessageId != null) {
-                wrapper.lt(Message::getId, lastMessageId);
-            }
-            if (beforeTimestamp != null) {
-                wrapper.lt(Message::getCreatedTime, beforeTimestamp);
-            }
-            wrapper.orderByDesc(Message::getId).last("limit " + limit);
-        }
-        return toPrivateMessageDTOs(messageMapper.selectList(wrapper), userId, friendId);
-    }
-
-    private List<MessageDTO> loadGroupMessagesFromDbCursor(Long groupId,
-                                                           Long lastMessageId,
-                                                           LocalDateTime beforeTimestamp,
-                                                           Long afterMessageId,
-                                                           int limit) {
-        LambdaQueryWrapper<Message> wrapper = new LambdaQueryWrapper<Message>()
-                .eq(Message::getGroupId, groupId)
-                .eq(Message::getIsGroupChat, true)
-                .ne(Message::getStatus, 5);
-
-        if (afterMessageId != null) {
-            wrapper.gt(Message::getId, afterMessageId).orderByAsc(Message::getId).last("limit " + limit);
-        } else {
-            if (lastMessageId != null) {
-                wrapper.lt(Message::getId, lastMessageId);
-            }
-            if (beforeTimestamp != null) {
-                wrapper.lt(Message::getCreatedTime, beforeTimestamp);
-            }
-            wrapper.orderByDesc(Message::getId).last("limit " + limit);
-        }
-        return toGroupMessageDTOs(messageMapper.selectList(wrapper));
-    }
-
-    private List<MessageDTO> mergeCursorMessages(List<MessageDTO> hotMessages,
-                                                 List<MessageDTO> persistedMessages,
-                                                 boolean ascending,
-                                                 int limit) {
-        List<MessageDTO> combined = new ArrayList<>(hotMessages.size() + persistedMessages.size());
-        combined.addAll(hotMessages);
-        combined.addAll(persistedMessages);
-        combined.sort(cursorComparator(ascending));
-
-        Map<String, MessageDTO> deduplicated = new LinkedHashMap<>();
-        for (MessageDTO message : combined) {
-            deduplicated.putIfAbsent(messageIdentity(message), message);
-        }
-        return deduplicated.values().stream().limit(limit).toList();
-    }
-
-    private boolean matchesCursorRequest(MessageDTO message,
-                                         Long lastMessageId,
-                                         LocalDateTime beforeTimestamp,
-                                         Long afterMessageId) {
-        if (message == null || message.getId() == null) {
-            return false;
-        }
-        if (afterMessageId != null) {
-            return message.getId() > afterMessageId;
-        }
-        if (lastMessageId != null && message.getId() >= lastMessageId) {
-            return false;
-        }
-        LocalDateTime messageTime = resolveMessageTime(message);
-        return beforeTimestamp == null || messageTime == null || messageTime.isBefore(beforeTimestamp);
-    }
-
-    private Comparator<MessageDTO> cursorComparator(boolean ascending) {
-        Comparator<MessageDTO> comparator = Comparator
-                .comparing(MessageDTO::getId, Comparator.nullsLast(Long::compareTo))
-                .thenComparing(this::resolveMessageTime, Comparator.nullsLast(LocalDateTime::compareTo));
-        return ascending ? comparator : comparator.reversed();
     }
 
     private List<ConversationDTO> buildPrivateConversations(Long userId, List<com.im.dto.UserDTO> friends) {
@@ -724,11 +537,11 @@ public class MessageServiceImpl implements MessageService {
     private ReadConversationTarget parseReadConversationTarget(Long userId, String conversationId) {
         if (conversationId.startsWith("group_")) {
             Long groupId = Long.parseLong(conversationId.substring(6));
-            return new ReadConversationTarget(true, groupId, null, conversationId);
+            return new ReadConversationTarget(true, groupId, null, buildGroupConversationKey(groupId));
         }
         if (conversationId.startsWith("g_")) {
             Long groupId = Long.parseLong(conversationId.substring(2));
-            return new ReadConversationTarget(true, groupId, null, "group_" + groupId);
+            return new ReadConversationTarget(true, groupId, null, buildGroupConversationKey(groupId));
         }
         if (conversationId.startsWith("p_")) {
             String[] parts = conversationId.split("_");
@@ -822,36 +635,46 @@ public class MessageServiceImpl implements MessageService {
         log.info("鑾峰彇绉佽亰娑堟伅鍘嗗彶: userId={}, friendId={}, page={}, size={}", userId, friendId, page, size);
         validatePrivateConversationAccess(userId, friendId);
         
-        Page<Message> mpPage = new Page<>(Math.max(1, page + 1L), Math.max(1, size));
-        LambdaQueryWrapper<Message> wrapper = new LambdaQueryWrapper<Message>()
-                .eq(Message::getIsGroupChat, false)
-                .ne(Message::getStatus, 5)
-                .and(w -> w.eq(Message::getSenderId, userId).eq(Message::getReceiverId, friendId)
-                        .or()
-                        .eq(Message::getSenderId, friendId).eq(Message::getReceiverId, userId))
-                .orderByDesc(Message::getCreatedTime);
-        Page<Message> result = messageMapper.selectPage(mpPage, wrapper);
-        List<Message> messages = result.getRecords();
+        int normalizedPage = Math.max(0, page);
+        int normalizedSize = Math.max(1, size);
+        int required = Math.max(1, (normalizedPage + 1) * normalizedSize);
+        List<MessageDTO> messages = hotRecentMessageReadService.loadLatestMessages(
+                buildPrivateConversationKey(userId, friendId),
+                required
+        );
         
         log.info("鑾峰彇鍒扮鑱婃秷鎭暟閲? {}", messages.size());
-        return toPrivateMessageDTOs(messages, userId, friendId);
+        return slicePage(messages, normalizedPage, normalizedSize);
     }
     @Override
     public List<MessageDTO> getGroupMessages(Long userId, Long groupId, int page, int size) {
         log.info("鑾峰彇缇よ亰娑堟伅鍘嗗彶: userId={}, groupId={}, page={}, size={}", userId, groupId, page, size);
         validateGroupConversationAccess(userId, groupId);
         
-        Page<Message> mpPage = new Page<>(Math.max(1, page + 1L), Math.max(1, size));
-        LambdaQueryWrapper<Message> wrapper = new LambdaQueryWrapper<Message>()
-                .eq(Message::getGroupId, groupId)
-                .eq(Message::getIsGroupChat, true)
-                .ne(Message::getStatus, 5)
-                .orderByDesc(Message::getCreatedTime);
-        Page<Message> result = messageMapper.selectPage(mpPage, wrapper);
-        List<Message> messages = result.getRecords();
+        int normalizedPage = Math.max(0, page);
+        int normalizedSize = Math.max(1, size);
+        int required = Math.max(1, (normalizedPage + 1) * normalizedSize);
+        List<MessageDTO> messages = hotRecentMessageReadService.loadLatestMessages(
+                buildGroupConversationKey(groupId),
+                required
+        );
         
         log.info("鑾峰彇鍒扮兢鑱婃秷鎭暟閲? {}", messages.size());
-        return toGroupMessageDTOs(messages);
+        return slicePage(messages, normalizedPage, normalizedSize);
+    }
+
+    private List<MessageDTO> slicePage(List<MessageDTO> messages, int page, int size) {
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+        int normalizedPage = Math.max(0, page);
+        int normalizedSize = Math.max(1, size);
+        int fromIndex = normalizedPage * normalizedSize;
+        if (fromIndex >= messages.size()) {
+            return List.of();
+        }
+        int toIndex = Math.min(messages.size(), fromIndex + normalizedSize);
+        return new ArrayList<>(messages.subList(fromIndex, toIndex));
     }
 
     @Override
@@ -863,11 +686,13 @@ public class MessageServiceImpl implements MessageService {
                                                      int limit) {
         int realLimit = Math.min(Math.max(1, limit), 200);
         validatePrivateConversationAccess(userId, friendId);
-        String conversationId = buildPrivateConversationKey(userId, friendId);
-        List<MessageDTO> hotMessages = loadHotCursorMessages(conversationId, lastMessageId, beforeTimestamp, afterMessageId, realLimit);
-        List<MessageDTO> persistedMessages = loadPrivateMessagesFromDbCursor(userId, friendId, lastMessageId, beforeTimestamp, afterMessageId,
-                Math.min(200, realLimit + hotMessages.size()));
-        return mergeCursorMessages(hotMessages, persistedMessages, afterMessageId != null, realLimit);
+        return hotRecentMessageReadService.loadCursorMessages(
+                buildPrivateConversationKey(userId, friendId),
+                lastMessageId,
+                beforeTimestamp,
+                afterMessageId,
+                realLimit
+        );
     }
 
     @Override
@@ -879,11 +704,13 @@ public class MessageServiceImpl implements MessageService {
                                                    int limit) {
         int realLimit = Math.min(Math.max(1, limit), 200);
         validateGroupConversationAccess(userId, groupId);
-        String conversationId = buildGroupConversationKey(groupId);
-        List<MessageDTO> hotMessages = loadHotCursorMessages(conversationId, lastMessageId, beforeTimestamp, afterMessageId, realLimit);
-        List<MessageDTO> persistedMessages = loadGroupMessagesFromDbCursor(groupId, lastMessageId, beforeTimestamp, afterMessageId,
-                Math.min(200, realLimit + hotMessages.size()));
-        return mergeCursorMessages(hotMessages, persistedMessages, afterMessageId != null, realLimit);
+        return hotRecentMessageReadService.loadCursorMessages(
+                buildGroupConversationKey(groupId),
+                lastMessageId,
+                beforeTimestamp,
+                afterMessageId,
+                realLimit
+        );
     }
 
     @Override
@@ -970,49 +797,6 @@ public class MessageServiceImpl implements MessageService {
         if (!Boolean.TRUE.equals(userProfileCache.isGroupMember(groupId, userId))) {
             throw new BusinessException("涓嶆槸缇ゆ垚鍛橈紝鏃犳硶鏌ョ湅缇よ亰璁板綍");
         }
-    }
-
-    private List<MessageDTO> toPrivateMessageDTOs(List<Message> messages, Long userId, Long friendId) {
-        var me = userProfileCache.getUser(userId);
-        var friend = userProfileCache.getUser(friendId);
-        return messages.stream()
-                .map(m -> {
-                    var sender = m.getSenderId() != null && m.getSenderId().equals(userId) ? me : friend;
-                    var receiver = m.getSenderId() != null && m.getSenderId().equals(userId) ? friend : me;
-                    MessageDTO dto = MessageConverter.convertToDTO(
-                            m,
-                            resolveSenderName(m, sender),
-                            sender == null ? null : sender.getAvatar(),
-                            receiver == null ? null : receiver.getUsername(),
-                            receiver == null ? null : receiver.getAvatar(),
-                            null
-                    );
-                    if (dto != null) {
-                        dto.setGroup(false);
-                    }
-                    return dto;
-                })
-                .collect(Collectors.toList());
-    }
-
-    private List<MessageDTO> toGroupMessageDTOs(List<Message> messages) {
-        return messages.stream()
-                .map(m -> {
-                    var sender = userProfileCache.getUser(m.getSenderId());
-                    MessageDTO dto = MessageConverter.convertToDTO(
-                            m,
-                            sender == null ? null : sender.getUsername(),
-                            sender == null ? null : sender.getAvatar(),
-                            null,
-                            null,
-                            null
-                    );
-                    if (dto != null) {
-                        dto.setGroup(true);
-                    }
-                    return dto;
-                })
-                .collect(Collectors.toList());
     }
 
     private MessageDTO applyMessageStatusAndPublish(Message msg, Integer status) {
@@ -1143,37 +927,6 @@ public class MessageServiceImpl implements MessageService {
         return Long.valueOf(userId.trim());
     }
 
-    private Long resolvePeerUserId(Long userId, String conversationId, MessageDTO lastMessage) {
-        if (lastMessage != null) {
-            if (Objects.equals(lastMessage.getSenderId(), userId)) {
-                return lastMessage.getReceiverId();
-            }
-            if (Objects.equals(lastMessage.getReceiverId(), userId)) {
-                return lastMessage.getSenderId();
-            }
-        }
-        if (!StringUtils.hasText(conversationId) || !conversationId.startsWith("p_")) {
-            return null;
-        }
-        String[] parts = conversationId.split("_");
-        if (parts.length != 3) {
-            return null;
-        }
-        Long left = Long.valueOf(parts[1]);
-        Long right = Long.valueOf(parts[2]);
-        return Objects.equals(left, userId) ? right : left;
-    }
-
-    private Long resolveGroupId(String conversationId, MessageDTO lastMessage) {
-        if (lastMessage != null && lastMessage.getGroupId() != null) {
-            return lastMessage.getGroupId();
-        }
-        if (!StringUtils.hasText(conversationId) || !conversationId.startsWith("g_")) {
-            return null;
-        }
-        return Long.valueOf(conversationId.substring(2));
-    }
-
     private String resolvePrivateConversationName(Long peerUserId, UserDTO peer, MessageDTO lastMessage) {
         if (peer != null) {
             return peer.getNickname() != null ? peer.getNickname() : peer.getUsername();
@@ -1215,34 +968,8 @@ public class MessageServiceImpl implements MessageService {
         return peerName;
     }
 
-    private LocalDateTime resolveMessageTime(MessageDTO message) {
-        if (message == null) {
-            return null;
-        }
-        if (message.getCreatedTime() != null) {
-            return message.getCreatedTime();
-        }
-        if (message.getCreatedAt() != null) {
-            return message.getCreatedAt();
-        }
-        return message.getUpdatedTime();
-    }
-
     private String conversationIdentity(ConversationDTO conversation) {
         return conversation.getConversationType() + ":" + conversation.getConversationId();
-    }
-
-    private String messageIdentity(MessageDTO message) {
-        if (message == null) {
-            return "null";
-        }
-        if (message.getId() != null) {
-            return "id:" + message.getId();
-        }
-        if (StringUtils.hasText(message.getClientMessageId())) {
-            return "client:" + message.getClientMessageId().trim();
-        }
-        return "message:" + System.identityHashCode(message);
     }
 
     private MessageDTO buildMessageDTOFromMessage(Message message) {

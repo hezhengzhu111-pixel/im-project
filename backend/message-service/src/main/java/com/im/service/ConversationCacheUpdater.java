@@ -23,9 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @Service
@@ -80,24 +78,7 @@ public class ConversationCacheUpdater {
     @Value("${im.message.conversation-cache.unread-applied-ttl-seconds:86400}")
     private long unreadAppliedTtlSeconds;
 
-    public void updateMessages(List<MessageEvent> events) {
-        if (events == null || events.isEmpty()) {
-            return;
-        }
-
-        for (MessageEvent event : events) {
-            try {
-                projectAcceptedMessage(event);
-            } catch (Exception exception) {
-                log.warn("Update accepted conversation cache failed. messageId={}, error={}",
-                        event == null ? null : event.getMessageId(),
-                        exception.getMessage(),
-                        exception);
-            }
-        }
-    }
-
-    public void projectAcceptedMessage(MessageEvent event) {
+    public void applyFirstSeenAcceptedMessage(MessageEvent event) {
         if (event == null || event.getEventType() != MessageEventType.MESSAGE || event.getMessageId() == null) {
             throw new IllegalArgumentException("accepted message event is invalid");
         }
@@ -113,10 +94,27 @@ public class ConversationCacheUpdater {
         writeLastMessage(conversationId, lastMessage);
 
         if (event.getGroupId() != null || Boolean.TRUE.equals(event.getGroup())) {
-            updateGroupConversationCaches(event, conversationId, timestamp);
+            applyFirstSeenGroupConversationCaches(event, conversationId, timestamp);
             return;
         }
-        updatePrivateConversationCaches(event, conversationId, timestamp);
+        applyFirstSeenPrivateConversationCaches(event, conversationId, timestamp);
+    }
+
+    public void rehydrateAcceptedMessage(MessageDTO message) {
+        MessageDTO normalizedMessage = normalizeAcceptedMessage(message);
+        String conversationId = resolveConversationId(normalizedMessage);
+        if (!StringUtils.hasText(conversationId)) {
+            throw new IllegalArgumentException("conversationId cannot be blank");
+        }
+
+        LocalDateTime timestamp = resolveTimestamp(normalizedMessage);
+        writeLastMessage(conversationId, normalizedMessage);
+
+        if (isGroupMessage(normalizedMessage)) {
+            rehydrateGroupConversationCaches(normalizedMessage, conversationId, timestamp);
+            return;
+        }
+        rehydratePrivateConversationCaches(normalizedMessage, conversationId, timestamp);
     }
 
     public void markConversationRead(ReadEvent event) {
@@ -152,7 +150,9 @@ public class ConversationCacheUpdater {
         clearLegacyStatusCaches(event);
     }
 
-    private void updatePrivateConversationCaches(MessageEvent event, String conversationId, LocalDateTime timestamp) {
+    private void applyFirstSeenPrivateConversationCaches(MessageEvent event,
+                                                         String conversationId,
+                                                         LocalDateTime timestamp) {
         Long senderId = event.getSenderId();
         Long receiverId = event.getReceiverId();
         if (senderId != null) {
@@ -169,9 +169,9 @@ public class ConversationCacheUpdater {
         clearLegacyConversationListCache(receiverId);
     }
 
-    private void updateGroupConversationCaches(MessageEvent event,
-                                               String conversationId,
-                                               LocalDateTime timestamp) {
+    private void applyFirstSeenGroupConversationCaches(MessageEvent event,
+                                                       String conversationId,
+                                                       LocalDateTime timestamp) {
         Long groupId = event.getGroupId();
         Long senderId = event.getSenderId();
         List<Long> memberIds = groupId == null ? List.of() : userProfileCache.getGroupMemberIds(groupId);
@@ -189,6 +189,34 @@ public class ConversationCacheUpdater {
             } else {
                 incrementUnreadCountOnce(memberId, conversationId, event.getMessageId(), 1L);
             }
+            clearLegacyConversationListCache(memberId);
+        }
+    }
+
+    private void rehydratePrivateConversationCaches(MessageDTO message,
+                                                    String conversationId,
+                                                    LocalDateTime timestamp) {
+        touchConversationIndex(message.getSenderId(), conversationId, timestamp);
+        touchConversationIndex(message.getReceiverId(), conversationId, timestamp);
+        clearLegacyConversationListCache(message.getSenderId());
+        clearLegacyConversationListCache(message.getReceiverId());
+    }
+
+    private void rehydrateGroupConversationCaches(MessageDTO message,
+                                                  String conversationId,
+                                                  LocalDateTime timestamp) {
+        Long groupId = message.getGroupId();
+        Long senderId = message.getSenderId();
+        List<Long> memberIds = groupId == null ? List.of() : userProfileCache.getGroupMemberIds(groupId);
+        if (memberIds == null || memberIds.isEmpty()) {
+            memberIds = senderId == null ? List.of() : List.of(senderId);
+        }
+
+        for (Long memberId : memberIds) {
+            if (memberId == null) {
+                continue;
+            }
+            touchConversationIndex(memberId, conversationId, timestamp);
             clearLegacyConversationListCache(memberId);
         }
     }
@@ -352,6 +380,27 @@ public class ConversationCacheUpdater {
                 .build();
     }
 
+    private MessageDTO normalizeAcceptedMessage(MessageDTO message) {
+        if (message == null || message.getId() == null) {
+            throw new IllegalArgumentException("accepted message cannot be null");
+        }
+        if (StringUtils.hasText(message.getClientMessageId())) {
+            message.setClientMessageId(message.getClientMessageId().trim());
+        }
+        boolean groupMessage = isGroupMessage(message);
+        if (message.getCreatedTime() == null) {
+            message.setCreatedTime(resolveTimestamp(message));
+        }
+        if (message.getCreatedAt() == null) {
+            message.setCreatedAt(message.getCreatedTime());
+        }
+        if (message.getUpdatedAt() == null) {
+            message.setUpdatedAt(message.getUpdatedTime());
+        }
+        message.setGroup(groupMessage);
+        return message;
+    }
+
     private String resolveConversationId(MessageEvent event) {
         if (StringUtils.hasText(event.getConversationId())) {
             return event.getConversationId().trim();
@@ -376,6 +425,40 @@ public class ConversationCacheUpdater {
         }
         if (event.getUpdatedTime() != null) {
             return event.getUpdatedTime();
+        }
+        return LocalDateTime.now();
+    }
+
+    private String resolveConversationId(MessageDTO message) {
+        if (message == null) {
+            return null;
+        }
+        if (isGroupMessage(message)) {
+            return message.getGroupId() == null ? null : "g_" + message.getGroupId();
+        }
+        if (message.getSenderId() == null || message.getReceiverId() == null) {
+            return null;
+        }
+        long min = Math.min(message.getSenderId(), message.getReceiverId());
+        long max = Math.max(message.getSenderId(), message.getReceiverId());
+        return "p_" + min + "_" + max;
+    }
+
+    private LocalDateTime resolveTimestamp(MessageDTO message) {
+        if (message == null) {
+            return LocalDateTime.now();
+        }
+        if (message.getCreatedTime() != null) {
+            return message.getCreatedTime();
+        }
+        if (message.getCreatedAt() != null) {
+            return message.getCreatedAt();
+        }
+        if (message.getUpdatedTime() != null) {
+            return message.getUpdatedTime();
+        }
+        if (message.getUpdatedAt() != null) {
+            return message.getUpdatedAt();
         }
         return LocalDateTime.now();
     }
@@ -420,6 +503,14 @@ public class ConversationCacheUpdater {
             return fallback.trim();
         }
         return null;
+    }
+
+    private boolean isGroupMessage(MessageDTO message) {
+        return message != null
+                && (message.isGroup()
+                || Boolean.TRUE.equals(message.getIsGroupChat())
+                || Boolean.TRUE.equals(message.getIsGroupMessage())
+                || message.getGroupId() != null);
     }
 
     private double toScore(LocalDateTime timestamp) {

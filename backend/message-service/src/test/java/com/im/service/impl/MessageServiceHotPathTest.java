@@ -1,11 +1,6 @@
 package com.im.service.impl;
 
-import com.im.dto.ConversationDTO;
-import com.im.dto.GroupInfoDTO;
-import com.im.dto.MessageDTO;
-import com.im.dto.ReadEvent;
-import com.im.dto.StatusChangeEvent;
-import com.im.dto.UserDTO;
+import com.im.dto.*;
 import com.im.enums.MessageType;
 import com.im.exception.BusinessException;
 import com.im.feign.GroupServiceFeignClient;
@@ -15,6 +10,9 @@ import com.im.mapper.MessageMapper;
 import com.im.mapper.PrivateReadCursorMapper;
 import com.im.message.entity.Message;
 import com.im.service.command.SendMessageCommand;
+import com.im.service.query.HotConversationReadService;
+import com.im.service.query.HotConversationReadService.HotConversationSkeleton;
+import com.im.service.query.HotRecentMessageReadService;
 import com.im.service.support.AcceptedMessageProjectionService;
 import com.im.service.support.HotMessageRedisRepository;
 import com.im.service.support.UserProfileCache;
@@ -32,14 +30,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class MessageServiceHotPathTest {
@@ -80,6 +73,12 @@ class MessageServiceHotPathTest {
     @Mock
     private AcceptedMessageProjectionService acceptedMessageProjectionService;
 
+    @Mock
+    private HotConversationReadService hotConversationReadService;
+
+    @Mock
+    private HotRecentMessageReadService hotRecentMessageReadService;
+
     private MessageServiceImpl messageService;
 
     @BeforeEach
@@ -96,14 +95,16 @@ class MessageServiceHotPathTest {
                 readEventKafkaTemplate,
                 statusChangeEventKafkaTemplate,
                 hotMessageRedisRepository,
-                acceptedMessageProjectionService
+                acceptedMessageProjectionService,
+                hotConversationReadService,
+                hotRecentMessageReadService
         );
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         ReflectionTestUtils.setField(messageService, "defaultSystemSenderId", 0L);
     }
 
     @Test
-    void sendMessageShouldReturnHotAcceptedMessageAndReprojectWithoutHandlerExecution() {
+    void sendMessageShouldReturnHotAcceptedMessageWithoutReprojectionOrDbLookup() {
         MessageDTO hotMessage = MessageDTO.builder()
                 .id(1001L)
                 .clientMessageId("client-1")
@@ -126,25 +127,18 @@ class MessageServiceHotPathTest {
                 .content("hello")
                 .build());
 
-        assertEquals(hotMessage, result);
-        verify(acceptedMessageProjectionService).projectAccepted(any());
+        assertSame(hotMessage, result);
+        verify(acceptedMessageProjectionService, never()).rehydrateAcceptedProjection(any());
+        verify(acceptedMessageProjectionService, never()).projectAcceptedFirstSeen(any());
         verify(messageMapper, never()).selectBySenderIdAndClientMessageId(any(), any());
     }
 
     @Test
-    void sendMessageShouldRecoverPersistedAcceptedMessageWhenRedisIdempotencyMisses() {
-        Message persisted = new Message();
-        persisted.setId(2002L);
-        persisted.setSenderId(1L);
-        persisted.setReceiverId(2L);
-        persisted.setClientMessageId("client-db");
-        persisted.setMessageType(MessageType.TEXT);
-        persisted.setContent("persisted hello");
-        persisted.setStatus(Message.MessageStatus.SENT);
-        persisted.setIsGroupChat(false);
-        persisted.setCreatedTime(LocalDateTime.of(2026, 4, 15, 21, 5));
-        persisted.setUpdatedTime(persisted.getCreatedTime());
-        when(hotMessageRedisRepository.getMessageIdByClientMessageId(1L, "client-db")).thenReturn(null);
+    void sendMessageShouldRehydratePersistedAcceptedMessageWhenMappingExistsButHotProjectionMisses() {
+        Message persisted = privateMessage(2002L, 1L, 2L, "client-db", "persisted hello",
+                LocalDateTime.of(2026, 4, 15, 21, 5));
+        when(hotMessageRedisRepository.getMessageIdByClientMessageId(1L, "client-db")).thenReturn(2002L);
+        when(hotMessageRedisRepository.getHotMessage(2002L)).thenReturn(null);
         when(messageMapper.selectBySenderIdAndClientMessageId(1L, "client-db")).thenReturn(persisted);
         when(userProfileCache.getUser(1L)).thenReturn(user("1", "alice"));
         when(userProfileCache.getUser(2L)).thenReturn(user("2", "bob"));
@@ -159,7 +153,30 @@ class MessageServiceHotPathTest {
 
         assertEquals(2002L, result.getId());
         assertEquals("client-db", result.getClientMessageId());
-        verify(acceptedMessageProjectionService).projectAccepted(any());
+        verify(acceptedMessageProjectionService).rehydrateAcceptedProjection(result);
+        verify(acceptedMessageProjectionService, never()).projectAcceptedFirstSeen(any());
+    }
+
+    @Test
+    void sendMessageShouldRecoverPersistedAcceptedMessageWhenRedisIdempotencyMisses() {
+        Message persisted = privateMessage(2003L, 1L, 2L, "client-db-miss", "persisted hello",
+                LocalDateTime.of(2026, 4, 15, 21, 6));
+        when(hotMessageRedisRepository.getMessageIdByClientMessageId(1L, "client-db-miss")).thenReturn(null);
+        when(messageMapper.selectBySenderIdAndClientMessageId(1L, "client-db-miss")).thenReturn(persisted);
+        when(userProfileCache.getUser(1L)).thenReturn(user("1", "alice"));
+        when(userProfileCache.getUser(2L)).thenReturn(user("2", "bob"));
+
+        MessageDTO result = messageService.sendMessage(SendMessageCommand.builder()
+                .senderId(1L)
+                .receiverId(2L)
+                .messageType(MessageType.TEXT)
+                .clientMessageId("client-db-miss")
+                .content("persisted hello")
+                .build());
+
+        assertEquals(2003L, result.getId());
+        verify(acceptedMessageProjectionService).rehydrateAcceptedProjection(result);
+        verify(acceptedMessageProjectionService, never()).projectAcceptedFirstSeen(any());
     }
 
     @Test
@@ -168,42 +185,102 @@ class MessageServiceHotPathTest {
         when(hotMessageRedisRepository.getHotMessage(3003L)).thenReturn(null);
         when(messageMapper.selectBySenderIdAndClientMessageId(1L, "client-stuck")).thenReturn(null);
 
-        assertThrows(BusinessException.class, () -> messageService.sendMessage(SendMessageCommand.builder()
+        BusinessException exception = assertThrows(BusinessException.class, () -> messageService.sendMessage(SendMessageCommand.builder()
                 .senderId(1L)
                 .receiverId(2L)
                 .messageType(MessageType.TEXT)
                 .clientMessageId("client-stuck")
                 .content("hello")
                 .build()));
+
+        assertTrue(exception.getMessage().contains("temporarily unavailable"));
+        verify(acceptedMessageProjectionService, never()).rehydrateAcceptedProjection(any());
+        verify(acceptedMessageProjectionService, never()).projectAcceptedFirstSeen(any());
+    }
+
+    @Test
+    void sendMessageShouldOnlyRehydrateOnceAcrossRepeatedIdempotentRetries() {
+        Message persisted = privateMessage(3004L, 1L, 2L, "client-repeat", "persisted retry",
+                LocalDateTime.of(2026, 4, 15, 21, 7));
+        MessageDTO hotMessage = MessageDTO.builder()
+                .id(3004L)
+                .clientMessageId("client-repeat")
+                .senderId(1L)
+                .receiverId(2L)
+                .messageType(MessageType.TEXT)
+                .content("persisted retry")
+                .senderName("alice")
+                .receiverName("bob")
+                .createdTime(LocalDateTime.of(2026, 4, 15, 21, 7))
+                .build();
+        when(hotMessageRedisRepository.getMessageIdByClientMessageId(1L, "client-repeat")).thenReturn(3004L, 3004L);
+        when(hotMessageRedisRepository.getHotMessage(3004L)).thenReturn(null, hotMessage);
+        when(messageMapper.selectBySenderIdAndClientMessageId(1L, "client-repeat")).thenReturn(persisted);
+        when(userProfileCache.getUser(1L)).thenReturn(user("1", "alice"));
+        when(userProfileCache.getUser(2L)).thenReturn(user("2", "bob"));
+
+        MessageDTO firstResult = messageService.sendMessage(SendMessageCommand.builder()
+                .senderId(1L)
+                .receiverId(2L)
+                .messageType(MessageType.TEXT)
+                .clientMessageId("client-repeat")
+                .content("persisted retry")
+                .build());
+        MessageDTO secondResult = messageService.sendMessage(SendMessageCommand.builder()
+                .senderId(1L)
+                .receiverId(2L)
+                .messageType(MessageType.TEXT)
+                .clientMessageId("client-repeat")
+                .content("persisted retry")
+                .build());
+
+        assertEquals(3004L, firstResult.getId());
+        assertSame(hotMessage, secondResult);
+        verify(acceptedMessageProjectionService, times(1)).rehydrateAcceptedProjection(any());
+        verify(acceptedMessageProjectionService, never()).projectAcceptedFirstSeen(any());
     }
 
     @Test
     void getConversationsShouldPreferHotProjectionAndKeepSystemConversationVisible() {
-        when(valueOperations.get("conversations:user:2")).thenReturn(null);
         when(userServiceFeignClient.friendList(2L)).thenReturn(List.of(user("3", "charlie")));
         when(groupServiceFeignClient.listUserGroups(2L)).thenReturn(List.of(group(8L, "team")));
-        when(hotMessageRedisRepository.getConversationIdsForUser(2L, 500)).thenReturn(List.of("p_0_2", "g_8"));
-        when(hotMessageRedisRepository.getLastMessage("p_0_2")).thenReturn(MessageDTO.builder()
-                .id(4001L)
-                .senderId(0L)
-                .receiverId(2L)
-                .messageType(MessageType.SYSTEM)
-                .content("system notice")
-                .senderName("SYSTEM")
-                .createdTime(LocalDateTime.of(2026, 4, 15, 21, 10))
-                .build());
-        when(hotMessageRedisRepository.getLastMessage("g_8")).thenReturn(MessageDTO.builder()
-                .id(4002L)
-                .senderId(1L)
-                .groupId(8L)
-                .messageType(MessageType.TEXT)
-                .content("group hello")
-                .senderName("alice")
-                .createdTime(LocalDateTime.of(2026, 4, 15, 21, 11))
-                .isGroup(true)
-                .build());
-        when(hotMessageRedisRepository.getUnreadCount(2L, "p_0_2")).thenReturn(1L);
-        when(hotMessageRedisRepository.getUnreadCount(2L, "g_8")).thenReturn(2L);
+        when(hotConversationReadService.loadConversationSkeletons(2L, 500)).thenReturn(List.of(
+                new HotConversationSkeleton(
+                        "p_0_2",
+                        1,
+                        0L,
+                        null,
+                        MessageDTO.builder()
+                                .id(4001L)
+                                .senderId(0L)
+                                .receiverId(2L)
+                                .messageType(MessageType.SYSTEM)
+                                .content("system notice")
+                                .senderName("SYSTEM")
+                                .createdTime(LocalDateTime.of(2026, 4, 15, 21, 10))
+                                .build(),
+                        1L,
+                        LocalDateTime.of(2026, 4, 15, 21, 10)
+                ),
+                new HotConversationSkeleton(
+                        "g_8",
+                        2,
+                        null,
+                        8L,
+                        MessageDTO.builder()
+                                .id(4002L)
+                                .senderId(1L)
+                                .groupId(8L)
+                                .messageType(MessageType.TEXT)
+                                .content("group hello")
+                                .senderName("alice")
+                                .createdTime(LocalDateTime.of(2026, 4, 15, 21, 11))
+                                .isGroup(true)
+                                .build(),
+                        2L,
+                        LocalDateTime.of(2026, 4, 15, 21, 11)
+                )
+        ));
         when(messageMapper.selectLastPrivateMessagesBatch(2L, List.of(3L))).thenReturn(List.of());
         when(messageMapper.countUnreadPrivateMessagesBatch(2L, List.of(3L))).thenReturn(List.of());
         when(messageMapper.selectLastGroupMessagesBatch(List.of(8L))).thenReturn(List.of());
@@ -217,43 +294,120 @@ class MessageServiceHotPathTest {
         assertEquals(1L, byId.get("0").getUnreadCount());
         assertEquals(2L, byId.get("8").getUnreadCount());
         assertTrue(byId.containsKey("3"));
+        verify(hotConversationReadService).loadConversationSkeletons(2L, 500);
+        verify(valueOperations, never()).get("conversations:user:2");
     }
 
     @Test
-    void getPrivateMessagesCursorShouldMergeHotMessageBeforeDbPersistence() {
+    void getPrivateMessagesShouldExposeAcceptedHotMessagesOnFirstPage() {
         when(userServiceFeignClient.exists(1L)).thenReturn(true);
         when(userServiceFeignClient.exists(2L)).thenReturn(true);
         when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
-        when(userProfileCache.getUser(1L)).thenReturn(user("1", "alice"));
-        when(userProfileCache.getUser(2L)).thenReturn(user("2", "bob"));
-        when(hotMessageRedisRepository.getRecentMessages("p_1_2", 500)).thenReturn(List.of(MessageDTO.builder()
-                .id(5002L)
-                .clientMessageId("client-hot")
-                .senderId(1L)
-                .receiverId(2L)
-                .messageType(MessageType.TEXT)
-                .content("hot only")
-                .senderName("alice")
-                .receiverName("bob")
-                .createdTime(LocalDateTime.of(2026, 4, 15, 21, 20))
-                .build()));
-        Message persisted = new Message();
-        persisted.setId(5001L);
-        persisted.setSenderId(2L);
-        persisted.setReceiverId(1L);
-        persisted.setClientMessageId("client-db");
-        persisted.setMessageType(MessageType.TEXT);
-        persisted.setContent("persisted");
-        persisted.setStatus(Message.MessageStatus.SENT);
-        persisted.setIsGroupChat(false);
-        persisted.setCreatedTime(LocalDateTime.of(2026, 4, 15, 21, 19));
-        persisted.setUpdatedTime(persisted.getCreatedTime());
-        when(messageMapper.selectList(any())).thenReturn(List.of(persisted));
+        List<MessageDTO> latestMessages = List.of(
+                messageDto(7002L, 1L, 2L, null, "hot first", MessageType.TEXT, LocalDateTime.of(2026, 4, 15, 21, 20), false),
+                messageDto(7001L, 2L, 1L, null, "older db", MessageType.TEXT, LocalDateTime.of(2026, 4, 15, 21, 19), false)
+        );
+        when(hotRecentMessageReadService.loadLatestMessages("p_1_2", 2)).thenReturn(latestMessages);
 
-        List<MessageDTO> messages = messageService.getPrivateMessagesCursor(1L, 2L, null, null, null, 20);
+        List<MessageDTO> messages = messageService.getPrivateMessages(1L, 2L, 0, 2);
 
-        assertEquals(List.of(5002L, 5001L),
-                messages.stream().map(MessageDTO::getId).toList());
+        assertEquals(List.of(7002L, 7001L), messages.stream().map(MessageDTO::getId).toList());
+        verify(hotRecentMessageReadService).loadLatestMessages("p_1_2", 2);
+    }
+
+    @Test
+    void getGroupMessagesShouldExposeAcceptedHotMessagesOnFirstPage() {
+        when(userServiceFeignClient.exists(1L)).thenReturn(true);
+        when(groupServiceFeignClient.exists(8L)).thenReturn(true);
+        when(userProfileCache.isGroupMember(8L, 1L)).thenReturn(true);
+        List<MessageDTO> latestMessages = List.of(
+                messageDto(8002L, 1L, null, 8L, "hot group", MessageType.TEXT, LocalDateTime.of(2026, 4, 15, 21, 30), true),
+                messageDto(8001L, 3L, null, 8L, "older group", MessageType.TEXT, LocalDateTime.of(2026, 4, 15, 21, 29), true)
+        );
+        when(hotRecentMessageReadService.loadLatestMessages("g_8", 2)).thenReturn(latestMessages);
+
+        List<MessageDTO> messages = messageService.getGroupMessages(1L, 8L, 0, 2);
+
+        assertEquals(List.of(8002L, 8001L), messages.stream().map(MessageDTO::getId).toList());
+        verify(hotRecentMessageReadService).loadLatestMessages("g_8", 2);
+    }
+
+    @Test
+    void getPrivateMessagesCursorShouldDelegateToHotRecentReadService() {
+        when(userServiceFeignClient.exists(1L)).thenReturn(true);
+        when(userServiceFeignClient.exists(2L)).thenReturn(true);
+        when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
+        List<MessageDTO> cursorMessages = List.of(
+                messageDto(9002L, 1L, 2L, null, "hot version", MessageType.TEXT, LocalDateTime.of(2026, 4, 15, 21, 40), false),
+                messageDto(9003L, 2L, 1L, null, "next", MessageType.TEXT, LocalDateTime.of(2026, 4, 15, 21, 41), false)
+        );
+        when(hotRecentMessageReadService.loadCursorMessages("p_1_2", null, null, 9001L, 20)).thenReturn(cursorMessages);
+
+        List<MessageDTO> messages = messageService.getPrivateMessagesCursor(1L, 2L, null, null, 9001L, 20);
+
+        assertEquals(List.of(9002L, 9003L), messages.stream().map(MessageDTO::getId).toList());
+        verify(hotRecentMessageReadService).loadCursorMessages("p_1_2", null, null, 9001L, 20);
+        verify(messageMapper, never()).selectList(any());
+    }
+
+    @Test
+    void getGroupMessagesCursorShouldDelegateToHotRecentReadService() {
+        when(userServiceFeignClient.exists(1L)).thenReturn(true);
+        when(groupServiceFeignClient.exists(8L)).thenReturn(true);
+        when(userProfileCache.isGroupMember(8L, 1L)).thenReturn(true);
+        List<MessageDTO> cursorMessages = List.of(
+                messageDto(9102L, 1L, null, 8L, "hot group version", MessageType.TEXT, LocalDateTime.of(2026, 4, 15, 21, 42), true),
+                messageDto(9101L, 3L, null, 8L, "older group", MessageType.TEXT, LocalDateTime.of(2026, 4, 15, 21, 41), true)
+        );
+        when(hotRecentMessageReadService.loadCursorMessages("g_8", 9200L, null, null, 20)).thenReturn(cursorMessages);
+
+        List<MessageDTO> messages = messageService.getGroupMessagesCursor(1L, 8L, 9200L, null, null, 20);
+
+        assertEquals(List.of(9102L, 9101L), messages.stream().map(MessageDTO::getId).toList());
+        verify(hotRecentMessageReadService).loadCursorMessages("g_8", 9200L, null, null, 20);
+    }
+
+    private Message privateMessage(Long id,
+                                   Long senderId,
+                                   Long receiverId,
+                                   String clientMessageId,
+                                   String content,
+                                   LocalDateTime createdTime) {
+        Message message = new Message();
+        message.setId(id);
+        message.setSenderId(senderId);
+        message.setReceiverId(receiverId);
+        message.setClientMessageId(clientMessageId);
+        message.setMessageType(MessageType.TEXT);
+        message.setContent(content);
+        message.setStatus(Message.MessageStatus.SENT);
+        message.setIsGroupChat(false);
+        message.setCreatedTime(createdTime);
+        message.setUpdatedTime(createdTime);
+        return message;
+    }
+
+    private MessageDTO messageDto(Long id,
+                                  Long senderId,
+                                  Long receiverId,
+                                  Long groupId,
+                                  String content,
+                                  MessageType messageType,
+                                  LocalDateTime createdTime,
+                                  boolean group) {
+        MessageDTO dto = MessageDTO.builder()
+                .id(id)
+                .senderId(senderId)
+                .receiverId(receiverId)
+                .groupId(groupId)
+                .messageType(messageType)
+                .content(content)
+                .createdTime(createdTime)
+                .senderName(senderId == null ? null : "sender-" + senderId)
+                .receiverName(receiverId == null ? null : "receiver-" + receiverId)
+                .build();
+        dto.setGroup(group);
+        return dto;
     }
 
     private UserDTO user(String id, String username) {

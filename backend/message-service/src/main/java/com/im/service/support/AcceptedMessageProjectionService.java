@@ -18,7 +18,7 @@ public class AcceptedMessageProjectionService {
     private final HotMessageRedisRepository hotMessageRedisRepository;
     private final ConversationCacheUpdater conversationCacheUpdater;
 
-    public void projectAccepted(MessageEvent event) {
+    public void projectAcceptedFirstSeen(MessageEvent event) {
         MessageEvent normalizedEvent = normalizeEvent(event);
         MessageDTO payload = normalizedEvent.getPayload();
         try {
@@ -30,7 +30,7 @@ public class AcceptedMessageProjectionService {
                         normalizedEvent.getMessageId()
                 );
             }
-            conversationCacheUpdater.projectAcceptedMessage(normalizedEvent);
+            conversationCacheUpdater.applyFirstSeenAcceptedMessage(normalizedEvent);
             hotMessageRedisRepository.addPendingPersistMessage(
                     normalizedEvent.getConversationId(),
                     normalizedEvent.getMessageId(),
@@ -40,6 +40,25 @@ public class AcceptedMessageProjectionService {
             throw exception;
         } catch (Exception exception) {
             throw new BusinessException("project accepted message failed", exception);
+        }
+    }
+
+    public void rehydrateAcceptedProjection(MessageDTO message) {
+        MessageDTO normalizedMessage = normalizeMessage(message);
+        try {
+            hotMessageRedisRepository.saveHotMessage(normalizedMessage);
+            if (normalizedMessage.getSenderId() != null && StringUtils.hasText(normalizedMessage.getClientMessageId())) {
+                hotMessageRedisRepository.saveClientMessageMapping(
+                        normalizedMessage.getSenderId(),
+                        normalizedMessage.getClientMessageId(),
+                        normalizedMessage.getId()
+                );
+            }
+            conversationCacheUpdater.rehydrateAcceptedMessage(normalizedMessage);
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new BusinessException("rehydrate accepted projection failed", exception);
         }
     }
 
@@ -60,6 +79,30 @@ public class AcceptedMessageProjectionService {
         event.setClientMsgId(payload.getClientMessageId());
         event.setPayload(payload);
         return event;
+    }
+
+    private MessageDTO normalizeMessage(MessageDTO message) {
+        if (message == null || message.getId() == null) {
+            throw new IllegalArgumentException("message cannot be null");
+        }
+        if (StringUtils.hasText(message.getClientMessageId())) {
+            message.setClientMessageId(message.getClientMessageId().trim());
+        }
+        boolean groupMessage = message.getGroupId() != null
+                || message.isGroup()
+                || Boolean.TRUE.equals(message.getIsGroupChat())
+                || Boolean.TRUE.equals(message.getIsGroupMessage());
+        message.setGroup(groupMessage);
+        if (message.getCreatedTime() == null) {
+            message.setCreatedTime(resolveTimestamp(message));
+        }
+        if (message.getCreatedAt() == null) {
+            message.setCreatedAt(message.getCreatedTime());
+        }
+        if (message.getUpdatedAt() == null) {
+            message.setUpdatedAt(message.getUpdatedTime());
+        }
+        return message;
     }
 
     private MessageDTO resolvePayload(MessageEvent event) {
@@ -189,6 +232,22 @@ public class AcceptedMessageProjectionService {
         }
         if (event.getUpdatedTime() != null) {
             return event.getUpdatedTime();
+        }
+        return LocalDateTime.now();
+    }
+
+    private LocalDateTime resolveTimestamp(MessageDTO message) {
+        if (message.getCreatedTime() != null) {
+            return message.getCreatedTime();
+        }
+        if (message.getCreatedAt() != null) {
+            return message.getCreatedAt();
+        }
+        if (message.getUpdatedTime() != null) {
+            return message.getUpdatedTime();
+        }
+        if (message.getUpdatedAt() != null) {
+            return message.getUpdatedAt();
         }
         return LocalDateTime.now();
     }
