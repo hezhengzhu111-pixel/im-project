@@ -2,11 +2,7 @@ package com.im.consumer;
 
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONException;
-import com.im.dto.MessageDTO;
-import com.im.dto.MessageEvent;
-import com.im.dto.ReadEvent;
-import com.im.dto.ReadReceiptDTO;
-import com.im.dto.StatusChangeEvent;
+import com.im.dto.*;
 import com.im.entity.UserSession;
 import com.im.enums.MessageEventType;
 import com.im.service.IImService;
@@ -23,11 +19,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 @Slf4j
 @Component
@@ -162,12 +154,20 @@ public class GatewayKafkaPusher {
     }
 
     private void pushPrivateMessage(MessageEvent event, MessageDTO message) {
+        Long senderId = firstNonNull(event.getSenderId(), message.getSenderId());
         Long receiverId = firstNonNull(event.getReceiverId(), message.getReceiverId());
-        if (receiverId == null) {
-            log.debug("Skip private Kafka message event without receiver. messageId={}", event.getMessageId());
+        if (receiverId == null && senderId == null) {
+            log.debug("Skip private Kafka message event without sender and receiver. messageId={}", event.getMessageId());
             return;
         }
-        pushMessageToLocalUser(event.getEventType().name(), buildMessageEventKey(event), message, receiverId);
+        String eventType = event.getEventType() == null ? null : event.getEventType().name();
+        String eventKey = buildMessageEventKey(event);
+        if (receiverId != null) {
+            pushMessageToLocalUser(eventType, eventKey, message, receiverId);
+        }
+        if (senderId != null && !senderId.equals(receiverId)) {
+            pushMessageToLocalUser(eventType, eventKey, message, senderId);
+        }
     }
 
     private void pushGroupMessage(MessageEvent event, MessageDTO message) {
@@ -184,11 +184,13 @@ public class GatewayKafkaPusher {
             return;
         }
 
+        String eventType = event.getEventType() == null ? null : event.getEventType().name();
+        String eventKey = buildMessageEventKey(event);
         for (Long memberId : memberIds) {
-            if (memberId == null || memberId.equals(event.getSenderId())) {
+            if (memberId == null) {
                 continue;
             }
-            pushMessageToLocalUser(event.getEventType().name(), buildMessageEventKey(event), message, memberId);
+            pushMessageToLocalUser(eventType, eventKey, message, memberId);
         }
     }
 
