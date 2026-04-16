@@ -102,11 +102,11 @@ const mountList = (messages: Message[], extraProps: Record<string, unknown> = {}
       stubs: {
         MessageItem: {
           name: "MessageItem",
-          props: ["message"],
+          props: ["messageId"],
           emits: ["media-loaded"],
           template: `
-            <div class="message-item-stub" @click="$emit('media-loaded', message)">
-              {{ message.id }}
+            <div class="message-item-stub" @click="$emit('media-loaded', messageId)">
+              {{ messageId }}
             </div>
           `,
         },

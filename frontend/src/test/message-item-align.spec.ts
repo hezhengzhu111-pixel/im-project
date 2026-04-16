@@ -34,35 +34,35 @@ describe("MessageItem alignment", () => {
   it("aligns my message to the right by senderId", () => {
     const wrapper = shallowMount(MessageItem as any, {
       props: {
-        message: {
-          id: "1",
-          senderId: "201",
-          senderName: "test1",
-          messageType: "TEXT",
-          type: "TEXT",
-          content: "test",
-          sendTime: "2026-02-07T10:00:00.000Z",
-        },
-        currentUserId: "201",
+        messageId: "1",
+        renderDigest: "1",
+        isMine: true,
+        isSystemMessage: false,
+        isRecalled: false,
+        isDeleted: false,
+        messageType: "TEXT",
+        content: "test",
+        senderName: "test1",
+        timeLabel: "10:00",
         currentUserName: "test1",
       },
     });
     expect(wrapper.classes()).toContain("is-mine");
   });
 
-  it("aligns my message to the right by senderName fallback when id is unsafe", () => {
+  it("aligns my message to the right when the item view marks it as mine", () => {
     const wrapper = shallowMount(MessageItem as any, {
       props: {
-        message: {
-          id: "1",
-          senderId: 2019997952600182786,
-          senderName: "test1",
-          messageType: "TEXT",
-          type: "TEXT",
-          content: "test",
-          sendTime: "2026-02-07T10:00:00.000Z",
-        },
-        currentUserId: "2019997952600182786",
+        messageId: "2",
+        renderDigest: "2",
+        isMine: true,
+        isSystemMessage: false,
+        isRecalled: false,
+        isDeleted: false,
+        messageType: "TEXT",
+        content: "test",
+        senderName: "test1",
+        timeLabel: "10:00",
         currentUserName: "test1",
       },
     });
@@ -72,17 +72,16 @@ describe("MessageItem alignment", () => {
   it("aligns other user's message to the left", () => {
     const wrapper = shallowMount(MessageItem as any, {
       props: {
-        message: {
-          id: "1",
-          senderId: "202",
-          senderName: "test2",
-          messageType: "TEXT",
-          type: "TEXT",
-          content: "test",
-          sendTime: "2026-02-07T10:00:00.000Z",
-        },
-        currentUserId: "201",
-        currentUserName: "test1",
+        messageId: "3",
+        renderDigest: "3",
+        isMine: false,
+        isSystemMessage: false,
+        isRecalled: false,
+        isDeleted: false,
+        messageType: "TEXT",
+        content: "test",
+        senderName: "test2",
+        timeLabel: "10:00",
       },
     });
     expect(wrapper.classes()).not.toContain("is-mine");

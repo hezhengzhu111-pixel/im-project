@@ -194,7 +194,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref, watch} from "vue";
+import {computed, onUnmounted, ref, watch} from "vue";
 import {Bell, Plus, Search, Top} from "@element-plus/icons-vue";
 import SideNavBar from "@/components/layout/SideNavBar.vue";
 import {useWebSocketStore} from "@/stores/websocket";
@@ -229,11 +229,20 @@ const emit = defineEmits<{
 
 const webSocketStore = useWebSocketStore();
 const localSearchKeyword = ref(props.searchKeyword);
+const debouncedSearchKeyword = ref(props.searchKeyword.trim().toLowerCase());
 const resolvePinyinInitial = ref<((value: string) => string) | null>(null);
+const searchDebounceTimer = ref<ReturnType<typeof setTimeout> | null>(null);
+const sessionFilterCache = new Map<
+  string,
+  { sourceKey: string; preview: string; searchText: string; online: boolean }
+>();
+const contactFilterCache = new Map<
+  string,
+  { sourceKey: string; searchText: string; initial: string }
+>();
+const groupFilterCache = new Map<string, { sourceKey: string; searchText: string }>();
 
-const normalizedSearchKeyword = computed(() =>
-  localSearchKeyword.value.trim().toLowerCase(),
-);
+const normalizedSearchKeyword = computed(() => debouncedSearchKeyword.value);
 
 const panelTitle = computed(() => {
   if (props.activeTab === "contacts") {
@@ -293,6 +302,20 @@ watch(
 );
 
 watch(
+  localSearchKeyword,
+  (value) => {
+    if (searchDebounceTimer.value) {
+      clearTimeout(searchDebounceTimer.value);
+    }
+    searchDebounceTimer.value = setTimeout(() => {
+      debouncedSearchKeyword.value = value.trim().toLowerCase();
+      searchDebounceTimer.value = null;
+    }, 150);
+  },
+  {immediate: true},
+);
+
+watch(
   () => props.activeTab,
   async (tab) => {
     if (tab !== "contacts" || resolvePinyinInitial.value) {
@@ -304,9 +327,16 @@ watch(
         pattern: "first",
         toneType: "none",
       }).toUpperCase();
+    contactFilterCache.clear();
   },
   {immediate: true},
 );
+
+onUnmounted(() => {
+  if (searchDebounceTimer.value) {
+    clearTimeout(searchDebounceTimer.value);
+  }
+});
 
 const formatTime = (time?: string) => {
   if (!time) {
@@ -367,11 +397,32 @@ const sessionPreview = (session: ChatSession, online: boolean) => {
   return "No recent messages";
 };
 
-const sessionItems = computed(() =>
-  props.sessions.map((session) => {
-    const online = isSessionOnline(session);
-    const preview = sessionPreview(session, online);
-    const searchText = [
+const getSessionCacheEntry = (session: ChatSession) => {
+  const sessionId = session.id;
+  const online = isSessionOnline(session);
+  const preview = sessionPreview(session, online);
+  const sourceKey = [
+    session.id,
+    session.targetName,
+    session.targetId,
+    session.lastMessage?.id || "",
+    session.lastMessage?.content || "",
+    session.unreadCount,
+    session.isPinned ? 1 : 0,
+    session.isMuted ? 1 : 0,
+    session.memberCount || 0,
+    session.lastActiveTime,
+    online ? 1 : 0,
+  ].join("|");
+  const cached = sessionFilterCache.get(sessionId);
+  if (cached?.sourceKey === sourceKey) {
+    return cached;
+  }
+
+  const next = {
+    sourceKey,
+    preview,
+    searchText: [
       session.targetName,
       preview,
       session.conversationName,
@@ -379,13 +430,21 @@ const sessionItems = computed(() =>
     ]
       .filter(Boolean)
       .join(" ")
-      .toLowerCase();
+      .toLowerCase(),
+    online,
+  };
+  sessionFilterCache.set(sessionId, next);
+  return next;
+};
 
+const sessionItems = computed(() =>
+  props.sessions.map((session) => {
+    const cached = getSessionCacheEntry(session);
     return {
       session,
-      online,
-      preview,
-      searchText,
+      online: cached.online,
+      preview: cached.preview,
+      searchText: cached.searchText,
     };
   }),
 );
@@ -399,30 +458,56 @@ const filteredSessionItems = computed(() => {
   );
 });
 
+const resolveContactInitial = (name: string) => {
+  let initial = name.charAt(0).toUpperCase();
+  if (/[\u4e00-\u9fa5]/.test(initial) && resolvePinyinInitial.value) {
+    initial = resolvePinyinInitial.value(initial);
+  }
+  if (!/[A-Z]/.test(initial)) {
+    initial = "#";
+  }
+  return initial;
+};
+
+const getContactCacheEntry = (contact: Friend) => {
+  const contactId = contact.friendId;
+  const displayName = contact.nickname || contact.username || contact.friendId || "";
+  const sourceKey = [
+    contact.friendId,
+    contact.nickname,
+    contact.username,
+    contact.remark,
+  ].join("|");
+  const cached = contactFilterCache.get(contactId);
+  if (cached?.sourceKey === sourceKey) {
+    return cached;
+  }
+
+  const next = {
+    sourceKey,
+    searchText: [contact.nickname, contact.username, contact.friendId, contact.remark]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase(),
+    initial: resolveContactInitial(displayName),
+  };
+  contactFilterCache.set(contactId, next);
+  return next;
+};
+
 const filteredContacts = computed(() => {
   if (!normalizedSearchKeyword.value) {
     return props.friends;
   }
   return props.friends.filter((contact) =>
-    [contact.nickname, contact.username, contact.friendId, contact.remark]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase()
-      .includes(normalizedSearchKeyword.value),
+    getContactCacheEntry(contact).searchText.includes(normalizedSearchKeyword.value),
   );
 });
 
 const groupedContacts = computed(() => {
   const groups = new Map<string, Friend[]>();
   filteredContacts.value.forEach((contact) => {
-    const name = contact.nickname || contact.username || contact.friendId || "";
-    let firstChar = name.charAt(0).toUpperCase();
-    if (/[\u4e00-\u9fa5]/.test(firstChar) && resolvePinyinInitial.value) {
-      firstChar = resolvePinyinInitial.value(firstChar);
-    }
-    if (!/[A-Z]/.test(firstChar)) {
-      firstChar = "#";
-    }
+    const firstChar = getContactCacheEntry(contact).initial;
     groups.set(firstChar, [...(groups.get(firstChar) || []), contact]);
   });
 
@@ -435,16 +520,30 @@ const groupedContacts = computed(() => {
     .map(([key, contacts]) => ({key, contacts}));
 });
 
+const getGroupCacheEntry = (group: Group) => {
+  const groupId = String(group.id);
+  const sourceKey = [group.id, group.groupName, group.name, group.memberCount || 0].join("|");
+  const cached = groupFilterCache.get(groupId);
+  if (cached?.sourceKey === sourceKey) {
+    return cached;
+  }
+  const next = {
+    sourceKey,
+    searchText: [group.groupName, group.name, group.id]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase(),
+  };
+  groupFilterCache.set(groupId, next);
+  return next;
+};
+
 const filteredGroups = computed(() => {
   if (!normalizedSearchKeyword.value) {
     return props.groups;
   }
   return props.groups.filter((group) =>
-    [group.groupName, group.name, group.id]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase()
-      .includes(normalizedSearchKeyword.value),
+    getGroupCacheEntry(group).searchText.includes(normalizedSearchKeyword.value),
   );
 });
 </script>

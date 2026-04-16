@@ -39,6 +39,21 @@ export const useWebSocketStore = defineStore("websocket", () => {
   const manualDisconnect = ref(false);
   const incomingProcessing = ref<Promise<void>>(Promise.resolve());
   const recentMessageIds = ref<Map<string, number>>(new Map());
+  const pendingContactRefresh = ref<{
+    loadFriendRequests: boolean;
+    loadFriends: boolean;
+    loadSessions: boolean;
+    notificationTitle: string;
+    notificationMessage: string;
+    notificationType: "info" | "success";
+  }>({
+    loadFriendRequests: false,
+    loadFriends: false,
+    loadSessions: false,
+    notificationTitle: "",
+    notificationMessage: "",
+    notificationType: "info",
+  });
 
   const createAsyncDebounce = <TArgs extends unknown[]>(
     handler: (...args: TArgs) => Promise<void>,
@@ -144,54 +159,70 @@ export const useWebSocketStore = defineStore("websocket", () => {
     return normalizedMessageType !== "SYSTEM";
   };
 
-  const debouncedRefreshFriendRequests = createAsyncDebounce(
-    async (messageText: string) => {
-      const chatStore = useChatStore();
-      // OPTIMIZE: 对连续系统通知做防抖，避免短时间内重复请求好友申请接口。
-      await chatStore.loadFriendRequests();
-      ElNotification({
-        title: "Friend notification",
-        message: messageText || "Received a new friend request",
-        type: "info",
-        duration: 3000,
-      });
-    },
-    FRIEND_REFRESH_DEBOUNCE_MS,
-  );
+  const debouncedRefreshContactData = createAsyncDebounce(async () => {
+    const chatStore = useChatStore();
+    const pending = pendingContactRefresh.value;
 
-  const debouncedRefreshFriendList = createAsyncDebounce(
-    async (messageText: string) => {
-      const chatStore = useChatStore();
-      // OPTIMIZE: 对连续系统通知做防抖，避免短时间内重复刷新好友列表与会话列表。
-      await Promise.all([chatStore.loadFriends(), chatStore.loadSessions()]);
-      ElNotification({
-        title: "Friend notification",
-        message: messageText || "Friend list updated",
-        type: "success",
-        duration: 3000,
-      });
-    },
-    FRIEND_REFRESH_DEBOUNCE_MS,
-  );
+    pendingContactRefresh.value = {
+      loadFriendRequests: false,
+      loadFriends: false,
+      loadSessions: false,
+      notificationTitle: "",
+      notificationMessage: "",
+      notificationType: "info",
+    };
 
-  const debouncedRefreshFriendData = createAsyncDebounce(
-    async (messageText: string) => {
-      const chatStore = useChatStore();
-      // OPTIMIZE: 对好友关系相关系统消息做防抖，避免瞬时通知风暴压垮前端 API。
-      await Promise.all([
-        chatStore.loadFriendRequests(),
-        chatStore.loadFriends(),
-        chatStore.loadSessions(),
-      ]);
+    const tasks: Promise<unknown>[] = [];
+    if (pending.loadFriendRequests) {
+      tasks.push(chatStore.loadFriendRequests());
+    }
+    if (pending.loadFriends) {
+      tasks.push(chatStore.loadFriends());
+    }
+    if (pending.loadSessions) {
+      tasks.push(
+        chatStore.refreshSessionSkeletons({force: true, refreshPresence: false}),
+      );
+    }
+
+    if (tasks.length > 0) {
+      await Promise.all(tasks);
+    }
+
+    if (pending.notificationMessage) {
       ElNotification({
-        title: "System notification",
-        message: messageText,
-        type: "info",
+        title: pending.notificationTitle || "System notification",
+        message: pending.notificationMessage,
+        type: pending.notificationType,
         duration: 3000,
       });
-    },
-    FRIEND_REFRESH_DEBOUNCE_MS,
-  );
+    }
+  }, FRIEND_REFRESH_DEBOUNCE_MS);
+
+  const queueContactRefresh = async (options: {
+    loadFriendRequests?: boolean;
+    loadFriends?: boolean;
+    loadSessions?: boolean;
+    notificationTitle?: string;
+    notificationMessage?: string;
+    notificationType?: "info" | "success";
+  }) => {
+    pendingContactRefresh.value = {
+      loadFriendRequests:
+        pendingContactRefresh.value.loadFriendRequests || Boolean(options.loadFriendRequests),
+      loadFriends:
+        pendingContactRefresh.value.loadFriends || Boolean(options.loadFriends),
+      loadSessions:
+        pendingContactRefresh.value.loadSessions || Boolean(options.loadSessions),
+      notificationTitle:
+        options.notificationTitle || pendingContactRefresh.value.notificationTitle,
+      notificationMessage:
+        options.notificationMessage || pendingContactRefresh.value.notificationMessage,
+      notificationType:
+        options.notificationType || pendingContactRefresh.value.notificationType,
+    };
+    await debouncedRefreshContactData();
+  };
 
   const connectionStatus = computed(() => {
     if (isConnecting.value) return "connecting";
@@ -293,16 +324,10 @@ export const useWebSocketStore = defineStore("websocket", () => {
         stopReconnect();
         saveConnectionCache(userId);
         startHeartbeat();
-        void refreshKnownOnlineStatus().catch((error) => {
-          logger.warn("failed to refresh known online status", error);
-        });
-        void useChatStore().syncOfflineMessages({
-          refreshSessions: true,
-          batchSize: 3,
-          batchDelayMs: 150,
-          loadSize: 50,
+        void useChatStore().scheduleRealtimeResume({
+          forceSessionRefresh: false,
         }).catch((error) => {
-          logger.warn("failed to sync offline messages", error);
+          logger.warn("failed to resume realtime sync", error);
         });
       };
 
@@ -389,7 +414,14 @@ export const useWebSocketStore = defineStore("websocket", () => {
             content.toLowerCase().includes("friend request");
 
           if (shouldRefreshFriendData) {
-            await debouncedRefreshFriendData(content);
+            await queueContactRefresh({
+              loadFriendRequests: true,
+              loadFriends: true,
+              loadSessions: true,
+              notificationTitle: "System notification",
+              notificationMessage: content,
+              notificationType: "info",
+            });
           }
           return;
         }
@@ -440,13 +472,22 @@ export const useWebSocketStore = defineStore("websocket", () => {
           : [content, ""];
 
         if (command === "REFRESH_FRIEND_REQUESTS") {
-          await debouncedRefreshFriendRequests(
-            messageText || "Received a new friend request",
-          );
+          await queueContactRefresh({
+            loadFriendRequests: true,
+            notificationTitle: "Friend notification",
+            notificationMessage: messageText || "Received a new friend request",
+            notificationType: "info",
+          });
           return;
         }
         if (command === "REFRESH_FRIEND_LIST") {
-          await debouncedRefreshFriendList(messageText || "Friend list updated");
+          await queueContactRefresh({
+            loadFriends: true,
+            loadSessions: true,
+            notificationTitle: "Friend notification",
+            notificationMessage: messageText || "Friend list updated",
+            notificationType: "success",
+          });
           return;
         }
         if (systemMessage.message) {

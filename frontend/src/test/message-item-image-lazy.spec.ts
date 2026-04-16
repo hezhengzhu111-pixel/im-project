@@ -1,7 +1,6 @@
 import {mount} from "@vue/test-utils";
 import {describe, expect, it, vi} from "vitest";
 import MessageItem from "@/features/chat/ChatMessageItem.vue";
-import type {Message} from "@/types";
 
 vi.mock("element-plus", () => ({
   ElAvatar: { name: "ElAvatar", template: "<div><slot /></div>" },
@@ -39,17 +38,18 @@ vi.mock("@element-plus/icons-vue", () => ({
   VideoPause: { template: "<span />" },
 }));
 
-const imageMessage: Message = {
-  id: "10",
-  senderId: "2",
-  senderName: "sender",
-  receiverId: "1",
-  isGroupChat: false,
-  messageType: "IMAGE",
+const baseProps = {
+  messageId: "10",
+  renderDigest: "10",
+  isMine: false,
+  isSystemMessage: false,
+  isRecalled: false,
+  isDeleted: false,
+  messageType: "IMAGE" as const,
   content: "https://example.com/fallback.png",
   mediaUrl: "https://example.com/image.png",
-  sendTime: "2026-04-14T10:00:00.000Z",
-  status: "SENT",
+  senderName: "sender",
+  timeLabel: "10:00",
 };
 
 describe("MessageItem image lazy loading", () => {
@@ -57,8 +57,7 @@ describe("MessageItem image lazy loading", () => {
     const scrollContainer = document.createElement("div");
     const wrapper = mount(MessageItem, {
       props: {
-        message: imageMessage,
-        currentUserId: "1",
+        ...baseProps,
         imageScrollContainer: scrollContainer,
       },
     });
@@ -67,24 +66,23 @@ describe("MessageItem image lazy loading", () => {
 
     expect(image.props("lazy")).toBe(true);
     expect(image.props("scrollContainer")).toBe(scrollContainer);
-    expect(image.props("src")).toBe(imageMessage.mediaUrl);
+    expect(image.props("src")).toBe(baseProps.mediaUrl);
 
     image.vm.$emit("load");
     await wrapper.vm.$nextTick();
 
-    expect(wrapper.emitted("media-loaded")?.[0]).toEqual([imageMessage]);
+    expect(wrapper.emitted("media-loaded")?.[0]).toEqual([baseProps.messageId]);
   });
 
   it("renders system messages as a centered pill", () => {
     const wrapper = mount(MessageItem, {
       props: {
-        message: {
-          ...imageMessage,
-          id: "system-1",
-          messageType: "SYSTEM",
+        ...baseProps,
+        messageId: "system-1",
+        renderDigest: "system-1",
+        isSystemMessage: true,
+        messageType: "SYSTEM",
           content: "You joined the conversation",
-        },
-        currentUserId: "1",
       },
     });
 
@@ -94,14 +92,12 @@ describe("MessageItem image lazy loading", () => {
   it("renders file and voice messages with unified attachment cards", () => {
     const wrapper = mount(MessageItem, {
       props: {
-        message: {
-          ...imageMessage,
-          id: "file-1",
-          messageType: "FILE",
-          mediaName: "brief.pdf",
-          mediaSize: 4096,
-        },
-        currentUserId: "1",
+        ...baseProps,
+        messageId: "file-1",
+        renderDigest: "file-1",
+        messageType: "FILE",
+        fileName: "brief.pdf",
+        fileSizeLabel: "4 KB",
       },
     });
 
@@ -109,13 +105,11 @@ describe("MessageItem image lazy loading", () => {
 
     const voiceWrapper = mount(MessageItem, {
       props: {
-        message: {
-          ...imageMessage,
-          id: "voice-1",
-          messageType: "VOICE",
-          duration: 8,
-        },
-        currentUserId: "1",
+        ...baseProps,
+        messageId: "voice-1",
+        renderDigest: "voice-1",
+        messageType: "VOICE",
+        durationLabel: "0:08",
       },
     });
 
