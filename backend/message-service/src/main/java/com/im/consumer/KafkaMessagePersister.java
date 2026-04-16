@@ -4,6 +4,7 @@ import com.im.dto.MessageEvent;
 import com.im.enums.MessageEventType;
 import com.im.message.entity.Message;
 import com.im.service.MessagePersistenceService;
+import com.im.service.support.PersistenceWatermarkService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -23,6 +24,7 @@ import java.util.Objects;
 public class KafkaMessagePersister {
 
     private final MessagePersistenceService messagePersistenceService;
+    private final PersistenceWatermarkService persistenceWatermarkService;
 
     @KafkaListener(
             topics = "${im.kafka.chat-topic:im-chat-topic}",
@@ -45,21 +47,21 @@ public class KafkaMessagePersister {
             return;
         }
 
-        List<PersistCandidate> persistedCandidates;
         try {
-            persistedCandidates = saveBatch(candidates);
+            List<PersistCandidate> persistedCandidates = saveBatch(candidates);
+            markPersistedBatch(persistedCandidates);
             log.info("Persisted Kafka message batch. recordCount={}, messageCount={}",
                     records.size(), persistedCandidates.size());
         } catch (DuplicateKeyException duplicate) {
-            persistedCandidates = saveIndividually(candidates);
+            List<PersistOutcome> persistedCandidates = saveIndividually(candidates);
+            markPersistedOutcomes(persistedCandidates);
             log.debug("Handled duplicate Kafka message batch with single-row fallback. recordCount={}, messageCount={}, persistedCount={}",
-                    records.size(), candidates.size(), persistedCandidates.size());
+                    records.size(), candidates.size(), countPersisted(persistedCandidates));
         } catch (Exception exception) {
             log.error("Failed to persist Kafka message batch. recordCount={}, messageCount={}",
                     records.size(), candidates.size(), exception);
             throw exception;
         }
-
     }
 
     private Message toMessage(MessageEvent event) {
@@ -111,23 +113,73 @@ public class KafkaMessagePersister {
         return candidates;
     }
 
-    private List<PersistCandidate> saveIndividually(List<PersistCandidate> candidates) {
-        List<PersistCandidate> persisted = new ArrayList<>();
+    private List<PersistOutcome> saveIndividually(List<PersistCandidate> candidates) {
+        List<PersistOutcome> persisted = new ArrayList<>();
         for (PersistCandidate candidate : candidates) {
             try {
                 boolean saved = messagePersistenceService.save(candidate.message());
                 if (!saved) {
                     throw new IllegalStateException("save returned false");
                 }
-                persisted.add(candidate);
+                persisted.add(new PersistOutcome(candidate.event(), candidate.message(), true));
             } catch (DuplicateKeyException duplicate) {
-                log.debug("Ignore duplicate Kafka message event. messageId={}, clientMessageId={}",
+                log.debug("Treat duplicate Kafka message event as already persisted. messageId={}, clientMessageId={}",
                         candidate.message().getId(), candidate.message().getClientMessageId());
+                persisted.add(new PersistOutcome(candidate.event(), candidate.message(), true));
             }
         }
         return persisted;
     }
 
+    private void markPersistedBatch(List<PersistCandidate> candidates) {
+        for (PersistCandidate candidate : candidates) {
+            persistenceWatermarkService.markPersisted(
+                    resolveConversationId(candidate.event()),
+                    candidate.message().getId()
+            );
+        }
+    }
+
+    private void markPersistedOutcomes(List<PersistOutcome> outcomes) {
+        for (PersistOutcome outcome : outcomes) {
+            if (!outcome.persistedOrAlreadyExists()) {
+                continue;
+            }
+            persistenceWatermarkService.markPersisted(
+                    resolveConversationId(outcome.event()),
+                    outcome.message().getId()
+            );
+        }
+    }
+
+    private long countPersisted(List<PersistOutcome> outcomes) {
+        return outcomes.stream().filter(PersistOutcome::persistedOrAlreadyExists).count();
+    }
+
+    private String resolveConversationId(MessageEvent event) {
+        if (event == null) {
+            throw new IllegalArgumentException("message event cannot be null");
+        }
+        if (StringUtils.hasText(event.getConversationId())) {
+            return event.getConversationId().trim();
+        }
+        if (event.getGroupId() != null || Boolean.TRUE.equals(event.getGroup())) {
+            if (event.getGroupId() == null) {
+                throw new IllegalArgumentException("groupId cannot be null for group message");
+            }
+            return "g_" + event.getGroupId();
+        }
+        if (event.getSenderId() == null || event.getReceiverId() == null) {
+            throw new IllegalArgumentException("senderId and receiverId cannot be null for private message");
+        }
+        long min = Math.min(event.getSenderId(), event.getReceiverId());
+        long max = Math.max(event.getSenderId(), event.getReceiverId());
+        return "p_" + min + "_" + max;
+    }
+
     private record PersistCandidate(MessageEvent event, Message message) {
+    }
+
+    private record PersistOutcome(MessageEvent event, Message message, boolean persistedOrAlreadyExists) {
     }
 }

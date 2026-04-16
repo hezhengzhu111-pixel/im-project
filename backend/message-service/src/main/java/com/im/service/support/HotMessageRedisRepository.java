@@ -4,6 +4,8 @@ import com.im.dto.MessageDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -19,6 +21,27 @@ import java.util.stream.Collectors;
 @Component
 @RequiredArgsConstructor
 public class HotMessageRedisRepository {
+
+    private static final RedisScript<Long> PERSISTED_WATERMARK_UPDATE_SCRIPT = new DefaultRedisScript<>(
+            """
+                    local current = redis.call('GET', KEYS[1])
+                    local next = tonumber(ARGV[1])
+                    local ttl = tonumber(ARGV[2])
+                    if (not current) then
+                      redis.call('SET', KEYS[1], tostring(next))
+                      redis.call('EXPIRE', KEYS[1], ttl)
+                      return next
+                    end
+                    current = tonumber(current)
+                    if next > current then
+                      current = next
+                      redis.call('SET', KEYS[1], tostring(current))
+                    end
+                    redis.call('EXPIRE', KEYS[1], ttl)
+                    return current
+                    """,
+            Long.class
+    );
 
     private final RedisTemplate<String, Object> redisTemplate;
 
@@ -42,6 +65,12 @@ public class HotMessageRedisRepository {
 
     @Value("${im.message.pending-persist.ttl-seconds:86400}")
     private long pendingPersistTtlSeconds;
+
+    @Value("${im.message.persisted-watermark.key-prefix:conversation:persisted:watermark:}")
+    private String persistedWatermarkKeyPrefix;
+
+    @Value("${im.message.persisted-watermark.ttl-seconds:86400}")
+    private long persistedWatermarkTtlSeconds;
 
     @Value("${im.message.conversation-cache.last-message-key-prefix:last_message:}")
     private String lastMessageKeyPrefix;
@@ -141,6 +170,80 @@ public class HotMessageRedisRepository {
         return score != null;
     }
 
+    public void removePendingPersistMessage(String conversationId, Long messageId) {
+        if (!StringUtils.hasText(conversationId) || messageId == null) {
+            return;
+        }
+        redisTemplate.opsForZSet().remove(pendingPersistKeyPrefix + conversationId.trim(), messageId);
+    }
+
+    public List<Long> listPendingPersistMessageIds(String conversationId, int limit) {
+        if (!StringUtils.hasText(conversationId) || limit <= 0) {
+            return List.of();
+        }
+        Set<Object> values = redisTemplate.opsForZSet().range(
+                pendingPersistKeyPrefix + conversationId.trim(),
+                0,
+                Math.max(0, limit - 1)
+        );
+        return toMessageIds(values);
+    }
+
+    public List<Long> listPendingPersistMessageIdsBefore(String conversationId, long scoreInclusiveUpperBound, int limit) {
+        if (!StringUtils.hasText(conversationId) || limit <= 0) {
+            return List.of();
+        }
+        Set<Object> values = redisTemplate.opsForZSet().rangeByScore(
+                pendingPersistKeyPrefix + conversationId.trim(),
+                Double.NEGATIVE_INFINITY,
+                scoreInclusiveUpperBound,
+                0,
+                limit
+        );
+        return toMessageIds(values);
+    }
+
+    public List<String> listPendingPersistConversationIds() {
+        Set<String> keys = redisTemplate.keys(pendingPersistKeyPrefix + "*");
+        if (keys == null || keys.isEmpty()) {
+            return List.of();
+        }
+        return keys.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .filter(key -> key.startsWith(pendingPersistKeyPrefix))
+                .map(key -> key.substring(pendingPersistKeyPrefix.length()))
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+    }
+
+    public void savePersistedWatermark(String conversationId, Long messageId) {
+        if (!StringUtils.hasText(conversationId) || messageId == null) {
+            return;
+        }
+        redisTemplate.execute(
+                PERSISTED_WATERMARK_UPDATE_SCRIPT,
+                List.of(persistedWatermarkKeyPrefix + conversationId.trim()),
+                Long.toString(messageId),
+                Long.toString(resolvePersistedWatermarkTtlSeconds())
+        );
+    }
+
+    public Long getPersistedWatermark(String conversationId) {
+        if (!StringUtils.hasText(conversationId)) {
+            return null;
+        }
+        Object value = redisTemplate.opsForValue().get(persistedWatermarkKeyPrefix + conversationId.trim());
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value instanceof String text && StringUtils.hasText(text)) {
+            return Long.valueOf(text.trim());
+        }
+        return null;
+    }
+
     public List<String> getConversationIdsForUser(Long userId, int limit) {
         if (userId == null || limit <= 0) {
             return List.of();
@@ -211,6 +314,20 @@ public class HotMessageRedisRepository {
         return messages;
     }
 
+    private List<Long> toMessageIds(Set<Object> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        List<Long> messageIds = new ArrayList<>(values.size());
+        for (Object value : values) {
+            Long messageId = toMessageId(value);
+            if (messageId != null) {
+                messageIds.add(messageId);
+            }
+        }
+        return messageIds;
+    }
+
     private Long toMessageId(Object value) {
         if (value instanceof Number number) {
             return number.longValue();
@@ -236,6 +353,10 @@ public class HotMessageRedisRepository {
 
     private long resolvePendingPersistTtlSeconds() {
         return Math.max(resolveHotMessageTtlSeconds(), pendingPersistTtlSeconds);
+    }
+
+    private long resolvePersistedWatermarkTtlSeconds() {
+        return Math.max(60L, persistedWatermarkTtlSeconds);
     }
 
     private long resolveConversationRecentMaxSize() {
