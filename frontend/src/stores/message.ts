@@ -1,22 +1,15 @@
-import { computed, ref } from "vue";
-import { defineStore } from "pinia";
-import { ElMessage } from "element-plus";
-import { messageService } from "@/services/message";
-import { messageRepo } from "@/utils/messageRepo";
-import { normalizeReadReceipt, splitTextByCodePoints } from "@/utils/messageNormalize";
-import { safePreferExistingId, toBigIntId, buildSessionId } from "@/normalizers/chat";
-import type {
-  ChatSession,
-  Message,
-  MessageConfig,
-  MessageSearchResult,
-  MessageType,
-  ReadReceipt,
-} from "@/types";
-import { useUserStore } from "@/stores/user";
-import { useSessionStore } from "@/stores/session";
-import { useGroupStore } from "@/stores/group";
-import { STORAGE_CONFIG } from "@/config";
+import {computed, ref} from "vue";
+import {defineStore} from "pinia";
+import {ElMessage} from "element-plus";
+import {messageService} from "@/services/message";
+import {messageRepo} from "@/utils/messageRepo";
+import {normalizeReadReceipt, splitTextByCodePoints} from "@/utils/messageNormalize";
+import {buildSessionId, safePreferExistingId, toBigIntId} from "@/normalizers/chat";
+import type {ChatSession, Message, MessageConfig, MessageSearchResult, MessageType, ReadReceipt,} from "@/types";
+import {useUserStore} from "@/stores/user";
+import {useSessionStore} from "@/stores/session";
+import {useGroupStore} from "@/stores/group";
+import {STORAGE_CONFIG} from "@/config";
 
 const DEFAULT_MESSAGE_CONFIG: MessageConfig = {
   textEnforce: true,
@@ -37,6 +30,60 @@ const messageIdentityValues = (message: Message): string[] => {
 const hasSameMessageIdentity = (left: Message, right: Message): boolean => {
   const rightValues = new Set(messageIdentityValues(right));
   return messageIdentityValues(left).some((item) => rightValues.has(item));
+};
+
+const messageTimeValue = (message: Message): number => {
+  const value = new Date(message.sendTime).getTime();
+  return Number.isFinite(value) ? value : 0;
+};
+
+const sortMessagesAscending = (left: Message, right: Message): number => {
+  const timeDiff = messageTimeValue(left) - messageTimeValue(right);
+  if (timeDiff !== 0) {
+    return timeDiff;
+  }
+  return String(left.id || "").localeCompare(String(right.id || ""));
+};
+
+const mergeMessagesChronologically = (...lists: Message[][]): Message[] => {
+  const merged: Message[] = [];
+  const identityIndex = new Map<string, number>();
+
+  const indexMessage = (message: Message, index: number) => {
+    messageIdentityValues(message).forEach((identity) => {
+      identityIndex.set(identity, index);
+    });
+  };
+
+  const upsertMessage = (message: Message) => {
+    const identities = messageIdentityValues(message);
+    const matchedIndex = identities.find((identity) => identityIndex.has(identity));
+    if (matchedIndex) {
+      const index = identityIndex.get(matchedIndex);
+      if (index != null) {
+        const previous = merged[index];
+        const nextMessage = {
+          ...previous,
+          ...message,
+          id: safePreferExistingId(message.id, previous.id),
+        };
+        merged[index] = nextMessage;
+        indexMessage(nextMessage, index);
+        return;
+      }
+    }
+
+    merged.push(message);
+    indexMessage(message, merged.length - 1);
+  };
+
+  lists.forEach((list) => {
+    list.forEach((message) => {
+      upsertMessage(message);
+    });
+  });
+
+  return merged.sort(sortMessagesAscending);
 };
 
 const readPersistedClearMarkers = (): Record<string, ConversationClearMarker> => {
@@ -275,11 +322,7 @@ export const useMessageStore = defineStore("message", () => {
               });
       }
 
-      const normalizedMessages = response.data.slice().sort((left, right) => {
-        return (
-          new Date(left.sendTime).getTime() - new Date(right.sendTime).getTime()
-        );
-      });
+      const normalizedMessages = response.data.slice().sort(sortMessagesAscending);
       const visibleMessages = filterClearedMessages(sessionId, normalizedMessages);
 
       if (page === 0) {
@@ -289,21 +332,14 @@ export const useMessageStore = defineStore("message", () => {
         const serverMessages = existingMessages.filter(
           (message) => !String(message.id).startsWith("local_"),
         );
-        const mergedSource = maxServerId != null
-          ? [...serverMessages, ...visibleMessages]
-          : visibleMessages;
-        const byId = new Map<string, Message>();
-        for (const message of mergedSource) {
-          byId.set(String(message.id), message);
-        }
-        const merged = [...byId.values(), ...pending].sort((left, right) => {
-          return (
-            new Date(left.sendTime).getTime() -
-            new Date(right.sendTime).getTime()
-          );
-        });
+        const merged = mergeMessagesChronologically(
+          pending,
+          serverMessages,
+          visibleMessages,
+        );
         const serverClientIds = new Set(
-          visibleMessages
+          merged
+            .filter((message) => !String(message.id).startsWith("local_"))
             .map((message) => message.clientMessageId)
             .filter((item): item is string => Boolean(item)),
         );
@@ -320,13 +356,9 @@ export const useMessageStore = defineStore("message", () => {
           }),
         );
       } else {
-        const merged = [...visibleMessages, ...existingMessages].sort(
-          (left, right) => {
-            return (
-              new Date(left.sendTime).getTime() -
-              new Date(right.sendTime).getTime()
-            );
-          },
+        const merged = mergeMessagesChronologically(
+          existingMessages,
+          visibleMessages,
         );
         messages.value.set(sessionId, merged);
       }
@@ -404,9 +436,7 @@ export const useMessageStore = defineStore("message", () => {
     } else {
       list.push(message);
     }
-    list.sort((left, right) => {
-      return new Date(left.sendTime).getTime() - new Date(right.sendTime).getTime();
-    });
+    list.sort(sortMessagesAscending);
     messages.value.set(sessionId, list);
     const isSelfMessage = message.senderId === String(userStore.userId || "");
     sessionStore.applyMessageToSession(sessionId, message, {

@@ -1,20 +1,8 @@
-import {
-  normalizeConversation,
-  safePreferExistingId,
-} from "@/normalizers/chat";
-import {
-  normalizeMessage,
-  normalizeMessageConfig,
-} from "@/normalizers/message";
-import { http } from "@/utils/request";
-import type { ApiResponse } from "@/types/api";
-import type {
-  ChatSession,
-  Message,
-  MessageConfig,
-  SendGroupMessageRequest,
-  SendPrivateMessageRequest,
-} from "@/types";
+import {normalizeConversation, safePreferExistingId,} from "@/normalizers/chat";
+import {normalizeMessage, normalizeMessageConfig,} from "@/normalizers/message";
+import {http} from "@/utils/request";
+import type {ApiResponse} from "@/types/api";
+import type {ChatSession, Message, MessageConfig, SendGroupMessageRequest, SendPrivateMessageRequest,} from "@/types";
 
 const normalizeMessages = (raw: unknown): Message[] => {
   if (!Array.isArray(raw)) {
@@ -89,10 +77,20 @@ export const messageService = {
     } as ApiResponse<Message[]>;
   },
   markRead: (conversationId: string) => http.post(`/message/read/${conversationId}`),
-  recallMessage: (messageId: string) =>
-    http.post<Message>(`/message/recall/${messageId}`),
-  deleteMessage: (messageId: string) =>
-    http.post<Message>(`/message/delete/${messageId}`),
+  async recallMessage(messageId: string): Promise<ApiResponse<Message>> {
+    const response = await http.post<unknown>(`/message/recall/${messageId}`);
+    return {
+      ...response,
+      data: normalizeMessage(response.data, new Date().toISOString()),
+    } as ApiResponse<Message>;
+  },
+  async deleteMessage(messageId: string): Promise<ApiResponse<Message>> {
+    const response = await http.post<unknown>(`/message/delete/${messageId}`);
+    return {
+      ...response,
+      data: normalizeMessage(response.data, new Date().toISOString()),
+    } as ApiResponse<Message>;
+  },
   async getConversations(currentUserId: string): Promise<ApiResponse<ChatSession[]>> {
     const response = await http.get<unknown[]>("/message/conversations");
     const data = Array.isArray(response.data)

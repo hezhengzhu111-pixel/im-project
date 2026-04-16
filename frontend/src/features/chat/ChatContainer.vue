@@ -1,6 +1,7 @@
 <template>
   <div class="chat-container">
     <ChatSidebarPanel
+      class="chat-sidebar"
       :active-tab="activeTab"
       :sessions="chatStore.sortedSessions"
       :current-session-id="currentSession?.id"
@@ -20,39 +21,65 @@
 
     <div class="chat-main" :class="{ 'active-mobile': isChatActiveOnMobile }">
       <div v-if="!currentSession" class="chat-welcome">
-        <div class="welcome-content">
-          <el-icon :size="60" color="#dcdfe6"><ChatDotRound /></el-icon>
-          <p>微信，连接你我他</p>
+        <div class="welcome-shell">
+          <div class="welcome-orb"></div>
+          <div class="welcome-card">
+            <el-icon class="welcome-icon" :size="60"><ChatDotRound /></el-icon>
+            <div class="welcome-title">Bring every conversation together</div>
+            <div class="welcome-text">
+              Pick a chat on the left, or start a new conversation from contacts or groups.
+            </div>
+            <div class="welcome-status">
+              <span class="connection-dot" :class="connectionStatus"></span>
+              <span>{{ connectionStatusLabel }}</span>
+            </div>
+          </div>
         </div>
       </div>
 
       <div v-else class="chat-content">
         <div class="chat-header">
-          <div class="mobile-back" @click="chatStore.clearCurrentSession()">
+          <button
+            type="button"
+            class="mobile-back interactive-reset"
+            @click="chatStore.clearCurrentSession()"
+          >
             <el-icon><ArrowLeft /></el-icon>
-          </div>
+          </button>
+
           <div class="chat-title">
             <div class="chat-title-main">
-              {{ currentSession.targetName }}
-              <span v-if="currentSession.type === 'group'">
-                ({{ currentSession.memberCount || 0 }})
+              <span class="chat-title-text">{{ currentSession.targetName }}</span>
+              <span v-if="currentSession.type === 'group'" class="chat-title-count">
+                {{ currentSession.memberCount || 0 }} members
               </span>
             </div>
-            <div
-              v-if="currentSession.type === 'private'"
-              class="chat-presence"
-              :class="{ online: currentSessionOnline }"
-            >
-              {{ currentSessionOnline ? "在线" : "离线" }}
+            <div class="chat-subtitle">
+              <span
+                v-if="currentSession.type === 'private'"
+                class="chat-presence"
+                :class="{ online: currentSessionOnline }"
+              >
+                {{ currentSessionOnline ? "Online now" : "Offline" }}
+              </span>
+              <span class="connection-pill" :class="connectionStatus">
+                {{ connectionStatusLabel }}
+              </span>
             </div>
           </div>
+
           <div class="chat-actions">
             <el-dropdown trigger="click" @command="handleSessionAction">
-              <el-button link :icon="MoreFilled" aria-label="更多选项" />
+              <el-button
+                link
+                :icon="MoreFilled"
+                aria-label="More actions"
+                class="action-trigger"
+              />
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="clear-history">
-                    清空聊天记录
+                    Clear chat history
                   </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -65,6 +92,7 @@
           :current-user-id="String(userStore.userId)"
           :current-user-name="userStore.userInfo?.username || userStore.nickname"
           :current-user-avatar="userStore.avatar"
+          :loading-history="loadingMoreHistory"
           @request-history="loadMoreHistory"
           @mark-read="tryAckRead"
           @show-group-readers="openGroupReadDialog"
@@ -88,18 +116,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
-import { ArrowLeft, ChatDotRound, MoreFilled } from "@element-plus/icons-vue";
-import { ElMessageBox } from "element-plus";
+import {computed, onMounted, onUnmounted, ref} from "vue";
+import {ArrowLeft, ChatDotRound, MoreFilled} from "@element-plus/icons-vue";
+import {ElMessageBox} from "element-plus";
 import ChatComposer from "@/features/chat/ChatComposer.vue";
 import ChatDialogs from "@/features/chat/ChatDialogs.vue";
 import ChatMessageList from "@/features/chat/ChatMessageList.vue";
 import ChatSidebarPanel from "@/features/chat/ChatSidebarPanel.vue";
-import { useErrorHandler } from "@/hooks/useErrorHandler";
-import { useChatStore } from "@/stores/chat";
-import { useUserStore } from "@/stores/user";
-import { useWebSocketStore } from "@/stores/websocket";
-import type { Friend, Group, GroupReadUser, Message } from "@/types";
+import {useErrorHandler} from "@/hooks/useErrorHandler";
+import {useChatStore} from "@/stores/chat";
+import {useUserStore} from "@/stores/user";
+import {useWebSocketStore} from "@/stores/websocket";
+import type {Friend, Group, GroupReadUser, Message} from "@/types";
 
 const userStore = useUserStore();
 const chatStore = useChatStore();
@@ -113,9 +141,9 @@ const groupReadUsers = ref<GroupReadUser[]>([]);
 const loadingMoreHistory = ref(false);
 
 const currentSession = computed(() => chatStore.currentSession);
-const pendingRequestsCount = computed(() => {
-  return chatStore.friendRequests.filter((item) => item.status === "PENDING").length;
-});
+const pendingRequestsCount = computed(() =>
+  chatStore.friendRequests.filter((item) => item.status === "PENDING").length,
+);
 const isChatActiveOnMobile = computed(() => Boolean(currentSession.value));
 const currentSessionOnline = computed(() => {
   if (currentSession.value?.type !== "private") {
@@ -123,12 +151,27 @@ const currentSessionOnline = computed(() => {
   }
   return webSocketStore.isUserOnline(String(currentSession.value.targetId || ""));
 });
+const connectionStatus = computed(() => webSocketStore.connectionStatus);
+const connectionStatusLabel = computed(() => {
+  switch (connectionStatus.value) {
+    case "connected":
+      return "Connected";
+    case "connecting":
+      return "Connecting...";
+    default:
+      return "Offline";
+  }
+});
 
 const handleTabChange = (tabName: "chat" | "contacts" | "groups") => {
   activeTab.value = tabName;
 };
 
 const selectSession = async (session: NonNullable<typeof currentSession.value>) => {
+  if (currentSession.value?.id === session.id) {
+    await chatStore.markAsRead(session.id);
+    return;
+  }
   await chatStore.setCurrentSession(session);
   await chatStore.markAsRead(session.id);
 };
@@ -158,18 +201,18 @@ const handleSessionAction = async (command: string | number | object) => {
   }
   try {
     await ElMessageBox.confirm(
-      `确定清空与“${currentSession.value.targetName}”的聊天记录吗？`,
-      "清空聊天记录",
+      `Clear all messages in ${currentSession.value.targetName}?`,
+      "Clear chat history",
       {
         type: "warning",
-        confirmButtonText: "确定",
-        cancelButtonText: "取消",
+        confirmButtonText: "Clear",
+        cancelButtonText: "Cancel",
       },
     );
     await chatStore.clearMessages(currentSession.value.id);
   } catch (error) {
     if (error !== "cancel" && error !== "close") {
-      capture(error, "清空聊天记录失败");
+      capture(error, "Failed to clear chat history");
     }
   }
 };
@@ -224,7 +267,7 @@ const openGroupReadDialog = (message: Message) => {
   });
   groupReadUsers.value = Array.from(new Set(readBy)).map((userId) => ({
     userId,
-    displayName: userNameMap.get(userId) || `用户${userId}`,
+    displayName: userNameMap.get(userId) || `User ${userId}`,
   }));
   showGroupReadDialog.value = true;
 };
@@ -255,81 +298,228 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
+.interactive-reset {
+  border: 0;
+  background: transparent;
+}
+
 .chat-container {
+  position: relative;
   display: flex;
   height: 100%;
-  background-color: #f5f7fa;
-  position: relative;
   overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 22%),
+    linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
+}
+
+.chat-sidebar {
+  position: relative;
+  z-index: 1;
 }
 
 .chat-main {
+  min-width: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
-  background-color: #fff;
-  min-width: 0;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(18px);
 }
 
 .chat-welcome {
   flex: 1;
   display: flex;
-  justify-content: center;
   align-items: center;
-  color: #909399;
+  justify-content: center;
+  padding: 28px;
 }
 
-.welcome-content {
+.welcome-shell {
+  position: relative;
+  width: min(100%, 540px);
+}
+
+.welcome-orb {
+  position: absolute;
+  inset: 10% 15%;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.18), transparent 70%);
+  filter: blur(30px);
+}
+
+.welcome-card {
+  position: relative;
+  padding: 40px 36px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  box-shadow: 0 30px 70px rgba(15, 23, 42, 0.08);
   text-align: center;
 }
 
-.welcome-content p {
-  margin-top: 20px;
+.welcome-icon {
+  color: #2563eb;
+}
+
+.welcome-title {
+  margin-top: 18px;
+  color: #0f172a;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.welcome-text {
+  margin: 12px auto 0;
+  max-width: 400px;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.welcome-status {
+  margin-top: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.connection-dot.connected {
+  background: #10b981;
+}
+
+.connection-dot.connecting {
+  background: #f59e0b;
 }
 
 .chat-content {
   display: flex;
-  flex-direction: column;
   height: 100%;
+  flex-direction: column;
 }
 
 .chat-header {
-  height: 60px;
-  border-bottom: 1px solid #dcdfe6;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 0 20px;
+  gap: 16px;
+  min-height: 72px;
+  padding: 0 22px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.78);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(12px);
 }
 
 .chat-title {
+  min-width: 0;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  font-size: 18px;
-  font-weight: 500;
-  line-height: 1.25;
+  gap: 6px;
 }
 
 .chat-title-main {
-  color: #303133;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.chat-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #111827;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.chat-title-count {
+  flex-shrink: 0;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chat-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .chat-presence {
-  margin-top: 2px;
+  color: #64748b;
   font-size: 12px;
-  font-weight: 400;
-  color: #909399;
+  font-weight: 700;
 }
 
 .chat-presence.online {
-  color: #67c23a;
+  color: #10b981;
+}
+
+.connection-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4f46e5;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.connection-pill.connected {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.connection-pill.connecting {
+  background: #fff7ed;
+  color: #d97706;
+}
+
+.chat-actions {
+  display: flex;
+  align-items: center;
+}
+
+.action-trigger {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: #64748b;
+
+  &:hover {
+    background: #f1f5f9;
+    color: #2563eb;
+  }
 }
 
 .mobile-back {
   display: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: #334155;
   cursor: pointer;
-  margin-right: 10px;
+
+  &:hover {
+    background: #f1f5f9;
+  }
 }
 
 @media (max-width: 768px) {
@@ -337,18 +527,33 @@ onUnmounted(() => {
     display: none;
 
     &.active-mobile {
-      display: flex;
-      width: 100%;
       position: absolute;
       top: 0;
       left: 0;
-      height: 100%;
       z-index: 10;
+      display: flex;
+      width: 100%;
+      height: 100%;
     }
   }
 
-  .chat-header .mobile-back {
-    display: block;
+  .chat-header {
+    min-height: 64px;
+    padding: 0 14px;
+  }
+
+  .mobile-back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .welcome-card {
+    padding: 32px 24px;
+  }
+
+  .welcome-title {
+    font-size: 24px;
   }
 }
 </style>
