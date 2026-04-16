@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { shallowMount } from "@vue/test-utils";
-import { createPinia, setActivePinia } from "pinia";
-import MessageItem from "@/components/MessageItem.vue";
+import {beforeEach, describe, expect, it, vi} from "vitest";
+import {shallowMount} from "@vue/test-utils";
+import {createPinia, setActivePinia} from "pinia";
+import MessageItem from "@/features/chat/ChatMessageItem.vue";
 
 vi.mock("element-plus", () => ({
   ElAvatar: {},
@@ -19,28 +19,11 @@ vi.mock("element-plus", () => ({
 }));
 
 vi.mock("@element-plus/icons-vue", () => ({
-  Document: {},
-  Loading: {},
-  Warning: {},
-  VideoPlay: {},
-  VideoPause: {},
-}));
-
-vi.mock("@/stores/chat", () => ({
-  useChatStore: () => ({
-    addMessage: vi.fn(),
-    deleteMessage: vi.fn(),
-  }),
-}));
-
-vi.mock("@/hooks/useMessage", () => ({
-  useMessage: () => ({
-    getMessageSenderAvatar: () => "T",
-    getMessageSenderName: (m: any) => m.senderName || "",
-    formatMessageTime: () => "",
-    canRecallMessage: () => true,
-    recallMessage: vi.fn(),
-  }),
+  Document: { template: "<span />" },
+  Loading: { template: "<span />" },
+  Microphone: { template: "<span />" },
+  Warning: { template: "<span />" },
+  VideoPause: { template: "<span />" },
 }));
 
 describe("MessageItem alignment", () => {

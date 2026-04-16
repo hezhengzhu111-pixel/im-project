@@ -1,7 +1,7 @@
-import { mount } from "@vue/test-utils";
-import { describe, expect, it, vi } from "vitest";
-import MessageItem from "@/components/MessageItem.vue";
-import type { Message } from "@/types";
+import {mount} from "@vue/test-utils";
+import {describe, expect, it, vi} from "vitest";
+import MessageItem from "@/features/chat/ChatMessageItem.vue";
+import type {Message} from "@/types";
 
 vi.mock("element-plus", () => ({
   ElAvatar: { name: "ElAvatar", template: "<div><slot /></div>" },
@@ -32,11 +32,11 @@ vi.mock("element-plus", () => ({
 }));
 
 vi.mock("@element-plus/icons-vue", () => ({
-  Document: {},
-  Loading: {},
-  Warning: {},
-  VideoPlay: {},
-  VideoPause: {},
+  Document: { template: "<span />" },
+  Loading: { template: "<span />" },
+  Microphone: { template: "<span />" },
+  Warning: { template: "<span />" },
+  VideoPause: { template: "<span />" },
 }));
 
 const imageMessage: Message = {
@@ -73,5 +73,52 @@ describe("MessageItem image lazy loading", () => {
     await wrapper.vm.$nextTick();
 
     expect(wrapper.emitted("media-loaded")?.[0]).toEqual([imageMessage]);
+  });
+
+  it("renders system messages as a centered pill", () => {
+    const wrapper = mount(MessageItem, {
+      props: {
+        message: {
+          ...imageMessage,
+          id: "system-1",
+          messageType: "SYSTEM",
+          content: "You joined the conversation",
+        },
+        currentUserId: "1",
+      },
+    });
+
+    expect(wrapper.find(".system-pill").text()).toContain("You joined the conversation");
+  });
+
+  it("renders file and voice messages with unified attachment cards", () => {
+    const wrapper = mount(MessageItem, {
+      props: {
+        message: {
+          ...imageMessage,
+          id: "file-1",
+          messageType: "FILE",
+          mediaName: "brief.pdf",
+          mediaSize: 4096,
+        },
+        currentUserId: "1",
+      },
+    });
+
+    expect(wrapper.find(".attachment-card").exists()).toBe(true);
+
+    const voiceWrapper = mount(MessageItem, {
+      props: {
+        message: {
+          ...imageMessage,
+          id: "voice-1",
+          messageType: "VOICE",
+          duration: 8,
+        },
+        currentUserId: "1",
+      },
+    });
+
+    expect(voiceWrapper.find(".attachment-card-voice").exists()).toBe(true);
   });
 });

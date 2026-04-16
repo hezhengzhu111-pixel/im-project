@@ -1,3 +1,4 @@
+<!-- Deprecated: legacy chat UI component. Active chat flow uses frontend/src/features/chat/*. -->
 <template>
   <div class="chat-sidebar">
     <!-- 用户信息 -->
@@ -102,16 +103,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import { Search, Plus } from "@element-plus/icons-vue";
-import { debounce } from "@/utils/common";
+import {ref} from "vue";
+import {Plus, Search} from "@element-plus/icons-vue";
+import {debounce} from "@/utils/common";
 import UserProfile from "./UserProfile.vue";
 import ConversationList from "./ConversationList.vue";
 import ContactsList from "./ContactsList.vue";
 import GroupList from "./GroupList.vue";
-import type { User } from "@/types/user";
-import type { Conversation } from "@/types/chat";
-import type { Group } from "@/types/group";
+import type {User} from "@/types/user";
+import type {Conversation} from "@/types/chat";
+import type {Group} from "@/types/group";
 
 interface Props {
   userInfo?: User | null;

@@ -60,17 +60,18 @@
         />
       </div>
 
-      <div v-show="activeTab === 'chat'" class="session-list" role="list">
+      <div v-show="activeTab === 'chat'" class="session-list chat-soft-scrollbar" role="list">
         <button
           v-for="item in filteredSessionItems"
           :key="item.session.id"
           type="button"
           class="session-item interactive-reset"
-          :class="{ active: currentSessionId === item.session.id }"
+          :class="{ active: currentSessionId === item.session.id, unread: item.session.unreadCount > 0 }"
           @click="handleSelectSession(item.session)"
         >
+          <span class="session-accent"></span>
           <div class="session-avatar-wrap">
-            <el-avatar :size="42" :src="item.session.targetAvatar" shape="square">
+            <el-avatar :size="46" :src="item.session.targetAvatar">
               {{ item.session.targetName?.charAt(0) || "U" }}
             </el-avatar>
             <span
@@ -79,11 +80,12 @@
               :class="{ online: item.online }"
             ></span>
           </div>
+
           <div class="session-info">
             <div class="session-header">
-              <div class="session-title">
+              <div class="session-title-wrap">
                 <span class="session-name">{{ item.session.targetName }}</span>
-                <span v-if="item.session.isPinned || item.session.isMuted" class="session-flags">
+                <span class="session-flags">
                   <el-icon
                     v-if="item.session.isPinned"
                     class="session-flag"
@@ -99,18 +101,21 @@
                     <Bell />
                   </el-icon>
                 </span>
-                <span
-                  v-if="item.session.type === 'private'"
-                  class="session-presence"
-                  :class="{ online: item.online }"
-                >
-                  {{ item.online ? "Online" : "Offline" }}
-                </span>
               </div>
               <span class="session-time">{{ formatTime(item.session.lastActiveTime) }}</span>
             </div>
-            <div class="session-content">
-              <span class="last-message">{{ item.preview }}</span>
+
+            <div class="session-meta-row">
+              <span
+                v-if="item.session.type === 'private'"
+                class="session-presence"
+                :class="{ online: item.online }"
+              >
+                {{ item.online ? "Online" : "Offline" }}
+              </span>
+              <span v-else class="session-presence">
+                {{ item.session.memberCount || 0 }} members
+              </span>
               <span
                 v-if="item.session.unreadCount > 0"
                 class="unread-badge"
@@ -118,6 +123,10 @@
               >
                 {{ item.session.unreadCount > 99 ? "99+" : item.session.unreadCount }}
               </span>
+            </div>
+
+            <div class="session-preview">
+              {{ item.preview }}
             </div>
           </div>
         </button>
@@ -128,7 +137,7 @@
         />
       </div>
 
-      <div v-show="activeTab === 'contacts'" class="contact-list" role="list">
+      <div v-show="activeTab === 'contacts'" class="contact-list chat-soft-scrollbar" role="list">
         <template v-if="groupedContacts.length > 0">
           <div
             v-for="group in groupedContacts"
@@ -143,7 +152,7 @@
               class="contact-item interactive-reset"
               @click="handleStartPrivateChat(contact)"
             >
-              <el-avatar :size="36" :src="contact.avatar" shape="square">
+              <el-avatar :size="40" :src="contact.avatar">
                 {{ contact.nickname?.charAt(0) || contact.username?.charAt(0) || "U" }}
               </el-avatar>
               <div class="contact-info">
@@ -158,7 +167,7 @@
         <el-empty v-else description="No contacts found" :image-size="60" />
       </div>
 
-      <div v-show="activeTab === 'groups'" class="group-list" role="list">
+      <div v-show="activeTab === 'groups'" class="group-list chat-soft-scrollbar" role="list">
         <button
           v-for="group in filteredGroups"
           :key="group.id"
@@ -166,14 +175,12 @@
           class="group-item interactive-reset"
           @click="handleStartGroupChat(group)"
         >
-          <el-avatar :size="36" :src="group.avatar" shape="square">
+          <el-avatar :size="40" :src="group.avatar">
             {{ group.groupName?.charAt(0) || "G" }}
           </el-avatar>
           <div class="group-info">
             <div class="group-name">{{ group.groupName }}</div>
-            <div class="group-meta">
-              {{ group.memberCount || 0 }} members
-            </div>
+            <div class="group-meta">{{ group.memberCount || 0 }} members</div>
           </div>
         </button>
         <el-empty
@@ -291,14 +298,14 @@ watch(
     if (tab !== "contacts" || resolvePinyinInitial.value) {
       return;
     }
-    const { pinyin } = await import("pinyin-pro");
+    const {pinyin} = await import("pinyin-pro");
     resolvePinyinInitial.value = (value: string) =>
       pinyin(value, {
         pattern: "first",
         toneType: "none",
       }).toUpperCase();
   },
-  { immediate: true },
+  {immediate: true},
 );
 
 const formatTime = (time?: string) => {
@@ -311,12 +318,15 @@ const formatTime = (time?: string) => {
     return "Just now";
   }
   if (diff < 3_600_000) {
-    return `${Math.floor(diff / 60_000)}m ago`;
+    return `${Math.floor(diff / 60_000)}m`;
   }
   if (diff < 86_400_000) {
-    return `${Math.floor(diff / 3_600_000)}h ago`;
+    return `${Math.floor(diff / 3_600_000)}h`;
   }
-  return date.toLocaleDateString();
+  return date.toLocaleDateString(undefined, {
+    month: "numeric",
+    day: "numeric",
+  });
 };
 
 const previewMessage = (message?: ChatSession["lastMessage"]) => {
@@ -394,12 +404,7 @@ const filteredContacts = computed(() => {
     return props.friends;
   }
   return props.friends.filter((contact) =>
-    [
-      contact.nickname,
-      contact.username,
-      contact.friendId,
-      contact.remark,
-    ]
+    [contact.nickname, contact.username, contact.friendId, contact.remark]
       .filter(Boolean)
       .join(" ")
       .toLowerCase()
@@ -427,7 +432,7 @@ const groupedContacts = computed(() => {
       if (right === "#") return -1;
       return left.localeCompare(right);
     })
-    .map(([key, contacts]) => ({ key, contacts }));
+    .map(([key, contacts]) => ({key, contacts}));
 });
 
 const filteredGroups = computed(() => {
@@ -456,18 +461,20 @@ const filteredGroups = computed(() => {
 }
 
 .list-panel {
-  width: 316px;
+  width: 340px;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid rgba(226, 232, 240, 0.82);
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(16px);
+  border-right: 1px solid rgba(203, 213, 225, 0.82);
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(18px);
 }
 
 .panel-top {
   padding: 18px 16px 14px;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.72);
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.92), rgba(255, 255, 255, 0.88));
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.1), transparent 26%),
+    linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.92));
 }
 
 .panel-heading {
@@ -475,14 +482,15 @@ const filteredGroups = computed(() => {
 }
 
 .panel-title {
-  color: #111827;
-  font-size: 18px;
+  color: var(--chat-text-primary);
+  font-size: 20px;
   font-weight: 800;
+  letter-spacing: -0.01em;
 }
 
 .panel-subtitle {
   margin-top: 4px;
-  color: #64748b;
+  color: var(--chat-text-tertiary);
   font-size: 12px;
 }
 
@@ -506,35 +514,60 @@ const filteredGroups = computed(() => {
 .group-list {
   flex: 1;
   overflow-y: auto;
-  padding: 10px;
+  padding: 12px 10px 14px;
 }
 
 .session-item,
 .contact-item,
 .group-item {
+  position: relative;
   width: 100%;
   display: flex;
-  align-items: center;
-  padding: 12px;
-  margin-bottom: 8px;
-  border-radius: 18px;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  margin-bottom: 10px;
+  border-radius: 22px;
   text-align: left;
   cursor: pointer;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
   transition:
-    transform 0.16s ease,
-    box-shadow 0.16s ease,
-    background-color 0.16s ease;
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease;
 
   &:hover {
-    transform: translateY(-1px);
-    background: #f8fbff;
-    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.05);
+    background: var(--chat-card-hover);
+    border-color: rgba(191, 219, 254, 0.78);
+    box-shadow: 0 18px 34px rgba(15, 23, 42, 0.08);
   }
+}
 
-  &.active {
-    background: linear-gradient(135deg, #e0f2fe, #eff6ff);
-    box-shadow: 0 16px 30px rgba(37, 99, 235, 0.12);
-  }
+.session-item.active {
+  background: var(--chat-card-active);
+  border-color: var(--chat-card-active-border);
+  box-shadow: 0 20px 40px rgba(37, 99, 235, 0.14);
+}
+
+.session-item.unread:not(.active) {
+  border-color: rgba(191, 219, 254, 0.62);
+  background: rgba(248, 250, 255, 0.92);
+}
+
+.session-accent {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 6px;
+  width: 4px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.session-item.active .session-accent {
+  background: linear-gradient(180deg, #2563eb, #60a5fa);
 }
 
 .session-avatar-wrap {
@@ -547,32 +580,20 @@ const filteredGroups = computed(() => {
 .group-info {
   min-width: 0;
   flex: 1;
-  margin-left: 12px;
 }
 
 .session-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
 }
 
-.session-title {
+.session-title-wrap {
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.session-flags {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: #64748b;
-}
-
-.session-flag {
-  font-size: 12px;
 }
 
 .session-name,
@@ -581,74 +602,98 @@ const filteredGroups = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #0f172a;
+  color: var(--chat-text-primary);
+  font-size: 15px;
   font-weight: 700;
 }
 
-.session-presence,
-.session-time,
-.last-message,
-.contact-meta,
-.group-meta {
-  color: #64748b;
-  font-size: 12px;
+.session-item.active .session-name {
+  font-weight: 800;
 }
 
-.session-presence.online {
-  color: #10b981;
+.session-flags {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.session-flag {
+  color: var(--chat-text-tertiary);
+  font-size: 12px;
 }
 
 .session-time {
   flex-shrink: 0;
+  color: var(--chat-text-quaternary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
-.session-content {
+.session-meta-row {
+  margin-top: 6px;
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 6px;
 }
 
-.last-message {
-  min-width: 0;
-  flex: 1;
+.session-presence,
+.contact-meta,
+.group-meta {
+  color: var(--chat-text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.session-presence.online {
+  color: var(--chat-success);
+}
+
+.session-preview {
+  display: -webkit-box;
+  margin-top: 8px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  color: var(--chat-text-tertiary);
+  font-size: 12px;
+  line-height: 1.55;
+  word-break: break-word;
 }
 
 .unread-badge {
   flex-shrink: 0;
-  min-width: 24px;
-  height: 22px;
-  padding: 0 7px;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 8px;
   border-radius: 999px;
-  background: linear-gradient(135deg, #ef4444, #dc2626);
+  background: var(--chat-badge-bg);
   color: #fff;
   font-size: 12px;
-  font-weight: 700;
-  line-height: 22px;
+  font-weight: 800;
+  line-height: 24px;
   text-align: center;
-  box-shadow: 0 10px 22px rgba(239, 68, 68, 0.25);
+  box-shadow: var(--chat-badge-shadow);
 }
 
 .presence-dot {
   position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 11px;
-  height: 11px;
+  right: 1px;
+  bottom: 1px;
+  width: 12px;
+  height: 12px;
   border: 2px solid #fff;
   border-radius: 50%;
   background: #cbd5e1;
 }
 
 .presence-dot.online {
-  background: #10b981;
+  background: var(--chat-success);
 }
 
 .contact-group {
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .group-header {
@@ -658,8 +703,8 @@ const filteredGroups = computed(() => {
   margin-bottom: 8px;
   padding: 6px 12px;
   border-radius: 12px;
-  background: #f8fafc;
-  color: #64748b;
+  background: rgba(248, 250, 252, 0.94);
+  color: var(--chat-text-tertiary);
   font-size: 12px;
   font-weight: 700;
 }
@@ -675,6 +720,22 @@ const filteredGroups = computed(() => {
     &.hidden-mobile {
       display: none;
     }
+  }
+
+  .panel-top {
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
+  }
+
+  .session-list,
+  .contact-list,
+  .group-list {
+    padding: 10px 10px 12px;
+  }
+
+  .session-item,
+  .contact-item,
+  .group-item {
+    padding: 14px 12px;
   }
 }
 </style>

@@ -13,7 +13,7 @@ const {
   chatStoreState: {
     currentSession: {
       id: "1_2",
-      type: "private" as const,
+      type: "private" as "private" | "group",
       targetId: "2",
       targetName: "u2",
       targetAvatar: "",
@@ -23,7 +23,7 @@ const {
       pinned: false,
       isMuted: false,
       muted: false,
-    },
+    } as any,
     sortedSessions: [] as unknown[],
     totalUnreadCount: 0,
     friendRequests: [] as Array<{ status: string }>,
@@ -68,6 +68,10 @@ const {
 vi.mock("element-plus", () => ({
   ElMessageBox: {
     confirm: confirmMock,
+  },
+  ElAvatar: {
+    name: "ElAvatar",
+    template: "<div class='el-avatar-stub'><slot /></div>",
   },
   ElIcon: {
     name: "ElIcon",
@@ -142,6 +146,14 @@ const mountContainer = () =>
         },
         ChatMessageList: {
           name: "ChatMessageList",
+          props: [
+            "messages",
+            "currentUserId",
+            "currentUserName",
+            "currentUserAvatar",
+            "loadingHistory",
+            "openedUnreadCount",
+          ],
           template: "<div class='chat-message-list-stub' />",
         },
         ChatComposer: {
@@ -244,6 +256,28 @@ describe("ChatContainer", () => {
     const dialogs = wrapper.findComponent({ name: "ChatDialogs" });
     expect(dialogs.props("visibleSearchDialog")).toBe(true);
     expect(chatStoreState.searchMessages).toHaveBeenCalledWith("", "1_2");
+  });
+
+  it("renders the richer header shell and forwards the unread snapshot to the list", () => {
+    chatStoreState.currentSession = {
+      id: "1_2",
+      type: "private",
+      targetId: "2",
+      targetName: "u2",
+      targetAvatar: "",
+      unreadCount: 3,
+      lastActiveTime: "",
+      isPinned: true,
+      pinned: true,
+      isMuted: false,
+      muted: false,
+    };
+
+    const wrapper = mountContainer();
+
+    expect(wrapper.find(".chat-avatar-shell").exists()).toBe(true);
+    expect(wrapper.find(".chat-title-text").text()).toBe("u2");
+    expect(wrapper.findComponent({ name: "ChatMessageList" }).props("openedUnreadCount")).toBe(3);
   });
 
   it("opens the session info drawer and loads group members for group sessions", async () => {

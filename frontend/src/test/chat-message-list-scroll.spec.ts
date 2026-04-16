@@ -1,8 +1,8 @@
-import { mount } from "@vue/test-utils";
-import { nextTick } from "vue";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {mount} from "@vue/test-utils";
+import {nextTick} from "vue";
+import {beforeEach, describe, expect, it, vi} from "vitest";
 import ChatMessageList from "@/features/chat/ChatMessageList.vue";
-import type { Message } from "@/types";
+import type {Message} from "@/types";
 
 const scrollToItemMock = vi.hoisted(() => vi.fn());
 const forceUpdateMock = vi.hoisted(() => vi.fn());
@@ -90,12 +90,13 @@ const setScrollMetrics = (
   element.scrollTop = metrics.scrollTop;
 };
 
-const mountList = (messages: Message[]) =>
+const mountList = (messages: Message[], extraProps: Record<string, unknown> = {}) =>
   mount(ChatMessageList, {
     props: {
       messages,
       currentUserId: "1",
       currentUserName: "me",
+      ...extraProps,
     },
     global: {
       stubs: {
@@ -131,7 +132,7 @@ describe("ChatMessageList scroll behavior", () => {
   });
 
   it("restores scroll position after prepending history messages", async () => {
-    const wrapper = mountList([message("3"), message("4")]);
+    const wrapper = mountList([message("3"), message("4")], { openedUnreadCount: 1 });
     const container = wrapper.find(".message-list").element as HTMLElement;
     const metrics = { scrollHeight: 1000, clientHeight: 400, scrollTop: 40 };
     setScrollMetrics(container, metrics);
@@ -191,5 +192,16 @@ describe("ChatMessageList scroll behavior", () => {
 
     expect(forceUpdateMock).toHaveBeenCalled();
     expect(updateVisibleItemsMock).toHaveBeenCalledWith(true);
+  });
+
+  it("renders unread separators without breaking the virtual item stream", async () => {
+    const wrapper = mountList([message("1"), message("2"), message("3")], {
+      openedUnreadCount: 2,
+    });
+
+    await flushListEffects();
+
+    expect(wrapper.find(".unread-pill").text()).toContain("Unread messages");
+    expect(wrapper.findAll(".message-item-stub")).toHaveLength(3);
   });
 });
