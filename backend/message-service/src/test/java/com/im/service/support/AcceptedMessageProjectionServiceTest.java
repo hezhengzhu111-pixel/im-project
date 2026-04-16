@@ -59,7 +59,11 @@ class AcceptedMessageProjectionServiceTest {
         inOrder.verify(hotMessageRedisRepository).saveHotMessage(payload);
         inOrder.verify(hotMessageRedisRepository).saveClientMessageMapping(1L, "client-1", 1001L);
         inOrder.verify(conversationCacheUpdater).applyFirstSeenAcceptedMessage(event);
-        inOrder.verify(hotMessageRedisRepository).addPendingPersistMessage(eq("p_1_2"), eq(1001L), any(LocalDateTime.class));
+        inOrder.verify(hotMessageRedisRepository).addPendingPersistMessage(
+                eq("p_1_2"),
+                eq(1001L),
+                eq(payload.getCreatedTime())
+        );
     }
 
     @Test
@@ -88,6 +92,37 @@ class AcceptedMessageProjectionServiceTest {
                         && "client-2".equals(message.getClientMessageId())
                         && Boolean.TRUE.equals(message.isGroup())
                         && Long.valueOf(8L).equals(message.getGroupId())));
+    }
+
+    @Test
+    void projectAcceptedFirstSeenShouldUsePayloadCreatedTimeWhenEventCreatedTimeIsMissing() {
+        AcceptedMessageProjectionService service =
+                new AcceptedMessageProjectionService(hotMessageRedisRepository, conversationCacheUpdater);
+        LocalDateTime payloadCreatedTime = LocalDateTime.of(2026, 4, 15, 20, 6);
+        MessageDTO payload = MessageDTO.builder()
+                .id(2003L)
+                .senderId(1L)
+                .receiverId(2L)
+                .clientMessageId("client-3")
+                .messageType(MessageType.TEXT)
+                .content("payload time")
+                .createdTime(payloadCreatedTime)
+                .build();
+        MessageEvent event = MessageEvent.builder()
+                .eventType(MessageEventType.MESSAGE)
+                .messageId(2003L)
+                .conversationId("p_1_2")
+                .senderId(1L)
+                .receiverId(2L)
+                .clientMessageId("client-3")
+                .messageType(MessageType.TEXT)
+                .content("payload time")
+                .payload(payload)
+                .build();
+
+        service.projectAcceptedFirstSeen(event);
+
+        verify(hotMessageRedisRepository).addPendingPersistMessage("p_1_2", 2003L, payloadCreatedTime);
     }
 
     @Test

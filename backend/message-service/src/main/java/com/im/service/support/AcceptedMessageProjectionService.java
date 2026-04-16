@@ -34,7 +34,7 @@ public class AcceptedMessageProjectionService {
             hotMessageRedisRepository.addPendingPersistMessage(
                     normalizedEvent.getConversationId(),
                     normalizedEvent.getMessageId(),
-                    LocalDateTime.now()
+                    resolveAcceptedTime(normalizedEvent, payload)
             );
         } catch (BusinessException exception) {
             throw exception;
@@ -248,6 +248,16 @@ public class AcceptedMessageProjectionService {
         }
         if (message.getUpdatedAt() != null) {
             return message.getUpdatedAt();
+        }
+        return LocalDateTime.now();
+    }
+
+    private LocalDateTime resolveAcceptedTime(MessageEvent normalizedEvent, MessageDTO payload) {
+        if (normalizedEvent != null && normalizedEvent.getCreatedTime() != null) {
+            return normalizedEvent.getCreatedTime();
+        }
+        if (payload != null && payload.getCreatedTime() != null) {
+            return payload.getCreatedTime();
         }
         return LocalDateTime.now();
     }

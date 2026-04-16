@@ -7,6 +7,7 @@ import com.im.enums.MessageType;
 import com.im.mapper.MessageMapper;
 import com.im.message.entity.Message;
 import com.im.service.support.HotMessageRedisRepository;
+import com.im.service.support.PersistenceWatermarkService;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class HotRecentMessageReadService {
 
     private final HotMessageRedisRepository hotMessageRedisRepository;
     private final MessageMapper messageMapper;
+    private final PersistenceWatermarkService persistenceWatermarkService;
     private final UserProfileCache userProfileCache;
 
     @Value("${im.message.system.sender-id:0}")
@@ -35,7 +37,18 @@ public class HotRecentMessageReadService {
         List<MessageDTO> hotMessages = filterVisibleMessages(
                 hotMessageRedisRepository.getRecentMessages(conversationId, Math.max(realLimit, HOT_RECENT_SCAN_LIMIT))
         );
-        List<MessageDTO> persistedMessages = loadPersistedLatestMessages(conversationId, realLimit + hotMessages.size());
+        if (hotMessages.size() >= realLimit) {
+            return mergeHotAndPersisted(hotMessages, List.of(), false, realLimit);
+        }
+        Long watermark = resolveWatermark(conversationId);
+        if (watermark == null) {
+            return mergeHotAndPersisted(hotMessages, List.of(), false, realLimit);
+        }
+        List<MessageDTO> persistedMessages = loadPersistedLatestMessages(
+                conversationId,
+                watermark,
+                realLimit + hotMessages.size()
+        );
         return mergeHotAndPersisted(hotMessages, persistedMessages, false, realLimit);
     }
 
@@ -52,8 +65,16 @@ public class HotRecentMessageReadService {
                 beforeTimestamp,
                 afterMessageId
         );
+        Long watermark = resolveWatermark(conversationId);
+        if (watermark == null) {
+            return mergeHotAndPersisted(hotMessages, List.of(), ascending, realLimit);
+        }
+        if (afterMessageId != null && afterMessageId >= watermark) {
+            return mergeHotAndPersisted(hotMessages, List.of(), ascending, realLimit);
+        }
         List<MessageDTO> persistedMessages = loadPersistedCursorMessages(
                 conversationId,
+                watermark,
                 lastMessageId,
                 beforeTimestamp,
                 afterMessageId,
@@ -93,6 +114,11 @@ public class HotRecentMessageReadService {
             }
         }
 
+        Long watermark = resolveWatermark(conversationId);
+        if (watermark == null) {
+            return null;
+        }
+
         ConversationScope scope = parseConversationScope(conversationId);
         if (scope == null) {
             return null;
@@ -100,37 +126,41 @@ public class HotRecentMessageReadService {
 
         LambdaQueryWrapper<Message> wrapper = buildConversationWrapper(scope)
                 .ne(Message::getStatus, Message.MessageStatus.DELETED)
+                .le(Message::getId, watermark)
                 .orderByDesc(Message::getId)
                 .last("limit 1");
         Message latestVisible = messageMapper.selectOne(wrapper);
         return latestVisible == null ? null : latestVisible.getId();
     }
 
-    private List<MessageDTO> loadPersistedLatestMessages(String conversationId, int limit) {
+    private List<MessageDTO> loadPersistedLatestMessages(String conversationId, Long watermark, int limit) {
         ConversationScope scope = parseConversationScope(conversationId);
-        if (scope == null || limit <= 0) {
+        if (scope == null || limit <= 0 || watermark == null) {
             return List.of();
         }
 
         LambdaQueryWrapper<Message> wrapper = buildConversationWrapper(scope)
                 .ne(Message::getStatus, Message.MessageStatus.DELETED)
+                .le(Message::getId, watermark)
                 .orderByDesc(Message::getId)
                 .last("limit " + limit);
         return toMessageDTOs(messageMapper.selectList(wrapper));
     }
 
     private List<MessageDTO> loadPersistedCursorMessages(String conversationId,
+                                                         Long watermark,
                                                          Long lastMessageId,
                                                          LocalDateTime beforeTimestamp,
                                                          Long afterMessageId,
                                                          int limit) {
         ConversationScope scope = parseConversationScope(conversationId);
-        if (scope == null || limit <= 0) {
+        if (scope == null || limit <= 0 || watermark == null) {
             return List.of();
         }
 
         LambdaQueryWrapper<Message> wrapper = buildConversationWrapper(scope)
-                .ne(Message::getStatus, Message.MessageStatus.DELETED);
+                .ne(Message::getStatus, Message.MessageStatus.DELETED)
+                .le(Message::getId, watermark);
 
         if (afterMessageId != null) {
             wrapper.gt(Message::getId, afterMessageId)
@@ -199,6 +229,13 @@ public class HotRecentMessageReadService {
         }
         LocalDateTime messageTime = resolveMessageTime(message);
         return messageTime == null || messageTime.isBefore(beforeTimestamp);
+    }
+
+    private Long resolveWatermark(String conversationId) {
+        if (!StringUtils.hasText(conversationId)) {
+            return null;
+        }
+        return persistenceWatermarkService.getPersistedWatermark(conversationId.trim());
     }
 
     private boolean isVisibleMessage(MessageDTO message) {
