@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createPinia, setActivePinia } from "pinia";
+import {beforeEach, describe, expect, it, vi} from "vitest";
+import {createPinia, setActivePinia} from "pinia";
 
 vi.mock("element-plus", () => ({
   ElMessage: {
@@ -100,6 +100,12 @@ vi.mock("@/stores/user", () => ({
     logout: vi.fn(),
   }),
 }));
+
+const flushMicrotasks = async (count = 6) => {
+  for (let index = 0; index < count; index += 1) {
+    await Promise.resolve();
+  }
+};
 
 describe("chat store", () => {
   beforeEach(() => {
@@ -217,10 +223,132 @@ describe("chat store", () => {
     const store = useChatStore();
 
     await store.initChatBootstrap();
+    await flushMicrotasks();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushMicrotasks();
 
     expect(refreshOnlineStatusMock).toHaveBeenCalledWith(
       expect.arrayContaining(["2", "3"]),
     );
+  });
+
+  it("loads older history with the oldest loaded server message id as cursor", async () => {
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    const session = store.createOrGetSession("private", "2", "u2", "");
+    store.messages.set(session!.id, [
+      {
+        id: "100",
+        senderId: "1",
+        receiverId: "2",
+        isGroupChat: false,
+        messageType: "TEXT",
+        content: "latest",
+        sendTime: "2026-02-07T10:00:01.000Z",
+        status: "SENT",
+      },
+      {
+        id: "101",
+        senderId: "2",
+        receiverId: "1",
+        isGroupChat: false,
+        messageType: "TEXT",
+        content: "latest-2",
+        sendTime: "2026-02-07T10:00:02.000Z",
+        status: "SENT",
+      },
+    ]);
+    messageServiceMock.getPrivateHistoryCursor.mockResolvedValueOnce({
+      code: 200,
+      data: [
+        {
+          id: "98",
+          senderId: "2",
+          receiverId: "1",
+          isGroupChat: false,
+          messageType: "TEXT",
+          content: "older-1",
+          sendTime: "2026-02-07T09:59:58.000Z",
+          status: "SENT",
+        },
+        {
+          id: "99",
+          senderId: "1",
+          receiverId: "2",
+          isGroupChat: false,
+          messageType: "TEXT",
+          content: "older-2",
+          sendTime: "2026-02-07T09:59:59.000Z",
+          status: "SENT",
+        },
+      ],
+    });
+
+    await store.loadMoreHistory(session!.id, 2);
+
+    expect(messageServiceMock.getPrivateHistoryCursor).toHaveBeenCalledWith(
+      "2",
+      expect.objectContaining({
+        limit: 2,
+        last_message_id: "100",
+      }),
+    );
+    expect(store.messages.get(session!.id)?.map((item) => item.id)).toEqual([
+      "98",
+      "99",
+      "100",
+      "101",
+    ]);
+    expect(store.oldestLoadedServerMessageIdBySession.get(session!.id)).toBe("98");
+  });
+
+  it("falls back to page history loading when cursor history fails", async () => {
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    const session = store.createOrGetSession("private", "2", "u2", "");
+    store.messages.set(session!.id, [
+      {
+        id: "100",
+        senderId: "1",
+        receiverId: "2",
+        isGroupChat: false,
+        messageType: "TEXT",
+        content: "latest",
+        sendTime: "2026-02-07T10:00:01.000Z",
+        status: "SENT",
+      },
+    ]);
+    messageServiceMock.getPrivateHistoryCursor.mockRejectedValueOnce(
+      new Error("cursor unavailable"),
+    );
+    messageServiceMock.getPrivateHistory.mockResolvedValueOnce({
+      code: 200,
+      data: [
+        {
+          id: "99",
+          senderId: "2",
+          receiverId: "1",
+          isGroupChat: false,
+          messageType: "TEXT",
+          content: "fallback older",
+          sendTime: "2026-02-07T09:59:59.000Z",
+          status: "SENT",
+        },
+      ],
+    });
+
+    await store.loadMoreHistory(session!.id, 20);
+
+    expect(messageServiceMock.getPrivateHistory).toHaveBeenCalledWith("2", {
+      page: 1,
+      size: 20,
+    });
+    expect(store.messages.get(session!.id)?.map((item) => item.id)).toEqual([
+      "99",
+      "100",
+    ]);
   });
 
   it("applies read receipt to outgoing messages", async () => {
@@ -334,6 +462,38 @@ describe("chat store", () => {
       second!.id,
     ]);
     expect(store.sessions.find((item) => item.id === first!.id)?.isPinned).toBe(true);
+  });
+
+  it("toggles session mute locally and removes sessions without dropping cached messages", async () => {
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    const session = store.createOrGetSession("private", "2", "u2", "");
+    await store.setCurrentSession(session!);
+    store.messages.set(session!.id, [
+      {
+        id: "100",
+        senderId: "1",
+        receiverId: "2",
+        isGroupChat: false,
+        messageType: "TEXT",
+        content: "cached",
+        sendTime: "2026-02-07T10:00:00.100Z",
+        status: "SENT",
+      },
+    ]);
+    store.hasMoreHistoryBySession.set(session!.id, true);
+
+    store.toggleSessionMuted(session!.id);
+    expect(store.sessions.find((item) => item.id === session!.id)?.isMuted).toBe(true);
+    expect(store.currentSession?.muted).toBe(true);
+
+    store.deleteSession(session!.id);
+
+    expect(store.sessions.some((item) => item.id === session!.id)).toBe(false);
+    expect(store.currentSession).toBeNull();
+    expect(store.messages.get(session!.id)?.map((item) => item.id)).toEqual(["100"]);
+    expect(store.hasMoreHistoryBySession.has(session!.id)).toBe(false);
   });
 
   it("marks private sessions as read with the backend target user id", async () => {
@@ -594,5 +754,158 @@ describe("chat store", () => {
     expect(ok).toBe(true);
     expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(1);
     expect(messageServiceMock.sendPrivate.mock.calls[0][0].content.length).toBe(4500);
+  });
+
+  it("serializes sends within the same session through a promise queue", async () => {
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    const session = store.createOrGetSession("private", "2", "u2", "");
+    await store.setCurrentSession(session!);
+
+    let resolveFirst: ((value: unknown) => void) | undefined;
+    messageServiceMock.sendPrivate
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        code: 200,
+        data: {
+          id: "102",
+          senderId: "1",
+          receiverId: "2",
+          messageType: "TEXT",
+          content: "second",
+          sendTime: "2026-02-07T10:00:00.200Z",
+          status: "SENT",
+          isGroupChat: false,
+        },
+      });
+
+    const firstSend = store.sendMessage("first", "TEXT");
+    const secondSend = store.sendMessage("second", "TEXT");
+    await flushMicrotasks();
+
+    expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(1);
+    expect(messageServiceMock.sendPrivate.mock.calls[0][0].content).toBe("first");
+
+    resolveFirst?.({
+      code: 200,
+      data: {
+        id: "101",
+        senderId: "1",
+        receiverId: "2",
+        messageType: "TEXT",
+        content: "first",
+        sendTime: "2026-02-07T10:00:00.100Z",
+        status: "SENT",
+        isGroupChat: false,
+      },
+    });
+
+    await firstSend;
+    await secondSend;
+
+    expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(2);
+    expect(messageServiceMock.sendPrivate.mock.calls[1][0].content).toBe("second");
+  });
+
+  it("keeps sends across different sessions parallel", async () => {
+    const { useChatStore } = await import("@/stores/chat");
+    const { useMessageStore } = await import("@/stores/message");
+    const store = useChatStore();
+    const messageStore = useMessageStore();
+
+    const firstSession = store.createOrGetSession("private", "2", "u2", "");
+    const secondSession = store.createOrGetSession("private", "3", "u3", "");
+
+    let resolveFirst: ((value: unknown) => void) | undefined;
+    let resolveSecond: ((value: unknown) => void) | undefined;
+    messageServiceMock.sendPrivate
+      .mockImplementationOnce(
+        ({ receiverId }) =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+            expect(receiverId).toBe("2");
+          }),
+      )
+      .mockImplementationOnce(
+        ({ receiverId }) =>
+          new Promise((resolve) => {
+            resolveSecond = resolve;
+            expect(receiverId).toBe("3");
+          }),
+      );
+
+    const sendFirst = messageStore.sendMessage(firstSession!, "first", "TEXT");
+    const sendSecond = messageStore.sendMessage(secondSession!, "second", "TEXT");
+    await flushMicrotasks();
+
+    expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(2);
+
+    resolveFirst?.({
+      code: 200,
+      data: {
+        id: "201",
+        senderId: "1",
+        receiverId: "2",
+        messageType: "TEXT",
+        content: "first",
+        sendTime: "2026-02-07T10:00:00.100Z",
+        status: "SENT",
+        isGroupChat: false,
+      },
+    });
+    resolveSecond?.({
+      code: 200,
+      data: {
+        id: "202",
+        senderId: "1",
+        receiverId: "3",
+        messageType: "TEXT",
+        content: "second",
+        sendTime: "2026-02-07T10:00:00.200Z",
+        status: "SENT",
+        isGroupChat: false,
+      },
+    });
+
+    await Promise.all([sendFirst, sendSecond]);
+  });
+
+  it("syncs the current session first and then unread sessions in batches", async () => {
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    const currentSession = store.createOrGetSession("private", "2", "u2", "");
+    const unreadOne = store.createOrGetSession("private", "3", "u3", "");
+    const unreadTwo = store.createOrGetSession("private", "4", "u4", "");
+    const unreadThree = store.createOrGetSession("private", "5", "u5", "");
+
+    await store.setCurrentSession(currentSession!);
+    store.sessions.find((item) => item.id === unreadOne!.id)!.unreadCount = 1;
+    store.sessions.find((item) => item.id === unreadTwo!.id)!.unreadCount = 2;
+    store.sessions.find((item) => item.id === unreadThree!.id)!.unreadCount = 3;
+
+    const started: string[] = [];
+    messageServiceMock.getPrivateHistoryCursor.mockImplementation(async (targetId: string) => {
+      started.push(targetId);
+      return {
+        code: 200,
+        data: [],
+      };
+    });
+
+    await store.syncOfflineMessages({
+      refreshSessions: false,
+      batchSize: 2,
+      batchDelayMs: 0,
+      loadSize: 20,
+    });
+
+    expect(started).toEqual(["2", "3", "4", "5"]);
   });
 });

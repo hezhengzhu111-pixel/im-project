@@ -83,6 +83,22 @@
             <div class="session-header">
               <div class="session-title">
                 <span class="session-name">{{ item.session.targetName }}</span>
+                <span v-if="item.session.isPinned || item.session.isMuted" class="session-flags">
+                  <el-icon
+                    v-if="item.session.isPinned"
+                    class="session-flag"
+                    aria-label="Pinned conversation"
+                  >
+                    <Top />
+                  </el-icon>
+                  <el-icon
+                    v-if="item.session.isMuted"
+                    class="session-flag"
+                    aria-label="Muted conversation"
+                  >
+                    <Bell />
+                  </el-icon>
+                </span>
                 <span
                   v-if="item.session.type === 'private'"
                   class="session-presence"
@@ -172,7 +188,7 @@
 
 <script setup lang="ts">
 import {computed, ref, watch} from "vue";
-import {Plus, Search} from "@element-plus/icons-vue";
+import {Bell, Plus, Search, Top} from "@element-plus/icons-vue";
 import SideNavBar from "@/components/layout/SideNavBar.vue";
 import {useWebSocketStore} from "@/stores/websocket";
 import type {ChatSession, Friend, Group} from "@/types";
@@ -546,6 +562,17 @@ const filteredGroups = computed(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.session-flags {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #64748b;
+}
+
+.session-flag {
+  font-size: 12px;
 }
 
 .session-name,

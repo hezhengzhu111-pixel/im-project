@@ -1,10 +1,5 @@
-import type {
-  ChatSession,
-  ChatSessionType,
-  Message,
-  RawConversationDTO,
-} from "@/types";
-import { asBoolean, asNumber, asString, isRecord } from "@/types/utils";
+import type {ChatSession, ChatSessionType, Message, RawConversationDTO,} from "@/types";
+import {asBoolean, asNumber, asString, isRecord} from "@/types/utils";
 
 export const toBigIntId = (value: unknown): bigint | null => {
   if (value == null) return null;
@@ -124,6 +119,7 @@ export const normalizeConversation = (
   const targetName = asString(record.conversationName, targetId);
   const targetAvatar = asString(record.conversationAvatar) || undefined;
   const isPinned = asBoolean(record.isPinned ?? record.pinned, false);
+  const isMuted = asBoolean(record.isMuted ?? record.muted, false);
   return {
     id: buildSessionId(type, currentUserId, targetId),
     conversationId: conversationId || undefined,
@@ -145,6 +141,7 @@ export const normalizeConversation = (
     updateTime: lastActiveTime || undefined,
     isPinned,
     pinned: isPinned,
-    isMuted: asBoolean(record.isMuted ?? record.muted, false),
+    isMuted,
+    muted: isMuted,
   };
 };

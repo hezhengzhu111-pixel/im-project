@@ -1,4 +1,4 @@
-import type { Message } from "./message";
+import type {Message} from "./message";
 
 export type ChatSessionType = "private" | "group";
 
@@ -25,6 +25,7 @@ export interface ChatSession {
   isPinned: boolean;
   pinned?: boolean;
   isMuted: boolean;
+  muted?: boolean;
 }
 
 export interface RawConversationDTO {

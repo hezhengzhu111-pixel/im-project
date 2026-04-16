@@ -1,9 +1,9 @@
-import { computed, ref } from "vue";
-import { defineStore } from "pinia";
-import { messageService } from "@/services/message";
-import { buildSessionId, normalizeConversation } from "@/normalizers/chat";
-import type { ChatSession, ChatSessionType, Group, Message } from "@/types";
-import { useUserStore } from "@/stores/user";
+import {computed, ref} from "vue";
+import {defineStore} from "pinia";
+import {messageService} from "@/services/message";
+import {buildSessionId, normalizeConversation} from "@/normalizers/chat";
+import type {ChatSession, ChatSessionType, Group, Message} from "@/types";
+import {useUserStore} from "@/stores/user";
 
 const CURRENT_SESSION_STORAGE_KEY = "im_current_session";
 
@@ -21,6 +21,7 @@ const withLegacySessionAliases = (session: ChatSession): ChatSession => ({
   avatar: session.targetAvatar,
   conversationType: session.type === "group" ? "GROUP" : "PRIVATE",
   pinned: session.isPinned,
+  muted: session.isMuted,
 });
 
 export const useSessionStore = defineStore("session", () => {
@@ -223,6 +224,30 @@ export const useSessionStore = defineStore("session", () => {
     setSessionPinned(sessionId, pinned ?? !session.isPinned);
   };
 
+  const setSessionMuted = (sessionId: string, muted: boolean) => {
+    const session = sessions.value.find((item) => item.id === sessionId);
+    if (!session) {
+      return;
+    }
+    session.isMuted = muted;
+    session.muted = muted;
+    if (currentSession.value?.id === sessionId) {
+      currentSession.value = {
+        ...currentSession.value,
+        isMuted: muted,
+        muted,
+      };
+    }
+  };
+
+  const toggleSessionMuted = (sessionId: string, muted?: boolean) => {
+    const session = sessions.value.find((item) => item.id === sessionId);
+    if (!session) {
+      return;
+    }
+    setSessionMuted(sessionId, muted ?? !session.isMuted);
+  };
+
   const mergeGroupMetadata = (groups: Group[]) => {
     sessions.value = sessions.value.map((session) => {
       if (session.type !== "group") {
@@ -381,6 +406,8 @@ export const useSessionStore = defineStore("session", () => {
     updatePrivateSessionDisplay,
     setSessionPinned,
     toggleSessionPinned,
+    setSessionMuted,
+    toggleSessionMuted,
     mergeGroupMetadata,
     removeSession,
     removeGroupSession,

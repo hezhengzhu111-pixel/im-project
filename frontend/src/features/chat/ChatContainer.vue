@@ -78,8 +78,23 @@
               />
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="clear-history">
+                  <el-dropdown-item command="search-messages" data-command="search-messages">
+                    Search messages
+                  </el-dropdown-item>
+                  <el-dropdown-item command="toggle-pin" data-command="toggle-pin">
+                    {{ currentSession?.isPinned ? "Unpin conversation" : "Pin conversation" }}
+                  </el-dropdown-item>
+                  <el-dropdown-item command="toggle-mute" data-command="toggle-mute">
+                    {{ currentSession?.isMuted ? "Turn off mute" : "Mute notifications" }}
+                  </el-dropdown-item>
+                  <el-dropdown-item command="open-session-info" data-command="open-session-info">
+                    {{ currentSession?.type === "group" ? "Group info" : "Contact info" }}
+                  </el-dropdown-item>
+                  <el-dropdown-item command="clear-history" data-command="clear-history">
                     Clear chat history
+                  </el-dropdown-item>
+                  <el-dropdown-item command="delete-session" data-command="delete-session">
+                    Remove from chat list
                   </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -110,7 +125,17 @@
       v-model:visible-add-friend="showAddFriend"
       v-model:visible-create-group="showCreateGroup"
       v-model:visible-group-read-dialog="showGroupReadDialog"
+      v-model:visible-search-dialog="showSearchDialog"
+      v-model:visible-session-info-drawer="showSessionInfoDrawer"
+      :current-session="currentSession"
       :group-read-users="groupReadUsers"
+      :search-results="chatStore.searchResults"
+      :session-info-friend="sessionInfoFriend"
+      :session-info-group="sessionInfoGroup"
+      :session-info-members="sessionInfoMembers"
+      :session-info-loading="sessionInfoLoading"
+      :session-info-error="sessionInfoError"
+      :private-session-online="currentSessionOnline"
     />
   </div>
 </template>
@@ -124,10 +149,11 @@ import ChatDialogs from "@/features/chat/ChatDialogs.vue";
 import ChatMessageList from "@/features/chat/ChatMessageList.vue";
 import ChatSidebarPanel from "@/features/chat/ChatSidebarPanel.vue";
 import {useErrorHandler} from "@/hooks/useErrorHandler";
+import {groupService} from "@/services/group";
 import {useChatStore} from "@/stores/chat";
 import {useUserStore} from "@/stores/user";
 import {useWebSocketStore} from "@/stores/websocket";
-import type {Friend, Group, GroupReadUser, Message} from "@/types";
+import type {Friend, Group, GroupMember, GroupReadUser, Message} from "@/types";
 
 const userStore = useUserStore();
 const chatStore = useChatStore();
@@ -137,10 +163,22 @@ const activeTab = ref<"chat" | "contacts" | "groups">("chat");
 const showAddFriend = ref(false);
 const showCreateGroup = ref(false);
 const showGroupReadDialog = ref(false);
+const showSearchDialog = ref(false);
+const showSessionInfoDrawer = ref(false);
 const groupReadUsers = ref<GroupReadUser[]>([]);
-const loadingMoreHistory = ref(false);
+const sessionInfoMembers = ref<GroupMember[]>([]);
+const sessionInfoLoading = ref(false);
+const sessionInfoError = ref("");
 
 const currentSession = computed(() => chatStore.currentSession);
+const loadingMoreHistory = computed(() => {
+  const sessionId = currentSession.value?.id;
+  return sessionId ? chatStore.loadingHistoryBySession.get(sessionId) || false : false;
+});
+const currentSessionHasMoreHistory = computed(() => {
+  const sessionId = currentSession.value?.id;
+  return sessionId ? chatStore.hasMoreHistoryBySession.get(sessionId) !== false : false;
+});
 const pendingRequestsCount = computed(() =>
   chatStore.friendRequests.filter((item) => item.status === "PENDING").length,
 );
@@ -161,6 +199,33 @@ const connectionStatusLabel = computed(() => {
     default:
       return "Offline";
   }
+});
+const sessionInfoFriend = computed(() => {
+  if (currentSession.value?.type !== "private") {
+    return null;
+  }
+  return (
+    chatStore.friends.find(
+      (item) => String(item.friendId) === String(currentSession.value?.targetId),
+    ) || null
+  );
+});
+const sessionInfoGroup = computed(() => {
+  if (currentSession.value?.type !== "group") {
+    return null;
+  }
+  return (
+    chatStore.groups.find(
+      (item) => String(item.id) === String(currentSession.value?.targetId),
+    ) || {
+      id: currentSession.value.targetId,
+      groupName: currentSession.value.targetName,
+      avatar: currentSession.value.targetAvatar,
+      ownerId: "",
+      memberCount: currentSession.value.memberCount || 0,
+      createTime: "",
+    }
+  );
 });
 
 const handleTabChange = (tabName: "chat" | "contacts" | "groups") => {
@@ -196,23 +261,74 @@ const startGroupChat = async (group: Group) => {
 };
 
 const handleSessionAction = async (command: string | number | object) => {
-  if (command !== "clear-history" || !currentSession.value?.id) {
+  const session = currentSession.value;
+  if (typeof command !== "string" || !session?.id) {
     return;
   }
+
   try {
-    await ElMessageBox.confirm(
-      `Clear all messages in ${currentSession.value.targetName}?`,
-      "Clear chat history",
-      {
-        type: "warning",
-        confirmButtonText: "Clear",
-        cancelButtonText: "Cancel",
-      },
-    );
-    await chatStore.clearMessages(currentSession.value.id);
+    switch (command) {
+      case "search-messages":
+        showSearchDialog.value = true;
+        await chatStore.searchMessages("", session.id);
+        return;
+      case "toggle-pin":
+        chatStore.toggleSessionPinned(session.id);
+        return;
+      case "toggle-mute":
+        chatStore.toggleSessionMuted(session.id);
+        return;
+      case "open-session-info":
+        showSessionInfoDrawer.value = true;
+        sessionInfoMembers.value = [];
+        sessionInfoError.value = "";
+        sessionInfoLoading.value = false;
+        if (session.type !== "group") {
+          return;
+        }
+        sessionInfoLoading.value = true;
+        try {
+          const response = await groupService.getMembers(session.targetId);
+          sessionInfoMembers.value = response.data || [];
+        } catch (error) {
+          sessionInfoError.value = "Failed to load group members.";
+          capture(error, "Failed to load group members");
+        } finally {
+          sessionInfoLoading.value = false;
+        }
+        return;
+      case "clear-history":
+        await ElMessageBox.confirm(
+          `Clear all messages in ${session.targetName}?`,
+          "Clear chat history",
+          {
+            type: "warning",
+            confirmButtonText: "Clear",
+            cancelButtonText: "Cancel",
+          },
+        );
+        await chatStore.clearMessages(session.id);
+        return;
+      case "delete-session":
+        await ElMessageBox.confirm(
+          `Remove ${session.targetName} from your chat list?`,
+          "Remove conversation",
+          {
+            type: "warning",
+            confirmButtonText: "Remove",
+            cancelButtonText: "Cancel",
+          },
+        );
+        chatStore.deleteSession(session.id);
+        showSearchDialog.value = false;
+        showSessionInfoDrawer.value = false;
+        return;
+      default:
+        return;
+    }
   } catch (error) {
     if (error !== "cancel" && error !== "close") {
-      capture(error, "Failed to clear chat history");
+      capture(error, "Failed to handle session action");
     }
   }
 };
@@ -230,15 +346,14 @@ const sendMediaMessage = async (payload: {
 };
 
 const loadMoreHistory = async () => {
-  if (!currentSession.value?.id || loadingMoreHistory.value) {
+  if (
+    !currentSession.value?.id ||
+    loadingMoreHistory.value ||
+    !currentSessionHasMoreHistory.value
+  ) {
     return;
   }
-  loadingMoreHistory.value = true;
-  try {
-    await chatStore.loadMessages(currentSession.value.id, 1, 20);
-  } finally {
-    loadingMoreHistory.value = false;
-  }
+  await chatStore.loadMoreHistory(currentSession.value.id);
 };
 
 const openGroupReadDialog = (message: Message) => {

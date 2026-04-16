@@ -1,25 +1,24 @@
-import { computed } from "vue";
-import { defineStore } from "pinia";
-import { groupService } from "@/services/group";
-import { useContactStore } from "@/stores/contact";
-import { useGroupStore } from "@/stores/group";
-import { useMessageStore } from "@/stores/message";
-import { useSessionStore } from "@/stores/session";
-import { useUserStore } from "@/stores/user";
-import type {
-  ChatSession,
-  Friend,
-  Group,
-  MessageType,
-  User,
-} from "@/types";
+import {computed} from "vue";
+import {defineStore} from "pinia";
+import {useContactStore} from "@/stores/contact";
+import {useGroupStore} from "@/stores/group";
+import {useMessageStore} from "@/stores/message";
+import {useSessionStore} from "@/stores/session";
+import type {ChatSession, Group, MessageType} from "@/types";
+import {logger} from "@/utils/logger";
+
+const sleep = (durationMs: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, durationMs);
+  });
 
 export const useChatStore = defineStore("chat", () => {
   const contactStore = useContactStore();
   const groupStore = useGroupStore();
   const messageStore = useMessageStore();
   const sessionStore = useSessionStore();
-  const userStore = useUserStore();
+
+  let offlineSyncTail: Promise<void> = Promise.resolve();
 
   const loading = computed(
     () =>
@@ -64,9 +63,16 @@ export const useChatStore = defineStore("chat", () => {
     await useWebSocketStore().refreshOnlineStatus(userIds);
   };
 
-  const restoreCurrentSession = async () => {
+  const restoreCurrentSession = async (options?: { loadMessages?: boolean }) => {
+    const shouldLoadMessages = options?.loadMessages !== false;
     const restored = sessionStore.restorePersistedCurrentSession(
       (targetId) => {
+        const existing = sessionStore.sessions.find(
+          (item) => item.type === "private" && String(item.targetId) === String(targetId),
+        );
+        if (existing) {
+          return existing;
+        }
         const friend = contactStore.friends.find(
           (item) => String(item.friendId) === String(targetId),
         );
@@ -80,27 +86,60 @@ export const useChatStore = defineStore("chat", () => {
         );
       },
       (targetId) => {
-        const group = groupStore.groups.find(
-          (item) => String(item.id) === String(targetId),
+        const existing = sessionStore.sessions.find(
+          (item) => item.type === "group" && String(item.targetId) === String(targetId),
         );
+        if (existing) {
+          return existing;
+        }
+        const group = groupStore.groups.find((item) => String(item.id) === String(targetId));
         return group ? sessionStore.ensureGroupSession(group) : null;
       },
     );
-    if (restored) {
+
+    if (restored && shouldLoadMessages) {
       await messageStore.loadMessages(restored.id);
     }
+    return restored;
+  };
+
+  const runBackgroundTask = (task: () => Promise<void>) => {
+    void task().catch((error) => {
+      logger.warn("chat background task failed", error);
+    });
   };
 
   const initChatBootstrap = async () => {
-    await Promise.all([
-      contactStore.loadFriends(),
-      contactStore.loadFriendRequests(),
-      groupStore.loadGroups(),
-    ]);
-    sessionStore.mergeGroupMetadata(groupStore.groups);
     await sessionStore.loadSessions(groupStore.groups);
-    await restoreCurrentSession();
-    await refreshOnlineStatuses();
+    await restoreCurrentSession({ loadMessages: true });
+
+    runBackgroundTask(async () => {
+      await Promise.all([
+        contactStore.loadFriends(),
+        groupStore.loadGroups(),
+        contactStore.loadFriendRequests(),
+      ]);
+      sessionStore.mergeGroupMetadata(groupStore.groups);
+      await sessionStore.loadSessions(groupStore.groups);
+
+      const restored = sessionStore.currentSession || (await restoreCurrentSession({
+        loadMessages: false,
+      }));
+      if (restored?.id && !messageStore.messages.has(restored.id)) {
+        await messageStore.loadMessages(restored.id);
+      }
+
+      await refreshOnlineStatuses();
+      await syncOfflineMessages({
+        refreshSessions: false,
+        batchSize: 3,
+        batchDelayMs: 150,
+        loadSize: 50,
+        excludeSessionIds: sessionStore.currentSession?.id
+          ? [sessionStore.currentSession.id]
+          : [],
+      });
+    });
   };
 
   const setCurrentSession = async (session: ChatSession) => {
@@ -154,13 +193,11 @@ export const useChatStore = defineStore("chat", () => {
     sessionStore.mergeGroupMetadata(groupStore.groups);
   };
 
-  const searchUsers = async (params: { type: string; keyword: string }) => {
-    return contactStore.searchUsers(params);
-  };
+  const searchUsers = async (params: { type: string; keyword: string }) =>
+    contactStore.searchUsers(params);
 
-  const sendFriendRequest = async (params: { userId: string; message: string }) => {
-    return contactStore.sendFriendRequest(params);
-  };
+  const sendFriendRequest = async (params: { userId: string; message: string }) =>
+    contactStore.sendFriendRequest(params);
 
   const acceptFriendRequest = async (requestId: string) => {
     await contactStore.acceptFriendRequest(requestId);
@@ -200,8 +237,7 @@ export const useChatStore = defineStore("chat", () => {
   }) => {
     const created = await groupStore.createGroup(params);
     await Promise.all([loadGroups(), loadSessions()]);
-    const refreshedGroup =
-      groupStore.groups.find((item) => item.id === created.id) || created;
+    const refreshedGroup = groupStore.groups.find((item) => item.id === created.id) || created;
     await openGroupSession(refreshedGroup);
     return refreshedGroup;
   };
@@ -216,24 +252,85 @@ export const useChatStore = defineStore("chat", () => {
     content: string,
     type: MessageType = "TEXT",
     extra?: Record<string, unknown>,
-  ) => {
-    return messageStore.sendMessage(sessionStore.currentSession, content, type, extra);
+  ) => messageStore.sendMessage(sessionStore.currentSession, content, type, extra);
+
+  const loadMoreHistory = async (sessionId: string, size = 20) => {
+    await messageStore.loadMoreHistory(sessionId, size);
   };
 
-  const syncOfflineMessages = async (batchSize = 50) => {
-    await loadSessions();
-    const sessionIds = sessionStore.sessions
-      .filter((session) => (session.unreadCount || 0) > 0)
-      .map((session) => session.id);
-    if (sessionStore.currentSession?.id) {
-      sessionIds.push(sessionStore.currentSession.id);
-    }
-    const uniqueIds = Array.from(new Set(sessionIds.filter(Boolean)));
-    await Promise.all(
-      uniqueIds.map((sessionId) =>
-        messageStore.loadMessages(sessionId, 0, Math.max(20, Math.min(batchSize, 100))),
-      ),
+  const toggleSessionMuted = (sessionId: string, muted?: boolean) => {
+    sessionStore.toggleSessionMuted(sessionId, muted);
+  };
+
+  const deleteSession = (sessionId: string) => {
+    sessionStore.removeSession(sessionId);
+    messageStore.resetSessionRuntimeState(sessionId);
+  };
+
+  const syncOfflineMessages = async (options?: {
+    refreshSessions?: boolean;
+    batchSize?: number;
+    batchDelayMs?: number;
+    loadSize?: number;
+    excludeSessionIds?: string[];
+  }) => {
+    const refreshSessions = options?.refreshSessions !== false;
+    const batchSize = Math.max(1, options?.batchSize ?? 3);
+    const batchDelayMs = Math.max(0, options?.batchDelayMs ?? 150);
+    const loadSize = Math.max(20, Math.min(options?.loadSize ?? 50, 100));
+    const excludedSessionIds = new Set(
+      (options?.excludeSessionIds || []).map((item) => String(item || "")),
     );
+
+    const run = async () => {
+      if (refreshSessions) {
+        await sessionStore.loadSessions(groupStore.groups);
+      }
+
+      const queue: string[] = [];
+      const seen = new Set<string>();
+      const enqueue = (sessionId?: string) => {
+        const normalizedId = String(sessionId || "").trim();
+        if (!normalizedId || excludedSessionIds.has(normalizedId) || seen.has(normalizedId)) {
+          return;
+        }
+        seen.add(normalizedId);
+        queue.push(normalizedId);
+      };
+
+      enqueue(sessionStore.currentSession?.id);
+      sessionStore.sessions
+        .filter((session) => (session.unreadCount || 0) > 0)
+        .forEach((session) => {
+          enqueue(session.id);
+        });
+
+      if (queue.length === 0) {
+        return;
+      }
+
+      const [currentSessionId, ...restSessionIds] = queue;
+      if (currentSessionId) {
+        await messageStore.loadMessages(currentSessionId, 0, loadSize);
+      }
+
+      for (let index = 0; index < restSessionIds.length; index += batchSize) {
+        const batch = restSessionIds.slice(index, index + batchSize);
+        await Promise.all(
+          batch.map((sessionId) => messageStore.loadMessages(sessionId, 0, loadSize)),
+        );
+        if (index + batchSize < restSessionIds.length && batchDelayMs > 0) {
+          await sleep(batchDelayMs);
+        }
+      }
+    };
+
+    const queuedRun = offlineSyncTail.catch(() => undefined).then(run);
+    offlineSyncTail = queuedRun.then(
+      () => undefined,
+      () => undefined,
+    );
+    return queuedRun;
   };
 
   const clear = () => {
@@ -253,6 +350,11 @@ export const useChatStore = defineStore("chat", () => {
     messages: computed(() => messageStore.messages),
     currentMessages: computed(() => messageStore.currentMessages),
     searchResults: computed(() => messageStore.searchResults),
+    loadingHistoryBySession: computed(() => messageStore.loadingHistoryBySession),
+    hasMoreHistoryBySession: computed(() => messageStore.hasMoreHistoryBySession),
+    oldestLoadedServerMessageIdBySession: computed(
+      () => messageStore.oldestLoadedServerMessageIdBySession,
+    ),
     friends: computed(() => contactStore.friends),
     friendRequests: computed(() => contactStore.friendRequests),
     groups: computed(() => groupStore.groups),
@@ -268,6 +370,9 @@ export const useChatStore = defineStore("chat", () => {
     clearCurrentSession: sessionStore.clearCurrentSession,
     setSessionPinned: sessionStore.setSessionPinned,
     toggleSessionPinned: sessionStore.toggleSessionPinned,
+    setSessionMuted: sessionStore.setSessionMuted,
+    toggleSessionMuted,
+    deleteSession,
     createOrGetSession: (
       type: "private" | "group",
       targetId: string,
@@ -281,14 +386,11 @@ export const useChatStore = defineStore("chat", () => {
             avatar: targetAvatar,
             memberCount: 0,
           } as Group)
-        : sessionStore.ensurePrivateSession(
-            targetId,
-            targetName || targetId,
-            targetAvatar,
-          ),
+        : sessionStore.ensurePrivateSession(targetId, targetName || targetId, targetAvatar),
     openPrivateSession,
     openGroupSession,
     loadMessages: messageStore.loadMessages,
+    loadMoreHistory,
     addMessage: messageStore.addMessage,
     sendMessage,
     deleteMessage: messageStore.deleteMessage,
