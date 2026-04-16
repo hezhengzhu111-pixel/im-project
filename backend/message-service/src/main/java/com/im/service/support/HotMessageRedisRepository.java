@@ -7,6 +7,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
+import org.springframework.data.redis.serializer.GenericToStringSerializer;
+import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -23,11 +25,32 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class HotMessageRedisRepository {
 
+    private static final RedisSerializer<String> SCRIPT_ARGUMENT_SERIALIZER = RedisSerializer.string();
+    private static final RedisSerializer<Long> SCRIPT_RESULT_SERIALIZER = new GenericToStringSerializer<>(Long.class);
+
     private static final RedisScript<Long> PERSISTED_WATERMARK_UPDATE_SCRIPT = new DefaultRedisScript<>(
             """
-                    local current = redis.call('GET', KEYS[1])
-                    local next = tonumber(ARGV[1])
-                    local ttl = tonumber(ARGV[2])
+                    local function parseLong(raw)
+                      if raw == false or raw == nil then
+                        return nil
+                      end
+                      if type(raw) == 'string' then
+                        local stripped = string.match(raw, '^"(.*)"$')
+                        if stripped ~= nil then
+                          raw = stripped
+                        end
+                      end
+                      return tonumber(raw)
+                    end
+                    local current = parseLong(redis.call('GET', KEYS[1]))
+                    local next = parseLong(ARGV[1])
+                    local ttl = parseLong(ARGV[2])
+                    if (not next) then
+                      return redis.error_reply('invalid persisted watermark')
+                    end
+                    if (not ttl) or ttl <= 0 then
+                      ttl = 60
+                    end
                     if (not current) then
                       redis.call('SET', KEYS[1], tostring(next))
                       redis.call('EXPIRE', KEYS[1], ttl)
@@ -124,14 +147,7 @@ public class HotMessageRedisRepository {
         if (senderId == null || !StringUtils.hasText(clientMessageId)) {
             return null;
         }
-        Object value = redisTemplate.opsForValue().get(buildClientMessageKey(senderId, clientMessageId));
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        if (value instanceof String text && StringUtils.hasText(text)) {
-            return Long.valueOf(text.trim());
-        }
-        return null;
+        return parseLongValue(redisTemplate.opsForValue().get(buildClientMessageKey(senderId, clientMessageId)));
     }
 
     public void addRecentMessage(String conversationId, Long messageId, LocalDateTime createdTime) {
@@ -231,6 +247,8 @@ public class HotMessageRedisRepository {
         }
         redisTemplate.execute(
                 PERSISTED_WATERMARK_UPDATE_SCRIPT,
+                SCRIPT_ARGUMENT_SERIALIZER,
+                SCRIPT_RESULT_SERIALIZER,
                 List.of(persistedWatermarkKeyPrefix + conversationId.trim()),
                 Long.toString(messageId),
                 Long.toString(resolvePersistedWatermarkTtlSeconds())
@@ -241,14 +259,7 @@ public class HotMessageRedisRepository {
         if (!StringUtils.hasText(conversationId)) {
             return null;
         }
-        Object value = redisTemplate.opsForValue().get(persistedWatermarkKeyPrefix + conversationId.trim());
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        if (value instanceof String text && StringUtils.hasText(text)) {
-            return Long.valueOf(text.trim());
-        }
-        return null;
+        return parseLongValue(redisTemplate.opsForValue().get(persistedWatermarkKeyPrefix + conversationId.trim()));
     }
 
     public void saveStatusPending(Long messageId, Integer status, StatusChangeEvent event) {
@@ -349,14 +360,8 @@ public class HotMessageRedisRepository {
         if (userId == null || !StringUtils.hasText(conversationId)) {
             return 0L;
         }
-        Object value = redisTemplate.opsForHash().get(userUnreadKeyPrefix + userId, conversationId.trim());
-        if (value instanceof Number number) {
-            return Math.max(0L, number.longValue());
-        }
-        if (value instanceof String text && StringUtils.hasText(text)) {
-            return Math.max(0L, Long.parseLong(text.trim()));
-        }
-        return 0L;
+        Long unreadCount = parseLongValue(redisTemplate.opsForHash().get(userUnreadKeyPrefix + userId, conversationId.trim()));
+        return unreadCount == null ? 0L : Math.max(0L, unreadCount);
     }
 
     private List<MessageDTO> loadMessagesByIds(Set<Object> messageIds) {
@@ -400,11 +405,19 @@ public class HotMessageRedisRepository {
     }
 
     private Long toMessageId(Object value) {
+        return parseLongValue(value);
+    }
+
+    private Long parseLongValue(Object value) {
         if (value instanceof Number number) {
             return number.longValue();
         }
         if (value instanceof String text && StringUtils.hasText(text)) {
-            return Long.valueOf(text.trim());
+            try {
+                return Long.valueOf(text.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
         }
         return null;
     }
