@@ -1,5 +1,6 @@
 <template>
   <div
+    v-memo="[renderDigest, audioPlaying]"
     class="message-item"
     :class="{
       'is-mine': isMine,
@@ -9,40 +10,40 @@
     @contextmenu.prevent="handleContextMenu"
   >
     <template v-if="isSystemMessage">
-      <div class="system-pill">{{ message.content }}</div>
+      <div class="system-pill">{{ content }}</div>
     </template>
 
     <template v-else>
       <el-avatar
         v-if="!isMine"
         :size="40"
-        :src="message.senderAvatar"
+        :src="senderAvatar"
         class="message-avatar"
       >
         {{ senderAvatarText }}
       </el-avatar>
 
       <div class="message-lane">
-        <div v-if="showSenderLabel" class="message-sender">{{ senderDisplayName }}</div>
+        <div v-if="showSenderLabel" class="message-sender">{{ senderName || "Unknown user" }}</div>
 
         <div class="message-stack">
           <div class="message-bubble" :class="bubbleClass">
             <div v-if="isRecalled" class="status-copy">Message recalled</div>
             <div v-else-if="isDeleted" class="status-copy">Message deleted</div>
 
-            <div v-else-if="message.messageType === 'TEXT'" class="text-content">
-              {{ message.content }}
+            <div v-else-if="messageType === 'TEXT'" class="text-content">
+              {{ content }}
             </div>
 
             <button
-              v-else-if="message.messageType === 'IMAGE'"
+              v-else-if="messageType === 'IMAGE'"
               type="button"
               class="media-card interactive-reset"
               aria-label="Preview image"
-              @click="emit('preview-image', message)"
+              @click="emit('preview-image', messageId)"
             >
               <el-image
-                :src="message.mediaUrl || message.content"
+                :src="mediaSource"
                 :preview-src-list="[]"
                 :scroll-container="imageScrollContainer || undefined"
                 fit="cover"
@@ -60,55 +61,55 @@
               </el-image>
             </button>
 
-            <div v-else-if="message.messageType === 'FILE'" class="attachment-card">
+            <div v-else-if="messageType === 'FILE'" class="attachment-card">
               <div class="attachment-icon">
                 <el-icon><Document /></el-icon>
               </div>
               <div class="attachment-meta">
-                <div class="attachment-title">{{ fileName }}</div>
-                <div class="attachment-subtitle">{{ fileSize }}</div>
+                <div class="attachment-title">{{ fileName || "Unknown file" }}</div>
+                <div class="attachment-subtitle">{{ fileSizeLabel || "Size unknown" }}</div>
               </div>
               <button
                 type="button"
                 class="attachment-action interactive-reset"
-                @click="emit('download-file', message)"
+                @click="emit('download-file', messageId)"
               >
                 Download
               </button>
             </div>
 
             <button
-              v-else-if="message.messageType === 'VOICE'"
+              v-else-if="messageType === 'VOICE'"
               type="button"
               class="attachment-card attachment-card-voice interactive-reset"
-              @click="emit('toggle-audio', message)"
+              @click="emit('toggle-audio', messageId)"
             >
               <div class="attachment-icon">
                 <el-icon>
-                  <VideoPause v-if="audioPlayingState" />
+                  <VideoPause v-if="audioPlaying" />
                   <Microphone v-else />
                 </el-icon>
               </div>
               <div class="attachment-meta">
                 <div class="attachment-title">
-                  {{ audioPlayingState ? "Playing voice message" : "Voice message" }}
+                  {{ audioPlaying ? "Playing voice message" : "Voice message" }}
                 </div>
-                <div class="attachment-subtitle">{{ voiceDuration }}</div>
+                <div class="attachment-subtitle">{{ durationLabel || "0:00" }}</div>
               </div>
             </button>
 
-            <div v-else-if="message.messageType === 'VIDEO'" class="media-card media-card-video">
+            <div v-else-if="messageType === 'VIDEO'" class="media-card media-card-video">
               <video
-                :src="message.mediaUrl || message.content"
-                :poster="message.thumbnailUrl"
+                :src="mediaSource"
+                :poster="thumbnailUrl"
                 controls
                 class="message-video"
-                @play="emit('play-video', message)"
+                @play="emit('play-video', messageId)"
                 @loadeddata="handleMediaLoaded"
               />
               <div class="media-caption">
                 <span>Video</span>
-                <span>{{ voiceDuration }}</span>
+                <span>{{ durationLabel || "0:00" }}</span>
               </div>
             </div>
           </div>
@@ -116,44 +117,28 @@
           <div class="message-meta" :class="{ 'is-mine': isMine }">
             <span class="message-time">{{ timeLabel }}</span>
             <span
-              v-if="isMine && message.status === 'SENDING'"
+              v-if="statusLabel"
               class="message-state"
-              aria-label="Sending"
+              :class="statusToneClass"
+              :aria-label="statusLabel"
             >
-              <el-icon class="message-state-icon is-loading"><Loading /></el-icon>
-              Sending
-            </span>
-            <span
-              v-else-if="isMine && message.status === 'FAILED'"
-              class="message-state is-failed"
-              aria-label="Failed to send"
-            >
-              <el-icon class="message-state-icon"><Warning /></el-icon>
-              Failed
+              <el-icon v-if="statusTone === 'loading'" class="message-state-icon is-loading">
+                <Loading />
+              </el-icon>
+              <el-icon v-else-if="statusTone === 'failed'" class="message-state-icon">
+                <Warning />
+              </el-icon>
+              {{ statusLabel }}
             </span>
             <button
-              v-else-if="isMine && isGroupMessage && groupReadCount > 0"
+              v-if="groupReadLabel"
               type="button"
               class="message-state interactive-reset is-link"
-              :title="`${groupReadCount} group member(s) have read`"
-              @click.stop="emit('show-group-readers', message)"
+              :title="groupReadLabel"
+              @click.stop="emit('show-group-readers', messageId)"
             >
-              Read by {{ groupReadCount }}
+              {{ groupReadLabel }}
             </button>
-            <span
-              v-else-if="isMine && (message.status === 'READ' || message.readStatus === 1)"
-              class="message-state is-read"
-              aria-label="Read"
-            >
-              Read
-            </span>
-            <span
-              v-else-if="isMine && (message.status === 'SENT' || message.status === 'DELIVERED')"
-              class="message-state"
-              aria-label="Sent"
-            >
-              Delivered
-            </span>
           </div>
         </div>
       </div>
@@ -172,126 +157,87 @@
 
 <script setup lang="ts">
 import {computed} from "vue";
-import {Document, Loading, Microphone, VideoPause, Warning,} from "@element-plus/icons-vue";
-import {formatFileSize, getAvatarText} from "@/utils/common";
-import type {Message} from "@/types";
+import {Document, Loading, Microphone, VideoPause, Warning} from "@element-plus/icons-vue";
+import {getAvatarText} from "@/utils/common";
+import type {MessageType} from "@/types";
 
 interface Props {
-  message: Message;
-  currentUserId: string;
+  messageId: string;
+  renderDigest: string;
+  isMine: boolean;
+  isSystemMessage: boolean;
+  isRecalled: boolean;
+  isDeleted: boolean;
+  messageType: MessageType;
+  content: string;
+  senderName?: string;
+  senderAvatar?: string;
+  showSenderLabel?: boolean;
   currentUserName?: string;
   currentUserAvatar?: string;
-  showSenderInfo?: boolean;
+  timeLabel?: string;
+  statusLabel?: string;
+  statusTone?: "default" | "loading" | "failed" | "read";
+  groupReadLabel?: string;
+  mediaUrl?: string;
+  thumbnailUrl?: string;
+  fileName?: string;
+  fileSizeLabel?: string;
+  durationLabel?: string;
   audioPlaying?: boolean;
   imageScrollContainer?: HTMLElement | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  showSenderInfo: true,
+  showSenderLabel: false,
+  currentUserName: "",
+  currentUserAvatar: "",
+  timeLabel: "",
+  statusLabel: "",
+  statusTone: "default",
+  groupReadLabel: "",
+  mediaUrl: "",
+  thumbnailUrl: "",
+  fileName: "",
+  fileSizeLabel: "",
+  durationLabel: "",
   audioPlaying: false,
+  imageScrollContainer: null,
 });
 
 const emit = defineEmits<{
-  (e: "show-group-readers", message: Message): void;
-  (e: "open-context-menu", message: Message, event: MouseEvent): void;
-  (e: "toggle-audio", message: Message): void;
-  (e: "download-file", message: Message): void;
-  (e: "preview-image", message: Message): void;
-  (e: "play-video", message: Message): void;
-  (e: "media-loaded", message: Message): void;
+  (e: "show-group-readers", messageId: string): void;
+  (e: "open-context-menu", messageId: string, event: MouseEvent): void;
+  (e: "toggle-audio", messageId: string): void;
+  (e: "download-file", messageId: string): void;
+  (e: "preview-image", messageId: string): void;
+  (e: "play-video", messageId: string): void;
+  (e: "media-loaded", messageId: string): void;
 }>();
 
-const senderDisplayName = computed(
-  () => props.message.senderName || props.message.groupName || "Unknown user",
-);
-
-const senderAvatarText = computed(() => getAvatarText(senderDisplayName.value));
-
+const senderAvatarText = computed(() => getAvatarText(props.senderName || "Unknown user"));
 const currentUserAvatarText = computed(() =>
-  getAvatarText(props.currentUserName || props.currentUserId),
+  getAvatarText(props.currentUserName || "Me"),
 );
-
-const isMine = computed(() => {
-  const senderId = String(props.message.senderId || "");
-  const currentUserId = String(props.currentUserId || "");
-  if (senderId && currentUserId && senderId === currentUserId) {
-    return true;
-  }
-  return Boolean(
-    props.currentUserName &&
-      props.message.senderName &&
-      props.currentUserName === props.message.senderName,
-  );
-});
-
-const isSystemMessage = computed(() => props.message.messageType === "SYSTEM");
-const isRecalled = computed(() => props.message.status === "RECALLED");
-const isDeleted = computed(() => props.message.status === "DELETED");
-const isGroupMessage = computed(() => Boolean(props.message.groupId || props.message.isGroupChat));
-
-const showSenderLabel = computed(
-  () => props.showSenderInfo && !isMine.value && isGroupMessage.value,
-);
-
-const groupReadCount = computed(() => {
-  if (typeof props.message.readByCount === "number" && props.message.readByCount > 0) {
-    return props.message.readByCount;
-  }
-  return props.message.readBy?.length || 0;
-});
-
-const timeLabel = computed(() => {
-  const date = new Date(props.message.sendTime);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-});
-
-const voiceDuration = computed(() => {
-  if (!props.message.duration) {
-    return "0:00";
-  }
-  const minutes = Math.floor(props.message.duration / 60);
-  const seconds = props.message.duration % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-});
-
-const audioPlayingState = computed(() => props.audioPlaying);
-
-const fileName = computed(() => {
-  if (props.message.mediaName) {
-    return props.message.mediaName;
-  }
-  try {
-    const url = new URL(props.message.mediaUrl || props.message.content);
-    return url.pathname.split("/").pop() || "Unknown file";
-  } catch {
-    return "Unknown file";
-  }
-});
-
-const fileSize = computed(() =>
-  props.message.mediaSize ? formatFileSize(props.message.mediaSize) : "Size unknown",
-);
-
+const mediaSource = computed(() => props.mediaUrl || props.content);
 const bubbleClass = computed(() => ({
-  "is-own": isMine.value,
-  "is-muted": isRecalled.value || isDeleted.value,
+  "is-own": props.isMine,
+  "is-muted": props.isRecalled || props.isDeleted,
+}));
+const statusToneClass = computed(() => ({
+  "is-failed": props.statusTone === "failed",
+  "is-read": props.statusTone === "read",
 }));
 
 const handleContextMenu = (event: MouseEvent) => {
-  if (isSystemMessage.value) {
+  if (props.isSystemMessage) {
     return;
   }
-  emit("open-context-menu", props.message, event);
+  emit("open-context-menu", props.messageId, event);
 };
 
 const handleMediaLoaded = () => {
-  emit("media-loaded", props.message);
+  emit("media-loaded", props.messageId);
 };
 </script>
 

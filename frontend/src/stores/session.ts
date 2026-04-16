@@ -6,6 +6,7 @@ import type {ChatSession, ChatSessionType, Group, Message} from "@/types";
 import {useUserStore} from "@/stores/user";
 
 const CURRENT_SESSION_STORAGE_KEY = "im_current_session";
+const LOAD_SESSIONS_THROTTLE_MS = 800;
 
 const normalizeSessionTime = (value?: string): string => {
   if (!value) {
@@ -29,6 +30,8 @@ export const useSessionStore = defineStore("session", () => {
   const sessions = ref<ChatSession[]>([]);
   const unreadCounts = ref<Map<string, number>>(new Map());
   const loading = ref(false);
+  let loadSessionsInFlight: Promise<ChatSession[]> | null = null;
+  let lastLoadedAt = 0;
 
   const currentSessionId = computed(() => currentSession.value?.id || "");
 
@@ -319,7 +322,10 @@ export const useSessionStore = defineStore("session", () => {
     return null;
   };
 
-  const loadSessions = async (groups: Group[]): Promise<ChatSession[]> => {
+  const loadSessions = async (
+    groups: Group[],
+    options?: { force?: boolean },
+  ): Promise<ChatSession[]> => {
     const userStore = useUserStore();
     const currentUserId = String(userStore.userId || "");
     if (!currentUserId) {
@@ -327,8 +333,20 @@ export const useSessionStore = defineStore("session", () => {
       unreadCounts.value.clear();
       return [];
     }
+    if (loadSessionsInFlight) {
+      return loadSessionsInFlight;
+    }
+    if (
+      !options?.force &&
+      sessions.value.length > 0 &&
+      Date.now() - lastLoadedAt < LOAD_SESSIONS_THROTTLE_MS
+    ) {
+      mergeGroupMetadata(groups);
+      syncUnreadCounts();
+      return sessions.value;
+    }
     loading.value = true;
-    try {
+    loadSessionsInFlight = (async () => {
       const response = await messageService.getConversations(currentUserId);
       const byId = new Map<string, ChatSession>();
       for (const session of response.data) {
@@ -354,10 +372,13 @@ export const useSessionStore = defineStore("session", () => {
           sessions.value.find((item) => item.id === currentSession.value?.id) ||
           currentSession.value;
       }
+      lastLoadedAt = Date.now();
       return sessions.value;
-    } finally {
+    })().finally(() => {
       loading.value = false;
-    }
+      loadSessionsInFlight = null;
+    });
+    return loadSessionsInFlight;
   };
 
   const markSessionReadLocally = (sessionId: string) => {
@@ -387,6 +408,8 @@ export const useSessionStore = defineStore("session", () => {
     clearCurrentSession();
     sessions.value = [];
     unreadCounts.value.clear();
+    lastLoadedAt = 0;
+    loadSessionsInFlight = null;
   };
 
   return {

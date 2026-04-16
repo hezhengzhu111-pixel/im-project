@@ -384,10 +384,46 @@ describe("chat store", () => {
       lastReadMessageId: "150",
       readAt: "2026-02-07T10:00:01.000Z",
     });
+    await flushMicrotasks();
 
     const list = store.messages.get(session!.id) || [];
     expect(list.find((item) => item.id === "100")?.status).toBe("READ");
     expect(list.find((item) => item.id === "200")?.status).toBe("SENT");
+    expect(messageRepoMock.upsertServerMessages).toHaveBeenCalledWith(
+      session!.id,
+      [
+        expect.objectContaining({
+          id: "100",
+          status: "READ",
+        }),
+      ],
+    );
+  });
+
+  it("reuses in-flight session refreshes instead of refetching conversations", async () => {
+    let resolveConversations: ((value: unknown) => void) | undefined;
+    messageServiceMock.getConversations.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveConversations = resolve;
+        }),
+    );
+
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    const first = store.refreshSessionSkeletons({force: true, refreshPresence: false});
+    const second = store.refreshSessionSkeletons({force: true, refreshPresence: false});
+    await flushMicrotasks(1);
+
+    expect(messageServiceMock.getConversations).toHaveBeenCalledTimes(1);
+
+    resolveConversations?.({
+      code: 200,
+      data: [],
+    });
+
+    await Promise.all([first, second]);
   });
 
   it("routes group messages into the canonical group session id", async () => {

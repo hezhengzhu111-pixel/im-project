@@ -49,15 +49,12 @@
 
           <MessageItem
             v-else
-            :message="item.message"
-            :current-user-id="currentUserId"
-            :current-user-name="currentUserName"
-            :current-user-avatar="currentUserAvatar"
-            :audio-playing="playingMessageId === item.message.id"
+            v-bind="item.view"
+            :audio-playing="playingMessageId === item.messageId"
             :image-scroll-container="scrollContainerRef"
-            @show-group-readers="emit('show-group-readers', $event)"
+            @show-group-readers="handleShowGroupReaders"
             @open-context-menu="openContextMenu"
-            @toggle-audio="toggleAudio"
+            @toggle-audio="toggleAudioById"
             @download-file="downloadFile"
             @preview-image="previewImage"
             @play-video="playVideo"
@@ -106,6 +103,7 @@ import MessageItem from "@/features/chat/ChatMessageItem.vue";
 import {useAudioPlayer} from "@/features/chat/composables/useAudioPlayer";
 import {useMessageActions} from "@/features/chat/composables/useMessageActions";
 import {useMessageContextMenu} from "@/features/chat/composables/useMessageContextMenu";
+import {formatFileSize} from "@/utils/common";
 import type {Message} from "@/types";
 
 interface Props {
@@ -129,10 +127,36 @@ type UnreadItem = {
   label: string;
 };
 
+type MessageListItemView = {
+  messageId: string;
+  renderDigest: string;
+  isMine: boolean;
+  isSystemMessage: boolean;
+  isRecalled: boolean;
+  isDeleted: boolean;
+  messageType: Message["messageType"];
+  content: string;
+  senderName?: string;
+  senderAvatar?: string;
+  showSenderLabel: boolean;
+  currentUserName?: string;
+  currentUserAvatar?: string;
+  timeLabel: string;
+  statusLabel: string;
+  statusTone: "default" | "loading" | "failed" | "read";
+  groupReadLabel: string;
+  mediaUrl?: string;
+  thumbnailUrl?: string;
+  fileName?: string;
+  fileSizeLabel?: string;
+  durationLabel?: string;
+};
+
 type MessageRenderItem = {
   id: string;
   kind: "message";
-  message: Message;
+  messageId: string;
+  view: MessageListItemView;
 };
 
 type RenderItem = SeparatorItem | UnreadItem | MessageRenderItem;
@@ -140,6 +164,8 @@ type RenderItem = SeparatorItem | UnreadItem | MessageRenderItem;
 const props = withDefaults(defineProps<Props>(), {
   loadingHistory: false,
   openedUnreadCount: 0,
+  currentUserName: "",
+  currentUserAvatar: "",
 });
 
 const emit = defineEmits<{
@@ -166,6 +192,15 @@ const BOTTOM_FOLLOW_THRESHOLD = 180;
 const READ_ACK_BOTTOM_THRESHOLD = 120;
 const HISTORY_TRIGGER_TOP = 80;
 const HISTORY_FALLBACK_MS = 2000;
+const timeFormatter = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const dateFormatter = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  weekday: "short",
+});
 
 const scrollerRef = ref<DynamicScrollerRef | null>(null);
 const scrollContainerRef = ref<HTMLElement | null>(null);
@@ -174,6 +209,8 @@ const nearBottom = ref(true);
 const pendingHistoryAnchor = ref<HistoryAnchor | null>(null);
 const historyFallbackTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 const refreshScheduled = ref(false);
+const messageViewCache = new Map<string, MessageListItemView>();
+const messageRenderItemCache = new Map<string, MessageRenderItem>();
 const {playingMessageId, toggle: toggleAudio, stop} = useAudioPlayer();
 const {copy, recall, remove} = useMessageActions();
 const contextMenu = useMessageContextMenu();
@@ -211,18 +248,15 @@ const messageKey = (message?: Message): string => {
 
 const firstMessageKey = computed(() => messageKey(props.messages[0]));
 
-const tailMessageKey = computed(() => {
-  const message = props.messages[props.messages.length - 1];
-  if (!message) {
-    return "";
-  }
-  return [
-    messageKey(message),
-    message.clientMessageId || "",
-    message.status || "",
-    message.readStatus ?? "",
-    message.readByCount ?? "",
-  ].join(":");
+const messageById = computed(() => {
+  const next = new Map<string, Message>();
+  props.messages.forEach((message) => {
+    const key = messageKey(message);
+    if (key) {
+      next.set(key, message);
+    }
+  });
+  return next;
 });
 
 const unreadBoundaryIndex = computed(() => {
@@ -233,23 +267,172 @@ const unreadBoundaryIndex = computed(() => {
   return props.messages.length - unreadCount;
 });
 
+const formatDuration = (duration?: number) => {
+  if (!duration) {
+    return "0:00";
+  }
+  const minutes = Math.floor(duration / 60);
+  const seconds = duration % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+};
+
+const resolveFileName = (message: Message) => {
+  if (message.mediaName) {
+    return message.mediaName;
+  }
+  try {
+    const url = new URL(message.mediaUrl || message.content);
+    return url.pathname.split("/").pop() || "Unknown file";
+  } catch {
+    return "Unknown file";
+  }
+};
+
+const resolveStatusView = (message: Message, isMine: boolean) => {
+  if (!isMine) {
+    return {
+      statusLabel: "",
+      statusTone: "default" as const,
+      groupReadLabel: "",
+    };
+  }
+
+  if (message.status === "SENDING") {
+    return {
+      statusLabel: "Sending",
+      statusTone: "loading" as const,
+      groupReadLabel: "",
+    };
+  }
+
+  if (message.status === "FAILED") {
+    return {
+      statusLabel: "Failed",
+      statusTone: "failed" as const,
+      groupReadLabel: "",
+    };
+  }
+
+  const groupReadCount =
+    typeof message.readByCount === "number" && message.readByCount > 0
+      ? message.readByCount
+      : message.readBy?.length || 0;
+  if ((message.groupId || message.isGroupChat) && groupReadCount > 0) {
+    return {
+      statusLabel: "",
+      statusTone: "default" as const,
+      groupReadLabel: `Read by ${groupReadCount}`,
+    };
+  }
+
+  if (message.status === "READ" || message.readStatus === 1) {
+    return {
+      statusLabel: "Read",
+      statusTone: "read" as const,
+      groupReadLabel: "",
+    };
+  }
+
+  if (message.status === "SENT" || message.status === "DELIVERED") {
+    return {
+      statusLabel: "Delivered",
+      statusTone: "default" as const,
+      groupReadLabel: "",
+    };
+  }
+
+  return {
+    statusLabel: "",
+    statusTone: "default" as const,
+    groupReadLabel: "",
+  };
+};
+
+const buildRenderDigest = (message: Message) => {
+  const readCount =
+    typeof message.readByCount === "number" ? message.readByCount : message.readBy?.length || 0;
+  return [
+    messageKey(message),
+    message.senderId,
+    message.senderName || "",
+    message.senderAvatar || "",
+    message.messageType,
+    message.status,
+    message.readStatus ?? "",
+    readCount,
+    message.content || "",
+    message.mediaUrl || "",
+    message.mediaName || "",
+    message.mediaSize || "",
+    message.thumbnailUrl || "",
+    message.duration || "",
+    message.sendTime || "",
+  ].join("|");
+};
+
+const buildMessageView = (message: Message): MessageListItemView => {
+  const key = messageKey(message);
+  const digest = buildRenderDigest(message);
+  const cached = messageViewCache.get(key);
+  if (cached?.renderDigest === digest) {
+    return cached;
+  }
+
+  const isMine = isOwnMessage(message);
+  const isSystemMessage = message.messageType === "SYSTEM";
+  const isRecalled = message.status === "RECALLED";
+  const isDeleted = message.status === "DELETED";
+  const timeLabel = Number.isNaN(new Date(message.sendTime).getTime())
+    ? ""
+    : timeFormatter.format(new Date(message.sendTime));
+  const statusView = resolveStatusView(message, isMine);
+
+  const view: MessageListItemView = {
+    messageId: key,
+    renderDigest: digest,
+    isMine,
+    isSystemMessage,
+    isRecalled,
+    isDeleted,
+    messageType: message.messageType,
+    content: message.content || "",
+    senderName: message.senderName || message.groupName || "Unknown user",
+    senderAvatar: message.senderAvatar,
+    showSenderLabel: !isMine && Boolean(message.groupId || message.isGroupChat),
+    currentUserName: props.currentUserName,
+    currentUserAvatar: props.currentUserAvatar,
+    timeLabel,
+    statusLabel: statusView.statusLabel,
+    statusTone: statusView.statusTone,
+    groupReadLabel: statusView.groupReadLabel,
+    mediaUrl: message.mediaUrl || message.content,
+    thumbnailUrl: message.thumbnailUrl,
+    fileName: resolveFileName(message),
+    fileSizeLabel: message.mediaSize ? formatFileSize(message.mediaSize) : "Size unknown",
+    durationLabel: formatDuration(message.duration),
+  };
+
+  messageViewCache.set(key, view);
+  return view;
+};
+
 const renderItems = computed<RenderItem[]>(() => {
   const items: RenderItem[] = [];
   let previousDateKey = "";
+  const activeMessageIds = new Set<string>();
 
   props.messages.forEach((message, index) => {
+    const key = messageKey(message);
+    activeMessageIds.add(key);
+
     const currentDate = new Date(message.sendTime);
     const currentDateKey = Number.isNaN(currentDate.getTime())
       ? ""
-      : currentDate.toLocaleDateString(undefined, {
-          month: "short",
-          day: "numeric",
-          weekday: "short",
-        });
+      : dateFormatter.format(currentDate);
 
     if (currentDateKey && currentDateKey !== previousDateKey) {
       items.push({
-        id: `separator-${currentDateKey}-${messageKey(message)}`,
+        id: `separator-${currentDateKey}-${key}`,
         kind: "separator",
         label: currentDateKey,
       });
@@ -258,20 +441,45 @@ const renderItems = computed<RenderItem[]>(() => {
 
     if (unreadBoundaryIndex.value === index) {
       items.push({
-        id: `unread-${messageKey(message)}`,
+        id: `unread-${key}`,
         kind: "unread",
         label: "Unread messages",
       });
     }
 
-    items.push({
-      id: `message-${messageKey(message)}`,
+    const view = buildMessageView(message);
+    const cached = messageRenderItemCache.get(key);
+    if (cached?.view === view) {
+      items.push(cached);
+      return;
+    }
+
+    const nextItem: MessageRenderItem = {
+      id: `message-${key}`,
       kind: "message",
-      message,
-    });
+      messageId: key,
+      view,
+    };
+    messageRenderItemCache.set(key, nextItem);
+    items.push(nextItem);
+  });
+
+  Array.from(messageViewCache.keys()).forEach((key) => {
+    if (!activeMessageIds.has(key)) {
+      messageViewCache.delete(key);
+      messageRenderItemCache.delete(key);
+    }
   });
 
   return items;
+});
+
+const tailMessageSignal = computed(() => {
+  const lastMessage = props.messages[props.messages.length - 1];
+  if (!lastMessage) {
+    return "";
+  }
+  return buildRenderDigest(lastMessage);
 });
 
 const lastMessageRenderIndex = computed(() => {
@@ -288,9 +496,11 @@ const showScrollToLatest = computed(() => !nearBottom.value && props.messages.le
 const messageListSignal = computed(() => ({
   length: props.messages.length,
   first: firstMessageKey.value,
-  tail: tailMessageKey.value,
+  tail: tailMessageSignal.value,
   unread: unreadBoundaryIndex.value,
 }));
+
+const resolveMessageById = (messageId: string) => messageById.value.get(messageId) || null;
 
 const isNearBottom = (threshold = BOTTOM_FOLLOW_THRESHOLD) => {
   const container = scrollContainerRef.value;
@@ -315,7 +525,11 @@ const nextFrame = () =>
 
 const closeContextMenu = () => contextMenu.close();
 
-const openContextMenu = (message: Message, event: MouseEvent) => {
+const openContextMenu = (messageId: string, event: MouseEvent) => {
+  const message = resolveMessageById(messageId);
+  if (!message) {
+    return;
+  }
   contextMenu.open(message, event);
 };
 
@@ -340,16 +554,38 @@ const handleDelete = async () => {
   closeContextMenu();
 };
 
-const previewImage = (message: Message) => {
+const previewImage = (messageId: string) => {
+  const message = resolveMessageById(messageId);
+  if (!message) {
+    return;
+  }
   window.open(message.mediaUrl || message.content, "_blank", "noopener,noreferrer");
 };
 
-const downloadFile = (message: Message) => {
+const downloadFile = (messageId: string) => {
+  const message = resolveMessageById(messageId);
+  if (!message) {
+    return;
+  }
   window.open(message.mediaUrl || message.content, "_blank", "noopener,noreferrer");
 };
 
-const playVideo = (_message: Message) => {
+const playVideo = (_messageId: string) => {
   closeContextMenu();
+};
+
+const handleShowGroupReaders = (messageId: string) => {
+  const message = resolveMessageById(messageId);
+  if (message) {
+    emit("show-group-readers", message);
+  }
+};
+
+const toggleAudioById = (messageId: string) => {
+  const message = resolveMessageById(messageId);
+  if (message) {
+    void toggleAudio(message);
+  }
 };
 
 const scrollToBottom = async () => {
@@ -503,6 +739,8 @@ onMounted(() => {
 onUnmounted(() => {
   stop();
   clearHistoryFallbackTimer();
+  messageViewCache.clear();
+  messageRenderItemCache.clear();
   window.removeEventListener("click", closeContextMenu);
   window.removeEventListener("contextmenu", closeContextMenu);
 });

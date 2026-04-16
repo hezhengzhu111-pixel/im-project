@@ -4,11 +4,11 @@ import type {Message} from "@/types";
 
 const issueWsTicket = vi.fn();
 const checkOnlineStatus = vi.fn();
-const syncOfflineMessages = vi.fn();
+const scheduleRealtimeResume = vi.fn();
 const addMessage = vi.fn();
 const loadFriendRequests = vi.fn();
 const loadFriends = vi.fn();
-const loadSessions = vi.fn();
+const refreshSessionSkeletons = vi.fn();
 const applyReadReceipt = vi.fn();
 const messageError = vi.fn();
 const messageInfo = vi.fn();
@@ -59,11 +59,11 @@ vi.mock("@/services", () => ({
 vi.mock("@/stores/chat", () => ({
   useChatStore: () => ({
     messages: chatMessages,
-    syncOfflineMessages,
+    scheduleRealtimeResume,
     addMessage,
     loadFriendRequests,
     loadFriends,
-    loadSessions,
+    refreshSessionSkeletons,
     applyReadReceipt,
   }),
 }));
@@ -82,21 +82,21 @@ describe("websocket store", () => {
     FakeWebSocket.instances = [];
     issueWsTicket.mockReset();
     checkOnlineStatus.mockReset();
-    syncOfflineMessages.mockReset();
+    scheduleRealtimeResume.mockReset();
     addMessage.mockReset();
     loadFriendRequests.mockReset();
     loadFriends.mockReset();
-    loadSessions.mockReset();
+    refreshSessionSkeletons.mockReset();
     applyReadReceipt.mockReset();
     messageError.mockReset();
     messageInfo.mockReset();
     notification.mockReset();
     chatMessages.clear();
-    syncOfflineMessages.mockResolvedValue(undefined);
+    scheduleRealtimeResume.mockResolvedValue(undefined);
     addMessage.mockResolvedValue(undefined);
     loadFriendRequests.mockResolvedValue(undefined);
     loadFriends.mockResolvedValue(undefined);
-    loadSessions.mockResolvedValue(undefined);
+    refreshSessionSkeletons.mockResolvedValue(undefined);
     applyReadReceipt.mockResolvedValue(undefined);
     vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
     localStorage.clear();
@@ -125,12 +125,9 @@ describe("websocket store", () => {
     FakeWebSocket.instances[0].onopen?.();
     await Promise.resolve();
 
-    expect(syncOfflineMessages).toHaveBeenCalledTimes(1);
-    expect(syncOfflineMessages).toHaveBeenCalledWith({
-      refreshSessions: true,
-      batchSize: 3,
-      batchDelayMs: 150,
-      loadSize: 50,
+    expect(scheduleRealtimeResume).toHaveBeenCalledTimes(1);
+    expect(scheduleRealtimeResume).toHaveBeenCalledWith({
+      forceSessionRefresh: false,
     });
     expect(localStorage.getItem("im_ws_cache")).toContain("\"userId\":\"42\"");
   });
@@ -381,12 +378,12 @@ describe("websocket store", () => {
 
     await vi.advanceTimersByTimeAsync(1499);
     expect(loadFriends).not.toHaveBeenCalled();
-    expect(loadSessions).not.toHaveBeenCalled();
+    expect(refreshSessionSkeletons).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
 
     expect(loadFriends).toHaveBeenCalledTimes(1);
-    expect(loadSessions).toHaveBeenCalledTimes(1);
+    expect(refreshSessionSkeletons).toHaveBeenCalledTimes(1);
     expect(notification).toHaveBeenCalledTimes(1);
   });
 });

@@ -19,6 +19,9 @@ export const useChatStore = defineStore("chat", () => {
   const sessionStore = useSessionStore();
 
   let offlineSyncTail: Promise<void> = Promise.resolve();
+  let sessionRefreshTail: Promise<ChatSession[]> = Promise.resolve([]);
+  let sessionRefreshInFlight: Promise<ChatSession[]> | null = null;
+  let realtimeResumeTail: Promise<void> = Promise.resolve();
 
   const loading = computed(
     () =>
@@ -110,7 +113,7 @@ export const useChatStore = defineStore("chat", () => {
   };
 
   const initChatBootstrap = async () => {
-    await sessionStore.loadSessions(groupStore.groups);
+    await refreshSessionSkeletons({ force: true, refreshPresence: false });
     await restoreCurrentSession({ loadMessages: true });
 
     runBackgroundTask(async () => {
@@ -120,7 +123,7 @@ export const useChatStore = defineStore("chat", () => {
         contactStore.loadFriendRequests(),
       ]);
       sessionStore.mergeGroupMetadata(groupStore.groups);
-      await sessionStore.loadSessions(groupStore.groups);
+      await refreshSessionSkeletons({ force: true, refreshPresence: false });
 
       const restored = sessionStore.currentSession || (await restoreCurrentSession({
         loadMessages: false,
@@ -129,17 +132,37 @@ export const useChatStore = defineStore("chat", () => {
         await messageStore.loadMessages(restored.id);
       }
 
-      await refreshOnlineStatuses();
-      await syncOfflineMessages({
-        refreshSessions: false,
-        batchSize: 3,
-        batchDelayMs: 150,
-        loadSize: 50,
-        excludeSessionIds: sessionStore.currentSession?.id
-          ? [sessionStore.currentSession.id]
-          : [],
-      });
+      await scheduleRealtimeResume({ forceSessionRefresh: false });
     });
+  };
+
+  const refreshSessionSkeletons = async (options?: {
+    force?: boolean;
+    refreshPresence?: boolean;
+  }) => {
+    if (sessionRefreshInFlight) {
+      return sessionRefreshInFlight;
+    }
+
+    const run = async () => {
+      const loaded = await sessionStore.loadSessions(groupStore.groups, {
+        force: options?.force,
+      });
+      if (options?.refreshPresence) {
+        await refreshOnlineStatuses();
+      }
+      return loaded;
+    };
+
+    const queued = sessionRefreshTail.catch(() => []).then(run);
+    sessionRefreshTail = queued.then(
+      (result) => result,
+      () => [],
+    );
+    sessionRefreshInFlight = queued.finally(() => {
+      sessionRefreshInFlight = null;
+    });
+    return sessionRefreshInFlight;
   };
 
   const setCurrentSession = async (session: ChatSession) => {
@@ -175,8 +198,7 @@ export const useChatStore = defineStore("chat", () => {
   };
 
   const loadSessions = async () => {
-    await sessionStore.loadSessions(groupStore.groups);
-    await refreshOnlineStatuses();
+    await refreshSessionSkeletons({ force: true, refreshPresence: true });
   };
 
   const loadFriends = async () => {
@@ -284,7 +306,7 @@ export const useChatStore = defineStore("chat", () => {
 
     const run = async () => {
       if (refreshSessions) {
-        await sessionStore.loadSessions(groupStore.groups);
+        await refreshSessionSkeletons({ force: false, refreshPresence: false });
       }
 
       const queue: string[] = [];
@@ -333,6 +355,31 @@ export const useChatStore = defineStore("chat", () => {
     return queuedRun;
   };
 
+  const scheduleRealtimeResume = async (options?: {
+    forceSessionRefresh?: boolean;
+  }) => {
+    const run = async () => {
+      await refreshSessionSkeletons({
+        force: options?.forceSessionRefresh,
+        refreshPresence: false,
+      });
+      await refreshOnlineStatuses();
+      await syncOfflineMessages({
+        refreshSessions: false,
+        batchSize: 3,
+        batchDelayMs: 150,
+        loadSize: 50,
+      });
+    };
+
+    const queued = realtimeResumeTail.catch(() => undefined).then(run);
+    realtimeResumeTail = queued.then(
+      () => undefined,
+      () => undefined,
+    );
+    return queued;
+  };
+
   const clear = () => {
     sessionStore.clear();
     messageStore.clear();
@@ -364,6 +411,7 @@ export const useChatStore = defineStore("chat", () => {
     loadSessions,
     loadFriends,
     refreshOnlineStatuses,
+    refreshSessionSkeletons,
     loadFriendRequests,
     loadGroups,
     setCurrentSession,
@@ -407,6 +455,7 @@ export const useChatStore = defineStore("chat", () => {
     createGroup,
     leaveGroup,
     syncOfflineMessages,
+    scheduleRealtimeResume,
     clear,
   };
 });
