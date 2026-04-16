@@ -15,6 +15,7 @@ import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
+import org.springframework.data.redis.serializer.GenericToStringSerializer;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -32,14 +33,45 @@ public class ConversationCacheUpdater {
 
     private static final String LAST_MESSAGE_FIELD = "message";
     private static final byte[] ZERO_BYTES = "0".getBytes(StandardCharsets.UTF_8);
+    private static final RedisSerializer<String> SCRIPT_ARGUMENT_SERIALIZER = RedisSerializer.string();
+    private static final RedisSerializer<Long> SCRIPT_RESULT_SERIALIZER = new GenericToStringSerializer<>(Long.class);
     private static final RedisScript<Long> IDEMPOTENT_UNREAD_INCREMENT_SCRIPT = new DefaultRedisScript<>(
             """
+                    local function stripQuotes(raw)
+                      if type(raw) ~= 'string' then
+                        return raw
+                      end
+                      local stripped = string.match(raw, '^"(.*)"$')
+                      if stripped ~= nil then
+                        return stripped
+                      end
+                      return raw
+                    end
+                    local function parseLong(raw)
+                      raw = stripQuotes(raw)
+                      if raw == false or raw == nil then
+                        return nil
+                      end
+                      return tonumber(raw)
+                    end
                     local markerKey = KEYS[1]
                     local unreadKey = KEYS[2]
-                    local field = ARGV[1]
-                    local unreadTtl = tonumber(ARGV[2])
-                    local markerTtl = tonumber(ARGV[3])
-                    local delta = tonumber(ARGV[4])
+                    local field = stripQuotes(ARGV[1])
+                    local unreadTtl = parseLong(ARGV[2])
+                    local markerTtl = parseLong(ARGV[3])
+                    local delta = parseLong(ARGV[4])
+                    if (not field) or field == '' then
+                      return 0
+                    end
+                    if (not unreadTtl) or unreadTtl <= 0 then
+                      unreadTtl = 60
+                    end
+                    if (not markerTtl) or markerTtl <= 0 then
+                      markerTtl = unreadTtl
+                    end
+                    if (not delta) or delta == 0 then
+                      return 0
+                    end
                     if redis.call('EXISTS', markerKey) == 1 then
                       redis.call('EXPIRE', markerKey, markerTtl)
                       redis.call('EXPIRE', unreadKey, unreadTtl)
@@ -282,6 +314,8 @@ public class ConversationCacheUpdater {
         }
         redisTemplate.execute(
                 IDEMPOTENT_UNREAD_INCREMENT_SCRIPT,
+                SCRIPT_ARGUMENT_SERIALIZER,
+                SCRIPT_RESULT_SERIALIZER,
                 List.of(buildUnreadAppliedKey(userId, conversationId, messageId), userUnreadKeyPrefix + userId),
                 conversationId.trim(),
                 Long.toString(resolveCacheTtlSeconds()),

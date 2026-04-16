@@ -74,7 +74,7 @@ class ConversationCacheUpdaterTest {
         }).when(redisTemplate).execute(any(RedisCallback.class));
         lenient().doReturn(1L)
                 .when(redisTemplate)
-                .execute(any(RedisScript.class), anyList(), any(), any(), any(), any());
+                .execute(any(RedisScript.class), any(RedisSerializer.class), any(RedisSerializer.class), anyList(), any(), any(), any(), any());
     }
 
     @Test
@@ -108,7 +108,7 @@ class ConversationCacheUpdaterTest {
         verify(zSetOperations).add(eq("conversation:index:user:1"), eq("p_1_2"), anyDouble());
         verify(zSetOperations).add(eq("conversation:index:user:2"), eq("p_1_2"), anyDouble());
         verify(redisConnection.hashCommands()).hSetNX(any(), any(), any());
-        verify(redisTemplate).execute(any(RedisScript.class), anyList(), any(), any(), any(), any());
+        verify(redisTemplate).execute(any(RedisScript.class), any(RedisSerializer.class), any(RedisSerializer.class), anyList(), any(), any(), any(), any());
         verify(redisTemplate).delete("conversations:user:1");
         verify(redisTemplate).delete("conversations:user:2");
     }
@@ -132,6 +132,8 @@ class ConversationCacheUpdaterTest {
 
         verify(redisTemplate, org.mockito.Mockito.times(2))
                 .execute(any(RedisScript.class),
+                        any(RedisSerializer.class),
+                        any(RedisSerializer.class),
                         argThat(keys -> keys != null
                                 && keys.size() == 2
                                 && "conversation:unread:applied:2:p_1_2:1002".equals(keys.getFirst())
@@ -166,7 +168,7 @@ class ConversationCacheUpdaterTest {
         verify(zSetOperations).add(eq("conversation:index:user:3"), eq("g_8"), anyDouble());
         verify(redisConnection.hashCommands()).hSetNX(any(), any(), any());
         verify(redisTemplate, org.mockito.Mockito.times(2))
-                .execute(any(RedisScript.class), anyList(), any(), any(), any(), any());
+                .execute(any(RedisScript.class), any(RedisSerializer.class), any(RedisSerializer.class), anyList(), any(), any(), any(), any());
         verify(redisTemplate).delete("conversations:user:1");
         verify(redisTemplate).delete("conversations:user:2");
         verify(redisTemplate).delete("conversations:user:3");
@@ -194,7 +196,7 @@ class ConversationCacheUpdaterTest {
         verify(redisTemplate).delete("conversations:user:1");
         verify(redisTemplate).delete("conversations:user:2");
         verify(redisConnection.hashCommands(), never()).hSetNX(any(), any(), any());
-        verify(redisTemplate, never()).execute(any(RedisScript.class), anyList(), any(), any(), any(), any());
+        verify(redisTemplate, never()).execute(any(RedisScript.class), any(RedisSerializer.class), any(RedisSerializer.class), anyList(), any(), any(), any(), any());
     }
 
     @Test

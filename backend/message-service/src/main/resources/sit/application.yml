@@ -91,6 +91,7 @@ management:
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
 feign:
   client:
@@ -103,3 +104,6 @@ logging:
   level:
     root: INFO
     com.im: INFO
+    com.im.mapper: DEBUG
+    org.mybatis: DEBUG
+    com.baomidou.mybatisplus: DEBUG

@@ -11,6 +11,8 @@ import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.data.redis.core.script.RedisScript;
+import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
@@ -18,14 +20,9 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyDouble;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class HotMessageRedisRepositoryTest {
@@ -54,11 +51,15 @@ class HotMessageRedisRepositoryTest {
         ReflectionTestUtils.setField(repository, "conversationRecentMaxSize", 500L);
         ReflectionTestUtils.setField(repository, "pendingPersistKeyPrefix", "conversation:pending:persist:");
         ReflectionTestUtils.setField(repository, "pendingPersistTtlSeconds", 86400L);
+        ReflectionTestUtils.setField(repository, "persistedWatermarkKeyPrefix", "conversation:persisted:watermark:");
+        ReflectionTestUtils.setField(repository, "persistedWatermarkTtlSeconds", 86400L);
+        ReflectionTestUtils.setField(repository, "pendingStatusKeyPrefix", "message:pending:status:");
+        ReflectionTestUtils.setField(repository, "pendingStatusTtlSeconds", 3600L);
         ReflectionTestUtils.setField(repository, "lastMessageKeyPrefix", "last_message:");
         ReflectionTestUtils.setField(repository, "userIndexKeyPrefix", "conversation:index:user:");
         ReflectionTestUtils.setField(repository, "userUnreadKeyPrefix", "conversation:unread:user:");
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        lenient().when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
         lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
     }
 
@@ -109,5 +110,26 @@ class HotMessageRedisRepositoryTest {
         assertEquals(first, repository.getLastMessage("p_1_2"));
         assertEquals(3L, repository.getUnreadCount(2L, "p_1_2"));
         assertEquals(List.of("p_1_2", "g_8"), repository.getConversationIdsForUser(2L, 2));
+    }
+
+    @Test
+    void savePersistedWatermarkShouldUseStringScriptArguments() {
+        repository.savePersistedWatermark("p_1_2", 1001L);
+
+        verify(redisTemplate).execute(
+                any(RedisScript.class),
+                any(RedisSerializer.class),
+                any(RedisSerializer.class),
+                eq(List.of("conversation:persisted:watermark:p_1_2")),
+                eq("1001"),
+                eq("86400")
+        );
+    }
+
+    @Test
+    void getPersistedWatermarkShouldIgnoreLegacyNonNumericValue() {
+        when(valueOperations.get("conversation:persisted:watermark:p_1_2")).thenReturn("nil");
+
+        assertNull(repository.getPersistedWatermark("p_1_2"));
     }
 }
