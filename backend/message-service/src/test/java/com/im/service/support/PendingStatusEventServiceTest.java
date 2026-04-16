@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -34,7 +35,7 @@ class PendingStatusEventServiceTest {
         service.store(event);
 
         ArgumentCaptor<StatusChangeEvent> captor = ArgumentCaptor.forClass(StatusChangeEvent.class);
-        verify(hotMessageRedisRepository).saveStatusPending(1001L, Message.MessageStatus.RECALLED, captor.capture());
+        verify(hotMessageRedisRepository).saveStatusPending(eq(1001L), eq(Message.MessageStatus.RECALLED), captor.capture());
         assertNotNull(captor.getValue().getChangedAt());
     }
 
