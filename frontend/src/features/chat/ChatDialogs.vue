@@ -1,18 +1,13 @@
 <template>
-  <el-dialog
-    v-model="showAddFriend"
-    title="添加好友"
-    width="400px"
-    append-to-body
-  >
+  <el-dialog v-model="showAddFriend" title="Add friend" width="400px" append-to-body>
     <el-form :model="addFriendForm" label-width="80px">
-      <el-form-item label="用户名">
+      <el-form-item label="User">
         <el-select
           v-model="addFriendForm.targetUserId"
           filterable
           remote
           reserve-keyword
-          placeholder="输入用户名搜索"
+          placeholder="Search by username"
           :remote-method="handleUserSearch"
           :loading="isSearchingUsers"
           style="width: 100%"
@@ -30,29 +25,24 @@
           </el-option>
         </el-select>
       </el-form-item>
-      <el-form-item label="验证消息">
-        <el-input v-model="addFriendForm.message" placeholder="请输入验证消息" />
+      <el-form-item label="Message">
+        <el-input v-model="addFriendForm.message" placeholder="Say hello" />
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="showAddFriend = false">取消</el-button>
-      <el-button type="primary" @click="addFriend">发送请求</el-button>
+      <el-button @click="showAddFriend = false">Cancel</el-button>
+      <el-button type="primary" @click="addFriend">Send request</el-button>
     </template>
   </el-dialog>
 
-  <el-dialog
-    v-model="showCreateGroup"
-    title="创建群组"
-    width="500px"
-    append-to-body
-  >
+  <el-dialog v-model="showCreateGroup" title="Create group" width="500px" append-to-body>
     <el-form :model="createGroupForm" label-width="80px">
-      <el-form-item label="群组头像">
+      <el-form-item label="Avatar">
         <div class="create-group-avatar">
           <el-avatar :size="48" :src="createGroupForm.avatar" shape="square">
             {{ createGroupForm.name?.charAt(0) || "G" }}
           </el-avatar>
-          <el-button size="small" @click="selectCreateGroupAvatar">选择头像</el-button>
+          <el-button size="small" @click="selectCreateGroupAvatar">Choose</el-button>
           <input
             ref="createGroupAvatarInputRef"
             type="file"
@@ -62,71 +52,210 @@
           />
         </div>
       </el-form-item>
-      <el-form-item label="群组名称">
-        <el-input v-model="createGroupForm.name" placeholder="请输入群组名称" />
+      <el-form-item label="Name">
+        <el-input v-model="createGroupForm.name" placeholder="Group name" />
       </el-form-item>
-      <el-form-item label="群组描述">
-        <el-input
-          v-model="createGroupForm.description"
-          placeholder="请输入群组描述"
-        />
+      <el-form-item label="Desc">
+        <el-input v-model="createGroupForm.description" placeholder="Group description" />
       </el-form-item>
-      <el-form-item label="选择成员">
+      <el-form-item label="Members">
         <el-transfer
           v-model="createGroupForm.memberIds"
           :data="contactsForTransfer"
-          :titles="['可选联系人', '群组成员']"
+          :titles="['Available', 'Selected']"
           filterable
         />
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="showCreateGroup = false">取消</el-button>
-      <el-button type="primary" @click="createGroup">创建群组</el-button>
+      <el-button @click="showCreateGroup = false">Cancel</el-button>
+      <el-button type="primary" @click="createGroup">Create</el-button>
     </template>
   </el-dialog>
 
   <el-dialog
     v-model="showGroupReadDialog"
-    :title="`群消息已读成员（${groupReadUsers.length}）`"
+    :title="`Read by (${groupReadUsers.length})`"
     width="360px"
     append-to-body
   >
-    <div v-if="groupReadUsers.length === 0" class="group-read-empty">
-      暂无已读成员
-    </div>
+    <div v-if="groupReadUsers.length === 0" class="group-read-empty">No readers yet.</div>
     <div v-else class="group-read-list">
-      <div
-        v-for="reader in groupReadUsers"
-        :key="reader.userId"
-        class="group-read-item"
-      >
+      <div v-for="reader in groupReadUsers" :key="reader.userId" class="group-read-item">
         <span class="group-read-name">{{ reader.displayName }}</span>
         <span class="group-read-id">ID: {{ reader.userId }}</span>
       </div>
     </div>
   </el-dialog>
+
+  <el-dialog
+    v-model="showSearchDialog"
+    title="Search messages"
+    width="540px"
+    append-to-body
+  >
+    <el-input
+      v-model="messageSearchKeyword"
+      clearable
+      placeholder="Search in current conversation"
+    />
+
+    <div class="search-results">
+      <el-empty
+        v-if="!messageSearchKeyword.trim()"
+        description="Type a keyword to search this conversation."
+        :image-size="60"
+      />
+      <el-empty
+        v-else-if="searchResults.length === 0"
+        description="No matching messages."
+        :image-size="60"
+      />
+      <template v-else>
+        <div
+          v-for="result in searchResults"
+          :key="`${result.message.id}-${result.message.sendTime}`"
+          class="search-result-item"
+        >
+          <div class="search-result-meta">
+            <span>{{ result.message.senderName || result.message.senderId }}</span>
+            <span>{{ formatMessageTime(result.message.sendTime) }}</span>
+          </div>
+          <div class="search-result-content">{{ formatMessageContent(result.message) }}</div>
+          <div v-if="result.context.length > 1" class="search-result-context">
+            {{ formatContext(result) }}
+          </div>
+        </div>
+      </template>
+    </div>
+  </el-dialog>
+
+  <el-drawer
+    v-model="showSessionInfoDrawer"
+    :title="currentSession?.type === 'group' ? 'Group info' : 'Contact info'"
+    size="360px"
+    append-to-body
+  >
+    <template v-if="currentSession">
+      <div class="session-info-header">
+        <el-avatar :size="56" :src="sessionInfoAvatar" shape="square">
+          {{ sessionInfoDisplayName.charAt(0) || "C" }}
+        </el-avatar>
+        <div class="session-info-heading">
+          <div class="session-info-name">{{ sessionInfoDisplayName }}</div>
+          <div class="session-info-subtitle">
+            {{
+              currentSession.type === "group"
+                ? "Group conversation"
+                : privateSessionOnline
+                  ? "Online now"
+                  : "Offline"
+            }}
+          </div>
+        </div>
+      </div>
+
+      <el-descriptions :column="1" border class="session-info-card">
+        <el-descriptions-item label="Conversation ID">
+          {{ currentSession.id }}
+        </el-descriptions-item>
+        <template v-if="currentSession.type === 'private'">
+          <el-descriptions-item label="User ID">
+            {{ currentSession.targetId }}
+          </el-descriptions-item>
+          <el-descriptions-item label="Username">
+            {{ sessionInfoFriend?.username || "-" }}
+          </el-descriptions-item>
+          <el-descriptions-item label="Remark">
+            {{ sessionInfoFriend?.remark || "-" }}
+          </el-descriptions-item>
+        </template>
+        <template v-else>
+          <el-descriptions-item label="Group ID">
+            {{ currentSession.targetId }}
+          </el-descriptions-item>
+          <el-descriptions-item label="Members">
+            {{ sessionInfoGroup?.memberCount || currentSession.memberCount || 0 }}
+          </el-descriptions-item>
+          <el-descriptions-item label="Description">
+            {{ sessionInfoGroup?.description || sessionInfoGroup?.announcement || "-" }}
+          </el-descriptions-item>
+        </template>
+      </el-descriptions>
+
+      <template v-if="currentSession.type === 'group'">
+        <div class="member-section-title">Members</div>
+        <div v-if="sessionInfoLoading" class="member-state">Loading members...</div>
+        <div v-else-if="sessionInfoError" class="member-state member-error">
+          {{ sessionInfoError }}
+        </div>
+        <el-empty
+          v-else-if="sessionInfoMembers.length === 0"
+          description="No member details available."
+          :image-size="60"
+        />
+        <div v-else class="member-list">
+          <div
+            v-for="member in sessionInfoMembers"
+            :key="member.id || member.userId"
+            class="member-item"
+          >
+            <el-avatar :size="32" :src="member.avatar">
+              {{ (member.nickname || member.username || member.userId).charAt(0) }}
+            </el-avatar>
+            <div class="member-meta">
+              <div class="member-name">{{ member.nickname || member.username || member.userId }}</div>
+              <div class="member-subtitle">
+                {{ member.role }} - Joined {{ formatMessageTime(member.joinTime) }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </template>
+  </el-drawer>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
-import { useChatStore } from "@/stores/chat";
-import { useUserStore } from "@/stores/user";
-import { useFileMessageUpload } from "@/features/chat/composables/useFileMessageUpload";
-import type { GroupReadUser, User } from "@/types";
-import { useErrorHandler } from "@/hooks/useErrorHandler";
+import {computed, reactive, ref, watch} from "vue";
+import {useChatStore} from "@/stores/chat";
+import {useUserStore} from "@/stores/user";
+import {useFileMessageUpload} from "@/features/chat/composables/useFileMessageUpload";
+import {useErrorHandler} from "@/hooks/useErrorHandler";
+import type {
+  ChatSession,
+  Friend,
+  Group,
+  GroupMember,
+  GroupReadUser,
+  Message,
+  MessageSearchResult,
+  User,
+} from "@/types";
 
 const props = defineProps<{
   visibleAddFriend: boolean;
   visibleCreateGroup: boolean;
   visibleGroupReadDialog: boolean;
+  visibleSearchDialog: boolean;
+  visibleSessionInfoDrawer: boolean;
+  currentSession?: ChatSession | null;
   groupReadUsers: GroupReadUser[];
+  searchResults: MessageSearchResult[];
+  sessionInfoFriend?: Friend | null;
+  sessionInfoGroup?: Group | null;
+  sessionInfoMembers: GroupMember[];
+  sessionInfoLoading: boolean;
+  sessionInfoError: string;
+  privateSessionOnline: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: "update:visibleAddFriend", value: boolean): void;
   (e: "update:visibleCreateGroup", value: boolean): void;
   (e: "update:visibleGroupReadDialog", value: boolean): void;
+  (e: "update:visibleSearchDialog", value: boolean): void;
+  (e: "update:visibleSessionInfoDrawer", value: boolean): void;
 }>();
 
 const chatStore = useChatStore();
@@ -138,25 +267,41 @@ const showAddFriend = computed({
   get: () => props.visibleAddFriend,
   set: (value: boolean) => emit("update:visibleAddFriend", value),
 });
-
 const showCreateGroup = computed({
   get: () => props.visibleCreateGroup,
   set: (value: boolean) => emit("update:visibleCreateGroup", value),
 });
-
 const showGroupReadDialog = computed({
   get: () => props.visibleGroupReadDialog,
   set: (value: boolean) => emit("update:visibleGroupReadDialog", value),
 });
+const showSearchDialog = computed({
+  get: () => props.visibleSearchDialog,
+  set: (value: boolean) => emit("update:visibleSearchDialog", value),
+});
+const showSessionInfoDrawer = computed({
+  get: () => props.visibleSessionInfoDrawer,
+  set: (value: boolean) => emit("update:visibleSessionInfoDrawer", value),
+});
+
+const currentSession = computed(() => props.currentSession || null);
+const groupReadUsers = computed(() => props.groupReadUsers);
+const searchResults = computed(() => props.searchResults);
+const sessionInfoFriend = computed(() => props.sessionInfoFriend || null);
+const sessionInfoGroup = computed(() => props.sessionInfoGroup || null);
+const sessionInfoMembers = computed(() => props.sessionInfoMembers);
+const sessionInfoLoading = computed(() => props.sessionInfoLoading);
+const sessionInfoError = computed(() => props.sessionInfoError);
+const privateSessionOnline = computed(() => props.privateSessionOnline);
 
 const isSearchingUsers = ref(false);
 const userSearchResults = ref<User[]>([]);
 const createGroupAvatarInputRef = ref<HTMLInputElement | null>(null);
+const messageSearchKeyword = ref("");
 const addFriendForm = reactive({
   targetUserId: "",
-  message: "我想加您为好友",
+  message: "Hi, let's connect.",
 });
-
 const createGroupForm = reactive({
   name: "",
   description: "",
@@ -164,11 +309,55 @@ const createGroupForm = reactive({
   memberIds: [] as string[],
 });
 
-const contactsForTransfer = computed(() => {
-  return chatStore.friends.map((contact) => ({
+const contactsForTransfer = computed(() =>
+  chatStore.friends.map((contact) => ({
     key: contact.friendId,
     label: contact.nickname || contact.username,
-  }));
+  })),
+);
+
+const sessionInfoDisplayName = computed(() => {
+  if (currentSession.value?.type === "group") {
+    return (
+      sessionInfoGroup.value?.groupName ||
+      sessionInfoGroup.value?.name ||
+      currentSession.value?.targetName ||
+      ""
+    );
+  }
+  return (
+    sessionInfoFriend.value?.remark ||
+    sessionInfoFriend.value?.nickname ||
+    sessionInfoFriend.value?.username ||
+    currentSession.value?.targetName ||
+    ""
+  );
+});
+
+const sessionInfoAvatar = computed(() =>
+  currentSession.value?.type === "group"
+    ? sessionInfoGroup.value?.avatar || currentSession.value?.targetAvatar
+    : sessionInfoFriend.value?.avatar || currentSession.value?.targetAvatar,
+);
+
+watch(
+  [showSearchDialog, messageSearchKeyword, () => currentSession.value?.id],
+  ([visible, keyword, sessionId]) => {
+    if (!visible) {
+      void chatStore.searchMessages("", sessionId);
+      return;
+    }
+    if (!sessionId) {
+      return;
+    }
+    void chatStore.searchMessages(keyword, sessionId);
+  },
+);
+
+watch(showSearchDialog, (visible) => {
+  if (!visible) {
+    messageSearchKeyword.value = "";
+  }
 });
 
 const handleUserSearch = async (query: string) => {
@@ -181,7 +370,7 @@ const handleUserSearch = async (query: string) => {
     const users = await chatStore.searchUsers({ type: "username", keyword: query });
     userSearchResults.value = users.filter((user) => user.id !== userStore.userId);
   } catch (error) {
-    capture(error, "搜索用户失败");
+    capture(error, "Failed to search users");
     userSearchResults.value = [];
   } finally {
     isSearchingUsers.value = false;
@@ -190,7 +379,7 @@ const handleUserSearch = async (query: string) => {
 
 const addFriend = async () => {
   if (!addFriendForm.targetUserId) {
-    capture(new Error("请选择用户"), "请选择用户");
+    capture(new Error("Please select a user"), "Please select a user");
     return;
   }
   try {
@@ -198,21 +387,20 @@ const addFriend = async () => {
       userId: addFriendForm.targetUserId,
       message: addFriendForm.message,
     });
-    notifySuccess("好友请求已发送");
+    notifySuccess("Friend request sent.");
     showAddFriend.value = false;
     addFriendForm.targetUserId = "";
-    addFriendForm.message = "我想加您为好友";
+    addFriendForm.message = "Hi, let's connect.";
     userSearchResults.value = [];
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "添加好友失败";
-    if (message.includes("已有待处理的好友申请")) {
+    const message = error instanceof Error ? error.message : "Failed to add friend";
+    if (message.includes("pending")) {
       await chatStore.loadFriendRequests().catch(() => undefined);
-      notifyInfo("已有待处理的好友申请，已同步到新的朋友");
+      notifyInfo("A pending request already exists. Refreshed requests list.");
       showAddFriend.value = false;
       return;
     }
-    capture(error, "添加好友失败");
+    capture(error, "Failed to add friend");
   }
 };
 
@@ -230,7 +418,7 @@ const handleCreateGroupAvatarChange = async (event: Event) => {
     const response = await upload(file, "IMAGE");
     createGroupForm.avatar = response.url;
   } catch {
-    // message handled in uploader
+    // uploader already surfaced the error
   }
 };
 
@@ -238,7 +426,7 @@ const createGroup = async () => {
   try {
     const name = createGroupForm.name.trim();
     if (!name) {
-      capture(new Error("请输入群组名称"), "请输入群组名称");
+      capture(new Error("Please enter a group name"), "Please enter a group name");
       return;
     }
     await chatStore.createGroup({
@@ -247,7 +435,7 @@ const createGroup = async () => {
       avatar: createGroupForm.avatar,
       memberIds: createGroupForm.memberIds,
     });
-    notifySuccess("群组创建成功");
+    notifySuccess("Group created.");
     showCreateGroup.value = false;
     Object.assign(createGroupForm, {
       name: "",
@@ -256,9 +444,38 @@ const createGroup = async () => {
       memberIds: [],
     });
   } catch (error) {
-    capture(error, "创建群组失败");
+    capture(error, "Failed to create group");
   }
 };
+
+const formatMessageTime = (value?: string) => {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString();
+};
+
+const formatMessageContent = (message: Message) => {
+  switch (message.messageType) {
+    case "IMAGE":
+      return "[Image]";
+    case "FILE":
+      return message.mediaName ? `[File] ${message.mediaName}` : "[File]";
+    case "VOICE":
+      return "[Voice]";
+    case "VIDEO":
+      return "[Video]";
+    default:
+      return message.content || "";
+  }
+};
+
+const formatContext = (result: MessageSearchResult) =>
+  result.context
+    .map((message) => formatMessageContent(message))
+    .filter(Boolean)
+    .join("  |  ");
 </script>
 
 <style scoped lang="scss">
@@ -280,32 +497,92 @@ const createGroup = async () => {
   gap: 12px;
 }
 
-.group-read-empty {
+.group-read-empty,
+.member-state {
   color: #909399;
   text-align: center;
   padding: 12px 0;
 }
 
-.group-read-list {
+.member-error {
+  color: #d14343;
+}
+
+.group-read-list,
+.member-list,
+.search-results {
   max-height: 320px;
   overflow-y: auto;
 }
 
-.group-read-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 2px;
+.group-read-item,
+.member-item,
+.search-result-item {
+  padding: 10px 2px;
   border-bottom: 1px solid #f0f2f5;
 }
 
-.group-read-name {
-  color: #303133;
-  font-size: 14px;
+.group-read-item,
+.member-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.group-read-id {
+.group-read-name,
+.session-info-name,
+.member-name {
+  color: #303133;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.group-read-id,
+.search-result-meta,
+.search-result-context,
+.session-info-subtitle,
+.member-subtitle {
   color: #909399;
   font-size: 12px;
+}
+
+.session-info-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.session-info-card {
+  margin-bottom: 18px;
+}
+
+.member-section-title {
+  margin-bottom: 8px;
+  color: #303133;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.member-meta {
+  flex: 1;
+}
+
+.search-results {
+  margin-top: 12px;
+}
+
+.search-result-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.search-result-content {
+  margin-top: 6px;
+  color: #303133;
+  font-size: 14px;
+  line-height: 1.5;
 }
 </style>

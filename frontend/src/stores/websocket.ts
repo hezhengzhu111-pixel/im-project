@@ -1,14 +1,14 @@
-import { computed, ref } from "vue";
-import { defineStore } from "pinia";
-import { ElMessage, ElNotification } from "element-plus";
-import { STORAGE_CONFIG, WS_CONFIG } from "@/config";
-import { authService, userService } from "@/services";
-import { normalizeMessage } from "@/normalizers/message";
-import { buildSessionId } from "@/normalizers/chat";
-import type { Message, OnlineStatus, WebSocketMessage } from "@/types";
-import { useChatStore } from "@/stores/chat";
-import { useUserStore } from "@/stores/user";
-import { logger } from "@/utils/logger";
+import {computed, ref} from "vue";
+import {defineStore} from "pinia";
+import {ElMessage, ElNotification} from "element-plus";
+import {STORAGE_CONFIG, WS_CONFIG} from "@/config";
+import {authService, userService} from "@/services";
+import {normalizeMessage} from "@/normalizers/message";
+import {buildSessionId} from "@/normalizers/chat";
+import type {Message, OnlineStatus, WebSocketMessage} from "@/types";
+import {useChatStore} from "@/stores/chat";
+import {useUserStore} from "@/stores/user";
+import {logger} from "@/utils/logger";
 
 type TimerHandle = ReturnType<typeof setInterval>;
 
@@ -296,7 +296,12 @@ export const useWebSocketStore = defineStore("websocket", () => {
         void refreshKnownOnlineStatus().catch((error) => {
           logger.warn("failed to refresh known online status", error);
         });
-        void useChatStore().syncOfflineMessages().catch((error) => {
+        void useChatStore().syncOfflineMessages({
+          refreshSessions: true,
+          batchSize: 3,
+          batchDelayMs: 150,
+          loadSize: 50,
+        }).catch((error) => {
           logger.warn("failed to sync offline messages", error);
         });
       };

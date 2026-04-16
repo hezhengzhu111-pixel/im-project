@@ -6,9 +6,9 @@ import {messageRepo} from "@/utils/messageRepo";
 import {normalizeReadReceipt, splitTextByCodePoints} from "@/utils/messageNormalize";
 import {buildSessionId, safePreferExistingId, toBigIntId} from "@/normalizers/chat";
 import type {ChatSession, Message, MessageConfig, MessageSearchResult, MessageType, ReadReceipt,} from "@/types";
-import {useUserStore} from "@/stores/user";
-import {useSessionStore} from "@/stores/session";
 import {useGroupStore} from "@/stores/group";
+import {useSessionStore} from "@/stores/session";
+import {useUserStore} from "@/stores/user";
 import {STORAGE_CONFIG} from "@/config";
 
 const DEFAULT_MESSAGE_CONFIG: MessageConfig = {
@@ -21,11 +21,16 @@ type ConversationClearMarker = {
   lastServerMessageId?: string;
 };
 
-const messageIdentityValues = (message: Message): string[] => {
-  return [message.id, message.messageId, message.clientMessageId]
+type MessageHistoryResponse =
+  | Awaited<ReturnType<typeof messageService.getPrivateHistoryCursor>>
+  | Awaited<ReturnType<typeof messageService.getGroupHistoryCursor>>
+  | Awaited<ReturnType<typeof messageService.getPrivateHistory>>
+  | Awaited<ReturnType<typeof messageService.getGroupHistory>>;
+
+const messageIdentityValues = (message: Message): string[] =>
+  [message.id, message.messageId, message.clientMessageId]
     .map((item) => String(item || ""))
     .filter(Boolean);
-};
 
 const hasSameMessageIdentity = (left: Message, right: Message): boolean => {
   const rightValues = new Set(messageIdentityValues(right));
@@ -57,9 +62,9 @@ const mergeMessagesChronologically = (...lists: Message[][]): Message[] => {
 
   const upsertMessage = (message: Message) => {
     const identities = messageIdentityValues(message);
-    const matchedIndex = identities.find((identity) => identityIndex.has(identity));
-    if (matchedIndex) {
-      const index = identityIndex.get(matchedIndex);
+    const matchedIdentity = identities.find((identity) => identityIndex.has(identity));
+    if (matchedIdentity) {
+      const index = identityIndex.get(matchedIdentity);
       if (index != null) {
         const previous = merged[index];
         const nextMessage = {
@@ -106,9 +111,13 @@ const readPersistedClearMarkers = (): Record<string, ConversationClearMarker> =>
 export const useMessageStore = defineStore("message", () => {
   const messages = ref<Map<string, Message[]>>(new Map());
   const loading = ref(false);
+  const loadingHistoryBySession = ref<Map<string, boolean>>(new Map());
+  const hasMoreHistoryBySession = ref<Map<string, boolean>>(new Map());
+  const oldestLoadedServerMessageIdBySession = ref<Map<string, string>>(new Map());
+  const fallbackHistoryPageBySession = ref<Map<string, number>>(new Map());
+  const sendQueueBySession = ref<Map<string, Promise<void>>>(new Map());
   const searchResults = ref<MessageSearchResult[]>([]);
   const messageTextConfig = ref<MessageConfig | null>(null);
-  const sendingSessionLocks = ref<Set<string>>(new Set());
   const readSessionLocks = ref<Set<string>>(new Set());
   const readSessionLastAt = ref<Map<string, number>>(new Map());
   const clearMarkers = ref<Map<string, ConversationClearMarker>>(
@@ -133,14 +142,10 @@ export const useMessageStore = defineStore("message", () => {
     );
   };
 
-  const getClearMarker = (sessionId: string): ConversationClearMarker | undefined => {
-    return clearMarkers.value.get(getClearMarkerStorageKey(sessionId));
-  };
+  const getClearMarker = (sessionId: string): ConversationClearMarker | undefined =>
+    clearMarkers.value.get(getClearMarkerStorageKey(sessionId));
 
-  const setClearMarker = (
-    sessionId: string,
-    marker?: ConversationClearMarker,
-  ) => {
+  const setClearMarker = (sessionId: string, marker?: ConversationClearMarker) => {
     const storageKey = getClearMarkerStorageKey(sessionId);
     if (marker) {
       clearMarkers.value.set(storageKey, marker);
@@ -164,9 +169,8 @@ export const useMessageStore = defineStore("message", () => {
     return Number.isFinite(messageTime) && messageTime <= marker.clearedAtMs;
   };
 
-  const filterClearedMessages = (sessionId: string, list: Message[]): Message[] => {
-    return list.filter((message) => !shouldHideClearedMessage(sessionId, message));
-  };
+  const filterClearedMessages = (sessionId: string, list: Message[]): Message[] =>
+    list.filter((message) => !shouldHideClearedMessage(sessionId, message));
 
   const currentMessages = computed(() => {
     if (!sessionStore.currentSession) {
@@ -175,8 +179,64 @@ export const useMessageStore = defineStore("message", () => {
     return messages.value.get(sessionStore.currentSession.id) || [];
   });
 
-  const resolveSession = (sessionId: string): ChatSession | undefined => {
-    return sessionStore.sessions.find((item) => item.id === sessionId);
+  const resolveSession = (sessionId: string): ChatSession | undefined =>
+    sessionStore.sessions.find((item) => item.id === sessionId);
+
+  const getServerMessages = (list: Message[]): Message[] =>
+    list.filter((message) => !String(message.id).startsWith("local_"));
+
+  const findOldestLoadedServerMessageId = (list: Message[]): string | undefined => {
+    const oldestId = getServerMessages(list)
+      .map((message) => toBigIntId(message.id))
+      .filter((item): item is bigint => item != null)
+      .reduce<bigint | null>((minId, currentId) => {
+        if (minId == null || currentId < minId) {
+          return currentId;
+        }
+        return minId;
+      }, null);
+    return oldestId?.toString();
+  };
+
+  const syncHistoryState = (
+    sessionId: string,
+    list: Message[],
+    options?: {
+      hasMoreHistory?: boolean;
+      preserveHasMore?: boolean;
+    },
+  ) => {
+    const oldestId = findOldestLoadedServerMessageId(list);
+    if (oldestId) {
+      oldestLoadedServerMessageIdBySession.value.set(sessionId, oldestId);
+    } else {
+      oldestLoadedServerMessageIdBySession.value.delete(sessionId);
+    }
+
+    if (typeof options?.hasMoreHistory === "boolean") {
+      hasMoreHistoryBySession.value.set(sessionId, options.hasMoreHistory);
+      return;
+    }
+
+    if (options?.preserveHasMore && hasMoreHistoryBySession.value.has(sessionId)) {
+      return;
+    }
+
+    hasMoreHistoryBySession.value.set(sessionId, Boolean(oldestId));
+  };
+
+  const resetHistoryState = (sessionId: string) => {
+    loadingHistoryBySession.value.delete(sessionId);
+    hasMoreHistoryBySession.value.delete(sessionId);
+    oldestLoadedServerMessageIdBySession.value.delete(sessionId);
+    fallbackHistoryPageBySession.value.delete(sessionId);
+  };
+
+  const resetSessionRuntimeState = (sessionId: string) => {
+    resetHistoryState(sessionId);
+    readSessionLocks.value.delete(sessionId);
+    readSessionLastAt.value.delete(sessionId);
+    sendQueueBySession.value.delete(sessionId);
   };
 
   const resolveReadConversationId = (sessionId: string): string => {
@@ -190,13 +250,8 @@ export const useMessageStore = defineStore("message", () => {
     return session.conversationId || session.targetId || sessionId;
   };
 
-  const saveConversationMessages = async (
-    sessionId: string,
-    list: Message[],
-  ) => {
-    const serverMessages = list.filter(
-      (item) => !String(item.id).startsWith("local_"),
-    );
+  const saveConversationMessages = async (sessionId: string, list: Message[]) => {
+    const serverMessages = getServerMessages(list);
     if (serverMessages.length > 0) {
       await messageRepo.upsertServerMessages(sessionId, serverMessages);
     }
@@ -208,10 +263,7 @@ export const useMessageStore = defineStore("message", () => {
       return [];
     }
     const revived = cached.map((message) => {
-      if (
-        String(message.id).startsWith("local_") &&
-        message.status === "SENDING"
-      ) {
+      if (String(message.id).startsWith("local_") && message.status === "SENDING") {
         return {
           ...message,
           status: "FAILED" as const,
@@ -220,18 +272,83 @@ export const useMessageStore = defineStore("message", () => {
       return message;
     });
     if (revived.some((message) => message.status === "FAILED")) {
-      ElMessage.warning("检测到未送达消息，已标记为失败，可重发");
+      ElMessage.warning("Detected unsent messages and marked them as failed.");
     }
     return revived;
   };
 
+  const enqueueSendTask = async <T>(
+    sessionId: string,
+    task: () => Promise<T>,
+  ): Promise<T> => {
+    const previous = sendQueueBySession.value.get(sessionId) || Promise.resolve();
+    const run = previous.catch(() => undefined).then(task);
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    sendQueueBySession.value.set(sessionId, tail);
+
+    try {
+      return await run;
+    } finally {
+      if (sendQueueBySession.value.get(sessionId) === tail) {
+        sendQueueBySession.value.delete(sessionId);
+      }
+    }
+  };
+
+  const fetchLatestMessages = async (
+    session: ChatSession,
+    size: number,
+    afterMessageId?: string,
+  ): Promise<MessageHistoryResponse> => {
+    const baseParams: Record<string, unknown> = { limit: size };
+    if (afterMessageId) {
+      baseParams.after_message_id = afterMessageId;
+      baseParams.limit = Math.max(size, 50);
+    }
+    return session.type === "group"
+      ? await messageService.getGroupHistoryCursor(session.targetId, baseParams)
+      : await messageService.getPrivateHistoryCursor(session.targetId, baseParams);
+  };
+
+  const fetchHistoryByCursor = async (
+    session: ChatSession,
+    size: number,
+    oldestMessageId: string,
+  ): Promise<MessageHistoryResponse> => {
+    const params = {
+      limit: size,
+      last_message_id: oldestMessageId,
+    };
+    return session.type === "group"
+      ? await messageService.getGroupHistoryCursor(session.targetId, params)
+      : await messageService.getPrivateHistoryCursor(session.targetId, params);
+  };
+
+  const fetchHistoryByPage = async (
+    session: ChatSession,
+    page: number,
+    size: number,
+  ): Promise<MessageHistoryResponse> =>
+    session.type === "group"
+      ? await messageService.getGroupHistory(session.targetId, { page, size })
+      : await messageService.getPrivateHistory(session.targetId, { page, size });
+
   const loadMessages = async (sessionId: string, page = 0, size = 20) => {
+    if (page > 0) {
+      await loadMoreHistory(sessionId, size);
+      return;
+    }
+
     loading.value = true;
     try {
-      if (page === 0 && !messages.value.has(sessionId)) {
+      if (!messages.value.has(sessionId)) {
         const revived = await reviveCachedMessages(sessionId);
-        if (revived.length) {
+        if (revived.length > 0) {
           messages.value.set(sessionId, revived);
+          syncHistoryState(sessionId, revived, { preserveHasMore: true });
         }
       }
 
@@ -241,138 +358,108 @@ export const useMessageStore = defineStore("message", () => {
       }
 
       const existingMessages = messages.value.get(sessionId) || [];
-      const serverIds = existingMessages
-        .map((message) => {
-          if (String(message.id).startsWith("local_")) {
-            return null;
+      const maxServerId = getServerMessages(existingMessages)
+        .map((message) => toBigIntId(message.id))
+        .filter((item): item is bigint => item != null)
+        .reduce<bigint | null>((maxId, currentId) => {
+          if (maxId == null || currentId > maxId) {
+            return currentId;
           }
-          return toBigIntId(message.id);
-        })
-        .filter((item): item is bigint => item != null);
-      const maxServerId =
-        serverIds.length > 0
-          ? serverIds.reduce((left, right) => (left > right ? left : right))
-          : null;
-      const minServerId =
-        serverIds.length > 0
-          ? serverIds.reduce((left, right) => (left < right ? left : right))
-          : null;
-      const baseParams: Record<string, unknown> = { limit: size };
+          return maxId;
+        }, null);
 
-      let response:
-        | Awaited<ReturnType<typeof messageService.getPrivateHistoryCursor>>
-        | Awaited<ReturnType<typeof messageService.getGroupHistoryCursor>>
-        | Awaited<ReturnType<typeof messageService.getPrivateHistory>>
-        | Awaited<ReturnType<typeof messageService.getGroupHistory>>;
-
+      let response: MessageHistoryResponse;
       try {
-        if (page === 0) {
-          if (maxServerId != null) {
-            response =
-              session.type === "group"
-                ? await messageService.getGroupHistoryCursor(session.targetId, {
-                    ...baseParams,
-                    after_message_id: maxServerId.toString(),
-                    limit: Math.max(size, 50),
-                  })
-                : await messageService.getPrivateHistoryCursor(
-                    session.targetId,
-                    {
-                      ...baseParams,
-                      after_message_id: maxServerId.toString(),
-                      limit: Math.max(size, 50),
-                    },
-                  );
-          } else {
-            response =
-              session.type === "group"
-                ? await messageService.getGroupHistoryCursor(
-                    session.targetId,
-                    baseParams,
-                  )
-                : await messageService.getPrivateHistoryCursor(
-                    session.targetId,
-                    baseParams,
-                  );
-          }
-        } else if (minServerId != null) {
-          response =
-            session.type === "group"
-              ? await messageService.getGroupHistoryCursor(session.targetId, {
-                  ...baseParams,
-                  last_message_id: minServerId.toString(),
-                })
-              : await messageService.getPrivateHistoryCursor(session.targetId, {
-                  ...baseParams,
-                  last_message_id: minServerId.toString(),
-                });
-        } else {
-          return;
-        }
+        response = await fetchLatestMessages(session, size, maxServerId?.toString());
       } catch {
-        response =
-          session.type === "group"
-            ? await messageService.getGroupHistory(session.targetId, {
-                page,
-                size,
-              })
-            : await messageService.getPrivateHistory(session.targetId, {
-                page,
-                size,
-              });
+        response = await fetchHistoryByPage(session, 0, size);
       }
 
       const normalizedMessages = response.data.slice().sort(sortMessagesAscending);
       const visibleMessages = filterClearedMessages(sessionId, normalizedMessages);
-
-      if (page === 0) {
-        const pending = existingMessages.filter((message) =>
-          String(message.id).startsWith("local_"),
-        );
-        const serverMessages = existingMessages.filter(
-          (message) => !String(message.id).startsWith("local_"),
-        );
-        const merged = mergeMessagesChronologically(
-          pending,
-          serverMessages,
-          visibleMessages,
-        );
-        const serverClientIds = new Set(
-          merged
-            .filter((message) => !String(message.id).startsWith("local_"))
-            .map((message) => message.clientMessageId)
-            .filter((item): item is string => Boolean(item)),
-        );
-        messages.value.set(
-          sessionId,
-          merged.filter((message) => {
-            if (!String(message.id).startsWith("local_")) {
-              return true;
-            }
-            if (!message.clientMessageId) {
-              return true;
-            }
-            return !serverClientIds.has(message.clientMessageId);
-          }),
-        );
-      } else {
-        const merged = mergeMessagesChronologically(
-          existingMessages,
-          visibleMessages,
-        );
-        messages.value.set(sessionId, merged);
-      }
-      await saveConversationMessages(
-        sessionId,
-        messages.value.get(sessionId) || [],
+      const pendingMessages = existingMessages.filter((message) =>
+        String(message.id).startsWith("local_"),
       );
+      const serverMessages = getServerMessages(existingMessages);
+      const merged = mergeMessagesChronologically(
+        pendingMessages,
+        serverMessages,
+        visibleMessages,
+      );
+      const serverClientIds = new Set(
+        merged
+          .filter((message) => !String(message.id).startsWith("local_"))
+          .map((message) => message.clientMessageId)
+          .filter((item): item is string => Boolean(item)),
+      );
+      const nextMessages = merged.filter((message) => {
+        if (!String(message.id).startsWith("local_")) {
+          return true;
+        }
+        if (!message.clientMessageId) {
+          return true;
+        }
+        return !serverClientIds.has(message.clientMessageId);
+      });
+
+      messages.value.set(sessionId, nextMessages);
+      syncHistoryState(sessionId, nextMessages, { preserveHasMore: true });
+      await saveConversationMessages(sessionId, nextMessages);
     } finally {
       loading.value = false;
     }
   };
 
+  const loadMoreHistory = async (sessionId: string, size = 20) => {
+    if (loadingHistoryBySession.value.get(sessionId)) {
+      return;
+    }
+
+    if (!messages.value.has(sessionId)) {
+      await loadMessages(sessionId, 0, Math.max(size, 50));
+    }
+
+    const session = resolveSession(sessionId);
+    if (!session) {
+      return;
+    }
+
+    const existingMessages = messages.value.get(sessionId) || [];
+    const oldestMessageId =
+      oldestLoadedServerMessageIdBySession.value.get(sessionId) ||
+      findOldestLoadedServerMessageId(existingMessages);
+
+    if (!oldestMessageId) {
+      syncHistoryState(sessionId, existingMessages, { hasMoreHistory: false });
+      return;
+    }
+
+    loadingHistoryBySession.value.set(sessionId, true);
+    try {
+      let response: MessageHistoryResponse;
+      try {
+        response = await fetchHistoryByCursor(session, size, oldestMessageId);
+      } catch {
+        const fallbackPage = fallbackHistoryPageBySession.value.get(sessionId) ?? 1;
+        response = await fetchHistoryByPage(session, fallbackPage, size);
+        fallbackHistoryPageBySession.value.set(sessionId, fallbackPage + 1);
+      }
+
+      const normalizedMessages = response.data.slice().sort(sortMessagesAscending);
+      const visibleMessages = filterClearedMessages(sessionId, normalizedMessages);
+      const merged = mergeMessagesChronologically(existingMessages, visibleMessages);
+
+      messages.value.set(sessionId, merged);
+      syncHistoryState(sessionId, merged, {
+        hasMoreHistory: normalizedMessages.length >= size,
+      });
+      await saveConversationMessages(sessionId, merged);
+    } finally {
+      loadingHistoryBySession.value.delete(sessionId);
+    }
+  };
+
   const addMessage = async (message: Message) => {
-    const sessionStore = useSessionStore();
     const userStore = useUserStore();
     let sessionId = "";
 
@@ -386,7 +473,7 @@ export const useMessageStore = defineStore("message", () => {
           id: sessionId,
           type: "group",
           targetId: message.groupId,
-          targetName: message.groupName || "未知群组",
+          targetName: message.groupName || "Unknown Group",
           targetAvatar: message.groupAvatar,
           unreadCount: 0,
           lastActiveTime: message.sendTime,
@@ -409,10 +496,7 @@ export const useMessageStore = defineStore("message", () => {
       sessionId = session.id;
     }
 
-    if (!sessionId) {
-      return;
-    }
-    if (shouldHideClearedMessage(sessionId, message)) {
+    if (!sessionId || shouldHideClearedMessage(sessionId, message)) {
       return;
     }
 
@@ -420,6 +504,7 @@ export const useMessageStore = defineStore("message", () => {
     const existingIndex = list.findIndex((item) =>
       hasSameMessageIdentity(item, message),
     );
+
     if (existingIndex >= 0) {
       const previous = list[existingIndex];
       list[existingIndex] = {
@@ -436,13 +521,16 @@ export const useMessageStore = defineStore("message", () => {
     } else {
       list.push(message);
     }
+
     list.sort(sortMessagesAscending);
     messages.value.set(sessionId, list);
+    syncHistoryState(sessionId, list, { preserveHasMore: true });
+
     const isSelfMessage = message.senderId === String(userStore.userId || "");
     sessionStore.applyMessageToSession(sessionId, message, {
-      incrementUnread:
-        !isSelfMessage && sessionStore.currentSession?.id !== sessionId,
+      incrementUnread: !isSelfMessage && sessionStore.currentSession?.id !== sessionId,
     });
+
     if (String(message.id).startsWith("local_")) {
       await messageRepo.upsertPendingMessage(sessionId, message.id, message);
     } else {
@@ -461,6 +549,7 @@ export const useMessageStore = defineStore("message", () => {
     if (!currentUser) {
       return false;
     }
+
     const localId = `local_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const clientMessageId = `cm_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const isTextLike = type === "TEXT";
@@ -507,12 +596,8 @@ export const useMessageStore = defineStore("message", () => {
       const serverMessage: Message = {
         ...response.data,
         id: safePreferExistingId(response.data.id, pendingMessage.id),
-        clientMessageId:
-          response.data.clientMessageId || pendingMessage.clientMessageId,
-        senderId: safePreferExistingId(
-          response.data.senderId,
-          pendingMessage.senderId,
-        ),
+        clientMessageId: response.data.clientMessageId || pendingMessage.clientMessageId,
+        senderId: safePreferExistingId(response.data.senderId, pendingMessage.senderId),
         receiverId: response.data.receiverId || pendingMessage.receiverId,
         groupId: response.data.groupId || pendingMessage.groupId,
         status: "SENT",
@@ -527,6 +612,7 @@ export const useMessageStore = defineStore("message", () => {
       if (targetIndex >= 0) {
         list[targetIndex] = serverMessage;
         messages.value.set(session.id, list);
+        syncHistoryState(session.id, list, { preserveHasMore: true });
       }
       await messageRepo.removePendingMessage(session.id, localId);
       await messageRepo.upsertServerMessages(session.id, [serverMessage]);
@@ -557,23 +643,11 @@ export const useMessageStore = defineStore("message", () => {
     extra?: Record<string, unknown>,
   ) => {
     if (!session) {
-      ElMessage.error("请先选择聊天对象");
+      ElMessage.error("Please select a chat first.");
       return false;
     }
 
-    const lockSessionId = session.id;
-    let waitDuration = 0;
-    while (sendingSessionLocks.value.has(lockSessionId) && waitDuration < 5000) {
-      await new Promise((resolve) => setTimeout(resolve, 25));
-      waitDuration += 25;
-    }
-    if (sendingSessionLocks.value.has(lockSessionId)) {
-      ElMessage.warning("会话发送繁忙，请稍后重试");
-      return false;
-    }
-    sendingSessionLocks.value.add(lockSessionId);
-
-    try {
+    return enqueueSendTask(session.id, async () => {
       if (type === "TEXT") {
         if (!messageTextConfig.value) {
           const response = await messageService.getConfig();
@@ -583,7 +657,9 @@ export const useMessageStore = defineStore("message", () => {
         if (config.textEnforce && config.textMaxLength > 0) {
           const parts = splitTextByCodePoints(content, config.textMaxLength);
           if (parts.length > 1) {
-            ElMessage.warning(`内容过长，已拆分为${parts.length}条发送`);
+            ElMessage.warning(
+              `Message was split into ${parts.length} parts because it exceeded the limit.`,
+            );
             for (const part of parts) {
               const success = await sendSingleMessage(session, part, type, extra);
               if (!success) {
@@ -596,9 +672,7 @@ export const useMessageStore = defineStore("message", () => {
       }
 
       return sendSingleMessage(session, content, type, extra);
-    } finally {
-      sendingSessionLocks.value.delete(lockSessionId);
-    }
+    });
   };
 
   const markAsRead = async (sessionId: string) => {
@@ -654,6 +728,7 @@ export const useMessageStore = defineStore("message", () => {
     if (!currentUserId || receipt.readerId !== currentUserId) {
       return;
     }
+
     const sessionId = resolveReadSyncSessionId(receipt, currentUserId);
     if (!sessionId) {
       return;
@@ -670,6 +745,7 @@ export const useMessageStore = defineStore("message", () => {
     if (lastReadMessageId == null) {
       return;
     }
+
     const readAtMilliseconds = receipt.readAt
       ? new Date(receipt.readAt).getTime()
       : Number.NaN;
@@ -699,6 +775,7 @@ export const useMessageStore = defineStore("message", () => {
         readAt: receipt.readAt || message.readAt,
       };
     });
+
     if (!changed) {
       return;
     }
@@ -720,6 +797,7 @@ export const useMessageStore = defineStore("message", () => {
       await applyReadSync(receipt);
       return;
     }
+
     const sessionId = resolveReadReceiptSessionId(receipt, currentUserId);
     const list = messages.value.get(sessionId) || [];
     const lastReadMessageId = receipt.lastReadMessageId
@@ -729,6 +807,7 @@ export const useMessageStore = defineStore("message", () => {
       ? new Date(receipt.readAt).getTime()
       : Number.NaN;
     let changed = false;
+
     const updated = list.map((message) => {
       if (message.senderId !== currentUserId) {
         return message;
@@ -768,6 +847,7 @@ export const useMessageStore = defineStore("message", () => {
         readAt: receipt.readAt || message.readAt,
       };
     });
+
     if (!changed) {
       return;
     }
@@ -780,6 +860,7 @@ export const useMessageStore = defineStore("message", () => {
       const next = messageList.filter((message) => message.id !== messageId);
       if (next.length !== messageList.length) {
         messages.value.set(sessionId, next);
+        syncHistoryState(sessionId, next, { preserveHasMore: true });
       }
     });
   };
@@ -799,11 +880,13 @@ export const useMessageStore = defineStore("message", () => {
       .map((message) => new Date(message.sendTime).getTime())
       .filter((item) => Number.isFinite(item))
       .reduce((maxTime, currentTime) => Math.max(maxTime, currentTime), 0);
+
     setClearMarker(sessionId, {
       clearedAtMs: latestMessageTimestamp > 0 ? latestMessageTimestamp : Date.now(),
       lastServerMessageId: latestServerMessageId?.toString(),
     });
     messages.value.set(sessionId, []);
+    resetHistoryState(sessionId);
     sessionStore.clearSessionConversationState(sessionId);
     await messageRepo.clearConversation(sessionId);
   };
@@ -814,9 +897,8 @@ export const useMessageStore = defineStore("message", () => {
       searchResults.value = [];
       return;
     }
-    const sessionIds = sessionId
-      ? [sessionId]
-      : Array.from(messages.value.keys());
+
+    const sessionIds = sessionId ? [sessionId] : Array.from(messages.value.keys());
     const results: MessageSearchResult[] = [];
     for (const id of sessionIds) {
       const list = messages.value.get(id) || [];
@@ -837,9 +919,14 @@ export const useMessageStore = defineStore("message", () => {
 
   const clear = () => {
     messages.value.clear();
+    loading.value = false;
+    loadingHistoryBySession.value.clear();
+    hasMoreHistoryBySession.value.clear();
+    oldestLoadedServerMessageIdBySession.value.clear();
+    fallbackHistoryPageBySession.value.clear();
+    sendQueueBySession.value.clear();
     searchResults.value = [];
     messageTextConfig.value = null;
-    sendingSessionLocks.value.clear();
     readSessionLocks.value.clear();
     readSessionLastAt.value.clear();
   };
@@ -847,9 +934,14 @@ export const useMessageStore = defineStore("message", () => {
   return {
     messages,
     loading,
+    loadingHistoryBySession,
+    hasMoreHistoryBySession,
+    oldestLoadedServerMessageIdBySession,
+    sendQueueBySession,
     searchResults,
     currentMessages,
     loadMessages,
+    loadMoreHistory,
     addMessage,
     sendMessage,
     markAsRead,
@@ -858,6 +950,7 @@ export const useMessageStore = defineStore("message", () => {
     deleteMessage,
     clearMessages,
     searchMessages,
+    resetSessionRuntimeState,
     clear,
   };
 });

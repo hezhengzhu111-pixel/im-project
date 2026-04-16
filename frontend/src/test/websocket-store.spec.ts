@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createPinia, setActivePinia } from "pinia";
-import type { Message } from "@/types";
+import {beforeEach, describe, expect, it, vi} from "vitest";
+import {createPinia, setActivePinia} from "pinia";
+import type {Message} from "@/types";
 
 const issueWsTicket = vi.fn();
 const checkOnlineStatus = vi.fn();
@@ -126,6 +126,12 @@ describe("websocket store", () => {
     await Promise.resolve();
 
     expect(syncOfflineMessages).toHaveBeenCalledTimes(1);
+    expect(syncOfflineMessages).toHaveBeenCalledWith({
+      refreshSessions: true,
+      batchSize: 3,
+      batchDelayMs: 150,
+      loadSize: 50,
+    });
     expect(localStorage.getItem("im_ws_cache")).toContain("\"userId\":\"42\"");
   });
 
