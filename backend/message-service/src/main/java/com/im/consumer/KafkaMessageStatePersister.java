@@ -11,6 +11,7 @@ import com.im.message.entity.GroupReadCursor;
 import com.im.message.entity.Message;
 import com.im.message.entity.PrivateReadCursor;
 import com.im.service.ConversationCacheUpdater;
+import com.im.service.support.PendingStatusEventService;
 import com.im.utils.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,7 @@ public class KafkaMessageStatePersister {
     private final PrivateReadCursorMapper privateReadCursorMapper;
     private final ConversationCacheUpdater conversationCacheUpdater;
     private final SnowflakeIdGenerator snowflakeIdGenerator;
+    private final PendingStatusEventService pendingStatusEventService;
 
     @KafkaListener(
             topics = "${im.kafka.read-topic:im-read-topic}",
@@ -67,13 +69,15 @@ public class KafkaMessageStatePersister {
         updatedMessage.setStatus(event.getNewStatus());
         updatedMessage.setUpdatedTime(changedAt);
         int updated = messageMapper.updateById(updatedMessage);
-        if (updated <= 0) {
-            log.debug("Ignore status change event for missing message. messageId={}, status={}",
+        if (updated > 0) {
+            conversationCacheUpdater.applyStatusChange(event);
+            pendingStatusEventService.remove(event.getMessageId(), event.getNewStatus());
+            log.info("Persisted status change event. messageId={}, status={}",
                     event.getMessageId(), event.getNewStatus());
             return;
         }
-        conversationCacheUpdater.applyStatusChange(event);
-        log.info("Persisted status change event. messageId={}, status={}",
+        pendingStatusEventService.store(event);
+        log.warn("Stored pending status change event for message not yet persisted. messageId={}, status={}",
                 event.getMessageId(), event.getNewStatus());
     }
 
@@ -86,6 +90,9 @@ public class KafkaMessageStatePersister {
                 .eq(GroupReadCursor::getUserId, userId)
                 .last("limit 1"));
         if (cursor != null) {
+            if (shouldSkipReadUpdate(cursor.getLastReadAt(), readAt)) {
+                return;
+            }
             cursor.setLastReadAt(readAt);
             groupReadCursorMapper.updateById(cursor);
             return;
@@ -99,9 +106,19 @@ public class KafkaMessageStatePersister {
         try {
             groupReadCursorMapper.insert(created);
         } catch (DuplicateKeyException duplicate) {
+            GroupReadCursor latest = groupReadCursorMapper.selectOne(new LambdaQueryWrapper<GroupReadCursor>()
+                    .eq(GroupReadCursor::getGroupId, groupId)
+                    .eq(GroupReadCursor::getUserId, userId)
+                    .last("limit 1"));
+            if (latest != null && shouldSkipReadUpdate(latest.getLastReadAt(), readAt)) {
+                return;
+            }
             groupReadCursorMapper.update(null, new LambdaUpdateWrapper<GroupReadCursor>()
                     .eq(GroupReadCursor::getGroupId, groupId)
                     .eq(GroupReadCursor::getUserId, userId)
+                    .and(wrapper -> wrapper.isNull(GroupReadCursor::getLastReadAt)
+                            .or()
+                            .lt(GroupReadCursor::getLastReadAt, readAt))
                     .set(GroupReadCursor::getLastReadAt, readAt));
         }
     }
@@ -115,6 +132,9 @@ public class KafkaMessageStatePersister {
                 .eq(PrivateReadCursor::getPeerUserId, peerUserId)
                 .last("limit 1"));
         if (cursor != null) {
+            if (shouldSkipReadUpdate(cursor.getLastReadAt(), readAt)) {
+                return;
+            }
             cursor.setLastReadAt(readAt);
             privateReadCursorMapper.updateById(cursor);
             return;
@@ -128,10 +148,26 @@ public class KafkaMessageStatePersister {
         try {
             privateReadCursorMapper.insert(created);
         } catch (DuplicateKeyException duplicate) {
+            PrivateReadCursor latest = privateReadCursorMapper.selectOne(new LambdaQueryWrapper<PrivateReadCursor>()
+                    .eq(PrivateReadCursor::getUserId, userId)
+                    .eq(PrivateReadCursor::getPeerUserId, peerUserId)
+                    .last("limit 1"));
+            if (latest != null && shouldSkipReadUpdate(latest.getLastReadAt(), readAt)) {
+                return;
+            }
             privateReadCursorMapper.update(null, new LambdaUpdateWrapper<PrivateReadCursor>()
                     .eq(PrivateReadCursor::getUserId, userId)
                     .eq(PrivateReadCursor::getPeerUserId, peerUserId)
+                    .and(wrapper -> wrapper.isNull(PrivateReadCursor::getLastReadAt)
+                            .or()
+                            .lt(PrivateReadCursor::getLastReadAt, readAt))
                     .set(PrivateReadCursor::getLastReadAt, readAt));
         }
+    }
+
+    private boolean shouldSkipReadUpdate(LocalDateTime currentLastReadAt, LocalDateTime candidateReadAt) {
+        return currentLastReadAt != null
+                && candidateReadAt != null
+                && currentLastReadAt.isAfter(candidateReadAt);
     }
 }

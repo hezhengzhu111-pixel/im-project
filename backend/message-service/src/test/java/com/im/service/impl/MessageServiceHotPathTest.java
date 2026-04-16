@@ -9,11 +9,13 @@ import com.im.mapper.GroupReadCursorMapper;
 import com.im.mapper.MessageMapper;
 import com.im.mapper.PrivateReadCursorMapper;
 import com.im.message.entity.Message;
+import com.im.service.ConversationCacheUpdater;
 import com.im.service.command.SendMessageCommand;
 import com.im.service.query.HotConversationReadService;
 import com.im.service.query.HotConversationReadService.HotConversationSkeleton;
 import com.im.service.query.HotRecentMessageReadService;
 import com.im.service.support.AcceptedMessageProjectionService;
+import com.im.service.support.HotMessageLookupService;
 import com.im.service.support.HotMessageRedisRepository;
 import com.im.service.support.UserProfileCache;
 import org.junit.jupiter.api.BeforeEach;
@@ -79,6 +81,12 @@ class MessageServiceHotPathTest {
     @Mock
     private HotRecentMessageReadService hotRecentMessageReadService;
 
+    @Mock
+    private HotMessageLookupService hotMessageLookupService;
+
+    @Mock
+    private ConversationCacheUpdater conversationCacheUpdater;
+
     private MessageServiceImpl messageService;
 
     @BeforeEach
@@ -97,7 +105,9 @@ class MessageServiceHotPathTest {
                 hotMessageRedisRepository,
                 acceptedMessageProjectionService,
                 hotConversationReadService,
-                hotRecentMessageReadService
+                hotRecentMessageReadService,
+                hotMessageLookupService,
+                conversationCacheUpdater
         );
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         ReflectionTestUtils.setField(messageService, "defaultSystemSenderId", 0L);

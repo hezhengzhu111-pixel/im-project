@@ -19,12 +19,14 @@ import com.im.mapper.PrivateReadCursorMapper;
 import com.im.message.entity.GroupReadCursor;
 import com.im.message.entity.Message;
 import com.im.message.entity.PrivateReadCursor;
+import com.im.service.ConversationCacheUpdater;
 import com.im.service.MessageService;
 import com.im.service.command.SendMessageCommand;
 import com.im.service.query.HotConversationReadService;
 import com.im.service.query.HotConversationReadService.HotConversationSkeleton;
 import com.im.service.query.HotRecentMessageReadService;
 import com.im.service.support.AcceptedMessageProjectionService;
+import com.im.service.support.HotMessageLookupService;
 import com.im.service.support.HotMessageRedisRepository;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
@@ -35,7 +37,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -66,6 +67,8 @@ public class MessageServiceImpl implements MessageService {
     private final AcceptedMessageProjectionService acceptedMessageProjectionService;
     private final HotConversationReadService hotConversationReadService;
     private final HotRecentMessageReadService hotRecentMessageReadService;
+    private final HotMessageLookupService hotMessageLookupService;
+    private final ConversationCacheUpdater conversationCacheUpdater;
 
     private Map<MessageType, MessageHandler> handlerCache = Collections.emptyMap();
     private MessageHandler privateMessageHandler;
@@ -715,22 +718,54 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     public MessageDTO recallMessage(Long userId, Long messageId) {
-        Message recallTarget = recallInput(userId, messageId);
+        return applyHotFirstStatusChange(userId, messageId, Message.MessageStatus.RECALLED, false, false, true);
+    }
+
+    @Override
+    public MessageDTO deleteMessage(Long userId, Long messageId) {
+        return applyHotFirstStatusChange(userId, messageId, Message.MessageStatus.DELETED, true, false, false);
+    }
+
+    private MessageDTO applyHotFirstStatusChange(Long userId,
+                                                 Long messageId,
+                                                 Integer newStatus,
+                                                 boolean allowRecalled,
+                                                 boolean allowDeleted,
+                                                 boolean validateRecallWindow) {
+        Message statusTarget = hotMessageLookupService.requireOwnedMessageForStatusChange(
+                userId,
+                messageId,
+                allowRecalled,
+                allowDeleted
+        );
         LocalDateTime now = LocalDateTime.now();
-        recallTarget.setStatus(Message.MessageStatus.RECALLED);
-        recallTarget.setUpdatedTime(now);
-        MessageDTO result = buildStatusChangedMessageDTO(recallTarget);
-        StatusChangeEvent statusChangeEvent = buildStatusChangeEvent(recallTarget, userId, result, now);
+        if (validateRecallWindow) {
+            validateRecallWindow(statusTarget, now);
+        }
+        statusTarget.setStatus(newStatus);
+        statusTarget.setUpdatedTime(now);
+        MessageDTO result = buildStatusChangedMessageDTO(statusTarget);
+        StatusChangeEvent statusChangeEvent = buildStatusChangeEvent(statusTarget, userId, result, now);
+        conversationCacheUpdater.applyStatusChange(statusChangeEvent);
         publishStatusChangeEvent(statusChangeEvent, statusChangeEvent.getConversationId());
         return result;
     }
 
-    @Override
-    @Transactional
-    public MessageDTO deleteMessage(Long userId, Long messageId) {
-        Message deleteTarget = deleteInput(userId, messageId);
-        MessageDTO result = statusChangeProcess(deleteTarget, Message.MessageStatus.DELETED);
-        return statusChangeOutput(result);
+    private void validateRecallWindow(Message message, LocalDateTime now) {
+        LocalDateTime messageTime = resolveStatusChangeMessageTime(message);
+        if (messageTime != null && messageTime.plusMinutes(2).isBefore(now)) {
+            throw new BusinessException("only messages within 2 minutes can be recalled");
+        }
+    }
+
+    private LocalDateTime resolveStatusChangeMessageTime(Message message) {
+        if (message == null) {
+            return null;
+        }
+        if (message.getCreatedTime() != null) {
+            return message.getCreatedTime();
+        }
+        return message.getUpdatedTime();
     }
 
     private Message recallInput(Long userId, Long messageId) {
