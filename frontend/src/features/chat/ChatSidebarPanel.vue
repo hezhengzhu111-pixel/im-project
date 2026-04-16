@@ -556,7 +556,10 @@ const filteredGroups = computed(() => {
 
 .chat-layout {
   display: flex;
+  flex-direction: row;
+  align-items: stretch;
   height: 100%;
+  min-width: 412px;
 }
 
 .list-panel {
@@ -809,6 +812,10 @@ const filteredGroups = computed(() => {
 }
 
 @media (max-width: 768px) {
+  .chat-layout {
+    min-width: 0;
+  }
+
   .side-nav-bar {
     display: none;
   }

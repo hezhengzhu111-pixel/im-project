@@ -1,7 +1,7 @@
 <template>
   <div class="chat-container">
     <ChatSidebarPanel
-      class="chat-sidebar"
+      class="chat-shell-sidebar"
       :active-tab="activeTab"
       :sessions="chatStore.sortedSessions"
       :current-session-id="currentSession?.id"
@@ -524,9 +524,11 @@ onUnmounted(() => {
   background: var(--chat-shell-bg);
 }
 
-.chat-sidebar {
+.chat-shell-sidebar {
   position: relative;
   z-index: 1;
+  flex-shrink: 0;
+  align-self: stretch;
 }
 
 .chat-main {
