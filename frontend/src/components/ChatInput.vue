@@ -1,3 +1,4 @@
+<!-- Deprecated: legacy chat UI component. Active chat flow uses frontend/src/features/chat/*. -->
 <template>
   <div class="chat-input">
     <!-- 工具栏 -->
@@ -98,20 +99,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
-import { ElMessage } from "element-plus";
-import {
-  Plus,
-  Picture,
-  Document,
-  VideoCamera,
-  Microphone,
-} from "@element-plus/icons-vue";
-import { useMessage } from "@/hooks/useMessage";
-import { useFileUpload } from "@/hooks/useFileUpload";
-import { MESSAGE_TYPES } from "@/constants";
-import type { MessageType } from "@/types/message";
-import type { Conversation } from "@/types/chat";
+import {computed, onMounted, onUnmounted, ref} from "vue";
+import {ElMessage} from "element-plus";
+import {Document, Microphone, Picture, Plus, VideoCamera,} from "@element-plus/icons-vue";
+import {useMessage} from "@/hooks/useMessage";
+import {useFileUpload} from "@/hooks/useFileUpload";
+import {MESSAGE_TYPES} from "@/constants";
+import type {MessageType} from "@/types/message";
+import type {Conversation} from "@/types/chat";
 
 interface Props {
   currentConversation: Conversation | null;

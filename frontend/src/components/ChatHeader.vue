@@ -1,3 +1,4 @@
+<!-- Deprecated: legacy chat UI component. Active chat flow uses frontend/src/features/chat/*. -->
 <template>
   <div class="chat-header">
     <div class="chat-info">
@@ -64,26 +65,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import {computed} from "vue";
+import {ElMessage, ElMessageBox} from "element-plus";
 import {
-  VideoCamera,
-  Phone,
-  MoreFilled,
-  InfoFilled,
-  Search,
-  Top,
   Bell,
-  Delete,
-  Close,
-  SuccessFilled,
   CircleCloseFilled,
   Clock,
+  Close,
+  Delete,
+  InfoFilled,
   Minus,
+  MoreFilled,
+  Phone,
+  Search,
+  SuccessFilled,
+  Top,
+  VideoCamera,
 } from "@element-plus/icons-vue";
-import { getAvatarText } from "@/utils/common";
-import { USER_STATUS } from "@/constants";
-import type { Conversation } from "@/types/chat";
+import {getAvatarText} from "@/utils/common";
+import {USER_STATUS} from "@/constants";
+import type {Conversation} from "@/types/chat";
 
 interface Props {
   conversation?: Conversation | null;

@@ -22,14 +22,14 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
-import { useUserStore } from "@/stores/user";
-import { useWebSocketStore } from "@/stores/websocket";
-import { useChatStore } from "@/stores/chat";
-import { APP_CONFIG } from "@/config";
-import { logger } from "@/utils/logger";
+import {onMounted, onUnmounted, ref, watch} from "vue";
+import {useRouter} from "vue-router";
+import {ElMessage} from "element-plus";
+import {useUserStore} from "@/stores/user";
+import {useWebSocketStore} from "@/stores/websocket";
+import {useChatStore} from "@/stores/chat";
+import {APP_CONFIG} from "@/config";
+import {logger} from "@/utils/logger";
 
 // 状态
 const loading = ref(false);
@@ -180,6 +180,8 @@ body {
   line-height: 1.5;
   color: #333;
   background-color: #f5f5f5;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 #app {
@@ -257,11 +259,6 @@ body {
 
 // 响应式设计
 @media (max-width: 768px) {
-  html,
-  body {
-    font-size: 12px;
-  }
-
   .el-message {
     min-width: 250px;
   }

@@ -1,3 +1,4 @@
+<!-- Deprecated: legacy chat UI component. Active chat flow uses frontend/src/features/chat/ChatMessageItem.vue. -->
 <template>
   <div
     class="message-item"
@@ -149,18 +150,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import {
-  Document,
-  Loading,
-  VideoPause,
-  VideoPlay,
-  Warning,
-} from "@element-plus/icons-vue";
-import { useAudioPlayer } from "@/composables/useAudioPlayer";
-import { useContextMenu } from "@/composables/useContextMenu";
-import { formatFileSize, getAvatarText } from "@/utils/common";
-import type { Message } from "@/types";
+import {computed} from "vue";
+import {Document, Loading, VideoPause, VideoPlay, Warning,} from "@element-plus/icons-vue";
+import {useAudioPlayer} from "@/composables/useAudioPlayer";
+import {useContextMenu} from "@/composables/useContextMenu";
+import {formatFileSize, getAvatarText} from "@/utils/common";
+import type {Message} from "@/types";
 
 interface Props {
   message: Message;

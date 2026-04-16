@@ -24,7 +24,7 @@
         <div class="welcome-shell">
           <div class="welcome-orb"></div>
           <div class="welcome-card">
-            <el-icon class="welcome-icon" :size="60"><ChatDotRound /></el-icon>
+            <el-icon class="welcome-icon" :size="58"><ChatDotRound /></el-icon>
             <div class="welcome-title">Bring every conversation together</div>
             <div class="welcome-text">
               Pick a chat on the left, or start a new conversation from contacts or groups.
@@ -41,64 +41,111 @@
         <div class="chat-header">
           <button
             type="button"
-            class="mobile-back interactive-reset"
+            class="chat-action-button mobile-back interactive-reset"
             @click="chatStore.clearCurrentSession()"
           >
             <el-icon><ArrowLeft /></el-icon>
           </button>
 
-          <div class="chat-title">
-            <div class="chat-title-main">
-              <span class="chat-title-text">{{ currentSession.targetName }}</span>
-              <span v-if="currentSession.type === 'group'" class="chat-title-count">
-                {{ currentSession.memberCount || 0 }} members
-              </span>
-            </div>
-            <div class="chat-subtitle">
+          <div class="chat-header-main">
+            <div class="chat-avatar-shell">
+              <el-avatar :size="48" :src="headerAvatar" class="chat-avatar">
+                {{ headerAvatarText }}
+              </el-avatar>
               <span
                 v-if="currentSession.type === 'private'"
-                class="chat-presence"
+                class="presence-dot"
                 :class="{ online: currentSessionOnline }"
-              >
-                {{ currentSessionOnline ? "Online now" : "Offline" }}
-              </span>
-              <span class="connection-pill" :class="connectionStatus">
-                {{ connectionStatusLabel }}
-              </span>
+              ></span>
+            </div>
+
+            <div class="chat-title-block">
+              <div class="chat-title-row">
+                <span class="chat-title-text">{{ currentSession.targetName }}</span>
+                <span v-if="currentSession?.isPinned" class="title-chip">Pinned</span>
+                <span v-if="currentSession?.isMuted" class="title-chip title-chip-muted">
+                  Muted
+                </span>
+              </div>
+
+              <div class="chat-subtitle-row">
+                <span
+                  v-if="currentSession.type === 'private'"
+                  class="chat-presence"
+                  :class="{ online: currentSessionOnline }"
+                >
+                  {{ currentSessionOnline ? "Online now" : "Offline" }}
+                </span>
+                <span v-else class="chat-detail-pill">
+                  {{ currentSession.memberCount || 0 }} members
+                </span>
+                <span
+                  v-if="currentSession.type === 'group' && groupDescription"
+                  class="chat-detail-text"
+                >
+                  {{ groupDescription }}
+                </span>
+              </div>
             </div>
           </div>
 
-          <div class="chat-actions">
-            <el-dropdown trigger="click" @command="handleSessionAction">
-              <el-button
-                link
-                :icon="MoreFilled"
-                aria-label="More actions"
-                class="action-trigger"
-              />
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="search-messages" data-command="search-messages">
-                    Search messages
-                  </el-dropdown-item>
-                  <el-dropdown-item command="toggle-pin" data-command="toggle-pin">
-                    {{ currentSession?.isPinned ? "Unpin conversation" : "Pin conversation" }}
-                  </el-dropdown-item>
-                  <el-dropdown-item command="toggle-mute" data-command="toggle-mute">
-                    {{ currentSession?.isMuted ? "Turn off mute" : "Mute notifications" }}
-                  </el-dropdown-item>
-                  <el-dropdown-item command="open-session-info" data-command="open-session-info">
-                    {{ currentSession?.type === "group" ? "Group info" : "Contact info" }}
-                  </el-dropdown-item>
-                  <el-dropdown-item command="clear-history" data-command="clear-history">
-                    Clear chat history
-                  </el-dropdown-item>
-                  <el-dropdown-item command="delete-session" data-command="delete-session">
-                    Remove from chat list
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+          <div class="chat-header-side">
+            <div class="connection-chip" :class="connectionStatus">
+              <span class="connection-chip-dot"></span>
+              <span>{{ connectionStatusLabel }}</span>
+            </div>
+
+            <div class="chat-actions">
+              <button
+                type="button"
+                class="chat-action-button interactive-reset"
+                aria-label="Search messages"
+                title="Search messages"
+                @click="handleSessionAction('search-messages')"
+              >
+                <el-icon><Search /></el-icon>
+              </button>
+              <button
+                type="button"
+                class="chat-action-button interactive-reset"
+                aria-label="Open conversation details"
+                :title="currentSession.type === 'group' ? 'Group info' : 'Contact info'"
+                @click="handleSessionAction('open-session-info')"
+              >
+                <el-icon><InfoFilled /></el-icon>
+              </button>
+              <el-dropdown trigger="click" @command="handleSessionAction">
+                <button
+                  type="button"
+                  class="chat-action-button interactive-reset"
+                  aria-label="More actions"
+                >
+                  <el-icon><MoreFilled /></el-icon>
+                </button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="search-messages" data-command="search-messages">
+                      Search messages
+                    </el-dropdown-item>
+                    <el-dropdown-item command="toggle-pin" data-command="toggle-pin">
+                      {{ currentSession?.isPinned ? "Unpin conversation" : "Pin conversation" }}
+                    </el-dropdown-item>
+                    <el-dropdown-item command="toggle-mute" data-command="toggle-mute">
+                      {{ currentSession?.isMuted ? "Turn off mute" : "Mute notifications" }}
+                    </el-dropdown-item>
+                    <el-dropdown-item command="open-session-info" data-command="open-session-info">
+                      {{ currentSession?.type === "group" ? "Group info" : "Contact info" }}
+                    </el-dropdown-item>
+                    <el-dropdown-item command="clear-history" data-command="clear-history">
+                      Clear chat history
+                    </el-dropdown-item>
+                    <el-dropdown-item command="delete-session" data-command="delete-session">
+                      Remove from chat list
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
           </div>
         </div>
 
@@ -108,6 +155,7 @@
           :current-user-name="userStore.userInfo?.username || userStore.nickname"
           :current-user-avatar="userStore.avatar"
           :loading-history="loadingMoreHistory"
+          :opened-unread-count="currentSessionUnreadSnapshot"
           @request-history="loadMoreHistory"
           @mark-read="tryAckRead"
           @show-group-readers="openGroupReadDialog"
@@ -141,8 +189,8 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onMounted, onUnmounted, ref} from "vue";
-import {ArrowLeft, ChatDotRound, MoreFilled} from "@element-plus/icons-vue";
+import {computed, onMounted, onUnmounted, ref, watch} from "vue";
+import {ArrowLeft, ChatDotRound, InfoFilled, MoreFilled, Search,} from "@element-plus/icons-vue";
 import {ElMessageBox} from "element-plus";
 import ChatComposer from "@/features/chat/ChatComposer.vue";
 import ChatDialogs from "@/features/chat/ChatDialogs.vue";
@@ -153,12 +201,13 @@ import {groupService} from "@/services/group";
 import {useChatStore} from "@/stores/chat";
 import {useUserStore} from "@/stores/user";
 import {useWebSocketStore} from "@/stores/websocket";
-import type {Friend, Group, GroupMember, GroupReadUser, Message} from "@/types";
+import {getAvatarText} from "@/utils/common";
+import type {ChatSession, Friend, Group, GroupMember, GroupReadUser, Message} from "@/types";
 
 const userStore = useUserStore();
 const chatStore = useChatStore();
 const webSocketStore = useWebSocketStore();
-const { capture } = useErrorHandler("chat-container");
+const {capture} = useErrorHandler("chat-container");
 const activeTab = ref<"chat" | "contacts" | "groups">("chat");
 const showAddFriend = ref(false);
 const showCreateGroup = ref(false);
@@ -169,6 +218,7 @@ const groupReadUsers = ref<GroupReadUser[]>([]);
 const sessionInfoMembers = ref<GroupMember[]>([]);
 const sessionInfoLoading = ref(false);
 const sessionInfoError = ref("");
+const unreadSnapshotBySession = ref(new Map<string, number>());
 
 const currentSession = computed(() => chatStore.currentSession);
 const loadingMoreHistory = computed(() => {
@@ -195,7 +245,7 @@ const connectionStatusLabel = computed(() => {
     case "connected":
       return "Connected";
     case "connecting":
-      return "Connecting...";
+      return "Connecting";
     default:
       return "Offline";
   }
@@ -227,12 +277,38 @@ const sessionInfoGroup = computed(() => {
     }
   );
 });
+const currentSessionUnreadSnapshot = computed(() => {
+  const sessionId = currentSession.value?.id;
+  if (!sessionId) {
+    return 0;
+  }
+  return unreadSnapshotBySession.value.get(sessionId) || 0;
+});
+const headerAvatar = computed(
+  () => currentSession.value?.targetAvatar || sessionInfoFriend.value?.avatar || sessionInfoGroup.value?.avatar || "",
+);
+const headerAvatarText = computed(() =>
+  getAvatarText(currentSession.value?.targetName || currentSession.value?.targetId),
+);
+const groupDescription = computed(() => {
+  const description =
+    sessionInfoGroup.value?.description || sessionInfoGroup.value?.announcement || "";
+  return description.trim();
+});
+
+const rememberUnreadSnapshot = (session?: ChatSession | null) => {
+  if (!session?.id) {
+    return;
+  }
+  unreadSnapshotBySession.value.set(session.id, Math.max(0, session.unreadCount || 0));
+};
 
 const handleTabChange = (tabName: "chat" | "contacts" | "groups") => {
   activeTab.value = tabName;
 };
 
 const selectSession = async (session: NonNullable<typeof currentSession.value>) => {
+  rememberUnreadSnapshot(session);
   if (currentSession.value?.id === session.id) {
     await chatStore.markAsRead(session.id);
     return;
@@ -249,6 +325,7 @@ const startChat = async (contact: Friend) => {
     targetAvatar: contact.avatar,
   });
   if (session) {
+    rememberUnreadSnapshot(session);
     activeTab.value = "chat";
   }
 };
@@ -256,7 +333,28 @@ const startChat = async (contact: Friend) => {
 const startGroupChat = async (group: Group) => {
   const session = await chatStore.openGroupSession(group);
   if (session) {
+    rememberUnreadSnapshot(session);
     activeTab.value = "chat";
+  }
+};
+
+const openSessionInfoDrawer = async (session: ChatSession) => {
+  showSessionInfoDrawer.value = true;
+  sessionInfoMembers.value = [];
+  sessionInfoError.value = "";
+  sessionInfoLoading.value = false;
+  if (session.type !== "group") {
+    return;
+  }
+  sessionInfoLoading.value = true;
+  try {
+    const response = await groupService.getMembers(session.targetId);
+    sessionInfoMembers.value = response.data || [];
+  } catch (error) {
+    sessionInfoError.value = "Failed to load group members.";
+    capture(error, "Failed to load group members");
+  } finally {
+    sessionInfoLoading.value = false;
   }
 };
 
@@ -279,23 +377,7 @@ const handleSessionAction = async (command: string | number | object) => {
         chatStore.toggleSessionMuted(session.id);
         return;
       case "open-session-info":
-        showSessionInfoDrawer.value = true;
-        sessionInfoMembers.value = [];
-        sessionInfoError.value = "";
-        sessionInfoLoading.value = false;
-        if (session.type !== "group") {
-          return;
-        }
-        sessionInfoLoading.value = true;
-        try {
-          const response = await groupService.getMembers(session.targetId);
-          sessionInfoMembers.value = response.data || [];
-        } catch (error) {
-          sessionInfoError.value = "Failed to load group members.";
-          capture(error, "Failed to load group members");
-        } finally {
-          sessionInfoLoading.value = false;
-        }
+        await openSessionInfoDrawer(session);
         return;
       case "clear-history":
         await ElMessageBox.confirm(
@@ -308,6 +390,7 @@ const handleSessionAction = async (command: string | number | object) => {
           },
         );
         await chatStore.clearMessages(session.id);
+        unreadSnapshotBySession.value.set(session.id, 0);
         return;
       case "delete-session":
         await ElMessageBox.confirm(
@@ -319,6 +402,7 @@ const handleSessionAction = async (command: string | number | object) => {
             cancelButtonText: "Cancel",
           },
         );
+        unreadSnapshotBySession.value.delete(session.id);
         chatStore.deleteSession(session.id);
         showSearchDialog.value = false;
         showSessionInfoDrawer.value = false;
@@ -394,6 +478,20 @@ const tryAckRead = async () => {
   await chatStore.markAsRead(currentSession.value.id);
 };
 
+watch(
+  () => currentSession.value,
+  (session) => {
+    if (session?.id && !unreadSnapshotBySession.value.has(session.id)) {
+      rememberUnreadSnapshot(session);
+    }
+    if (!session?.id) {
+      showSessionInfoDrawer.value = false;
+      showSearchDialog.value = false;
+    }
+  },
+  {immediate: true},
+);
+
 const onFocus = () => void tryAckRead();
 const onVisibility = () => {
   if (!document.hidden) {
@@ -423,9 +521,7 @@ onUnmounted(() => {
   display: flex;
   height: 100%;
   overflow: hidden;
-  background:
-    radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 22%),
-    linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
+  background: var(--chat-shell-bg);
 }
 
 .chat-sidebar {
@@ -438,8 +534,14 @@ onUnmounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: rgba(255, 255, 255, 0.86);
-  backdrop-filter: blur(18px);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px);
+}
+
+.chat-content {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
 }
 
 .chat-welcome {
@@ -452,43 +554,43 @@ onUnmounted(() => {
 
 .welcome-shell {
   position: relative;
-  width: min(100%, 540px);
+  width: min(100%, 560px);
 }
 
 .welcome-orb {
   position: absolute;
-  inset: 10% 15%;
+  inset: 12% 16%;
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(56, 189, 248, 0.18), transparent 70%);
-  filter: blur(30px);
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.22), transparent 70%);
+  filter: blur(32px);
 }
 
 .welcome-card {
   position: relative;
   padding: 40px 36px;
-  border-radius: 28px;
+  border-radius: 30px;
   background: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(226, 232, 240, 0.92);
-  box-shadow: 0 30px 70px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(191, 219, 254, 0.72);
+  box-shadow: 0 32px 72px rgba(15, 23, 42, 0.08);
   text-align: center;
 }
 
 .welcome-icon {
-  color: #2563eb;
+  color: var(--chat-accent);
 }
 
 .welcome-title {
   margin-top: 18px;
-  color: #0f172a;
-  font-size: 28px;
+  color: var(--chat-text-primary);
+  font-size: 30px;
   font-weight: 800;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 
 .welcome-text {
-  margin: 12px auto 0;
-  max-width: 400px;
-  color: #64748b;
+  margin: 14px auto 0;
+  max-width: 420px;
+  color: var(--chat-text-tertiary);
   font-size: 14px;
   line-height: 1.8;
 }
@@ -498,143 +600,161 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 8px 14px;
   border-radius: 999px;
-  background: #f8fafc;
-  color: #475569;
+  background: rgba(248, 250, 252, 0.92);
+  color: var(--chat-text-secondary);
   font-size: 12px;
   font-weight: 700;
 }
 
-.connection-dot {
-  width: 8px;
-  height: 8px;
+.connection-dot,
+.connection-chip-dot,
+.presence-dot {
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: #94a3b8;
 }
 
-.connection-dot.connected {
-  background: #10b981;
+.connection-dot.connected,
+.connection-chip.connected .connection-chip-dot,
+.presence-dot.online {
+  background: var(--chat-success);
 }
 
-.connection-dot.connecting {
-  background: #f59e0b;
-}
-
-.chat-content {
-  display: flex;
-  height: 100%;
-  flex-direction: column;
+.connection-dot.connecting,
+.connection-chip.connecting .connection-chip-dot {
+  background: var(--chat-warning);
 }
 
 .chat-header {
   display: flex;
   align-items: center;
-  gap: 16px;
-  min-height: 72px;
-  padding: 0 22px;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.78);
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(12px);
+  gap: 18px;
+  min-height: 82px;
+  padding: 14px 22px;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.74);
+  background: rgba(255, 255, 255, 0.74);
+  backdrop-filter: blur(16px);
 }
 
-.chat-title {
+.chat-header-main {
   min-width: 0;
   flex: 1;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 14px;
 }
 
-.chat-title-main {
+.chat-avatar-shell {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.chat-avatar {
+  border: 1px solid rgba(191, 219, 254, 0.58);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
+}
+
+.presence-dot {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  border: 2px solid #fff;
+}
+
+.chat-title-block {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-title-row,
+.chat-subtitle-row {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
 .chat-title-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #111827;
-  font-size: 19px;
-  font-weight: 700;
+  color: var(--chat-text-primary);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
 
-.chat-title-count {
-  flex-shrink: 0;
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.chat-subtitle {
-  display: flex;
+.title-chip,
+.chat-detail-pill {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.chat-presence {
-  color: #64748b;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(239, 246, 255, 0.94);
+  color: var(--chat-accent-strong);
   font-size: 12px;
   font-weight: 700;
+}
+
+.title-chip-muted {
+  background: rgba(248, 250, 252, 0.96);
+  color: var(--chat-text-secondary);
+}
+
+.chat-presence,
+.chat-detail-text {
+  color: var(--chat-text-tertiary);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .chat-presence.online {
-  color: #10b981;
+  color: var(--chat-success);
+  font-weight: 700;
 }
 
-.connection-pill {
+.chat-header-side {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.connection-chip {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
+  gap: 8px;
+  padding: 6px 10px;
   border-radius: 999px;
-  background: #eef2ff;
-  color: #4f46e5;
+  background: rgba(248, 250, 252, 0.9);
+  color: var(--chat-text-tertiary);
   font-size: 12px;
   font-weight: 700;
 }
 
-.connection-pill.connected {
-  background: #ecfdf5;
-  color: #059669;
+.connection-chip.connected {
+  color: #0f766e;
+  background: rgba(236, 253, 245, 0.92);
 }
 
-.connection-pill.connecting {
-  background: #fff7ed;
-  color: #d97706;
+.connection-chip.connecting {
+  color: #b45309;
+  background: rgba(255, 247, 237, 0.92);
 }
 
 .chat-actions {
   display: flex;
   align-items: center;
-}
-
-.action-trigger {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  color: #64748b;
-
-  &:hover {
-    background: #f1f5f9;
-    color: #2563eb;
-  }
+  gap: 8px;
 }
 
 .mobile-back {
   display: none;
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  color: #334155;
-  cursor: pointer;
-
-  &:hover {
-    background: #f1f5f9;
-  }
 }
 
 @media (max-width: 768px) {
@@ -643,24 +763,48 @@ onUnmounted(() => {
 
     &.active-mobile {
       position: absolute;
-      top: 0;
-      left: 0;
+      inset: 0;
       z-index: 10;
       display: flex;
       width: 100%;
       height: 100%;
+      background: rgba(255, 255, 255, 0.9);
     }
   }
 
   .chat-header {
-    min-height: 64px;
-    padding: 0 14px;
+    min-height: 74px;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
+    gap: 12px;
   }
 
   .mobile-back {
     display: inline-flex;
-    align-items: center;
-    justify-content: center;
+  }
+
+  .chat-header-main {
+    gap: 12px;
+  }
+
+  .chat-avatar {
+    width: 44px;
+    height: 44px;
+  }
+
+  .chat-title-text {
+    font-size: 18px;
+  }
+
+  .chat-subtitle-row {
+    gap: 8px;
+  }
+
+  .connection-chip {
+    display: none;
+  }
+
+  .chat-actions {
+    gap: 6px;
   }
 
   .welcome-card {

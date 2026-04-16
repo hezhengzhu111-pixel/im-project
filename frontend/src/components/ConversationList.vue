@@ -1,3 +1,4 @@
+<!-- Deprecated: legacy chat UI component. Active chat flow uses frontend/src/features/chat/*. -->
 <template>
   <div class="conversation-list">
     <!-- 搜索框 -->
@@ -70,10 +71,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import { Search, Top } from "@element-plus/icons-vue";
-import { formatTime, getAvatarText, debounce } from "@/utils/common";
-import type { Conversation } from "@/types/chat";
+import {computed, ref} from "vue";
+import {Search, Top} from "@element-plus/icons-vue";
+import {debounce, formatTime, getAvatarText} from "@/utils/common";
+import type {Conversation} from "@/types/chat";
 
 interface Props {
   conversations: Conversation[];

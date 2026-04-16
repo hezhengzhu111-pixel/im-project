@@ -1,7 +1,7 @@
 <template>
   <div
     ref="scrollContainerRef"
-    class="message-list"
+    class="message-list chat-soft-scrollbar"
     role="log"
     aria-live="polite"
     @scroll.passive="handleScroll"
@@ -12,6 +12,7 @@
 
     <div v-if="messages.length === 0" class="message-empty-state">
       <div class="message-empty-card">
+        <div class="message-empty-icon">+</div>
         <div class="message-empty-title">No messages yet</div>
         <div class="message-empty-text">
           Start the conversation and new messages will appear here in real time.
@@ -23,8 +24,8 @@
       v-else
       ref="scrollerRef"
       class="message-scroller"
-      :items="messages"
-      :min-item-size="88"
+      :items="renderItems"
+      :min-item-size="56"
       key-field="id"
     >
       <template #default="{ item, index, active }">
@@ -33,12 +34,26 @@
           :active="active"
           :data-index="index"
         >
+          <div v-if="item.kind === 'separator'" class="message-separator">
+            <span class="separator-pill">{{ item.label }}</span>
+          </div>
+
+          <div
+            v-else-if="item.kind === 'unread'"
+            class="message-separator message-separator-unread"
+          >
+            <span class="separator-line"></span>
+            <span class="separator-pill unread-pill">{{ item.label }}</span>
+            <span class="separator-line"></span>
+          </div>
+
           <MessageItem
-            :message="item"
+            v-else
+            :message="item.message"
             :current-user-id="currentUserId"
             :current-user-name="currentUserName"
             :current-user-avatar="currentUserAvatar"
-            :audio-playing="playingMessageId === item.id"
+            :audio-playing="playingMessageId === item.message.id"
             :image-scroll-container="scrollContainerRef"
             @show-group-readers="emit('show-group-readers', $event)"
             @open-context-menu="openContextMenu"
@@ -87,7 +102,7 @@
 <script setup lang="ts">
 import {computed, nextTick, onMounted, onUnmounted, ref, watch} from "vue";
 import {DynamicScroller, DynamicScrollerItem} from "vue-virtual-scroller";
-import MessageItem from "@/components/MessageItem.vue";
+import MessageItem from "@/features/chat/ChatMessageItem.vue";
 import {useAudioPlayer} from "@/features/chat/composables/useAudioPlayer";
 import {useMessageActions} from "@/features/chat/composables/useMessageActions";
 import {useMessageContextMenu} from "@/features/chat/composables/useMessageContextMenu";
@@ -99,10 +114,32 @@ interface Props {
   currentUserName?: string;
   currentUserAvatar?: string;
   loadingHistory?: boolean;
+  openedUnreadCount?: number;
 }
+
+type SeparatorItem = {
+  id: string;
+  kind: "separator";
+  label: string;
+};
+
+type UnreadItem = {
+  id: string;
+  kind: "unread";
+  label: string;
+};
+
+type MessageRenderItem = {
+  id: string;
+  kind: "message";
+  message: Message;
+};
+
+type RenderItem = SeparatorItem | UnreadItem | MessageRenderItem;
 
 const props = withDefaults(defineProps<Props>(), {
   loadingHistory: false,
+  openedUnreadCount: 0,
 });
 
 const emit = defineEmits<{
@@ -137,8 +174,8 @@ const nearBottom = ref(true);
 const pendingHistoryAnchor = ref<HistoryAnchor | null>(null);
 const historyFallbackTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 const refreshScheduled = ref(false);
-const { playingMessageId, toggle: toggleAudio, stop } = useAudioPlayer();
-const { copy, recall, remove } = useMessageActions();
+const {playingMessageId, toggle: toggleAudio, stop} = useAudioPlayer();
+const {copy, recall, remove} = useMessageActions();
 const contextMenu = useMessageContextMenu();
 const contextTargetMessage = computed(() => contextMenu.targetMessage.value);
 
@@ -165,8 +202,6 @@ const canDelete = computed(() => {
   return message.status !== "DELETED";
 });
 
-const showScrollToLatest = computed(() => !nearBottom.value && props.messages.length > 0);
-
 const messageKey = (message?: Message): string => {
   if (!message) {
     return "";
@@ -190,10 +225,71 @@ const tailMessageKey = computed(() => {
   ].join(":");
 });
 
+const unreadBoundaryIndex = computed(() => {
+  const unreadCount = Math.max(0, props.openedUnreadCount || 0);
+  if (!unreadCount || unreadCount > props.messages.length) {
+    return -1;
+  }
+  return props.messages.length - unreadCount;
+});
+
+const renderItems = computed<RenderItem[]>(() => {
+  const items: RenderItem[] = [];
+  let previousDateKey = "";
+
+  props.messages.forEach((message, index) => {
+    const currentDate = new Date(message.sendTime);
+    const currentDateKey = Number.isNaN(currentDate.getTime())
+      ? ""
+      : currentDate.toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+          weekday: "short",
+        });
+
+    if (currentDateKey && currentDateKey !== previousDateKey) {
+      items.push({
+        id: `separator-${currentDateKey}-${messageKey(message)}`,
+        kind: "separator",
+        label: currentDateKey,
+      });
+      previousDateKey = currentDateKey;
+    }
+
+    if (unreadBoundaryIndex.value === index) {
+      items.push({
+        id: `unread-${messageKey(message)}`,
+        kind: "unread",
+        label: "Unread messages",
+      });
+    }
+
+    items.push({
+      id: `message-${messageKey(message)}`,
+      kind: "message",
+      message,
+    });
+  });
+
+  return items;
+});
+
+const lastMessageRenderIndex = computed(() => {
+  for (let index = renderItems.value.length - 1; index >= 0; index -= 1) {
+    if (renderItems.value[index]?.kind === "message") {
+      return index;
+    }
+  }
+  return renderItems.value.length - 1;
+});
+
+const showScrollToLatest = computed(() => !nearBottom.value && props.messages.length > 0);
+
 const messageListSignal = computed(() => ({
   length: props.messages.length,
   first: firstMessageKey.value,
   tail: tailMessageKey.value,
+  unread: unreadBoundaryIndex.value,
 }));
 
 const isNearBottom = (threshold = BOTTOM_FOLLOW_THRESHOLD) => {
@@ -259,8 +355,8 @@ const playVideo = (_message: Message) => {
 const scrollToBottom = async () => {
   await nextTick();
   const scroller = scrollerRef.value;
-  if (scroller?.scrollToItem && props.messages.length > 0) {
-    scroller.scrollToItem(props.messages.length - 1);
+  if (scroller?.scrollToItem && renderItems.value.length > 0) {
+    scroller.scrollToItem(Math.max(lastMessageRenderIndex.value, 0));
   }
   await nextFrame();
   const container = scrollContainerRef.value;
@@ -396,7 +492,7 @@ watch(
     }
     updateNearBottom();
   },
-  { flush: "post" },
+  {flush: "post"},
 );
 
 onMounted(() => {
@@ -417,10 +513,10 @@ onUnmounted(() => {
   position: relative;
   flex: 1;
   overflow-y: auto;
-  padding: 18px 20px 24px;
+  padding: 20px 22px 24px;
   background:
-    radial-gradient(circle at top left, rgba(64, 158, 255, 0.08), transparent 28%),
-    linear-gradient(180deg, #f8fbff 0%, #f3f7fb 100%);
+    radial-gradient(circle at top left, rgba(96, 165, 250, 0.12), transparent 24%),
+    linear-gradient(180deg, #f6faff 0%, #eef4fb 100%);
 }
 
 .history-indicator {
@@ -428,16 +524,16 @@ onUnmounted(() => {
   top: 0;
   z-index: 2;
   width: fit-content;
-  margin: 0 auto 12px;
+  margin: 0 auto 14px;
   padding: 8px 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(64, 158, 255, 0.16);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-  color: #4b5563;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(191, 219, 254, 0.82);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  color: var(--chat-text-secondary);
   font-size: 12px;
-  font-weight: 600;
-  backdrop-filter: blur(10px);
+  font-weight: 700;
+  backdrop-filter: blur(12px);
 }
 
 .message-empty-state {
@@ -450,48 +546,100 @@ onUnmounted(() => {
 
 .message-empty-card {
   max-width: 360px;
-  padding: 24px 28px;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  box-shadow: 0 24px 50px rgba(15, 23, 42, 0.08);
+  padding: 28px 30px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(191, 219, 254, 0.6);
+  box-shadow: 0 28px 56px rgba(15, 23, 42, 0.08);
   text-align: center;
 }
 
-.message-empty-title {
-  color: #111827;
-  font-size: 18px;
+.message-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.14), rgba(125, 211, 252, 0.2));
+  color: var(--chat-accent);
+  font-size: 28px;
   font-weight: 700;
+}
+
+.message-empty-title {
+  margin-top: 16px;
+  color: var(--chat-text-primary);
+  font-size: 20px;
+  font-weight: 800;
 }
 
 .message-empty-text {
   margin-top: 8px;
-  color: #6b7280;
-  font-size: 13px;
-  line-height: 1.6;
+  color: var(--chat-text-tertiary);
+  font-size: 14px;
+  line-height: 1.7;
 }
 
 .message-scroller {
   min-height: 100%;
 }
 
+.message-separator {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 18px;
+}
+
+.message-separator-unread {
+  align-items: center;
+  gap: 12px;
+  padding-top: 6px;
+}
+
+.separator-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.42), transparent);
+}
+
+.separator-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(203, 213, 225, 0.74);
+  color: var(--chat-text-tertiary);
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 10px 22px rgba(148, 163, 184, 0.12);
+}
+
+.unread-pill {
+  border-color: rgba(96, 165, 250, 0.42);
+  color: var(--chat-accent-strong);
+  background: rgba(239, 246, 255, 0.96);
+}
+
 .scroll-to-latest {
   position: sticky;
-  left: calc(100% - 148px);
+  left: calc(100% - 156px);
   bottom: 18px;
   margin-left: auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 120px;
-  padding: 10px 14px;
+  min-width: 122px;
+  padding: 11px 16px;
   border: 0;
   border-radius: 999px;
   background: linear-gradient(135deg, #2563eb, #1d4ed8);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
-  box-shadow: 0 18px 40px rgba(37, 99, 235, 0.28);
+  box-shadow: 0 18px 38px rgba(37, 99, 235, 0.24);
   cursor: pointer;
 }
 
@@ -500,35 +648,47 @@ onUnmounted(() => {
   z-index: 9999;
   min-width: 132px;
   padding: 6px;
-  border-radius: 14px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
+  border: 1px solid rgba(203, 213, 225, 0.86);
+  box-shadow: 0 20px 42px rgba(15, 23, 42, 0.16);
   backdrop-filter: blur(12px);
 }
 
 .menu-item {
   padding: 10px 12px;
-  border-radius: 10px;
-  color: #475569;
+  border-radius: 12px;
+  color: var(--chat-text-secondary);
   font-size: 14px;
   cursor: pointer;
   transition: background-color 0.18s ease, color 0.18s ease;
 
   &:hover {
-    background: #eff6ff;
-    color: #2563eb;
+    background: rgba(239, 246, 255, 0.96);
+    color: var(--chat-accent);
   }
 }
 
 .menu-item.danger:hover {
-  background: #fef2f2;
-  color: #dc2626;
+  background: rgba(254, 242, 242, 0.94);
+  color: var(--chat-danger);
 }
 
 @media (max-width: 768px) {
   .message-list {
-    padding: 14px 12px 18px;
+    padding: 16px 12px 18px;
+  }
+
+  .message-empty-card {
+    padding: 24px 22px;
+  }
+
+  .message-empty-title {
+    font-size: 18px;
+  }
+
+  .message-empty-text {
+    font-size: 14px;
   }
 
   .scroll-to-latest {

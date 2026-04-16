@@ -1,5 +1,11 @@
 <template>
-  <el-dialog v-model="showAddFriend" title="Add friend" width="400px" append-to-body>
+  <el-dialog
+    v-model="showAddFriend"
+    title="Add friend"
+    width="420px"
+    append-to-body
+    class="chat-shell-dialog"
+  >
     <el-form :model="addFriendForm" label-width="80px">
       <el-form-item label="User">
         <el-select
@@ -35,11 +41,17 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="showCreateGroup" title="Create group" width="500px" append-to-body>
-    <el-form :model="createGroupForm" label-width="80px">
+  <el-dialog
+    v-model="showCreateGroup"
+    title="Create group"
+    width="520px"
+    append-to-body
+    class="chat-shell-dialog"
+  >
+    <el-form :model="createGroupForm" label-width="84px">
       <el-form-item label="Avatar">
         <div class="create-group-avatar">
-          <el-avatar :size="48" :src="createGroupForm.avatar" shape="square">
+          <el-avatar :size="52" :src="createGroupForm.avatar">
             {{ createGroupForm.name?.charAt(0) || "G" }}
           </el-avatar>
           <el-button size="small" @click="selectCreateGroupAvatar">Choose</el-button>
@@ -76,11 +88,12 @@
   <el-dialog
     v-model="showGroupReadDialog"
     :title="`Read by (${groupReadUsers.length})`"
-    width="360px"
+    width="380px"
     append-to-body
+    class="chat-shell-dialog"
   >
     <div v-if="groupReadUsers.length === 0" class="group-read-empty">No readers yet.</div>
-    <div v-else class="group-read-list">
+    <div v-else class="group-read-list chat-soft-scrollbar">
       <div v-for="reader in groupReadUsers" :key="reader.userId" class="group-read-item">
         <span class="group-read-name">{{ reader.displayName }}</span>
         <span class="group-read-id">ID: {{ reader.userId }}</span>
@@ -91,54 +104,58 @@
   <el-dialog
     v-model="showSearchDialog"
     title="Search messages"
-    width="540px"
+    width="560px"
     append-to-body
+    class="chat-shell-dialog"
   >
-    <el-input
-      v-model="messageSearchKeyword"
-      clearable
-      placeholder="Search in current conversation"
-    />
+    <div class="search-panel">
+      <el-input
+        v-model="messageSearchKeyword"
+        clearable
+        placeholder="Search in current conversation"
+      />
 
-    <div class="search-results">
-      <el-empty
-        v-if="!messageSearchKeyword.trim()"
-        description="Type a keyword to search this conversation."
-        :image-size="60"
-      />
-      <el-empty
-        v-else-if="searchResults.length === 0"
-        description="No matching messages."
-        :image-size="60"
-      />
-      <template v-else>
-        <div
-          v-for="result in searchResults"
-          :key="`${result.message.id}-${result.message.sendTime}`"
-          class="search-result-item"
-        >
-          <div class="search-result-meta">
-            <span>{{ result.message.senderName || result.message.senderId }}</span>
-            <span>{{ formatMessageTime(result.message.sendTime) }}</span>
+      <div class="search-results chat-soft-scrollbar">
+        <el-empty
+          v-if="!messageSearchKeyword.trim()"
+          description="Type a keyword to search this conversation."
+          :image-size="60"
+        />
+        <el-empty
+          v-else-if="searchResults.length === 0"
+          description="No matching messages."
+          :image-size="60"
+        />
+        <template v-else>
+          <div
+            v-for="result in searchResults"
+            :key="`${result.message.id}-${result.message.sendTime}`"
+            class="search-result-item"
+          >
+            <div class="search-result-meta">
+              <span>{{ result.message.senderName || result.message.senderId }}</span>
+              <span>{{ formatMessageTime(result.message.sendTime) }}</span>
+            </div>
+            <div class="search-result-content">{{ formatMessageContent(result.message) }}</div>
+            <div v-if="result.context.length > 1" class="search-result-context">
+              {{ formatContext(result) }}
+            </div>
           </div>
-          <div class="search-result-content">{{ formatMessageContent(result.message) }}</div>
-          <div v-if="result.context.length > 1" class="search-result-context">
-            {{ formatContext(result) }}
-          </div>
-        </div>
-      </template>
+        </template>
+      </div>
     </div>
   </el-dialog>
 
   <el-drawer
     v-model="showSessionInfoDrawer"
     :title="currentSession?.type === 'group' ? 'Group info' : 'Contact info'"
-    size="360px"
+    size="380px"
     append-to-body
+    class="chat-shell-drawer"
   >
     <template v-if="currentSession">
       <div class="session-info-header">
-        <el-avatar :size="56" :src="sessionInfoAvatar" shape="square">
+        <el-avatar :size="64" :src="sessionInfoAvatar">
           {{ sessionInfoDisplayName.charAt(0) || "C" }}
         </el-avatar>
         <div class="session-info-heading">
@@ -194,19 +211,19 @@
           description="No member details available."
           :image-size="60"
         />
-        <div v-else class="member-list">
+        <div v-else class="member-list chat-soft-scrollbar">
           <div
             v-for="member in sessionInfoMembers"
             :key="member.id || member.userId"
             class="member-item"
           >
-            <el-avatar :size="32" :src="member.avatar">
+            <el-avatar :size="34" :src="member.avatar">
               {{ (member.nickname || member.username || member.userId).charAt(0) }}
             </el-avatar>
             <div class="member-meta">
               <div class="member-name">{{ member.nickname || member.username || member.userId }}</div>
               <div class="member-subtitle">
-                {{ member.role }} - Joined {{ formatMessageTime(member.joinTime) }}
+                {{ member.role }} · Joined {{ formatMessageTime(member.joinTime) }}
               </div>
             </div>
           </div>
@@ -260,8 +277,8 @@ const emit = defineEmits<{
 
 const chatStore = useChatStore();
 const userStore = useUserStore();
-const { capture, notifyInfo, notifySuccess } = useErrorHandler("chat-dialogs");
-const { upload } = useFileMessageUpload();
+const {capture, notifyInfo, notifySuccess} = useErrorHandler("chat-dialogs");
+const {upload} = useFileMessageUpload();
 
 const showAddFriend = computed({
   get: () => props.visibleAddFriend,
@@ -367,7 +384,7 @@ const handleUserSearch = async (query: string) => {
   }
   isSearchingUsers.value = true;
   try {
-    const users = await chatStore.searchUsers({ type: "username", keyword: query });
+    const users = await chatStore.searchUsers({type: "username", keyword: query});
     userSearchResults.value = users.filter((user) => user.id !== userStore.userId);
   } catch (error) {
     capture(error, "Failed to search users");
@@ -486,9 +503,9 @@ const formatContext = (result: MessageSearchResult) =>
 }
 
 .option-subtitle {
-  color: #8492a6;
-  font-size: 13px;
   margin-left: 10px;
+  color: var(--chat-text-tertiary);
+  font-size: 13px;
 }
 
 .create-group-avatar {
@@ -497,29 +514,43 @@ const formatContext = (result: MessageSearchResult) =>
   gap: 12px;
 }
 
+.search-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .group-read-empty,
 .member-state {
-  color: #909399;
+  padding: 14px 0;
+  color: var(--chat-text-tertiary);
   text-align: center;
-  padding: 12px 0;
 }
 
 .member-error {
-  color: #d14343;
+  color: var(--chat-danger);
 }
 
 .group-read-list,
 .member-list,
 .search-results {
-  max-height: 320px;
+  max-height: 340px;
   overflow-y: auto;
 }
 
 .group-read-item,
 .member-item,
 .search-result-item {
-  padding: 10px 2px;
-  border-bottom: 1px solid #f0f2f5;
+  padding: 12px 14px;
+  border: 1px solid rgba(226, 232, 240, 0.82);
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.group-read-item + .group-read-item,
+.member-item + .member-item,
+.search-result-item + .search-result-item {
+  margin-top: 10px;
 }
 
 .group-read-item,
@@ -533,9 +564,9 @@ const formatContext = (result: MessageSearchResult) =>
 .group-read-name,
 .session-info-name,
 .member-name {
-  color: #303133;
-  font-size: 14px;
-  font-weight: 600;
+  color: var(--chat-text-primary);
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .group-read-id,
@@ -543,7 +574,7 @@ const formatContext = (result: MessageSearchResult) =>
 .search-result-context,
 .session-info-subtitle,
 .member-subtitle {
-  color: #909399;
+  color: var(--chat-text-tertiary);
   font-size: 12px;
 }
 
@@ -551,7 +582,10 @@ const formatContext = (result: MessageSearchResult) =>
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
+  padding: 18px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.94), rgba(248, 250, 252, 0.94));
 }
 
 .session-info-card {
@@ -559,18 +593,14 @@ const formatContext = (result: MessageSearchResult) =>
 }
 
 .member-section-title {
-  margin-bottom: 8px;
-  color: #303133;
+  margin-bottom: 10px;
+  color: var(--chat-text-primary);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .member-meta {
   flex: 1;
-}
-
-.search-results {
-  margin-top: 12px;
 }
 
 .search-result-meta {
@@ -580,9 +610,41 @@ const formatContext = (result: MessageSearchResult) =>
 }
 
 .search-result-content {
-  margin-top: 6px;
-  color: #303133;
+  margin-top: 8px;
+  color: var(--chat-text-primary);
   font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.search-result-context {
+  margin-top: 8px;
   line-height: 1.5;
+}
+
+:deep(.chat-shell-dialog .el-dialog),
+:deep(.chat-shell-drawer .el-drawer) {
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 28px 64px rgba(15, 23, 42, 0.16);
+}
+
+:deep(.chat-shell-dialog .el-dialog__header),
+:deep(.chat-shell-drawer .el-drawer__header) {
+  margin-right: 0;
+  padding: 20px 22px 14px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+}
+
+:deep(.chat-shell-dialog .el-dialog__body) {
+  padding: 18px 22px 22px;
+}
+
+:deep(.chat-shell-dialog .el-dialog__footer) {
+  padding: 0 22px 20px;
+}
+
+:deep(.chat-shell-drawer .el-drawer__body) {
+  padding: 18px 20px 20px;
 }
 </style>
