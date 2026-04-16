@@ -1,6 +1,5 @@
 package com.im.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.im.dto.*;
 import com.im.dto.request.SendGroupMessageRequest;
@@ -16,9 +15,7 @@ import com.im.handler.SystemMessageHandler;
 import com.im.mapper.GroupReadCursorMapper;
 import com.im.mapper.MessageMapper;
 import com.im.mapper.PrivateReadCursorMapper;
-import com.im.message.entity.GroupReadCursor;
 import com.im.message.entity.Message;
-import com.im.message.entity.PrivateReadCursor;
 import com.im.service.ConversationCacheUpdater;
 import com.im.service.MessageService;
 import com.im.service.command.SendMessageCommand;
@@ -254,57 +251,8 @@ public class MessageServiceImpl implements MessageService {
     
     /**
      * 鎵归噺鑾峰彇鏈€鍚庢秷鎭紝鍑忓皯鏁版嵁搴撴煡璇?     */
- 
-    
-    /**
-     * 鑾峰彇鏈娑堟伅鏁伴噺
-     */
-    // Legacy fallback kept only for compatibility; new read logic must use HotConversationReadService.
-    @Deprecated
-    private Long getUnreadCount(Long userId, Long targetId, boolean isPrivate) {
-        try {
-            if (userId == null || targetId == null) {
-                return 0L;
-            }
-            if (isPrivate) {
-                PrivateReadCursor cursor = privateReadCursorMapper.selectOne(new LambdaQueryWrapper<PrivateReadCursor>()
-                        .eq(PrivateReadCursor::getUserId, userId)
-                        .eq(PrivateReadCursor::getPeerUserId, targetId)
-                        .last("limit 1"));
-                LocalDateTime lastReadAt = cursor == null ? null : cursor.getLastReadAt();
-                LambdaQueryWrapper<Message> wrapper = new LambdaQueryWrapper<Message>()
-                        .eq(Message::getReceiverId, userId)
-                        .eq(Message::getSenderId, targetId)
-                        .eq(Message::getIsGroupChat, false)
-                        .ne(Message::getStatus, Message.MessageStatus.DELETED);
-                if (lastReadAt != null) {
-                    wrapper.gt(Message::getCreatedTime, lastReadAt);
-                }
-                Long cnt = messageMapper.selectCount(wrapper);
-                return cnt == null ? 0L : cnt;
-            } else {
-                GroupReadCursor cursor = groupReadCursorMapper.selectOne(new LambdaQueryWrapper<GroupReadCursor>()
-                        .eq(GroupReadCursor::getGroupId, targetId)
-                        .eq(GroupReadCursor::getUserId, userId)
-                        .last("limit 1"));
-                LocalDateTime lastReadAt = cursor == null ? null : cursor.getLastReadAt();
-                LambdaQueryWrapper<Message> wrapper = new LambdaQueryWrapper<Message>()
-                        .eq(Message::getGroupId, targetId)
-                        .eq(Message::getIsGroupChat, true)
-                        .ne(Message::getSenderId, userId)
-                        .ne(Message::getStatus, 5);
-                if (lastReadAt != null) {
-                    wrapper.gt(Message::getCreatedTime, lastReadAt);
-                }
-                Long cnt = messageMapper.selectCount(wrapper);
-                return cnt == null ? 0L : cnt;
-            }
-        } catch (Exception e) {
-            log.warn("鑾峰彇鏈娑堟伅鏁伴噺澶辫触锛寀serId: {}, targetId: {}, isPrivate: {}", userId, targetId, isPrivate, e);
-            return 0L;
-        }
-    }
-    
+
+
     @Override
     public void markAsRead(Long userId, String conversationId) {
         try {
@@ -571,6 +519,10 @@ public class MessageServiceImpl implements MessageService {
         Long targetUserId = Long.parseLong(conversationId);
         String normalizedConversationId = buildPrivateConversationKey(userId, targetUserId);
         return new ReadConversationTarget(false, null, targetUserId, normalizedConversationId);
+    }
+
+    public MessageHandler getPrivateMessageHandler() {
+        return privateMessageHandler;
     }
 
     private record ReadConversationTarget(boolean isGroup, Long groupId, Long targetUserId, String normalizedConversationId) {

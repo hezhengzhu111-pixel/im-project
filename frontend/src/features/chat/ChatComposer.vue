@@ -1,39 +1,47 @@
 <template>
   <div class="input-area">
     <div class="input-toolbar">
-      <el-button
-        link
-        :icon="Picture"
-        title="发送图片"
-        aria-label="发送图片"
-        :disabled="disabled"
-        @click="selectImage"
-      />
-      <el-button
-        link
-        :icon="Paperclip"
-        title="发送文件"
-        aria-label="发送文件"
-        :disabled="disabled"
-        @click="selectFile"
-      />
-      <el-button
-        link
-        :icon="voiceModeIcon"
-        :title="isVoiceMode ? '切换键盘' : '语音消息'"
-        :aria-label="isVoiceMode ? '切换键盘' : '语音消息'"
-        :disabled="disabled"
-        @click="toggleVoiceMode"
-      />
+      <div class="toolbar-group">
+        <el-button
+          link
+          :icon="Picture"
+          title="Send image"
+          aria-label="Send image"
+          :disabled="disabled"
+          @click="selectImage"
+        />
+        <el-button
+          link
+          :icon="Paperclip"
+          title="Send file"
+          aria-label="Send file"
+          :disabled="disabled"
+          @click="selectFile"
+        />
+        <el-button
+          link
+          :icon="voiceModeIcon"
+          :title="isVoiceMode ? 'Switch to keyboard' : 'Voice message'"
+          :aria-label="isVoiceMode ? 'Switch to keyboard' : 'Voice message'"
+          :disabled="disabled"
+          @click="toggleVoiceMode"
+        />
+      </div>
+      <div class="toolbar-hint">
+        {{ uploading ? "Uploading..." : "Paste screenshots, drag ideas into motion." }}
+      </div>
     </div>
 
     <div class="input-box">
       <textarea
         v-if="!isVoiceMode"
+        ref="textareaRef"
         v-model="messageInput"
         class="chat-textarea"
-        aria-label="消息输入框"
+        aria-label="Message input"
+        :placeholder="placeholderText"
         :disabled="disabled || uploading"
+        @paste="handlePaste"
         @keydown.enter.exact.prevent="handleSend"
         @keydown.enter.shift.exact="handleShiftEnter"
       ></textarea>
@@ -49,25 +57,26 @@
           @touchstart.prevent="handleStartRecording"
           @touchend.prevent="handleStopRecording"
         >
-          {{ isRecording ? "松开 发送" : "按住 说话" }}
+          {{ isRecording ? "Release to send" : "Hold to talk" }}
         </el-button>
         <div v-if="isRecording" class="recording-indicator">
           <div class="recording-waves">
             <span></span><span></span><span></span><span></span><span></span>
           </div>
-          <div class="recording-text">正在录音...</div>
+          <div class="recording-text">Recording...</div>
         </div>
       </div>
     </div>
 
-    <div class="input-actions" v-if="!isVoiceMode">
-      <span class="tip">Enter 发送，Shift + Enter 换行</span>
+    <div v-if="!isVoiceMode" class="input-actions">
+      <span class="tip">Enter to send, Shift + Enter for a new line</span>
       <el-button
         class="send-btn"
+        type="primary"
         :disabled="disabled || !messageInput.trim() || uploading"
         @click="handleSend"
       >
-        发送
+        Send
       </el-button>
     </div>
 
@@ -88,16 +97,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
-import {
-  ChatLineSquare,
-  Microphone,
-  Paperclip,
-  Picture,
-} from "@element-plus/icons-vue";
-import { useFileMessageUpload } from "@/features/chat/composables/useFileMessageUpload";
-import { useVoiceRecorder } from "@/features/chat/composables/useVoiceRecorder";
-import type { MessageType } from "@/types";
+import {computed, nextTick, ref} from "vue";
+import {ChatLineSquare, Microphone, Paperclip, Picture,} from "@element-plus/icons-vue";
+import {useFileMessageUpload} from "@/features/chat/composables/useFileMessageUpload";
+import {useVoiceRecorder} from "@/features/chat/composables/useVoiceRecorder";
+import type {MessageType} from "@/types";
 
 const props = defineProps<{
   disabled?: boolean;
@@ -114,6 +118,7 @@ const emit = defineEmits<{
 
 const imageInputRef = ref<HTMLInputElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
+const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const messageInput = ref("");
 const { uploading, upload } = useFileMessageUpload();
 const {
@@ -124,9 +129,47 @@ const {
   finishRecording,
   cancelRecording,
 } = useVoiceRecorder();
+
 const voiceModeIcon = computed(() =>
   isVoiceMode.value ? ChatLineSquare : Microphone,
 );
+
+const placeholderText = computed(() => {
+  if (props.disabled) {
+    return "Select a conversation to start typing";
+  }
+  return "Write a message...";
+});
+
+const focusTextarea = () => {
+  if (props.disabled || isVoiceMode.value) {
+    return;
+  }
+  nextTick(() => {
+    textareaRef.value?.focus();
+  });
+};
+
+const emitUploadedMedia = async (
+  file: File,
+  kind: Extract<MessageType, "IMAGE" | "FILE" | "VOICE">,
+  extra?: Record<string, unknown>,
+) => {
+  const result = await upload(file, kind);
+  emit("send-media", {
+    type: kind,
+    url: result.url,
+    extra:
+      kind === "FILE"
+        ? {
+            mediaName: result.fileName,
+            mediaSize: result.size,
+            ...extra,
+          }
+        : extra,
+  });
+  focusTextarea();
+};
 
 const handleSend = () => {
   const text = messageInput.value.trim();
@@ -135,6 +178,7 @@ const handleSend = () => {
   }
   emit("send-text", text);
   messageInput.value = "";
+  focusTextarea();
 };
 
 const handleShiftEnter = (event: KeyboardEvent) => {
@@ -159,11 +203,7 @@ const handleImageSelect = async (event: Event) => {
   if (!file) {
     return;
   }
-  const result = await upload(file, "IMAGE");
-  emit("send-media", {
-    type: "IMAGE",
-    url: result.url,
-  });
+  await emitUploadedMedia(file, "IMAGE");
 };
 
 const handleFileSelect = async (event: Event) => {
@@ -172,15 +212,21 @@ const handleFileSelect = async (event: Event) => {
   if (!file) {
     return;
   }
-  const result = await upload(file, "FILE");
-  emit("send-media", {
-    type: "FILE",
-    url: result.url,
-    extra: {
-      mediaName: result.fileName,
-      mediaSize: result.size,
-    },
-  });
+  await emitUploadedMedia(file, "FILE");
+};
+
+const handlePaste = async (event: ClipboardEvent) => {
+  if (props.disabled || uploading.value) {
+    return;
+  }
+  const file = Array.from(event.clipboardData?.items || [])
+    .find((item) => item.type.startsWith("image/"))
+    ?.getAsFile();
+  if (!file) {
+    return;
+  }
+  event.preventDefault();
+  await emitUploadedMedia(file, "IMAGE");
 };
 
 const handleStartRecording = async () => {
@@ -190,58 +236,91 @@ const handleStartRecording = async () => {
 const handleStopRecording = async () => {
   const recorded = await finishRecording();
   if (!recorded) {
+    focusTextarea();
     return;
   }
-  const result = await upload(recorded.file, "VOICE");
-  emit("send-media", {
-    type: "VOICE",
-    url: result.url,
-    extra: { duration: recorded.duration },
+  await emitUploadedMedia(recorded.file, "VOICE", {
+    duration: recorded.duration,
   });
 };
 
 const handleCancelRecording = () => {
   cancelRecording();
+  focusTextarea();
 };
 </script>
 
 <style scoped lang="scss">
 .input-area {
-  border-top: 1px solid #dcdfe6;
-  padding: 10px 20px;
-  background-color: #fff;
+  padding: 14px 18px 16px;
+  border-top: 1px solid rgba(226, 232, 240, 0.82);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
 }
 
 .input-toolbar {
-  margin-bottom: 10px;
   display: flex;
-  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar-hint {
+  color: #64748b;
+  font-size: 12px;
+  text-align: right;
 }
 
 .input-box {
-  min-height: 80px;
-  margin-bottom: 10px;
+  min-height: 108px;
+  padding: 4px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #f8fafc, #ffffff);
+  border: 1px solid rgba(226, 232, 240, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .chat-textarea {
   width: 100%;
-  height: 80px;
-  border: none;
+  height: 96px;
+  padding: 14px 16px;
+  border: 0;
   resize: none;
   outline: none;
+  background: transparent;
+  color: #0f172a;
   font-family: inherit;
   font-size: 14px;
+  line-height: 1.7;
+}
+
+.chat-textarea::placeholder {
+  color: #94a3b8;
 }
 
 .input-actions {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
 }
 
 .tip {
+  color: #64748b;
   font-size: 12px;
-  color: #909399;
+}
+
+.send-btn {
+  min-width: 92px;
+  border-radius: 999px;
+  box-shadow: 0 16px 28px rgba(37, 99, 235, 0.2);
 }
 
 .voice-input-area {
@@ -249,36 +328,42 @@ const handleCancelRecording = () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 80px;
+  min-height: 96px;
+}
+
+.voice-record-btn {
+  min-width: 180px;
+  border-radius: 999px;
 }
 
 .voice-record-btn.is-recording {
-  background-color: #f56c6c;
+  background-color: #ef4444;
+  border-color: #ef4444;
   color: #fff;
-  border-color: #f56c6c;
 }
 
 .recording-indicator {
-  margin-top: 10px;
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #f56c6c;
+  margin-top: 10px;
+  color: #ef4444;
   font-size: 12px;
+  font-weight: 600;
 }
 
 .recording-waves {
   display: flex;
   align-items: center;
   gap: 3px;
-  height: 15px;
+  height: 16px;
 }
 
 .recording-waves span {
   display: block;
   width: 2px;
   height: 100%;
-  background-color: #f56c6c;
+  background-color: #ef4444;
   animation: wave 1s infinite ease-in-out;
 }
 
@@ -309,8 +394,22 @@ const handleCancelRecording = () => {
 }
 
 @media (max-width: 768px) {
+  .input-area {
+    padding: 12px;
+  }
+
+  .input-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .toolbar-hint,
   .tip {
     display: none;
+  }
+
+  .chat-textarea {
+    height: 86px;
   }
 }
 </style>
