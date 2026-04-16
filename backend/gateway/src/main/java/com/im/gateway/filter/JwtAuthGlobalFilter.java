@@ -11,6 +11,7 @@ import com.im.dto.TokenParseResultDTO;
 import com.im.security.SecurityPaths;
 import com.im.util.AuthHeaderUtil;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.client.loadbalancer.reactive.ReactorLoadBalancerExchangeFilterFunction;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
@@ -81,6 +82,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     @Value("${im.auth.cookie.refresh-token-name:IM_REFRESH_TOKEN}")
     private String refreshTokenCookieName;
 
+    @Autowired
     public JwtAuthGlobalFilter(ObjectMapper objectMapper,
                                GlobalRateLimitSwitch globalRateLimitSwitch,
                                ObjectProvider<ReactorLoadBalancerExchangeFilterFunction> loadBalancerFilterProvider,

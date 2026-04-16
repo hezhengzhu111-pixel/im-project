@@ -112,27 +112,74 @@ export const useChatStore = defineStore("chat", () => {
     });
   };
 
+  const warnBootstrapStep = (step: string, error: unknown) => {
+    logger.warn(`chat bootstrap step failed: ${step}`, error);
+  };
+
   const initChatBootstrap = async () => {
-    await refreshSessionSkeletons({ force: true, refreshPresence: false });
-    await restoreCurrentSession({ loadMessages: true });
+    try {
+      await refreshSessionSkeletons({ force: true, refreshPresence: false });
+    } catch (error) {
+      warnBootstrapStep("initial session skeleton refresh", error);
+    }
+
+    try {
+      await restoreCurrentSession({ loadMessages: true });
+    } catch (error) {
+      warnBootstrapStep("restore current session", error);
+    }
 
     runBackgroundTask(async () => {
-      await Promise.all([
+      const preloadResults = await Promise.allSettled([
         contactStore.loadFriends(),
         groupStore.loadGroups(),
         contactStore.loadFriendRequests(),
       ]);
+      preloadResults.forEach((result, index) => {
+        if (result.status !== "rejected") {
+          return;
+        }
+        const step =
+          index === 0
+            ? "load friends"
+            : index === 1
+              ? "load groups"
+              : "load friend requests";
+        warnBootstrapStep(step, result.reason);
+      });
       sessionStore.mergeGroupMetadata(groupStore.groups);
-      await refreshSessionSkeletons({ force: true, refreshPresence: false });
 
-      const restored = sessionStore.currentSession || (await restoreCurrentSession({
-        loadMessages: false,
-      }));
-      if (restored?.id && !messageStore.messages.has(restored.id)) {
-        await messageStore.loadMessages(restored.id);
+      try {
+        await refreshSessionSkeletons({ force: true, refreshPresence: false });
+      } catch (error) {
+        warnBootstrapStep("background session skeleton refresh", error);
       }
 
-      await scheduleRealtimeResume({ forceSessionRefresh: false });
+      let restored = sessionStore.currentSession;
+      if (!restored) {
+        try {
+          restored = await restoreCurrentSession({
+            loadMessages: false,
+          });
+        } catch (error) {
+          warnBootstrapStep("background restore current session", error);
+          restored = null;
+        }
+      }
+
+      if (restored?.id && !messageStore.messages.has(restored.id)) {
+        try {
+          await messageStore.loadMessages(restored.id);
+        } catch (error) {
+          warnBootstrapStep("load restored session messages", error);
+        }
+      }
+
+      try {
+        await scheduleRealtimeResume({ forceSessionRefresh: false });
+      } catch (error) {
+        warnBootstrapStep("resume realtime sync", error);
+      }
     });
   };
 

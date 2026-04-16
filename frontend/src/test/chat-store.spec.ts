@@ -232,6 +232,50 @@ describe("chat store", () => {
     );
   });
 
+  it("keeps bootstrap resilient when the initial conversation load fails", async () => {
+    messageServiceMock.getConversations
+      .mockRejectedValueOnce(new Error("conversation bootstrap failed"))
+      .mockResolvedValue({
+        code: 200,
+        data: [],
+      });
+    friendServiceMock.getList.mockResolvedValue({
+      code: 200,
+      data: [
+        {
+          friendId: "2",
+          username: "u2",
+          nickname: "u2",
+        },
+      ],
+    });
+    groupServiceMock.getList.mockResolvedValue({
+      code: 200,
+      data: [
+        {
+          id: "9",
+          groupName: "project",
+          ownerId: "1",
+          memberCount: 3,
+          createTime: "2026-02-07T10:00:00.000Z",
+        },
+      ],
+    });
+
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    await expect(store.initChatBootstrap()).resolves.toBeUndefined();
+    await flushMicrotasks();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushMicrotasks();
+
+    expect(friendServiceMock.getList).toHaveBeenCalled();
+    expect(groupServiceMock.getList).toHaveBeenCalled();
+    expect(store.friends).toHaveLength(1);
+    expect(store.groups).toHaveLength(1);
+  });
+
   it("loads older history with the oldest loaded server message id as cursor", async () => {
     const { useChatStore } = await import("@/stores/chat");
     const store = useChatStore();
