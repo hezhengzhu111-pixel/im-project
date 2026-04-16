@@ -1,10 +1,6 @@
 package com.im.consumer;
 
-import com.im.dto.MessageDTO;
-import com.im.dto.MessageEvent;
-import com.im.dto.ReadEvent;
-import com.im.dto.ReadReceiptDTO;
-import com.im.dto.StatusChangeEvent;
+import com.im.dto.*;
 import com.im.entity.UserSession;
 import com.im.enums.MessageEventType;
 import com.im.enums.MessageType;
@@ -23,15 +19,8 @@ import org.springframework.web.socket.WebSocketSession;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class GatewayKafkaPusherTest {
@@ -59,55 +48,127 @@ class GatewayKafkaPusherTest {
     }
 
     @Test
-    void handleEvent_shouldPushPrivateMessageOnlyWhenReceiverHasLocalSession() {
-        MessageDTO payload = privatePayload();
-        MessageEvent event = privateEvent(payload);
+    void handleEvent_shouldPushPrivateMessageToReceiverAndSenderWhenBothHaveLocalSessions() {
+        MessageDTO payload = privatePayload(1L, 2L);
+        MessageEvent event = privateEvent(payload, 1L, 2L);
+        UserSession senderSession = session("session-1");
         UserSession localSession = session("session-2");
+        when(imService.getLocalSessions("1")).thenReturn(List.of(senderSession));
         when(imService.getLocalSessions("2")).thenReturn(List.of(localSession));
+        when(imService.pushMessageToUser(payload, 1L)).thenReturn(true);
         when(imService.pushMessageToUser(payload, 2L)).thenReturn(true);
 
         pusher.handleEvent(event);
 
+        verify(imService).pushMessageToUser(payload, 1L);
         verify(imService).pushMessageToUser(payload, 2L);
+        verify(deduplicator).markProcessed("kafka:MESSAGE:100:1");
         verify(deduplicator).markProcessed("kafka:MESSAGE:100:2");
     }
 
     @Test
-    void handleEvent_shouldDropPrivateMessageWhenReceiverIsNotLocal() {
-        MessageEvent event = privateEvent(privatePayload());
-        when(imService.getLocalSessions("2")).thenReturn(List.of());
+    void handleEvent_shouldPushPrivateMessageOnlyOnceWhenSenderEqualsReceiver() {
+        MessageDTO payload = privatePayload(1L, 1L);
+        MessageEvent event = privateEvent(payload, 1L, 1L);
+        UserSession selfSession = session("session-1");
+        when(imService.getLocalSessions("1")).thenReturn(List.of(selfSession));
+        when(imService.pushMessageToUser(payload, 1L)).thenReturn(true);
 
         pusher.handleEvent(event);
 
-        verify(imService, never()).pushMessageToUser(eq(event.getPayload()), eq(2L));
+        verify(imService, times(1)).pushMessageToUser(payload, 1L);
+        verify(deduplicator, times(1)).markProcessed("kafka:MESSAGE:100:1");
     }
 
     @Test
-    void handleEvent_shouldFanOutGroupMessageUsingRedisMembersAndLocalSessions() {
-        MessageDTO payload = groupPayload();
-        MessageEvent event = groupEvent(payload);
-        UserSession localSession = session("session-2");
-        when(valueOperations.get("message:group:members:9")).thenReturn(List.of(1L, 2L, 3L));
-        when(imService.getLocalSessions("2")).thenReturn(List.of(localSession));
-        when(imService.getLocalSessions("3")).thenReturn(List.of());
-        when(imService.pushMessageToUser(payload, 2L)).thenReturn(true);
+    void handleEvent_shouldSkipPrivateTargetWithoutLocalSessionsButStillPushOtherParticipant() {
+        MessageDTO payload = privatePayload(1L, 2L);
+        MessageEvent event = privateEvent(payload, 1L, 2L);
+        UserSession senderSession = session("session-1");
+        when(imService.getLocalSessions("1")).thenReturn(List.of(senderSession));
+        when(imService.getLocalSessions("2")).thenReturn(List.of());
+        when(imService.pushMessageToUser(payload, 1L)).thenReturn(true);
 
         pusher.handleEvent(event);
 
+        verify(imService).pushMessageToUser(payload, 1L);
+        verify(imService, never()).pushMessageToUser(payload, 2L);
+        verify(deduplicator).markProcessed("kafka:MESSAGE:100:1");
+    }
+
+    @Test
+    void handleEvent_shouldFanOutGroupMessageToAllMembersIncludingSender() {
+        MessageDTO payload = groupPayload(1L, 8L);
+        MessageEvent event = groupEvent(payload, 1L, 8L);
+        UserSession senderSession = session("session-1");
+        UserSession localSession = session("session-2");
+        UserSession thirdSession = session("session-3");
+        when(valueOperations.get("message:group:members:8")).thenReturn(List.of(1L, 2L, 3L));
+        when(imService.getLocalSessions("1")).thenReturn(List.of(senderSession));
+        when(imService.getLocalSessions("2")).thenReturn(List.of(localSession));
+        when(imService.getLocalSessions("3")).thenReturn(List.of(thirdSession));
+        when(imService.pushMessageToUser(payload, 1L)).thenReturn(true);
+        when(imService.pushMessageToUser(payload, 2L)).thenReturn(true);
+        when(imService.pushMessageToUser(payload, 3L)).thenReturn(true);
+
+        pusher.handleEvent(event);
+
+        verify(imService).pushMessageToUser(payload, 1L);
         verify(imService).pushMessageToUser(payload, 2L);
-        verify(imService, never()).pushMessageToUser(payload, 3L);
+        verify(imService).pushMessageToUser(payload, 3L);
+        verify(deduplicator).markProcessed("kafka:MESSAGE:101:1");
         verify(deduplicator).markProcessed("kafka:MESSAGE:101:2");
+        verify(deduplicator).markProcessed("kafka:MESSAGE:101:3");
     }
 
     @Test
     void handleEvent_shouldDropGroupMessageWhenGroupMemberCacheMisses() {
-        MessageDTO payload = groupPayload();
-        MessageEvent event = groupEvent(payload);
-        when(valueOperations.get("message:group:members:9")).thenReturn(null);
+        MessageDTO payload = groupPayload(1L, 8L);
+        MessageEvent event = groupEvent(payload, 1L, 8L);
+        when(valueOperations.get("message:group:members:8")).thenReturn(null);
 
         pusher.handleEvent(event);
 
         verify(imService, never()).pushMessageToUser(payload, 2L);
+    }
+
+    @Test
+    void handleEvent_shouldSkipGroupMembersWithoutLocalSessionsButStillPushOtherMembers() {
+        MessageDTO payload = groupPayload(1L, 8L);
+        MessageEvent event = groupEvent(payload, 1L, 8L);
+        UserSession senderSession = session("session-1");
+        UserSession receiverSession = session("session-3");
+        when(valueOperations.get("message:group:members:8")).thenReturn(List.of(1L, 2L, 3L));
+        when(imService.getLocalSessions("1")).thenReturn(List.of(senderSession));
+        when(imService.getLocalSessions("2")).thenReturn(List.of());
+        when(imService.getLocalSessions("3")).thenReturn(List.of(receiverSession));
+        when(imService.pushMessageToUser(payload, 1L)).thenReturn(true);
+        when(imService.pushMessageToUser(payload, 3L)).thenReturn(true);
+
+        pusher.handleEvent(event);
+
+        verify(imService).pushMessageToUser(payload, 1L);
+        verify(imService, never()).pushMessageToUser(payload, 2L);
+        verify(imService).pushMessageToUser(payload, 3L);
+    }
+
+    @Test
+    void handleEvent_shouldRespectMessageDeduplicatorForSenderWhileStillPushingReceiver() {
+        MessageDTO payload = privatePayload(1L, 2L);
+        MessageEvent event = privateEvent(payload, 1L, 2L);
+        UserSession senderSession = session("session-1");
+        UserSession receiverSession = session("session-2");
+        when(imService.getLocalSessions("1")).thenReturn(List.of(senderSession));
+        when(imService.getLocalSessions("2")).thenReturn(List.of(receiverSession));
+        when(deduplicator.isProcessed("kafka:MESSAGE:100:1")).thenReturn(true);
+        when(imService.pushMessageToUser(payload, 2L)).thenReturn(true);
+
+        pusher.handleEvent(event);
+
+        verify(imService, never()).pushMessageToUser(payload, 1L);
+        verify(imService).pushMessageToUser(payload, 2L);
+        verify(deduplicator, never()).markProcessed("kafka:MESSAGE:100:1");
+        verify(deduplicator).markProcessed("kafka:MESSAGE:100:2");
     }
 
     @Test
@@ -195,13 +256,13 @@ class GatewayKafkaPusherTest {
         verify(deduplicator).markProcessed("kafka:MESSAGE_STATUS_CHANGED:300:4:2");
     }
 
-    private MessageEvent privateEvent(MessageDTO payload) {
+    private MessageEvent privateEvent(MessageDTO payload, Long senderId, Long receiverId) {
         return MessageEvent.builder()
                 .eventType(MessageEventType.MESSAGE)
                 .messageId(100L)
-                .conversationId("p_1_2")
-                .senderId(1L)
-                .receiverId(2L)
+                .conversationId("p_" + Math.min(senderId, receiverId) + "_" + Math.max(senderId, receiverId))
+                .senderId(senderId)
+                .receiverId(receiverId)
                 .clientMessageId("client-100")
                 .messageType(MessageType.TEXT)
                 .content("hello")
@@ -209,11 +270,11 @@ class GatewayKafkaPusherTest {
                 .build();
     }
 
-    private MessageDTO privatePayload() {
+    private MessageDTO privatePayload(Long senderId, Long receiverId) {
         return MessageDTO.builder()
                 .id(100L)
-                .senderId(1L)
-                .receiverId(2L)
+                .senderId(senderId)
+                .receiverId(receiverId)
                 .messageType(MessageType.TEXT)
                 .content("hello")
                 .status("SENT")
@@ -221,13 +282,13 @@ class GatewayKafkaPusherTest {
                 .build();
     }
 
-    private MessageEvent groupEvent(MessageDTO payload) {
+    private MessageEvent groupEvent(MessageDTO payload, Long senderId, Long groupId) {
         return MessageEvent.builder()
                 .eventType(MessageEventType.MESSAGE)
                 .messageId(101L)
-                .conversationId("g_9")
-                .senderId(1L)
-                .groupId(9L)
+                .conversationId("g_" + groupId)
+                .senderId(senderId)
+                .groupId(groupId)
                 .messageType(MessageType.TEXT)
                 .content("group hello")
                 .group(true)
@@ -235,11 +296,11 @@ class GatewayKafkaPusherTest {
                 .build();
     }
 
-    private MessageDTO groupPayload() {
+    private MessageDTO groupPayload(Long senderId, Long groupId) {
         return MessageDTO.builder()
                 .id(101L)
-                .senderId(1L)
-                .groupId(9L)
+                .senderId(senderId)
+                .groupId(groupId)
                 .messageType(MessageType.TEXT)
                 .content("group hello")
                 .status("SENT")
