@@ -10,15 +10,18 @@ import com.im.mapper.GroupReadCursorMapper;
 import com.im.mapper.MessageMapper;
 import com.im.mapper.PrivateReadCursorMapper;
 import com.im.message.entity.Message;
+import com.im.service.ConversationCacheUpdater;
 import com.im.service.query.HotConversationReadService;
 import com.im.service.query.HotRecentMessageReadService;
 import com.im.service.support.AcceptedMessageProjectionService;
+import com.im.service.support.HotMessageLookupService;
 import com.im.service.support.HotMessageRedisRepository;
 import com.im.service.support.UserProfileCache;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -77,6 +80,12 @@ class MessageServiceStateKafkaTest {
     @Mock
     private HotRecentMessageReadService hotRecentMessageReadService;
 
+    @Mock
+    private HotMessageLookupService hotMessageLookupService;
+
+    @Mock
+    private ConversationCacheUpdater conversationCacheUpdater;
+
     private MessageServiceImpl messageService;
 
     @BeforeEach
@@ -95,7 +104,9 @@ class MessageServiceStateKafkaTest {
                 hotMessageRedisRepository,
                 acceptedMessageProjectionService,
                 hotConversationReadService,
-                hotRecentMessageReadService
+                hotRecentMessageReadService,
+                hotMessageLookupService,
+                conversationCacheUpdater
         );
         ReflectionTestUtils.setField(messageService, "readTopic", "im-read-topic");
         ReflectionTestUtils.setField(messageService, "statusTopic", "im-status-topic");
@@ -152,18 +163,10 @@ class MessageServiceStateKafkaTest {
     }
 
     @Test
-    void recallMessageShouldPublishStatusChangeEventWithoutSynchronousUpdate() throws Exception {
-        Message storedMessage = new Message();
-        storedMessage.setId(300L);
-        storedMessage.setSenderId(1L);
-        storedMessage.setReceiverId(2L);
-        storedMessage.setIsGroupChat(false);
-        storedMessage.setMessageType(MessageType.TEXT);
-        storedMessage.setContent("hello");
-        storedMessage.setStatus(Message.MessageStatus.SENT);
-        storedMessage.setCreatedTime(LocalDateTime.now().minusMinutes(1));
-        storedMessage.setUpdatedTime(storedMessage.getCreatedTime());
-        when(messageMapper.selectById(300L)).thenReturn(storedMessage);
+    void recallMessageShouldSucceedForHotMessageBeforePersistenceAndPublishAfterHotUpdate() throws Exception {
+        Message storedMessage = privateMessage(300L, 1L, 2L, "hello");
+        when(hotMessageLookupService.requireOwnedMessageForStatusChange(1L, 300L, false, false))
+                .thenReturn(storedMessage);
 
         CompletableFuture<Object> future = CompletableFuture.completedFuture(null);
         when(statusChangeEventKafkaTemplate.send(eq("im-status-topic"), eq("p_1_2"), any(StatusChangeEvent.class)))
@@ -171,14 +174,59 @@ class MessageServiceStateKafkaTest {
 
         MessageDTO result = messageService.recallMessage(1L, 300L);
 
+        InOrder inOrder = inOrder(conversationCacheUpdater, statusChangeEventKafkaTemplate);
         ArgumentCaptor<StatusChangeEvent> eventCaptor = ArgumentCaptor.forClass(StatusChangeEvent.class);
-        verify(statusChangeEventKafkaTemplate).send(eq("im-status-topic"), eq("p_1_2"), eventCaptor.capture());
+        inOrder.verify(conversationCacheUpdater).applyStatusChange(any(StatusChangeEvent.class));
+        inOrder.verify(statusChangeEventKafkaTemplate).send(eq("im-status-topic"), eq("p_1_2"), eventCaptor.capture());
         StatusChangeEvent event = eventCaptor.getValue();
         assertEquals(300L, event.getMessageId());
         assertEquals(Message.MessageStatus.RECALLED, event.getNewStatus());
         assertNotNull(event.getPayload());
         assertEquals("RECALLED", event.getPayload().getStatus());
         assertEquals("RECALLED", result.getStatus());
+        verify(hotMessageLookupService).requireOwnedMessageForStatusChange(1L, 300L, false, false);
+        verify(messageMapper, never()).selectById(300L);
         verify(messageMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void deleteMessageShouldSucceedForHotMessageBeforePersistenceAndPublishAfterHotUpdate() throws Exception {
+        Message storedMessage = privateMessage(301L, 1L, 2L, "delete me");
+        storedMessage.setStatus(Message.MessageStatus.RECALLED);
+        when(hotMessageLookupService.requireOwnedMessageForStatusChange(1L, 301L, true, false))
+                .thenReturn(storedMessage);
+
+        CompletableFuture<Object> future = CompletableFuture.completedFuture(null);
+        when(statusChangeEventKafkaTemplate.send(eq("im-status-topic"), eq("p_1_2"), any(StatusChangeEvent.class)))
+                .thenReturn((CompletableFuture) future);
+
+        MessageDTO result = messageService.deleteMessage(1L, 301L);
+
+        InOrder inOrder = inOrder(conversationCacheUpdater, statusChangeEventKafkaTemplate);
+        inOrder.verify(conversationCacheUpdater).applyStatusChange(any(StatusChangeEvent.class));
+        ArgumentCaptor<StatusChangeEvent> eventCaptor = ArgumentCaptor.forClass(StatusChangeEvent.class);
+        inOrder.verify(statusChangeEventKafkaTemplate).send(eq("im-status-topic"), eq("p_1_2"), eventCaptor.capture());
+        StatusChangeEvent event = eventCaptor.getValue();
+        assertEquals(301L, event.getMessageId());
+        assertEquals(Message.MessageStatus.DELETED, event.getNewStatus());
+        assertEquals("DELETED", result.getStatus());
+        verify(hotMessageLookupService).requireOwnedMessageForStatusChange(1L, 301L, true, false);
+        verify(messageMapper, never()).selectById(301L);
+        verify(messageMapper, never()).update(any(), any());
+    }
+
+    private Message privateMessage(Long id, Long senderId, Long receiverId, String content) {
+        Message message = new Message();
+        LocalDateTime createdTime = LocalDateTime.now().minusMinutes(1);
+        message.setId(id);
+        message.setSenderId(senderId);
+        message.setReceiverId(receiverId);
+        message.setIsGroupChat(false);
+        message.setMessageType(MessageType.TEXT);
+        message.setContent(content);
+        message.setStatus(Message.MessageStatus.SENT);
+        message.setCreatedTime(createdTime);
+        message.setUpdatedTime(createdTime);
+        return message;
     }
 }

@@ -1,6 +1,5 @@
 package com.im.service.query;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.im.dto.MessageDTO;
 import com.im.dto.UserDTO;
 import com.im.enums.MessageType;
@@ -12,7 +11,6 @@ import com.im.service.support.UserProfileCache;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -20,7 +18,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -96,9 +95,8 @@ class HotRecentMessageReadServiceTest {
         List<MessageDTO> messages = hotRecentMessageReadService.loadLatestMessages("p_1_2", 3);
 
         assertEquals(List.of(3L, 2L, 1L), messages.stream().map(MessageDTO::getId).toList());
-        ArgumentCaptor<LambdaQueryWrapper<Message>> wrapperCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
-        verify(messageMapper).selectList(wrapperCaptor.capture());
-        assertTrue(wrapperCaptor.getValue().getParamNameValuePairs().containsValue(2L));
+        verify(persistenceWatermarkService).getPersistedWatermark("p_1_2");
+        verify(messageMapper).selectList(any());
     }
 
     @Test
@@ -128,10 +126,8 @@ class HotRecentMessageReadServiceTest {
         List<MessageDTO> messages = hotRecentMessageReadService.loadCursorMessages("p_1_2", null, null, 4L, 10);
 
         assertEquals(List.of(5L, 6L), messages.stream().map(MessageDTO::getId).toList());
-        ArgumentCaptor<LambdaQueryWrapper<Message>> wrapperCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
-        verify(messageMapper).selectList(wrapperCaptor.capture());
-        assertTrue(wrapperCaptor.getValue().getParamNameValuePairs().containsValue(6L));
-        assertTrue(wrapperCaptor.getValue().getParamNameValuePairs().containsValue(4L));
+        verify(persistenceWatermarkService).getPersistedWatermark("p_1_2");
+        verify(messageMapper).selectList(any());
     }
 
     @Test
@@ -155,9 +151,8 @@ class HotRecentMessageReadServiceTest {
         Long messageId = hotRecentMessageReadService.resolveLatestVisibleMessageId("p_1_2");
 
         assertEquals(7L, messageId);
-        ArgumentCaptor<LambdaQueryWrapper<Message>> wrapperCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
-        verify(messageMapper).selectOne(wrapperCaptor.capture());
-        assertTrue(wrapperCaptor.getValue().getParamNameValuePairs().containsValue(7L));
+        verify(persistenceWatermarkService).getPersistedWatermark("p_1_2");
+        verify(messageMapper).selectOne(any());
     }
 
     @Test

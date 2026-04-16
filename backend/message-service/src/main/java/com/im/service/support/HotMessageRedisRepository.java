@@ -1,6 +1,7 @@
 package com.im.service.support;
 
 import com.im.dto.MessageDTO;
+import com.im.dto.StatusChangeEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -71,6 +72,12 @@ public class HotMessageRedisRepository {
 
     @Value("${im.message.persisted-watermark.ttl-seconds:86400}")
     private long persistedWatermarkTtlSeconds;
+
+    @Value("${im.message.pending-status.key-prefix:message:pending:status:}")
+    private String pendingStatusKeyPrefix;
+
+    @Value("${im.message.pending-status.ttl-seconds:3600}")
+    private long pendingStatusTtlSeconds;
 
     @Value("${im.message.conversation-cache.last-message-key-prefix:last_message:}")
     private String lastMessageKeyPrefix;
@@ -244,6 +251,70 @@ public class HotMessageRedisRepository {
         return null;
     }
 
+    public void saveStatusPending(Long messageId, Integer status, StatusChangeEvent event) {
+        if (messageId == null || status == null || event == null) {
+            return;
+        }
+        String key = pendingStatusKeyPrefix + messageId;
+        redisTemplate.opsForHash().put(key, String.valueOf(status), event);
+        redisTemplate.expire(key, Duration.ofSeconds(resolvePendingStatusTtlSeconds()));
+    }
+
+    public List<StatusChangeEvent> listPendingStatusEvents(Long messageId) {
+        if (messageId == null) {
+            return List.of();
+        }
+        List<Object> values = redisTemplate.opsForHash().values(pendingStatusKeyPrefix + messageId);
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        List<StatusChangeEvent> events = new ArrayList<>(values.size());
+        for (Object value : values) {
+            if (value instanceof StatusChangeEvent event) {
+                events.add(event);
+            }
+        }
+        return events;
+    }
+
+    public void removePendingStatus(Long messageId, Integer status) {
+        if (messageId == null || status == null) {
+            return;
+        }
+        String key = pendingStatusKeyPrefix + messageId;
+        redisTemplate.opsForHash().delete(key, String.valueOf(status));
+        Long size = redisTemplate.opsForHash().size(key);
+        if (size != null && size <= 0L) {
+            redisTemplate.delete(key);
+        }
+    }
+
+    public boolean hasPendingStatus(Long messageId, Integer status) {
+        if (messageId == null || status == null) {
+            return false;
+        }
+        Boolean hasKey = redisTemplate.opsForHash().hasKey(pendingStatusKeyPrefix + messageId, String.valueOf(status));
+        return Boolean.TRUE.equals(hasKey);
+    }
+
+    public List<Long> listPendingStatusMessageIds() {
+        Set<String> keys = redisTemplate.keys(pendingStatusKeyPrefix + "*");
+        if (keys == null || keys.isEmpty()) {
+            return List.of();
+        }
+        return keys.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .filter(key -> key.startsWith(pendingStatusKeyPrefix))
+                .map(key -> key.substring(pendingStatusKeyPrefix.length()))
+                .filter(StringUtils::hasText)
+                .map(this::toMessageId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
     public List<String> getConversationIdsForUser(Long userId, int limit) {
         if (userId == null || limit <= 0) {
             return List.of();
@@ -357,6 +428,10 @@ public class HotMessageRedisRepository {
 
     private long resolvePersistedWatermarkTtlSeconds() {
         return Math.max(60L, persistedWatermarkTtlSeconds);
+    }
+
+    private long resolvePendingStatusTtlSeconds() {
+        return Math.max(60L, pendingStatusTtlSeconds);
     }
 
     private long resolveConversationRecentMaxSize() {

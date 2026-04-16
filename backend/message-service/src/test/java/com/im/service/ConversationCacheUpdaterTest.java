@@ -232,5 +232,7 @@ class ConversationCacheUpdaterTest {
         verify(redisTemplate).delete("conversations:user:1");
         verify(redisTemplate).delete("conversations:user:2");
         verify(redisTemplate).delete("conversations:user:3");
+        verifyNoInteractions(zSetOperations);
+        verify(hotMessageRedisRepository, never()).addRecentMessage(any(), any(), any());
     }
 }

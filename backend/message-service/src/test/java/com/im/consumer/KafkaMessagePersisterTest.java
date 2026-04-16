@@ -1,16 +1,20 @@
 package com.im.consumer;
 
+import com.im.dto.MessageDTO;
 import com.im.dto.MessageEvent;
+import com.im.dto.StatusChangeEvent;
 import com.im.enums.MessageEventType;
 import com.im.enums.MessageType;
 import com.im.message.entity.Message;
 import com.im.service.MessagePersistenceService;
+import com.im.service.support.PendingStatusEventService;
 import com.im.service.support.PersistenceWatermarkService;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DuplicateKeyException;
@@ -33,11 +37,22 @@ class KafkaMessagePersisterTest {
     @Mock
     private PersistenceWatermarkService persistenceWatermarkService;
 
+    @Mock
+    private PendingStatusEventService pendingStatusEventService;
+
+    @Mock
+    private KafkaMessageStatePersister kafkaMessageStatePersister;
+
     private KafkaMessagePersister persister;
 
     @BeforeEach
     void setUp() {
-        persister = new KafkaMessagePersister(messagePersistenceService, persistenceWatermarkService);
+        persister = new KafkaMessagePersister(
+                messagePersistenceService,
+                persistenceWatermarkService,
+                pendingStatusEventService,
+                kafkaMessageStatePersister
+        );
     }
 
     @Test
@@ -72,6 +87,7 @@ class KafkaMessagePersisterTest {
                 .messageId(2001L)
                 .build();
         when(messagePersistenceService.saveBatch(any())).thenReturn(true);
+        when(pendingStatusEventService.listByMessageId(any())).thenReturn(List.of());
 
         persister.persistMessages(List.of(
                 record("p_1_2", messageEvent),
@@ -121,6 +137,7 @@ class KafkaMessagePersisterTest {
             }
             return true;
         });
+        when(pendingStatusEventService.listByMessageId(any())).thenReturn(List.of());
 
         persister.persistMessages(List.of(record("p_1_2", duplicated), record("p_1_3", inserted)));
 
@@ -153,6 +170,46 @@ class KafkaMessagePersisterTest {
 
         verify(messagePersistenceService, never()).saveBatch(any());
         verify(persistenceWatermarkService, never()).markPersisted(any(), any());
+    }
+
+    @Test
+    void persistMessagesShouldImmediatelyReplayPendingStatusEventsAfterMarkPersisted() {
+        MessageEvent event = minimalMessageEvent();
+        StatusChangeEvent pendingEvent = StatusChangeEvent.builder()
+                .messageId(1000L)
+                .newStatus(Message.MessageStatus.RECALLED)
+                .changedAt(LocalDateTime.of(2026, 4, 16, 10, 5))
+                .payload(MessageDTO.builder().id(1000L).status("RECALLED").build())
+                .build();
+        when(messagePersistenceService.saveBatch(any())).thenReturn(true);
+        when(pendingStatusEventService.listByMessageId(1000L)).thenReturn(List.of(pendingEvent));
+
+        persister.persistMessages(List.of(record("p_1_2", event)));
+
+        InOrder inOrder = inOrder(persistenceWatermarkService, pendingStatusEventService, kafkaMessageStatePersister);
+        inOrder.verify(persistenceWatermarkService).markPersisted("p_1_2", 1000L);
+        inOrder.verify(pendingStatusEventService).listByMessageId(1000L);
+        inOrder.verify(kafkaMessageStatePersister).persistStatusChangeEvent(pendingEvent);
+    }
+
+    @Test
+    void persistMessagesShouldKeepPersistenceFlowSuccessfulWhenImmediatePendingReplayFails() {
+        MessageEvent event = minimalMessageEvent();
+        StatusChangeEvent pendingEvent = StatusChangeEvent.builder()
+                .messageId(1000L)
+                .newStatus(Message.MessageStatus.DELETED)
+                .changedAt(LocalDateTime.of(2026, 4, 16, 10, 6))
+                .payload(MessageDTO.builder().id(1000L).status("DELETED").build())
+                .build();
+        when(messagePersistenceService.saveBatch(any())).thenReturn(true);
+        when(pendingStatusEventService.listByMessageId(1000L)).thenReturn(List.of(pendingEvent));
+        doThrow(new IllegalStateException("retry later"))
+                .when(kafkaMessageStatePersister).persistStatusChangeEvent(pendingEvent);
+
+        persister.persistMessages(List.of(record("p_1_2", event)));
+
+        verify(persistenceWatermarkService).markPersisted("p_1_2", 1000L);
+        verify(kafkaMessageStatePersister).persistStatusChangeEvent(pendingEvent);
     }
 
     @Test

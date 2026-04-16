@@ -1,9 +1,11 @@
 package com.im.consumer;
 
 import com.im.dto.MessageEvent;
+import com.im.dto.StatusChangeEvent;
 import com.im.enums.MessageEventType;
 import com.im.message.entity.Message;
 import com.im.service.MessagePersistenceService;
+import com.im.service.support.PendingStatusEventService;
 import com.im.service.support.PersistenceWatermarkService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,8 @@ public class KafkaMessagePersister {
 
     private final MessagePersistenceService messagePersistenceService;
     private final PersistenceWatermarkService persistenceWatermarkService;
+    private final PendingStatusEventService pendingStatusEventService;
+    private final KafkaMessageStatePersister kafkaMessageStatePersister;
 
     @KafkaListener(
             topics = "${im.kafka.chat-topic:im-chat-topic}",
@@ -137,6 +141,7 @@ public class KafkaMessagePersister {
                     resolveConversationId(candidate.event()),
                     candidate.message().getId()
             );
+            replayPendingStatusEvents(candidate.message().getId());
         }
     }
 
@@ -149,11 +154,33 @@ public class KafkaMessagePersister {
                     resolveConversationId(outcome.event()),
                     outcome.message().getId()
             );
+            replayPendingStatusEvents(outcome.message().getId());
         }
     }
 
     private long countPersisted(List<PersistOutcome> outcomes) {
         return outcomes.stream().filter(PersistOutcome::persistedOrAlreadyExists).count();
+    }
+
+    private void replayPendingStatusEvents(Long messageId) {
+        if (messageId == null) {
+            return;
+        }
+        List<StatusChangeEvent> pendingEvents = pendingStatusEventService.listByMessageId(messageId);
+        if (pendingEvents == null || pendingEvents.isEmpty()) {
+            return;
+        }
+        for (StatusChangeEvent pendingEvent : pendingEvents) {
+            if (pendingEvent == null) {
+                continue;
+            }
+            try {
+                kafkaMessageStatePersister.persistStatusChangeEvent(pendingEvent);
+            } catch (Exception exception) {
+                log.warn("Immediate pending status replay failed after message persistence. messageId={}, status={}, error={}",
+                        messageId, pendingEvent.getNewStatus(), exception.getMessage(), exception);
+            }
+        }
     }
 
     private String resolveConversationId(MessageEvent event) {
