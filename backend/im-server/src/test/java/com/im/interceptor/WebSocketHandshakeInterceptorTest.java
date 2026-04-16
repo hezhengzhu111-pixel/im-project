@@ -24,13 +24,9 @@ import org.springframework.web.socket.WebSocketHandler;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class WebSocketHandshakeInterceptorTest {
@@ -68,7 +64,7 @@ class WebSocketHandshakeInterceptorTest {
         ReflectionTestUtils.setField(
                 interceptor,
                 "allowedOrigins",
-                "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080"
+                "http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080"
         );
     }
 
@@ -209,6 +205,27 @@ class WebSocketHandshakeInterceptorTest {
         verify(serverHttpResponse).setStatusCode(HttpStatus.FORBIDDEN);
         verify(authServiceFeignClient, never()).consumeWsTicket(any());
         assertEquals(1.0, handshakeCount("failure", "origin_denied"));
+    }
+
+    @Test
+    void beforeHandshake_LocalhostOriginWithoutPort_ShouldBeAllowed() {
+        HttpHeaders headers = new HttpHeaders();
+        when(serverHttpResponse.getHeaders()).thenReturn(headers);
+        when(serverHttpRequest.getServletRequest()).thenReturn(httpServletRequest);
+        when(httpServletRequest.getHeader(HttpHeaders.ORIGIN)).thenReturn("http://localhost");
+        when(httpServletRequest.getParameter("ticket")).thenReturn("ticket-1");
+        when(httpServletRequest.getRequestURI()).thenReturn("/websocket/123");
+        when(authServiceFeignClient.consumeWsTicket(any())).thenReturn(WsTicketConsumeResultDTO.builder()
+                .valid(true)
+                .userId(123L)
+                .username("alice")
+                .build());
+
+        boolean result = interceptor.beforeHandshake(serverHttpRequest, serverHttpResponse, webSocketHandler, attributes);
+
+        assertTrue(result);
+        verify(authServiceFeignClient).consumeWsTicket(any());
+        assertEquals(1.0, handshakeCount("success", "success"));
     }
 
     private static org.springframework.http.server.ServerHttpRequest mock(Class<org.springframework.http.server.ServerHttpRequest> clazz) {
