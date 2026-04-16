@@ -112,9 +112,6 @@ public class GatewayKafkaMessageEventConfig {
         properties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, autoOffsetReset);
         properties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
         properties.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecords);
-        properties.put(JsonDeserializer.TRUSTED_PACKAGES, "com.im.dto,com.im.enums");
-        properties.put(JsonDeserializer.VALUE_DEFAULT_TYPE, valueType.getName());
-        properties.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
         return properties;
     }
 
