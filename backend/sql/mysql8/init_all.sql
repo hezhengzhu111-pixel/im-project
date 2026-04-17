@@ -108,6 +108,41 @@ CREATE TABLE IF NOT EXISTS im_group_member (
 
 USE service_message_service_db;
 
+CREATE TABLE IF NOT EXISTS accepted_message (
+  id BIGINT NOT NULL COMMENT 'accepted message id',
+  sender_id BIGINT NOT NULL COMMENT 'sender user id',
+  client_message_id VARCHAR(64) NOT NULL COMMENT 'client idempotency message id',
+  conversation_id VARCHAR(64) NOT NULL COMMENT 'conversation id',
+  ack_stage VARCHAR(32) NOT NULL DEFAULT 'ACCEPTED' COMMENT 'ack stage: ACCEPTED/PERSISTED',
+  payload_json LONGTEXT NOT NULL COMMENT 'accepted message snapshot json',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created time',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated time',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_accepted_message_sender_client_message (sender_id, client_message_id),
+  KEY idx_accepted_message_sender_time (sender_id, created_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='accepted message idempotency table';
+
+CREATE TABLE IF NOT EXISTS message_outbox (
+  id BIGINT NOT NULL COMMENT 'outbox id, aligned with message id',
+  sender_id BIGINT NOT NULL COMMENT 'sender user id',
+  client_message_id VARCHAR(64) NOT NULL COMMENT 'client idempotency message id',
+  conversation_id VARCHAR(64) NOT NULL COMMENT 'conversation id',
+  topic VARCHAR(100) NOT NULL COMMENT 'kafka topic',
+  routing_key VARCHAR(128) NOT NULL COMMENT 'kafka routing key',
+  event_json LONGTEXT NOT NULL COMMENT 'serialized message event json',
+  dispatch_status VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT 'dispatch stage: PENDING/RETRY/DISPATCHED/PERSISTED',
+  attempt_count INT NOT NULL DEFAULT 0 COMMENT 'dispatch attempt count',
+  next_attempt_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'next dispatch attempt time',
+  last_error VARCHAR(512) NULL COMMENT 'last dispatch error summary',
+  dispatched_time DATETIME NULL COMMENT 'last successful kafka dispatch time',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created time',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated time',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_message_outbox_sender_client_message (sender_id, client_message_id),
+  KEY idx_message_outbox_dispatch_status_time (dispatch_status, next_attempt_time),
+  KEY idx_message_outbox_conversation_time (conversation_id, created_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='message durable outbox table';
+
 CREATE TABLE IF NOT EXISTS messages (
   id BIGINT NOT NULL COMMENT '消息ID（雪花ID）',
   sender_id BIGINT NOT NULL COMMENT '发送者用户ID',
@@ -171,6 +206,19 @@ CREATE TABLE IF NOT EXISTS message_read_status (
   UNIQUE KEY uk_message_read_message_user (message_id, user_id),
   KEY idx_message_read_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='消息已读状态表';
+
+CREATE TABLE IF NOT EXISTS pending_status_event (
+  id BIGINT NOT NULL COMMENT 'pending status event id',
+  message_id BIGINT NOT NULL COMMENT 'message id waiting for replay',
+  new_status INT NOT NULL COMMENT 'target status waiting for replay',
+  changed_at DATETIME NOT NULL COMMENT 'status change logical time',
+  payload_json LONGTEXT NOT NULL COMMENT 'serialized status change event payload',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created time',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated time',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_pending_status_event_message_status (message_id, new_status),
+  KEY idx_pending_status_event_message_changed (message_id, changed_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='durable backlog for out-of-order status events';
 
 CREATE TABLE IF NOT EXISTS group_read_cursor (
   id BIGINT NOT NULL COMMENT '游标ID（雪花ID）',

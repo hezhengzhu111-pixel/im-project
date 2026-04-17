@@ -109,6 +109,24 @@ class KafkaMessageStatePersisterTest {
     }
 
     @Test
+    void persistReadEventShouldTreatEqualTimestampAsIdempotent() {
+        PrivateReadCursor cursor = existingPrivateCursor(1L, 2L, LocalDateTime.of(2026, 4, 15, 19, 7));
+        when(privateReadCursorMapper.selectOne(any())).thenReturn(cursor);
+
+        ReadEvent event = ReadEvent.builder()
+                .userId(1L)
+                .targetUserId(2L)
+                .conversationId("p_1_2")
+                .timestamp(LocalDateTime.of(2026, 4, 15, 19, 7))
+                .build();
+
+        persister.persistReadEvent(event);
+
+        verify(privateReadCursorMapper, never()).updateById(any(PrivateReadCursor.class));
+        verify(conversationCacheUpdater).markConversationRead(event);
+    }
+
+    @Test
     void persistReadEventShouldNotRollBackPrivateCursorDuringDuplicateFallback() {
         when(snowflakeIdGenerator.nextId()).thenReturn(9002L);
         when(privateReadCursorMapper.selectOne(any()))
@@ -131,8 +149,11 @@ class KafkaMessageStatePersisterTest {
 
     @Test
     void persistStatusChangeEventShouldApplyStatusAndRemovePendingWhenMessageExists() {
+        when(messageMapper.selectById(600L)).thenReturn(persistedMessage(600L, Message.MessageStatus.SENT,
+                LocalDateTime.of(2026, 4, 15, 19, 0)));
         when(messageMapper.updateById(any(Message.class))).thenReturn(1);
-        StatusChangeEvent event = statusChangeEvent(600L, Message.MessageStatus.RECALLED);
+        StatusChangeEvent event = statusChangeEvent(600L, Message.MessageStatus.RECALLED,
+                LocalDateTime.of(2026, 4, 15, 19, 10));
 
         persister.persistStatusChangeEvent(event);
 
@@ -143,15 +164,52 @@ class KafkaMessageStatePersisterTest {
     }
 
     @Test
-    void persistStatusChangeEventShouldStorePendingWhenMessageNotYetPersisted() {
-        when(messageMapper.updateById(any(Message.class))).thenReturn(0);
-        StatusChangeEvent event = statusChangeEvent(601L, Message.MessageStatus.DELETED);
+    void persistStatusChangeEventShouldStoreDurableBacklogWhenMessageNotYetPersisted() {
+        when(messageMapper.selectById(601L)).thenReturn(null);
+        StatusChangeEvent event = statusChangeEvent(601L, Message.MessageStatus.DELETED,
+                LocalDateTime.of(2026, 4, 15, 19, 11));
 
         persister.persistStatusChangeEvent(event);
 
         verify(conversationCacheUpdater, never()).applyStatusChange(any(StatusChangeEvent.class));
         verify(pendingStatusEventService).store(event);
         verify(pendingStatusEventService, never()).remove(any(), any());
+        verify(messageMapper, never()).updateById(any(Message.class));
+    }
+
+    @Test
+    void persistStatusChangeEventShouldRecoverWhenStatusArrivesBeforeMainMessage() {
+        StatusChangeEvent event = statusChangeEvent(602L, Message.MessageStatus.RECALLED,
+                LocalDateTime.of(2026, 4, 15, 19, 12));
+        when(messageMapper.selectById(602L))
+                .thenReturn(null)
+                .thenReturn(persistedMessage(602L, Message.MessageStatus.SENT, LocalDateTime.of(2026, 4, 15, 19, 0)));
+        when(messageMapper.updateById(any(Message.class))).thenReturn(1);
+
+        persister.persistStatusChangeEvent(event);
+        persister.persistStatusChangeEvent(event);
+
+        verify(pendingStatusEventService).store(event);
+        verify(messageMapper).updateById(any(Message.class));
+        verify(conversationCacheUpdater).applyStatusChange(event);
+        verify(pendingStatusEventService).remove(602L, Message.MessageStatus.RECALLED);
+    }
+
+    @Test
+    void persistStatusChangeEventShouldSkipDuplicateReplayWithoutUpdatingAgain() {
+        when(messageMapper.selectById(603L)).thenReturn(persistedMessage(
+                603L,
+                Message.MessageStatus.RECALLED,
+                LocalDateTime.of(2026, 4, 15, 19, 15)
+        ));
+        StatusChangeEvent event = statusChangeEvent(603L, Message.MessageStatus.RECALLED,
+                LocalDateTime.of(2026, 4, 15, 19, 15));
+
+        persister.persistStatusChangeEvent(event);
+
+        verify(messageMapper, never()).updateById(any(Message.class));
+        verify(conversationCacheUpdater, never()).applyStatusChange(any(StatusChangeEvent.class));
+        verify(pendingStatusEventService).remove(603L, Message.MessageStatus.RECALLED);
     }
 
     private PrivateReadCursor existingPrivateCursor(Long userId, Long peerUserId, LocalDateTime lastReadAt) {
@@ -163,11 +221,19 @@ class KafkaMessageStatePersisterTest {
         return cursor;
     }
 
-    private StatusChangeEvent statusChangeEvent(Long messageId, Integer status) {
+    private Message persistedMessage(Long id, Integer status, LocalDateTime updatedTime) {
+        Message message = new Message();
+        message.setId(id);
+        message.setStatus(status);
+        message.setUpdatedTime(updatedTime);
+        return message;
+    }
+
+    private StatusChangeEvent statusChangeEvent(Long messageId, Integer status, LocalDateTime changedAt) {
         return StatusChangeEvent.builder()
                 .messageId(messageId)
                 .newStatus(status)
-                .changedAt(LocalDateTime.of(2026, 4, 15, 19, 10))
+                .changedAt(changedAt)
                 .payload(MessageDTO.builder()
                         .id(messageId)
                         .senderId(1L)

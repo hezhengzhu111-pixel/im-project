@@ -1,12 +1,20 @@
 package com.im.service.support;
 
+import com.alibaba.fastjson2.JSON;
 import com.im.dto.MessageDTO;
 import com.im.dto.MessageEvent;
 import com.im.enums.MessageEventType;
 import com.im.exception.BusinessException;
+import com.im.mapper.AcceptedMessageMapper;
+import com.im.mapper.MessageOutboxMapper;
+import com.im.message.entity.AcceptedMessage;
+import com.im.message.entity.MessageOutbox;
 import com.im.service.ConversationCacheUpdater;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -17,10 +25,62 @@ public class AcceptedMessageProjectionService {
 
     private final HotMessageRedisRepository hotMessageRedisRepository;
     private final ConversationCacheUpdater conversationCacheUpdater;
+    private final AcceptedMessageMapper acceptedMessageMapper;
+    private final MessageOutboxMapper messageOutboxMapper;
+
+    @Value("${im.kafka.chat-topic:im-chat-topic}")
+    private String chatTopic = "im-chat-topic";
+
+    @Transactional
+    public MessageDTO reserveAcceptedMessage(MessageEvent event) {
+        MessageEvent normalizedEvent = normalizeEvent(event);
+        MessageDTO payload = normalizedEvent.getPayload();
+        if (normalizedEvent.getSenderId() == null || !StringUtils.hasText(payload.getClientMessageId())) {
+            return null;
+        }
+        applyAckStage(payload, MessageDTO.ACK_STAGE_ACCEPTED);
+        try {
+            acceptedMessageMapper.insert(toAcceptedMessage(normalizedEvent, payload));
+            messageOutboxMapper.insert(toMessageOutbox(normalizedEvent));
+            return null;
+        } catch (DuplicateKeyException duplicateKeyException) {
+            MessageDTO existing = findDurableAcceptedMessage(normalizedEvent.getSenderId(), payload.getClientMessageId());
+            if (existing != null) {
+                return existing;
+            }
+            throw new BusinessException("accepted message already reserved but durable snapshot is unavailable", duplicateKeyException);
+        }
+    }
+
+    public MessageDTO findDurableAcceptedMessage(Long senderId, String clientMessageId) {
+        if (senderId == null || !StringUtils.hasText(clientMessageId)) {
+            return null;
+        }
+        AcceptedMessage acceptedMessage = acceptedMessageMapper.selectBySenderIdAndClientMessageId(senderId, clientMessageId.trim());
+        if (acceptedMessage == null || !StringUtils.hasText(acceptedMessage.getPayloadJson())) {
+            return null;
+        }
+        try {
+            MessageDTO message = normalizeMessage(JSON.parseObject(acceptedMessage.getPayloadJson(), MessageDTO.class));
+            applyAckStage(message, resolveAckStage(acceptedMessage.getAckStage()));
+            return message;
+        } catch (Exception exception) {
+            throw new BusinessException("deserialize accepted message snapshot failed", exception);
+        }
+    }
+
+    public void releaseAcceptedReservation(Long senderId, String clientMessageId, Long messageId) {
+        if (senderId == null || messageId == null || !StringUtils.hasText(clientMessageId)) {
+            return;
+        }
+        acceptedMessageMapper.deleteBySenderIdAndClientMessageIdAndMessageId(senderId, clientMessageId.trim(), messageId);
+        messageOutboxMapper.deleteById(messageId);
+    }
 
     public void projectAcceptedFirstSeen(MessageEvent event) {
         MessageEvent normalizedEvent = normalizeEvent(event);
         MessageDTO payload = normalizedEvent.getPayload();
+        applyAckStage(payload, MessageDTO.ACK_STAGE_ACCEPTED);
         try {
             hotMessageRedisRepository.saveHotMessage(payload);
             if (normalizedEvent.getSenderId() != null && StringUtils.hasText(payload.getClientMessageId())) {
@@ -45,6 +105,9 @@ public class AcceptedMessageProjectionService {
 
     public void rehydrateAcceptedProjection(MessageDTO message) {
         MessageDTO normalizedMessage = normalizeMessage(message);
+        if (!StringUtils.hasText(normalizedMessage.getAckStage())) {
+            applyAckStage(normalizedMessage, MessageDTO.ACK_STAGE_ACCEPTED);
+        }
         try {
             hotMessageRedisRepository.saveHotMessage(normalizedMessage);
             if (normalizedMessage.getSenderId() != null && StringUtils.hasText(normalizedMessage.getClientMessageId())) {
@@ -59,6 +122,22 @@ public class AcceptedMessageProjectionService {
             throw exception;
         } catch (Exception exception) {
             throw new BusinessException("rehydrate accepted projection failed", exception);
+        }
+    }
+
+    public void markPersisted(MessageEvent event) {
+        MessageEvent normalizedEvent = normalizeEvent(event);
+        MessageDTO payload = normalizedEvent.getPayload();
+        applyAckStage(payload, MessageDTO.ACK_STAGE_PERSISTED);
+        acceptedMessageMapper.updateAckStageById(normalizedEvent.getMessageId(), MessageDTO.ACK_STAGE_PERSISTED);
+        messageOutboxMapper.markPersistedById(normalizedEvent.getMessageId());
+        hotMessageRedisRepository.saveHotMessage(payload);
+        if (normalizedEvent.getSenderId() != null && StringUtils.hasText(payload.getClientMessageId())) {
+            hotMessageRedisRepository.saveClientMessageMapping(
+                    normalizedEvent.getSenderId(),
+                    payload.getClientMessageId(),
+                    normalizedEvent.getMessageId()
+            );
         }
     }
 
@@ -133,6 +212,7 @@ public class AcceptedMessageProjectionService {
                     .createdAt(timestamp)
                     .updatedTime(event.getUpdatedTime())
                     .updatedAt(event.getUpdatedTime())
+                    .ackStage(MessageDTO.ACK_STAGE_ACCEPTED)
                     .isGroup(event.getGroupId() != null || Boolean.TRUE.equals(event.getGroup()))
                     .build();
             return payload;
@@ -191,6 +271,9 @@ public class AcceptedMessageProjectionService {
         }
         if (!StringUtils.hasText(payload.getStatus())) {
             payload.setStatus(event.getStatusText());
+        }
+        if (!StringUtils.hasText(payload.getAckStage())) {
+            payload.setAckStage(MessageDTO.ACK_STAGE_ACCEPTED);
         }
         return payload;
     }
@@ -260,5 +343,51 @@ public class AcceptedMessageProjectionService {
             return payload.getCreatedTime();
         }
         return LocalDateTime.now();
+    }
+
+    private AcceptedMessage toAcceptedMessage(MessageEvent normalizedEvent, MessageDTO payload) {
+        LocalDateTime acceptedTime = resolveAcceptedTime(normalizedEvent, payload);
+        AcceptedMessage acceptedMessage = new AcceptedMessage();
+        acceptedMessage.setId(normalizedEvent.getMessageId());
+        acceptedMessage.setSenderId(normalizedEvent.getSenderId());
+        acceptedMessage.setClientMessageId(payload.getClientMessageId());
+        acceptedMessage.setConversationId(normalizedEvent.getConversationId());
+        acceptedMessage.setAckStage(resolveAckStage(payload.getAckStage()));
+        acceptedMessage.setPayloadJson(JSON.toJSONString(payload));
+        acceptedMessage.setCreatedTime(acceptedTime);
+        acceptedMessage.setUpdatedTime(acceptedTime);
+        return acceptedMessage;
+    }
+
+    private MessageOutbox toMessageOutbox(MessageEvent normalizedEvent) {
+        LocalDateTime createdTime = resolveAcceptedTime(normalizedEvent, normalizedEvent.getPayload());
+        MessageOutbox messageOutbox = new MessageOutbox();
+        messageOutbox.setId(normalizedEvent.getMessageId());
+        messageOutbox.setSenderId(normalizedEvent.getSenderId());
+        messageOutbox.setClientMessageId(normalizedEvent.getPayload().getClientMessageId());
+        messageOutbox.setConversationId(normalizedEvent.getConversationId());
+        messageOutbox.setTopic(chatTopic);
+        messageOutbox.setRoutingKey(normalizedEvent.getConversationId());
+        messageOutbox.setEventJson(JSON.toJSONString(normalizedEvent));
+        messageOutbox.setDispatchStatus("PENDING");
+        messageOutbox.setAttemptCount(0);
+        messageOutbox.setNextAttemptTime(createdTime);
+        messageOutbox.setCreatedTime(createdTime);
+        messageOutbox.setUpdatedTime(createdTime);
+        return messageOutbox;
+    }
+
+    private void applyAckStage(MessageDTO payload, String ackStage) {
+        if (payload == null) {
+            return;
+        }
+        payload.setAckStage(resolveAckStage(ackStage));
+    }
+
+    private String resolveAckStage(String ackStage) {
+        if (MessageDTO.ACK_STAGE_PERSISTED.equalsIgnoreCase(ackStage)) {
+            return MessageDTO.ACK_STAGE_PERSISTED;
+        }
+        return MessageDTO.ACK_STAGE_ACCEPTED;
     }
 }

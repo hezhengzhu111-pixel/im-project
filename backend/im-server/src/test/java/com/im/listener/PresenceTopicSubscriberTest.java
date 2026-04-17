@@ -14,10 +14,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 class PresenceTopicSubscriberTest {
 
@@ -69,6 +66,18 @@ class PresenceTopicSubscriberTest {
                 "im:presence:broadcast",
                 event("2", "BROKEN", "node-2")));
         verify(imService, never()).broadcastOnlineStatus(any(), any(), any());
+    }
+
+    @Test
+    void listener_shouldSuppressDuplicateRemoteStatusBroadcast() {
+        PresenceTopicSubscriber subscriber = subscriber();
+        PresenceEvent event = event("2", "ONLINE", "node-2");
+
+        subscriber.subscribe();
+        captureListener().onMessage("im:presence:broadcast", event);
+        captureListener().onMessage("im:presence:broadcast", event);
+
+        verify(imService).broadcastOnlineStatus("2", UserStatus.ONLINE, event.getLastSeen());
     }
 
     private PresenceTopicSubscriber subscriber() {

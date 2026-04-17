@@ -1,21 +1,22 @@
 package com.im.interceptor;
 
-import com.im.util.AuthHeaderUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.dto.ApiResponse;
+import com.im.filter.InternalRequestBodyCachingFilter;
 import com.im.security.SecurityPaths;
+import com.im.util.AuthHeaderUtil;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import java.time.Duration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 
 @Component
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -23,6 +24,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 @Slf4j
 public class JwtAuthInterceptor implements HandlerInterceptor {
     private static final long REPLAY_GUARD_TTL_GRACE_SECONDS = 10L;
+    private static final byte[] EMPTY_BODY = new byte[0];
 
     private final ObjectMapper objectMapper;
     private final ObjectProvider<StringRedisTemplate> stringRedisTemplateProvider;
@@ -54,6 +56,18 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
     @Value("${im.internal.secret}")
     private String internalSecret;
 
+    @Value("${im.internal.max-skew-ms:300000}")
+    private long internalMaxSkewMs;
+
+    @Value("${im.internal.replay.ttl-seconds:300}")
+    private long internalReplayTtlSeconds;
+
+    @Value("${im.internal.replay.key-prefix:im:internal:replay:}")
+    private String internalReplayKeyPrefix;
+
+    @Value("${im.internal.legacy-secret-only.enabled:false}")
+    private boolean internalLegacySecretOnlyEnabled;
+
     @Value("${im.gateway.auth.secret}")
     private String gatewayAuthSecret;
 
@@ -67,11 +81,18 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
         }
 
         String requestURI = request.getRequestURI();
-        if (SecurityPaths.isServiceWhiteList(requestURI)) {
-            return true;
+        if (SecurityPaths.isInternalSecretPath(requestURI)) {
+            if (hasValidInternalSignature(request, requestURI)) {
+                return true;
+            }
+            if (internalLegacySecretOnlyEnabled && hasValidInternalSecret(request)) {
+                return true;
+            }
+            writeUnauthorized(response, "internal auth failed");
+            return false;
         }
 
-        if (SecurityPaths.isInternalSecretPath(requestURI) && hasValidInternalSecret(request)) {
+        if (SecurityPaths.isServiceWhiteList(requestURI)) {
             return true;
         }
 
@@ -80,15 +101,46 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
         }
 
         if (isGatewayMode() && gatewayOnlyEnabled) {
-            writeUnauthorized(response, "仅允许网关转发请求");
+            writeUnauthorized(response, "gateway forwarding required");
             return false;
         }
-        writeUnauthorized(response, "认证失败");
+
+        writeUnauthorized(response, "authentication failed");
         return false;
     }
 
     private boolean isGatewayMode() {
         return securityMode != null && "gateway".equalsIgnoreCase(securityMode.trim());
+    }
+
+    private boolean hasValidInternalSignature(HttpServletRequest request, String requestURI) {
+        InternalRequestHeaders headers = readInternalRequestHeaders(request);
+        if (!headers.isComplete()) {
+            return false;
+        }
+
+        Long timestamp = parseTimestamp(headers.timestamp());
+        if (timestamp == null || !withinAllowedClockSkew(timestamp, internalMaxSkewMs)) {
+            return false;
+        }
+
+        byte[] body = readCachedBody(request);
+        String bodyHash = AuthHeaderUtil.sha256Base64Url(body);
+        if (!AuthHeaderUtil.verifyHmacSha256(
+                internalSecret,
+                AuthHeaderUtil.buildInternalSignedFields(
+                        request.getMethod(),
+                        requestURI,
+                        bodyHash,
+                        headers.timestamp(),
+                        headers.nonce()
+                ),
+                headers.signature()
+        )) {
+            return false;
+        }
+
+        return tryAcquireInternalReplayGuard(headers.nonce(), timestamp);
     }
 
     private boolean applyIdentityFromGatewayHeaders(HttpServletRequest request) {
@@ -117,6 +169,14 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
     private boolean hasValidInternalSecret(HttpServletRequest request) {
         String internalHeaderValue = request.getHeader(internalHeaderName);
         return internalHeaderValue != null && internalSecret.equals(internalHeaderValue);
+    }
+
+    private InternalRequestHeaders readInternalRequestHeaders(HttpServletRequest request) {
+        return new InternalRequestHeaders(
+                request.getHeader(AuthHeaderUtil.INTERNAL_TIMESTAMP_HEADER),
+                request.getHeader(AuthHeaderUtil.INTERNAL_NONCE_HEADER),
+                request.getHeader(AuthHeaderUtil.INTERNAL_SIGNATURE_HEADER)
+        );
     }
 
     private boolean hasGatewayIdentityHeaders(String userIdValue, String usernameValue) {
@@ -150,7 +210,7 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
         if (tsLong == null) {
             return false;
         }
-        if (!withinAllowedClockSkew(tsLong)) {
+        if (!withinAllowedClockSkew(tsLong, maxSkewMs)) {
             return false;
         }
         if (replayProtectionEnabled && !tryAcquireReplayGuard(userIdValue, tsLong, authHeaders.nonce())) {
@@ -183,9 +243,9 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
         }
     }
 
-    private boolean withinAllowedClockSkew(Long tsLong) {
+    private boolean withinAllowedClockSkew(long tsLong, long allowedSkewMs) {
         long now = System.currentTimeMillis();
-        return Math.abs(now - tsLong) <= maxSkewMs;
+        return Math.abs(now - tsLong) <= allowedSkewMs;
     }
 
     private boolean applyAuthObjectsToRequest(HttpServletRequest request, String userB64, String permsB64, String dataB64) {
@@ -205,6 +265,14 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
         }
     }
 
+    private byte[] readCachedBody(HttpServletRequest request) {
+        Object cachedBody = request.getAttribute(InternalRequestBodyCachingFilter.CACHED_BODY_ATTRIBUTE);
+        if (cachedBody instanceof byte[] bytes) {
+            return bytes;
+        }
+        return EMPTY_BODY;
+    }
+
     private boolean tryAcquireReplayGuard(String userId, long ts, String nonce) {
         if (nonce == null || nonce.isBlank()) {
             return false;
@@ -222,6 +290,39 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             return Boolean.TRUE.equals(ok);
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    private boolean tryAcquireInternalReplayGuard(String nonce, long ts) {
+        if (nonce == null || nonce.isBlank()) {
+            return false;
+        }
+
+        StringRedisTemplate redisTemplate = stringRedisTemplateProvider.getIfAvailable();
+        if (redisTemplate == null) {
+            return false;
+        }
+
+        String key = internalReplayKeyPrefix + nonce;
+        try {
+            long now = System.currentTimeMillis();
+            long remainingSeconds = Math.max(1L, (ts + internalMaxSkewMs - now) / 1000L);
+            long ttlSeconds = Math.max(internalReplayTtlSeconds, remainingSeconds) + REPLAY_GUARD_TTL_GRACE_SECONDS;
+            Boolean ok = redisTemplate.opsForValue().setIfAbsent(key, "1", Duration.ofSeconds(ttlSeconds));
+            return Boolean.TRUE.equals(ok);
+        } catch (Exception e) {
+            log.warn("internal replay guard failed", e);
+            return false;
+        }
+    }
+
+    private record InternalRequestHeaders(
+            String timestamp,
+            String nonce,
+            String signature
+    ) {
+        private boolean isComplete() {
+            return timestamp != null && nonce != null && signature != null;
         }
     }
 

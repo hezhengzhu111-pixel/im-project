@@ -59,8 +59,13 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
         MessageDTO result = buildResult(command, context, message);
         String conversationId = buildConversationId(command, context, message);
         MessageEvent event = buildMessageEvent(command, message, conversationId, result);
-        publishMessageEvent(command, conversationId, event);
-            projectAcceptedFirstSeenMessage(command, event);
+        MessageDTO existingAcceptedMessage = acceptedMessageProjectionService.reserveAcceptedMessage(event);
+        if (existingAcceptedMessage != null) {
+            acceptedMessageProjectionService.rehydrateAcceptedProjection(existingAcceptedMessage);
+            return existingAcceptedMessage;
+        }
+        projectAcceptedFirstSeenMessage(command, event);
+        result.setAckStage(MessageDTO.ACK_STAGE_ACCEPTED);
         return result;
     }
 
@@ -218,14 +223,11 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
     protected void projectAcceptedFirstSeenMessage(SendMessageCommand command, MessageEvent event) {
         try {
             acceptedMessageProjectionService.projectAcceptedFirstSeen(event);
-        } catch (BusinessException exception) {
-            throw exception;
         } catch (Exception exception) {
-            log.error("Failed to project accepted message. conversationId={}, messageId={}",
+            log.warn("Accepted message already committed locally; hot projection will be recovered asynchronously. conversationId={}, messageId={}",
                     event == null ? null : event.getConversationId(),
                     event == null ? null : event.getMessageId(),
                     exception);
-            throw new BusinessException(transactionFailureMessage(command), exception);
         }
     }
 

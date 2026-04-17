@@ -1,10 +1,6 @@
 package com.im.service;
 
-import com.im.dto.TokenPairDTO;
-import com.im.dto.TokenParseResultDTO;
-import com.im.dto.WsTicketConsumeResultDTO;
-import com.im.dto.WsTicketDTO;
-import com.im.dto.AuthUserResourceDTO;
+import com.im.dto.*;
 import com.im.dto.request.RefreshTokenRequest;
 import com.im.util.TokenParser;
 import io.jsonwebtoken.Jwts;
@@ -14,16 +10,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +29,35 @@ public class AuthTokenService {
     private static final String PREVIOUS_REFRESH_KEY_PREFIX = "auth:refresh:previous:";
     private static final String REFRESH_LOCK_KEY_PREFIX = "auth:refresh:lock:";
     private static final String WS_TICKET_KEY_PREFIX = "auth:ws:ticket:";
+    private static final long REFRESH_RESULT_POLL_INTERVAL_MS = 25L;
+    private static final RedisScript<Long> REFRESH_ROTATE_COMMIT_SCRIPT = new DefaultRedisScript<>(
+            """
+                    redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
+                    redis.call('SET', KEYS[2], ARGV[3], 'PX', ARGV[4])
+                    return 1
+                    """,
+            Long.class
+    );
+    private static final RedisScript<Long> REFRESH_LOCK_RELEASE_SCRIPT = new DefaultRedisScript<>(
+            """
+                    if redis.call('GET', KEYS[1]) == ARGV[1] then
+                      return redis.call('DEL', KEYS[1])
+                    end
+                    return 0
+                    """,
+            Long.class
+    );
+    private static final RedisScript<String> WS_TICKET_CONSUME_SCRIPT = new DefaultRedisScript<>(
+            """
+                    local payload = redis.call('GET', KEYS[1])
+                    if not payload then
+                      return nil
+                    end
+                    redis.call('DEL', KEYS[1])
+                    return payload
+                    """,
+            String.class
+    );
 
     private final StringRedisTemplate stringRedisTemplate;
     private final AuthUserResourceService authUserResourceService;
@@ -61,10 +85,13 @@ public class AuthTokenService {
     private long wsTicketTtlSeconds;
 
     public TokenPairDTO issueTokenPair(Long userId, String username) {
-        return issueTokenPair(userId, username, null);
+        TokenPairBundle tokenPairBundle = buildTokenPair(userId, username);
+        storeRefreshJti(userId, tokenPairBundle.refreshJti());
+        authUserResourceService.getOrLoad(userId);
+        return tokenPairBundle.tokenPair();
     }
 
-    private TokenPairDTO issueTokenPair(Long userId, String username, String previousRefreshJti) {
+    private TokenPairBundle buildTokenPair(Long userId, String username) {
         if (userId == null || username == null || username.trim().isEmpty()) {
             throw new IllegalArgumentException("userId/username不能为空");
         }
@@ -75,16 +102,12 @@ public class AuthTokenService {
         String accessToken = buildToken(accessSecret, accessExpirationMs, userId, username, "access", accessJti);
         String refreshToken = buildToken(refreshSecret, refreshExpirationMs, userId, username, "refresh", refreshJti);
 
-        storeRefreshJti(userId, refreshJti);
-        authUserResourceService.getOrLoad(userId);
-
         TokenPairDTO dto = new TokenPairDTO();
         dto.setAccessToken(accessToken);
         dto.setRefreshToken(refreshToken);
         dto.setExpiresInMs(accessExpirationMs);
         dto.setRefreshExpiresInMs(refreshExpirationMs);
-        storePreviousRefreshResult(userId, previousRefreshJti, dto);
-        return dto;
+        return new TokenPairBundle(refreshJti, dto);
     }
 
     public WsTicketDTO issueWsTicket(Long userId, String username) {
@@ -109,7 +132,7 @@ public class AuthTokenService {
         if (expectedUserId == null) {
             return invalidWsTicket("userId不能为空");
         }
-        String payload = stringRedisTemplate.opsForValue().getAndDelete(WS_TICKET_KEY_PREFIX + ticket.trim());
+        String payload = consumeWsTicketPayload(ticket.trim());
         if (payload == null || payload.isBlank()) {
             return invalidWsTicket("ticket无效或已过期");
         }
@@ -120,6 +143,7 @@ public class AuthTokenService {
         if (!expectedUserId.equals(parsed.userId())) {
             return WsTicketConsumeResultDTO.builder()
                     .valid(false)
+                    .status(WsTicketConsumeResultDTO.STATUS_USER_MISMATCH)
                     .userId(parsed.userId())
                     .username(parsed.username())
                     .error("ticket与userId不匹配")
@@ -127,6 +151,7 @@ public class AuthTokenService {
         }
         return WsTicketConsumeResultDTO.builder()
                 .valid(true)
+                .status(WsTicketConsumeResultDTO.STATUS_VALID)
                 .userId(parsed.userId())
                 .username(parsed.username())
                 .build();
@@ -135,7 +160,11 @@ public class AuthTokenService {
     public TokenPairDTO refresh(RefreshTokenRequest request) {
         RefreshRequestInput input = refreshInput(request);
         RefreshTokenProcessContext context = refreshProcess(input);
-        return refreshOutput(context);
+        try {
+            return refreshOutput(context);
+        } finally {
+            releaseRefreshLock(context.userId(), context.refreshJti(), context.lockOwner());
+        }
     }
 
     public TokenParseResultDTO parseAccessToken(String token, boolean allowExpired) {
@@ -184,22 +213,20 @@ public class AuthTokenService {
         stringRedisTemplate.opsForValue().set(REFRESH_JTI_KEY_PREFIX + userId, refreshJti, Duration.ofMillis(refreshExpirationMs));
     }
 
-    private void storePreviousRefreshResult(Long userId, String previousRefreshJti, TokenPairDTO dto) {
-        if (userId == null || previousRefreshJti == null || previousRefreshJti.isBlank() || dto == null) {
-            return;
+    private String serializeTokenPairPayload(TokenPairDTO dto) {
+        if (dto == null) {
+            return null;
         }
-        String key = PREVIOUS_REFRESH_KEY_PREFIX + userId + ":" + previousRefreshJti;
-        String value = String.join("\n",
+        return String.join("\n",
                 safe(dto.getAccessToken()),
                 safe(dto.getRefreshToken()),
                 String.valueOf(dto.getExpiresInMs() == null ? 0L : dto.getExpiresInMs()),
                 String.valueOf(dto.getRefreshExpiresInMs() == null ? 0L : dto.getRefreshExpiresInMs())
         );
-        stringRedisTemplate.opsForValue().set(
-                key,
-                value,
-                Duration.ofSeconds(Math.max(1L, previousRefreshGraceSeconds))
-        );
+    }
+
+    private Duration previousRefreshResultTtl() {
+        return Duration.ofSeconds(Math.max(1L, Math.max(previousRefreshGraceSeconds, refreshLockSeconds)));
     }
 
     private TokenPairDTO readPreviousRefreshResult(Long userId, String refreshJti) {
@@ -243,18 +270,22 @@ public class AuthTokenService {
         validateAccessTokenMatch(input.accessToken(), userId, username);
         String storedJti = stringRedisTemplate.opsForValue().get(REFRESH_JTI_KEY_PREFIX + userId);
         if (storedJti != null && storedJti.equals(refreshJti)) {
-            if (!tryAcquireRefreshLock(userId, refreshJti)) {
-                TokenPairDTO concurrentResult = waitForPreviousRefreshResult(userId, refreshJti);
-                if (concurrentResult != null) {
-                    return new RefreshTokenProcessContext(userId, username, refreshJti, concurrentResult);
-                }
-                throw new SecurityException("refreshToken正在刷新，请重试");
+            String lockOwner = tryAcquireRefreshLock(userId, refreshJti);
+            if (lockOwner != null) {
+                return new RefreshTokenProcessContext(userId, username, refreshJti, null, lockOwner);
             }
-            return new RefreshTokenProcessContext(userId, username, refreshJti, null);
+            RefreshWaitOutcome waitOutcome = waitForPreviousRefreshResult(userId, refreshJti);
+            if (waitOutcome.previousResult() != null) {
+                return new RefreshTokenProcessContext(userId, username, refreshJti, waitOutcome.previousResult(), null);
+            }
+            if (waitOutcome.lockOwner() != null) {
+                return new RefreshTokenProcessContext(userId, username, refreshJti, null, waitOutcome.lockOwner());
+            }
+            throw new SecurityException("refreshToken正在刷新，请重试");
         }
         TokenPairDTO previousResult = readPreviousRefreshResult(userId, refreshJti);
         if (previousResult != null) {
-            return new RefreshTokenProcessContext(userId, username, refreshJti, previousResult);
+            return new RefreshTokenProcessContext(userId, username, refreshJti, previousResult, null);
         }
         throw new SecurityException("refreshToken已失效");
     }
@@ -263,32 +294,132 @@ public class AuthTokenService {
         if (context.previousResult() != null) {
             return context.previousResult();
         }
-        return issueTokenPair(context.userId(), context.username(), context.refreshJti());
+        return rotateRefreshTokenPair(context.userId(), context.username(), context.refreshJti());
     }
 
-    private boolean tryAcquireRefreshLock(Long userId, String refreshJti) {
+    private String tryAcquireRefreshLock(Long userId, String refreshJti) {
+        String lockOwner = UUID.randomUUID().toString();
         Boolean acquired = stringRedisTemplate.opsForValue().setIfAbsent(
-                REFRESH_LOCK_KEY_PREFIX + userId + ":" + refreshJti,
-                "1",
-                Duration.ofSeconds(Math.max(1L, refreshLockSeconds))
+                refreshLockKey(userId, refreshJti),
+                lockOwner,
+                refreshLockDuration()
         );
-        return Boolean.TRUE.equals(acquired);
+        return Boolean.TRUE.equals(acquired) ? lockOwner : null;
     }
 
-    private TokenPairDTO waitForPreviousRefreshResult(Long userId, String refreshJti) {
-        for (int i = 0; i < 10; i++) {
+    private RefreshWaitOutcome waitForPreviousRefreshResult(Long userId, String refreshJti) {
+        long deadlineNanos = System.nanoTime() + refreshLockDuration().toNanos();
+        while (true) {
             TokenPairDTO previous = readPreviousRefreshResult(userId, refreshJti);
             if (previous != null) {
-                return previous;
+                return new RefreshWaitOutcome(previous, null);
             }
-            try {
-                Thread.sleep(25L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return null;
+
+            String storedJti = readStoredRefreshJti(userId);
+            if (!refreshJti.equals(storedJti)) {
+                return new RefreshWaitOutcome(readPreviousRefreshResult(userId, refreshJti), null);
+            }
+
+            String currentLockOwner = readRefreshLockOwner(userId, refreshJti);
+            if (currentLockOwner == null || currentLockOwner.isBlank()) {
+                String nextLockOwner = tryAcquireRefreshLock(userId, refreshJti);
+                if (nextLockOwner != null) {
+                    return new RefreshWaitOutcome(null, nextLockOwner);
+                }
+            }
+
+            long remainingNanos = deadlineNanos - System.nanoTime();
+            if (remainingNanos <= 0L) {
+                break;
+            }
+            if (!sleepForRefreshResult(Math.min(Duration.ofNanos(remainingNanos).toMillis(), REFRESH_RESULT_POLL_INTERVAL_MS))) {
+                return new RefreshWaitOutcome(null, null);
             }
         }
-        return null;
+
+        TokenPairDTO previous = readPreviousRefreshResult(userId, refreshJti);
+        if (previous != null) {
+            return new RefreshWaitOutcome(previous, null);
+        }
+        if (refreshJti.equals(readStoredRefreshJti(userId))) {
+            String currentLockOwner = readRefreshLockOwner(userId, refreshJti);
+            if (currentLockOwner == null || currentLockOwner.isBlank()) {
+                String nextLockOwner = tryAcquireRefreshLock(userId, refreshJti);
+                if (nextLockOwner != null) {
+                    return new RefreshWaitOutcome(null, nextLockOwner);
+                }
+            }
+        }
+        return new RefreshWaitOutcome(null, null);
+    }
+
+    private TokenPairDTO rotateRefreshTokenPair(Long userId, String username, String previousRefreshJti) {
+        TokenPairBundle tokenPairBundle = buildTokenPair(userId, username);
+        authUserResourceService.getOrLoad(userId);
+        commitRefreshRotation(userId, previousRefreshJti, tokenPairBundle.refreshJti(), tokenPairBundle.tokenPair());
+        return tokenPairBundle.tokenPair();
+    }
+
+    private void commitRefreshRotation(Long userId, String previousRefreshJti, String refreshJti, TokenPairDTO dto) {
+        stringRedisTemplate.execute(
+                REFRESH_ROTATE_COMMIT_SCRIPT,
+                List.of(refreshJtiKey(userId), previousRefreshResultKey(userId, previousRefreshJti)),
+                refreshJti,
+                String.valueOf(refreshExpirationMs),
+                serializeTokenPairPayload(dto),
+                String.valueOf(previousRefreshResultTtl().toMillis())
+        );
+    }
+
+    private void releaseRefreshLock(Long userId, String refreshJti, String lockOwner) {
+        if (userId == null || refreshJti == null || refreshJti.isBlank() || lockOwner == null || lockOwner.isBlank()) {
+            return;
+        }
+        stringRedisTemplate.execute(
+                REFRESH_LOCK_RELEASE_SCRIPT,
+                List.of(refreshLockKey(userId, refreshJti)),
+                lockOwner
+        );
+    }
+
+    private String readStoredRefreshJti(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+        return stringRedisTemplate.opsForValue().get(refreshJtiKey(userId));
+    }
+
+    private String readRefreshLockOwner(Long userId, String refreshJti) {
+        if (userId == null || refreshJti == null || refreshJti.isBlank()) {
+            return null;
+        }
+        return stringRedisTemplate.opsForValue().get(refreshLockKey(userId, refreshJti));
+    }
+
+    private Duration refreshLockDuration() {
+        return Duration.ofSeconds(Math.max(1L, refreshLockSeconds));
+    }
+
+    private boolean sleepForRefreshResult(long sleepMs) {
+        try {
+            Thread.sleep(Math.max(1L, sleepMs));
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private String refreshJtiKey(Long userId) {
+        return REFRESH_JTI_KEY_PREFIX + userId;
+    }
+
+    private String previousRefreshResultKey(Long userId, String refreshJti) {
+        return PREVIOUS_REFRESH_KEY_PREFIX + userId + ":" + refreshJti;
+    }
+
+    private String refreshLockKey(Long userId, String refreshJti) {
+        return REFRESH_LOCK_KEY_PREFIX + userId + ":" + refreshJti;
     }
 
     private void validateRefreshParsed(TokenParser.TokenParseInfo refreshParsed) {
@@ -371,9 +502,17 @@ public class AuthTokenService {
         }
     }
 
+    private String consumeWsTicketPayload(String ticket) {
+        return stringRedisTemplate.execute(
+                WS_TICKET_CONSUME_SCRIPT,
+                List.of(WS_TICKET_KEY_PREFIX + ticket)
+        );
+    }
+
     private WsTicketConsumeResultDTO invalidWsTicket(String error) {
         return WsTicketConsumeResultDTO.builder()
                 .valid(false)
+                .status(WsTicketConsumeResultDTO.STATUS_INVALID)
                 .error(error)
                 .build();
     }
@@ -433,7 +572,13 @@ public class AuthTokenService {
     private record RefreshRequestInput(String refreshToken, String accessToken) {
     }
 
-    private record RefreshTokenProcessContext(Long userId, String username, String refreshJti, TokenPairDTO previousResult) {
+    private record RefreshTokenProcessContext(Long userId, String username, String refreshJti, TokenPairDTO previousResult, String lockOwner) {
+    }
+
+    private record RefreshWaitOutcome(TokenPairDTO previousResult, String lockOwner) {
+    }
+
+    private record TokenPairBundle(String refreshJti, TokenPairDTO tokenPair) {
     }
 
     private record WsTicketPayload(Long userId, String username) {

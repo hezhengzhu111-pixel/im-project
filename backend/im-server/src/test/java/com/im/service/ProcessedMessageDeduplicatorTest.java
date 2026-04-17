@@ -24,7 +24,7 @@ class ProcessedMessageDeduplicatorTest {
     private RedissonClient redissonClient;
 
     @Mock
-    private RMapCache<String, Boolean> mapCache;
+    private RMapCache<String, String> mapCache;
 
     private ProcessedMessageDeduplicator deduplicator;
 
@@ -32,17 +32,17 @@ class ProcessedMessageDeduplicatorTest {
     void setUp() {
         deduplicator = new ProcessedMessageDeduplicator(redissonClient);
         ReflectionTestUtils.setField(deduplicator, "ttlMs", 300000L);
-        when(redissonClient.<String, Boolean>getMapCache("im:message:processed:cache")).thenReturn(mapCache);
+        when(redissonClient.<String, String>getMapCache("im:message:processed:cache")).thenReturn(mapCache);
         deduplicator.init();
     }
 
     @Test
     void markProcessed_shouldUseShortTtlWindow() {
-        when(mapCache.putIfAbsent(eq("evt-1:2:session-a"), eq(Boolean.TRUE), eq(300000L), eq(TimeUnit.MILLISECONDS)))
+        when(mapCache.putIfAbsent(eq("evt-1:2:session-a"), eq("RESERVED"), eq(300000L), eq(TimeUnit.MILLISECONDS)))
                 .thenReturn(null);
 
-        assertTrue(deduplicator.markProcessed("evt-1:2:session-a"));
-        verify(mapCache).putIfAbsent("evt-1:2:session-a", Boolean.TRUE, 300000L, TimeUnit.MILLISECONDS);
+        assertTrue(deduplicator.tryReserve("evt-1:2:session-a"));
+        verify(mapCache).putIfAbsent("evt-1:2:session-a", "RESERVED", 300000L, TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -51,5 +51,14 @@ class ProcessedMessageDeduplicatorTest {
 
         assertTrue(deduplicator.isProcessed("evt-1:2:session-a"));
         assertFalse(deduplicator.isProcessed(null));
+    }
+
+    @Test
+    void release_shouldRemoveReservedKey() {
+        when(mapCache.remove("evt-1:2:session-a", "RESERVED")).thenReturn(true);
+
+        assertTrue(deduplicator.release("evt-1:2:session-a"));
+        assertFalse(deduplicator.release(null));
+        verify(mapCache).remove("evt-1:2:session-a", "RESERVED");
     }
 }

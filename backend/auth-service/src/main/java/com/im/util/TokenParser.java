@@ -1,18 +1,17 @@
 package com.im.util;
 
-import io.jsonwebtoken.*;
-import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.Jwts;
 import lombok.Data;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
 
 import static com.im.service.AuthTokenService.getSecretKey;
 
@@ -61,7 +60,9 @@ public class TokenParser {
         } catch (Exception e) {
             info.setValid(false);
             info.setError("token无效");
-            log.warn("解析token失败: {}", e.getMessage());
+            String tokenSummary = summarizeToken(normalized);
+            log.warn("Token parse failed. tokenSummary={}, errorType={}", tokenSummary, e.getClass().getSimpleName());
+            log.debug("Token parse failure detail. tokenSummary={}", tokenSummary, e);
             return info;
         }
     }
@@ -101,6 +102,23 @@ public class TokenParser {
             t = t.substring("Bearer ".length()).trim();
         }
         return t;
+    }
+
+    private String summarizeToken(String token) {
+        if (token == null || token.isBlank()) {
+            return "missing";
+        }
+        String trimmed = token.trim();
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(trimmed.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < Math.min(6, digest.length); i++) {
+                sb.append(String.format("%02x", digest[i]));
+            }
+            return "sha256:" + sb + ",len=" + trimmed.length();
+        } catch (Exception e) {
+            return "len=" + trimmed.length();
+        }
     }
 
     @Data

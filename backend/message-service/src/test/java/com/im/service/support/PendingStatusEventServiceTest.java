@@ -2,30 +2,32 @@ package com.im.service.support;
 
 import com.im.dto.MessageDTO;
 import com.im.dto.StatusChangeEvent;
+import com.im.mapper.PendingStatusEventBacklogMapper;
 import com.im.message.entity.Message;
+import com.im.message.entity.PendingStatusEventBacklog;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class PendingStatusEventServiceTest {
 
     @Mock
-    private HotMessageRedisRepository hotMessageRedisRepository;
+    private PendingStatusEventBacklogMapper pendingStatusEventBacklogMapper;
 
     @Test
-    void storeShouldFillChangedAtAndDelegateToRepository() {
-        PendingStatusEventService service = new PendingStatusEventService(hotMessageRedisRepository);
+    void storeShouldFillChangedAtAndInsertDurableBacklog() {
+        PendingStatusEventService service = new PendingStatusEventService(pendingStatusEventBacklogMapper);
         StatusChangeEvent event = StatusChangeEvent.builder()
                 .messageId(1001L)
                 .newStatus(Message.MessageStatus.RECALLED)
@@ -34,48 +36,104 @@ class PendingStatusEventServiceTest {
 
         service.store(event);
 
-        ArgumentCaptor<StatusChangeEvent> captor = ArgumentCaptor.forClass(StatusChangeEvent.class);
-        verify(hotMessageRedisRepository).saveStatusPending(eq(1001L), eq(Message.MessageStatus.RECALLED), captor.capture());
-        assertNotNull(captor.getValue().getChangedAt());
+        ArgumentCaptor<PendingStatusEventBacklog> captor = ArgumentCaptor.forClass(PendingStatusEventBacklog.class);
+        verify(pendingStatusEventBacklogMapper).insert(captor.capture());
+        PendingStatusEventBacklog backlog = captor.getValue();
+        assertEquals(1001L, backlog.getMessageId());
+        assertEquals(Message.MessageStatus.RECALLED, backlog.getNewStatus());
+        assertNotNull(backlog.getChangedAt());
+        assertTrue(backlog.getPayloadJson().contains("\"messageId\":1001"));
     }
 
     @Test
-    void listByMessageIdShouldReturnEventsSortedByChangedAtAscending() {
-        PendingStatusEventService service = new PendingStatusEventService(hotMessageRedisRepository);
-        StatusChangeEvent deleted = StatusChangeEvent.builder()
+    void storeShouldUpsertDuplicateBacklogRecord() {
+        PendingStatusEventService service = new PendingStatusEventService(pendingStatusEventBacklogMapper);
+        StatusChangeEvent event = StatusChangeEvent.builder()
                 .messageId(1002L)
                 .newStatus(Message.MessageStatus.DELETED)
-                .changedAt(LocalDateTime.of(2026, 4, 16, 11, 10))
+                .changedAt(LocalDateTime.of(2026, 4, 16, 12, 5))
+                .payload(MessageDTO.builder().id(1002L).status("DELETED").build())
                 .build();
-        StatusChangeEvent recalled = StatusChangeEvent.builder()
-                .messageId(1002L)
-                .newStatus(Message.MessageStatus.RECALLED)
-                .changedAt(LocalDateTime.of(2026, 4, 16, 11, 5))
-                .build();
-        when(hotMessageRedisRepository.listPendingStatusEvents(1002L)).thenReturn(List.of(deleted, recalled));
+        doThrow(new DuplicateKeyException("duplicate"))
+                .when(pendingStatusEventBacklogMapper)
+                .insert(any(PendingStatusEventBacklog.class));
 
-        List<StatusChangeEvent> events = service.listByMessageId(1002L);
+        service.store(event);
+
+        verify(pendingStatusEventBacklogMapper).updateExisting(
+                1002L,
+                Message.MessageStatus.DELETED,
+                LocalDateTime.of(2026, 4, 16, 12, 5),
+                org.mockito.ArgumentMatchers.contains("\"newStatus\":5")
+        );
+    }
+
+    @Test
+    void listByMessageIdShouldReturnEventsSortedAndStillReplayOldBacklogBeyondOneHour() {
+        PendingStatusEventService service = new PendingStatusEventService(pendingStatusEventBacklogMapper);
+        PendingStatusEventBacklog oldDeleted = backlog(
+                1003L,
+                Message.MessageStatus.DELETED,
+                LocalDateTime.of(2026, 4, 16, 10, 0),
+                statusEvent(1003L, Message.MessageStatus.DELETED, LocalDateTime.of(2026, 4, 16, 10, 0), "DELETED")
+        );
+        PendingStatusEventBacklog olderRecalled = backlog(
+                1003L,
+                Message.MessageStatus.RECALLED,
+                LocalDateTime.of(2026, 4, 16, 8, 30),
+                statusEvent(1003L, Message.MessageStatus.RECALLED, LocalDateTime.of(2026, 4, 16, 8, 30), "RECALLED")
+        );
+        when(pendingStatusEventBacklogMapper.selectByMessageId(1003L)).thenReturn(List.of(oldDeleted, olderRecalled));
+
+        List<StatusChangeEvent> events = service.listByMessageId(1003L);
 
         assertEquals(List.of(Message.MessageStatus.RECALLED, Message.MessageStatus.DELETED),
                 events.stream().map(StatusChangeEvent::getNewStatus).toList());
+        assertEquals(LocalDateTime.of(2026, 4, 16, 8, 30), events.get(0).getChangedAt());
     }
 
     @Test
-    void removeShouldDelegateToRepository() {
-        PendingStatusEventService service = new PendingStatusEventService(hotMessageRedisRepository);
+    void removeShouldDeleteDurableBacklogRecord() {
+        PendingStatusEventService service = new PendingStatusEventService(pendingStatusEventBacklogMapper);
 
-        service.remove(1003L, Message.MessageStatus.DELETED);
+        service.remove(1004L, Message.MessageStatus.DELETED);
 
-        verify(hotMessageRedisRepository).removePendingStatus(1003L, Message.MessageStatus.DELETED);
+        verify(pendingStatusEventBacklogMapper).deleteByMessageIdAndStatus(1004L, Message.MessageStatus.DELETED);
     }
 
     @Test
-    void hasPendingAndListPendingMessageIdsShouldDelegateToRepository() {
-        PendingStatusEventService service = new PendingStatusEventService(hotMessageRedisRepository);
-        when(hotMessageRedisRepository.hasPendingStatus(1004L, Message.MessageStatus.RECALLED)).thenReturn(true);
-        when(hotMessageRedisRepository.listPendingStatusMessageIds()).thenReturn(List.of(1004L, 1005L));
+    void hasPendingAndListPendingMessageIdsShouldDelegateToDurableBacklog() {
+        PendingStatusEventService service = new PendingStatusEventService(pendingStatusEventBacklogMapper);
+        when(pendingStatusEventBacklogMapper.existsByMessageIdAndStatus(1005L, Message.MessageStatus.RECALLED)).thenReturn(true);
+        when(pendingStatusEventBacklogMapper.selectPendingMessageIds()).thenReturn(List.of(1005L, 1006L));
 
-        assertTrue(service.hasPending(1004L, Message.MessageStatus.RECALLED));
-        assertEquals(List.of(1004L, 1005L), service.listPendingMessageIds());
+        assertTrue(service.hasPending(1005L, Message.MessageStatus.RECALLED));
+        assertEquals(List.of(1005L, 1006L), service.listPendingMessageIds());
+        assertFalse(service.hasPending(null, Message.MessageStatus.RECALLED));
+        verify(pendingStatusEventBacklogMapper, never()).existsByMessageIdAndStatus(null, Message.MessageStatus.RECALLED);
+    }
+
+    private PendingStatusEventBacklog backlog(Long messageId,
+                                              Integer newStatus,
+                                              LocalDateTime changedAt,
+                                              StatusChangeEvent event) {
+        PendingStatusEventBacklog backlog = new PendingStatusEventBacklog();
+        backlog.setMessageId(messageId);
+        backlog.setNewStatus(newStatus);
+        backlog.setChangedAt(changedAt);
+        backlog.setPayloadJson(com.alibaba.fastjson2.JSON.toJSONString(event));
+        return backlog;
+    }
+
+    private StatusChangeEvent statusEvent(Long messageId, Integer status, LocalDateTime changedAt, String statusText) {
+        return StatusChangeEvent.builder()
+                .messageId(messageId)
+                .newStatus(status)
+                .changedAt(changedAt)
+                .payload(MessageDTO.builder()
+                        .id(messageId)
+                        .status(statusText)
+                        .build())
+                .build();
     }
 }

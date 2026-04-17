@@ -20,14 +20,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.support.SendResult;
-import org.springframework.test.util.ReflectionTestUtils;
-
-import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -55,7 +50,7 @@ class MessageHandlerKafkaFastPathTest {
     private UserServiceFeignClient userServiceFeignClient;
 
     @Test
-    void privateMessageShouldPublishKafkaEventWithConversationKeyAndReturnGeneratedId() {
+    void privateMessageShouldWriteAcceptedLocallyWithoutSyncKafkaAndReturnAcceptedAckStage() {
         PrivateMessageHandler handler = new PrivateMessageHandler(
                 redisTemplate,
                 kafkaTemplate,
@@ -67,15 +62,17 @@ class MessageHandlerKafkaFastPathTest {
         when(userProfileCache.getUser(1L)).thenReturn(user("1", "alice"));
         when(userProfileCache.getUser(2L)).thenReturn(user("2", "bob"));
         when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
-        stubKafkaSuccess("p_1_2");
 
         MessageDTO result = handler.handle(privateCommand());
 
         assertEquals(9001L, result.getId());
         assertEquals("client-1", result.getClientMessageId());
+        assertEquals(MessageDTO.ACK_STAGE_ACCEPTED, result.getAckStage());
         assertFalse(result.isGroup());
 
-        MessageEvent event = captureEvent("p_1_2");
+        ArgumentCaptor<MessageEvent> eventCaptor = ArgumentCaptor.forClass(MessageEvent.class);
+        verify(acceptedMessageProjectionService).reserveAcceptedMessage(eventCaptor.capture());
+        MessageEvent event = eventCaptor.getValue();
         assertEquals(MessageEventType.MESSAGE, event.getEventType());
         assertEquals(9001L, event.getMessageId());
         assertEquals("p_1_2", event.getConversationId());
@@ -84,16 +81,16 @@ class MessageHandlerKafkaFastPathTest {
         assertEquals("client-1", event.getClientMsgId());
         assertEquals(MessageType.TEXT, event.getMessageType());
         assertEquals("hello", event.getContent());
-        assertNotNull(event.getTimestamp());
-        assertNotNull(event.getCreatedTime());
-        assertEquals(9001L, event.getPayload().getId());
-        InOrder inOrder = org.mockito.Mockito.inOrder(kafkaTemplate, acceptedMessageProjectionService);
-        inOrder.verify(kafkaTemplate).send(eq("im-chat-topic"), eq("p_1_2"), any(MessageEvent.class));
+        assertEquals(MessageDTO.ACK_STAGE_ACCEPTED, event.getPayload().getAckStage());
+
+        InOrder inOrder = inOrder(acceptedMessageProjectionService);
+        inOrder.verify(acceptedMessageProjectionService).reserveAcceptedMessage(any(MessageEvent.class));
         inOrder.verify(acceptedMessageProjectionService).projectAcceptedFirstSeen(any(MessageEvent.class));
+        verify(kafkaTemplate, never()).send(anyString(), anyString(), any(MessageEvent.class));
     }
 
     @Test
-    void groupMessageShouldUseGroupConversationIdAsKafkaKey() {
+    void groupMessageShouldUseGroupConversationIdAsAcceptedProjectionKey() {
         GroupMessageHandler handler = new GroupMessageHandler(
                 redisTemplate,
                 kafkaTemplate,
@@ -106,19 +103,18 @@ class MessageHandlerKafkaFastPathTest {
         when(userProfileCache.getUser(1L)).thenReturn(user("1", "alice"));
         when(groupServiceFeignClient.exists(8L)).thenReturn(true);
         when(userProfileCache.isGroupMember(8L, 1L)).thenReturn(true);
-        stubKafkaSuccess("g_8");
 
         MessageDTO result = handler.handle(groupCommand());
 
         assertEquals(9002L, result.getId());
+        assertEquals(MessageDTO.ACK_STAGE_ACCEPTED, result.getAckStage());
         assertTrue(result.isGroup());
-        MessageEvent event = captureEvent("g_8");
-        assertEquals(9002L, event.getMessageId());
+        ArgumentCaptor<MessageEvent> eventCaptor = ArgumentCaptor.forClass(MessageEvent.class);
+        verify(acceptedMessageProjectionService).projectAcceptedFirstSeen(eventCaptor.capture());
+        MessageEvent event = eventCaptor.getValue();
         assertEquals("g_8", event.getConversationId());
         assertEquals(8L, event.getGroupId());
-        assertEquals("group-hi", event.getContent());
-        assertEquals(9002L, event.getPayload().getId());
-        verify(acceptedMessageProjectionService).projectAcceptedFirstSeen(any(MessageEvent.class));
+        assertEquals(9002L, event.getMessageId());
     }
 
     @Test
@@ -135,71 +131,21 @@ class MessageHandlerKafkaFastPathTest {
         when(userServiceFeignClient.exists(2L)).thenReturn(true);
         when(userProfileCache.getUser(0L)).thenReturn(null);
         when(userProfileCache.getUser(2L)).thenReturn(user("2", "bob"));
-        stubKafkaSuccess("p_0_2");
 
         MessageDTO result = handler.handle(systemCommand());
 
         assertEquals(9003L, result.getId());
         assertEquals("SYSTEM", result.getSenderName());
-        MessageEvent event = captureEvent("p_0_2");
-        assertEquals(MessageType.SYSTEM, event.getMessageType());
-        assertEquals(0L, event.getSenderId());
-        assertEquals(2L, event.getReceiverId());
-        assertEquals("system notice", event.getContent());
+        assertEquals(MessageDTO.ACK_STAGE_ACCEPTED, result.getAckStage());
+        ArgumentCaptor<MessageEvent> eventCaptor = ArgumentCaptor.forClass(MessageEvent.class);
+        verify(acceptedMessageProjectionService).reserveAcceptedMessage(eventCaptor.capture());
         assertEquals("sys-9003", result.getClientMessageId());
-        assertEquals("sys-9003", event.getClientMessageId());
-        assertEquals("sys-9003", event.getClientMsgId());
-        assertEquals("sys-9003", event.getPayload().getClientMessageId());
+        assertEquals("sys-9003", eventCaptor.getValue().getClientMessageId());
+        assertEquals("sys-9003", eventCaptor.getValue().getPayload().getClientMessageId());
     }
 
     @Test
-    void kafkaFailureShouldSurfaceBusinessExceptionBeforeProjection() {
-        PrivateMessageHandler handler = new PrivateMessageHandler(
-                redisTemplate,
-                kafkaTemplate,
-                snowflakeIdGenerator,
-                acceptedMessageProjectionService,
-                userProfileCache
-        );
-        when(snowflakeIdGenerator.nextId()).thenReturn(9004L);
-        when(userProfileCache.getUser(1L)).thenReturn(user("1", "alice"));
-        when(userProfileCache.getUser(2L)).thenReturn(user("2", "bob"));
-        when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
-        CompletableFuture<SendResult<String, MessageEvent>> failed = new CompletableFuture<>();
-        failed.completeExceptionally(new IllegalStateException("kafka down"));
-        when(kafkaTemplate.send(eq("im-chat-topic"), eq("p_1_2"), any(MessageEvent.class)))
-                .thenReturn(failed);
-
-        assertThrows(BusinessException.class, () -> handler.handle(privateCommand()));
-
-        verify(acceptedMessageProjectionService, never()).projectAcceptedFirstSeen(any(MessageEvent.class));
-    }
-
-    @Test
-    void kafkaTimeoutShouldSurfaceBusinessExceptionBeforeProjection() {
-        PrivateMessageHandler handler = new PrivateMessageHandler(
-                redisTemplate,
-                kafkaTemplate,
-                snowflakeIdGenerator,
-                acceptedMessageProjectionService,
-                userProfileCache
-        );
-        ReflectionTestUtils.setField(handler, "kafkaSendTimeoutMs", 1L);
-        when(snowflakeIdGenerator.nextId()).thenReturn(9005L);
-        when(userProfileCache.getUser(1L)).thenReturn(user("1", "alice"));
-        when(userProfileCache.getUser(2L)).thenReturn(user("2", "bob"));
-        when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
-        CompletableFuture<SendResult<String, MessageEvent>> timeoutFuture = new CompletableFuture<>();
-        when(kafkaTemplate.send(eq("im-chat-topic"), eq("p_1_2"), any(MessageEvent.class)))
-                .thenReturn(timeoutFuture);
-
-        assertThrows(BusinessException.class, () -> handler.handle(privateCommand()));
-
-        verify(acceptedMessageProjectionService, never()).projectAcceptedFirstSeen(any(MessageEvent.class));
-    }
-
-    @Test
-    void projectionFailureShouldSurfaceBusinessExceptionWithoutKafkaRetry() {
+    void projectionFailureShouldNotBlockAcceptedResponseAfterLocalCommit() {
         PrivateMessageHandler handler = new PrivateMessageHandler(
                 redisTemplate,
                 kafkaTemplate,
@@ -211,26 +157,49 @@ class MessageHandlerKafkaFastPathTest {
         when(userProfileCache.getUser(1L)).thenReturn(user("1", "alice"));
         when(userProfileCache.getUser(2L)).thenReturn(user("2", "bob"));
         when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
-        stubKafkaSuccess("p_1_2");
-        org.mockito.Mockito.doThrow(new BusinessException("redis failed"))
+        doThrow(new BusinessException("redis failed"))
                 .when(acceptedMessageProjectionService)
                 .projectAcceptedFirstSeen(any(MessageEvent.class));
 
-        assertThrows(BusinessException.class, () -> handler.handle(privateCommand()));
+        MessageDTO result = handler.handle(privateCommand());
 
-        verify(kafkaTemplate).send(eq("im-chat-topic"), eq("p_1_2"), any(MessageEvent.class));
+        assertEquals(9006L, result.getId());
+        assertEquals(MessageDTO.ACK_STAGE_ACCEPTED, result.getAckStage());
+        verify(acceptedMessageProjectionService).reserveAcceptedMessage(any(MessageEvent.class));
         verify(acceptedMessageProjectionService).projectAcceptedFirstSeen(any(MessageEvent.class));
+        verify(kafkaTemplate, never()).send(anyString(), anyString(), any(MessageEvent.class));
     }
 
-    private void stubKafkaSuccess(String conversationId) {
-        when(kafkaTemplate.send(eq("im-chat-topic"), eq(conversationId), any(MessageEvent.class)))
-                .thenReturn(CompletableFuture.completedFuture(null));
-    }
+    @Test
+    void duplicateAcceptedReservationShouldReturnExistingMessageWithoutCreatingDuplicateOutboxOrKafkaSend() {
+        PrivateMessageHandler handler = new PrivateMessageHandler(
+                redisTemplate,
+                kafkaTemplate,
+                snowflakeIdGenerator,
+                acceptedMessageProjectionService,
+                userProfileCache
+        );
+        MessageDTO existing = MessageDTO.builder()
+                .id(9010L)
+                .senderId(1L)
+                .receiverId(2L)
+                .clientMessageId("client-1")
+                .messageType(MessageType.TEXT)
+                .content("hello")
+                .ackStage(MessageDTO.ACK_STAGE_ACCEPTED)
+                .build();
+        when(snowflakeIdGenerator.nextId()).thenReturn(9011L);
+        when(userProfileCache.getUser(1L)).thenReturn(user("1", "alice"));
+        when(userProfileCache.getUser(2L)).thenReturn(user("2", "bob"));
+        when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
+        when(acceptedMessageProjectionService.reserveAcceptedMessage(any(MessageEvent.class))).thenReturn(existing);
 
-    private MessageEvent captureEvent(String conversationId) {
-        ArgumentCaptor<MessageEvent> eventCaptor = ArgumentCaptor.forClass(MessageEvent.class);
-        verify(kafkaTemplate).send(eq("im-chat-topic"), eq(conversationId), eventCaptor.capture());
-        return eventCaptor.getValue();
+        MessageDTO result = handler.handle(privateCommand());
+
+        assertSame(existing, result);
+        verify(acceptedMessageProjectionService).rehydrateAcceptedProjection(existing);
+        verify(acceptedMessageProjectionService, never()).projectAcceptedFirstSeen(any(MessageEvent.class));
+        verify(kafkaTemplate, never()).send(anyString(), anyString(), any(MessageEvent.class));
     }
 
     private SendMessageCommand privateCommand() {

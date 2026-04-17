@@ -1,22 +1,19 @@
 package com.im.task;
 
 import com.im.config.ImNodeIdentity;
+import com.im.entity.UserSession;
 import com.im.service.IImService;
+import com.im.service.route.UserRouteRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.redisson.api.RMapCache;
-import org.redisson.api.RedissonClient;
-import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.List;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class LocalRouteLeaseRenewTaskTest {
@@ -25,33 +22,29 @@ class LocalRouteLeaseRenewTaskTest {
     private IImService imService;
 
     @Mock
-    private RedissonClient redissonClient;
-
-    @Mock
     private ImNodeIdentity nodeIdentity;
 
     @Mock
-    private RMapCache<String, String> routeMap;
+    private UserRouteRegistry routeRegistry;
 
     private LocalRouteLeaseRenewTask task;
 
     @BeforeEach
     void setUp() {
-        task = new LocalRouteLeaseRenewTask(imService, redissonClient, nodeIdentity);
-        ReflectionTestUtils.setField(task, "routeUsersKey", "im:route:users");
-        ReflectionTestUtils.setField(task, "routeLeaseTtlMs", 120000L);
+        task = new LocalRouteLeaseRenewTask(imService, nodeIdentity, routeRegistry);
         lenient().when(nodeIdentity.getInstanceId()).thenReturn("im-node-1");
     }
 
     @Test
-    void renewLeases_shouldRefreshRouteEntryTtl() {
+    void renewLeases_shouldRefreshRouteEntryTtlWithInstanceSessionCount() {
         when(imService.getLocallyOnlineUserIds()).thenReturn(Set.of("1", "2"));
-        when(redissonClient.<String, String>getMapCache("im:route:users")).thenReturn(routeMap);
+        when(imService.getLocalSessions("1")).thenReturn(List.of(UserSession.builder().build(), UserSession.builder().build()));
+        when(imService.getLocalSessions("2")).thenReturn(List.of(UserSession.builder().build()));
 
         task.renewLeases();
 
-        verify(routeMap).fastPut("1", "im-node-1", 120000L, TimeUnit.MILLISECONDS);
-        verify(routeMap).fastPut("2", "im-node-1", 120000L, TimeUnit.MILLISECONDS);
+        verify(routeRegistry).renewLocalRoute("1", "im-node-1", 2);
+        verify(routeRegistry).renewLocalRoute("2", "im-node-1", 1);
     }
 
     @Test
@@ -60,6 +53,16 @@ class LocalRouteLeaseRenewTaskTest {
 
         task.renewLeases();
 
-        verify(redissonClient, never()).getMapCache("im:route:users");
+        verify(routeRegistry, never()).renewLocalRoute(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
+    void renewLeases_shouldSkipUsersWithoutActiveLocalSessions() {
+        when(imService.getLocallyOnlineUserIds()).thenReturn(Set.of("1"));
+        when(imService.getLocalSessions("1")).thenReturn(List.of());
+
+        task.renewLeases();
+
+        verify(routeRegistry, never()).renewLocalRoute(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt());
     }
 }

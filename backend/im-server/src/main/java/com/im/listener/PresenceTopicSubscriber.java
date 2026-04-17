@@ -14,6 +14,9 @@ import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -26,6 +29,7 @@ public class PresenceTopicSubscriber {
     @Value("${im.ws.presence-channel:im:presence:broadcast}")
     private String presenceChannel;
 
+    private final Map<String, UserStatus> lastDeliveredStatuses = new ConcurrentHashMap<>();
     private volatile Integer listenerId;
     private volatile RTopic topic;
 
@@ -46,8 +50,13 @@ public class PresenceTopicSubscriber {
             if (StringUtils.equals(event.getSourceInstanceId(), nodeIdentity.getInstanceId())) {
                 return;
             }
+            String normalizedUserId = event.getUserId().trim();
             UserStatus status = UserStatus.valueOf(event.getStatus().trim().toUpperCase());
-            imService.broadcastOnlineStatus(event.getUserId(), status, event.getLastSeen());
+            UserStatus previousStatus = lastDeliveredStatuses.put(normalizedUserId, status);
+            if (previousStatus == status) {
+                return;
+            }
+            imService.broadcastOnlineStatus(normalizedUserId, status, event.getLastSeen());
         } catch (IllegalArgumentException e) {
             log.warn("Ignore presence event with invalid status. channel={}, status={}, sourceInstanceId={}",
                     channel, event == null ? null : event.getStatus(),

@@ -1,5 +1,8 @@
 package com.im.service.impl;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.im.config.ImNodeIdentity;
 import com.im.dto.MessageDTO;
 import com.im.dto.PresenceEvent;
@@ -7,48 +10,34 @@ import com.im.entity.UserSession;
 import com.im.enums.MessageType;
 import com.im.enums.UserStatus;
 import com.im.metrics.ImServerMetrics;
+import com.im.service.presence.PresenceTransitionDeduplicator;
+import com.im.service.route.UserRouteRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.redisson.api.RMapCache;
 import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
+import org.slf4j.LoggerFactory;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.clearInvocations;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class ImServiceImplTest {
@@ -60,40 +49,55 @@ class ImServiceImplTest {
     private ImNodeIdentity nodeIdentity;
 
     @Mock
-    private RMapCache<String, String> routeMap;
+    private UserRouteRegistry routeRegistry;
+
+    @Mock
+    private PresenceTransitionDeduplicator presenceTransitionDeduplicator;
 
     @Mock
     private RTopic presenceTopic;
 
     private ImServiceImpl imService;
     private SimpleMeterRegistry meterRegistry;
+    private ListAppender<ILoggingEvent> appender;
 
     @BeforeEach
     void setUp() {
-        imService = new ImServiceImpl(redissonClient, nodeIdentity);
+        imService = new ImServiceImpl(redissonClient, nodeIdentity, routeRegistry, presenceTransitionDeduplicator);
         meterRegistry = new SimpleMeterRegistry();
         ReflectionTestUtils.setField(imService, "metrics", new ImServerMetrics(meterRegistry));
-        ReflectionTestUtils.setField(imService, "routeUsersKey", "im:route:users");
         ReflectionTestUtils.setField(imService, "presenceChannel", "im:presence:broadcast");
-        ReflectionTestUtils.setField(imService, "routeLeaseTtlMs", 120000L);
+        ReflectionTestUtils.setField(imService, "presenceOfflineGraceMs", 0L);
         ReflectionTestUtils.setField(imService, "heartbeatTimeoutMs", 90000L);
+        ReflectionTestUtils.setField(imService, "sendDispatchTimeoutMs", 1000L);
 
         lenient().when(nodeIdentity.getInstanceId()).thenReturn("im-node-1");
-        lenient().when(redissonClient.<String, String>getMapCache("im:route:users")).thenReturn(routeMap);
         lenient().when(redissonClient.getTopic("im:presence:broadcast")).thenReturn(presenceTopic);
-        lenient().when(routeMap.get(anyString())).thenReturn(null);
+        lenient().when(routeRegistry.isUserGloballyOnline(anyString())).thenReturn(false);
+        lenient().when(presenceTransitionDeduplicator.tryTransition(anyString(), any(UserStatus.class))).thenReturn(true);
 
         imService.init();
     }
 
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        if (appender != null) {
+            detachListAppender(appender);
+            appender = null;
+        }
+        imService.destroy();
+    }
+
     @Test
     void registerSession_shouldCreateLeaseAndRouteOnFirstLocalConnection() throws Exception {
+        when(routeRegistry.isUserGloballyOnline("1")).thenReturn(false, true);
         WebSocketSession webSocketSession = mockOpenSession("session-1");
         UserSession userSession = UserSession.builder().webSocketSession(webSocketSession).build();
 
         imService.registerSession("1", userSession);
 
-        verify(routeMap).fastPut("1", "im-node-1", 120000L, TimeUnit.MILLISECONDS);
+        verify(routeRegistry).upsertLocalRoute("1", "im-node-1", 1);
+        verify(presenceTransitionDeduplicator).tryTransition("1", UserStatus.ONLINE);
         assertTrue(imService.isSessionActive("1", "session-1"));
         assertNotNull(userSession.getLastHeartbeat());
         assertTrue(imService.getLocallyOnlineUserIds().contains("1"));
@@ -113,12 +117,14 @@ class ImServiceImplTest {
         UserSession staleSession = UserSession.builder().webSocketSession(staleWebSocketSession).build();
         imService.registerSession("1", staleSession);
         staleSession.setLastHeartbeat(LocalDateTime.now().minusMinutes(10));
-        clearInvocations(routeMap, presenceTopic);
+        clearInvocations(routeRegistry, presenceTopic, presenceTransitionDeduplicator);
+        when(routeRegistry.isUserGloballyOnline("1")).thenReturn(false, true);
 
         WebSocketSession freshWebSocketSession = mockOpenSession("session-2");
         imService.registerSession("1", UserSession.builder().webSocketSession(freshWebSocketSession).build());
 
-        verify(routeMap).fastPut("1", "im-node-1", 120000L, TimeUnit.MILLISECONDS);
+        verify(routeRegistry).upsertLocalRoute("1", "im-node-1", 1);
+        verify(presenceTransitionDeduplicator).tryTransition("1", UserStatus.ONLINE);
         verify(presenceTopic).publish(argThat(event -> {
             PresenceEvent presenceEvent = (PresenceEvent) event;
             return "1".equals(presenceEvent.getUserId())
@@ -130,16 +136,18 @@ class ImServiceImplTest {
 
     @Test
     void unregisterSession_shouldRemoveLeaseAndRouteWhenLastLocalSessionCloses() throws Exception {
+        when(routeRegistry.isUserGloballyOnline("1")).thenReturn(false, true);
         WebSocketSession webSocketSession = mockOpenSession("session-1");
         UserSession userSession = UserSession.builder().webSocketSession(webSocketSession).build();
         imService.registerSession("1", userSession);
-        when(routeMap.get("1")).thenReturn("im-node-1", null);
-        clearInvocations(routeMap, webSocketSession, presenceTopic);
+        clearInvocations(routeRegistry, webSocketSession, presenceTopic, presenceTransitionDeduplicator);
+        when(routeRegistry.isUserGloballyOnline("1")).thenReturn(true, false);
 
         boolean removed = imService.unregisterSession("1", "session-1", CloseStatus.NORMAL);
 
         assertTrue(removed);
-        verify(routeMap).fastRemove("1");
+        verify(routeRegistry).removeLocalRoute("1", "im-node-1");
+        verify(presenceTransitionDeduplicator).tryTransition("1", UserStatus.OFFLINE);
         verify(webSocketSession).close(CloseStatus.NORMAL);
         verify(presenceTopic).publish(argThat(event -> {
             PresenceEvent presenceEvent = (PresenceEvent) event;
@@ -158,12 +166,14 @@ class ImServiceImplTest {
         WebSocketSession secondSession = mockOpenSession("session-2");
         imService.registerSession("1", UserSession.builder().webSocketSession(firstSession).build());
         imService.registerSession("1", UserSession.builder().webSocketSession(secondSession).build());
-        clearInvocations(routeMap, firstSession, secondSession, presenceTopic);
+        clearInvocations(routeRegistry, firstSession, secondSession, presenceTopic, presenceTransitionDeduplicator);
 
         boolean removed = imService.unregisterSession("1", "session-1", CloseStatus.NORMAL);
 
         assertTrue(removed);
-        verify(routeMap, never()).fastRemove("1");
+        verify(routeRegistry).renewLocalRoute("1", "im-node-1", 1);
+        verify(routeRegistry, never()).removeLocalRoute("1", "im-node-1");
+        verify(presenceTransitionDeduplicator, never()).tryTransition(eq("1"), eq(UserStatus.OFFLINE));
         verify(firstSession).close(CloseStatus.NORMAL);
         verify(secondSession, never()).close(any(CloseStatus.class));
         verify(secondSession, never()).close();
@@ -179,12 +189,13 @@ class ImServiceImplTest {
         WebSocketSession webSocketSession = mockOpenSession("session-1");
         UserSession userSession = UserSession.builder().webSocketSession(webSocketSession).build();
         imService.registerSession("1", userSession);
-        clearInvocations(routeMap);
+        clearInvocations(routeRegistry, presenceTransitionDeduplicator);
 
         boolean touched = imService.touchUserHeartbeat("1");
 
         assertTrue(touched);
-        verify(routeMap).fastPut("1", "im-node-1", 120000L, TimeUnit.MILLISECONDS);
+        verify(routeRegistry).renewLocalRoute("1", "im-node-1", 1);
+        verify(presenceTransitionDeduplicator, never()).tryTransition(anyString(), any(UserStatus.class));
     }
 
     @Test
@@ -193,7 +204,7 @@ class ImServiceImplTest {
         WebSocketSession healthySession = mockOpenSession("session-2");
         imService.registerSession("1", UserSession.builder().webSocketSession(failingSession).build());
         imService.registerSession("1", UserSession.builder().webSocketSession(healthySession).build());
-        clearInvocations(routeMap, failingSession, healthySession);
+        clearInvocations(routeRegistry, failingSession, healthySession, presenceTransitionDeduplicator);
         doThrow(new IllegalStateException("send busy")).when(failingSession).sendMessage(any());
         MessageDTO message = MessageDTO.builder()
                 .senderId(2L)
@@ -209,7 +220,9 @@ class ImServiceImplTest {
                 && "send failed".equals(status.getReason())));
         verify(healthySession, never()).close(any(CloseStatus.class));
         verify(healthySession, never()).close();
-        verify(routeMap, never()).fastRemove(anyString());
+        verify(routeRegistry).renewLocalRoute("1", "im-node-1", 1);
+        verify(routeRegistry, never()).removeLocalRoute(anyString(), anyString());
+        verify(presenceTransitionDeduplicator, never()).tryTransition(eq("1"), eq(UserStatus.OFFLINE));
         assertFalse(imService.isSessionActive("1", "session-1"));
         assertTrue(imService.isSessionActive("1", "session-2"));
         assertEquals(1.0, pushCount("failure", "MESSAGE"));
@@ -221,27 +234,190 @@ class ImServiceImplTest {
     }
 
     @Test
-    void checkUsersOnlineStatus_shouldUseSingleRouteHash() {
-        when(routeMap.get("1")).thenReturn("im-node-1");
+    void pushMessageToUser_shouldNotBlockFastSessionBehindSlowSession() throws Exception {
+        ReflectionTestUtils.setField(imService, "sendDispatchTimeoutMs", 200L);
+        WebSocketSession slowSession = mockOpenSession("session-1");
+        WebSocketSession fastSession = mockOpenSession("session-2");
+        imService.registerSession("1", UserSession.builder().webSocketSession(slowSession).build());
+        imService.registerSession("1", UserSession.builder().webSocketSession(fastSession).build());
+        clearInvocations(routeRegistry, slowSession, fastSession, presenceTopic, presenceTransitionDeduplicator);
+
+        CountDownLatch slowSendEntered = new CountDownLatch(1);
+        CountDownLatch releaseSlowSend = new CountDownLatch(1);
+        CountDownLatch fastSendEntered = new CountDownLatch(1);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            slowSendEntered.countDown();
+            await(releaseSlowSend);
+            return null;
+        }).when(slowSession).sendMessage(any());
+        org.mockito.Mockito.doAnswer(invocation -> {
+            fastSendEntered.countDown();
+            return null;
+        }).when(fastSession).sendMessage(any());
+
+        MessageDTO message = MessageDTO.builder()
+                .id(101L)
+                .senderId(2L)
+                .receiverId(1L)
+                .messageType(MessageType.TEXT)
+                .content("hello")
+                .build();
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<Boolean> sendFuture = executor.submit(() -> imService.pushMessageToUser(message, 1L));
+
+            assertTrue(slowSendEntered.await(2, TimeUnit.SECONDS));
+            assertTrue(fastSendEntered.await(200, TimeUnit.MILLISECONDS));
+
+            releaseSlowSend.countDown();
+            assertTrue(sendFuture.get(2, TimeUnit.SECONDS));
+            verify(slowSession).sendMessage(any());
+            verify(fastSession).sendMessage(any());
+        } finally {
+            releaseSlowSend.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void pushMessageToSession_shouldCleanupMapsAndRouteRegistryWhenSendThrowsIOException() throws Exception {
+        when(routeRegistry.isUserGloballyOnline("1")).thenReturn(false, true);
+        WebSocketSession failingSession = mockOpenSession("session-1");
+        imService.registerSession("1", UserSession.builder().webSocketSession(failingSession).build());
+        clearInvocations(routeRegistry, failingSession, presenceTopic, presenceTransitionDeduplicator);
+        when(routeRegistry.isUserGloballyOnline("1")).thenReturn(true, false);
+        doThrow(new IOException("broken pipe")).when(failingSession).sendMessage(any());
+
+        MessageDTO message = MessageDTO.builder()
+                .senderId(2L)
+                .receiverId(1L)
+                .messageType(MessageType.TEXT)
+                .content("hello")
+                .build();
+
+        boolean success = imService.pushMessageToSession(message, "session-1");
+
+        assertFalse(success);
+        verify(failingSession).close(argThat(status -> status.getCode() == CloseStatus.SESSION_NOT_RELIABLE.getCode()
+                && "send failed".equals(status.getReason())));
+        verify(routeRegistry).removeLocalRoute("1", "im-node-1");
+        assertTrue(imService.getSessionsById().isEmpty());
+        assertTrue(imService.getLocalSessions("1").isEmpty());
+        assertFalse(imService.getLocallyOnlineUserIds().contains("1"));
+        @SuppressWarnings("unchecked")
+        Map<String, Set<String>> sessionIdsByUser =
+                (Map<String, Set<String>>) ReflectionTestUtils.getField(imService, "sessionIdsByUser");
+        assertNotNull(sessionIdsByUser);
+        assertFalse(sessionIdsByUser.containsKey("1"));
+    }
+
+    @Test
+    void pushMessageToUser_shouldNotLogMessageContent() throws Exception {
+        WebSocketSession webSocketSession = mockOpenSession("session-1");
+        imService.registerSession("1", UserSession.builder().webSocketSession(webSocketSession).build());
+        clearInvocations(routeRegistry, presenceTopic, webSocketSession, presenceTransitionDeduplicator);
+
+        MessageDTO message = MessageDTO.builder()
+                .id(88L)
+                .senderId(2L)
+                .receiverId(1L)
+                .messageType(MessageType.TEXT)
+                .content("top-secret-message-content")
+                .build();
+        appender = attachListAppender();
+        try {
+            boolean success = imService.pushMessageToUser(message, 1L);
+
+            assertTrue(success);
+            String joinedLogs = joinedMessages(appender);
+            assertFalse(joinedLogs.contains("top-secret-message-content"));
+            assertTrue(joinedLogs.contains("messageId=88"));
+            assertTrue(joinedLogs.contains("conversationId=p_1_2"));
+            assertTrue(joinedLogs.contains("targetUserId=1"));
+            assertTrue(joinedLogs.contains("resultCode=OK"));
+        } finally {
+            detachListAppender(appender);
+        }
+    }
+
+    @Test
+    void checkUsersOnlineStatus_shouldUseRouteRegistry() {
+        when(routeRegistry.isUserGloballyOnline("1")).thenReturn(true);
 
         Map<String, Boolean> result = imService.checkUsersOnlineStatus(List.of("1"));
 
         assertTrue(result.get("1"));
-        verify(routeMap).get("1");
+        verify(routeRegistry).isUserGloballyOnline("1");
     }
 
     @Test
-    void unregisterSession_shouldNotDeleteRouteWhenUserMigratedToAnotherInstance() throws Exception {
+    void unregisterSession_shouldKeepUserOnlineWhenAnotherInstanceStillActive() throws Exception {
         WebSocketSession webSocketSession = mockOpenSession("session-1");
         imService.registerSession("1", UserSession.builder().webSocketSession(webSocketSession).build());
-        when(routeMap.get("1")).thenReturn("im-node-2");
-        clearInvocations(routeMap, webSocketSession, presenceTopic);
+        when(routeRegistry.isUserGloballyOnline("1")).thenReturn(true);
+        clearInvocations(routeRegistry, webSocketSession, presenceTopic, presenceTransitionDeduplicator);
 
         boolean removed = imService.unregisterSession("1", "session-1", CloseStatus.NORMAL);
 
         assertTrue(removed);
-        verify(routeMap, never()).fastRemove("1");
+        verify(routeRegistry).removeLocalRoute("1", "im-node-1");
         verify(webSocketSession).close(CloseStatus.NORMAL);
+        verify(presenceTransitionDeduplicator, never()).tryTransition(eq("1"), eq(UserStatus.OFFLINE));
+        verify(presenceTopic, never()).publish(any());
+    }
+
+    @Test
+    void registerAndUnregisterMultipleLocalSessions_shouldOnlyBroadcastOneOnlineAndOneOffline() throws Exception {
+        when(routeRegistry.isUserGloballyOnline("1")).thenReturn(false, true, true, false);
+        WebSocketSession firstSession = mockOpenSession("session-1");
+        WebSocketSession secondSession = mockOpenSession("session-2");
+
+        imService.registerSession("1", UserSession.builder().webSocketSession(firstSession).build());
+        imService.registerSession("1", UserSession.builder().webSocketSession(secondSession).build());
+        imService.unregisterSession("1", "session-1", CloseStatus.NORMAL);
+        imService.unregisterSession("1", "session-2", CloseStatus.NORMAL);
+
+        verify(presenceTransitionDeduplicator, times(1)).tryTransition("1", UserStatus.ONLINE);
+        verify(presenceTransitionDeduplicator, times(1)).tryTransition("1", UserStatus.OFFLINE);
+        verify(presenceTopic, times(2)).publish(any());
+    }
+
+    @Test
+    void registerSession_shouldNotBroadcastOnlineWhenAnotherInstanceAlreadyOnline() throws Exception {
+        when(routeRegistry.isUserGloballyOnline("1")).thenReturn(true);
+        WebSocketSession webSocketSession = mockOpenSession("session-1");
+
+        imService.registerSession("1", UserSession.builder().webSocketSession(webSocketSession).build());
+
+        verify(routeRegistry).upsertLocalRoute("1", "im-node-1", 1);
+        verify(presenceTransitionDeduplicator, never()).tryTransition(eq("1"), eq(UserStatus.ONLINE));
+        verify(presenceTopic, never()).publish(any());
+    }
+
+    @Test
+    void unregisterAndQuickReconnect_shouldNotBroadcastOfflineOrSecondOnline() throws Exception {
+        ReflectionTestUtils.setField(imService, "presenceOfflineGraceMs", 120L);
+        when(routeRegistry.isUserGloballyOnline("1")).thenReturn(false, true);
+        WebSocketSession firstSession = mockOpenSession("session-1");
+        WebSocketSession secondSession = mockOpenSession("session-2");
+
+        imService.registerSession("1", UserSession.builder().webSocketSession(firstSession).build());
+        clearInvocations(routeRegistry, presenceTopic, presenceTransitionDeduplicator, firstSession);
+
+        when(presenceTransitionDeduplicator.tryTransition("1", UserStatus.ONLINE)).thenReturn(false);
+        when(routeRegistry.isUserGloballyOnline("1")).thenReturn(true, false, false, true, true);
+
+        boolean removed = imService.unregisterSession("1", "session-1", CloseStatus.NORMAL);
+        assertTrue(removed);
+
+        Thread.sleep(40L);
+        imService.registerSession("1", UserSession.builder().webSocketSession(secondSession).build());
+        Thread.sleep(180L);
+
+        verify(presenceTransitionDeduplicator, never()).tryTransition("1", UserStatus.OFFLINE);
+        verify(presenceTransitionDeduplicator, times(1)).tryTransition("1", UserStatus.ONLINE);
+        verify(presenceTopic, never()).publish(any());
     }
 
     @Test
@@ -374,5 +550,26 @@ class ImServiceImplTest {
 
     private double pushCount(String result, String type) {
         return meterRegistry.counter("im.websocket.push.total", "result", result, "type", type).count();
+    }
+
+    private ListAppender<ILoggingEvent> attachListAppender() {
+        Logger logger = (Logger) LoggerFactory.getLogger(ImServiceImpl.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        return appender;
+    }
+
+    private void detachListAppender(ListAppender<ILoggingEvent> appender) {
+        Logger logger = (Logger) LoggerFactory.getLogger(ImServiceImpl.class);
+        logger.detachAppender(appender);
+    }
+
+    private String joinedMessages(ListAppender<ILoggingEvent> appender) {
+        StringBuilder builder = new StringBuilder();
+        for (ILoggingEvent event : appender.list) {
+            builder.append(event.getFormattedMessage()).append('\n');
+        }
+        return builder.toString();
     }
 }

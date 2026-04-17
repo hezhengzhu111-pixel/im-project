@@ -17,9 +17,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -47,12 +45,14 @@ class MessageControllerTest {
         request.setContent("hello");
         MessageDTO dto = new MessageDTO();
         dto.setId(100L);
+        dto.setAckStage(MessageDTO.ACK_STAGE_ACCEPTED);
         when(messageService.sendMessage(any(SendMessageCommand.class))).thenReturn(dto);
 
         ApiResponse<MessageDTO> response = messageController.sendPrivateMessage(1L, request);
 
         assertEquals(200, response.getCode());
         assertEquals(100L, response.getData().getId());
+        assertEquals(MessageDTO.ACK_STAGE_ACCEPTED, response.getData().getAckStage());
         ArgumentCaptor<SendMessageCommand> captor = ArgumentCaptor.forClass(SendMessageCommand.class);
         verify(messageService).sendMessage(captor.capture());
         assertEquals(1L, captor.getValue().getSenderId());
@@ -90,12 +90,14 @@ class MessageControllerTest {
         request.setContent("group-hi");
         MessageDTO dto = new MessageDTO();
         dto.setId(200L);
+        dto.setAckStage(MessageDTO.ACK_STAGE_PERSISTED);
         when(messageService.sendMessage(any(SendMessageCommand.class))).thenReturn(dto);
 
         ApiResponse<MessageDTO> response = messageController.sendGroupMessage(1L, request);
 
         assertEquals(200, response.getCode());
         assertEquals(200L, response.getData().getId());
+        assertEquals(MessageDTO.ACK_STAGE_PERSISTED, response.getData().getAckStage());
         ArgumentCaptor<SendMessageCommand> captor = ArgumentCaptor.forClass(SendMessageCommand.class);
         verify(messageService).sendMessage(captor.capture());
         assertEquals(1L, captor.getValue().getSenderId());

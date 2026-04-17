@@ -6,9 +6,13 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 public final class AuthHeaderUtil {
+    public static final String INTERNAL_TIMESTAMP_HEADER = "X-Internal-Timestamp";
+    public static final String INTERNAL_NONCE_HEADER = "X-Internal-Nonce";
+    public static final String INTERNAL_SIGNATURE_HEADER = "X-Internal-Signature";
 
     private AuthHeaderUtil() {
     }
@@ -59,6 +63,38 @@ public final class AuthHeaderUtil {
         return fields;
     }
 
+    public static Map<String, String> buildInternalSignedFields(String method, String path, String bodyHash, String ts, String nonce) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("method", normalizeMethod(method));
+        fields.put("path", normalizeInternalPath(path));
+        fields.put("bodyHash", bodyHash == null ? sha256Base64Url(new byte[0]) : bodyHash);
+        fields.put("ts", ts);
+        fields.put("nonce", nonce);
+        return fields;
+    }
+
+    public static String sha256Base64Url(byte[] value) {
+        try {
+            byte[] normalized = value == null ? new byte[0] : value;
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(normalized);
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+        } catch (Exception e) {
+            throw new RuntimeException("hash failed", e);
+        }
+    }
+
+    public static String normalizeInternalPath(String path) {
+        if (path == null || path.isBlank()) {
+            return "/";
+        }
+        String normalized = path.trim();
+        int queryIndex = normalized.indexOf('?');
+        if (queryIndex >= 0) {
+            normalized = normalized.substring(0, queryIndex);
+        }
+        return normalized.startsWith("/") ? normalized : "/" + normalized;
+    }
+
     private static String canonicalize(Map<String, String> fields) {
         StringBuilder sb = new StringBuilder();
         boolean first = true;
@@ -70,6 +106,13 @@ public final class AuthHeaderUtil {
             sb.append(entry.getKey()).append('=').append(entry.getValue() == null ? "" : entry.getValue());
         }
         return sb.toString();
+    }
+
+    private static String normalizeMethod(String method) {
+        if (method == null || method.isBlank()) {
+            return "";
+        }
+        return method.trim().toUpperCase(Locale.ROOT);
     }
 
     private static boolean constantTimeEquals(String a, String b) {
