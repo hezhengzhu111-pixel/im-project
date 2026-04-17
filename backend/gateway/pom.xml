@@ -74,14 +74,8 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>com.im</groupId>
-            <artifactId>im-auth-service</artifactId>
-            <version>${project.version}</version>
-            <scope>test</scope>
-        </dependency>
 
-        <!-- 移除 Feign，避免阻塞 IO，使用 WebClient 和 Caffeine -->
+        <!-- 绉婚櫎 Feign锛岄伩鍏嶉樆濉?IO锛屼娇鐢?WebClient 鍜?Caffeine -->
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
