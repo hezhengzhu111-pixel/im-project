@@ -74,6 +74,12 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.im</groupId>
+            <artifactId>im-auth-service</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
 
         <!-- 移除 Feign，避免阻塞 IO，使用 WebClient 和 Caffeine -->
         <dependency>

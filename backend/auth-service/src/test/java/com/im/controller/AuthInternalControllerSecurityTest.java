@@ -2,6 +2,7 @@ package com.im.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.dto.WsTicketConsumeResultDTO;
+import com.im.enums.CommonErrorCode;
 import com.im.exception.AuthExceptionHandler;
 import com.im.filter.InternalRequestBodyCachingFilter;
 import com.im.interceptor.JwtAuthInterceptor;
@@ -147,7 +148,8 @@ class AuthInternalControllerSecurityTest {
                 .andReturn();
 
         Map<?, ?> responseBody = objectMapper.readValue(mvcResult.getResponse().getContentAsString(), Map.class);
-        assertEquals(401, responseBody.get("code"));
+        assertEquals(CommonErrorCode.INTERNAL_AUTH_REJECTED.getCode(), responseBody.get("code"));
+        assertEquals(CommonErrorCode.INTERNAL_AUTH_REJECTED.getMessage(), responseBody.get("message"));
 
         verify(authTokenService, never()).consumeWsTicket(anyString(), any());
     }

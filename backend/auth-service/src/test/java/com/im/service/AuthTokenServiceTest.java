@@ -5,7 +5,9 @@ import com.im.dto.TokenPairDTO;
 import com.im.dto.WsTicketConsumeResultDTO;
 import com.im.dto.WsTicketDTO;
 import com.im.dto.request.RefreshTokenRequest;
+import com.im.metrics.AuthServiceMetrics;
 import com.im.util.TokenParser;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,10 +44,13 @@ class AuthTokenServiceTest {
     private ValueOperations<String, String> valueOperations;
 
     private AuthTokenService service;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
         service = new AuthTokenService(stringRedisTemplate, authUserResourceService, tokenParser);
+        meterRegistry = new SimpleMeterRegistry();
+        ReflectionTestUtils.setField(service, "metrics", new AuthServiceMetrics(meterRegistry));
         ReflectionTestUtils.setField(service, "accessSecret", "access-secret-access-secret-access-secret-access-secret-2026");
         ReflectionTestUtils.setField(service, "refreshSecret", "refresh-secret-refresh-secret-refresh-secret-refresh-2026");
         ReflectionTestUtils.setField(service, "accessExpirationMs", 60000L);
@@ -471,6 +476,8 @@ class AuthTokenServiceTest {
         assertEquals(1005L, validResult.getUserId());
         assertEquals("erin", validResult.getUsername());
         assertEquals(WsTicketConsumeResultDTO.STATUS_INVALID, invalidResult.getStatus());
+        assertEquals(1.0, wsTicketConsumeCount("success"));
+        assertEquals(1.0, wsTicketConsumeCount("expired_or_missing"));
     }
 
     @Test
@@ -485,6 +492,7 @@ class AuthTokenServiceTest {
         assertNotNull(result.getError());
         assertNull(result.getUserId());
         assertNull(result.getUsername());
+        assertEquals(1.0, wsTicketConsumeCount("expired_or_missing"));
     }
 
     @Test
@@ -561,5 +569,9 @@ class AuthTokenServiceTest {
         info.setUsername(username);
         info.setJti(jti);
         return info;
+    }
+
+    private double wsTicketConsumeCount(String result) {
+        return meterRegistry.counter("ws_ticket_consume_results", "result", result).count();
     }
 }

@@ -5,7 +5,10 @@ import com.im.dto.StatusChangeEvent;
 import com.im.exception.BusinessException;
 import com.im.mapper.PendingStatusEventBacklogMapper;
 import com.im.message.entity.PendingStatusEventBacklog;
+import com.im.metrics.MessageServiceMetrics;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +21,16 @@ import java.util.List;
 public class PendingStatusEventService {
 
     private final PendingStatusEventBacklogMapper pendingStatusEventBacklogMapper;
+
+    @Autowired(required = false)
+    private MessageServiceMetrics metrics;
+
+    @PostConstruct
+    void bindMetrics() {
+        if (metrics != null) {
+            metrics.bindPendingStatusBacklogGauge(this::countBacklog);
+        }
+    }
 
     public void store(StatusChangeEvent event) {
         if (event == null || event.getMessageId() == null || event.getNewStatus() == null) {
@@ -67,6 +80,11 @@ public class PendingStatusEventService {
 
     public List<Long> listPendingMessageIds() {
         return pendingStatusEventBacklogMapper.selectPendingMessageIds();
+    }
+
+    long countBacklog() {
+        Long count = pendingStatusEventBacklogMapper.selectCount(null);
+        return count == null ? 0L : Math.max(0L, count);
     }
 
     private PendingStatusEventBacklog toBacklog(StatusChangeEvent event) {

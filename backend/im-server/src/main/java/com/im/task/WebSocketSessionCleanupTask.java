@@ -2,12 +2,11 @@ package com.im.task;
 
 import com.im.entity.UserSession;
 import com.im.service.IImService;
+import com.im.websocket.WebSocketErrorSemantics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.web.socket.CloseStatus;
-
 import java.util.Map;
 
 @Slf4j
@@ -29,7 +28,7 @@ public class WebSocketSessionCleanupTask {
             if (imService.isSessionActive(userId, sessionId)) {
                 continue;
             }
-            imService.unregisterSession(userId, sessionId, CloseStatus.GOING_AWAY.withReason("session stale"));
+            imService.unregisterSession(userId, sessionId, WebSocketErrorSemantics.SESSION_CLOSED_OR_STALE);
         }
     }
 }

@@ -6,6 +6,7 @@ import com.im.dto.TokenParseResultDTO;
 import com.im.dto.WsTicketConsumeResultDTO;
 import com.im.dto.request.ConsumeWsTicketRequest;
 import com.im.dto.request.IssueTokenRequest;
+import com.im.exception.AuthServiceException;
 import com.im.service.AuthPermissionService;
 import com.im.service.AuthTokenRevokeService;
 import com.im.service.AuthTokenService;
@@ -18,8 +19,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -90,10 +90,10 @@ class AuthInternalControllerTest {
         when(authTokenService.parseAccessToken("token", false)).thenReturn(parseResult);
         when(authTokenRevokeService.isTokenRevoked(eq("token"), any(TokenParseResultDTO.class))).thenReturn(true);
 
-        ApiResponse<TokenParseResultDTO> result = controller.validateToken(httpRequest, null, "token");
-
-        assertFalse(result.getData().isValid());
-        assertEquals("token已吊销", result.getData().getError());
+        AuthServiceException exception = assertThrows(AuthServiceException.class,
+                () -> controller.validateToken(httpRequest, null, "token"));
+        assertNotNull(exception.getErrorCode());
+        assertEquals("TOKEN_INVALID", exception.getErrorCode().getMessage());
     }
 
     @Test

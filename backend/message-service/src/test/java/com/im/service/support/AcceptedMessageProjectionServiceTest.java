@@ -8,7 +8,9 @@ import com.im.mapper.AcceptedMessageMapper;
 import com.im.mapper.MessageOutboxMapper;
 import com.im.message.entity.AcceptedMessage;
 import com.im.message.entity.MessageOutbox;
+import com.im.metrics.MessageServiceMetrics;
 import com.im.service.ConversationCacheUpdater;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
@@ -42,6 +44,8 @@ class AcceptedMessageProjectionServiceTest {
 
     @Mock
     private MessageOutboxMapper messageOutboxMapper;
+
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
     @Test
     void projectAcceptedFirstSeenShouldWriteCoreHotKeysBeforeConversationProjectionAndPendingMarker() {
@@ -177,6 +181,13 @@ class AcceptedMessageProjectionServiceTest {
     void markPersistedShouldPromoteAcceptedSnapshotAndOutboxToPersistedStage() {
         AcceptedMessageProjectionService service = service();
         MessageEvent event = privateEvent(6006L, "client-6", "persisted");
+        when(acceptedMessageMapper.selectById(6006L)).thenReturn(acceptedMessage(
+                6006L,
+                1L,
+                "client-6",
+                MessageDTO.ACK_STAGE_ACCEPTED,
+                acceptedPayloadJson(6006L, "client-6", "persisted", MessageDTO.ACK_STAGE_ACCEPTED)
+        ));
 
         service.markPersisted(event);
 
@@ -186,11 +197,13 @@ class AcceptedMessageProjectionServiceTest {
                 message != null
                         && Long.valueOf(6006L).equals(message.getId())
                         && MessageDTO.ACK_STAGE_PERSISTED.equals(message.getAckStage())));
+        assertEquals(1L, meterRegistry.get("accepted_to_persisted_latency").timer().count());
     }
 
     private AcceptedMessageProjectionService service() {
         AcceptedMessageProjectionService service =
                 new AcceptedMessageProjectionService(hotMessageRedisRepository, conversationCacheUpdater, acceptedMessageMapper, messageOutboxMapper);
+        ReflectionTestUtils.setField(service, "metrics", new MessageServiceMetrics(meterRegistry));
         ReflectionTestUtils.setField(service, "chatTopic", "im-chat-topic");
         return service;
     }

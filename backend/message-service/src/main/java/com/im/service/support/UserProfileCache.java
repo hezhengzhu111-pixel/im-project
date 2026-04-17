@@ -1,5 +1,7 @@
 package com.im.service.support;
 
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONObject;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.im.dto.UserDTO;
@@ -10,11 +12,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
@@ -28,6 +33,8 @@ public class UserProfileCache {
     private static final String CACHE_FRIEND = "friend";
     private static final String CACHE_GROUP_MEMBER = "group_member";
     private static final String CACHE_GROUP_MEMBER_IDS = "group_member_ids";
+    private static final String SCOPE_FRIEND_RELATION = "FRIEND_RELATION";
+    private static final String SCOPE_GROUP_MEMBERSHIP = "GROUP_MEMBERSHIP";
 
     private static final long DEFAULT_USER_L1_TTL_SECONDS = 60;
     private static final long DEFAULT_USER_L1_MAX_SIZE = 10_000;
@@ -205,6 +212,63 @@ public class UserProfileCache {
         return List.of();
     }
 
+    @KafkaListener(
+            topics = "${im.kafka.authz-cache-invalidation-topic:im-authz-cache-invalidation-topic}",
+            containerFactory = "authorizationCacheInvalidationKafkaListenerContainerFactory"
+    )
+    public void onAuthorizationCacheInvalidation(String payload) {
+        if (!StringUtils.hasText(payload)) {
+            return;
+        }
+        try {
+            JSONObject jsonObject = JSON.parseObject(payload);
+            String scope = jsonObject == null ? null : jsonObject.getString("scope");
+            if (SCOPE_FRIEND_RELATION.equals(scope)) {
+                invalidateFriendRelation(jsonObject.getList("userIds", Long.class));
+                return;
+            }
+            if (SCOPE_GROUP_MEMBERSHIP.equals(scope)) {
+                invalidateGroupMembership(jsonObject.getLong("groupId"), jsonObject.getList("userIds", Long.class));
+            }
+        } catch (Exception exception) {
+            log.warn("Handle authz cache invalidation failed. payload={}, error={}",
+                    payload, exception.getMessage(), exception);
+        }
+    }
+
+    void invalidateFriendRelation(Collection<Long> userIds) {
+        ensureCachesInitialized();
+        List<Long> normalizedUserIds = normalizeUserIds(userIds);
+        if (normalizedUserIds.size() < 2) {
+            return;
+        }
+        for (int left = 0; left < normalizedUserIds.size(); left++) {
+            for (int right = 0; right < normalizedUserIds.size(); right++) {
+                if (left == right) {
+                    continue;
+                }
+                String cacheKey = normalizedUserIds.get(left) + ":" + normalizedUserIds.get(right);
+                friendL1Cache.invalidate(cacheKey);
+                deleteRedisKey(CACHE_FRIEND, friendCacheKeyPrefix + cacheKey);
+            }
+        }
+    }
+
+    void invalidateGroupMembership(Long groupId, Collection<Long> userIds) {
+        ensureCachesInitialized();
+        if (groupId == null) {
+            return;
+        }
+        groupMemberIdsL1Cache.invalidate(groupId);
+        deleteRedisKey(CACHE_GROUP_MEMBER_IDS, groupMemberIdsCacheKeyPrefix + groupId);
+
+        for (Long userId : normalizeUserIds(userIds)) {
+            String cacheKey = groupId + ":" + userId;
+            groupMemberL1Cache.invalidate(cacheKey);
+            deleteRedisKey(CACHE_GROUP_MEMBER, groupMemberCacheKeyPrefix + cacheKey);
+        }
+    }
+
     private Boolean getBoolean(String cacheName,
                                Cache<String, Boolean> l1Cache,
                                String cacheKey,
@@ -247,6 +311,18 @@ public class UserProfileCache {
             redisTemplate.opsForValue().set(key, value, ttl, unit);
         } catch (Exception e) {
             recordCacheFailure(cacheName, "l2_write_failed", e);
+        }
+    }
+
+    private void deleteRedisKey(String cacheName, String key) {
+        if (!StringUtils.hasText(key)) {
+            return;
+        }
+        try {
+            redisTemplate.delete(key);
+            recordCacheEvent(cacheName, "invalidated");
+        } catch (Exception exception) {
+            recordCacheFailure(cacheName, "invalidate_failed", exception);
         }
     }
 
@@ -299,6 +375,18 @@ public class UserProfileCache {
             }
         }
         return result;
+    }
+
+    private List<Long> normalizeUserIds(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+        return userIds.stream()
+                .filter(value -> value != null)
+                .collect(java.util.stream.Collectors.collectingAndThen(
+                        java.util.stream.Collectors.toCollection(LinkedHashSet::new),
+                        List::copyOf
+                ));
     }
 
     private Long toLong(Object value) {

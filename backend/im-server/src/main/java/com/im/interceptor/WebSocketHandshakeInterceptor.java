@@ -1,9 +1,12 @@
 package com.im.interceptor;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.dto.WsTicketConsumeResultDTO;
 import com.im.dto.request.ConsumeWsTicketRequest;
+import com.im.enums.CommonErrorCode;
 import com.im.feign.AuthServiceFeignClient;
 import com.im.metrics.ImServerMetrics;
+import com.im.util.ApiErrorResponseWriter;
 import com.im.util.AuthCookieUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -11,7 +14,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpRequest;
@@ -29,6 +31,7 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
 
     private static final String DEFAULT_ALLOWED_ORIGINS =
             "http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080";
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
     private AuthServiceFeignClient authServiceFeignClient;
@@ -64,64 +67,70 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
                                    WebSocketHandler wsHandler, Map<String, Object> attributes) {
         if (!(request instanceof ServletServerHttpRequest servletRequest)) {
-            recordHandshakeFailure("unsupported_request");
-            return false;
+            return reject(response, CommonErrorCode.INTERNAL_AUTH_REJECTED, "unsupported_request",
+                    "WebSocket connection rejected. errorCode={}, reason=unsupported_request",
+                    CommonErrorCode.INTERNAL_AUTH_REJECTED.getMessage());
         }
 
         HttpServletRequest httpRequest = servletRequest.getServletRequest();
         String origin = httpRequest.getHeader(HttpHeaders.ORIGIN);
         if (StringUtils.isBlank(origin) && !allowBlankOrigin) {
-            recordHandshakeFailure("origin_denied");
-            log.warn("WebSocket connection rejected: blank origin not allowed");
-            response.setStatusCode(HttpStatus.FORBIDDEN);
-            return false;
+            return reject(response, CommonErrorCode.WS_ORIGIN_NOT_ALLOWED, "origin_denied",
+                    "WebSocket connection rejected. errorCode={}, origin=blank",
+                    CommonErrorCode.WS_ORIGIN_NOT_ALLOWED.getMessage());
         }
         if (StringUtils.isNotBlank(origin) && !isOriginAllowed(origin)) {
-            recordHandshakeFailure("origin_denied");
-            log.warn("WebSocket connection rejected: origin not allowed, origin={}", origin);
-            response.setStatusCode(HttpStatus.FORBIDDEN);
-            return false;
+            return reject(response, CommonErrorCode.WS_ORIGIN_NOT_ALLOWED, "origin_denied",
+                    "WebSocket connection rejected. errorCode={}, origin={}",
+                    CommonErrorCode.WS_ORIGIN_NOT_ALLOWED.getMessage(), origin);
         }
 
-        String ticket = extractTicket(httpRequest);
+        TicketResolution ticketResolution = resolveTicket(httpRequest);
+        if (ticketResolution.queryRejected()) {
+            return reject(response, CommonErrorCode.WS_QUERY_TICKET_NOT_ALLOWED, "missing_ticket",
+                    "WebSocket connection rejected. errorCode={}, source=query",
+                    CommonErrorCode.WS_QUERY_TICKET_NOT_ALLOWED.getMessage());
+        }
+        String ticket = ticketResolution.ticket();
         if (StringUtils.isBlank(ticket)) {
-            recordHandshakeFailure("missing_ticket");
-            log.warn("WebSocket connection rejected: missing ticket");
-            response.setStatusCode(HttpStatus.UNAUTHORIZED);
-            return false;
+            return reject(response, CommonErrorCode.WS_TICKET_INVALID_OR_EXPIRED, "missing_ticket",
+                    "WebSocket connection rejected. errorCode={}, ticketSummary=missing",
+                    CommonErrorCode.WS_TICKET_INVALID_OR_EXPIRED.getMessage());
         }
 
         Long expectedUserId = extractTrustedUserId(httpRequest);
         if (expectedUserId == null) {
-            recordHandshakeFailure("invalid_user");
-            log.warn("WebSocket connection rejected: trusted userId missing or invalid");
-            response.setStatusCode(HttpStatus.UNAUTHORIZED);
-            return false;
+            return reject(response, CommonErrorCode.INTERNAL_AUTH_REJECTED, "invalid_user",
+                    "WebSocket connection rejected. errorCode={}, ticketSummary={}",
+                    CommonErrorCode.INTERNAL_AUTH_REJECTED.getMessage(), summarizeSecret(ticket));
         }
 
         WsTicketConsumeResultDTO result = consumeWsTicket(ticket, expectedUserId);
         if (result == null || !result.isValid()) {
+            CommonErrorCode errorCode = isUserMismatch(result)
+                    ? CommonErrorCode.INTERNAL_AUTH_REJECTED
+                    : CommonErrorCode.WS_TICKET_INVALID_OR_EXPIRED;
             String reason = result == null ? "consume_error" : (isUserMismatch(result) ? "ticket_mismatch" : "ticket_invalid");
-            recordHandshakeFailure(reason);
-            log.warn("WebSocket connection rejected. reason={}, userId={}, ticketSummary={}",
-                    reason, expectedUserId, summarizeSecret(ticket));
-            log.debug("WebSocket rejection detail. reason={}, userId={}, ticketSummary={}, status={}, error={}",
+            log.debug("WebSocket rejection detail. errorCode={}, reason={}, userId={}, ticketSummary={}, status={}, error={}",
+                    errorCode.getMessage(),
                     reason,
                     expectedUserId,
                     summarizeSecret(ticket),
                     result == null ? null : result.getStatus(),
                     result == null ? null : result.getError());
-            response.setStatusCode(isUserMismatch(result) ? HttpStatus.FORBIDDEN : HttpStatus.UNAUTHORIZED);
-            return false;
+            return reject(response, errorCode, reason,
+                    "WebSocket connection rejected. errorCode={}, reason={}, userId={}, ticketSummary={}",
+                    errorCode.getMessage(), reason, expectedUserId, summarizeSecret(ticket));
         }
         if (result.getUserId() == null) {
-            recordHandshakeFailure("consume_error");
-            log.warn("WebSocket connection rejected. reason=consume_error, userId={}, ticketSummary={}",
-                    expectedUserId, summarizeSecret(ticket));
-            log.debug("WebSocket rejection detail. reason=consume_error, userId={}, ticketSummary={}, status={}",
-                    expectedUserId, summarizeSecret(ticket), result.getStatus());
-            response.setStatusCode(HttpStatus.UNAUTHORIZED);
-            return false;
+            log.debug("WebSocket rejection detail. errorCode={}, reason=consume_error, userId={}, ticketSummary={}, status={}",
+                    CommonErrorCode.WS_TICKET_INVALID_OR_EXPIRED.getMessage(),
+                    expectedUserId,
+                    summarizeSecret(ticket),
+                    result.getStatus());
+            return reject(response, CommonErrorCode.WS_TICKET_INVALID_OR_EXPIRED, "consume_error",
+                    "WebSocket connection rejected. errorCode={}, reason=consume_error, userId={}, ticketSummary={}",
+                    CommonErrorCode.WS_TICKET_INVALID_OR_EXPIRED.getMessage(), expectedUserId, summarizeSecret(ticket));
         }
 
         attributes.put("userId", String.valueOf(result.getUserId()));
@@ -152,15 +161,19 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
                 || (result.getError() != null && result.getError().contains("userId")));
     }
 
-    private String extractTicket(HttpServletRequest httpRequest) {
+    private TicketResolution resolveTicket(HttpServletRequest httpRequest) {
         String cookieTicket = AuthCookieUtil.getCookieValue(httpRequest, wsTicketCookieName);
         if (StringUtils.isNotBlank(cookieTicket)) {
-            return cookieTicket;
+            return new TicketResolution(cookieTicket, false);
         }
-        if (!allowQueryTicket) {
-            return null;
+        String queryTicket = httpRequest == null ? null : httpRequest.getParameter("ticket");
+        if (StringUtils.isNotBlank(queryTicket) && !allowQueryTicket) {
+            return new TicketResolution(null, true);
         }
-        return httpRequest.getParameter("ticket");
+        if (allowQueryTicket && StringUtils.isNotBlank(queryTicket)) {
+            return new TicketResolution(queryTicket, false);
+        }
+        return new TicketResolution(null, false);
     }
 
     private void clearWsTicketCookie(ServerHttpResponse response, HttpServletRequest request) {
@@ -225,6 +238,17 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
         }
     }
 
+    private boolean reject(ServerHttpResponse response,
+                           CommonErrorCode errorCode,
+                           String metricReason,
+                           String logMessage,
+                           Object... logArgs) {
+        recordHandshakeFailure(metricReason);
+        log.warn(logMessage, logArgs);
+        ApiErrorResponseWriter.writeServerError(objectMapper, response, errorCode);
+        return false;
+    }
+
     private String summarizeSecret(String value) {
         if (StringUtils.isBlank(value)) {
             return "missing";
@@ -244,5 +268,8 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
     @Override
     public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response,
                                WebSocketHandler wsHandler, Exception exception) {
+    }
+
+    private record TicketResolution(String ticket, boolean queryRejected) {
     }
 }

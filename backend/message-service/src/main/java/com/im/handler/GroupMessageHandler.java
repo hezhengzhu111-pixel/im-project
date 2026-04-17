@@ -1,18 +1,13 @@
 package com.im.handler;
 
 import com.im.dto.MessageDTO;
-import com.im.dto.MessageEvent;
 import com.im.dto.UserDTO;
 import com.im.exception.BusinessException;
 import com.im.feign.GroupServiceFeignClient;
 import com.im.message.entity.Message;
 import com.im.service.command.SendMessageCommand;
-import com.im.service.support.AcceptedMessageProjectionService;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
-import com.im.utils.SnowflakeIdGenerator;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -21,13 +16,8 @@ public class GroupMessageHandler extends AbstractMessageHandler<GroupMessageHand
     private final GroupServiceFeignClient groupServiceFeignClient;
     private final UserProfileCache userProfileCache;
 
-    public GroupMessageHandler(RedisTemplate<String, Object> redisTemplate,
-                               KafkaTemplate<String, MessageEvent> kafkaTemplate,
-                               SnowflakeIdGenerator snowflakeIdGenerator,
-                               AcceptedMessageProjectionService acceptedMessageProjectionService,
-                               GroupServiceFeignClient groupServiceFeignClient,
+    public GroupMessageHandler(GroupServiceFeignClient groupServiceFeignClient,
                                UserProfileCache userProfileCache) {
-        super(redisTemplate, kafkaTemplate, snowflakeIdGenerator, acceptedMessageProjectionService);
         this.groupServiceFeignClient = groupServiceFeignClient;
         this.userProfileCache = userProfileCache;
     }

@@ -1,9 +1,10 @@
 package com.im.interceptor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.im.dto.ApiResponse;
+import com.im.enums.CommonErrorCode;
 import com.im.filter.InternalRequestBodyCachingFilter;
 import com.im.security.SecurityPaths;
+import com.im.util.ApiErrorResponseWriter;
 import com.im.util.AuthHeaderUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -88,7 +89,7 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             if (internalLegacySecretOnlyEnabled && hasValidInternalSecret(request)) {
                 return true;
             }
-            writeUnauthorized(response, "internal auth failed");
+            writeError(response, CommonErrorCode.INTERNAL_AUTH_REJECTED);
             return false;
         }
 
@@ -343,8 +344,12 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
         try {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().write(objectMapper.writeValueAsString(ApiResponse.unauthorized(message)));
+            response.getWriter().write(objectMapper.writeValueAsString(com.im.dto.ApiResponse.unauthorized(message)));
         } catch (Exception ignored) {
         }
+    }
+
+    private void writeError(HttpServletResponse response, CommonErrorCode errorCode) {
+        ApiErrorResponseWriter.writeServletError(objectMapper, response, errorCode);
     }
 }

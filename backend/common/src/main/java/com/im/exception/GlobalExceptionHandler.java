@@ -1,7 +1,11 @@
 package com.im.exception;
 
 import com.im.dto.ApiResponse;
+import com.im.util.ApiErrorResponses;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindException;
@@ -12,10 +16,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 
-import jakarta.validation.ConstraintViolation;
-import jakarta.validation.ConstraintViolationException;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
@@ -72,7 +73,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleIllegalArgumentException(IllegalArgumentException e) {
-        log.warn("业务异常: {}", e.getMessage());
+        log.warn("参数异常: {}", e.getMessage());
         return ApiResponse.badRequest(e.getMessage());
     }
 
@@ -86,13 +87,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e) {
         log.warn("业务异常: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.badRequest(e.getMessage()));
+        if (e.getErrorCode() != null) {
+            return ApiErrorResponses.response(e.getErrorCode());
+        }
+        return ResponseEntity.status(e.getHttpStatus() == null ? HttpStatus.BAD_REQUEST : e.getHttpStatus())
+                .body(ApiResponse.error(
+                        e.getNumericCode() == null ? HttpStatus.BAD_REQUEST.value() : e.getNumericCode(),
+                        e.getMessage()
+                ));
     }
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ApiResponse<Void>> handleRuntimeException(RuntimeException e) {
-        log.error("运行时异常: ", e);
+        log.error("运行时异常", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error("系统内部错误: " + e.getMessage()));
     }

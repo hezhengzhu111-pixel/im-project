@@ -1,12 +1,12 @@
 package com.im.handler;
 
-import com.im.dto.MessageDTO;
 import com.im.enums.MessageType;
 import com.im.service.command.SendMessageCommand;
+import com.im.service.orchestrator.MessagePreparation;
 
 public interface MessageHandler {
 
     boolean supports(MessageType type);
 
-    MessageDTO handle(SendMessageCommand command);
+    MessagePreparation prepare(SendMessageCommand command, Long messageId);
 }

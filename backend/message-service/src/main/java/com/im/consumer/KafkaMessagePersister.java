@@ -1,13 +1,10 @@
 package com.im.consumer;
 
 import com.im.dto.MessageEvent;
-import com.im.dto.StatusChangeEvent;
 import com.im.enums.MessageEventType;
 import com.im.message.entity.Message;
 import com.im.service.MessagePersistenceService;
-import com.im.service.support.AcceptedMessageProjectionService;
-import com.im.service.support.PendingStatusEventService;
-import com.im.service.support.PersistenceWatermarkService;
+import com.im.service.orchestrator.MessageStateOrchestrator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -27,10 +24,7 @@ import java.util.*;
 public class KafkaMessagePersister {
 
     private final MessagePersistenceService messagePersistenceService;
-    private final PersistenceWatermarkService persistenceWatermarkService;
-    private final PendingStatusEventService pendingStatusEventService;
-    private final KafkaMessageStatePersister kafkaMessageStatePersister;
-    private final AcceptedMessageProjectionService acceptedMessageProjectionService;
+    private final MessageStateOrchestrator messageStateOrchestrator;
 
     @KafkaListener(
             topics = "${im.kafka.chat-topic:im-chat-topic}",
@@ -196,42 +190,7 @@ public class KafkaMessagePersister {
     }
 
     private void markPersistedCandidate(PersistCandidate candidate) {
-        persistenceWatermarkService.markPersisted(candidate.conversationId(), candidate.message().getId());
-        finalizeAcceptedAndOutbox(candidate.event());
-        replayPendingStatusEvents(candidate.message().getId());
-    }
-
-    private void replayPendingStatusEvents(Long messageId) {
-        if (messageId == null) {
-            return;
-        }
-        List<StatusChangeEvent> pendingEvents = pendingStatusEventService.listByMessageId(messageId);
-        if (pendingEvents == null || pendingEvents.isEmpty()) {
-            return;
-        }
-        for (StatusChangeEvent pendingEvent : pendingEvents) {
-            if (pendingEvent == null) {
-                continue;
-            }
-            try {
-                kafkaMessageStatePersister.persistStatusChangeEvent(pendingEvent);
-            } catch (Exception exception) {
-                log.warn("Immediate pending status replay failed after message persistence. messageId={}, status={}, error={}",
-                        messageId, pendingEvent.getNewStatus(), exception.getMessage(), exception);
-            }
-        }
-    }
-
-    private void finalizeAcceptedAndOutbox(MessageEvent event) {
-        if (event == null) {
-            return;
-        }
-        try {
-            acceptedMessageProjectionService.markPersisted(event);
-        } catch (Exception exception) {
-            log.warn("Failed to promote accepted/outbox ack stage after persistence. messageId={}",
-                    event.getMessageId(), exception);
-        }
+        messageStateOrchestrator.advancePersisted(candidate.event());
     }
 
     private boolean isSingleRowFallbackBatchException(Exception exception) {

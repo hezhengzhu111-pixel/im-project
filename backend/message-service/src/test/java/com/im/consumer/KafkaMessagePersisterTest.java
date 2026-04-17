@@ -5,11 +5,15 @@ import com.im.dto.MessageEvent;
 import com.im.dto.StatusChangeEvent;
 import com.im.enums.MessageEventType;
 import com.im.enums.MessageType;
+import com.im.mapper.GroupReadCursorMapper;
+import com.im.mapper.MessageMapper;
+import com.im.mapper.PrivateReadCursorMapper;
 import com.im.message.entity.Message;
+import com.im.service.ConversationCacheUpdater;
 import com.im.service.MessagePersistenceService;
-import com.im.service.support.AcceptedMessageProjectionService;
-import com.im.service.support.PendingStatusEventService;
-import com.im.service.support.PersistenceWatermarkService;
+import com.im.service.orchestrator.MessageStateOrchestrator;
+import com.im.service.support.*;
+import com.im.utils.SnowflakeIdGenerator;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,21 +48,49 @@ class KafkaMessagePersisterTest {
     private PendingStatusEventService pendingStatusEventService;
 
     @Mock
-    private KafkaMessageStatePersister kafkaMessageStatePersister;
-
-    @Mock
     private AcceptedMessageProjectionService acceptedMessageProjectionService;
 
+    @Mock
+    private HotMessageRedisRepository hotMessageRedisRepository;
+
+    @Mock
+    private MessageMapper messageMapper;
+
+    @Mock
+    private UserProfileCache userProfileCache;
+
+    @Mock
+    private ConversationCacheUpdater conversationCacheUpdater;
+
+    @Mock
+    private GroupReadCursorMapper groupReadCursorMapper;
+
+    @Mock
+    private PrivateReadCursorMapper privateReadCursorMapper;
+
+    @Mock
+    private SnowflakeIdGenerator snowflakeIdGenerator;
+
+    private MessageStateOrchestrator orchestrator;
     private KafkaMessagePersister persister;
 
     @BeforeEach
     void setUp() {
-        persister = new KafkaMessagePersister(
-                messagePersistenceService,
+        orchestrator = new MessageStateOrchestrator(
+                snowflakeIdGenerator,
+                hotMessageRedisRepository,
+                acceptedMessageProjectionService,
+                messageMapper,
+                userProfileCache,
                 persistenceWatermarkService,
                 pendingStatusEventService,
-                kafkaMessageStatePersister,
-                acceptedMessageProjectionService
+                conversationCacheUpdater,
+                groupReadCursorMapper,
+                privateReadCursorMapper
+        );
+        persister = new KafkaMessagePersister(
+                messagePersistenceService,
+                orchestrator
         );
     }
 
@@ -284,14 +316,20 @@ class KafkaMessagePersisterTest {
                 .build();
         when(messagePersistenceService.saveBatch(any())).thenReturn(true);
         when(pendingStatusEventService.listByMessageId(1000L)).thenReturn(List.of(pendingEvent));
+        when(messageMapper.selectById(1000L)).thenReturn(persistedMessage(1000L, Message.MessageStatus.SENT,
+                LocalDateTime.of(2026, 4, 16, 10, 0)));
+        when(messageMapper.updateById(any(Message.class))).thenReturn(1);
 
         persister.persistMessages(List.of(record(0, 0L, "p_1_2", event)));
 
-        InOrder inOrder = inOrder(persistenceWatermarkService, pendingStatusEventService, kafkaMessageStatePersister);
+        InOrder inOrder = inOrder(persistenceWatermarkService, pendingStatusEventService, messageMapper, conversationCacheUpdater);
         inOrder.verify(persistenceWatermarkService).markPersisted("p_1_2", 1000L);
         verify(acceptedMessageProjectionService).markPersisted(event);
         inOrder.verify(pendingStatusEventService).listByMessageId(1000L);
-        inOrder.verify(kafkaMessageStatePersister).persistStatusChangeEvent(pendingEvent);
+        inOrder.verify(messageMapper).selectById(1000L);
+        inOrder.verify(messageMapper).updateById(any(Message.class));
+        verify(conversationCacheUpdater).applyStatusChange(pendingEvent);
+        verify(pendingStatusEventService).remove(1000L, Message.MessageStatus.RECALLED);
     }
 
     @Test
@@ -306,13 +344,13 @@ class KafkaMessagePersisterTest {
         when(messagePersistenceService.saveBatch(any())).thenReturn(true);
         when(pendingStatusEventService.listByMessageId(1000L)).thenReturn(List.of(pendingEvent));
         doThrow(new IllegalStateException("retry later"))
-                .when(kafkaMessageStatePersister).persistStatusChangeEvent(pendingEvent);
+                .when(messageMapper).selectById(1000L);
 
         persister.persistMessages(List.of(record(0, 0L, "p_1_2", event)));
 
         verify(persistenceWatermarkService).markPersisted("p_1_2", 1000L);
         verify(acceptedMessageProjectionService).markPersisted(event);
-        verify(kafkaMessageStatePersister).persistStatusChangeEvent(pendingEvent);
+        verify(messageMapper).selectById(1000L);
     }
 
     @Test
@@ -323,7 +361,7 @@ class KafkaMessagePersisterTest {
                 .receiverId(9L)
                 .build();
 
-        String conversationId = ReflectionTestUtils.invokeMethod(persister, "resolveConversationId", event);
+        String conversationId = ReflectionTestUtils.invokeMethod(orchestrator, "resolveConversationId", event);
 
         assertEquals("p_5_9", conversationId);
     }
@@ -339,8 +377,8 @@ class KafkaMessagePersisterTest {
                 .groupId(8L)
                 .build();
 
-        assertEquals("p_5_9", ReflectionTestUtils.invokeMethod(persister, "resolveConversationId", privateEvent));
-        assertEquals("g_8", ReflectionTestUtils.invokeMethod(persister, "resolveConversationId", groupEvent));
+        assertEquals("p_5_9", ReflectionTestUtils.invokeMethod(orchestrator, "resolveConversationId", privateEvent));
+        assertEquals("g_8", ReflectionTestUtils.invokeMethod(orchestrator, "resolveConversationId", groupEvent));
     }
 
     @Test
@@ -353,9 +391,9 @@ class KafkaMessagePersisterTest {
                 .build();
 
         assertThrows(IllegalArgumentException.class,
-                () -> ReflectionTestUtils.invokeMethod(persister, "resolveConversationId", invalidPrivateEvent));
+                () -> ReflectionTestUtils.invokeMethod(orchestrator, "resolveConversationId", invalidPrivateEvent));
         assertThrows(IllegalArgumentException.class,
-                () -> ReflectionTestUtils.invokeMethod(persister, "resolveConversationId", invalidGroupEvent));
+                () -> ReflectionTestUtils.invokeMethod(orchestrator, "resolveConversationId", invalidGroupEvent));
     }
 
     private ConsumerRecord<String, MessageEvent> record(int partition, long offset, String key, MessageEvent event) {
@@ -384,5 +422,13 @@ class KafkaMessagePersisterTest {
                 .createdTime(LocalDateTime.of(2026, 4, 16, 10, 0))
                 .updatedTime(LocalDateTime.of(2026, 4, 16, 10, 0))
                 .build();
+    }
+
+    private Message persistedMessage(Long messageId, Integer status, LocalDateTime updatedTime) {
+        Message message = new Message();
+        message.setId(messageId);
+        message.setStatus(status);
+        message.setUpdatedTime(updatedTime);
+        return message;
     }
 }

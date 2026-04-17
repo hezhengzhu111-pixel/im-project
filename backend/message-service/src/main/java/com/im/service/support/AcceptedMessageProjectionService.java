@@ -9,14 +9,17 @@ import com.im.mapper.AcceptedMessageMapper;
 import com.im.mapper.MessageOutboxMapper;
 import com.im.message.entity.AcceptedMessage;
 import com.im.message.entity.MessageOutbox;
+import com.im.metrics.MessageServiceMetrics;
 import com.im.service.ConversationCacheUpdater;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 
 @Service
@@ -27,6 +30,9 @@ public class AcceptedMessageProjectionService {
     private final ConversationCacheUpdater conversationCacheUpdater;
     private final AcceptedMessageMapper acceptedMessageMapper;
     private final MessageOutboxMapper messageOutboxMapper;
+
+    @Autowired(required = false)
+    private MessageServiceMetrics metrics;
 
     @Value("${im.kafka.chat-topic:im-chat-topic}")
     private String chatTopic = "im-chat-topic";
@@ -129,6 +135,7 @@ public class AcceptedMessageProjectionService {
         MessageEvent normalizedEvent = normalizeEvent(event);
         MessageDTO payload = normalizedEvent.getPayload();
         applyAckStage(payload, MessageDTO.ACK_STAGE_PERSISTED);
+        recordAcceptedToPersistedLatency(normalizedEvent.getMessageId());
         acceptedMessageMapper.updateAckStageById(normalizedEvent.getMessageId(), MessageDTO.ACK_STAGE_PERSISTED);
         messageOutboxMapper.markPersistedById(normalizedEvent.getMessageId());
         hotMessageRedisRepository.saveHotMessage(payload);
@@ -139,6 +146,19 @@ public class AcceptedMessageProjectionService {
                     normalizedEvent.getMessageId()
             );
         }
+    }
+
+    private void recordAcceptedToPersistedLatency(Long messageId) {
+        if (metrics == null || messageId == null) {
+            return;
+        }
+        AcceptedMessage acceptedMessage = acceptedMessageMapper.selectById(messageId);
+        if (acceptedMessage == null || acceptedMessage.getCreatedTime() == null) {
+            return;
+        }
+        metrics.recordAcceptedToPersistedLatency(
+                Duration.between(acceptedMessage.getCreatedTime(), LocalDateTime.now())
+        );
     }
 
     private MessageEvent normalizeEvent(MessageEvent event) {

@@ -2,6 +2,7 @@ package com.im.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.dto.MessageDTO;
+import com.im.enums.CommonErrorCode;
 import com.im.exception.GlobalExceptionHandler;
 import com.im.filter.InternalRequestBodyCachingFilter;
 import com.im.interceptor.JwtAuthInterceptor;
@@ -19,15 +20,16 @@ import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(MockitoExtension.class)
@@ -87,7 +89,7 @@ class MessageInternalControllerSecurityTest {
         when(valueOperations.setIfAbsent(eq("im:internal:replay:" + nonce), eq("1"), any(java.time.Duration.class))).thenReturn(Boolean.TRUE);
         when(messageService.sendMessage(any(SendMessageCommand.class))).thenReturn(message);
 
-        mockMvc.perform(post("/internal/message/system/private")
+        MvcResult mvcResult = mockMvc.perform(post("/internal/message/system/private")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body)
                         .header(AuthHeaderUtil.INTERNAL_TIMESTAMP_HEADER, timestamp)
@@ -95,8 +97,12 @@ class MessageInternalControllerSecurityTest {
                         .header(AuthHeaderUtil.INTERNAL_SIGNATURE_HEADER,
                                 signature("POST", "/internal/message/system/private", body, timestamp, nonce)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.id").value(300));
+                .andReturn();
+
+        Map<?, ?> responseBody = new ObjectMapper().readValue(mvcResult.getResponse().getContentAsByteArray(), Map.class);
+        Map<?, ?> data = (Map<?, ?>) responseBody.get("data");
+        org.junit.jupiter.api.Assertions.assertEquals(200, responseBody.get("code"));
+        org.junit.jupiter.api.Assertions.assertEquals("300", String.valueOf(data.get("id")));
 
         verify(messageService).sendMessage(any(SendMessageCommand.class));
     }
@@ -113,7 +119,7 @@ class MessageInternalControllerSecurityTest {
                 .thenReturn(Boolean.TRUE, Boolean.FALSE);
         when(messageService.sendMessage(any(SendMessageCommand.class))).thenReturn(message);
 
-        mockMvc.perform(post("/internal/message/system/private")
+        MvcResult first = mockMvc.perform(post("/internal/message/system/private")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body)
                         .header(AuthHeaderUtil.INTERNAL_TIMESTAMP_HEADER, timestamp)
@@ -121,9 +127,11 @@ class MessageInternalControllerSecurityTest {
                         .header(AuthHeaderUtil.INTERNAL_SIGNATURE_HEADER,
                                 signature("POST", "/internal/message/system/private", body, timestamp, nonce)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200));
+                .andReturn();
+        Map<?, ?> firstBody = new ObjectMapper().readValue(first.getResponse().getContentAsByteArray(), Map.class);
+        org.junit.jupiter.api.Assertions.assertEquals(200, firstBody.get("code"));
 
-        mockMvc.perform(post("/internal/message/system/private")
+        MvcResult second = mockMvc.perform(post("/internal/message/system/private")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body)
                         .header(AuthHeaderUtil.INTERNAL_TIMESTAMP_HEADER, timestamp)
@@ -131,7 +139,10 @@ class MessageInternalControllerSecurityTest {
                         .header(AuthHeaderUtil.INTERNAL_SIGNATURE_HEADER,
                                 signature("POST", "/internal/message/system/private", body, timestamp, nonce)))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value(401));
+                .andReturn();
+        Map<?, ?> secondBody = new ObjectMapper().readValue(second.getResponse().getContentAsByteArray(), Map.class);
+        org.junit.jupiter.api.Assertions.assertEquals(CommonErrorCode.INTERNAL_AUTH_REJECTED.getCode(), secondBody.get("code"));
+        org.junit.jupiter.api.Assertions.assertEquals(CommonErrorCode.INTERNAL_AUTH_REJECTED.getMessage(), secondBody.get("message"));
 
         verify(messageService, times(1)).sendMessage(any(SendMessageCommand.class));
     }

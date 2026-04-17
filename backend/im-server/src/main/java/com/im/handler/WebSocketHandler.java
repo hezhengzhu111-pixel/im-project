@@ -3,6 +3,7 @@ package com.im.handler;
 import com.im.entity.UserSession;
 import com.im.enums.UserStatus;
 import com.im.service.IImService;
+import com.im.websocket.WebSocketErrorSemantics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -62,8 +63,9 @@ public class WebSocketHandler implements org.springframework.web.socket.WebSocke
             return;
         }
         if (!imService.isSessionActive(userId, session.getId())) {
-            log.debug("Ignore websocket message from stale session. userId={}, sessionId={}", userId, session.getId());
-            cleanupSession(session, CloseStatus.SESSION_NOT_RELIABLE.withReason("stale session"));
+            log.debug("Ignore websocket message from stale session. errorCode={}, userId={}, sessionId={}",
+                    WebSocketErrorSemantics.SESSION_ERROR_CODE, userId, session.getId());
+            cleanupSession(session, WebSocketErrorSemantics.SESSION_CLOSED_OR_STALE);
             return;
         }
 
@@ -79,9 +81,12 @@ public class WebSocketHandler implements org.springframework.web.socket.WebSocke
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) {
         String userId = extractUserIdFromSession(session);
-        log.error("WebSocket transport error. userId={}, sessionId={}, error={}",
-                userId, session == null ? null : session.getId(), exception == null ? null : exception.getMessage());
-        cleanupSession(session, CloseStatus.SERVER_ERROR.withReason("transport error"));
+        log.error("WebSocket transport error. errorCode={}, userId={}, sessionId={}, error={}",
+                WebSocketErrorSemantics.SESSION_ERROR_CODE,
+                userId,
+                session == null ? null : session.getId(),
+                exception == null ? null : exception.getMessage());
+        cleanupSession(session, WebSocketErrorSemantics.SESSION_CLOSED_OR_STALE);
     }
 
     @Override

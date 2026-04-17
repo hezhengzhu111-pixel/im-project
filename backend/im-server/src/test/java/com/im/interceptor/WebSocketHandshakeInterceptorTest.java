@@ -3,13 +3,14 @@ package com.im.interceptor;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.dto.WsTicketConsumeResultDTO;
 import com.im.dto.request.ConsumeWsTicketRequest;
+import com.im.enums.CommonErrorCode;
 import com.im.feign.AuthServiceFeignClient;
 import com.im.metrics.ImServerMetrics;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,9 +20,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpRequest;
+import org.springframework.http.server.ServletServerHttpResponse;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.socket.WebSocketHandler;
 
@@ -35,30 +37,21 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class WebSocketHandshakeInterceptorTest {
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
     @Mock
     private AuthServiceFeignClient authServiceFeignClient;
-
-    @InjectMocks
-    private WebSocketHandshakeInterceptor interceptor;
-
-    @Mock
-    private ServletServerHttpRequest serverHttpRequest;
-
-    @Mock
-    private HttpServletRequest httpServletRequest;
-
-    @Mock
-    private ServerHttpResponse serverHttpResponse;
 
     @Mock
     private WebSocketHandler webSocketHandler;
 
-    private Map<String, Object> attributes;
+    @InjectMocks
+    private WebSocketHandshakeInterceptor interceptor;
+
     private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
-        attributes = new HashMap<>();
         meterRegistry = new SimpleMeterRegistry();
         ReflectionTestUtils.setField(interceptor, "metrics", new ImServerMetrics(meterRegistry));
         ReflectionTestUtils.setField(interceptor, "wsTicketCookieName", "IM_WS_TICKET");
@@ -73,90 +66,74 @@ class WebSocketHandshakeInterceptorTest {
                 "allowedOrigins",
                 "http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080"
         );
-        lenient().when(serverHttpRequest.getServletRequest()).thenReturn(httpServletRequest);
-        lenient().when(httpServletRequest.getHeader(HttpHeaders.ORIGIN)).thenReturn("http://localhost");
-        lenient().when(httpServletRequest.getHeader("X-User-Id")).thenReturn("123");
     }
 
     @Test
-    void beforeHandshake_NotServletRequest_ShouldReturnFalse() {
-        org.springframework.http.server.ServerHttpRequest nonServletRequest = mock(org.springframework.http.server.ServerHttpRequest.class);
+    void beforeHandshake_NoTicket_ShouldReturnUnifiedWsTicketError() throws Exception {
+        HandshakeFixture fixture = fixture();
 
-        boolean result = interceptor.beforeHandshake(nonServletRequest, serverHttpResponse, webSocketHandler, attributes);
-
-        assertFalse(result);
-        assertEquals(1.0, handshakeCount("failure", "unsupported_request"));
-    }
-
-    @Test
-    void beforeHandshake_NoTicket_ShouldReturnFalseAndUnauthorized() {
-        boolean result = interceptor.beforeHandshake(serverHttpRequest, serverHttpResponse, webSocketHandler, attributes);
+        boolean result = interceptor.beforeHandshake(fixture.request(), fixture.response(), webSocketHandler, fixture.attributes());
 
         assertFalse(result);
-        verify(serverHttpResponse).setStatusCode(HttpStatus.UNAUTHORIZED);
+        assertError(fixture.servletResponse(), CommonErrorCode.WS_TICKET_INVALID_OR_EXPIRED);
         assertEquals(1.0, handshakeCount("failure", "missing_ticket"));
     }
 
     @Test
-    void beforeHandshake_MissingTrustedUserHeader_ShouldReturnUnauthorized() {
-        when(httpServletRequest.getHeader("X-User-Id")).thenReturn(null);
-        when(httpServletRequest.getCookies()).thenReturn(new Cookie[]{
-                new Cookie("IM_WS_TICKET", "cookie-ticket")
-        });
+    void beforeHandshake_MissingTrustedUserHeader_ShouldReturnInternalAuthRejected() throws Exception {
+        HandshakeFixture fixture = fixture();
+        fixture.servletRequest().setCookies(new Cookie("IM_WS_TICKET", "cookie-ticket"));
+        fixture.servletRequest().removeHeader("X-User-Id");
 
-        boolean result = interceptor.beforeHandshake(serverHttpRequest, serverHttpResponse, webSocketHandler, attributes);
+        boolean result = interceptor.beforeHandshake(fixture.request(), fixture.response(), webSocketHandler, fixture.attributes());
 
         assertFalse(result);
-        verify(serverHttpResponse).setStatusCode(HttpStatus.UNAUTHORIZED);
+        assertError(fixture.servletResponse(), CommonErrorCode.INTERNAL_AUTH_REJECTED);
         verify(authServiceFeignClient, never()).consumeWsTicket(any());
         assertEquals(1.0, handshakeCount("failure", "invalid_user"));
     }
 
     @Test
-    void beforeHandshake_InvalidTicket_ShouldReturnUnauthorized() {
-        when(httpServletRequest.getCookies()).thenReturn(new Cookie[]{
-                new Cookie("IM_WS_TICKET", "cookie-ticket")
-        });
+    void beforeHandshake_InvalidTicket_ShouldReturnUnifiedWsTicketError() throws Exception {
+        HandshakeFixture fixture = fixture();
+        fixture.servletRequest().setCookies(new Cookie("IM_WS_TICKET", "cookie-ticket"));
         when(authServiceFeignClient.consumeWsTicket(any())).thenReturn(WsTicketConsumeResultDTO.builder()
                 .valid(false)
                 .status(WsTicketConsumeResultDTO.STATUS_INVALID)
-                .error("ticket鏃犳晥鎴栧凡杩囨湡")
+                .error("invalid")
                 .build());
 
-        boolean result = interceptor.beforeHandshake(serverHttpRequest, serverHttpResponse, webSocketHandler, attributes);
+        boolean result = interceptor.beforeHandshake(fixture.request(), fixture.response(), webSocketHandler, fixture.attributes());
 
         assertFalse(result);
-        verify(serverHttpResponse).setStatusCode(HttpStatus.UNAUTHORIZED);
+        assertError(fixture.servletResponse(), CommonErrorCode.WS_TICKET_INVALID_OR_EXPIRED);
         assertEquals(1.0, handshakeCount("failure", "ticket_invalid"));
     }
 
     @Test
-    void beforeHandshake_UserIdMismatch_ShouldReturnForbidden() {
-        when(httpServletRequest.getCookies()).thenReturn(new Cookie[]{
-                new Cookie("IM_WS_TICKET", "cookie-ticket")
-        });
+    void beforeHandshake_UserIdMismatch_ShouldReturnInternalAuthRejected() throws Exception {
+        HandshakeFixture fixture = fixture();
+        fixture.servletRequest().setCookies(new Cookie("IM_WS_TICKET", "cookie-ticket"));
         when(authServiceFeignClient.consumeWsTicket(any())).thenReturn(WsTicketConsumeResultDTO.builder()
                 .valid(false)
                 .status(WsTicketConsumeResultDTO.STATUS_USER_MISMATCH)
                 .userId(456L)
                 .username("mallory")
-                .error("ticket与userId不匹配")
+                .error("ticket-user-mismatch")
                 .build());
 
-        boolean result = interceptor.beforeHandshake(serverHttpRequest, serverHttpResponse, webSocketHandler, attributes);
+        boolean result = interceptor.beforeHandshake(fixture.request(), fixture.response(), webSocketHandler, fixture.attributes());
 
         assertFalse(result);
-        verify(serverHttpResponse).setStatusCode(HttpStatus.FORBIDDEN);
+        assertError(fixture.servletResponse(), CommonErrorCode.INTERNAL_AUTH_REJECTED);
         assertEquals(1.0, handshakeCount("failure", "ticket_mismatch"));
     }
 
     @Test
     void beforeHandshake_ForgedUrlUserIdShouldNotAffectFinalSessionUserId() {
-        HttpHeaders headers = new HttpHeaders();
-        when(serverHttpResponse.getHeaders()).thenReturn(headers);
-        when(httpServletRequest.getCookies()).thenReturn(new Cookie[]{
-                new Cookie("IM_WS_TICKET", "cookie-ticket")
-        });
+        HandshakeFixture fixture = fixture();
+        fixture.servletRequest().setRequestURI("/websocket/999999");
+        fixture.servletRequest().setCookies(new Cookie("IM_WS_TICKET", "cookie-ticket"));
         when(authServiceFeignClient.consumeWsTicket(any())).thenReturn(WsTicketConsumeResultDTO.builder()
                 .valid(true)
                 .status(WsTicketConsumeResultDTO.STATUS_VALID)
@@ -164,19 +141,18 @@ class WebSocketHandshakeInterceptorTest {
                 .username("alice")
                 .build());
 
-        boolean result = interceptor.beforeHandshake(serverHttpRequest, serverHttpResponse, webSocketHandler, attributes);
+        boolean result = interceptor.beforeHandshake(fixture.request(), fixture.response(), webSocketHandler, fixture.attributes());
 
         assertTrue(result);
-        assertEquals("123", attributes.get("userId"));
-        assertEquals("alice", attributes.get("username"));
-        verify(httpServletRequest, never()).getParameter("ticket");
+        assertEquals("123", fixture.attributes().get("userId"));
+        assertEquals("alice", fixture.attributes().get("username"));
 
         ArgumentCaptor<ConsumeWsTicketRequest> captor = ArgumentCaptor.forClass(ConsumeWsTicketRequest.class);
         verify(authServiceFeignClient).consumeWsTicket(captor.capture());
         assertEquals("cookie-ticket", captor.getValue().getTicket());
         assertEquals(123L, captor.getValue().getUserId());
 
-        String setCookie = headers.getFirst(HttpHeaders.SET_COOKIE);
+        String setCookie = fixture.response().getHeaders().getFirst(HttpHeaders.SET_COOKIE);
         assertNotNull(setCookie);
         assertTrue(setCookie.contains("IM_WS_TICKET="));
         assertTrue(setCookie.contains("Max-Age=0"));
@@ -185,26 +161,24 @@ class WebSocketHandshakeInterceptorTest {
     }
 
     @Test
-    void beforeHandshake_BlankOriginShouldBeRejectedByDefault() {
-        when(httpServletRequest.getHeader(HttpHeaders.ORIGIN)).thenReturn(" ");
+    void beforeHandshake_BlankOriginShouldBeRejectedByDefault() throws Exception {
+        HandshakeFixture fixture = fixture();
+        fixture.servletRequest().removeHeader(HttpHeaders.ORIGIN);
 
-        boolean result = interceptor.beforeHandshake(serverHttpRequest, serverHttpResponse, webSocketHandler, attributes);
+        boolean result = interceptor.beforeHandshake(fixture.request(), fixture.response(), webSocketHandler, fixture.attributes());
 
         assertFalse(result);
-        verify(serverHttpResponse).setStatusCode(HttpStatus.FORBIDDEN);
+        assertError(fixture.servletResponse(), CommonErrorCode.WS_ORIGIN_NOT_ALLOWED);
         verify(authServiceFeignClient, never()).consumeWsTicket(any());
         assertEquals(1.0, handshakeCount("failure", "origin_denied"));
     }
 
     @Test
     void beforeHandshake_BlankOriginShouldPassWhenExplicitlyAllowed() {
-        HttpHeaders headers = new HttpHeaders();
+        HandshakeFixture fixture = fixture();
         ReflectionTestUtils.setField(interceptor, "allowBlankOrigin", true);
-        when(serverHttpResponse.getHeaders()).thenReturn(headers);
-        when(httpServletRequest.getHeader(HttpHeaders.ORIGIN)).thenReturn(null);
-        when(httpServletRequest.getCookies()).thenReturn(new Cookie[]{
-                new Cookie("IM_WS_TICKET", "cookie-ticket")
-        });
+        fixture.servletRequest().removeHeader(HttpHeaders.ORIGIN);
+        fixture.servletRequest().setCookies(new Cookie("IM_WS_TICKET", "cookie-ticket"));
         when(authServiceFeignClient.consumeWsTicket(any())).thenReturn(WsTicketConsumeResultDTO.builder()
                 .valid(true)
                 .status(WsTicketConsumeResultDTO.STATUS_VALID)
@@ -212,30 +186,31 @@ class WebSocketHandshakeInterceptorTest {
                 .username("alice")
                 .build());
 
-        boolean result = interceptor.beforeHandshake(serverHttpRequest, serverHttpResponse, webSocketHandler, attributes);
+        boolean result = interceptor.beforeHandshake(fixture.request(), fixture.response(), webSocketHandler, fixture.attributes());
 
         assertTrue(result);
-        assertEquals("123", attributes.get("userId"));
-        assertEquals("alice", attributes.get("username"));
+        assertEquals("123", fixture.attributes().get("userId"));
+        assertEquals("alice", fixture.attributes().get("username"));
     }
 
     @Test
-    void beforeHandshake_QueryTicketShouldBeRejectedByDefault() {
-        boolean result = interceptor.beforeHandshake(serverHttpRequest, serverHttpResponse, webSocketHandler, attributes);
+    void beforeHandshake_QueryTicketShouldBeRejectedByDefault() throws Exception {
+        HandshakeFixture fixture = fixture();
+        fixture.servletRequest().setParameter("ticket", "query-ticket");
+
+        boolean result = interceptor.beforeHandshake(fixture.request(), fixture.response(), webSocketHandler, fixture.attributes());
 
         assertFalse(result);
-        verify(serverHttpResponse).setStatusCode(HttpStatus.UNAUTHORIZED);
-        verify(httpServletRequest, never()).getParameter("ticket");
+        assertError(fixture.servletResponse(), CommonErrorCode.WS_QUERY_TICKET_NOT_ALLOWED);
         verify(authServiceFeignClient, never()).consumeWsTicket(any());
         assertEquals(1.0, handshakeCount("failure", "missing_ticket"));
     }
 
     @Test
     void beforeHandshake_QueryTicketShouldPassWhenExplicitlyAllowed() {
-        HttpHeaders headers = new HttpHeaders();
+        HandshakeFixture fixture = fixture();
         ReflectionTestUtils.setField(interceptor, "allowQueryTicket", true);
-        when(serverHttpResponse.getHeaders()).thenReturn(headers);
-        when(httpServletRequest.getParameter("ticket")).thenReturn("query-ticket");
+        fixture.servletRequest().setParameter("ticket", "query-ticket");
         when(authServiceFeignClient.consumeWsTicket(any())).thenReturn(WsTicketConsumeResultDTO.builder()
                 .valid(true)
                 .status(WsTicketConsumeResultDTO.STATUS_VALID)
@@ -243,12 +218,9 @@ class WebSocketHandshakeInterceptorTest {
                 .username("alice")
                 .build());
 
-        boolean result = interceptor.beforeHandshake(serverHttpRequest, serverHttpResponse, webSocketHandler, attributes);
+        boolean result = interceptor.beforeHandshake(fixture.request(), fixture.response(), webSocketHandler, fixture.attributes());
 
         assertTrue(result);
-        assertEquals("123", attributes.get("userId"));
-        assertEquals("alice", attributes.get("username"));
-
         ArgumentCaptor<ConsumeWsTicketRequest> captor = ArgumentCaptor.forClass(ConsumeWsTicketRequest.class);
         verify(authServiceFeignClient).consumeWsTicket(captor.capture());
         assertEquals("query-ticket", captor.getValue().getTicket());
@@ -256,23 +228,24 @@ class WebSocketHandshakeInterceptorTest {
     }
 
     @Test
-    void beforeHandshake_NonWhitelistOrigin_ShouldReturnForbiddenAndNotConsumeTicket() {
-        when(httpServletRequest.getHeader(HttpHeaders.ORIGIN)).thenReturn("https://evil.example");
+    void beforeHandshake_NonWhitelistOrigin_ShouldReturnForbiddenAndNotConsumeTicket() throws Exception {
+        HandshakeFixture fixture = fixture();
+        fixture.servletRequest().removeHeader(HttpHeaders.ORIGIN);
+        fixture.servletRequest().addHeader(HttpHeaders.ORIGIN, "https://evil.example");
 
-        boolean result = interceptor.beforeHandshake(serverHttpRequest, serverHttpResponse, webSocketHandler, attributes);
+        boolean result = interceptor.beforeHandshake(fixture.request(), fixture.response(), webSocketHandler, fixture.attributes());
 
         assertFalse(result);
-        verify(serverHttpResponse).setStatusCode(HttpStatus.FORBIDDEN);
+        assertError(fixture.servletResponse(), CommonErrorCode.WS_ORIGIN_NOT_ALLOWED);
         verify(authServiceFeignClient, never()).consumeWsTicket(any());
         assertEquals(1.0, handshakeCount("failure", "origin_denied"));
     }
 
     @Test
     void beforeHandshake_InvalidTicketLogsShouldMaskTicketAndKeepStructuredFields() {
+        HandshakeFixture fixture = fixture();
         String rawTicket = "raw-ticket-value-123";
-        when(httpServletRequest.getCookies()).thenReturn(new Cookie[]{
-                new Cookie("IM_WS_TICKET", rawTicket)
-        });
+        fixture.servletRequest().setCookies(new Cookie("IM_WS_TICKET", rawTicket));
         when(authServiceFeignClient.consumeWsTicket(any())).thenReturn(WsTicketConsumeResultDTO.builder()
                 .valid(false)
                 .status(WsTicketConsumeResultDTO.STATUS_INVALID)
@@ -281,18 +254,40 @@ class WebSocketHandshakeInterceptorTest {
         ListAppender<ILoggingEvent> appender = attachListAppender();
 
         try {
-            boolean result = interceptor.beforeHandshake(serverHttpRequest, serverHttpResponse, webSocketHandler, attributes);
+            boolean result = interceptor.beforeHandshake(fixture.request(), fixture.response(), webSocketHandler, fixture.attributes());
 
             assertFalse(result);
             String joinedLogs = joinedMessages(appender);
             assertFalse(joinedLogs.contains(rawTicket));
             assertFalse(joinedLogs.contains("detailed-ticket-invalid-reason"));
+            assertTrue(joinedLogs.contains("errorCode=WS_TICKET_INVALID_OR_EXPIRED"));
             assertTrue(joinedLogs.contains("reason=ticket_invalid"));
             assertTrue(joinedLogs.contains("userId=123"));
             assertTrue(joinedLogs.contains("ticketSummary=sha256:"));
         } finally {
             detachListAppender(appender);
         }
+    }
+
+    private HandshakeFixture fixture() {
+        MockHttpServletRequest servletRequest = new MockHttpServletRequest("GET", "/websocket/123");
+        servletRequest.addHeader(HttpHeaders.ORIGIN, "http://localhost");
+        servletRequest.addHeader("X-User-Id", "123");
+        MockHttpServletResponse servletResponse = new MockHttpServletResponse();
+        return new HandshakeFixture(
+                servletRequest,
+                servletResponse,
+                new ServletServerHttpRequest(servletRequest),
+                new ServletServerHttpResponse(servletResponse),
+                new HashMap<>()
+        );
+    }
+
+    private void assertError(MockHttpServletResponse response, CommonErrorCode errorCode) throws Exception {
+        assertEquals(errorCode.getHttpStatus().value(), response.getStatus());
+        Map<?, ?> body = objectMapper.readValue(response.getContentAsByteArray(), Map.class);
+        assertEquals(errorCode.getCode(), body.get("code"));
+        assertEquals(errorCode.getMessage(), body.get("message"));
     }
 
     private double handshakeCount(String result, String reason) {
@@ -318,5 +313,12 @@ class WebSocketHandshakeInterceptorTest {
             builder.append(event.getFormattedMessage()).append('\n');
         }
         return builder.toString();
+    }
+
+    private record HandshakeFixture(MockHttpServletRequest servletRequest,
+                                    MockHttpServletResponse servletResponse,
+                                    ServletServerHttpRequest request,
+                                    ServletServerHttpResponse response,
+                                    Map<String, Object> attributes) {
     }
 }

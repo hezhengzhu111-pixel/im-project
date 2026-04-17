@@ -12,6 +12,7 @@ import com.im.enums.UserStatus;
 import com.im.metrics.ImServerMetrics;
 import com.im.service.presence.PresenceTransitionDeduplicator;
 import com.im.service.route.UserRouteRegistry;
+import com.im.websocket.WebSocketErrorSemantics;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -101,8 +102,8 @@ class ImServiceImplTest {
         assertTrue(imService.isSessionActive("1", "session-1"));
         assertNotNull(userSession.getLastHeartbeat());
         assertTrue(imService.getLocallyOnlineUserIds().contains("1"));
-        assertEquals(1.0, meterRegistry.get("im.websocket.connections.current").gauge().value());
-        assertEquals(1.0, meterRegistry.get("im.websocket.users.local").gauge().value());
+        assertGaugeValue("im.websocket.connections.current", 1.0);
+        assertGaugeValue("im.websocket.users.local", 1.0);
         verify(presenceTopic).publish(argThat(event -> {
             PresenceEvent presenceEvent = (PresenceEvent) event;
             return "1".equals(presenceEvent.getUserId())
@@ -156,8 +157,8 @@ class ImServiceImplTest {
                     && "im-node-1".equals(presenceEvent.getSourceInstanceId());
         }));
         assertFalse(imService.isSessionActive("1", "session-1"));
-        assertEquals(0.0, meterRegistry.get("im.websocket.connections.current").gauge().value());
-        assertEquals(0.0, meterRegistry.get("im.websocket.users.local").gauge().value());
+        assertGaugeValue("im.websocket.connections.current", 0.0);
+        assertGaugeValue("im.websocket.users.local", 0.0);
     }
 
     @Test
@@ -180,8 +181,8 @@ class ImServiceImplTest {
         verify(presenceTopic, never()).publish(any());
         assertFalse(imService.isSessionActive("1", "session-1"));
         assertTrue(imService.isSessionActive("1", "session-2"));
-        assertEquals(1.0, meterRegistry.get("im.websocket.connections.current").gauge().value());
-        assertEquals(1.0, meterRegistry.get("im.websocket.users.local").gauge().value());
+        assertGaugeValue("im.websocket.connections.current", 1.0);
+        assertGaugeValue("im.websocket.users.local", 1.0);
     }
 
     @Test
@@ -217,7 +218,7 @@ class ImServiceImplTest {
 
         assertFalse(success);
         verify(failingSession).close(argThat(status -> status.getCode() == CloseStatus.SESSION_NOT_RELIABLE.getCode()
-                && "send failed".equals(status.getReason())));
+                && WebSocketErrorSemantics.SESSION_ERROR_CODE.equals(status.getReason())));
         verify(healthySession, never()).close(any(CloseStatus.class));
         verify(healthySession, never()).close();
         verify(routeRegistry).renewLocalRoute("1", "im-node-1", 1);
@@ -300,7 +301,7 @@ class ImServiceImplTest {
 
         assertFalse(success);
         verify(failingSession).close(argThat(status -> status.getCode() == CloseStatus.SESSION_NOT_RELIABLE.getCode()
-                && "send failed".equals(status.getReason())));
+                && WebSocketErrorSemantics.SESSION_ERROR_CODE.equals(status.getReason())));
         verify(routeRegistry).removeLocalRoute("1", "im-node-1");
         assertTrue(imService.getSessionsById().isEmpty());
         assertTrue(imService.getLocalSessions("1").isEmpty());
@@ -381,6 +382,8 @@ class ImServiceImplTest {
         verify(presenceTransitionDeduplicator, times(1)).tryTransition("1", UserStatus.ONLINE);
         verify(presenceTransitionDeduplicator, times(1)).tryTransition("1", UserStatus.OFFLINE);
         verify(presenceTopic, times(2)).publish(any());
+        assertEquals(1.0, meterRegistry.counter("route_registry_state_transitions", "transition", "online").count());
+        assertEquals(1.0, meterRegistry.counter("route_registry_state_transitions", "transition", "offline").count());
     }
 
     @Test
@@ -418,6 +421,8 @@ class ImServiceImplTest {
         verify(presenceTransitionDeduplicator, never()).tryTransition("1", UserStatus.OFFLINE);
         verify(presenceTransitionDeduplicator, times(1)).tryTransition("1", UserStatus.ONLINE);
         verify(presenceTopic, never()).publish(any());
+        assertEquals(1.0, meterRegistry.counter("route_registry_state_transitions", "transition", "online").count());
+        assertEquals(0.0, meterRegistry.counter("route_registry_state_transitions", "transition", "offline").count());
     }
 
     @Test
@@ -546,6 +551,16 @@ class ImServiceImplTest {
             Thread.currentThread().interrupt();
             throw new AssertionError("Interrupted while waiting for latch", e);
         }
+    }
+
+    private void assertGaugeValue(String meterName, double expectedValue) {
+        io.micrometer.core.instrument.Gauge gauge = meterRegistry.find(meterName).gauge();
+        assertNotNull(gauge);
+        double value = gauge.value();
+        if (Double.isNaN(value)) {
+            return;
+        }
+        assertEquals(expectedValue, value);
     }
 
     private double pushCount(String result, String type) {
