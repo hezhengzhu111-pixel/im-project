@@ -7,6 +7,7 @@ import com.im.enums.MessageEventType;
 import com.im.enums.MessageType;
 import com.im.message.entity.Message;
 import com.im.service.MessagePersistenceService;
+import com.im.service.support.AcceptedMessageProjectionService;
 import com.im.service.support.PendingStatusEventService;
 import com.im.service.support.PersistenceWatermarkService;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -17,14 +18,16 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -43,6 +46,9 @@ class KafkaMessagePersisterTest {
     @Mock
     private KafkaMessageStatePersister kafkaMessageStatePersister;
 
+    @Mock
+    private AcceptedMessageProjectionService acceptedMessageProjectionService;
+
     private KafkaMessagePersister persister;
 
     @BeforeEach
@@ -51,7 +57,8 @@ class KafkaMessagePersisterTest {
                 messagePersistenceService,
                 persistenceWatermarkService,
                 pendingStatusEventService,
-                kafkaMessageStatePersister
+                kafkaMessageStatePersister,
+                acceptedMessageProjectionService
         );
     }
 
@@ -90,9 +97,9 @@ class KafkaMessagePersisterTest {
         when(pendingStatusEventService.listByMessageId(any())).thenReturn(List.of());
 
         persister.persistMessages(List.of(
-                record("p_1_2", messageEvent),
-                record("g_8", groupEvent),
-                record("p_1_2", readEvent)
+                record(0, 0L, "p_1_2", messageEvent),
+                record(1, 0L, "g_8", groupEvent),
+                record(0, 1L, "p_1_2", readEvent)
         ));
 
         ArgumentCaptor<List<Message>> captor = ArgumentCaptor.forClass(List.class);
@@ -107,56 +114,150 @@ class KafkaMessagePersisterTest {
         assertEquals(true, saved.get(1).getIsGroupChat());
         verify(persistenceWatermarkService).markPersisted("p_1_2", 1001L);
         verify(persistenceWatermarkService).markPersisted("g_8", 1002L);
+        verify(acceptedMessageProjectionService).markPersisted(messageEvent);
+        verify(acceptedMessageProjectionService).markPersisted(groupEvent);
     }
 
     @Test
-    void persistMessagesShouldFallbackToSingleSaveAndMarkSuccessAndDuplicatesAsPersisted() {
-        MessageEvent duplicated = MessageEvent.builder()
-                .eventType(MessageEventType.MESSAGE)
-                .messageId(1000L)
-                .senderId(1L)
-                .receiverId(2L)
-                .clientMsgId("client-dup")
-                .messageType(MessageType.TEXT)
-                .content("hello")
-                .build();
-        MessageEvent inserted = MessageEvent.builder()
-                .eventType(MessageEventType.MESSAGE)
-                .messageId(1001L)
-                .senderId(1L)
-                .receiverId(3L)
-                .clientMsgId("client-new")
-                .messageType(MessageType.TEXT)
-                .content("world")
-                .build();
-        doThrow(new DuplicateKeyException("duplicate")).when(messagePersistenceService).saveBatch(any());
+    void persistMessageBatchShouldIsolateMixedSuccessDuplicateAndPoisonRecords() {
+        MessageEvent success = event(1001L, 1L, 2L, "client-success", "hello");
+        MessageEvent duplicate = event(1002L, 1L, 3L, "client-dup", "dup");
+        MessageEvent poison = event(1003L, 1L, 4L, "client-poison", "bad");
+        doThrow(new DataIntegrityViolationException("batch contains invalid row"))
+                .when(messagePersistenceService).saveBatch(any());
         when(messagePersistenceService.save(any(Message.class))).thenAnswer(invocation -> {
             Message message = invocation.getArgument(0);
-            if (Long.valueOf(1000L).equals(message.getId())) {
-                throw new DuplicateKeyException("duplicate");
+            if (Long.valueOf(1001L).equals(message.getId())) {
+                return true;
+            }
+            if (Long.valueOf(1002L).equals(message.getId())) {
+                throw new DuplicateKeyException("duplicate row");
+            }
+            throw new DataIntegrityViolationException("bad payload");
+        });
+        when(pendingStatusEventService.listByMessageId(any())).thenReturn(List.of());
+
+        KafkaMessagePersistBatchResult result = persister.persistMessageBatch(List.of(
+                record(0, 0L, "p_1_2", success),
+                record(0, 1L, "p_1_3", duplicate),
+                record(0, 2L, "p_1_4", poison)
+        ));
+
+        assertEquals(3, result.getMessageCount());
+        assertEquals(1, result.getSuccessCount());
+        assertEquals(1, result.getDuplicateCount());
+        assertEquals(1, result.getPoisonCount());
+        assertEquals(0, result.getRetryableCount());
+        assertEquals(1001L, result.getSuccessDetails().get(0).messageId());
+        assertEquals(1002L, result.getDuplicateDetails().get(0).messageId());
+        assertTrue(result.getPoisonDetails().get(0).reason().contains("bad payload"));
+        verify(messagePersistenceService).saveBatch(any());
+        verify(messagePersistenceService, times(3)).save(any(Message.class));
+        verify(persistenceWatermarkService).markPersisted("p_1_2", 1001L);
+        verify(persistenceWatermarkService).markPersisted("p_1_3", 1002L);
+        verify(persistenceWatermarkService, never()).markPersisted("p_1_4", 1003L);
+        verify(acceptedMessageProjectionService).markPersisted(success);
+        verify(acceptedMessageProjectionService).markPersisted(duplicate);
+        verify(acceptedMessageProjectionService, never()).markPersisted(poison);
+    }
+
+    @Test
+    void persistMessageBatchShouldRetryRecoverableRowsWithoutPermanentBatchFailureAndPreservePartitionOrder() {
+        MessageEvent first = event(2001L, 1L, 2L, "client-1", "first");
+        MessageEvent retryable = event(2002L, 1L, 2L, "client-2", "second");
+        MessageEvent deferred = event(2003L, 1L, 2L, "client-3", "third");
+        doThrow(new DataIntegrityViolationException("fallback to row mode"))
+                .when(messagePersistenceService).saveBatch(any());
+        AtomicInteger round = new AtomicInteger(1);
+        when(messagePersistenceService.save(any(Message.class))).thenAnswer(invocation -> {
+            Message message = invocation.getArgument(0);
+            if (round.get() == 1) {
+                if (Long.valueOf(2001L).equals(message.getId())) {
+                    return true;
+                }
+                if (Long.valueOf(2002L).equals(message.getId())) {
+                    throw new TransientDataAccessResourceException("db busy");
+                }
+                throw new AssertionError("later message in same partition should be deferred");
+            }
+            if (Long.valueOf(2001L).equals(message.getId())) {
+                throw new DuplicateKeyException("already persisted");
             }
             return true;
         });
         when(pendingStatusEventService.listByMessageId(any())).thenReturn(List.of());
+        List<ConsumerRecord<String, MessageEvent>> records = List.of(
+                record(0, 0L, "p_1_2", first),
+                record(0, 1L, "p_1_2", retryable),
+                record(0, 2L, "p_1_2", deferred)
+        );
 
-        persister.persistMessages(List.of(record("p_1_2", duplicated), record("p_1_3", inserted)));
+        KafkaMessagePersistBatchResult firstAttempt = persister.persistMessageBatch(records);
 
-        verify(messagePersistenceService).saveBatch(any());
+        assertEquals(1, firstAttempt.getSuccessCount());
+        assertEquals(0, firstAttempt.getDuplicateCount());
+        assertEquals(0, firstAttempt.getPoisonCount());
+        assertEquals(2, firstAttempt.getRetryableCount());
+        assertEquals(2002L, firstAttempt.getRetryableDetails().get(0).messageId());
+        assertTrue(firstAttempt.getRetryableDetails().get(1).reason().contains("deferred after retryable"));
         verify(messagePersistenceService, times(2)).save(any(Message.class));
-        verify(persistenceWatermarkService).markPersisted("p_1_2", 1000L);
-        verify(persistenceWatermarkService).markPersisted("p_1_3", 1001L);
+        verify(persistenceWatermarkService).markPersisted("p_1_2", 2001L);
+        verify(acceptedMessageProjectionService).markPersisted(first);
+        verify(acceptedMessageProjectionService, never()).markPersisted(retryable);
+        verify(acceptedMessageProjectionService, never()).markPersisted(deferred);
+
+        clearInvocations(messagePersistenceService, persistenceWatermarkService, acceptedMessageProjectionService);
+        round.set(2);
+
+        KafkaMessagePersistBatchResult secondAttempt = persister.persistMessageBatch(records);
+
+        assertEquals(2, secondAttempt.getSuccessCount());
+        assertEquals(1, secondAttempt.getDuplicateCount());
+        assertEquals(0, secondAttempt.getPoisonCount());
+        assertEquals(0, secondAttempt.getRetryableCount());
+        verify(messagePersistenceService, times(3)).save(any(Message.class));
+        InOrder inOrder = inOrder(persistenceWatermarkService, acceptedMessageProjectionService);
+        inOrder.verify(persistenceWatermarkService).markPersisted("p_1_2", 2001L);
+        inOrder.verify(acceptedMessageProjectionService).markPersisted(first);
+        inOrder.verify(persistenceWatermarkService).markPersisted("p_1_2", 2002L);
+        inOrder.verify(acceptedMessageProjectionService).markPersisted(retryable);
+        inOrder.verify(persistenceWatermarkService).markPersisted("p_1_2", 2003L);
+        inOrder.verify(acceptedMessageProjectionService).markPersisted(deferred);
     }
 
     @Test
-    void persistMessagesShouldRethrowNonDuplicateExceptionFromSingleSaveFallback() {
-        MessageEvent event = minimalMessageEvent();
-        doThrow(new DuplicateKeyException("duplicate")).when(messagePersistenceService).saveBatch(any());
-        when(messagePersistenceService.save(any(Message.class))).thenThrow(new IllegalStateException("db down"));
+    void persistMessageBatchShouldClassifyWholeBatchRetryableErrorsWithoutSingleRowFallback() {
+        MessageEvent first = event(3001L, 1L, 2L, "client-1", "hello");
+        MessageEvent second = event(3002L, 1L, 3L, "client-2", "world");
+        doThrow(new TransientDataAccessResourceException("db unavailable"))
+                .when(messagePersistenceService).saveBatch(any());
 
-        assertThrows(IllegalStateException.class,
-                () -> persister.persistMessages(List.of(record("p_1_2", event))));
+        KafkaMessagePersistBatchResult result = persister.persistMessageBatch(List.of(
+                record(0, 0L, "p_1_2", first),
+                record(1, 0L, "p_1_3", second)
+        ));
 
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(0, result.getDuplicateCount());
+        assertEquals(0, result.getPoisonCount());
+        assertEquals(2, result.getRetryableCount());
+        assertTrue(result.getRetryableDetails().get(0).reason().contains("db unavailable"));
+        verify(messagePersistenceService).saveBatch(any());
+        verify(messagePersistenceService, never()).save(any(Message.class));
         verify(persistenceWatermarkService, never()).markPersisted(any(), any());
+    }
+
+    @Test
+    void persistMessagesShouldThrowWhenRetryableRowsRemain() {
+        MessageEvent event = event(4001L, 1L, 2L, "client-throw", "retry");
+        doThrow(new TransientDataAccessResourceException("db down"))
+                .when(messagePersistenceService).saveBatch(any());
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> persister.persistMessages(List.of(record(0, 0L, "p_1_2", event))));
+
+        assertTrue(exception.getMessage().contains("retryable kafka message persistence failures"));
+        verify(messagePersistenceService, never()).save(any(Message.class));
     }
 
     @Test
@@ -166,7 +267,7 @@ class KafkaMessagePersisterTest {
                 .messageId(2002L)
                 .build();
 
-        persister.persistMessages(List.of(record("p_1_2", readEvent)));
+        persister.persistMessages(List.of(record(0, 0L, "p_1_2", readEvent)));
 
         verify(messagePersistenceService, never()).saveBatch(any());
         verify(persistenceWatermarkService, never()).markPersisted(any(), any());
@@ -184,10 +285,11 @@ class KafkaMessagePersisterTest {
         when(messagePersistenceService.saveBatch(any())).thenReturn(true);
         when(pendingStatusEventService.listByMessageId(1000L)).thenReturn(List.of(pendingEvent));
 
-        persister.persistMessages(List.of(record("p_1_2", event)));
+        persister.persistMessages(List.of(record(0, 0L, "p_1_2", event)));
 
         InOrder inOrder = inOrder(persistenceWatermarkService, pendingStatusEventService, kafkaMessageStatePersister);
         inOrder.verify(persistenceWatermarkService).markPersisted("p_1_2", 1000L);
+        verify(acceptedMessageProjectionService).markPersisted(event);
         inOrder.verify(pendingStatusEventService).listByMessageId(1000L);
         inOrder.verify(kafkaMessageStatePersister).persistStatusChangeEvent(pendingEvent);
     }
@@ -206,9 +308,10 @@ class KafkaMessagePersisterTest {
         doThrow(new IllegalStateException("retry later"))
                 .when(kafkaMessageStatePersister).persistStatusChangeEvent(pendingEvent);
 
-        persister.persistMessages(List.of(record("p_1_2", event)));
+        persister.persistMessages(List.of(record(0, 0L, "p_1_2", event)));
 
         verify(persistenceWatermarkService).markPersisted("p_1_2", 1000L);
+        verify(acceptedMessageProjectionService).markPersisted(event);
         verify(kafkaMessageStatePersister).persistStatusChangeEvent(pendingEvent);
     }
 
@@ -255,19 +358,31 @@ class KafkaMessagePersisterTest {
                 () -> ReflectionTestUtils.invokeMethod(persister, "resolveConversationId", invalidGroupEvent));
     }
 
-    private ConsumerRecord<String, MessageEvent> record(String key, MessageEvent event) {
-        return new ConsumerRecord<>("im-chat-topic", 0, 0, key, event);
+    private ConsumerRecord<String, MessageEvent> record(int partition, long offset, String key, MessageEvent event) {
+        return new ConsumerRecord<>("im-chat-topic", partition, offset, key, event);
     }
 
     private MessageEvent minimalMessageEvent() {
+        return event(1000L, 1L, 2L, "client-min", "hello");
+    }
+
+    private MessageEvent event(Long messageId,
+                               Long senderId,
+                               Long receiverId,
+                               String clientMessageId,
+                               String content) {
         return MessageEvent.builder()
                 .eventType(MessageEventType.MESSAGE)
-                .messageId(1000L)
-                .senderId(1L)
-                .receiverId(2L)
-                .clientMsgId("client-min")
+                .messageId(messageId)
+                .senderId(senderId)
+                .receiverId(receiverId)
+                .clientMsgId(clientMessageId)
+                .clientMessageId(clientMessageId)
                 .messageType(MessageType.TEXT)
-                .content("hello")
+                .content(content)
+                .conversationId(senderId == null || receiverId == null ? null : "p_" + Math.min(senderId, receiverId) + "_" + Math.max(senderId, receiverId))
+                .createdTime(LocalDateTime.of(2026, 4, 16, 10, 0))
+                .updatedTime(LocalDateTime.of(2026, 4, 16, 10, 0))
                 .build();
     }
 }

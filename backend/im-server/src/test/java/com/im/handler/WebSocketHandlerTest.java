@@ -17,16 +17,9 @@ import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorato
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class WebSocketHandlerTest {
@@ -98,6 +91,9 @@ class WebSocketHandlerTest {
 
         verify(dispatcher, never()).dispatch(any(), any(), any());
         verify(imService, never()).refreshRouteHeartbeat(any(), any());
+        verify(imService).unregisterSession(eq("123"), eq("session-1"),
+                argThat(status -> status.getCode() == CloseStatus.SESSION_NOT_RELIABLE.getCode()
+                        && "stale session".equals(status.getReason())));
     }
 
     @Test

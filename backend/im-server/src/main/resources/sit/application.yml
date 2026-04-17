@@ -41,6 +41,8 @@ im:
       same-site: ${IM_AUTH_COOKIE_SAME_SITE:Lax}
       secure: ${IM_AUTH_COOKIE_SECURE:auto}
       ws-ticket-name: ${IM_WS_TICKET_COOKIE_NAME:IM_WS_TICKET}
+      ws-ticket-same-site: ${IM_WS_TICKET_COOKIE_SAME_SITE:Lax}
+      ws-ticket-secure: ${IM_WS_TICKET_COOKIE_SECURE:true}
       ws-ticket-path: ${IM_WS_TICKET_COOKIE_PATH:/websocket}
   jwt:
     enabled: true
@@ -99,6 +101,8 @@ im:
   websocket:
     endpoint: /websocket
     allowed-origins: "${IM_WEBSOCKET_ALLOWED_ORIGINS:http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080}"
+    allow-blank-origin: ${IM_WEBSOCKET_ALLOW_BLANK_ORIGIN:false}
+    allow-query-ticket: ${IM_WEBSOCKET_ALLOW_QUERY_TICKET:false}
     connection-timeout: 30000
     cleanup-interval-ms: 60000
     send-time-limit-ms: 10000

@@ -2,6 +2,7 @@ package com.im.service;
 
 import com.im.dto.MessageDTO;
 import com.im.dto.MessageEvent;
+import com.im.dto.ReadEvent;
 import com.im.dto.StatusChangeEvent;
 import com.im.enums.MessageEventType;
 import com.im.enums.MessageType;
@@ -25,6 +26,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -236,5 +238,64 @@ class ConversationCacheUpdaterTest {
         verify(redisTemplate).delete("conversations:user:3");
         verifyNoInteractions(zSetOperations);
         verify(hotMessageRedisRepository, never()).addRecentMessage(any(), any(), any());
+    }
+
+    @Test
+    void markConversationReadShouldBeIdempotentAcrossDuplicateEvents() {
+        AtomicReference<Object> cachedCursorRef = new AtomicReference<>();
+        when(hashOperations.get("conversation:read-cursor:user:2", "p_1_2"))
+                .thenAnswer(invocation -> cachedCursorRef.get());
+        doAnswer(invocation -> {
+            if ("conversation:read-cursor:user:2".equals(invocation.getArgument(0))
+                    && "p_1_2".equals(invocation.getArgument(1))) {
+                cachedCursorRef.set(invocation.getArgument(2));
+            }
+            return null;
+        }).when(hashOperations).put(anyString(), any(), any());
+        when(hashOperations.get("last_message:p_1_2", "message")).thenReturn(MessageDTO.builder()
+                .id(300L)
+                .senderId(1L)
+                .receiverId(2L)
+                .messageType(MessageType.TEXT)
+                .content("latest")
+                .createdTime(LocalDateTime.of(2026, 4, 15, 18, 50))
+                .build());
+        ReadEvent event = ReadEvent.builder()
+                .userId(2L)
+                .conversationId("p_1_2")
+                .lastReadMessageId(300L)
+                .timestamp(LocalDateTime.of(2026, 4, 15, 18, 51))
+                .build();
+
+        updater.markConversationRead(event);
+        updater.markConversationRead(event);
+
+        verify(hashOperations, times(1)).put(eq("conversation:read-cursor:user:2"), eq("p_1_2"), any());
+        verify(redisTemplate, times(1)).execute(any(RedisCallback.class));
+        verify(redisTemplate, times(1)).delete("conversations:user:2");
+    }
+
+    @Test
+    void markConversationReadShouldNotClearUnreadWhenLastMessageHasAdvancedPastCursor() {
+        when(hashOperations.get("last_message:p_1_2", "message")).thenReturn(MessageDTO.builder()
+                .id(301L)
+                .senderId(1L)
+                .receiverId(2L)
+                .messageType(MessageType.TEXT)
+                .content("newer")
+                .createdTime(LocalDateTime.of(2026, 4, 15, 18, 55))
+                .build());
+        ReadEvent event = ReadEvent.builder()
+                .userId(2L)
+                .conversationId("p_1_2")
+                .lastReadMessageId(300L)
+                .timestamp(LocalDateTime.of(2026, 4, 15, 18, 54))
+                .build();
+
+        updater.markConversationRead(event);
+
+        verify(hashOperations).put(eq("conversation:read-cursor:user:2"), eq("p_1_2"), any());
+        verify(redisTemplate, never()).execute(any(RedisCallback.class));
+        verify(redisTemplate).delete("conversations:user:2");
     }
 }

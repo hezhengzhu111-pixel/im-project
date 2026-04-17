@@ -41,9 +41,6 @@ public class HotRecentMessageReadService {
             return mergeHotAndPersisted(hotMessages, List.of(), false, realLimit);
         }
         Long watermark = resolveWatermark(conversationId);
-        if (watermark == null) {
-            return mergeHotAndPersisted(hotMessages, List.of(), false, realLimit);
-        }
         List<MessageDTO> persistedMessages = loadPersistedLatestMessages(
                 conversationId,
                 watermark,
@@ -66,10 +63,7 @@ public class HotRecentMessageReadService {
                 afterMessageId
         );
         Long watermark = resolveWatermark(conversationId);
-        if (watermark == null) {
-            return mergeHotAndPersisted(hotMessages, List.of(), ascending, realLimit);
-        }
-        if (afterMessageId != null && afterMessageId >= watermark) {
+        if (watermark != null && afterMessageId != null && afterMessageId >= watermark) {
             return mergeHotAndPersisted(hotMessages, List.of(), ascending, realLimit);
         }
         List<MessageDTO> persistedMessages = loadPersistedCursorMessages(
@@ -115,33 +109,17 @@ public class HotRecentMessageReadService {
         }
 
         Long watermark = resolveWatermark(conversationId);
-        if (watermark == null) {
-            return null;
-        }
-
-        ConversationScope scope = parseConversationScope(conversationId);
-        if (scope == null) {
-            return null;
-        }
-
-        LambdaQueryWrapper<Message> wrapper = buildConversationWrapper(scope)
-                .ne(Message::getStatus, Message.MessageStatus.DELETED)
-                .le(Message::getId, watermark)
-                .orderByDesc(Message::getId)
-                .last("limit 1");
-        Message latestVisible = messageMapper.selectOne(wrapper);
+        Message latestVisible = selectLatestVisiblePersistedMessage(conversationId, watermark);
         return latestVisible == null ? null : latestVisible.getId();
     }
 
     private List<MessageDTO> loadPersistedLatestMessages(String conversationId, Long watermark, int limit) {
         ConversationScope scope = parseConversationScope(conversationId);
-        if (scope == null || limit <= 0 || watermark == null) {
+        if (scope == null || limit <= 0) {
             return List.of();
         }
 
-        LambdaQueryWrapper<Message> wrapper = buildConversationWrapper(scope)
-                .ne(Message::getStatus, Message.MessageStatus.DELETED)
-                .le(Message::getId, watermark)
+        LambdaQueryWrapper<Message> wrapper = buildVisibleConversationWrapper(scope, watermark)
                 .orderByDesc(Message::getId)
                 .last("limit " + limit);
         return toMessageDTOs(messageMapper.selectList(wrapper));
@@ -154,13 +132,11 @@ public class HotRecentMessageReadService {
                                                          Long afterMessageId,
                                                          int limit) {
         ConversationScope scope = parseConversationScope(conversationId);
-        if (scope == null || limit <= 0 || watermark == null) {
+        if (scope == null || limit <= 0) {
             return List.of();
         }
 
-        LambdaQueryWrapper<Message> wrapper = buildConversationWrapper(scope)
-                .ne(Message::getStatus, Message.MessageStatus.DELETED)
-                .le(Message::getId, watermark);
+        LambdaQueryWrapper<Message> wrapper = buildVisibleConversationWrapper(scope, watermark);
 
         if (afterMessageId != null) {
             wrapper.gt(Message::getId, afterMessageId)
@@ -169,8 +145,7 @@ public class HotRecentMessageReadService {
         } else {
             if (lastMessageId != null) {
                 wrapper.lt(Message::getId, lastMessageId);
-            }
-            if (beforeTimestamp != null) {
+            } else if (beforeTimestamp != null) {
                 wrapper.lt(Message::getCreatedTime, beforeTimestamp);
             }
             wrapper.orderByDesc(Message::getId)
@@ -190,6 +165,15 @@ public class HotRecentMessageReadService {
                 .and(w -> w.eq(Message::getSenderId, scope.leftUserId()).eq(Message::getReceiverId, scope.rightUserId())
                         .or()
                         .eq(Message::getSenderId, scope.rightUserId()).eq(Message::getReceiverId, scope.leftUserId()));
+    }
+
+    private LambdaQueryWrapper<Message> buildVisibleConversationWrapper(ConversationScope scope, Long watermark) {
+        LambdaQueryWrapper<Message> wrapper = buildConversationWrapper(scope)
+                .ne(Message::getStatus, Message.MessageStatus.DELETED);
+        if (watermark != null) {
+            wrapper.le(Message::getId, watermark);
+        }
+        return wrapper;
     }
 
     private List<MessageDTO> filterCursorMessages(List<MessageDTO> messages,
@@ -221,8 +205,8 @@ public class HotRecentMessageReadService {
         if (afterMessageId != null) {
             return message.getId() > afterMessageId;
         }
-        if (lastMessageId != null && message.getId() >= lastMessageId) {
-            return false;
+        if (lastMessageId != null) {
+            return message.getId() < lastMessageId;
         }
         if (beforeTimestamp == null) {
             return true;
@@ -253,6 +237,17 @@ public class HotRecentMessageReadService {
     private Comparator<MessageDTO> messageComparator(boolean ascending) {
         Comparator<MessageDTO> comparator = Comparator.comparing(MessageDTO::getId, Comparator.nullsLast(Long::compareTo));
         return ascending ? comparator : comparator.reversed();
+    }
+
+    private Message selectLatestVisiblePersistedMessage(String conversationId, Long watermark) {
+        ConversationScope scope = parseConversationScope(conversationId);
+        if (scope == null) {
+            return null;
+        }
+        LambdaQueryWrapper<Message> wrapper = buildVisibleConversationWrapper(scope, watermark)
+                .orderByDesc(Message::getId)
+                .last("limit 1");
+        return messageMapper.selectOne(wrapper);
     }
 
     private ConversationScope parseConversationScope(String conversationId) {

@@ -7,9 +7,6 @@ import com.im.dto.WsTicketDTO;
 import com.im.dto.request.ParseTokenRequest;
 import com.im.dto.request.RefreshTokenRequest;
 import com.im.service.AuthTokenService;
-import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,11 +14,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpHeaders;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.test.util.ReflectionTestUtils;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -43,6 +40,8 @@ class AuthControllerTest {
         ReflectionTestUtils.setField(authController, "authCookieSecure", "never");
         ReflectionTestUtils.setField(authController, "wsTicketCookieName", "IM_WS_TICKET");
         ReflectionTestUtils.setField(authController, "wsTicketCookiePath", "/websocket");
+        ReflectionTestUtils.setField(authController, "wsTicketCookieSameSite", "Strict");
+        ReflectionTestUtils.setField(authController, "wsTicketCookieSecure", "never");
     }
 
     @Test
@@ -103,6 +102,24 @@ class AuthControllerTest {
         assertTrue(setCookie.contains("Path=/websocket"));
         assertTrue(setCookie.contains("Max-Age=30"));
         assertTrue(setCookie.contains("HttpOnly"));
+        assertTrue(setCookie.contains("SameSite=Strict"));
+        assertTrue(!setCookie.contains("Secure"));
+    }
+
+    @Test
+    void issueWsTicket_ShouldIncludeSecureFlagWhenConfigured() {
+        WsTicketDTO dto = new WsTicketDTO();
+        dto.setTicket("ticket-2");
+        dto.setExpiresInMs(30000L);
+        when(authTokenService.issueWsTicket(1L, "alice")).thenReturn(dto);
+        ReflectionTestUtils.setField(authController, "wsTicketCookieSecure", "true");
+
+        MockHttpServletResponse httpResponse = new MockHttpServletResponse();
+        authController.issueWsTicket(1L, "alice", new MockHttpServletRequest(), httpResponse);
+
+        String setCookie = httpResponse.getHeader(HttpHeaders.SET_COOKIE);
+        assertNotNull(setCookie);
+        assertTrue(setCookie.contains("Secure"));
     }
 
     @Test

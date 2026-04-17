@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 @Slf4j
 @Component
@@ -64,6 +65,20 @@ public class KafkaMessageStatePersister {
             return;
         }
         LocalDateTime changedAt = event.getChangedAt() == null ? LocalDateTime.now() : event.getChangedAt();
+        event.setChangedAt(changedAt);
+        Message currentMessage = messageMapper.selectById(event.getMessageId());
+        if (currentMessage == null) {
+            pendingStatusEventService.store(event);
+            log.warn("Stored pending status change event for message not yet persisted. messageId={}, status={}",
+                    event.getMessageId(), event.getNewStatus());
+            return;
+        }
+        if (shouldSkipStatusReplay(currentMessage, event.getNewStatus(), changedAt)) {
+            pendingStatusEventService.remove(event.getMessageId(), event.getNewStatus());
+            log.info("Skipped already-applied status change replay. messageId={}, status={}, messageUpdatedTime={}",
+                    event.getMessageId(), event.getNewStatus(), currentMessage.getUpdatedTime());
+            return;
+        }
         Message updatedMessage = new Message();
         updatedMessage.setId(event.getMessageId());
         updatedMessage.setStatus(event.getNewStatus());
@@ -167,7 +182,19 @@ public class KafkaMessageStatePersister {
 
     private boolean shouldSkipReadUpdate(LocalDateTime currentLastReadAt, LocalDateTime candidateReadAt) {
         return currentLastReadAt != null
-                && candidateReadAt != null
-                && currentLastReadAt.isAfter(candidateReadAt);
+                && (candidateReadAt == null || !candidateReadAt.isAfter(currentLastReadAt));
+    }
+
+    private boolean shouldSkipStatusReplay(Message currentMessage, Integer newStatus, LocalDateTime changedAt) {
+        if (currentMessage == null || changedAt == null) {
+            return false;
+        }
+        LocalDateTime currentUpdatedTime = currentMessage.getUpdatedTime();
+        if (Objects.equals(currentMessage.getStatus(), newStatus)
+                && currentUpdatedTime != null
+                && !changedAt.isAfter(currentUpdatedTime)) {
+            return true;
+        }
+        return currentUpdatedTime != null && currentUpdatedTime.isAfter(changedAt);
     }
 }

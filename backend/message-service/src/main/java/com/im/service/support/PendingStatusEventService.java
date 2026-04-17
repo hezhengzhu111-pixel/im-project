@@ -1,7 +1,12 @@
 package com.im.service.support;
 
+import com.alibaba.fastjson2.JSON;
 import com.im.dto.StatusChangeEvent;
+import com.im.exception.BusinessException;
+import com.im.mapper.PendingStatusEventBacklogMapper;
+import com.im.message.entity.PendingStatusEventBacklog;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -12,7 +17,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PendingStatusEventService {
 
-    private final HotMessageRedisRepository hotMessageRedisRepository;
+    private final PendingStatusEventBacklogMapper pendingStatusEventBacklogMapper;
 
     public void store(StatusChangeEvent event) {
         if (event == null || event.getMessageId() == null || event.getNewStatus() == null) {
@@ -21,11 +26,25 @@ public class PendingStatusEventService {
         if (event.getChangedAt() == null) {
             event.setChangedAt(LocalDateTime.now());
         }
-        hotMessageRedisRepository.saveStatusPending(event.getMessageId(), event.getNewStatus(), event);
+        PendingStatusEventBacklog backlog = toBacklog(event);
+        try {
+            pendingStatusEventBacklogMapper.insert(backlog);
+        } catch (DuplicateKeyException duplicateKeyException) {
+            pendingStatusEventBacklogMapper.updateExisting(
+                    backlog.getMessageId(),
+                    backlog.getNewStatus(),
+                    backlog.getChangedAt(),
+                    backlog.getPayloadJson()
+            );
+        }
     }
 
     public List<StatusChangeEvent> listByMessageId(Long messageId) {
-        return hotMessageRedisRepository.listPendingStatusEvents(messageId).stream()
+        if (messageId == null) {
+            return List.of();
+        }
+        return pendingStatusEventBacklogMapper.selectByMessageId(messageId).stream()
+                .map(this::toEvent)
                 .sorted(Comparator
                         .comparing(this::resolveChangedAt)
                         .thenComparing(this::resolveStatus))
@@ -33,15 +52,54 @@ public class PendingStatusEventService {
     }
 
     public void remove(Long messageId, Integer newStatus) {
-        hotMessageRedisRepository.removePendingStatus(messageId, newStatus);
+        if (messageId == null || newStatus == null) {
+            return;
+        }
+        pendingStatusEventBacklogMapper.deleteByMessageIdAndStatus(messageId, newStatus);
     }
 
     public boolean hasPending(Long messageId, Integer newStatus) {
-        return hotMessageRedisRepository.hasPendingStatus(messageId, newStatus);
+        if (messageId == null || newStatus == null) {
+            return false;
+        }
+        return pendingStatusEventBacklogMapper.existsByMessageIdAndStatus(messageId, newStatus);
     }
 
     public List<Long> listPendingMessageIds() {
-        return hotMessageRedisRepository.listPendingStatusMessageIds();
+        return pendingStatusEventBacklogMapper.selectPendingMessageIds();
+    }
+
+    private PendingStatusEventBacklog toBacklog(StatusChangeEvent event) {
+        PendingStatusEventBacklog backlog = new PendingStatusEventBacklog();
+        backlog.setMessageId(event.getMessageId());
+        backlog.setNewStatus(event.getNewStatus());
+        backlog.setChangedAt(event.getChangedAt());
+        backlog.setPayloadJson(JSON.toJSONString(event));
+        return backlog;
+    }
+
+    private StatusChangeEvent toEvent(PendingStatusEventBacklog backlog) {
+        if (backlog == null || backlog.getPayloadJson() == null) {
+            return null;
+        }
+        try {
+            StatusChangeEvent event = JSON.parseObject(backlog.getPayloadJson(), StatusChangeEvent.class);
+            if (event == null) {
+                return null;
+            }
+            if (event.getMessageId() == null) {
+                event.setMessageId(backlog.getMessageId());
+            }
+            if (event.getNewStatus() == null) {
+                event.setNewStatus(backlog.getNewStatus());
+            }
+            if (event.getChangedAt() == null) {
+                event.setChangedAt(backlog.getChangedAt());
+            }
+            return event;
+        } catch (Exception exception) {
+            throw new BusinessException("deserialize pending status event backlog failed", exception);
+        }
     }
 
     private LocalDateTime resolveChangedAt(StatusChangeEvent event) {

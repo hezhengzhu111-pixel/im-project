@@ -98,6 +98,9 @@ public class ConversationCacheUpdater {
     @Value("${im.message.conversation-cache.user-unread-key-prefix:conversation:unread:user:}")
     private String userUnreadKeyPrefix;
 
+    @Value("${im.message.conversation-cache.user-read-cursor-key-prefix:conversation:read-cursor:user:}")
+    private String userReadCursorKeyPrefix;
+
     @Value("${im.message.conversation-cache.legacy-list-key-prefix:conversations:user:}")
     private String legacyConversationListKeyPrefix;
 
@@ -153,7 +156,16 @@ public class ConversationCacheUpdater {
         if (event == null || event.getUserId() == null || !StringUtils.hasText(event.getConversationId())) {
             return;
         }
-        setUnreadCount(event.getUserId(), event.getConversationId().trim(), 0L);
+        String conversationId = event.getConversationId().trim();
+        CachedReadCursor candidateCursor = CachedReadCursor.from(event);
+        CachedReadCursor currentCursor = getCachedReadCursor(event.getUserId(), conversationId);
+        if (!shouldAdvanceReadCursor(currentCursor, candidateCursor)) {
+            return;
+        }
+        saveReadCursor(event.getUserId(), conversationId, candidateCursor);
+        if (canResetUnreadCount(conversationId, candidateCursor)) {
+            setUnreadCount(event.getUserId(), conversationId, 0L);
+        }
         clearLegacyConversationListCache(event.getUserId());
     }
 
@@ -571,6 +583,65 @@ public class ConversationCacheUpdater {
         redisTemplate.delete(legacyConversationListKeyPrefix + userId);
     }
 
+    private CachedReadCursor getCachedReadCursor(Long userId, String conversationId) {
+        if (userId == null || !StringUtils.hasText(conversationId)) {
+            return null;
+        }
+        Object value = redisTemplate.opsForHash().get(userReadCursorKeyPrefix + userId, conversationId.trim());
+        if (value instanceof CachedReadCursor cachedReadCursor) {
+            return cachedReadCursor;
+        }
+        return null;
+    }
+
+    private boolean shouldAdvanceReadCursor(CachedReadCursor currentCursor, CachedReadCursor candidateCursor) {
+        if (candidateCursor == null) {
+            return false;
+        }
+        if (currentCursor == null) {
+            return true;
+        }
+        if (candidateCursor.lastReadMessageId != null && currentCursor.lastReadMessageId != null) {
+            return candidateCursor.lastReadMessageId > currentCursor.lastReadMessageId;
+        }
+        if (candidateCursor.lastReadMessageId != null) {
+            return true;
+        }
+        if (currentCursor.lastReadMessageId != null) {
+            return false;
+        }
+        if (candidateCursor.readAt == null) {
+            return false;
+        }
+        if (currentCursor.readAt == null) {
+            return true;
+        }
+        return candidateCursor.readAt.isAfter(currentCursor.readAt);
+    }
+
+    private void saveReadCursor(Long userId, String conversationId, CachedReadCursor cachedReadCursor) {
+        if (userId == null || !StringUtils.hasText(conversationId) || cachedReadCursor == null) {
+            return;
+        }
+        String key = userReadCursorKeyPrefix + userId;
+        redisTemplate.opsForHash().put(key, conversationId.trim(), cachedReadCursor);
+        redisTemplate.expire(key, Duration.ofSeconds(resolveCacheTtlSeconds()));
+    }
+
+    private boolean canResetUnreadCount(String conversationId, CachedReadCursor cachedReadCursor) {
+        if (!StringUtils.hasText(conversationId) || cachedReadCursor == null) {
+            return false;
+        }
+        if (cachedReadCursor.lastReadMessageId == null) {
+            return true;
+        }
+        Object value = redisTemplate.opsForHash().get(lastMessageKeyPrefix + conversationId.trim(), LAST_MESSAGE_FIELD);
+        if (!(value instanceof MessageDTO lastMessage) || lastMessage.getId() == null) {
+            return true;
+        }
+        return cachedReadCursor.lastReadMessageId >= lastMessage.getId();
+    }
+
     @SuppressWarnings("unchecked")
     private byte[] serializeKey(String key) {
         RedisSerializer<Object> serializer = (RedisSerializer<Object>) redisTemplate.getKeySerializer();
@@ -592,5 +663,22 @@ public class ConversationCacheUpdater {
     @FunctionalInterface
     private interface RedisMutation {
         Object apply(RedisConnection connection);
+    }
+
+    private static final class CachedReadCursor {
+        private final Long lastReadMessageId;
+        private final LocalDateTime readAt;
+
+        private CachedReadCursor(Long lastReadMessageId, LocalDateTime readAt) {
+            this.lastReadMessageId = lastReadMessageId;
+            this.readAt = readAt;
+        }
+
+        private static CachedReadCursor from(ReadEvent event) {
+            if (event == null) {
+                return null;
+            }
+            return new CachedReadCursor(event.getLastReadMessageId(), event.getTimestamp());
+        }
     }
 }

@@ -41,6 +41,8 @@ im:
       ttl-seconds: 300
       key-prefix: "im:auth:replay:"
   message:
+    persisted-watermark:
+      key-prefix: "conversation:persisted:watermark:"
     text:
       enforce: true
       max-length: 2000

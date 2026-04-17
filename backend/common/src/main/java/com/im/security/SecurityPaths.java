@@ -38,8 +38,6 @@ public final class SecurityPaths {
             "/user/login",
             "/api/user/check-username",
             "/user/check-username",
-            "/api/user/internal",
-            "/api/group/internal",
             "/static",
             "/css",
             "/js",

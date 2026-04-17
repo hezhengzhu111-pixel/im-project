@@ -1,7 +1,9 @@
 package com.im.feign;
 
 import com.im.config.RateLimitGlobalProperties;
+import com.im.util.AuthHeaderUtil;
 import feign.RequestInterceptor;
+import feign.RequestTemplate;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
@@ -9,6 +11,9 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+
+import java.time.Clock;
+import java.util.function.Supplier;
 
 @Configuration
 public class FeignInternalAuthConfig implements RequestInterceptor {
@@ -22,17 +27,21 @@ public class FeignInternalAuthConfig implements RequestInterceptor {
     @Value("${im.internal.secret}")
     private String internalSecret;
 
+    @Value("${im.internal.legacy-secret-only.enabled:false}")
+    private boolean internalLegacySecretOnlyEnabled;
+
     @Value("${im.gateway.user-id-header:X-User-Id}")
     private String gatewayUserIdHeader;
 
     @Value("${im.gateway.username-header:X-Username}")
     private String gatewayUsernameHeader;
 
+    private Clock clock = Clock.systemUTC();
+    private Supplier<String> nonceSupplier = () -> java.util.UUID.randomUUID().toString();
+
     @Override
-    public void apply(feign.RequestTemplate template) {
-        if (internalHeaderName != null && internalSecret != null) {
-            template.header(internalHeaderName, internalSecret);
-        }
+    public void apply(RequestTemplate template) {
+        applyInternalSignature(template);
         propagateAuthorization(template);
         propagateGatewayIdentity(template);
         propagateRateLimitSwitch(template);
@@ -40,7 +49,34 @@ public class FeignInternalAuthConfig implements RequestInterceptor {
         template.header("Accept", "application/json");
     }
 
-    private void propagateAuthorization(feign.RequestTemplate template) {
+    private void applyInternalSignature(RequestTemplate template) {
+        if (!StringUtils.hasText(internalSecret)) {
+            throw new IllegalStateException("im.internal.secret must be configured");
+        }
+
+        String timestamp = String.valueOf(clock.millis());
+        String nonce = nonceSupplier.get();
+        String bodyHash = AuthHeaderUtil.sha256Base64Url(template.body());
+        String signature = AuthHeaderUtil.signHmacSha256(
+                internalSecret,
+                AuthHeaderUtil.buildInternalSignedFields(
+                        template.method(),
+                        resolvePath(template),
+                        bodyHash,
+                        timestamp,
+                        nonce
+                )
+        );
+
+        template.header(AuthHeaderUtil.INTERNAL_TIMESTAMP_HEADER, timestamp);
+        template.header(AuthHeaderUtil.INTERNAL_NONCE_HEADER, nonce);
+        template.header(AuthHeaderUtil.INTERNAL_SIGNATURE_HEADER, signature);
+        if (internalLegacySecretOnlyEnabled && StringUtils.hasText(internalHeaderName)) {
+            template.header(internalHeaderName, internalSecret);
+        }
+    }
+
+    private void propagateAuthorization(RequestTemplate template) {
         HttpServletRequest request = currentRequest();
         if (request == null) {
             return;
@@ -51,7 +87,7 @@ public class FeignInternalAuthConfig implements RequestInterceptor {
         }
     }
 
-    private void propagateGatewayIdentity(feign.RequestTemplate template) {
+    private void propagateGatewayIdentity(RequestTemplate template) {
         HttpServletRequest request = currentRequest();
         if (request == null) {
             return;
@@ -67,7 +103,7 @@ public class FeignInternalAuthConfig implements RequestInterceptor {
         template.header(gatewayUsernameHeader, username.trim());
     }
 
-    private void propagateRateLimitSwitch(feign.RequestTemplate template) {
+    private void propagateRateLimitSwitch(RequestTemplate template) {
         HttpServletRequest request = currentRequest();
         if (request == null) {
             return;
@@ -76,6 +112,14 @@ public class FeignInternalAuthConfig implements RequestInterceptor {
         if (StringUtils.hasText(switchValue)) {
             template.header(RATE_LIMIT_SWITCH_HEADER, switchValue.trim());
         }
+    }
+
+    private String resolvePath(RequestTemplate template) {
+        String path = template.path();
+        if (!StringUtils.hasText(path)) {
+            path = template.url();
+        }
+        return AuthHeaderUtil.normalizeInternalPath(path);
     }
 
     private String readHeaderOrAttribute(HttpServletRequest request, String headerName, String attributeName) {

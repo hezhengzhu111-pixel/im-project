@@ -52,7 +52,6 @@ class HotMessageRedisRepositoryTest {
         ReflectionTestUtils.setField(repository, "pendingPersistKeyPrefix", "conversation:pending:persist:");
         ReflectionTestUtils.setField(repository, "pendingPersistTtlSeconds", 86400L);
         ReflectionTestUtils.setField(repository, "persistedWatermarkKeyPrefix", "conversation:persisted:watermark:");
-        ReflectionTestUtils.setField(repository, "persistedWatermarkTtlSeconds", 86400L);
         ReflectionTestUtils.setField(repository, "pendingStatusKeyPrefix", "message:pending:status:");
         ReflectionTestUtils.setField(repository, "pendingStatusTtlSeconds", 3600L);
         ReflectionTestUtils.setField(repository, "lastMessageKeyPrefix", "last_message:");
@@ -113,7 +112,7 @@ class HotMessageRedisRepositoryTest {
     }
 
     @Test
-    void savePersistedWatermarkShouldUseStringScriptArguments() {
+    void savePersistedWatermarkShouldPersistWithoutShortTtlArgument() {
         repository.savePersistedWatermark("p_1_2", 1001L);
 
         verify(redisTemplate).execute(
@@ -121,9 +120,24 @@ class HotMessageRedisRepositoryTest {
                 any(RedisSerializer.class),
                 any(RedisSerializer.class),
                 eq(List.of("conversation:persisted:watermark:p_1_2")),
-                eq("1001"),
-                eq("86400")
+                eq("1001")
         );
+    }
+
+    @Test
+    void getPersistedWatermarkShouldReadLegacyPersistedValue() {
+        when(valueOperations.get("conversation:persisted:watermark:p_1_2")).thenReturn("1001");
+
+        assertEquals(1001L, repository.getPersistedWatermark("p_1_2"));
+        verify(redisTemplate).persist("conversation:persisted:watermark:p_1_2");
+    }
+
+    @Test
+    void getPersistedWatermarkShouldReturnNullWhenMissing() {
+        when(valueOperations.get("conversation:persisted:watermark:p_1_2")).thenReturn(null);
+
+        assertNull(repository.getPersistedWatermark("p_1_2"));
+        verify(redisTemplate, never()).persist(anyString());
     }
 
     @Test
@@ -131,5 +145,6 @@ class HotMessageRedisRepositoryTest {
         when(valueOperations.get("conversation:persisted:watermark:p_1_2")).thenReturn("nil");
 
         assertNull(repository.getPersistedWatermark("p_1_2"));
+        verify(redisTemplate, never()).persist(anyString());
     }
 }

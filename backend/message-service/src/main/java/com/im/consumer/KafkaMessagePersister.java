@@ -5,20 +5,21 @@ import com.im.dto.StatusChangeEvent;
 import com.im.enums.MessageEventType;
 import com.im.message.entity.Message;
 import com.im.service.MessagePersistenceService;
+import com.im.service.support.AcceptedMessageProjectionService;
 import com.im.service.support.PendingStatusEventService;
 import com.im.service.support.PersistenceWatermarkService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.InvalidDataAccessApiUsageException;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 @Slf4j
 @Component
@@ -29,6 +30,7 @@ public class KafkaMessagePersister {
     private final PersistenceWatermarkService persistenceWatermarkService;
     private final PendingStatusEventService pendingStatusEventService;
     private final KafkaMessageStatePersister kafkaMessageStatePersister;
+    private final AcceptedMessageProjectionService acceptedMessageProjectionService;
 
     @KafkaListener(
             topics = "${im.kafka.chat-topic:im-chat-topic}",
@@ -36,36 +38,66 @@ public class KafkaMessagePersister {
             containerFactory = "messageEventBatchKafkaListenerContainerFactory"
     )
     public void persistMessages(List<ConsumerRecord<String, MessageEvent>> records) {
+        KafkaMessagePersistBatchResult result = persistMessageBatch(records);
+        if (result.hasRetryableFailures()) {
+            throw new IllegalStateException("retryable kafka message persistence failures: " + result.summary());
+        }
+    }
+
+    KafkaMessagePersistBatchResult persistMessageBatch(List<ConsumerRecord<String, MessageEvent>> records) {
+        KafkaMessagePersistBatchResult.Builder resultBuilder =
+                KafkaMessagePersistBatchResult.builder(records == null ? 0 : records.size());
         if (records == null || records.isEmpty()) {
-            return;
+            return resultBuilder.build();
         }
 
-        List<PersistCandidate> candidates = records.stream()
-                .map(ConsumerRecord::value)
-                .filter(Objects::nonNull)
-                .filter(event -> event.getEventType() == MessageEventType.MESSAGE)
-                .map(event -> new PersistCandidate(event, toMessage(event)))
-                .toList();
+        List<PersistCandidate> candidates = collectPersistCandidates(records, resultBuilder);
         if (candidates.isEmpty()) {
-            log.debug("No message events to persist. recordCount={}", records.size());
-            return;
+            KafkaMessagePersistBatchResult emptyResult = resultBuilder.build();
+            logBatchResult(emptyResult);
+            return emptyResult;
         }
 
         try {
-            List<PersistCandidate> persistedCandidates = saveBatch(candidates);
-            markPersistedBatch(persistedCandidates);
-            log.info("Persisted Kafka message batch. recordCount={}, messageCount={}",
-                    records.size(), persistedCandidates.size());
-        } catch (DuplicateKeyException duplicate) {
-            List<PersistOutcome> persistedCandidates = saveIndividually(candidates);
-            markPersistedOutcomes(persistedCandidates);
-            log.debug("Handled duplicate Kafka message batch with single-row fallback. recordCount={}, messageCount={}, persistedCount={}",
-                    records.size(), candidates.size(), countPersisted(persistedCandidates));
+            saveBatch(candidates);
+            for (PersistCandidate candidate : candidates) {
+                markPersistedCandidate(candidate);
+                resultBuilder.addSuccess(candidate.detail(null));
+            }
         } catch (Exception exception) {
-            log.error("Failed to persist Kafka message batch. recordCount={}, messageCount={}",
-                    records.size(), candidates.size(), exception);
-            throw exception;
+            if (isSingleRowFallbackBatchException(exception)) {
+                saveIndividually(candidates, resultBuilder);
+            } else {
+                markRetryableBatch(candidates, resultBuilder, summarize(exception));
+            }
         }
+
+        KafkaMessagePersistBatchResult result = resultBuilder.build();
+        logBatchResult(result);
+        return result;
+    }
+
+    private List<PersistCandidate> collectPersistCandidates(List<ConsumerRecord<String, MessageEvent>> records,
+                                                            KafkaMessagePersistBatchResult.Builder resultBuilder) {
+        List<PersistCandidate> candidates = new ArrayList<>();
+        for (ConsumerRecord<String, MessageEvent> record : records) {
+            if (record == null) {
+                continue;
+            }
+            MessageEvent event = record.value();
+            if (event == null || event.getEventType() != MessageEventType.MESSAGE) {
+                continue;
+            }
+            resultBuilder.incrementMessageCount();
+            try {
+                String conversationId = resolveConversationId(event);
+                Message message = toMessage(event);
+                candidates.add(new PersistCandidate(record.partition(), record.offset(), conversationId, event, message));
+            } catch (Exception exception) {
+                resultBuilder.addPoison(detail(record, event, summarize(exception)));
+            }
+        }
+        return candidates;
     }
 
     private Message toMessage(MessageEvent event) {
@@ -92,13 +124,16 @@ public class KafkaMessagePersister {
     }
 
     private Long requireMessageId(MessageEvent event) {
-        if (event.getMessageId() == null) {
+        if (event == null || event.getMessageId() == null) {
             throw new IllegalArgumentException("messageId cannot be null");
         }
         return event.getMessageId();
     }
 
     private String resolveClientMessageId(MessageEvent event) {
+        if (event == null) {
+            return null;
+        }
         if (StringUtils.hasText(event.getClientMessageId())) {
             return event.getClientMessageId().trim();
         }
@@ -108,58 +143,62 @@ public class KafkaMessagePersister {
         return null;
     }
 
-    private List<PersistCandidate> saveBatch(List<PersistCandidate> candidates) {
+    private void saveBatch(List<PersistCandidate> candidates) {
         List<Message> messages = candidates.stream().map(PersistCandidate::message).toList();
         boolean saved = messagePersistenceService.saveBatch(messages);
         if (!saved) {
             throw new IllegalStateException("saveBatch returned false");
         }
-        return candidates;
     }
 
-    private List<PersistOutcome> saveIndividually(List<PersistCandidate> candidates) {
-        List<PersistOutcome> persisted = new ArrayList<>();
+    private void saveIndividually(List<PersistCandidate> candidates,
+                                  KafkaMessagePersistBatchResult.Builder resultBuilder) {
+        Set<Integer> blockedPartitions = new HashSet<>();
+        Map<Integer, KafkaMessagePersistBatchResult.Detail> retryBarrierByPartition = new HashMap<>();
         for (PersistCandidate candidate : candidates) {
+            if (blockedPartitions.contains(candidate.partition())) {
+                KafkaMessagePersistBatchResult.Detail retryBarrier = retryBarrierByPartition.get(candidate.partition());
+                String barrierReason = retryBarrier == null
+                        ? "deferred after earlier retryable record in same partition"
+                        : "deferred after retryable record offset=" + retryBarrier.offset();
+                resultBuilder.addRetryable(candidate.detail(barrierReason));
+                continue;
+            }
             try {
                 boolean saved = messagePersistenceService.save(candidate.message());
                 if (!saved) {
                     throw new IllegalStateException("save returned false");
                 }
-                persisted.add(new PersistOutcome(candidate.event(), candidate.message(), true));
+                markPersistedCandidate(candidate);
+                resultBuilder.addSuccess(candidate.detail(null));
             } catch (DuplicateKeyException duplicate) {
-                log.debug("Treat duplicate Kafka message event as already persisted. messageId={}, clientMessageId={}",
-                        candidate.message().getId(), candidate.message().getClientMessageId());
-                persisted.add(new PersistOutcome(candidate.event(), candidate.message(), true));
+                markPersistedCandidate(candidate);
+                resultBuilder.addDuplicate(candidate.detail(summarize(duplicate)));
+            } catch (Exception exception) {
+                if (isPoisonRecordException(exception)) {
+                    resultBuilder.addPoison(candidate.detail(summarize(exception)));
+                    continue;
+                }
+                KafkaMessagePersistBatchResult.Detail retryableDetail = candidate.detail(summarize(exception));
+                resultBuilder.addRetryable(retryableDetail);
+                blockedPartitions.add(candidate.partition());
+                retryBarrierByPartition.put(candidate.partition(), retryableDetail);
             }
         }
-        return persisted;
     }
 
-    private void markPersistedBatch(List<PersistCandidate> candidates) {
+    private void markRetryableBatch(List<PersistCandidate> candidates,
+                                    KafkaMessagePersistBatchResult.Builder resultBuilder,
+                                    String reason) {
         for (PersistCandidate candidate : candidates) {
-            persistenceWatermarkService.markPersisted(
-                    resolveConversationId(candidate.event()),
-                    candidate.message().getId()
-            );
-            replayPendingStatusEvents(candidate.message().getId());
+            resultBuilder.addRetryable(candidate.detail(reason));
         }
     }
 
-    private void markPersistedOutcomes(List<PersistOutcome> outcomes) {
-        for (PersistOutcome outcome : outcomes) {
-            if (!outcome.persistedOrAlreadyExists()) {
-                continue;
-            }
-            persistenceWatermarkService.markPersisted(
-                    resolveConversationId(outcome.event()),
-                    outcome.message().getId()
-            );
-            replayPendingStatusEvents(outcome.message().getId());
-        }
-    }
-
-    private long countPersisted(List<PersistOutcome> outcomes) {
-        return outcomes.stream().filter(PersistOutcome::persistedOrAlreadyExists).count();
+    private void markPersistedCandidate(PersistCandidate candidate) {
+        persistenceWatermarkService.markPersisted(candidate.conversationId(), candidate.message().getId());
+        finalizeAcceptedAndOutbox(candidate.event());
+        replayPendingStatusEvents(candidate.message().getId());
     }
 
     private void replayPendingStatusEvents(Long messageId) {
@@ -183,6 +222,30 @@ public class KafkaMessagePersister {
         }
     }
 
+    private void finalizeAcceptedAndOutbox(MessageEvent event) {
+        if (event == null) {
+            return;
+        }
+        try {
+            acceptedMessageProjectionService.markPersisted(event);
+        } catch (Exception exception) {
+            log.warn("Failed to promote accepted/outbox ack stage after persistence. messageId={}",
+                    event.getMessageId(), exception);
+        }
+    }
+
+    private boolean isSingleRowFallbackBatchException(Exception exception) {
+        return exception instanceof DuplicateKeyException
+                || exception instanceof DataIntegrityViolationException
+                || exception instanceof InvalidDataAccessApiUsageException;
+    }
+
+    private boolean isPoisonRecordException(Exception exception) {
+        return exception instanceof DataIntegrityViolationException
+                || exception instanceof InvalidDataAccessApiUsageException
+                || exception instanceof IllegalArgumentException;
+    }
+
     private String resolveConversationId(MessageEvent event) {
         if (event == null) {
             throw new IllegalArgumentException("message event cannot be null");
@@ -204,9 +267,88 @@ public class KafkaMessagePersister {
         return "p_" + min + "_" + max;
     }
 
-    private record PersistCandidate(MessageEvent event, Message message) {
+    private KafkaMessagePersistBatchResult.Detail detail(ConsumerRecord<String, MessageEvent> record,
+                                                         MessageEvent event,
+                                                         String reason) {
+        return new KafkaMessagePersistBatchResult.Detail(
+                record == null ? -1 : record.partition(),
+                record == null ? -1L : record.offset(),
+                event == null ? null : event.getMessageId(),
+                resolveClientMessageId(event),
+                safeConversationId(event),
+                reason
+        );
     }
 
-    private record PersistOutcome(MessageEvent event, Message message, boolean persistedOrAlreadyExists) {
+    private String safeConversationId(MessageEvent event) {
+        if (event == null) {
+            return null;
+        }
+        if (StringUtils.hasText(event.getConversationId())) {
+            return event.getConversationId().trim();
+        }
+        if (event.getGroupId() != null || Boolean.TRUE.equals(event.getGroup())) {
+            return event.getGroupId() == null ? null : "g_" + event.getGroupId();
+        }
+        if (event.getSenderId() == null || event.getReceiverId() == null) {
+            return null;
+        }
+        long min = Math.min(event.getSenderId(), event.getReceiverId());
+        long max = Math.max(event.getSenderId(), event.getReceiverId());
+        return "p_" + min + "_" + max;
+    }
+
+    private String summarize(Exception exception) {
+        if (exception == null) {
+            return "unknown";
+        }
+        Throwable root = exception;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        String message = root.getMessage();
+        if (!StringUtils.hasText(message)) {
+            message = exception.getMessage();
+        }
+        String normalizedMessage = StringUtils.hasText(message) ? message.trim() : exception.getClass().getSimpleName();
+        if (normalizedMessage.length() > 200) {
+            normalizedMessage = normalizedMessage.substring(0, 200);
+        }
+        return root.getClass().getSimpleName() + ":" + normalizedMessage;
+    }
+
+    private void logBatchResult(KafkaMessagePersistBatchResult result) {
+        if (result.getMessageCount() == 0) {
+            log.debug("No message events to persist. recordCount={}", result.getRecordCount());
+            return;
+        }
+        String summary = result.summary();
+        if (result.hasRetryableFailures()) {
+            log.warn("Kafka message batch persisted with retryable remainder. {}", summary);
+            return;
+        }
+        if (result.getPoisonCount() > 0 || result.getDuplicateCount() > 0) {
+            log.warn("Kafka message batch persisted with isolated records. {}", summary);
+            return;
+        }
+        log.info("Persisted Kafka message batch. {}", summary);
+    }
+
+    private record PersistCandidate(int partition,
+                                    long offset,
+                                    String conversationId,
+                                    MessageEvent event,
+                                    Message message) {
+
+        KafkaMessagePersistBatchResult.Detail detail(String reason) {
+            return new KafkaMessagePersistBatchResult.Detail(
+                    partition,
+                    offset,
+                    event == null ? null : event.getMessageId(),
+                    message == null ? null : message.getClientMessageId(),
+                    conversationId,
+                    reason
+            );
+        }
     }
 }

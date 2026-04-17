@@ -14,12 +14,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
-import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestAttribute;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseCookie;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/")
@@ -46,6 +42,12 @@ public class AuthController {
 
     @Value("${im.auth.cookie.ws-ticket-path:/websocket}")
     private String wsTicketCookiePath;
+
+    @Value("${im.auth.cookie.ws-ticket-same-site:Lax}")
+    private String wsTicketCookieSameSite;
+
+    @Value("${im.auth.cookie.ws-ticket-secure:auto}")
+    private String wsTicketCookieSecure;
 
     @PostMapping("/refresh")
     public ApiResponse<TokenPairDTO> refresh(
@@ -138,17 +140,17 @@ public class AuthController {
                 || wsTicket.getTicket().isBlank()) {
             return;
         }
-        boolean secure = AuthCookieUtil.resolveSecure(request, authCookieSecure);
+        boolean secure = AuthCookieUtil.resolveSecure(request, wsTicketCookieSecure);
+        ResponseCookie cookie = ResponseCookie.from(wsTicketCookieName, wsTicket.getTicket())
+                .httpOnly(true)
+                .secure(secure)
+                .sameSite(resolveSameSite(wsTicketCookieSameSite))
+                .path(normalizeCookiePath(wsTicketCookiePath))
+                .maxAge(toSeconds(wsTicket.getExpiresInMs()))
+                .build();
         response.addHeader(
                 HttpHeaders.SET_COOKIE,
-                AuthCookieUtil.buildTokenCookie(
-                        wsTicketCookieName,
-                        wsTicket.getTicket(),
-                        toSeconds(wsTicket.getExpiresInMs()),
-                        secure,
-                        authCookieSameSite,
-                        wsTicketCookiePath
-                ).toString()
+                cookie.toString()
         );
     }
 
@@ -158,5 +160,17 @@ public class AuthController {
         }
         long seconds = millis / 1000;
         return seconds > 0 ? seconds : 1;
+    }
+
+    private String resolveSameSite(String sameSite) {
+        return sameSite == null || sameSite.isBlank() ? "Lax" : sameSite.trim();
+    }
+
+    private String normalizeCookiePath(String path) {
+        if (path == null || path.isBlank()) {
+            return "/";
+        }
+        String trimmed = path.trim();
+        return trimmed.startsWith("/") ? trimmed : "/" + trimmed;
     }
 }

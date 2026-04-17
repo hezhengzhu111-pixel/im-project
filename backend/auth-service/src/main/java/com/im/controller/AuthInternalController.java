@@ -1,12 +1,6 @@
 package com.im.controller;
 
-import com.im.dto.AuthUserResourceDTO;
-import com.im.dto.ApiResponse;
-import com.im.dto.PermissionCheckResultDTO;
-import com.im.dto.TokenPairDTO;
-import com.im.dto.TokenParseResultDTO;
-import com.im.dto.TokenRevokeResultDTO;
-import com.im.dto.WsTicketConsumeResultDTO;
+import com.im.dto.*;
 import com.im.dto.request.CheckPermissionRequest;
 import com.im.dto.request.ConsumeWsTicketRequest;
 import com.im.dto.request.IssueTokenRequest;
@@ -26,7 +20,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/auth/internal")
 @RequiredArgsConstructor
-@Tag(name = "认证服务内部接口", description = "供其他服务调用的认证授权接口")
+@Tag(name = "Internal Auth APIs", description = "Authentication endpoints for internal service-to-service calls")
 public class AuthInternalController {
 
     private final AuthTokenService authTokenService;
@@ -34,38 +28,29 @@ public class AuthInternalController {
     private final AuthPermissionService authPermissionService;
     private final AuthTokenRevokeService authTokenRevokeService;
 
-    @org.springframework.beans.factory.annotation.Value("${im.internal.secret}")
-    private String internalSecret;
-
-    @org.springframework.beans.factory.annotation.Value("${im.internal.header:X-Internal-Secret}")
-    private String internalHeader;
-
     @org.springframework.beans.factory.annotation.Value("${im.security.token-revocation-check.enabled:true}")
     private boolean tokenRevocationCheckEnabled;
 
     @PostMapping("/token")
-    @Operation(summary = "颁发Token", description = "为用户颁发访问令牌和刷新令牌")
+    @Operation(summary = "Issue token", description = "Issue access and refresh tokens for an authenticated user")
     public ApiResponse<TokenPairDTO> issueToken(HttpServletRequest httpRequest,
                                                 @Validated @RequestBody IssueTokenRequest request) {
-        verify(httpRequest);
         authUserResourceService.upsertFromIssueTokenRequest(request);
         return ApiResponse.success(authTokenService.issueTokenPair(request.getUserId(), request.getUsername()));
     }
 
     @GetMapping("/user-resource/{userId}")
-    @Operation(summary = "获取用户资源", description = "获取用户的资源权限信息")
+    @Operation(summary = "Get user resource", description = "Load the cached authorization resources for a user")
     public ApiResponse<AuthUserResourceDTO> getUserResource(HttpServletRequest httpRequest,
-                                                            @Parameter(description = "用户ID") @PathVariable("userId") Long userId) {
-        verify(httpRequest);
+                                                            @Parameter(description = "User ID") @PathVariable("userId") Long userId) {
         return ApiResponse.success(authUserResourceService.getOrLoad(userId));
     }
 
     @PostMapping("/validate-token")
-    @Operation(summary = "验证Token", description = "验证访问令牌的有效性")
+    @Operation(summary = "Validate token", description = "Parse and validate an access token")
     public ApiResponse<TokenParseResultDTO> validateToken(HttpServletRequest httpRequest,
                                                           @RequestHeader(value = "X-Check-Revoked", required = false) String checkRevokedHeader,
                                                           @RequestBody String token) {
-        verify(httpRequest);
         String normalizedToken = normalizeBearerToken(token);
         TokenParseResultDTO result = authTokenService.parseAccessToken(normalizedToken, false);
         boolean checkRevoked = checkRevokedHeader == null
@@ -74,7 +59,7 @@ public class AuthInternalController {
         if (checkRevoked && result != null && result.isValid() && !result.isExpired()
                 && authTokenRevokeService.isTokenRevoked(normalizedToken, result)) {
             result.setValid(false);
-            result.setError("token已吊销");
+            result.setError("token宸插悐閿€");
             result.setUserId(null);
             result.setUsername(null);
             result.setIssuedAtEpochMs(null);
@@ -87,26 +72,23 @@ public class AuthInternalController {
     }
 
     @PostMapping("/check-permission")
-    @Operation(summary = "检查权限", description = "检查用户是否具有指定的权限")
+    @Operation(summary = "Check permission", description = "Check whether the user has a target permission")
     public ApiResponse<PermissionCheckResultDTO> checkPermission(HttpServletRequest httpRequest,
                                                                  @Validated @RequestBody CheckPermissionRequest request) {
-        verify(httpRequest);
         return ApiResponse.success(authPermissionService.checkPermission(request));
     }
 
     @PostMapping("/revoke-token")
-    @Operation(summary = "吊销Token", description = "吊销指定的令牌")
+    @Operation(summary = "Revoke token", description = "Revoke a specific token")
     public ApiResponse<TokenRevokeResultDTO> revokeToken(HttpServletRequest httpRequest,
                                                          @Validated @RequestBody RevokeTokenRequest request) {
-        verify(httpRequest);
         return ApiResponse.success(authTokenRevokeService.revokeToken(request));
     }
 
     @PostMapping("/revoke-user-tokens/{userId}")
-    @Operation(summary = "吊销用户所有Token", description = "吊销指定用户的所有令牌")
+    @Operation(summary = "Revoke user tokens", description = "Revoke all tokens owned by a user")
     public ApiResponse<Void> revokeUserTokens(HttpServletRequest httpRequest,
-                                              @Parameter(description = "用户ID") @PathVariable("userId") Long userId) {
-        verify(httpRequest);
+                                              @Parameter(description = "User ID") @PathVariable("userId") Long userId) {
         authTokenRevokeService.revokeAllUserTokens(userId);
         return ApiResponse.success();
     }
@@ -115,15 +97,7 @@ public class AuthInternalController {
     @Operation(summary = "Consume WebSocket ticket", description = "Validate and consume a one-time WebSocket ticket")
     public ApiResponse<WsTicketConsumeResultDTO> consumeWsTicket(HttpServletRequest httpRequest,
                                                                  @Validated @RequestBody ConsumeWsTicketRequest request) {
-        verify(httpRequest);
         return ApiResponse.success(authTokenService.consumeWsTicket(request.getTicket(), request.getUserId()));
-    }
-
-    private void verify(HttpServletRequest httpRequest) {
-        String secret = httpRequest.getHeader(internalHeader);
-        if (secret == null || !internalSecret.equals(secret)) {
-            throw new SecurityException("Forbidden");
-        }
     }
 
     private String normalizeBearerToken(String token) {

@@ -18,7 +18,10 @@ import org.springframework.web.socket.WebSocketSession;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -44,7 +47,7 @@ class GatewayKafkaPusherTest {
         pusher = new GatewayKafkaPusher(imService, redisTemplate, deduplicator);
         ReflectionTestUtils.setField(pusher, "groupMembersCachePrefix", "message:group:members:");
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        lenient().when(deduplicator.isProcessed(anyString())).thenReturn(false);
+        lenient().when(deduplicator.tryReserve(anyString())).thenReturn(true);
     }
 
     @Test
@@ -62,8 +65,9 @@ class GatewayKafkaPusherTest {
 
         verify(imService).pushMessageToUser(payload, 1L);
         verify(imService).pushMessageToUser(payload, 2L);
-        verify(deduplicator).markProcessed("kafka:MESSAGE:100:1");
-        verify(deduplicator).markProcessed("kafka:MESSAGE:100:2");
+        verify(deduplicator).tryReserve("kafka:MESSAGE:100:1");
+        verify(deduplicator).tryReserve("kafka:MESSAGE:100:2");
+        verify(deduplicator, never()).release(anyString());
     }
 
     @Test
@@ -77,7 +81,7 @@ class GatewayKafkaPusherTest {
         pusher.handleEvent(event);
 
         verify(imService, times(1)).pushMessageToUser(payload, 1L);
-        verify(deduplicator, times(1)).markProcessed("kafka:MESSAGE:100:1");
+        verify(deduplicator, times(1)).tryReserve("kafka:MESSAGE:100:1");
     }
 
     @Test
@@ -93,7 +97,7 @@ class GatewayKafkaPusherTest {
 
         verify(imService).pushMessageToUser(payload, 1L);
         verify(imService, never()).pushMessageToUser(payload, 2L);
-        verify(deduplicator).markProcessed("kafka:MESSAGE:100:1");
+        verify(deduplicator).tryReserve("kafka:MESSAGE:100:1");
     }
 
     @Test
@@ -116,9 +120,9 @@ class GatewayKafkaPusherTest {
         verify(imService).pushMessageToUser(payload, 1L);
         verify(imService).pushMessageToUser(payload, 2L);
         verify(imService).pushMessageToUser(payload, 3L);
-        verify(deduplicator).markProcessed("kafka:MESSAGE:101:1");
-        verify(deduplicator).markProcessed("kafka:MESSAGE:101:2");
-        verify(deduplicator).markProcessed("kafka:MESSAGE:101:3");
+        verify(deduplicator).tryReserve("kafka:MESSAGE:101:1");
+        verify(deduplicator).tryReserve("kafka:MESSAGE:101:2");
+        verify(deduplicator).tryReserve("kafka:MESSAGE:101:3");
     }
 
     @Test
@@ -160,15 +164,15 @@ class GatewayKafkaPusherTest {
         UserSession receiverSession = session("session-2");
         when(imService.getLocalSessions("1")).thenReturn(List.of(senderSession));
         when(imService.getLocalSessions("2")).thenReturn(List.of(receiverSession));
-        when(deduplicator.isProcessed("kafka:MESSAGE:100:1")).thenReturn(true);
+        when(deduplicator.tryReserve("kafka:MESSAGE:100:1")).thenReturn(false);
         when(imService.pushMessageToUser(payload, 2L)).thenReturn(true);
 
         pusher.handleEvent(event);
 
         verify(imService, never()).pushMessageToUser(payload, 1L);
         verify(imService).pushMessageToUser(payload, 2L);
-        verify(deduplicator, never()).markProcessed("kafka:MESSAGE:100:1");
-        verify(deduplicator).markProcessed("kafka:MESSAGE:100:2");
+        verify(deduplicator).tryReserve("kafka:MESSAGE:100:1");
+        verify(deduplicator).tryReserve("kafka:MESSAGE:100:2");
     }
 
     @Test
@@ -195,7 +199,7 @@ class GatewayKafkaPusherTest {
         pusher.handleEvent(event);
 
         verify(imService).pushReadReceiptToSession(receipt, "session-2", "READ_SYNC");
-        verify(deduplicator).markProcessed("kafka:READ_SYNC:100:2:session-2");
+        verify(deduplicator).tryReserve("kafka:READ_SYNC:100:2:session-2");
     }
 
     @Test
@@ -218,8 +222,8 @@ class GatewayKafkaPusherTest {
 
         verify(imService).pushReadReceiptToSession(any(ReadReceiptDTO.class), eq("session-1"), eq("READ_RECEIPT"));
         verify(imService).pushReadReceiptToSession(any(ReadReceiptDTO.class), eq("session-2"), eq("READ_RECEIPT"));
-        verify(deduplicator).markProcessed("kafka:READ_RECEIPT:150:1:session-1");
-        verify(deduplicator).markProcessed("kafka:READ_RECEIPT:150:2:session-2");
+        verify(deduplicator).tryReserve("kafka:READ_RECEIPT:150:1:session-1");
+        verify(deduplicator).tryReserve("kafka:READ_RECEIPT:150:2:session-2");
     }
 
     @Test
@@ -252,8 +256,89 @@ class GatewayKafkaPusherTest {
 
         verify(imService).pushMessageToUser(payload, 1L);
         verify(imService).pushMessageToUser(payload, 2L);
-        verify(deduplicator).markProcessed("kafka:MESSAGE_STATUS_CHANGED:300:4:1");
-        verify(deduplicator).markProcessed("kafka:MESSAGE_STATUS_CHANGED:300:4:2");
+        verify(deduplicator).tryReserve("kafka:MESSAGE_STATUS_CHANGED:300:4:1");
+        verify(deduplicator).tryReserve("kafka:MESSAGE_STATUS_CHANGED:300:4:2");
+    }
+
+    @Test
+    void handleEvent_shouldReleaseReservationWhenSendThrowsAndAllowRetry() {
+        MessageDTO payload = privatePayload(1L, 1L);
+        MessageEvent event = privateEvent(payload, 1L, 1L);
+        UserSession selfSession = session("session-1");
+        when(imService.getLocalSessions("1")).thenReturn(List.of(selfSession));
+        when(deduplicator.tryReserve("kafka:MESSAGE:100:1")).thenReturn(true, true);
+        when(imService.pushMessageToUser(payload, 1L))
+                .thenThrow(new RuntimeException("boom"))
+                .thenReturn(true);
+
+        pusher.handleEvent(event);
+        pusher.handleEvent(event);
+
+        verify(imService, times(2)).pushMessageToUser(payload, 1L);
+        verify(deduplicator).release("kafka:MESSAGE:100:1");
+    }
+
+    @Test
+    void handleEvent_shouldNotSendAgainAfterSuccessfulDelivery() {
+        MessageDTO payload = privatePayload(1L, 1L);
+        MessageEvent event = privateEvent(payload, 1L, 1L);
+        UserSession selfSession = session("session-1");
+        when(imService.getLocalSessions("1")).thenReturn(List.of(selfSession));
+        when(deduplicator.tryReserve("kafka:MESSAGE:100:1")).thenReturn(true, false);
+        when(imService.pushMessageToUser(payload, 1L)).thenReturn(true);
+
+        pusher.handleEvent(event);
+        pusher.handleEvent(event);
+
+        verify(imService, times(1)).pushMessageToUser(payload, 1L);
+        verify(deduplicator, never()).release("kafka:MESSAGE:100:1");
+    }
+
+    @Test
+    void handleEvent_shouldOnlySendOnceWhenConcurrentDeliveryKeyMatches() throws Exception {
+        MessageDTO payload = privatePayload(1L, 1L);
+        MessageEvent event = privateEvent(payload, 1L, 1L);
+        UserSession selfSession = session("session-1");
+        when(imService.getLocalSessions("1")).thenReturn(List.of(selfSession));
+
+        AtomicBoolean reserved = new AtomicBoolean(false);
+        CountDownLatch sendStarted = new CountDownLatch(1);
+        CountDownLatch releaseSend = new CountDownLatch(1);
+        when(deduplicator.tryReserve("kafka:MESSAGE:100:1"))
+                .thenAnswer(invocation -> reserved.compareAndSet(false, true));
+        when(imService.pushMessageToUser(payload, 1L)).thenAnswer(invocation -> {
+            sendStarted.countDown();
+            assertTrue(releaseSend.await(1, TimeUnit.SECONDS));
+            return true;
+        });
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<?> first = executor.submit(() -> awaitAndHandle(start, event));
+            Future<?> second = executor.submit(() -> awaitAndHandle(start, event));
+
+            start.countDown();
+            assertTrue(sendStarted.await(1, TimeUnit.SECONDS));
+            releaseSend.countDown();
+
+            first.get(1, TimeUnit.SECONDS);
+            second.get(1, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        verify(imService, times(1)).pushMessageToUser(payload, 1L);
+    }
+
+    private void awaitAndHandle(CountDownLatch start, MessageEvent event) {
+        try {
+            assertTrue(start.await(1, TimeUnit.SECONDS));
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(exception);
+        }
+        pusher.handleEvent(event);
     }
 
     private MessageEvent privateEvent(MessageDTO payload, Long senderId, Long receiverId) {

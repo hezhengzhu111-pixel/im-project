@@ -27,6 +27,12 @@ class SecurityPathsTest {
     }
 
     @Test
+    void serviceWhiteList_shouldNotMatchInternalOnlyPaths() {
+        assertFalse(SecurityPaths.isServiceWhiteList("/api/user/internal/profile"));
+        assertFalse(SecurityPaths.isServiceWhiteList("/api/group/internal/members"));
+    }
+
+    @Test
     void internalPath_shouldMatchExpectedPaths() {
         assertTrue(SecurityPaths.isGatewayInternalPath("/api/user/internal/profile"));
         assertTrue(SecurityPaths.isGatewayInternalPath("/api/group/internal/members"));

@@ -44,16 +44,11 @@ public class HotMessageRedisRepository {
                     end
                     local current = parseLong(redis.call('GET', KEYS[1]))
                     local next = parseLong(ARGV[1])
-                    local ttl = parseLong(ARGV[2])
                     if (not next) then
                       return redis.error_reply('invalid persisted watermark')
                     end
-                    if (not ttl) or ttl <= 0 then
-                      ttl = 60
-                    end
                     if (not current) then
                       redis.call('SET', KEYS[1], tostring(next))
-                      redis.call('EXPIRE', KEYS[1], ttl)
                       return next
                     end
                     current = tonumber(current)
@@ -61,7 +56,7 @@ public class HotMessageRedisRepository {
                       current = next
                       redis.call('SET', KEYS[1], tostring(current))
                     end
-                    redis.call('EXPIRE', KEYS[1], ttl)
+                    redis.call('PERSIST', KEYS[1])
                     return current
                     """,
             Long.class
@@ -92,9 +87,6 @@ public class HotMessageRedisRepository {
 
     @Value("${im.message.persisted-watermark.key-prefix:conversation:persisted:watermark:}")
     private String persistedWatermarkKeyPrefix;
-
-    @Value("${im.message.persisted-watermark.ttl-seconds:86400}")
-    private long persistedWatermarkTtlSeconds;
 
     @Value("${im.message.pending-status.key-prefix:message:pending:status:}")
     private String pendingStatusKeyPrefix;
@@ -250,8 +242,7 @@ public class HotMessageRedisRepository {
                 SCRIPT_ARGUMENT_SERIALIZER,
                 SCRIPT_RESULT_SERIALIZER,
                 List.of(persistedWatermarkKeyPrefix + conversationId.trim()),
-                Long.toString(messageId),
-                Long.toString(resolvePersistedWatermarkTtlSeconds())
+                Long.toString(messageId)
         );
     }
 
@@ -259,7 +250,12 @@ public class HotMessageRedisRepository {
         if (!StringUtils.hasText(conversationId)) {
             return null;
         }
-        return parseLongValue(redisTemplate.opsForValue().get(persistedWatermarkKeyPrefix + conversationId.trim()));
+        String key = persistedWatermarkKeyPrefix + conversationId.trim();
+        Long watermark = parseLongValue(redisTemplate.opsForValue().get(key));
+        if (watermark != null) {
+            redisTemplate.persist(key);
+        }
+        return watermark;
     }
 
     public void saveStatusPending(Long messageId, Integer status, StatusChangeEvent event) {
@@ -437,10 +433,6 @@ public class HotMessageRedisRepository {
 
     private long resolvePendingPersistTtlSeconds() {
         return Math.max(resolveHotMessageTtlSeconds(), pendingPersistTtlSeconds);
-    }
-
-    private long resolvePersistedWatermarkTtlSeconds() {
-        return Math.max(60L, persistedWatermarkTtlSeconds);
     }
 
     private long resolvePendingStatusTtlSeconds() {

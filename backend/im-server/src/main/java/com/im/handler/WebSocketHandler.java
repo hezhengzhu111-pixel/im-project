@@ -63,6 +63,7 @@ public class WebSocketHandler implements org.springframework.web.socket.WebSocke
         }
         if (!imService.isSessionActive(userId, session.getId())) {
             log.debug("Ignore websocket message from stale session. userId={}, sessionId={}", userId, session.getId());
+            cleanupSession(session, CloseStatus.SESSION_NOT_RELIABLE.withReason("stale session"));
             return;
         }
 

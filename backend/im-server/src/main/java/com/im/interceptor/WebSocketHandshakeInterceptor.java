@@ -19,6 +19,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Map;
 
 @Slf4j
@@ -40,14 +42,23 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
     @Value("${im.auth.cookie.ws-ticket-path:/websocket}")
     private String wsTicketCookiePath;
 
-    @Value("${im.auth.cookie.same-site:Lax}")
-    private String authCookieSameSite;
+    @Value("${im.auth.cookie.ws-ticket-same-site:Lax}")
+    private String wsTicketCookieSameSite;
 
-    @Value("${im.auth.cookie.secure:auto}")
-    private String authCookieSecure;
+    @Value("${im.auth.cookie.ws-ticket-secure:auto}")
+    private String wsTicketCookieSecure;
+
+    @Value("${im.gateway.user-id-header:X-User-Id}")
+    private String gatewayUserIdHeader;
 
     @Value("${im.websocket.allowed-origins:" + DEFAULT_ALLOWED_ORIGINS + "}")
     private String allowedOrigins;
+
+    @Value("${im.websocket.allow-blank-origin:false}")
+    private boolean allowBlankOrigin;
+
+    @Value("${im.websocket.allow-query-ticket:false}")
+    private boolean allowQueryTicket;
 
     @Override
     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
@@ -59,7 +70,13 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
 
         HttpServletRequest httpRequest = servletRequest.getServletRequest();
         String origin = httpRequest.getHeader(HttpHeaders.ORIGIN);
-        if (!isOriginAllowed(origin)) {
+        if (StringUtils.isBlank(origin) && !allowBlankOrigin) {
+            recordHandshakeFailure("origin_denied");
+            log.warn("WebSocket connection rejected: blank origin not allowed");
+            response.setStatusCode(HttpStatus.FORBIDDEN);
+            return false;
+        }
+        if (StringUtils.isNotBlank(origin) && !isOriginAllowed(origin)) {
             recordHandshakeFailure("origin_denied");
             log.warn("WebSocket connection rejected: origin not allowed, origin={}", origin);
             response.setStatusCode(HttpStatus.FORBIDDEN);
@@ -74,25 +91,41 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
             return false;
         }
 
-        String userIdFromUrl = extractUserIdFromUrl(httpRequest.getRequestURI());
-        Long expectedUserId = parseUserId(userIdFromUrl);
+        Long expectedUserId = extractTrustedUserId(httpRequest);
         if (expectedUserId == null) {
             recordHandshakeFailure("invalid_user");
-            log.warn("WebSocket connection rejected: invalid userId path");
-            response.setStatusCode(HttpStatus.BAD_REQUEST);
+            log.warn("WebSocket connection rejected: trusted userId missing or invalid");
+            response.setStatusCode(HttpStatus.UNAUTHORIZED);
             return false;
         }
 
         WsTicketConsumeResultDTO result = consumeWsTicket(ticket, expectedUserId);
         if (result == null || !result.isValid()) {
-            String error = result == null ? "ticket validation failed" : result.getError();
-            recordHandshakeFailure(result == null ? "consume_error" : (isUserMismatch(result) ? "ticket_mismatch" : "ticket_invalid"));
-            log.warn("WebSocket connection rejected: userId={}, reason={}", expectedUserId, error);
+            String reason = result == null ? "consume_error" : (isUserMismatch(result) ? "ticket_mismatch" : "ticket_invalid");
+            recordHandshakeFailure(reason);
+            log.warn("WebSocket connection rejected. reason={}, userId={}, ticketSummary={}",
+                    reason, expectedUserId, summarizeSecret(ticket));
+            log.debug("WebSocket rejection detail. reason={}, userId={}, ticketSummary={}, status={}, error={}",
+                    reason,
+                    expectedUserId,
+                    summarizeSecret(ticket),
+                    result == null ? null : result.getStatus(),
+                    result == null ? null : result.getError());
             response.setStatusCode(isUserMismatch(result) ? HttpStatus.FORBIDDEN : HttpStatus.UNAUTHORIZED);
             return false;
         }
+        if (result.getUserId() == null) {
+            recordHandshakeFailure("consume_error");
+            log.warn("WebSocket connection rejected. reason=consume_error, userId={}, ticketSummary={}",
+                    expectedUserId, summarizeSecret(ticket));
+            log.debug("WebSocket rejection detail. reason=consume_error, userId={}, ticketSummary={}, status={}",
+                    expectedUserId, summarizeSecret(ticket), result.getStatus());
+            response.setStatusCode(HttpStatus.UNAUTHORIZED);
+            return false;
+        }
 
-        attributes.put("userId", userIdFromUrl);
+        attributes.put("userId", String.valueOf(result.getUserId()));
+        attributes.put("username", result.getUsername());
         clearWsTicketCookie(response, httpRequest);
         recordHandshakeSuccess();
         return true;
@@ -105,15 +138,18 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
             request.setUserId(userId);
             return authServiceFeignClient.consumeWsTicket(request);
         } catch (Exception e) {
-            log.warn("Failed to consume ws ticket: {}", e.getMessage());
+            log.warn("Failed to consume ws ticket. userId={}, ticketSummary={}, errorType={}",
+                    userId, summarizeSecret(ticket), e.getClass().getSimpleName());
+            log.debug("Failed to consume ws ticket detail. userId={}, ticketSummary={}",
+                    userId, summarizeSecret(ticket), e);
             return null;
         }
     }
 
     private boolean isUserMismatch(WsTicketConsumeResultDTO result) {
         return result != null
-                && result.getError() != null
-                && result.getError().contains("userId");
+                && (WsTicketConsumeResultDTO.STATUS_USER_MISMATCH.equals(result.getStatus())
+                || (result.getError() != null && result.getError().contains("userId")));
     }
 
     private String extractTicket(HttpServletRequest httpRequest) {
@@ -121,17 +157,20 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
         if (StringUtils.isNotBlank(cookieTicket)) {
             return cookieTicket;
         }
+        if (!allowQueryTicket) {
+            return null;
+        }
         return httpRequest.getParameter("ticket");
     }
 
     private void clearWsTicketCookie(ServerHttpResponse response, HttpServletRequest request) {
-        boolean secure = AuthCookieUtil.resolveSecure(request, authCookieSecure);
+        boolean secure = AuthCookieUtil.resolveSecure(request, wsTicketCookieSecure);
         response.getHeaders().add(
                 HttpHeaders.SET_COOKIE,
                 AuthCookieUtil.clearCookie(
                         wsTicketCookieName,
                         secure,
-                        authCookieSameSite,
+                        wsTicketCookieSameSite,
                         wsTicketCookiePath
                 ).toString()
         );
@@ -159,31 +198,19 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
                 .toArray(String[]::new);
     }
 
-    private Long parseUserId(String userIdFromUrl) {
-        if (StringUtils.isBlank(userIdFromUrl)) {
+    private Long extractTrustedUserId(HttpServletRequest httpRequest) {
+        if (httpRequest == null || StringUtils.isBlank(gatewayUserIdHeader)) {
+            return null;
+        }
+        String rawUserId = httpRequest.getHeader(gatewayUserIdHeader);
+        if (StringUtils.isBlank(rawUserId)) {
             return null;
         }
         try {
-            return Long.valueOf(userIdFromUrl);
+            return Long.valueOf(rawUserId.trim());
         } catch (NumberFormatException ex) {
             return null;
         }
-    }
-
-    private String extractUserIdFromUrl(String requestUri) {
-        if (StringUtils.isBlank(requestUri)) {
-            return null;
-        }
-        int idx = requestUri.lastIndexOf('/');
-        if (idx < 0 || idx == requestUri.length() - 1) {
-            return null;
-        }
-        String tail = requestUri.substring(idx + 1);
-        int qIdx = tail.indexOf('?');
-        if (qIdx >= 0) {
-            tail = tail.substring(0, qIdx);
-        }
-        return tail;
     }
 
     private void recordHandshakeSuccess() {
@@ -195,6 +222,22 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
     private void recordHandshakeFailure(String reason) {
         if (metrics != null) {
             metrics.recordHandshakeFailure(reason);
+        }
+    }
+
+    private String summarizeSecret(String value) {
+        if (StringUtils.isBlank(value)) {
+            return "missing";
+        }
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.trim().getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < Math.min(6, digest.length); i++) {
+                sb.append(String.format("%02x", digest[i]));
+            }
+            return "sha256:" + sb + ",len=" + value.trim().length();
+        } catch (Exception e) {
+            return "len=" + value.trim().length();
         }
     }
 

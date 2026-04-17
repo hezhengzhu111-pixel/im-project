@@ -222,6 +222,11 @@ public class MessageServiceImpl implements MessageService {
     // 绉婚櫎 @Cacheable 娉ㄨВ锛屽畬鍏ㄧ敱鍐呴儴鎵嬪姩绠＄悊缂撳瓨锛岄伩鍏嶄笌鎵嬪姩閫昏緫鍐茬獊
     public List<ConversationDTO> getConversations(Long userId) {
         String cacheKey = CONVERSATION_CACHE_KEY + userId;
+        List<ConversationDTO> cachedConversations = readConversationCache(cacheKey);
+        if (cachedConversations != null) {
+            return cachedConversations;
+        }
+
         List<HotConversationSkeleton> hotConversationSkeletons = hotConversationReadService.loadConversationSkeletons(userId, 500);
         List<com.im.dto.UserDTO> friends = userServiceFeignClient.friendList(userId);
         List<com.im.dto.GroupInfoDTO> groups = groupServiceFeignClient.listUserGroups(userId);
@@ -237,15 +242,10 @@ public class MessageServiceImpl implements MessageService {
         fallbackConversations.addAll(buildPrivateConversations(userId, friends));
         fallbackConversations.addAll(buildGroupConversations(userId, groups));
         List<ConversationDTO> conversations = mergeConversations(hotConversations, fallbackConversations);
-        conversations.sort((c1, c2) -> {
-            if (c1.getLastMessageTime() == null && c2.getLastMessageTime() == null) return 0;
-            if (c1.getLastMessageTime() == null) return 1;
-            if (c2.getLastMessageTime() == null) return -1;
-            return c2.getLastMessageTime().compareTo(c1.getLastMessageTime());
-        });
-        
+        sortConversations(conversations);
+
         redisTemplate.opsForValue().set(cacheKey, conversations, CACHE_EXPIRE_HOURS, TimeUnit.HOURS);
-        
+
         return conversations;
     }
     
@@ -322,15 +322,26 @@ public class MessageServiceImpl implements MessageService {
         if (mappedMessageId != null) {
             MessageDTO hotMessage = hotMessageRedisRepository.getHotMessage(mappedMessageId);
             if (hotMessage != null) {
+                if (!StringUtils.hasText(hotMessage.getAckStage())) {
+                    hotMessage.setAckStage(MessageDTO.ACK_STAGE_ACCEPTED);
+                }
                 return hotMessage;
+            }
+            MessageDTO durableAcceptedMessage = acceptedMessageProjectionService.findDurableAcceptedMessage(command.getSenderId(), clientMessageId);
+            if (durableAcceptedMessage != null) {
+                return rehydrateAcceptedMessage(durableAcceptedMessage);
             }
             MessageDTO persistedMessage = loadPersistedAcceptedMessage(command.getSenderId(), clientMessageId);
             if (persistedMessage != null) {
                 return rehydrateAcceptedMessage(persistedMessage);
             }
-            throw new BusinessException("message already accepted but hot projection and persistence are temporarily unavailable");
+            throw new BusinessException("message already accepted but projection and durable persistence are temporarily unavailable");
         }
 
+        MessageDTO durableAcceptedMessage = acceptedMessageProjectionService.findDurableAcceptedMessage(command.getSenderId(), clientMessageId);
+        if (durableAcceptedMessage != null) {
+            return rehydrateAcceptedMessage(durableAcceptedMessage);
+        }
         MessageDTO persistedMessage = loadPersistedAcceptedMessage(command.getSenderId(), clientMessageId);
         if (persistedMessage == null) {
             return null;
@@ -350,6 +361,9 @@ public class MessageServiceImpl implements MessageService {
     }
 
     private MessageDTO rehydrateAcceptedMessage(MessageDTO message) {
+        if (message != null && !StringUtils.hasText(message.getAckStage())) {
+            message.setAckStage(MessageDTO.ACK_STAGE_ACCEPTED);
+        }
         acceptedMessageProjectionService.rehydrateAcceptedProjection(message);
         return message;
     }
@@ -959,6 +973,59 @@ public class MessageServiceImpl implements MessageService {
         return conversation.getConversationType() + ":" + conversation.getConversationId();
     }
 
+    private List<ConversationDTO> readConversationCache(String cacheKey) {
+        Object cachedValue = redisTemplate.opsForValue().get(cacheKey);
+        if (cachedValue == null) {
+            return null;
+        }
+        if (!(cachedValue instanceof List<?> cachedList)) {
+            return null;
+        }
+        if (cachedList.isEmpty()) {
+            return List.of();
+        }
+        List<ConversationDTO> conversations = new ArrayList<>(cachedList.size());
+        for (Object item : cachedList) {
+            if (!(item instanceof ConversationDTO conversation)) {
+                return null;
+            }
+            conversations.add(conversation);
+        }
+        sortConversations(conversations);
+        return conversations;
+    }
+
+    private void sortConversations(List<ConversationDTO> conversations) {
+        if (conversations == null || conversations.size() <= 1) {
+            return;
+        }
+        conversations.sort((left, right) -> {
+            LocalDateTime leftTime = left == null ? null : left.getLastMessageTime();
+            LocalDateTime rightTime = right == null ? null : right.getLastMessageTime();
+            if (leftTime == null && rightTime == null) {
+                return stableConversationKey(left).compareTo(stableConversationKey(right));
+            }
+            if (leftTime == null) {
+                return 1;
+            }
+            if (rightTime == null) {
+                return -1;
+            }
+            int compare = rightTime.compareTo(leftTime);
+            if (compare != 0) {
+                return compare;
+            }
+            return stableConversationKey(left).compareTo(stableConversationKey(right));
+        });
+    }
+
+    private String stableConversationKey(ConversationDTO conversation) {
+        if (conversation == null) {
+            return "";
+        }
+        return String.valueOf(conversation.getConversationType()) + ":" + String.valueOf(conversation.getConversationId());
+    }
+
     private MessageDTO buildMessageDTOFromMessage(Message message) {
         if (message == null) {
             return null;
@@ -976,6 +1043,7 @@ public class MessageServiceImpl implements MessageService {
         );
         if (dto != null) {
             dto.setGroup(groupMessage);
+            dto.setAckStage(MessageDTO.ACK_STAGE_PERSISTED);
         }
         return dto;
     }

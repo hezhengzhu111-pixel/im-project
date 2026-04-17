@@ -19,7 +19,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -69,16 +68,20 @@ class HotRecentMessageReadServiceTest {
     }
 
     @Test
-    void loadLatestMessagesShouldNotQueryDbWhenWatermarkIsMissing() {
+    void loadLatestMessagesShouldFallbackToDbWhenWatermarkIsMissing() {
         when(hotMessageRedisRepository.getRecentMessages("p_1_2", 500)).thenReturn(List.of(
                 hotMessage(3L, 1L, 2L, null, "hot-3", null, LocalDateTime.of(2026, 4, 16, 1, 0), false)
         ));
         when(persistenceWatermarkService.getPersistedWatermark("p_1_2")).thenReturn(null);
+        when(messageMapper.selectList(any())).thenReturn(List.of(
+                persistedMessage(2L, 1L, 2L, null, "db-2", LocalDateTime.of(2026, 4, 16, 0, 59), false),
+                persistedMessage(1L, 2L, 1L, null, "db-1", LocalDateTime.of(2026, 4, 16, 0, 58), false)
+        ));
 
         List<MessageDTO> messages = hotRecentMessageReadService.loadLatestMessages("p_1_2", 3);
 
-        assertEquals(List.of(3L), messages.stream().map(MessageDTO::getId).toList());
-        verify(messageMapper, never()).selectList(any());
+        assertEquals(List.of(3L, 2L, 1L), messages.stream().map(MessageDTO::getId).toList());
+        verify(messageMapper).selectList(any());
     }
 
     @Test
@@ -131,14 +134,72 @@ class HotRecentMessageReadServiceTest {
     }
 
     @Test
-    void resolveLatestVisibleMessageIdShouldReturnNullWhenHotAndWatermarkAreBothMissing() {
+    void loadCursorMessagesShouldDeduplicateByMessageIdAcrossHotAndDb() {
+        when(hotMessageRedisRepository.getRecentMessages("p_1_2", 500)).thenReturn(List.of(
+                hotMessage(8L, 2L, 1L, null, "hot-8", null, LocalDateTime.of(2026, 4, 16, 1, 8), false),
+                hotMessage(7L, 1L, 2L, null, "hot-7", null, LocalDateTime.of(2026, 4, 16, 1, 7), false),
+                hotMessage(6L, 2L, 1L, null, "hot-6", null, LocalDateTime.of(2026, 4, 16, 1, 6), false)
+        ));
+        when(persistenceWatermarkService.getPersistedWatermark("p_1_2")).thenReturn(null);
+        when(messageMapper.selectList(any())).thenReturn(List.of(
+                persistedMessage(6L, 2L, 1L, null, "db-6", LocalDateTime.of(2026, 4, 16, 1, 6), false),
+                persistedMessage(5L, 1L, 2L, null, "db-5", LocalDateTime.of(2026, 4, 16, 1, 5), false)
+        ));
+
+        List<MessageDTO> messages = hotRecentMessageReadService.loadCursorMessages("p_1_2", null, null, 4L, 10);
+
+        assertEquals(List.of(5L, 6L, 7L, 8L), messages.stream().map(MessageDTO::getId).toList());
+        assertEquals(4, messages.stream().map(MessageDTO::getId).distinct().count());
+        verify(messageMapper).selectList(any());
+    }
+
+    @Test
+    void loadCursorMessagesShouldUseLastMessageIdAsStablePageBoundaryWhenNewMessagesArrive() {
+        LocalDateTime boundaryTime = LocalDateTime.of(2026, 4, 16, 1, 11);
+        when(hotMessageRedisRepository.getRecentMessages("p_1_2", 500)).thenReturn(
+                List.of(
+                        hotMessage(12L, 2L, 1L, null, "hot-12", null, LocalDateTime.of(2026, 4, 16, 1, 12), false),
+                        hotMessage(11L, 1L, 2L, null, "hot-11", null, boundaryTime, false)
+                ),
+                List.of(
+                        hotMessage(13L, 1L, 2L, null, "hot-13", null, LocalDateTime.of(2026, 4, 16, 1, 13), false),
+                        hotMessage(12L, 2L, 1L, null, "hot-12", null, LocalDateTime.of(2026, 4, 16, 1, 12), false),
+                        hotMessage(11L, 1L, 2L, null, "hot-11", null, boundaryTime, false)
+                )
+        );
+        when(persistenceWatermarkService.getPersistedWatermark("p_1_2")).thenReturn(null);
+        when(messageMapper.selectList(any())).thenReturn(
+                List.of(
+                        persistedMessage(10L, 2L, 1L, null, "db-10", boundaryTime, false),
+                        persistedMessage(9L, 1L, 2L, null, "db-9", LocalDateTime.of(2026, 4, 16, 1, 10), false),
+                        persistedMessage(8L, 2L, 1L, null, "db-8", LocalDateTime.of(2026, 4, 16, 1, 9), false)
+                ),
+                List.of(
+                        persistedMessage(10L, 2L, 1L, null, "db-10", boundaryTime, false),
+                        persistedMessage(9L, 1L, 2L, null, "db-9", LocalDateTime.of(2026, 4, 16, 1, 10), false),
+                        persistedMessage(8L, 2L, 1L, null, "db-8", LocalDateTime.of(2026, 4, 16, 1, 9), false)
+                )
+        );
+
+        List<MessageDTO> firstPage = hotRecentMessageReadService.loadCursorMessages("p_1_2", null, null, null, 2);
+        List<MessageDTO> secondPage = hotRecentMessageReadService.loadCursorMessages("p_1_2", 11L, boundaryTime, null, 2);
+
+        assertEquals(List.of(12L, 11L), firstPage.stream().map(MessageDTO::getId).toList());
+        assertEquals(List.of(10L, 9L), secondPage.stream().map(MessageDTO::getId).toList());
+        verify(messageMapper, times(2)).selectList(any());
+    }
+
+    @Test
+    void resolveLatestVisibleMessageIdShouldFallbackToDbWhenWatermarkIsMissing() {
         when(hotMessageRedisRepository.getRecentMessages("p_1_2", 500)).thenReturn(List.of());
         when(persistenceWatermarkService.getPersistedWatermark("p_1_2")).thenReturn(null);
+        when(messageMapper.selectOne(any())).thenReturn(persistedMessage(7L, 2L, 1L, null, "db-latest",
+                LocalDateTime.of(2026, 4, 16, 1, 9), false));
 
         Long messageId = hotRecentMessageReadService.resolveLatestVisibleMessageId("p_1_2");
 
-        assertNull(messageId);
-        verify(messageMapper, never()).selectOne(any());
+        assertEquals(7L, messageId);
+        verify(messageMapper).selectOne(any());
     }
 
     @Test

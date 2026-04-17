@@ -11,11 +11,13 @@ import com.im.enums.MessageType;
 import com.im.enums.UserStatus;
 import com.im.metrics.ImServerMetrics;
 import com.im.service.IImService;
+import com.im.service.presence.PresenceTransitionDeduplicator;
+import com.im.service.route.UserRouteRegistry;
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.redisson.api.RMapCache;
 import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,15 +29,9 @@ import org.springframework.web.socket.WebSocketSession;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
@@ -47,36 +43,58 @@ public class ImServiceImpl implements IImService {
     private static final int USER_LOCK_STRIPE_COUNT = 1024;
     private static final CloseStatus SEND_FAILED_CLOSE_STATUS =
             CloseStatus.SESSION_NOT_RELIABLE.withReason("send failed");
+    private static final CloseStatus STALE_SESSION_CLOSE_STATUS =
+            CloseStatus.SESSION_NOT_RELIABLE.withReason("session stale");
 
     private final RedissonClient redissonClient;
     private final ImNodeIdentity nodeIdentity;
+    private final UserRouteRegistry routeRegistry;
+    private final PresenceTransitionDeduplicator presenceTransitionDeduplicator;
     private final Map<String, UserSession> sessionsById = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> sessionIdsByUser = new ConcurrentHashMap<>();
+    private final Set<String> failedSessionIds = ConcurrentHashMap.newKeySet();
+    private final Map<String, ScheduledFuture<?>> pendingOfflineTransitions = new ConcurrentHashMap<>();
     private final ReentrantLock[] userLocks = createUserLocks(USER_LOCK_STRIPE_COUNT);
-
-    @Value("${im.route.users-key:im:route:users}")
-    private String routeUsersKey;
+    private final AtomicInteger outboundSendThreadCounter = new AtomicInteger();
+    private final ScheduledExecutorService presenceTransitionExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "im-presence-transition");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private final ExecutorService outboundSendExecutor = createOutboundSendExecutor();
 
     @Value("${im.ws.presence-channel:im:presence:broadcast}")
     private String presenceChannel;
 
-    @Value("${im.route.lease-ttl-ms:120000}")
-    private long routeLeaseTtlMs;
+    @Value("${im.ws.presence-offline-grace-ms:1500}")
+    private long presenceOfflineGraceMs;
 
     @Value("${im.heartbeat.timeout:90000}")
     private long heartbeatTimeoutMs;
 
+    @Value("${im.websocket.send-dispatch-timeout-ms:1000}")
+    private long sendDispatchTimeoutMs;
+
     @Autowired(required = false)
     private ImServerMetrics metrics;
 
-    private RMapCache<String, String> routeMap;
-
     @PostConstruct
     public void init() {
-        routeMap = redissonClient.getMapCache(routeUsersKey);
         if (metrics != null) {
             metrics.bindConnectionGauges(() -> sessionsById.size(), () -> sessionIdsByUser.size());
         }
+    }
+
+    @PreDestroy
+    public void destroy() {
+        for (ScheduledFuture<?> future : pendingOfflineTransitions.values()) {
+            if (future != null) {
+                future.cancel(false);
+            }
+        }
+        pendingOfflineTransitions.clear();
+        presenceTransitionExecutor.shutdownNow();
+        outboundSendExecutor.shutdownNow();
     }
 
     @Override
@@ -95,6 +113,7 @@ public class ImServiceImpl implements IImService {
             for (String sessionId : new HashSet<>(sessionIds)) {
                 UserSession session = sessionsById.remove(sessionId);
                 if (session != null) {
+                    failedSessionIds.remove(sessionId);
                     removedSessions.add(session);
                 }
             }
@@ -109,9 +128,7 @@ public class ImServiceImpl implements IImService {
         for (UserSession removedSession : removedSessions) {
             closeSessionQuietly(normalizedUserId, removedSession.getWebSocketSession(), null);
         }
-        if (!isUserGloballyOnline(normalizedUserId)) {
-            publishAndBroadcastOnlineStatus(normalizedUserId, UserStatus.OFFLINE);
-        }
+        scheduleOfflineTransitionIfNeeded(normalizedUserId, true);
         return true;
     }
 
@@ -139,14 +156,7 @@ public class ImServiceImpl implements IImService {
             return false;
         }
         String wsType = message.getMessageType() == MessageType.SYSTEM ? "SYSTEM" : "MESSAGE";
-        boolean success = false;
-        for (UserSession userSession : getLocalSessions(String.valueOf(userId))) {
-            String sessionId = resolveSessionId(userSession);
-            if (StringUtils.isBlank(sessionId)) {
-                continue;
-            }
-            success = pushPayloadToSession(sessionId, wsType, message) || success;
-        }
+        boolean success = pushPayloadToSessions(getLocalSessions(String.valueOf(userId)), wsType, message);
         logPushMessageResult(message, userId, success);
         return success;
     }
@@ -156,15 +166,7 @@ public class ImServiceImpl implements IImService {
         if (receipt == null || userId == null) {
             return false;
         }
-        boolean success = false;
-        for (UserSession userSession : getLocalSessions(String.valueOf(userId))) {
-            String sessionId = resolveSessionId(userSession);
-            if (StringUtils.isBlank(sessionId)) {
-                continue;
-            }
-            success = pushPayloadToSession(sessionId, "READ_RECEIPT", receipt) || success;
-        }
-        return success;
+        return pushPayloadToSessions(getLocalSessions(String.valueOf(userId)), "READ_RECEIPT", receipt);
     }
 
     @Override
@@ -213,6 +215,7 @@ public class ImServiceImpl implements IImService {
         }
 
         LocalDateTime now = LocalDateTime.now();
+        int[] activeSessionCount = new int[1];
         boolean touched = withUserLock(normalizedUserId, () -> {
             Set<String> sessionIds = sessionIdsByUser.get(normalizedUserId);
             if (sessionIds == null || sessionIds.isEmpty()) {
@@ -224,6 +227,10 @@ public class ImServiceImpl implements IImService {
                 if (userSession == null) {
                     continue;
                 }
+                String normalizedSessionId = normalizeSessionId(sessionId);
+                if (normalizedSessionId == null || failedSessionIds.contains(normalizedSessionId)) {
+                    continue;
+                }
                 WebSocketSession webSocketSession = userSession.getWebSocketSession();
                 if (webSocketSession == null || !webSocketSession.isOpen()) {
                     continue;
@@ -232,13 +239,16 @@ public class ImServiceImpl implements IImService {
                 userSession.setLastHeartbeat(now);
                 updated = true;
             }
+            if (updated) {
+                activeSessionCount[0] = countActiveLocalSessions(normalizedUserId, now);
+                cancelPendingOfflineTransition(normalizedUserId);
+                refreshRouteRegistration(normalizedUserId, activeSessionCount[0]);
+            }
             return updated;
         });
 
         if (!touched) {
             userOffline(normalizedUserId);
-        } else {
-            refreshRouteRegistration(normalizedUserId);
         }
         return touched;
     }
@@ -250,7 +260,11 @@ public class ImServiceImpl implements IImService {
             return;
         }
         withUserLock(normalizedUserId, () -> {
-            UserSession userSession = sessionsById.get(sessionId.trim());
+            String normalizedSessionId = normalizeSessionId(sessionId);
+            if (normalizedSessionId == null || failedSessionIds.contains(normalizedSessionId)) {
+                return null;
+            }
+            UserSession userSession = sessionsById.get(normalizedSessionId);
             if (userSession == null || !normalizedUserId.equals(normalizeUserId(userSession.getUserId()))) {
                 return null;
             }
@@ -258,9 +272,11 @@ public class ImServiceImpl implements IImService {
             if (webSocketSession == null || !webSocketSession.isOpen()) {
                 return null;
             }
-            userSession.setLastHeartbeat(LocalDateTime.now());
+            LocalDateTime now = LocalDateTime.now();
+            userSession.setLastHeartbeat(now);
             userSession.setStatus(UserStatus.ONLINE);
-            refreshRouteRegistration(normalizedUserId);
+            cancelPendingOfflineTransition(normalizedUserId);
+            refreshRouteRegistration(normalizedUserId, countActiveLocalSessions(normalizedUserId, now));
             return null;
         });
     }
@@ -279,7 +295,7 @@ public class ImServiceImpl implements IImService {
         UserSession userSession = sessionsById.get(sessionId.trim());
         return userSession != null
                 && normalizedUserId.equals(normalizeUserId(userSession.getUserId()))
-                && isSessionOpenAndFresh(userSession, LocalDateTime.now());
+                && isSessionOpenAndFresh(sessionId.trim(), userSession, LocalDateTime.now());
     }
 
     @Override
@@ -309,7 +325,7 @@ public class ImServiceImpl implements IImService {
         List<UserSession> sessions = new ArrayList<>();
         for (String sessionId : new HashSet<>(sessionIds)) {
             UserSession userSession = sessionsById.get(sessionId);
-            if (userSession != null && isSessionOpenAndFresh(userSession, now)) {
+            if (userSession != null && isSessionOpenAndFresh(sessionId, userSession, now)) {
                 sessions.add(userSession);
             }
         }
@@ -336,38 +352,41 @@ public class ImServiceImpl implements IImService {
         }
 
         LocalDateTime now = LocalDateTime.now();
+        boolean[] wasGloballyOnline = new boolean[1];
         boolean firstLocalSession = withUserLock(normalizedUserId, () -> {
             userSession.setUserId(normalizedUserId);
             userSession.setStatus(UserStatus.ONLINE);
             userSession.setLastHeartbeat(now);
+            failedSessionIds.remove(sessionId);
 
             Set<String> sessionIds = sessionIdsByUser.computeIfAbsent(normalizedUserId, key -> ConcurrentHashMap.newKeySet());
             boolean firstLocal = sessionIds.stream()
                     .map(sessionsById::get)
-                    .noneMatch(existingSession -> isSessionOpenAndFresh(existingSession, now));
+                    .noneMatch(existingSession -> isSessionOpenAndFresh(resolveSessionId(existingSession), existingSession, now));
+            if (firstLocal) {
+                wasGloballyOnline[0] = isUserGloballyOnline(normalizedUserId);
+            }
             sessionIds.add(sessionId);
             sessionsById.put(sessionId, userSession);
-
-            if (firstLocal) {
-                upsertRouteRegistration(normalizedUserId);
-            }
+            upsertRouteRegistration(normalizedUserId, countActiveLocalSessions(normalizedUserId, now));
             return firstLocal;
         });
 
         if (firstLocalSession) {
-            publishAndBroadcastOnlineStatus(normalizedUserId, UserStatus.ONLINE);
+            maybeBroadcastOnlineTransition(normalizedUserId, wasGloballyOnline[0]);
         }
     }
 
     @Override
     public boolean unregisterSession(String userId, String sessionId, CloseStatus closeStatus) {
-        if (StringUtils.isBlank(sessionId)) {
+        String normalizedSessionId = normalizeSessionId(sessionId);
+        if (normalizedSessionId == null) {
             return false;
         }
 
         String normalizedUserId = normalizeUserId(userId);
         if (normalizedUserId == null) {
-            UserSession existingSession = sessionsById.get(sessionId.trim());
+            UserSession existingSession = sessionsById.get(normalizedSessionId);
             normalizedUserId = existingSession == null ? null : normalizeUserId(existingSession.getUserId());
         }
         if (normalizedUserId == null) {
@@ -377,8 +396,10 @@ public class ImServiceImpl implements IImService {
         String lockedUserId = normalizedUserId;
         List<UserSession> removedSessions = new ArrayList<>(1);
         boolean[] lastLocalSession = new boolean[1];
+        boolean[] wasGloballyOnline = new boolean[1];
+        int[] activeSessionCount = new int[1];
         boolean removed = withUserLock(lockedUserId, () -> {
-            UserSession existingSession = sessionsById.get(sessionId.trim());
+            UserSession existingSession = sessionsById.get(normalizedSessionId);
             if (existingSession == null) {
                 return false;
             }
@@ -386,20 +407,31 @@ public class ImServiceImpl implements IImService {
                 return false;
             }
 
-            UserSession removedSession = sessionsById.remove(sessionId.trim());
+            UserSession removedSession = sessionsById.remove(normalizedSessionId);
             if (removedSession == null) {
                 return false;
             }
+            failedSessionIds.remove(normalizedSessionId);
             removedSessions.add(removedSession);
 
             Set<String> sessionIds = sessionIdsByUser.get(lockedUserId);
-            if (sessionIds != null) {
-                sessionIds.remove(sessionId.trim());
-                if (sessionIds.isEmpty()) {
-                    sessionIdsByUser.remove(lockedUserId);
-                    removeRouteRegistration(lockedUserId);
-                    lastLocalSession[0] = true;
-                }
+            if (sessionIds == null) {
+                removeRouteRegistration(lockedUserId);
+                lastLocalSession[0] = true;
+                return true;
+            }
+            sessionIds.remove(normalizedSessionId);
+            if (sessionIds.isEmpty()) {
+                sessionIdsByUser.remove(lockedUserId);
+            }
+            activeSessionCount[0] = countActiveLocalSessions(lockedUserId, LocalDateTime.now());
+            if (activeSessionCount[0] <= 0) {
+                wasGloballyOnline[0] = isUserGloballyOnline(lockedUserId);
+                removeRouteRegistration(lockedUserId);
+                lastLocalSession[0] = true;
+            } else {
+                cancelPendingOfflineTransition(lockedUserId);
+                refreshRouteRegistration(lockedUserId, activeSessionCount[0]);
             }
             return true;
         });
@@ -410,14 +442,18 @@ public class ImServiceImpl implements IImService {
 
         UserSession removedSession = removedSessions.get(0);
         closeSessionQuietly(lockedUserId, removedSession.getWebSocketSession(), closeStatus);
-        if (lastLocalSession[0] && !isUserGloballyOnline(lockedUserId)) {
-            publishAndBroadcastOnlineStatus(lockedUserId, UserStatus.OFFLINE);
+        if (lastLocalSession[0]) {
+            scheduleOfflineTransitionIfNeeded(lockedUserId, wasGloballyOnline[0]);
         }
         return true;
     }
 
-    private boolean isSessionOpenAndFresh(UserSession userSession, LocalDateTime now) {
+    private boolean isSessionOpenAndFresh(String sessionId, UserSession userSession, LocalDateTime now) {
         if (userSession == null || userSession.getStatus() != UserStatus.ONLINE) {
+            return false;
+        }
+        String normalizedSessionId = normalizeSessionId(sessionId);
+        if (normalizedSessionId == null || failedSessionIds.contains(normalizedSessionId)) {
             return false;
         }
         WebSocketSession webSocketSession = userSession.getWebSocketSession();
@@ -431,6 +467,27 @@ public class ImServiceImpl implements IImService {
         return !lastHeartbeat.isBefore(now.minus(resolveHeartbeatTimeout()));
     }
 
+    private boolean pushPayloadToSessions(List<UserSession> targetSessions, String wsType, Object payloadData) {
+        if (targetSessions == null || targetSessions.isEmpty()) {
+            return false;
+        }
+        String textMessage = buildTextMessage(wsType, payloadData);
+        List<SessionSendAttempt> attempts = new ArrayList<>(targetSessions.size());
+        for (UserSession userSession : targetSessions) {
+            String sessionId = resolveSessionId(userSession);
+            if (StringUtils.isBlank(sessionId)) {
+                continue;
+            }
+            attempts.add(submitTextSend(userSession, sessionId, wsType, textMessage));
+        }
+
+        boolean success = false;
+        for (SessionSendAttempt attempt : attempts) {
+            success = awaitSendResult(attempt) || success;
+        }
+        return success;
+    }
+
     private boolean pushPayloadToSession(String sessionId, String wsType, Object payloadData) {
         String normalizedSessionId = normalizeSessionId(sessionId);
         if (normalizedSessionId == null) {
@@ -442,13 +499,15 @@ public class ImServiceImpl implements IImService {
             return false;
         }
 
+        return awaitSendResult(submitTextSend(userSession, normalizedSessionId, wsType, buildTextMessage(wsType, payloadData)));
+    }
+
+    private String buildTextMessage(String wsType, Object payloadData) {
         Map<String, Object> wsMessage = new HashMap<>();
         wsMessage.put("type", wsType);
         wsMessage.put("data", payloadData);
         wsMessage.put("timestamp", System.currentTimeMillis());
-        String textMessage = JSON.toJSONString(wsMessage, com.alibaba.fastjson2.JSONWriter.Feature.WriteLongAsString);
-
-        return sendTextToSession(userSession, normalizedSessionId, wsType, textMessage);
+        return JSON.toJSONString(wsMessage, com.alibaba.fastjson2.JSONWriter.Feature.WriteLongAsString);
     }
 
     private String normalizeReadWsType(String wsType) {
@@ -456,20 +515,61 @@ public class ImServiceImpl implements IImService {
     }
 
     private void logPushMessageResult(MessageDTO message, Long receiverId, boolean success) {
-        String senderId = message.getSenderId() == null ? "" : String.valueOf(message.getSenderId());
         String targetUserId = receiverId == null ? "" : String.valueOf(receiverId);
-        String content = StringUtils.defaultString(message.getContent())
-                .replace("\r", " ")
-                .replace("\n", " ");
-        String status = success ? "success" : "fail";
-        log.info("Message push result. senderId={}, receiverId={}, content={}, status={}",
-                senderId, targetUserId, content, status);
+        String messageId = message.getId() == null ? "" : String.valueOf(message.getId());
+        String conversationId = resolveConversationId(message);
+        String resultCode = success ? "OK" : "FAILED";
+        log.info("Message push result. messageId={}, conversationId={}, targetUserId={}, resultCode={}",
+                messageId, conversationId, targetUserId, resultCode);
     }
 
     private void publishAndBroadcastOnlineStatus(String userId, UserStatus status) {
         String lastSeen = LocalDateTime.now().toString();
         broadcastOnlineStatus(userId, status, lastSeen);
         publishPresenceEvent(userId, status, lastSeen);
+    }
+
+    private void maybeBroadcastOnlineTransition(String userId, boolean wasGloballyOnline) {
+        cancelPendingOfflineTransition(userId);
+        if (wasGloballyOnline || !isUserGloballyOnline(userId)) {
+            return;
+        }
+        if (presenceTransitionDeduplicator.tryTransition(userId, UserStatus.ONLINE)) {
+            publishAndBroadcastOnlineStatus(userId, UserStatus.ONLINE);
+        }
+    }
+
+    private void scheduleOfflineTransitionIfNeeded(String userId, boolean wasGloballyOnline) {
+        if (StringUtils.isBlank(userId) || !wasGloballyOnline || isUserGloballyOnline(userId)) {
+            return;
+        }
+        cancelPendingOfflineTransition(userId);
+        Runnable transitionTask = () -> {
+            pendingOfflineTransitions.remove(userId);
+            if (isUserGloballyOnline(userId)) {
+                return;
+            }
+            if (presenceTransitionDeduplicator.tryTransition(userId, UserStatus.OFFLINE)) {
+                publishAndBroadcastOnlineStatus(userId, UserStatus.OFFLINE);
+            }
+        };
+        long delayMs = Math.max(0L, presenceOfflineGraceMs);
+        if (delayMs == 0L) {
+            transitionTask.run();
+            return;
+        }
+        ScheduledFuture<?> future = presenceTransitionExecutor.schedule(transitionTask, delayMs, TimeUnit.MILLISECONDS);
+        pendingOfflineTransitions.put(userId, future);
+    }
+
+    private void cancelPendingOfflineTransition(String userId) {
+        if (StringUtils.isBlank(userId)) {
+            return;
+        }
+        ScheduledFuture<?> future = pendingOfflineTransitions.remove(userId);
+        if (future != null) {
+            future.cancel(false);
+        }
     }
 
     @Override
@@ -490,16 +590,7 @@ public class ImServiceImpl implements IImService {
         payload.put("timestamp", System.currentTimeMillis());
         String text = JSON.toJSONString(payload);
 
-        for (UserSession session : sessionsById.values()) {
-            if (session == null) {
-                continue;
-            }
-            String sessionId = resolveSessionId(session);
-            if (StringUtils.isBlank(sessionId)) {
-                continue;
-            }
-            sendTextToSession(session, sessionId, "ONLINE_STATUS", text);
-        }
+        sendTextToSessions(new ArrayList<>(sessionsById.values()), "ONLINE_STATUS", text);
     }
 
     private void publishPresenceEvent(String userId, UserStatus status, String lastSeen) {
@@ -522,27 +613,80 @@ public class ImServiceImpl implements IImService {
         }
     }
 
-    private boolean sendTextToSession(UserSession userSession, String sessionId, String wsType, String textMessage) {
-        long startNanos = System.nanoTime();
+    private boolean sendTextToSessions(List<UserSession> targetSessions, String wsType, String textMessage) {
+        if (targetSessions == null || targetSessions.isEmpty()) {
+            return false;
+        }
+        List<SessionSendAttempt> attempts = new ArrayList<>(targetSessions.size());
+        for (UserSession session : targetSessions) {
+            String sessionId = resolveSessionId(session);
+            if (StringUtils.isBlank(sessionId)) {
+                continue;
+            }
+            attempts.add(submitTextSend(session, sessionId, wsType, textMessage));
+        }
         boolean success = false;
-        if (userSession == null || StringUtils.isBlank(sessionId)) {
-            recordPush(wsType, false, startNanos);
-            return false;
+        for (SessionSendAttempt attempt : attempts) {
+            success = awaitSendResult(attempt) || success;
         }
+        return success;
+    }
+
+    private SessionSendAttempt submitTextSend(UserSession userSession, String sessionId, String wsType, String textMessage) {
+        long startNanos = System.nanoTime();
+        String normalizedSessionId = normalizeSessionId(sessionId);
+        if (userSession == null || normalizedSessionId == null) {
+            return SessionSendAttempt.immediateFailure(null, normalizedSessionId, wsType, startNanos);
+        }
+
+        String normalizedUserId = normalizeUserId(userSession.getUserId());
         WebSocketSession webSocketSession = userSession.getWebSocketSession();
-        if (webSocketSession == null || !webSocketSession.isOpen()) {
-            recordPush(wsType, false, startNanos);
+        if (failedSessionIds.contains(normalizedSessionId) || webSocketSession == null || !webSocketSession.isOpen()) {
+            cleanupInactiveSession(normalizedUserId, normalizedSessionId);
+            return SessionSendAttempt.immediateFailure(normalizedUserId, normalizedSessionId, wsType, startNanos);
+        }
+
+        try {
+            Future<?> future = outboundSendExecutor.submit(() -> {
+                webSocketSession.sendMessage(new TextMessage(textMessage));
+                return null;
+            });
+            return SessionSendAttempt.submitted(normalizedUserId, normalizedSessionId, wsType, startNanos, future);
+        } catch (RejectedExecutionException sendRejected) {
+            handleSendFailure(normalizedUserId, normalizedSessionId, wsType, sendRejected);
+            return SessionSendAttempt.immediateFailure(normalizedUserId, normalizedSessionId, wsType, startNanos);
+        }
+    }
+
+    private boolean awaitSendResult(SessionSendAttempt attempt) {
+        if (attempt == null) {
             return false;
         }
+        boolean success = false;
         try {
-            webSocketSession.sendMessage(new TextMessage(textMessage));
+            if (attempt.future() == null) {
+                return false;
+            }
+            attempt.future().get(resolveSendDispatchTimeoutMs(), TimeUnit.MILLISECONDS);
             success = true;
             return true;
-        } catch (Exception e) {
-            handleSendFailure(userSession.getUserId(), sessionId, wsType, e);
+        } catch (TimeoutException timeoutException) {
+            attempt.future().cancel(true);
+            handleSendFailure(attempt.userId(), attempt.sessionId(), attempt.wsType(),
+                    new IllegalStateException("send timeout", timeoutException));
+            return false;
+        } catch (InterruptedException interruptedException) {
+            if (attempt.future() != null) {
+                attempt.future().cancel(true);
+            }
+            Thread.currentThread().interrupt();
+            handleSendFailure(attempt.userId(), attempt.sessionId(), attempt.wsType(), interruptedException);
+            return false;
+        } catch (ExecutionException executionException) {
+            handleSendFailure(attempt.userId(), attempt.sessionId(), attempt.wsType(), executionException.getCause());
             return false;
         } finally {
-            recordPush(wsType, success, startNanos);
+            recordPush(attempt.wsType(), success, attempt.startNanos());
         }
     }
 
@@ -552,43 +696,57 @@ public class ImServiceImpl implements IImService {
         }
     }
 
-    private void handleSendFailure(String userId, String sessionId, String wsType, Exception sendError) {
+    private void handleSendFailure(String userId, String sessionId, String wsType, Throwable sendError) {
+        String normalizedSessionId = normalizeSessionId(sessionId);
+        if (normalizedSessionId != null) {
+            failedSessionIds.add(normalizedSessionId);
+        }
         log.warn("WebSocket send failed. userId={}, sessionId={}, type={}, closeStatus={}, error={}",
-                userId, sessionId, wsType, SEND_FAILED_CLOSE_STATUS, sendError == null ? null : sendError.getMessage());
+                userId, normalizedSessionId, wsType, SEND_FAILED_CLOSE_STATUS, sendError == null ? null : sendError.getMessage());
         try {
-            unregisterSession(userId, sessionId, SEND_FAILED_CLOSE_STATUS);
+            unregisterSession(userId, normalizedSessionId, SEND_FAILED_CLOSE_STATUS);
         } catch (Exception cleanupError) {
             log.warn("Cleanup websocket session after send failure failed. userId={}, sessionId={}, closeStatus={}, error={}",
-                    userId, sessionId, SEND_FAILED_CLOSE_STATUS, cleanupError.getMessage());
+                    userId, normalizedSessionId, SEND_FAILED_CLOSE_STATUS, cleanupError.getMessage());
         }
     }
 
-    private void upsertRouteRegistration(String userId) {
-        refreshRouteRegistration(userId);
+    private int countActiveLocalSessions(String userId, LocalDateTime now) {
+        Set<String> sessionIds = sessionIdsByUser.get(userId);
+        if (sessionIds == null || sessionIds.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        for (String sessionId : new HashSet<>(sessionIds)) {
+            if (isSessionOpenAndFresh(sessionId, sessionsById.get(sessionId), now)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private void upsertRouteRegistration(String userId, int sessionCount) {
+        if (sessionCount <= 0) {
+            removeRouteRegistration(userId);
+            return;
+        }
+        routeRegistry.upsertLocalRoute(userId, getCurrentInstanceId(), sessionCount);
     }
 
     private void removeRouteRegistration(String userId) {
-        if (routeMap == null || StringUtils.isBlank(userId)) {
-            return;
-        }
-        String currentRouteInstance = routeMap.get(userId);
-        if (getCurrentInstanceId().equals(currentRouteInstance)) {
-            routeMap.fastRemove(userId);
-        }
+        routeRegistry.removeLocalRoute(userId, getCurrentInstanceId());
     }
 
     private boolean isUserGloballyOnline(String userId) {
-        if (routeMap == null || StringUtils.isBlank(userId)) {
-            return false;
-        }
-        return StringUtils.isNotBlank(routeMap.get(userId));
+        return routeRegistry.isUserGloballyOnline(userId);
     }
 
-    private void refreshRouteRegistration(String userId) {
-        if (routeMap == null || StringUtils.isBlank(userId)) {
+    private void refreshRouteRegistration(String userId, int sessionCount) {
+        if (sessionCount <= 0) {
+            removeRouteRegistration(userId);
             return;
         }
-        routeMap.fastPut(userId, getCurrentInstanceId(), Math.max(1000L, routeLeaseTtlMs), TimeUnit.MILLISECONDS);
+        routeRegistry.renewLocalRoute(userId, getCurrentInstanceId(), sessionCount);
     }
 
     private String resolveSessionId(UserSession userSession) {
@@ -616,6 +774,25 @@ public class ImServiceImpl implements IImService {
 
     private Duration resolveHeartbeatTimeout() {
         return Duration.ofMillis(Math.max(1000L, heartbeatTimeoutMs));
+    }
+
+    private long resolveSendDispatchTimeoutMs() {
+        return Math.max(100L, sendDispatchTimeoutMs);
+    }
+
+    private String resolveConversationId(MessageDTO message) {
+        if (message == null) {
+            return "";
+        }
+        if (message.getGroupId() != null || message.isGroup() || Boolean.TRUE.equals(message.getIsGroupChat())) {
+            return "g_" + (message.getGroupId() == null ? "0" : message.getGroupId());
+        }
+        if (message.getSenderId() == null || message.getReceiverId() == null) {
+            return "";
+        }
+        long minUserId = Math.min(message.getSenderId(), message.getReceiverId());
+        long maxUserId = Math.max(message.getSenderId(), message.getReceiverId());
+        return "p_" + minUserId + "_" + maxUserId;
     }
 
     private String normalizeUserId(String userId) {
@@ -652,5 +829,52 @@ public class ImServiceImpl implements IImService {
             locks[i] = new ReentrantLock();
         }
         return locks;
+    }
+
+    private ExecutorService createOutboundSendExecutor() {
+        int maxWorkers = Math.max(4, Runtime.getRuntime().availableProcessors() * 4);
+        return new ThreadPoolExecutor(
+                0,
+                maxWorkers,
+                60L,
+                TimeUnit.SECONDS,
+                new SynchronousQueue<>(),
+                runnable -> {
+                    Thread thread = new Thread(runnable,
+                            "im-ws-send-" + outboundSendThreadCounter.incrementAndGet());
+                    thread.setDaemon(true);
+                    return thread;
+                });
+    }
+
+    private void cleanupInactiveSession(String userId, String sessionId) {
+        try {
+            unregisterSession(userId, sessionId, STALE_SESSION_CLOSE_STATUS);
+        } catch (Exception cleanupError) {
+            log.debug("Cleanup stale websocket session failed. userId={}, sessionId={}, closeStatus={}",
+                    userId, sessionId, STALE_SESSION_CLOSE_STATUS, cleanupError);
+        }
+    }
+
+    private record SessionSendAttempt(String userId,
+                                      String sessionId,
+                                      String wsType,
+                                      long startNanos,
+                                      Future<?> future) {
+
+        private static SessionSendAttempt submitted(String userId,
+                                                    String sessionId,
+                                                    String wsType,
+                                                    long startNanos,
+                                                    Future<?> future) {
+            return new SessionSendAttempt(userId, sessionId, wsType, startNanos, future);
+        }
+
+        private static SessionSendAttempt immediateFailure(String userId,
+                                                           String sessionId,
+                                                           String wsType,
+                                                           long startNanos) {
+            return new SessionSendAttempt(userId, sessionId, wsType, startNanos, null);
+        }
     }
 }

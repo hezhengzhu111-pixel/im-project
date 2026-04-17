@@ -204,7 +204,7 @@ public class GatewayKafkaPusher {
             return;
         }
         String deliveryKey = deliveryKey(eventType, eventKey, targetUserId, null);
-        if (alreadyDelivered(deliveryKey)) {
+        if (!tryReserveDelivery(deliveryKey)) {
             return;
         }
 
@@ -214,9 +214,10 @@ public class GatewayKafkaPusher {
         } catch (Exception exception) {
             log.warn("Push Kafka message to local user failed. eventType={}, eventKey={}, targetUserId={}, error={}",
                     eventType, eventKey, targetUserId, exception.getMessage(), exception);
-        }
-        if (success) {
-            markDelivered(deliveryKey);
+        } finally {
+            if (!success) {
+                releaseDelivery(deliveryKey);
+            }
         }
     }
 
@@ -408,13 +409,13 @@ public class GatewayKafkaPusher {
         return webSocketSession == null ? null : webSocketSession.getId();
     }
 
-    private boolean alreadyDelivered(String deliveryKey) {
-        return StringUtils.hasText(deliveryKey) && deduplicator.isProcessed(deliveryKey);
+    private boolean tryReserveDelivery(String deliveryKey) {
+        return !StringUtils.hasText(deliveryKey) || deduplicator.tryReserve(deliveryKey);
     }
 
-    private void markDelivered(String deliveryKey) {
+    private void releaseDelivery(String deliveryKey) {
         if (StringUtils.hasText(deliveryKey)) {
-            deduplicator.markProcessed(deliveryKey);
+            deduplicator.release(deliveryKey);
         }
     }
 
@@ -432,16 +433,19 @@ public class GatewayKafkaPusher {
                 continue;
             }
             String deliveryKey = deliveryKey(wsType, eventKey, targetUserId, sessionId);
-            if (alreadyDelivered(deliveryKey)) {
+            if (!tryReserveDelivery(deliveryKey)) {
                 continue;
             }
+            boolean success = false;
             try {
-                if (imService.pushReadReceiptToSession(receipt, sessionId, wsType)) {
-                    markDelivered(deliveryKey);
-                }
+                success = imService.pushReadReceiptToSession(receipt, sessionId, wsType);
             } catch (Exception exception) {
                 log.warn("Push Kafka read receipt to local session failed. wsType={}, eventKey={}, targetUserId={}, sessionId={}, error={}",
                         wsType, eventKey, targetUserId, sessionId, exception.getMessage(), exception);
+            } finally {
+                if (!success) {
+                    releaseDelivery(deliveryKey);
+                }
             }
         }
     }

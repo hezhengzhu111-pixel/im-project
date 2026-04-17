@@ -39,6 +39,8 @@ im:
       same-site: ${IM_AUTH_COOKIE_SAME_SITE:Lax}
       secure: ${IM_AUTH_COOKIE_SECURE:auto}
       ws-ticket-name: ${IM_WS_TICKET_COOKIE_NAME:IM_WS_TICKET}
+      ws-ticket-same-site: ${IM_WS_TICKET_COOKIE_SAME_SITE:Lax}
+      ws-ticket-secure: ${IM_WS_TICKET_COOKIE_SECURE:auto}
       ws-ticket-path: ${IM_WS_TICKET_COOKIE_PATH:/websocket}
   virtual-threads:
     enabled: false

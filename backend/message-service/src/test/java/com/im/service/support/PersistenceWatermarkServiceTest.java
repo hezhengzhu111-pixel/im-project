@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -77,6 +77,15 @@ class PersistenceWatermarkServiceTest {
         persistenceWatermarkService.markPersisted("p_1_2", 101L);
 
         assertEquals(101L, persistenceWatermarkService.getPersistedWatermark("p_1_2"));
+    }
+
+    @Test
+    void getPersistedWatermarkShouldReturnNullWhenRepositoryMissesValue() {
+        when(hotMessageRedisRepository.getPersistedWatermark("p_1_2")).thenReturn(null);
+
+        Long watermark = assertDoesNotThrow(() -> persistenceWatermarkService.getPersistedWatermark("p_1_2"));
+
+        assertNull(watermark);
     }
 
     @Test
