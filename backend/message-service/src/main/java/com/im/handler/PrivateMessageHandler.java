@@ -1,17 +1,12 @@
 package com.im.handler;
 
 import com.im.dto.MessageDTO;
-import com.im.dto.MessageEvent;
 import com.im.dto.UserDTO;
 import com.im.exception.BusinessException;
 import com.im.message.entity.Message;
 import com.im.service.command.SendMessageCommand;
-import com.im.service.support.AcceptedMessageProjectionService;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
-import com.im.utils.SnowflakeIdGenerator;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -19,12 +14,7 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
 
     private final UserProfileCache userProfileCache;
 
-    public PrivateMessageHandler(RedisTemplate<String, Object> redisTemplate,
-                                 KafkaTemplate<String, MessageEvent> kafkaTemplate,
-                                 SnowflakeIdGenerator snowflakeIdGenerator,
-                                 AcceptedMessageProjectionService acceptedMessageProjectionService,
-                                 UserProfileCache userProfileCache) {
-        super(redisTemplate, kafkaTemplate, snowflakeIdGenerator, acceptedMessageProjectionService);
+    public PrivateMessageHandler(UserProfileCache userProfileCache) {
         this.userProfileCache = userProfileCache;
     }
 
@@ -75,11 +65,6 @@ public class PrivateMessageHandler extends AbstractMessageHandler<PrivateMessage
         );
         messageDTO.setGroup(false);
         return messageDTO;
-    }
-
-    @Override
-    protected String transactionFailureMessage(SendMessageCommand command) {
-        return "failed to send message";
     }
 
     record PrivateMessageContext(

@@ -2,14 +2,18 @@ package com.im.consumer;
 
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONException;
+import com.alibaba.fastjson2.JSONObject;
 import com.im.dto.*;
 import com.im.entity.UserSession;
 import com.im.enums.MessageEventType;
+import com.im.feign.GroupServiceFeignClient;
+import com.im.metrics.ImServerMetrics;
 import com.im.service.IImService;
 import com.im.service.ProcessedMessageDeduplicator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -20,6 +24,7 @@ import org.springframework.web.socket.WebSocketSession;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
@@ -27,10 +32,15 @@ import java.util.*;
 public class GatewayKafkaPusher {
 
     private static final String DELIVERY_KEY_PREFIX = "kafka:";
+    private static final String SCOPE_GROUP_MEMBERSHIP = "GROUP_MEMBERSHIP";
 
     private final IImService imService;
     private final RedisTemplate<String, Object> redisTemplate;
     private final ProcessedMessageDeduplicator deduplicator;
+    private final GroupServiceFeignClient groupServiceFeignClient;
+
+    @Autowired(required = false)
+    private ImServerMetrics metrics;
 
     @Value("${im.message.group-member-ids-cache.key-prefix:message:group:members:}")
     private String groupMembersCachePrefix;
@@ -69,6 +79,30 @@ public class GatewayKafkaPusher {
             return;
         }
         handleStatusChangeEvent(record.value());
+    }
+
+    @KafkaListener(
+            topics = "${im.kafka.authz-cache-invalidation-topic:im-authz-cache-invalidation-topic}",
+            containerFactory = "gatewayAuthorizationCacheInvalidationKafkaListenerContainerFactory"
+    )
+    public void onAuthorizationCacheInvalidation(String payload) {
+        if (!StringUtils.hasText(payload)) {
+            return;
+        }
+        try {
+            JSONObject jsonObject = JSON.parseObject(payload);
+            if (jsonObject == null || !SCOPE_GROUP_MEMBERSHIP.equals(jsonObject.getString("scope"))) {
+                return;
+            }
+            Long groupId = jsonObject.getLong("groupId");
+            if (groupId == null) {
+                return;
+            }
+            redisTemplate.delete(groupMembersCachePrefix + groupId);
+        } catch (Exception exception) {
+            log.warn("Handle authz cache invalidation failed. payload={}, error={}",
+                    payload, exception.getMessage(), exception);
+        }
     }
 
     void handleEvent(MessageEvent event) {
@@ -305,17 +339,44 @@ public class GatewayKafkaPusher {
     }
 
     private List<Long> resolveGroupMemberIds(Long groupId) {
+        if (groupId == null) {
+            return List.of();
+        }
         String cacheKey = groupMembersCachePrefix + groupId;
-        return readGroupMembersFromCache(cacheKey, groupId);
+        List<Long> cachedMemberIds = readGroupMembersFromCache(cacheKey, groupId);
+        if (cachedMemberIds != null) {
+            return cachedMemberIds;
+        }
+        return loadGroupMembersFromSource(cacheKey, groupId);
     }
 
     private List<Long> readGroupMembersFromCache(String cacheKey, Long groupId) {
         try {
             Object value = redisTemplate.opsForValue().get(cacheKey);
+            if (value == null) {
+                return null;
+            }
             return normalizeMemberIds(value);
         } catch (Exception exception) {
             log.warn("Read group member cache failed. groupId={}, key={}, error={}",
                     groupId, cacheKey, exception.getMessage());
+            return null;
+        }
+    }
+
+    private List<Long> loadGroupMembersFromSource(String cacheKey, Long groupId) {
+        try {
+            List<Long> memberIds = distinct(groupServiceFeignClient.memberIds(groupId));
+            try {
+                redisTemplate.opsForValue().set(cacheKey, memberIds, Math.max(1L, groupMembersCacheTtlSeconds), TimeUnit.SECONDS);
+            } catch (Exception exception) {
+                log.warn("Backfill group member cache failed. groupId={}, key={}, error={}",
+                        groupId, cacheKey, exception.getMessage());
+            }
+            return memberIds;
+        } catch (Exception exception) {
+            log.warn("Load group members from source failed. groupId={}, error={}",
+                    groupId, exception.getMessage(), exception);
             return List.of();
         }
     }
@@ -410,7 +471,14 @@ public class GatewayKafkaPusher {
     }
 
     private boolean tryReserveDelivery(String deliveryKey) {
-        return !StringUtils.hasText(deliveryKey) || deduplicator.tryReserve(deliveryKey);
+        if (!StringUtils.hasText(deliveryKey)) {
+            return true;
+        }
+        boolean reserved = deduplicator.tryReserve(deliveryKey);
+        if (!reserved && metrics != null) {
+            metrics.recordDuplicateDeliveryPrevented();
+        }
+        return reserved;
     }
 
     private void releaseDelivery(String deliveryKey) {

@@ -60,6 +60,7 @@ class ConversationCacheUpdaterTest {
         ReflectionTestUtils.setField(updater, "lastMessageKeyPrefix", "last_message:");
         ReflectionTestUtils.setField(updater, "userIndexKeyPrefix", "conversation:index:user:");
         ReflectionTestUtils.setField(updater, "userUnreadKeyPrefix", "conversation:unread:user:");
+        ReflectionTestUtils.setField(updater, "userReadCursorKeyPrefix", "conversation:read-cursor:user:");
         ReflectionTestUtils.setField(updater, "legacyConversationListKeyPrefix", "conversations:user:");
         ReflectionTestUtils.setField(updater, "unreadAppliedKeyPrefix", "conversation:unread:applied:");
         ReflectionTestUtils.setField(updater, "cacheTtlSeconds", 3600L);
@@ -277,6 +278,7 @@ class ConversationCacheUpdaterTest {
 
     @Test
     void markConversationReadShouldNotClearUnreadWhenLastMessageHasAdvancedPastCursor() {
+        when(hashOperations.get("conversation:read-cursor:user:2", "p_1_2")).thenReturn(null);
         when(hashOperations.get("last_message:p_1_2", "message")).thenReturn(MessageDTO.builder()
                 .id(301L)
                 .senderId(1L)

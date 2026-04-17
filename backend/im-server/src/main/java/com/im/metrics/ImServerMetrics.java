@@ -1,10 +1,6 @@
 package com.im.metrics;
 
-import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.Gauge;
-import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Tags;
-import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -64,6 +60,7 @@ public class ImServerMetrics {
             "submit_failed",
             "dispatch_failed"
     );
+    private static final Set<String> ROUTE_TRANSITIONS = Set.of("online", "offline");
 
     private final MeterRegistry meterRegistry;
     private final AtomicBoolean connectionGaugesBound = new AtomicBoolean(false);
@@ -138,6 +135,19 @@ public class ImServerMetrics {
         Counter.builder("im.websocket.retry.total")
                 .tag("action", normalize(action, RETRY_ACTIONS, "drop"))
                 .tag("reason", normalize(reason, RETRY_REASONS, "retry_failed"))
+                .register(meterRegistry)
+                .increment();
+    }
+
+    public void recordDuplicateDeliveryPrevented() {
+        Counter.builder("duplicate_delivery_prevented")
+                .register(meterRegistry)
+                .increment();
+    }
+
+    public void recordRouteRegistryStateTransition(String transition) {
+        Counter.builder("route_registry_state_transitions")
+                .tag("transition", normalize(transition, ROUTE_TRANSITIONS, "offline"))
                 .register(meterRegistry)
                 .increment();
     }

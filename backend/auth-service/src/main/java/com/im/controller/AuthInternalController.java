@@ -5,6 +5,8 @@ import com.im.dto.request.CheckPermissionRequest;
 import com.im.dto.request.ConsumeWsTicketRequest;
 import com.im.dto.request.IssueTokenRequest;
 import com.im.dto.request.RevokeTokenRequest;
+import com.im.enums.CommonErrorCode;
+import com.im.exception.AuthServiceException;
 import com.im.service.AuthPermissionService;
 import com.im.service.AuthTokenRevokeService;
 import com.im.service.AuthTokenService;
@@ -58,16 +60,9 @@ public class AuthInternalController {
                 : Boolean.parseBoolean(checkRevokedHeader);
         if (checkRevoked && result != null && result.isValid() && !result.isExpired()
                 && authTokenRevokeService.isTokenRevoked(normalizedToken, result)) {
-            result.setValid(false);
-            result.setError("token宸插悐閿€");
-            result.setUserId(null);
-            result.setUsername(null);
-            result.setIssuedAtEpochMs(null);
-            result.setExpiresAtEpochMs(null);
-            result.setJti(null);
-            result.setTokenType(null);
-            result.setPermissions(null);
+            throw new AuthServiceException(CommonErrorCode.TOKEN_INVALID);
         }
+        ensureValidAccessToken(result);
         return ApiResponse.success(result);
     }
 
@@ -112,5 +107,17 @@ public class AuthInternalController {
             normalized = normalized.substring("Bearer ".length()).trim();
         }
         return normalized;
+    }
+
+    private void ensureValidAccessToken(TokenParseResultDTO result) {
+        if (result == null) {
+            throw new AuthServiceException(CommonErrorCode.TOKEN_INVALID);
+        }
+        if (result.isExpired()) {
+            throw new AuthServiceException(CommonErrorCode.TOKEN_EXPIRED);
+        }
+        if (!result.isValid()) {
+            throw new AuthServiceException(CommonErrorCode.TOKEN_INVALID);
+        }
     }
 }

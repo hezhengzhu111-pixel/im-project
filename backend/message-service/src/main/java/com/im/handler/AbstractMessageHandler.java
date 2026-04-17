@@ -7,26 +7,13 @@ import com.im.enums.MessageType;
 import com.im.exception.BusinessException;
 import com.im.message.entity.Message;
 import com.im.service.command.SendMessageCommand;
-import com.im.service.support.AcceptedMessageProjectionService;
-import com.im.utils.SnowflakeIdGenerator;
+import com.im.service.orchestrator.MessagePreparation;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.util.StringUtils;
-
-import java.time.LocalDateTime;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 @Slf4j
 public abstract class AbstractMessageHandler<C> implements MessageHandler {
-
-    protected final RedisTemplate<String, Object> redisTemplate;
-    protected final KafkaTemplate<String, MessageEvent> kafkaTemplate;
-    protected final SnowflakeIdGenerator snowflakeIdGenerator;
-    protected final AcceptedMessageProjectionService acceptedMessageProjectionService;
 
     @Value("${im.message.text.enforce:true}")
     private boolean textEnforce;
@@ -34,39 +21,18 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
     @Value("${im.message.text.max-length:2000}")
     private int textMaxLength;
 
-    @Value("${im.kafka.chat-topic:im-chat-topic}")
-    private String chatTopic = "im-chat-topic";
-
-    @Value("${im.kafka.send-timeout-ms:2000}")
-    private long kafkaSendTimeoutMs = 2000L;
-
-    protected AbstractMessageHandler(RedisTemplate<String, Object> redisTemplate,
-                                     KafkaTemplate<String, MessageEvent> kafkaTemplate,
-                                     SnowflakeIdGenerator snowflakeIdGenerator,
-                                     AcceptedMessageProjectionService acceptedMessageProjectionService) {
-        this.redisTemplate = redisTemplate;
-        this.kafkaTemplate = kafkaTemplate;
-        this.snowflakeIdGenerator = snowflakeIdGenerator;
-        this.acceptedMessageProjectionService = acceptedMessageProjectionService;
-    }
-
     @Override
-    public final MessageDTO handle(SendMessageCommand command) {
+    public final MessagePreparation prepare(SendMessageCommand command, Long messageId) {
         validateBasicParams(command);
-        C context = buildContext(command);
-        Long messageId = snowflakeIdGenerator.nextId();
-        Message message = buildMessage(command, context, messageId);
-        MessageDTO result = buildResult(command, context, message);
-        String conversationId = buildConversationId(command, context, message);
-        MessageEvent event = buildMessageEvent(command, message, conversationId, result);
-        MessageDTO existingAcceptedMessage = acceptedMessageProjectionService.reserveAcceptedMessage(event);
-        if (existingAcceptedMessage != null) {
-            acceptedMessageProjectionService.rehydrateAcceptedProjection(existingAcceptedMessage);
-            return existingAcceptedMessage;
+        if (messageId == null) {
+            throw new BusinessException("messageId cannot be null");
         }
-        projectAcceptedFirstSeenMessage(command, event);
-        result.setAckStage(MessageDTO.ACK_STAGE_ACCEPTED);
-        return result;
+        C context = buildContext(command);
+        Message message = buildMessage(command, context, messageId);
+        MessageDTO response = buildResult(command, context, message);
+        String conversationId = buildConversationId(command, context, message);
+        MessageEvent event = buildMessageEvent(command, message, conversationId, response);
+        return new MessagePreparation(command, message, response, event, conversationId);
     }
 
     protected abstract C buildContext(SendMessageCommand command);
@@ -76,10 +42,6 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
     protected abstract String buildConversationId(SendMessageCommand command, C context, Message message);
 
     protected abstract MessageDTO buildResult(SendMessageCommand command, C context, Message message);
-
-    protected String transactionFailureMessage(SendMessageCommand command) {
-        return "failed to send message";
-    }
 
     protected void validateBasicParams(SendMessageCommand command) {
         if (command == null) {
@@ -140,7 +102,7 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
     }
 
     protected Message createBaseMessage(SendMessageCommand command, Long messageId, Long senderId) {
-        LocalDateTime now = LocalDateTime.now();
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
         Message message = new Message();
         message.setId(messageId);
         message.setSenderId(senderId);
@@ -161,26 +123,6 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
         message.setCreatedTime(now);
         message.setUpdatedTime(now);
         return message;
-    }
-
-    protected void publishMessageEvent(SendMessageCommand command, String conversationId, MessageEvent event) {
-        try {
-            kafkaTemplate.send(chatTopic, conversationId, event)
-                    .get(Math.max(1L, kafkaSendTimeoutMs), TimeUnit.MILLISECONDS);
-            log.info("Published message event to Kafka. topic={}, conversationId={}, messageId={}",
-                    chatTopic, conversationId, event.getMessageId());
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new BusinessException(transactionFailureMessage(command), exception);
-        } catch (TimeoutException exception) {
-            log.error("Timed out publishing message event to Kafka. topic={}, conversationId={}, messageId={}, timeoutMs={}",
-                    chatTopic, conversationId, event == null ? null : event.getMessageId(), kafkaSendTimeoutMs, exception);
-            throw new BusinessException(transactionFailureMessage(command), exception);
-        } catch (ExecutionException exception) {
-            log.error("Failed to publish message event to Kafka. topic={}, conversationId={}, messageId={}",
-                    chatTopic, conversationId, event == null ? null : event.getMessageId(), exception);
-            throw new BusinessException(transactionFailureMessage(command), exception);
-        }
     }
 
     protected MessageEvent buildMessageEvent(SendMessageCommand command,
@@ -220,17 +162,6 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
                 .build();
     }
 
-    protected void projectAcceptedFirstSeenMessage(SendMessageCommand command, MessageEvent event) {
-        try {
-            acceptedMessageProjectionService.projectAcceptedFirstSeen(event);
-        } catch (Exception exception) {
-            log.warn("Accepted message already committed locally; hot projection will be recovered asynchronously. conversationId={}, messageId={}",
-                    event == null ? null : event.getConversationId(),
-                    event == null ? null : event.getMessageId(),
-                    exception);
-        }
-    }
-
     protected String buildPrivateConversationKey(Long userId1, Long userId2) {
         long a = userId1 == null ? 0L : userId1;
         long b = userId2 == null ? 0L : userId2;
@@ -242,5 +173,4 @@ public abstract class AbstractMessageHandler<C> implements MessageHandler {
     protected String buildGroupConversationKey(Long groupId) {
         return "g_" + (groupId == null ? "0" : groupId.toString());
     }
-
 }

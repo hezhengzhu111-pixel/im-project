@@ -5,9 +5,11 @@ import com.im.dto.UserDTO;
 import com.im.enums.MessageType;
 import com.im.mapper.MessageMapper;
 import com.im.message.entity.Message;
+import com.im.metrics.MessageServiceMetrics;
 import com.im.service.support.HotMessageRedisRepository;
 import com.im.service.support.PersistenceWatermarkService;
 import com.im.service.support.UserProfileCache;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,6 +40,7 @@ class HotRecentMessageReadServiceTest {
     private UserProfileCache userProfileCache;
 
     private HotRecentMessageReadService hotRecentMessageReadService;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
@@ -47,6 +50,8 @@ class HotRecentMessageReadServiceTest {
                 persistenceWatermarkService,
                 userProfileCache
         );
+        meterRegistry = new SimpleMeterRegistry();
+        ReflectionTestUtils.setField(hotRecentMessageReadService, "metrics", new MessageServiceMetrics(meterRegistry));
         ReflectionTestUtils.setField(hotRecentMessageReadService, "defaultSystemSenderId", 0L);
         lenient().when(userProfileCache.getUser(1L)).thenReturn(user(1L, "alice"));
         lenient().when(userProfileCache.getUser(2L)).thenReturn(user(2L, "bob"));
@@ -82,6 +87,7 @@ class HotRecentMessageReadServiceTest {
 
         assertEquals(List.of(3L, 2L, 1L), messages.stream().map(MessageDTO::getId).toList());
         verify(messageMapper).selectList(any());
+        assertEquals(1.0, meterRegistry.counter("watermark_db_fallback_hits").count());
     }
 
     @Test

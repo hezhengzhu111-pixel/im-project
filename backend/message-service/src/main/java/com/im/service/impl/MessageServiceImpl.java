@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.im.dto.*;
 import com.im.dto.request.SendGroupMessageRequest;
 import com.im.dto.request.SendPrivateMessageRequest;
+import com.im.enums.CommonErrorCode;
 import com.im.enums.MessageType;
 import com.im.exception.BusinessException;
 import com.im.feign.GroupServiceFeignClient;
@@ -16,15 +17,13 @@ import com.im.mapper.GroupReadCursorMapper;
 import com.im.mapper.MessageMapper;
 import com.im.mapper.PrivateReadCursorMapper;
 import com.im.message.entity.Message;
-import com.im.service.ConversationCacheUpdater;
 import com.im.service.MessageService;
 import com.im.service.command.SendMessageCommand;
+import com.im.service.orchestrator.MessageStateOrchestrator;
 import com.im.service.query.HotConversationReadService;
 import com.im.service.query.HotConversationReadService.HotConversationSkeleton;
 import com.im.service.query.HotRecentMessageReadService;
-import com.im.service.support.AcceptedMessageProjectionService;
 import com.im.service.support.HotMessageLookupService;
-import com.im.service.support.HotMessageRedisRepository;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
 import jakarta.annotation.PostConstruct;
@@ -60,12 +59,10 @@ public class MessageServiceImpl implements MessageService {
     private final List<MessageHandler> messageHandlers;
     private final KafkaTemplate<String, ReadEvent> readEventKafkaTemplate;
     private final KafkaTemplate<String, StatusChangeEvent> statusChangeEventKafkaTemplate;
-    private final HotMessageRedisRepository hotMessageRedisRepository;
-    private final AcceptedMessageProjectionService acceptedMessageProjectionService;
     private final HotConversationReadService hotConversationReadService;
     private final HotRecentMessageReadService hotRecentMessageReadService;
     private final HotMessageLookupService hotMessageLookupService;
-    private final ConversationCacheUpdater conversationCacheUpdater;
+    private final MessageStateOrchestrator messageStateOrchestrator;
 
     private Map<MessageType, MessageHandler> handlerCache = Collections.emptyMap();
     private MessageHandler privateMessageHandler;
@@ -139,11 +136,7 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     public MessageDTO sendMessage(SendMessageCommand command) {
-        MessageDTO acceptedMessage = findAcceptedMessage(command);
-        if (acceptedMessage != null) {
-            return acceptedMessage;
-        }
-        return resolveHandler(command).handle(command);
+        return messageStateOrchestrator.handleAcceptedSend(command, () -> resolveHandler(command));
     }
 
     private MessageHandler resolveHandler(SendMessageCommand command) {
@@ -283,9 +276,9 @@ public class MessageServiceImpl implements MessageService {
         LocalDateTime now = LocalDateTime.now();
         ReadConversationTarget target = parseReadConversationTarget(userId, conversationId);
         if (target.isGroup()) {
-            validateGroupConversationAccess(userId, target.groupId());
+            validateGroupConversationAccessOrThrow(userId, target.groupId());
         } else {
-            validatePrivateConversationAccess(userId, target.targetUserId());
+            validatePrivateConversationAccessOrThrow(userId, target.targetUserId());
         }
         return new ReadMarkInput(userId, conversationId, now, target);
     }
@@ -307,65 +300,6 @@ public class MessageServiceImpl implements MessageService {
                 .lastReadMessageId(lastReadMessageId)
                 .timestamp(input.now())
                 .build();
-    }
-
-    private MessageDTO findAcceptedMessage(SendMessageCommand command) {
-        if (command == null || command.getSenderId() == null) {
-            return null;
-        }
-        String clientMessageId = normalizeClientMessageId(command.getClientMessageId());
-        if (!StringUtils.hasText(clientMessageId)) {
-            return null;
-        }
-
-        Long mappedMessageId = hotMessageRedisRepository.getMessageIdByClientMessageId(command.getSenderId(), clientMessageId);
-        if (mappedMessageId != null) {
-            MessageDTO hotMessage = hotMessageRedisRepository.getHotMessage(mappedMessageId);
-            if (hotMessage != null) {
-                if (!StringUtils.hasText(hotMessage.getAckStage())) {
-                    hotMessage.setAckStage(MessageDTO.ACK_STAGE_ACCEPTED);
-                }
-                return hotMessage;
-            }
-            MessageDTO durableAcceptedMessage = acceptedMessageProjectionService.findDurableAcceptedMessage(command.getSenderId(), clientMessageId);
-            if (durableAcceptedMessage != null) {
-                return rehydrateAcceptedMessage(durableAcceptedMessage);
-            }
-            MessageDTO persistedMessage = loadPersistedAcceptedMessage(command.getSenderId(), clientMessageId);
-            if (persistedMessage != null) {
-                return rehydrateAcceptedMessage(persistedMessage);
-            }
-            throw new BusinessException("message already accepted but projection and durable persistence are temporarily unavailable");
-        }
-
-        MessageDTO durableAcceptedMessage = acceptedMessageProjectionService.findDurableAcceptedMessage(command.getSenderId(), clientMessageId);
-        if (durableAcceptedMessage != null) {
-            return rehydrateAcceptedMessage(durableAcceptedMessage);
-        }
-        MessageDTO persistedMessage = loadPersistedAcceptedMessage(command.getSenderId(), clientMessageId);
-        if (persistedMessage == null) {
-            return null;
-        }
-        return rehydrateAcceptedMessage(persistedMessage);
-    }
-
-    private MessageDTO loadPersistedAcceptedMessage(Long senderId, String clientMessageId) {
-        if (senderId == null || !StringUtils.hasText(clientMessageId)) {
-            return null;
-        }
-        Message persisted = messageMapper.selectBySenderIdAndClientMessageId(senderId, clientMessageId.trim());
-        if (persisted == null) {
-            return null;
-        }
-        return buildMessageDTOFromMessage(persisted);
-    }
-
-    private MessageDTO rehydrateAcceptedMessage(MessageDTO message) {
-        if (message != null && !StringUtils.hasText(message.getAckStage())) {
-            message.setAckStage(MessageDTO.ACK_STAGE_ACCEPTED);
-        }
-        acceptedMessageProjectionService.rehydrateAcceptedProjection(message);
-        return message;
     }
 
     private List<ConversationDTO> buildHotConversationsFromSkeletons(Long userId,
@@ -602,7 +536,7 @@ public class MessageServiceImpl implements MessageService {
     @Override
     public List<MessageDTO> getPrivateMessages(Long userId, Long friendId, int page, int size) {
         log.info("鑾峰彇绉佽亰娑堟伅鍘嗗彶: userId={}, friendId={}, page={}, size={}", userId, friendId, page, size);
-        validatePrivateConversationAccess(userId, friendId);
+        validatePrivateConversationAccessOrThrow(userId, friendId);
         
         int normalizedPage = Math.max(0, page);
         int normalizedSize = Math.max(1, size);
@@ -618,7 +552,7 @@ public class MessageServiceImpl implements MessageService {
     @Override
     public List<MessageDTO> getGroupMessages(Long userId, Long groupId, int page, int size) {
         log.info("鑾峰彇缇よ亰娑堟伅鍘嗗彶: userId={}, groupId={}, page={}, size={}", userId, groupId, page, size);
-        validateGroupConversationAccess(userId, groupId);
+        validateGroupConversationAccessOrThrow(userId, groupId);
         
         int normalizedPage = Math.max(0, page);
         int normalizedSize = Math.max(1, size);
@@ -654,7 +588,8 @@ public class MessageServiceImpl implements MessageService {
                                                      Long afterMessageId,
                                                      int limit) {
         int realLimit = Math.min(Math.max(1, limit), 200);
-        validatePrivateConversationAccess(userId, friendId);
+        validateCursorRequest(lastMessageId, beforeTimestamp, afterMessageId);
+        validatePrivateConversationAccessOrThrow(userId, friendId);
         return hotRecentMessageReadService.loadCursorMessages(
                 buildPrivateConversationKey(userId, friendId),
                 lastMessageId,
@@ -672,7 +607,8 @@ public class MessageServiceImpl implements MessageService {
                                                    Long afterMessageId,
                                                    int limit) {
         int realLimit = Math.min(Math.max(1, limit), 200);
-        validateGroupConversationAccess(userId, groupId);
+        validateCursorRequest(lastMessageId, beforeTimestamp, afterMessageId);
+        validateGroupConversationAccessOrThrow(userId, groupId);
         return hotRecentMessageReadService.loadCursorMessages(
                 buildGroupConversationKey(groupId),
                 lastMessageId,
@@ -712,7 +648,7 @@ public class MessageServiceImpl implements MessageService {
         statusTarget.setUpdatedTime(now);
         MessageDTO result = buildStatusChangedMessageDTO(statusTarget);
         StatusChangeEvent statusChangeEvent = buildStatusChangeEvent(statusTarget, userId, result, now);
-        conversationCacheUpdater.applyStatusChange(statusChangeEvent);
+        messageStateOrchestrator.projectTransientStatusChange(statusChangeEvent);
         publishStatusChangeEvent(statusChangeEvent, statusChangeEvent.getConversationId());
         return result;
     }
@@ -788,6 +724,14 @@ public class MessageServiceImpl implements MessageService {
         }
     }
 
+    private void validatePrivateConversationAccessOrThrow(Long userId, Long friendId) {
+        try {
+            validatePrivateConversationAccess(userId, friendId);
+        } catch (BusinessException | SecurityException e) {
+            throw new BusinessException(CommonErrorCode.CONVERSATION_ACCESS_DENIED);
+        }
+    }
+
     private void validateGroupConversationAccess(Long userId, Long groupId) {
         if (!Boolean.TRUE.equals(userServiceFeignClient.exists(userId))) {
             throw new BusinessException("user not found");
@@ -797,6 +741,24 @@ public class MessageServiceImpl implements MessageService {
         }
         if (!Boolean.TRUE.equals(userProfileCache.isGroupMember(groupId, userId))) {
             throw new BusinessException("涓嶆槸缇ゆ垚鍛橈紝鏃犳硶鏌ョ湅缇よ亰璁板綍");
+        }
+    }
+
+    private void validateGroupConversationAccessOrThrow(Long userId, Long groupId) {
+        try {
+            validateGroupConversationAccess(userId, groupId);
+        } catch (BusinessException | SecurityException e) {
+            throw new BusinessException(CommonErrorCode.CONVERSATION_ACCESS_DENIED);
+        }
+    }
+
+    private void validateCursorRequest(Long lastMessageId, LocalDateTime beforeTimestamp, Long afterMessageId) {
+        if (afterMessageId != null && (lastMessageId != null || beforeTimestamp != null)) {
+            throw new BusinessException(CommonErrorCode.INVALID_CURSOR);
+        }
+        if ((lastMessageId != null && lastMessageId <= 0)
+                || (afterMessageId != null && afterMessageId <= 0)) {
+            throw new BusinessException(CommonErrorCode.INVALID_CURSOR);
         }
     }
 

@@ -2,13 +2,12 @@ package com.im.task;
 
 import com.im.entity.UserSession;
 import com.im.service.IImService;
+import com.im.websocket.WebSocketErrorSemantics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.socket.CloseStatus;
-
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -47,8 +46,8 @@ class WebSocketSessionCleanupTaskTest {
         task.cleanupInactiveSessions();
 
         verify(imService).unregisterSession(eq("1"), eq("zombie-session"),
-                argThat(status -> status.getCode() == CloseStatus.GOING_AWAY.getCode()
-                        && "session stale".equals(status.getReason())));
+                argThat(status -> status.getCode() == WebSocketErrorSemantics.SESSION_CLOSED_OR_STALE.getCode()
+                        && WebSocketErrorSemantics.SESSION_ERROR_CODE.equals(status.getReason())));
         verify(imService, never()).unregisterSession(eq("2"), eq("healthy-session"), any());
     }
 }

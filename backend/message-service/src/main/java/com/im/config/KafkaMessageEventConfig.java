@@ -17,9 +17,11 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.kafka.support.serializer.JsonSerializer;
+import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @Configuration
 public class KafkaMessageEventConfig {
@@ -75,6 +77,22 @@ public class KafkaMessageEventConfig {
         return singleRecordFactory(bootstrapServers, autoOffsetReset, maxPollRecords, StatusChangeEvent.class);
     }
 
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, String> authorizationCacheInvalidationKafkaListenerContainerFactory(
+            @Value("${spring.kafka.bootstrap-servers:localhost:9092}") String bootstrapServers,
+            @Value("${spring.kafka.consumer.auto-offset-reset:earliest}") String autoOffsetReset,
+            @Value("${spring.kafka.consumer.max-poll-records:500}") Integer maxPollRecords,
+            @Value("${im.kafka.authz-cache.consumer-group-id:}") String configuredGroupId) {
+        ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(
+                stringConsumerProperties(bootstrapServers, configuredGroupId, autoOffsetReset, maxPollRecords),
+                new StringDeserializer(),
+                new StringDeserializer()
+        ));
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
+        return factory;
+    }
+
     private Map<String, Object> producerProperties(String bootstrapServers) {
         Map<String, Object> properties = new HashMap<>();
         properties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
@@ -117,9 +135,31 @@ public class KafkaMessageEventConfig {
         return properties;
     }
 
+    private Map<String, Object> stringConsumerProperties(String bootstrapServers,
+                                                         String configuredGroupId,
+                                                         String autoOffsetReset,
+                                                         Integer maxPollRecords) {
+        Map<String, Object> properties = new HashMap<>();
+        properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        properties.put(ConsumerConfig.GROUP_ID_CONFIG, resolveBroadcastGroupId(configuredGroupId));
+        properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        properties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, autoOffsetReset);
+        properties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+        properties.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecords);
+        return properties;
+    }
+
     private <T> JsonDeserializer<T> jsonDeserializer(Class<T> valueType) {
         JsonDeserializer<T> valueDeserializer = new JsonDeserializer<>(valueType, false);
         valueDeserializer.addTrustedPackages("com.im.dto", "com.im.enums");
         return valueDeserializer;
+    }
+
+    private String resolveBroadcastGroupId(String configuredGroupId) {
+        if (StringUtils.hasText(configuredGroupId)) {
+            return configuredGroupId.trim();
+        }
+        return "im-message-authz-cache-" + UUID.randomUUID();
     }
 }

@@ -2,12 +2,14 @@ package com.im.service;
 
 import com.im.dto.*;
 import com.im.dto.request.RefreshTokenRequest;
+import com.im.metrics.AuthServiceMetrics;
 import com.im.util.TokenParser;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -62,6 +64,9 @@ public class AuthTokenService {
     private final StringRedisTemplate stringRedisTemplate;
     private final AuthUserResourceService authUserResourceService;
     private final TokenParser tokenParser;
+
+    @Autowired(required = false)
+    private AuthServiceMetrics metrics;
 
     @Value("${jwt.secret}")
     private String accessSecret;
@@ -127,20 +132,25 @@ public class AuthTokenService {
 
     public WsTicketConsumeResultDTO consumeWsTicket(String ticket, Long expectedUserId) {
         if (ticket == null || ticket.trim().isEmpty()) {
+            recordWsTicketConsumeResult("invalid");
             return invalidWsTicket("ticket不能为空");
         }
         if (expectedUserId == null) {
+            recordWsTicketConsumeResult("invalid");
             return invalidWsTicket("userId不能为空");
         }
         String payload = consumeWsTicketPayload(ticket.trim());
         if (payload == null || payload.isBlank()) {
+            recordWsTicketConsumeResult("expired_or_missing");
             return invalidWsTicket("ticket无效或已过期");
         }
         WsTicketPayload parsed = parseWsTicketPayload(payload);
         if (parsed == null) {
+            recordWsTicketConsumeResult("invalid");
             return invalidWsTicket("ticket数据无效");
         }
         if (!expectedUserId.equals(parsed.userId())) {
+            recordWsTicketConsumeResult("invalid");
             return WsTicketConsumeResultDTO.builder()
                     .valid(false)
                     .status(WsTicketConsumeResultDTO.STATUS_USER_MISMATCH)
@@ -149,6 +159,7 @@ public class AuthTokenService {
                     .error("ticket与userId不匹配")
                     .build();
         }
+        recordWsTicketConsumeResult("success");
         return WsTicketConsumeResultDTO.builder()
                 .valid(true)
                 .status(WsTicketConsumeResultDTO.STATUS_VALID)
@@ -515,6 +526,12 @@ public class AuthTokenService {
                 .status(WsTicketConsumeResultDTO.STATUS_INVALID)
                 .error(error)
                 .build();
+    }
+
+    private void recordWsTicketConsumeResult(String result) {
+        if (metrics != null) {
+            metrics.recordWsTicketConsumeResult(result);
+        }
     }
 
     private String resolveWsTicketUsername(Long userId, String username) {

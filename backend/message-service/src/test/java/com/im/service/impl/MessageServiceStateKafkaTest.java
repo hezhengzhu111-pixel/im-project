@@ -11,12 +11,11 @@ import com.im.mapper.MessageMapper;
 import com.im.mapper.PrivateReadCursorMapper;
 import com.im.message.entity.Message;
 import com.im.service.ConversationCacheUpdater;
+import com.im.service.orchestrator.MessageStateOrchestrator;
 import com.im.service.query.HotConversationReadService;
 import com.im.service.query.HotRecentMessageReadService;
-import com.im.service.support.AcceptedMessageProjectionService;
-import com.im.service.support.HotMessageLookupService;
-import com.im.service.support.HotMessageRedisRepository;
-import com.im.service.support.UserProfileCache;
+import com.im.service.support.*;
+import com.im.utils.SnowflakeIdGenerator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -86,10 +85,32 @@ class MessageServiceStateKafkaTest {
     @Mock
     private ConversationCacheUpdater conversationCacheUpdater;
 
+    @Mock
+    private SnowflakeIdGenerator snowflakeIdGenerator;
+
+    @Mock
+    private PersistenceWatermarkService persistenceWatermarkService;
+
+    @Mock
+    private PendingStatusEventService pendingStatusEventService;
+
     private MessageServiceImpl messageService;
 
     @BeforeEach
     void setUp() {
+        MessageStateOrchestrator orchestrator = new MessageStateOrchestrator(
+                snowflakeIdGenerator,
+                hotMessageRedisRepository,
+                acceptedMessageProjectionService,
+                messageMapper,
+                userProfileCache,
+                persistenceWatermarkService,
+                pendingStatusEventService,
+                conversationCacheUpdater,
+                groupReadCursorMapper,
+                privateReadCursorMapper
+        );
+        ReflectionTestUtils.setField(orchestrator, "defaultSystemSenderId", 0L);
         messageService = new MessageServiceImpl(
                 messageMapper,
                 userServiceFeignClient,
@@ -101,12 +122,10 @@ class MessageServiceStateKafkaTest {
                 List.of(),
                 readEventKafkaTemplate,
                 statusChangeEventKafkaTemplate,
-                hotMessageRedisRepository,
-                acceptedMessageProjectionService,
                 hotConversationReadService,
                 hotRecentMessageReadService,
                 hotMessageLookupService,
-                conversationCacheUpdater
+                orchestrator
         );
         ReflectionTestUtils.setField(messageService, "readTopic", "im-read-topic");
         ReflectionTestUtils.setField(messageService, "statusTopic", "im-status-topic");

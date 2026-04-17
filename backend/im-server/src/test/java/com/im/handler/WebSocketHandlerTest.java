@@ -2,6 +2,7 @@ package com.im.handler;
 
 import com.im.entity.UserSession;
 import com.im.service.IImService;
+import com.im.websocket.WebSocketErrorSemantics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -93,7 +94,7 @@ class WebSocketHandlerTest {
         verify(imService, never()).refreshRouteHeartbeat(any(), any());
         verify(imService).unregisterSession(eq("123"), eq("session-1"),
                 argThat(status -> status.getCode() == CloseStatus.SESSION_NOT_RELIABLE.getCode()
-                        && "stale session".equals(status.getReason())));
+                        && WebSocketErrorSemantics.SESSION_ERROR_CODE.equals(status.getReason())));
     }
 
     @Test
@@ -103,7 +104,8 @@ class WebSocketHandlerTest {
         handler.handleTransportError(session, new RuntimeException("boom"));
 
         verify(imService).unregisterSession(eq("123"), eq("session-1"),
-                argThat(status -> status.getCode() == CloseStatus.SERVER_ERROR.getCode()));
+                argThat(status -> status.getCode() == CloseStatus.SESSION_NOT_RELIABLE.getCode()
+                        && WebSocketErrorSemantics.SESSION_ERROR_CODE.equals(status.getReason())));
     }
 
     @Test

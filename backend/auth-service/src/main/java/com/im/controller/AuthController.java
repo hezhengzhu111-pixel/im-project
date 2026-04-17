@@ -6,6 +6,8 @@ import com.im.dto.TokenParseResultDTO;
 import com.im.dto.WsTicketDTO;
 import com.im.dto.request.ParseTokenRequest;
 import com.im.dto.request.RefreshTokenRequest;
+import com.im.enums.CommonErrorCode;
+import com.im.exception.AuthServiceException;
 import com.im.service.AuthTokenService;
 import com.im.util.AuthCookieUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -83,6 +85,7 @@ public class AuthController {
         }
         boolean allowExpired = effectiveRequest.getAllowExpired() != null && effectiveRequest.getAllowExpired();
         TokenParseResultDTO dto = authTokenService.parseAccessToken(token, allowExpired);
+        ensureValidAccessToken(dto, allowExpired);
         return ApiResponse.success(dto);
     }
 
@@ -94,11 +97,23 @@ public class AuthController {
             HttpServletResponse httpResponse
     ) {
         if (userId == null || username == null || username.isBlank()) {
-            throw new SecurityException("认证失败");
+            throw new AuthServiceException(CommonErrorCode.TOKEN_INVALID);
         }
         WsTicketDTO dto = authTokenService.issueWsTicket(userId, username);
         writeWsTicketCookie(httpResponse, httpRequest, dto);
         return ApiResponse.success(dto);
+    }
+
+    private void ensureValidAccessToken(TokenParseResultDTO dto, boolean allowExpired) {
+        if (dto == null) {
+            throw new AuthServiceException(CommonErrorCode.TOKEN_INVALID);
+        }
+        if (dto.isExpired() && !allowExpired) {
+            throw new AuthServiceException(CommonErrorCode.TOKEN_EXPIRED);
+        }
+        if (!dto.isValid()) {
+            throw new AuthServiceException(CommonErrorCode.TOKEN_INVALID);
+        }
     }
 
     private void writeAuthCookies(
@@ -148,10 +163,7 @@ public class AuthController {
                 .path(normalizeCookiePath(wsTicketCookiePath))
                 .maxAge(toSeconds(wsTicket.getExpiresInMs()))
                 .build();
-        response.addHeader(
-                HttpHeaders.SET_COOKIE,
-                cookie.toString()
-        );
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
 
     private long toSeconds(Long millis) {

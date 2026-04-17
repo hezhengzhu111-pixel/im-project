@@ -6,6 +6,7 @@ import com.im.dto.TokenParseResultDTO;
 import com.im.dto.WsTicketDTO;
 import com.im.dto.request.ParseTokenRequest;
 import com.im.dto.request.RefreshTokenRequest;
+import com.im.exception.AuthServiceException;
 import com.im.service.AuthTokenService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -63,6 +64,19 @@ class AuthControllerTest {
         assertEquals("new_access", response.getData().getAccessToken());
         assertEquals(60000L, response.getData().getExpiresInMs());
         assertEquals(null, response.getData().getRefreshToken());
+    }
+
+    @Test
+    void refresh_ShouldPropagateSecurityExceptionWhenRefreshRejected() {
+        RefreshTokenRequest request = new RefreshTokenRequest();
+        request.setRefreshToken("expired-refresh");
+        when(authTokenService.refresh(any())).thenThrow(new SecurityException("refresh token expired"));
+
+        assertThrows(SecurityException.class, () -> authController.refresh(
+                request,
+                new MockHttpServletRequest(),
+                new MockHttpServletResponse()
+        ));
     }
 
     @Test
@@ -135,12 +149,13 @@ class AuthControllerTest {
     }
 
     @Test
-    void issueWsTicket_MissingIdentity_ShouldThrowSecurityException() {
-        assertThrows(SecurityException.class, () -> authController.issueWsTicket(
+    void issueWsTicket_MissingIdentity_ShouldThrowTypedException() {
+        AuthServiceException exception = assertThrows(AuthServiceException.class, () -> authController.issueWsTicket(
                 null,
                 " ",
                 new MockHttpServletRequest(),
                 new MockHttpServletResponse()
         ));
+        assertEquals("TOKEN_INVALID", exception.getErrorCode().getMessage());
     }
 }

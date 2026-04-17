@@ -2,6 +2,7 @@ package com.im.service.support;
 
 import com.im.dto.MessageDTO;
 import com.im.dto.UserDTO;
+import com.im.enums.CommonErrorCode;
 import com.im.enums.MessageType;
 import com.im.exception.BusinessException;
 import com.im.mapper.MessageMapper;
@@ -119,8 +120,9 @@ class HotMessageLookupServiceTest {
                 .build();
         when(hotMessageRedisRepository.getHotMessage(1004L)).thenReturn(recalledMessage);
 
-        assertThrows(SecurityException.class,
+        BusinessException accessDenied = assertThrows(BusinessException.class,
                 () -> service.requireOwnedMessageForStatusChange(9L, 1004L, false, false));
+        assertEquals(CommonErrorCode.CONVERSATION_ACCESS_DENIED.getMessage(), accessDenied.getMessage());
         assertThrows(BusinessException.class,
                 () -> service.requireOwnedMessageForStatusChange(1L, 1004L, false, false));
         assertDoesNotThrow(() -> service.requireOwnedMessageForStatusChange(1L, 1004L, true, false));

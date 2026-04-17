@@ -1,24 +1,27 @@
 package com.im.gateway.filter;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.config.GlobalRateLimitSwitch;
 import com.im.config.RateLimitGlobalProperties;
 import com.im.dto.ApiResponse;
 import com.im.dto.AuthUserResourceDTO;
-import com.im.dto.TokenParseResultDTO;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpCookie;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
+import org.springframework.http.*;
 import org.springframework.http.server.reactive.ServerHttpRequest;
-import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.env.MockEnvironment;
+import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.reactive.function.client.ClientRequest;
@@ -27,23 +30,20 @@ import org.springframework.web.reactive.function.client.ExchangeFunction;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-import java.util.Base64;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static com.im.util.JwtLocalTokenValidator.getSecretKey;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class JwtAuthGlobalFilterTest {
+
+    private static final String ACCESS_SECRET = "im-access-secret-im-access-secret-im-access-secret-im-access-secret";
+    private static final String OTHER_SECRET = "another-access-secret-another-access-secret-another-access-secret";
 
     @Mock
     private GatewayFilterChain chain;
@@ -107,7 +107,7 @@ class JwtAuthGlobalFilterTest {
         JwtAuthGlobalFilter filter = newFilter(request -> Mono.error(new AssertionError("auth service should not be called")));
         MockServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.post("/api/im/offline/42")
-                        .header("Authorization", "Bearer " + validJwtToken())
+                        .header("Authorization", "Bearer " + accessToken(2001L, "neo", 60_000L))
                         .build()
         );
 
@@ -144,52 +144,72 @@ class JwtAuthGlobalFilterTest {
     }
 
     @Test
-    void filterShouldRejectInvalidTokenReturnedByAuthService() {
-        AtomicInteger authCalls = new AtomicInteger();
+    void filterShouldRejectExpiredTokenLocallyWithoutCallingAuthService() throws Exception {
+        List<String> calledPaths = new ArrayList<>();
         JwtAuthGlobalFilter filter = newFilter(request -> {
-            authCalls.incrementAndGet();
-            TokenParseResultDTO invalid = new TokenParseResultDTO();
-            invalid.setValid(false);
-            invalid.setError("invalid");
-            return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(invalid)));
+            calledPaths.add(request.url().getPath());
+            return Mono.error(new AssertionError("auth service should not be called for expired token"));
         });
+        SimpleMeterRegistry meterRegistry = (SimpleMeterRegistry) ReflectionTestUtils.getField(filter, "meterRegistry");
 
-        MockServerWebExchange exchange = exchangeWithToken(validJwtToken());
+        MockServerWebExchange exchange = exchangeWithToken(accessToken(2002L, "expired", -1_000L));
         filter.filter(exchange, chain).block();
 
         assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
-        assertEquals(1, authCalls.get());
+        Map<String, Object> body = responseBody(exchange);
+        assertEquals(40101, body.get("code"));
+        assertEquals("TOKEN_EXPIRED", body.get("message"));
+        assertTrue(calledPaths.isEmpty());
+        verify(chain, never()).filter(any(ServerWebExchange.class));
+        assertEquals(1.0, meterRegistry.counter("gateway_auth_local_validation", "result", "expired").count());
     }
 
     @Test
-    void filterShouldNotCacheInvalidToken() {
-        AtomicInteger validateCalls = new AtomicInteger();
-        String token = validJwtToken();
+    void filterShouldRejectInvalidTokenLocallyWithoutCallingAuthService() throws Exception {
+        List<String> calledPaths = new ArrayList<>();
         JwtAuthGlobalFilter filter = newFilter(request -> {
-            validateCalls.incrementAndGet();
-            TokenParseResultDTO invalid = new TokenParseResultDTO();
-            invalid.setValid(false);
-            invalid.setError("invalid");
-            return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(invalid)));
+            calledPaths.add(request.url().getPath());
+            return Mono.error(new AssertionError("auth service should not be called for invalid token"));
+        });
+        SimpleMeterRegistry meterRegistry = (SimpleMeterRegistry) ReflectionTestUtils.getField(filter, "meterRegistry");
+
+        MockServerWebExchange exchange = exchangeWithToken(accessToken(2003L, "invalid", 60_000L) + "tampered");
+        filter.filter(exchange, chain).block();
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+        Map<String, Object> body = responseBody(exchange);
+        assertEquals(40102, body.get("code"));
+        assertEquals("TOKEN_INVALID", body.get("message"));
+        assertTrue(calledPaths.isEmpty());
+        verify(chain, never()).filter(any(ServerWebExchange.class));
+        assertEquals(1.0, meterRegistry.counter("gateway_auth_local_validation", "result", "invalid").count());
+    }
+
+    @Test
+    void filterShouldRejectTokenMissingRequiredClaimsLocally() throws Exception {
+        List<String> calledPaths = new ArrayList<>();
+        JwtAuthGlobalFilter filter = newFilter(request -> {
+            calledPaths.add(request.url().getPath());
+            return Mono.error(new AssertionError("auth service should not be called for missing claims"));
         });
 
-        MockServerWebExchange firstExchange = exchangeWithToken(token);
-        filter.filter(firstExchange, chain).block();
-        MockServerWebExchange secondExchange = exchangeWithToken(token);
-        filter.filter(secondExchange, chain).block();
+        MockServerWebExchange exchange = exchangeWithToken(accessTokenMissingJti(2004L, "missing"));
+        filter.filter(exchange, chain).block();
 
-        assertEquals(HttpStatus.UNAUTHORIZED, firstExchange.getResponse().getStatusCode());
-        assertEquals(HttpStatus.UNAUTHORIZED, secondExchange.getResponse().getStatusCode());
-        assertEquals(2, validateCalls.get());
+        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+        Map<String, Object> body = responseBody(exchange);
+        assertEquals(40102, body.get("code"));
+        assertEquals("TOKEN_INVALID", body.get("message"));
+        assertTrue(calledPaths.isEmpty());
     }
 
     @Test
-    void filterShouldMapAuthServiceTimeoutTo504() {
-        AtomicInteger validateCalls = new AtomicInteger();
-        String token = validJwtToken();
+    void filterShouldMapUserResourceTimeoutTo504() {
+        AtomicInteger resourceCalls = new AtomicInteger();
+        String token = accessToken(2101L, "timeout", 60_000L);
         JwtAuthGlobalFilter filter = newFilter(
                 request -> {
-                    validateCalls.incrementAndGet();
+                    resourceCalls.incrementAndGet();
                     return Mono.never();
                 },
                 "http://im-auth-service",
@@ -203,15 +223,15 @@ class JwtAuthGlobalFilterTest {
 
         assertEquals(HttpStatus.GATEWAY_TIMEOUT, firstExchange.getResponse().getStatusCode());
         assertEquals(HttpStatus.GATEWAY_TIMEOUT, secondExchange.getResponse().getStatusCode());
-        assertEquals(2, validateCalls.get());
+        assertEquals(2, resourceCalls.get());
     }
 
     @Test
-    void filterShouldMapTransportLevelFailuresTo503WithoutNegativeCaching() {
-        AtomicInteger validateCalls = new AtomicInteger();
-        String token = validJwtToken();
+    void filterShouldMapUserResourceTransportFailuresTo503WithoutNegativeCaching() {
+        AtomicInteger resourceCalls = new AtomicInteger();
+        String token = accessToken(2201L, "transport", 60_000L);
         JwtAuthGlobalFilter filter = newFilter(request -> {
-            validateCalls.incrementAndGet();
+            resourceCalls.incrementAndGet();
             return Mono.just(ClientResponse.create(HttpStatus.FORBIDDEN).build());
         });
 
@@ -222,31 +242,27 @@ class JwtAuthGlobalFilterTest {
 
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, firstExchange.getResponse().getStatusCode());
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, secondExchange.getResponse().getStatusCode());
-        assertEquals(2, validateCalls.get());
+        assertEquals(2, resourceCalls.get());
     }
 
     @Test
-    void filterShouldInjectAuthHeadersAndCacheSuccessfulValidationResult() {
-        AtomicInteger validateCalls = new AtomicInteger();
+    void filterShouldInjectAuthHeadersAndCacheSuccessfulUserResourceLookup() {
         AtomicInteger resourceCalls = new AtomicInteger();
-        AtomicReference<ClientRequest> validateRequest = new AtomicReference<>();
+        List<String> calledPaths = new ArrayList<>();
         AtomicReference<ClientRequest> resourceRequest = new AtomicReference<>();
         AtomicReference<ServerWebExchange> forwardedExchange = new AtomicReference<>();
-        String token = validJwtToken();
+        String token = accessToken(2301L, "neo", 60_000L);
         JwtAuthGlobalFilter filter = newFilter(request -> {
             String path = request.url().getPath();
-            if ("/api/auth/internal/validate-token".equals(path)) {
-                validateCalls.incrementAndGet();
-                validateRequest.set(request);
-                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(validToken(2001L, "neo"))));
-            }
-            if ("/api/auth/internal/user-resource/2001".equals(path)) {
+            calledPaths.add(path);
+            if ("/api/auth/internal/user-resource/2301".equals(path)) {
                 resourceCalls.incrementAndGet();
                 resourceRequest.set(request);
-                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(userResource(2001L, "neo"))));
+                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(userResource(2301L, "neo"))));
             }
             return Mono.error(new AssertionError("unexpected path: " + path));
         });
+        SimpleMeterRegistry meterRegistry = (SimpleMeterRegistry) ReflectionTestUtils.getField(filter, "meterRegistry");
         when(chain.filter(any(ServerWebExchange.class))).thenAnswer(invocation -> {
             forwardedExchange.set(invocation.getArgument(0));
             return Mono.empty();
@@ -262,41 +278,40 @@ class JwtAuthGlobalFilterTest {
         MockServerWebExchange secondExchange = exchangeWithToken(token);
         filter.filter(secondExchange, chain).block();
 
-        assertNotNull(validateRequest.get());
         assertNotNull(resourceRequest.get());
         assertNotNull(forwardedExchange.get());
-        assertEquals(HttpMethod.POST, validateRequest.get().method());
-        assertEquals("/api/auth/internal/user-resource/2001", resourceRequest.get().url().getPath());
-        assertEquals(1, validateCalls.get());
+        assertEquals(HttpMethod.GET, resourceRequest.get().method());
+        assertEquals("/api/auth/internal/user-resource/2301", resourceRequest.get().url().getPath());
         assertEquals(1, resourceCalls.get());
+        assertFalse(calledPaths.contains("/api/auth/internal/validate-token"));
+        assertFalse(calledPaths.contains("/api/auth/refresh"));
 
         ServerHttpRequest request = forwardedExchange.get().getRequest();
-        assertEquals("2001", request.getHeaders().getFirst("X-User-Id"));
+        assertEquals("2301", request.getHeaders().getFirst("X-User-Id"));
         assertEquals("neo", request.getHeaders().getFirst("X-Username"));
         assertEquals("internal-value", request.getHeaders().getFirst("X-Internal-Secret"));
         assertFalse("forged-secret".equals(request.getHeaders().getFirst("X-Internal-Secret")));
         assertTrue(request.getHeaders().containsKey("X-Auth-User"));
         assertTrue(request.getHeaders().containsKey("X-Auth-Perms"));
         assertTrue(request.getHeaders().containsKey("X-Auth-Data"));
+        assertTrue(request.getHeaders().containsKey("X-Auth-Ts"));
+        assertTrue(request.getHeaders().containsKey("X-Auth-Nonce"));
+        assertTrue(request.getHeaders().containsKey("X-Auth-Sign"));
+        assertEquals(2.0, meterRegistry.counter("gateway_auth_local_validation", "result", "valid").count());
     }
 
     @Test
     void filterShouldNotCachePartialFailureWhenUserResourceLoadFails() {
-        AtomicInteger validateCalls = new AtomicInteger();
         AtomicInteger resourceCalls = new AtomicInteger();
         AtomicReference<ServerWebExchange> forwardedExchange = new AtomicReference<>();
-        String token = validJwtToken();
+        String token = accessToken(2401L, "switch", 60_000L);
         JwtAuthGlobalFilter filter = newFilter(request -> {
             String path = request.url().getPath();
-            if ("/api/auth/internal/validate-token".equals(path)) {
-                validateCalls.incrementAndGet();
-                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(validToken(7001L, "switch"))));
-            }
-            if ("/api/auth/internal/user-resource/7001".equals(path)) {
+            if ("/api/auth/internal/user-resource/2401".equals(path)) {
                 if (resourceCalls.incrementAndGet() == 1) {
                     return Mono.just(ClientResponse.create(HttpStatus.INTERNAL_SERVER_ERROR).build());
                 }
-                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(userResource(7001L, "switch"))));
+                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(userResource(2401L, "switch"))));
             }
             return Mono.error(new AssertionError("unexpected path: " + path));
         });
@@ -311,16 +326,15 @@ class JwtAuthGlobalFilterTest {
         filter.filter(secondExchange, chain).block();
 
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, firstExchange.getResponse().getStatusCode());
-        assertEquals(2, validateCalls.get());
         assertEquals(2, resourceCalls.get());
         assertNotNull(forwardedExchange.get());
-        assertEquals("7001", forwardedExchange.get().getRequest().getHeaders().getFirst("X-User-Id"));
+        assertEquals("2401", forwardedExchange.get().getRequest().getHeaders().getFirst("X-User-Id"));
     }
 
     @Test
     void filterShouldAcceptTokenFromCookie() {
         AtomicReference<ServerWebExchange> forwardedExchange = new AtomicReference<>();
-        JwtAuthGlobalFilter filter = newFilter(request -> successResponseForPath(request, 8101L, "cookie"));
+        JwtAuthGlobalFilter filter = newFilter(request -> successResponseForPath(request, 2501L, "cookie"));
         when(chain.filter(any(ServerWebExchange.class))).thenAnswer(invocation -> {
             forwardedExchange.set(invocation.getArgument(0));
             return Mono.empty();
@@ -328,14 +342,34 @@ class JwtAuthGlobalFilterTest {
 
         MockServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/message/list")
-                        .cookie(new HttpCookie("IM_ACCESS_TOKEN", validJwtToken()))
+                        .cookie(new HttpCookie("IM_ACCESS_TOKEN", accessToken(2501L, "cookie", 60_000L)))
                         .build()
         );
 
         filter.filter(exchange, chain).block();
 
         assertNotNull(forwardedExchange.get());
-        assertEquals("8101", forwardedExchange.get().getRequest().getHeaders().getFirst("X-User-Id"));
+        assertEquals("2501", forwardedExchange.get().getRequest().getHeaders().getFirst("X-User-Id"));
+    }
+
+    @Test
+    void filterShouldMaskRawTokenInFailureLogs() {
+        JwtAuthGlobalFilter filter = newFilter(request -> Mono.error(new AssertionError("auth service should not be called")));
+        ListAppender<ILoggingEvent> appender = attachListAppender();
+        String rawToken = accessToken(2601L, "masked", 60_000L) + "tampered";
+
+        try {
+            MockServerWebExchange exchange = exchangeWithToken(rawToken);
+            filter.filter(exchange, chain).block();
+
+            String logs = joinedMessages(appender);
+            assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+            assertFalse(logs.contains(rawToken));
+            assertTrue(logs.contains("tokenSummary=sha256:"));
+            assertTrue(logs.contains("status=INVALID_SIGNATURE_OR_MALFORMED"));
+        } finally {
+            detachListAppender(appender);
+        }
     }
 
     private JwtAuthGlobalFilter newFilter(ExchangeFunction exchangeFunction) {
@@ -370,11 +404,12 @@ class JwtAuthGlobalFilterTest {
         ReflectionTestUtils.setField(filter, "internalHeaderName", "X-Internal-Secret");
         ReflectionTestUtils.setField(filter, "internalSecret", "internal-value");
         ReflectionTestUtils.setField(filter, "gatewayAuthSecret", "gateway-secret");
-        ReflectionTestUtils.setField(filter, "tokenRevocationCheckEnabled", true);
         ReflectionTestUtils.setField(filter, "jwtHeader", "Authorization");
         ReflectionTestUtils.setField(filter, "jwtPrefix", "Bearer ");
         ReflectionTestUtils.setField(filter, "accessTokenCookieName", "IM_ACCESS_TOKEN");
         ReflectionTestUtils.setField(filter, "refreshTokenCookieName", "IM_REFRESH_TOKEN");
+        ReflectionTestUtils.setField(filter, "accessSecret", ACCESS_SECRET);
+        ReflectionTestUtils.setField(filter, "meterRegistry", new SimpleMeterRegistry());
         return filter;
     }
 
@@ -388,9 +423,6 @@ class JwtAuthGlobalFilterTest {
 
     private Mono<ClientResponse> successResponseForPath(ClientRequest request, Long userId, String username) {
         String path = request.url().getPath();
-        if ("/api/auth/internal/validate-token".equals(path)) {
-            return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(validToken(userId, username))));
-        }
         if (("/api/auth/internal/user-resource/" + userId).equals(path)) {
             return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(userResource(userId, username))));
         }
@@ -408,17 +440,35 @@ class JwtAuthGlobalFilterTest {
         }
     }
 
-    private String validJwtToken() {
-        return Base64.getUrlEncoder().withoutPadding().encodeToString("valid-token".getBytes());
+    private String accessToken(Long userId, String username, long expirationDeltaMs) {
+        Date now = new Date();
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("userId", userId);
+        claims.put("username", username);
+        claims.put("typ", "access");
+        claims.put("jti", UUID.randomUUID().toString());
+        return Jwts.builder()
+                .setClaims(claims)
+                .setSubject(username)
+                .setIssuedAt(now)
+                .setExpiration(new Date(now.getTime() + expirationDeltaMs))
+                .signWith(getSecretKey(ACCESS_SECRET), SignatureAlgorithm.HS512)
+                .compact();
     }
 
-    private TokenParseResultDTO validToken(Long userId, String username) {
-        TokenParseResultDTO dto = new TokenParseResultDTO();
-        dto.setValid(true);
-        dto.setExpired(false);
-        dto.setUserId(userId);
-        dto.setUsername(username);
-        return dto;
+    private String accessTokenMissingJti(Long userId, String username) {
+        Date now = new Date();
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("userId", userId);
+        claims.put("username", username);
+        claims.put("typ", "access");
+        return Jwts.builder()
+                .setClaims(claims)
+                .setSubject(username)
+                .setIssuedAt(now)
+                .setExpiration(new Date(now.getTime() + 60_000L))
+                .signWith(getSecretKey(ACCESS_SECRET), SignatureAlgorithm.HS512)
+                .compact();
     }
 
     private AuthUserResourceDTO userResource(Long userId, String username) {
@@ -429,5 +479,33 @@ class JwtAuthGlobalFilterTest {
         dto.setResourcePermissions(List.of("message:read"));
         dto.setDataScopes(Map.of("tenantId", 1));
         return dto;
+    }
+
+    private Map<String, Object> responseBody(MockServerWebExchange exchange) throws Exception {
+        String json = exchange.getResponse().getBodyAsString().block();
+        assertNotNull(json);
+        return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {
+        });
+    }
+
+    private ListAppender<ILoggingEvent> attachListAppender() {
+        Logger logger = (Logger) LoggerFactory.getLogger(JwtAuthGlobalFilter.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        return appender;
+    }
+
+    private void detachListAppender(ListAppender<ILoggingEvent> appender) {
+        Logger logger = (Logger) LoggerFactory.getLogger(JwtAuthGlobalFilter.class);
+        logger.detachAppender(appender);
+    }
+
+    private String joinedMessages(ListAppender<ILoggingEvent> appender) {
+        StringBuilder builder = new StringBuilder();
+        for (ILoggingEvent event : appender.list) {
+            builder.append(event.getFormattedMessage()).append('\n');
+        }
+        return builder.toString();
     }
 }

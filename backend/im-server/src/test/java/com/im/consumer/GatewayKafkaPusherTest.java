@@ -4,8 +4,11 @@ import com.im.dto.*;
 import com.im.entity.UserSession;
 import com.im.enums.MessageEventType;
 import com.im.enums.MessageType;
+import com.im.feign.GroupServiceFeignClient;
+import com.im.metrics.ImServerMetrics;
 import com.im.service.IImService;
 import com.im.service.ProcessedMessageDeduplicator;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +24,7 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -39,13 +43,19 @@ class GatewayKafkaPusherTest {
 
     @Mock
     private ProcessedMessageDeduplicator deduplicator;
+    @Mock
+    private GroupServiceFeignClient groupServiceFeignClient;
 
     private GatewayKafkaPusher pusher;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
-        pusher = new GatewayKafkaPusher(imService, redisTemplate, deduplicator);
+        pusher = new GatewayKafkaPusher(imService, redisTemplate, deduplicator, groupServiceFeignClient);
+        meterRegistry = new SimpleMeterRegistry();
+        ReflectionTestUtils.setField(pusher, "metrics", new ImServerMetrics(meterRegistry));
         ReflectionTestUtils.setField(pusher, "groupMembersCachePrefix", "message:group:members:");
+        ReflectionTestUtils.setField(pusher, "groupMembersCacheTtlSeconds", 30L);
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(deduplicator.tryReserve(anyString())).thenReturn(true);
     }
@@ -130,6 +140,7 @@ class GatewayKafkaPusherTest {
         MessageDTO payload = groupPayload(1L, 8L);
         MessageEvent event = groupEvent(payload, 1L, 8L);
         when(valueOperations.get("message:group:members:8")).thenReturn(null);
+        when(groupServiceFeignClient.memberIds(8L)).thenReturn(List.of());
 
         pusher.handleEvent(event);
 
@@ -292,6 +303,7 @@ class GatewayKafkaPusherTest {
 
         verify(imService, times(1)).pushMessageToUser(payload, 1L);
         verify(deduplicator, never()).release("kafka:MESSAGE:100:1");
+        assertEquals(1.0, meterRegistry.counter("duplicate_delivery_prevented").count());
     }
 
     @Test
@@ -329,6 +341,44 @@ class GatewayKafkaPusherTest {
         }
 
         verify(imService, times(1)).pushMessageToUser(payload, 1L);
+    }
+
+    @Test
+    void groupMembershipInvalidation_shouldEvictCacheAndReloadAuthoritativeMembersOnNextDelivery() {
+        MessageDTO payload = groupPayload(1L, 8L);
+        MessageEvent event = groupEvent(payload, 1L, 8L);
+        UserSession senderSession = session("session-1");
+        UserSession thirdSession = session("session-3");
+        when(valueOperations.get("message:group:members:8")).thenReturn(null);
+        when(groupServiceFeignClient.memberIds(8L)).thenReturn(List.of(1L, 3L));
+        when(imService.getLocalSessions("1")).thenReturn(List.of(senderSession));
+        when(imService.getLocalSessions("3")).thenReturn(List.of(thirdSession));
+        when(imService.pushMessageToUser(payload, 1L)).thenReturn(true);
+        when(imService.pushMessageToUser(payload, 3L)).thenReturn(true);
+
+        pusher.onAuthorizationCacheInvalidation("""
+                {"scope":"GROUP_MEMBERSHIP","changeType":"KICK","groupId":8,"userIds":[2]}
+                """);
+        pusher.handleEvent(event);
+
+        verify(redisTemplate).delete("message:group:members:8");
+        verify(groupServiceFeignClient).memberIds(8L);
+        verify(valueOperations).set("message:group:members:8", List.of(1L, 3L), 30L, TimeUnit.SECONDS);
+        verify(imService).pushMessageToUser(payload, 1L);
+        verify(imService, never()).pushMessageToUser(payload, 2L);
+        verify(imService).pushMessageToUser(payload, 3L);
+    }
+
+    @Test
+    void duplicateInvalidation_shouldBeIdempotent() {
+        String payload = """
+                {"scope":"GROUP_MEMBERSHIP","changeType":"KICK","groupId":8,"userIds":[2]}
+                """;
+
+        pusher.onAuthorizationCacheInvalidation(payload);
+        pusher.onAuthorizationCacheInvalidation(payload);
+
+        verify(redisTemplate, times(2)).delete("message:group:members:8");
     }
 
     private void awaitAndHandle(CountDownLatch start, MessageEvent event) {

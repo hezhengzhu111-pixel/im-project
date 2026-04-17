@@ -13,6 +13,7 @@ import com.im.metrics.ImServerMetrics;
 import com.im.service.IImService;
 import com.im.service.presence.PresenceTransitionDeduplicator;
 import com.im.service.route.UserRouteRegistry;
+import com.im.websocket.WebSocketErrorSemantics;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -41,10 +42,8 @@ import java.util.function.Supplier;
 public class ImServiceImpl implements IImService {
 
     private static final int USER_LOCK_STRIPE_COUNT = 1024;
-    private static final CloseStatus SEND_FAILED_CLOSE_STATUS =
-            CloseStatus.SESSION_NOT_RELIABLE.withReason("send failed");
-    private static final CloseStatus STALE_SESSION_CLOSE_STATUS =
-            CloseStatus.SESSION_NOT_RELIABLE.withReason("session stale");
+    private static final CloseStatus SEND_FAILED_CLOSE_STATUS = WebSocketErrorSemantics.SESSION_CLOSED_OR_STALE;
+    private static final CloseStatus STALE_SESSION_CLOSE_STATUS = WebSocketErrorSemantics.SESSION_CLOSED_OR_STALE;
 
     private final RedissonClient redissonClient;
     private final ImNodeIdentity nodeIdentity;
@@ -535,6 +534,7 @@ public class ImServiceImpl implements IImService {
             return;
         }
         if (presenceTransitionDeduplicator.tryTransition(userId, UserStatus.ONLINE)) {
+            recordRouteRegistryStateTransition("online");
             publishAndBroadcastOnlineStatus(userId, UserStatus.ONLINE);
         }
     }
@@ -550,6 +550,7 @@ public class ImServiceImpl implements IImService {
                 return;
             }
             if (presenceTransitionDeduplicator.tryTransition(userId, UserStatus.OFFLINE)) {
+                recordRouteRegistryStateTransition("offline");
                 publishAndBroadcastOnlineStatus(userId, UserStatus.OFFLINE);
             }
         };
@@ -696,18 +697,33 @@ public class ImServiceImpl implements IImService {
         }
     }
 
+    private void recordRouteRegistryStateTransition(String transition) {
+        if (metrics != null) {
+            metrics.recordRouteRegistryStateTransition(transition);
+        }
+    }
+
     private void handleSendFailure(String userId, String sessionId, String wsType, Throwable sendError) {
         String normalizedSessionId = normalizeSessionId(sessionId);
         if (normalizedSessionId != null) {
             failedSessionIds.add(normalizedSessionId);
         }
-        log.warn("WebSocket send failed. userId={}, sessionId={}, type={}, closeStatus={}, error={}",
-                userId, normalizedSessionId, wsType, SEND_FAILED_CLOSE_STATUS, sendError == null ? null : sendError.getMessage());
+        log.warn("WebSocket send failed. errorCode={}, userId={}, sessionId={}, type={}, closeStatus={}, error={}",
+                WebSocketErrorSemantics.SESSION_ERROR_CODE,
+                userId,
+                normalizedSessionId,
+                wsType,
+                SEND_FAILED_CLOSE_STATUS,
+                sendError == null ? null : sendError.getMessage());
         try {
             unregisterSession(userId, normalizedSessionId, SEND_FAILED_CLOSE_STATUS);
         } catch (Exception cleanupError) {
-            log.warn("Cleanup websocket session after send failure failed. userId={}, sessionId={}, closeStatus={}, error={}",
-                    userId, normalizedSessionId, SEND_FAILED_CLOSE_STATUS, cleanupError.getMessage());
+            log.warn("Cleanup websocket session after send failure failed. errorCode={}, userId={}, sessionId={}, closeStatus={}, error={}",
+                    WebSocketErrorSemantics.SESSION_ERROR_CODE,
+                    userId,
+                    normalizedSessionId,
+                    SEND_FAILED_CLOSE_STATUS,
+                    cleanupError.getMessage());
         }
     }
 

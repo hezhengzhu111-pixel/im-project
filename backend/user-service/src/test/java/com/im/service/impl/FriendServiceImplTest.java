@@ -3,34 +3,28 @@ package com.im.service.impl;
 import com.im.common.PageResult;
 import com.im.dto.FriendListDTO;
 import com.im.dto.FriendRequestDTO;
-import com.im.user.entity.Friend;
-import com.im.user.entity.FriendRequest;
-import com.im.user.entity.User;
+import com.im.dto.FriendRequestResponseDTO;
 import com.im.mapper.FriendMapper;
 import com.im.mapper.FriendRequestMapper;
 import com.im.mapper.UserMapper;
 import com.im.service.ImService;
+import com.im.user.entity.Friend;
+import com.im.user.entity.FriendRequest;
+import com.im.user.entity.User;
 import com.im.util.DTOConverter;
-import com.im.dto.FriendRequestResponseDTO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.kafka.core.KafkaTemplate;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class FriendServiceImplTest {
@@ -45,10 +39,12 @@ class FriendServiceImplTest {
     private DTOConverter dtoConverter;
     @Mock
     private ImService imService;
+    @Mock
+    private KafkaTemplate<String, String> kafkaTemplate;
 
     @Test
     void getFriendList_shouldUseBatchUserQueryAndBatchOnlineQuery() {
-        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService);
+        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService, kafkaTemplate);
         Friend f1 = new Friend();
         f1.setFriendId(2L);
         Friend f2 = new Friend();
@@ -82,7 +78,7 @@ class FriendServiceImplTest {
 
     @Test
     void getFriendRequests_shouldUseBatchUserQuery() {
-        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService);
+        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService, kafkaTemplate);
         FriendRequest request = new FriendRequest();
         request.setId(10L);
         request.setApplicantId(2L);
@@ -105,7 +101,7 @@ class FriendServiceImplTest {
 
     @Test
     void getBlockList_shouldFallbackOfflineWhenOnlineStatusNull() {
-        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService);
+        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService, kafkaTemplate);
         Friend blocked = new Friend();
         blocked.setFriendId(4L);
         when(friendMapper.selectList(any())).thenReturn(List.of(blocked));
@@ -123,7 +119,7 @@ class FriendServiceImplTest {
 
     @Test
     void sendFriendRequest_ShouldFailIfTargetUserDoesNotExist() {
-        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService);
+        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService, kafkaTemplate);
         when(userMapper.selectCount(any())).thenReturn(0L);
         
         FriendRequestResponseDTO response = service.sendFriendRequest(1L, 2L, "hello");
@@ -134,7 +130,7 @@ class FriendServiceImplTest {
 
     @Test
     void sendFriendRequest_ShouldFailIfAlreadyPending() {
-        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService);
+        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService, kafkaTemplate);
         when(userMapper.selectCount(any())).thenReturn(1L);
         when(friendMapper.selectCount(any())).thenReturn(0L); // Not friends
         
@@ -150,7 +146,7 @@ class FriendServiceImplTest {
 
     @Test
     void sendFriendRequest_ShouldSuccessAndSendSystemNotice() {
-        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService);
+        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService, kafkaTemplate);
         when(userMapper.selectCount(any())).thenReturn(1L);
         when(friendMapper.selectCount(any())).thenReturn(0L); // Not friends
         
@@ -166,5 +162,51 @@ class FriendServiceImplTest {
         
         // Verify bidirectional system notice
         verify(imService, times(2)).sendSystemMessage(anyLong(), any());
+    }
+
+    @Test
+    void acceptFriendRequest_ShouldPublishFriendInvalidationEvent() {
+        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService, kafkaTemplate);
+        FriendRequest request = new FriendRequest();
+        request.setId(10L);
+        request.setApplicantId(2L);
+        request.setTargetUserId(1L);
+        request.setStatus(0);
+        when(friendRequestMapper.selectById(10L)).thenReturn(request);
+
+        FriendRequestResponseDTO response = service.acceptFriendRequest(1L, 10L);
+
+        assertTrue(response.isSuccess());
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(kafkaTemplate).send(eq("im-authz-cache-invalidation-topic"), eq("friend:1:2"), payloadCaptor.capture());
+        assertTrue(payloadCaptor.getValue().contains("\"scope\":\"FRIEND_RELATION\""));
+        assertTrue(payloadCaptor.getValue().contains("\"changeType\":\"ADD\""));
+        assertTrue(payloadCaptor.getValue().contains("\"userIds\":[1,2]"));
+    }
+
+    @Test
+    void removeFriend_ShouldPublishFriendInvalidationEvent() {
+        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService, kafkaTemplate);
+        when(friendMapper.selectCount(any())).thenReturn(1L);
+
+        FriendRequestResponseDTO response = service.removeFriend(1L, 2L);
+
+        assertTrue(response.isSuccess());
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(kafkaTemplate).send(eq("im-authz-cache-invalidation-topic"), eq("friend:1:2"), payloadCaptor.capture());
+        assertTrue(payloadCaptor.getValue().contains("\"changeType\":\"DELETE\""));
+    }
+
+    @Test
+    void blockUser_ShouldPublishFriendInvalidationEvent() {
+        FriendServiceImpl service = new FriendServiceImpl(friendMapper, friendRequestMapper, userMapper, dtoConverter, imService, kafkaTemplate);
+        when(friendMapper.selectOne(any())).thenReturn(null);
+
+        FriendRequestResponseDTO response = service.blockUser(1L, 2L);
+
+        assertTrue(response.isSuccess());
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(kafkaTemplate).send(eq("im-authz-cache-invalidation-topic"), eq("friend:1:2"), payloadCaptor.capture());
+        assertTrue(payloadCaptor.getValue().contains("\"changeType\":\"BLOCK\""));
     }
 }

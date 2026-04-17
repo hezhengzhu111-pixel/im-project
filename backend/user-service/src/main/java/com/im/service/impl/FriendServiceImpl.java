@@ -1,19 +1,28 @@
 package com.im.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.common.PageResult;
-import com.im.dto.*;
-import com.im.user.entity.Friend;
-import com.im.user.entity.FriendRequest;
-import com.im.user.entity.User;
+import com.im.dto.FriendListDTO;
+import com.im.dto.FriendRequestDTO;
+import com.im.dto.FriendRequestResponseDTO;
+import com.im.dto.MessageDTO;
+import com.im.enums.MessageType;
 import com.im.mapper.FriendMapper;
 import com.im.mapper.FriendRequestMapper;
 import com.im.mapper.UserMapper;
 import com.im.service.FriendService;
+import com.im.service.ImService;
+import com.im.user.entity.Friend;
+import com.im.user.entity.FriendRequest;
+import com.im.user.entity.User;
 import com.im.util.DTOConverter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,13 +30,14 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import com.im.enums.MessageType;
-import com.im.service.ImService;
-
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class FriendServiceImpl implements FriendService {
+
+    private static final String AUTHZ_CACHE_INVALIDATION_TOPIC = "im-authz-cache-invalidation-topic";
+    private static final String SCOPE_FRIEND_RELATION = "FRIEND_RELATION";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     
     private final FriendMapper friendMapper;
@@ -35,6 +45,10 @@ public class FriendServiceImpl implements FriendService {
     private final UserMapper userMapper;
     private final DTOConverter dtoConverter;
     private final ImService imService;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+
+    @Value("${im.kafka.authz-cache-invalidation-topic:im-authz-cache-invalidation-topic}")
+    private String authzCacheInvalidationTopic = AUTHZ_CACHE_INVALIDATION_TOPIC;
     
     @Override
     @Transactional
@@ -137,6 +151,7 @@ public class FriendServiceImpl implements FriendService {
             messageDTO.setContent("您的好友申请已被同意::CMD:REFRESH_FRIEND_LIST");
             messageDTO.setCreatedTime(LocalDateTime.now());
             imService.sendSystemMessage(messageDTO.getReceiverId(), messageDTO.getContent());
+            publishFriendRelationInvalidation("ADD", currentUserId, request.getApplicantId());
             
             log.info("用户{}同意了用户{}的好友申请", currentUserId, request.getApplicantId());
             
@@ -191,13 +206,14 @@ public class FriendServiceImpl implements FriendService {
         
         try {
             // 删除双向好友关系
-            friendMapper.update(null, new LambdaUpdateWrapper<Friend>()
-                    .set(Friend::getStatus, 2)
-                    .in(Friend::getStatus, 1, 3)
-                    .and(w -> w.eq(Friend::getUserId, userId).eq(Friend::getFriendId, friendUserId)
+            friendMapper.update(null, new UpdateWrapper<Friend>()
+                    .set("status", 2)
+                    .in("status", 1, 3)
+                    .and(w -> w.eq("user_id", userId).eq("friend_id", friendUserId)
                             .or()
-                            .eq(Friend::getUserId, friendUserId).eq(Friend::getFriendId, userId)));
+                            .eq("user_id", friendUserId).eq("friend_id", userId)));
 
+            publishFriendRelationInvalidation("DELETE", userId, friendUserId);
             sendSystemNotice(friendUserId, "对方已解除好友关系::CMD:REFRESH_FRIEND_LIST");
             log.info("用户{}删除了好友{}", userId, friendUserId);
             
@@ -234,6 +250,7 @@ public class FriendServiceImpl implements FriendService {
                 friendMapper.updateById(friend);
             }
 
+            publishFriendRelationInvalidation("BLOCK", userId, targetUserId);
             sendSystemNotice(targetUserId, "对方已将您加入黑名单::CMD:REFRESH_FRIEND_LIST");
             log.info("用户{}拉黑了用户{}", userId, targetUserId);
             
@@ -432,6 +449,29 @@ public class FriendServiceImpl implements FriendService {
                 .eq(Friend::getFriendId, friendId)
                 .in(Friend::getStatus, 1, 3));
         return count != null && count > 0;
+    }
+
+    private void publishFriendRelationInvalidation(String changeType, Long userId, Long peerUserId) {
+        if (userId == null || peerUserId == null) {
+            return;
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("scope", SCOPE_FRIEND_RELATION);
+        payload.put("changeType", changeType);
+        payload.put("userIds", List.of(userId, peerUserId));
+        publishAuthorizationCacheInvalidation("friend:" + userId + ":" + peerUserId, payload);
+    }
+
+    private void publishAuthorizationCacheInvalidation(String key, Map<String, Object> payload) {
+        try {
+            kafkaTemplate.send(authzCacheInvalidationTopic, key, OBJECT_MAPPER.writeValueAsString(payload));
+        } catch (JsonProcessingException exception) {
+            log.warn("Serialize authz cache invalidation event failed. key={}, error={}",
+                    key, exception.getMessage(), exception);
+        } catch (Exception exception) {
+            log.warn("Publish authz cache invalidation event failed. key={}, error={}",
+                    key, exception.getMessage(), exception);
+        }
     }
 
     private void sendSystemNotice(Long receiverId, String content) {

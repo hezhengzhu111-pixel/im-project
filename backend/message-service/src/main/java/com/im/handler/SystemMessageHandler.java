@@ -1,20 +1,15 @@
 package com.im.handler;
 
 import com.im.dto.MessageDTO;
-import com.im.dto.MessageEvent;
 import com.im.dto.UserDTO;
 import com.im.enums.MessageType;
 import com.im.exception.BusinessException;
 import com.im.feign.UserServiceFeignClient;
 import com.im.message.entity.Message;
 import com.im.service.command.SendMessageCommand;
-import com.im.service.support.AcceptedMessageProjectionService;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
-import com.im.utils.SnowflakeIdGenerator;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -26,13 +21,8 @@ public class SystemMessageHandler extends AbstractMessageHandler<SystemMessageHa
     @Value("${im.message.system.sender-id:0}")
     private Long defaultSystemSenderId;
 
-    public SystemMessageHandler(RedisTemplate<String, Object> redisTemplate,
-                                KafkaTemplate<String, MessageEvent> kafkaTemplate,
-                                SnowflakeIdGenerator snowflakeIdGenerator,
-                                AcceptedMessageProjectionService acceptedMessageProjectionService,
-                                UserServiceFeignClient userServiceFeignClient,
+    public SystemMessageHandler(UserServiceFeignClient userServiceFeignClient,
                                 UserProfileCache userProfileCache) {
-        super(redisTemplate, kafkaTemplate, snowflakeIdGenerator, acceptedMessageProjectionService);
         this.userServiceFeignClient = userServiceFeignClient;
         this.userProfileCache = userProfileCache;
     }
@@ -87,11 +77,6 @@ public class SystemMessageHandler extends AbstractMessageHandler<SystemMessageHa
         );
         messageDTO.setGroup(false);
         return messageDTO;
-    }
-
-    @Override
-    protected String transactionFailureMessage(SendMessageCommand command) {
-        return "failed to send system message";
     }
 
     record SystemMessageContext(

@@ -6,13 +6,18 @@ import com.im.dto.StatusChangeEvent;
 import com.im.enums.MessageType;
 import com.im.mapper.GroupReadCursorMapper;
 import com.im.mapper.MessageMapper;
+import com.im.mapper.PendingStatusEventBacklogMapper;
 import com.im.mapper.PrivateReadCursorMapper;
 import com.im.message.entity.GroupReadCursor;
 import com.im.message.entity.Message;
+import com.im.message.entity.PendingStatusEventBacklog;
 import com.im.message.entity.PrivateReadCursor;
+import com.im.metrics.MessageServiceMetrics;
 import com.im.service.ConversationCacheUpdater;
-import com.im.service.support.PendingStatusEventService;
+import com.im.service.orchestrator.MessageStateOrchestrator;
+import com.im.service.support.*;
 import com.im.utils.SnowflakeIdGenerator;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,8 +25,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -48,17 +55,36 @@ class KafkaMessageStatePersisterTest {
     @Mock
     private PendingStatusEventService pendingStatusEventService;
 
+    @Mock
+    private HotMessageRedisRepository hotMessageRedisRepository;
+
+    @Mock
+    private AcceptedMessageProjectionService acceptedMessageProjectionService;
+
+    @Mock
+    private UserProfileCache userProfileCache;
+
+    @Mock
+    private PersistenceWatermarkService persistenceWatermarkService;
+
     private KafkaMessageStatePersister persister;
 
     @BeforeEach
     void setUp() {
-        persister = new KafkaMessageStatePersister(
-                messageMapper,
-                groupReadCursorMapper,
-                privateReadCursorMapper,
-                conversationCacheUpdater,
+        MessageStateOrchestrator orchestrator = new MessageStateOrchestrator(
                 snowflakeIdGenerator,
-                pendingStatusEventService
+                hotMessageRedisRepository,
+                acceptedMessageProjectionService,
+                messageMapper,
+                userProfileCache,
+                persistenceWatermarkService,
+                pendingStatusEventService,
+                conversationCacheUpdater,
+                groupReadCursorMapper,
+                privateReadCursorMapper
+        );
+        persister = new KafkaMessageStatePersister(
+                orchestrator
         );
     }
 
@@ -193,6 +219,53 @@ class KafkaMessageStatePersisterTest {
         verify(messageMapper).updateById(any(Message.class));
         verify(conversationCacheUpdater).applyStatusChange(event);
         verify(pendingStatusEventService).remove(602L, Message.MessageStatus.RECALLED);
+    }
+
+    @Test
+    void pendingStatusBacklogGaugeShouldTrackStatusBeforeMessageReplayLifecycle() {
+        PendingStatusEventBacklogMapper backlogMapper = mock(PendingStatusEventBacklogMapper.class);
+        PendingStatusEventService realPendingStatusEventService = new PendingStatusEventService(backlogMapper);
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        ReflectionTestUtils.setField(realPendingStatusEventService, "metrics", new MessageServiceMetrics(meterRegistry));
+        ReflectionTestUtils.invokeMethod(realPendingStatusEventService, "bindMetrics");
+
+        AtomicInteger backlogCount = new AtomicInteger();
+        doAnswer(invocation -> {
+            backlogCount.incrementAndGet();
+            return 1;
+        }).when(backlogMapper).insert(any(PendingStatusEventBacklog.class));
+        doAnswer(invocation -> {
+            backlogCount.decrementAndGet();
+            return 1;
+        }).when(backlogMapper).deleteByMessageIdAndStatus(604L, Message.MessageStatus.RECALLED);
+        when(backlogMapper.selectCount(null)).thenAnswer(invocation -> (long) backlogCount.get());
+
+        MessageStateOrchestrator gaugeOrchestrator = new MessageStateOrchestrator(
+                snowflakeIdGenerator,
+                hotMessageRedisRepository,
+                acceptedMessageProjectionService,
+                messageMapper,
+                userProfileCache,
+                persistenceWatermarkService,
+                realPendingStatusEventService,
+                conversationCacheUpdater,
+                groupReadCursorMapper,
+                privateReadCursorMapper
+        );
+        KafkaMessageStatePersister gaugePersister = new KafkaMessageStatePersister(gaugeOrchestrator);
+        StatusChangeEvent event = statusChangeEvent(604L, Message.MessageStatus.RECALLED,
+                LocalDateTime.of(2026, 4, 15, 19, 14));
+        when(messageMapper.selectById(604L))
+                .thenReturn(null)
+                .thenReturn(persistedMessage(604L, Message.MessageStatus.SENT, LocalDateTime.of(2026, 4, 15, 19, 0)));
+        when(messageMapper.updateById(any(Message.class))).thenReturn(1);
+
+        gaugePersister.persistStatusChangeEvent(event);
+        assertEquals(1.0, meterRegistry.get("pending_status_backlog").gauge().value());
+
+        gaugePersister.persistStatusChangeEvent(event);
+        assertEquals(0.0, meterRegistry.get("pending_status_backlog").gauge().value());
+        verify(conversationCacheUpdater).applyStatusChange(event);
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.im.dto;
 
+import com.im.enums.ApiErrorCode;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -78,6 +79,13 @@ public class ApiResponse<T> {
                 .data(null)
                 .timestamp(System.currentTimeMillis())
                 .build();
+    }
+
+    public static <T> ApiResponse<T> error(ApiErrorCode errorCode) {
+        if (errorCode == null) {
+            return error("SYSTEM_ERROR");
+        }
+        return error(errorCode.getCode(), errorCode.getMessage());
     }
     
     /**

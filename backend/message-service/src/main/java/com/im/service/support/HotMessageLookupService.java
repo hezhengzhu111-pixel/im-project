@@ -2,6 +2,7 @@ package com.im.service.support;
 
 import com.im.dto.MessageDTO;
 import com.im.dto.UserDTO;
+import com.im.enums.CommonErrorCode;
 import com.im.enums.MessageType;
 import com.im.exception.BusinessException;
 import com.im.mapper.MessageMapper;
@@ -72,7 +73,7 @@ public class HotMessageLookupService {
                                             boolean allowRecalled,
                                             boolean allowDeleted) {
         if (senderId == null || !senderId.equals(operatorUserId)) {
-            throw new SecurityException("only sender can change message status");
+            throw new BusinessException(CommonErrorCode.CONVERSATION_ACCESS_DENIED);
         }
         if (!allowDeleted && Objects.equals(status, Message.MessageStatus.DELETED)) {
             throw new BusinessException("message already deleted");

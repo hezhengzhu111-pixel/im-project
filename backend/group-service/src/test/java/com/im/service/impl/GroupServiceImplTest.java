@@ -1,8 +1,8 @@
 package com.im.service.impl;
 
+import com.im.feign.UserServiceFeignClient;
 import com.im.group.entity.Group;
 import com.im.group.entity.GroupMember;
-import com.im.feign.UserServiceFeignClient;
 import com.im.mapper.GroupMapper;
 import com.im.mapper.GroupMemberMapper;
 import org.junit.jupiter.api.Assertions;
@@ -12,17 +12,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.kafka.core.KafkaTemplate;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class GroupServiceImplTest {
@@ -33,12 +29,14 @@ class GroupServiceImplTest {
     private GroupMemberMapper groupMemberMapper;
     @Mock
     private UserServiceFeignClient userServiceFeignClient;
+    @Mock
+    private KafkaTemplate<String, String> kafkaTemplate;
 
     private GroupServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new GroupServiceImpl(groupMapper, groupMemberMapper, userServiceFeignClient);
+        service = new GroupServiceImpl(groupMapper, groupMemberMapper, userServiceFeignClient, kafkaTemplate);
     }
 
     @Test
@@ -127,6 +125,70 @@ class GroupServiceImplTest {
         assertThrows(IllegalArgumentException.class, () -> service.getGroupMembers(8L, 99L, 20));
 
         verify(groupMemberMapper, never()).selectList(any());
+    }
+
+    @Test
+    void joinGroupShouldPublishMembershipInvalidationEvent() {
+        when(groupMapper.selectById(8L)).thenReturn(group(8L, 1L));
+        when(userServiceFeignClient.exists(2L)).thenReturn(true);
+        when(groupMemberMapper.selectOne(any())).thenReturn(null);
+
+        service.joinGroup(8L, 2L);
+
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(kafkaTemplate).send(eq("im-authz-cache-invalidation-topic"), eq("group:8"), payloadCaptor.capture());
+        assertTrue(payloadCaptor.getValue().contains("\"scope\":\"GROUP_MEMBERSHIP\""));
+        assertTrue(payloadCaptor.getValue().contains("\"changeType\":\"JOIN\""));
+        assertTrue(payloadCaptor.getValue().contains("\"groupId\":8"));
+        assertTrue(payloadCaptor.getValue().contains("\"userIds\":[2]"));
+    }
+
+    @Test
+    void leaveGroupShouldPublishMembershipInvalidationEvent() {
+        when(groupMapper.selectById(8L)).thenReturn(group(8L, 1L));
+        when(userServiceFeignClient.exists(2L)).thenReturn(true);
+        when(groupMemberMapper.existsActiveMember(8L, 2L)).thenReturn(true);
+
+        service.leaveGroup(8L, 2L);
+
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(kafkaTemplate).send(eq("im-authz-cache-invalidation-topic"), eq("group:8"), payloadCaptor.capture());
+        assertTrue(payloadCaptor.getValue().contains("\"changeType\":\"LEAVE\""));
+    }
+
+    @Test
+    void removeMemberShouldPublishMembershipInvalidationEvent() {
+        when(groupMapper.selectById(8L)).thenReturn(group(8L, 1L));
+        when(userServiceFeignClient.exists(1L)).thenReturn(true);
+        when(userServiceFeignClient.exists(2L)).thenReturn(true);
+        when(groupMemberMapper.selectOne(any())).thenReturn(
+                member(8L, 1L, 3, true),
+                member(8L, 2L, 1, true)
+        );
+
+        service.removeMember(8L, 1L, 2L);
+
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(kafkaTemplate).send(eq("im-authz-cache-invalidation-topic"), eq("group:8"), payloadCaptor.capture());
+        assertTrue(payloadCaptor.getValue().contains("\"changeType\":\"KICK\""));
+        assertTrue(payloadCaptor.getValue().contains("\"userIds\":[2]"));
+    }
+
+    @Test
+    void dismissGroupShouldPublishMembershipInvalidationEvent() {
+        when(groupMapper.selectById(8L)).thenReturn(group(8L, 1L));
+        when(userServiceFeignClient.exists(1L)).thenReturn(true);
+        when(groupMemberMapper.selectMembersByGroupId(8L)).thenReturn(List.of(
+                member(8L, 1L, 3, true),
+                member(8L, 2L, 1, true)
+        ));
+
+        service.dismissGroup(8L, 1L);
+
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(kafkaTemplate).send(eq("im-authz-cache-invalidation-topic"), eq("group:8"), payloadCaptor.capture());
+        assertTrue(payloadCaptor.getValue().contains("\"changeType\":\"DISBAND\""));
+        assertTrue(payloadCaptor.getValue().contains("\"userIds\":[1,2]"));
     }
 
     private Group group(Long groupId, Long ownerId) {

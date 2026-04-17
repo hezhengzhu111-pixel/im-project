@@ -6,11 +6,13 @@ import com.im.dto.UserDTO;
 import com.im.enums.MessageType;
 import com.im.mapper.MessageMapper;
 import com.im.message.entity.Message;
+import com.im.metrics.MessageServiceMetrics;
 import com.im.service.support.HotMessageRedisRepository;
 import com.im.service.support.PersistenceWatermarkService;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -28,6 +30,9 @@ public class HotRecentMessageReadService {
     private final MessageMapper messageMapper;
     private final PersistenceWatermarkService persistenceWatermarkService;
     private final UserProfileCache userProfileCache;
+
+    @Autowired(required = false)
+    private MessageServiceMetrics metrics;
 
     @Value("${im.message.system.sender-id:0}")
     private Long defaultSystemSenderId;
@@ -122,6 +127,7 @@ public class HotRecentMessageReadService {
         LambdaQueryWrapper<Message> wrapper = buildVisibleConversationWrapper(scope, watermark)
                 .orderByDesc(Message::getId)
                 .last("limit " + limit);
+        recordWatermarkDbFallbackHit();
         return toMessageDTOs(messageMapper.selectList(wrapper));
     }
 
@@ -152,6 +158,7 @@ public class HotRecentMessageReadService {
                     .last("limit " + limit);
         }
 
+        recordWatermarkDbFallbackHit();
         return toMessageDTOs(messageMapper.selectList(wrapper));
     }
 
@@ -247,7 +254,14 @@ public class HotRecentMessageReadService {
         LambdaQueryWrapper<Message> wrapper = buildVisibleConversationWrapper(scope, watermark)
                 .orderByDesc(Message::getId)
                 .last("limit 1");
+        recordWatermarkDbFallbackHit();
         return messageMapper.selectOne(wrapper);
+    }
+
+    private void recordWatermarkDbFallbackHit() {
+        if (metrics != null) {
+            metrics.recordWatermarkDbFallbackHit();
+        }
     }
 
     private ConversationScope parseConversationScope(String conversationId) {

@@ -16,17 +16,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.clearInvocations;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class UserProfileCacheTest {
@@ -61,7 +54,7 @@ class UserProfileCacheTest {
         ReflectionTestUtils.setField(cache, "groupMemberIdsCacheL1TtlSeconds", 15L);
         ReflectionTestUtils.setField(cache, "groupMemberIdsCacheL2TtlSeconds", 30L);
         ReflectionTestUtils.setField(cache, "groupMemberIdsCacheL1MaxSize", 5_000L);
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         cache.initCaches();
     }
 
@@ -140,6 +133,24 @@ class UserProfileCacheTest {
     }
 
     @Test
+    void friendInvalidation_ShouldEvictCachesAndRefetchAuthoritativeRelationImmediately() {
+        when(valueOperations.get("message:friend:1:2")).thenReturn(Boolean.TRUE, null);
+        when(userServiceFeignClient.isFriend(1L, 2L)).thenReturn(false);
+
+        assertTrue(cache.isFriend(1L, 2L));
+        clearInvocations(redisTemplate, valueOperations, userServiceFeignClient);
+
+        cache.onAuthorizationCacheInvalidation("""
+                {"scope":"FRIEND_RELATION","changeType":"DELETE","userIds":[1,2]}
+                """);
+
+        assertFalse(cache.isFriend(1L, 2L));
+        verify(redisTemplate).delete("message:friend:1:2");
+        verify(redisTemplate).delete("message:friend:2:1");
+        verify(userServiceFeignClient).isFriend(1L, 2L);
+    }
+
+    @Test
     void isGroupMember_ShouldLoadFeignAndBackfillCachesOnMiss() {
         when(valueOperations.get("message:group:member:8:1")).thenReturn(null);
         when(groupServiceFeignClient.isMember(8L, 1L)).thenReturn(true);
@@ -173,6 +184,37 @@ class UserProfileCacheTest {
         verify(groupServiceFeignClient).memberIds(8L);
         verify(valueOperations).set(eq("message:group:members:8"), eq(List.of(1L, 2L, 3L)),
                 eq(30L), eq(TimeUnit.SECONDS));
+    }
+
+    @Test
+    void groupMembershipInvalidation_ShouldEvictMemberCachesAndRefetchAuthoritativeList() {
+        when(valueOperations.get("message:group:members:8")).thenReturn(List.of(1L, 2L, 3L), null);
+        when(groupServiceFeignClient.memberIds(8L)).thenReturn(List.of(1L, 3L));
+
+        assertEquals(List.of(1L, 2L, 3L), cache.getGroupMemberIds(8L));
+        clearInvocations(redisTemplate, valueOperations, groupServiceFeignClient);
+
+        cache.onAuthorizationCacheInvalidation("""
+                {"scope":"GROUP_MEMBERSHIP","changeType":"KICK","groupId":8,"userIds":[2]}
+                """);
+
+        assertEquals(List.of(1L, 3L), cache.getGroupMemberIds(8L));
+        verify(redisTemplate).delete("message:group:members:8");
+        verify(redisTemplate).delete("message:group:member:8:2");
+        verify(groupServiceFeignClient).memberIds(8L);
+    }
+
+    @Test
+    void duplicateInvalidation_ShouldBeIdempotent() {
+        String payload = """
+                {"scope":"FRIEND_RELATION","changeType":"DELETE","userIds":[1,2]}
+                """;
+
+        assertDoesNotThrow(() -> cache.onAuthorizationCacheInvalidation(payload));
+        assertDoesNotThrow(() -> cache.onAuthorizationCacheInvalidation(payload));
+
+        verify(redisTemplate, times(2)).delete("message:friend:1:2");
+        verify(redisTemplate, times(2)).delete("message:friend:2:1");
     }
 
     private UserDTO user(Long id, String username) {

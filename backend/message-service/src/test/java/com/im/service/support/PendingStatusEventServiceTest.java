@@ -42,7 +42,9 @@ class PendingStatusEventServiceTest {
         assertEquals(1001L, backlog.getMessageId());
         assertEquals(Message.MessageStatus.RECALLED, backlog.getNewStatus());
         assertNotNull(backlog.getChangedAt());
-        assertTrue(backlog.getPayloadJson().contains("\"messageId\":1001"));
+        StatusChangeEvent stored = com.alibaba.fastjson2.JSON.parseObject(backlog.getPayloadJson(), StatusChangeEvent.class);
+        assertNotNull(stored);
+        assertEquals(1001L, stored.getMessageId());
     }
 
     @Test
@@ -61,9 +63,9 @@ class PendingStatusEventServiceTest {
         service.store(event);
 
         verify(pendingStatusEventBacklogMapper).updateExisting(
-                1002L,
-                Message.MessageStatus.DELETED,
-                LocalDateTime.of(2026, 4, 16, 12, 5),
+                eq(1002L),
+                eq(Message.MessageStatus.DELETED),
+                eq(LocalDateTime.of(2026, 4, 16, 12, 5)),
                 org.mockito.ArgumentMatchers.contains("\"newStatus\":5")
         );
     }

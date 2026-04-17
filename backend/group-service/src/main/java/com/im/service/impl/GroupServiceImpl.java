@@ -1,36 +1,46 @@
 package com.im.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.dto.GroupInfoDTO;
 import com.im.dto.GroupMemberDTO;
 import com.im.dto.GroupMemberPageDTO;
 import com.im.dto.UserDTO;
+import com.im.feign.UserServiceFeignClient;
 import com.im.group.entity.Group;
 import com.im.group.entity.GroupMember;
-import com.im.feign.UserServiceFeignClient;
 import com.im.mapper.GroupMapper;
 import com.im.mapper.GroupMemberMapper;
 import com.im.service.GroupService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class GroupServiceImpl implements GroupService {
+
+    private static final String AUTHZ_CACHE_INVALIDATION_TOPIC = "im-authz-cache-invalidation-topic";
+    private static final String SCOPE_GROUP_MEMBERSHIP = "GROUP_MEMBERSHIP";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     
     private final GroupMapper groupMapper;
     private final GroupMemberMapper groupMemberMapper;
     private final UserServiceFeignClient userServiceFeignClient;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+
+    @Value("${im.kafka.authz-cache-invalidation-topic:im-authz-cache-invalidation-topic}")
+    private String authzCacheInvalidationTopic = AUTHZ_CACHE_INVALIDATION_TOPIC;
     
     @Override
     @Transactional
@@ -89,6 +99,7 @@ public class GroupServiceImpl implements GroupService {
         }
 
         Group group = findGroupById(groupId);
+        List<Long> addedMemberIds = new java.util.ArrayList<>();
 
         for (Long memberId : normalizedMemberIds) {
             if (!isMember(groupId, memberId)) {
@@ -99,8 +110,10 @@ public class GroupServiceImpl implements GroupService {
                 addMemberToGroup(groupId, memberId, 1); // 普通成员
                 updateMemberCount(groupId, 1);
                 group.setMemberCount(group.getMemberCount() + 1);
+                addedMemberIds.add(memberId);
             }
         }
+        publishGroupMembershipInvalidation("JOIN", groupId, addedMemberIds);
         log.info("操作员 {} 批量添加群成员到群组 {}: {}", operatorId, groupId, normalizedMemberIds);
     }
     
@@ -135,6 +148,7 @@ public class GroupServiceImpl implements GroupService {
             updateMemberCount(groupId, 1);
         }
 
+        publishGroupMembershipInvalidation("JOIN", groupId, List.of(userId));
         log.info("用户 {} 加入群组 {}", userId, groupId);
     }
     
@@ -155,6 +169,7 @@ public class GroupServiceImpl implements GroupService {
         removeMemberFromGroup(groupId, userId);
         updateMemberCount(groupId, -1);
 
+        publishGroupMembershipInvalidation("LEAVE", groupId, List.of(userId));
         log.info("用户 {} 退出群组 {}", userId, groupId);
     }
     
@@ -183,6 +198,7 @@ public class GroupServiceImpl implements GroupService {
         removeMemberFromGroup(groupId, memberId);
         updateMemberCount(groupId, -1);
 
+        publishGroupMembershipInvalidation("KICK", groupId, List.of(memberId));
         log.info("用户 {} 从群组 {} 移除了用户 {}", operatorId, groupId, memberId);
     }
     
@@ -196,9 +212,15 @@ public class GroupServiceImpl implements GroupService {
             throw new SecurityException("只有群主才能解散群组");
         }
 
+        List<Long> activeMemberIds = groupMemberMapper.selectMembersByGroupId(groupId).stream()
+                .map(GroupMember::getUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
         groupMemberMapper.delete(new LambdaQueryWrapper<GroupMember>().eq(GroupMember::getGroupId, groupId));
         groupMapper.deleteById(groupId);
 
+        publishGroupMembershipInvalidation("DISBAND", groupId, activeMemberIds);
         log.info("用户 {} 解散了群组 {}", operatorId, groupId);
     }
     
@@ -454,10 +476,38 @@ public class GroupServiceImpl implements GroupService {
      * 从群组移除成员
      */
     private void removeMemberFromGroup(Long groupId, Long userId) {
-        groupMemberMapper.update(null, new LambdaUpdateWrapper<GroupMember>()
-                .eq(GroupMember::getGroupId, groupId)
-                .eq(GroupMember::getUserId, userId)
-                .set(GroupMember::getStatus, false));
+        groupMemberMapper.update(null, new UpdateWrapper<GroupMember>()
+                .eq("group_id", groupId)
+                .eq("user_id", userId)
+                .set("status", false));
+    }
+
+    private void publishGroupMembershipInvalidation(String changeType, Long groupId, Collection<Long> memberIds) {
+        if (groupId == null) {
+            return;
+        }
+        List<Long> affectedUserIds = memberIds == null ? List.of() : memberIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("scope", SCOPE_GROUP_MEMBERSHIP);
+        payload.put("changeType", changeType);
+        payload.put("groupId", groupId);
+        payload.put("userIds", affectedUserIds);
+        publishAuthorizationCacheInvalidation("group:" + groupId, payload);
+    }
+
+    private void publishAuthorizationCacheInvalidation(String key, Map<String, Object> payload) {
+        try {
+            kafkaTemplate.send(authzCacheInvalidationTopic, key, OBJECT_MAPPER.writeValueAsString(payload));
+        } catch (JsonProcessingException exception) {
+            log.warn("Serialize authz cache invalidation event failed. key={}, error={}",
+                    key, exception.getMessage(), exception);
+        } catch (Exception exception) {
+            log.warn("Publish authz cache invalidation event failed. key={}, error={}",
+                    key, exception.getMessage(), exception);
+        }
     }
     
     /**
@@ -527,8 +577,8 @@ public class GroupServiceImpl implements GroupService {
     }
 
     private void updateMemberCount(Long groupId, int delta) {
-        groupMapper.update(null, new LambdaUpdateWrapper<Group>()
-                .eq(Group::getId, groupId)
+        groupMapper.update(null, new UpdateWrapper<Group>()
+                .eq("id", groupId)
                 .setSql("member_count = member_count + " + delta));
     }
 }
