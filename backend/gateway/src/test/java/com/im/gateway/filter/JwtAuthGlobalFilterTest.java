@@ -9,6 +9,7 @@ import com.im.config.GlobalRateLimitSwitch;
 import com.im.config.RateLimitGlobalProperties;
 import com.im.dto.ApiResponse;
 import com.im.dto.AuthUserResourceDTO;
+import com.im.util.AuthHeaderUtil;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -34,6 +35,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static com.im.util.AuthHeaderUtil.*;
 import static com.im.util.JwtLocalTokenValidator.getSecretKey;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -285,6 +287,21 @@ class JwtAuthGlobalFilterTest {
         assertEquals(1, resourceCalls.get());
         assertFalse(calledPaths.contains("/api/auth/internal/validate-token"));
         assertFalse(calledPaths.contains("/api/auth/refresh"));
+        assertEquals("internal-value", header(resourceRequest.get(), "X-Internal-Secret"));
+        assertNotNull(header(resourceRequest.get(), INTERNAL_TIMESTAMP_HEADER));
+        assertNotNull(header(resourceRequest.get(), INTERNAL_NONCE_HEADER));
+        assertNotNull(header(resourceRequest.get(), INTERNAL_SIGNATURE_HEADER));
+        assertTrue(AuthHeaderUtil.verifyHmacSha256(
+                "internal-value",
+                AuthHeaderUtil.buildInternalSignedFields(
+                        "GET",
+                        "/api/auth/internal/user-resource/2301",
+                        AuthHeaderUtil.sha256Base64Url(null),
+                        header(resourceRequest.get(), INTERNAL_TIMESTAMP_HEADER),
+                        header(resourceRequest.get(), INTERNAL_NONCE_HEADER)
+                ),
+                header(resourceRequest.get(), INTERNAL_SIGNATURE_HEADER)
+        ));
 
         ServerHttpRequest request = forwardedExchange.get().getRequest();
         assertEquals("2301", request.getHeaders().getFirst("X-User-Id"));
@@ -427,6 +444,11 @@ class JwtAuthGlobalFilterTest {
             return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(userResource(userId, username))));
         }
         return Mono.error(new AssertionError("unexpected path: " + path));
+    }
+
+    private String header(ClientRequest request, String name) {
+        List<String> values = request.headers().get(name);
+        return values == null || values.isEmpty() ? null : values.getFirst();
     }
 
     private ClientResponse jsonResponse(HttpStatus status, Object body) {

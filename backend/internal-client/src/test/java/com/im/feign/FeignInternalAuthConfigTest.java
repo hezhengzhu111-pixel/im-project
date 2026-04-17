@@ -2,6 +2,7 @@ package com.im.feign;
 
 import com.im.util.AuthHeaderUtil;
 import feign.RequestTemplate;
+import feign.Target;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -115,6 +116,23 @@ class FeignInternalAuthConfigTest {
 
         assertNotEquals(firstHeader(first.headers(), AuthHeaderUtil.INTERNAL_SIGNATURE_HEADER),
                 firstHeader(second.headers(), AuthHeaderUtil.INTERNAL_SIGNATURE_HEADER));
+    }
+
+    @Test
+    void apply_shouldIncludeFeignTargetBasePathWhenTemplatePathIsRelative() {
+        RequestTemplate template = requestTemplate("POST", "/token", "{\"userId\":1}");
+        template.feignTarget(new Target.HardCodedTarget<>(
+                Object.class,
+                "im-auth-service",
+                "http://im-auth-service/api/auth/internal"
+        ));
+
+        interceptor.apply(template);
+
+        assertEquals(
+                expectedSignature("POST", "/api/auth/internal/token", "{\"userId\":1}"),
+                firstHeader(template.headers(), AuthHeaderUtil.INTERNAL_SIGNATURE_HEADER)
+        );
     }
 
     private RequestTemplate requestTemplate(String method, String path, String body) {

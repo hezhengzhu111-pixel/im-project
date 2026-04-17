@@ -4,6 +4,7 @@ import com.im.config.RateLimitGlobalProperties;
 import com.im.util.AuthHeaderUtil;
 import feign.RequestInterceptor;
 import feign.RequestTemplate;
+import feign.Target;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
@@ -12,6 +13,7 @@ import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import java.net.URI;
 import java.time.Clock;
 import java.util.function.Supplier;
 
@@ -115,11 +117,49 @@ public class FeignInternalAuthConfig implements RequestInterceptor {
     }
 
     private String resolvePath(RequestTemplate template) {
-        String path = template.path();
+        String path = extractPathComponent(template.path());
         if (!StringUtils.hasText(path)) {
-            path = template.url();
+            path = extractPathComponent(template.url());
         }
-        return AuthHeaderUtil.normalizeInternalPath(path);
+
+        String normalizedPath = AuthHeaderUtil.normalizeInternalPath(path);
+        Target<?> feignTarget = template.feignTarget();
+        if (feignTarget == null || !StringUtils.hasText(feignTarget.url())) {
+            return normalizedPath;
+        }
+
+        String targetPath = extractPathComponent(feignTarget.url());
+        if (!StringUtils.hasText(targetPath) || "/".equals(targetPath)) {
+            return normalizedPath;
+        }
+
+        String normalizedTargetPath = AuthHeaderUtil.normalizeInternalPath(targetPath);
+        if (normalizedPath.equals(normalizedTargetPath)
+                || normalizedPath.startsWith(normalizedTargetPath + "/")) {
+            return normalizedPath;
+        }
+
+        if ("/".equals(normalizedPath)) {
+            return normalizedTargetPath;
+        }
+
+        return AuthHeaderUtil.normalizeInternalPath(normalizedTargetPath + normalizedPath);
+    }
+
+    private String extractPathComponent(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+        try {
+            URI uri = URI.create(trimmed);
+            if (uri.isAbsolute()) {
+                return uri.getRawPath();
+            }
+        } catch (IllegalArgumentException ignored) {
+        }
+        return trimmed;
     }
 
     private String readHeaderOrAttribute(HttpServletRequest request, String headerName, String attributeName) {

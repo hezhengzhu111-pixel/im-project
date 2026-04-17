@@ -30,7 +30,7 @@ public class GlobalExceptionHandler {
         String message = e.getBindingResult().getFieldErrors().stream()
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.joining(", "));
-        log.warn("参数校验失败: {}", message);
+        log.warn("参数校验失败: {}", message, e);
         return ApiResponse.badRequest("参数校验失败: " + message);
     }
 
@@ -40,7 +40,7 @@ public class GlobalExceptionHandler {
         String message = e.getBindingResult().getFieldErrors().stream()
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.joining(", "));
-        log.warn("表单绑定失败: {}", message);
+        log.warn("表单绑定失败: {}", message, e);
         return ApiResponse.badRequest("参数错误: " + message);
     }
 
@@ -50,15 +50,15 @@ public class GlobalExceptionHandler {
         String message = e.getConstraintViolations().stream()
                 .map(ConstraintViolation::getMessage)
                 .collect(Collectors.joining(", "));
-        log.warn("约束校验失败: {}", message);
+        log.warn("约束校验失败: {}", message, e);
         return ApiResponse.badRequest("参数校验失败: " + message);
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleMissingServletRequestParameterException(MissingServletRequestParameterException e) {
-        String message = String.format("缺少必需的请求参数: %s", e.getParameterName());
-        log.warn(message);
+        String message = String.format("缺少必需的请求参数 %s", e.getParameterName());
+        log.warn(message, e);
         return ApiResponse.badRequest(message);
     }
 
@@ -73,20 +73,20 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleIllegalArgumentException(IllegalArgumentException e) {
-        log.warn("参数异常: {}", e.getMessage());
+        log.warn("参数异常: {}", e.getMessage(), e);
         return ApiResponse.badRequest(e.getMessage());
     }
 
     @ExceptionHandler(SecurityException.class)
     public ResponseEntity<ApiResponse<Void>> handleSecurityException(SecurityException e) {
-        log.warn("权限异常: {}", e.getMessage());
+        log.warn("权限异常: {}", e.getMessage(), e);
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResponse.forbidden(e.getMessage() == null ? "权限不足" : e.getMessage()));
     }
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e) {
-        log.warn("业务异常: {}", e.getMessage());
+        log.warn("业务异常: {}", e.getMessage(), e);
         if (e.getErrorCode() != null) {
             return ApiErrorResponses.response(e.getErrorCode());
         }

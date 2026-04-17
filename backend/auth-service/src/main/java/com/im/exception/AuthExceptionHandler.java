@@ -16,21 +16,21 @@ public class AuthExceptionHandler {
 
     @ExceptionHandler(AuthServiceException.class)
     public ResponseEntity<ApiResponse<Void>> handleAuthServiceException(AuthServiceException e) {
-        log.warn("认证异常: {}", e.getMessage());
+        log.warn("认证异常: {}", e.getMessage(), e);
         return ApiErrorResponses.response(e.getErrorCode());
     }
 
     @ExceptionHandler(SecurityException.class)
     public ResponseEntity<ApiResponse<Void>> handleSecurityException(SecurityException e) {
         CommonErrorCode errorCode = resolveTokenError(e);
-        log.warn("认证安全异常: {}", errorCode.getMessage());
+        log.warn("认证安全异常: {}", errorCode.getMessage(), e);
         return ApiErrorResponses.response(errorCode);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleIllegalArgumentException(IllegalArgumentException e) {
-        log.warn("参数异常: {}", e.getMessage());
+        log.warn("参数异常: {}", e.getMessage(), e);
         return ApiResponse.badRequest(e.getMessage());
     }
 
