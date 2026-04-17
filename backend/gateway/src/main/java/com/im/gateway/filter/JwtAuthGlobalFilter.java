@@ -346,9 +346,12 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private Mono<AuthUserResourceDTO> resolveUserResource(Long userId) {
-        return exchangeForApiResponse(webClient.get()
-                        .uri(uriBuilder -> uriBuilder.path("/api/auth/internal/user-resource/{userId}").build(userId))
-                        .header(internalHeaderName, internalSecret), USER_RESOURCE_RESPONSE_TYPE)
+        String path = "/api/auth/internal/user-resource/" + userId;
+        return exchangeForApiResponse(applyInternalAuth(webClient.get()
+                                .uri(uriBuilder -> uriBuilder.path("/api/auth/internal/user-resource/{userId}").build(userId)),
+                        "GET",
+                        path,
+                        null), USER_RESOURCE_RESPONSE_TYPE)
                 .map(this::extractApiData)
                 .flatMap(dto -> {
                     if (isCacheableUserResource(dto, userId)) {
@@ -356,6 +359,25 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                     }
                     return Mono.error(GatewayAuthException.serviceUnavailable("auth user resource response invalid"));
                 });
+    }
+
+    private WebClient.RequestHeadersSpec<?> applyInternalAuth(WebClient.RequestHeadersSpec<?> requestSpec,
+                                                              String method,
+                                                              String path,
+                                                              byte[] body) {
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        String nonce = UUID.randomUUID().toString();
+        String bodyHash = AuthHeaderUtil.sha256Base64Url(body);
+        String signature = AuthHeaderUtil.signHmacSha256(
+                internalSecret,
+                AuthHeaderUtil.buildInternalSignedFields(method, path, bodyHash, timestamp, nonce)
+        );
+
+        return requestSpec
+                .header(AuthHeaderUtil.INTERNAL_TIMESTAMP_HEADER, timestamp)
+                .header(AuthHeaderUtil.INTERNAL_NONCE_HEADER, nonce)
+                .header(AuthHeaderUtil.INTERNAL_SIGNATURE_HEADER, signature)
+                .header(internalHeaderName, internalSecret);
     }
 
     private <T> Mono<ApiResponse<T>> exchangeForApiResponse(WebClient.RequestHeadersSpec<?> requestSpec,
