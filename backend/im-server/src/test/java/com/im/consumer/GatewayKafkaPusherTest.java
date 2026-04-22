@@ -8,7 +8,10 @@ import com.im.feign.GroupServiceFeignClient;
 import com.im.metrics.ImServerMetrics;
 import com.im.service.IImService;
 import com.im.service.ProcessedMessageDeduplicator;
+import com.im.service.route.UserRouteRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,11 +19,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -45,19 +50,37 @@ class GatewayKafkaPusherTest {
     private ProcessedMessageDeduplicator deduplicator;
     @Mock
     private GroupServiceFeignClient groupServiceFeignClient;
+    @Mock
+    private UserRouteRegistry routeRegistry;
+    @Mock
+    private KafkaTemplate<String, Object> routedEventKafkaTemplate;
 
     private GatewayKafkaPusher pusher;
     private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
-        pusher = new GatewayKafkaPusher(imService, redisTemplate, deduplicator, groupServiceFeignClient);
+        pusher = new GatewayKafkaPusher(
+                imService,
+                redisTemplate,
+                deduplicator,
+                groupServiceFeignClient,
+                routeRegistry,
+                routedEventKafkaTemplate
+        );
         meterRegistry = new SimpleMeterRegistry();
         ReflectionTestUtils.setField(pusher, "metrics", new ImServerMetrics(meterRegistry));
         ReflectionTestUtils.setField(pusher, "groupMembersCachePrefix", "message:group:members:");
         ReflectionTestUtils.setField(pusher, "groupMembersCacheTtlSeconds", 30L);
+        ReflectionTestUtils.setField(pusher, "chatTopic", "im-chat-topic");
+        ReflectionTestUtils.setField(pusher, "readTopic", "im-read-topic");
+        ReflectionTestUtils.setField(pusher, "statusTopic", "im-status-topic");
+        ReflectionTestUtils.setField(pusher, "routeSendTimeoutMs", 1000L);
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(deduplicator.tryReserve(anyString())).thenReturn(true);
+        lenient().when(imService.getCurrentInstanceId()).thenReturn("node-1");
+        lenient().when(routedEventKafkaTemplate.send(any(ProducerRecord.class)))
+                .thenReturn(CompletableFuture.completedFuture(null));
     }
 
     @Test
@@ -381,6 +404,80 @@ class GatewayKafkaPusherTest {
         verify(redisTemplate, times(2)).delete("message:group:members:8");
     }
 
+    @Test
+    void onMessage_shouldRouteOnlyToTargetInstanceAndOnlyThatInstanceShouldHandle() {
+        MessageDTO payload = privatePayload(9L, 2L);
+        MessageEvent event = privateEvent(payload, 9L, 2L);
+        when(routeRegistry.getInstanceSessionCounts("9")).thenReturn(Map.of());
+        when(routeRegistry.getInstanceSessionCounts("2")).thenReturn(Map.of("node-2", 1));
+
+        pusher.onMessage(new ConsumerRecord<>("im-chat-topic", 0, 0L, "p_2_9", event));
+
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<ProducerRecord<String, Object>> captor =
+                org.mockito.ArgumentCaptor.forClass((Class) ProducerRecord.class);
+        verify(routedEventKafkaTemplate).send(captor.capture());
+        ProducerRecord<String, Object> routedRecord = captor.getValue();
+        assertEquals("im-chat-topic.route.node-2", routedRecord.topic());
+        assertEquals("node-2", new String(
+                routedRecord.headers().lastHeader(GatewayKafkaPusher.TARGET_INSTANCE_HEADER).value()));
+
+        IImService node1ImService = mock(IImService.class);
+        IImService node2ImService = mock(IImService.class);
+        IImService node3ImService = mock(IImService.class);
+        when(node1ImService.getCurrentInstanceId()).thenReturn("node-1");
+        when(node2ImService.getCurrentInstanceId()).thenReturn("node-2");
+        when(node3ImService.getCurrentInstanceId()).thenReturn("node-3");
+        UserSession node2Session = session("session-node-2");
+        when(node2ImService.getLocalSessions("2")).thenReturn(List.of(node2Session));
+        when(node2ImService.pushMessageToUser(payload, 2L)).thenReturn(true);
+
+        GatewayKafkaPusher node1Pusher = dispatcher(node1ImService, "node-1");
+        GatewayKafkaPusher node2Pusher = dispatcher(node2ImService, "node-2");
+        GatewayKafkaPusher node3Pusher = dispatcher(node3ImService, "node-3");
+
+        ConsumerRecord<String, MessageEvent> dispatchRecord =
+                new ConsumerRecord<>(routedRecord.topic(), 0, 0L, routedRecord.key(), event);
+        dispatchRecord.headers().add(routedRecord.headers().lastHeader(GatewayKafkaPusher.TARGET_INSTANCE_HEADER));
+
+        node1Pusher.onRoutedMessage(dispatchRecord);
+        node2Pusher.onRoutedMessage(dispatchRecord);
+        node3Pusher.onRoutedMessage(dispatchRecord);
+
+        verify(node2ImService).pushMessageToUser(payload, 2L);
+        verify(node1ImService, never()).pushMessageToUser(any(), anyLong());
+        verify(node3ImService, never()).pushMessageToUser(any(), anyLong());
+    }
+
+    @Test
+    void onMessage_shouldRemainCompatibleForSingleNodeRouting() {
+        MessageDTO payload = privatePayload(1L, 2L);
+        MessageEvent event = privateEvent(payload, 1L, 2L);
+        when(routeRegistry.getInstanceSessionCounts("1")).thenReturn(Map.of("node-1", 1));
+        when(routeRegistry.getInstanceSessionCounts("2")).thenReturn(Map.of("node-1", 1));
+        UserSession senderSession = session("session-1");
+        UserSession receiverSession = session("session-2");
+        when(imService.getLocalSessions("1")).thenReturn(List.of(senderSession));
+        when(imService.getLocalSessions("2")).thenReturn(List.of(receiverSession));
+        when(imService.pushMessageToUser(payload, 1L)).thenReturn(true);
+        when(imService.pushMessageToUser(payload, 2L)).thenReturn(true);
+
+        pusher.onMessage(new ConsumerRecord<>("im-chat-topic", 0, 0L, "p_1_2", event));
+
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<ProducerRecord<String, Object>> captor =
+                org.mockito.ArgumentCaptor.forClass((Class) ProducerRecord.class);
+        verify(routedEventKafkaTemplate).send(captor.capture());
+        ProducerRecord<String, Object> routedRecord = captor.getValue();
+        ConsumerRecord<String, MessageEvent> dispatchRecord =
+                new ConsumerRecord<>(routedRecord.topic(), 0, 0L, routedRecord.key(), event);
+        dispatchRecord.headers().add(routedRecord.headers().lastHeader(GatewayKafkaPusher.TARGET_INSTANCE_HEADER));
+        pusher.onRoutedMessage(dispatchRecord);
+
+        verify(imService).pushMessageToUser(payload, 1L);
+        verify(imService).pushMessageToUser(payload, 2L);
+    }
+
     private void awaitAndHandle(CountDownLatch start, MessageEvent event) {
         try {
             assertTrue(start.await(1, TimeUnit.SECONDS));
@@ -441,6 +538,26 @@ class GatewayKafkaPusherTest {
                 .status("SENT")
                 .isGroup(true)
                 .build();
+    }
+
+    private GatewayKafkaPusher dispatcher(IImService dispatcherImService, String instanceId) {
+        GatewayKafkaPusher dispatcher = new GatewayKafkaPusher(
+                dispatcherImService,
+                redisTemplate,
+                deduplicator,
+                groupServiceFeignClient,
+                routeRegistry,
+                routedEventKafkaTemplate
+        );
+        ReflectionTestUtils.setField(dispatcher, "metrics", new ImServerMetrics(new SimpleMeterRegistry()));
+        ReflectionTestUtils.setField(dispatcher, "groupMembersCachePrefix", "message:group:members:");
+        ReflectionTestUtils.setField(dispatcher, "groupMembersCacheTtlSeconds", 30L);
+        ReflectionTestUtils.setField(dispatcher, "chatTopic", "im-chat-topic");
+        ReflectionTestUtils.setField(dispatcher, "readTopic", "im-read-topic");
+        ReflectionTestUtils.setField(dispatcher, "statusTopic", "im-status-topic");
+        ReflectionTestUtils.setField(dispatcher, "routeSendTimeoutMs", 1000L);
+        when(dispatcherImService.getCurrentInstanceId()).thenReturn(instanceId);
+        return dispatcher;
     }
 
     private UserSession session(String sessionId) {

@@ -2,52 +2,95 @@ package com.im.util;
 
 import com.im.dto.JwtLocalValidationResult;
 import com.im.enums.JwtLocalValidationStatus;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.JwtException;
-import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
-public final class JwtLocalTokenValidator {
+@Component
+public class JwtLocalTokenValidator {
 
-    private JwtLocalTokenValidator() {
+    public static final String ACCESS_SECRET_KEY_BEAN_NAME = "jwtAccessSecretKey";
+    public static final String ACCESS_JWT_PARSER_BEAN_NAME = "jwtAccessJwtParser";
+    private static final int HMAC_KEY_SIZE_BYTES = 64;
+    private static final ConcurrentMap<String, SecretKey> SECRET_KEY_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<String, JwtParser> JWT_PARSER_CACHE = new ConcurrentHashMap<>();
+
+    private final SecretKey accessSecretKey;
+    private final JwtParser accessJwtParser;
+
+    public JwtLocalTokenValidator(@Qualifier(ACCESS_SECRET_KEY_BEAN_NAME) SecretKey accessSecretKey,
+                                  @Qualifier(ACCESS_JWT_PARSER_BEAN_NAME) JwtParser accessJwtParser) {
+        this.accessSecretKey = accessSecretKey;
+        this.accessJwtParser = accessJwtParser;
+    }
+
+    public JwtLocalValidationResult validateAccessToken(String token) {
+        return validateToken(token, accessJwtParser, "access");
+    }
+
+    public SecretKey accessSecretKey() {
+        return accessSecretKey;
+    }
+
+    public JwtParser accessJwtParser() {
+        return accessJwtParser;
     }
 
     public static JwtLocalValidationResult validateAccessToken(String token, String secret) {
-        return validateToken(token, secret, "access");
+        return validateToken(token, getJwtParser(secret), "access");
     }
 
     public static JwtLocalValidationResult validateRefreshToken(String token, String secret) {
-        return validateToken(token, secret, "refresh");
+        return validateToken(token, getJwtParser(secret), "refresh");
     }
 
     public static SecretKey getSecretKey(String secret) {
-        String effectiveSecret = secret == null ? "" : secret;
-        byte[] keyBytes = effectiveSecret.getBytes(StandardCharsets.UTF_8);
-        if (keyBytes.length >= 64) {
+        String effectiveSecret = normalizeSecret(secret);
+        return SECRET_KEY_CACHE.computeIfAbsent(effectiveSecret, JwtLocalTokenValidator::buildSecretKey);
+    }
+
+    private static JwtParser getJwtParser(String secret) {
+        String effectiveSecret = normalizeSecret(secret);
+        return JWT_PARSER_CACHE.computeIfAbsent(effectiveSecret,
+                key -> Jwts.parser().verifyWith(getSecretKey(key)).build());
+    }
+
+    private static SecretKey buildSecretKey(String secret) {
+        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        if (keyBytes.length >= HMAC_KEY_SIZE_BYTES) {
             return Keys.hmacShaKeyFor(keyBytes);
         }
-        byte[] padded = new byte[64];
+        byte[] padded = new byte[HMAC_KEY_SIZE_BYTES];
+        if (keyBytes.length == 0) {
+            return Keys.hmacShaKeyFor(padded);
+        }
         for (int i = 0; i < padded.length; i++) {
-            padded[i] = keyBytes[i % Math.max(1, keyBytes.length)];
+            padded[i] = keyBytes[i % keyBytes.length];
         }
         return Keys.hmacShaKeyFor(padded);
     }
 
-    private static JwtLocalValidationResult validateToken(String token, String secret, String expectedType) {
+    private static String normalizeSecret(String secret) {
+        return secret == null ? "" : secret;
+    }
+
+    private static JwtLocalValidationResult validateToken(String token, JwtParser jwtParser, String expectedType) {
         String normalized = normalizeBearer(token);
         if (normalized == null || normalized.isBlank()) {
             return invalid();
         }
         try {
-            Claims claims = Jwts.parser()
-                    .verifyWith(getSecretKey(secret))
-                    .build()
-                    .parseSignedClaims(normalized)
+            Claims claims = jwtParser.parseSignedClaims(normalized)
                     .getPayload();
             return fromClaims(claims, expectedType, JwtLocalValidationStatus.VALID);
         } catch (ExpiredJwtException ex) {
@@ -144,5 +187,19 @@ public final class JwtLocalTokenValidator {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    public static class JwtBeanConfiguration {
+
+        @Bean(name = ACCESS_SECRET_KEY_BEAN_NAME)
+        SecretKey jwtAccessSecretKey(@Value("${jwt.secret}") String secret) {
+            return getSecretKey(secret);
+        }
+
+        @Bean(name = ACCESS_JWT_PARSER_BEAN_NAME)
+        JwtParser jwtAccessJwtParser(@Qualifier(ACCESS_SECRET_KEY_BEAN_NAME) SecretKey secretKey) {
+            return Jwts.parser().verifyWith(secretKey).build();
+        }
     }
 }

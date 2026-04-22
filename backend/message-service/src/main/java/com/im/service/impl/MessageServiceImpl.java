@@ -24,6 +24,8 @@ import com.im.service.query.HotConversationReadService;
 import com.im.service.query.HotConversationReadService.HotConversationSkeleton;
 import com.im.service.query.HotRecentMessageReadService;
 import com.im.service.support.HotMessageLookupService;
+import com.im.service.support.MessageStateOutboxService;
+import com.im.service.support.PendingStatusEventService;
 import com.im.service.support.UserProfileCache;
 import com.im.util.MessageConverter;
 import jakarta.annotation.PostConstruct;
@@ -31,15 +33,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 /**
@@ -57,12 +57,12 @@ public class MessageServiceImpl implements MessageService {
     private final PrivateReadCursorMapper privateReadCursorMapper;
     private final UserProfileCache userProfileCache;
     private final List<MessageHandler> messageHandlers;
-    private final KafkaTemplate<String, ReadEvent> readEventKafkaTemplate;
-    private final KafkaTemplate<String, StatusChangeEvent> statusChangeEventKafkaTemplate;
     private final HotConversationReadService hotConversationReadService;
     private final HotRecentMessageReadService hotRecentMessageReadService;
     private final HotMessageLookupService hotMessageLookupService;
     private final MessageStateOrchestrator messageStateOrchestrator;
+    private final PendingStatusEventService pendingStatusEventService;
+    private final MessageStateOutboxService messageStateOutboxService;
 
     private Map<MessageType, MessageHandler> handlerCache = Collections.emptyMap();
     private MessageHandler privateMessageHandler;
@@ -85,9 +85,6 @@ public class MessageServiceImpl implements MessageService {
 
     @Value("${im.kafka.status-topic:im-status-topic}")
     private String statusTopic;
-
-    @Value("${im.kafka.send-timeout-ms:2000}")
-    private long kafkaSendTimeoutMs = 2000L;
 
     @PostConstruct
     public void initHandlerCache() {
@@ -247,12 +244,18 @@ public class MessageServiceImpl implements MessageService {
 
 
     @Override
+    @Transactional
     public void markAsRead(Long userId, String conversationId) {
         try {
             ReadMarkInput input = markReadInput(userId, conversationId);
             Long lastReadMessageId = resolveLastReadMessageId(input);
             ReadEvent readEvent = buildReadEvent(input, lastReadMessageId);
-            publishReadEvent(readEvent, input.target().normalizedConversationId());
+            messageStateOrchestrator.applyReadEvent(readEvent);
+            messageStateOutboxService.enqueueReadEvent(
+                    readEvent,
+                    readTopic,
+                    input.target().normalizedConversationId()
+            );
             log.info("Accepted read event. userId={}, conversationId={}, lastReadMessageId={}",
                     userId, input.target().normalizedConversationId(), lastReadMessageId);
             if (false) {
@@ -619,11 +622,13 @@ public class MessageServiceImpl implements MessageService {
     }
 
     @Override
+    @Transactional
     public MessageDTO recallMessage(Long userId, Long messageId) {
         return applyHotFirstStatusChange(userId, messageId, Message.MessageStatus.RECALLED, false, false, true);
     }
 
     @Override
+    @Transactional
     public MessageDTO deleteMessage(Long userId, Long messageId) {
         return applyHotFirstStatusChange(userId, messageId, Message.MessageStatus.DELETED, true, false, false);
     }
@@ -649,8 +654,34 @@ public class MessageServiceImpl implements MessageService {
         MessageDTO result = buildStatusChangedMessageDTO(statusTarget);
         StatusChangeEvent statusChangeEvent = buildStatusChangeEvent(statusTarget, userId, result, now);
         messageStateOrchestrator.projectTransientStatusChange(statusChangeEvent);
-        publishStatusChangeEvent(statusChangeEvent, statusChangeEvent.getConversationId());
+        persistStatusChangeLocally(statusChangeEvent);
+        messageStateOutboxService.enqueueStatusChangeEvent(
+                statusChangeEvent,
+                statusTopic,
+                statusChangeEvent.getConversationId()
+        );
         return result;
+    }
+
+    private void persistStatusChangeLocally(StatusChangeEvent statusChangeEvent) {
+        if (statusChangeEvent == null || statusChangeEvent.getMessageId() == null || statusChangeEvent.getNewStatus() == null) {
+            return;
+        }
+        Message persistedMessage = messageMapper.selectById(statusChangeEvent.getMessageId());
+        if (persistedMessage == null) {
+            pendingStatusEventService.store(statusChangeEvent);
+            return;
+        }
+        Message updatedMessage = new Message();
+        updatedMessage.setId(statusChangeEvent.getMessageId());
+        updatedMessage.setStatus(statusChangeEvent.getNewStatus());
+        updatedMessage.setUpdatedTime(statusChangeEvent.getChangedAt());
+        int updated = messageMapper.updateById(updatedMessage);
+        if (updated > 0) {
+            pendingStatusEventService.remove(statusChangeEvent.getMessageId(), statusChangeEvent.getNewStatus());
+            return;
+        }
+        pendingStatusEventService.store(statusChangeEvent);
     }
 
     private void validateRecallWindow(Message message, LocalDateTime now) {
@@ -1046,21 +1077,6 @@ public class MessageServiceImpl implements MessageService {
         return peerUserId != null && Objects.equals(peerUserId, defaultSystemSenderId);
     }
 
-    private void publishReadEvent(ReadEvent readEvent, String routingKey) {
-        if (readEvent == null) {
-            throw new BusinessException("read event cannot be null");
-        }
-        try {
-            readEventKafkaTemplate.send(readTopic, routingKey, readEvent)
-                    .get(Math.max(1L, kafkaSendTimeoutMs), TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new BusinessException("publish read event interrupted", e);
-        } catch (ExecutionException | TimeoutException e) {
-            throw new BusinessException("publish read event failed", e);
-        }
-    }
-
     private String requireClientMessageId(String clientMessageId) {
         String normalizedClientMessageId = normalizeClientMessageId(clientMessageId);
         if (!StringUtils.hasText(normalizedClientMessageId)) {
@@ -1128,28 +1144,18 @@ public class MessageServiceImpl implements MessageService {
                 .build();
     }
 
-    private void publishStatusChangeEvent(StatusChangeEvent statusChangeEvent, String routingKey) {
-        if (statusChangeEvent == null) {
-            throw new BusinessException("status change event cannot be null");
-        }
-        try {
-            statusChangeEventKafkaTemplate.send(statusTopic, routingKey, statusChangeEvent)
-                    .get(Math.max(1L, kafkaSendTimeoutMs), TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new BusinessException("publish status change event interrupted", e);
-        } catch (ExecutionException | TimeoutException e) {
-            throw new BusinessException("publish status change event failed", e);
-        }
-    }
-
     private void publishStatusChangedMessage(Message msg, MessageDTO dto) {
         if (msg == null) {
             return;
         }
         LocalDateTime changedAt = msg.getUpdatedTime() == null ? LocalDateTime.now() : msg.getUpdatedTime();
         StatusChangeEvent statusChangeEvent = buildStatusChangeEvent(msg, msg.getSenderId(), dto, changedAt);
-        publishStatusChangeEvent(statusChangeEvent, statusChangeEvent.getConversationId());
+        persistStatusChangeLocally(statusChangeEvent);
+        messageStateOutboxService.enqueueStatusChangeEvent(
+                statusChangeEvent,
+                statusTopic,
+                statusChangeEvent.getConversationId()
+        );
     }
 
 }

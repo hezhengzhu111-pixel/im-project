@@ -33,6 +33,12 @@ public class KafkaMessageEventConfig {
     }
 
     @Bean
+    public KafkaTemplate<String, Object> messagePoisonDltKafkaTemplate(
+            @Value("${spring.kafka.bootstrap-servers:localhost:9092}") String bootstrapServers) {
+        return new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(producerProperties(bootstrapServers)));
+    }
+
+    @Bean
     public KafkaTemplate<String, ReadEvent> readEventKafkaTemplate(
             @Value("${spring.kafka.bootstrap-servers:localhost:9092}") String bootstrapServers) {
         return new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(producerProperties(bootstrapServers)));

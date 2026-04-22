@@ -42,6 +42,9 @@ import java.util.function.Supplier;
 public class ImServiceImpl implements IImService {
 
     private static final int USER_LOCK_STRIPE_COUNT = 1024;
+    private static final int DEFAULT_OUTBOUND_MAILBOX_CAPACITY = 64;
+    private static final int DEFAULT_OUTBOUND_FAILURE_THRESHOLD = 3;
+    private static final long MAILBOX_RETRY_DELAY_MS = 50L;
     private static final CloseStatus SEND_FAILED_CLOSE_STATUS = WebSocketErrorSemantics.SESSION_CLOSED_OR_STALE;
     private static final CloseStatus STALE_SESSION_CLOSE_STATUS = WebSocketErrorSemantics.SESSION_CLOSED_OR_STALE;
 
@@ -53,10 +56,16 @@ public class ImServiceImpl implements IImService {
     private final Map<String, Set<String>> sessionIdsByUser = new ConcurrentHashMap<>();
     private final Set<String> failedSessionIds = ConcurrentHashMap.newKeySet();
     private final Map<String, ScheduledFuture<?>> pendingOfflineTransitions = new ConcurrentHashMap<>();
+    private final Map<String, OutboundMailbox> outboundMailboxes = new ConcurrentHashMap<>();
     private final ReentrantLock[] userLocks = createUserLocks(USER_LOCK_STRIPE_COUNT);
     private final AtomicInteger outboundSendThreadCounter = new AtomicInteger();
     private final ScheduledExecutorService presenceTransitionExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread thread = new Thread(runnable, "im-presence-transition");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private final ScheduledExecutorService outboundControlExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "im-ws-outbound-control");
         thread.setDaemon(true);
         return thread;
     });
@@ -73,6 +82,15 @@ public class ImServiceImpl implements IImService {
 
     @Value("${im.websocket.send-dispatch-timeout-ms:1000}")
     private long sendDispatchTimeoutMs;
+
+    @Value("${im.websocket.outbound-mailbox-capacity:" + DEFAULT_OUTBOUND_MAILBOX_CAPACITY + "}")
+    private int outboundMailboxCapacity;
+
+    @Value("${im.websocket.outbound-send-failure-threshold:" + DEFAULT_OUTBOUND_FAILURE_THRESHOLD + "}")
+    private int outboundSendFailureThreshold;
+
+    @Value("${im.websocket.outbound-send-timeout-threshold:" + DEFAULT_OUTBOUND_FAILURE_THRESHOLD + "}")
+    private int outboundSendTimeoutThreshold;
 
     @Autowired(required = false)
     private ImServerMetrics metrics;
@@ -92,7 +110,14 @@ public class ImServiceImpl implements IImService {
             }
         }
         pendingOfflineTransitions.clear();
+        for (OutboundMailbox mailbox : outboundMailboxes.values()) {
+            if (mailbox != null) {
+                mailbox.close();
+            }
+        }
+        outboundMailboxes.clear();
         presenceTransitionExecutor.shutdownNow();
+        outboundControlExecutor.shutdownNow();
         outboundSendExecutor.shutdownNow();
     }
 
@@ -113,6 +138,7 @@ public class ImServiceImpl implements IImService {
                 UserSession session = sessionsById.remove(sessionId);
                 if (session != null) {
                     failedSessionIds.remove(sessionId);
+                    cleanupOutboundMailbox(sessionId);
                     removedSessions.add(session);
                 }
             }
@@ -357,6 +383,7 @@ public class ImServiceImpl implements IImService {
             userSession.setStatus(UserStatus.ONLINE);
             userSession.setLastHeartbeat(now);
             failedSessionIds.remove(sessionId);
+            prepareOutboundMailbox(normalizedUserId, sessionId);
 
             Set<String> sessionIds = sessionIdsByUser.computeIfAbsent(normalizedUserId, key -> ConcurrentHashMap.newKeySet());
             boolean firstLocal = sessionIds.stream()
@@ -411,6 +438,7 @@ public class ImServiceImpl implements IImService {
                 return false;
             }
             failedSessionIds.remove(normalizedSessionId);
+            cleanupOutboundMailbox(normalizedSessionId);
             removedSessions.add(removedSession);
 
             Set<String> sessionIds = sessionIdsByUser.get(lockedUserId);
@@ -467,6 +495,13 @@ public class ImServiceImpl implements IImService {
     }
 
     private boolean pushPayloadToSessions(List<UserSession> targetSessions, String wsType, Object payloadData) {
+        return pushPayloadToSessions(targetSessions, wsType, payloadData, OutboundPriority.BUSINESS);
+    }
+
+    private boolean pushPayloadToSessions(List<UserSession> targetSessions,
+                                          String wsType,
+                                          Object payloadData,
+                                          OutboundPriority priority) {
         if (targetSessions == null || targetSessions.isEmpty()) {
             return false;
         }
@@ -477,7 +512,7 @@ public class ImServiceImpl implements IImService {
             if (StringUtils.isBlank(sessionId)) {
                 continue;
             }
-            attempts.add(submitTextSend(userSession, sessionId, wsType, textMessage));
+            attempts.add(submitTextSend(userSession, sessionId, wsType, textMessage, priority));
         }
 
         boolean success = false;
@@ -498,7 +533,13 @@ public class ImServiceImpl implements IImService {
             return false;
         }
 
-        return awaitSendResult(submitTextSend(userSession, normalizedSessionId, wsType, buildTextMessage(wsType, payloadData)));
+        return awaitSendResult(submitTextSend(
+                userSession,
+                normalizedSessionId,
+                wsType,
+                buildTextMessage(wsType, payloadData),
+                OutboundPriority.BUSINESS
+        ));
     }
 
     private String buildTextMessage(String wsType, Object payloadData) {
@@ -591,7 +632,7 @@ public class ImServiceImpl implements IImService {
         payload.put("timestamp", System.currentTimeMillis());
         String text = JSON.toJSONString(payload);
 
-        sendTextToSessions(new ArrayList<>(sessionsById.values()), "ONLINE_STATUS", text);
+        sendTextToSessions(new ArrayList<>(sessionsById.values()), "ONLINE_STATUS", text, OutboundPriority.BROADCAST);
     }
 
     private void publishPresenceEvent(String userId, UserStatus status, String lastSeen) {
@@ -614,7 +655,10 @@ public class ImServiceImpl implements IImService {
         }
     }
 
-    private boolean sendTextToSessions(List<UserSession> targetSessions, String wsType, String textMessage) {
+    private boolean sendTextToSessions(List<UserSession> targetSessions,
+                                       String wsType,
+                                       String textMessage,
+                                       OutboundPriority priority) {
         if (targetSessions == null || targetSessions.isEmpty()) {
             return false;
         }
@@ -624,7 +668,7 @@ public class ImServiceImpl implements IImService {
             if (StringUtils.isBlank(sessionId)) {
                 continue;
             }
-            attempts.add(submitTextSend(session, sessionId, wsType, textMessage));
+            attempts.add(submitTextSend(session, sessionId, wsType, textMessage, priority));
         }
         boolean success = false;
         for (SessionSendAttempt attempt : attempts) {
@@ -633,7 +677,11 @@ public class ImServiceImpl implements IImService {
         return success;
     }
 
-    private SessionSendAttempt submitTextSend(UserSession userSession, String sessionId, String wsType, String textMessage) {
+    private SessionSendAttempt submitTextSend(UserSession userSession,
+                                              String sessionId,
+                                              String wsType,
+                                              String textMessage,
+                                              OutboundPriority priority) {
         long startNanos = System.nanoTime();
         String normalizedSessionId = normalizeSessionId(sessionId);
         if (userSession == null || normalizedSessionId == null) {
@@ -647,48 +695,45 @@ public class ImServiceImpl implements IImService {
             return SessionSendAttempt.immediateFailure(normalizedUserId, normalizedSessionId, wsType, startNanos);
         }
 
-        try {
-            Future<?> future = outboundSendExecutor.submit(() -> {
-                webSocketSession.sendMessage(new TextMessage(textMessage));
-                return null;
-            });
-            return SessionSendAttempt.submitted(normalizedUserId, normalizedSessionId, wsType, startNanos, future);
-        } catch (RejectedExecutionException sendRejected) {
-            handleSendFailure(normalizedUserId, normalizedSessionId, wsType, sendRejected);
+        OutboundMailbox mailbox = prepareOutboundMailbox(normalizedUserId, normalizedSessionId);
+        if (mailbox == null || mailbox.isClosed()) {
             return SessionSendAttempt.immediateFailure(normalizedUserId, normalizedSessionId, wsType, startNanos);
         }
+
+        OutboundEnvelope envelope = new OutboundEnvelope(
+                normalizedUserId,
+                normalizedSessionId,
+                wsType,
+                textMessage,
+                startNanos,
+                priority == null ? OutboundPriority.BUSINESS : priority
+        );
+        MailboxOffer offer = mailbox.offer(envelope);
+        if (offer.droppedEnvelope() != null) {
+            recordPush(offer.droppedEnvelope().wsType(), false, offer.droppedEnvelope().startNanos());
+        }
+        if (!offer.accepted()) {
+            log.warn("Outbound mailbox rejected message. userId={}, sessionId={}, type={}, priority={}, queueCapacity={}",
+                    normalizedUserId,
+                    normalizedSessionId,
+                    wsType,
+                    envelope.priority(),
+                    resolveOutboundMailboxCapacity());
+            return SessionSendAttempt.immediateFailure(normalizedUserId, normalizedSessionId, wsType, startNanos);
+        }
+        scheduleMailboxDrain(mailbox);
+        return SessionSendAttempt.accepted(normalizedUserId, normalizedSessionId, wsType, startNanos);
     }
 
     private boolean awaitSendResult(SessionSendAttempt attempt) {
         if (attempt == null) {
             return false;
         }
-        boolean success = false;
-        try {
-            if (attempt.future() == null) {
-                return false;
-            }
-            attempt.future().get(resolveSendDispatchTimeoutMs(), TimeUnit.MILLISECONDS);
-            success = true;
+        if (attempt.accepted()) {
             return true;
-        } catch (TimeoutException timeoutException) {
-            attempt.future().cancel(true);
-            handleSendFailure(attempt.userId(), attempt.sessionId(), attempt.wsType(),
-                    new IllegalStateException("send timeout", timeoutException));
-            return false;
-        } catch (InterruptedException interruptedException) {
-            if (attempt.future() != null) {
-                attempt.future().cancel(true);
-            }
-            Thread.currentThread().interrupt();
-            handleSendFailure(attempt.userId(), attempt.sessionId(), attempt.wsType(), interruptedException);
-            return false;
-        } catch (ExecutionException executionException) {
-            handleSendFailure(attempt.userId(), attempt.sessionId(), attempt.wsType(), executionException.getCause());
-            return false;
-        } finally {
-            recordPush(attempt.wsType(), success, attempt.startNanos());
         }
+        recordPush(attempt.wsType(), false, attempt.startNanos());
+        return false;
     }
 
     private void recordPush(String wsType, boolean success, long startNanos) {
@@ -724,6 +769,156 @@ public class ImServiceImpl implements IImService {
                     normalizedSessionId,
                     SEND_FAILED_CLOSE_STATUS,
                     cleanupError.getMessage());
+        }
+    }
+
+    private void scheduleMailboxDrain(OutboundMailbox mailbox) {
+        if (mailbox == null || !mailbox.tryStartDrain()) {
+            return;
+        }
+        if (outboundSendExecutor.isShutdown()) {
+            mailbox.markDrainNotRunning();
+            return;
+        }
+        try {
+            outboundSendExecutor.execute(() -> drainMailbox(mailbox));
+        } catch (RejectedExecutionException rejectedExecutionException) {
+            mailbox.markDrainNotRunning();
+            log.warn("Schedule outbound mailbox drain rejected. userId={}, sessionId={}",
+                    mailbox.userId(), mailbox.sessionId(), rejectedExecutionException);
+            scheduleMailboxDrainRetry(mailbox);
+        }
+    }
+
+    private void scheduleMailboxDrainRetry(OutboundMailbox mailbox) {
+        if (mailbox == null || mailbox.isClosed() || outboundControlExecutor.isShutdown()) {
+            return;
+        }
+        try {
+            outboundControlExecutor.schedule(() -> scheduleMailboxDrain(mailbox),
+                    MAILBOX_RETRY_DELAY_MS,
+                    TimeUnit.MILLISECONDS);
+        } catch (RejectedExecutionException rejectedExecutionException) {
+            log.warn("Schedule outbound mailbox retry rejected. userId={}, sessionId={}",
+                    mailbox.userId(), mailbox.sessionId(), rejectedExecutionException);
+        }
+    }
+
+    private void drainMailbox(OutboundMailbox mailbox) {
+        while (true) {
+            OutboundSendTask sendTask = mailbox.beginNextSend();
+            if (sendTask == null) {
+                return;
+            }
+            processOutboundSend(mailbox, sendTask);
+            if (mailbox.isClosed()) {
+                return;
+            }
+        }
+    }
+
+    private void processOutboundSend(OutboundMailbox mailbox, OutboundSendTask sendTask) {
+        OutboundEnvelope envelope = sendTask.envelope();
+        UserSession currentSession = sessionsById.get(envelope.sessionId());
+        WebSocketSession webSocketSession = currentSession == null ? null : currentSession.getWebSocketSession();
+        if (webSocketSession == null || !webSocketSession.isOpen()) {
+            mailbox.completeWithoutCounting(sendTask.token());
+            cleanupInactiveSession(envelope.userId(), envelope.sessionId());
+            recordPush(envelope.wsType(), false, envelope.startNanos());
+            return;
+        }
+
+        ScheduledFuture<?> timeoutFuture = scheduleSendTimeout(mailbox, sendTask);
+        try {
+            webSocketSession.sendMessage(new TextMessage(envelope.textMessage()));
+            boolean timedOut = mailbox.completeSuccess(sendTask.token(), timeoutFuture);
+            if (!timedOut) {
+                recordPush(envelope.wsType(), true, envelope.startNanos());
+            }
+        } catch (Exception sendError) {
+            IoFailureOutcome outcome = mailbox.completeIoFailure(sendTask.token(), timeoutFuture);
+            if (!outcome.counted()) {
+                return;
+            }
+            log.warn("WebSocket send failed. userId={}, sessionId={}, type={}, ioFailureCount={}, threshold={}, error={}",
+                    envelope.userId(),
+                    envelope.sessionId(),
+                    envelope.wsType(),
+                    outcome.currentCount(),
+                    resolveOutboundSendFailureThreshold(),
+                    sendError == null ? null : sendError.getMessage());
+            recordPush(envelope.wsType(), false, envelope.startNanos());
+            if (outcome.thresholdExceeded()) {
+                handleSendFailure(envelope.userId(), envelope.sessionId(), envelope.wsType(), sendError);
+            }
+        }
+    }
+
+    private ScheduledFuture<?> scheduleSendTimeout(OutboundMailbox mailbox, OutboundSendTask sendTask) {
+        if (outboundControlExecutor.isShutdown()) {
+            return null;
+        }
+        try {
+            return outboundControlExecutor.schedule(
+                    () -> handleSendTimeout(mailbox, sendTask),
+                    resolveSendDispatchTimeoutMs(),
+                    TimeUnit.MILLISECONDS
+            );
+        } catch (RejectedExecutionException rejectedExecutionException) {
+            log.warn("Schedule outbound send timeout rejected. userId={}, sessionId={}, type={}",
+                    sendTask.envelope().userId(),
+                    sendTask.envelope().sessionId(),
+                    sendTask.envelope().wsType(),
+                    rejectedExecutionException);
+            return null;
+        }
+    }
+
+    private void handleSendTimeout(OutboundMailbox mailbox, OutboundSendTask sendTask) {
+        TimeoutOutcome outcome = mailbox.markTimeout(sendTask.token());
+        if (!outcome.counted()) {
+            return;
+        }
+        OutboundEnvelope envelope = sendTask.envelope();
+        log.warn("WebSocket send timeout. userId={}, sessionId={}, type={}, timeoutCount={}, threshold={}, timeoutMs={}",
+                envelope.userId(),
+                envelope.sessionId(),
+                envelope.wsType(),
+                outcome.currentCount(),
+                resolveOutboundSendTimeoutThreshold(),
+                resolveSendDispatchTimeoutMs());
+        recordPush(envelope.wsType(), false, envelope.startNanos());
+        if (outcome.thresholdExceeded()) {
+            handleSendFailure(envelope.userId(), envelope.sessionId(), envelope.wsType(),
+                    new IllegalStateException("send timeout"));
+        }
+    }
+
+    private OutboundMailbox prepareOutboundMailbox(String userId, String sessionId) {
+        String normalizedUserId = normalizeUserId(userId);
+        String normalizedSessionId = normalizeSessionId(sessionId);
+        if (normalizedUserId == null || normalizedSessionId == null) {
+            return null;
+        }
+        return outboundMailboxes.compute(normalizedSessionId, (key, existing) -> {
+            if (existing == null || existing.isClosed() || !normalizedUserId.equals(existing.userId())) {
+                if (existing != null) {
+                    existing.close();
+                }
+                return new OutboundMailbox(normalizedUserId, normalizedSessionId, resolveOutboundMailboxCapacity());
+            }
+            return existing;
+        });
+    }
+
+    private void cleanupOutboundMailbox(String sessionId) {
+        String normalizedSessionId = normalizeSessionId(sessionId);
+        if (normalizedSessionId == null) {
+            return;
+        }
+        OutboundMailbox mailbox = outboundMailboxes.remove(normalizedSessionId);
+        if (mailbox != null) {
+            mailbox.close();
         }
     }
 
@@ -796,6 +991,18 @@ public class ImServiceImpl implements IImService {
         return Math.max(100L, sendDispatchTimeoutMs);
     }
 
+    private int resolveOutboundMailboxCapacity() {
+        return Math.max(1, outboundMailboxCapacity);
+    }
+
+    private int resolveOutboundSendFailureThreshold() {
+        return Math.max(1, outboundSendFailureThreshold);
+    }
+
+    private int resolveOutboundSendTimeoutThreshold() {
+        return Math.max(1, outboundSendTimeoutThreshold);
+    }
+
     private String resolveConversationId(MessageDTO message) {
         if (message == null) {
             return "";
@@ -848,16 +1055,16 @@ public class ImServiceImpl implements IImService {
     }
 
     private ExecutorService createOutboundSendExecutor() {
-        int maxWorkers = Math.max(4, Runtime.getRuntime().availableProcessors() * 4);
+        int maxWorkers = Math.max(4, Runtime.getRuntime().availableProcessors() * 2);
         return new ThreadPoolExecutor(
-                0,
+                maxWorkers,
                 maxWorkers,
                 60L,
                 TimeUnit.SECONDS,
-                new SynchronousQueue<>(),
+                new ArrayBlockingQueue<>(maxWorkers * 256),
                 runnable -> {
                     Thread thread = new Thread(runnable,
-                            "im-ws-send-" + outboundSendThreadCounter.incrementAndGet());
+                            "im-ws-mailbox-" + outboundSendThreadCounter.incrementAndGet());
                     thread.setDaemon(true);
                     return thread;
                 });
@@ -872,25 +1079,225 @@ public class ImServiceImpl implements IImService {
         }
     }
 
+    private enum OutboundPriority {
+        BUSINESS,
+        BROADCAST
+    }
+
     private record SessionSendAttempt(String userId,
                                       String sessionId,
                                       String wsType,
                                       long startNanos,
-                                      Future<?> future) {
+                                      boolean accepted) {
 
-        private static SessionSendAttempt submitted(String userId,
-                                                    String sessionId,
-                                                    String wsType,
-                                                    long startNanos,
-                                                    Future<?> future) {
-            return new SessionSendAttempt(userId, sessionId, wsType, startNanos, future);
+        private static SessionSendAttempt accepted(String userId,
+                                                   String sessionId,
+                                                   String wsType,
+                                                   long startNanos) {
+            return new SessionSendAttempt(userId, sessionId, wsType, startNanos, true);
         }
 
         private static SessionSendAttempt immediateFailure(String userId,
                                                            String sessionId,
                                                            String wsType,
                                                            long startNanos) {
-            return new SessionSendAttempt(userId, sessionId, wsType, startNanos, null);
+            return new SessionSendAttempt(userId, sessionId, wsType, startNanos, false);
+        }
+    }
+
+    private record OutboundEnvelope(String userId,
+                                    String sessionId,
+                                    String wsType,
+                                    String textMessage,
+                                    long startNanos,
+                                    OutboundPriority priority) {
+    }
+
+    private record OutboundSendTask(long token, OutboundEnvelope envelope) {
+    }
+
+    private record MailboxOffer(boolean accepted, OutboundEnvelope droppedEnvelope) {
+        private static MailboxOffer accepted(OutboundEnvelope droppedEnvelope) {
+            return new MailboxOffer(true, droppedEnvelope);
+        }
+
+        private static MailboxOffer rejected(OutboundEnvelope droppedEnvelope) {
+            return new MailboxOffer(false, droppedEnvelope);
+        }
+    }
+
+    private record TimeoutOutcome(boolean counted, boolean thresholdExceeded, int currentCount) {
+        private static TimeoutOutcome ignored() {
+            return new TimeoutOutcome(false, false, 0);
+        }
+    }
+
+    private record IoFailureOutcome(boolean counted, boolean thresholdExceeded, int currentCount) {
+        private static IoFailureOutcome ignored() {
+            return new IoFailureOutcome(false, false, 0);
+        }
+    }
+
+    private final class OutboundMailbox {
+        private final String userId;
+        private final String sessionId;
+        private final int capacity;
+        private final Deque<OutboundEnvelope> queue = new ArrayDeque<>();
+        private boolean draining;
+        private boolean closed;
+        private boolean terminationRequested;
+        private long activeSendToken;
+        private boolean activeSendInProgress;
+        private boolean activeSendTimedOut;
+        private int consecutiveIoFailures;
+        private int consecutiveTimeouts;
+
+        private OutboundMailbox(String userId, String sessionId, int capacity) {
+            this.userId = userId;
+            this.sessionId = sessionId;
+            this.capacity = Math.max(1, capacity);
+        }
+
+        private synchronized MailboxOffer offer(OutboundEnvelope envelope) {
+            if (closed) {
+                return MailboxOffer.rejected(null);
+            }
+            if (queue.size() >= capacity) {
+                if (envelope.priority() == OutboundPriority.BROADCAST) {
+                    return MailboxOffer.rejected(envelope);
+                }
+                OutboundEnvelope droppedEnvelope = dropNewestBroadcast();
+                if (droppedEnvelope == null) {
+                    return MailboxOffer.rejected(null);
+                }
+                queue.addLast(envelope);
+                return MailboxOffer.accepted(droppedEnvelope);
+            }
+            queue.addLast(envelope);
+            return MailboxOffer.accepted(null);
+        }
+
+        private synchronized boolean tryStartDrain() {
+            if (closed || draining) {
+                return false;
+            }
+            draining = true;
+            return true;
+        }
+
+        private synchronized void markDrainNotRunning() {
+            if (!closed) {
+                draining = false;
+            }
+        }
+
+        private synchronized OutboundSendTask beginNextSend() {
+            if (closed) {
+                draining = false;
+                return null;
+            }
+            OutboundEnvelope envelope = queue.pollFirst();
+            if (envelope == null) {
+                draining = false;
+                return null;
+            }
+            activeSendToken++;
+            activeSendInProgress = true;
+            activeSendTimedOut = false;
+            return new OutboundSendTask(activeSendToken, envelope);
+        }
+
+        private synchronized TimeoutOutcome markTimeout(long token) {
+            if (closed || !activeSendInProgress || activeSendToken != token || activeSendTimedOut) {
+                return TimeoutOutcome.ignored();
+            }
+            activeSendTimedOut = true;
+            consecutiveTimeouts++;
+            consecutiveIoFailures = 0;
+            boolean thresholdExceeded = consecutiveTimeouts >= resolveOutboundSendTimeoutThreshold() && !terminationRequested;
+            if (thresholdExceeded) {
+                terminationRequested = true;
+            }
+            return new TimeoutOutcome(true, thresholdExceeded, consecutiveTimeouts);
+        }
+
+        private synchronized boolean completeSuccess(long token, ScheduledFuture<?> timeoutFuture) {
+            cancelTimeout(timeoutFuture);
+            if (closed || !activeSendInProgress || activeSendToken != token) {
+                return true;
+            }
+            boolean timedOut = activeSendTimedOut;
+            activeSendInProgress = false;
+            activeSendTimedOut = false;
+            if (!timedOut) {
+                consecutiveIoFailures = 0;
+                consecutiveTimeouts = 0;
+            }
+            return timedOut;
+        }
+
+        private synchronized IoFailureOutcome completeIoFailure(long token, ScheduledFuture<?> timeoutFuture) {
+            cancelTimeout(timeoutFuture);
+            if (closed || !activeSendInProgress || activeSendToken != token) {
+                return IoFailureOutcome.ignored();
+            }
+            activeSendInProgress = false;
+            if (activeSendTimedOut) {
+                activeSendTimedOut = false;
+                return IoFailureOutcome.ignored();
+            }
+            consecutiveIoFailures++;
+            consecutiveTimeouts = 0;
+            boolean thresholdExceeded = consecutiveIoFailures >= resolveOutboundSendFailureThreshold() && !terminationRequested;
+            if (thresholdExceeded) {
+                terminationRequested = true;
+            }
+            return new IoFailureOutcome(true, thresholdExceeded, consecutiveIoFailures);
+        }
+
+        private synchronized void completeWithoutCounting(long token) {
+            if (activeSendInProgress && activeSendToken == token) {
+                activeSendInProgress = false;
+                activeSendTimedOut = false;
+            }
+        }
+
+        private synchronized void close() {
+            closed = true;
+            draining = false;
+            terminationRequested = true;
+            activeSendInProgress = false;
+            queue.clear();
+        }
+
+        private synchronized boolean isClosed() {
+            return closed;
+        }
+
+        private synchronized String userId() {
+            return userId;
+        }
+
+        private synchronized String sessionId() {
+            return sessionId;
+        }
+
+        private OutboundEnvelope dropNewestBroadcast() {
+            Iterator<OutboundEnvelope> descendingIterator = queue.descendingIterator();
+            while (descendingIterator.hasNext()) {
+                OutboundEnvelope candidate = descendingIterator.next();
+                if (candidate.priority() == OutboundPriority.BROADCAST) {
+                    descendingIterator.remove();
+                    return candidate;
+                }
+            }
+            return null;
+        }
+
+        private void cancelTimeout(ScheduledFuture<?> timeoutFuture) {
+            if (timeoutFuture != null) {
+                timeoutFuture.cancel(false);
+            }
         }
     }
 }

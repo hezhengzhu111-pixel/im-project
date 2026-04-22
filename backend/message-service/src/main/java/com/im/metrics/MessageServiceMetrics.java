@@ -42,6 +42,7 @@ public class MessageServiceMetrics {
         }
         Gauge.builder("pending_status_backlog", backlogSupplier, MessageServiceMetrics::safeValue)
                 .description("Current durable pending status backlog size")
+                .strongReference(true)
                 .register(meterRegistry);
     }
 
@@ -53,6 +54,24 @@ public class MessageServiceMetrics {
 
     public void recordWatermarkDbFallbackHit() {
         Counter.builder("watermark_db_fallback_hits")
+                .register(meterRegistry)
+                .increment();
+    }
+
+    public void recordDlt() {
+        Counter.builder("dlt_count")
+                .register(meterRegistry)
+                .increment();
+    }
+
+    public void recordPoison() {
+        Counter.builder("poison_count")
+                .register(meterRegistry)
+                .increment();
+    }
+
+    public void recordRetryable() {
+        Counter.builder("retryable_count")
                 .register(meterRegistry)
                 .increment();
     }

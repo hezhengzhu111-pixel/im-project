@@ -10,27 +10,35 @@ import com.im.feign.GroupServiceFeignClient;
 import com.im.metrics.ImServerMetrics;
 import com.im.service.IImService;
 import com.im.service.ProcessedMessageDeduplicator;
-import lombok.RequiredArgsConstructor;
+import com.im.service.route.UserRouteRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.header.Header;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.WebSocketSession;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class GatewayKafkaPusher {
 
+    static final String TARGET_INSTANCE_HEADER = "im-target-instance-id";
+    static final String ROUTED_TOPIC_DELIMITER = ".route.";
     private static final String DELIVERY_KEY_PREFIX = "kafka:";
     private static final String SCOPE_GROUP_MEMBERSHIP = "GROUP_MEMBERSHIP";
 
@@ -38,6 +46,8 @@ public class GatewayKafkaPusher {
     private final RedisTemplate<String, Object> redisTemplate;
     private final ProcessedMessageDeduplicator deduplicator;
     private final GroupServiceFeignClient groupServiceFeignClient;
+    private final UserRouteRegistry routeRegistry;
+    private final KafkaTemplate<String, Object> routedEventKafkaTemplate;
 
     @Autowired(required = false)
     private ImServerMetrics metrics;
@@ -48,12 +58,49 @@ public class GatewayKafkaPusher {
     @Value("${im.message.group-member-ids-cache.l2-ttl-seconds:30}")
     private long groupMembersCacheTtlSeconds;
 
+    @Value("${im.kafka.chat-topic:im-chat-topic}")
+    private String chatTopic;
+
+    @Value("${im.kafka.read-topic:im-read-topic}")
+    private String readTopic;
+
+    @Value("${im.kafka.status-topic:im-status-topic}")
+    private String statusTopic;
+
+    @Value("${im.kafka.route-send-timeout-ms:2000}")
+    private long routeSendTimeoutMs;
+
+    public GatewayKafkaPusher(IImService imService,
+                              RedisTemplate<String, Object> redisTemplate,
+                              ProcessedMessageDeduplicator deduplicator,
+                              GroupServiceFeignClient groupServiceFeignClient,
+                              UserRouteRegistry routeRegistry,
+                              @Qualifier("gatewayRoutedEventKafkaTemplate") KafkaTemplate<String, Object> routedEventKafkaTemplate) {
+        this.imService = imService;
+        this.redisTemplate = redisTemplate;
+        this.deduplicator = deduplicator;
+        this.groupServiceFeignClient = groupServiceFeignClient;
+        this.routeRegistry = routeRegistry;
+        this.routedEventKafkaTemplate = routedEventKafkaTemplate;
+    }
+
     @KafkaListener(
             topics = "${im.kafka.chat-topic:im-chat-topic}",
             containerFactory = "gatewayMessageEventKafkaListenerContainerFactory"
     )
     public void onMessage(ConsumerRecord<String, MessageEvent> record) {
         if (record == null) {
+            return;
+        }
+        routeMessageEvent(record);
+    }
+
+    @KafkaListener(
+            topics = "#{__listener.routedMessageTopic}",
+            containerFactory = "gatewayRoutedMessageEventKafkaListenerContainerFactory"
+    )
+    public void onRoutedMessage(ConsumerRecord<String, MessageEvent> record) {
+        if (!shouldHandleRoutedRecord(record, getRoutedMessageTopic())) {
             return;
         }
         handleEvent(record.value());
@@ -67,6 +114,17 @@ public class GatewayKafkaPusher {
         if (record == null) {
             return;
         }
+        routeReadEvent(record);
+    }
+
+    @KafkaListener(
+            topics = "#{__listener.routedReadTopic}",
+            containerFactory = "gatewayRoutedReadEventKafkaListenerContainerFactory"
+    )
+    public void onRoutedReadEvent(ConsumerRecord<String, ReadEvent> record) {
+        if (!shouldHandleRoutedRecord(record, getRoutedReadTopic())) {
+            return;
+        }
         handleReadEvent(record.value());
     }
 
@@ -76,6 +134,17 @@ public class GatewayKafkaPusher {
     )
     public void onStatusChangeEvent(ConsumerRecord<String, StatusChangeEvent> record) {
         if (record == null) {
+            return;
+        }
+        routeStatusChangeEvent(record);
+    }
+
+    @KafkaListener(
+            topics = "#{__listener.routedStatusTopic}",
+            containerFactory = "gatewayRoutedStatusChangeEventKafkaListenerContainerFactory"
+    )
+    public void onRoutedStatusChangeEvent(ConsumerRecord<String, StatusChangeEvent> record) {
+        if (!shouldHandleRoutedRecord(record, getRoutedStatusTopic())) {
             return;
         }
         handleStatusChangeEvent(record.value());
@@ -103,6 +172,56 @@ public class GatewayKafkaPusher {
             log.warn("Handle authz cache invalidation failed. payload={}, error={}",
                     payload, exception.getMessage(), exception);
         }
+    }
+
+    public String getRoutedMessageTopic() {
+        return routedTopic(chatTopic, currentInstanceId());
+    }
+
+    public String getRoutedReadTopic() {
+        return routedTopic(readTopic, currentInstanceId());
+    }
+
+    public String getRoutedStatusTopic() {
+        return routedTopic(statusTopic, currentInstanceId());
+    }
+
+    void routeMessageEvent(ConsumerRecord<String, MessageEvent> record) {
+        MessageEvent event = record == null ? null : record.value();
+        if (event == null || event.getEventType() == null) {
+            log.debug("Skip empty Kafka message event.");
+            return;
+        }
+
+        Set<String> targetInstances;
+        switch (event.getEventType()) {
+            case MESSAGE, MESSAGE_STATUS_CHANGED -> targetInstances = resolveMessageTargetInstances(event);
+            case READ_RECEIPT, READ_SYNC -> targetInstances = resolveEmbeddedReadTargetInstances(event);
+            default -> {
+                log.debug("Skip unsupported Kafka message event. eventType={}", event.getEventType());
+                return;
+            }
+        }
+
+        routeRecord(chatTopic, record, event, targetInstances);
+    }
+
+    void routeReadEvent(ConsumerRecord<String, ReadEvent> record) {
+        ReadEvent event = record == null ? null : record.value();
+        if (event == null || event.getUserId() == null || !StringUtils.hasText(event.getConversationId())) {
+            log.debug("Skip invalid read event.");
+            return;
+        }
+        routeRecord(readTopic, record, event, resolveReadTargetInstances(event));
+    }
+
+    void routeStatusChangeEvent(ConsumerRecord<String, StatusChangeEvent> record) {
+        StatusChangeEvent event = record == null ? null : record.value();
+        if (event == null || event.getMessageId() == null || event.getPayload() == null) {
+            log.debug("Skip invalid status change event. messageId={}", event == null ? null : event.getMessageId());
+            return;
+        }
+        routeRecord(statusTopic, record, event, resolveStatusTargetInstances(event));
     }
 
     void handleEvent(MessageEvent event) {
@@ -172,6 +291,148 @@ public class GatewayKafkaPusher {
         }
     }
 
+    private <T> void routeRecord(String sourceTopic,
+                                 ConsumerRecord<String, T> record,
+                                 T payload,
+                                 Set<String> targetInstances) {
+        if (payload == null || CollectionUtils.isEmpty(targetInstances)) {
+            return;
+        }
+        for (String targetInstanceId : targetInstances) {
+            if (!StringUtils.hasText(targetInstanceId)) {
+                continue;
+            }
+            sendToInstance(routedTopic(sourceTopic, targetInstanceId), record == null ? null : record.key(), targetInstanceId, payload);
+        }
+    }
+
+    private void sendToInstance(String topic, String key, String targetInstanceId, Object payload) {
+        if (!StringUtils.hasText(topic) || !StringUtils.hasText(targetInstanceId) || payload == null) {
+            return;
+        }
+        ProducerRecord<String, Object> producerRecord = new ProducerRecord<>(topic, key, payload);
+        producerRecord.headers().add(TARGET_INSTANCE_HEADER, targetInstanceId.trim().getBytes(StandardCharsets.UTF_8));
+        try {
+            routedEventKafkaTemplate.send(producerRecord)
+                    .get(Math.max(1L, routeSendTimeoutMs), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("route Kafka push interrupted", exception);
+        } catch (ExecutionException | TimeoutException exception) {
+            throw new IllegalStateException("route Kafka push failed", exception);
+        }
+    }
+
+    private boolean shouldHandleRoutedRecord(ConsumerRecord<?, ?> record, String expectedTopic) {
+        if (record == null || !StringUtils.hasText(expectedTopic)) {
+            return false;
+        }
+        if (!expectedTopic.equals(record.topic())) {
+            return false;
+        }
+        String targetInstanceId = resolveTargetInstanceId(record);
+        return !StringUtils.hasText(targetInstanceId) || currentInstanceId().equals(targetInstanceId);
+    }
+
+    private String resolveTargetInstanceId(ConsumerRecord<?, ?> record) {
+        if (record == null || record.headers() == null) {
+            return null;
+        }
+        Header header = record.headers().lastHeader(TARGET_INSTANCE_HEADER);
+        if (header == null || header.value() == null || header.value().length == 0) {
+            return null;
+        }
+        return new String(header.value(), StandardCharsets.UTF_8).trim();
+    }
+
+    private Set<String> resolveMessageTargetInstances(MessageEvent event) {
+        MessageDTO message = resolveMessagePayload(event);
+        if (message == null) {
+            log.warn("Skip Kafka message event with empty payload. messageId={}, conversationId={}",
+                    event.getMessageId(), event.getConversationId());
+            return Set.of();
+        }
+        if (isGroupEvent(event, message)) {
+            return resolveGroupTargetInstances(firstNonNull(event.getGroupId(), message.getGroupId()));
+        }
+        return resolvePrivateTargetInstances(
+                firstNonNull(event.getSenderId(), message.getSenderId()),
+                firstNonNull(event.getReceiverId(), message.getReceiverId())
+        );
+    }
+
+    private Set<String> resolveEmbeddedReadTargetInstances(MessageEvent event) {
+        ReadReceiptDTO receipt = resolveReadReceiptPayload(event);
+        Long targetUserId = firstNonNull(receipt == null ? null : receipt.getToUserId(), event.getReceiverId());
+        if (targetUserId == null) {
+            log.debug("Skip read Kafka event without target user. eventType={}, messageId={}",
+                    event.getEventType(), event.getMessageId());
+            return Set.of();
+        }
+        return resolvePrivateTargetInstances(targetUserId);
+    }
+
+    private Set<String> resolveReadTargetInstances(ReadEvent event) {
+        if (Boolean.TRUE.equals(event.getGroup()) || event.getGroupId() != null) {
+            return resolveGroupTargetInstances(event.getGroupId());
+        }
+        return resolvePrivateTargetInstances(event.getUserId(), event.getTargetUserId());
+    }
+
+    private Set<String> resolveStatusTargetInstances(StatusChangeEvent event) {
+        MessageDTO payload = event.getPayload();
+        if (Boolean.TRUE.equals(event.getGroup()) || event.getGroupId() != null || (payload != null && payload.isGroup())) {
+            return resolveGroupTargetInstances(firstNonNull(event.getGroupId(), payload == null ? null : payload.getGroupId()));
+        }
+        Long senderId = firstNonNull(event.getSenderId(), payload == null ? null : payload.getSenderId());
+        Long receiverId = firstNonNull(event.getReceiverId(), payload == null ? null : payload.getReceiverId());
+        return resolvePrivateTargetInstances(senderId, receiverId);
+    }
+
+    private Set<String> resolveGroupTargetInstances(Long groupId) {
+        if (groupId == null) {
+            return Set.of();
+        }
+        List<Long> memberIds = resolveGroupMemberIds(groupId);
+        if (memberIds.isEmpty()) {
+            log.debug("Skip group Kafka event with empty members. groupId={}", groupId);
+            return Set.of();
+        }
+        LinkedHashSet<String> targetInstances = new LinkedHashSet<>();
+        for (Long memberId : memberIds) {
+            targetInstances.addAll(resolveUserTargetInstances(memberId));
+        }
+        return targetInstances;
+    }
+
+    private Set<String> resolvePrivateTargetInstances(Long... userIds) {
+        LinkedHashSet<String> targetInstances = new LinkedHashSet<>();
+        if (userIds == null || userIds.length == 0) {
+            return targetInstances;
+        }
+        for (Long userId : userIds) {
+            targetInstances.addAll(resolveUserTargetInstances(userId));
+        }
+        return targetInstances;
+    }
+
+    private Set<String> resolveUserTargetInstances(Long userId) {
+        if (userId == null) {
+            return Set.of();
+        }
+        Map<String, Integer> instanceSessionCounts = routeRegistry.getInstanceSessionCounts(String.valueOf(userId));
+        if (instanceSessionCounts == null || instanceSessionCounts.isEmpty()) {
+            return Set.of();
+        }
+        LinkedHashSet<String> targetInstances = new LinkedHashSet<>();
+        for (Map.Entry<String, Integer> entry : instanceSessionCounts.entrySet()) {
+            if (StringUtils.hasText(entry.getKey()) && entry.getValue() != null && entry.getValue() > 0) {
+                targetInstances.add(entry.getKey().trim());
+            }
+        }
+        return targetInstances;
+    }
+
     private void pushMessageEvent(MessageEvent event) {
         MessageDTO message = resolveMessagePayload(event);
         if (message == null) {
@@ -228,13 +489,9 @@ public class GatewayKafkaPusher {
         }
     }
 
-    private void pushMessageToLocalUser(MessageEvent event, MessageDTO message, Long targetUserId) {
-        pushMessageToLocalUser(event == null || event.getEventType() == null ? null : event.getEventType().name(),
-                buildMessageEventKey(event), message, targetUserId);
-    }
-
     private void pushMessageToLocalUser(String eventType, String eventKey, MessageDTO message, Long targetUserId) {
-        if (!hasLocalSessions(targetUserId)) {
+        List<UserSession> sessions = localSessions(targetUserId);
+        if (message == null || sessions.isEmpty()) {
             return;
         }
         String deliveryKey = deliveryKey(eventType, eventKey, targetUserId, null);
@@ -450,10 +707,6 @@ public class GatewayKafkaPusher {
                 || (payload != null && payload.isGroup());
     }
 
-    private boolean hasLocalSessions(Long userId) {
-        return !localSessions(userId).isEmpty();
-    }
-
     private List<UserSession> localSessions(Long userId) {
         if (userId == null) {
             return List.of();
@@ -518,20 +771,6 @@ public class GatewayKafkaPusher {
         }
     }
 
-    private String deliveryKey(MessageEvent event, Long targetUserId) {
-        return deliveryKey(event, targetUserId, null);
-    }
-
-    private String deliveryKey(MessageEvent event, Long targetUserId, String sessionId) {
-        if (event == null || targetUserId == null) {
-            return null;
-        }
-        return deliveryKey(event.getEventType() == null ? null : event.getEventType().name(),
-                buildMessageEventKey(event),
-                targetUserId,
-                sessionId);
-    }
-
     private String deliveryKey(String eventType, String eventKey, Long targetUserId, String sessionId) {
         if (!StringUtils.hasText(eventType) || !StringUtils.hasText(eventKey) || targetUserId == null) {
             return null;
@@ -591,5 +830,24 @@ public class GatewayKafkaPusher {
 
     private <T> T firstNonNull(T first, T second) {
         return first != null ? first : second;
+    }
+
+    private String routedTopic(String sourceTopic, String instanceId) {
+        if (!StringUtils.hasText(sourceTopic) || !StringUtils.hasText(instanceId)) {
+            return sourceTopic;
+        }
+        return sourceTopic.trim() + ROUTED_TOPIC_DELIMITER + sanitizeInstanceId(instanceId);
+    }
+
+    private String currentInstanceId() {
+        String instanceId = imService.getCurrentInstanceId();
+        return StringUtils.hasText(instanceId) ? instanceId.trim() : "unknown";
+    }
+
+    private String sanitizeInstanceId(String instanceId) {
+        if (!StringUtils.hasText(instanceId)) {
+            return "unknown";
+        }
+        return instanceId.trim().replaceAll("[^A-Za-z0-9._-]", "_");
     }
 }

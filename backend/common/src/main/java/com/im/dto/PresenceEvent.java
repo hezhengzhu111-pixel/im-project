@@ -17,5 +17,7 @@ public class PresenceEvent {
 
     private String lastSeen;
 
+    private Long eventTime;
+
     private String sourceInstanceId;
 }
