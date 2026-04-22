@@ -97,6 +97,9 @@ class MessageServiceHotPathTest {
     @Mock
     private PendingStatusEventService pendingStatusEventService;
 
+    @Mock
+    private MessageStateOutboxService messageStateOutboxService;
+
     private MessageServiceImpl messageService;
 
     @BeforeEach
@@ -123,12 +126,12 @@ class MessageServiceHotPathTest {
                 privateReadCursorMapper,
                 userProfileCache,
                 List.of(),
-                readEventKafkaTemplate,
-                statusChangeEventKafkaTemplate,
                 hotConversationReadService,
                 hotRecentMessageReadService,
                 hotMessageLookupService,
-                orchestrator
+                orchestrator,
+                pendingStatusEventService,
+                messageStateOutboxService
         );
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         ReflectionTestUtils.setField(messageService, "defaultSystemSenderId", 0L);

@@ -3,16 +3,70 @@ package com.im.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.im.message.entity.Message;
 import lombok.Data;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Delete;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
+import lombok.EqualsAndHashCode;
+import org.apache.ibatis.annotations.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper
 public interface MessageMapper extends BaseMapper<Message> {
+
+    @Insert({
+            "<script>",
+            "INSERT INTO messages (",
+            "  id, sender_id, receiver_id, group_id, client_message_id, message_type, content, media_url, media_size, media_name,",
+            "  thumbnail_url, duration, location_info, status, is_group_chat, reply_to_message_id, created_time, updated_time",
+            ") VALUES",
+            "<foreach collection='messages' item='item' separator=','>",
+            "(",
+            "  #{item.id},",
+            "  #{item.senderId},",
+            "  #{item.receiverId,jdbcType=BIGINT},",
+            "  #{item.groupId,jdbcType=BIGINT},",
+            "  #{item.clientMessageId,jdbcType=VARCHAR},",
+            "  #{item.messageType,typeHandler=com.im.typehandler.MessageTypeTypeHandler,jdbcType=INTEGER},",
+            "  #{item.content,jdbcType=LONGVARCHAR},",
+            "  #{item.mediaUrl,jdbcType=VARCHAR},",
+            "  #{item.mediaSize,jdbcType=BIGINT},",
+            "  #{item.mediaName,jdbcType=VARCHAR},",
+            "  #{item.thumbnailUrl,jdbcType=VARCHAR},",
+            "  #{item.duration,jdbcType=INTEGER},",
+            "  #{item.locationInfo,jdbcType=LONGVARCHAR},",
+            "  #{item.status},",
+            "  #{item.isGroupChat,jdbcType=TINYINT},",
+            "  #{item.replyToMessageId,jdbcType=BIGINT},",
+            "  #{item.createdTime,jdbcType=TIMESTAMP},",
+            "  #{item.updatedTime,jdbcType=TIMESTAMP}",
+            ")",
+            "</foreach>",
+            "ON DUPLICATE KEY UPDATE id = id",
+            "</script>"
+    })
+    int batchUpsertIdempotent(@Param("messages") List<Message> messages);
+
+    @Select({
+            "<script>",
+            "SELECT id FROM messages",
+            "WHERE id IN",
+            "<foreach collection='ids' item='id' open='(' separator=',' close=')'>",
+            "  #{id}",
+            "</foreach>",
+            "</script>"
+    })
+    List<Long> selectExistingMessageIds(@Param("ids") List<Long> ids);
+
+    @Select({
+            "<script>",
+            "SELECT sender_id AS senderId, client_message_id AS clientMessageId",
+            "FROM messages",
+            "WHERE",
+            "<foreach collection='keys' item='key' separator=' OR '>",
+            "  (sender_id = #{key.senderId} AND client_message_id = #{key.clientMessageId})",
+            "</foreach>",
+            "</script>"
+    })
+    List<SenderClientKey> selectExistingSenderClientKeys(@Param("keys") List<SenderClientKey> keys);
 
     @Select({
             "<script>",
@@ -156,6 +210,21 @@ public interface MessageMapper extends BaseMapper<Message> {
         private Long senderId;
         private Long groupId;
         private Long cnt;
+    }
+
+    @Data
+    @EqualsAndHashCode
+    class SenderClientKey {
+        private Long senderId;
+        private String clientMessageId;
+
+        public SenderClientKey() {
+        }
+
+        public SenderClientKey(Long senderId, String clientMessageId) {
+            this.senderId = senderId;
+            this.clientMessageId = clientMessageId;
+        }
     }
 }
 

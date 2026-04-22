@@ -24,6 +24,7 @@ import org.redisson.api.RedissonClient;
 import org.slf4j.LoggerFactory;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.io.IOException;
@@ -34,6 +35,7 @@ import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -71,6 +73,9 @@ class ImServiceImplTest {
         ReflectionTestUtils.setField(imService, "presenceOfflineGraceMs", 0L);
         ReflectionTestUtils.setField(imService, "heartbeatTimeoutMs", 90000L);
         ReflectionTestUtils.setField(imService, "sendDispatchTimeoutMs", 1000L);
+        ReflectionTestUtils.setField(imService, "outboundMailboxCapacity", 8);
+        ReflectionTestUtils.setField(imService, "outboundSendFailureThreshold", 3);
+        ReflectionTestUtils.setField(imService, "outboundSendTimeoutThreshold", 3);
 
         lenient().when(nodeIdentity.getInstanceId()).thenReturn("im-node-1");
         lenient().when(redissonClient.getTopic("im:presence:broadcast")).thenReturn(presenceTopic);
@@ -200,13 +205,18 @@ class ImServiceImplTest {
     }
 
     @Test
-    void pushMessageToSession_shouldUnregisterOnlyFailedSessionWhenSendFails() throws Exception {
+    void pushMessageToSession_shouldOnlyRemoveSessionAfterConsecutiveSendFailuresReachThreshold() throws Exception {
+        ReflectionTestUtils.setField(imService, "outboundSendFailureThreshold", 2);
         WebSocketSession failingSession = mockOpenSession("session-1");
         WebSocketSession healthySession = mockOpenSession("session-2");
         imService.registerSession("1", UserSession.builder().webSocketSession(failingSession).build());
         imService.registerSession("1", UserSession.builder().webSocketSession(healthySession).build());
         clearInvocations(routeRegistry, failingSession, healthySession, presenceTransitionDeduplicator);
-        doThrow(new IllegalStateException("send busy")).when(failingSession).sendMessage(any());
+        AtomicInteger failureCount = new AtomicInteger();
+        doAnswer(invocation -> {
+            failureCount.incrementAndGet();
+            throw new IOException("send busy");
+        }).when(failingSession).sendMessage(any());
         MessageDTO message = MessageDTO.builder()
                 .senderId(2L)
                 .receiverId(1L)
@@ -214,9 +224,17 @@ class ImServiceImplTest {
                 .content("hello")
                 .build();
 
-        boolean success = imService.pushMessageToSession(message, "session-1");
+        assertTrue(imService.pushMessageToSession(message, "session-1"));
+        awaitCondition(() -> failureCount.get() >= 1, 2_000L);
 
-        assertFalse(success);
+        assertTrue(imService.isSessionActive("1", "session-2"));
+        assertTrue(imService.isSessionActive("1", "session-1"));
+        verify(failingSession, never()).close(any(CloseStatus.class));
+        verify(routeRegistry, never()).removeLocalRoute(anyString(), anyString());
+
+        assertTrue(imService.pushMessageToSession(message, "session-1"));
+        awaitCondition(() -> !imService.isSessionActive("1", "session-1"), 2_000L);
+
         verify(failingSession).close(argThat(status -> status.getCode() == CloseStatus.SESSION_NOT_RELIABLE.getCode()
                 && WebSocketErrorSemantics.SESSION_ERROR_CODE.equals(status.getReason())));
         verify(healthySession, never()).close(any(CloseStatus.class));
@@ -226,8 +244,9 @@ class ImServiceImplTest {
         verify(presenceTransitionDeduplicator, never()).tryTransition(eq("1"), eq(UserStatus.OFFLINE));
         assertFalse(imService.isSessionActive("1", "session-1"));
         assertTrue(imService.isSessionActive("1", "session-2"));
-        assertEquals(1.0, pushCount("failure", "MESSAGE"));
-        assertEquals(1L, meterRegistry.get("im.websocket.push.duration")
+        awaitCondition(() -> pushCount("failure", "MESSAGE") >= 2.0, 2_000L);
+        assertEquals(2.0, pushCount("failure", "MESSAGE"));
+        assertEquals(2L, meterRegistry.get("im.websocket.push.duration")
                 .tag("result", "failure")
                 .tag("type", "MESSAGE")
                 .timer()
@@ -282,12 +301,11 @@ class ImServiceImplTest {
     }
 
     @Test
-    void pushMessageToSession_shouldCleanupMapsAndRouteRegistryWhenSendThrowsIOException() throws Exception {
-        when(routeRegistry.isUserGloballyOnline("1")).thenReturn(false, true);
+    void pushMessageToSession_shouldCleanupMapsAndRouteRegistryAfterFailureThresholdReached() throws Exception {
+        ReflectionTestUtils.setField(imService, "outboundSendFailureThreshold", 2);
         WebSocketSession failingSession = mockOpenSession("session-1");
         imService.registerSession("1", UserSession.builder().webSocketSession(failingSession).build());
         clearInvocations(routeRegistry, failingSession, presenceTopic, presenceTransitionDeduplicator);
-        when(routeRegistry.isUserGloballyOnline("1")).thenReturn(true, false);
         doThrow(new IOException("broken pipe")).when(failingSession).sendMessage(any());
 
         MessageDTO message = MessageDTO.builder()
@@ -297,9 +315,13 @@ class ImServiceImplTest {
                 .content("hello")
                 .build();
 
-        boolean success = imService.pushMessageToSession(message, "session-1");
+        assertTrue(imService.pushMessageToSession(message, "session-1"));
+        awaitCondition(() -> pushCount("failure", "MESSAGE") >= 1.0, 2_000L);
+        assertTrue(imService.isSessionActive("1", "session-1"));
 
-        assertFalse(success);
+        assertTrue(imService.pushMessageToSession(message, "session-1"));
+        awaitCondition(() -> !imService.isSessionActive("1", "session-1"), 2_000L);
+
         verify(failingSession).close(argThat(status -> status.getCode() == CloseStatus.SESSION_NOT_RELIABLE.getCode()
                 && WebSocketErrorSemantics.SESSION_ERROR_CODE.equals(status.getReason())));
         verify(routeRegistry).removeLocalRoute("1", "im-node-1");
@@ -311,6 +333,138 @@ class ImServiceImplTest {
                 (Map<String, Set<String>>) ReflectionTestUtils.getField(imService, "sessionIdsByUser");
         assertNotNull(sessionIdsByUser);
         assertFalse(sessionIdsByUser.containsKey("1"));
+    }
+
+    @Test
+    void pushMessageToSession_shouldPreservePerSessionMessageOrder() throws Exception {
+        WebSocketSession session = mockOpenSession("session-1");
+        CopyOnWriteArrayList<String> payloads = new CopyOnWriteArrayList<>();
+        CountDownLatch sentLatch = new CountDownLatch(2);
+        doAnswer(invocation -> {
+            TextMessage textMessage = invocation.getArgument(0);
+            payloads.add(textMessage.getPayload());
+            sentLatch.countDown();
+            return null;
+        }).when(session).sendMessage(any());
+        imService.registerSession("1", UserSession.builder().webSocketSession(session).build());
+
+        MessageDTO first = MessageDTO.builder()
+                .id(1L)
+                .senderId(2L)
+                .receiverId(1L)
+                .messageType(MessageType.TEXT)
+                .content("first")
+                .build();
+        MessageDTO second = MessageDTO.builder()
+                .id(2L)
+                .senderId(2L)
+                .receiverId(1L)
+                .messageType(MessageType.TEXT)
+                .content("second")
+                .build();
+
+        assertTrue(imService.pushMessageToSession(first, "session-1"));
+        assertTrue(imService.pushMessageToSession(second, "session-1"));
+        assertTrue(sentLatch.await(2, TimeUnit.SECONDS));
+
+        assertEquals(2, payloads.size());
+        assertTrue(payloads.get(0).contains("\"content\":\"first\""));
+        assertTrue(payloads.get(1).contains("\"content\":\"second\""));
+    }
+
+    @Test
+    void pushMessageToSession_shouldNotKickHealthySessionWhenMailboxIsTemporarilyFull() throws Exception {
+        ReflectionTestUtils.setField(imService, "outboundMailboxCapacity", 1);
+        WebSocketSession session = mockOpenSession("session-1");
+        CountDownLatch firstSendEntered = new CountDownLatch(1);
+        CountDownLatch releaseFirstSend = new CountDownLatch(1);
+        CountDownLatch secondSendCompleted = new CountDownLatch(1);
+        AtomicInteger sendCount = new AtomicInteger();
+        doAnswer(invocation -> {
+            int current = sendCount.incrementAndGet();
+            if (current == 1) {
+                firstSendEntered.countDown();
+                await(releaseFirstSend);
+            } else {
+                secondSendCompleted.countDown();
+            }
+            return null;
+        }).when(session).sendMessage(any());
+        imService.registerSession("1", UserSession.builder().webSocketSession(session).build());
+
+        MessageDTO first = MessageDTO.builder().senderId(2L).receiverId(1L).messageType(MessageType.TEXT).content("first").build();
+        MessageDTO second = MessageDTO.builder().senderId(2L).receiverId(1L).messageType(MessageType.TEXT).content("second").build();
+        MessageDTO third = MessageDTO.builder().senderId(2L).receiverId(1L).messageType(MessageType.TEXT).content("third").build();
+
+        assertTrue(imService.pushMessageToSession(first, "session-1"));
+        assertTrue(firstSendEntered.await(2, TimeUnit.SECONDS));
+        assertTrue(imService.pushMessageToSession(second, "session-1"));
+        assertFalse(imService.pushMessageToSession(third, "session-1"));
+        assertTrue(imService.isSessionActive("1", "session-1"));
+        verify(session, never()).close(any(CloseStatus.class));
+
+        releaseFirstSend.countDown();
+        assertTrue(secondSendCompleted.await(2, TimeUnit.SECONDS));
+        assertTrue(imService.isSessionActive("1", "session-1"));
+    }
+
+    @Test
+    void broadcastOnlineStatus_shouldAllowBusinessMessageThroughBroadcastPressure() throws Exception {
+        ReflectionTestUtils.setField(imService, "outboundMailboxCapacity", 2);
+        WebSocketSession session = mockOpenSession("session-1");
+        CountDownLatch firstBroadcastEntered = new CountDownLatch(1);
+        CountDownLatch releaseFirstBroadcast = new CountDownLatch(1);
+        CopyOnWriteArrayList<String> payloads = new CopyOnWriteArrayList<>();
+        doAnswer(invocation -> {
+            TextMessage textMessage = invocation.getArgument(0);
+            payloads.add(textMessage.getPayload());
+            if (payloads.size() == 1) {
+                firstBroadcastEntered.countDown();
+                await(releaseFirstBroadcast);
+            }
+            return null;
+        }).when(session).sendMessage(any());
+        imService.registerSession("1", UserSession.builder().webSocketSession(session).build());
+
+        imService.broadcastOnlineStatus("2", UserStatus.ONLINE, "t1");
+        assertTrue(firstBroadcastEntered.await(2, TimeUnit.SECONDS));
+        imService.broadcastOnlineStatus("2", UserStatus.OFFLINE, "t2");
+        imService.broadcastOnlineStatus("2", UserStatus.ONLINE, "t3");
+
+        MessageDTO business = MessageDTO.builder()
+                .id(9L)
+                .senderId(2L)
+                .receiverId(1L)
+                .messageType(MessageType.TEXT)
+                .content("priority-message")
+                .build();
+        assertTrue(imService.pushMessageToSession(business, "session-1"));
+
+        releaseFirstBroadcast.countDown();
+        awaitCondition(() -> payloads.size() >= 3, 2_000L);
+        Thread.sleep(100L);
+
+        assertEquals(3, payloads.size());
+        assertTrue(payloads.get(0).contains("\"type\":\"ONLINE_STATUS\""));
+        assertTrue(payloads.get(1).contains("\"type\":\"ONLINE_STATUS\""));
+        assertTrue(payloads.get(2).contains("\"type\":\"MESSAGE\""));
+        assertTrue(payloads.get(2).contains("priority-message"));
+    }
+
+    @Test
+    void unregisterSession_shouldCleanupOutboundMailbox() throws Exception {
+        WebSocketSession session = mockOpenSession("session-1");
+        imService.registerSession("1", UserSession.builder().webSocketSession(session).build());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> outboundMailboxes =
+                (Map<String, Object>) ReflectionTestUtils.getField(imService, "outboundMailboxes");
+        assertNotNull(outboundMailboxes);
+        assertTrue(outboundMailboxes.containsKey("session-1"));
+
+        assertTrue(imService.unregisterSession("1", "session-1", CloseStatus.NORMAL));
+
+        assertFalse(outboundMailboxes.containsKey("session-1"));
     }
 
     @Test
@@ -551,6 +705,22 @@ class ImServiceImplTest {
             Thread.currentThread().interrupt();
             throw new AssertionError("Interrupted while waiting for latch", e);
         }
+    }
+
+    private void awaitCondition(BooleanSupplier condition, long timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            try {
+                Thread.sleep(20L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError("Interrupted while waiting for condition", e);
+            }
+        }
+        assertTrue(condition.getAsBoolean(), "Condition was not met within timeout");
     }
 
     private void assertGaugeValue(String meterName, double expectedValue) {

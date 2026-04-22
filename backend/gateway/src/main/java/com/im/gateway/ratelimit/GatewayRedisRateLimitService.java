@@ -3,6 +3,7 @@ package com.im.gateway.ratelimit;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cloud.gateway.support.ServerWebExchangeUtils;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -11,23 +12,16 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ServerWebExchange;
-import org.springframework.cloud.gateway.support.ServerWebExchangeUtils;
-
 import reactor.core.publisher.Mono;
 
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 @Component
 @Slf4j
 public class GatewayRedisRateLimitService {
 
-    private static final RedisScript<Long> TOKEN_BUCKET_SCRIPT = script("ratelimit/token_bucket.lua");
-    private static final RedisScript<Long> CONCURRENCY_ACQUIRE_SCRIPT = script("ratelimit/concurrency_acquire.lua");
-    private static final RedisScript<Long> CONCURRENCY_RELEASE_SCRIPT = script("ratelimit/concurrency_release.lua");
+    private static final RedisScript<String> RULE_EVALUATE_SCRIPT = script("ratelimit/rule_evaluate.lua", String.class);
+    private static final RedisScript<Long> CONCURRENCY_RELEASE_SCRIPT = script("ratelimit/concurrency_release.lua", Long.class);
 
     private final ReactiveStringRedisTemplate redisTemplate;
     private final MeterRegistry meterRegistry;
@@ -68,84 +62,92 @@ public class GatewayRedisRateLimitService {
                 || !inGray(rule.getGrayPercent(), rule.getGrayBy(), context)) {
             return Mono.just(current);
         }
-
-        Mono<GatewayRateLimitEvaluation> afterQps = currentQps(rule, context)
-                .flatMap(allowed -> {
-                    if (allowed) {
-                        recordDecision(properties, rule, "allow", "qps");
-                        return Mono.just(current);
-                    }
-                    recordDecision(properties, rule, properties.getMode() == GatewayRateLimitProperties.Mode.SHADOW
-                            ? "shadow_reject" : "reject", "qps");
-                    return Mono.just(current.reject(rule.getId(), "QPS", properties.getMode() == GatewayRateLimitProperties.Mode.SHADOW));
-                });
-
-        return afterQps.flatMap(state -> {
-            if (state.rejected() || rule.getMaxConcurrency() <= 0) {
-                return Mono.just(state);
+        boolean qpsEnabled = rule.getReplenishRate() > 0 && rule.getBurstCapacity() > 0;
+        boolean concurrencyEnabled = rule.getMaxConcurrency() > 0;
+        String baseKey = baseKey(rule, context);
+        if (!StringUtils.hasText(baseKey)) {
+            recordDecision(properties, rule, "allow", "qps");
+            if (!concurrencyEnabled) {
+                return Mono.just(current);
             }
-            return acquireConcurrency(rule, context)
-                    .map(permit -> {
-                        if (permit.allowed()) {
-                            recordDecision(properties, rule, "allow", "concurrency");
-                            return state.withPermit(permit);
-                        }
+            recordDecision(properties, rule, "allow", "concurrency");
+            return Mono.just(current.withPermit(ConcurrencyPermit.allowed(null, null, Mono.empty())));
+        }
+        if (!qpsEnabled && !concurrencyEnabled) {
+            recordDecision(properties, rule, "allow", "qps");
+            return Mono.just(current);
+        }
+
+        return evaluateRuleAtomically(rule, baseKey)
+                .map(outcome -> {
+                    if ("QPS".equals(outcome.reason())) {
+                        recordDecision(properties, rule, properties.getMode() == GatewayRateLimitProperties.Mode.SHADOW
+                                ? "shadow_reject" : "reject", "qps");
+                        return current.reject(rule.getId(), "QPS", properties.getMode() == GatewayRateLimitProperties.Mode.SHADOW);
+                    }
+
+                    recordDecision(properties, rule, "allow", "qps");
+                    if (!concurrencyEnabled) {
+                        return current;
+                    }
+                    if ("CONCURRENCY".equals(outcome.reason())) {
                         recordDecision(properties, rule, properties.getMode() == GatewayRateLimitProperties.Mode.SHADOW
                                 ? "shadow_reject" : "reject", "concurrency");
-                        return state.reject(rule.getId(), "CONCURRENCY", properties.getMode() == GatewayRateLimitProperties.Mode.SHADOW);
-                    });
-        });
+                        return current.reject(rule.getId(), "CONCURRENCY", properties.getMode() == GatewayRateLimitProperties.Mode.SHADOW);
+                    }
+
+                    recordDecision(properties, rule, "allow", "concurrency");
+                    return outcome.permit().allowed() ? current.withPermit(outcome.permit()) : current;
+                });
     }
 
-    private Mono<Boolean> currentQps(GatewayRateLimitProperties.Rule rule, GatewayRequestContext context) {
-        if (rule.getReplenishRate() <= 0 || rule.getBurstCapacity() <= 0) {
-            return Mono.just(true);
-        }
-        String baseKey = baseKey(rule, context);
-        if (!StringUtils.hasText(baseKey)) {
-            return Mono.just(true);
-        }
-        List<String> keys = List.of(baseKey + ":tokens", baseKey + ":ts");
+    private Mono<RuleEvaluationOutcome> evaluateRuleAtomically(GatewayRateLimitProperties.Rule rule, String baseKey) {
+        String concurrencyKey = baseKey + ":concurrency";
+        String permitId = rule.getMaxConcurrency() > 0 ? UUID.randomUUID().toString() : "";
+        List<String> keys = List.of(
+                baseKey + ":tokens",
+                baseKey + ":ts",
+                concurrencyKey
+        );
         List<String> args = List.of(
-                String.valueOf(rule.getReplenishRate()),
-                String.valueOf(rule.getBurstCapacity()),
+                rule.getReplenishRate() > 0 && rule.getBurstCapacity() > 0 ? "1" : "0",
+                String.valueOf(Math.max(0, rule.getReplenishRate())),
+                String.valueOf(Math.max(0, rule.getBurstCapacity())),
                 String.valueOf(Math.max(1, rule.getRequestedTokens())),
+                rule.getMaxConcurrency() > 0 ? "1" : "0",
+                String.valueOf(Math.max(0, rule.getMaxConcurrency())),
+                String.valueOf(Math.max(1, rule.getConcurrencyTtlSeconds())),
+                permitId,
                 String.valueOf(System.currentTimeMillis())
         );
-        return timeRedis("token_bucket", redisTemplate.execute(TOKEN_BUCKET_SCRIPT, keys, args)
+        return timeRedis("rule_evaluate", redisTemplate.execute(RULE_EVALUATE_SCRIPT, keys, args)
                 .next()
-                .defaultIfEmpty(0L)
-                .map(result -> result != null && result == 1L));
+                .defaultIfEmpty("0|UNKNOWN|0|")
+                .map(raw -> toRuleOutcome(raw, concurrencyKey)));
     }
 
-    private Mono<ConcurrencyPermit> acquireConcurrency(GatewayRateLimitProperties.Rule rule, GatewayRequestContext context) {
-        String baseKey = baseKey(rule, context);
-        if (!StringUtils.hasText(baseKey)) {
-            return Mono.just(ConcurrencyPermit.allowed(null, Mono.empty()));
+    private RuleEvaluationOutcome toRuleOutcome(String raw, String concurrencyKey) {
+        String[] parts = raw == null ? new String[0] : raw.split("\\|", 4);
+        boolean allowed = parts.length > 0 && "1".equals(parts[0]);
+        String reason = parts.length > 1 && StringUtils.hasText(parts[1]) ? parts[1].trim() : "UNKNOWN";
+        boolean permitGranted = parts.length > 2 && "1".equals(parts[2]);
+        String permitId = parts.length > 3 && StringUtils.hasText(parts[3]) ? parts[3].trim() : "";
+        if (allowed && permitGranted && StringUtils.hasText(concurrencyKey) && StringUtils.hasText(permitId)) {
+            List<String> releaseKeys = List.of(concurrencyKey);
+            Mono<Void> release = Mono.defer(() -> timeRedis("concurrency_release",
+                    redisTemplate.execute(CONCURRENCY_RELEASE_SCRIPT, releaseKeys, List.of(permitId))
+                            .next()
+                            .onErrorResume(ex -> {
+                                log.warn("release concurrency permit failed: key={}, permitId={}", concurrencyKey, permitId, ex);
+                                return Mono.just(0L);
+                            })
+                            .then()));
+            return new RuleEvaluationOutcome(reason, ConcurrencyPermit.allowed(concurrencyKey, permitId, release));
         }
-        String key = baseKey + ":concurrency";
-        List<String> keys = List.of(key);
-        List<String> args = List.of(
-                String.valueOf(rule.getMaxConcurrency()),
-                String.valueOf(Math.max(1, rule.getConcurrencyTtlSeconds()))
-        );
-        return timeRedis("concurrency_acquire", redisTemplate.execute(CONCURRENCY_ACQUIRE_SCRIPT, keys, args)
-                .next()
-                .defaultIfEmpty(0L)
-                .map(result -> {
-                    if (result != null && result == 1L) {
-                        Mono<Void> release = timeRedis("concurrency_release",
-                                redisTemplate.execute(CONCURRENCY_RELEASE_SCRIPT, keys, List.of())
-                                        .next()
-                                        .onErrorResume(ex -> {
-                                            log.warn("release concurrency permit failed: key={}", key, ex);
-                                            return Mono.just(0L);
-                                        })
-                                        .then());
-                        return ConcurrencyPermit.allowed(key, release);
-                    }
-                    return ConcurrencyPermit.rejected(key);
-                }));
+        if (allowed) {
+            return new RuleEvaluationOutcome(reason, ConcurrencyPermit.allowed(null, null, Mono.empty()));
+        }
+        return new RuleEvaluationOutcome(reason, ConcurrencyPermit.rejected(concurrencyKey, permitId));
     }
 
     private <T> Mono<T> timeRedis(String operation, Mono<T> action) {
@@ -274,11 +276,14 @@ public class GatewayRedisRateLimitService {
         return StringUtils.hasText(value) ? value.trim() : "unknown";
     }
 
-    private static RedisScript<Long> script(String path) {
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+    private static <T> RedisScript<T> script(String path, Class<T> resultType) {
+        DefaultRedisScript<T> script = new DefaultRedisScript<>();
         script.setLocation(new ClassPathResource(path));
-        script.setResultType(Long.class);
+        script.setResultType(resultType);
         return script;
+    }
+
+    private record RuleEvaluationOutcome(String reason, ConcurrencyPermit permit) {
     }
 
     public record GatewayRateLimitEvaluation(
@@ -308,20 +313,24 @@ public class GatewayRedisRateLimitService {
             }
             List<Mono<Void>> releases = permits.stream()
                     .filter(Objects::nonNull)
-                    .filter(ConcurrencyPermit::allowed)
+                    .filter(ConcurrencyPermit::releasable)
                     .map(ConcurrencyPermit::release)
                     .toList();
             return releases.isEmpty() ? Mono.empty() : Mono.whenDelayError(releases);
         }
     }
 
-    public record ConcurrencyPermit(boolean allowed, String key, Mono<Void> release) {
-        static ConcurrencyPermit allowed(String key, Mono<Void> release) {
-            return new ConcurrencyPermit(true, key, release == null ? Mono.empty() : release);
+    public record ConcurrencyPermit(boolean allowed, String key, String permitId, Mono<Void> release) {
+        static ConcurrencyPermit allowed(String key, String permitId, Mono<Void> release) {
+            return new ConcurrencyPermit(true, key, permitId, release == null ? Mono.empty() : release);
         }
 
-        static ConcurrencyPermit rejected(String key) {
-            return new ConcurrencyPermit(false, key, Mono.empty());
+        static ConcurrencyPermit rejected(String key, String permitId) {
+            return new ConcurrencyPermit(false, key, permitId, Mono.empty());
+        }
+
+        boolean releasable() {
+            return allowed && StringUtils.hasText(key) && StringUtils.hasText(permitId);
         }
     }
 

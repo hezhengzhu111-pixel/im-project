@@ -143,6 +143,25 @@ CREATE TABLE IF NOT EXISTS message_outbox (
   KEY idx_message_outbox_conversation_time (conversation_id, created_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='message durable outbox table';
 
+CREATE TABLE IF NOT EXISTS message_state_outbox (
+  id BIGINT NOT NULL COMMENT 'state outbox id',
+  idempotency_key VARCHAR(160) NOT NULL COMMENT 'semantic idempotency key',
+  event_type VARCHAR(32) NOT NULL COMMENT 'state event type: READ/STATUS_CHANGE',
+  topic VARCHAR(100) NOT NULL COMMENT 'kafka topic',
+  routing_key VARCHAR(128) NOT NULL COMMENT 'kafka routing key',
+  payload_json LONGTEXT NOT NULL COMMENT 'serialized state event payload',
+  dispatch_status VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT 'dispatch stage: PENDING/DISPATCHING/RETRY/DISPATCHED',
+  attempt_count INT NOT NULL DEFAULT 0 COMMENT 'dispatch attempt count',
+  next_attempt_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'next dispatch attempt time',
+  last_error VARCHAR(512) NULL COMMENT 'last dispatch error summary',
+  dispatched_time DATETIME NULL COMMENT 'last successful kafka dispatch time',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created time',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated time',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_message_state_outbox_idempotency (idempotency_key),
+  KEY idx_message_state_outbox_dispatch_status_time (dispatch_status, next_attempt_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='durable outbox for read and status state events';
+
 CREATE TABLE IF NOT EXISTS messages (
   id BIGINT NOT NULL COMMENT '消息ID（雪花ID）',
   sender_id BIGINT NOT NULL COMMENT '发送者用户ID',

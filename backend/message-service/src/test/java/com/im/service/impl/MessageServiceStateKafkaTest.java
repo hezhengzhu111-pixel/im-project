@@ -29,7 +29,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -94,6 +93,9 @@ class MessageServiceStateKafkaTest {
     @Mock
     private PendingStatusEventService pendingStatusEventService;
 
+    @Mock
+    private MessageStateOutboxService messageStateOutboxService;
+
     private MessageServiceImpl messageService;
 
     @BeforeEach
@@ -120,83 +122,73 @@ class MessageServiceStateKafkaTest {
                 privateReadCursorMapper,
                 userProfileCache,
                 List.of(),
-                readEventKafkaTemplate,
-                statusChangeEventKafkaTemplate,
                 hotConversationReadService,
                 hotRecentMessageReadService,
                 hotMessageLookupService,
-                orchestrator
+                orchestrator,
+                pendingStatusEventService,
+                messageStateOutboxService
         );
         ReflectionTestUtils.setField(messageService, "readTopic", "im-read-topic");
         ReflectionTestUtils.setField(messageService, "statusTopic", "im-status-topic");
-        ReflectionTestUtils.setField(messageService, "kafkaSendTimeoutMs", 2000L);
     }
 
     @Test
-    void markAsReadShouldPublishReadEventUsingRedisLatestVisibleMessageId() throws Exception {
+    void markAsReadShouldApplyLocalStateAndEnqueueOutboxUsingRedisLatestVisibleMessageId() {
         when(userServiceFeignClient.exists(1L)).thenReturn(true);
         when(userServiceFeignClient.exists(2L)).thenReturn(true);
         when(userProfileCache.isFriend(1L, 2L)).thenReturn(true);
         when(hotRecentMessageReadService.resolveLatestVisibleMessageId("p_1_2")).thenReturn(200L);
 
-        CompletableFuture<Object> future = CompletableFuture.completedFuture(null);
-        when(readEventKafkaTemplate.send(eq("im-read-topic"), eq("p_1_2"), any(ReadEvent.class)))
-                .thenReturn((CompletableFuture) future);
-
         messageService.markAsRead(1L, "1_2");
 
         ArgumentCaptor<ReadEvent> eventCaptor = ArgumentCaptor.forClass(ReadEvent.class);
-        verify(readEventKafkaTemplate).send(eq("im-read-topic"), eq("p_1_2"), eventCaptor.capture());
+        verify(messageStateOutboxService).enqueueReadEvent(eventCaptor.capture(), eq("im-read-topic"), eq("p_1_2"));
         ReadEvent event = eventCaptor.getValue();
         assertEquals(1L, event.getUserId());
         assertEquals(2L, event.getTargetUserId());
         assertEquals("p_1_2", event.getConversationId());
         assertEquals(200L, event.getLastReadMessageId());
         verify(hotRecentMessageReadService).resolveLatestVisibleMessageId("p_1_2");
-        verify(messageMapper, never()).selectOne(any());
-        verify(messageMapper, never()).update(any(), any());
-        verify(groupReadCursorMapper, never()).updateById(any(com.im.message.entity.GroupReadCursor.class));
-        verify(privateReadCursorMapper, never()).updateById(any(com.im.message.entity.PrivateReadCursor.class));
+        verify(privateReadCursorMapper).insert(any(com.im.message.entity.PrivateReadCursor.class));
+        verify(conversationCacheUpdater).markConversationRead(any(ReadEvent.class));
+        verifyNoInteractions(readEventKafkaTemplate, statusChangeEventKafkaTemplate);
     }
 
     @Test
-    void markAsReadShouldNormalizeLegacyGroupConversationIdBeforePublishing() throws Exception {
+    void markAsReadShouldNormalizeLegacyGroupConversationIdBeforeEnqueueingOutbox() {
         when(userServiceFeignClient.exists(1L)).thenReturn(true);
         when(groupServiceFeignClient.exists(8L)).thenReturn(true);
         when(userProfileCache.isGroupMember(8L, 1L)).thenReturn(true);
         when(hotRecentMessageReadService.resolveLatestVisibleMessageId("g_8")).thenReturn(300L);
 
-        CompletableFuture<Object> future = CompletableFuture.completedFuture(null);
-        when(readEventKafkaTemplate.send(eq("im-read-topic"), eq("g_8"), any(ReadEvent.class)))
-                .thenReturn((CompletableFuture) future);
-
         messageService.markAsRead(1L, "group_8");
 
         ArgumentCaptor<ReadEvent> eventCaptor = ArgumentCaptor.forClass(ReadEvent.class);
-        verify(readEventKafkaTemplate).send(eq("im-read-topic"), eq("g_8"), eventCaptor.capture());
+        verify(messageStateOutboxService).enqueueReadEvent(eventCaptor.capture(), eq("im-read-topic"), eq("g_8"));
         ReadEvent event = eventCaptor.getValue();
         assertEquals("g_8", event.getConversationId());
         assertEquals(8L, event.getGroupId());
         assertEquals(300L, event.getLastReadMessageId());
         verify(hotRecentMessageReadService).resolveLatestVisibleMessageId("g_8");
+        verify(groupReadCursorMapper).insert(any(com.im.message.entity.GroupReadCursor.class));
+        verifyNoInteractions(readEventKafkaTemplate, statusChangeEventKafkaTemplate);
     }
 
     @Test
-    void recallMessageShouldSucceedForHotMessageBeforePersistenceAndPublishAfterHotUpdate() throws Exception {
+    void recallMessageShouldPersistPendingStatusAndEnqueueOutboxWithoutDirectKafkaSend() {
         Message storedMessage = privateMessage(300L, 1L, 2L, "hello");
         when(hotMessageLookupService.requireOwnedMessageForStatusChange(1L, 300L, false, false))
                 .thenReturn(storedMessage);
-
-        CompletableFuture<Object> future = CompletableFuture.completedFuture(null);
-        when(statusChangeEventKafkaTemplate.send(eq("im-status-topic"), eq("p_1_2"), any(StatusChangeEvent.class)))
-                .thenReturn((CompletableFuture) future);
+        when(messageMapper.selectById(300L)).thenReturn(null);
 
         MessageDTO result = messageService.recallMessage(1L, 300L);
 
-        InOrder inOrder = inOrder(conversationCacheUpdater, statusChangeEventKafkaTemplate);
+        InOrder inOrder = inOrder(conversationCacheUpdater, pendingStatusEventService, messageStateOutboxService);
         ArgumentCaptor<StatusChangeEvent> eventCaptor = ArgumentCaptor.forClass(StatusChangeEvent.class);
         inOrder.verify(conversationCacheUpdater).applyStatusChange(any(StatusChangeEvent.class));
-        inOrder.verify(statusChangeEventKafkaTemplate).send(eq("im-status-topic"), eq("p_1_2"), eventCaptor.capture());
+        inOrder.verify(pendingStatusEventService).store(any(StatusChangeEvent.class));
+        inOrder.verify(messageStateOutboxService).enqueueStatusChangeEvent(eventCaptor.capture(), eq("im-status-topic"), eq("p_1_2"));
         StatusChangeEvent event = eventCaptor.getValue();
         assertEquals(300L, event.getMessageId());
         assertEquals(Message.MessageStatus.RECALLED, event.getNewStatus());
@@ -204,34 +196,36 @@ class MessageServiceStateKafkaTest {
         assertEquals("RECALLED", event.getPayload().getStatus());
         assertEquals("RECALLED", result.getStatus());
         verify(hotMessageLookupService).requireOwnedMessageForStatusChange(1L, 300L, false, false);
-        verify(messageMapper, never()).selectById(300L);
-        verify(messageMapper, never()).update(any(), any());
+        verify(messageMapper).selectById(300L);
+        verify(messageMapper, never()).updateById(any(Message.class));
+        verifyNoInteractions(readEventKafkaTemplate, statusChangeEventKafkaTemplate);
     }
 
     @Test
-    void deleteMessageShouldSucceedForHotMessageBeforePersistenceAndPublishAfterHotUpdate() throws Exception {
+    void deleteMessageShouldUpdatePersistedStatusAndEnqueueOutboxWithoutDirectKafkaSend() {
         Message storedMessage = privateMessage(301L, 1L, 2L, "delete me");
         storedMessage.setStatus(Message.MessageStatus.RECALLED);
         when(hotMessageLookupService.requireOwnedMessageForStatusChange(1L, 301L, true, false))
                 .thenReturn(storedMessage);
-
-        CompletableFuture<Object> future = CompletableFuture.completedFuture(null);
-        when(statusChangeEventKafkaTemplate.send(eq("im-status-topic"), eq("p_1_2"), any(StatusChangeEvent.class)))
-                .thenReturn((CompletableFuture) future);
+        when(messageMapper.selectById(301L)).thenReturn(privateMessage(301L, 1L, 2L, "delete me"));
+        when(messageMapper.updateById(any(Message.class))).thenReturn(1);
 
         MessageDTO result = messageService.deleteMessage(1L, 301L);
 
-        InOrder inOrder = inOrder(conversationCacheUpdater, statusChangeEventKafkaTemplate);
+        InOrder inOrder = inOrder(conversationCacheUpdater, pendingStatusEventService, messageStateOutboxService);
         inOrder.verify(conversationCacheUpdater).applyStatusChange(any(StatusChangeEvent.class));
+        inOrder.verify(pendingStatusEventService).remove(301L, Message.MessageStatus.DELETED);
         ArgumentCaptor<StatusChangeEvent> eventCaptor = ArgumentCaptor.forClass(StatusChangeEvent.class);
-        inOrder.verify(statusChangeEventKafkaTemplate).send(eq("im-status-topic"), eq("p_1_2"), eventCaptor.capture());
+        inOrder.verify(messageStateOutboxService).enqueueStatusChangeEvent(eventCaptor.capture(), eq("im-status-topic"), eq("p_1_2"));
         StatusChangeEvent event = eventCaptor.getValue();
         assertEquals(301L, event.getMessageId());
         assertEquals(Message.MessageStatus.DELETED, event.getNewStatus());
         assertEquals("DELETED", result.getStatus());
         verify(hotMessageLookupService).requireOwnedMessageForStatusChange(1L, 301L, true, false);
-        verify(messageMapper, never()).selectById(301L);
-        verify(messageMapper, never()).update(any(), any());
+        verify(messageMapper).selectById(301L);
+        verify(messageMapper).updateById(any(Message.class));
+        verify(pendingStatusEventService, never()).store(any(StatusChangeEvent.class));
+        verifyNoInteractions(readEventKafkaTemplate, statusChangeEventKafkaTemplate);
     }
 
     private Message privateMessage(Long id, Long senderId, Long receiverId, String content) {

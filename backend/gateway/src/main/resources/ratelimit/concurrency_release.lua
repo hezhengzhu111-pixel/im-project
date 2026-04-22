@@ -1,9 +1,8 @@
 local key = KEYS[1]
-local current = tonumber(redis.call("get", key))
+local permit_id = ARGV[1]
 
-if current == nil or current <= 1 then
-    redis.call("del", key)
+if permit_id == nil or permit_id == "" then
     return 0
 end
 
-return redis.call("decr", key)
+return redis.call("zrem", key, permit_id)

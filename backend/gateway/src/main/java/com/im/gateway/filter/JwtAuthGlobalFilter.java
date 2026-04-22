@@ -37,7 +37,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Component
 @Slf4j
@@ -63,6 +65,8 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private final WebClient webClient;
     private final Duration authServiceTimeout;
     private final Cache<String, AuthenticatedSession> authResultCache;
+    private final JwtLocalTokenValidator jwtLocalTokenValidator;
+    private final ConcurrentHashMap<String, Mono<AuthenticatedSession>> inFlightAuthRequests;
 
     @Autowired(required = false)
     private MeterRegistry meterRegistry;
@@ -95,10 +99,12 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     public JwtAuthGlobalFilter(ObjectMapper objectMapper,
                                GlobalRateLimitSwitch globalRateLimitSwitch,
                                ObjectProvider<ReactorLoadBalancerExchangeFilterFunction> loadBalancerFilterProvider,
+                               JwtLocalTokenValidator jwtLocalTokenValidator,
                                @Value("${im.gateway.auth-service-url:http://127.0.0.1:8084}") String authServiceUrl,
                                @Value("${im.gateway.auth.request-timeout-ms:3000}") long requestTimeoutMs) {
         this(objectMapper,
                 globalRateLimitSwitch,
+                jwtLocalTokenValidator,
                 requestTimeoutMs,
                 buildWebClient(authServiceUrl, loadBalancerFilterProvider.getIfAvailable(), null));
     }
@@ -110,12 +116,14 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                         ExchangeFunction exchangeFunction) {
         this(objectMapper,
                 globalRateLimitSwitch,
+                null,
                 requestTimeoutMs,
                 buildWebClient(authServiceUrl, null, exchangeFunction));
     }
 
     private JwtAuthGlobalFilter(ObjectMapper objectMapper,
                                 GlobalRateLimitSwitch globalRateLimitSwitch,
+                                JwtLocalTokenValidator jwtLocalTokenValidator,
                                 long requestTimeoutMs,
                                 WebClient webClient) {
         this.objectMapper = objectMapper;
@@ -126,6 +134,8 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 .maximumSize(AUTH_CACHE_MAX_SIZE)
                 .expireAfterWrite(AUTH_CACHE_TTL)
                 .build();
+        this.jwtLocalTokenValidator = jwtLocalTokenValidator;
+        this.inFlightAuthRequests = new ConcurrentHashMap<>();
     }
 
     private static WebClient buildWebClient(String authServiceUrl,
@@ -258,17 +268,36 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             if (cachedSession != null) {
                 return Mono.just(mutateExchange(exchange, cachedSession));
             }
-            return resolveUserResource(context.userId())
-                    .map(userResource -> new AuthenticatedSession(context, userResource))
-                    .flatMap(session -> {
-                        authResultCache.put(token, session);
-                        return Mono.just(mutateExchange(exchange, session));
-                    });
+            return authenticateSessionSingleFlight(token, context)
+                    .map(session -> mutateExchange(exchange, session));
         });
     }
 
+    private Mono<AuthenticatedSession> authenticateSessionSingleFlight(String token, AuthContext context) {
+        return inFlightAuthRequests.computeIfAbsent(token, ignored -> buildInFlightAuthentication(token, context));
+    }
+
+    private Mono<AuthenticatedSession> buildInFlightAuthentication(String token, AuthContext context) {
+        AtomicReference<Mono<AuthenticatedSession>> inFlightReference = new AtomicReference<>();
+        Mono<AuthenticatedSession> inFlight = Mono.defer(() -> {
+                    AuthenticatedSession cachedSession = authResultCache.getIfPresent(token);
+                    if (cachedSession != null) {
+                        return Mono.just(cachedSession);
+                    }
+                    return resolveUserResource(context.userId())
+                            .map(userResource -> new AuthenticatedSession(context, userResource))
+                            .doOnNext(session -> authResultCache.put(token, session));
+                })
+                .doFinally(signalType -> inFlightAuthRequests.remove(token, inFlightReference.get()))
+                .cache();
+        inFlightReference.set(inFlight);
+        return inFlight;
+    }
+
     private AuthContext validateAccessTokenLocally(ServerWebExchange exchange, String token) {
-        JwtLocalValidationResult validation = JwtLocalTokenValidator.validateAccessToken(token, accessSecret);
+        JwtLocalValidationResult validation = jwtLocalTokenValidator != null
+                ? jwtLocalTokenValidator.validateAccessToken(token)
+                : JwtLocalTokenValidator.validateAccessToken(token, accessSecret);
         if (validation.status() == JwtLocalValidationStatus.VALID) {
             recordLocalValidation("valid");
             return new AuthContext(validation.userId(), validation.username());
