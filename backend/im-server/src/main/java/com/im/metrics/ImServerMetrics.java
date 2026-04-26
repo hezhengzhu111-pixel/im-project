@@ -19,6 +19,7 @@ public class ImServerMetrics {
             "origin_denied",
             "missing_ticket",
             "invalid_user",
+            "invalid_gateway_signature",
             "ticket_invalid",
             "ticket_mismatch",
             "consume_error",

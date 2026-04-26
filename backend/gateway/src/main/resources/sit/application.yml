@@ -6,9 +6,7 @@ spring:
     name: im-gateway
   config:
     import:
-      - optional:classpath:sit/application-mysql.yml
       - optional:classpath:sit/application-redis.yml
-      - optional:classpath:sit/application-kafka.yml
       - optional:classpath:sit/application-nacos.yml
   profiles:
     active: default
@@ -135,7 +133,6 @@ spring:
         wiretap: true
 
 jwt:
-  secret: ${JWT_SECRET:im-access-secret-im-access-secret-im-access-secret-im-access-secret}
   header: Authorization
   prefix: "Bearer "
 
@@ -157,9 +154,9 @@ im:
     auth:
       request-timeout-ms: ${IM_GATEWAY_AUTH_REQUEST_TIMEOUT_MS:3000}
       secret: ${IM_GATEWAY_AUTH_SECRET:im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret}
-      token-cache-ttl-seconds: ${IM_GATEWAY_AUTH_TOKEN_CACHE_TTL_SECONDS:10}
-      token-negative-cache-ttl-seconds: ${IM_GATEWAY_AUTH_TOKEN_NEGATIVE_CACHE_TTL_SECONDS:5}
-      user-resource-cache-ttl-seconds: ${IM_GATEWAY_AUTH_USER_RESOURCE_CACHE_TTL_SECONDS:15}
+    ws-auth-cache:
+      enabled: ${IM_GATEWAY_WS_AUTH_CACHE_ENABLED:true}
+      ttl-ms: ${IM_GATEWAY_WS_AUTH_CACHE_TTL_MS:5000}
     rate-limit:
       enabled: ${IM_GATEWAY_RATE_LIMIT_ENABLED:true}
       mode: ${IM_GATEWAY_RATE_LIMIT_MODE:ENFORCE}
@@ -198,17 +195,6 @@ im:
               burst-capacity: ${IM_GATEWAY_RATE_LIMIT_MESSAGE_BURST:60}
               max-concurrency: ${IM_GATEWAY_RATE_LIMIT_MESSAGE_CONCURRENCY:400}
               concurrency-ttl-seconds: ${IM_GATEWAY_RATE_LIMIT_MESSAGE_CONCURRENCY_TTL:5}
-  security:
-    token-revocation-check:
-      enabled: true
-  routing:
-    host:
-      auth: ${IM_ROUTE_AUTH_HOST:im-auth-service}
-      user: ${IM_ROUTE_USER_HOST:im-user-service}
-      group: ${IM_ROUTE_GROUP_HOST:im-group-service}
-      message: ${IM_ROUTE_MESSAGE_HOST:im-message-service}
-      file: ${IM_ROUTE_FILE_HOST:im-file-service}
-      imServer: ${IM_ROUTE_IM_SERVER_HOST:im-server}
 
 rate:
   limit:

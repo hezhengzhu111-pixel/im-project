@@ -9,6 +9,7 @@ import com.im.dto.request.ConsumeWsTicketRequest;
 import com.im.enums.CommonErrorCode;
 import com.im.feign.AuthServiceFeignClient;
 import com.im.metrics.ImServerMetrics;
+import com.im.util.AuthHeaderUtil;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +30,7 @@ import org.springframework.web.socket.WebSocketHandler;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -59,6 +61,9 @@ class WebSocketHandshakeInterceptorTest {
         ReflectionTestUtils.setField(interceptor, "wsTicketCookieSameSite", "Lax");
         ReflectionTestUtils.setField(interceptor, "wsTicketCookieSecure", "never");
         ReflectionTestUtils.setField(interceptor, "gatewayUserIdHeader", "X-User-Id");
+        ReflectionTestUtils.setField(interceptor, "gatewayUsernameHeader", "X-Username");
+        ReflectionTestUtils.setField(interceptor, "gatewayAuthSecret", "gateway-secret");
+        ReflectionTestUtils.setField(interceptor, "gatewayAuthMaxSkewMs", 300000L);
         ReflectionTestUtils.setField(interceptor, "allowBlankOrigin", false);
         ReflectionTestUtils.setField(interceptor, "allowQueryTicket", false);
         ReflectionTestUtils.setField(
@@ -88,9 +93,24 @@ class WebSocketHandshakeInterceptorTest {
         boolean result = interceptor.beforeHandshake(fixture.request(), fixture.response(), webSocketHandler, fixture.attributes());
 
         assertFalse(result);
-        assertError(fixture.servletResponse(), CommonErrorCode.INTERNAL_AUTH_REJECTED);
+        assertEquals(CommonErrorCode.INTERNAL_AUTH_REJECTED.getHttpStatus().value(), fixture.servletResponse().getStatus());
         verify(authServiceFeignClient, never()).consumeWsTicket(any());
         assertEquals(1.0, handshakeCount("failure", "invalid_user"));
+    }
+
+    @Test
+    void beforeHandshake_ForgedGatewayUserHeaderWithoutValidSignature_ShouldReject() throws Exception {
+        HandshakeFixture fixture = fixture();
+        fixture.servletRequest().setCookies(new Cookie("IM_WS_TICKET", "cookie-ticket"));
+        fixture.servletRequest().removeHeader("X-User-Id");
+        fixture.servletRequest().addHeader("X-User-Id", "999");
+
+        boolean result = interceptor.beforeHandshake(fixture.request(), fixture.response(), webSocketHandler, fixture.attributes());
+
+        assertFalse(result);
+        assertError(fixture.servletResponse(), CommonErrorCode.INTERNAL_AUTH_REJECTED);
+        verify(authServiceFeignClient, never()).consumeWsTicket(any());
+        assertEquals(1.0, handshakeCount("failure", "invalid_gateway_signature"));
     }
 
     @Test
@@ -272,7 +292,7 @@ class WebSocketHandshakeInterceptorTest {
     private HandshakeFixture fixture() {
         MockHttpServletRequest servletRequest = new MockHttpServletRequest("GET", "/websocket/123");
         servletRequest.addHeader(HttpHeaders.ORIGIN, "http://localhost");
-        servletRequest.addHeader("X-User-Id", "123");
+        addGatewayAuthHeaders(servletRequest, 123L, "alice");
         MockHttpServletResponse servletResponse = new MockHttpServletResponse();
         return new HandshakeFixture(
                 servletRequest,
@@ -281,6 +301,34 @@ class WebSocketHandshakeInterceptorTest {
                 new ServletServerHttpResponse(servletResponse),
                 new HashMap<>()
         );
+    }
+
+    private void addGatewayAuthHeaders(MockHttpServletRequest request, Long userId, String username) {
+        String userB64 = AuthHeaderUtil.base64UrlEncode("{\"id\":" + userId + ",\"username\":\"" + username + "\"}");
+        String permsB64 = AuthHeaderUtil.base64UrlEncode("[\"message:read\"]");
+        String dataB64 = AuthHeaderUtil.base64UrlEncode("{}");
+        String ts = String.valueOf(System.currentTimeMillis());
+        String nonce = UUID.randomUUID().toString();
+        String sign = AuthHeaderUtil.signHmacSha256(
+                "gateway-secret",
+                AuthHeaderUtil.buildSignedFields(
+                        String.valueOf(userId),
+                        username,
+                        userB64,
+                        permsB64,
+                        dataB64,
+                        ts,
+                        nonce
+                )
+        );
+        request.addHeader("X-User-Id", String.valueOf(userId));
+        request.addHeader("X-Username", username);
+        request.addHeader("X-Auth-User", userB64);
+        request.addHeader("X-Auth-Perms", permsB64);
+        request.addHeader("X-Auth-Data", dataB64);
+        request.addHeader("X-Auth-Ts", ts);
+        request.addHeader("X-Auth-Nonce", nonce);
+        request.addHeader("X-Auth-Sign", sign);
     }
 
     private void assertError(MockHttpServletResponse response, CommonErrorCode errorCode) throws Exception {

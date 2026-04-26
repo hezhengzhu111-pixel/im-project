@@ -1,9 +1,6 @@
 package com.im.controller;
 
-import com.im.dto.ApiResponse;
-import com.im.dto.TokenPairDTO;
-import com.im.dto.TokenParseResultDTO;
-import com.im.dto.WsTicketConsumeResultDTO;
+import com.im.dto.*;
 import com.im.dto.request.ConsumeWsTicketRequest;
 import com.im.dto.request.IssueTokenRequest;
 import com.im.exception.AuthServiceException;
@@ -18,6 +15,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -92,6 +92,54 @@ class AuthInternalControllerTest {
 
         AuthServiceException exception = assertThrows(AuthServiceException.class,
                 () -> controller.validateToken(httpRequest, null, "token"));
+        assertNotNull(exception.getErrorCode());
+        assertEquals("TOKEN_INVALID", exception.getErrorCode().getMessage());
+    }
+
+    @Test
+    void introspect_ValidToken_ShouldReturnGatewayIdentityData() {
+        TokenParseResultDTO parseResult = new TokenParseResultDTO();
+        parseResult.setValid(true);
+        parseResult.setExpired(false);
+        parseResult.setUserId(1L);
+        parseResult.setUsername("token-user");
+        parseResult.setIssuedAtEpochMs(100L);
+        parseResult.setExpiresAtEpochMs(100_000L);
+        parseResult.setJti("jti-1");
+
+        AuthUserResourceDTO resource = new AuthUserResourceDTO();
+        resource.setUserId(1L);
+        resource.setUsername("resource-user");
+        resource.setUserInfo(Map.of("nickname", "neo"));
+        resource.setResourcePermissions(List.of("message:read"));
+        resource.setDataScopes(Map.of("tenantId", 1));
+
+        when(authTokenService.parseAccessToken("token", false)).thenReturn(parseResult);
+        when(authTokenRevokeService.isTokenRevoked(eq("token"), any(TokenParseResultDTO.class))).thenReturn(false);
+        when(authUserResourceService.getOrLoad(1L)).thenReturn(resource);
+
+        ApiResponse<AuthIntrospectResultDTO> result = controller.introspect(httpRequest, null, "Bearer token");
+
+        assertTrue(result.getData().isValid());
+        assertFalse(result.getData().isExpired());
+        assertEquals(1L, result.getData().getUserId());
+        assertEquals("resource-user", result.getData().getUsername());
+        assertEquals(100_000L, result.getData().getExpiresAtEpochMs());
+        assertEquals(List.of("message:read"), result.getData().getResourcePermissions());
+    }
+
+    @Test
+    void introspect_RevokedToken_ShouldReject() {
+        TokenParseResultDTO parseResult = new TokenParseResultDTO();
+        parseResult.setValid(true);
+        parseResult.setExpired(false);
+        parseResult.setUserId(1L);
+
+        when(authTokenService.parseAccessToken("token", false)).thenReturn(parseResult);
+        when(authTokenRevokeService.isTokenRevoked(eq("token"), any(TokenParseResultDTO.class))).thenReturn(true);
+
+        AuthServiceException exception = assertThrows(AuthServiceException.class,
+                () -> controller.introspect(httpRequest, null, "token"));
         assertNotNull(exception.getErrorCode());
         assertEquals("TOKEN_INVALID", exception.getErrorCode().getMessage());
     }

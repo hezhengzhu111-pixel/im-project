@@ -66,6 +66,51 @@ public class AuthInternalController {
         return ApiResponse.success(result);
     }
 
+    @PostMapping("/introspect")
+    @Operation(summary = "Introspect access token", description = "Validate an access token and return gateway identity data")
+    public ApiResponse<AuthIntrospectResultDTO> introspect(HttpServletRequest httpRequest,
+                                                           @RequestHeader(value = "X-Check-Revoked", required = false) String checkRevokedHeader,
+                                                           @RequestBody String token) {
+        return ApiResponse.success(introspectToken(checkRevokedHeader, token));
+    }
+
+    @PostMapping("/ws-introspect")
+    @Operation(summary = "Introspect WebSocket token", description = "Validate a WebSocket access token and return gateway identity data")
+    public ApiResponse<AuthIntrospectResultDTO> wsIntrospect(HttpServletRequest httpRequest,
+                                                             @RequestHeader(value = "X-Check-Revoked", required = false) String checkRevokedHeader,
+                                                             @RequestBody String token) {
+        return ApiResponse.success(introspectToken(checkRevokedHeader, token));
+    }
+
+    private AuthIntrospectResultDTO introspectToken(String checkRevokedHeader, String token) {
+        String normalizedToken = normalizeBearerToken(token);
+        TokenParseResultDTO parseResult = authTokenService.parseAccessToken(normalizedToken, false);
+        boolean checkRevoked = checkRevokedHeader == null
+                ? tokenRevocationCheckEnabled
+                : Boolean.parseBoolean(checkRevokedHeader);
+        if (checkRevoked && parseResult != null && parseResult.isValid() && !parseResult.isExpired()
+                && authTokenRevokeService.isTokenRevoked(normalizedToken, parseResult)) {
+            throw new AuthServiceException(CommonErrorCode.TOKEN_INVALID);
+        }
+        ensureValidAccessToken(parseResult);
+
+        AuthUserResourceDTO resource = authUserResourceService.getOrLoad(parseResult.getUserId());
+        AuthIntrospectResultDTO result = new AuthIntrospectResultDTO();
+        result.setValid(true);
+        result.setExpired(false);
+        result.setUserId(parseResult.getUserId());
+        result.setUsername(resolveUsername(parseResult, resource));
+        result.setIssuedAtEpochMs(parseResult.getIssuedAtEpochMs());
+        result.setExpiresAtEpochMs(parseResult.getExpiresAtEpochMs());
+        result.setJti(parseResult.getJti());
+        if (resource != null) {
+            result.setUserInfo(resource.getUserInfo());
+            result.setResourcePermissions(resource.getResourcePermissions());
+            result.setDataScopes(resource.getDataScopes());
+        }
+        return result;
+    }
+
     @PostMapping("/check-permission")
     @Operation(summary = "Check permission", description = "Check whether the user has a target permission")
     public ApiResponse<PermissionCheckResultDTO> checkPermission(HttpServletRequest httpRequest,
@@ -119,5 +164,12 @@ public class AuthInternalController {
         if (!result.isValid()) {
             throw new AuthServiceException(CommonErrorCode.TOKEN_INVALID);
         }
+    }
+
+    private String resolveUsername(TokenParseResultDTO parseResult, AuthUserResourceDTO resource) {
+        if (resource != null && resource.getUsername() != null && !resource.getUsername().isBlank()) {
+            return resource.getUsername().trim();
+        }
+        return parseResult == null ? null : parseResult.getUsername();
     }
 }

@@ -1,23 +1,19 @@
 package com.im.gateway.filter;
 
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.config.GlobalRateLimitSwitch;
 import com.im.config.RateLimitGlobalProperties;
 import com.im.dto.ApiResponse;
-import com.im.dto.AuthUserResourceDTO;
+import com.im.dto.AuthIntrospectResultDTO;
+import com.im.enums.AuthErrorCode;
 import com.im.util.AuthHeaderUtil;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.slf4j.LoggerFactory;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.http.*;
 import org.springframework.http.server.reactive.ServerHttpRequest;
@@ -45,7 +41,6 @@ import static org.mockito.Mockito.*;
 class JwtAuthGlobalFilterTest {
 
     private static final String ACCESS_SECRET = "im-access-secret-im-access-secret-im-access-secret-im-access-secret";
-    private static final String OTHER_SECRET = "another-access-secret-another-access-secret-another-access-secret";
 
     @Mock
     private GatewayFilterChain chain;
@@ -137,7 +132,11 @@ class JwtAuthGlobalFilterTest {
     @Test
     void filterShouldRejectMissingToken() {
         JwtAuthGlobalFilter filter = newFilter(request -> Mono.error(new AssertionError("auth service should not be called")));
-        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/api/message/list").build());
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/message/list")
+                        .header("X-Gateway-Route", "true")
+                        .build()
+        );
 
         filter.filter(exchange, chain).block();
 
@@ -146,13 +145,30 @@ class JwtAuthGlobalFilterTest {
     }
 
     @Test
-    void filterShouldRejectExpiredTokenLocallyWithoutCallingAuthService() throws Exception {
+    void filterShouldRejectProtectedHttpPathWithoutGatewayRouteHeader() {
+        JwtAuthGlobalFilter filter = newFilter(request -> Mono.error(new AssertionError("auth service should not be called")));
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/message/list")
+                        .header("Authorization", "Bearer " + accessToken(2001L, "neo", 60_000L))
+                        .build()
+        );
+
+        filter.filter(exchange, chain).block();
+
+        assertEquals(HttpStatus.BAD_REQUEST, exchange.getResponse().getStatusCode());
+        verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    @Test
+    void filterShouldRejectExpiredTokenWhenAuthServiceRejects() throws Exception {
         List<String> calledPaths = new ArrayList<>();
         JwtAuthGlobalFilter filter = newFilter(request -> {
             calledPaths.add(request.url().getPath());
-            return Mono.error(new AssertionError("auth service should not be called for expired token"));
+            if ("/api/auth/internal/introspect".equals(request.url().getPath())) {
+                return Mono.just(jsonResponse(HttpStatus.UNAUTHORIZED, ApiResponse.error(AuthErrorCode.TOKEN_EXPIRED)));
+            }
+            return Mono.error(new AssertionError("unexpected path: " + request.url().getPath()));
         });
-        SimpleMeterRegistry meterRegistry = (SimpleMeterRegistry) ReflectionTestUtils.getField(filter, "meterRegistry");
 
         MockServerWebExchange exchange = exchangeWithToken(accessToken(2002L, "expired", -1_000L));
         filter.filter(exchange, chain).block();
@@ -161,19 +177,20 @@ class JwtAuthGlobalFilterTest {
         Map<String, Object> body = responseBody(exchange);
         assertEquals(40101, body.get("code"));
         assertEquals("TOKEN_EXPIRED", body.get("message"));
-        assertTrue(calledPaths.isEmpty());
+        assertEquals(List.of("/api/auth/internal/introspect"), calledPaths);
         verify(chain, never()).filter(any(ServerWebExchange.class));
-        assertEquals(1.0, meterRegistry.counter("gateway_auth_local_validation", "result", "expired").count());
     }
 
     @Test
-    void filterShouldRejectInvalidTokenLocallyWithoutCallingAuthService() throws Exception {
+    void filterShouldRejectInvalidTokenWhenAuthServiceRejects() throws Exception {
         List<String> calledPaths = new ArrayList<>();
         JwtAuthGlobalFilter filter = newFilter(request -> {
             calledPaths.add(request.url().getPath());
-            return Mono.error(new AssertionError("auth service should not be called for invalid token"));
+            if ("/api/auth/internal/introspect".equals(request.url().getPath())) {
+                return Mono.just(jsonResponse(HttpStatus.UNAUTHORIZED, ApiResponse.error(AuthErrorCode.TOKEN_INVALID)));
+            }
+            return Mono.error(new AssertionError("unexpected path: " + request.url().getPath()));
         });
-        SimpleMeterRegistry meterRegistry = (SimpleMeterRegistry) ReflectionTestUtils.getField(filter, "meterRegistry");
 
         MockServerWebExchange exchange = exchangeWithToken(accessToken(2003L, "invalid", 60_000L) + "tampered");
         filter.filter(exchange, chain).block();
@@ -182,17 +199,20 @@ class JwtAuthGlobalFilterTest {
         Map<String, Object> body = responseBody(exchange);
         assertEquals(40102, body.get("code"));
         assertEquals("TOKEN_INVALID", body.get("message"));
-        assertTrue(calledPaths.isEmpty());
+        assertEquals(List.of("/api/auth/internal/introspect"), calledPaths);
         verify(chain, never()).filter(any(ServerWebExchange.class));
-        assertEquals(1.0, meterRegistry.counter("gateway_auth_local_validation", "result", "invalid").count());
     }
 
     @Test
-    void filterShouldRejectTokenMissingRequiredClaimsLocally() throws Exception {
+    void filterShouldRejectMalformedAuthServiceIntrospectionData() throws Exception {
         List<String> calledPaths = new ArrayList<>();
         JwtAuthGlobalFilter filter = newFilter(request -> {
             calledPaths.add(request.url().getPath());
-            return Mono.error(new AssertionError("auth service should not be called for missing claims"));
+            if ("/api/auth/internal/introspect".equals(request.url().getPath())) {
+                AuthIntrospectResultDTO dto = introspect(null, "missing", 60_000L);
+                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(dto)));
+            }
+            return Mono.error(new AssertionError("unexpected path: " + request.url().getPath()));
         });
 
         MockServerWebExchange exchange = exchangeWithToken(accessTokenMissingJti(2004L, "missing"));
@@ -202,16 +222,16 @@ class JwtAuthGlobalFilterTest {
         Map<String, Object> body = responseBody(exchange);
         assertEquals(40102, body.get("code"));
         assertEquals("TOKEN_INVALID", body.get("message"));
-        assertTrue(calledPaths.isEmpty());
+        assertEquals(List.of("/api/auth/internal/introspect"), calledPaths);
     }
 
     @Test
-    void filterShouldMapUserResourceTimeoutTo504() {
-        AtomicInteger resourceCalls = new AtomicInteger();
+    void filterShouldMapIntrospectTimeoutTo504() {
+        AtomicInteger introspectCalls = new AtomicInteger();
         String token = accessToken(2101L, "timeout", 60_000L);
         JwtAuthGlobalFilter filter = newFilter(
                 request -> {
-                    resourceCalls.incrementAndGet();
+                    introspectCalls.incrementAndGet();
                     return Mono.never();
                 },
                 "http://im-auth-service",
@@ -225,15 +245,15 @@ class JwtAuthGlobalFilterTest {
 
         assertEquals(HttpStatus.GATEWAY_TIMEOUT, firstExchange.getResponse().getStatusCode());
         assertEquals(HttpStatus.GATEWAY_TIMEOUT, secondExchange.getResponse().getStatusCode());
-        assertEquals(2, resourceCalls.get());
+        assertEquals(2, introspectCalls.get());
     }
 
     @Test
-    void filterShouldMapUserResourceTransportFailuresTo503WithoutNegativeCaching() {
-        AtomicInteger resourceCalls = new AtomicInteger();
+    void filterShouldMapIntrospectTransportFailuresTo503WithoutNegativeCaching() {
+        AtomicInteger introspectCalls = new AtomicInteger();
         String token = accessToken(2201L, "transport", 60_000L);
         JwtAuthGlobalFilter filter = newFilter(request -> {
-            resourceCalls.incrementAndGet();
+            introspectCalls.incrementAndGet();
             return Mono.just(ClientResponse.create(HttpStatus.FORBIDDEN).build());
         });
 
@@ -244,27 +264,26 @@ class JwtAuthGlobalFilterTest {
 
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, firstExchange.getResponse().getStatusCode());
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, secondExchange.getResponse().getStatusCode());
-        assertEquals(2, resourceCalls.get());
+        assertEquals(2, introspectCalls.get());
     }
 
     @Test
-    void filterShouldInjectAuthHeadersAndCacheSuccessfulUserResourceLookup() {
-        AtomicInteger resourceCalls = new AtomicInteger();
+    void filterShouldInjectAuthHeadersFromRemoteIntrospection() {
+        AtomicInteger introspectCalls = new AtomicInteger();
         List<String> calledPaths = new ArrayList<>();
-        AtomicReference<ClientRequest> resourceRequest = new AtomicReference<>();
+        AtomicReference<ClientRequest> introspectRequest = new AtomicReference<>();
         AtomicReference<ServerWebExchange> forwardedExchange = new AtomicReference<>();
         String token = accessToken(2301L, "neo", 60_000L);
         JwtAuthGlobalFilter filter = newFilter(request -> {
             String path = request.url().getPath();
             calledPaths.add(path);
-            if ("/api/auth/internal/user-resource/2301".equals(path)) {
-                resourceCalls.incrementAndGet();
-                resourceRequest.set(request);
-                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(userResource(2301L, "neo"))));
+            if ("/api/auth/internal/introspect".equals(path)) {
+                introspectCalls.incrementAndGet();
+                introspectRequest.set(request);
+                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(introspect(2301L, "neo", 60_000L))));
             }
             return Mono.error(new AssertionError("unexpected path: " + path));
         });
-        SimpleMeterRegistry meterRegistry = (SimpleMeterRegistry) ReflectionTestUtils.getField(filter, "meterRegistry");
         when(chain.filter(any(ServerWebExchange.class))).thenAnswer(invocation -> {
             forwardedExchange.set(invocation.getArgument(0));
             return Mono.empty();
@@ -273,6 +292,7 @@ class JwtAuthGlobalFilterTest {
         MockServerWebExchange firstExchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/message/list")
                         .header("Authorization", "Bearer " + token)
+                        .header("X-Gateway-Route", "true")
                         .header("X-Internal-Secret", "forged-secret")
                         .build()
         );
@@ -280,27 +300,26 @@ class JwtAuthGlobalFilterTest {
         MockServerWebExchange secondExchange = exchangeWithToken(token);
         filter.filter(secondExchange, chain).block();
 
-        assertNotNull(resourceRequest.get());
+        assertNotNull(introspectRequest.get());
         assertNotNull(forwardedExchange.get());
-        assertEquals(HttpMethod.GET, resourceRequest.get().method());
-        assertEquals("/api/auth/internal/user-resource/2301", resourceRequest.get().url().getPath());
-        assertEquals(1, resourceCalls.get());
-        assertFalse(calledPaths.contains("/api/auth/internal/validate-token"));
+        assertEquals(HttpMethod.POST, introspectRequest.get().method());
+        assertEquals("/api/auth/internal/introspect", introspectRequest.get().url().getPath());
+        assertEquals(2, introspectCalls.get());
         assertFalse(calledPaths.contains("/api/auth/refresh"));
-        assertEquals("internal-value", header(resourceRequest.get(), "X-Internal-Secret"));
-        assertNotNull(header(resourceRequest.get(), INTERNAL_TIMESTAMP_HEADER));
-        assertNotNull(header(resourceRequest.get(), INTERNAL_NONCE_HEADER));
-        assertNotNull(header(resourceRequest.get(), INTERNAL_SIGNATURE_HEADER));
+        assertEquals("internal-value", header(introspectRequest.get(), "X-Internal-Secret"));
+        assertNotNull(header(introspectRequest.get(), INTERNAL_TIMESTAMP_HEADER));
+        assertNotNull(header(introspectRequest.get(), INTERNAL_NONCE_HEADER));
+        assertNotNull(header(introspectRequest.get(), INTERNAL_SIGNATURE_HEADER));
         assertTrue(AuthHeaderUtil.verifyHmacSha256(
                 "internal-value",
                 AuthHeaderUtil.buildInternalSignedFields(
-                        "GET",
-                        "/api/auth/internal/user-resource/2301",
-                        AuthHeaderUtil.sha256Base64Url(null),
-                        header(resourceRequest.get(), INTERNAL_TIMESTAMP_HEADER),
-                        header(resourceRequest.get(), INTERNAL_NONCE_HEADER)
+                        "POST",
+                        "/api/auth/internal/introspect",
+                        AuthHeaderUtil.sha256Base64Url(token.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                        header(introspectRequest.get(), INTERNAL_TIMESTAMP_HEADER),
+                        header(introspectRequest.get(), INTERNAL_NONCE_HEADER)
                 ),
-                header(resourceRequest.get(), INTERNAL_SIGNATURE_HEADER)
+                header(introspectRequest.get(), INTERNAL_SIGNATURE_HEADER)
         ));
 
         ServerHttpRequest request = forwardedExchange.get().getRequest();
@@ -314,21 +333,20 @@ class JwtAuthGlobalFilterTest {
         assertTrue(request.getHeaders().containsKey("X-Auth-Ts"));
         assertTrue(request.getHeaders().containsKey("X-Auth-Nonce"));
         assertTrue(request.getHeaders().containsKey("X-Auth-Sign"));
-        assertEquals(2.0, meterRegistry.counter("gateway_auth_local_validation", "result", "valid").count());
     }
 
     @Test
-    void filterShouldNotCachePartialFailureWhenUserResourceLoadFails() {
-        AtomicInteger resourceCalls = new AtomicInteger();
+    void filterShouldNotCachePartialFailureWhenIntrospectionFails() {
+        AtomicInteger introspectCalls = new AtomicInteger();
         AtomicReference<ServerWebExchange> forwardedExchange = new AtomicReference<>();
         String token = accessToken(2401L, "switch", 60_000L);
         JwtAuthGlobalFilter filter = newFilter(request -> {
             String path = request.url().getPath();
-            if ("/api/auth/internal/user-resource/2401".equals(path)) {
-                if (resourceCalls.incrementAndGet() == 1) {
+            if ("/api/auth/internal/introspect".equals(path)) {
+                if (introspectCalls.incrementAndGet() == 1) {
                     return Mono.just(ClientResponse.create(HttpStatus.INTERNAL_SERVER_ERROR).build());
                 }
-                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(userResource(2401L, "switch"))));
+                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(introspect(2401L, "switch", 60_000L))));
             }
             return Mono.error(new AssertionError("unexpected path: " + path));
         });
@@ -343,7 +361,7 @@ class JwtAuthGlobalFilterTest {
         filter.filter(secondExchange, chain).block();
 
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, firstExchange.getResponse().getStatusCode());
-        assertEquals(2, resourceCalls.get());
+        assertEquals(2, introspectCalls.get());
         assertNotNull(forwardedExchange.get());
         assertEquals("2401", forwardedExchange.get().getRequest().getHeaders().getFirst("X-User-Id"));
     }
@@ -359,6 +377,7 @@ class JwtAuthGlobalFilterTest {
 
         MockServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/message/list")
+                        .header("X-Gateway-Route", "true")
                         .cookie(new HttpCookie("IM_ACCESS_TOKEN", accessToken(2501L, "cookie", 60_000L)))
                         .build()
         );
@@ -370,23 +389,73 @@ class JwtAuthGlobalFilterTest {
     }
 
     @Test
-    void filterShouldMaskRawTokenInFailureLogs() {
-        JwtAuthGlobalFilter filter = newFilter(request -> Mono.error(new AssertionError("auth service should not be called")));
-        ListAppender<ILoggingEvent> appender = attachListAppender();
-        String rawToken = accessToken(2601L, "masked", 60_000L) + "tampered";
+    void filterShouldUseWsIntrospectAndCacheForWebSocketPath() {
+        AtomicInteger introspectCalls = new AtomicInteger();
+        AtomicReference<ClientRequest> introspectRequest = new AtomicReference<>();
+        AtomicReference<ServerWebExchange> forwardedExchange = new AtomicReference<>();
+        String token = accessToken(2701L, "ws-user", 60_000L);
+        JwtAuthGlobalFilter filter = newFilter(request -> {
+            String path = request.url().getPath();
+            if ("/api/auth/internal/ws-introspect".equals(path)) {
+                introspectCalls.incrementAndGet();
+                introspectRequest.set(request);
+                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(introspect(2701L, "ws-user", 60_000L))));
+            }
+            return Mono.error(new AssertionError("unexpected path: " + path));
+        });
+        when(chain.filter(any(ServerWebExchange.class))).thenAnswer(invocation -> {
+            forwardedExchange.set(invocation.getArgument(0));
+            return Mono.empty();
+        });
 
-        try {
-            MockServerWebExchange exchange = exchangeWithToken(rawToken);
-            filter.filter(exchange, chain).block();
+        MockServerWebExchange firstExchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/websocket/2701")
+                        .header("Authorization", "Bearer " + token)
+                        .build()
+        );
+        filter.filter(firstExchange, chain).block();
+        MockServerWebExchange secondExchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/websocket/2701")
+                        .header("Authorization", "Bearer " + token)
+                        .build()
+        );
+        filter.filter(secondExchange, chain).block();
 
-            String logs = joinedMessages(appender);
-            assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
-            assertFalse(logs.contains(rawToken));
-            assertTrue(logs.contains("tokenSummary=sha256:"));
-            assertTrue(logs.contains("status=INVALID_SIGNATURE_OR_MALFORMED"));
-        } finally {
-            detachListAppender(appender);
-        }
+        assertNotNull(introspectRequest.get());
+        assertEquals(HttpMethod.POST, introspectRequest.get().method());
+        assertEquals("/api/auth/internal/ws-introspect", introspectRequest.get().url().getPath());
+        assertEquals("internal-value", header(introspectRequest.get(), "X-Internal-Secret"));
+        assertEquals(1, introspectCalls.get());
+        assertNotNull(forwardedExchange.get());
+        assertEquals("2701", forwardedExchange.get().getRequest().getHeaders().getFirst("X-User-Id"));
+        assertEquals("ws-user", forwardedExchange.get().getRequest().getHeaders().getFirst("X-Username"));
+        assertTrue(forwardedExchange.get().getRequest().getHeaders().containsKey("X-Auth-Sign"));
+    }
+
+    @Test
+    void filterShouldUseRemoteIntrospectForHttp() {
+        AtomicInteger introspectCalls = new AtomicInteger();
+        AtomicReference<ServerWebExchange> forwardedExchange = new AtomicReference<>();
+        String token = accessToken(2801L, "remote-user", 60_000L);
+        JwtAuthGlobalFilter filter = newFilter(request -> {
+            String path = request.url().getPath();
+            if ("/api/auth/internal/introspect".equals(path)) {
+                introspectCalls.incrementAndGet();
+                return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(introspect(2801L, "remote-user", 60_000L))));
+            }
+            return Mono.error(new AssertionError("unexpected path: " + path));
+        });
+        when(chain.filter(any(ServerWebExchange.class))).thenAnswer(invocation -> {
+            forwardedExchange.set(invocation.getArgument(0));
+            return Mono.empty();
+        });
+
+        filter.filter(exchangeWithToken(token), chain).block();
+
+        assertEquals(1, introspectCalls.get());
+        assertNotNull(forwardedExchange.get());
+        assertEquals("2801", forwardedExchange.get().getRequest().getHeaders().getFirst("X-User-Id"));
+        assertEquals("remote-user", forwardedExchange.get().getRequest().getHeaders().getFirst("X-Username"));
     }
 
     private JwtAuthGlobalFilter newFilter(ExchangeFunction exchangeFunction) {
@@ -425,8 +494,6 @@ class JwtAuthGlobalFilterTest {
         ReflectionTestUtils.setField(filter, "jwtPrefix", "Bearer ");
         ReflectionTestUtils.setField(filter, "accessTokenCookieName", "IM_ACCESS_TOKEN");
         ReflectionTestUtils.setField(filter, "refreshTokenCookieName", "IM_REFRESH_TOKEN");
-        ReflectionTestUtils.setField(filter, "accessSecret", ACCESS_SECRET);
-        ReflectionTestUtils.setField(filter, "meterRegistry", new SimpleMeterRegistry());
         return filter;
     }
 
@@ -434,14 +501,15 @@ class JwtAuthGlobalFilterTest {
         return MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/message/list")
                         .header("Authorization", "Bearer " + token)
+                        .header("X-Gateway-Route", "true")
                         .build()
         );
     }
 
     private Mono<ClientResponse> successResponseForPath(ClientRequest request, Long userId, String username) {
         String path = request.url().getPath();
-        if (("/api/auth/internal/user-resource/" + userId).equals(path)) {
-            return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(userResource(userId, username))));
+        if ("/api/auth/internal/introspect".equals(path)) {
+            return Mono.just(jsonResponse(HttpStatus.OK, ApiResponse.success(introspect(userId, username, 60_000L))));
         }
         return Mono.error(new AssertionError("unexpected path: " + path));
     }
@@ -493,10 +561,13 @@ class JwtAuthGlobalFilterTest {
                 .compact();
     }
 
-    private AuthUserResourceDTO userResource(Long userId, String username) {
-        AuthUserResourceDTO dto = new AuthUserResourceDTO();
+    private AuthIntrospectResultDTO introspect(Long userId, String username, long expirationDeltaMs) {
+        AuthIntrospectResultDTO dto = new AuthIntrospectResultDTO();
+        dto.setValid(true);
+        dto.setExpired(false);
         dto.setUserId(userId);
         dto.setUsername(username);
+        dto.setExpiresAtEpochMs(System.currentTimeMillis() + expirationDeltaMs);
         dto.setUserInfo(Map.of("nickname", username));
         dto.setResourcePermissions(List.of("message:read"));
         dto.setDataScopes(Map.of("tenantId", 1));
@@ -510,24 +581,4 @@ class JwtAuthGlobalFilterTest {
         });
     }
 
-    private ListAppender<ILoggingEvent> attachListAppender() {
-        Logger logger = (Logger) LoggerFactory.getLogger(JwtAuthGlobalFilter.class);
-        ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        logger.addAppender(appender);
-        return appender;
-    }
-
-    private void detachListAppender(ListAppender<ILoggingEvent> appender) {
-        Logger logger = (Logger) LoggerFactory.getLogger(JwtAuthGlobalFilter.class);
-        logger.detachAppender(appender);
-    }
-
-    private String joinedMessages(ListAppender<ILoggingEvent> appender) {
-        StringBuilder builder = new StringBuilder();
-        for (ILoggingEvent event : appender.list) {
-            builder.append(event.getFormattedMessage()).append('\n');
-        }
-        return builder.toString();
-    }
 }

@@ -11,7 +11,8 @@ class SecurityPathsTest {
     void gatewayWhiteList_shouldMatchExpectedPaths() {
         assertTrue(SecurityPaths.isGatewayWhiteList("/api/user/login"));
         assertTrue(SecurityPaths.isGatewayWhiteList("/v3/api-docs/index"));
-        assertTrue(SecurityPaths.isGatewayWhiteList("/websocket/connect"));
+        assertFalse(SecurityPaths.isGatewayWhiteList("/websocket"));
+        assertFalse(SecurityPaths.isGatewayWhiteList("/websocket/connect"));
         assertFalse(SecurityPaths.isGatewayWhiteList("/api/message/send/private"));
     }
 
