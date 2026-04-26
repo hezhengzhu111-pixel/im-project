@@ -1,24 +1,26 @@
 package com.im.feign;
 
-import com.im.dto.ApiResponse;
-import com.im.dto.AuthUserResourceDTO;
-import com.im.dto.PermissionCheckResultDTO;
-import com.im.dto.TokenPairDTO;
-import com.im.dto.TokenParseResultDTO;
-import com.im.dto.TokenRevokeResultDTO;
-import com.im.dto.WsTicketConsumeResultDTO;
+import com.im.dto.*;
 import com.im.dto.request.CheckPermissionRequest;
 import com.im.dto.request.ConsumeWsTicketRequest;
 import com.im.dto.request.IssueTokenRequest;
 import com.im.dto.request.RevokeTokenRequest;
 import com.im.exception.BusinessException;
 import org.junit.jupiter.api.Test;
+import org.springframework.cloud.openfeign.FeignClient;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 
 class AuthServiceFeignClientTest {
+
+    @Test
+    void feignClient_shouldAllowDirectAuthServiceUrlOverride() {
+        FeignClient annotation = AuthServiceFeignClient.class.getAnnotation(FeignClient.class);
+
+        assertEquals("${im.auth-service.url:}", annotation.url());
+        assertEquals("im-auth-service", annotation.name());
+        assertEquals("/api/auth/internal", annotation.path());
+    }
 
     @Test
     void issueToken_shouldUnwrapTokenPairFromApiResponseData() {

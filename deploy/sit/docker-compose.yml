@@ -4,6 +4,7 @@ x-java-service-env: &java-service-env
   SPRING_CONFIG_ADDITIONAL_LOCATION: classpath:/sit/
   JWT_SECRET: "${JWT_SECRET:-im-access-secret-im-access-secret-im-access-secret-im-access-secret}"
   AUTH_REFRESH_SECRET: "${AUTH_REFRESH_SECRET:-im-refresh-secret-im-refresh-secret-im-refresh-secret-im-refresh-secret}"
+  IM_AUTH_SERVICE_URL: "${IM_AUTH_SERVICE_URL:-http://im-auth-service:8084}"
   IM_INTERNAL_SECRET: "${IM_INTERNAL_SECRET:-im-internal-secret-im-internal-secret-im-internal-secret-im}"
   IM_GATEWAY_AUTH_SECRET: "${IM_GATEWAY_AUTH_SECRET:-im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret}"
   IM_MYSQL_HOST: "${IM_MYSQL_HOST:-im-mysql}"

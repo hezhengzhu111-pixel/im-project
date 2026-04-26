@@ -28,11 +28,6 @@ pub fn validate_internal_signature(
     body: &[u8],
     config: &AppConfig,
 ) -> Result<(), AppError> {
-    let secret_header =
-        header(headers, &config.internal_header).ok_or_else(AppError::internal_auth_rejected)?;
-    if secret_header != config.internal_secret {
-        return Err(AppError::internal_auth_rejected());
-    }
     let ts = header(headers, INTERNAL_TS_HEADER).ok_or_else(AppError::internal_auth_rejected)?;
     let nonce =
         header(headers, INTERNAL_NONCE_HEADER).ok_or_else(AppError::internal_auth_rejected)?;
@@ -164,7 +159,6 @@ mod tests {
         );
         let sign = sign_hmac("secret", &canonical);
         let mut headers = HeaderMap::new();
-        headers.insert("X-Internal-Secret", HeaderValue::from_static("secret"));
         headers.insert(INTERNAL_TS_HEADER, HeaderValue::from_str(&ts).unwrap());
         headers.insert(INTERNAL_NONCE_HEADER, HeaderValue::from_static(nonce));
         headers.insert(INTERNAL_SIGN_HEADER, HeaderValue::from_str(&sign).unwrap());
@@ -192,7 +186,6 @@ mod tests {
         );
         let sign = sign_hmac("secret", &canonical);
         let mut headers = HeaderMap::new();
-        headers.insert("X-Internal-Secret", HeaderValue::from_static("secret"));
         headers.insert(INTERNAL_TS_HEADER, HeaderValue::from_str(&ts).unwrap());
         headers.insert(INTERNAL_NONCE_HEADER, HeaderValue::from_static(nonce));
         headers.insert(INTERNAL_SIGN_HEADER, HeaderValue::from_str(&sign).unwrap());
@@ -202,6 +195,22 @@ mod tests {
             "POST",
             "/api/auth/internal/introspect",
             b"changed",
+            &cfg
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn should_reject_internal_signature_without_hmac_headers() {
+        let mut cfg = AppConfig::from_env();
+        cfg.internal_secret = "secret".to_string();
+        let headers = HeaderMap::new();
+
+        assert!(validate_internal_signature(
+            &headers,
+            "POST",
+            "/api/auth/internal/introspect",
+            b"token",
             &cfg
         )
         .is_err());
