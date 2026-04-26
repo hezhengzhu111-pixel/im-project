@@ -38,6 +38,7 @@
     <fastjson2.version>2.0.57</fastjson2.version>
     <hutool.version>5.8.36</hutool.version>
     <commons-io.version>2.21.0</commons-io.version>
+    <native-build-tools.version>0.10.6</native-build-tools.version>
   </properties>
   <dependencyManagement>
     <dependencies>
@@ -180,6 +181,11 @@
           <artifactId>maven-dependency-plugin</artifactId>
           <version>3.8.1</version>
         </plugin>
+        <plugin>
+          <groupId>org.graalvm.buildtools</groupId>
+          <artifactId>native-maven-plugin</artifactId>
+          <version>${native-build-tools.version}</version>
+        </plugin>
       </plugins>
     </pluginManagement>
   </build>
@@ -192,6 +198,59 @@
       <properties>
         <maven.compiler.release>17</maven.compiler.release>
       </properties>
+    </profile>
+    <profile>
+      <id>native</id>
+      <build>
+        <pluginManagement>
+          <plugins>
+            <plugin>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-maven-plugin</artifactId>
+              <configuration>
+                <profiles>
+                  <profile>sit</profile>
+                  <profile>native</profile>
+                </profiles>
+                <arguments>
+                  <argument>--spring.config.additional-location=classpath:/sit/</argument>
+                </arguments>
+              </configuration>
+              <executions>
+                <execution>
+                  <id>process-aot</id>
+                  <goals>
+                    <goal>process-aot</goal>
+                  </goals>
+                </execution>
+              </executions>
+            </plugin>
+            <plugin>
+              <groupId>org.graalvm.buildtools</groupId>
+              <artifactId>native-maven-plugin</artifactId>
+              <version>${native-build-tools.version}</version>
+              <extensions>true</extensions>
+              <configuration>
+                <fallback>false</fallback>
+                <classesDirectory>${project.build.outputDirectory}</classesDirectory>
+                <buildArgs>
+                  <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+                  <buildArg>--enable-url-protocols=http,https</buildArg>
+                </buildArgs>
+              </configuration>
+              <executions>
+                <execution>
+                  <id>build-native</id>
+                  <phase>package</phase>
+                  <goals>
+                    <goal>compile-no-fork</goal>
+                  </goals>
+                </execution>
+              </executions>
+            </plugin>
+          </plugins>
+        </pluginManagement>
+      </build>
     </profile>
   </profiles>
 </project>
