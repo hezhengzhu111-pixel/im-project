@@ -8,12 +8,14 @@ import com.im.feign.AuthServiceFeignClient;
 import com.im.metrics.ImServerMetrics;
 import com.im.util.ApiErrorResponseWriter;
 import com.im.util.AuthCookieUtil;
+import com.im.util.AuthHeaderUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpRequest;
@@ -31,6 +33,12 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
 
     private static final String DEFAULT_ALLOWED_ORIGINS =
             "http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080";
+    private static final String HEADER_AUTH_USER = "X-Auth-User";
+    private static final String HEADER_AUTH_PERMS = "X-Auth-Perms";
+    private static final String HEADER_AUTH_DATA = "X-Auth-Data";
+    private static final String HEADER_AUTH_TS = "X-Auth-Ts";
+    private static final String HEADER_AUTH_NONCE = "X-Auth-Nonce";
+    private static final String HEADER_AUTH_SIGN = "X-Auth-Sign";
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
@@ -53,6 +61,15 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
 
     @Value("${im.gateway.user-id-header:X-User-Id}")
     private String gatewayUserIdHeader;
+
+    @Value("${im.gateway.username-header:X-Username}")
+    private String gatewayUsernameHeader;
+
+    @Value("${im.gateway.auth.secret}")
+    private String gatewayAuthSecret;
+
+    @Value("${im.gateway.auth.max-skew-ms:300000}")
+    private long gatewayAuthMaxSkewMs;
 
     @Value("${im.websocket.allowed-origins:" + DEFAULT_ALLOWED_ORIGINS + "}")
     private String allowedOrigins;
@@ -85,6 +102,20 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
                     CommonErrorCode.WS_ORIGIN_NOT_ALLOWED.getMessage(), origin);
         }
 
+        Long expectedUserId = extractTrustedUserId(httpRequest);
+        if (expectedUserId == null) {
+            recordHandshakeFailure("invalid_user");
+            log.warn("WebSocket connection rejected. errorCode={}, reason=missing_gateway_user",
+                    CommonErrorCode.INTERNAL_AUTH_REJECTED.getMessage());
+            response.setStatusCode(HttpStatus.UNAUTHORIZED);
+            return false;
+        }
+        if (!hasValidGatewaySignature(httpRequest, expectedUserId)) {
+            return reject(response, CommonErrorCode.INTERNAL_AUTH_REJECTED, "invalid_gateway_signature",
+                    "WebSocket connection rejected. errorCode={}, reason=invalid_gateway_signature, userId={}",
+                    CommonErrorCode.INTERNAL_AUTH_REJECTED.getMessage(), expectedUserId);
+        }
+
         TicketResolution ticketResolution = resolveTicket(httpRequest);
         if (ticketResolution.queryRejected()) {
             return reject(response, CommonErrorCode.WS_QUERY_TICKET_NOT_ALLOWED, "missing_ticket",
@@ -96,13 +127,6 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
             return reject(response, CommonErrorCode.WS_TICKET_INVALID_OR_EXPIRED, "missing_ticket",
                     "WebSocket connection rejected. errorCode={}, ticketSummary=missing",
                     CommonErrorCode.WS_TICKET_INVALID_OR_EXPIRED.getMessage());
-        }
-
-        Long expectedUserId = extractTrustedUserId(httpRequest);
-        if (expectedUserId == null) {
-            return reject(response, CommonErrorCode.INTERNAL_AUTH_REJECTED, "invalid_user",
-                    "WebSocket connection rejected. errorCode={}, ticketSummary={}",
-                    CommonErrorCode.INTERNAL_AUTH_REJECTED.getMessage(), summarizeSecret(ticket));
         }
 
         WsTicketConsumeResultDTO result = consumeWsTicket(ticket, expectedUserId);
@@ -226,6 +250,59 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
         }
     }
 
+    private boolean hasValidGatewaySignature(HttpServletRequest httpRequest, Long userId) {
+        if (httpRequest == null || userId == null || StringUtils.isBlank(gatewayUsernameHeader)
+                || StringUtils.isBlank(gatewayAuthSecret)) {
+            return false;
+        }
+        GatewayAuthHeaders headers = readGatewayAuthHeaders(httpRequest);
+        if (!headers.isComplete()) {
+            return false;
+        }
+        Long timestamp = parseTimestamp(headers.ts());
+        if (timestamp == null || !withinAllowedClockSkew(timestamp, gatewayAuthMaxSkewMs)) {
+            return false;
+        }
+        return AuthHeaderUtil.verifyHmacSha256(
+                gatewayAuthSecret,
+                AuthHeaderUtil.buildSignedFields(
+                        String.valueOf(userId),
+                        headers.username().trim(),
+                        headers.userB64(),
+                        headers.permsB64(),
+                        headers.dataB64(),
+                        headers.ts(),
+                        headers.nonce()
+                ),
+                headers.sign()
+        );
+    }
+
+    private GatewayAuthHeaders readGatewayAuthHeaders(HttpServletRequest httpRequest) {
+        return new GatewayAuthHeaders(
+                httpRequest.getHeader(gatewayUsernameHeader),
+                httpRequest.getHeader(HEADER_AUTH_USER),
+                httpRequest.getHeader(HEADER_AUTH_PERMS),
+                httpRequest.getHeader(HEADER_AUTH_DATA),
+                httpRequest.getHeader(HEADER_AUTH_TS),
+                httpRequest.getHeader(HEADER_AUTH_NONCE),
+                httpRequest.getHeader(HEADER_AUTH_SIGN)
+        );
+    }
+
+    private Long parseTimestamp(String value) {
+        try {
+            return Long.valueOf(value);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private boolean withinAllowedClockSkew(long timestamp, long allowedSkewMs) {
+        long now = System.currentTimeMillis();
+        return Math.abs(now - timestamp) <= allowedSkewMs;
+    }
+
     private void recordHandshakeSuccess() {
         if (metrics != null) {
             metrics.recordHandshakeSuccess();
@@ -268,6 +345,18 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
     @Override
     public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response,
                                WebSocketHandler wsHandler, Exception exception) {
+    }
+
+    private record GatewayAuthHeaders(String username,
+                                      String userB64,
+                                      String permsB64,
+                                      String dataB64,
+                                      String ts,
+                                      String nonce,
+                                      String sign) {
+        private boolean isComplete() {
+            return StringUtils.isNoneBlank(username, userB64, permsB64, dataB64, ts, nonce, sign);
+        }
     }
 
     private record TicketResolution(String ticket, boolean queryRejected) {

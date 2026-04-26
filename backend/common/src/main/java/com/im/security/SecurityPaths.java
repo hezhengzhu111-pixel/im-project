@@ -18,8 +18,7 @@ public final class SecurityPaths {
             "/api/auth/refresh",
             "/api/auth/parse",
             "/auth/refresh",
-            "/auth/parse",
-            "/websocket"
+            "/auth/parse"
     );
 
     private static final List<String> SERVICE_WHITELIST_PREFIXES = List.of(

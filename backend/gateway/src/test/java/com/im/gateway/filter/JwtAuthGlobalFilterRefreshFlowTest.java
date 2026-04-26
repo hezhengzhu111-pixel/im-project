@@ -4,9 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.config.GlobalRateLimitSwitch;
 import com.im.config.RateLimitGlobalProperties;
 import com.im.dto.ApiResponse;
-import com.im.dto.AuthUserResourceDTO;
-import com.im.dto.JwtLocalValidationResult;
-import com.im.util.JwtLocalTokenValidator;
+import com.im.dto.AuthIntrospectResultDTO;
+import com.im.enums.AuthErrorCode;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import org.junit.jupiter.api.Test;
@@ -26,7 +25,6 @@ import reactor.core.publisher.Mono;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static com.im.util.JwtLocalTokenValidator.getSecretKey;
 import static org.junit.jupiter.api.Assertions.*;
 
 class JwtAuthGlobalFilterRefreshFlowTest {
@@ -43,6 +41,7 @@ class JwtAuthGlobalFilterRefreshFlowTest {
         MockServerWebExchange expiredExchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/message/list")
                         .header("Authorization", "Bearer " + expiredAccessToken)
+                        .header("X-Gateway-Route", "true")
                         .build()
         );
         fixture.gatewayFilter.filter(expiredExchange, exchange -> {
@@ -53,20 +52,16 @@ class JwtAuthGlobalFilterRefreshFlowTest {
         String expiredBody = expiredExchange.getResponse().getBodyAsString().block();
         assertNotNull(expiredBody);
         assertTrue(expiredBody.contains("TOKEN_EXPIRED"));
-        assertFalse(fixture.calledPaths.contains("/api/auth/internal/validate-token"));
+        assertTrue(fixture.calledPaths.contains("/api/auth/internal/introspect"));
         assertFalse(fixture.calledPaths.contains("/api/auth/refresh"));
 
         String refreshedAccessToken = fixture.accessToken(3001L, "switch-user", 60_000L);
-        JwtLocalValidationResult validationResult = JwtLocalTokenValidator.validateAccessToken(
-                refreshedAccessToken,
-                ACCESS_SECRET
-        );
-        assertTrue(validationResult.isValid());
 
         AtomicReference<ServerWebExchange> forwardedExchange = new AtomicReference<>();
         MockServerWebExchange retryExchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/message/list")
                         .header("Authorization", "Bearer " + refreshedAccessToken)
+                        .header("X-Gateway-Route", "true")
                         .build()
         );
         fixture.gatewayFilter.filter(retryExchange, exchange -> {
@@ -77,12 +72,12 @@ class JwtAuthGlobalFilterRefreshFlowTest {
         assertNotNull(forwardedExchange.get());
         assertEquals("3001", forwardedExchange.get().getRequest().getHeaders().getFirst("X-User-Id"));
         assertEquals("switch-user", forwardedExchange.get().getRequest().getHeaders().getFirst("X-Username"));
-        assertFalse(fixture.calledPaths.contains("/api/auth/internal/validate-token"));
     }
 
     private final class AuthFlowFixture {
         private final List<String> calledPaths = new ArrayList<>();
         private final JwtAuthGlobalFilter gatewayFilter;
+        private int introspectCalls;
 
         private AuthFlowFixture() {
             ExchangeFunction exchangeFunction = this::exchange;
@@ -98,20 +93,29 @@ class JwtAuthGlobalFilterRefreshFlowTest {
             ReflectionTestUtils.setField(gatewayFilter, "jwtPrefix", "Bearer ");
             ReflectionTestUtils.setField(gatewayFilter, "accessTokenCookieName", "IM_ACCESS_TOKEN");
             ReflectionTestUtils.setField(gatewayFilter, "refreshTokenCookieName", "IM_REFRESH_TOKEN");
-            ReflectionTestUtils.setField(gatewayFilter, "accessSecret", ACCESS_SECRET);
         }
 
         private Mono<ClientResponse> exchange(ClientRequest request) {
             String path = request.url().getPath();
             calledPaths.add(path);
-            if ("/api/auth/internal/user-resource/3001".equals(path)) {
-                AuthUserResourceDTO dto = new AuthUserResourceDTO();
-                dto.setUserId(3001L);
-                dto.setUsername("switch-user");
-                dto.setUserInfo(Map.of("nickname", "switch-user"));
-                dto.setResourcePermissions(List.of("message:read"));
-                dto.setDataScopes(Map.of("tenantId", 1));
+            if ("/api/auth/internal/introspect".equals(path)) {
                 try {
+                    introspectCalls++;
+                    if (introspectCalls == 1) {
+                        return Mono.just(ClientResponse.create(HttpStatus.UNAUTHORIZED)
+                                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                                .body(objectMapper.writeValueAsString(ApiResponse.error(AuthErrorCode.TOKEN_EXPIRED)))
+                                .build());
+                    }
+                    AuthIntrospectResultDTO dto = new AuthIntrospectResultDTO();
+                    dto.setValid(true);
+                    dto.setExpired(false);
+                    dto.setUserId(3001L);
+                    dto.setUsername("switch-user");
+                    dto.setExpiresAtEpochMs(System.currentTimeMillis() + 60_000L);
+                    dto.setUserInfo(Map.of("nickname", "switch-user"));
+                    dto.setResourcePermissions(List.of("message:read"));
+                    dto.setDataScopes(Map.of("tenantId", 1));
                     return Mono.just(ClientResponse.create(HttpStatus.OK)
                             .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                             .body(objectMapper.writeValueAsString(ApiResponse.success(dto)))
@@ -135,7 +139,7 @@ class JwtAuthGlobalFilterRefreshFlowTest {
                     .setSubject(username)
                     .setIssuedAt(now)
                     .setExpiration(new Date(now.getTime() + expirationDeltaMs))
-                    .signWith(getSecretKey(ACCESS_SECRET), SignatureAlgorithm.HS512)
+                    .signWith(com.im.util.JwtLocalTokenValidator.getSecretKey(ACCESS_SECRET), SignatureAlgorithm.HS512)
                     .compact();
         }
     }
