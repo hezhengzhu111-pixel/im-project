@@ -168,25 +168,27 @@ services:
       - im-sit-network
 
   im-auth-service:
-    <<: *java-service
+    restart: unless-stopped
+    networks:
+      - im-sit-network
     image: im-project-sit/im-auth-service:latest
     build:
-      context: ../../backend/auth-service
+      context: ../../backend/auth-rs
       args:
         IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
     depends_on:
-      im-mysql:
-        condition: service_healthy
       im-redis:
         condition: service_healthy
-      im-kafka:
-        condition: service_started
-      im-nacos:
-        condition: service_started
+    environment:
+      TZ: Asia/Shanghai
+      AUTH_RS_PORT: "8084"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
+      JWT_SECRET: "${JWT_SECRET:-im-access-secret-im-access-secret-im-access-secret-im-access-secret}"
+      AUTH_REFRESH_SECRET: "${AUTH_REFRESH_SECRET:-im-refresh-secret-im-refresh-secret-im-refresh-secret-im-refresh-secret}"
+      IM_INTERNAL_SECRET: "${IM_INTERNAL_SECRET:-im-internal-secret-im-internal-secret-im-internal-secret-im}"
+      IM_GATEWAY_AUTH_SECRET: "${IM_GATEWAY_AUTH_SECRET:-im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret}"
     ports:
       - "${AUTH_SERVICE_PORT:-8084}:8084"
-    volumes:
-      - ${HOST_LOG_ROOT}/im-auth-service:/var/log/im-project
 
   im-user-service:
     <<: *java-service
@@ -380,7 +382,8 @@ services:
         condition: service_started
     environment:
       <<: *java-service-env
-      IM_GATEWAY_AUTH_SERVICE_URL: "${IM_GATEWAY_AUTH_SERVICE_URL:-lb://im-auth-service}"
+      IM_GATEWAY_AUTH_SERVICE_URL: "${IM_GATEWAY_AUTH_SERVICE_URL:-http://im-auth-service:8084}"
+      IM_AUTH_ROUTE_URI: "${IM_AUTH_ROUTE_URI:-http://im-auth-service:8084}"
       IM_ROUTE_AUTH_HOST: "${IM_ROUTE_AUTH_HOST:-im-auth-service}"
       IM_ROUTE_USER_HOST: "${IM_ROUTE_USER_HOST:-im-user-service}"
       IM_ROUTE_GROUP_HOST: "${IM_ROUTE_GROUP_HOST:-im-group-service}"

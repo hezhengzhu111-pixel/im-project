@@ -12,6 +12,7 @@ from deploy_utils import (
     MYSQL_CONTAINER_NAME,
     NACOS_CONTAINER_NAME,
     REDIS_CONTAINER_NAME,
+    REDIS_INTERNAL_PORT,
     DeploymentConfig,
     build_common_backend_environment,
     ensure_backend_layout,
@@ -53,9 +54,9 @@ SERVICE_ORDER: list[ServiceDefinition] = [
         container_port=8084,
         container_name="im-auth-service",
         image_name="im-project/auth-service:latest",
-        kind="backend",
-        module_dir="auth-service",
-        required_containers=(MYSQL_CONTAINER_NAME, REDIS_CONTAINER_NAME, NACOS_CONTAINER_NAME, KAFKA_CONTAINER_NAME),
+        kind="rust-backend",
+        module_dir="auth-rs",
+        required_containers=(REDIS_CONTAINER_NAME,),
     ),
     ServiceDefinition(
         key="user-service",
@@ -149,6 +150,7 @@ SERVICE_ORDER: list[ServiceDefinition] = [
         required_containers=(MYSQL_CONTAINER_NAME, REDIS_CONTAINER_NAME, NACOS_CONTAINER_NAME, KAFKA_CONTAINER_NAME),
         extra_env={
             "IM_GATEWAY_AUTH_SERVICE_URL": "http://im-auth-service:8084",
+            "IM_AUTH_ROUTE_URI": "http://im-auth-service:8084",
             "IM_ROUTE_AUTH_HOST": "im-auth-service",
             "IM_ROUTE_USER_HOST": "im-user-service",
             "IM_ROUTE_GROUP_HOST": "im-group-service",
@@ -206,6 +208,19 @@ def assert_required_containers_running(docker_cmd: str, definition: ServiceDefin
 
 
 def build_backend_env(config: DeploymentConfig, definition: ServiceDefinition) -> dict[str, str]:
+    if definition.kind == "rust-backend":
+        environment = {
+            "TZ": "Asia/Shanghai",
+            "AUTH_RS_PORT": str(definition.container_port),
+            "REDIS_URL": f"redis://:{config.redis_password}@{REDIS_CONTAINER_NAME}:{REDIS_INTERNAL_PORT}/0",
+            "JWT_SECRET": config.jwt_secret,
+            "AUTH_REFRESH_SECRET": config.auth_refresh_secret,
+            "IM_INTERNAL_SECRET": config.im_internal_secret,
+            "IM_GATEWAY_AUTH_SECRET": config.im_gateway_auth_secret,
+        }
+        environment.update(definition.extra_env)
+        return environment
+
     environment = build_common_backend_environment(config)
     environment.update(definition.extra_env)
     return environment
@@ -241,22 +256,23 @@ def deploy_backend_service(
     remove_container_if_exists(docker_cmd, definition.container_name)
     remove_image_if_exists(docker_cmd, definition.image_name)
 
-    run_command(
-        [
-            mvn_cmd,
-            "-s",
-            MAVEN_SETTINGS_FILE,
-            "-f",
-            config.backend_code_root / "pom.xml",
-            "clean",
-            "package",
-            "-pl",
-            definition.module_dir,
-            "-am",
-            "-DskipTests",
-        ],
-        cwd=config.repo_root,
-    )
+    if definition.kind == "backend":
+        run_command(
+            [
+                mvn_cmd,
+                "-s",
+                MAVEN_SETTINGS_FILE,
+                "-f",
+                config.backend_code_root / "pom.xml",
+                "clean",
+                "package",
+                "-pl",
+                definition.module_dir,
+                "-am",
+                "-DskipTests",
+            ],
+            cwd=config.repo_root,
+        )
 
     run_command(
         [docker_cmd, "build", "-t", definition.image_name, "."],
@@ -340,15 +356,17 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
     definitions = selected_services(args)
-    needs_backend = any(definition.kind == "backend" for definition in definitions)
+    needs_backend_layout = any(definition.kind in {"backend", "rust-backend"} for definition in definitions)
+    needs_maven = any(definition.kind == "backend" for definition in definitions)
 
     config = load_config()
     docker_cmd = resolve_executable("Docker", ["docker"])
     git_cmd = resolve_executable("Git", ["git"])
-    mvn_cmd = ensure_maven_ready() if needs_backend else ""
+    mvn_cmd = ensure_maven_ready() if needs_maven else ""
 
     synchronize_repository(config, git_cmd)
-    ensure_backend_layout(config)
+    if needs_backend_layout:
+        ensure_backend_layout(config)
     ensure_frontend_layout(config)
     ensure_docker_network(docker_cmd, config.global_docker_network)
     print("本次部署目标:")
@@ -356,7 +374,7 @@ def main() -> None:
         print(f"  - {definition.key}")
 
     for definition in definitions:
-        if definition.kind == "backend":
+        if definition.kind in {"backend", "rust-backend"}:
             deploy_backend_service(config, docker_cmd, mvn_cmd, definition)
         else:
             deploy_frontend(config, docker_cmd, definition)

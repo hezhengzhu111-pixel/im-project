@@ -17,7 +17,7 @@ spring:
     gateway:
       routes:
         - id: auth-internal
-          uri: lb://im-auth-service
+          uri: ${IM_AUTH_ROUTE_URI:lb://im-auth-service}
           predicates:
             - Path=/api/auth/internal/**
         - id: user-internal
@@ -35,7 +35,7 @@ spring:
           filters:
             - RewritePath=/api/user/test(?<segment>/.*), /test$\{segment}
         - id: auth-service
-          uri: lb://im-auth-service
+          uri: ${IM_AUTH_ROUTE_URI:lb://im-auth-service}
           predicates:
             - Path=/auth/**,/api/auth/**
           filters:
@@ -92,7 +92,7 @@ spring:
           predicates:
             - Path=/websocket/**
         - id: openapi-auth
-          uri: lb://im-auth-service
+          uri: ${IM_AUTH_ROUTE_URI:lb://im-auth-service}
           predicates:
             - Path=/v3/api-docs/auth
           filters:
