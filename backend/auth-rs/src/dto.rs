@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -91,11 +91,11 @@ pub struct AuthIntrospectResultDto {
     pub issued_at_epoch_ms: Option<i64>,
     pub expires_at_epoch_ms: Option<i64>,
     pub jti: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     pub user_info: HashMap<String, Value>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     pub resource_permissions: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     pub data_scopes: HashMap<String, Value>,
 }
 
@@ -104,11 +104,11 @@ pub struct AuthIntrospectResultDto {
 pub struct AuthUserResourceDto {
     pub user_id: Option<i64>,
     pub username: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     pub user_info: HashMap<String, Value>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     pub resource_permissions: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     pub data_scopes: HashMap<String, Value>,
 }
 
@@ -121,7 +121,7 @@ pub struct IssueTokenRequest {
     pub avatar: Option<String>,
     pub email: Option<String>,
     pub phone: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     pub permissions: Vec<String>,
 }
 
@@ -210,8 +210,18 @@ pub fn now_ms() -> i64 {
         .unwrap_or_default()
 }
 
+fn null_to_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de> + Default,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn should_serialize_token_pair_with_java_field_names() {
         let dto = TokenPairDto {
@@ -227,5 +237,36 @@ mod tests {
         assert_eq!(json["refreshToken"], "refresh");
         assert_eq!(json["expiresInMs"], 1000);
         assert_eq!(json["refreshExpiresInMs"], 2000);
+    }
+
+    #[test]
+    fn should_deserialize_issue_token_null_permissions_as_empty() {
+        let request: IssueTokenRequest = serde_json::from_value(serde_json::json!({
+            "userId": 7,
+            "username": "alice",
+            "permissions": null
+        }))
+        .unwrap();
+
+        assert_eq!(Some(7), request.user_id);
+        assert_eq!(Some("alice".to_string()), request.username);
+        assert!(request.permissions.is_empty());
+    }
+
+    #[test]
+    fn should_deserialize_resource_null_collections_as_empty() {
+        let resource: AuthUserResourceDto = serde_json::from_value(serde_json::json!({
+            "userId": 7,
+            "username": "alice",
+            "userInfo": null,
+            "resourcePermissions": null,
+            "dataScopes": null
+        }))
+        .unwrap();
+
+        assert_eq!(Some(7), resource.user_id);
+        assert!(resource.user_info.is_empty());
+        assert!(resource.resource_permissions.is_empty());
+        assert!(resource.data_scopes.is_empty());
     }
 }

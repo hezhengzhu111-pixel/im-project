@@ -1129,6 +1129,7 @@ def build_common_backend_environment(config: DeploymentConfig) -> dict[str, str]
         "SPRING_CONFIG_ADDITIONAL_LOCATION": "classpath:/sit/",
         "JWT_SECRET": config.jwt_secret,
         "AUTH_REFRESH_SECRET": config.auth_refresh_secret,
+        "IM_AUTH_SERVICE_URL": "http://im-auth-service:8084",
         "IM_INTERNAL_SECRET": config.im_internal_secret,
         "IM_GATEWAY_AUTH_SECRET": config.im_gateway_auth_secret,
         "IM_MYSQL_HOST": MYSQL_CONTAINER_NAME,
