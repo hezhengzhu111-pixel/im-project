@@ -1,4 +1,4 @@
-import type { Message } from "@/types/message";
+import type {Message} from "@/types/message";
 
 type StoredMessage = Message & {
   conversationId: string;
@@ -65,14 +65,13 @@ function buildLocalKey(conversationId: string, localId: string): string {
 }
 
 function stripStoredMessage(record: StoredMessage): Message {
-  const {
-    conversationId: _conversationId,
-    _cachedAt: _cachedAt,
-    _createdAtMs: _createdAtMs,
-    _localId: _localId,
-    _serverId: _serverId,
-    ...message
-  } = record;
+  const message: Message = { ...record };
+  const storedFields = message as Partial<StoredMessage>;
+  delete storedFields.conversationId;
+  delete storedFields._cachedAt;
+  delete storedFields._createdAtMs;
+  delete storedFields._localId;
+  delete storedFields._serverId;
   return message;
 }
 

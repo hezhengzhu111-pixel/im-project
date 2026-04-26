@@ -5,6 +5,7 @@ x-java-service-env: &java-service-env
   JWT_SECRET: "${JWT_SECRET:-im-access-secret-im-access-secret-im-access-secret-im-access-secret}"
   AUTH_REFRESH_SECRET: "${AUTH_REFRESH_SECRET:-im-refresh-secret-im-refresh-secret-im-refresh-secret-im-refresh-secret}"
   IM_AUTH_SERVICE_URL: "${IM_AUTH_SERVICE_URL:-http://im-auth-service:8084}"
+  IM_SERVER_URL: "${IM_SERVER_URL:-http://im-server:8083}"
   IM_INTERNAL_SECRET: "${IM_INTERNAL_SECRET:-im-internal-secret-im-internal-secret-im-internal-secret-im}"
   IM_GATEWAY_AUTH_SECRET: "${IM_GATEWAY_AUTH_SECRET:-im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret}"
   IM_MYSQL_HOST: "${IM_MYSQL_HOST:-im-mysql}"
@@ -16,6 +17,8 @@ x-java-service-env: &java-service-env
   SPRING_DATA_REDIS_PASSWORD: "${SPRING_DATA_REDIS_PASSWORD:-root123}"
   IM_NACOS_SERVER_ADDR: "${IM_NACOS_SERVER_ADDR:-im-nacos:8848}"
   IM_KAFKA_BOOTSTRAP_SERVERS: "${IM_KAFKA_BOOTSTRAP_SERVERS:-im-kafka:29092}"
+  IM_SERVER_ROUTE_URI: "${IM_SERVER_ROUTE_URI:-http://im-server:8083}"
+  IM_SERVER_WS_ROUTE_URI: "${IM_SERVER_WS_ROUTE_URI:-ws://im-server:8083}"
   IM_LOGGING_ROOT_DIR: "${IM_LOGGING_ROOT_DIR:-/var/log/im-project}"
 
 x-java-service: &java-service
@@ -286,26 +289,35 @@ services:
       - im_files:/data/im-files
 
   im-server:
-    <<: *java-service
+    restart: unless-stopped
+    networks:
+      - im-sit-network
     image: im-project-sit/im-server:latest
     build:
-      context: ../../backend/im-server
+      context: ../../backend/im-server-rs
       args:
         IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
     depends_on:
-      im-mysql:
-        condition: service_healthy
       im-redis:
         condition: service_healthy
-      im-nacos:
+      im-kafka:
+        condition: service_started
+      im-auth-service:
+        condition: service_started
+      im-group-service:
         condition: service_started
     environment:
-      <<: *java-service-env
-      IM_SELF_URL: "${IM_SELF_URL:-http://im-server:8083}"
+      TZ: Asia/Shanghai
+      IM_SERVER_RS_PORT: "8083"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
+      IM_AUTH_SERVICE_URL: "${IM_AUTH_SERVICE_URL:-http://im-auth-service:8084}"
+      IM_GROUP_SERVICE_URL: "${IM_GROUP_SERVICE_URL:-http://im-group-service:8086}"
+      IM_INTERNAL_SECRET: "${IM_INTERNAL_SECRET:-im-internal-secret-im-internal-secret-im-internal-secret-im}"
+      IM_GATEWAY_AUTH_SECRET: "${IM_GATEWAY_AUTH_SECRET:-im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret}"
+      IM_KAFKA_BOOTSTRAP_SERVERS: "${IM_KAFKA_BOOTSTRAP_SERVERS:-im-kafka:29092}"
+      IM_INSTANCE_ID: "${IM_INSTANCE_ID:-im-server:8083}"
     ports:
       - "${IM_SERVER_PORT:-8083}:8083"
-    volumes:
-      - ${HOST_LOG_ROOT}/im-server:/var/log/im-project
 
   im-registry-monitor:
     <<: *java-service
@@ -391,6 +403,8 @@ services:
       IM_ROUTE_MESSAGE_HOST: "${IM_ROUTE_MESSAGE_HOST:-im-message-service}"
       IM_ROUTE_FILE_HOST: "${IM_ROUTE_FILE_HOST:-im-file-service}"
       IM_ROUTE_IM_SERVER_HOST: "${IM_ROUTE_IM_SERVER_HOST:-im-server}"
+      IM_SERVER_ROUTE_URI: "${IM_SERVER_ROUTE_URI:-http://im-server:8083}"
+      IM_SERVER_WS_ROUTE_URI: "${IM_SERVER_WS_ROUTE_URI:-ws://im-server:8083}"
     ports:
       - "${GATEWAY_PORT:-8082}:8082"
     volumes:

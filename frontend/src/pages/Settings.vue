@@ -398,27 +398,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
-import {
-  ElMessageBox,
-  type FormInstance,
-  type FormRules,
-} from "element-plus";
-import {
-  ArrowLeft,
-  ArrowRight,
-  ChatDotRound,
-  FolderOpened,
-  Lock,
-  Setting,
-  User,
-} from "@element-plus/icons-vue";
-import type { UserSettings } from "@/types";
-import { defaultUserSettings } from "@/normalizers/user";
-import { useUserStore } from "@/stores/user";
-import { useUserSettingsStore } from "@/stores/user-settings";
-import { useErrorHandler } from "@/hooks/useErrorHandler";
+import {computed, onMounted, onUnmounted, reactive, ref} from "vue";
+import {useRouter} from "vue-router";
+import {ElMessageBox, type FormInstance, type FormRules,} from "element-plus";
+import {ArrowLeft, ArrowRight, ChatDotRound, FolderOpened, Lock, Setting, User,} from "@element-plus/icons-vue";
+import type {UserSettings} from "@/types";
+import {defaultUserSettings} from "@/normalizers/user";
+import {useUserStore} from "@/stores/user";
+import {useUserSettingsStore} from "@/stores/user-settings";
+import {useErrorHandler} from "@/hooks/useErrorHandler";
 
 type PrivacyKey = keyof UserSettings["privacy"];
 type MessageKey = keyof UserSettings["message"];
@@ -574,9 +562,45 @@ const updatePrivacySetting = async <K extends PrivacyKey>(key: K, value: boolean
   }
 };
 
+const requestNotificationPermission = async (): Promise<boolean> => {
+  if (!("Notification" in window)) {
+    capture(new Error("当前浏览器不支持消息通知"), "当前浏览器不支持消息通知");
+    return false;
+  }
+
+  if (Notification.permission === "granted") {
+    return true;
+  }
+
+  if (Notification.permission === "denied") {
+    capture(new Error("浏览器通知权限未开启"), "浏览器通知权限未开启");
+    return false;
+  }
+
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      capture(new Error("浏览器通知权限未开启"), "浏览器通知权限未开启");
+      return false;
+    }
+    return true;
+  } catch (error) {
+    capture(error, "请求通知权限失败");
+    return false;
+  }
+};
+
 const updateMessageSetting = async <K extends MessageKey>(key: K, value: boolean) => {
   const previous = messageSettings[key];
   try {
+    if (key === "enableNotification" && value) {
+      const permissionGranted = await requestNotificationPermission();
+      if (!permissionGranted) {
+        messageSettings[key] = previous;
+        return;
+      }
+    }
+
     await settingsStore.updateMessageSettings({ [key]: value } as Pick<UserSettings["message"], K>);
     notifySuccess("消息设置已更新");
   } catch (error) {

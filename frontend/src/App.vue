@@ -144,14 +144,6 @@ onMounted(async () => {
 
   document.addEventListener("visibilitychange", handleVisibilityChange);
   window.addEventListener("beforeunload", handleBeforeUnload);
-
-  if ("Notification" in window && Notification.permission === "default") {
-    try {
-      await Notification.requestPermission();
-    } catch (error) {
-      logger.warn("notification permission request failed", error);
-    }
-  }
 });
 
 onUnmounted(() => {

@@ -1130,6 +1130,7 @@ def build_common_backend_environment(config: DeploymentConfig) -> dict[str, str]
         "JWT_SECRET": config.jwt_secret,
         "AUTH_REFRESH_SECRET": config.auth_refresh_secret,
         "IM_AUTH_SERVICE_URL": "http://im-auth-service:8084",
+        "IM_SERVER_URL": "http://im-server:8083",
         "IM_INTERNAL_SECRET": config.im_internal_secret,
         "IM_GATEWAY_AUTH_SECRET": config.im_gateway_auth_secret,
         "IM_MYSQL_HOST": MYSQL_CONTAINER_NAME,
@@ -1141,4 +1142,6 @@ def build_common_backend_environment(config: DeploymentConfig) -> dict[str, str]
         "SPRING_DATA_REDIS_PASSWORD": config.redis_password,
         "IM_NACOS_SERVER_ADDR": f"{NACOS_CONTAINER_NAME}:{NACOS_INTERNAL_PORT}",
         "IM_KAFKA_BOOTSTRAP_SERVERS": f"{KAFKA_CONTAINER_NAME}:{KAFKA_INTERNAL_PORT}",
+        "IM_SERVER_ROUTE_URI": "http://im-server:8083",
+        "IM_SERVER_WS_ROUTE_URI": "ws://im-server:8083",
     }
