@@ -13,6 +13,7 @@ import {
     ConversationClearMarker,
     getServerMessages,
     hasSameMessageIdentity,
+    limitMessageWindow,
     sortMessagesAscending,
 } from "@/stores/modules/message-helpers";
 import {createMessageLoadingModule} from "@/stores/modules/message-loading";
@@ -329,9 +330,9 @@ export const useMessageStore = defineStore("message", () => {
       next.push(message);
     }
 
-    next.sort(sortMessagesAscending);
-    messages.value.set(sessionId, next);
-    loadingModule.syncHistoryState(sessionId, next, {preserveHasMore: true});
+    const windowedMessages = limitMessageWindow(next.sort(sortMessagesAscending), "latest");
+    messages.value.set(sessionId, windowedMessages);
+    loadingModule.syncHistoryState(sessionId, windowedMessages, {preserveHasMore: true});
 
     const isSelfMessage = message.senderId === String(userStore.userId || "");
     sessionStore.applyMessageToSession(sessionId, message, {
@@ -398,7 +399,10 @@ export const useMessageStore = defineStore("message", () => {
 
   const deleteMessage = async (messageId: string) => {
     messages.value.forEach((messageList, sessionId) => {
-      const next = messageList.filter((message) => message.id !== messageId);
+      const next = limitMessageWindow(
+        messageList.filter((message) => message.id !== messageId),
+        "latest",
+      );
       if (next.length !== messageList.length) {
         messages.value.set(sessionId, next);
         loadingModule.syncHistoryState(sessionId, next, {preserveHasMore: true});

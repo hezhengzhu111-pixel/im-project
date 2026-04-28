@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
+
 from deploy_utils import compose_base_command, load_config, run_command, wait_for_container_healthy
 
 
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Start MySQL, Redis, and file-volume initialization.")
+    return parser
+
+
 def main() -> None:
+    build_parser().parse_args()
     config = load_config()
     command = [
         *compose_base_command(config),

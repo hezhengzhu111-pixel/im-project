@@ -201,9 +201,11 @@ export const messageRepo = {
     db.close();
   },
 
-  async listConversation(conversationId: string): Promise<Message[]> {
+  async listConversation(conversationId: string, limit = 50): Promise<Message[]> {
     if (!hasIndexedDb()) {
-      return getMemoryConversation(conversationId).map(stripStoredMessage);
+      return getMemoryConversation(conversationId)
+        .slice(-Math.max(1, limit))
+        .map(stripStoredMessage);
     }
 
     const db = await openDb();
@@ -217,9 +219,17 @@ export const messageRepo = {
           [conversationId, -Infinity],
           [conversationId, Infinity],
         );
-        const request = index.getAll(range);
-        request.onsuccess = () =>
-          resolve((request.result || []) as Array<StoredMessage & { key: string }>);
+        const result: Array<StoredMessage & { key: string }> = [];
+        const request = index.openCursor(range, "prev");
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor || result.length >= Math.max(1, limit)) {
+            resolve(result.reverse());
+            return;
+          }
+          result.push(cursor.value as StoredMessage & { key: string });
+          cursor.continue();
+        };
         request.onerror = () => reject(request.error);
       },
     );

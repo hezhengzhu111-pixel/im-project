@@ -5,6 +5,7 @@ import type {ChatSession, Message} from "@/types";
 import {
     findOldestLoadedServerMessageId,
     getServerMessages,
+    limitMessageWindow,
     mergeMessagesChronologically,
     sortMessagesAscending,
 } from "@/stores/modules/message-helpers";
@@ -139,7 +140,7 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
     ctx.loading.value = true;
     try {
       if (!ctx.messages.value.has(sessionId)) {
-        const revived = await reviveCachedMessages(sessionId);
+        const revived = limitMessageWindow(await reviveCachedMessages(sessionId), "latest");
         if (revived.length > 0) {
           ctx.messages.value.set(sessionId, revived);
           syncHistoryState(sessionId, revived, {preserveHasMore: true});
@@ -193,8 +194,9 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
         return !serverClientIds.has(message.clientMessageId);
       });
 
-      ctx.messages.value.set(sessionId, nextMessages);
-      syncHistoryState(sessionId, nextMessages, {preserveHasMore: true});
+      const windowedMessages = limitMessageWindow(nextMessages, "latest");
+      ctx.messages.value.set(sessionId, windowedMessages);
+      syncHistoryState(sessionId, windowedMessages, {preserveHasMore: true});
       await ctx.scheduleServerMessagePersist(sessionId, visibleMessages);
     } finally {
       ctx.loading.value = false;
@@ -238,7 +240,10 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
 
       const normalizedMessages = response.data.slice().sort(sortMessagesAscending);
       const visibleMessages = ctx.filterClearedMessages(sessionId, normalizedMessages);
-      const merged = mergeMessagesChronologically(existingMessages, visibleMessages);
+      const merged = limitMessageWindow(
+        mergeMessagesChronologically(visibleMessages, existingMessages),
+        "oldest",
+      );
 
       ctx.messages.value.set(sessionId, merged);
       syncHistoryState(sessionId, merged, {
