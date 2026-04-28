@@ -1,5 +1,6 @@
 use crate::auth_api;
 use crate::config::AppConfig;
+use crate::observability;
 use crate::redis_streams;
 use crate::route::{parse_user_routes, UserRoute};
 use im_rs_common::event::{ImEvent, ImEventType};
@@ -134,7 +135,11 @@ async fn build_push(db: &MySqlPool, event: &ImEvent) -> anyhow::Result<Option<Pu
                 else {
                     return Ok(None);
                 };
-                load_group_members(db, group_id).await?
+                observability::db_query(
+                    "push_dispatcher.load_group_members.message",
+                    load_group_members(db, group_id),
+                )
+                .await?
             } else {
                 distinct([
                     parse_i64_option(event.sender_id.as_deref())
@@ -158,7 +163,11 @@ async fn build_push(db: &MySqlPool, event: &ImEvent) -> anyhow::Result<Option<Pu
                 let Some(group_id) = parse_i64_option(event.group_id.as_deref()) else {
                     return Ok(None);
                 };
-                load_group_members(db, group_id).await?
+                observability::db_query(
+                    "push_dispatcher.load_group_members.read_receipt",
+                    load_group_members(db, group_id),
+                )
+                .await?
             } else {
                 distinct([
                     parse_i64_option(Some(&receipt.reader_id)),
@@ -183,7 +192,11 @@ async fn build_push(db: &MySqlPool, event: &ImEvent) -> anyhow::Result<Option<Pu
                 else {
                     return Ok(None);
                 };
-                load_group_members(db, group_id).await?
+                observability::db_query(
+                    "push_dispatcher.load_group_members.status",
+                    load_group_members(db, group_id),
+                )
+                .await?
             } else {
                 distinct([
                     parse_i64_option(event.sender_id.as_deref())

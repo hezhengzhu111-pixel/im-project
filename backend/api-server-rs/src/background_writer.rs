@@ -1,4 +1,5 @@
 use crate::config::AppConfig;
+use crate::observability;
 use crate::redis_streams;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use im_rs_common::event::{ImEvent, ImEventType, MessageDto, MessageStatus, MessageType};
@@ -155,10 +156,19 @@ impl Processor {
         }
 
         let messages = std::mem::take(&mut self.message_batch);
+        let count = messages.len();
+        let started = Instant::now();
         let mut tx = self.db.begin().await?;
         insert_messages(&mut tx, &messages).await?;
         tx.commit().await?;
-        tracing::debug!(count = messages.len(), "batch inserted messages");
+        tracing::debug!(count, "batch inserted messages");
+        observability::writer_flush(
+            "messages",
+            count,
+            started.elapsed().as_millis() as u64,
+            self.message_batch.len(),
+            self.read_batch_len(),
+        );
 
         let mut watermarks: HashMap<String, i64> = HashMap::new();
         for message in &messages {
@@ -188,6 +198,8 @@ impl Processor {
         if self.private_read_batch.is_empty() && self.group_read_batch.is_empty() {
             return Ok(false);
         }
+        let started = Instant::now();
+        let count = self.read_batch_len();
 
         let private = coalesce_private_read_cursors(std::mem::take(&mut self.private_read_batch));
         let group = coalesce_group_read_cursors(std::mem::take(&mut self.group_read_batch));
@@ -199,6 +211,13 @@ impl Processor {
             private_count = private.len(),
             group_count = group.len(),
             "batch upserted read cursors"
+        );
+        observability::writer_flush(
+            "read_cursors",
+            count,
+            started.elapsed().as_millis() as u64,
+            self.message_batch.len(),
+            self.read_batch_len(),
         );
         Ok(true)
     }

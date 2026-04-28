@@ -3,6 +3,7 @@ use crate::error::AppError;
 use crate::id_resolver::{
     resolve_active_group_id, resolve_active_user_id, resolve_existing_message_id,
 };
+use crate::observability;
 use chrono::{DateTime, Utc};
 use im_rs_common::auth::Identity;
 use im_rs_common::event::{
@@ -93,9 +94,12 @@ pub async fn send_private(
         request.content.as_deref(),
         request.media_url.as_deref(),
     )?;
-    let receiver_id = resolve_active_user_id(db, request.receiver_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
+    let receiver_id = observability::db_query(
+        "send_private.resolve_active_user",
+        resolve_active_user_id(db, request.receiver_id),
+    )
+    .await?
+    .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
     if receiver_id == identity.user_id {
         return Err(AppError::BadRequest(
             "cannot send private message to self".to_string(),
@@ -140,9 +144,12 @@ pub async fn send_group(
         request.content.as_deref(),
         request.media_url.as_deref(),
     )?;
-    let group_id = resolve_active_group_id(db, request.group_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
+    let group_id = observability::db_query(
+        "send_group.resolve_active_group",
+        resolve_active_group_id(db, request.group_id),
+    )
+    .await?
+    .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
     validate_group_member(db, group_id, identity.user_id).await?;
     let members = load_group_members(db, group_id).await?;
     let conversation_id = keys::group_conversation_id(group_id);
@@ -303,6 +310,7 @@ pub async fn conversations(
         .zrevrange(keys::user_conversations_key(identity.user_id), 0, 99)
         .await
         .unwrap_or_default();
+    let hot_conversation_count = conv_ids.len();
     let mut result = Vec::new();
     for conversation_id in conv_ids {
         if let Some(last) = load_last_message(redis, &conversation_id).await {
@@ -319,6 +327,13 @@ pub async fn conversations(
         }
     }
     if result.is_empty() {
+        observability::cache_fallback(
+            "conversations",
+            "empty_hot_conversations",
+            None,
+            hot_conversation_count,
+            100,
+        );
         result = load_conversations_from_db(db, identity.user_id).await?;
     }
     result.sort_by(|a, b| b.last_message_time.cmp(&a.last_message_time));
@@ -549,14 +564,18 @@ async fn load_message(
     {
         return Ok(serde_json::from_str(&raw)?);
     }
-    let row = sqlx::query(
+    observability::cache_fallback("load_message", "message_cache_miss", None, 0, 1);
+    let row = observability::db_query(
+        "load_message.by_id",
+        sqlx::query(
         r#"SELECT id, sender_id, receiver_id, group_id, client_message_id, message_type, content,
                   media_url, media_size, media_name, thumbnail_url, duration, location_info,
                   status, is_group_chat, reply_to_message_id, created_time, updated_time
            FROM service_message_service_db.messages WHERE id = ?"#,
+        )
+        .bind(message_id)
+        .fetch_optional(db),
     )
-    .bind(message_id)
-    .fetch_optional(db)
     .await?;
     let Some(row) = row else {
         return Err(AppError::NotFound("message not found".to_string()));
@@ -615,6 +634,13 @@ async fn load_history(
         }
     }
     if messages.len() < limit as usize {
+        observability::cache_fallback(
+            "history",
+            "insufficient_hot_messages",
+            Some(conversation_id),
+            messages.len(),
+            limit as usize,
+        );
         messages.extend(
             load_history_from_db(db, conversation_id, &query, limit as usize + messages.len())
                 .await?,
@@ -666,7 +692,7 @@ async fn load_history_from_db(
     }
     sql.push_str(" LIMIT ");
     sql.push_str(&limit.max(1).to_string());
-    let rows = sqlx::query(&sql).fetch_all(db).await?;
+    let rows = observability::db_query("history.from_db", sqlx::query(&sql).fetch_all(db)).await?;
     Ok(rows.iter().map(message_from_row).collect())
 }
 
@@ -682,6 +708,13 @@ async fn latest_message_id(
     if let Some(id) = ids.first().and_then(|value| value.parse::<i64>().ok()) {
         return Ok(Some(id));
     }
+    observability::cache_fallback(
+        "latest_message_id",
+        "empty_hot_conversation",
+        Some(conversation_id),
+        0,
+        1,
+    );
     let history = load_history_from_db(
         db,
         conversation_id,
@@ -701,12 +734,15 @@ async fn latest_message_id(
 }
 
 async fn validate_friend(db: &MySqlPool, user_id: i64, friend_id: i64) -> Result<(), AppError> {
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM service_user_service_db.im_friend WHERE user_id = ? AND friend_id = ? AND status = 1",
+    let count: i64 = observability::db_query(
+        "validate_friend",
+        sqlx::query_scalar(
+            "SELECT COUNT(*) FROM service_user_service_db.im_friend WHERE user_id = ? AND friend_id = ? AND status = 1",
+        )
+        .bind(user_id)
+        .bind(friend_id)
+        .fetch_one(db),
     )
-    .bind(user_id)
-    .bind(friend_id)
-    .fetch_one(db)
     .await?;
     if count <= 0 {
         return Err(AppError::Forbidden(
@@ -721,12 +757,15 @@ async fn validate_group_member(
     group_id: i64,
     user_id: i64,
 ) -> Result<(), AppError> {
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM service_group_service_db.im_group_member WHERE group_id = ? AND user_id = ? AND status = 1",
+    let count: i64 = observability::db_query(
+        "validate_group_member",
+        sqlx::query_scalar(
+            "SELECT COUNT(*) FROM service_group_service_db.im_group_member WHERE group_id = ? AND user_id = ? AND status = 1",
+        )
+        .bind(group_id)
+        .bind(user_id)
+        .fetch_one(db),
     )
-    .bind(group_id)
-    .bind(user_id)
-    .fetch_one(db)
     .await?;
     if count <= 0 {
         return Err(AppError::Forbidden(
@@ -737,11 +776,14 @@ async fn validate_group_member(
 }
 
 async fn load_group_members(db: &MySqlPool, group_id: i64) -> Result<Vec<i64>, AppError> {
-    let rows: Vec<i64> = sqlx::query_scalar(
-        "SELECT user_id FROM service_group_service_db.im_group_member WHERE group_id = ? AND status = 1",
+    let rows: Vec<i64> = observability::db_query(
+        "load_group_members",
+        sqlx::query_scalar(
+            "SELECT user_id FROM service_group_service_db.im_group_member WHERE group_id = ? AND status = 1",
+        )
+        .bind(group_id)
+        .fetch_all(db),
     )
-    .bind(group_id)
-    .fetch_all(db)
     .await?;
     Ok(rows)
 }
@@ -976,11 +1018,13 @@ async fn conversation_from_message(
             .as_deref()
             .and_then(|value| value.parse::<i64>().ok())
             .unwrap_or_default();
-        let row =
+        let row = observability::db_query(
+            "conversation.group_metadata",
             sqlx::query("SELECT name, avatar FROM service_group_service_db.im_group WHERE id = ?")
                 .bind(group_id)
-                .fetch_optional(db)
-                .await?;
+                .fetch_optional(db),
+        )
+        .await?;
         let name: Option<String> = row.as_ref().and_then(|row| row.try_get("name").ok());
         let avatar: Option<String> = row.as_ref().and_then(|row| row.try_get("avatar").ok());
         return Ok(Some(ConversationDto {
@@ -1007,11 +1051,14 @@ async fn conversation_from_message(
     };
     let Some(peer) = peer else { return Ok(None) };
     let peer_id = peer.parse::<i64>().unwrap_or_default();
-    let row = sqlx::query(
-        "SELECT username, nickname, avatar FROM service_user_service_db.users WHERE id = ?",
+    let row = observability::db_query(
+        "conversation.user_metadata",
+        sqlx::query(
+            "SELECT username, nickname, avatar FROM service_user_service_db.users WHERE id = ?",
+        )
+        .bind(peer_id)
+        .fetch_optional(db),
     )
-    .bind(peer_id)
-    .fetch_optional(db)
     .await?;
     let username: Option<String> = row.as_ref().and_then(|row| row.try_get("username").ok());
     let nickname: Option<String> = row.as_ref().and_then(|row| row.try_get("nickname").ok());
@@ -1038,7 +1085,9 @@ async fn load_conversations_from_db(
     db: &MySqlPool,
     user_id: i64,
 ) -> Result<Vec<ConversationDto>, AppError> {
-    let rows = sqlx::query(
+    let rows = observability::db_query(
+        "conversations.from_db",
+        sqlx::query(
         r#"SELECT * FROM service_message_service_db.messages
            WHERE status <> 5 AND (
              (is_group_chat = 0 AND (sender_id = ? OR receiver_id = ?))
@@ -1047,11 +1096,12 @@ async fn load_conversations_from_db(
              ))
            )
            ORDER BY id DESC LIMIT 300"#,
+        )
+        .bind(user_id)
+        .bind(user_id)
+        .bind(user_id)
+        .fetch_all(db),
     )
-    .bind(user_id)
-    .bind(user_id)
-    .bind(user_id)
-    .fetch_all(db)
     .await?;
     let mut seen = std::collections::HashSet::new();
     let mut result = Vec::new();

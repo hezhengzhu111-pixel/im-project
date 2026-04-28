@@ -2,7 +2,7 @@
  * 群组相关类型定义
  */
 
-import type { User } from "./user";
+import type {User} from "./user";
 
 /** 群组信息 */
 export interface Group {
@@ -53,6 +53,7 @@ export interface GroupMember {
   avatar?: string;
   role: 'OWNER' | 'ADMIN' | 'MEMBER' | string;
   nickname?: string;
+  online?: boolean;
   joinTime: string;
 }
 

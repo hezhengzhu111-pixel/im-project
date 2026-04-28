@@ -7,6 +7,7 @@ mod error;
 mod file_api;
 mod id_resolver;
 mod message;
+mod observability;
 mod push_dispatcher;
 mod redis_streams;
 mod route;
@@ -17,24 +18,18 @@ mod web;
 use crate::config::AppConfig;
 use crate::web::AppState;
 use axum::extract::DefaultBodyLimit;
-use log::LevelFilter;
 use redis::aio::ConnectionManager;
 use sqlx::mysql::MySqlConnectOptions;
-use sqlx::ConnectOptions;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
 use tower_http::trace::TraceLayer;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{filter::Directive, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "api_server_rs=info,tower_http=info,sqlx::query=trace".into()),
-        )
+        .with(log_filter())
         .with(tracing_subscriber::fmt::layer())
         .init();
 
@@ -42,9 +37,7 @@ async fn main() -> anyhow::Result<()> {
     tokio::fs::create_dir_all(&config.storage_base_dir).await?;
     let redis_client = redis::Client::open(config.redis_url.as_str())?;
     let redis = ConnectionManager::new(redis_client).await?;
-    let mysql_options = MySqlConnectOptions::from_str(&config.mysql_url)?
-        .log_statements(LevelFilter::Trace)
-        .log_slow_statements(LevelFilter::Warn, Duration::from_millis(500));
+    let mysql_options = MySqlConnectOptions::from_str(&config.mysql_url)?;
     let db = sqlx::mysql::MySqlPoolOptions::new()
         .max_connections(20)
         .connect_with(mysql_options)
@@ -68,6 +61,21 @@ async fn main() -> anyhow::Result<()> {
         .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())
+}
+
+fn log_filter() -> tracing_subscriber::EnvFilter {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        "api_server_rs=info,im_observe=info,tower_http=warn,sqlx::query=off".into()
+    });
+    filter
+        .add_directive(parse_log_directive("im_observe=info"))
+        .add_directive(parse_log_directive("sqlx::query=off"))
+}
+
+fn parse_log_directive(directive: &str) -> Directive {
+    directive
+        .parse()
+        .unwrap_or_else(|error| panic!("invalid static log directive {directive}: {error}"))
 }
 
 async fn shutdown_signal() {

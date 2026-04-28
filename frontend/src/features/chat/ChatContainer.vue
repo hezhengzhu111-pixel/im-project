@@ -41,7 +41,12 @@
             <el-icon><ArrowLeft /></el-icon>
           </button>
 
-          <div class="chat-header-main">
+          <button
+            type="button"
+            class="chat-header-main interactive-reset"
+            :title="currentSession.type === 'group' ? t('chat.groupInfo') : t('chat.contactInfo')"
+            @click="openSessionInfoDrawer(currentSession)"
+          >
             <div class="chat-avatar-shell">
               <el-avatar :size="42" :src="headerAvatar" class="chat-avatar">
                 {{ headerAvatarText }}
@@ -67,7 +72,7 @@
                   {{ currentSessionOnline ? t("chat.onlineNow") : t("chat.offline") }}
                 </span>
                 <span v-else class="chat-detail-pill">
-                  {{ t("chat.members", { count: currentSession.memberCount || 0 }) }}
+                  {{ t("chat.members", { count: groupMemberCount }) }}
                 </span>
                 <span
                   v-if="currentSession.type === 'group' && groupDescription"
@@ -77,7 +82,7 @@
                 </span>
               </div>
             </div>
-          </div>
+          </button>
 
           <div class="chat-header-side">
             <div class="chat-actions">
@@ -264,6 +269,15 @@ const groupDescription = computed(() => {
     sessionInfoGroup.value?.description || sessionInfoGroup.value?.announcement || "";
   return description.trim();
 });
+const groupMemberCount = computed(() => {
+  if (currentSession.value?.type !== "group") {
+    return 0;
+  }
+  if (sessionInfoMembers.value.length > 0) {
+    return sessionInfoMembers.value.length;
+  }
+  return sessionInfoGroup.value?.memberCount || currentSession.value.memberCount || 0;
+});
 
 const rememberUnreadSnapshot = (session?: ChatSession | null) => {
   if (!session?.id) {
@@ -318,7 +332,18 @@ const openSessionInfoDrawer = async (session: ChatSession) => {
   sessionInfoLoading.value = true;
   try {
     const response = await groupService.getMembers(session.targetId);
-    sessionInfoMembers.value = response.data || [];
+    const members = response.data || [];
+    const memberIds = members
+      .map((member) => String(member.userId || ""))
+      .filter(Boolean);
+    const onlineStatus = await webSocketStore.refreshOnlineStatus(memberIds);
+    sessionInfoMembers.value = members.map((member) => ({
+      ...member,
+      online:
+        String(member.userId) === String(userStore.userId || "") ||
+        Boolean(onlineStatus[String(member.userId || "")]) ||
+        webSocketStore.isUserOnline(String(member.userId || "")),
+    }));
   } catch (error) {
     sessionInfoError.value = t("chat.loadGroupFailed");
     capture(error, t("chat.loadGroupFailed"));
@@ -594,6 +619,15 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 4px;
+  transition: background-color 0.18s ease;
+}
+
+.chat-header-main:hover {
+  background: rgba(37, 99, 235, 0.06);
 }
 
 .chat-avatar-shell {

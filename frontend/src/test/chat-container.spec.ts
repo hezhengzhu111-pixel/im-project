@@ -6,10 +6,12 @@ import ChatContainer from "@/features/chat/ChatContainer.vue";
 const {
   confirmMock,
   getMembersMock,
+  refreshOnlineStatusMock,
   chatStoreState,
 } = vi.hoisted(() => ({
   confirmMock: vi.fn(),
   getMembersMock: vi.fn(),
+  refreshOnlineStatusMock: vi.fn(),
   chatStoreState: {
     currentSession: {
       id: "1_2",
@@ -116,6 +118,7 @@ vi.mock("@/stores/websocket", () => ({
   useWebSocketStore: () => ({
     connectionStatus: "connected",
     isUserOnline: vi.fn().mockReturnValue(true),
+    refreshOnlineStatus: refreshOnlineStatusMock,
   }),
 }));
 
@@ -214,6 +217,7 @@ describe("ChatContainer", () => {
       code: 200,
       data: [],
     });
+    refreshOnlineStatusMock.mockReset().mockResolvedValue({});
     chatStoreState.currentSession = {
       id: "1_2",
       type: "private",
@@ -281,6 +285,18 @@ describe("ChatContainer", () => {
   });
 
   it("opens the session info drawer and loads group members for group sessions", async () => {
+    getMembersMock.mockResolvedValue({
+      code: 200,
+      data: [
+        {
+          id: "m1",
+          userId: "2",
+          username: "u2",
+          role: "MEMBER",
+          joinTime: "2026-04-16T10:00:00.000Z",
+        },
+      ],
+    });
     chatStoreState.currentSession = {
       id: "group_9",
       type: "group",
@@ -303,6 +319,37 @@ describe("ChatContainer", () => {
     const dialogs = wrapper.findComponent({ name: "ChatDialogs" });
     expect(dialogs.props("visibleSessionInfoDrawer")).toBe(true);
     expect(getMembersMock).toHaveBeenCalledWith("9");
+    expect(refreshOnlineStatusMock).toHaveBeenCalledWith(["2"]);
+    expect(dialogs.props("sessionInfoMembers")).toEqual([
+      expect.objectContaining({
+        userId: "2",
+        online: true,
+      }),
+    ]);
+  });
+
+  it("opens group info from the header main area", async () => {
+    chatStoreState.currentSession = {
+      id: "group_9",
+      type: "group",
+      targetId: "9",
+      targetName: "Project",
+      targetAvatar: "",
+      unreadCount: 0,
+      lastActiveTime: "",
+      memberCount: 3,
+      isPinned: false,
+      pinned: false,
+      isMuted: false,
+      muted: false,
+    };
+
+    const wrapper = mountContainer();
+    await wrapper.find(".chat-header-main").trigger("click");
+    await flush();
+
+    expect(getMembersMock).toHaveBeenCalledWith("9");
+    expect(wrapper.findComponent({ name: "ChatDialogs" }).props("visibleSessionInfoDrawer")).toBe(true);
   });
 
   it("routes pin, mute, and delete actions to the chat store", async () => {

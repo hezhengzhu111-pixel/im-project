@@ -104,7 +104,7 @@ services:
         condition: service_started
     environment:
       TZ: Asia/Shanghai
-      RUST_LOG: "${API_SERVER_RUST_LOG:-api_server_rs=info,tower_http=info,sqlx::query=trace}"
+      RUST_LOG: "${API_SERVER_RUST_LOG:-api_server_rs=info,im_observe=info,tower_http=warn,sqlx::query=off}"
       API_SERVER_RS_PORT: "8082"
       MYSQL_URL: "mysql://root:${MYSQL_ROOT_PASSWORD:-root123}@im-mysql:3306/service_message_service_db"
       REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"

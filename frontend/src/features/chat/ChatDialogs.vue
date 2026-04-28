@@ -149,7 +149,7 @@
             {{ currentSession.targetId }}
           </el-descriptions-item>
           <el-descriptions-item :label="t('dialog.members')">
-            {{ sessionInfoGroup?.memberCount || currentSession.memberCount || 0 }}
+            {{ sessionInfoMemberCount }}
           </el-descriptions-item>
           <el-descriptions-item :label="t('dialog.description')">
             {{ sessionInfoGroup?.description || sessionInfoGroup?.announcement || "-" }}
@@ -176,12 +176,20 @@
             :key="member.id || member.userId"
             class="member-item"
           >
-            <el-avatar :size="34" :src="member.avatar">
-              {{ (member.nickname || member.username || member.userId).charAt(0) }}
-            </el-avatar>
+            <div class="member-avatar-wrap">
+              <el-avatar :size="34" :src="member.avatar">
+                {{ (member.nickname || member.username || member.userId).charAt(0) }}
+              </el-avatar>
+              <span class="member-online-dot" :class="{ online: member.online }"></span>
+            </div>
             <div class="member-meta">
-              <div class="member-name">
-                {{ member.nickname || member.username || member.userId }}
+              <div class="member-name-row">
+                <span class="member-name">
+                  {{ member.nickname || member.username || member.userId }}
+                </span>
+                <span class="member-status" :class="{ online: member.online }">
+                  {{ member.online ? t("chat.onlineNow") : t("chat.offline") }}
+                </span>
               </div>
               <div class="member-subtitle">
                 {{ member.role }} · {{ t("dialog.joined") }}
@@ -272,6 +280,12 @@ const sessionInfoMembers = computed(() => props.sessionInfoMembers);
 const sessionInfoLoading = computed(() => props.sessionInfoLoading);
 const sessionInfoError = computed(() => props.sessionInfoError);
 const privateSessionOnline = computed(() => props.privateSessionOnline);
+const sessionInfoMemberCount = computed(() =>
+  sessionInfoMembers.value.length ||
+  sessionInfoGroup.value?.memberCount ||
+  currentSession.value?.memberCount ||
+  0,
+);
 
 const isSearchingUsers = ref(false);
 const userSearchResults = ref<User[]>([]);
@@ -464,11 +478,49 @@ const formatMessageTime = (value?: string) => {
   margin-top: 8px;
 }
 
+.member-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.member-online-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #cbd5e1;
+}
+
+.member-online-dot.online {
+  background: var(--chat-success);
+}
+
 .session-info-name,
 .member-name {
   color: var(--chat-text-primary);
   font-size: 15px;
   font-weight: 700;
+}
+
+.member-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.member-status {
+  flex-shrink: 0;
+  color: var(--chat-text-tertiary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.member-status.online {
+  color: var(--chat-success);
 }
 
 .session-info-subtitle,
