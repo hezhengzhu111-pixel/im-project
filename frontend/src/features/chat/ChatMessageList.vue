@@ -185,16 +185,18 @@ const scrollerRef = ref<HTMLElement | null>(null);
 const scrollContainerRef = ref<HTMLElement | null>(null);
 const loadingHistoryLocal = ref(false);
 const nearBottom = ref(true);
+const userViewingHistory = ref(false);
 const messageTopOffset = ref(0);
-const scrollVersion = ref(0);
+const lastScrollTop = ref(0);
+const suppressScrollTracking = ref(false);
 const pendingHistoryAnchor = ref<HistoryAnchor | null>(null);
 const historyFallbackTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 const refreshScheduled = ref(false);
 const messageViewCache = new Map<string, MessageListItemView>();
 const messageRenderItemCache = new Map<string, MessageRenderItem>();
-const {locale, t} = useI18nStore();
-const {playingMessageId, toggle: toggleAudio, stop} = useAudioPlayer();
-const {copy, recall, remove} = useMessageActions();
+const { locale, t } = useI18nStore();
+const { playingMessageId, toggle: toggleAudio, stop } = useAudioPlayer();
+const { copy, recall, remove } = useMessageActions();
 const contextMenu = useMessageContextMenu();
 const contextTargetMessage = computed(() => contextMenu.targetMessage.value);
 const timeFormatter = computed(
@@ -240,7 +242,9 @@ const messageKey = (message?: Message): string => {
   if (!message) {
     return "";
   }
-  return String(message.id || message.messageId || message.clientMessageId || "");
+  return String(
+    message.id || message.messageId || message.clientMessageId || "",
+  );
 };
 
 const firstMessageKey = computed(() => messageKey(props.messages[0]));
@@ -278,7 +282,10 @@ const resolveFileName = (message: Message) => {
     return message.mediaName;
   }
   try {
-    const url = new URL(message.mediaUrl || message.content, window.location.origin);
+    const url = new URL(
+      message.mediaUrl || message.content,
+      window.location.origin,
+    );
     return url.pathname.split("/").pop() || t("message.unknownFile");
   } catch {
     return t("message.unknownFile");
@@ -318,7 +325,7 @@ const resolveStatusView = (message: Message, isMine: boolean) => {
     return {
       statusLabel: "",
       statusTone: "default" as const,
-      groupReadLabel: t("message.readBy", {count: groupReadCount}),
+      groupReadLabel: t("message.readBy", { count: groupReadCount }),
     };
   }
 
@@ -347,7 +354,9 @@ const resolveStatusView = (message: Message, isMine: boolean) => {
 
 const buildRenderDigest = (message: Message) => {
   const readCount =
-    typeof message.readByCount === "number" ? message.readByCount : message.readBy?.length || 0;
+    typeof message.readByCount === "number"
+      ? message.readByCount
+      : message.readBy?.length || 0;
   return [
     messageKey(message),
     message.senderId,
@@ -394,7 +403,8 @@ const buildMessageView = (message: Message): MessageListItemView => {
     isDeleted,
     messageType: message.messageType,
     content: message.content || "",
-    senderName: message.senderName || message.groupName || t("message.unknownUser"),
+    senderName:
+      message.senderName || message.groupName || t("message.unknownUser"),
     senderAvatar: message.senderAvatar,
     showSenderLabel: !isMine && Boolean(message.groupId || message.isGroupChat),
     currentUserName: props.currentUserName,
@@ -406,7 +416,9 @@ const buildMessageView = (message: Message): MessageListItemView => {
     mediaUrl: message.mediaUrl || message.content,
     thumbnailUrl: message.thumbnailUrl,
     fileName: resolveFileName(message),
-    fileSizeLabel: message.mediaSize ? formatFileSize(message.mediaSize) : t("message.sizeUnknown"),
+    fileSizeLabel: message.mediaSize
+      ? formatFileSize(message.mediaSize)
+      : t("message.sizeUnknown"),
     durationLabel: formatDuration(message.duration),
   };
 
@@ -480,7 +492,9 @@ const tailMessageSignal = computed(() => {
   return buildRenderDigest(lastMessage);
 });
 
-const showScrollToLatest = computed(() => !nearBottom.value && props.messages.length > 0);
+const showScrollToLatest = computed(
+  () => !nearBottom.value && props.messages.length > 0,
+);
 const messageScrollerStyle = computed(() => ({
   "--message-top-offset": `${messageTopOffset.value}px`,
 }));
@@ -492,14 +506,18 @@ const messageListSignal = computed(() => ({
   unread: unreadBoundaryIndex.value,
 }));
 
-const resolveMessageById = (messageId: string) => messageById.value.get(messageId) || null;
+const resolveMessageById = (messageId: string) =>
+  messageById.value.get(messageId) || null;
 
 const isNearBottom = (threshold = BOTTOM_FOLLOW_THRESHOLD) => {
   const container = scrollContainerRef.value;
   if (!container) {
     return true;
   }
-  return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+  return (
+    container.scrollHeight - container.scrollTop - container.clientHeight <
+    threshold
+  );
 };
 
 const updateNearBottom = () => {
@@ -519,12 +537,17 @@ const updateShortListOffset = async () => {
   await nextTick();
   await nextFrame();
   const scrollerElement = scrollerRef.value;
-  const wrapper = scrollerElement?.querySelector<HTMLElement>(".message-scroller-inner");
+  const wrapper = scrollerElement?.querySelector<HTMLElement>(
+    ".message-scroller-inner",
+  );
   if (!scrollerElement || !wrapper) {
     messageTopOffset.value = 0;
     return;
   }
-  const nextOffset = Math.max(0, scrollerElement.clientHeight - wrapper.offsetHeight - 8);
+  const nextOffset = Math.max(
+    0,
+    scrollerElement.clientHeight - wrapper.offsetHeight - 8,
+  );
   messageTopOffset.value = nextOffset > 12 ? nextOffset : 0;
 };
 
@@ -564,7 +587,11 @@ const previewImage = (messageId: string) => {
   if (!message) {
     return;
   }
-  window.open(message.mediaUrl || message.content, "_blank", "noopener,noreferrer");
+  window.open(
+    message.mediaUrl || message.content,
+    "_blank",
+    "noopener,noreferrer",
+  );
 };
 
 const downloadFile = (messageId: string) => {
@@ -604,19 +631,29 @@ const toggleAudioById = (messageId: string) => {
   }
 };
 
-const scrollToBottom = async () => {
-  const expectedScrollVersion = scrollVersion.value;
-  await nextTick();
-  await nextFrame();
-  if (expectedScrollVersion !== scrollVersion.value) {
+const setContainerScrollTop = (top: number) => {
+  const container = scrollContainerRef.value;
+  if (!container) {
     return;
   }
+  suppressScrollTracking.value = true;
+  container.scrollTop = top;
+  lastScrollTop.value = container.scrollTop;
+  requestAnimationFrame(() => {
+    suppressScrollTracking.value = false;
+  });
+};
+
+const scrollToBottom = async () => {
+  await nextTick();
+  await nextFrame();
   const container = scrollContainerRef.value;
   if (container) {
-    container.scrollTop = container.scrollHeight;
+    setContainerScrollTop(container.scrollHeight);
   }
   await updateShortListOffset();
   nearBottom.value = true;
+  userViewingHistory.value = false;
 };
 
 const handleScrollToLatest = async () => {
@@ -650,7 +687,8 @@ const restoreHistoryAnchor = async (anchor: HistoryAnchor) => {
   const container = scrollContainerRef.value;
   if (container) {
     const heightDelta = container.scrollHeight - anchor.previousHeight;
-    container.scrollTop = anchor.previousTop + heightDelta;
+    setContainerScrollTop(anchor.previousTop + heightDelta);
+    userViewingHistory.value = true;
   }
   releaseHistoryLoading();
 };
@@ -683,10 +721,22 @@ const handleScroll = async () => {
   if (!container) {
     return;
   }
-  scrollVersion.value += 1;
+  const currentTop = container.scrollTop;
+  const scrollingUp = currentTop < lastScrollTop.value - 8;
+  lastScrollTop.value = currentTop;
   updateNearBottom();
-  if (!loadingHistoryLocal.value && container.scrollTop < HISTORY_TRIGGER_TOP) {
+  if (nearBottom.value) {
+    userViewingHistory.value = false;
+  } else if (!suppressScrollTracking.value && scrollingUp) {
+    userViewingHistory.value = true;
+  }
+  if (
+    !suppressScrollTracking.value &&
+    !loadingHistoryLocal.value &&
+    container.scrollTop < HISTORY_TRIGGER_TOP
+  ) {
     loadingHistoryLocal.value = true;
+    userViewingHistory.value = true;
     pendingHistoryAnchor.value = {
       previousHeight: container.scrollHeight,
       previousTop: container.scrollTop,
@@ -704,7 +754,11 @@ const handleScroll = async () => {
 watch(
   () => props.loadingHistory,
   (value) => {
-    if (!value && loadingHistoryLocal.value && pendingHistoryAnchor.value == null) {
+    if (
+      !value &&
+      loadingHistoryLocal.value &&
+      pendingHistoryAnchor.value == null
+    ) {
       releaseHistoryLoading();
     }
   },
@@ -721,7 +775,8 @@ watch(
     const anchor = pendingHistoryAnchor.value;
     if (
       anchor &&
-      (current.length > anchor.length || current.first !== anchor.firstMessageKey)
+      (current.length > anchor.length ||
+        current.first !== anchor.firstMessageKey)
     ) {
       await restoreHistoryAnchor(anchor);
       return;
@@ -740,14 +795,17 @@ watch(
       await scrollToBottom();
       return;
     }
-    const isSelfMessage = String(lastMessage.senderId) === props.currentUserId;
-    if (isSelfMessage || nearBottom.value) {
+    const shouldFollowBottom =
+      String(lastMessage.senderId) === props.currentUserId ||
+      nearBottom.value ||
+      !userViewingHistory.value;
+    if (shouldFollowBottom) {
       await scrollToBottom();
       return;
     }
     updateNearBottom();
   },
-  {flush: "post"},
+  { flush: "post" },
 );
 
 onMounted(() => {
@@ -912,7 +970,9 @@ onUnmounted(() => {
   color: var(--chat-text-secondary);
   font-size: 14px;
   cursor: pointer;
-  transition: background-color 0.18s ease, color 0.18s ease;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
 
   &:hover {
     background: rgba(239, 246, 255, 0.96);

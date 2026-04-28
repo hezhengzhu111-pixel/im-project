@@ -93,7 +93,12 @@ const filenameFromUrl = (url: string) => {
     const filename = parsed.pathname.split("/").filter(Boolean).pop();
     return filename ? safeDecode(filename) : "";
   } catch {
-    const filename = url.split("?")[0].split("#")[0].split("/").filter(Boolean).pop();
+    const filename = url
+      .split("?")[0]
+      .split("#")[0]
+      .split("/")
+      .filter(Boolean)
+      .pop();
     return filename ? safeDecode(filename) : "";
   }
 };
@@ -122,12 +127,15 @@ const resolveMediaMetadata = (
   };
 };
 
-export function createMessageSendQueueModule(ctx: MessageSendQueueModuleContext) {
+export function createMessageSendQueueModule(
+  ctx: MessageSendQueueModuleContext,
+) {
   const enqueueSendTask = async <T>(
     sessionId: string,
     task: () => Promise<T>,
   ): Promise<T> => {
-    const previous = ctx.sendQueueBySession.value.get(sessionId) || Promise.resolve();
+    const previous =
+      ctx.sendQueueBySession.value.get(sessionId) || Promise.resolve();
     const run = previous.catch(() => undefined).then(task);
     const tail = run.then(
       () => undefined,
@@ -144,18 +152,23 @@ export function createMessageSendQueueModule(ctx: MessageSendQueueModuleContext)
     }
   };
 
-  const replaceLocalMessage = (sessionId: string, localId: string, message: Message) => {
+  const replaceLocalMessage = (
+    sessionId: string,
+    localId: string,
+    message: Message,
+  ) => {
     const existing = ctx.messages.value.get(sessionId) || [];
     const next = existing.slice();
     const targetIndex = next.findIndex(
       (item) =>
         item.id === localId ||
-        (item.clientMessageId && item.clientMessageId === message.clientMessageId),
+        (item.clientMessageId &&
+          item.clientMessageId === message.clientMessageId),
     );
     if (targetIndex >= 0) {
       next[targetIndex] = message;
       ctx.messages.value.set(sessionId, next);
-      ctx.syncHistoryState(sessionId, next, {preserveHasMore: true});
+      ctx.syncHistoryState(sessionId, next, { preserveHasMore: true });
     }
   };
 
@@ -171,7 +184,7 @@ export function createMessageSendQueueModule(ctx: MessageSendQueueModuleContext)
       status: "FAILED",
     };
     ctx.messages.value.set(sessionId, next);
-    ctx.syncHistoryState(sessionId, next, {preserveHasMore: true});
+    ctx.syncHistoryState(sessionId, next, { preserveHasMore: true });
   };
 
   const sendSingleMessage = async (
@@ -198,6 +211,9 @@ export function createMessageSendQueueModule(ctx: MessageSendQueueModuleContext)
       senderName: currentUser.nickname || currentUser.username,
       senderAvatar: currentUser.avatar,
       receiverId: session.type === "private" ? session.targetId : undefined,
+      receiverName: session.type === "private" ? session.targetName : undefined,
+      receiverAvatar:
+        session.type === "private" ? session.targetAvatar : undefined,
       groupId: session.type === "group" ? session.targetId : undefined,
       isGroupChat: session.type === "group",
       messageType: type,
@@ -213,7 +229,11 @@ export function createMessageSendQueueModule(ctx: MessageSendQueueModuleContext)
     };
 
     await ctx.addMessage(pendingMessage);
-    await ctx.messageRepo.upsertPendingMessage(session.id, localId, pendingMessage);
+    await ctx.messageRepo.upsertPendingMessage(
+      session.id,
+      localId,
+      pendingMessage,
+    );
 
     try {
       const response =
@@ -246,9 +266,16 @@ export function createMessageSendQueueModule(ctx: MessageSendQueueModuleContext)
       const serverMessage: Message = {
         ...response.data,
         id: safePreferExistingId(response.data.id, pendingMessage.id),
-        clientMessageId: response.data.clientMessageId || pendingMessage.clientMessageId,
-        senderId: safePreferExistingId(response.data.senderId, pendingMessage.senderId),
+        clientMessageId:
+          response.data.clientMessageId || pendingMessage.clientMessageId,
+        senderId: safePreferExistingId(
+          response.data.senderId,
+          pendingMessage.senderId,
+        ),
         receiverId: response.data.receiverId || pendingMessage.receiverId,
+        receiverName: response.data.receiverName || pendingMessage.receiverName,
+        receiverAvatar:
+          response.data.receiverAvatar || pendingMessage.receiverAvatar,
         groupId: response.data.groupId || pendingMessage.groupId,
         status: "SENT",
       };
@@ -291,7 +318,12 @@ export function createMessageSendQueueModule(ctx: MessageSendQueueModuleContext)
               `Message was split into ${parts.length} parts because it exceeded the limit.`,
             );
             for (const part of parts) {
-              const success = await sendSingleMessage(session, part, type, extra);
+              const success = await sendSingleMessage(
+                session,
+                part,
+                type,
+                extra,
+              );
               if (!success) {
                 return false;
               }

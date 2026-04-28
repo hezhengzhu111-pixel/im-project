@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import NoReturn, Sequence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
 @dataclass(frozen=True)
 class DeploymentConfig:
     project_dir: Path
@@ -19,8 +22,6 @@ class DeploymentConfig:
     frontend_root: Path
     sql_init_file: Path
     mysql_root_password: str
-    mysql_container: str
-    redis_container: str
 
 
 def fatal(message: str) -> NoReturn:
@@ -48,6 +49,8 @@ def load_env_file(env_file: Path) -> None:
 def load_config(project_dir: Path | None = None) -> DeploymentConfig:
     root = (project_dir or PROJECT_ROOT).resolve()
     env_file = root / ".env"
+    if not env_file.is_file():
+        env_file = root / ".env.example"
     load_env_file(env_file)
 
     config = DeploymentConfig(
@@ -58,8 +61,6 @@ def load_config(project_dir: Path | None = None) -> DeploymentConfig:
         frontend_root=root / "frontend",
         sql_init_file=root / "sql" / "mysql8" / "init_all.sql",
         mysql_root_password=os.getenv("MYSQL_ROOT_PASSWORD", "root123"),
-        mysql_container=os.getenv("IM_MYSQL_CONTAINER", "sit-im-mysql-1"),
-        redis_container=os.getenv("IM_REDIS_CONTAINER", "sit-im-redis-1"),
     )
     ensure_project_layout(config)
     return config
@@ -99,6 +100,12 @@ def resolve_docker_compose_command(docker_cmd: str) -> list[str]:
     fatal("Docker Compose was not found. Install the Docker Compose plugin or docker-compose.")
 
 
+def ensure_docker_environment() -> None:
+    docker_cmd = resolve_executable("Docker", ["docker"])
+    run_command([docker_cmd, "version"], capture_output=True)
+    resolve_docker_compose_command(docker_cmd)
+
+
 def compose_base_command(config: DeploymentConfig) -> list[str]:
     docker_cmd = resolve_executable("Docker", ["docker"])
     compose_cmd = resolve_docker_compose_command(docker_cmd)
@@ -106,6 +113,28 @@ def compose_base_command(config: DeploymentConfig) -> list[str]:
     if config.env_file.is_file():
         command.extend(["--env-file", str(config.env_file)])
     command.extend(["-f", str(config.compose_file)])
+    return command
+
+
+def compose_up_command(
+    config: DeploymentConfig,
+    services: Sequence[str],
+    *,
+    build: bool = False,
+    pull: bool = False,
+    no_deps: bool = False,
+    force_recreate: bool = False,
+) -> list[str]:
+    command = [*compose_base_command(config), "up", "-d"]
+    if build:
+        command.append("--build")
+    if pull:
+        command.extend(["--pull", "always"])
+    if no_deps:
+        command.append("--no-deps")
+    if force_recreate:
+        command.append("--force-recreate")
+    command.extend(services)
     return command
 
 
@@ -131,23 +160,79 @@ def run_command(
     return completed
 
 
-def wait_for_container_healthy(container_name: str, timeout_seconds: int = 180) -> None:
+def compose_service_container(config: DeploymentConfig, service: str) -> str:
+    result = run_command(
+        [*compose_base_command(config), "ps", "-q", service],
+        cwd=config.project_dir,
+        capture_output=True,
+        check=False,
+    )
+    container_id = result.stdout.strip()
+    if not container_id:
+        fatal(f"Compose service is not running: {service}")
+    return container_id.splitlines()[0]
+
+
+def inspect_container_state(container_id: str) -> dict:
     docker_cmd = resolve_executable("Docker", ["docker"])
+    result = run_command(
+        [docker_cmd, "inspect", container_id, "--format", "{{json .State}}"],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return {}
+    try:
+        return json.loads(result.stdout.strip())
+    except json.JSONDecodeError:
+        return {}
+
+
+def wait_for_service_ready(
+    config: DeploymentConfig,
+    service: str,
+    timeout_seconds: int = 180,
+) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         result = run_command(
-            [docker_cmd, "inspect", container_name, "--format", "{{json .State}}"],
+            [*compose_base_command(config), "ps", "-q", service],
+            cwd=config.project_dir,
             capture_output=True,
             check=False,
         )
-        if result.returncode != 0 or not result.stdout.strip():
+        container_id = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+        if not container_id:
             time.sleep(2)
             continue
-        state_text = result.stdout.strip()
-        if '"Status":"exited"' in state_text or '"Status":"dead"' in state_text:
-            fatal(f"Container failed to start: {container_name}")
-        if '"Status":"healthy"' in state_text or ('"Health":' not in state_text and '"Running":true' in state_text):
-            print(f"Container is ready: {container_name}")
+
+        state = inspect_container_state(container_id)
+        status = state.get("Status")
+        health_status = (state.get("Health") or {}).get("Status")
+        if status in {"exited", "dead"}:
+            fatal(f"Container failed to start: {service}")
+        if health_status == "healthy" or (health_status is None and state.get("Running") is True):
+            print(f"Service is ready: {service}")
             return
         time.sleep(2)
-    fatal(f"Timed out waiting for container: {container_name}")
+    fatal(f"Timed out waiting for service: {service}")
+
+
+def wait_for_service_completed(
+    config: DeploymentConfig,
+    service: str,
+    timeout_seconds: int = 120,
+) -> None:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        container_id = compose_service_container(config, service)
+        state = inspect_container_state(container_id)
+        status = state.get("Status")
+        exit_code = state.get("ExitCode")
+        if status == "exited" and exit_code == 0:
+            print(f"Service completed: {service}")
+            return
+        if status in {"exited", "dead"}:
+            fatal(f"Service failed: {service}")
+        time.sleep(2)
+    fatal(f"Timed out waiting for service completion: {service}")

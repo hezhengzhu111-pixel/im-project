@@ -25,6 +25,7 @@ export interface Message {
   senderAvatar?: string;
   receiverId?: string;
   receiverName?: string;
+  receiverAvatar?: string;
   groupId?: string;
   groupName?: string;
   groupAvatar?: string;
@@ -64,8 +65,12 @@ export interface RawMessageDTO {
   receiver_id?: string | number;
   receiver?: {
     id?: string | number;
+    username?: string;
+    nickname?: string;
+    avatar?: string;
   };
   receiverName?: string;
+  receiverAvatar?: string;
   groupId?: string | number;
   group_id?: string | number;
   group?: {

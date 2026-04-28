@@ -4,11 +4,13 @@ from __future__ import annotations
 import argparse
 
 from deploy_utils import (
-    compose_base_command,
+    compose_service_container,
+    compose_up_command,
+    ensure_docker_environment,
     load_config,
     resolve_executable,
     run_command,
-    wait_for_container_healthy,
+    wait_for_service_ready,
 )
 
 
@@ -24,24 +26,26 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
+    ensure_docker_environment()
     config = load_config()
     docker_cmd = resolve_executable("Docker", ["docker"])
 
-    run_command([*compose_base_command(config), "up", "-d", "im-mysql"], cwd=config.project_dir)
-    wait_for_container_healthy(config.mysql_container)
+    run_command(compose_up_command(config, ["im-mysql"], pull=False), cwd=config.project_dir)
+    wait_for_service_ready(config, "im-mysql")
 
     if not args.full:
         print(f"SQL file check passed: {config.sql_init_file}")
         return
 
     print(f"Importing SQL: {config.sql_init_file}")
+    mysql_container = compose_service_container(config, "im-mysql")
     with config.sql_init_file.open("rb") as sql_stream:
         run_command(
             [
                 docker_cmd,
                 "exec",
                 "-i",
-                config.mysql_container,
+                mysql_container,
                 "mysql",
                 "-uroot",
                 f"-p{config.mysql_root_password}",
