@@ -45,6 +45,7 @@ dependencies = [
  "hmac",
  "im-rs-common",
  "jsonwebtoken",
+ "log",
  "mime_guess",
  "redis",
  "reqwest",

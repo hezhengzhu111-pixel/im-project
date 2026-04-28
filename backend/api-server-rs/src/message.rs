@@ -15,6 +15,10 @@ use redis::{AsyncCommands, Script};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use sqlx::{MySqlPool, Row};
 
+const VALIDATION_CACHE_TTL_SECONDS: u64 = 5 * 60;
+const VALIDATION_NEGATIVE_CACHE_TTL_SECONDS: u64 = 60;
+const GROUP_MEMBERS_CACHE_TTL_SECONDS: u64 = 5 * 60;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SendPrivateRequest {
@@ -94,9 +98,11 @@ pub async fn send_private(
         request.content.as_deref(),
         request.media_url.as_deref(),
     )?;
-    let receiver_id = observability::db_query(
+    let receiver_id = cached_resolve_active_user_id(
+        redis,
+        db,
+        request.receiver_id,
         "send_private.resolve_active_user",
-        resolve_active_user_id(db, request.receiver_id),
     )
     .await?
     .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
@@ -105,7 +111,7 @@ pub async fn send_private(
             "cannot send private message to self".to_string(),
         ));
     }
-    validate_friend(db, identity.user_id, receiver_id).await?;
+    validate_friend(redis, db, identity.user_id, receiver_id).await?;
     let conversation_id = keys::private_conversation_id(identity.user_id, receiver_id);
     let message = build_message(
         config,
@@ -144,14 +150,16 @@ pub async fn send_group(
         request.content.as_deref(),
         request.media_url.as_deref(),
     )?;
-    let group_id = observability::db_query(
+    let group_id = cached_resolve_active_group_id(
+        redis,
+        db,
+        request.group_id,
         "send_group.resolve_active_group",
-        resolve_active_group_id(db, request.group_id),
     )
     .await?
     .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
-    validate_group_member(db, group_id, identity.user_id).await?;
-    let members = load_group_members(db, group_id).await?;
+    validate_group_member(redis, db, group_id, identity.user_id).await?;
+    let members = load_group_members(redis, db, group_id).await?;
     let conversation_id = keys::group_conversation_id(group_id);
     let message = build_message(
         config,
@@ -179,25 +187,27 @@ pub async fn mark_read(
 ) -> Result<(), AppError> {
     let mut target = parse_conversation_target(identity.user_id, raw_conversation_id)?;
     if let Some(group_id) = target.group_id {
-        let group_id = resolve_active_group_id(db, group_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
+        let group_id =
+            cached_resolve_active_group_id(redis, db, group_id, "mark_read.resolve_active_group")
+                .await?
+                .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
         target.group_id = Some(group_id);
         target.conversation_id = keys::group_conversation_id(group_id);
         target.frontend_conversation_id = format!("group_{group_id}");
     } else if let Some(peer_id) = target.peer_id {
-        let peer_id = resolve_active_user_id(db, peer_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
+        let peer_id =
+            cached_resolve_active_user_id(redis, db, peer_id, "mark_read.resolve_active_user")
+                .await?
+                .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
         target.peer_id = Some(peer_id);
         target.conversation_id = keys::private_conversation_id(identity.user_id, peer_id);
         target.frontend_conversation_id =
             target.conversation_id.trim_start_matches("p_").to_string();
     }
     if let Some(group_id) = target.group_id {
-        validate_group_member(db, group_id, identity.user_id).await?;
+        validate_group_member(redis, db, group_id, identity.user_id).await?;
     } else if let Some(peer_id) = target.peer_id {
-        validate_friend(db, identity.user_id, peer_id).await?;
+        validate_friend(redis, db, identity.user_id, peer_id).await?;
     }
     let last_read_message_id = latest_message_id(redis, db, &target.conversation_id).await?;
     let read_at = time::now_iso();
@@ -347,10 +357,11 @@ pub async fn private_history(
     peer_id: i64,
     query: HistoryQuery,
 ) -> Result<Vec<MessageDto>, AppError> {
-    let peer_id = resolve_active_user_id(db, peer_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
-    validate_friend(db, identity.user_id, peer_id).await?;
+    let peer_id =
+        cached_resolve_active_user_id(redis, db, peer_id, "private_history.resolve_active_user")
+            .await?
+            .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
+    validate_friend(redis, db, identity.user_id, peer_id).await?;
     let conversation_id = keys::private_conversation_id(identity.user_id, peer_id);
     load_history(redis, db, &conversation_id, query).await
 }
@@ -362,10 +373,11 @@ pub async fn group_history(
     group_id: i64,
     query: HistoryQuery,
 ) -> Result<Vec<MessageDto>, AppError> {
-    let group_id = resolve_active_group_id(db, group_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
-    validate_group_member(db, group_id, identity.user_id).await?;
+    let group_id =
+        cached_resolve_active_group_id(redis, db, group_id, "group_history.resolve_active_group")
+            .await?
+            .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
+    validate_group_member(redis, db, group_id, identity.user_id).await?;
     let conversation_id = keys::group_conversation_id(group_id);
     load_history(redis, db, &conversation_id, query).await
 }
@@ -733,7 +745,77 @@ async fn latest_message_id(
         .and_then(|message| message.id.parse::<i64>().ok()))
 }
 
-async fn validate_friend(db: &MySqlPool, user_id: i64, friend_id: i64) -> Result<(), AppError> {
+async fn cached_resolve_active_user_id(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    candidate_id: i64,
+    operation: &'static str,
+) -> Result<Option<i64>, AppError> {
+    let key = format!("im:cache:active_user:{candidate_id}");
+    if let Some(cached) = read_cached_i64_option(redis, &key).await {
+        return Ok(cached);
+    }
+    let resolved =
+        observability::db_query(operation, resolve_active_user_id(db, candidate_id)).await?;
+    write_cached_i64_option(redis, &key, resolved).await;
+    Ok(resolved)
+}
+
+async fn cached_resolve_active_group_id(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    candidate_id: i64,
+    operation: &'static str,
+) -> Result<Option<i64>, AppError> {
+    let key = format!("im:cache:active_group:{candidate_id}");
+    if let Some(cached) = read_cached_i64_option(redis, &key).await {
+        return Ok(cached);
+    }
+    let resolved =
+        observability::db_query(operation, resolve_active_group_id(db, candidate_id)).await?;
+    write_cached_i64_option(redis, &key, resolved).await;
+    Ok(resolved)
+}
+
+async fn read_cached_i64_option(redis: &mut ConnectionManager, key: &str) -> Option<Option<i64>> {
+    let value: Option<String> = redis.get(key).await.ok().flatten();
+    value.map(|raw| {
+        if raw == "none" {
+            None
+        } else {
+            raw.parse::<i64>().ok()
+        }
+    })
+}
+
+async fn write_cached_i64_option(redis: &mut ConnectionManager, key: &str, value: Option<i64>) {
+    let ttl = if value.is_some() {
+        VALIDATION_CACHE_TTL_SECONDS
+    } else {
+        VALIDATION_NEGATIVE_CACHE_TTL_SECONDS
+    };
+    let raw = value
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "none".to_string());
+    let _: redis::RedisResult<()> = redis.set_ex(key, raw, ttl).await;
+}
+
+async fn validate_friend(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    user_id: i64,
+    friend_id: i64,
+) -> Result<(), AppError> {
+    let key = format!("im:cache:friend:{user_id}:{friend_id}");
+    if let Some(allowed) = read_cached_bool(redis, &key).await {
+        return if allowed {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden(
+                "friend relationship not found".to_string(),
+            ))
+        };
+    }
     let count: i64 = observability::db_query(
         "validate_friend",
         sqlx::query_scalar(
@@ -744,6 +826,7 @@ async fn validate_friend(db: &MySqlPool, user_id: i64, friend_id: i64) -> Result
         .fetch_one(db),
     )
     .await?;
+    write_cached_bool(redis, &key, count > 0).await;
     if count <= 0 {
         return Err(AppError::Forbidden(
             "friend relationship not found".to_string(),
@@ -753,10 +836,21 @@ async fn validate_friend(db: &MySqlPool, user_id: i64, friend_id: i64) -> Result
 }
 
 async fn validate_group_member(
+    redis: &mut ConnectionManager,
     db: &MySqlPool,
     group_id: i64,
     user_id: i64,
 ) -> Result<(), AppError> {
+    let key = format!("im:cache:group_member:{group_id}:{user_id}");
+    if let Some(allowed) = read_cached_bool(redis, &key).await {
+        return if allowed {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden(
+                "group membership not found".to_string(),
+            ))
+        };
+    }
     let count: i64 = observability::db_query(
         "validate_group_member",
         sqlx::query_scalar(
@@ -767,6 +861,7 @@ async fn validate_group_member(
         .fetch_one(db),
     )
     .await?;
+    write_cached_bool(redis, &key, count > 0).await;
     if count <= 0 {
         return Err(AppError::Forbidden(
             "group membership not found".to_string(),
@@ -775,7 +870,37 @@ async fn validate_group_member(
     Ok(())
 }
 
-async fn load_group_members(db: &MySqlPool, group_id: i64) -> Result<Vec<i64>, AppError> {
+async fn read_cached_bool(redis: &mut ConnectionManager, key: &str) -> Option<bool> {
+    let value: Option<String> = redis.get(key).await.ok().flatten();
+    value.and_then(|raw| match raw.as_str() {
+        "1" => Some(true),
+        "0" => Some(false),
+        _ => None,
+    })
+}
+
+async fn write_cached_bool(redis: &mut ConnectionManager, key: &str, value: bool) {
+    let ttl = if value {
+        VALIDATION_CACHE_TTL_SECONDS
+    } else {
+        VALIDATION_NEGATIVE_CACHE_TTL_SECONDS
+    };
+    let raw = if value { "1" } else { "0" };
+    let _: redis::RedisResult<()> = redis.set_ex(key, raw, ttl).await;
+}
+
+async fn load_group_members(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    group_id: i64,
+) -> Result<Vec<i64>, AppError> {
+    let key = format!("im:cache:group_members:{group_id}");
+    let cached: Option<String> = redis.get(&key).await.ok().flatten();
+    if let Some(raw) = cached {
+        if let Ok(members) = serde_json::from_str::<Vec<i64>>(&raw) {
+            return Ok(members);
+        }
+    }
     let rows: Vec<i64> = observability::db_query(
         "load_group_members",
         sqlx::query_scalar(
@@ -785,6 +910,11 @@ async fn load_group_members(db: &MySqlPool, group_id: i64) -> Result<Vec<i64>, A
         .fetch_all(db),
     )
     .await?;
+    if let Ok(raw) = serde_json::to_string(&rows) {
+        let _: redis::RedisResult<()> = redis
+            .set_ex(&key, raw, GROUP_MEMBERS_CACHE_TTL_SECONDS)
+            .await;
+    }
     Ok(rows)
 }
 

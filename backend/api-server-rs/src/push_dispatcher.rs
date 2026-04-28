@@ -15,6 +15,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+const GROUP_MEMBERS_CACHE_TTL_SECONDS: u64 = 5 * 60;
+
 pub fn spawn(config: Arc<AppConfig>, db: MySqlPool) {
     if !config.push_dispatcher_enabled {
         tracing::info!("api-server push dispatcher disabled");
@@ -92,7 +94,7 @@ async fn dispatch_event(
     route_cache: &mut HashMap<String, CachedRoutes>,
     event: ImEvent,
 ) -> anyhow::Result<()> {
-    let Some(push) = build_push(db, &event).await? else {
+    let Some(push) = build_push(db, redis, &event).await? else {
         return Ok(());
     };
     let body_data = push.data.clone();
@@ -122,7 +124,11 @@ async fn dispatch_event(
     Ok(())
 }
 
-async fn build_push(db: &MySqlPool, event: &ImEvent) -> anyhow::Result<Option<PushPlan>> {
+async fn build_push(
+    db: &MySqlPool,
+    redis: &mut redis::Connection,
+    event: &ImEvent,
+) -> anyhow::Result<Option<PushPlan>> {
     match event.event_type {
         ImEventType::MessageCreated => {
             let Some(message) = event.payload.clone() else {
@@ -135,9 +141,11 @@ async fn build_push(db: &MySqlPool, event: &ImEvent) -> anyhow::Result<Option<Pu
                 else {
                     return Ok(None);
                 };
-                observability::db_query(
+                load_group_members_cached(
+                    redis,
+                    db,
+                    group_id,
                     "push_dispatcher.load_group_members.message",
-                    load_group_members(db, group_id),
                 )
                 .await?
             } else {
@@ -163,9 +171,11 @@ async fn build_push(db: &MySqlPool, event: &ImEvent) -> anyhow::Result<Option<Pu
                 let Some(group_id) = parse_i64_option(event.group_id.as_deref()) else {
                     return Ok(None);
                 };
-                observability::db_query(
+                load_group_members_cached(
+                    redis,
+                    db,
+                    group_id,
                     "push_dispatcher.load_group_members.read_receipt",
-                    load_group_members(db, group_id),
                 )
                 .await?
             } else {
@@ -192,9 +202,11 @@ async fn build_push(db: &MySqlPool, event: &ImEvent) -> anyhow::Result<Option<Pu
                 else {
                     return Ok(None);
                 };
-                observability::db_query(
+                load_group_members_cached(
+                    redis,
+                    db,
+                    group_id,
                     "push_dispatcher.load_group_members.status",
-                    load_group_members(db, group_id),
                 )
                 .await?
             } else {
@@ -277,6 +289,26 @@ async fn load_group_members(db: &MySqlPool, group_id: i64) -> anyhow::Result<Vec
     .fetch_all(db)
     .await?;
     Ok(distinct(rows.into_iter().map(Some)))
+}
+
+async fn load_group_members_cached(
+    redis: &mut redis::Connection,
+    db: &MySqlPool,
+    group_id: i64,
+    operation: &'static str,
+) -> anyhow::Result<Vec<i64>> {
+    let key = format!("im:cache:group_members:{group_id}");
+    let cached: Option<String> = redis.get(&key).ok().flatten();
+    if let Some(raw) = cached {
+        if let Ok(members) = serde_json::from_str::<Vec<i64>>(&raw) {
+            return Ok(members);
+        }
+    }
+    let members = observability::db_query(operation, load_group_members(db, group_id)).await?;
+    if let Ok(raw) = serde_json::to_string(&members) {
+        let _: redis::RedisResult<()> = redis.set_ex(&key, raw, GROUP_MEMBERS_CACHE_TTL_SECONDS);
+    }
+    Ok(members)
 }
 
 fn parse_i64_option(value: Option<&str>) -> Option<i64> {
