@@ -6,7 +6,9 @@ use im_rs_common::{keys, time};
 use redis::Commands;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+const PENDING_EVENTS_OBSERVE_INTERVAL: Duration = Duration::from_secs(1);
 
 pub fn spawn(config: Arc<AppConfig>) {
     if !config.event_publisher_enabled {
@@ -35,9 +37,10 @@ fn run(config: Arc<AppConfig>) {
 fn connect_and_publish(config: Arc<AppConfig>) -> anyhow::Result<()> {
     let redis_client = redis::Client::open(config.redis_url.as_str())?;
     let mut redis = redis_client.get_connection()?;
+    let mut last_pending_events_observe = Instant::now() - PENDING_EVENTS_OBSERVE_INTERVAL;
 
     loop {
-        match publish_due_events(&config, &mut redis) {
+        match publish_due_events(&config, &mut redis, &mut last_pending_events_observe) {
             Ok(count) if count > 0 => tracing::debug!(count, "published pending events"),
             Ok(_) => thread::sleep(Duration::from_millis(config.publisher_loop_interval_ms)),
             Err(error) => {
@@ -51,7 +54,11 @@ fn connect_and_publish(config: Arc<AppConfig>) -> anyhow::Result<()> {
     }
 }
 
-fn publish_due_events(config: &AppConfig, redis: &mut redis::Connection) -> anyhow::Result<usize> {
+fn publish_due_events(
+    config: &AppConfig,
+    redis: &mut redis::Connection,
+    last_observe: &mut Instant,
+) -> anyhow::Result<usize> {
     let event_ids: Vec<String> = redis::cmd("ZRANGEBYSCORE")
         .arg(keys::pending_events_key())
         .arg("-inf")
@@ -60,9 +67,10 @@ fn publish_due_events(config: &AppConfig, redis: &mut redis::Connection) -> anyh
         .arg(0)
         .arg(config.publisher_batch_size.max(1))
         .query(redis)?;
-    if !event_ids.is_empty() {
+    if !event_ids.is_empty() && last_observe.elapsed() >= PENDING_EVENTS_OBSERVE_INTERVAL {
         let backlog_count = redis.zcard(keys::pending_events_key()).ok();
         observability::pending_events("publisher.due_events", event_ids.len(), backlog_count);
+        *last_observe = Instant::now();
     }
 
     let mut published = 0;
