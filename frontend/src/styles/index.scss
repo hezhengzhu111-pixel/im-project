@@ -9,7 +9,8 @@
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   width: 100%;
   height: 100%;
   font-family: $font-family-base;
@@ -35,7 +36,7 @@ html, body {
 ::-webkit-scrollbar-thumb {
   background: $scrollbar-thumb-color;
   border-radius: div($scrollbar-width, 2);
-  
+
   &:hover {
     background: $scrollbar-thumb-hover-color;
   }
@@ -46,11 +47,11 @@ a {
   color: $primary-color;
   text-decoration: none;
   transition: $transition-color;
-  
+
   &:hover {
     color: $primary-light-1;
   }
-  
+
   &:active {
     color: $primary-dark-1;
   }
@@ -70,29 +71,29 @@ a {
   cursor: pointer;
   transition: $transition-base;
   user-select: none;
-  
+
   &:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }
-  
+
   // 按钮变体
   &--primary {
     @include custom-button-variant(white, $primary-color, $primary-color);
   }
-  
+
   &--success {
     @include custom-button-variant(white, $success-color, $success-color);
   }
-  
+
   &--warning {
     @include custom-button-variant(white, $warning-color, $warning-color);
   }
-  
+
   &--danger {
     @include custom-button-variant(white, $danger-color, $danger-color);
   }
-  
+
   &--info {
     @include custom-button-variant(white, $info-color, $info-color);
   }
@@ -171,39 +172,39 @@ a {
   .m-#{$i} {
     margin: #{$i * 4}px;
   }
-  
+
   .mt-#{$i} {
     margin-top: #{$i * 4}px;
   }
-  
+
   .mr-#{$i} {
     margin-right: #{$i * 4}px;
   }
-  
+
   .mb-#{$i} {
     margin-bottom: #{$i * 4}px;
   }
-  
+
   .ml-#{$i} {
     margin-left: #{$i * 4}px;
   }
-  
+
   .p-#{$i} {
     padding: #{$i * 4}px;
   }
-  
+
   .pt-#{$i} {
     padding-top: #{$i * 4}px;
   }
-  
+
   .pr-#{$i} {
     padding-right: #{$i * 4}px;
   }
-  
+
   .pb-#{$i} {
     padding-bottom: #{$i * 4}px;
   }
-  
+
   .pl-#{$i} {
     padding-left: #{$i * 4}px;
   }
@@ -343,7 +344,7 @@ a {
   .sm\:block {
     display: block;
   }
-  
+
   .sm\:hidden {
     display: none;
   }
@@ -353,7 +354,7 @@ a {
   .md\:block {
     display: block;
   }
-  
+
   .md\:hidden {
     display: none;
   }
@@ -363,7 +364,7 @@ a {
   .lg\:block {
     display: block;
   }
-  
+
   .lg\:hidden {
     display: none;
   }
@@ -373,7 +374,7 @@ a {
   .xl\:block {
     display: block;
   }
-  
+
   .xl\:hidden {
     display: none;
   }
@@ -383,7 +384,7 @@ a {
 .el-button {
   border-radius: $border-radius-base;
   font-weight: $font-weight-primary;
-  
+
   // 扁平化按钮增强
   &:not(.is-plain):not(.is-text):not(.is-disabled) {
     box-shadow: 0 4px 14px 0 rgba(64, 158, 255, 0.3);
@@ -404,8 +405,9 @@ a {
     border: 1px solid transparent;
     background-color: rgba(255, 255, 255, 0.6);
     transition: all 0.3s ease;
-    
-    &:hover, &.is-focus {
+
+    &:hover,
+    &.is-focus {
       background-color: white;
       box-shadow: 0 0 0 1px $primary-color inset !important;
     }
@@ -420,7 +422,7 @@ a {
 .el-dialog {
   @include glass.glass-effect;
   border-radius: glass.$flat-radius;
-  
+
   .el-dialog__header {
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
     margin-right: 0;
@@ -429,16 +431,63 @@ a {
 
 .el-message {
   @include glass.glass-effect;
-  border-radius: glass.$flat-radius;
+  left: 50% !important;
+  top: 22px !important;
+  min-width: 0 !important;
+  width: auto !important;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 16px 44px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  transform: translateX(-50%);
+
+  .el-message__content {
+    color: var(--chat-text-primary);
+    font-weight: 700;
+    line-height: 1.35;
+  }
+
+  .el-message__icon {
+    margin-right: 8px;
+  }
 }
 
 .el-notification {
   @include glass.glass-effect;
   border-radius: glass.$flat-radius;
-  
+
   .el-notification__title {
     font-weight: $font-weight-primary;
   }
+}
+
+.el-overlay-message-box {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 24px;
+}
+
+.el-message-box {
+  width: min(420px, calc(100vw - 48px)) !important;
+  max-width: calc(100vw - 48px);
+  margin: 0 !important;
+  border: 1px solid var(--chat-panel-border);
+  border-radius: 8px;
+  background: var(--chat-panel-bg);
+  box-shadow: 0 24px 72px rgba(15, 23, 42, 0.22);
+  backdrop-filter: var(--chat-glass-blur);
+  -webkit-backdrop-filter: var(--chat-glass-blur);
+}
+
+.el-message-box__header,
+.el-message-box__content,
+.el-message-box__btns {
+  padding-left: 20px;
+  padding-right: 20px;
 }
 
 .el-menu {
@@ -449,11 +498,11 @@ a {
 .el-menu-item {
   border-radius: 8px;
   margin: 4px 8px;
-  
+
   &:hover {
     background-color: rgba(64, 158, 255, 0.1) !important;
   }
-  
+
   &.is-active {
     background-color: rgba(64, 158, 255, 0.15) !important;
     color: $primary-color;
@@ -465,7 +514,11 @@ a {
 .chat-container {
   height: 100vh;
   display: flex;
-  background-image: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); // 增加背景渐变以突显玻璃态
+  background-image: linear-gradient(
+    135deg,
+    #f5f7fa 0%,
+    #c3cfe2 100%
+  ); // 增加背景渐变以突显玻璃态
 }
 
 .chat-sidebar {
@@ -508,20 +561,20 @@ a {
 
 .message-item {
   margin-bottom: $spacing-base;
-  
+
   &.own {
     text-align: right;
-    
+
     .message-bubble {
       background-color: $chat-message-own-bg;
       color: white;
       margin-left: auto;
     }
   }
-  
+
   &.other {
     text-align: left;
-    
+
     .message-bubble {
       background-color: $chat-message-other-bg;
       color: $text-color-primary;
@@ -551,23 +604,23 @@ a {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  
+
   &.online {
     background-color: $status-online;
   }
-  
+
   &.offline {
     background-color: $status-offline;
   }
-  
+
   &.away {
     background-color: $status-away;
   }
-  
+
   &.busy {
     background-color: $status-busy;
   }
-  
+
   &.invisible {
     background-color: $status-invisible;
   }
@@ -577,22 +630,22 @@ a {
 .avatar {
   border-radius: 50%;
   object-fit: cover;
-  
+
   &.large {
     width: $avatar-size-large;
     height: $avatar-size-large;
   }
-  
+
   &.default {
     width: $avatar-size-default;
     height: $avatar-size-default;
   }
-  
+
   &.small {
     width: $avatar-size-small;
     height: $avatar-size-small;
   }
-  
+
   &.mini {
     width: $avatar-size-mini;
     height: $avatar-size-mini;
@@ -672,16 +725,16 @@ a {
   .no-print {
     display: none !important;
   }
-  
+
   body {
     background: white !important;
     color: black !important;
   }
-  
+
   .chat-container {
     height: auto;
   }
-  
+
   .chat-sidebar {
     display: none;
   }
@@ -692,7 +745,7 @@ a {
   .btn {
     border-width: 2px;
   }
-  
+
   .card {
     border-width: 2px;
   }

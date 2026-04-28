@@ -7,31 +7,27 @@
     @scroll.passive="handleScroll"
   >
     <div v-if="loadingHistory" class="history-indicator">
-      Loading more messages...
+      {{ t("message.loadingMore") }}
     </div>
 
     <div v-if="messages.length === 0" class="message-empty-state">
       <div class="message-empty-card">
-        <div class="message-empty-icon">+</div>
-        <div class="message-empty-title">No messages yet</div>
-        <div class="message-empty-text">
-          Start the conversation and new messages will appear here in real time.
-        </div>
+        <div class="message-empty-title">{{ t("message.noMessages") }}</div>
       </div>
     </div>
 
-    <DynamicScroller
+    <div
       v-else
       ref="scrollerRef"
       class="message-scroller"
-      :items="renderItems"
-      :min-item-size="56"
-      key-field="id"
+      :class="{ 'is-short-list': messageTopOffset > 0 }"
+      :style="messageScrollerStyle"
     >
-      <template #default="{ item, index, active }">
-        <DynamicScrollerItem
-          :item="item"
-          :active="active"
+      <div class="message-scroller-inner">
+        <div
+          v-for="(item, index) in renderItems"
+          :key="item.id"
+          class="message-row"
           :data-index="index"
         >
           <div v-if="item.kind === 'separator'" class="message-separator">
@@ -60,9 +56,9 @@
             @play-video="playVideo"
             @media-loaded="handleMediaLoaded"
           />
-        </DynamicScrollerItem>
-      </template>
-    </DynamicScroller>
+        </div>
+      </div>
+    </div>
 
     <button
       v-if="showScrollToLatest"
@@ -70,7 +66,7 @@
       class="scroll-to-latest"
       @click="handleScrollToLatest"
     >
-      Jump to latest
+      {{ t("message.jumpLatest") }}
     </button>
 
     <div
@@ -84,13 +80,13 @@
         class="menu-item"
         @click="handleCopy"
       >
-        Copy
+        {{ t("message.copy") }}
       </div>
       <div v-if="canRecall" class="menu-item" @click="handleRecall">
-        Recall
+        {{ t("message.recall") }}
       </div>
       <div v-if="canDelete" class="menu-item danger" @click="handleDelete">
-        Delete
+        {{ t("message.delete") }}
       </div>
     </div>
   </div>
@@ -98,11 +94,11 @@
 
 <script setup lang="ts">
 import {computed, nextTick, onMounted, onUnmounted, ref, watch} from "vue";
-import {DynamicScroller, DynamicScrollerItem} from "vue-virtual-scroller";
 import MessageItem from "@/features/chat/ChatMessageItem.vue";
 import {useAudioPlayer} from "@/features/chat/composables/useAudioPlayer";
 import {useMessageActions} from "@/features/chat/composables/useMessageActions";
 import {useMessageContextMenu} from "@/features/chat/composables/useMessageContextMenu";
+import {useI18nStore} from "@/stores/i18n";
 import {formatFileSize} from "@/utils/common";
 import type {Message} from "@/types";
 
@@ -174,13 +170,6 @@ const emit = defineEmits<{
   (e: "show-group-readers", message: Message): void;
 }>();
 
-type DynamicScrollerRef = {
-  scrollToItem?: (index: number) => void;
-  forceUpdate?: () => void;
-  $forceUpdate?: () => void;
-  updateVisibleItems?: (checkItem?: boolean) => void;
-};
-
 type HistoryAnchor = {
   previousHeight: number;
   previousTop: number;
@@ -192,29 +181,37 @@ const BOTTOM_FOLLOW_THRESHOLD = 180;
 const READ_ACK_BOTTOM_THRESHOLD = 120;
 const HISTORY_TRIGGER_TOP = 80;
 const HISTORY_FALLBACK_MS = 2000;
-const timeFormatter = new Intl.DateTimeFormat(undefined, {
-  hour: "2-digit",
-  minute: "2-digit",
-});
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  weekday: "short",
-});
-
-const scrollerRef = ref<DynamicScrollerRef | null>(null);
+const scrollerRef = ref<HTMLElement | null>(null);
 const scrollContainerRef = ref<HTMLElement | null>(null);
 const loadingHistoryLocal = ref(false);
 const nearBottom = ref(true);
+const messageTopOffset = ref(0);
+const scrollVersion = ref(0);
 const pendingHistoryAnchor = ref<HistoryAnchor | null>(null);
 const historyFallbackTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 const refreshScheduled = ref(false);
 const messageViewCache = new Map<string, MessageListItemView>();
 const messageRenderItemCache = new Map<string, MessageRenderItem>();
+const {locale, t} = useI18nStore();
 const {playingMessageId, toggle: toggleAudio, stop} = useAudioPlayer();
 const {copy, recall, remove} = useMessageActions();
 const contextMenu = useMessageContextMenu();
 const contextTargetMessage = computed(() => contextMenu.targetMessage.value);
+const timeFormatter = computed(
+  () =>
+    new Intl.DateTimeFormat(locale.value, {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+);
+const dateFormatter = computed(
+  () =>
+    new Intl.DateTimeFormat(locale.value, {
+      month: "short",
+      day: "numeric",
+      weekday: "short",
+    }),
+);
 
 const isOwnMessage = (message: Message | null | undefined) =>
   Boolean(message && String(message.senderId) === props.currentUserId);
@@ -281,10 +278,10 @@ const resolveFileName = (message: Message) => {
     return message.mediaName;
   }
   try {
-    const url = new URL(message.mediaUrl || message.content);
-    return url.pathname.split("/").pop() || "Unknown file";
+    const url = new URL(message.mediaUrl || message.content, window.location.origin);
+    return url.pathname.split("/").pop() || t("message.unknownFile");
   } catch {
-    return "Unknown file";
+    return t("message.unknownFile");
   }
 };
 
@@ -299,7 +296,7 @@ const resolveStatusView = (message: Message, isMine: boolean) => {
 
   if (message.status === "SENDING") {
     return {
-      statusLabel: "Sending",
+      statusLabel: t("message.sending"),
       statusTone: "loading" as const,
       groupReadLabel: "",
     };
@@ -307,7 +304,7 @@ const resolveStatusView = (message: Message, isMine: boolean) => {
 
   if (message.status === "FAILED") {
     return {
-      statusLabel: "Failed",
+      statusLabel: t("message.failed"),
       statusTone: "failed" as const,
       groupReadLabel: "",
     };
@@ -321,13 +318,13 @@ const resolveStatusView = (message: Message, isMine: boolean) => {
     return {
       statusLabel: "",
       statusTone: "default" as const,
-      groupReadLabel: `Read by ${groupReadCount}`,
+      groupReadLabel: t("message.readBy", {count: groupReadCount}),
     };
   }
 
   if (message.status === "READ" || message.readStatus === 1) {
     return {
-      statusLabel: "Read",
+      statusLabel: t("message.read"),
       statusTone: "read" as const,
       groupReadLabel: "",
     };
@@ -335,7 +332,7 @@ const resolveStatusView = (message: Message, isMine: boolean) => {
 
   if (message.status === "SENT" || message.status === "DELIVERED") {
     return {
-      statusLabel: "Delivered",
+      statusLabel: t("message.delivered"),
       statusTone: "default" as const,
       groupReadLabel: "",
     };
@@ -367,6 +364,7 @@ const buildRenderDigest = (message: Message) => {
     message.thumbnailUrl || "",
     message.duration || "",
     message.sendTime || "",
+    locale.value,
   ].join("|");
 };
 
@@ -384,7 +382,7 @@ const buildMessageView = (message: Message): MessageListItemView => {
   const isDeleted = message.status === "DELETED";
   const timeLabel = Number.isNaN(new Date(message.sendTime).getTime())
     ? ""
-    : timeFormatter.format(new Date(message.sendTime));
+    : timeFormatter.value.format(new Date(message.sendTime));
   const statusView = resolveStatusView(message, isMine);
 
   const view: MessageListItemView = {
@@ -396,7 +394,7 @@ const buildMessageView = (message: Message): MessageListItemView => {
     isDeleted,
     messageType: message.messageType,
     content: message.content || "",
-    senderName: message.senderName || message.groupName || "Unknown user",
+    senderName: message.senderName || message.groupName || t("message.unknownUser"),
     senderAvatar: message.senderAvatar,
     showSenderLabel: !isMine && Boolean(message.groupId || message.isGroupChat),
     currentUserName: props.currentUserName,
@@ -408,7 +406,7 @@ const buildMessageView = (message: Message): MessageListItemView => {
     mediaUrl: message.mediaUrl || message.content,
     thumbnailUrl: message.thumbnailUrl,
     fileName: resolveFileName(message),
-    fileSizeLabel: message.mediaSize ? formatFileSize(message.mediaSize) : "Size unknown",
+    fileSizeLabel: message.mediaSize ? formatFileSize(message.mediaSize) : t("message.sizeUnknown"),
     durationLabel: formatDuration(message.duration),
   };
 
@@ -428,7 +426,7 @@ const renderItems = computed<RenderItem[]>(() => {
     const currentDate = new Date(message.sendTime);
     const currentDateKey = Number.isNaN(currentDate.getTime())
       ? ""
-      : dateFormatter.format(currentDate);
+      : dateFormatter.value.format(currentDate);
 
     if (currentDateKey && currentDateKey !== previousDateKey) {
       items.push({
@@ -443,7 +441,7 @@ const renderItems = computed<RenderItem[]>(() => {
       items.push({
         id: `unread-${key}`,
         kind: "unread",
-        label: "Unread messages",
+        label: t("message.unreadMessages"),
       });
     }
 
@@ -482,16 +480,10 @@ const tailMessageSignal = computed(() => {
   return buildRenderDigest(lastMessage);
 });
 
-const lastMessageRenderIndex = computed(() => {
-  for (let index = renderItems.value.length - 1; index >= 0; index -= 1) {
-    if (renderItems.value[index]?.kind === "message") {
-      return index;
-    }
-  }
-  return renderItems.value.length - 1;
-});
-
 const showScrollToLatest = computed(() => !nearBottom.value && props.messages.length > 0);
+const messageScrollerStyle = computed(() => ({
+  "--message-top-offset": `${messageTopOffset.value}px`,
+}));
 
 const messageListSignal = computed(() => ({
   length: props.messages.length,
@@ -522,6 +514,19 @@ const nextFrame = () =>
     }
     setTimeout(resolve, 0);
   });
+
+const updateShortListOffset = async () => {
+  await nextTick();
+  await nextFrame();
+  const scrollerElement = scrollerRef.value;
+  const wrapper = scrollerElement?.querySelector<HTMLElement>(".message-scroller-inner");
+  if (!scrollerElement || !wrapper) {
+    messageTopOffset.value = 0;
+    return;
+  }
+  const nextOffset = Math.max(0, scrollerElement.clientHeight - wrapper.offsetHeight - 8);
+  messageTopOffset.value = nextOffset > 12 ? nextOffset : 0;
+};
 
 const closeContextMenu = () => contextMenu.close();
 
@@ -567,7 +572,18 @@ const downloadFile = (messageId: string) => {
   if (!message) {
     return;
   }
-  window.open(message.mediaUrl || message.content, "_blank", "noopener,noreferrer");
+  const url = message.mediaUrl || message.content;
+  if (!url) {
+    return;
+  }
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = resolveFileName(message);
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 };
 
 const playVideo = (_messageId: string) => {
@@ -589,16 +605,17 @@ const toggleAudioById = (messageId: string) => {
 };
 
 const scrollToBottom = async () => {
+  const expectedScrollVersion = scrollVersion.value;
   await nextTick();
-  const scroller = scrollerRef.value;
-  if (scroller?.scrollToItem && renderItems.value.length > 0) {
-    scroller.scrollToItem(Math.max(lastMessageRenderIndex.value, 0));
-  }
   await nextFrame();
+  if (expectedScrollVersion !== scrollVersion.value) {
+    return;
+  }
   const container = scrollContainerRef.value;
   if (container) {
     container.scrollTop = container.scrollHeight;
   }
+  await updateShortListOffset();
   nearBottom.value = true;
 };
 
@@ -645,14 +662,15 @@ const refreshScroller = async (stickToBottom: boolean) => {
   refreshScheduled.value = true;
   await nextTick();
   await nextFrame();
-  const scroller = scrollerRef.value;
-  scroller?.forceUpdate?.();
-  scroller?.$forceUpdate?.();
-  scroller?.updateVisibleItems?.(true);
   refreshScheduled.value = false;
+  await updateShortListOffset();
   if (stickToBottom) {
     await scrollToBottom();
   }
+};
+
+const handleResize = () => {
+  void updateShortListOffset();
 };
 
 const handleMediaLoaded = () => {
@@ -665,6 +683,7 @@ const handleScroll = async () => {
   if (!container) {
     return;
   }
+  scrollVersion.value += 1;
   updateNearBottom();
   if (!loadingHistoryLocal.value && container.scrollTop < HISTORY_TRIGGER_TOP) {
     loadingHistoryLocal.value = true;
@@ -734,6 +753,8 @@ watch(
 onMounted(() => {
   window.addEventListener("click", closeContextMenu);
   window.addEventListener("contextmenu", closeContextMenu);
+  window.addEventListener("resize", handleResize);
+  void updateShortListOffset();
 });
 
 onUnmounted(() => {
@@ -743,6 +764,7 @@ onUnmounted(() => {
   messageRenderItemCache.clear();
   window.removeEventListener("click", closeContextMenu);
   window.removeEventListener("contextmenu", closeContextMenu);
+  window.removeEventListener("resize", handleResize);
 });
 </script>
 
@@ -750,11 +772,12 @@ onUnmounted(() => {
 .message-list {
   position: relative;
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 20px 22px 24px;
+  padding: 14px 18px 16px;
   background:
-    radial-gradient(circle at top left, rgba(96, 165, 250, 0.12), transparent 24%),
-    linear-gradient(180deg, #f6faff 0%, #eef4fb 100%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0)),
+    rgba(226, 232, 240, 0.42);
 }
 
 .history-indicator {
@@ -762,16 +785,15 @@ onUnmounted(() => {
   top: 0;
   z-index: 2;
   width: fit-content;
-  margin: 0 auto 14px;
-  padding: 8px 14px;
+  margin: 0 auto 10px;
+  padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(191, 219, 254, 0.82);
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  background: var(--chat-panel-bg);
+  border: 1px solid var(--chat-panel-border);
+  backdrop-filter: var(--chat-glass-blur);
   color: var(--chat-text-secondary);
   font-size: 12px;
-  font-weight: 700;
-  backdrop-filter: blur(12px);
+  font-weight: 600;
 }
 
 .message-empty-state {
@@ -784,81 +806,72 @@ onUnmounted(() => {
 
 .message-empty-card {
   max-width: 360px;
-  padding: 28px 30px;
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(191, 219, 254, 0.6);
-  box-shadow: 0 28px 56px rgba(15, 23, 42, 0.08);
+  padding: 18px 22px;
+  border-radius: 8px;
+  background: var(--chat-panel-bg);
+  border: 1px solid var(--chat-panel-border);
+  box-shadow: var(--chat-surface-shadow);
+  backdrop-filter: var(--chat-glass-blur);
   text-align: center;
 }
 
-.message-empty-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 54px;
-  height: 54px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.14), rgba(125, 211, 252, 0.2));
-  color: var(--chat-accent);
-  font-size: 28px;
-  font-weight: 700;
-}
-
 .message-empty-title {
-  margin-top: 16px;
   color: var(--chat-text-primary);
-  font-size: 20px;
-  font-weight: 800;
-}
-
-.message-empty-text {
-  margin-top: 8px;
-  color: var(--chat-text-tertiary);
   font-size: 14px;
-  line-height: 1.7;
+  font-weight: 700;
 }
 
 .message-scroller {
   min-height: 100%;
 }
 
+.message-scroller-inner {
+  width: 100%;
+}
+
+.message-scroller.is-short-list .message-scroller-inner {
+  transform: translateY(var(--message-top-offset));
+}
+
+.message-row {
+  min-width: 0;
+}
+
 .message-separator {
   display: flex;
   justify-content: center;
-  padding: 10px 0 18px;
+  padding: 6px 0 10px;
 }
 
 .message-separator-unread {
   align-items: center;
-  gap: 12px;
-  padding-top: 6px;
+  gap: 10px;
+  padding-top: 4px;
 }
 
 .separator-line {
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.42), transparent);
+  background: var(--chat-panel-border);
 }
 
 .separator-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 7px 14px;
+  padding: 5px 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(203, 213, 225, 0.74);
+  background: var(--chat-panel-bg);
+  border: 1px solid var(--chat-panel-border);
   color: var(--chat-text-tertiary);
-  font-size: 12px;
-  font-weight: 700;
-  box-shadow: 0 10px 22px rgba(148, 163, 184, 0.12);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .unread-pill {
-  border-color: rgba(96, 165, 250, 0.42);
+  border-color: #93c5fd;
   color: var(--chat-accent-strong);
-  background: rgba(239, 246, 255, 0.96);
+  background: rgba(37, 99, 235, 0.08);
 }
 
 .scroll-to-latest {
@@ -869,15 +882,15 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 122px;
-  padding: 11px 16px;
+  min-width: 108px;
+  padding: 8px 12px;
   border: 0;
   border-radius: 999px;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  background: var(--chat-accent);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
-  box-shadow: 0 18px 38px rgba(37, 99, 235, 0.24);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
   cursor: pointer;
 }
 
@@ -886,11 +899,11 @@ onUnmounted(() => {
   z-index: 9999;
   min-width: 132px;
   padding: 6px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(203, 213, 225, 0.86);
+  border-radius: 8px;
+  background: var(--chat-panel-bg);
+  border: 1px solid var(--chat-panel-border);
+  backdrop-filter: var(--chat-glass-blur);
   box-shadow: 0 20px 42px rgba(15, 23, 42, 0.16);
-  backdrop-filter: blur(12px);
 }
 
 .menu-item {
@@ -914,7 +927,7 @@ onUnmounted(() => {
 
 @media (max-width: 768px) {
   .message-list {
-    padding: 16px 12px 18px;
+    padding: 12px 10px 14px;
   }
 
   .message-empty-card {
@@ -922,10 +935,6 @@ onUnmounted(() => {
   }
 
   .message-empty-title {
-    font-size: 18px;
-  }
-
-  .message-empty-text {
     font-size: 14px;
   }
 

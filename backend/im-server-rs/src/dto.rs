@@ -1,5 +1,5 @@
 use chrono::{SecondsFormat, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -70,6 +70,7 @@ pub struct ConsumeWsTicketRequest {
 pub struct WsTicketConsumeResult {
     pub valid: bool,
     pub status: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_option_i64")]
     pub user_id: Option<i64>,
     pub username: Option<String>,
     pub error: Option<String>,
@@ -94,6 +95,16 @@ pub struct WsEnvelope {
     pub timestamp: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InternalPushRequest {
+    #[serde(deserialize_with = "deserialize_i64")]
+    pub user_id: i64,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub data: Value,
+}
+
 pub fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -103,4 +114,35 @@ pub fn now_ms() -> i64 {
 
 pub fn now_iso() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+}
+
+fn deserialize_i64<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    value_to_i64(value).ok_or_else(|| de::Error::custom("invalid integer"))
+}
+
+fn deserialize_option_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(deserializer)?;
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    value_to_i64(value)
+        .map(Some)
+        .ok_or_else(|| de::Error::custom("invalid integer"))
+}
+
+fn value_to_i64(value: Value) -> Option<i64> {
+    match value {
+        Value::Number(number) => number
+            .as_i64()
+            .or_else(|| number.as_u64().and_then(|item| i64::try_from(item).ok())),
+        Value::String(text) => text.trim().parse().ok(),
+        _ => None,
+    }
 }

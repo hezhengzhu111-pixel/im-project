@@ -1,22 +1,61 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import {beforeEach, describe, expect, it, vi} from "vitest";
 
-const deleteMock = vi.fn();
+const {uploadMock, deleteMock} = vi.hoisted(() => ({
+  uploadMock: vi.fn(),
+  deleteMock: vi.fn(),
+}));
 
 vi.mock("@/utils/request", () => ({
   http: {
-    upload: vi.fn(),
+    upload: uploadMock,
     delete: deleteMock,
   },
 }));
 
 describe("file service resolve/delete", () => {
   beforeEach(() => {
+    uploadMock.mockReset();
     deleteMock.mockReset();
     deleteMock.mockResolvedValue({
       code: 200,
       message: "ok",
       data: true,
       timestamp: Date.now(),
+    });
+  });
+
+  it("normalizes upload response metadata", async () => {
+    uploadMock.mockResolvedValue({
+      code: 200,
+      message: "ok",
+      data: {
+        url: "/files/images/2026-04-28/a.png",
+        original_filename: "avatar.png",
+        filename: "a.png",
+        content_type: "image/png",
+        upload_date: "2026-04-28",
+        upload_time: 1777350000000,
+        uploader_id: 1,
+        size: "12",
+      },
+      timestamp: Date.now(),
+    });
+
+    const { fileService } = await import("@/services/file");
+    const response = await fileService.uploadImage(
+      new File(["x"], "avatar.png", { type: "image/png" }),
+    );
+
+    expect(response.data).toMatchObject({
+      url: "/files/images/2026-04-28/a.png",
+      originalFilename: "avatar.png",
+      filename: "a.png",
+      fileName: "avatar.png",
+      contentType: "image/png",
+      uploadDate: "2026-04-28",
+      uploadTime: 1777350000000,
+      uploaderId: "1",
+      size: 12,
     });
   });
 

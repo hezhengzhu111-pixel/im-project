@@ -276,6 +276,94 @@ describe("chat store", () => {
     expect(store.groups).toHaveLength(1);
   });
 
+  it("keeps the normalized conversation preview when refreshing sessions", async () => {
+    messageServiceMock.getConversations.mockResolvedValue({
+      code: 200,
+      data: [
+        {
+          id: "1_2",
+          type: "private",
+          targetId: "2",
+          targetName: "u2",
+          unreadCount: 0,
+          lastActiveTime: "2026-02-07T10:00:00.100Z",
+          lastMessageTime: "2026-02-07T10:00:00.100Z",
+          lastMessage: {
+            id: "100",
+            senderId: "2",
+            receiverId: "1",
+            isGroupChat: false,
+            messageType: "TEXT",
+            content: "hello preview",
+            sendTime: "2026-02-07T10:00:00.100Z",
+            status: "SENT",
+          },
+        },
+      ],
+    });
+
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    await store.refreshSessionSkeletons({ force: true, refreshPresence: false });
+
+    expect(store.sessions[0]?.lastMessage?.content).toBe("hello preview");
+  });
+
+  it("opens the first conversation on bootstrap when no session was persisted", async () => {
+    messageServiceMock.getConversations.mockResolvedValue({
+      code: 200,
+      data: [
+        {
+          id: "1_2",
+          type: "private",
+          targetId: "2",
+          targetName: "u2",
+          unreadCount: 0,
+          lastActiveTime: "2026-02-07T10:00:00.100Z",
+          lastMessageTime: "2026-02-07T10:00:00.100Z",
+          lastMessage: {
+            id: "100",
+            senderId: "2",
+            receiverId: "1",
+            isGroupChat: false,
+            messageType: "TEXT",
+            content: "hello first",
+            sendTime: "2026-02-07T10:00:00.100Z",
+            status: "SENT",
+          },
+        },
+      ],
+    });
+    messageServiceMock.getPrivateHistoryCursor.mockResolvedValueOnce({
+      code: 200,
+      data: [
+        {
+          id: "100",
+          senderId: "2",
+          receiverId: "1",
+          isGroupChat: false,
+          messageType: "TEXT",
+          content: "hello first",
+          sendTime: "2026-02-07T10:00:00.100Z",
+          status: "SENT",
+        },
+      ],
+    });
+
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    await store.initChatBootstrap();
+
+    expect(store.currentSession?.targetId).toBe("2");
+    expect(messageServiceMock.getPrivateHistoryCursor).toHaveBeenCalledWith(
+      "2",
+      expect.objectContaining({ limit: 20 }),
+    );
+    expect(store.currentMessages.map((item) => item.content)).toEqual(["hello first"]);
+  });
+
   it("loads older history with the oldest loaded server message id as cursor", async () => {
     const { useChatStore } = await import("@/stores/chat");
     const store = useChatStore();

@@ -16,7 +16,7 @@
     <template v-else>
       <el-avatar
         v-if="!isMine"
-        :size="40"
+        :size="32"
         :src="senderAvatar"
         class="message-avatar"
       >
@@ -24,12 +24,14 @@
       </el-avatar>
 
       <div class="message-lane">
-        <div v-if="showSenderLabel" class="message-sender">{{ senderName || "Unknown user" }}</div>
+        <div v-if="showSenderLabel" class="message-sender">
+          {{ senderName || t("message.unknownUser") }}
+        </div>
 
         <div class="message-stack">
           <div class="message-bubble" :class="bubbleClass">
-            <div v-if="isRecalled" class="status-copy">Message recalled</div>
-            <div v-else-if="isDeleted" class="status-copy">Message deleted</div>
+            <div v-if="isRecalled" class="status-copy">{{ t("message.recalled") }}</div>
+            <div v-else-if="isDeleted" class="status-copy">{{ t("message.deleted") }}</div>
 
             <div v-else-if="messageType === 'TEXT'" class="text-content">
               {{ content }}
@@ -39,7 +41,7 @@
               v-else-if="messageType === 'IMAGE'"
               type="button"
               class="media-card interactive-reset"
-              aria-label="Preview image"
+              :aria-label="t('message.previewImage')"
               @click="emit('preview-image', messageId)"
             >
               <el-image
@@ -53,10 +55,10 @@
                 @error="handleMediaLoaded"
               >
                 <template #placeholder>
-                  <div class="media-placeholder">Loading image</div>
+                  <div class="media-placeholder">{{ t("message.loadingImage") }}</div>
                 </template>
                 <template #error>
-                  <div class="media-placeholder">Preview unavailable</div>
+                  <div class="media-placeholder">{{ t("message.previewUnavailable") }}</div>
                 </template>
               </el-image>
             </button>
@@ -66,15 +68,15 @@
                 <el-icon><Document /></el-icon>
               </div>
               <div class="attachment-meta">
-                <div class="attachment-title">{{ fileName || "Unknown file" }}</div>
-                <div class="attachment-subtitle">{{ fileSizeLabel || "Size unknown" }}</div>
+                <div class="attachment-title">{{ fileName || t("message.unknownFile") }}</div>
+                <div class="attachment-subtitle">{{ fileSizeLabel || t("message.sizeUnknown") }}</div>
               </div>
               <button
                 type="button"
                 class="attachment-action interactive-reset"
                 @click="emit('download-file', messageId)"
               >
-                Download
+                {{ t("message.download") }}
               </button>
             </div>
 
@@ -92,7 +94,7 @@
               </div>
               <div class="attachment-meta">
                 <div class="attachment-title">
-                  {{ audioPlaying ? "Playing voice message" : "Voice message" }}
+                  {{ audioPlaying ? t("message.playingVoice") : t("message.voice") }}
                 </div>
                 <div class="attachment-subtitle">{{ durationLabel || "0:00" }}</div>
               </div>
@@ -108,7 +110,7 @@
                 @loadeddata="handleMediaLoaded"
               />
               <div class="media-caption">
-                <span>Video</span>
+                <span>{{ t("message.video") }}</span>
                 <span>{{ durationLabel || "0:00" }}</span>
               </div>
             </div>
@@ -142,15 +144,6 @@
           </div>
         </div>
       </div>
-
-      <el-avatar
-        v-if="isMine"
-        :size="40"
-        :src="currentUserAvatar"
-        class="message-avatar"
-      >
-        {{ currentUserAvatarText }}
-      </el-avatar>
     </template>
   </div>
 </template>
@@ -158,6 +151,7 @@
 <script setup lang="ts">
 import {computed} from "vue";
 import {Document, Loading, Microphone, VideoPause, Warning} from "@element-plus/icons-vue";
+import {useI18nStore} from "@/stores/i18n";
 import {getAvatarText} from "@/utils/common";
 import type {MessageType} from "@/types";
 
@@ -215,10 +209,8 @@ const emit = defineEmits<{
   (e: "media-loaded", messageId: string): void;
 }>();
 
-const senderAvatarText = computed(() => getAvatarText(props.senderName || "Unknown user"));
-const currentUserAvatarText = computed(() =>
-  getAvatarText(props.currentUserName || "Me"),
-);
+const {t} = useI18nStore();
+const senderAvatarText = computed(() => getAvatarText(props.senderName || t("message.unknownUser")));
 const mediaSource = computed(() => props.mediaUrl || props.content);
 const bubbleClass = computed(() => ({
   "is-own": props.isMine,
@@ -251,8 +243,8 @@ const handleMediaLoaded = () => {
 .message-item {
   display: flex;
   align-items: flex-end;
-  gap: 12px;
-  margin-bottom: 18px;
+  gap: 8px;
+  margin-bottom: 8px;
 
   &.is-mine {
     justify-content: flex-end;
@@ -260,14 +252,13 @@ const handleMediaLoaded = () => {
 
   &.is-system {
     justify-content: center;
-    margin-bottom: 20px;
+    margin-bottom: 10px;
   }
 }
 
 .message-avatar {
   flex-shrink: 0;
-  border: 1px solid rgba(191, 219, 254, 0.46);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--chat-panel-border);
 }
 
 .message-lane {
@@ -281,7 +272,7 @@ const handleMediaLoaded = () => {
 .message-stack {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .message-sender {
@@ -295,16 +286,17 @@ const handleMediaLoaded = () => {
 .message-bubble {
   position: relative;
   max-width: 100%;
-  padding: 14px 16px;
-  border-radius: 22px;
-  border: 1px solid rgba(203, 213, 225, 0.66);
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--chat-panel-border);
   background: var(--chat-bubble-other);
   color: var(--chat-text-primary);
   box-shadow: var(--chat-message-shadow);
+  backdrop-filter: var(--chat-glass-blur);
   overflow: hidden;
 
   &.is-own {
-    border-color: rgba(37, 99, 235, 0.14);
+    border-color: rgba(37, 99, 235, 0.6);
     background: var(--chat-bubble-own);
     color: #fff;
   }
@@ -317,8 +309,8 @@ const handleMediaLoaded = () => {
 
 .text-content,
 .status-copy {
-  font-size: 15px;
-  line-height: 1.65;
+  font-size: 14px;
+  line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
@@ -327,7 +319,7 @@ const handleMediaLoaded = () => {
 .media-card,
 .attachment-card {
   width: min(320px, 62vw);
-  border-radius: 18px;
+  border-radius: 8px;
   background: rgba(248, 250, 252, 0.94);
   overflow: hidden;
 }
@@ -377,8 +369,8 @@ const handleMediaLoaded = () => {
 .attachment-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px;
+  gap: 10px;
+  padding: 10px;
 }
 
 .attachment-card-voice {
@@ -390,9 +382,9 @@ const handleMediaLoaded = () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
   background: rgba(59, 130, 246, 0.12);
   color: var(--chat-accent);
   font-size: 18px;
@@ -426,8 +418,8 @@ const handleMediaLoaded = () => {
 
 .attachment-action {
   flex-shrink: 0;
-  padding: 10px 12px;
-  border-radius: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
   background: rgba(37, 99, 235, 0.12);
   color: var(--chat-accent-strong);
   font-size: 12px;
@@ -443,10 +435,10 @@ const handleMediaLoaded = () => {
 .message-meta {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 4px;
+  gap: 6px;
+  padding: 0 2px;
   color: var(--chat-text-quaternary);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.2;
 
   &.is-mine {
@@ -487,20 +479,19 @@ const handleMediaLoaded = () => {
   align-items: center;
   justify-content: center;
   max-width: min(100%, 460px);
-  padding: 8px 14px;
+  padding: 5px 10px;
   border-radius: 999px;
   background: var(--chat-bubble-system);
   color: var(--chat-text-tertiary);
   font-size: 12px;
   font-weight: 700;
   text-align: center;
-  box-shadow: 0 10px 20px rgba(148, 163, 184, 0.16);
 }
 
 @media (max-width: 768px) {
   .message-item {
-    gap: 10px;
-    margin-bottom: 16px;
+    gap: 8px;
+    margin-bottom: 8px;
   }
 
   .message-avatar {
@@ -509,8 +500,8 @@ const handleMediaLoaded = () => {
   }
 
   .message-bubble {
-    padding: 12px 14px;
-    border-radius: 20px;
+    padding: 8px 10px;
+    border-radius: 8px;
   }
 
   .text-content,

@@ -1,10 +1,20 @@
-import { ElMessage } from "element-plus";
-import { logger } from "@/utils/logger";
+import {ElMessage} from "element-plus";
+import {logger} from "@/utils/logger";
 
-const normalizeErrorMessage = (
-  error: unknown,
-  fallback: string,
-): string => {
+const showBubbleMessage = (
+  type: "success" | "info" | "warning" | "error",
+  message: string,
+) => {
+  ElMessage({
+    type,
+    message,
+    duration: type === "error" ? 2400 : 1600,
+    showClose: false,
+    grouping: true,
+  });
+};
+
+const normalizeErrorMessage = (error: unknown, fallback: string): string => {
   if (error instanceof Error && error.message.trim()) {
     return error.message;
   }
@@ -25,18 +35,18 @@ export function useErrorHandler(scope = "app") {
     const message = normalizeErrorMessage(error, fallbackMessage);
     logger.error(`${scope}: ${message}`, error);
     if (!options?.silent) {
-      ElMessage.error(message);
+      showBubbleMessage("error", message);
     }
     return message;
   };
 
   const notifyInfo = (message: string) => {
     logger.info(`${scope}: ${message}`);
-    ElMessage.info(message);
+    showBubbleMessage("info", message);
   };
 
   const notifySuccess = (message: string) => {
-    ElMessage.success(message);
+    showBubbleMessage("success", message);
   };
 
   return {

@@ -13,6 +13,11 @@ pub struct AppConfig {
     pub gateway_auth_secret: String,
     pub gateway_auth_max_skew_ms: i64,
     pub instance_id: String,
+    pub internal_http_url: String,
+    pub internal_ws_url: String,
+    pub server_registry_key_prefix: String,
+    pub server_lease_ttl_seconds: u64,
+    pub server_renew_interval_ms: u64,
     pub route_users_key: String,
     pub route_lease_ttl_ms: i64,
     pub route_renew_interval_ms: u64,
@@ -28,21 +33,15 @@ pub struct AppConfig {
     pub ws_ticket_cookie_secure: String,
     pub max_payload_length: usize,
     pub invalid_payload_threshold: usize,
-    pub kafka_enabled: bool,
-    pub kafka_bootstrap_servers: String,
-    pub kafka_chat_topic: String,
-    pub kafka_read_topic: String,
-    pub kafka_status_topic: String,
-    pub kafka_auto_offset_reset: String,
-    pub kafka_group_prefix: String,
     pub group_members_cache_prefix: String,
     pub group_members_cache_ttl_seconds: u64,
 }
 
 impl AppConfig {
     pub fn from_env() -> Self {
+        let port = env_u16("IM_SERVER_RS_PORT", 8083);
         Self {
-            port: env_u16("IM_SERVER_RS_PORT", 8083),
+            port,
             redis_url: env_string("REDIS_URL", "redis://127.0.0.1:6379/0"),
             auth_service_url: env_string("IM_AUTH_SERVICE_URL", "http://127.0.0.1:8084"),
             group_service_url: env_string("IM_GROUP_SERVICE_URL", "http://127.0.0.1:8086"),
@@ -58,7 +57,21 @@ impl AppConfig {
                 "im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret",
             ),
             gateway_auth_max_skew_ms: env_i64("IM_GATEWAY_AUTH_MAX_SKEW_MS", 300_000),
-            instance_id: env_string("IM_INSTANCE_ID", &default_instance_id()),
+            instance_id: env_string("IM_INSTANCE_ID", &default_instance_id(port)),
+            internal_http_url: env_string(
+                "IM_INTERNAL_HTTP_URL",
+                &default_internal_url("http", port),
+            ),
+            internal_ws_url: env_string(
+                "IM_INTERNAL_WS_URL",
+                &default_internal_url("ws", port),
+            ),
+            server_registry_key_prefix: env_string(
+                "IM_SERVER_REGISTRY_KEY_PREFIX",
+                "im:server:",
+            ),
+            server_lease_ttl_seconds: env_u64("IM_SERVER_LEASE_TTL_SECONDS", 15),
+            server_renew_interval_ms: env_u64("IM_SERVER_RENEW_INTERVAL_MS", 3_000),
             route_users_key: env_string("IM_ROUTE_USERS_KEY", "im:route:users"),
             route_lease_ttl_ms: env_i64("IM_ROUTE_LEASE_TTL_MS", 120_000),
             route_renew_interval_ms: env_u64("IM_ROUTE_RENEW_INTERVAL_MS", 30_000),
@@ -77,16 +90,6 @@ impl AppConfig {
             ws_ticket_cookie_secure: env_string("IM_AUTH_COOKIE_WS_TICKET_SECURE", "auto"),
             max_payload_length: env_usize("IM_WEBSOCKET_MAX_PAYLOAD_LENGTH", 8 * 1024),
             invalid_payload_threshold: env_usize("IM_WEBSOCKET_INVALID_PAYLOAD_THRESHOLD", 3),
-            kafka_enabled: env_bool("IM_KAFKA_ENABLED", true),
-            kafka_bootstrap_servers: env_string(
-                "IM_KAFKA_BOOTSTRAP_SERVERS",
-                "127.0.0.1:9092",
-            ),
-            kafka_chat_topic: env_string("IM_KAFKA_CHAT_TOPIC", "im-chat-topic"),
-            kafka_read_topic: env_string("IM_KAFKA_READ_TOPIC", "im-read-topic"),
-            kafka_status_topic: env_string("IM_KAFKA_STATUS_TOPIC", "im-status-topic"),
-            kafka_auto_offset_reset: env_string("IM_KAFKA_AUTO_OFFSET_RESET", "latest"),
-            kafka_group_prefix: env_string("IM_KAFKA_CONSUMER_GROUP_PREFIX", "im-ws-pusher-rs"),
             group_members_cache_prefix: env_string(
                 "IM_GROUP_MEMBER_IDS_CACHE_PREFIX",
                 "message:group:members:",
@@ -96,11 +99,18 @@ impl AppConfig {
     }
 }
 
-fn default_instance_id() -> String {
+fn default_instance_id(port: u16) -> String {
     let host = env::var("HOSTNAME")
         .or_else(|_| env::var("COMPUTERNAME"))
         .unwrap_or_else(|_| "im-server-rs".to_string());
-    format!("{}:8083", host.trim())
+    format!("{}:{}", host.trim(), port)
+}
+
+fn default_internal_url(scheme: &str, port: u16) -> String {
+    let host = env::var("HOSTNAME")
+        .or_else(|_| env::var("COMPUTERNAME"))
+        .unwrap_or_else(|_| "im-server-rs".to_string());
+    format!("{}://{}:{}", scheme, host.trim(), port)
 }
 
 fn env_string(key: &str, default: &str) -> String {

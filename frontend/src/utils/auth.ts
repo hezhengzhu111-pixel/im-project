@@ -1,6 +1,6 @@
 // 认证相关工具函数
 
-import { STORAGE_KEYS } from "@/constants";
+import {STORAGE_KEYS} from "@/constants";
 
 // Token存储键名
 const TOKEN_KEY = STORAGE_KEYS.TOKEN;
@@ -116,7 +116,8 @@ export function getUserIdFromToken(token?: string): string | null {
 
   try {
     const payload = JSON.parse(atob(tokenToCheck.split(".")[1]));
-    return payload.sub || payload.userId || payload.id || null;
+    const userId = payload.sub || payload.userId || payload.id;
+    return userId == null ? null : String(userId);
   } catch (error) {
     console.error("Token解析失败:", error);
     return null;

@@ -1,22 +1,13 @@
-import { computed, ref } from "vue";
-import { defineStore } from "pinia";
-import { ElMessage } from "element-plus";
+import {computed, ref} from "vue";
+import {defineStore} from "pinia";
+import {ElMessage} from "element-plus";
 import router from "@/router";
-import { authService, userService } from "@/services";
-import {
-  refreshAccessTokenCoordinated,
-  type RefreshAccessTokenResult,
-} from "@/services/auth-refresh";
-import { normalizeUser } from "@/normalizers/user";
-import type {
-  LoginRequest,
-  RegisterRequest,
-  TokenParseResultDTO,
-  UpdateUserRequest,
-  User,
-} from "@/types";
-import { APP_CONFIG, STORAGE_CONFIG } from "@/config";
-import { logger } from "@/utils/logger";
+import {authService, userService} from "@/services";
+import {refreshAccessTokenCoordinated, type RefreshAccessTokenResult,} from "@/services/auth-refresh";
+import {normalizeUser} from "@/normalizers/user";
+import type {LoginRequest, RegisterRequest, TokenParseResultDTO, UpdateUserRequest, User,} from "@/types";
+import {APP_CONFIG, STORAGE_CONFIG} from "@/config";
+import {logger} from "@/utils/logger";
 
 const readPersistedAccessToken = (): string => {
   if (typeof localStorage === "undefined") {
@@ -69,8 +60,13 @@ const persistUser = (user: User | null): void => {
 
 const isValidTokenResult = (
   result?: TokenParseResultDTO | null,
-): result is TokenParseResultDTO & { userId: number } => {
-  return !!result && result.valid && !result.expired && result.userId != null;
+): result is TokenParseResultDTO & { userId: string | number } => {
+  return (
+    !!result &&
+    result.valid &&
+    !result.expired &&
+    String(result.userId || "").trim() !== ""
+  );
 };
 
 const normalizePermissions = (permissions?: unknown): string[] => {
@@ -214,24 +210,25 @@ export const useUserStore = defineStore("user", () => {
   const getSessionGeneration = () => sessionGeneration.value;
 
   const applyTokenResultUser = (
-    result: TokenParseResultDTO & { userId: number },
+    result: TokenParseResultDTO & { userId: string | number },
     persistedUser?: User | null,
   ) => {
-    if (persistedUser && persistedUser.id === String(result.userId)) {
+    const userId = String(result.userId).trim();
+    if (persistedUser && persistedUser.id === userId) {
       setCurrentUser(persistedUser);
       return;
     }
     setCurrentUser({
-      id: String(result.userId),
-      username: result.username || String(result.userId),
-      nickname: result.username || String(result.userId),
+      id: userId,
+      username: result.username || userId,
+      nickname: result.username || userId,
       avatar: APP_CONFIG.DEFAULT_AVATAR,
       status: "offline",
     });
   };
 
   const applyValidatedSession = (
-    result: TokenParseResultDTO & { userId: number },
+    result: TokenParseResultDTO & { userId: string | number },
     persistedUser?: User | null,
     token?: string | null,
   ) => {

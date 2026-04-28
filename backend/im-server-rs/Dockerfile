@@ -1,8 +1,7 @@
-FROM rust:1.95-bookworm AS builder
+FROM docker.m.daocloud.io/library/rust:1-bookworm AS builder
 WORKDIR /app
-COPY Cargo.toml Cargo.lock* ./
-COPY src ./src
-RUN cargo build --release
+COPY . .
+RUN cargo build --release -p im-server-rs
 
 FROM debian:bookworm-slim
 ARG IM_BUILD_NONCE

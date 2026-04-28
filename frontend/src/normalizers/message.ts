@@ -1,17 +1,5 @@
-import type {
-  Message,
-  MessageConfig,
-  MessageStatus,
-  MessageType,
-  RawMessageDTO,
-  ReadReceipt,
-} from "@/types";
-import {
-  asNumber,
-  asString,
-  isRawMessage,
-  isRecord,
-} from "@/types/utils";
+import type {Message, MessageConfig, MessageStatus, MessageType, RawMessageDTO, ReadReceipt,} from "@/types";
+import {asNumber, asString, isRawMessage, isRecord,} from "@/types/utils";
 
 const MESSAGE_TYPES: MessageType[] = [
   "TEXT",
@@ -75,11 +63,32 @@ export const normalizeMessageSendTime = (
   return normalizeFractionalSeconds(created || fallback) || fallback;
 };
 
+const firstString = (...values: unknown[]) => {
+  for (const value of values) {
+    const text = asString(value).trim();
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+};
+
+const firstNumber = (...values: unknown[]) => {
+  for (const value of values) {
+    const number = asNumber(value, Number.NaN);
+    if (Number.isFinite(number)) {
+      return number;
+    }
+  }
+  return undefined;
+};
+
 export const normalizeMessage = (
   raw: RawMessageDTO | unknown,
   fallbackSendTime?: string,
 ): Message => {
   const record: RawMessageDTO = isRawMessage(raw) ? raw : {};
+  const extra = isRecord(record.extra) ? record.extra : undefined;
   const receiverId =
     record.receiverId ?? record.receiver?.id ?? record.receiver_id;
   const groupId = record.groupId ?? record.group?.id ?? record.group_id;
@@ -88,6 +97,41 @@ export const normalizeMessage = (
     record.isGroupMessage ??
     record.isGroup ??
     (groupId != null && groupId !== "");
+  const messageType = normalizeMessageType(record.messageType ?? record.type);
+  const content = typeof record.content === "string" ? record.content : "";
+  const mediaUrl =
+    firstString(
+      record.mediaUrl,
+      record.media_url,
+      extra?.mediaUrl,
+      extra?.media_url,
+      extra?.url,
+    ) || (messageType === "TEXT" || messageType === "SYSTEM" ? "" : content);
+  const mediaSize = firstNumber(
+    record.mediaSize,
+    record.media_size,
+    extra?.mediaSize,
+    extra?.media_size,
+    extra?.size,
+  );
+  const mediaName = firstString(
+    record.mediaName,
+    record.media_name,
+    extra?.mediaName,
+    extra?.media_name,
+    extra?.fileName,
+    extra?.file_name,
+    extra?.originalFilename,
+    extra?.original_filename,
+    extra?.filename,
+  );
+  const thumbnailUrl = firstString(
+    record.thumbnailUrl,
+    record.thumbnail_url,
+    extra?.thumbnailUrl,
+    extra?.thumbnail_url,
+  );
+  const duration = firstNumber(record.duration, extra?.duration);
 
   return {
     id: asString(record.id ?? record.messageId),
@@ -107,20 +151,16 @@ export const normalizeMessage = (
     groupName: asString(record.groupName) || undefined,
     groupAvatar: asString(record.groupAvatar) || undefined,
     isGroupChat: Boolean(isGroupMessage),
-    messageType: normalizeMessageType(record.messageType ?? record.type),
-    content: typeof record.content === "string" ? record.content : "",
-    mediaUrl: asString(record.mediaUrl) || undefined,
-    mediaSize: Number.isFinite(asNumber(record.mediaSize, Number.NaN))
-      ? asNumber(record.mediaSize)
-      : undefined,
-    mediaName: asString(record.mediaName) || undefined,
-    thumbnailUrl: asString(record.thumbnailUrl) || undefined,
-    duration: Number.isFinite(asNumber(record.duration, Number.NaN))
-      ? asNumber(record.duration)
-      : undefined,
+    messageType,
+    content,
+    mediaUrl: mediaUrl || undefined,
+    mediaSize,
+    mediaName: mediaName || undefined,
+    thumbnailUrl: thumbnailUrl || undefined,
+    duration,
     sendTime: normalizeMessageSendTime(record, fallbackSendTime),
     status: normalizeMessageStatus(record.status),
-    extra: isRecord(record.extra) ? record.extra : undefined,
+    extra,
     readBy: Array.isArray(record.readBy)
       ? record.readBy.map((item) => asString(item)).filter(Boolean)
       : undefined,

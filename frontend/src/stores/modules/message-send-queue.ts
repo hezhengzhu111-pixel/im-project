@@ -47,6 +47,81 @@ type MessageSendQueueModuleContext = {
   ) => Promise<void> | void;
 };
 
+type MediaMetadata = {
+  mediaName?: string;
+  mediaSize?: number;
+  thumbnailUrl?: string;
+  duration?: number;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const firstString = (...values: unknown[]) => {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+    if (typeof value === "number" || typeof value === "bigint") {
+      return String(value);
+    }
+  }
+  return "";
+};
+
+const firstNumber = (...values: unknown[]) => {
+  for (const value of values) {
+    const number = typeof value === "number" ? value : Number(value);
+    if (Number.isFinite(number)) {
+      return number;
+    }
+  }
+  return undefined;
+};
+
+const safeDecode = (value: string) => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
+const filenameFromUrl = (url: string) => {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    const filename = parsed.pathname.split("/").filter(Boolean).pop();
+    return filename ? safeDecode(filename) : "";
+  } catch {
+    const filename = url.split("?")[0].split("#")[0].split("/").filter(Boolean).pop();
+    return filename ? safeDecode(filename) : "";
+  }
+};
+
+const resolveMediaMetadata = (
+  mediaUrl: string,
+  extra?: Record<string, unknown>,
+): MediaMetadata => {
+  const record = isRecord(extra) ? extra : {};
+  const mediaName =
+    firstString(
+      record.mediaName,
+      record.media_name,
+      record.fileName,
+      record.file_name,
+      record.originalFilename,
+      record.original_filename,
+      record.filename,
+    ) || filenameFromUrl(mediaUrl);
+  return {
+    mediaName: mediaName || undefined,
+    mediaSize: firstNumber(record.mediaSize, record.media_size, record.size),
+    thumbnailUrl:
+      firstString(record.thumbnailUrl, record.thumbnail_url) || undefined,
+    duration: firstNumber(record.duration),
+  };
+};
+
 export function createMessageSendQueueModule(ctx: MessageSendQueueModuleContext) {
   const enqueueSendTask = async <T>(
     sessionId: string,
@@ -113,6 +188,9 @@ export function createMessageSendQueueModule(ctx: MessageSendQueueModuleContext)
     const localId = `local_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const clientMessageId = `cm_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const isTextLike = type === "TEXT";
+    const mediaMetadata: MediaMetadata = isTextLike
+      ? {}
+      : resolveMediaMetadata(content, extra);
     const pendingMessage: Message = {
       id: localId,
       clientMessageId,
@@ -125,6 +203,10 @@ export function createMessageSendQueueModule(ctx: MessageSendQueueModuleContext)
       messageType: type,
       content: isTextLike ? content : "",
       mediaUrl: isTextLike ? undefined : content,
+      mediaSize: mediaMetadata.mediaSize,
+      mediaName: mediaMetadata.mediaName,
+      thumbnailUrl: mediaMetadata.thumbnailUrl,
+      duration: mediaMetadata.duration,
       sendTime: new Date().toISOString(),
       status: "SENDING",
       extra,
@@ -142,6 +224,10 @@ export function createMessageSendQueueModule(ctx: MessageSendQueueModuleContext)
               messageType: type,
               content: isTextLike ? content : undefined,
               mediaUrl: isTextLike ? undefined : content,
+              mediaSize: mediaMetadata.mediaSize,
+              mediaName: mediaMetadata.mediaName,
+              thumbnailUrl: mediaMetadata.thumbnailUrl,
+              duration: mediaMetadata.duration,
               extra,
             })
           : await ctx.messageService.sendPrivate({
@@ -150,6 +236,10 @@ export function createMessageSendQueueModule(ctx: MessageSendQueueModuleContext)
               messageType: type,
               content: isTextLike ? content : undefined,
               mediaUrl: isTextLike ? undefined : content,
+              mediaSize: mediaMetadata.mediaSize,
+              mediaName: mediaMetadata.mediaName,
+              thumbnailUrl: mediaMetadata.thumbnailUrl,
+              duration: mediaMetadata.duration,
               extra,
             });
 

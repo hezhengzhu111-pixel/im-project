@@ -1,9 +1,9 @@
-import { onUnmounted, ref } from "vue";
-import type { Message } from "@/types";
-import { useErrorHandler } from "@/hooks/useErrorHandler";
+import {onUnmounted, ref} from "vue";
+import type {Message} from "@/types";
+import {useErrorHandler} from "@/hooks/useErrorHandler";
 
 export function useAudioPlayer() {
-  const { capture } = useErrorHandler("audio-player");
+  const {capture} = useErrorHandler("audio-player");
   const playingMessageId = ref<string>("");
   let audioPlayer: HTMLAudioElement | null = null;
 
@@ -20,13 +20,17 @@ export function useAudioPlayer() {
       stop();
       return;
     }
+
     const url = message.mediaUrl || message.content;
     if (!url) {
       capture(new Error("语音文件无效"), "语音文件无效");
       return;
     }
+
+    const resolvedUrl = new URL(url, window.location.href).href;
     if (!audioPlayer) {
-      audioPlayer = new Audio(url);
+      audioPlayer = new Audio(resolvedUrl);
+      audioPlayer.preload = "metadata";
       audioPlayer.onended = () => {
         playingMessageId.value = "";
       };
@@ -34,8 +38,8 @@ export function useAudioPlayer() {
         playingMessageId.value = "";
         capture(new Error("语音播放失败"), "语音播放失败");
       };
-    } else if (audioPlayer.src !== url) {
-      audioPlayer.src = url;
+    } else if (audioPlayer.src !== resolvedUrl) {
+      audioPlayer.src = resolvedUrl;
     }
 
     try {

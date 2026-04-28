@@ -1,8 +1,0 @@
-spring:
-  data:
-    redis:
-      host: ${IM_REDIS_HOST:im-redis}
-      port: ${IM_REDIS_PORT:6379}
-      password: ${SPRING_DATA_REDIS_PASSWORD:}
-      database: 0
-      timeout: 3000ms

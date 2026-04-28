@@ -21,8 +21,8 @@
             v-model="localSearchKeyword"
             clearable
             :prefix-icon="Search"
-            placeholder="Search"
-            aria-label="Search contacts, groups, or conversations"
+            :placeholder="t('sidebar.search')"
+            :aria-label="t('sidebar.searchAria')"
           />
           <div v-if="activeTab !== 'chat'" class="add-btn">
             <el-button
@@ -30,8 +30,8 @@
               size="small"
               :icon="Plus"
               circle
-              aria-label="Add friend"
-              title="Add friend"
+              :aria-label="t('sidebar.addFriend')"
+              :title="t('sidebar.addFriend')"
               @click="handleOpenAddFriend"
             />
             <el-button
@@ -39,8 +39,8 @@
               size="small"
               :icon="Plus"
               circle
-              aria-label="Create group"
-              title="Create group"
+              :aria-label="t('sidebar.createGroup')"
+              :title="t('sidebar.createGroup')"
               @click="handleOpenCreateGroup"
             />
           </div>
@@ -53,7 +53,7 @@
         @click="$router.push('/contacts')"
       >
         <el-alert
-          :title="`Pending requests (${pendingRequestsCount})`"
+          :title="t('sidebar.pendingRequests', { count: pendingRequestsCount })"
           type="info"
           :closable="false"
           show-icon
@@ -71,7 +71,7 @@
         >
           <span class="session-accent"></span>
           <div class="session-avatar-wrap">
-            <el-avatar :size="46" :src="item.session.targetAvatar">
+            <el-avatar :size="40" :src="item.session.targetAvatar">
               {{ item.session.targetName?.charAt(0) || "U" }}
             </el-avatar>
             <span
@@ -89,14 +89,14 @@
                   <el-icon
                     v-if="item.session.isPinned"
                     class="session-flag"
-                    aria-label="Pinned conversation"
+                    :aria-label="t('sidebar.pinnedConversation')"
                   >
                     <Top />
                   </el-icon>
                   <el-icon
                     v-if="item.session.isMuted"
                     class="session-flag"
-                    aria-label="Muted conversation"
+                    :aria-label="t('sidebar.mutedConversation')"
                   >
                     <Bell />
                   </el-icon>
@@ -111,15 +111,15 @@
                 class="session-presence"
                 :class="{ online: item.online }"
               >
-                {{ item.online ? "Online" : "Offline" }}
+                {{ item.online ? t("sidebar.online") : t("sidebar.offline") }}
               </span>
               <span v-else class="session-presence">
-                {{ item.session.memberCount || 0 }} members
+                {{ t("sidebar.members", { count: item.session.memberCount || 0 }) }}
               </span>
               <span
                 v-if="item.session.unreadCount > 0"
                 class="unread-badge"
-                :aria-label="`${item.session.unreadCount} unread messages`"
+                :aria-label="t('sidebar.unreadMessages', { count: item.session.unreadCount })"
               >
                 {{ item.session.unreadCount > 99 ? "99+" : item.session.unreadCount }}
               </span>
@@ -132,7 +132,7 @@
         </button>
         <el-empty
           v-if="filteredSessionItems.length === 0"
-          description="No conversations yet"
+          :description="t('sidebar.noConversations')"
           :image-size="60"
         />
       </div>
@@ -164,7 +164,7 @@
             </button>
           </div>
         </template>
-        <el-empty v-else description="No contacts found" :image-size="60" />
+        <el-empty v-else :description="t('sidebar.noContacts')" :image-size="60" />
       </div>
 
       <div v-show="activeTab === 'groups'" class="group-list chat-soft-scrollbar" role="list">
@@ -180,12 +180,12 @@
           </el-avatar>
           <div class="group-info">
             <div class="group-name">{{ group.groupName }}</div>
-            <div class="group-meta">{{ group.memberCount || 0 }} members</div>
+            <div class="group-meta">{{ t("sidebar.members", { count: group.memberCount || 0 }) }}</div>
           </div>
         </button>
         <el-empty
           v-if="filteredGroups.length === 0"
-          description="No groups found"
+          :description="t('sidebar.noGroups')"
           :image-size="60"
         />
       </div>
@@ -197,6 +197,7 @@
 import {computed, onUnmounted, ref, watch} from "vue";
 import {Bell, Plus, Search, Top} from "@element-plus/icons-vue";
 import SideNavBar from "@/components/layout/SideNavBar.vue";
+import {useI18nStore} from "@/stores/i18n";
 import {useWebSocketStore} from "@/stores/websocket";
 import type {ChatSession, Friend, Group} from "@/types";
 
@@ -228,6 +229,7 @@ const emit = defineEmits<{
 }>();
 
 const webSocketStore = useWebSocketStore();
+const {locale, t} = useI18nStore();
 const localSearchKeyword = ref(props.searchKeyword);
 const debouncedSearchKeyword = ref(props.searchKeyword.trim().toLowerCase());
 const resolvePinyinInitial = ref<((value: string) => string) | null>(null);
@@ -246,22 +248,22 @@ const normalizedSearchKeyword = computed(() => debouncedSearchKeyword.value);
 
 const panelTitle = computed(() => {
   if (props.activeTab === "contacts") {
-    return "Contacts";
+    return t("sidebar.contactsTitle");
   }
   if (props.activeTab === "groups") {
-    return "Groups";
+    return t("sidebar.groupsTitle");
   }
-  return "Messages";
+  return t("sidebar.messagesTitle");
 });
 
 const panelSubtitle = computed(() => {
   if (props.activeTab === "contacts") {
-    return `${props.friends.length} contacts available`;
+    return t("sidebar.contactsAvailable", {count: props.friends.length});
   }
   if (props.activeTab === "groups") {
-    return `${props.groups.length} groups ready`;
+    return t("sidebar.groupsReady", {count: props.groups.length});
   }
-  return `${props.sessions.length} active conversations`;
+  return t("sidebar.activeConversations", {count: props.sessions.length});
 });
 
 const handleChangeTab = (tab: string) => {
@@ -345,15 +347,15 @@ const formatTime = (time?: string) => {
   const date = new Date(time);
   const diff = Date.now() - date.getTime();
   if (diff < 60_000) {
-    return "Just now";
+    return t("sidebar.justNow");
   }
   if (diff < 3_600_000) {
-    return `${Math.floor(diff / 60_000)}m`;
+    return t("sidebar.minutesAgo", {count: Math.floor(diff / 60_000)});
   }
   if (diff < 86_400_000) {
-    return `${Math.floor(diff / 3_600_000)}h`;
+    return t("sidebar.hoursAgo", {count: Math.floor(diff / 3_600_000)});
   }
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleDateString(locale.value, {
     month: "numeric",
     day: "numeric",
   });
@@ -365,15 +367,15 @@ const previewMessage = (message?: ChatSession["lastMessage"]) => {
   }
   switch (message.messageType) {
     case "IMAGE":
-      return "[Image]";
+      return t("sidebar.image");
     case "FILE":
-      return message.mediaName ? `[File] ${message.mediaName}` : "[File]";
+      return message.mediaName ? `${t("sidebar.file")} ${message.mediaName}` : t("sidebar.file");
     case "VOICE":
-      return "[Voice]";
+      return t("sidebar.voice");
     case "VIDEO":
-      return "[Video]";
+      return t("sidebar.video");
     case "SYSTEM":
-      return message.content || "[System]";
+      return message.content || t("sidebar.system");
     default:
       return message.content || "";
   }
@@ -389,12 +391,12 @@ const sessionPreview = (session: ChatSession, online: boolean) => {
     return messagePreview;
   }
   if (session.type === "private") {
-    return online ? "Available now" : "No recent messages";
+    return online ? t("sidebar.availableNow") : t("sidebar.noRecentMessages");
   }
   if (session.memberCount && session.memberCount > 0) {
-    return `${session.memberCount} members`;
+    return t("sidebar.members", {count: session.memberCount});
   }
-  return "No recent messages";
+  return t("sidebar.noRecentMessages");
 };
 
 const getSessionCacheEntry = (session: ChatSession) => {
@@ -413,6 +415,7 @@ const getSessionCacheEntry = (session: ChatSession) => {
     session.memberCount || 0,
     session.lastActiveTime,
     online ? 1 : 0,
+    locale.value,
   ].join("|");
   const cached = sessionFilterCache.get(sessionId);
   if (cached?.sourceKey === sourceKey) {
@@ -559,35 +562,34 @@ const filteredGroups = computed(() => {
   flex-direction: row;
   align-items: stretch;
   height: 100%;
+  min-height: 0;
   min-width: 412px;
 }
 
 .list-panel {
-  width: 340px;
+  width: 320px;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid rgba(203, 213, 225, 0.82);
-  background: rgba(255, 255, 255, 0.86);
-  backdrop-filter: blur(18px);
+  min-height: 0;
+  border-right: 1px solid var(--chat-panel-border);
+  background: var(--chat-panel-bg);
+  backdrop-filter: var(--chat-glass-blur);
 }
 
 .panel-top {
-  padding: 18px 16px 14px;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
-  background:
-    radial-gradient(circle at top left, rgba(59, 130, 246, 0.1), transparent 26%),
-    linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.92));
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--chat-panel-border);
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .panel-heading {
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .panel-title {
   color: var(--chat-text-primary);
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .panel-subtitle {
@@ -615,8 +617,9 @@ const filteredGroups = computed(() => {
 .contact-list,
 .group-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 12px 10px 14px;
+  padding: 8px 8px 12px;
 }
 
 .session-item,
@@ -626,50 +629,52 @@ const filteredGroups = computed(() => {
   width: 100%;
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 14px;
-  margin-bottom: 10px;
-  border-radius: 22px;
+  gap: 10px;
+  padding: 10px;
+  margin-bottom: 6px;
+  border-radius: 8px;
   text-align: left;
   cursor: pointer;
   border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
   transition:
     border-color 0.18s ease,
-    box-shadow 0.18s ease,
-    background-color 0.18s ease;
+    background-color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
 
   &:hover {
-    background: var(--chat-card-hover);
-    border-color: rgba(191, 219, 254, 0.78);
-    box-shadow: 0 18px 34px rgba(15, 23, 42, 0.08);
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.82);
+    border-color: rgba(37, 99, 235, 0.22);
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
   }
 }
 
 .session-item.active {
   background: var(--chat-card-active);
   border-color: var(--chat-card-active-border);
-  box-shadow: 0 20px 40px rgba(37, 99, 235, 0.14);
+  box-shadow: 0 16px 38px rgba(37, 99, 235, 0.12);
 }
 
 .session-item.unread:not(.active) {
-  border-color: rgba(191, 219, 254, 0.62);
-  background: rgba(248, 250, 255, 0.92);
+  border-color: #bfdbfe;
+  background: #f8fbff;
 }
 
 .session-accent {
   position: absolute;
   top: 12px;
   bottom: 12px;
-  left: 6px;
-  width: 4px;
-  border-radius: 999px;
+  left: 0;
+  width: 3px;
+  border-radius: 8px;
   background: transparent;
 }
 
 .session-item.active .session-accent {
-  background: linear-gradient(180deg, #2563eb, #60a5fa);
+  background: var(--chat-accent);
 }
 
 .session-avatar-wrap {
@@ -686,9 +691,9 @@ const filteredGroups = computed(() => {
 
 .session-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .session-title-wrap {
@@ -705,7 +710,7 @@ const filteredGroups = computed(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--chat-text-primary);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -729,15 +734,15 @@ const filteredGroups = computed(() => {
   flex-shrink: 0;
   color: var(--chat-text-quaternary);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.4;
 }
 
 .session-meta-row {
-  margin-top: 6px;
+  margin-top: 4px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .session-presence,
@@ -745,7 +750,7 @@ const filteredGroups = computed(() => {
 .group-meta {
   color: var(--chat-text-tertiary);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .session-presence.online {
@@ -753,39 +758,38 @@ const filteredGroups = computed(() => {
 }
 
 .session-preview {
-  display: -webkit-box;
-  margin-top: 8px;
+  margin-top: 6px;
   overflow: hidden;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--chat-text-tertiary);
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.45;
   word-break: break-word;
 }
 
 .unread-badge {
+  margin-left: auto;
   flex-shrink: 0;
-  min-width: 26px;
-  height: 24px;
-  padding: 0 8px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
   border-radius: 999px;
   background: var(--chat-badge-bg);
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
-  line-height: 24px;
+  line-height: 20px;
   text-align: center;
-  box-shadow: var(--chat-badge-shadow);
 }
 
 .presence-dot {
   position: absolute;
   right: 1px;
   bottom: 1px;
-  width: 12px;
-  height: 12px;
-  border: 2px solid #fff;
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.92);
   border-radius: 50%;
   background: #cbd5e1;
 }
@@ -803,9 +807,9 @@ const filteredGroups = computed(() => {
   top: 0;
   z-index: 1;
   margin-bottom: 8px;
-  padding: 6px 12px;
-  border-radius: 12px;
-  background: rgba(248, 250, 252, 0.94);
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #f8fafc;
   color: var(--chat-text-tertiary);
   font-size: 12px;
   font-weight: 700;
@@ -835,13 +839,13 @@ const filteredGroups = computed(() => {
   .session-list,
   .contact-list,
   .group-list {
-    padding: 10px 10px 12px;
+    padding: 8px 8px 12px;
   }
 
   .session-item,
   .contact-item,
   .group-item {
-    padding: 14px 12px;
+    padding: 10px;
   }
 }
 </style>

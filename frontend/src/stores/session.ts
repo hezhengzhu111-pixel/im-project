@@ -4,6 +4,7 @@ import {messageService} from "@/services/message";
 import {buildSessionId, normalizeConversation} from "@/normalizers/chat";
 import type {ChatSession, ChatSessionType, Group, Message} from "@/types";
 import {useUserStore} from "@/stores/user";
+import {isChatSession} from "@/types/utils";
 
 const CURRENT_SESSION_STORAGE_KEY = "im_current_session";
 const LOAD_SESSIONS_THROTTLE_MS = 800;
@@ -350,7 +351,9 @@ export const useSessionStore = defineStore("session", () => {
       const response = await messageService.getConversations(currentUserId);
       const byId = new Map<string, ChatSession>();
       for (const session of response.data) {
-        const normalized = normalizeConversation(session, currentUserId);
+        const normalized = isChatSession(session)
+          ? session
+          : normalizeConversation(session, currentUserId);
         const next = normalized || session;
         if (!next) {
           continue;

@@ -92,6 +92,7 @@ impl ImService {
         };
 
         self.refresh_route_for_user(&user_id).await;
+        self.refresh_server_node().await;
         if first_local {
             self.broadcast_presence_locally(&user_id, "ONLINE", None)
                 .await;
@@ -138,6 +139,7 @@ impl ImService {
                 .await;
             self.publish_presence(&entry.user_id, "OFFLINE").await;
         }
+        self.refresh_server_node().await;
         true
     }
 
@@ -270,6 +272,10 @@ impl ImService {
         tokio::spawn(async move {
             renew_service.renew_routes_loop().await;
         });
+        let server_node_service = self.clone();
+        tokio::spawn(async move {
+            server_node_service.renew_server_node_loop().await;
+        });
         let cleanup_service = self.clone();
         tokio::spawn(async move {
             cleanup_service.cleanup_stale_sessions_loop().await;
@@ -278,6 +284,10 @@ impl ImService {
         tokio::spawn(async move {
             presence_service.subscribe_presence_loop(redis_client).await;
         });
+    }
+
+    pub async fn unregister_server_node(&self) {
+        self.inner.route_registry.remove_server_node().await;
     }
 
     async fn renew_routes_loop(self) {
@@ -290,6 +300,14 @@ impl ImService {
                     .upsert_local_route(&user_id, count)
                     .await;
             }
+        }
+    }
+
+    async fn renew_server_node_loop(self) {
+        let interval = self.inner.config.server_renew_interval_ms.max(1000);
+        loop {
+            self.refresh_server_node().await;
+            sleep(Duration::from_millis(interval)).await;
         }
     }
 
@@ -385,6 +403,13 @@ impl ImService {
             .await;
     }
 
+    async fn refresh_server_node(&self) {
+        self.inner
+            .route_registry
+            .upsert_server_node(self.total_session_count())
+            .await;
+    }
+
     pub fn local_sessions(&self, user_id: &str) -> Vec<Arc<SessionEntry>> {
         let ids = self.local_session_ids(user_id);
         if ids.is_empty() {
@@ -418,6 +443,11 @@ impl ImService {
             .iter()
             .map(|(user_id, ids)| (user_id.clone(), ids.len()))
             .collect()
+    }
+
+    fn total_session_count(&self) -> usize {
+        let sessions = self.inner.sessions.read().expect("sessions lock poisoned");
+        sessions.len()
     }
 
     fn session_entry(&self, session_id: &str) -> Option<Arc<SessionEntry>> {

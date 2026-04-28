@@ -12,7 +12,6 @@ const getPreferredAudioMimeType = () => {
   if (typeof MediaRecorder === "undefined") {
     return "";
   }
-
   return (
     AUDIO_MIME_CANDIDATES.find((mimeType) =>
       MediaRecorder.isTypeSupported(mimeType),
@@ -29,11 +28,12 @@ const getAudioFileExtension = (mimeType: string) => {
   return "webm";
 };
 
+const normalizeAudioMimeType = (mimeType: string) =>
+  (mimeType.split(";")[0]?.trim() || "audio/webm").toLowerCase();
+
 export function useVoiceRecorder() {
-  const { capture } = useErrorHandler("voice-recorder");
-  const isVoiceMode = ref(false);
+  const {capture} = useErrorHandler("voice-recorder");
   const isRecording = ref(false);
-  const isStopRequested = ref(false);
   const recordingStartTime = ref(0);
   let mediaRecorder: MediaRecorder | null = null;
   let audioChunks: Blob[] = [];
@@ -43,31 +43,25 @@ export function useVoiceRecorder() {
     audioChunks = [];
     recordedMimeType = "";
     mediaRecorder = null;
+    recordingStartTime.value = 0;
   };
 
-  const toggleVoiceMode = () => {
-    isVoiceMode.value = !isVoiceMode.value;
+  const stopStreamTracks = () => {
+    mediaRecorder?.stream.getTracks().forEach((track) => track.stop());
   };
 
   const startRecording = async () => {
-    isStopRequested.value = false;
-    isRecording.value = true;
-
+    if (isRecording.value) {
+      return null;
+    }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (isStopRequested.value) {
-        stream.getTracks().forEach((track) => track.stop());
-        isRecording.value = false;
-        resetRecorder();
-        return null;
-      }
-
+      const stream = await navigator.mediaDevices.getUserMedia({audio: true});
       const mimeType = getPreferredAudioMimeType();
       mediaRecorder = new MediaRecorder(
         stream,
-        mimeType ? { mimeType } : undefined,
+        mimeType ? {mimeType} : undefined,
       );
-      recordedMimeType = mediaRecorder.mimeType || mimeType;
+      recordedMimeType = mediaRecorder.mimeType || mimeType || "audio/webm";
       audioChunks = [];
       mediaRecorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
@@ -76,11 +70,12 @@ export function useVoiceRecorder() {
       };
       mediaRecorder.start();
       recordingStartTime.value = Date.now();
+      isRecording.value = true;
       return null;
     } catch (error) {
-      capture(error, "无法获取麦克风权限，请检查设备设置");
       isRecording.value = false;
       resetRecorder();
+      capture(error, "无法获取麦克风权限，请检查浏览器和系统设置");
       return null;
     }
   };
@@ -89,7 +84,6 @@ export function useVoiceRecorder() {
     file: File;
     duration: number;
   } | null> => {
-    isStopRequested.value = true;
     if (!mediaRecorder || mediaRecorder.state !== "recording") {
       isRecording.value = false;
       resetRecorder();
@@ -98,67 +92,56 @@ export function useVoiceRecorder() {
 
     return new Promise((resolve) => {
       const recorder = mediaRecorder!;
-
       recorder.onstop = () => {
-        recorder.stream.getTracks().forEach((track) => track.stop());
+        stopStreamTracks();
         isRecording.value = false;
 
         if (audioChunks.length === 0) {
-          capture(new Error("没有采集到音频数据"), "录音失败，没有采集到音频数据");
+          capture(new Error("No audio data"), "录音失败，未采集到音频数据");
           resolve(null);
           resetRecorder();
           return;
         }
 
-        const duration = Math.round(
-          (Date.now() - recordingStartTime.value) / 1000,
-        );
+        const duration = Math.round((Date.now() - recordingStartTime.value) / 1000);
         if (duration < 1) {
-          capture(new Error("录音时间太短"), "录音时间太短");
+          capture(new Error("Recording too short"), "录音时间太短");
           resolve(null);
           resetRecorder();
           return;
         }
 
-        const actualMimeType =
-          recorder.mimeType || recordedMimeType || "audio/webm";
-        const blob = new Blob(audioChunks, { type: actualMimeType });
+        const rawMimeType = recorder.mimeType || recordedMimeType || "audio/webm";
+        const mimeType = normalizeAudioMimeType(rawMimeType);
+        const blob = new Blob(audioChunks, {type: mimeType});
         resolve({
           file: new File(
             [blob],
-            `voice_${Date.now()}.${getAudioFileExtension(actualMimeType)}`,
-            {
-              type: actualMimeType,
-            },
+            `voice_${Date.now()}.${getAudioFileExtension(rawMimeType)}`,
+            {type: mimeType},
           ),
           duration,
         });
         resetRecorder();
       };
-
       recorder.stop();
     });
   };
 
   const cancelRecording = () => {
-    isStopRequested.value = true;
-
     if (mediaRecorder) {
       mediaRecorder.onstop = null;
       if (mediaRecorder.state === "recording") {
         mediaRecorder.stop();
       }
-      mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+      stopStreamTracks();
     }
-
     isRecording.value = false;
     resetRecorder();
   };
 
   return {
-    isVoiceMode,
     isRecording,
-    toggleVoiceMode,
     startRecording,
     finishRecording,
     cancelRecording,
