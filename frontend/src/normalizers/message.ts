@@ -157,6 +157,7 @@ export const normalizeMessage = (
     receiverAvatar:
       asString(record.receiverAvatar ?? record.receiver?.avatar) || undefined,
     groupId: asString(groupId) || undefined,
+    conversationSeq: firstNumber(record.conversationSeq, record.conversation_seq),
     groupName: asString(record.groupName) || undefined,
     groupAvatar: asString(record.groupAvatar) || undefined,
     isGroupChat: Boolean(isGroupMessage),
@@ -210,6 +211,7 @@ export const normalizeReadReceipt = (raw: unknown): ReadReceipt | null => {
     lastReadMessageId:
       asString(record.lastReadMessageId ?? record.last_read_message_id) ||
       undefined,
+    lastReadSeq: firstNumber(record.lastReadSeq ?? record.last_read_seq),
     readAt:
       normalizeFractionalSeconds(record.readAt ?? record.read_at) || undefined,
   };

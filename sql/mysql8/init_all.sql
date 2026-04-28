@@ -163,6 +163,7 @@ CREATE TABLE IF NOT EXISTS message_state_outbox (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='durable outbox for read and status state events';
 
 CREATE TABLE IF NOT EXISTS messages (
+  conversation_seq BIGINT NULL COMMENT 'group conversation sequence',
   id BIGINT NOT NULL COMMENT '消息ID（雪花ID）',
   sender_id BIGINT NOT NULL COMMENT '发送者用户ID',
   receiver_id BIGINT NULL COMMENT '接收者用户ID（私聊）',
@@ -186,10 +187,12 @@ CREATE TABLE IF NOT EXISTS messages (
   KEY idx_messages_sender_time (sender_id, created_time),
   KEY idx_messages_receiver_sender_status (receiver_id, sender_id, status),
   KEY idx_messages_group_time (group_id, created_time),
+  KEY idx_messages_group_seq (group_id, conversation_seq),
   KEY idx_messages_reply (reply_to_message_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='消息表';
 
 CREATE TABLE IF NOT EXISTS messages_archive (
+  conversation_seq BIGINT NULL COMMENT 'group conversation sequence',
   id BIGINT NOT NULL COMMENT '消息ID（雪花ID）',
   sender_id BIGINT NOT NULL COMMENT '发送者用户ID',
   receiver_id BIGINT NULL COMMENT '接收者用户ID（私聊）',
@@ -213,6 +216,7 @@ CREATE TABLE IF NOT EXISTS messages_archive (
   KEY idx_messages_archive_sender_time (sender_id, created_time),
   KEY idx_messages_archive_receiver_sender_status (receiver_id, sender_id, status),
   KEY idx_messages_archive_group_time (group_id, created_time),
+  KEY idx_messages_archive_group_seq (group_id, conversation_seq),
   KEY idx_messages_archive_reply (reply_to_message_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='消息归档表（90天之前）';
 
@@ -240,6 +244,8 @@ CREATE TABLE IF NOT EXISTS pending_status_event (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='durable backlog for out-of-order status events';
 
 CREATE TABLE IF NOT EXISTS group_read_cursor (
+  last_read_seq BIGINT NOT NULL DEFAULT 0 COMMENT 'last read group conversation sequence',
+  last_read_message_id BIGINT NULL COMMENT 'last read message id',
   id BIGINT NOT NULL COMMENT '游标ID（雪花ID）',
   group_id BIGINT NOT NULL COMMENT '群组ID',
   user_id BIGINT NOT NULL COMMENT '用户ID',
