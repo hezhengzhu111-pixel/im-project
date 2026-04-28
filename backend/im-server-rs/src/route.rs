@@ -54,8 +54,9 @@ impl RouteRegistry {
             snapshot.insert(
                 self.config.instance_id.clone(),
                 RouteLease {
-                    session_count: session_count as i32,
-                    expires_at_epoch_ms: now + self.config.route_lease_ttl_ms.max(1000),
+                    session_count: session_count_i32(session_count),
+                    expires_at_epoch_ms: now
+                        .saturating_add(self.config.route_lease_ttl_ms.max(1000)),
                     internal_http_url: Some(self.config.internal_http_url.clone()),
                     internal_ws_url: Some(self.config.internal_ws_url.clone()),
                 },
@@ -70,9 +71,10 @@ impl RouteRegistry {
             server_id: self.config.instance_id.clone(),
             internal_http_url: self.config.internal_http_url.clone(),
             internal_ws_url: self.config.internal_ws_url.clone(),
-            session_count: session_count as i32,
+            session_count: session_count_i32(session_count),
             updated_at_epoch_ms: now,
-            expires_at_epoch_ms: now + (self.config.server_lease_ttl_seconds.max(1) as i64 * 1000),
+            expires_at_epoch_ms: now
+                .saturating_add(server_lease_ttl_ms(self.config.server_lease_ttl_seconds)),
         };
         let Ok(payload) = serde_json::to_string(&node) else {
             return;
@@ -82,9 +84,12 @@ impl RouteRegistry {
             self.config.server_registry_key_prefix, self.config.instance_id
         );
         let mut conn = self.redis.clone();
-        let _: redis::RedisResult<()> = conn
+        let result: redis::RedisResult<()> = conn
             .set_ex(key, payload, self.config.server_lease_ttl_seconds.max(1))
             .await;
+        if let Err(error) = result {
+            tracing::warn!(error = %error, "failed to upsert server node");
+        }
     }
 
     pub async fn remove_server_node(&self) {
@@ -93,7 +98,10 @@ impl RouteRegistry {
             self.config.server_registry_key_prefix, self.config.instance_id
         );
         let mut conn = self.redis.clone();
-        let _: redis::RedisResult<i32> = conn.del(key).await;
+        let result: redis::RedisResult<i32> = conn.del(key).await;
+        if let Err(error) = result {
+            tracing::warn!(error = %error, "failed to remove server node");
+        }
     }
 
     pub async fn remove_local_route(&self, user_id: &str) {
@@ -133,11 +141,17 @@ impl RouteRegistry {
         let mut conn = self.redis.clone();
         let raw: redis::RedisResult<Option<Vec<u8>>> =
             conn.hget(&self.config.route_users_key, user_id).await;
-        let Some(bytes) = raw.unwrap_or(None) else {
+        let Some(bytes) = (match raw {
+            Ok(value) => value,
+            Err(error) => {
+                tracing::warn!(user_id, error = %error, "failed to load route snapshot");
+                None
+            }
+        }) else {
             return BTreeMap::new();
         };
         let Some(text) = extract_json_object(&bytes) else {
-            let _: redis::RedisResult<i32> = conn.hdel(&self.config.route_users_key, user_id).await;
+            delete_route_snapshot(&mut conn, &self.config.route_users_key, user_id).await;
             return BTreeMap::new();
         };
         match serde_json::from_str::<BTreeMap<String, RouteLease>>(&text) {
@@ -150,8 +164,7 @@ impl RouteRegistry {
                 snapshot
             }
             Err(_) => {
-                let _: redis::RedisResult<i32> =
-                    conn.hdel(&self.config.route_users_key, user_id).await;
+                delete_route_snapshot(&mut conn, &self.config.route_users_key, user_id).await;
                 BTreeMap::new()
             }
         }
@@ -165,7 +178,7 @@ impl RouteRegistry {
     ) {
         let mut conn = self.redis.clone();
         if snapshot.is_empty() {
-            let _: redis::RedisResult<i32> = conn.hdel(&self.config.route_users_key, user_id).await;
+            delete_route_snapshot(&mut conn, &self.config.route_users_key, user_id).await;
             return;
         }
         let fresh: BTreeMap<String, RouteLease> = snapshot
@@ -176,20 +189,23 @@ impl RouteRegistry {
             })
             .collect();
         if fresh.is_empty() {
-            let _: redis::RedisResult<i32> = conn.hdel(&self.config.route_users_key, user_id).await;
+            delete_route_snapshot(&mut conn, &self.config.route_users_key, user_id).await;
             return;
         }
         if let Ok(payload) = serde_json::to_string(&fresh) {
-            let _: redis::RedisResult<i32> = conn
+            let result: redis::RedisResult<i32> = conn
                 .hset(&self.config.route_users_key, user_id, payload)
                 .await;
+            if let Err(error) = result {
+                tracing::warn!(user_id, error = %error, "failed to persist route snapshot");
+            }
         }
     }
 
     async fn acquire_lock(&self, user_id: &str) -> Option<RouteLock> {
         let lock_key = format!("{}:lock:{}", self.config.route_users_key, user_id);
         let token = Uuid::new_v4().to_string();
-        for _ in 0..20 {
+        for attempt in 0..20 {
             let mut conn = self.redis.clone();
             let acquired: redis::RedisResult<Option<String>> = redis::cmd("SET")
                 .arg(&lock_key)
@@ -199,12 +215,18 @@ impl RouteRegistry {
                 .arg(3_000)
                 .query_async(&mut conn)
                 .await;
-            if acquired.ok().flatten().is_some() {
-                return Some(RouteLock {
-                    key: lock_key,
-                    token,
-                    redis: self.redis.clone(),
-                });
+            match acquired {
+                Ok(Some(_)) => {
+                    return Some(RouteLock {
+                        key: lock_key,
+                        token,
+                        redis: self.redis.clone(),
+                    });
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::warn!(user_id, attempt, error = %error, "failed to acquire route lock");
+                }
             }
             sleep(Duration::from_millis(25)).await;
         }
@@ -223,15 +245,18 @@ impl Drop for RouteLock {
         let key = self.key.clone();
         let token = self.token.clone();
         let mut redis = self.redis.clone();
-        tokio::spawn(async move {
-            let _: redis::RedisResult<i32> = redis::cmd("EVAL")
+        std::mem::drop(tokio::spawn(async move {
+            let result: redis::RedisResult<i32> = redis::cmd("EVAL")
                 .arg("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end")
                 .arg(1)
                 .arg(key)
                 .arg(token)
                 .query_async(&mut redis)
                 .await;
-        });
+            if let Err(error) = result {
+                tracing::warn!(error = %error, "failed to release route lock");
+            }
+        }));
     }
 }
 
@@ -244,7 +269,30 @@ fn extract_json_object(bytes: &[u8]) -> Option<String> {
     let text = String::from_utf8_lossy(bytes);
     let start = text.find('{')?;
     let end = text.rfind('}')?;
-    (end >= start).then(|| text[start..=end].to_string())
+    if end < start {
+        return None;
+    }
+    text.get(start..=end).map(ToOwned::to_owned)
+}
+
+fn session_count_i32(session_count: usize) -> i32 {
+    i32::try_from(session_count).unwrap_or(i32::MAX)
+}
+
+fn server_lease_ttl_ms(ttl_seconds: u64) -> i64 {
+    let ttl_ms = ttl_seconds.max(1).saturating_mul(1_000);
+    i64::try_from(ttl_ms).unwrap_or(i64::MAX)
+}
+
+async fn delete_route_snapshot(
+    redis: &mut ConnectionManager,
+    route_users_key: &str,
+    user_id: &str,
+) {
+    let result: redis::RedisResult<i32> = redis.hdel(route_users_key, user_id).await;
+    if let Err(error) = result {
+        tracing::warn!(user_id, error = %error, "failed to delete route snapshot");
+    }
 }
 
 #[cfg(test)]
@@ -252,24 +300,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_extract_json_from_redisson_prefixed_value() {
+    fn should_extract_json_from_redisson_prefixed_value() -> Result<(), &'static str> {
         let raw = b"\x00\x01{\"node\":{\"sessionCount\":1,\"expiresAtEpochMs\":999}}";
 
-        let json = extract_json_object(raw).unwrap();
+        let Some(json) = extract_json_object(raw) else {
+            return Err("json object should be extracted");
+        };
 
         assert_eq!(
             "{\"node\":{\"sessionCount\":1,\"expiresAtEpochMs\":999}}",
             json
         );
+        Ok(())
     }
 
     #[test]
-    fn should_parse_route_lease_with_java_field_names() {
+    fn should_parse_route_lease_with_java_field_names() -> Result<(), serde_json::Error> {
         let snapshot: BTreeMap<String, RouteLease> = serde_json::from_str(
             "{\"im-server:8083\":{\"sessionCount\":2,\"expiresAtEpochMs\":9999999999999}}",
-        )
-        .unwrap();
+        )?;
 
-        assert_eq!(2, snapshot["im-server:8083"].session_count);
+        assert_eq!(
+            Some(2),
+            snapshot
+                .get("im-server:8083")
+                .map(|lease| lease.session_count)
+        );
+        Ok(())
     }
 }

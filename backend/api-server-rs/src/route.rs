@@ -111,5 +111,8 @@ fn extract_json_object(bytes: &[u8]) -> Option<String> {
     let text = String::from_utf8_lossy(bytes);
     let start = text.find('{')?;
     let end = text.rfind('}')?;
-    (end >= start).then(|| text[start..=end].to_string())
+    if end < start {
+        return None;
+    }
+    text.get(start..=end).map(ToOwned::to_owned)
 }

@@ -1,3 +1,13 @@
+#![forbid(unsafe_code)]
+#![deny(unused_must_use)]
+#![deny(clippy::as_conversions)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::panic)]
+#![deny(clippy::todo)]
+#![deny(clippy::unimplemented)]
+#![deny(clippy::unwrap_used)]
+
 mod clients;
 mod config;
 mod dto;
@@ -42,6 +52,8 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn shutdown_signal(service: ImService) {
-    let _ = tokio::signal::ctrl_c().await;
+    if let Err(error) = tokio::signal::ctrl_c().await {
+        tracing::warn!(error = %error, "failed to listen for shutdown signal");
+    }
     service.unregister_server_node().await;
 }

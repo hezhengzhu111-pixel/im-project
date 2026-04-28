@@ -98,19 +98,19 @@ impl Processor {
             ImEventType::MessageCreated => {
                 if let Some(message) = event.payload {
                     self.message_batch.push(message);
-                    if self.message_batch.len() >= self.config.writer_batch_size {
-                        if self.flush_messages().await? {
-                            self.last_flush = Instant::now();
-                        }
+                    if self.message_batch.len() >= self.config.writer_batch_size
+                        && self.flush_messages().await?
+                    {
+                        self.last_flush = Instant::now();
                     }
                 }
             }
             ImEventType::MessageRead => {
                 self.enqueue_read(event);
-                if self.read_batch_len() >= self.config.writer_batch_size {
-                    if self.flush_read_cursors().await? {
-                        self.last_flush = Instant::now();
-                    }
+                if self.read_batch_len() >= self.config.writer_batch_size
+                    && self.flush_read_cursors().await?
+                {
+                    self.last_flush = Instant::now();
                 }
             }
             ImEventType::MessageRecalled | ImEventType::MessageDeleted => {
@@ -165,7 +165,7 @@ impl Processor {
         observability::writer_flush(
             "messages",
             count,
-            started.elapsed().as_millis() as u64,
+            u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
             self.message_batch.len(),
             self.read_batch_len(),
         );
@@ -189,7 +189,10 @@ impl Processor {
                 )
                 .ignore();
             }
-            let _: redis::RedisResult<()> = pipe.query(&mut self.redis);
+            let result: redis::RedisResult<()> = pipe.query(&mut self.redis);
+            if let Err(error) = result {
+                tracing::warn!(error = %error, "failed to update db watermarks");
+            }
         }
         Ok(true)
     }
@@ -215,7 +218,7 @@ impl Processor {
         observability::writer_flush(
             "read_cursors",
             count,
-            started.elapsed().as_millis() as u64,
+            u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
             self.message_batch.len(),
             self.read_batch_len(),
         );

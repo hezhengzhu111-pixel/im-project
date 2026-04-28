@@ -12,7 +12,7 @@ where
         kind = "db_query",
         operation,
         ok = result.is_ok(),
-        elapsed_ms = started.elapsed().as_millis() as u64,
+        elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
         "db query observed"
     );
     result

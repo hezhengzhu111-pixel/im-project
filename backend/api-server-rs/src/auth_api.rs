@@ -280,8 +280,8 @@ pub async fn issue_ws_ticket(
     let ttl = state.config.ws_ticket_ttl_seconds;
     {
         let mut redis = state.redis_manager.clone();
-        let _: () = redis
-            .set_ex(
+        redis
+            .set_ex::<_, _, ()>(
                 format!("{}{}", WS_TICKET_KEY_PREFIX, ticket),
                 format!("{}\n{}", identity.user_id, identity.username),
                 ttl,
@@ -290,14 +290,14 @@ pub async fn issue_ws_ticket(
     }
     let dto = WsTicketDto {
         ticket: Some(ticket.clone()),
-        expires_in_ms: Some((ttl as i64) * 1000),
+        expires_in_ms: Some(ttl_seconds_to_ms(ttl)?),
     };
     let mut response_headers = HeaderMap::new();
     append_cookie(
         &mut response_headers,
         &state.config.ws_ticket_cookie_name,
         &ticket,
-        (ttl as i64) * 1000,
+        ttl_seconds_to_ms(ttl)?,
         normalize_cookie_path(&state.config.ws_ticket_cookie_path),
         &state.config.ws_ticket_cookie_same_site,
         resolve_ws_ticket_cookie_secure(&state.config),
@@ -413,18 +413,18 @@ pub async fn internal_revoke_user_tokens(
     validate_internal_signature(&headers, "POST", uri.path(), &body, &state.config)?;
     {
         let mut redis = state.redis_manager.clone();
-        let _: () = redis
-            .set_ex(
+        redis
+            .set_ex::<_, _, ()>(
                 format!("{}{}", USER_REVOKE_AFTER_KEY_PREFIX, user_id),
                 time::now_ms().to_string(),
                 state.config.revoked_token_ttl_seconds,
             )
             .await?;
-        let _: i64 = redis
-            .del(format!("{}{}", REFRESH_JTI_KEY_PREFIX, user_id))
+        redis
+            .del::<_, ()>(format!("{}{}", REFRESH_JTI_KEY_PREFIX, user_id))
             .await?;
-        let _: i64 = redis
-            .del(format!("{}{}", USER_RESOURCE_KEY_PREFIX, user_id))
+        redis
+            .del::<_, ()>(format!("{}{}", USER_RESOURCE_KEY_PREFIX, user_id))
             .await?;
     }
     Ok(Json(ApiResponse::success(true)))
@@ -538,7 +538,7 @@ pub fn internal_signature_headers(
     let nonce = Uuid::new_v4().to_string();
     let body_hash = sha256_base64_url(body);
     let canonical = internal_canonical(method, path, &body_hash, &ts, &nonce);
-    let signature = sign_hmac(&config.internal_secret, &canonical);
+    let signature = sign_hmac(&config.internal_secret, &canonical)?;
     let mut headers = HeaderMap::new();
     headers.insert(
         INTERNAL_TS_HEADER,
@@ -723,8 +723,8 @@ async fn upsert_user_resource(
         data_scopes: HashMap::new(),
     };
     let mut redis = state.redis_manager.clone();
-    let _: () = redis
-        .set_ex(
+    redis
+        .set_ex::<_, _, ()>(
             format!("{}{}", USER_RESOURCE_KEY_PREFIX, user_id),
             serde_json::to_string(&resource)?,
             state.config.resource_cache_ttl_seconds,
@@ -813,8 +813,8 @@ async fn revoke_token(
     let token_hash = sha256_hex(&token);
     {
         let mut redis = state.redis_manager.clone();
-        let _: () = redis
-            .set_ex(
+        redis
+            .set_ex::<_, _, ()>(
                 format!("{}{}", REVOKED_TOKEN_KEY_PREFIX, token_hash),
                 "1",
                 state.config.revoked_token_ttl_seconds,
@@ -875,12 +875,12 @@ fn build_token(
         iat: now_ms / 1000,
         exp: (now_ms + expiration_ms) / 1000,
     };
-    Ok(encode(
+    encode(
         &Header::new(Algorithm::HS512),
         &claims,
         &EncodingKey::from_secret(&padded_hs512_secret(secret)),
     )
-    .map_err(|err| AppError::BadRequest(err.to_string()))?)
+    .map_err(|err| AppError::BadRequest(err.to_string()))
 }
 
 fn parse_token(token: Option<&str>, secret: &str, allow_expired: bool) -> TokenParseResultDto {
@@ -945,12 +945,12 @@ pub(crate) fn validate_internal_signature(
     let timestamp = ts
         .parse::<i64>()
         .map_err(|_| AppError::Unauthorized("INTERNAL_AUTH_REJECTED".to_string()))?;
-    if (time::now_ms() - timestamp).abs() > config.internal_max_skew_ms {
+    if !within_skew(timestamp, config.internal_max_skew_ms) {
         return Err(AppError::Unauthorized("INTERNAL_AUTH_REJECTED".to_string()));
     }
     let body_hash = sha256_base64_url(body);
     let canonical = internal_canonical(method, path, &body_hash, &ts, &nonce);
-    if !verify_hmac(&config.internal_secret, &canonical, &signature) {
+    if !verify_hmac(&config.internal_secret, &canonical, &signature)? {
         return Err(AppError::Unauthorized("INTERNAL_AUTH_REJECTED".to_string()));
     }
     Ok(())
@@ -976,18 +976,32 @@ fn normalize_path(path: &str) -> String {
     }
 }
 
-fn sign_hmac(secret: &str, canonical: &str) -> String {
-    let mut mac =
-        HmacSha256::new_from_slice(secret.as_bytes()).expect("hmac accepts any key length");
-    mac.update(canonical.as_bytes());
-    URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes())
+fn ttl_seconds_to_ms(ttl_seconds: u64) -> Result<i64, AppError> {
+    let ttl = i64::try_from(ttl_seconds)
+        .map_err(|_| AppError::BadRequest("ttl seconds is too large".to_string()))?;
+    ttl.checked_mul(1_000)
+        .ok_or_else(|| AppError::BadRequest("ttl milliseconds overflow".to_string()))
 }
 
-fn verify_hmac(secret: &str, canonical: &str, signature: &str) -> bool {
-    sign_hmac(secret, canonical)
+fn within_skew(timestamp_ms: i64, allowed_skew_ms: i64) -> bool {
+    time::now_ms()
+        .checked_sub(timestamp_ms)
+        .and_then(i64::checked_abs)
+        .is_some_and(|delta| delta <= allowed_skew_ms)
+}
+
+fn sign_hmac(secret: &str, canonical: &str) -> Result<String, AppError> {
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|error| AppError::BadRequest(format!("invalid hmac key: {error}")))?;
+    mac.update(canonical.as_bytes());
+    Ok(URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes()))
+}
+
+fn verify_hmac(secret: &str, canonical: &str, signature: &str) -> Result<bool, AppError> {
+    Ok(sign_hmac(secret, canonical)?
         .as_bytes()
         .ct_eq(signature.as_bytes())
-        .into()
+        .into())
 }
 
 fn sha256_base64_url(value: &[u8]) -> String {
@@ -1010,16 +1024,23 @@ fn padded_hs512_secret(secret: &str) -> Vec<u8> {
     if bytes.is_empty() {
         return padded;
     }
-    for index in 0..64 {
-        padded[index] = bytes[index % bytes.len()];
+    let source_len = bytes.len();
+    for (index, slot) in padded.iter_mut().enumerate() {
+        let source_index = index % source_len;
+        if let Some(byte) = bytes.get(source_index) {
+            *slot = *byte;
+        }
     }
     padded
 }
 
 fn normalize_bearer(token: Option<&str>) -> Option<String> {
     let mut value = token?.trim().to_string();
-    if value.len() > 1 && value.starts_with('"') && value.ends_with('"') {
-        value = value[1..value.len() - 1].trim().to_string();
+    if let Some(unquoted) = value
+        .strip_prefix('"')
+        .and_then(|inner| inner.strip_suffix('"'))
+    {
+        value = unquoted.trim().to_string();
     }
     if let Some(rest) = value.strip_prefix("Bearer ") {
         value = rest.trim().to_string();
@@ -1193,7 +1214,7 @@ where
     match value {
         Value::Number(number) => Ok(number
             .as_i64()
-            .or_else(|| number.as_u64().map(|item| item as i64))),
+            .or_else(|| number.as_u64().and_then(|item| i64::try_from(item).ok()))),
         Value::String(text) => text
             .trim()
             .parse()

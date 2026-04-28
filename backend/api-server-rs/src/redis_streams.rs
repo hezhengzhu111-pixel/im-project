@@ -87,11 +87,12 @@ pub fn ack(
     if stream_ids.is_empty() {
         return Ok(());
     }
-    let _: i64 = redis::cmd("XACK")
+    let acknowledged: i64 = redis::cmd("XACK")
         .arg(stream)
         .arg(group)
         .arg(stream_ids)
         .query(redis)?;
+    tracing::debug!(stream, group, acknowledged, "acked redis stream messages");
     Ok(())
 }
 

@@ -375,7 +375,11 @@ async fn load_group_members_cached(
     let members = observability::db_query(operation, load_group_members(db, group_id)).await?;
     local_cache::set_i64_vec(&key, members.clone());
     if let Ok(raw) = serde_json::to_string(&members) {
-        let _: redis::RedisResult<()> = redis.set_ex(&key, raw, GROUP_MEMBERS_CACHE_TTL_SECONDS);
+        let result: redis::RedisResult<()> =
+            redis.set_ex(&key, raw, GROUP_MEMBERS_CACHE_TTL_SECONDS);
+        if let Err(error) = result {
+            tracing::warn!(key = %key, error = %error, "failed to cache push group members");
+        }
     }
     Ok(members)
 }

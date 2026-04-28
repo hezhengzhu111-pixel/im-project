@@ -415,7 +415,7 @@ pub async fn heartbeat(
 ) -> Result<Json<ApiResponse<HashMap<String, bool>>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
     let heartbeat_path = format!("/api/im/heartbeat/{}", identity.user_id);
-    let _ = signed_internal_post::<Value>(
+    if let Err(error) = signed_internal_post::<Value>(
         &state,
         &format!(
             "{}{}",
@@ -425,7 +425,10 @@ pub async fn heartbeat(
         &heartbeat_path,
         Bytes::new(),
     )
-    .await;
+    .await
+    {
+        tracing::warn!(error = %error, user_id = identity.user_id, "failed to refresh im heartbeat");
+    }
     online_status_impl(state, body).await
 }
 
@@ -564,7 +567,7 @@ fn user_from_row(row: &sqlx::mysql::MySqlRow) -> UserRecord {
         avatar: row.get("avatar"),
         email: row.get("email"),
         phone: row.get("phone"),
-        status: row.get::<i8, _>("status") as i32,
+        status: i32::from(row.get::<i8, _>("status")),
         last_login_time: row.get("last_login_time"),
         created_time: row.get("created_time"),
     }
