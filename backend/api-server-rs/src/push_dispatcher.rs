@@ -1,5 +1,6 @@
 use crate::auth_api;
 use crate::config::AppConfig;
+use crate::local_cache;
 use crate::observability;
 use crate::redis_streams;
 use crate::route::{parse_user_routes, UserRoute};
@@ -298,13 +299,23 @@ async fn load_group_members_cached(
     operation: &'static str,
 ) -> anyhow::Result<Vec<i64>> {
     let key = format!("im:cache:group_members:{group_id}");
+    if let Some(members) = local_cache::get_i64_vec(&key) {
+        return Ok(members);
+    }
+    let lock = local_cache::key_lock(&key);
+    let _guard = lock.lock().await;
+    if let Some(members) = local_cache::get_i64_vec(&key) {
+        return Ok(members);
+    }
     let cached: Option<String> = redis.get(&key).ok().flatten();
     if let Some(raw) = cached {
         if let Ok(members) = serde_json::from_str::<Vec<i64>>(&raw) {
+            local_cache::set_i64_vec(&key, members.clone());
             return Ok(members);
         }
     }
     let members = observability::db_query(operation, load_group_members(db, group_id)).await?;
+    local_cache::set_i64_vec(&key, members.clone());
     if let Ok(raw) = serde_json::to_string(&members) {
         let _: redis::RedisResult<()> = redis.set_ex(&key, raw, GROUP_MEMBERS_CACHE_TTL_SECONDS);
     }

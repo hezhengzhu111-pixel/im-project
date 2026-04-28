@@ -73,11 +73,19 @@ fn publish_due_events(
         *last_observe = Instant::now();
     }
 
+    let event_keys = event_ids
+        .iter()
+        .map(|event_id| keys::event_key(event_id))
+        .collect::<Vec<_>>();
+    let payloads: Vec<Option<String>> = redis.get(event_keys.clone())?;
+
     let mut published = 0;
-    for event_id in event_ids {
-        let event_key = keys::event_key(&event_id);
-        let Some(payload): Option<String> = redis.get(&event_key)? else {
-            let _: usize = redis.zrem(keys::pending_events_key(), &event_id)?;
+    let mut remove_event_ids = Vec::with_capacity(event_ids.len());
+    let mut remove_event_keys = Vec::with_capacity(event_ids.len());
+    let mut pipe = redis::pipe();
+    for ((event_id, event_key), payload) in event_ids.into_iter().zip(event_keys).zip(payloads) {
+        let Some(payload) = payload else {
+            remove_event_ids.push(event_id);
             continue;
         };
 
@@ -85,24 +93,31 @@ fn publish_due_events(
             Ok(event) => event,
             Err(error) => {
                 tracing::warn!(event_id = %event_id, error = %error, "drop invalid pending event");
-                let _: usize = redis.del(&event_key)?;
-                let _: usize = redis.zrem(keys::pending_events_key(), &event_id)?;
+                remove_event_ids.push(event_id);
+                remove_event_keys.push(event_key);
                 continue;
             }
         };
 
-        redis_streams::append_event(
+        redis_streams::append_event_cmd(
             config,
-            redis,
+            &mut pipe,
             &event.event_id,
             &event.conversation_id,
             &payload,
-        )?;
-
-        let _: usize = redis.del(&event_key)?;
-        let _: usize = redis.zrem(keys::pending_events_key(), &event_id)?;
+        );
+        remove_event_ids.push(event_id);
+        remove_event_keys.push(event_key);
         published += 1;
     }
+    if !remove_event_keys.is_empty() {
+        pipe.del(remove_event_keys).ignore();
+    }
+    if !remove_event_ids.is_empty() {
+        pipe.zrem(keys::pending_events_key(), remove_event_ids)
+            .ignore();
+    }
+    let _: redis::RedisResult<()> = pipe.query(redis);
 
     Ok(published)
 }

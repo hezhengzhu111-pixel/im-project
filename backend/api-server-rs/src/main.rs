@@ -6,6 +6,7 @@ mod config;
 mod error;
 mod file_api;
 mod id_resolver;
+mod local_cache;
 mod message;
 mod observability;
 mod push_dispatcher;
