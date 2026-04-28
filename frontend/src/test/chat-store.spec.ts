@@ -1076,4 +1076,31 @@ describe("chat store", () => {
 
     expect(started).toEqual(["2", "3", "4", "5"]);
   });
+
+  it("keeps accumulating unread count for repeated realtime messages", async () => {
+    const { useChatStore } = await import("@/stores/chat");
+    const store = useChatStore();
+
+    const activeSession = store.createOrGetSession("private", "2", "u2", "");
+    await store.setCurrentSession(activeSession!);
+
+    for (let index = 0; index < 6; index += 1) {
+      await store.addMessage({
+        id: String(10_000 + index),
+        senderId: "3",
+        receiverId: "1",
+        senderName: "u3",
+        messageType: "TEXT",
+        content: `msg ${index}`,
+        sendTime: `2026-02-07T10:00:0${index}.000Z`,
+        status: "SENT",
+        isGroupChat: false,
+      });
+    }
+
+    const unreadSession = store.sessions.find((item) => item.targetId === "3");
+    expect(unreadSession?.unreadCount).toBe(6);
+    expect(store.unreadCounts.get(unreadSession!.id)).toBe(6);
+    expect(store.totalUnreadCount).toBe(6);
+  });
 });

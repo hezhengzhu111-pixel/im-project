@@ -111,6 +111,19 @@
 
       <section class="settings-card">
         <div class="settings-copy">
+          <div class="settings-kicker">{{ t("settings.voice") }}</div>
+          <h2>{{ t("settings.insecureVoice") }}</h2>
+          <p>{{ t("settings.insecureVoiceDesc") }}</p>
+        </div>
+        <el-switch
+          v-model="allowInsecureVoiceRecording"
+          size="large"
+          @change="updateInsecureVoiceSetting(Boolean($event))"
+        />
+      </section>
+
+      <section class="settings-card">
+        <div class="settings-copy">
           <div class="settings-kicker">{{ t("settings.privacy") }}</div>
           <h2>{{ t("settings.readReceipt") }}</h2>
           <p>{{ t("settings.readReceiptDesc") }}</p>
@@ -166,6 +179,9 @@ const loggingOut = ref(false);
 const notificationEnabled = ref(defaults.message.enableNotification);
 const soundEnabled = ref(defaults.message.enableSound);
 const readReceiptEnabled = ref(defaults.privacy.messageReadReceipt);
+const allowInsecureVoiceRecording = ref(
+  settingsStore.allowInsecureVoiceRecording,
+);
 const theme = ref<ThemeMode>("auto");
 
 const userDisplayName = computed(
@@ -210,6 +226,8 @@ const syncSettingsState = (settings: UserSettings) => {
   notificationEnabled.value = settings.message.enableNotification;
   soundEnabled.value = settings.message.enableSound;
   readReceiptEnabled.value = settings.privacy.messageReadReceipt;
+  allowInsecureVoiceRecording.value =
+    settingsStore.allowInsecureVoiceRecording;
 };
 
 const loadSettings = async () => {
@@ -240,6 +258,12 @@ const updatePrivacySetting = async (key: PrivacyKey, value: boolean) => {
     readReceiptEnabled.value = previous;
     capture(error, "update privacy setting failed");
   }
+};
+
+const updateInsecureVoiceSetting = (value: boolean) => {
+  settingsStore.updateAllowInsecureVoiceRecording(value);
+  allowInsecureVoiceRecording.value =
+    settingsStore.allowInsecureVoiceRecording;
 };
 
 const clearCache = async () => {
