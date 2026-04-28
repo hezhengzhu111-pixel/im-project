@@ -6,6 +6,7 @@ pub struct AppConfig {
     pub port: u16,
     pub redis_url: String,
     pub mysql_url: String,
+    pub mysql_max_connections: u32,
     pub event_stream_key: String,
     pub event_stream_max_len: usize,
     pub stream_consumer_block_ms: u64,
@@ -82,6 +83,7 @@ impl AppConfig {
                 "MYSQL_URL",
                 "mysql://root:root123@127.0.0.1:3306/service_message_service_db",
             ),
+            mysql_max_connections: env_u32("IM_MYSQL_MAX_CONNECTIONS", 64),
             event_stream_key: env_string("IM_EVENT_STREAM_KEY", "im:events"),
             event_stream_max_len: env_usize("IM_EVENT_STREAM_MAX_LEN", 100_000),
             stream_consumer_block_ms: env_u64("IM_EVENT_STREAM_BLOCK_MS", 1_000),
@@ -181,6 +183,13 @@ fn env_u16(key: &str, default: u16) -> u16 {
 }
 
 fn env_u64(key: &str, default: u64) -> u64 {
+    env::var(key)
+        .ok()
+        .and_then(|value| value.trim().parse().ok())
+        .unwrap_or(default)
+}
+
+fn env_u32(key: &str, default: u32) -> u32 {
     env::var(key)
         .ok()
         .and_then(|value| value.trim().parse().ok())
