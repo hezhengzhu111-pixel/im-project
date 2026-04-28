@@ -25,7 +25,10 @@ type PersistHandle =
   | { kind: "idle"; id: number }
   | { kind: "microtask"; cancel: () => void };
 
-const readPersistedClearMarkers = (): Record<string, ConversationClearMarker> => {
+const readPersistedClearMarkers = (): Record<
+  string,
+  ConversationClearMarker
+> => {
   if (typeof localStorage === "undefined") {
     return {};
   }
@@ -49,7 +52,9 @@ export const useMessageStore = defineStore("message", () => {
   const loading = ref(false);
   const loadingHistoryBySession = ref<Map<string, boolean>>(new Map());
   const hasMoreHistoryBySession = ref<Map<string, boolean>>(new Map());
-  const oldestLoadedServerMessageIdBySession = ref<Map<string, string>>(new Map());
+  const oldestLoadedServerMessageIdBySession = ref<Map<string, string>>(
+    new Map(),
+  );
   const fallbackHistoryPageBySession = ref<Map<string, number>>(new Map());
   const sendQueueBySession = ref<Map<string, Promise<void>>>(new Map());
   const searchResults = ref<MessageSearchResult[]>([]);
@@ -82,10 +87,15 @@ export const useMessageStore = defineStore("message", () => {
     );
   };
 
-  const getClearMarker = (sessionId: string): ConversationClearMarker | undefined =>
+  const getClearMarker = (
+    sessionId: string,
+  ): ConversationClearMarker | undefined =>
     clearMarkers.value.get(getClearMarkerStorageKey(sessionId));
 
-  const setClearMarker = (sessionId: string, marker?: ConversationClearMarker) => {
+  const setClearMarker = (
+    sessionId: string,
+    marker?: ConversationClearMarker,
+  ) => {
     const storageKey = getClearMarkerStorageKey(sessionId);
     if (marker) {
       clearMarkers.value.set(storageKey, marker);
@@ -95,7 +105,10 @@ export const useMessageStore = defineStore("message", () => {
     persistClearMarkers();
   };
 
-  const shouldHideClearedMessage = (sessionId: string, message: Message): boolean => {
+  const shouldHideClearedMessage = (
+    sessionId: string,
+    message: Message,
+  ): boolean => {
     const marker = getClearMarker(sessionId);
     if (!marker) {
       return false;
@@ -109,8 +122,34 @@ export const useMessageStore = defineStore("message", () => {
     return Number.isFinite(messageTime) && messageTime <= marker.clearedAtMs;
   };
 
-  const filterClearedMessages = (sessionId: string, list: Message[]): Message[] =>
+  const filterClearedMessages = (
+    sessionId: string,
+    list: Message[],
+  ): Message[] =>
     list.filter((message) => !shouldHideClearedMessage(sessionId, message));
+
+  const resolvePrivateTargetDisplay = (
+    sessionId: string,
+    targetId: string,
+    message: Message,
+  ) => {
+    const existingSession = sessionStore.sessions.find(
+      (session) =>
+        session.type === "private" &&
+        (session.id === sessionId || session.targetId === targetId),
+    );
+    const targetIsSender = message.senderId === targetId;
+    const targetName = targetIsSender
+      ? message.senderName
+      : message.receiverName;
+    const targetAvatar = targetIsSender
+      ? message.senderAvatar
+      : message.receiverAvatar;
+    return {
+      targetName: targetName || existingSession?.targetName || targetId,
+      targetAvatar: targetAvatar || existingSession?.targetAvatar,
+    };
+  };
 
   const currentMessages = computed(() => {
     if (!sessionStore.currentSession) {
@@ -133,7 +172,9 @@ export const useMessageStore = defineStore("message", () => {
     pendingPersistHandleBySession.delete(sessionId);
   };
 
-  const flushSessionServerPersist = async (sessionId: string): Promise<void> => {
+  const flushSessionServerPersist = async (
+    sessionId: string,
+  ): Promise<void> => {
     cancelPersistHandle(sessionId);
 
     if (flushPromiseBySession.has(sessionId)) {
@@ -149,7 +190,9 @@ export const useMessageStore = defineStore("message", () => {
     const flushPromise = messageRepo
       .upsertServerMessages(sessionId, Array.from(batch.values()))
       .catch((error) => {
-        const nextBatch = pendingServerPersistBySession.get(sessionId) || new Map<string, Message>();
+        const nextBatch =
+          pendingServerPersistBySession.get(sessionId) ||
+          new Map<string, Message>();
         batch.forEach((message, key) => {
           nextBatch.set(key, message);
         });
@@ -165,7 +208,10 @@ export const useMessageStore = defineStore("message", () => {
   };
 
   const schedulePersistFlush = (sessionId: string) => {
-    if (pendingPersistHandleBySession.has(sessionId) || flushPromiseBySession.has(sessionId)) {
+    if (
+      pendingPersistHandleBySession.has(sessionId) ||
+      flushPromiseBySession.has(sessionId)
+    ) {
       return;
     }
 
@@ -177,7 +223,7 @@ export const useMessageStore = defineStore("message", () => {
         },
         { timeout: 120 },
       );
-      pendingPersistHandleBySession.set(sessionId, {kind: "idle", id});
+      pendingPersistHandleBySession.set(sessionId, { kind: "idle", id });
       return;
     }
 
@@ -207,7 +253,9 @@ export const useMessageStore = defineStore("message", () => {
       return;
     }
 
-    const batch = pendingServerPersistBySession.get(sessionId) || new Map<string, Message>();
+    const batch =
+      pendingServerPersistBySession.get(sessionId) ||
+      new Map<string, Message>();
     serverMessages.forEach((message) => {
       const key = String(message.id || message.clientMessageId || "");
       if (key) {
@@ -234,7 +282,9 @@ export const useMessageStore = defineStore("message", () => {
     if (sessionIds.length === 0) {
       return;
     }
-    await Promise.allSettled(sessionIds.map((sessionId) => flushSessionServerPersist(sessionId)));
+    await Promise.allSettled(
+      sessionIds.map((sessionId) => flushSessionServerPersist(sessionId)),
+    );
   };
 
   if (!persistenceListenersBound && typeof window !== "undefined") {
@@ -272,8 +322,14 @@ export const useMessageStore = defineStore("message", () => {
     let sessionId = "";
 
     if (message.isGroupChat && message.groupId) {
-      sessionId = buildSessionId("group", String(userStore.userId || ""), message.groupId);
-      const group = groupStore.groups.find((item) => item.id === message.groupId);
+      sessionId = buildSessionId(
+        "group",
+        String(userStore.userId || ""),
+        message.groupId,
+      );
+      const group = groupStore.groups.find(
+        (item) => item.id === message.groupId,
+      );
       if (group) {
         sessionStore.ensureGroupSession(group);
       } else {
@@ -292,11 +348,23 @@ export const useMessageStore = defineStore("message", () => {
     } else if (message.senderId && message.receiverId) {
       const currentUserId = String(userStore.userId || "");
       const targetId =
-        message.senderId === currentUserId ? message.receiverId : message.senderId;
+        message.senderId === currentUserId
+          ? message.receiverId
+          : message.senderId;
+      const sessionIdForMessage = buildSessionId(
+        "private",
+        currentUserId,
+        targetId,
+      );
+      const display = resolvePrivateTargetDisplay(
+        sessionIdForMessage,
+        targetId,
+        message,
+      );
       const session = sessionStore.ensurePrivateSession(
         targetId,
-        message.senderName || targetId,
-        message.senderAvatar,
+        display.targetName,
+        display.targetAvatar,
       );
       if (!session) {
         return;
@@ -310,7 +378,9 @@ export const useMessageStore = defineStore("message", () => {
 
     const existing = messages.value.get(sessionId) || [];
     const next = existing.slice();
-    const existingIndex = next.findIndex((item) => hasSameMessageIdentity(item, message));
+    const existingIndex = next.findIndex((item) =>
+      hasSameMessageIdentity(item, message),
+    );
     let replacedPendingId = "";
 
     if (existingIndex >= 0) {
@@ -330,13 +400,19 @@ export const useMessageStore = defineStore("message", () => {
       next.push(message);
     }
 
-    const windowedMessages = limitMessageWindow(next.sort(sortMessagesAscending), "latest");
+    const windowedMessages = limitMessageWindow(
+      next.sort(sortMessagesAscending),
+      "latest",
+    );
     messages.value.set(sessionId, windowedMessages);
-    loadingModule.syncHistoryState(sessionId, windowedMessages, {preserveHasMore: true});
+    loadingModule.syncHistoryState(sessionId, windowedMessages, {
+      preserveHasMore: true,
+    });
 
     const isSelfMessage = message.senderId === String(userStore.userId || "");
     sessionStore.applyMessageToSession(sessionId, message, {
-      incrementUnread: !isSelfMessage && sessionStore.currentSession?.id !== sessionId,
+      incrementUnread:
+        !isSelfMessage && sessionStore.currentSession?.id !== sessionId,
     });
 
     if (String(message.id).startsWith("local_")) {
@@ -405,7 +481,9 @@ export const useMessageStore = defineStore("message", () => {
       );
       if (next.length !== messageList.length) {
         messages.value.set(sessionId, next);
-        loadingModule.syncHistoryState(sessionId, next, {preserveHasMore: true});
+        loadingModule.syncHistoryState(sessionId, next, {
+          preserveHasMore: true,
+        });
       }
     });
   };
@@ -427,7 +505,8 @@ export const useMessageStore = defineStore("message", () => {
       .reduce((maxTime, currentTime) => Math.max(maxTime, currentTime), 0);
 
     setClearMarker(sessionId, {
-      clearedAtMs: latestMessageTimestamp > 0 ? latestMessageTimestamp : Date.now(),
+      clearedAtMs:
+        latestMessageTimestamp > 0 ? latestMessageTimestamp : Date.now(),
       lastServerMessageId: latestServerMessageId?.toString(),
     });
     messages.value.set(sessionId, []);

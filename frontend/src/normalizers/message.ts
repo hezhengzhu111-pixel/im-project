@@ -1,5 +1,5 @@
 import type {Message, MessageConfig, MessageStatus, MessageType, RawMessageDTO, ReadReceipt,} from "@/types";
-import {asNumber, asString, isRawMessage, isRecord,} from "@/types/utils";
+import {asNumber, asString, isRawMessage, isRecord} from "@/types/utils";
 
 const MESSAGE_TYPES: MessageType[] = [
   "TEXT",
@@ -138,15 +138,24 @@ export const normalizeMessage = (
     messageId: asString(record.messageId) || undefined,
     clientMessageId:
       asString(record.clientMessageId ?? record.client_message_id) || undefined,
-    senderId: asString(record.senderId ?? record.sender?.id ?? record.sender_id),
+    senderId: asString(
+      record.senderId ?? record.sender?.id ?? record.sender_id,
+    ),
     senderName:
       asString(record.senderName) ||
       asString(record.sender?.nickname) ||
       asString(record.sender?.username) ||
       undefined,
-    senderAvatar: asString(record.senderAvatar ?? record.sender?.avatar) || undefined,
+    senderAvatar:
+      asString(record.senderAvatar ?? record.sender?.avatar) || undefined,
     receiverId: asString(receiverId) || undefined,
-    receiverName: asString(record.receiverName) || undefined,
+    receiverName:
+      asString(record.receiverName) ||
+      asString(record.receiver?.nickname) ||
+      asString(record.receiver?.username) ||
+      undefined,
+    receiverAvatar:
+      asString(record.receiverAvatar ?? record.receiver?.avatar) || undefined,
     groupId: asString(groupId) || undefined,
     groupName: asString(record.groupName) || undefined,
     groupAvatar: asString(record.groupAvatar) || undefined,
@@ -172,7 +181,8 @@ export const normalizeMessage = (
     readStatus: Number.isFinite(asNumber(record.readStatus, Number.NaN))
       ? asNumber(record.readStatus)
       : undefined,
-    readAt: normalizeFractionalSeconds(record.readAt ?? record.read_at) || undefined,
+    readAt:
+      normalizeFractionalSeconds(record.readAt ?? record.read_at) || undefined,
   };
 };
 
@@ -205,7 +215,10 @@ export const normalizeReadReceipt = (raw: unknown): ReadReceipt | null => {
   };
 };
 
-export const splitTextByCodePoints = (text: string, maxLen: number): string[] => {
+export const splitTextByCodePoints = (
+  text: string,
+  maxLen: number,
+): string[] => {
   const chars = Array.from(text ?? "");
   if (chars.length <= maxLen) {
     return [text ?? ""];
