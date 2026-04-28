@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.4
 FROM docker.m.daocloud.io/library/rust:1-bookworm AS builder
 WORKDIR /app
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
