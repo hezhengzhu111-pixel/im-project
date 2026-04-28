@@ -24,8 +24,6 @@ pub struct AppConfig {
     pub session_heartbeat_timeout_ms: i64,
     pub session_cleanup_interval_ms: u64,
     pub presence_channel: String,
-    pub allowed_origins: Vec<String>,
-    pub allow_blank_origin: bool,
     pub allow_query_ticket: bool,
     pub ws_ticket_cookie_name: String,
     pub ws_ticket_cookie_path: String,
@@ -78,11 +76,6 @@ impl AppConfig {
             session_heartbeat_timeout_ms: env_i64("IM_SESSION_HEARTBEAT_TIMEOUT_MS", 90_000),
             session_cleanup_interval_ms: env_u64("IM_SESSION_CLEANUP_INTERVAL_MS", 30_000),
             presence_channel: env_string("IM_WS_PRESENCE_CHANNEL", "im:presence:broadcast"),
-            allowed_origins: parse_csv(&env_string(
-                "IM_WEBSOCKET_ALLOWED_ORIGINS",
-                "http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080",
-            )),
-            allow_blank_origin: env_bool("IM_WEBSOCKET_ALLOW_BLANK_ORIGIN", false),
             allow_query_ticket: env_bool("IM_WEBSOCKET_ALLOW_QUERY_TICKET", false),
             ws_ticket_cookie_name: env_string("IM_AUTH_COOKIE_WS_TICKET_NAME", "IM_WS_TICKET"),
             ws_ticket_cookie_path: env_string("IM_AUTH_COOKIE_WS_TICKET_PATH", "/websocket"),
@@ -158,12 +151,4 @@ fn env_bool(key: &str, default: bool) -> bool {
             )
         })
         .unwrap_or(default)
-}
-
-fn parse_csv(raw: &str) -> Vec<String> {
-    raw.split(',')
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-        .collect()
 }

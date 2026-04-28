@@ -5,7 +5,6 @@ use axum::Json;
 use thiserror::Error;
 
 pub const INTERNAL_AUTH_REJECTED_CODE: i32 = 40104;
-pub const WS_ORIGIN_NOT_ALLOWED_CODE: i32 = 40108;
 pub const WS_TICKET_INVALID_CODE: i32 = 40109;
 pub const WS_QUERY_TICKET_NOT_ALLOWED_CODE: i32 = 40110;
 
@@ -35,14 +34,6 @@ impl AppError {
             status: StatusCode::UNAUTHORIZED,
             code: INTERNAL_AUTH_REJECTED_CODE,
             message: "INTERNAL_AUTH_REJECTED".to_string(),
-        }
-    }
-
-    pub fn origin_not_allowed() -> Self {
-        Self::Api {
-            status: StatusCode::UNAUTHORIZED,
-            code: WS_ORIGIN_NOT_ALLOWED_CODE,
-            message: "WS_ORIGIN_NOT_ALLOWED".to_string(),
         }
     }
 

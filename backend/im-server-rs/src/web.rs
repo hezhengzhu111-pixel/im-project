@@ -147,10 +147,6 @@ async fn websocket(
     Query(query): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
-    if !origin_allowed(&headers, &service) {
-        return AppError::origin_not_allowed().into_response();
-    }
-
     let (gateway_user_id, _gateway_username) =
         match validate_gateway_ws_identity(&headers, service.config()) {
             Ok(identity) => identity,
@@ -331,22 +327,6 @@ fn resolve_ticket(
     query_ticket
         .map(|ticket| TicketResolution::Ticket(ticket.to_string()))
         .unwrap_or(TicketResolution::Missing)
-}
-
-fn origin_allowed(headers: &HeaderMap, service: &ImService) -> bool {
-    let origin = headers
-        .get(header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .unwrap_or_default();
-    if origin.is_empty() {
-        return service.config().allow_blank_origin;
-    }
-    service
-        .config()
-        .allowed_origins
-        .iter()
-        .any(|allowed| allowed == "*" || allowed.eq_ignore_ascii_case(origin))
 }
 
 fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
