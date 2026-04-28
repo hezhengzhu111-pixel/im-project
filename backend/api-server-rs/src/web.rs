@@ -373,20 +373,21 @@ async fn websocket_proxy(
     ws.on_upgrade(move |socket| {
         tunnel_websocket(
             socket,
-            state,
-            identity,
-            user_id,
-            cookie,
-            query_ticket,
-            origin,
-            target_base,
+            TunnelWebsocketArgs {
+                state,
+                identity,
+                user_id,
+                cookie,
+                query_ticket,
+                origin,
+                target_base,
+            },
         )
     })
     .into_response()
 }
 
-async fn tunnel_websocket(
-    socket: WebSocket,
+struct TunnelWebsocketArgs {
     state: AppState,
     identity: im_rs_common::auth::Identity,
     user_id: String,
@@ -394,7 +395,18 @@ async fn tunnel_websocket(
     query_ticket: Option<String>,
     origin: Option<HeaderValue>,
     target_base: String,
-) {
+}
+
+async fn tunnel_websocket(socket: WebSocket, args: TunnelWebsocketArgs) {
+    let TunnelWebsocketArgs {
+        state,
+        identity,
+        user_id,
+        cookie,
+        query_ticket,
+        origin,
+        target_base,
+    } = args;
     let target = format!(
         "{}/websocket/{}",
         target_base.trim_end_matches('/'),
@@ -419,7 +431,10 @@ async fn tunnel_websocket(
     if let Some(origin) = origin {
         request.headers_mut().insert(header::ORIGIN, origin);
     }
-    apply_gateway_headers(request.headers_mut(), &state.config, &identity);
+    if let Err(error) = apply_gateway_headers(request.headers_mut(), &state.config, &identity) {
+        tracing::warn!(error = %error, "failed to sign websocket gateway headers");
+        return;
+    }
     let upstream = match connect_async(request).await {
         Ok((upstream, _)) => upstream,
         Err(error) => {
@@ -520,7 +535,7 @@ async fn select_websocket_target(state: &AppState) -> String {
     }
 
     let target = load_websocket_target(state).await;
-    let ttl_ms = state.config.route_cache_ttl_ms.max(1_000) as u64;
+    let ttl_ms = u64::try_from(state.config.route_cache_ttl_ms.max(1_000)).unwrap_or(1_000);
     guard.target = Some(target.clone());
     guard.expires_at = Instant::now() + Duration::from_millis(ttl_ms);
     target
@@ -576,7 +591,7 @@ async fn proxy(
             identity.user_id,
             &identity.username,
             &state.config.gateway_auth_secret,
-        ) {
+        )? {
             builder = builder.header(name, value);
         }
         builder = builder.header("X-Internal-Secret", &state.config.internal_secret);
@@ -592,9 +607,9 @@ async fn proxy(
         response = response.header(name, value);
     }
     let bytes = upstream.bytes().await?;
-    Ok(response
+    response
         .body(Body::from(bytes))
-        .map_err(|err| AppError::Upstream(err.to_string()))?)
+        .map_err(|err| AppError::Upstream(err.to_string()))
 }
 
 fn route_target<'a>(config: &'a AppConfig, path: &str) -> Option<(&'a str, String)> {
@@ -629,12 +644,12 @@ fn apply_gateway_headers(
     headers: &mut HeaderMap,
     config: &AppConfig,
     identity: &im_rs_common::auth::Identity,
-) {
+) -> Result<(), AppError> {
     for (name, value) in sign_gateway_headers(
         identity.user_id,
         &identity.username,
         &config.gateway_auth_secret,
-    ) {
+    )? {
         if let (Ok(name), Ok(value)) = (
             name.parse::<axum::http::HeaderName>(),
             HeaderValue::from_str(&value),
@@ -645,4 +660,5 @@ fn apply_gateway_headers(
     if let Ok(value) = HeaderValue::from_str(&config.internal_secret) {
         headers.insert("X-Internal-Secret", value);
     }
+    Ok(())
 }

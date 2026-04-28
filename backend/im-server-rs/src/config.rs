@@ -5,7 +5,6 @@ pub struct AppConfig {
     pub port: u16,
     pub redis_url: String,
     pub auth_service_url: String,
-    pub group_service_url: String,
     pub internal_secret: String,
     pub internal_max_skew_ms: i64,
     pub gateway_user_id_header: String,
@@ -32,8 +31,6 @@ pub struct AppConfig {
     pub max_payload_length: usize,
     pub invalid_payload_threshold: usize,
     pub websocket_outbound_queue_size: usize,
-    pub group_members_cache_prefix: String,
-    pub group_members_cache_ttl_seconds: u64,
 }
 
 impl AppConfig {
@@ -43,7 +40,6 @@ impl AppConfig {
             port,
             redis_url: env_string("REDIS_URL", "redis://127.0.0.1:6379/0"),
             auth_service_url: env_string("IM_AUTH_SERVICE_URL", "http://127.0.0.1:8084"),
-            group_service_url: env_string("IM_GROUP_SERVICE_URL", "http://127.0.0.1:8086"),
             internal_secret: env_string(
                 "IM_INTERNAL_SECRET",
                 "im-internal-secret-im-internal-secret-im-internal-secret-im",
@@ -79,11 +75,6 @@ impl AppConfig {
             max_payload_length: env_usize("IM_WEBSOCKET_MAX_PAYLOAD_LENGTH", 8 * 1024),
             invalid_payload_threshold: env_usize("IM_WEBSOCKET_INVALID_PAYLOAD_THRESHOLD", 3),
             websocket_outbound_queue_size: env_usize("IM_WEBSOCKET_OUTBOUND_QUEUE_SIZE", 1024),
-            group_members_cache_prefix: env_string(
-                "IM_GROUP_MEMBER_IDS_CACHE_PREFIX",
-                "message:group:members:",
-            ),
-            group_members_cache_ttl_seconds: env_u64("IM_GROUP_MEMBER_IDS_CACHE_TTL_SECONDS", 30),
         }
     }
 }

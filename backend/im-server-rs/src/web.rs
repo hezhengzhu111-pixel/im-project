@@ -168,7 +168,7 @@ async fn internal_push_batch(
             .push_to_user(push.user_id, push.kind.trim(), push.data)
             .await
         {
-            delivered += 1;
+            delivered = delivered.saturating_add(1);
         }
     }
     Ok(Json(ApiResponse::success_message(
@@ -222,7 +222,16 @@ async fn websocket(
             return AppError::ticket_invalid().into_response();
         }
     };
-    if !consume_result.valid || consume_result.user_id.is_none() {
+    let Some(consumed_user_id) = consume_result.user_id else {
+        tracing::warn!(
+            user_id = gateway_user_id,
+            status = ?consume_result.status,
+            error = ?consume_result.error,
+            "websocket ticket rejected"
+        );
+        return AppError::ticket_invalid().into_response();
+    };
+    if !consume_result.valid {
         tracing::warn!(
             user_id = gateway_user_id,
             status = ?consume_result.status,
@@ -232,7 +241,7 @@ async fn websocket(
         return AppError::ticket_invalid().into_response();
     }
 
-    let user_id = consume_result.user_id.unwrap().to_string();
+    let user_id = consumed_user_id.to_string();
     let username = consume_result.username.unwrap_or_default();
     let service_for_socket = service.clone();
     let mut response = ws
@@ -264,7 +273,12 @@ async fn handle_socket(socket: WebSocket, service: ImService, user_id: String, u
     let mut invalid_payload_count = 0_usize;
     loop {
         let message_result = tokio::select! {
-            _ = shutdown_rx.changed() => break,
+            changed = shutdown_rx.changed() => {
+                if let Err(error) = changed {
+                    tracing::debug!(error = %error, "websocket shutdown sender dropped");
+                }
+                break;
+            },
             message = socket_receiver.next() => message,
         };
         let Some(message_result) = message_result else {
@@ -289,7 +303,7 @@ async fn handle_socket(socket: WebSocket, service: ImService, user_id: String, u
                 }
             }
             Message::Ping(payload) => {
-                let _ = sender.try_send(Message::Pong(payload));
+                send_ws_message(&sender, Message::Pong(payload), "pong");
                 if !service
                     .refresh_session_heartbeat(&user_id, &session_id)
                     .await
@@ -307,9 +321,9 @@ async fn handle_socket(socket: WebSocket, service: ImService, user_id: String, u
             }
             Message::Close(_) => break,
             Message::Binary(_) => {
-                invalid_payload_count += 1;
+                invalid_payload_count = invalid_payload_count.saturating_add(1);
                 if invalid_payload_count >= service.config().invalid_payload_threshold.max(1) {
-                    let _ = sender.try_send(Message::Close(None));
+                    send_ws_message(&sender, Message::Close(None), "close");
                     break;
                 }
             }
@@ -357,9 +371,11 @@ async fn handle_client_text(
     if !service.refresh_session_heartbeat(user_id, session_id).await {
         return false;
     }
-    let _ = sender.try_send(Message::Text(
-        serde_json::json!({"type":"HEARTBEAT","content":"PONG"}).to_string(),
-    ));
+    send_ws_message(
+        sender,
+        Message::Text(serde_json::json!({"type":"HEARTBEAT","content":"PONG"}).to_string()),
+        "heartbeat pong",
+    );
     true
 }
 
@@ -368,12 +384,21 @@ fn handle_invalid_payload(
     sender: &mpsc::Sender<Message>,
     invalid_payload_count: &mut usize,
 ) -> bool {
-    *invalid_payload_count += 1;
+    *invalid_payload_count = (*invalid_payload_count).saturating_add(1);
     if *invalid_payload_count >= service.config().invalid_payload_threshold.max(1) {
-        let _ = sender.try_send(Message::Close(None));
+        send_ws_message(sender, Message::Close(None), "close");
         return false;
     }
     true
+}
+
+fn send_ws_message(sender: &mpsc::Sender<Message>, message: Message, context: &'static str) {
+    match sender.try_send(message) {
+        Ok(()) => {}
+        Err(error) => {
+            tracing::debug!(context, error = %error, "failed to enqueue websocket message");
+        }
+    }
 }
 
 enum TicketResolution {

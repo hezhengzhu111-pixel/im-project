@@ -34,7 +34,6 @@ pub struct SendPrivateRequest {
     pub media_name: Option<String>,
     pub thumbnail_url: Option<String>,
     pub duration: Option<i32>,
-    pub extra: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,12 +49,10 @@ pub struct SendGroupRequest {
     pub media_name: Option<String>,
     pub thumbnail_url: Option<String>,
     pub duration: Option<i32>,
-    pub extra: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct HistoryQuery {
-    pub page: Option<i64>,
     pub size: Option<i64>,
     pub limit: Option<i64>,
     pub last_message_id: Option<i64>,
@@ -118,16 +115,18 @@ pub async fn send_private(
     let message = build_message(
         config,
         identity,
-        Some(receiver_id),
-        None,
-        request.client_message_id,
-        request.message_type,
-        request.content,
-        request.media_url,
-        request.media_size,
-        request.media_name,
-        request.thumbnail_url,
-        request.duration,
+        BuildMessageInput {
+            receiver_id: Some(receiver_id),
+            group_id: None,
+            client_message_id: request.client_message_id,
+            message_type: request.message_type,
+            content: request.content,
+            media_url: request.media_url,
+            media_size: request.media_size,
+            media_name: request.media_name,
+            thumbnail_url: request.thumbnail_url,
+            duration: request.duration,
+        },
     );
     let event = build_message_created_event(&conversation_id, &message);
     write_message_hot(
@@ -166,16 +165,18 @@ pub async fn send_group(
     let message = build_message(
         config,
         identity,
-        None,
-        Some(group_id),
-        request.client_message_id,
-        request.message_type,
-        request.content,
-        request.media_url,
-        request.media_size,
-        request.media_name,
-        request.thumbnail_url,
-        request.duration,
+        BuildMessageInput {
+            receiver_id: None,
+            group_id: Some(group_id),
+            client_message_id: request.client_message_id,
+            message_type: request.message_type,
+            content: request.content,
+            media_url: request.media_url,
+            media_size: request.media_size,
+            media_name: request.media_name,
+            thumbnail_url: request.thumbnail_url,
+            duration: request.duration,
+        },
     );
     let event = build_message_created_event(&conversation_id, &message);
     write_message_hot(redis, &conversation_id, &message, &event, &members).await
@@ -226,15 +227,15 @@ pub async fn mark_read(
     event.group = target.group_id.is_some();
     event.read_receipt = Some(receipt.clone());
     write_state_event(redis, &target.conversation_id, &event).await?;
-    let _: () = redis
-        .set_ex(
+    redis
+        .set_ex::<_, _, ()>(
             keys::read_cursor_key(identity.user_id, &target.conversation_id),
             serde_json::to_string(&receipt)?,
             keys::CONVERSATION_TTL_SECONDS,
         )
         .await?;
-    let _: () = redis
-        .hset(
+    redis
+        .hset::<_, _, _, ()>(
             keys::user_unread_key(identity.user_id),
             &target.conversation_id,
             0_i64,
@@ -284,8 +285,8 @@ pub async fn recall_or_delete(
     event.new_status = Some(message.status.clone());
     event.payload = Some(message.clone());
     let message_json = serde_json::to_string(&message)?;
-    let _: () = redis
-        .set_ex(
+    redis
+        .set_ex::<_, _, ()>(
             keys::message_key(message_id),
             message_json.clone(),
             keys::MESSAGE_TTL_SECONDS,
@@ -301,8 +302,8 @@ pub async fn recall_or_delete(
         .and_then(|value| serde_json::from_str::<MessageDto>(value).ok())
         .is_some_and(|last_message| last_message.id == message.id)
     {
-        let _: () = redis
-            .set_ex(
+        redis
+            .set_ex::<_, _, ()>(
                 keys::conversation_last_key(&conversation_id),
                 message_json,
                 keys::CONVERSATION_TTL_SECONDS,
@@ -407,9 +408,7 @@ fn validate_send_input(
     Ok(())
 }
 
-fn build_message(
-    config: &AppConfig,
-    identity: &Identity,
+struct BuildMessageInput {
     receiver_id: Option<i64>,
     group_id: Option<i64>,
     client_message_id: Option<String>,
@@ -420,33 +419,36 @@ fn build_message(
     media_name: Option<String>,
     thumbnail_url: Option<String>,
     duration: Option<i32>,
-) -> MessageDto {
+}
+
+fn build_message(config: &AppConfig, identity: &Identity, input: BuildMessageInput) -> MessageDto {
     let id = ids::next_id(config.snowflake_node_id).to_string();
     let now = time::now_iso();
-    let ty = MessageType::from_text(message_type.as_deref().unwrap_or("TEXT"));
+    let ty = MessageType::from_text(input.message_type.as_deref().unwrap_or("TEXT"));
     MessageDto {
         id: id.clone(),
         message_id: id,
-        client_message_id: client_message_id
+        client_message_id: input
+            .client_message_id
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty()),
         sender_id: identity.user_id.to_string(),
         sender_name: Some(identity.username.clone()),
         sender_avatar: None,
-        receiver_id: receiver_id.map(|value| value.to_string()),
+        receiver_id: input.receiver_id.map(|value| value.to_string()),
         receiver_name: None,
-        group_id: group_id.map(|value| value.to_string()),
+        group_id: input.group_id.map(|value| value.to_string()),
         group_name: None,
         group_avatar: None,
-        is_group_chat: group_id.is_some(),
-        is_group: group_id.is_some(),
+        is_group_chat: input.group_id.is_some(),
+        is_group: input.group_id.is_some(),
         message_type: ty.as_str().to_string(),
-        content,
-        media_url,
-        media_size,
-        media_name,
-        thumbnail_url,
-        duration,
+        content: input.content,
+        media_url: input.media_url,
+        media_size: input.media_size,
+        media_name: input.media_name,
+        thumbnail_url: input.thumbnail_url,
+        duration: input.duration,
         location_info: None,
         status: MessageStatus::Sent.as_str().to_string(),
         reply_to_message_id: None,
@@ -552,15 +554,15 @@ async fn write_state_event(
     event: &ImEvent,
 ) -> Result<(), AppError> {
     let event_json = serde_json::to_string(event)?;
-    let _: () = redis
-        .set_ex(
+    redis
+        .set_ex::<_, _, ()>(
             keys::event_key(&event.event_id),
             event_json,
             keys::EVENT_TTL_SECONDS,
         )
         .await?;
-    let _: () = redis
-        .zadd(keys::pending_events_key(), &event.event_id, time::now_ms())
+    redis
+        .zadd::<_, _, _, ()>(keys::pending_events_key(), &event.event_id, time::now_ms())
         .await?;
     Ok(())
 }
@@ -616,6 +618,8 @@ async fn load_history(
     query: HistoryQuery,
 ) -> Result<Vec<MessageDto>, AppError> {
     let limit = query.limit.or(query.size).unwrap_or(20).clamp(1, 100);
+    let limit_usize = usize::try_from(limit)
+        .map_err(|_| AppError::BadRequest("invalid history limit".to_string()))?;
     let hot_ids: Vec<String> = redis
         .zrevrange(keys::conversation_messages_key(conversation_id), 0, 499)
         .await
@@ -643,26 +647,26 @@ async fn load_history(
             }
         }
         messages.push(message);
-        if messages.len() >= limit as usize {
+        if messages.len() >= limit_usize {
             break;
         }
     }
-    if messages.len() < limit as usize {
+    if messages.len() < limit_usize {
         observability::cache_fallback(
             "history",
             "insufficient_hot_messages",
             Some(conversation_id),
             messages.len(),
-            limit as usize,
+            limit_usize,
         );
-        messages.extend(
-            load_history_from_db(db, conversation_id, &query, limit as usize + messages.len())
-                .await?,
-        );
+        let db_limit = limit_usize
+            .checked_add(messages.len())
+            .ok_or_else(|| AppError::BadRequest("history limit overflow".to_string()))?;
+        messages.extend(load_history_from_db(db, conversation_id, &query, db_limit).await?);
     }
     messages.sort_by(|a, b| b.id.cmp(&a.id));
     messages.dedup_by(|a, b| a.id == b.id);
-    messages.truncate(limit as usize);
+    messages.truncate(limit_usize);
     Ok(messages)
 }
 
@@ -733,7 +737,6 @@ async fn latest_message_id(
         db,
         conversation_id,
         &HistoryQuery {
-            page: None,
             size: None,
             limit: Some(1),
             last_message_id: None,
@@ -820,7 +823,10 @@ async fn write_cached_i64_option(redis: &mut ConnectionManager, key: &str, value
         .map(|id| id.to_string())
         .unwrap_or_else(|| "none".to_string());
     local_cache::set_i64_option(key, value);
-    let _: redis::RedisResult<()> = redis.set_ex(key, raw, ttl).await;
+    let result: redis::RedisResult<()> = redis.set_ex(key, raw, ttl).await;
+    if let Err(error) = result {
+        tracing::warn!(key, error = %error, "failed to cache active user id");
+    }
 }
 
 async fn validate_friend(
@@ -910,12 +916,18 @@ async fn preload_friend_relations(
         pipe.set_ex(relation_key, "1", VALIDATION_CACHE_TTL_SECONDS)
             .ignore();
     }
-    let _: redis::RedisResult<()> = pipe.query_async(redis).await;
+    let pipe_result: redis::RedisResult<()> = pipe.query_async(redis).await;
+    if let Err(error) = pipe_result {
+        tracing::warn!(error = %error, "failed to cache friend preload rows");
+    }
 
     local_cache::set_bool(&preload_key, true);
-    let _: redis::RedisResult<()> = redis
+    let preload_result: redis::RedisResult<()> = redis
         .set_ex(&preload_key, "1", VALIDATION_CACHE_TTL_SECONDS)
         .await;
+    if let Err(error) = preload_result {
+        tracing::warn!(key = %preload_key, error = %error, "failed to cache friend preload marker");
+    }
 
     if !allowed {
         let requested_key = format!("im:cache:friend:{user_id}:{requested_friend_id}");
@@ -992,7 +1004,10 @@ async fn write_cached_bool(redis: &mut ConnectionManager, key: &str, value: bool
     };
     let raw = if value { "1" } else { "0" };
     local_cache::set_bool(key, value);
-    let _: redis::RedisResult<()> = redis.set_ex(key, raw, ttl).await;
+    let result: redis::RedisResult<()> = redis.set_ex(key, raw, ttl).await;
+    if let Err(error) = result {
+        tracing::warn!(key, error = %error, "failed to cache boolean validation result");
+    }
 }
 
 async fn load_group_members(
@@ -1027,9 +1042,12 @@ async fn load_group_members(
     .await?;
     local_cache::set_i64_vec(&key, rows.clone());
     if let Ok(raw) = serde_json::to_string(&rows) {
-        let _: redis::RedisResult<()> = redis
+        let result: redis::RedisResult<()> = redis
             .set_ex(&key, raw, GROUP_MEMBERS_CACHE_TTL_SECONDS)
             .await;
+        if let Err(error) = result {
+            tracing::warn!(key = %key, error = %error, "failed to cache group members");
+        }
     }
     Ok(rows)
 }
@@ -1079,7 +1097,7 @@ where
     match value {
         serde_json::Value::Number(number) => number
             .as_i64()
-            .or_else(|| number.as_u64().map(|item| item as i64))
+            .or_else(|| number.as_u64().and_then(|item| i64::try_from(item).ok()))
             .ok_or_else(|| de::Error::custom("invalid integer")),
         serde_json::Value::String(text) => text
             .trim()
@@ -1159,21 +1177,30 @@ fn parse_db_scope(conversation_id: &str) -> Result<DbScope, AppError> {
             ),
         });
     }
-    let parts = conversation_id
+    let mut parts = conversation_id
         .strip_prefix("p_")
         .unwrap_or(conversation_id)
-        .split('_')
-        .collect::<Vec<_>>();
-    if parts.len() != 2 {
+        .split('_');
+    let Some(left_id) = parts.next() else {
+        return Err(AppError::BadRequest(
+            "invalid private conversation".to_string(),
+        ));
+    };
+    let Some(right_id) = parts.next() else {
+        return Err(AppError::BadRequest(
+            "invalid private conversation".to_string(),
+        ));
+    };
+    if parts.next().is_some() {
         return Err(AppError::BadRequest(
             "invalid private conversation".to_string(),
         ));
     }
     Ok(DbScope {
-        left_id: parts[0]
+        left_id: left_id
             .parse()
             .map_err(|_| AppError::BadRequest("invalid private conversation".to_string()))?,
-        right_id: parts[1]
+        right_id: right_id
             .parse()
             .map_err(|_| AppError::BadRequest("invalid private conversation".to_string()))?,
         group_id: None,

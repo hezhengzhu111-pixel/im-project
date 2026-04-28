@@ -302,7 +302,10 @@ pub async fn create_group(
     .bind(avatar.as_deref())
     .bind(announcement.as_deref())
     .bind(identity.user_id)
-    .bind(member_ids.len() as i32)
+    .bind(
+        i32::try_from(member_ids.len())
+            .map_err(|_| AppError::BadRequest("group member count is too large".to_string()))?,
+    )
     .execute(&state.db)
     .await?;
     for member_id in member_ids {
@@ -736,7 +739,7 @@ fn value_to_i64(value: &Value) -> Option<i64> {
     match value {
         Value::Number(number) => number
             .as_i64()
-            .or_else(|| number.as_u64().map(|item| item as i64)),
+            .or_else(|| number.as_u64().and_then(|item| i64::try_from(item).ok())),
         Value::String(text) => text.trim().parse().ok(),
         _ => None,
     }

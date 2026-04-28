@@ -1,3 +1,13 @@
+#![forbid(unsafe_code)]
+#![deny(unused_must_use)]
+#![deny(clippy::as_conversions)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::panic)]
+#![deny(clippy::todo)]
+#![deny(clippy::unimplemented)]
+#![deny(clippy::unwrap_used)]
+
 mod auth;
 mod auth_api;
 mod background_publisher;
@@ -65,20 +75,30 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn log_filter() -> tracing_subscriber::EnvFilter {
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+    let mut filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         "api_server_rs=info,im_observe=info,tower_http=warn,sqlx::query=off".into()
     });
+    if let Some(directive) = parse_log_directive("im_observe=info") {
+        filter = filter.add_directive(directive);
+    }
+    if let Some(directive) = parse_log_directive("sqlx::query=off") {
+        filter = filter.add_directive(directive);
+    }
     filter
-        .add_directive(parse_log_directive("im_observe=info"))
-        .add_directive(parse_log_directive("sqlx::query=off"))
 }
 
-fn parse_log_directive(directive: &str) -> Directive {
-    directive
-        .parse()
-        .unwrap_or_else(|error| panic!("invalid static log directive {directive}: {error}"))
+fn parse_log_directive(directive: &str) -> Option<Directive> {
+    match directive.parse() {
+        Ok(value) => Some(value),
+        Err(error) => {
+            tracing::error!(directive, error = %error, "invalid static log directive");
+            None
+        }
+    }
 }
 
 async fn shutdown_signal() {
-    let _ = tokio::signal::ctrl_c().await;
+    if let Err(error) = tokio::signal::ctrl_c().await {
+        tracing::warn!(error = %error, "failed to listen for shutdown signal");
+    }
 }
