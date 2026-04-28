@@ -1,3 +1,4 @@
+use crate::background_task;
 use crate::config::AppConfig;
 use crate::observability;
 use crate::redis_streams;
@@ -15,7 +16,7 @@ pub fn spawn(config: Arc<AppConfig>) {
         tracing::info!("api-server embedded event publisher disabled");
         return;
     }
-    thread::spawn(move || run(config));
+    background_task::spawn("event-publisher", move || run(config));
 }
 
 fn run(config: Arc<AppConfig>) {

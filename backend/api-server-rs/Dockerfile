@@ -8,7 +8,7 @@ RUN --mount=type=cache,id=im-cargo-registry,target=/usr/local/cargo/registry,sha
     cargo build --release -p api-server-rs \
     && cp /app/target/release/api-server-rs /tmp/api-server-rs
 
-FROM debian:bookworm-slim
+FROM docker.m.daocloud.io/library/debian:bookworm-slim
 ARG IM_BUILD_NONCE
 LABEL im.build.nonce=$IM_BUILD_NONCE
 RUN apt-get update \

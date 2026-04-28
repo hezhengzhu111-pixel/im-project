@@ -1,4 +1,5 @@
 use crate::auth_api;
+use crate::background_task;
 use crate::config::AppConfig;
 use crate::local_cache;
 use crate::observability;
@@ -26,7 +27,7 @@ pub fn spawn(config: Arc<AppConfig>, db: MySqlPool) {
         return;
     }
     let handle = tokio::runtime::Handle::current();
-    thread::spawn(move || run(config, db, handle));
+    background_task::spawn("push-dispatcher", move || run(config, db, handle));
 }
 
 fn run(config: Arc<AppConfig>, db: MySqlPool, handle: tokio::runtime::Handle) {

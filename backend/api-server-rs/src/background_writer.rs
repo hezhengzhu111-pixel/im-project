@@ -1,3 +1,4 @@
+use crate::background_task;
 use crate::config::AppConfig;
 use crate::observability;
 use crate::redis_streams;
@@ -20,7 +21,7 @@ pub fn spawn(config: Arc<AppConfig>, db: MySqlPool) {
         return;
     }
     let handle = tokio::runtime::Handle::current();
-    thread::spawn(move || run(config, db, handle));
+    background_task::spawn("message-writer", move || run(config, db, handle));
 }
 
 fn run(config: Arc<AppConfig>, db: MySqlPool, handle: tokio::runtime::Handle) {

@@ -7,7 +7,7 @@ where
 {
     let started = Instant::now();
     let result = future.await;
-    tracing::info!(
+    tracing::debug!(
         target: "im_observe",
         kind = "db_query",
         operation,
@@ -45,7 +45,7 @@ pub fn writer_flush(
     remaining_messages: usize,
     remaining_read_cursors: usize,
 ) {
-    tracing::info!(
+    tracing::debug!(
         target: "im_observe",
         kind = "writer_flush",
         operation,
@@ -58,7 +58,7 @@ pub fn writer_flush(
 }
 
 pub fn pending_events(operation: &'static str, due_count: usize, backlog_count: Option<usize>) {
-    tracing::info!(
+    tracing::debug!(
         target: "im_observe",
         kind = "pending_events",
         operation,

@@ -24,6 +24,7 @@ RUN if [ "${FRONTEND_BUILD_MODE}" = "dev" ]; then npm run build:dev; \
 
 FROM docker.m.daocloud.io/library/nginx:1.27-alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx-main.conf /etc/nginx/nginx.conf
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 ARG IM_BUILD_NONCE

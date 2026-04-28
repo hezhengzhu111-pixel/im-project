@@ -225,7 +225,16 @@ def wait_for_service_completed(
 ) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
-        container_id = compose_service_container(config, service)
+        result = run_command(
+            [*compose_base_command(config), "ps", "-a", "-q", service],
+            cwd=config.project_dir,
+            capture_output=True,
+            check=False,
+        )
+        container_id = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+        if not container_id:
+            time.sleep(2)
+            continue
         state = inspect_container_state(container_id)
         status = state.get("Status")
         exit_code = state.get("ExitCode")

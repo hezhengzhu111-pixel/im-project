@@ -11,6 +11,7 @@
 mod auth;
 mod auth_api;
 mod background_publisher;
+mod background_task;
 mod background_writer;
 mod config;
 mod error;
@@ -35,7 +36,10 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
-use tracing_subscriber::{filter::Directive, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+const DEFAULT_LOG_FILTER: &str =
+    "api_server_rs=info,im_observe=info,tower_http=warn,sqlx::query=off";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -50,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
     let redis = ConnectionManager::new(redis_client).await?;
     let mysql_options = MySqlConnectOptions::from_str(&config.mysql_url)?;
     let db = sqlx::mysql::MySqlPoolOptions::new()
-        .max_connections(20)
+        .max_connections(config.mysql_max_connections)
         .connect_with(mysql_options)
         .await?;
     let state = AppState {
@@ -75,30 +79,49 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn log_filter() -> tracing_subscriber::EnvFilter {
-    let mut filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        "api_server_rs=info,im_observe=info,tower_http=warn,sqlx::query=off".into()
-    });
-    if let Some(directive) = parse_log_directive("im_observe=info") {
-        filter = filter.add_directive(directive);
-    }
-    if let Some(directive) = parse_log_directive("sqlx::query=off") {
-        filter = filter.add_directive(directive);
-    }
-    filter
+    log_filter_from(std::env::var("RUST_LOG").ok().as_deref())
 }
 
-fn parse_log_directive(directive: &str) -> Option<Directive> {
-    match directive.parse() {
-        Ok(value) => Some(value),
-        Err(error) => {
-            tracing::error!(directive, error = %error, "invalid static log directive");
-            None
-        }
-    }
+fn log_filter_from(raw_filter: Option<&str>) -> tracing_subscriber::EnvFilter {
+    raw_filter
+        .filter(|value| !value.trim().is_empty())
+        .and_then(parse_log_filter)
+        .unwrap_or_else(default_log_filter)
+}
+
+fn parse_log_filter(raw_filter: &str) -> Option<tracing_subscriber::EnvFilter> {
+    tracing_subscriber::EnvFilter::try_new(raw_filter).ok()
+}
+
+fn default_log_filter() -> tracing_subscriber::EnvFilter {
+    tracing_subscriber::EnvFilter::new(DEFAULT_LOG_FILTER)
 }
 
 async fn shutdown_signal() {
     if let Err(error) = tokio::signal::ctrl_c().await {
         tracing::warn!(error = %error, "failed to listen for shutdown signal");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_use_default_log_filter_when_rust_log_is_absent() {
+        let rendered = log_filter_from(None).to_string();
+
+        assert!(rendered.contains("api_server_rs=info"));
+        assert!(rendered.contains("im_observe=info"));
+        assert!(rendered.contains("sqlx::query=off"));
+    }
+
+    #[test]
+    fn should_respect_explicit_rust_log_without_forced_observe_directive() {
+        let rendered = log_filter_from(Some("api_server_rs=warn,im_observe=debug")).to_string();
+
+        assert!(rendered.contains("api_server_rs=warn"));
+        assert!(rendered.contains("im_observe=debug"));
+        assert!(!rendered.contains("sqlx::query=off"));
     }
 }
