@@ -1,4 +1,4 @@
-use crate::dto::{ApiResponse, HealthResponse, ReadyResponse};
+use crate::dto::{ApiResponse, HealthResponse, InternalPushRequest, ReadyResponse};
 use crate::error::AppError;
 use crate::security::{validate_gateway_ws_identity, validate_internal_signature};
 use crate::service::ImService;
@@ -22,6 +22,7 @@ pub fn router(service: ImService) -> Router {
         .route("/api/im/heartbeat/:user_id", post(touch_heartbeat))
         .route("/api/im/heartbeat", post(batch_heartbeat))
         .route("/api/im/online-status", post(online_status))
+        .route("/api/im/internal/push", post(internal_push))
         .route("/websocket/:path_user_id", get(websocket))
         .with_state(service)
 }
@@ -112,6 +113,30 @@ async fn online_status_impl(
     Ok(Json(ApiResponse::success_message(
         "online status queried",
         status,
+    )))
+}
+
+async fn internal_push(
+    State(service): State<ImService>,
+    headers: HeaderMap,
+    OriginalUri(uri): OriginalUri,
+    body: Bytes,
+) -> Result<Json<ApiResponse<bool>>, AppError> {
+    validate_internal_signature(&headers, "POST", uri.path(), &body, service.config())?;
+    let request: InternalPushRequest = serde_json::from_slice(&body)?;
+    if request.kind.trim().is_empty() {
+        return Ok(Json(ApiResponse::error(400, "push type cannot be empty")));
+    }
+    let delivered = service
+        .push_to_user(request.user_id, request.kind.trim(), request.data)
+        .await;
+    Ok(Json(ApiResponse::success_message(
+        if delivered {
+            "push delivered"
+        } else {
+            "user has no local websocket session"
+        },
+        delivered,
     )))
 }
 

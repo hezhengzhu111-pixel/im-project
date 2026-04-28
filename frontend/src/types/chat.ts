@@ -59,6 +59,7 @@ export interface OnlineStatus {
 export interface WebSocketMessage<TData = unknown> {
   type:
     | "MESSAGE"
+    | "MESSAGE_STATUS_CHANGED"
     | "HEARTBEAT"
     | "ONLINE_STATUS"
     | "READ_RECEIPT"

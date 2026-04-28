@@ -19,6 +19,21 @@ pub struct RouteRegistry {
 pub struct RouteLease {
     pub session_count: i32,
     pub expires_at_epoch_ms: i64,
+    #[serde(default)]
+    pub internal_http_url: Option<String>,
+    #[serde(default)]
+    pub internal_ws_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerNode {
+    pub server_id: String,
+    pub internal_http_url: String,
+    pub internal_ws_url: String,
+    pub session_count: i32,
+    pub updated_at_epoch_ms: i64,
+    pub expires_at_epoch_ms: i64,
 }
 
 impl RouteRegistry {
@@ -41,10 +56,44 @@ impl RouteRegistry {
                 RouteLease {
                     session_count: session_count as i32,
                     expires_at_epoch_ms: now + self.config.route_lease_ttl_ms.max(1000),
+                    internal_http_url: Some(self.config.internal_http_url.clone()),
+                    internal_ws_url: Some(self.config.internal_ws_url.clone()),
                 },
             );
         }
         self.persist_snapshot(&user_id, &snapshot, now).await;
+    }
+
+    pub async fn upsert_server_node(&self, session_count: usize) {
+        let now = now_ms();
+        let node = ServerNode {
+            server_id: self.config.instance_id.clone(),
+            internal_http_url: self.config.internal_http_url.clone(),
+            internal_ws_url: self.config.internal_ws_url.clone(),
+            session_count: session_count as i32,
+            updated_at_epoch_ms: now,
+            expires_at_epoch_ms: now + (self.config.server_lease_ttl_seconds.max(1) as i64 * 1000),
+        };
+        let Ok(payload) = serde_json::to_string(&node) else {
+            return;
+        };
+        let key = format!(
+            "{}{}",
+            self.config.server_registry_key_prefix, self.config.instance_id
+        );
+        let mut conn = self.redis.clone();
+        let _: redis::RedisResult<()> = conn
+            .set_ex(key, payload, self.config.server_lease_ttl_seconds.max(1))
+            .await;
+    }
+
+    pub async fn remove_server_node(&self) {
+        let key = format!(
+            "{}{}",
+            self.config.server_registry_key_prefix, self.config.instance_id
+        );
+        let mut conn = self.redis.clone();
+        let _: redis::RedisResult<i32> = conn.del(key).await;
     }
 
     pub async fn remove_local_route(&self, user_id: &str) {

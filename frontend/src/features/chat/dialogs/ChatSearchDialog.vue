@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="Search messages"
+    :title="t('dialog.searchMessages')"
     width="560px"
     append-to-body
     class="chat-shell-dialog"
@@ -10,18 +10,18 @@
       <el-input
         v-model="messageSearchKeyword"
         clearable
-        placeholder="Search in current conversation"
+        :placeholder="t('dialog.searchCurrent')"
       />
 
       <div class="search-results chat-soft-scrollbar">
         <el-empty
           v-if="!messageSearchKeyword.trim()"
-          description="Type a keyword to search this conversation."
+          :description="t('dialog.searchHint')"
           :image-size="60"
         />
         <el-empty
           v-else-if="searchResults.length === 0"
-          description="No matching messages."
+          :description="t('dialog.noMatches')"
           :image-size="60"
         />
         <template v-else>
@@ -48,6 +48,7 @@
 <script setup lang="ts">
 import {computed, ref, watch} from "vue";
 import {useChatStore} from "@/stores/chat";
+import {useI18nStore} from "@/stores/i18n";
 import type {Message, MessageSearchResult} from "@/types";
 
 const props = defineProps<{
@@ -61,6 +62,7 @@ const emit = defineEmits<{
 }>();
 
 const chatStore = useChatStore();
+const {locale, t} = useI18nStore();
 const messageSearchKeyword = ref("");
 
 const visible = computed({
@@ -95,19 +97,19 @@ const formatMessageTime = (value?: string) => {
     return "-";
   }
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString(locale.value);
 };
 
 const formatMessageContent = (message: Message) => {
   switch (message.messageType) {
     case "IMAGE":
-      return "[Image]";
+      return t("sidebar.image");
     case "FILE":
-      return message.mediaName ? `[File] ${message.mediaName}` : "[File]";
+      return message.mediaName ? `${t("sidebar.file")} ${message.mediaName}` : t("sidebar.file");
     case "VOICE":
-      return "[Voice]";
+      return t("sidebar.voice");
     case "VIDEO":
-      return "[Video]";
+      return t("sidebar.video");
     default:
       return message.content || "";
   }
@@ -134,9 +136,9 @@ const formatContext = (result: MessageSearchResult) =>
 
 .search-result-item {
   padding: 12px 14px;
-  border: 1px solid rgba(226, 232, 240, 0.82);
-  border-radius: 18px;
-  background: rgba(248, 250, 252, 0.82);
+  border: 1px solid var(--chat-panel-border);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.72);
 }
 
 .search-result-item + .search-result-item {

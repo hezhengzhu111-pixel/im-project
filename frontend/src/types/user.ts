@@ -98,7 +98,7 @@ export interface TokenParseResultDTO {
   valid: boolean;
   expired: boolean;
   error?: string;
-  userId?: number;
+  userId?: string | number;
   username?: string;
   issuedAtEpochMs?: number;
   expiresAtEpochMs?: number;

@@ -1,4 +1,0 @@
-- [x] Elasticsearch container is running and healthy in Docker.
-- [x] `backend/start_all_services.ps1` includes `log-service` and `admin-service`.
-- [x] All backend services are started successfully.
-- [x] Frontend service is started successfully.

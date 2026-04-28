@@ -9,7 +9,8 @@
         type="button"
         class="nav-icon interactive-reset"
         :class="{ active: activeTab === 'chat' }"
-        title="Messages"
+        :title="t('nav.messages')"
+        :aria-label="t('nav.messages')"
         @click="$emit('change-tab', 'chat')"
       >
         <el-icon :size="24"><ChatDotRound /></el-icon>
@@ -22,7 +23,8 @@
         type="button"
         class="nav-icon interactive-reset"
         :class="{ active: activeTab === 'contacts' }"
-        title="Contacts"
+        :title="t('nav.contacts')"
+        :aria-label="t('nav.contacts')"
         @click="$emit('change-tab', 'contacts')"
       >
         <el-icon :size="24"><User /></el-icon>
@@ -33,7 +35,8 @@
         type="button"
         class="nav-icon interactive-reset"
         :class="{ active: activeTab === 'groups' }"
-        title="Groups"
+        :title="t('nav.groups')"
+        :aria-label="t('nav.groups')"
         @click="$emit('change-tab', 'groups')"
       >
         <el-icon :size="24"><UserFilled /></el-icon>
@@ -44,7 +47,8 @@
       <button
         type="button"
         class="nav-icon interactive-reset"
-        title="Settings"
+        :title="t('nav.settings')"
+        :aria-label="t('nav.settings')"
         @click="$emit('settings')"
       >
         <el-icon :size="24"><Setting /></el-icon>
@@ -55,9 +59,11 @@
 
 <script setup lang="ts">
 import {ChatDotRound, Setting, User, UserFilled,} from "@element-plus/icons-vue";
+import {useI18nStore} from "@/stores/i18n";
 import {useUserStore} from "@/stores/user";
 
 const userStore = useUserStore();
+const {t} = useI18nStore();
 
 defineProps<{
   activeTab: string;
@@ -86,16 +92,17 @@ defineEmits<{
   padding: 22px 0 18px;
   flex-shrink: 0;
   background:
-    radial-gradient(circle at top, rgba(59, 130, 246, 0.18), transparent 22%),
-    linear-gradient(180deg, #0f172a 0%, #111827 100%);
+    radial-gradient(circle at top, rgba(37, 99, 235, 0.18), transparent 24%),
+    rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(18px);
   border-right: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .user-avatar {
   margin-bottom: 28px;
   padding: 6px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
@@ -113,7 +120,7 @@ defineEmits<{
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 16px;
+  border-radius: 8px;
   color: rgba(226, 232, 240, 0.7);
   cursor: pointer;
   transition:
@@ -130,8 +137,8 @@ defineEmits<{
 
   &.active {
     color: #fff;
-    background: linear-gradient(135deg, #22c55e, #16a34a);
-    box-shadow: 0 14px 28px rgba(34, 197, 94, 0.28);
+    background: rgba(37, 99, 235, 0.88);
+    box-shadow: 0 14px 28px rgba(37, 99, 235, 0.24);
   }
 }
 

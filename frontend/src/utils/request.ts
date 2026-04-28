@@ -1,22 +1,13 @@
+import type {AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig,} from "axios";
 import axios from "axios";
 import qs from "qs";
-
-import type {
-  AxiosInstance,
-  AxiosRequestConfig,
-  AxiosResponse,
-  InternalAxiosRequestConfig,
-} from "axios";
-import { ElMessage } from "element-plus";
-import { useUserStore } from "@/stores/user";
-import type { ApiResponse } from "@/types/api";
+import {ElMessage} from "element-plus";
+import {useUserStore} from "@/stores/user";
+import type {ApiResponse} from "@/types/api";
 import router from "@/router";
-import {
-  refreshAccessTokenCoordinated,
-  type RefreshAccessTokenStatus,
-} from "@/services/auth-refresh";
-import { logger } from "@/utils/logger";
-import { STORAGE_CONFIG } from "@/config";
+import {refreshAccessTokenCoordinated, type RefreshAccessTokenStatus,} from "@/services/auth-refresh";
+import {logger} from "@/utils/logger";
+import {STORAGE_CONFIG} from "@/config";
 
 function createTraceId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -440,6 +431,9 @@ request.interceptors.response.use(
       case 408:
         ElMessage.error("请求超时");
         break;
+      case 413:
+        ElMessage.error("文件过大，请选择更小的文件");
+        break;
       case 500:
         ElMessage.error("服务器内部错误");
         break;
@@ -514,6 +508,9 @@ export const http = {
     formData.append("file", file);
 
     return request.post(url, formData, {
+      timeout: 0,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
       headers: {
         "Content-Type": "multipart/form-data",
       },

@@ -2,7 +2,6 @@ mod clients;
 mod config;
 mod dto;
 mod error;
-mod kafka_consumer;
 mod route;
 mod security;
 mod service;
@@ -31,18 +30,18 @@ async fn main() -> anyhow::Result<()> {
     let redis = ConnectionManager::new(redis_client.clone()).await?;
     let service = ImService::new(config.clone(), redis);
     service.spawn_background_tasks(redis_client);
-    kafka_consumer::spawn_consumers(service.clone());
 
-    let app = web::router(service).layer(TraceLayer::new_for_http());
+    let app = web::router(service.clone()).layer(TraceLayer::new_for_http());
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     tracing::info!("im-server-rs listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(shutdown_signal(service))
         .await?;
     Ok(())
 }
 
-async fn shutdown_signal() {
+async fn shutdown_signal(service: ImService) {
     let _ = tokio::signal::ctrl_c().await;
+    service.unregister_server_node().await;
 }

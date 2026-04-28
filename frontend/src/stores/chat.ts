@@ -117,16 +117,26 @@ export const useChatStore = defineStore("chat", () => {
   };
 
   const initChatBootstrap = async () => {
+    let initialSessions: ChatSession[] = [];
     try {
-      await refreshSessionSkeletons({ force: true, refreshPresence: false });
+      initialSessions = await refreshSessionSkeletons({ force: true, refreshPresence: false });
     } catch (error) {
       warnBootstrapStep("initial session skeleton refresh", error);
     }
 
+    let restored: ChatSession | null = null;
     try {
-      await restoreCurrentSession({ loadMessages: true });
+      restored = await restoreCurrentSession({ loadMessages: true });
     } catch (error) {
       warnBootstrapStep("restore current session", error);
+    }
+
+    if (!restored && !sessionStore.currentSession) {
+      try {
+        await selectFirstAvailableSession(initialSessions, { loadMessages: true });
+      } catch (error) {
+        warnBootstrapStep("select first session", error);
+      }
     }
 
     runBackgroundTask(async () => {
@@ -163,6 +173,17 @@ export const useChatStore = defineStore("chat", () => {
           });
         } catch (error) {
           warnBootstrapStep("background restore current session", error);
+          restored = null;
+        }
+      }
+
+      if (!restored) {
+        try {
+          restored = await selectFirstAvailableSession(sessionStore.sortedSessions, {
+            loadMessages: false,
+          });
+        } catch (error) {
+          warnBootstrapStep("background select first session", error);
           restored = null;
         }
       }
@@ -215,6 +236,25 @@ export const useChatStore = defineStore("chat", () => {
   const setCurrentSession = async (session: ChatSession) => {
     sessionStore.setCurrentSession(session);
     await messageStore.loadMessages(session.id);
+  };
+
+  const selectFirstAvailableSession = async (
+    sessions: ChatSession[],
+    options?: { loadMessages?: boolean },
+  ): Promise<ChatSession | null> => {
+    if (sessionStore.currentSession) {
+      return sessionStore.currentSession;
+    }
+    const firstSession = sessionStore.sortedSessions[0] || sessions[0];
+    if (!firstSession) {
+      return null;
+    }
+    if (options?.loadMessages === false) {
+      sessionStore.setCurrentSession(firstSession);
+      return sessionStore.currentSession;
+    }
+    await setCurrentSession(firstSession);
+    return sessionStore.currentSession;
   };
 
   const openPrivateSession = async (target: {

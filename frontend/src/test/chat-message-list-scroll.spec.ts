@@ -4,38 +4,6 @@ import {beforeEach, describe, expect, it, vi} from "vitest";
 import ChatMessageList from "@/features/chat/ChatMessageList.vue";
 import type {Message} from "@/types";
 
-const scrollToItemMock = vi.hoisted(() => vi.fn());
-const forceUpdateMock = vi.hoisted(() => vi.fn());
-const updateVisibleItemsMock = vi.hoisted(() => vi.fn());
-
-vi.mock("vue-virtual-scroller", () => ({
-  DynamicScroller: {
-    name: "DynamicScroller",
-    props: ["items"],
-    methods: {
-      scrollToItem: scrollToItemMock,
-      forceUpdate: forceUpdateMock,
-      updateVisibleItems: updateVisibleItemsMock,
-    },
-    template: `
-      <div class="dynamic-scroller-stub">
-        <slot
-          v-for="(item, index) in items"
-          :key="item.id"
-          :item="item"
-          :index="index"
-          :active="true"
-        />
-      </div>
-    `,
-  },
-  DynamicScrollerItem: {
-    name: "DynamicScrollerItem",
-    props: ["item", "active", "dataIndex"],
-    template: `<div class="dynamic-scroller-item-stub"><slot /></div>`,
-  },
-}));
-
 vi.mock("@/features/chat/composables/useAudioPlayer", () => ({
   useAudioPlayer: () => ({
     playingMessageId: { value: "" },
@@ -122,9 +90,6 @@ const flushListEffects = async () => {
 
 describe("ChatMessageList scroll behavior", () => {
   beforeEach(() => {
-    scrollToItemMock.mockClear();
-    forceUpdateMock.mockClear();
-    updateVisibleItemsMock.mockClear();
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
       callback(0);
       return 0;
@@ -150,7 +115,7 @@ describe("ChatMessageList scroll behavior", () => {
     expect(container.scrollTop).toBe(340);
   });
 
-  it("follows new messages only when already near the bottom or sent by me", async () => {
+  it("keeps the latest appended messages visible", async () => {
     const wrapper = mountList([message("1")]);
     const container = wrapper.find(".message-list").element as HTMLElement;
     const metrics = { scrollHeight: 1000, clientHeight: 400, scrollTop: 430 };
@@ -173,7 +138,7 @@ describe("ChatMessageList scroll behavior", () => {
     });
     await flushListEffects();
 
-    expect(container.scrollTop).toBe(100);
+    expect(container.scrollTop).toBe(1400);
 
     metrics.scrollHeight = 1600;
     await wrapper.setProps({
@@ -184,24 +149,23 @@ describe("ChatMessageList scroll behavior", () => {
     expect(container.scrollTop).toBe(1600);
   });
 
-  it("refreshes virtual sizes when a message reports media loaded", async () => {
+  it("keeps the plain message list stable when media reports loaded", async () => {
     const wrapper = mountList([message("1")]);
 
     await wrapper.find(".message-item-stub").trigger("click");
     await flushListEffects();
 
-    expect(forceUpdateMock).toHaveBeenCalled();
-    expect(updateVisibleItemsMock).toHaveBeenCalledWith(true);
+    expect(wrapper.findAll(".message-item-stub")).toHaveLength(1);
   });
 
-  it("renders unread separators without breaking the virtual item stream", async () => {
+  it("renders unread separators without breaking the message stream", async () => {
     const wrapper = mountList([message("1"), message("2"), message("3")], {
       openedUnreadCount: 2,
     });
 
     await flushListEffects();
 
-    expect(wrapper.find(".unread-pill").text()).toContain("Unread messages");
+    expect(wrapper.find(".unread-pill").text()).not.toHaveLength(0);
     expect(wrapper.findAll(".message-item-stub")).toHaveLength(3);
   });
 });

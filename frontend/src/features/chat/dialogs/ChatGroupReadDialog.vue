@@ -1,12 +1,14 @@
 <template>
   <el-dialog
     v-model="visible"
-    :title="`Read by (${groupReadUsers.length})`"
+    :title="t('message.readBy', { count: groupReadUsers.length })"
     width="380px"
     append-to-body
     class="chat-shell-dialog"
   >
-    <div v-if="groupReadUsers.length === 0" class="group-read-empty">No readers yet.</div>
+    <div v-if="groupReadUsers.length === 0" class="group-read-empty">
+      {{ t("dialog.noReaders") }}
+    </div>
     <div v-else class="group-read-list chat-soft-scrollbar">
       <div v-for="reader in groupReadUsers" :key="reader.userId" class="group-read-item">
         <span class="group-read-name">{{ reader.displayName }}</span>
@@ -18,6 +20,7 @@
 
 <script setup lang="ts">
 import {computed} from "vue";
+import {useI18nStore} from "@/stores/i18n";
 import type {GroupReadUser} from "@/types";
 
 const props = defineProps<{
@@ -29,6 +32,7 @@ const emit = defineEmits<{
   (e: "update:modelValue", value: boolean): void;
 }>();
 
+const {t} = useI18nStore();
 const visible = computed({
   get: () => props.modelValue,
   set: (value: boolean) => emit("update:modelValue", value),
@@ -55,9 +59,9 @@ const groupReadUsers = computed(() => props.groupReadUsers);
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid rgba(226, 232, 240, 0.82);
-  border-radius: 18px;
-  background: rgba(248, 250, 252, 0.82);
+  border: 1px solid var(--chat-panel-border);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.72);
 }
 
 .group-read-item + .group-read-item {

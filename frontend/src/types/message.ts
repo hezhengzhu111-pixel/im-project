@@ -80,9 +80,13 @@ export interface RawMessageDTO {
   messageType?: string;
   content?: unknown;
   mediaUrl?: string;
+  media_url?: string;
   mediaSize?: number | string;
+  media_size?: number | string;
   mediaName?: string;
+  media_name?: string;
   thumbnailUrl?: string;
+  thumbnail_url?: string;
   duration?: number | string;
   sendTime?: string;
   send_time?: string;

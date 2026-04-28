@@ -1,19 +1,19 @@
 <template>
   <el-dialog
     v-model="showAddFriend"
-    title="Add friend"
+    :title="t('dialog.addFriend')"
     width="420px"
     append-to-body
     class="chat-shell-dialog"
   >
-    <el-form :model="addFriendForm" label-width="80px">
-      <el-form-item label="User">
+    <el-form :model="addFriendForm" label-width="84px">
+      <el-form-item :label="t('dialog.user')">
         <el-select
           v-model="addFriendForm.targetUserId"
           filterable
           remote
           reserve-keyword
-          placeholder="Search by username"
+          :placeholder="t('dialog.searchByUsername')"
           :remote-method="handleUserSearch"
           :loading="isSearchingUsers"
           style="width: 100%"
@@ -31,30 +31,32 @@
           </el-option>
         </el-select>
       </el-form-item>
-      <el-form-item label="Message">
-        <el-input v-model="addFriendForm.message" placeholder="Say hello" />
+      <el-form-item :label="t('dialog.message')">
+        <el-input v-model="addFriendForm.message" :placeholder="t('dialog.sayHello')" />
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="showAddFriend = false">Cancel</el-button>
-      <el-button type="primary" @click="addFriend">Send request</el-button>
+      <el-button @click="showAddFriend = false">{{ t("common.cancel") }}</el-button>
+      <el-button type="primary" @click="addFriend">{{ t("dialog.sendRequest") }}</el-button>
     </template>
   </el-dialog>
 
   <el-dialog
     v-model="showCreateGroup"
-    title="Create group"
+    :title="t('dialog.createGroup')"
     width="520px"
     append-to-body
     class="chat-shell-dialog"
   >
     <el-form :model="createGroupForm" label-width="84px">
-      <el-form-item label="Avatar">
+      <el-form-item :label="t('dialog.avatar')">
         <div class="create-group-avatar">
           <el-avatar :size="52" :src="createGroupForm.avatar">
             {{ createGroupForm.name?.charAt(0) || "G" }}
           </el-avatar>
-          <el-button size="small" @click="selectCreateGroupAvatar">Choose</el-button>
+          <el-button size="small" @click="selectCreateGroupAvatar">
+            {{ t("dialog.choose") }}
+          </el-button>
           <input
             ref="createGroupAvatarInputRef"
             type="file"
@@ -64,24 +66,27 @@
           />
         </div>
       </el-form-item>
-      <el-form-item label="Name">
-        <el-input v-model="createGroupForm.name" placeholder="Group name" />
+      <el-form-item :label="t('dialog.name')">
+        <el-input v-model="createGroupForm.name" :placeholder="t('dialog.groupName')" />
       </el-form-item>
-      <el-form-item label="Desc">
-        <el-input v-model="createGroupForm.description" placeholder="Group description" />
+      <el-form-item :label="t('dialog.desc')">
+        <el-input
+          v-model="createGroupForm.description"
+          :placeholder="t('dialog.groupDescription')"
+        />
       </el-form-item>
-      <el-form-item label="Members">
+      <el-form-item :label="t('dialog.members')">
         <el-transfer
           v-model="createGroupForm.memberIds"
           :data="contactsForTransfer"
-          :titles="['Available', 'Selected']"
+          :titles="transferTitles"
           filterable
         />
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="showCreateGroup = false">Cancel</el-button>
-      <el-button type="primary" @click="createGroup">Create</el-button>
+      <el-button @click="showCreateGroup = false">{{ t("common.cancel") }}</el-button>
+      <el-button type="primary" @click="createGroup">{{ t("dialog.create") }}</el-button>
     </template>
   </el-dialog>
 
@@ -100,7 +105,7 @@
 
   <el-drawer
     v-model="showSessionInfoDrawer"
-    :title="currentSession?.type === 'group' ? 'Group info' : 'Contact info'"
+    :title="currentSession?.type === 'group' ? t('chat.groupInfo') : t('chat.contactInfo')"
     size="380px"
     append-to-body
     class="chat-shell-drawer"
@@ -115,52 +120,54 @@
           <div class="session-info-subtitle">
             {{
               currentSession.type === "group"
-                ? "Group conversation"
+                ? t("dialog.groupConversation")
                 : privateSessionOnline
-                  ? "Online now"
-                  : "Offline"
+                  ? t("chat.onlineNow")
+                  : t("chat.offline")
             }}
           </div>
         </div>
       </div>
 
       <el-descriptions :column="1" border class="session-info-card">
-        <el-descriptions-item label="Conversation ID">
+        <el-descriptions-item :label="t('dialog.conversationId')">
           {{ currentSession.id }}
         </el-descriptions-item>
         <template v-if="currentSession.type === 'private'">
-          <el-descriptions-item label="User ID">
+          <el-descriptions-item :label="t('dialog.userId')">
             {{ currentSession.targetId }}
           </el-descriptions-item>
-          <el-descriptions-item label="Username">
+          <el-descriptions-item :label="t('dialog.username')">
             {{ sessionInfoFriend?.username || "-" }}
           </el-descriptions-item>
-          <el-descriptions-item label="Remark">
+          <el-descriptions-item :label="t('dialog.remark')">
             {{ sessionInfoFriend?.remark || "-" }}
           </el-descriptions-item>
         </template>
         <template v-else>
-          <el-descriptions-item label="Group ID">
+          <el-descriptions-item :label="t('dialog.groupId')">
             {{ currentSession.targetId }}
           </el-descriptions-item>
-          <el-descriptions-item label="Members">
+          <el-descriptions-item :label="t('dialog.members')">
             {{ sessionInfoGroup?.memberCount || currentSession.memberCount || 0 }}
           </el-descriptions-item>
-          <el-descriptions-item label="Description">
+          <el-descriptions-item :label="t('dialog.description')">
             {{ sessionInfoGroup?.description || sessionInfoGroup?.announcement || "-" }}
           </el-descriptions-item>
         </template>
       </el-descriptions>
 
       <template v-if="currentSession.type === 'group'">
-        <div class="member-section-title">Members</div>
-        <div v-if="sessionInfoLoading" class="member-state">Loading members...</div>
+        <div class="member-section-title">{{ t("dialog.members") }}</div>
+        <div v-if="sessionInfoLoading" class="member-state">
+          {{ t("dialog.loadingMembers") }}
+        </div>
         <div v-else-if="sessionInfoError" class="member-state member-error">
           {{ sessionInfoError }}
         </div>
         <el-empty
           v-else-if="sessionInfoMembers.length === 0"
-          description="No member details available."
+          :description="t('dialog.noMemberDetails')"
           :image-size="60"
         />
         <div v-else class="member-list chat-soft-scrollbar">
@@ -173,9 +180,12 @@
               {{ (member.nickname || member.username || member.userId).charAt(0) }}
             </el-avatar>
             <div class="member-meta">
-              <div class="member-name">{{ member.nickname || member.username || member.userId }}</div>
+              <div class="member-name">
+                {{ member.nickname || member.username || member.userId }}
+              </div>
               <div class="member-subtitle">
-                {{ member.role }} · Joined {{ formatMessageTime(member.joinTime) }}
+                {{ member.role }} · {{ t("dialog.joined") }}
+                {{ formatMessageTime(member.joinTime) }}
               </div>
             </div>
           </div>
@@ -187,10 +197,11 @@
 
 <script setup lang="ts">
 import {computed, defineAsyncComponent, reactive, ref} from "vue";
-import {useChatStore} from "@/stores/chat";
-import {useUserStore} from "@/stores/user";
 import {useFileMessageUpload} from "@/features/chat/composables/useFileMessageUpload";
 import {useErrorHandler} from "@/hooks/useErrorHandler";
+import {useChatStore} from "@/stores/chat";
+import {useI18nStore} from "@/stores/i18n";
+import {useUserStore} from "@/stores/user";
 import type {ChatSession, Friend, Group, GroupMember, GroupReadUser, MessageSearchResult, User,} from "@/types";
 
 const AsyncChatSearchDialog = defineAsyncComponent(
@@ -227,6 +238,7 @@ const emit = defineEmits<{
 
 const chatStore = useChatStore();
 const userStore = useUserStore();
+const {locale, t} = useI18nStore();
 const {capture, notifyInfo, notifySuccess} = useErrorHandler("chat-dialogs");
 const {upload} = useFileMessageUpload();
 
@@ -266,7 +278,7 @@ const userSearchResults = ref<User[]>([]);
 const createGroupAvatarInputRef = ref<HTMLInputElement | null>(null);
 const addFriendForm = reactive({
   targetUserId: "",
-  message: "Hi, let's connect.",
+  message: t("dialog.sayHello"),
 });
 const createGroupForm = reactive({
   name: "",
@@ -281,6 +293,7 @@ const contactsForTransfer = computed(() =>
     label: contact.nickname || contact.username,
   })),
 );
+const transferTitles = computed(() => [t("dialog.available"), t("dialog.selected")]);
 
 const sessionInfoDisplayName = computed(() => {
   if (currentSession.value?.type === "group") {
@@ -316,7 +329,7 @@ const handleUserSearch = async (query: string) => {
     const users = await chatStore.searchUsers({type: "username", keyword: query});
     userSearchResults.value = users.filter((user) => user.id !== userStore.userId);
   } catch (error) {
-    capture(error, "Failed to search users");
+    capture(error, t("dialog.failedSearchUsers"));
     userSearchResults.value = [];
   } finally {
     isSearchingUsers.value = false;
@@ -325,7 +338,7 @@ const handleUserSearch = async (query: string) => {
 
 const addFriend = async () => {
   if (!addFriendForm.targetUserId) {
-    capture(new Error("Please select a user"), "Please select a user");
+    capture(new Error(t("dialog.pleaseSelectUser")), t("dialog.pleaseSelectUser"));
     return;
   }
   try {
@@ -333,20 +346,20 @@ const addFriend = async () => {
       userId: addFriendForm.targetUserId,
       message: addFriendForm.message,
     });
-    notifySuccess("Friend request sent.");
+    notifySuccess(t("dialog.friendRequestSent"));
     showAddFriend.value = false;
     addFriendForm.targetUserId = "";
-    addFriendForm.message = "Hi, let's connect.";
+    addFriendForm.message = t("dialog.sayHello");
     userSearchResults.value = [];
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to add friend";
+    const message = error instanceof Error ? error.message : t("dialog.failedAddFriend");
     if (message.includes("pending")) {
       await chatStore.loadFriendRequests().catch(() => undefined);
-      notifyInfo("A pending request already exists. Refreshed requests list.");
+      notifyInfo(t("dialog.friendRequestPending"));
       showAddFriend.value = false;
       return;
     }
-    capture(error, "Failed to add friend");
+    capture(error, t("dialog.failedAddFriend"));
   }
 };
 
@@ -364,7 +377,7 @@ const handleCreateGroupAvatarChange = async (event: Event) => {
     const response = await upload(file, "IMAGE");
     createGroupForm.avatar = response.url;
   } catch {
-    // uploader already surfaced the error
+    // The uploader already surfaced the error.
   }
 };
 
@@ -372,7 +385,7 @@ const createGroup = async () => {
   try {
     const name = createGroupForm.name.trim();
     if (!name) {
-      capture(new Error("Please enter a group name"), "Please enter a group name");
+      capture(new Error(t("dialog.pleaseEnterGroupName")), t("dialog.pleaseEnterGroupName"));
       return;
     }
     await chatStore.createGroup({
@@ -381,7 +394,7 @@ const createGroup = async () => {
       avatar: createGroupForm.avatar,
       memberIds: createGroupForm.memberIds,
     });
-    notifySuccess("Group created.");
+    notifySuccess(t("dialog.groupCreated"));
     showCreateGroup.value = false;
     Object.assign(createGroupForm, {
       name: "",
@@ -390,7 +403,7 @@ const createGroup = async () => {
       memberIds: [],
     });
   } catch (error) {
-    capture(error, "Failed to create group");
+    capture(error, t("dialog.failedCreateGroup"));
   }
 };
 
@@ -399,15 +412,15 @@ const formatMessageTime = (value?: string) => {
     return "-";
   }
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString(locale.value);
 };
 </script>
 
 <style scoped lang="scss">
 .option-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
 }
 
 .option-subtitle {
@@ -440,16 +453,15 @@ const formatMessageTime = (value?: string) => {
 .member-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid rgba(226, 232, 240, 0.82);
-  border-radius: 18px;
-  background: rgba(248, 250, 252, 0.82);
+  padding: 12px;
+  border: 1px solid var(--chat-panel-border);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.72);
 }
 
 .member-item + .member-item {
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .session-info-name,
@@ -471,8 +483,10 @@ const formatMessageTime = (value?: string) => {
   gap: 14px;
   margin-bottom: 18px;
   padding: 18px;
-  border-radius: 22px;
-  background: linear-gradient(135deg, rgba(239, 246, 255, 0.94), rgba(248, 250, 252, 0.94));
+  border: 1px solid var(--chat-panel-border);
+  border-radius: 8px;
+  background: var(--chat-panel-bg);
+  backdrop-filter: var(--chat-glass-blur);
 }
 
 .session-info-card {
@@ -492,24 +506,26 @@ const formatMessageTime = (value?: string) => {
 
 :deep(.chat-shell-dialog .el-dialog),
 :deep(.chat-shell-drawer .el-drawer) {
-  border-radius: 26px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 28px 64px rgba(15, 23, 42, 0.16);
+  border-radius: 8px;
+  border: 1px solid var(--chat-panel-border);
+  background: var(--chat-panel-bg);
+  box-shadow: var(--chat-surface-shadow);
+  backdrop-filter: var(--chat-glass-blur);
 }
 
 :deep(.chat-shell-dialog .el-dialog__header),
 :deep(.chat-shell-drawer .el-drawer__header) {
   margin-right: 0;
-  padding: 20px 22px 14px;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid var(--chat-panel-border);
 }
 
 :deep(.chat-shell-dialog .el-dialog__body) {
-  padding: 18px 22px 22px;
+  padding: 18px 20px 20px;
 }
 
 :deep(.chat-shell-dialog .el-dialog__footer) {
-  padding: 0 22px 20px;
+  padding: 0 20px 18px;
 }
 
 :deep(.chat-shell-drawer .el-drawer__body) {

@@ -1,0 +1,1071 @@
+use crate::config::AppConfig;
+use crate::error::AppError;
+use crate::id_resolver::{
+    resolve_active_group_id, resolve_active_user_id, resolve_existing_message_id,
+};
+use chrono::{DateTime, Utc};
+use im_rs_common::auth::Identity;
+use im_rs_common::event::{
+    ImEvent, ImEventType, MessageDto, MessageStatus, MessageType, ReadReceipt,
+};
+use im_rs_common::{ids, keys, time};
+use redis::aio::ConnectionManager;
+use redis::{AsyncCommands, Script};
+use serde::{de, Deserialize, Deserializer, Serialize};
+use sqlx::{MySqlPool, Row};
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendPrivateRequest {
+    #[serde(deserialize_with = "deserialize_i64")]
+    pub receiver_id: i64,
+    pub client_message_id: Option<String>,
+    pub message_type: Option<String>,
+    pub content: Option<String>,
+    pub media_url: Option<String>,
+    pub media_size: Option<i64>,
+    pub media_name: Option<String>,
+    pub thumbnail_url: Option<String>,
+    pub duration: Option<i32>,
+    pub extra: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendGroupRequest {
+    #[serde(deserialize_with = "deserialize_i64")]
+    pub group_id: i64,
+    pub client_message_id: Option<String>,
+    pub message_type: Option<String>,
+    pub content: Option<String>,
+    pub media_url: Option<String>,
+    pub media_size: Option<i64>,
+    pub media_name: Option<String>,
+    pub thumbnail_url: Option<String>,
+    pub duration: Option<i32>,
+    pub extra: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HistoryQuery {
+    pub page: Option<i64>,
+    pub size: Option<i64>,
+    pub limit: Option<i64>,
+    pub last_message_id: Option<i64>,
+    pub after_message_id: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageConfig {
+    pub text_enforce: bool,
+    pub text_max_length: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationDto {
+    pub conversation_id: String,
+    pub conversation_type: i32,
+    pub target_id: String,
+    pub conversation_name: String,
+    pub conversation_avatar: Option<String>,
+    pub last_message: String,
+    pub last_message_type: String,
+    pub last_message_sender_id: Option<String>,
+    pub last_message_sender_name: Option<String>,
+    pub last_message_time: Option<String>,
+    pub unread_count: i64,
+    pub is_online: bool,
+    pub is_pinned: bool,
+    pub is_muted: bool,
+}
+
+pub async fn send_private(
+    config: &AppConfig,
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    identity: &Identity,
+    request: SendPrivateRequest,
+) -> Result<MessageDto, AppError> {
+    validate_send_input(
+        request.message_type.as_deref(),
+        request.content.as_deref(),
+        request.media_url.as_deref(),
+    )?;
+    let receiver_id = resolve_active_user_id(db, request.receiver_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
+    if receiver_id == identity.user_id {
+        return Err(AppError::BadRequest(
+            "cannot send private message to self".to_string(),
+        ));
+    }
+    validate_friend(db, identity.user_id, receiver_id).await?;
+    let conversation_id = keys::private_conversation_id(identity.user_id, receiver_id);
+    let message = build_message(
+        config,
+        identity,
+        Some(receiver_id),
+        None,
+        request.client_message_id,
+        request.message_type,
+        request.content,
+        request.media_url,
+        request.media_size,
+        request.media_name,
+        request.thumbnail_url,
+        request.duration,
+    );
+    let event = build_message_created_event(&conversation_id, &message);
+    write_message_hot(
+        redis,
+        &conversation_id,
+        &message,
+        &event,
+        &[identity.user_id, receiver_id],
+    )
+    .await
+}
+
+pub async fn send_group(
+    config: &AppConfig,
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    identity: &Identity,
+    request: SendGroupRequest,
+) -> Result<MessageDto, AppError> {
+    validate_send_input(
+        request.message_type.as_deref(),
+        request.content.as_deref(),
+        request.media_url.as_deref(),
+    )?;
+    let group_id = resolve_active_group_id(db, request.group_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
+    validate_group_member(db, group_id, identity.user_id).await?;
+    let members = load_group_members(db, group_id).await?;
+    let conversation_id = keys::group_conversation_id(group_id);
+    let message = build_message(
+        config,
+        identity,
+        None,
+        Some(group_id),
+        request.client_message_id,
+        request.message_type,
+        request.content,
+        request.media_url,
+        request.media_size,
+        request.media_name,
+        request.thumbnail_url,
+        request.duration,
+    );
+    let event = build_message_created_event(&conversation_id, &message);
+    write_message_hot(redis, &conversation_id, &message, &event, &members).await
+}
+
+pub async fn mark_read(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    identity: &Identity,
+    raw_conversation_id: &str,
+) -> Result<(), AppError> {
+    let mut target = parse_conversation_target(identity.user_id, raw_conversation_id)?;
+    if let Some(group_id) = target.group_id {
+        let group_id = resolve_active_group_id(db, group_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
+        target.group_id = Some(group_id);
+        target.conversation_id = keys::group_conversation_id(group_id);
+        target.frontend_conversation_id = format!("group_{group_id}");
+    } else if let Some(peer_id) = target.peer_id {
+        let peer_id = resolve_active_user_id(db, peer_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
+        target.peer_id = Some(peer_id);
+        target.conversation_id = keys::private_conversation_id(identity.user_id, peer_id);
+        target.frontend_conversation_id =
+            target.conversation_id.trim_start_matches("p_").to_string();
+    }
+    if let Some(group_id) = target.group_id {
+        validate_group_member(db, group_id, identity.user_id).await?;
+    } else if let Some(peer_id) = target.peer_id {
+        validate_friend(db, identity.user_id, peer_id).await?;
+    }
+    let last_read_message_id = latest_message_id(redis, db, &target.conversation_id).await?;
+    let read_at = time::now_iso();
+    let receipt = ReadReceipt {
+        conversation_id: target.frontend_conversation_id.clone(),
+        reader_id: identity.user_id.to_string(),
+        to_user_id: target.peer_id.map(|id| id.to_string()),
+        read_at: read_at.clone(),
+        last_read_message_id: last_read_message_id.map(|id| id.to_string()),
+    };
+    let mut event = ImEvent::new(ImEventType::MessageRead, target.conversation_id.clone());
+    event.target_user_id = target.peer_id.map(|id| id.to_string());
+    event.group_id = target.group_id.map(|id| id.to_string());
+    event.group = target.group_id.is_some();
+    event.read_receipt = Some(receipt.clone());
+    write_state_event(redis, &target.conversation_id, &event).await?;
+    let _: () = redis
+        .set_ex(
+            keys::read_cursor_key(identity.user_id, &target.conversation_id),
+            serde_json::to_string(&receipt)?,
+            keys::CONVERSATION_TTL_SECONDS,
+        )
+        .await?;
+    let _: () = redis
+        .hset(
+            keys::user_unread_key(identity.user_id),
+            &target.conversation_id,
+            0_i64,
+        )
+        .await?;
+    Ok(())
+}
+
+pub async fn recall_or_delete(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    identity: &Identity,
+    message_id: i64,
+    status: MessageStatus,
+) -> Result<MessageDto, AppError> {
+    let message_id = resolve_existing_message_id(db, message_id)
+        .await?
+        .unwrap_or(message_id);
+    let mut message = load_message(redis, db, message_id).await?;
+    if message.sender_id != identity.user_id.to_string() {
+        return Err(AppError::Forbidden(
+            "only sender can change message status".to_string(),
+        ));
+    }
+    if status == MessageStatus::Recalled && !within_recall_window(&message) {
+        return Err(AppError::BadRequest(
+            "only messages within 2 minutes can be recalled".to_string(),
+        ));
+    }
+    message.status = status.as_str().to_string();
+    message.updated_time = Some(time::now_iso());
+    message.updated_at = message.updated_time.clone();
+    let conversation_id = conversation_id_from_message(&message)?;
+    let mut event = ImEvent::new(
+        if status == MessageStatus::Recalled {
+            ImEventType::MessageRecalled
+        } else {
+            ImEventType::MessageDeleted
+        },
+        conversation_id.clone(),
+    );
+    event.message_id = Some(message.id.clone());
+    event.sender_id = Some(message.sender_id.clone());
+    event.receiver_id = message.receiver_id.clone();
+    event.group_id = message.group_id.clone();
+    event.group = message.is_group_chat;
+    event.new_status = Some(message.status.clone());
+    event.payload = Some(message.clone());
+    let message_json = serde_json::to_string(&message)?;
+    let _: () = redis
+        .set_ex(
+            keys::message_key(message_id),
+            message_json.clone(),
+            keys::MESSAGE_TTL_SECONDS,
+        )
+        .await?;
+    let last: Option<String> = redis
+        .get(keys::conversation_last_key(&conversation_id))
+        .await
+        .ok()
+        .flatten();
+    if last
+        .as_deref()
+        .and_then(|value| serde_json::from_str::<MessageDto>(value).ok())
+        .is_some_and(|last_message| last_message.id == message.id)
+    {
+        let _: () = redis
+            .set_ex(
+                keys::conversation_last_key(&conversation_id),
+                message_json,
+                keys::CONVERSATION_TTL_SECONDS,
+            )
+            .await?;
+    }
+    write_state_event(redis, &conversation_id, &event).await?;
+    Ok(message)
+}
+
+pub async fn conversations(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    identity: &Identity,
+) -> Result<Vec<ConversationDto>, AppError> {
+    let conv_ids: Vec<String> = redis
+        .zrevrange(keys::user_conversations_key(identity.user_id), 0, 99)
+        .await
+        .unwrap_or_default();
+    let mut result = Vec::new();
+    for conversation_id in conv_ids {
+        if let Some(last) = load_last_message(redis, &conversation_id).await {
+            let unread = redis
+                .hget(keys::user_unread_key(identity.user_id), &conversation_id)
+                .await
+                .unwrap_or(0_i64);
+            if let Some(dto) =
+                conversation_from_message(db, identity.user_id, &conversation_id, last, unread)
+                    .await?
+            {
+                result.push(dto);
+            }
+        }
+    }
+    if result.is_empty() {
+        result = load_conversations_from_db(db, identity.user_id).await?;
+    }
+    result.sort_by(|a, b| b.last_message_time.cmp(&a.last_message_time));
+    Ok(result)
+}
+
+pub async fn private_history(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    identity: &Identity,
+    peer_id: i64,
+    query: HistoryQuery,
+) -> Result<Vec<MessageDto>, AppError> {
+    let peer_id = resolve_active_user_id(db, peer_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
+    validate_friend(db, identity.user_id, peer_id).await?;
+    let conversation_id = keys::private_conversation_id(identity.user_id, peer_id);
+    load_history(redis, db, &conversation_id, query).await
+}
+
+pub async fn group_history(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    identity: &Identity,
+    group_id: i64,
+    query: HistoryQuery,
+) -> Result<Vec<MessageDto>, AppError> {
+    let group_id = resolve_active_group_id(db, group_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
+    validate_group_member(db, group_id, identity.user_id).await?;
+    let conversation_id = keys::group_conversation_id(group_id);
+    load_history(redis, db, &conversation_id, query).await
+}
+
+fn validate_send_input(
+    message_type: Option<&str>,
+    content: Option<&str>,
+    media_url: Option<&str>,
+) -> Result<(), AppError> {
+    let ty = MessageType::from_text(message_type.unwrap_or("TEXT"));
+    if matches!(ty, MessageType::Text | MessageType::System) {
+        if content.is_none_or(|value| value.trim().is_empty()) {
+            return Err(AppError::BadRequest(
+                "message content cannot be blank".to_string(),
+            ));
+        }
+        if content.unwrap_or_default().chars().count() > 2000 {
+            return Err(AppError::BadRequest(
+                "message content cannot exceed 2000 characters".to_string(),
+            ));
+        }
+    } else if media_url.is_none_or(|value| value.trim().is_empty()) {
+        return Err(AppError::BadRequest("mediaUrl cannot be blank".to_string()));
+    }
+    Ok(())
+}
+
+fn build_message(
+    config: &AppConfig,
+    identity: &Identity,
+    receiver_id: Option<i64>,
+    group_id: Option<i64>,
+    client_message_id: Option<String>,
+    message_type: Option<String>,
+    content: Option<String>,
+    media_url: Option<String>,
+    media_size: Option<i64>,
+    media_name: Option<String>,
+    thumbnail_url: Option<String>,
+    duration: Option<i32>,
+) -> MessageDto {
+    let id = ids::next_id(config.snowflake_node_id).to_string();
+    let now = time::now_iso();
+    let ty = MessageType::from_text(message_type.as_deref().unwrap_or("TEXT"));
+    MessageDto {
+        id: id.clone(),
+        message_id: id,
+        client_message_id: client_message_id
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        sender_id: identity.user_id.to_string(),
+        sender_name: Some(identity.username.clone()),
+        sender_avatar: None,
+        receiver_id: receiver_id.map(|value| value.to_string()),
+        receiver_name: None,
+        group_id: group_id.map(|value| value.to_string()),
+        group_name: None,
+        group_avatar: None,
+        is_group_chat: group_id.is_some(),
+        is_group: group_id.is_some(),
+        message_type: ty.as_str().to_string(),
+        content,
+        media_url,
+        media_size,
+        media_name,
+        thumbnail_url,
+        duration,
+        location_info: None,
+        status: MessageStatus::Sent.as_str().to_string(),
+        reply_to_message_id: None,
+        created_time: now.clone(),
+        created_at: now,
+        updated_time: None,
+        updated_at: None,
+    }
+}
+
+fn build_message_created_event(conversation_id: &str, message: &MessageDto) -> ImEvent {
+    let mut event = ImEvent::new(ImEventType::MessageCreated, conversation_id.to_string());
+    event.message_id = Some(message.id.clone());
+    event.sender_id = Some(message.sender_id.clone());
+    event.receiver_id = message.receiver_id.clone();
+    event.group_id = message.group_id.clone();
+    event.group = message.is_group_chat;
+    event.payload = Some(message.clone());
+    event
+}
+
+async fn write_message_hot(
+    redis: &mut ConnectionManager,
+    conversation_id: &str,
+    message: &MessageDto,
+    event: &ImEvent,
+    recipients: &[i64],
+) -> Result<MessageDto, AppError> {
+    let message_id = message
+        .id
+        .parse::<i64>()
+        .map_err(|_| AppError::BadRequest("invalid message id".to_string()))?;
+    let event_json = serde_json::to_string(event)?;
+    let message_json = serde_json::to_string(message)?;
+    let client_key = message
+        .client_message_id
+        .as_deref()
+        .map(|client_id| {
+            keys::client_message_key(
+                message.sender_id.parse::<i64>().unwrap_or_default(),
+                client_id,
+            )
+        })
+        .unwrap_or_else(|| format!("im:client:none:{message_id}"));
+    let script = Script::new(
+        r#"
+        local existing_id = redis.call('GET', KEYS[1])
+        if existing_id then
+          local existing_message = redis.call('GET', ARGV[14] .. existing_id)
+          if existing_message then
+            return existing_message
+          end
+        end
+        redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+        redis.call('SET', KEYS[2], ARGV[3], 'EX', ARGV[4])
+        redis.call('ZADD', KEYS[3], ARGV[5], ARGV[1])
+        redis.call('EXPIRE', KEYS[3], ARGV[6])
+        redis.call('SET', KEYS[4], ARGV[3], 'EX', ARGV[6])
+        redis.call('ZADD', KEYS[5], ARGV[5], ARGV[15])
+        redis.call('SET', KEYS[6], ARGV[8], 'EX', ARGV[9])
+        local recipients = cjson.decode(ARGV[10])
+        for _, uid in ipairs(recipients) do
+          redis.call('ZADD', ARGV[11] .. uid .. ':convs', ARGV[5], ARGV[7])
+          redis.call('EXPIRE', ARGV[11] .. uid .. ':convs', ARGV[6])
+          if tostring(uid) ~= ARGV[12] then
+            redis.call('HINCRBY', ARGV[13] .. uid .. ':unread', ARGV[7], 1)
+            redis.call('EXPIRE', ARGV[13] .. uid .. ':unread', ARGV[6])
+          end
+        end
+        return ARGV[3]
+        "#,
+    );
+    let result: String = script
+        .key(client_key)
+        .key(keys::message_key(message_id))
+        .key(keys::conversation_messages_key(conversation_id))
+        .key(keys::conversation_last_key(conversation_id))
+        .key(keys::pending_events_key())
+        .key(keys::event_key(&event.event_id))
+        .arg(message.id.clone())
+        .arg((keys::MESSAGE_TTL_SECONDS * 2).to_string())
+        .arg(message_json)
+        .arg(keys::MESSAGE_TTL_SECONDS.to_string())
+        .arg(time::now_ms().to_string())
+        .arg(keys::CONVERSATION_TTL_SECONDS.to_string())
+        .arg(conversation_id)
+        .arg(event_json)
+        .arg(keys::EVENT_TTL_SECONDS.to_string())
+        .arg(serde_json::to_string(recipients)?)
+        .arg("im:user:")
+        .arg(message.sender_id.clone())
+        .arg("im:user:")
+        .arg("im:msg:")
+        .arg(event.event_id.clone())
+        .invoke_async(redis)
+        .await?;
+    Ok(serde_json::from_str(&result)?)
+}
+
+async fn write_state_event(
+    redis: &mut ConnectionManager,
+    _conversation_id: &str,
+    event: &ImEvent,
+) -> Result<(), AppError> {
+    let event_json = serde_json::to_string(event)?;
+    let _: () = redis
+        .set_ex(
+            keys::event_key(&event.event_id),
+            event_json,
+            keys::EVENT_TTL_SECONDS,
+        )
+        .await?;
+    let _: () = redis
+        .zadd(keys::pending_events_key(), &event.event_id, time::now_ms())
+        .await?;
+    Ok(())
+}
+
+async fn load_message(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    message_id: i64,
+) -> Result<MessageDto, AppError> {
+    if let Some(raw) = redis
+        .get::<_, Option<String>>(keys::message_key(message_id))
+        .await
+        .ok()
+        .flatten()
+    {
+        return Ok(serde_json::from_str(&raw)?);
+    }
+    let row = sqlx::query(
+        r#"SELECT id, sender_id, receiver_id, group_id, client_message_id, message_type, content,
+                  media_url, media_size, media_name, thumbnail_url, duration, location_info,
+                  status, is_group_chat, reply_to_message_id, created_time, updated_time
+           FROM service_message_service_db.messages WHERE id = ?"#,
+    )
+    .bind(message_id)
+    .fetch_optional(db)
+    .await?;
+    let Some(row) = row else {
+        return Err(AppError::NotFound("message not found".to_string()));
+    };
+    Ok(message_from_row(&row))
+}
+
+async fn load_last_message(
+    redis: &mut ConnectionManager,
+    conversation_id: &str,
+) -> Option<MessageDto> {
+    redis
+        .get::<_, Option<String>>(keys::conversation_last_key(conversation_id))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|raw| serde_json::from_str::<MessageDto>(&raw).ok())
+}
+
+async fn load_history(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    conversation_id: &str,
+    query: HistoryQuery,
+) -> Result<Vec<MessageDto>, AppError> {
+    let limit = query.limit.or(query.size).unwrap_or(20).clamp(1, 100);
+    let hot_ids: Vec<String> = redis
+        .zrevrange(keys::conversation_messages_key(conversation_id), 0, 499)
+        .await
+        .unwrap_or_default();
+    let mut messages = Vec::new();
+    for id in hot_ids {
+        let Ok(message_id) = id.parse::<i64>() else {
+            continue;
+        };
+        let message = match load_message(redis, db, message_id).await {
+            Ok(message) => message,
+            Err(_) => continue,
+        };
+        if message.status == MessageStatus::Deleted.as_str() {
+            continue;
+        }
+        if let Some(after) = query.after_message_id {
+            if message_id <= after {
+                continue;
+            }
+        }
+        if let Some(before) = query.last_message_id {
+            if message_id >= before {
+                continue;
+            }
+        }
+        messages.push(message);
+        if messages.len() >= limit as usize {
+            break;
+        }
+    }
+    if messages.len() < limit as usize {
+        messages.extend(
+            load_history_from_db(db, conversation_id, &query, limit as usize + messages.len())
+                .await?,
+        );
+    }
+    messages.sort_by(|a, b| b.id.cmp(&a.id));
+    messages.dedup_by(|a, b| a.id == b.id);
+    messages.truncate(limit as usize);
+    Ok(messages)
+}
+
+async fn load_history_from_db(
+    db: &MySqlPool,
+    conversation_id: &str,
+    query: &HistoryQuery,
+    limit: usize,
+) -> Result<Vec<MessageDto>, AppError> {
+    let scope = parse_db_scope(conversation_id)?;
+    let mut sql = String::from(
+        "SELECT id, sender_id, receiver_id, group_id, client_message_id, message_type, content, \
+         media_url, media_size, media_name, thumbnail_url, duration, location_info, status, \
+         is_group_chat, reply_to_message_id, created_time, updated_time \
+         FROM service_message_service_db.messages WHERE status <> 5 AND ",
+    );
+    if let Some(group_id) = scope.group_id {
+        sql.push_str("is_group_chat = 1 AND group_id = ");
+        sql.push_str(&group_id.to_string());
+    } else {
+        sql.push_str("is_group_chat = 0 AND ((sender_id = ");
+        sql.push_str(&scope.left_id.to_string());
+        sql.push_str(" AND receiver_id = ");
+        sql.push_str(&scope.right_id.to_string());
+        sql.push_str(") OR (sender_id = ");
+        sql.push_str(&scope.right_id.to_string());
+        sql.push_str(" AND receiver_id = ");
+        sql.push_str(&scope.left_id.to_string());
+        sql.push_str("))");
+    }
+    if let Some(after) = query.after_message_id {
+        sql.push_str(" AND id > ");
+        sql.push_str(&after.to_string());
+        sql.push_str(" ORDER BY id ASC");
+    } else {
+        if let Some(before) = query.last_message_id {
+            sql.push_str(" AND id < ");
+            sql.push_str(&before.to_string());
+        }
+        sql.push_str(" ORDER BY id DESC");
+    }
+    sql.push_str(" LIMIT ");
+    sql.push_str(&limit.max(1).to_string());
+    let rows = sqlx::query(&sql).fetch_all(db).await?;
+    Ok(rows.iter().map(message_from_row).collect())
+}
+
+async fn latest_message_id(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    conversation_id: &str,
+) -> Result<Option<i64>, AppError> {
+    let ids: Vec<String> = redis
+        .zrevrange(keys::conversation_messages_key(conversation_id), 0, 0)
+        .await
+        .unwrap_or_default();
+    if let Some(id) = ids.first().and_then(|value| value.parse::<i64>().ok()) {
+        return Ok(Some(id));
+    }
+    let history = load_history_from_db(
+        db,
+        conversation_id,
+        &HistoryQuery {
+            page: None,
+            size: None,
+            limit: Some(1),
+            last_message_id: None,
+            after_message_id: None,
+        },
+        1,
+    )
+    .await?;
+    Ok(history
+        .first()
+        .and_then(|message| message.id.parse::<i64>().ok()))
+}
+
+async fn validate_friend(db: &MySqlPool, user_id: i64, friend_id: i64) -> Result<(), AppError> {
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM service_user_service_db.im_friend WHERE user_id = ? AND friend_id = ? AND status = 1",
+    )
+    .bind(user_id)
+    .bind(friend_id)
+    .fetch_one(db)
+    .await?;
+    if count <= 0 {
+        return Err(AppError::Forbidden(
+            "friend relationship not found".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+async fn validate_group_member(
+    db: &MySqlPool,
+    group_id: i64,
+    user_id: i64,
+) -> Result<(), AppError> {
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM service_group_service_db.im_group_member WHERE group_id = ? AND user_id = ? AND status = 1",
+    )
+    .bind(group_id)
+    .bind(user_id)
+    .fetch_one(db)
+    .await?;
+    if count <= 0 {
+        return Err(AppError::Forbidden(
+            "group membership not found".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+async fn load_group_members(db: &MySqlPool, group_id: i64) -> Result<Vec<i64>, AppError> {
+    let rows: Vec<i64> = sqlx::query_scalar(
+        "SELECT user_id FROM service_group_service_db.im_group_member WHERE group_id = ? AND status = 1",
+    )
+    .bind(group_id)
+    .fetch_all(db)
+    .await?;
+    Ok(rows)
+}
+
+fn conversation_id_from_message(message: &MessageDto) -> Result<String, AppError> {
+    if message.is_group_chat {
+        let group_id = message
+            .group_id
+            .as_deref()
+            .ok_or_else(|| AppError::BadRequest("message groupId missing".to_string()))?;
+        Ok(keys::group_conversation_id(group_id.parse().map_err(
+            |_| AppError::BadRequest("invalid groupId".to_string()),
+        )?))
+    } else {
+        let receiver_id = message
+            .receiver_id
+            .as_deref()
+            .ok_or_else(|| AppError::BadRequest("message receiverId missing".to_string()))?;
+        Ok(keys::private_conversation_id(
+            message
+                .sender_id
+                .parse()
+                .map_err(|_| AppError::BadRequest("invalid senderId".to_string()))?,
+            receiver_id
+                .parse()
+                .map_err(|_| AppError::BadRequest("invalid receiverId".to_string()))?,
+        ))
+    }
+}
+
+fn within_recall_window(message: &MessageDto) -> bool {
+    DateTime::parse_from_rfc3339(&message.created_time)
+        .map(|created| {
+            Utc::now()
+                .signed_duration_since(created.with_timezone(&Utc))
+                .num_seconds()
+                <= 120
+        })
+        .unwrap_or(true)
+}
+
+fn deserialize_i64<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::Number(number) => number
+            .as_i64()
+            .or_else(|| number.as_u64().map(|item| item as i64))
+            .ok_or_else(|| de::Error::custom("invalid integer")),
+        serde_json::Value::String(text) => text
+            .trim()
+            .parse()
+            .map_err(|_| de::Error::custom("invalid integer")),
+        _ => Err(de::Error::custom("invalid integer")),
+    }
+}
+
+struct ConversationTarget {
+    conversation_id: String,
+    frontend_conversation_id: String,
+    peer_id: Option<i64>,
+    group_id: Option<i64>,
+}
+
+fn parse_conversation_target(user_id: i64, raw: &str) -> Result<ConversationTarget, AppError> {
+    let value = raw.trim();
+    if let Some(group) = value.strip_prefix("group_") {
+        let group_id = group
+            .parse()
+            .map_err(|_| AppError::BadRequest("invalid group conversation".to_string()))?;
+        return Ok(ConversationTarget {
+            conversation_id: keys::group_conversation_id(group_id),
+            frontend_conversation_id: format!("group_{group_id}"),
+            peer_id: None,
+            group_id: Some(group_id),
+        });
+    }
+    if let Some(group) = value.strip_prefix("g_") {
+        let group_id = group
+            .parse()
+            .map_err(|_| AppError::BadRequest("invalid group conversation".to_string()))?;
+        return Ok(ConversationTarget {
+            conversation_id: keys::group_conversation_id(group_id),
+            frontend_conversation_id: format!("group_{group_id}"),
+            peer_id: None,
+            group_id: Some(group_id),
+        });
+    }
+    let peer_id = if value.contains('_') {
+        value
+            .split('_')
+            .filter_map(|part| part.parse::<i64>().ok())
+            .find(|id| *id != user_id)
+            .ok_or_else(|| AppError::BadRequest("invalid private conversation".to_string()))?
+    } else {
+        value
+            .parse()
+            .map_err(|_| AppError::BadRequest("invalid private conversation".to_string()))?
+    };
+    Ok(ConversationTarget {
+        conversation_id: keys::private_conversation_id(user_id, peer_id),
+        frontend_conversation_id: keys::private_conversation_id(user_id, peer_id)
+            .trim_start_matches("p_")
+            .to_string(),
+        peer_id: Some(peer_id),
+        group_id: None,
+    })
+}
+
+struct DbScope {
+    left_id: i64,
+    right_id: i64,
+    group_id: Option<i64>,
+}
+
+fn parse_db_scope(conversation_id: &str) -> Result<DbScope, AppError> {
+    if let Some(group) = conversation_id.strip_prefix("g_") {
+        return Ok(DbScope {
+            left_id: 0,
+            right_id: 0,
+            group_id: Some(
+                group
+                    .parse()
+                    .map_err(|_| AppError::BadRequest("invalid group conversation".to_string()))?,
+            ),
+        });
+    }
+    let parts = conversation_id
+        .strip_prefix("p_")
+        .unwrap_or(conversation_id)
+        .split('_')
+        .collect::<Vec<_>>();
+    if parts.len() != 2 {
+        return Err(AppError::BadRequest(
+            "invalid private conversation".to_string(),
+        ));
+    }
+    Ok(DbScope {
+        left_id: parts[0]
+            .parse()
+            .map_err(|_| AppError::BadRequest("invalid private conversation".to_string()))?,
+        right_id: parts[1]
+            .parse()
+            .map_err(|_| AppError::BadRequest("invalid private conversation".to_string()))?,
+        group_id: None,
+    })
+}
+
+fn message_from_row(row: &sqlx::mysql::MySqlRow) -> MessageDto {
+    let id: i64 = row.get("id");
+    let sender_id: i64 = row.get("sender_id");
+    let receiver_id: Option<i64> = row.try_get("receiver_id").ok().flatten();
+    let group_id: Option<i64> = row.try_get("group_id").ok().flatten();
+    let message_type: i32 = row.get("message_type");
+    let status: i32 = row.get("status");
+    let created: chrono::NaiveDateTime = row.get("created_time");
+    let updated: chrono::NaiveDateTime = row.get("updated_time");
+    MessageDto {
+        id: id.to_string(),
+        message_id: id.to_string(),
+        client_message_id: row
+            .try_get::<Option<String>, _>("client_message_id")
+            .ok()
+            .flatten(),
+        sender_id: sender_id.to_string(),
+        sender_name: None,
+        sender_avatar: None,
+        receiver_id: receiver_id.map(|value| value.to_string()),
+        receiver_name: None,
+        group_id: group_id.map(|value| value.to_string()),
+        group_name: None,
+        group_avatar: None,
+        is_group_chat: row.try_get::<i8, _>("is_group_chat").unwrap_or(0) != 0,
+        is_group: row.try_get::<i8, _>("is_group_chat").unwrap_or(0) != 0,
+        message_type: match message_type {
+            2 => "IMAGE",
+            3 => "FILE",
+            4 => "VOICE",
+            5 => "VIDEO",
+            7 => "SYSTEM",
+            _ => "TEXT",
+        }
+        .to_string(),
+        content: row.try_get::<Option<String>, _>("content").ok().flatten(),
+        media_url: row.try_get::<Option<String>, _>("media_url").ok().flatten(),
+        media_size: row.try_get::<Option<i64>, _>("media_size").ok().flatten(),
+        media_name: row
+            .try_get::<Option<String>, _>("media_name")
+            .ok()
+            .flatten(),
+        thumbnail_url: row
+            .try_get::<Option<String>, _>("thumbnail_url")
+            .ok()
+            .flatten(),
+        duration: row.try_get::<Option<i32>, _>("duration").ok().flatten(),
+        location_info: row
+            .try_get::<Option<String>, _>("location_info")
+            .ok()
+            .flatten(),
+        status: match status {
+            2 => "DELIVERED",
+            3 => "READ",
+            4 => "RECALLED",
+            5 => "DELETED",
+            _ => "SENT",
+        }
+        .to_string(),
+        reply_to_message_id: row
+            .try_get::<Option<i64>, _>("reply_to_message_id")
+            .ok()
+            .flatten()
+            .map(|value| value.to_string()),
+        created_time: created.and_utc().to_rfc3339(),
+        created_at: created.and_utc().to_rfc3339(),
+        updated_time: Some(updated.and_utc().to_rfc3339()),
+        updated_at: Some(updated.and_utc().to_rfc3339()),
+    }
+}
+
+async fn conversation_from_message(
+    db: &MySqlPool,
+    user_id: i64,
+    _conversation_id: &str,
+    message: MessageDto,
+    unread: i64,
+) -> Result<Option<ConversationDto>, AppError> {
+    if message.is_group_chat {
+        let group_id = message
+            .group_id
+            .as_deref()
+            .and_then(|value| value.parse::<i64>().ok())
+            .unwrap_or_default();
+        let row =
+            sqlx::query("SELECT name, avatar FROM service_group_service_db.im_group WHERE id = ?")
+                .bind(group_id)
+                .fetch_optional(db)
+                .await?;
+        let name: Option<String> = row.as_ref().and_then(|row| row.try_get("name").ok());
+        let avatar: Option<String> = row.as_ref().and_then(|row| row.try_get("avatar").ok());
+        return Ok(Some(ConversationDto {
+            conversation_id: group_id.to_string(),
+            conversation_type: 2,
+            target_id: group_id.to_string(),
+            conversation_name: name.unwrap_or_else(|| group_id.to_string()),
+            conversation_avatar: avatar,
+            last_message: message.content.clone().unwrap_or_default(),
+            last_message_type: message.message_type.clone(),
+            last_message_sender_id: Some(message.sender_id.clone()),
+            last_message_sender_name: message.sender_name.clone(),
+            last_message_time: Some(message.created_time.clone()),
+            unread_count: unread,
+            is_online: false,
+            is_pinned: false,
+            is_muted: false,
+        }));
+    }
+    let peer = if message.sender_id == user_id.to_string() {
+        message.receiver_id.clone()
+    } else {
+        Some(message.sender_id.clone())
+    };
+    let Some(peer) = peer else { return Ok(None) };
+    let peer_id = peer.parse::<i64>().unwrap_or_default();
+    let row = sqlx::query(
+        "SELECT username, nickname, avatar FROM service_user_service_db.users WHERE id = ?",
+    )
+    .bind(peer_id)
+    .fetch_optional(db)
+    .await?;
+    let username: Option<String> = row.as_ref().and_then(|row| row.try_get("username").ok());
+    let nickname: Option<String> = row.as_ref().and_then(|row| row.try_get("nickname").ok());
+    let avatar: Option<String> = row.as_ref().and_then(|row| row.try_get("avatar").ok());
+    Ok(Some(ConversationDto {
+        conversation_id: peer.clone(),
+        conversation_type: 1,
+        target_id: peer.clone(),
+        conversation_name: nickname.or(username).unwrap_or(peer),
+        conversation_avatar: avatar,
+        last_message: message.content.clone().unwrap_or_default(),
+        last_message_type: message.message_type.clone(),
+        last_message_sender_id: Some(message.sender_id.clone()),
+        last_message_sender_name: message.sender_name.clone(),
+        last_message_time: Some(message.created_time.clone()),
+        unread_count: unread,
+        is_online: false,
+        is_pinned: false,
+        is_muted: false,
+    }))
+}
+
+async fn load_conversations_from_db(
+    db: &MySqlPool,
+    user_id: i64,
+) -> Result<Vec<ConversationDto>, AppError> {
+    let rows = sqlx::query(
+        r#"SELECT * FROM service_message_service_db.messages
+           WHERE status <> 5 AND (
+             (is_group_chat = 0 AND (sender_id = ? OR receiver_id = ?))
+             OR (is_group_chat = 1 AND group_id IN (
+               SELECT group_id FROM service_group_service_db.im_group_member WHERE user_id = ? AND status = 1
+             ))
+           )
+           ORDER BY id DESC LIMIT 300"#,
+    )
+    .bind(user_id)
+    .bind(user_id)
+    .bind(user_id)
+    .fetch_all(db)
+    .await?;
+    let mut seen = std::collections::HashSet::new();
+    let mut result = Vec::new();
+    for row in rows {
+        let message = message_from_row(&row);
+        let conversation_id = conversation_id_from_message(&message)?;
+        if !seen.insert(conversation_id.clone()) {
+            continue;
+        }
+        if let Some(conversation) =
+            conversation_from_message(db, user_id, &conversation_id, message, 0).await?
+        {
+            result.push(conversation);
+        }
+    }
+    Ok(result)
+}

@@ -1,33 +1,3 @@
-x-java-service-env: &java-service-env
-  TZ: Asia/Shanghai
-  SPRING_PROFILES_ACTIVE: sit
-  SPRING_CONFIG_ADDITIONAL_LOCATION: classpath:/sit/
-  JWT_SECRET: "${JWT_SECRET:-im-access-secret-im-access-secret-im-access-secret-im-access-secret}"
-  AUTH_REFRESH_SECRET: "${AUTH_REFRESH_SECRET:-im-refresh-secret-im-refresh-secret-im-refresh-secret-im-refresh-secret}"
-  IM_AUTH_SERVICE_URL: "${IM_AUTH_SERVICE_URL:-http://im-auth-service:8084}"
-  IM_SERVER_URL: "${IM_SERVER_URL:-http://im-server:8083}"
-  IM_INTERNAL_SECRET: "${IM_INTERNAL_SECRET:-im-internal-secret-im-internal-secret-im-internal-secret-im}"
-  IM_GATEWAY_AUTH_SECRET: "${IM_GATEWAY_AUTH_SECRET:-im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret}"
-  IM_MYSQL_HOST: "${IM_MYSQL_HOST:-im-mysql}"
-  IM_MYSQL_PORT: "${IM_MYSQL_PORT:-3306}"
-  IM_MYSQL_USERNAME: "${IM_MYSQL_USERNAME:-root}"
-  IM_MYSQL_PASSWORD: "${IM_MYSQL_PASSWORD:-root123}"
-  IM_REDIS_HOST: "${IM_REDIS_HOST:-im-redis}"
-  IM_REDIS_PORT: "${IM_REDIS_PORT:-6379}"
-  SPRING_DATA_REDIS_PASSWORD: "${SPRING_DATA_REDIS_PASSWORD:-root123}"
-  IM_NACOS_SERVER_ADDR: "${IM_NACOS_SERVER_ADDR:-im-nacos:8848}"
-  IM_KAFKA_BOOTSTRAP_SERVERS: "${IM_KAFKA_BOOTSTRAP_SERVERS:-im-kafka:29092}"
-  IM_SERVER_ROUTE_URI: "${IM_SERVER_ROUTE_URI:-http://im-server:8083}"
-  IM_SERVER_WS_ROUTE_URI: "${IM_SERVER_WS_ROUTE_URI:-ws://im-server:8083}"
-  IM_LOGGING_ROOT_DIR: "${IM_LOGGING_ROOT_DIR:-/var/log/im-project}"
-
-x-java-service: &java-service
-  restart: unless-stopped
-  networks:
-    - im-sit-network
-  environment:
-    <<: *java-service-env
-
 services:
   im-mysql:
     image: mysql:8.0.39
@@ -44,8 +14,8 @@ services:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ../../backend/sql/mysql8/init_all.sql:/docker-entrypoint-initdb.d/01-init_all.sql:ro
-      - ${HOST_LOG_ROOT}/im-mysql:/var/log/mysql
+      - ../../sql/mysql8/init_all.sql:/docker-entrypoint-initdb.d/01-init_all.sql:ro
+      - ${HOST_LOG_ROOT:-../../logs/sit}/im-mysql:/var/log/mysql
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 10s
@@ -70,7 +40,7 @@ services:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
-      - ${HOST_LOG_ROOT}/im-redis:/var/log/redis
+      - ${HOST_LOG_ROOT:-../../logs/sit}/im-redis:/var/log/redis
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
       interval: 10s
@@ -79,336 +49,100 @@ services:
     networks:
       - im-sit-network
 
-  im-nacos:
-    image: nacos/nacos-server:v2.4.2-slim
-    restart: unless-stopped
-    environment:
-      TZ: Asia/Shanghai
-      MODE: standalone
-      PREFER_HOST_MODE: hostname
-      NACOS_AUTH_ENABLE: "false"
-      JVM_XMS: 256m
-      JVM_XMX: 256m
-      JVM_XMN: 128m
-    ports:
-      - "${NACOS_PORT:-8848}:8848"
+  im-files-init:
+    image: alpine:3.20
+    restart: "no"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        mkdir -p /data/im-files
+        chown -R 10001:10001 /data/im-files
     volumes:
-      - nacos_data:/home/nacos/data
-      - ${HOST_LOG_ROOT}/im-nacos:/home/nacos/logs
+      - im_files:/data/im-files
     networks:
       - im-sit-network
 
-  im-kafka:
-    image: apache/kafka:3.7.0
-    restart: unless-stopped
-    environment:
-      TZ: Asia/Shanghai
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://im-kafka:29092,EXTERNAL://localhost:${KAFKA_PORT:-9092}
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@im-kafka:9093
-      KAFKA_CLUSTER_ID: 5L6g3nShT-eMCtK--X86sw
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-    ports:
-      - "${KAFKA_PORT:-9092}:9092"
-    volumes:
-      - ${HOST_LOG_ROOT}/im-kafka:/opt/kafka/logs
-    networks:
-      - im-sit-network
-
-  admin-es:
-    image: elasticsearch:8.10.4
-    restart: unless-stopped
-    environment:
-      TZ: Asia/Shanghai
-      discovery.type: single-node
-      xpack.security.enabled: "false"
-      ES_JAVA_OPTS: -Xms512m -Xmx512m
-    ports:
-      - "${ELASTICSEARCH_PORT:-9200}:9200"
-    volumes:
-      - es_data:/usr/share/elasticsearch/data
-      - ${HOST_LOG_ROOT}/admin-es:/usr/share/elasticsearch/logs
-    networks:
-      - im-sit-network
-
-  admin-kibana:
-    image: kibana:8.10.4
-    restart: unless-stopped
-    depends_on:
-      admin-es:
-        condition: service_started
-    environment:
-      TZ: Asia/Shanghai
-      ELASTICSEARCH_HOSTS: http://admin-es:9200
-    ports:
-      - "${KIBANA_PORT:-5601}:5601"
-    volumes:
-      - ${HOST_LOG_ROOT}/admin-kibana:/usr/share/kibana/logs
-    networks:
-      - im-sit-network
-
-  admin-filebeat:
-    image: docker.elastic.co/beats/filebeat:8.10.4
-    restart: unless-stopped
-    depends_on:
-      im-kafka:
-        condition: service_started
-    user: root
-    command: filebeat -e -strict.perms=false
-    volumes:
-      - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - ${HOST_LOG_ROOT}:/home/project/log:ro
-      - ${HOST_LOG_ROOT}/admin-filebeat:/usr/share/filebeat/logs
-    networks:
-      - im-sit-network
-
-  im-auth-service:
-    restart: unless-stopped
-    networks:
-      - im-sit-network
-    image: im-project-sit/im-auth-service:latest
+  im-server:
+    image: im-project-sit/im-server:latest
     build:
-      context: ../../backend/auth-rs
+      context: ../../backend
+      dockerfile: im-server-rs/Dockerfile
       args:
         IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
+    restart: unless-stopped
     depends_on:
       im-redis:
         condition: service_healthy
     environment:
       TZ: Asia/Shanghai
-      AUTH_RS_PORT: "8084"
+      IM_SERVER_RS_PORT: "8083"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
+      IM_AUTH_SERVICE_URL: "${IM_AUTH_SERVICE_URL:-http://im-api-server:8082}"
+      IM_GROUP_SERVICE_URL: "${IM_GROUP_SERVICE_URL:-http://127.0.0.1:9}"
+      IM_INTERNAL_SECRET: "${IM_INTERNAL_SECRET:-im-internal-secret-im-internal-secret-im-internal-secret-im}"
+      IM_GATEWAY_AUTH_SECRET: "${IM_GATEWAY_AUTH_SECRET:-im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret}"
+      IM_INSTANCE_ID: "${IM_INSTANCE_ID:-im-server:8083}"
+      IM_INTERNAL_HTTP_URL: "${IM_INTERNAL_HTTP_URL:-http://im-server:8083}"
+      IM_INTERNAL_WS_URL: "${IM_INTERNAL_WS_URL:-ws://im-server:8083}"
+    ports:
+      - "${IM_SERVER_PORT:-8083}:8083"
+    networks:
+      - im-sit-network
+
+  im-api-server:
+    image: im-project-sit/im-api-server:latest
+    build:
+      context: ../../backend
+      dockerfile: api-server-rs/Dockerfile
+      args:
+        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
+    restart: unless-stopped
+    depends_on:
+      im-mysql:
+        condition: service_healthy
+      im-redis:
+        condition: service_healthy
+      im-files-init:
+        condition: service_completed_successfully
+      im-server:
+        condition: service_started
+    environment:
+      TZ: Asia/Shanghai
+      RUST_LOG: "${API_SERVER_RUST_LOG:-api_server_rs=info,tower_http=info,sqlx::query=debug}"
+      API_SERVER_RS_PORT: "8082"
+      MYSQL_URL: "mysql://root:${MYSQL_ROOT_PASSWORD:-root123}@im-mysql:3306/service_message_service_db"
       REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
       JWT_SECRET: "${JWT_SECRET:-im-access-secret-im-access-secret-im-access-secret-im-access-secret}"
       AUTH_REFRESH_SECRET: "${AUTH_REFRESH_SECRET:-im-refresh-secret-im-refresh-secret-im-refresh-secret-im-refresh-secret}"
       IM_INTERNAL_SECRET: "${IM_INTERNAL_SECRET:-im-internal-secret-im-internal-secret-im-internal-secret-im}"
       IM_GATEWAY_AUTH_SECRET: "${IM_GATEWAY_AUTH_SECRET:-im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret}"
-    ports:
-      - "${AUTH_SERVICE_PORT:-8084}:8084"
-
-  im-user-service:
-    <<: *java-service
-    image: im-project-sit/im-user-service:latest
-    build:
-      context: ../../backend/user-service
-      args:
-        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
-    depends_on:
-      im-mysql:
-        condition: service_healthy
-      im-redis:
-        condition: service_healthy
-      im-kafka:
-        condition: service_started
-      im-nacos:
-        condition: service_started
-    ports:
-      - "${USER_SERVICE_PORT:-8085}:8085"
-    volumes:
-      - ${HOST_LOG_ROOT}/im-user-service:/var/log/im-project
-
-  im-group-service:
-    <<: *java-service
-    image: im-project-sit/im-group-service:latest
-    build:
-      context: ../../backend/group-service
-      args:
-        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
-    depends_on:
-      im-mysql:
-        condition: service_healthy
-      im-redis:
-        condition: service_healthy
-      im-kafka:
-        condition: service_started
-      im-nacos:
-        condition: service_started
-    ports:
-      - "${GROUP_SERVICE_PORT:-8086}:8086"
-    volumes:
-      - ${HOST_LOG_ROOT}/im-group-service:/var/log/im-project
-
-  im-message-service:
-    <<: *java-service
-    image: im-project-sit/im-message-service:latest
-    build:
-      context: ../../backend/message-service
-      args:
-        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
-    depends_on:
-      im-mysql:
-        condition: service_healthy
-      im-redis:
-        condition: service_healthy
-      im-nacos:
-        condition: service_started
-    ports:
-      - "${MESSAGE_SERVICE_PORT:-8087}:8087"
-    volumes:
-      - ${HOST_LOG_ROOT}/im-message-service:/var/log/im-project
-
-  im-file-service:
-    <<: *java-service
-    image: im-project-sit/im-file-service:latest
-    build:
-      context: ../../backend/file-service
-      args:
-        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
-    depends_on:
-      im-mysql:
-        condition: service_healthy
-      im-redis:
-        condition: service_healthy
-      im-kafka:
-        condition: service_started
-      im-nacos:
-        condition: service_started
-    environment:
-      <<: *java-service-env
-      IM_STORAGE_LOCAL_BASE_DIR: "${IM_STORAGE_LOCAL_BASE_DIR:-/data/im-files}"
-      IM_COS_ENABLED: "${IM_COS_ENABLED:-false}"
-      IM_COS_HTTPS: "${IM_COS_HTTPS:-true}"
-      IM_COS_SECRET_ID: "${IM_COS_SECRET_ID:-}"
-      IM_COS_SECRET_KEY: "${IM_COS_SECRET_KEY:-}"
-      IM_COS_REGION: "${IM_COS_REGION:-}"
-      IM_COS_BUCKET: "${IM_COS_BUCKET:-}"
-      IM_COS_PUBLIC_DOMAIN: "${IM_COS_PUBLIC_DOMAIN:-}"
-      IM_COS_PATH_PREFIX: "${IM_COS_PATH_PREFIX:-im}"
-    ports:
-      - "${FILE_SERVICE_PORT:-8088}:8088"
-    volumes:
-      - ${HOST_LOG_ROOT}/im-file-service:/var/log/im-project
-      - im_files:/data/im-files
-
-  im-server:
-    restart: unless-stopped
-    networks:
-      - im-sit-network
-    image: im-project-sit/im-server:latest
-    build:
-      context: ../../backend/im-server-rs
-      args:
-        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
-    depends_on:
-      im-redis:
-        condition: service_healthy
-      im-kafka:
-        condition: service_started
-      im-auth-service:
-        condition: service_started
-      im-group-service:
-        condition: service_started
-    environment:
-      TZ: Asia/Shanghai
-      IM_SERVER_RS_PORT: "8083"
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
-      IM_AUTH_SERVICE_URL: "${IM_AUTH_SERVICE_URL:-http://im-auth-service:8084}"
-      IM_GROUP_SERVICE_URL: "${IM_GROUP_SERVICE_URL:-http://im-group-service:8086}"
-      IM_INTERNAL_SECRET: "${IM_INTERNAL_SECRET:-im-internal-secret-im-internal-secret-im-internal-secret-im}"
-      IM_GATEWAY_AUTH_SECRET: "${IM_GATEWAY_AUTH_SECRET:-im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret}"
-      IM_KAFKA_BOOTSTRAP_SERVERS: "${IM_KAFKA_BOOTSTRAP_SERVERS:-im-kafka:29092}"
-      IM_INSTANCE_ID: "${IM_INSTANCE_ID:-im-server:8083}"
-    ports:
-      - "${IM_SERVER_PORT:-8083}:8083"
-
-  im-registry-monitor:
-    <<: *java-service
-    image: im-project-sit/im-registry-monitor:latest
-    build:
-      context: ../../backend/registry-monitor
-      args:
-        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
-    depends_on:
-      im-mysql:
-        condition: service_healthy
-      im-redis:
-        condition: service_healthy
-      im-kafka:
-        condition: service_started
-      im-nacos:
-        condition: service_started
-    environment:
-      <<: *java-service-env
-      IM_REGISTRY_MONITOR_NACOS_BASE_URL: "${IM_REGISTRY_MONITOR_NACOS_BASE_URL:-http://im-nacos:8848/nacos}"
-    ports:
-      - "${REGISTRY_MONITOR_PORT:-8090}:8090"
-    volumes:
-      - ${HOST_LOG_ROOT}/im-registry-monitor:/var/log/im-project
-
-  im-log-service:
-    <<: *java-service
-    image: im-project-sit/im-log-service:latest
-    build:
-      context: ../../backend/log-service
-      args:
-        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
-    depends_on:
-      im-mysql:
-        condition: service_healthy
-      im-redis:
-        condition: service_healthy
-      im-kafka:
-        condition: service_started
-      im-nacos:
-        condition: service_started
-      admin-es:
-        condition: service_started
-    environment:
-      <<: *java-service-env
-      IM_ES_URIS: "${IM_ES_URIS:-http://admin-es:9200}"
-    ports:
-      - "${LOG_SERVICE_PORT:-8091}:8091"
-    volumes:
-      - ${HOST_LOG_ROOT}/im-log-service:/var/log/im-project
-
-  im-gateway:
-    <<: *java-service
-    image: im-project-sit/im-gateway:latest
-    build:
-      context: ../../backend/gateway
-      args:
-        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
-    depends_on:
-      im-redis:
-        condition: service_healthy
-      im-nacos:
-        condition: service_started
-      im-auth-service:
-        condition: service_started
-      im-user-service:
-        condition: service_started
-      im-group-service:
-        condition: service_started
-      im-message-service:
-        condition: service_started
-      im-file-service:
-        condition: service_started
-      im-server:
-        condition: service_started
-    environment:
-      <<: *java-service-env
-      IM_GATEWAY_AUTH_SERVICE_URL: "${IM_GATEWAY_AUTH_SERVICE_URL:-http://im-auth-service:8084}"
-      IM_AUTH_ROUTE_URI: "${IM_AUTH_ROUTE_URI:-http://im-auth-service:8084}"
-      IM_ROUTE_AUTH_HOST: "${IM_ROUTE_AUTH_HOST:-im-auth-service}"
-      IM_ROUTE_USER_HOST: "${IM_ROUTE_USER_HOST:-im-user-service}"
-      IM_ROUTE_GROUP_HOST: "${IM_ROUTE_GROUP_HOST:-im-group-service}"
-      IM_ROUTE_MESSAGE_HOST: "${IM_ROUTE_MESSAGE_HOST:-im-message-service}"
-      IM_ROUTE_FILE_HOST: "${IM_ROUTE_FILE_HOST:-im-file-service}"
-      IM_ROUTE_IM_SERVER_HOST: "${IM_ROUTE_IM_SERVER_HOST:-im-server}"
+      IM_AUTH_SERVICE_URL: "${IM_AUTH_SERVICE_URL:-http://im-api-server:8082}"
+      IM_USER_SERVICE_URL: "${IM_USER_SERVICE_URL:-http://127.0.0.1:9}"
+      IM_GROUP_SERVICE_URL: "${IM_GROUP_SERVICE_URL:-http://127.0.0.1:9}"
+      IM_MESSAGE_SERVICE_URL: "${IM_MESSAGE_SERVICE_URL:-http://127.0.0.1:9}"
+      IM_FILE_SERVICE_URL: "${IM_FILE_SERVICE_URL:-http://im-api-server:8082}"
+      IM_LOG_SERVICE_URL: "${IM_LOG_SERVICE_URL:-http://127.0.0.1:9}"
+      IM_REGISTRY_SERVICE_URL: "${IM_REGISTRY_SERVICE_URL:-http://127.0.0.1:9}"
       IM_SERVER_ROUTE_URI: "${IM_SERVER_ROUTE_URI:-http://im-server:8083}"
       IM_SERVER_WS_ROUTE_URI: "${IM_SERVER_WS_ROUTE_URI:-ws://im-server:8083}"
+      IM_EVENT_STREAM_KEY: "${IM_EVENT_STREAM_KEY:-im:events}"
+      IM_EVENT_STREAM_MAX_LEN: "${IM_EVENT_STREAM_MAX_LEN:-100000}"
+      IM_EVENT_STREAM_BLOCK_MS: "${IM_EVENT_STREAM_BLOCK_MS:-1000}"
+      IM_PUSH_DISPATCHER_ENABLED: "${IM_PUSH_DISPATCHER_ENABLED:-true}"
+      IM_STORAGE_LOCAL_BASE_DIR: "${IM_STORAGE_LOCAL_BASE_DIR:-/data/im-files}"
+      IM_FILE_IMAGE_MAX_SIZE: "${IM_FILE_IMAGE_MAX_SIZE:-20971520}"
+      IM_FILE_FILE_MAX_SIZE: "${IM_FILE_FILE_MAX_SIZE:-536870912}"
+      IM_FILE_AUDIO_MAX_SIZE: "${IM_FILE_AUDIO_MAX_SIZE:-104857600}"
+      IM_FILE_VIDEO_MAX_SIZE: "${IM_FILE_VIDEO_MAX_SIZE:-1073741824}"
+      IM_FILE_AVATAR_MAX_SIZE: "${IM_FILE_AVATAR_MAX_SIZE:-5242880}"
+      IM_FILE_MULTIPART_MAX_BYTES: "${IM_FILE_MULTIPART_MAX_BYTES:-1082130432}"
     ports:
       - "${GATEWAY_PORT:-8082}:8082"
     volumes:
-      - ${HOST_LOG_ROOT}/im-gateway:/var/log/im-project
+      - im_files:/data/im-files
+    networks:
+      - im-sit-network
 
   im-frontend:
     image: im-project-sit/im-frontend:latest
@@ -419,14 +153,15 @@ services:
         IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
     restart: unless-stopped
     depends_on:
-      im-gateway:
+      im-api-server:
         condition: service_started
     environment:
       TZ: Asia/Shanghai
     ports:
       - "${FRONTEND_PORT:-80}:80"
     volumes:
-      - ${HOST_LOG_ROOT}/im-frontend:/var/log/nginx
+      - ${HOST_LOG_ROOT:-../../logs/sit}/im-frontend:/var/log/nginx
+      - im_files:/data/im-files:ro
     networks:
       - im-sit-network
 
@@ -438,6 +173,4 @@ networks:
 volumes:
   mysql_data:
   redis_data:
-  nacos_data:
-  es_data:
   im_files:

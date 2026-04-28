@@ -294,12 +294,13 @@ export const useWebSocketStore = defineStore("websocket", () => {
     return Array.from(ids);
   };
 
-  const requestWsTicket = async (): Promise<void> => {
+  const requestWsTicket = async (): Promise<string> => {
     const response = await authService.issueWsTicket();
     const ticket = response?.data?.ticket;
     if (!ticket) {
       throw new Error(response?.message || "Failed to issue websocket ticket");
     }
+    return ticket;
   };
 
   const connect = async (userId: string) => {
@@ -315,8 +316,8 @@ export const useWebSocketStore = defineStore("websocket", () => {
       }
 
       isConnecting.value = true;
-      await requestWsTicket();
-      socket.value = new WebSocket(createTicketedWebSocketUrl(userId));
+      const ticket = await requestWsTicket();
+      socket.value = new WebSocket(createTicketedWebSocketUrl(userId, ticket));
 
       socket.value.onopen = () => {
         isConnected.value = true;
@@ -449,6 +450,14 @@ export const useWebSocketStore = defineStore("websocket", () => {
         if (!isSelfMessage) {
           showMessageNotification(normalizedMessage);
         }
+        return;
+      }
+      case "MESSAGE_STATUS_CHANGED": {
+        if (!data.data) {
+          return;
+        }
+        const normalizedMessage = normalizeMessage(data.data as Record<string, unknown>);
+        await chatStore.addMessage(normalizedMessage);
         return;
       }
       case "ONLINE_STATUS":

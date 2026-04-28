@@ -1,3 +1,0 @@
-spring:
-  elasticsearch:
-    uris: ${IM_ES_URIS:http://admin-es:9200}

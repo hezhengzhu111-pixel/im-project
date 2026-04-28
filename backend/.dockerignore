@@ -1,8 +1,5 @@
-**/target/
-**/.idea/
-**/.settings/
-**/.classpath
-**/.project
-**/*.iml
-docs/
-scripts/
+target
+**/target
+.cargo-home
+.codex-cargo-home
+.git
