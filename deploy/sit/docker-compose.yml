@@ -6,7 +6,6 @@ services:
       - mysqld
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_0900_ai_ci
-      - --log-error=/var/log/mysql/error.log
     environment:
       TZ: Asia/Shanghai
       MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-root123}"
@@ -15,7 +14,6 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ../../sql/mysql8/init_all.sql:/docker-entrypoint-initdb.d/01-init_all.sql:ro
-      - ${HOST_LOG_ROOT:-../../logs/sit}/im-mysql:/var/log/mysql
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 10s
@@ -34,13 +32,10 @@ services:
       - "yes"
       - --requirepass
       - "${REDIS_PASSWORD:-root123}"
-      - --logfile
-      - /var/log/redis/redis-server.log
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
-      - ${HOST_LOG_ROOT:-../../logs/sit}/im-redis:/var/log/redis
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
       interval: 10s
@@ -109,7 +104,7 @@ services:
         condition: service_started
     environment:
       TZ: Asia/Shanghai
-      RUST_LOG: "${API_SERVER_RUST_LOG:-api_server_rs=info,tower_http=info,sqlx::query=debug}"
+      RUST_LOG: "${API_SERVER_RUST_LOG:-api_server_rs=info,tower_http=info,sqlx::query=trace}"
       API_SERVER_RS_PORT: "8082"
       MYSQL_URL: "mysql://root:${MYSQL_ROOT_PASSWORD:-root123}@im-mysql:3306/service_message_service_db"
       REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
@@ -129,6 +124,8 @@ services:
       IM_EVENT_STREAM_KEY: "${IM_EVENT_STREAM_KEY:-im:events}"
       IM_EVENT_STREAM_MAX_LEN: "${IM_EVENT_STREAM_MAX_LEN:-100000}"
       IM_EVENT_STREAM_BLOCK_MS: "${IM_EVENT_STREAM_BLOCK_MS:-1000}"
+      IM_WRITER_BATCH_SIZE: "${IM_WRITER_BATCH_SIZE:-500}"
+      IM_WRITER_FLUSH_INTERVAL_MS: "${IM_WRITER_FLUSH_INTERVAL_MS:-500}"
       IM_PUSH_DISPATCHER_ENABLED: "${IM_PUSH_DISPATCHER_ENABLED:-true}"
       IM_STORAGE_LOCAL_BASE_DIR: "${IM_STORAGE_LOCAL_BASE_DIR:-/data/im-files}"
       IM_FILE_IMAGE_MAX_SIZE: "${IM_FILE_IMAGE_MAX_SIZE:-20971520}"
@@ -160,7 +157,6 @@ services:
     ports:
       - "${FRONTEND_PORT:-80}:80"
     volumes:
-      - ${HOST_LOG_ROOT:-../../logs/sit}/im-frontend:/var/log/nginx
       - im_files:/data/im-files:ro
     networks:
       - im-sit-network

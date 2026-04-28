@@ -98,8 +98,8 @@ impl AppConfig {
             publisher_batch_size: env_usize("IM_PUBLISHER_BATCH_SIZE", 200),
             publisher_loop_interval_ms: env_u64("IM_PUBLISHER_LOOP_INTERVAL_MS", 50),
             writer_group_id: env_string("IM_MESSAGE_WRITER_GROUP_ID", "api-server-rs-writer"),
-            writer_batch_size: env_usize("IM_WRITER_BATCH_SIZE", 200),
-            writer_flush_interval_ms: env_u64("IM_WRITER_FLUSH_INTERVAL_MS", 100),
+            writer_batch_size: env_usize("IM_WRITER_BATCH_SIZE", 500),
+            writer_flush_interval_ms: env_u64("IM_WRITER_FLUSH_INTERVAL_MS", 500),
             writer_snowflake_node_id: env_u16("IM_WRITER_SNOWFLAKE_NODE_ID", 31),
             push_dispatcher_enabled: env_bool("IM_PUSH_DISPATCHER_ENABLED", true),
             push_dispatcher_group_id: env_string(

@@ -12,6 +12,7 @@ futures-util.workspace = true
 hmac.workspace = true
 im-rs-common = { path = "../common" }
 jsonwebtoken.workspace = true
+log.workspace = true
 mime_guess.workspace = true
 redis.workspace = true
 reqwest.workspace = true

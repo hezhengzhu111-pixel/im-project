@@ -17,9 +17,14 @@ mod web;
 use crate::config::AppConfig;
 use crate::web::AppState;
 use axum::extract::DefaultBodyLimit;
+use log::LevelFilter;
 use redis::aio::ConnectionManager;
+use sqlx::mysql::MySqlConnectOptions;
+use sqlx::ConnectOptions;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -28,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "api_server_rs=info,tower_http=info,sqlx::query=debug".into()),
+                .unwrap_or_else(|_| "api_server_rs=info,tower_http=info,sqlx::query=trace".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -37,9 +42,12 @@ async fn main() -> anyhow::Result<()> {
     tokio::fs::create_dir_all(&config.storage_base_dir).await?;
     let redis_client = redis::Client::open(config.redis_url.as_str())?;
     let redis = ConnectionManager::new(redis_client).await?;
+    let mysql_options = MySqlConnectOptions::from_str(&config.mysql_url)?
+        .log_statements(LevelFilter::Trace)
+        .log_slow_statements(LevelFilter::Warn, Duration::from_millis(500));
     let db = sqlx::mysql::MySqlPoolOptions::new()
         .max_connections(20)
-        .connect(&config.mysql_url)
+        .connect_with(mysql_options)
         .await?;
     let state = AppState {
         config: config.clone(),

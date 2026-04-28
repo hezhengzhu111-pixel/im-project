@@ -105,9 +105,6 @@ impl Processor {
                 }
             }
             ImEventType::MessageRead => {
-                if self.flush_messages().await? {
-                    self.last_flush = Instant::now();
-                }
                 self.enqueue_read(event);
                 if self.read_batch_len() >= self.config.writer_batch_size {
                     if self.flush_read_cursors().await? {
@@ -161,6 +158,7 @@ impl Processor {
         let mut tx = self.db.begin().await?;
         insert_messages(&mut tx, &messages).await?;
         tx.commit().await?;
+        tracing::debug!(count = messages.len(), "batch inserted messages");
 
         let mut watermarks: HashMap<String, i64> = HashMap::new();
         for message in &messages {
@@ -197,6 +195,11 @@ impl Processor {
         upsert_private_read_cursors(&mut tx, &private).await?;
         upsert_group_read_cursors(&mut tx, &group).await?;
         tx.commit().await?;
+        tracing::debug!(
+            private_count = private.len(),
+            group_count = group.len(),
+            "batch upserted read cursors"
+        );
         Ok(true)
     }
 
