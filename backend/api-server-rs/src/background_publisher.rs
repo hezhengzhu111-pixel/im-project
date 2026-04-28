@@ -1,4 +1,5 @@
 use crate::config::AppConfig;
+use crate::observability;
 use crate::redis_streams;
 use im_rs_common::event::ImEvent;
 use im_rs_common::{keys, time};
@@ -59,6 +60,10 @@ fn publish_due_events(config: &AppConfig, redis: &mut redis::Connection) -> anyh
         .arg(0)
         .arg(config.publisher_batch_size.max(1))
         .query(redis)?;
+    if !event_ids.is_empty() {
+        let backlog_count = redis.zcard(keys::pending_events_key()).ok();
+        observability::pending_events("publisher.due_events", event_ids.len(), backlog_count);
+    }
 
     let mut published = 0;
     for event_id in event_ids {

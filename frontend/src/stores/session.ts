@@ -281,6 +281,11 @@ export const useSessionStore = defineStore("session", () => {
           group.lastMessageTime || group.lastActivityAt || session.lastActiveTime,
       });
     });
+    if (currentSession.value?.type === "group") {
+      currentSession.value =
+        sessions.value.find((item) => item.id === currentSession.value?.id) ||
+        currentSession.value;
+    }
     syncUnreadCounts();
   };
 
