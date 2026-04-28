@@ -9,7 +9,9 @@ use axum::http::HeaderMap;
 use axum::Json;
 use chrono::NaiveDateTime;
 use im_rs_common::api::ApiResponse;
-use im_rs_common::ids;
+use im_rs_common::{ids, keys};
+use redis::aio::ConnectionManager;
+use redis::AsyncCommands;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use sqlx::{MySqlPool, Row};
@@ -308,16 +310,25 @@ pub async fn create_group(
     )
     .execute(&state.db)
     .await?;
-    for member_id in member_ids {
+    for member_id in &member_ids {
         add_group_member(
             &state.db,
             state.config.snowflake_node_id,
             group_id,
-            member_id,
-            if member_id == identity.user_id { 3 } else { 1 },
+            *member_id,
+            if *member_id == identity.user_id { 3 } else { 1 },
         )
         .await?;
     }
+    let mut redis = state.redis_manager.clone();
+    initialize_group_read_sequences(
+        &mut redis,
+        &state.db,
+        state.config.snowflake_node_id,
+        group_id,
+        &member_ids,
+    )
+    .await?;
     let group = load_group(&state.db, group_id).await?;
     Ok(Json(ApiResponse::success(group)))
 }
@@ -378,6 +389,15 @@ pub async fn join_group(
         group_id,
         identity.user_id,
         1,
+    )
+    .await?;
+    let mut redis = state.redis_manager.clone();
+    initialize_group_read_sequences(
+        &mut redis,
+        &state.db,
+        state.config.snowflake_node_id,
+        group_id,
+        &[identity.user_id],
     )
     .await?;
     refresh_group_member_count(&state.db, group_id).await?;
@@ -674,6 +694,67 @@ async fn add_group_member(
     .execute(db)
     .await?;
     Ok(())
+}
+
+async fn initialize_group_read_sequences(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    node_id: u16,
+    group_id: i64,
+    user_ids: &[i64],
+) -> Result<(), AppError> {
+    if user_ids.is_empty() {
+        return Ok(());
+    }
+    let sequence = current_group_sequence(redis, db, group_id).await?;
+    for user_id in user_ids {
+        sqlx::query(
+            r#"INSERT INTO service_message_service_db.group_read_cursor
+               (id, group_id, user_id, last_read_seq)
+               VALUES (?, ?, ?, ?)
+               ON DUPLICATE KEY UPDATE
+                 last_read_seq = GREATEST(last_read_seq, VALUES(last_read_seq)),
+                 last_read_at = CURRENT_TIMESTAMP,
+                 updated_time = CURRENT_TIMESTAMP"#,
+        )
+        .bind(ids::next_id(node_id))
+        .bind(group_id)
+        .bind(*user_id)
+        .bind(sequence)
+        .execute(db)
+        .await?;
+    }
+    let mut pipe = redis::pipe();
+    for user_id in user_ids {
+        pipe.set(keys::group_read_sequence_key(*user_id, group_id), sequence)
+            .ignore();
+    }
+    let result: redis::RedisResult<()> = pipe.query_async(redis).await;
+    result?;
+    Ok(())
+}
+
+async fn current_group_sequence(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    group_id: i64,
+) -> Result<i64, AppError> {
+    let key = keys::group_sequence_key(group_id);
+    if let Some(sequence) = redis.get::<_, Option<i64>>(&key).await.ok().flatten() {
+        return Ok(sequence.max(0));
+    }
+    let sequence: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(conversation_seq), 0) \
+         FROM service_message_service_db.messages \
+         WHERE is_group_chat = 1 AND group_id = ? AND status <> 5",
+    )
+    .bind(group_id)
+    .fetch_one(db)
+    .await?;
+    if sequence > 0 {
+        redis.set::<_, _, ()>(&key, sequence).await?;
+    }
+    Ok(sequence)
 }
 
 async fn refresh_group_member_count(db: &MySqlPool, group_id: i64) -> Result<(), AppError> {

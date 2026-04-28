@@ -12,8 +12,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const MYSQL_BIND_LIMIT: usize = 60_000;
-const MESSAGE_INSERT_BINDS: usize = 18;
-const READ_CURSOR_INSERT_BINDS: usize = 6;
+const MESSAGE_INSERT_BINDS: usize = 19;
+const PRIVATE_READ_CURSOR_INSERT_BINDS: usize = 6;
+const GROUP_READ_CURSOR_INSERT_BINDS: usize = 8;
 
 pub fn spawn(config: Arc<AppConfig>, db: MySqlPool) {
     if !config.message_writer_enabled {
@@ -265,6 +266,8 @@ impl Processor {
                 group_id,
                 user_id: reader_id,
                 read_at,
+                last_read_seq: receipt.last_read_seq.unwrap_or_default(),
+                last_read_message_id: receipt.last_read_message_id.as_deref().and_then(parse_i64),
             });
             return;
         }
@@ -292,6 +295,7 @@ struct DbMessage {
     sender_id: i64,
     receiver_id: Option<i64>,
     group_id: Option<i64>,
+    conversation_seq: Option<i64>,
     client_message_id: Option<String>,
     message_type: i32,
     content: Option<String>,
@@ -322,6 +326,7 @@ impl DbMessage {
             sender_id: parse_i64(&message.sender_id).unwrap_or_default(),
             receiver_id: message.receiver_id.as_deref().and_then(parse_i64),
             group_id: message.group_id.as_deref().and_then(parse_i64),
+            conversation_seq: message.conversation_seq,
             client_message_id: message.client_message_id.clone(),
             message_type: MessageType::from_text(&message.message_type).db_code(),
             content: message.content.clone(),
@@ -354,6 +359,8 @@ struct GroupReadCursor {
     group_id: i64,
     user_id: i64,
     read_at: NaiveDateTime,
+    last_read_seq: i64,
+    last_read_message_id: Option<i64>,
 }
 
 async fn insert_messages(
@@ -372,7 +379,7 @@ async fn insert_messages(
     for chunk in records.chunks(max_rows_per_statement(MESSAGE_INSERT_BINDS)) {
         let mut query = QueryBuilder::<MySql>::new(
             "INSERT INTO service_message_service_db.messages \
-             (id, sender_id, receiver_id, group_id, client_message_id, message_type, content, \
+             (id, sender_id, receiver_id, group_id, conversation_seq, client_message_id, message_type, content, \
               media_url, media_size, media_name, thumbnail_url, duration, location_info, status, \
               is_group_chat, reply_to_message_id, created_time, updated_time) ",
         );
@@ -381,6 +388,7 @@ async fn insert_messages(
                 .push_bind(message.sender_id)
                 .push_bind(message.receiver_id)
                 .push_bind(message.group_id)
+                .push_bind(message.conversation_seq)
                 .push_bind(message.client_message_id.clone())
                 .push_bind(message.message_type)
                 .push_bind(message.content.clone())
@@ -399,6 +407,7 @@ async fn insert_messages(
         query.push(
             " ON DUPLICATE KEY UPDATE \
               status = GREATEST(status, VALUES(status)), \
+              conversation_seq = COALESCE(VALUES(conversation_seq), conversation_seq), \
               updated_time = GREATEST(updated_time, VALUES(updated_time))",
         );
         query.build().persistent(false).execute(&mut **tx).await?;
@@ -410,7 +419,7 @@ async fn upsert_private_read_cursors(
     tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
     cursors: &[PrivateReadCursor],
 ) -> anyhow::Result<()> {
-    for chunk in cursors.chunks(max_rows_per_statement(READ_CURSOR_INSERT_BINDS)) {
+    for chunk in cursors.chunks(max_rows_per_statement(PRIVATE_READ_CURSOR_INSERT_BINDS)) {
         let mut query = QueryBuilder::<MySql>::new(
             "INSERT INTO service_message_service_db.private_read_cursor \
              (id, user_id, peer_user_id, last_read_at, created_time, updated_time) ",
@@ -437,22 +446,26 @@ async fn upsert_group_read_cursors(
     tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
     cursors: &[GroupReadCursor],
 ) -> anyhow::Result<()> {
-    for chunk in cursors.chunks(max_rows_per_statement(READ_CURSOR_INSERT_BINDS)) {
+    for chunk in cursors.chunks(max_rows_per_statement(GROUP_READ_CURSOR_INSERT_BINDS)) {
         let mut query = QueryBuilder::<MySql>::new(
             "INSERT INTO service_message_service_db.group_read_cursor \
-             (id, group_id, user_id, last_read_at, created_time, updated_time) ",
+             (id, group_id, user_id, last_read_at, last_read_seq, last_read_message_id, created_time, updated_time) ",
         );
         query.push_values(chunk.iter(), |mut row, cursor| {
             row.push_bind(cursor.cursor_id)
                 .push_bind(cursor.group_id)
                 .push_bind(cursor.user_id)
                 .push_bind(cursor.read_at)
+                .push_bind(cursor.last_read_seq)
+                .push_bind(cursor.last_read_message_id)
                 .push_bind(cursor.read_at)
                 .push_bind(cursor.read_at);
         });
         query.push(
             " ON DUPLICATE KEY UPDATE \
                last_read_at = GREATEST(last_read_at, VALUES(last_read_at)), \
+               last_read_seq = GREATEST(last_read_seq, VALUES(last_read_seq)), \
+               last_read_message_id = NULLIF(GREATEST(COALESCE(last_read_message_id, 0), COALESCE(VALUES(last_read_message_id), 0)), 0), \
                updated_time = GREATEST(updated_time, VALUES(updated_time))",
         );
         query.build().persistent(false).execute(&mut **tx).await?;
@@ -482,7 +495,7 @@ fn coalesce_group_read_cursors(cursors: Vec<GroupReadCursor>) -> Vec<GroupReadCu
     for cursor in cursors {
         match latest_by_key.entry((cursor.group_id, cursor.user_id)) {
             std::collections::hash_map::Entry::Occupied(mut entry) => {
-                if cursor.read_at > entry.get().read_at {
+                if group_cursor_is_newer(&cursor, entry.get()) {
                     entry.insert(cursor);
                 }
             }
@@ -492,6 +505,11 @@ fn coalesce_group_read_cursors(cursors: Vec<GroupReadCursor>) -> Vec<GroupReadCu
         }
     }
     latest_by_key.into_values().collect()
+}
+
+fn group_cursor_is_newer(candidate: &GroupReadCursor, current: &GroupReadCursor) -> bool {
+    candidate.last_read_seq > current.last_read_seq
+        || (candidate.last_read_seq == current.last_read_seq && candidate.read_at > current.read_at)
 }
 
 fn max_rows_per_statement(bind_count_per_row: usize) -> usize {
@@ -524,4 +542,46 @@ fn parse_datetime(value: &str) -> NaiveDateTime {
     DateTime::parse_from_rfc3339(value)
         .map(|value| value.naive_utc())
         .unwrap_or_else(|_| Utc::now().naive_utc())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::error::Error;
+
+    #[test]
+    fn should_coalesce_group_cursor_by_read_sequence() -> Result<(), Box<dyn Error>> {
+        let older_time = NaiveDateTime::parse_from_str("2026-04-28 00:00:00", "%Y-%m-%d %H:%M:%S")?;
+        let newer_time = NaiveDateTime::parse_from_str("2026-04-28 00:01:00", "%Y-%m-%d %H:%M:%S")?;
+        let cursors = vec![
+            GroupReadCursor {
+                cursor_id: 1,
+                group_id: 10,
+                user_id: 20,
+                read_at: newer_time,
+                last_read_seq: 3,
+                last_read_message_id: Some(300),
+            },
+            GroupReadCursor {
+                cursor_id: 2,
+                group_id: 10,
+                user_id: 20,
+                read_at: older_time,
+                last_read_seq: 5,
+                last_read_message_id: Some(500),
+            },
+        ];
+
+        let coalesced = coalesce_group_read_cursors(cursors);
+        let Some(cursor) = coalesced.first() else {
+            return Err("coalesced cursor should exist".into());
+        };
+        if coalesced.len() != 1 {
+            return Err("cursors with the same group/user should coalesce".into());
+        }
+        if cursor.last_read_seq != 5 {
+            return Err("higher read sequence should win even when timestamp is older".into());
+        }
+        Ok(())
+    }
 }

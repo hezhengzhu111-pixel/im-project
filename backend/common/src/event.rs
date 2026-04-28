@@ -111,6 +111,7 @@ pub struct MessageDto {
     pub receiver_id: Option<String>,
     pub receiver_name: Option<String>,
     pub group_id: Option<String>,
+    pub conversation_seq: Option<i64>,
     pub group_name: Option<String>,
     pub group_avatar: Option<String>,
     pub is_group_chat: bool,
@@ -139,6 +140,76 @@ pub struct ReadReceipt {
     pub to_user_id: Option<String>,
     pub read_at: String,
     pub last_read_message_id: Option<String>,
+    pub last_read_seq: Option<i64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::error::Error;
+
+    #[test]
+    fn message_dto_uses_camel_case_conversation_seq() -> Result<(), Box<dyn Error>> {
+        let raw = r#"{
+            "id":"1",
+            "messageId":"1",
+            "clientMessageId":null,
+            "senderId":"10",
+            "senderName":null,
+            "senderAvatar":null,
+            "receiverId":null,
+            "receiverName":null,
+            "groupId":"20",
+            "conversationSeq":7,
+            "groupName":null,
+            "groupAvatar":null,
+            "isGroupChat":true,
+            "isGroup":true,
+            "messageType":"TEXT",
+            "content":"hello",
+            "mediaUrl":null,
+            "mediaSize":null,
+            "mediaName":null,
+            "thumbnailUrl":null,
+            "duration":null,
+            "locationInfo":null,
+            "status":"SENT",
+            "replyToMessageId":null,
+            "createdTime":"2026-04-28T00:00:00Z",
+            "createdAt":"2026-04-28T00:00:00Z",
+            "updatedTime":null,
+            "updatedAt":null
+        }"#;
+
+        let message = serde_json::from_str::<MessageDto>(raw)?;
+        if message.conversation_seq != Some(7) {
+            return Err("conversationSeq should deserialize into conversation_seq".into());
+        }
+
+        let encoded = serde_json::to_string(&message)?;
+        if !encoded.contains("\"conversationSeq\":7") {
+            return Err("conversation_seq should serialize as conversationSeq".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn read_receipt_uses_camel_case_last_read_seq() -> Result<(), Box<dyn Error>> {
+        let receipt = ReadReceipt {
+            conversation_id: "group_20".to_string(),
+            reader_id: "10".to_string(),
+            to_user_id: None,
+            read_at: "2026-04-28T00:00:00Z".to_string(),
+            last_read_message_id: Some("100".to_string()),
+            last_read_seq: Some(9),
+        };
+
+        let encoded = serde_json::to_string(&receipt)?;
+        if !encoded.contains("\"lastReadSeq\":9") {
+            return Err("last_read_seq should serialize as lastReadSeq".into());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
