@@ -279,7 +279,7 @@ pub async fn issue_ws_ticket(
     let ticket = Uuid::new_v4().to_string();
     let ttl = state.config.ws_ticket_ttl_seconds;
     {
-        let mut redis = state.redis.lock().await;
+        let mut redis = state.redis_manager.clone();
         let _: () = redis
             .set_ex(
                 format!("{}{}", WS_TICKET_KEY_PREFIX, ticket),
@@ -412,7 +412,7 @@ pub async fn internal_revoke_user_tokens(
 ) -> Result<Json<ApiResponse<bool>>, AppError> {
     validate_internal_signature(&headers, "POST", uri.path(), &body, &state.config)?;
     {
-        let mut redis = state.redis.lock().await;
+        let mut redis = state.redis_manager.clone();
         let _: () = redis
             .set_ex(
                 format!("{}{}", USER_REVOKE_AFTER_KEY_PREFIX, user_id),
@@ -449,12 +449,12 @@ pub async fn internal_consume_ws_ticket(
         ))));
     };
     let payload: Option<String> = {
-        let mut redis = state.redis.lock().await;
+        let mut redis = state.redis_manager.clone();
         redis::Script::new(
             "local payload = redis.call('GET', KEYS[1]); if not payload then return nil end; redis.call('DEL', KEYS[1]); return payload",
         )
         .key(format!("{}{}", WS_TICKET_KEY_PREFIX, ticket))
-        .invoke_async(&mut *redis)
+        .invoke_async(&mut redis)
         .await?
     };
     let Some(payload) = payload else {
@@ -517,13 +517,13 @@ pub async fn issue_token_pair(
         expires_in_ms: Some(state.config.jwt_expiration_ms),
         refresh_expires_in_ms: Some(state.config.refresh_expiration_ms),
     };
-    let mut redis = state.redis.lock().await;
+    let mut redis = state.redis_manager.clone();
     redis::cmd("SET")
         .arg(format!("{}{}", REFRESH_JTI_KEY_PREFIX, user_id))
         .arg(refresh_jti)
         .arg("PX")
         .arg(state.config.refresh_expiration_ms)
-        .query_async::<()>(&mut *redis)
+        .query_async::<()>(&mut redis)
         .await?;
     Ok(dto)
 }
@@ -617,7 +617,7 @@ async fn refresh_token_pair(
         .ok_or_else(|| AppError::Unauthorized("TOKEN_INVALID".to_string()))?;
 
     let stored: Option<String> = {
-        let mut redis = state.redis.lock().await;
+        let mut redis = state.redis_manager.clone();
         redis
             .get(format!("{}{}", REFRESH_JTI_KEY_PREFIX, user_id))
             .await?
@@ -722,7 +722,7 @@ async fn upsert_user_resource(
         resource_permissions: permissions,
         data_scopes: HashMap::new(),
     };
-    let mut redis = state.redis.lock().await;
+    let mut redis = state.redis_manager.clone();
     let _: () = redis
         .set_ex(
             format!("{}{}", USER_RESOURCE_KEY_PREFIX, user_id),
@@ -739,7 +739,7 @@ async fn get_user_resource(
 ) -> Result<AuthUserResourceDto, AppError> {
     let key = format!("{}{}", USER_RESOURCE_KEY_PREFIX, user_id);
     let raw: Option<String> = {
-        let mut redis = state.redis.lock().await;
+        let mut redis = state.redis_manager.clone();
         redis.get(&key).await?
     };
     if let Some(raw) = raw {
@@ -812,7 +812,7 @@ async fn revoke_token(
     };
     let token_hash = sha256_hex(&token);
     {
-        let mut redis = state.redis.lock().await;
+        let mut redis = state.redis_manager.clone();
         let _: () = redis
             .set_ex(
                 format!("{}{}", REVOKED_TOKEN_KEY_PREFIX, token_hash),
@@ -839,7 +839,7 @@ async fn is_token_revoked(
     parsed: &TokenParseResultDto,
 ) -> Result<bool, AppError> {
     let token_hash = sha256_hex(token);
-    let mut redis = state.redis.lock().await;
+    let mut redis = state.redis_manager.clone();
     let revoked: bool = redis
         .exists(format!("{}{}", REVOKED_TOKEN_KEY_PREFIX, token_hash))
         .await?;

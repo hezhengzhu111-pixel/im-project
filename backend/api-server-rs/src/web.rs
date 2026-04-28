@@ -21,7 +21,8 @@ use redis::aio::ConnectionManager;
 use reqwest::Client;
 use serde_json::json;
 use sqlx::MySqlPool;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -29,10 +30,17 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<AppConfig>,
-    pub redis: Arc<Mutex<ConnectionManager>>,
+    pub redis_manager: ConnectionManager,
     pub db: MySqlPool,
     pub http: Client,
 }
+
+struct WebSocketTargetCache {
+    target: Option<String>,
+    expires_at: Instant,
+}
+
+static WEBSOCKET_TARGET_CACHE: OnceLock<Mutex<WebSocketTargetCache>> = OnceLock::new();
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -242,7 +250,7 @@ async fn send_private(
     Json(request): Json<message::SendPrivateRequest>,
 ) -> Result<Json<ApiResponse<im_rs_common::event::MessageDto>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
+    let mut redis = state.redis_manager.clone();
     let dto =
         message::send_private(&state.config, &mut redis, &state.db, &identity, request).await?;
     Ok(Json(ApiResponse::success(dto)))
@@ -254,7 +262,7 @@ async fn send_group(
     Json(request): Json<message::SendGroupRequest>,
 ) -> Result<Json<ApiResponse<im_rs_common::event::MessageDto>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
+    let mut redis = state.redis_manager.clone();
     let dto = message::send_group(&state.config, &mut redis, &state.db, &identity, request).await?;
     Ok(Json(ApiResponse::success(dto)))
 }
@@ -265,7 +273,7 @@ async fn mark_read(
     Path(conversation_id): Path<String>,
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
+    let mut redis = state.redis_manager.clone();
     message::mark_read(&mut redis, &state.db, &identity, &conversation_id).await?;
     Ok(Json(ApiResponse::success("ok".to_string())))
 }
@@ -276,7 +284,7 @@ async fn recall_message(
     Path(message_id): Path<i64>,
 ) -> Result<Json<ApiResponse<im_rs_common::event::MessageDto>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
+    let mut redis = state.redis_manager.clone();
     let dto = message::recall_or_delete(
         &mut redis,
         &state.db,
@@ -294,7 +302,7 @@ async fn delete_message(
     Path(message_id): Path<i64>,
 ) -> Result<Json<ApiResponse<im_rs_common::event::MessageDto>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
+    let mut redis = state.redis_manager.clone();
     let dto = message::recall_or_delete(
         &mut redis,
         &state.db,
@@ -311,7 +319,7 @@ async fn conversations(
     headers: HeaderMap,
 ) -> Result<Json<ApiResponse<Vec<message::ConversationDto>>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
+    let mut redis = state.redis_manager.clone();
     let list = message::conversations(&mut redis, &state.db, &identity).await?;
     Ok(Json(ApiResponse::success(list)))
 }
@@ -323,7 +331,7 @@ async fn private_history(
     Query(query): Query<message::HistoryQuery>,
 ) -> Result<Json<ApiResponse<Vec<im_rs_common::event::MessageDto>>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
+    let mut redis = state.redis_manager.clone();
     let list = message::private_history(&mut redis, &state.db, &identity, peer_id, query).await?;
     Ok(Json(ApiResponse::success(list)))
 }
@@ -335,7 +343,7 @@ async fn group_history(
     Query(query): Query<message::HistoryQuery>,
 ) -> Result<Json<ApiResponse<Vec<im_rs_common::event::MessageDto>>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
+    let mut redis = state.redis_manager.clone();
     let list = message::group_history(&mut redis, &state.db, &identity, group_id, query).await?;
     Ok(Json(ApiResponse::success(list)))
 }
@@ -345,6 +353,7 @@ async fn websocket_proxy(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(user_id): Path<String>,
+    Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> Response {
     let identity = match identity_from_headers(&headers, &state.config) {
         Ok(identity) => identity,
@@ -354,8 +363,13 @@ async fn websocket_proxy(
         .get(header::COOKIE)
         .and_then(|value| value.to_str().ok())
         .map(ToOwned::to_owned);
+    let query_ticket = query
+        .get("ticket")
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
     let origin = headers.get(header::ORIGIN).cloned();
-    let target_base = select_websocket_target(&state, &user_id).await;
+    let target_base = select_websocket_target(&state).await;
     ws.on_upgrade(move |socket| {
         tunnel_websocket(
             socket,
@@ -363,6 +377,7 @@ async fn websocket_proxy(
             identity,
             user_id,
             cookie,
+            query_ticket,
             origin,
             target_base,
         )
@@ -376,6 +391,7 @@ async fn tunnel_websocket(
     identity: im_rs_common::auth::Identity,
     user_id: String,
     cookie: Option<String>,
+    query_ticket: Option<String>,
     origin: Option<HeaderValue>,
     target_base: String,
 ) {
@@ -384,14 +400,18 @@ async fn tunnel_websocket(
         target_base.trim_end_matches('/'),
         user_id
     );
-    let mut request = match target.into_client_request() {
+    let mut request = match target.as_str().into_client_request() {
         Ok(request) => request,
         Err(error) => {
             tracing::warn!(error = %error, "failed to build websocket proxy request");
             return;
         }
     };
-    if let Some(cookie) = cookie {
+    if let Some(cookie) = upstream_cookie_header(
+        cookie,
+        &state.config.ws_ticket_cookie_name,
+        query_ticket.as_deref(),
+    ) {
         if let Ok(value) = HeaderValue::from_str(&cookie) {
             request.headers_mut().insert(header::COOKIE, value);
         }
@@ -403,7 +423,7 @@ async fn tunnel_websocket(
     let upstream = match connect_async(request).await {
         Ok((upstream, _)) => upstream,
         Err(error) => {
-            tracing::warn!(error = %error, "failed to connect upstream websocket");
+            tracing::warn!(user_id = %user_id, target = %target, error = %error, "failed to connect upstream websocket");
             return;
         }
     };
@@ -445,26 +465,69 @@ async fn tunnel_websocket(
     }
 }
 
-async fn select_websocket_target(state: &AppState, user_id: &str) -> String {
-    let mut redis = state.redis.lock().await;
-    match route::user_routes(&mut redis, &state.config, user_id).await {
-        Ok(routes) => {
-            if let Some(route) = routes
-                .iter()
-                .min_by(|left, right| {
-                    left.session_count
-                        .cmp(&right.session_count)
-                        .then_with(|| left.server_id.cmp(&right.server_id))
-                })
-                .filter(|route| !route.internal_ws_url.trim().is_empty())
-            {
-                return route.internal_ws_url.clone();
+fn upstream_cookie_header(
+    raw_cookie: Option<String>,
+    ticket_cookie_name: &str,
+    query_ticket: Option<&str>,
+) -> Option<String> {
+    let Some(ticket) = query_ticket
+        .map(str::trim)
+        .filter(|ticket| !ticket.is_empty())
+    else {
+        return raw_cookie;
+    };
+
+    let mut parts = vec![format!("{}={}", ticket_cookie_name, ticket)];
+    if let Some(raw_cookie) = raw_cookie {
+        parts.extend(raw_cookie.split(';').filter_map(|part| {
+            let trimmed = part.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            let key = trimmed
+                .split_once('=')
+                .map(|(key, _)| key.trim())
+                .unwrap_or(trimmed);
+            (key != ticket_cookie_name).then(|| trimmed.to_string())
+        }));
+    }
+    Some(parts.join("; "))
+}
+
+async fn select_websocket_target(state: &AppState) -> String {
+    let cache = WEBSOCKET_TARGET_CACHE.get_or_init(|| {
+        Mutex::new(WebSocketTargetCache {
+            target: None,
+            expires_at: Instant::now(),
+        })
+    });
+    let now = Instant::now();
+    {
+        let guard = cache.lock().await;
+        if guard.expires_at > now {
+            if let Some(target) = guard.target.as_ref() {
+                return target.clone();
             }
         }
-        Err(error) => {
-            tracing::warn!(user_id, error = %error, "load existing websocket route failed");
+    }
+
+    let mut guard = cache.lock().await;
+    let now = Instant::now();
+    if guard.expires_at > now {
+        if let Some(target) = guard.target.as_ref() {
+            return target.clone();
         }
     }
+
+    let target = load_websocket_target(state).await;
+    let ttl_ms = state.config.route_cache_ttl_ms.max(1_000) as u64;
+    guard.target = Some(target.clone());
+    guard.expires_at = Instant::now() + Duration::from_millis(ttl_ms);
+    target
+}
+
+async fn load_websocket_target(state: &AppState) -> String {
+    let mut redis = state.redis_manager.clone();
     match route::server_nodes(&mut redis, &state.config).await {
         Ok(nodes) => {
             if let Some(node) = nodes.first() {

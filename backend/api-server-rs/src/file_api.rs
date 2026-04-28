@@ -426,7 +426,7 @@ async fn save_metadata(state: &AppState, response: &FileUploadResponse) {
     let Ok(value) = serde_json::to_string(&metadata) else {
         return;
     };
-    let mut redis = state.redis.lock().await;
+    let mut redis = state.redis_manager.clone();
     let _: redis::RedisResult<()> = redis
         .set(
             metadata_key(&metadata.category, &metadata.date, &metadata.filename),
@@ -436,7 +436,7 @@ async fn save_metadata(state: &AppState, response: &FileUploadResponse) {
 }
 
 async fn get_metadata(state: &AppState, request: &FileLocator) -> Option<FileMetadata> {
-    let mut redis = state.redis.lock().await;
+    let mut redis = state.redis_manager.clone();
     let raw: redis::RedisResult<Option<String>> = redis
         .get(metadata_key(
             &request.category,
@@ -450,7 +450,7 @@ async fn get_metadata(state: &AppState, request: &FileLocator) -> Option<FileMet
 }
 
 async fn delete_metadata(state: &AppState, request: &FileLocator) {
-    let mut redis = state.redis.lock().await;
+    let mut redis = state.redis_manager.clone();
     let _: redis::RedisResult<()> = redis
         .del(metadata_key(
             &request.category,

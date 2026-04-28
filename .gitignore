@@ -20,6 +20,7 @@ frontend/coverage/
 # Rust
 backend/target/
 backend/.cargo-home/
+backend/java-test-client/**
 
 # IDE and OS
 .idea/

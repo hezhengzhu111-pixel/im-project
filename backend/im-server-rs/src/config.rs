@@ -31,6 +31,7 @@ pub struct AppConfig {
     pub ws_ticket_cookie_secure: String,
     pub max_payload_length: usize,
     pub invalid_payload_threshold: usize,
+    pub websocket_outbound_queue_size: usize,
     pub group_members_cache_prefix: String,
     pub group_members_cache_ttl_seconds: u64,
 }
@@ -60,14 +61,8 @@ impl AppConfig {
                 "IM_INTERNAL_HTTP_URL",
                 &default_internal_url("http", port),
             ),
-            internal_ws_url: env_string(
-                "IM_INTERNAL_WS_URL",
-                &default_internal_url("ws", port),
-            ),
-            server_registry_key_prefix: env_string(
-                "IM_SERVER_REGISTRY_KEY_PREFIX",
-                "im:server:",
-            ),
+            internal_ws_url: env_string("IM_INTERNAL_WS_URL", &default_internal_url("ws", port)),
+            server_registry_key_prefix: env_string("IM_SERVER_REGISTRY_KEY_PREFIX", "im:server:"),
             server_lease_ttl_seconds: env_u64("IM_SERVER_LEASE_TTL_SECONDS", 15),
             server_renew_interval_ms: env_u64("IM_SERVER_RENEW_INTERVAL_MS", 3_000),
             route_users_key: env_string("IM_ROUTE_USERS_KEY", "im:route:users"),
@@ -83,6 +78,7 @@ impl AppConfig {
             ws_ticket_cookie_secure: env_string("IM_AUTH_COOKIE_WS_TICKET_SECURE", "auto"),
             max_payload_length: env_usize("IM_WEBSOCKET_MAX_PAYLOAD_LENGTH", 8 * 1024),
             invalid_payload_threshold: env_usize("IM_WEBSOCKET_INVALID_PAYLOAD_THRESHOLD", 3),
+            websocket_outbound_queue_size: env_usize("IM_WEBSOCKET_OUTBOUND_QUEUE_SIZE", 1024),
             group_members_cache_prefix: env_string(
                 "IM_GROUP_MEMBER_IDS_CACHE_PREFIX",
                 "message:group:members:",

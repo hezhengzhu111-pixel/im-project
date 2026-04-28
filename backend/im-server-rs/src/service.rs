@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, RwLock};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
@@ -30,7 +30,8 @@ struct ImServiceInner {
 pub struct SessionEntry {
     pub session_id: String,
     pub user_id: String,
-    pub sender: mpsc::UnboundedSender<Message>,
+    pub sender: mpsc::Sender<Message>,
+    shutdown: watch::Sender<bool>,
     pub last_heartbeat_ms: AtomicI64,
 }
 
@@ -66,7 +67,8 @@ impl ImService {
         &self,
         user_id: String,
         _username: String,
-        sender: mpsc::UnboundedSender<Message>,
+        sender: mpsc::Sender<Message>,
+        shutdown: watch::Sender<bool>,
     ) -> String {
         let session_id = Uuid::new_v4().to_string();
         let now = now_ms();
@@ -74,6 +76,7 @@ impl ImService {
             session_id: session_id.clone(),
             user_id: user_id.clone(),
             sender,
+            shutdown,
             last_heartbeat_ms: AtomicI64::new(now),
         });
 
@@ -102,13 +105,47 @@ impl ImService {
     }
 
     pub async fn unregister_session(&self, session_id: &str) -> bool {
+        let Some((entry, user_has_sessions)) = self.remove_session_local(session_id) else {
+            return false;
+        };
+
+        if user_has_sessions {
+            self.refresh_route_for_user(&entry.user_id).await;
+        } else {
+            self.inner
+                .route_registry
+                .remove_local_route(&entry.user_id)
+                .await;
+            self.broadcast_presence_locally(&entry.user_id, "OFFLINE", None)
+                .await;
+            self.publish_presence(&entry.user_id, "OFFLINE").await;
+        }
+        self.refresh_server_node().await;
+        true
+    }
+
+    async fn drop_session_silently(&self, session_id: &str) -> bool {
+        let Some((entry, user_has_sessions)) = self.remove_session_local(session_id) else {
+            return false;
+        };
+        if user_has_sessions {
+            self.refresh_route_for_user(&entry.user_id).await;
+        } else {
+            self.inner
+                .route_registry
+                .remove_local_route(&entry.user_id)
+                .await;
+        }
+        self.refresh_server_node().await;
+        true
+    }
+
+    fn remove_session_local(&self, session_id: &str) -> Option<(Arc<SessionEntry>, bool)> {
         let entry = {
             let mut sessions = self.inner.sessions.write().expect("sessions lock poisoned");
             sessions.remove(session_id)
-        };
-        let Some(entry) = entry else {
-            return false;
-        };
+        }?;
+        let _ = entry.shutdown.send(true);
 
         let user_has_sessions = {
             let mut user_sessions = self
@@ -127,20 +164,7 @@ impl ImService {
                 false
             }
         };
-
-        if user_has_sessions {
-            self.refresh_route_for_user(&entry.user_id).await;
-        } else {
-            self.inner
-                .route_registry
-                .remove_local_route(&entry.user_id)
-                .await;
-            self.broadcast_presence_locally(&entry.user_id, "OFFLINE", None)
-                .await;
-            self.publish_presence(&entry.user_id, "OFFLINE").await;
-        }
-        self.refresh_server_node().await;
-        true
+        Some((entry, user_has_sessions))
     }
 
     pub async fn user_offline(&self, user_id: &str) -> bool {
@@ -154,7 +178,7 @@ impl ImService {
         }
         for session_id in sessions {
             if let Some(entry) = self.session_entry(&session_id) {
-                let _ = entry.sender.send(Message::Close(None));
+                let _ = entry.sender.try_send(Message::Close(None));
             }
             self.unregister_session(&session_id).await;
         }
@@ -224,10 +248,19 @@ impl ImService {
             }
         };
         let mut delivered = false;
+        let mut slow_or_closed_sessions = Vec::new();
         for session in sessions {
-            if session.sender.send(Message::Text(envelope.clone())).is_ok() {
-                delivered = true;
+            match session.sender.try_send(Message::Text(envelope.clone())) {
+                Ok(()) => delivered = true,
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_))
+                | Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    slow_or_closed_sessions.push(session.session_id.clone());
+                }
             }
+        }
+        for session_id in slow_or_closed_sessions {
+            tracing::warn!(session_id = %session_id, "drop slow or closed websocket session");
+            self.drop_session_silently(&session_id).await;
         }
         delivered
     }
@@ -327,7 +360,7 @@ impl ImService {
             };
             for session_id in stale {
                 if let Some(entry) = self.session_entry(&session_id) {
-                    let _ = entry.sender.send(Message::Close(None));
+                    let _ = entry.sender.try_send(Message::Close(None));
                 }
                 self.unregister_session(&session_id).await;
             }
@@ -387,10 +420,19 @@ impl ImService {
             Err(_) => return false,
         };
         let mut delivered = false;
+        let mut slow_or_closed_sessions = Vec::new();
         for session in sessions {
-            if session.sender.send(Message::Text(envelope.clone())).is_ok() {
-                delivered = true;
+            match session.sender.try_send(Message::Text(envelope.clone())) {
+                Ok(()) => delivered = true,
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_))
+                | Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    slow_or_closed_sessions.push(session.session_id.clone());
+                }
             }
+        }
+        for session_id in slow_or_closed_sessions {
+            tracing::warn!(session_id = %session_id, "drop slow or closed websocket session");
+            self.drop_session_silently(&session_id).await;
         }
         delivered
     }
