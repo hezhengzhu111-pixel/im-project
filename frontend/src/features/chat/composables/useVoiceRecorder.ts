@@ -1,5 +1,6 @@
 import {ref} from "vue";
 import {useErrorHandler} from "@/hooks/useErrorHandler";
+import {useUserSettingsStore} from "@/stores/user-settings";
 
 const AUDIO_MIME_CANDIDATES = [
   "audio/webm;codecs=opus",
@@ -31,8 +32,51 @@ const getAudioFileExtension = (mimeType: string) => {
 const normalizeAudioMimeType = (mimeType: string) =>
   (mimeType.split(";")[0]?.trim() || "audio/webm").toLowerCase();
 
+const isLocalhost = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+};
+
+const isRecordingContextSecure = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return window.isSecureContext || isLocalhost();
+};
+
+const getVoiceRecorderUnavailableMessage = (allowInsecureContext: boolean) => {
+  if (typeof navigator === "undefined") {
+    return "当前运行环境不支持语音录制";
+  }
+  if (!isRecordingContextSecure() && !allowInsecureContext) {
+    return "当前为 HTTP 公网访问，已在设置中禁止尝试语音录制";
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return !isRecordingContextSecure()
+      ? "当前浏览器未在 HTTP 公网环境开放麦克风 API，开启 HTTPS 后才能录制语音"
+      : "当前浏览器不支持麦克风录制，请更换浏览器或检查站点权限";
+  }
+  if (typeof MediaRecorder === "undefined") {
+    return "当前浏览器不支持语音录制";
+  }
+  return "";
+};
+
+const getMicrophoneErrorMessage = (error: unknown) => {
+  if (error instanceof DOMException && error.name === "NotAllowedError") {
+    return "麦克风权限被拒绝，请在浏览器站点设置中允许麦克风权限";
+  }
+  if (error instanceof DOMException && error.name === "NotFoundError") {
+    return "未检测到可用麦克风，请检查设备连接";
+  }
+  return "无法获取麦克风权限，请检查浏览器和系统设置";
+};
+
 export function useVoiceRecorder() {
   const {capture} = useErrorHandler("voice-recorder");
+  const settingsStore = useUserSettingsStore();
   const isRecording = ref(false);
   const recordingStartTime = ref(0);
   let mediaRecorder: MediaRecorder | null = null;
@@ -54,8 +98,17 @@ export function useVoiceRecorder() {
     if (isRecording.value) {
       return null;
     }
+    const unavailableMessage = getVoiceRecorderUnavailableMessage(
+      settingsStore.allowInsecureVoiceRecording,
+    );
+    if (unavailableMessage) {
+      capture(new Error(unavailableMessage), unavailableMessage);
+      return null;
+    }
+
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+      stream = await navigator.mediaDevices.getUserMedia({audio: true});
       const mimeType = getPreferredAudioMimeType();
       mediaRecorder = new MediaRecorder(
         stream,
@@ -74,8 +127,10 @@ export function useVoiceRecorder() {
       return null;
     } catch (error) {
       isRecording.value = false;
+      stream?.getTracks().forEach((track) => track.stop());
       resetRecorder();
-      capture(error, "无法获取麦克风权限，请检查浏览器和系统设置");
+      const message = getMicrophoneErrorMessage(error);
+      capture(new Error(message), message);
       return null;
     }
   };

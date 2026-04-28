@@ -219,6 +219,10 @@ const messages = {
     "settings.notificationDesc": "浏览器通知提醒",
     "settings.sound": "提示音",
     "settings.soundDesc": "收到新消息时播放轻提示",
+    "settings.voice": "语音",
+    "settings.insecureVoice": "HTTP 公网语音",
+    "settings.insecureVoiceDesc":
+      "允许在公网 IP + HTTP 访问时尝试发送语音；浏览器仍可能要求 HTTPS。",
     "settings.privacy": "隐私",
     "settings.readReceipt": "已读回执",
     "settings.readReceiptDesc": "允许对方看到消息已读状态",
@@ -442,6 +446,10 @@ const messages = {
     "settings.notificationDesc": "Browser notification alerts",
     "settings.sound": "Sound",
     "settings.soundDesc": "Play a subtle sound for new messages",
+    "settings.voice": "Voice",
+    "settings.insecureVoice": "Voice on public HTTP",
+    "settings.insecureVoiceDesc":
+      "Allow voice attempts on public IP + HTTP access. The browser may still require HTTPS.",
     "settings.privacy": "Privacy",
     "settings.readReceipt": "Read receipts",
     "settings.readReceiptDesc": "Let others see when messages are read",

@@ -1,20 +1,46 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
-import { ElMessage } from "element-plus";
-import { userService } from "@/services/user";
-import { defaultUserSettings } from "@/normalizers/user";
-import { useUserStore } from "@/stores/user";
+import {defineStore} from "pinia";
+import {ref} from "vue";
+import {ElMessage} from "element-plus";
+import {userService} from "@/services/user";
+import {defaultUserSettings} from "@/normalizers/user";
+import {useUserStore} from "@/stores/user";
 import type {
-  BindEmailRequest,
-  BindPhoneRequest,
-  ChangePasswordRequest,
-  DeleteAccountRequest,
-  UserSettings,
+    BindEmailRequest,
+    BindPhoneRequest,
+    ChangePasswordRequest,
+    DeleteAccountRequest,
+    UserSettings,
 } from "@/types";
+
+const ALLOW_INSECURE_VOICE_RECORDING_KEY = "im_allow_insecure_voice_recording";
+
+const readLocalBoolean = (key: string, fallback: boolean) => {
+  if (typeof localStorage === "undefined") {
+    return fallback;
+  }
+  const saved = localStorage.getItem(key);
+  if (saved === "true") {
+    return true;
+  }
+  if (saved === "false") {
+    return false;
+  }
+  return fallback;
+};
+
+const writeLocalBoolean = (key: string, value: boolean) => {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  localStorage.setItem(key, String(value));
+};
 
 export const useUserSettingsStore = defineStore("user-settings", () => {
   const settings = ref<UserSettings>(defaultUserSettings());
   const loading = ref(false);
+  const allowInsecureVoiceRecording = ref(
+    readLocalBoolean(ALLOW_INSECURE_VOICE_RECORDING_KEY, false),
+  );
 
   const loadSettings = async (): Promise<UserSettings> => {
     const response = await userService.getSettings();
@@ -82,6 +108,11 @@ export const useUserSettingsStore = defineStore("user-settings", () => {
     return true;
   };
 
+  const updateAllowInsecureVoiceRecording = (value: boolean) => {
+    allowInsecureVoiceRecording.value = value;
+    writeLocalBoolean(ALLOW_INSECURE_VOICE_RECORDING_KEY, value);
+  };
+
   const sendPhoneCode = async (phone: string) => {
     await userService.sendPhoneCode(phone);
     ElMessage.success("验证码已发送到手机");
@@ -125,16 +156,22 @@ export const useUserSettingsStore = defineStore("user-settings", () => {
 
   const clear = () => {
     settings.value = defaultUserSettings();
+    allowInsecureVoiceRecording.value = readLocalBoolean(
+      ALLOW_INSECURE_VOICE_RECORDING_KEY,
+      false,
+    );
   };
 
   return {
     settings,
     loading,
+    allowInsecureVoiceRecording,
     loadSettings,
     getUserSettings,
     updatePrivacySettings,
     updateMessageSettings,
     updateGeneralSettings,
+    updateAllowInsecureVoiceRecording,
     changePassword,
     sendPhoneCode,
     sendEmailCode,

@@ -82,11 +82,16 @@ export const useSessionStore = defineStore("session", () => {
   const ensureSession = (session: ChatSession): ChatSession => {
     const existing = sessions.value.find((item) => item.id === session.id);
     if (existing) {
+      const unreadCount = Math.max(
+        Number(existing.unreadCount || 0),
+        Number(session.unreadCount || 0),
+      );
       Object.assign(existing, withLegacySessionAliases(session), {
         lastActiveTime:
           normalizeSessionTime(session.lastActiveTime) || existing.lastActiveTime,
+        unreadCount,
       });
-      unreadCounts.value.set(existing.id, existing.unreadCount || 0);
+      unreadCounts.value.set(existing.id, unreadCount);
       return existing;
     }
     const created: ChatSession = withLegacySessionAliases({
