@@ -3,6 +3,7 @@ use crate::error::AppError;
 use crate::id_resolver::{
     resolve_active_group_id, resolve_active_user_id, resolve_existing_message_id,
 };
+use crate::local_cache;
 use crate::observability;
 use chrono::{DateTime, Utc};
 use im_rs_common::auth::Identity;
@@ -18,6 +19,7 @@ use sqlx::{MySqlPool, Row};
 const VALIDATION_CACHE_TTL_SECONDS: u64 = 5 * 60;
 const VALIDATION_NEGATIVE_CACHE_TTL_SECONDS: u64 = 60;
 const GROUP_MEMBERS_CACHE_TTL_SECONDS: u64 = 5 * 60;
+const MAX_FRIENDS_PRELOAD: i64 = 10_000;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -752,6 +754,14 @@ async fn cached_resolve_active_user_id(
     operation: &'static str,
 ) -> Result<Option<i64>, AppError> {
     let key = format!("im:cache:active_user:{candidate_id}");
+    if let Some(cached) = local_cache::get_i64_option(&key) {
+        return Ok(cached);
+    }
+    let lock = local_cache::key_lock(&key);
+    let _guard = lock.lock().await;
+    if let Some(cached) = local_cache::get_i64_option(&key) {
+        return Ok(cached);
+    }
     if let Some(cached) = read_cached_i64_option(redis, &key).await {
         return Ok(cached);
     }
@@ -768,6 +778,14 @@ async fn cached_resolve_active_group_id(
     operation: &'static str,
 ) -> Result<Option<i64>, AppError> {
     let key = format!("im:cache:active_group:{candidate_id}");
+    if let Some(cached) = local_cache::get_i64_option(&key) {
+        return Ok(cached);
+    }
+    let lock = local_cache::key_lock(&key);
+    let _guard = lock.lock().await;
+    if let Some(cached) = local_cache::get_i64_option(&key) {
+        return Ok(cached);
+    }
     if let Some(cached) = read_cached_i64_option(redis, &key).await {
         return Ok(cached);
     }
@@ -779,13 +797,17 @@ async fn cached_resolve_active_group_id(
 
 async fn read_cached_i64_option(redis: &mut ConnectionManager, key: &str) -> Option<Option<i64>> {
     let value: Option<String> = redis.get(key).await.ok().flatten();
-    value.map(|raw| {
+    let parsed = value.map(|raw| {
         if raw == "none" {
             None
         } else {
             raw.parse::<i64>().ok()
         }
-    })
+    });
+    if let Some(value) = parsed {
+        local_cache::set_i64_option(key, value);
+    }
+    parsed
 }
 
 async fn write_cached_i64_option(redis: &mut ConnectionManager, key: &str, value: Option<i64>) {
@@ -797,6 +819,7 @@ async fn write_cached_i64_option(redis: &mut ConnectionManager, key: &str, value
     let raw = value
         .map(|id| id.to_string())
         .unwrap_or_else(|| "none".to_string());
+    local_cache::set_i64_option(key, value);
     let _: redis::RedisResult<()> = redis.set_ex(key, raw, ttl).await;
 }
 
@@ -807,6 +830,26 @@ async fn validate_friend(
     friend_id: i64,
 ) -> Result<(), AppError> {
     let key = format!("im:cache:friend:{user_id}:{friend_id}");
+    if let Some(allowed) = local_cache::get_bool(&key) {
+        return if allowed {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden(
+                "friend relationship not found".to_string(),
+            ))
+        };
+    }
+    let lock = local_cache::key_lock(&key);
+    let _guard = lock.lock().await;
+    if let Some(allowed) = local_cache::get_bool(&key) {
+        return if allowed {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden(
+                "friend relationship not found".to_string(),
+            ))
+        };
+    }
     if let Some(allowed) = read_cached_bool(redis, &key).await {
         return if allowed {
             Ok(())
@@ -816,23 +859,69 @@ async fn validate_friend(
             ))
         };
     }
-    let count: i64 = observability::db_query(
-        "validate_friend",
-        sqlx::query_scalar(
-            "SELECT COUNT(*) FROM service_user_service_db.im_friend WHERE user_id = ? AND friend_id = ? AND status = 1",
-        )
-        .bind(user_id)
-        .bind(friend_id)
-        .fetch_one(db),
-    )
-    .await?;
-    write_cached_bool(redis, &key, count > 0).await;
-    if count <= 0 {
+    let allowed = preload_friend_relations(redis, db, user_id, friend_id).await?;
+    if !allowed {
         return Err(AppError::Forbidden(
             "friend relationship not found".to_string(),
         ));
     }
     Ok(())
+}
+
+async fn preload_friend_relations(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    user_id: i64,
+    requested_friend_id: i64,
+) -> Result<bool, AppError> {
+    let preload_key = format!("im:cache:friend_preload:{user_id}");
+    if let Some(preloaded) = local_cache::get_bool(&preload_key) {
+        if preloaded {
+            let requested_key = format!("im:cache:friend:{user_id}:{requested_friend_id}");
+            let allowed = read_cached_bool(redis, &requested_key)
+                .await
+                .unwrap_or(false);
+            if !allowed {
+                write_cached_bool(redis, &requested_key, false).await;
+            }
+            return Ok(allowed);
+        }
+    }
+
+    let friend_ids: Vec<i64> = observability::db_query(
+        "preload_friend_relations",
+        sqlx::query_scalar(
+            "SELECT friend_id FROM service_user_service_db.im_friend WHERE user_id = ? AND status = 1 LIMIT ?",
+        )
+        .bind(user_id)
+        .bind(MAX_FRIENDS_PRELOAD)
+        .fetch_all(db),
+    )
+    .await?;
+
+    let mut allowed = false;
+    let mut pipe = redis::pipe();
+    for friend_id in &friend_ids {
+        if *friend_id == requested_friend_id {
+            allowed = true;
+        }
+        let relation_key = format!("im:cache:friend:{user_id}:{friend_id}");
+        local_cache::set_bool(&relation_key, true);
+        pipe.set_ex(relation_key, "1", VALIDATION_CACHE_TTL_SECONDS)
+            .ignore();
+    }
+    let _: redis::RedisResult<()> = pipe.query_async(redis).await;
+
+    local_cache::set_bool(&preload_key, true);
+    let _: redis::RedisResult<()> = redis
+        .set_ex(&preload_key, "1", VALIDATION_CACHE_TTL_SECONDS)
+        .await;
+
+    if !allowed {
+        let requested_key = format!("im:cache:friend:{user_id}:{requested_friend_id}");
+        write_cached_bool(redis, &requested_key, false).await;
+    }
+    Ok(allowed)
 }
 
 async fn validate_group_member(
@@ -842,6 +931,26 @@ async fn validate_group_member(
     user_id: i64,
 ) -> Result<(), AppError> {
     let key = format!("im:cache:group_member:{group_id}:{user_id}");
+    if let Some(allowed) = local_cache::get_bool(&key) {
+        return if allowed {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden(
+                "group membership not found".to_string(),
+            ))
+        };
+    }
+    let lock = local_cache::key_lock(&key);
+    let _guard = lock.lock().await;
+    if let Some(allowed) = local_cache::get_bool(&key) {
+        return if allowed {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden(
+                "group membership not found".to_string(),
+            ))
+        };
+    }
     if let Some(allowed) = read_cached_bool(redis, &key).await {
         return if allowed {
             Ok(())
@@ -872,11 +981,15 @@ async fn validate_group_member(
 
 async fn read_cached_bool(redis: &mut ConnectionManager, key: &str) -> Option<bool> {
     let value: Option<String> = redis.get(key).await.ok().flatten();
-    value.and_then(|raw| match raw.as_str() {
+    let parsed = value.and_then(|raw| match raw.as_str() {
         "1" => Some(true),
         "0" => Some(false),
         _ => None,
-    })
+    });
+    if let Some(value) = parsed {
+        local_cache::set_bool(key, value);
+    }
+    parsed
 }
 
 async fn write_cached_bool(redis: &mut ConnectionManager, key: &str, value: bool) {
@@ -886,6 +999,7 @@ async fn write_cached_bool(redis: &mut ConnectionManager, key: &str, value: bool
         VALIDATION_NEGATIVE_CACHE_TTL_SECONDS
     };
     let raw = if value { "1" } else { "0" };
+    local_cache::set_bool(key, value);
     let _: redis::RedisResult<()> = redis.set_ex(key, raw, ttl).await;
 }
 
@@ -895,9 +1009,18 @@ async fn load_group_members(
     group_id: i64,
 ) -> Result<Vec<i64>, AppError> {
     let key = format!("im:cache:group_members:{group_id}");
+    if let Some(members) = local_cache::get_i64_vec(&key) {
+        return Ok(members);
+    }
+    let lock = local_cache::key_lock(&key);
+    let _guard = lock.lock().await;
+    if let Some(members) = local_cache::get_i64_vec(&key) {
+        return Ok(members);
+    }
     let cached: Option<String> = redis.get(&key).await.ok().flatten();
     if let Some(raw) = cached {
         if let Ok(members) = serde_json::from_str::<Vec<i64>>(&raw) {
+            local_cache::set_i64_vec(&key, members.clone());
             return Ok(members);
         }
     }
@@ -910,6 +1033,7 @@ async fn load_group_members(
         .fetch_all(db),
     )
     .await?;
+    local_cache::set_i64_vec(&key, rows.clone());
     if let Ok(raw) = serde_json::to_string(&rows) {
         let _: redis::RedisResult<()> = redis
             .set_ex(&key, raw, GROUP_MEMBERS_CACHE_TTL_SECONDS)

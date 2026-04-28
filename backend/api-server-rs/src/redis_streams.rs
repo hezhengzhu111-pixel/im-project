@@ -41,14 +41,14 @@ pub fn ensure_group(
     }
 }
 
-pub fn append_event(
+pub fn append_event_cmd(
     config: &AppConfig,
-    redis: &mut redis::Connection,
+    pipe: &mut redis::Pipeline,
     event_id: &str,
     conversation_id: &str,
     payload: &str,
-) -> redis::RedisResult<String> {
-    redis::cmd("XADD")
+) {
+    pipe.cmd("XADD")
         .arg(&config.event_stream_key)
         .arg("MAXLEN")
         .arg("~")
@@ -60,7 +60,7 @@ pub fn append_event(
         .arg(conversation_id)
         .arg(PAYLOAD_FIELD)
         .arg(payload)
-        .query(redis)
+        .ignore();
 }
 
 pub fn read_group_events(
