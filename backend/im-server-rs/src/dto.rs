@@ -105,6 +105,19 @@ pub struct InternalPushRequest {
     pub data: Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InternalPushBatchRequest {
+    pub pushes: Vec<InternalPushRequest>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InternalPushBatchResult {
+    pub accepted: usize,
+    pub delivered: usize,
+}
+
 pub fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

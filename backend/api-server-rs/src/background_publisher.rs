@@ -67,7 +67,10 @@ fn publish_due_events(
         .arg(0)
         .arg(config.publisher_batch_size.max(1))
         .query(redis)?;
-    if !event_ids.is_empty() && last_observe.elapsed() >= PENDING_EVENTS_OBSERVE_INTERVAL {
+    if event_ids.is_empty() {
+        return Ok(0);
+    }
+    if last_observe.elapsed() >= PENDING_EVENTS_OBSERVE_INTERVAL {
         let backlog_count = redis.zcard(keys::pending_events_key()).ok();
         observability::pending_events("publisher.due_events", event_ids.len(), backlog_count);
         *last_observe = Instant::now();
@@ -77,7 +80,11 @@ fn publish_due_events(
         .iter()
         .map(|event_id| keys::event_key(event_id))
         .collect::<Vec<_>>();
-    let payloads: Vec<Option<String>> = redis.get(event_keys.clone())?;
+    let mut get_pipe = redis::pipe();
+    for event_key in &event_keys {
+        get_pipe.get(event_key);
+    }
+    let payloads: Vec<Option<String>> = get_pipe.query(redis)?;
 
     let mut published = 0;
     let mut remove_event_ids = Vec::with_capacity(event_ids.len());
@@ -117,7 +124,7 @@ fn publish_due_events(
         pipe.zrem(keys::pending_events_key(), remove_event_ids)
             .ignore();
     }
-    let _: redis::RedisResult<()> = pipe.query(redis);
+    pipe.query::<()>(redis)?;
 
     Ok(published)
 }

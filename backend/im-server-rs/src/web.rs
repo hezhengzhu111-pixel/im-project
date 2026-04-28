@@ -1,4 +1,7 @@
-use crate::dto::{ApiResponse, HealthResponse, InternalPushRequest, ReadyResponse};
+use crate::dto::{
+    ApiResponse, HealthResponse, InternalPushBatchRequest, InternalPushBatchResult,
+    InternalPushRequest, ReadyResponse,
+};
 use crate::error::AppError;
 use crate::security::{validate_gateway_ws_identity, validate_internal_signature};
 use crate::service::ImService;
@@ -12,7 +15,7 @@ use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use std::collections::HashMap;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 pub fn router(service: ImService) -> Router {
     Router::new()
@@ -23,6 +26,7 @@ pub fn router(service: ImService) -> Router {
         .route("/api/im/heartbeat", post(batch_heartbeat))
         .route("/api/im/online-status", post(online_status))
         .route("/api/im/internal/push", post(internal_push))
+        .route("/api/im/internal/push/batch", post(internal_push_batch))
         .route("/websocket/:path_user_id", get(websocket))
         .with_state(service)
 }
@@ -140,6 +144,42 @@ async fn internal_push(
     )))
 }
 
+async fn internal_push_batch(
+    State(service): State<ImService>,
+    headers: HeaderMap,
+    OriginalUri(uri): OriginalUri,
+    body: Bytes,
+) -> Result<Json<ApiResponse<InternalPushBatchResult>>, AppError> {
+    validate_internal_signature(&headers, "POST", uri.path(), &body, service.config())?;
+    let request: InternalPushBatchRequest = serde_json::from_slice(&body)?;
+    if request.pushes.is_empty() {
+        return Ok(Json(ApiResponse::error(400, "pushes cannot be empty")));
+    }
+    for push in request.pushes.iter() {
+        if push.kind.trim().is_empty() {
+            return Ok(Json(ApiResponse::error(400, "push type cannot be empty")));
+        }
+    }
+
+    let accepted = request.pushes.len();
+    let mut delivered = 0_usize;
+    for push in request.pushes {
+        if service
+            .push_to_user(push.user_id, push.kind.trim(), push.data)
+            .await
+        {
+            delivered += 1;
+        }
+    }
+    Ok(Json(ApiResponse::success_message(
+        "batch push processed",
+        InternalPushBatchResult {
+            accepted,
+            delivered,
+        },
+    )))
+}
+
 async fn websocket(
     ws: WebSocketUpgrade,
     State(service): State<ImService>,
@@ -150,15 +190,25 @@ async fn websocket(
     let (gateway_user_id, _gateway_username) =
         match validate_gateway_ws_identity(&headers, service.config()) {
             Ok(identity) => identity,
-            Err(err) => return err.into_response(),
+            Err(err) => {
+                tracing::warn!(error = %err, "websocket gateway auth rejected");
+                return err.into_response();
+            }
         };
 
     let ticket = match resolve_ticket(&headers, &query, &service) {
         TicketResolution::Ticket(ticket) => ticket,
         TicketResolution::RejectedQueryTicket => {
-            return AppError::query_ticket_not_allowed().into_response()
+            tracing::warn!(
+                user_id = gateway_user_id,
+                "websocket query ticket rejected by config"
+            );
+            return AppError::query_ticket_not_allowed().into_response();
         }
-        TicketResolution::Missing => return AppError::ticket_invalid().into_response(),
+        TicketResolution::Missing => {
+            tracing::warn!(user_id = gateway_user_id, "websocket ticket missing");
+            return AppError::ticket_invalid().into_response();
+        }
     };
 
     let consume_result = match service
@@ -173,6 +223,12 @@ async fn websocket(
         }
     };
     if !consume_result.valid || consume_result.user_id.is_none() {
+        tracing::warn!(
+            user_id = gateway_user_id,
+            status = ?consume_result.status,
+            error = ?consume_result.error,
+            "websocket ticket rejected"
+        );
         return AppError::ticket_invalid().into_response();
     }
 
@@ -190,9 +246,11 @@ async fn websocket(
 
 async fn handle_socket(socket: WebSocket, service: ImService, user_id: String, username: String) {
     let (mut socket_sender, mut socket_receiver) = socket.split();
-    let (sender, mut receiver) = mpsc::unbounded_channel::<Message>();
+    let queue_size = service.config().websocket_outbound_queue_size.max(1);
+    let (sender, mut receiver) = mpsc::channel::<Message>(queue_size);
+    let (shutdown, mut shutdown_rx) = watch::channel(false);
     let session_id = service
-        .register_session(user_id.clone(), username, sender.clone())
+        .register_session(user_id.clone(), username, sender.clone(), shutdown)
         .await;
 
     let write_task = tokio::spawn(async move {
@@ -204,7 +262,14 @@ async fn handle_socket(socket: WebSocket, service: ImService, user_id: String, u
     });
 
     let mut invalid_payload_count = 0_usize;
-    while let Some(message_result) = socket_receiver.next().await {
+    loop {
+        let message_result = tokio::select! {
+            _ = shutdown_rx.changed() => break,
+            message = socket_receiver.next() => message,
+        };
+        let Some(message_result) = message_result else {
+            break;
+        };
         let Ok(message) = message_result else {
             break;
         };
@@ -224,21 +289,27 @@ async fn handle_socket(socket: WebSocket, service: ImService, user_id: String, u
                 }
             }
             Message::Ping(payload) => {
-                let _ = sender.send(Message::Pong(payload));
-                service
+                let _ = sender.try_send(Message::Pong(payload));
+                if !service
                     .refresh_session_heartbeat(&user_id, &session_id)
-                    .await;
+                    .await
+                {
+                    break;
+                }
             }
             Message::Pong(_) => {
-                service
+                if !service
                     .refresh_session_heartbeat(&user_id, &session_id)
-                    .await;
+                    .await
+                {
+                    break;
+                }
             }
             Message::Close(_) => break,
             Message::Binary(_) => {
                 invalid_payload_count += 1;
                 if invalid_payload_count >= service.config().invalid_payload_threshold.max(1) {
-                    let _ = sender.send(Message::Close(None));
+                    let _ = sender.try_send(Message::Close(None));
                     break;
                 }
             }
@@ -251,7 +322,7 @@ async fn handle_socket(socket: WebSocket, service: ImService, user_id: String, u
 
 async fn handle_client_text(
     service: &ImService,
-    sender: &mpsc::UnboundedSender<Message>,
+    sender: &mpsc::Sender<Message>,
     user_id: &str,
     session_id: &str,
     text: &str,
@@ -283,8 +354,10 @@ async fn handle_client_text(
     }
 
     *invalid_payload_count = 0;
-    service.refresh_session_heartbeat(user_id, session_id).await;
-    let _ = sender.send(Message::Text(
+    if !service.refresh_session_heartbeat(user_id, session_id).await {
+        return false;
+    }
+    let _ = sender.try_send(Message::Text(
         serde_json::json!({"type":"HEARTBEAT","content":"PONG"}).to_string(),
     ));
     true
@@ -292,12 +365,12 @@ async fn handle_client_text(
 
 fn handle_invalid_payload(
     service: &ImService,
-    sender: &mpsc::UnboundedSender<Message>,
+    sender: &mpsc::Sender<Message>,
     invalid_payload_count: &mut usize,
 ) -> bool {
     *invalid_payload_count += 1;
     if *invalid_payload_count >= service.config().invalid_payload_threshold.max(1) {
-        let _ = sender.send(Message::Close(None));
+        let _ = sender.try_send(Message::Close(None));
         return false;
     }
     true

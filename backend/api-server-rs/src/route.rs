@@ -13,8 +13,6 @@ pub struct RouteLease {
     pub expires_at_epoch_ms: i64,
     #[serde(default)]
     pub internal_http_url: Option<String>,
-    #[serde(default)]
-    pub internal_ws_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,18 +30,7 @@ pub struct ServerNode {
 pub struct UserRoute {
     pub server_id: String,
     pub internal_http_url: String,
-    pub internal_ws_url: String,
-    pub session_count: i32,
     pub expires_at_epoch_ms: i64,
-}
-
-pub async fn user_routes(
-    redis: &mut ConnectionManager,
-    config: &AppConfig,
-    user_id: &str,
-) -> Result<Vec<UserRoute>, AppError> {
-    let raw: Option<Vec<u8>> = redis.hget(&config.route_users_key, user_id).await?;
-    Ok(parse_user_routes(raw.as_deref(), config))
 }
 
 pub async fn server_nodes(
@@ -101,11 +88,6 @@ pub fn parse_user_routes(raw: Option<&[u8]>, config: &AppConfig) -> Vec<UserRout
                     .internal_http_url
                     .filter(|value| !value.trim().is_empty())
                     .unwrap_or_else(|| config.im_server_url.clone()),
-                internal_ws_url: lease
-                    .internal_ws_url
-                    .filter(|value| !value.trim().is_empty())
-                    .unwrap_or_else(|| config.im_server_ws_url.clone()),
-                session_count: lease.session_count,
                 expires_at_epoch_ms: lease.expires_at_epoch_ms,
             })
         })

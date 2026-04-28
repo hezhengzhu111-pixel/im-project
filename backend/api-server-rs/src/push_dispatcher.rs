@@ -4,6 +4,7 @@ use crate::local_cache;
 use crate::observability;
 use crate::redis_streams;
 use crate::route::{parse_user_routes, UserRoute};
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use im_rs_common::event::{ImEvent, ImEventType};
 use im_rs_common::time;
 use redis::Commands;
@@ -17,6 +18,7 @@ use std::thread;
 use std::time::Duration;
 
 const GROUP_MEMBERS_CACHE_TTL_SECONDS: u64 = 5 * 60;
+const INTERNAL_PUSH_BATCH_SIZE: usize = 500;
 
 pub fn spawn(config: Arc<AppConfig>, db: MySqlPool) {
     if !config.push_dispatcher_enabled {
@@ -98,29 +100,62 @@ async fn dispatch_event(
     let Some(push) = build_push(db, redis, &event).await? else {
         return Ok(());
     };
+    let event_id = event.event_id.clone();
     let body_data = push.data.clone();
+    let route_map = routes_for_users(config, redis, route_cache, &push.user_ids)?;
+    let mut batches = HashMap::<String, RouteBatch>::new();
+    let mut offline_users = 0_usize;
     for user_id in push.user_ids {
-        let routes = routes_for_user(config, redis, route_cache, user_id)?;
+        let routes = route_map.get(&user_id).cloned().unwrap_or_default();
         if routes.is_empty() {
-            tracing::debug!(user_id, event_id = %event.event_id, "skip push for offline user");
+            offline_users += 1;
             continue;
         }
         for route in routes {
-            let request = InternalPushRequest {
-                user_id,
-                kind: push.kind.clone(),
-                data: body_data.clone(),
-            };
-            if let Err(error) = send_internal_push(config, http, &route, &request).await {
-                tracing::warn!(
+            let key = format!("{}\0{}", route.server_id, route.internal_http_url);
+            batches
+                .entry(key)
+                .or_insert_with(|| RouteBatch {
+                    route,
+                    requests: Vec::new(),
+                })
+                .requests
+                .push(InternalPushRequest {
                     user_id,
-                    server_id = %route.server_id,
-                    event_id = %event.event_id,
-                    error = %error,
-                    "internal websocket push failed"
-                );
-            }
+                    kind: push.kind.clone(),
+                    data: body_data.clone(),
+                });
         }
+    }
+    if offline_users > 0 {
+        tracing::debug!(
+            count = offline_users,
+            event_id = %event_id,
+            "skip push for offline users"
+        );
+    }
+
+    let mut pending = FuturesUnordered::new();
+    for batch in batches.into_values() {
+        for chunk in batch.requests.chunks(INTERNAL_PUSH_BATCH_SIZE) {
+            let route = batch.route.clone();
+            let requests = chunk.to_vec();
+            let event_id = event_id.clone();
+            pending.push(async move {
+                send_internal_push_batch(config, http, &route, &requests).await.map_err(|error| {
+                    anyhow::anyhow!(
+                        "internal websocket batch push failed event_id={} server_id={} count={} error={}",
+                        event_id,
+                        route.server_id,
+                        requests.len(),
+                        error
+                    )
+                })
+            });
+        }
+    }
+    while let Some(result) = pending.next().await {
+        result?;
     }
     Ok(())
 }
@@ -227,14 +262,19 @@ async fn build_push(
     }
 }
 
-async fn send_internal_push(
+async fn send_internal_push_batch(
     config: &AppConfig,
     http: &Client,
     route: &UserRoute,
-    request: &InternalPushRequest,
+    requests: &[InternalPushRequest],
 ) -> anyhow::Result<()> {
-    let path = "/api/im/internal/push";
-    let body = serde_json::to_vec(request)?;
+    if requests.is_empty() {
+        return Ok(());
+    }
+    let path = "/api/im/internal/push/batch";
+    let body = serde_json::to_vec(&InternalPushBatchRequest {
+        pushes: requests.to_vec(),
+    })?;
     let headers = auth_api::internal_signature_headers("POST", path, &body, config)?;
     let response = http
         .post(format!(
@@ -253,33 +293,51 @@ async fn send_internal_push(
     Ok(())
 }
 
-fn routes_for_user(
+fn routes_for_users(
     config: &AppConfig,
     redis: &mut redis::Connection,
     route_cache: &mut HashMap<String, CachedRoutes>,
-    user_id: i64,
-) -> anyhow::Result<Vec<UserRoute>> {
-    let user_key = user_id.to_string();
+    user_ids: &[i64],
+) -> anyhow::Result<HashMap<i64, Vec<UserRoute>>> {
     let now = time::now_ms();
-    if let Some(cached) = route_cache.get(&user_key) {
-        if cached.valid_at(now, config.route_cache_ttl_ms.max(100)) {
-            return Ok(cached.routes.clone());
+    let cache_ttl_ms = config.route_cache_ttl_ms.max(100);
+    let mut result = HashMap::with_capacity(user_ids.len());
+    let mut misses = Vec::<(i64, String)>::new();
+
+    for user_id in user_ids {
+        let user_key = user_id.to_string();
+        if let Some(cached) = route_cache.get(&user_key) {
+            if cached.valid_at(now, cache_ttl_ms) {
+                result.insert(*user_id, cached.routes.clone());
+                continue;
+            }
+        }
+        misses.push((*user_id, user_key));
+    }
+
+    if !misses.is_empty() {
+        let mut pipe = redis::pipe();
+        for (_, user_key) in &misses {
+            pipe.cmd("HGET").arg(&config.route_users_key).arg(user_key);
+        }
+        let raws: Vec<Option<Vec<u8>>> = pipe.query(redis)?;
+        for ((user_id, user_key), raw) in misses.into_iter().zip(raws) {
+            let routes = parse_user_routes(raw.as_deref(), config);
+            route_cache.insert(
+                user_key,
+                CachedRoutes {
+                    routes: routes.clone(),
+                    cached_at_ms: now,
+                },
+            );
+            result.insert(user_id, routes);
         }
     }
 
-    let raw: Option<Vec<u8>> = redis.hget(&config.route_users_key, &user_key)?;
-    let routes = parse_user_routes(raw.as_deref(), config);
-    route_cache.insert(
-        user_key,
-        CachedRoutes {
-            routes: routes.clone(),
-            cached_at_ms: now,
-        },
-    );
     if route_cache.len() > config.push_dispatcher_batch_size.max(1000) * 10 {
-        route_cache.retain(|_, value| value.valid_at(now, config.route_cache_ttl_ms.max(100)));
+        route_cache.retain(|_, value| value.valid_at(now, cache_ttl_ms));
     }
-    Ok(routes)
+    Ok(result)
 }
 
 async fn load_group_members(db: &MySqlPool, group_id: i64) -> anyhow::Result<Vec<i64>> {
@@ -357,11 +415,22 @@ impl CachedRoutes {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct InternalPushRequest {
     pub user_id: i64,
     #[serde(rename = "type")]
     pub kind: String,
     pub data: Value,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InternalPushBatchRequest {
+    pub pushes: Vec<InternalPushRequest>,
+}
+
+struct RouteBatch {
+    route: UserRoute,
+    requests: Vec<InternalPushRequest>,
 }

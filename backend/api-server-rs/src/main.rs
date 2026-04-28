@@ -45,7 +45,7 @@ async fn main() -> anyhow::Result<()> {
         .await?;
     let state = AppState {
         config: config.clone(),
-        redis: Arc::new(tokio::sync::Mutex::new(redis)),
+        redis_manager: redis.clone(),
         db,
         http: reqwest::Client::new(),
     };

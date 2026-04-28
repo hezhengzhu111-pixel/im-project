@@ -960,18 +960,10 @@ async fn validate_group_member(
             ))
         };
     }
-    let count: i64 = observability::db_query(
-        "validate_group_member",
-        sqlx::query_scalar(
-            "SELECT COUNT(*) FROM service_group_service_db.im_group_member WHERE group_id = ? AND user_id = ? AND status = 1",
-        )
-        .bind(group_id)
-        .bind(user_id)
-        .fetch_one(db),
-    )
-    .await?;
-    write_cached_bool(redis, &key, count > 0).await;
-    if count <= 0 {
+    let members = load_group_members(redis, db, group_id).await?;
+    let allowed = members.contains(&user_id);
+    write_cached_bool(redis, &key, allowed).await;
+    if !allowed {
         return Err(AppError::Forbidden(
             "group membership not found".to_string(),
         ));

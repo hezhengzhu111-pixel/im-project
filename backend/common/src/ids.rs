@@ -9,12 +9,12 @@ pub fn next_id(node_id: u16) -> i64 {
         let current = LAST_MS_AND_SEQ.load(Ordering::Relaxed);
         let last_ms = current >> 12;
         let last_seq = current & 0x0fff;
-        let (ms, seq) = if now == last_ms {
-            (now, (last_seq + 1) & 0x0fff)
-        } else if now > last_ms {
+        let (ms, seq) = if now > last_ms {
             (now, 0)
+        } else if last_seq < 0x0fff {
+            (last_ms, last_seq + 1)
         } else {
-            (last_ms, (last_seq + 1) & 0x0fff)
+            (last_ms + 1, 0)
         };
         let next = (ms << 12) | seq;
         if LAST_MS_AND_SEQ
