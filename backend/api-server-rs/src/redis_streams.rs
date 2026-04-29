@@ -1,4 +1,3 @@
-use crate::config::AppConfig;
 use redis::streams::StreamReadReply;
 
 const EVENT_ID_FIELD: &str = "eventId";
@@ -42,17 +41,18 @@ pub fn ensure_group(
 }
 
 pub fn append_event_cmd(
-    config: &AppConfig,
     pipe: &mut redis::Pipeline,
+    stream_key: &str,
+    stream_max_len: usize,
     event_id: &str,
     conversation_id: &str,
     payload: &str,
 ) {
     pipe.cmd("XADD")
-        .arg(&config.event_stream_key)
+        .arg(stream_key)
         .arg("MAXLEN")
         .arg("~")
-        .arg(config.event_stream_max_len.max(1))
+        .arg(stream_max_len.max(1))
         .arg("*")
         .arg(EVENT_ID_FIELD)
         .arg(event_id)

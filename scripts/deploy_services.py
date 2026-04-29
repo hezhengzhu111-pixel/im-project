@@ -20,7 +20,21 @@ SERVICE_ALIASES = {
 }
 
 APP_SERVICES = ["im-server", "im-api-server", "im-frontend"]
-REQUIRED_MIDDLEWARE_SERVICES = ["im-mysql", "im-redis"]
+REQUIRED_MIDDLEWARE_SERVICES = [
+    "im-mysql",
+    "im-redis",
+    "im-redis-private-hot",
+    "im-redis-private-hot-2",
+    "im-redis-private-hot-3",
+    "im-redis-private-hot-4",
+    "im-redis-group-hot",
+    "im-redis-group-hot-2",
+    "im-redis-group-hot-3",
+    "im-redis-group-hot-4",
+    "im-redis-events-private",
+    "im-redis-events-group",
+    "im-redis-route",
+]
 
 
 def build_parser() -> argparse.ArgumentParser:

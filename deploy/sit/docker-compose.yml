@@ -50,6 +50,303 @@ services:
     networks:
       - im-sit-network
 
+  im-redis-group-hot:
+    image: "${REDIS_IMAGE:-docker.m.daocloud.io/library/redis:7.2-alpine}"
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "${REDIS_GROUP_HOT_APPENDONLY:-no}"
+      - --save
+      - "${REDIS_GROUP_HOT_SAVE:-}"
+      - --requirepass
+      - "${REDIS_PASSWORD:-root123}"
+    ports:
+      - "${REDIS_GROUP_HOT_PORT:-6383}:6379"
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
+    volumes:
+      - redis_group_hot_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks:
+      - im-sit-network
+
+  im-redis-group-hot-2:
+    image: "${REDIS_IMAGE:-docker.m.daocloud.io/library/redis:7.2-alpine}"
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "${REDIS_GROUP_HOT_APPENDONLY:-no}"
+      - --save
+      - "${REDIS_GROUP_HOT_SAVE:-}"
+      - --requirepass
+      - "${REDIS_PASSWORD:-root123}"
+    ports:
+      - "${REDIS_GROUP_HOT_PORT_2:-6386}:6379"
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
+    volumes:
+      - redis_group_hot_data_2:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks:
+      - im-sit-network
+
+  im-redis-group-hot-3:
+    image: "${REDIS_IMAGE:-docker.m.daocloud.io/library/redis:7.2-alpine}"
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "${REDIS_GROUP_HOT_APPENDONLY:-no}"
+      - --save
+      - "${REDIS_GROUP_HOT_SAVE:-}"
+      - --requirepass
+      - "${REDIS_PASSWORD:-root123}"
+    ports:
+      - "${REDIS_GROUP_HOT_PORT_3:-6389}:6379"
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
+    volumes:
+      - redis_group_hot_data_3:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks:
+      - im-sit-network
+
+  im-redis-group-hot-4:
+    image: "${REDIS_IMAGE:-docker.m.daocloud.io/library/redis:7.2-alpine}"
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "${REDIS_GROUP_HOT_APPENDONLY:-no}"
+      - --save
+      - "${REDIS_GROUP_HOT_SAVE:-}"
+      - --requirepass
+      - "${REDIS_PASSWORD:-root123}"
+    ports:
+      - "${REDIS_GROUP_HOT_PORT_4:-6390}:6379"
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
+    volumes:
+      - redis_group_hot_data_4:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks:
+      - im-sit-network
+
+  im-redis-private-hot:
+    image: "${REDIS_IMAGE:-docker.m.daocloud.io/library/redis:7.2-alpine}"
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "${REDIS_PRIVATE_HOT_APPENDONLY:-no}"
+      - --save
+      - "${REDIS_PRIVATE_HOT_SAVE:-}"
+      - --requirepass
+      - "${REDIS_PASSWORD:-root123}"
+    ports:
+      - "${REDIS_PRIVATE_HOT_PORT:-6384}:6379"
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
+    volumes:
+      - redis_private_hot_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks:
+      - im-sit-network
+
+  im-redis-private-hot-2:
+    image: "${REDIS_IMAGE:-docker.m.daocloud.io/library/redis:7.2-alpine}"
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "${REDIS_PRIVATE_HOT_APPENDONLY:-no}"
+      - --save
+      - "${REDIS_PRIVATE_HOT_SAVE:-}"
+      - --requirepass
+      - "${REDIS_PASSWORD:-root123}"
+    ports:
+      - "${REDIS_PRIVATE_HOT_PORT_2:-6385}:6379"
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
+    volumes:
+      - redis_private_hot_data_2:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks:
+      - im-sit-network
+
+  im-redis-private-hot-3:
+    image: "${REDIS_IMAGE:-docker.m.daocloud.io/library/redis:7.2-alpine}"
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "${REDIS_PRIVATE_HOT_APPENDONLY:-no}"
+      - --save
+      - "${REDIS_PRIVATE_HOT_SAVE:-}"
+      - --requirepass
+      - "${REDIS_PASSWORD:-root123}"
+    ports:
+      - "${REDIS_PRIVATE_HOT_PORT_3:-6387}:6379"
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
+    volumes:
+      - redis_private_hot_data_3:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks:
+      - im-sit-network
+
+  im-redis-private-hot-4:
+    image: "${REDIS_IMAGE:-docker.m.daocloud.io/library/redis:7.2-alpine}"
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "${REDIS_PRIVATE_HOT_APPENDONLY:-no}"
+      - --save
+      - "${REDIS_PRIVATE_HOT_SAVE:-}"
+      - --requirepass
+      - "${REDIS_PASSWORD:-root123}"
+    ports:
+      - "${REDIS_PRIVATE_HOT_PORT_4:-6388}:6379"
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
+    volumes:
+      - redis_private_hot_data_4:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks:
+      - im-sit-network
+
+  im-redis-events-private:
+    image: "${REDIS_IMAGE:-docker.m.daocloud.io/library/redis:7.2-alpine}"
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "${REDIS_EVENT_APPENDONLY:-no}"
+      - --save
+      - "${REDIS_EVENT_SAVE:-}"
+      - --requirepass
+      - "${REDIS_PASSWORD:-root123}"
+    ports:
+      - "${REDIS_PRIVATE_EVENT_PORT:-6380}:6379"
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
+    volumes:
+      - redis_private_events_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks:
+      - im-sit-network
+
+  im-redis-events-group:
+    image: "${REDIS_IMAGE:-docker.m.daocloud.io/library/redis:7.2-alpine}"
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "${REDIS_EVENT_APPENDONLY:-no}"
+      - --save
+      - "${REDIS_EVENT_SAVE:-}"
+      - --requirepass
+      - "${REDIS_PASSWORD:-root123}"
+    ports:
+      - "${REDIS_GROUP_EVENT_PORT:-6381}:6379"
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
+    volumes:
+      - redis_group_events_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks:
+      - im-sit-network
+
+  im-redis-route:
+    image: "${REDIS_IMAGE:-docker.m.daocloud.io/library/redis:7.2-alpine}"
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "${REDIS_ROUTE_APPENDONLY:-no}"
+      - --save
+      - "${REDIS_ROUTE_SAVE:-}"
+      - --requirepass
+      - "${REDIS_PASSWORD:-root123}"
+    ports:
+      - "${REDIS_ROUTE_PORT:-6382}:6379"
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
+    volumes:
+      - redis_route_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-root123}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks:
+      - im-sit-network
+
   im-files-init:
     image: "${ALPINE_IMAGE:-docker.m.daocloud.io/library/alpine:3.20}"
     restart: "no"
@@ -73,12 +370,13 @@ services:
         IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
     restart: unless-stopped
     depends_on:
-      im-redis:
+      im-redis-route:
         condition: service_healthy
     environment:
       TZ: Asia/Shanghai
       IM_SERVER_RS_PORT: "8083"
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis-route:6379/0"
+      IM_ROUTE_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis-route:6379/0"
       IM_AUTH_SERVICE_URL: "${IM_AUTH_SERVICE_URL:-http://im-api-server:8082}"
       IM_GROUP_SERVICE_URL: "${IM_GROUP_SERVICE_URL:-http://127.0.0.1:9}"
       IM_INTERNAL_SECRET: "${IM_INTERNAL_SECRET:-im-internal-secret-im-internal-secret-im-internal-secret-im}"
@@ -109,6 +407,28 @@ services:
         condition: service_healthy
       im-redis:
         condition: service_healthy
+      im-redis-private-hot:
+        condition: service_healthy
+      im-redis-private-hot-2:
+        condition: service_healthy
+      im-redis-private-hot-3:
+        condition: service_healthy
+      im-redis-private-hot-4:
+        condition: service_healthy
+      im-redis-group-hot:
+        condition: service_healthy
+      im-redis-group-hot-2:
+        condition: service_healthy
+      im-redis-group-hot-3:
+        condition: service_healthy
+      im-redis-group-hot-4:
+        condition: service_healthy
+      im-redis-events-private:
+        condition: service_healthy
+      im-redis-events-group:
+        condition: service_healthy
+      im-redis-route:
+        condition: service_healthy
       im-files-init:
         condition: service_completed_successfully
       im-server:
@@ -119,6 +439,15 @@ services:
       API_SERVER_RS_PORT: "8082"
       MYSQL_URL: "mysql://root:${MYSQL_ROOT_PASSWORD:-root123}@im-mysql:3306/service_message_service_db"
       REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
+      IM_CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis:6379/0"
+      IM_HOT_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis-private-hot:6379/0"
+      IM_PRIVATE_HOT_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis-private-hot:6379/0"
+      IM_PRIVATE_HOT_REDIS_URLS: "redis://:${REDIS_PASSWORD:-root123}@im-redis-private-hot:6379/0,redis://:${REDIS_PASSWORD:-root123}@im-redis-private-hot-2:6379/0,redis://:${REDIS_PASSWORD:-root123}@im-redis-private-hot-3:6379/0,redis://:${REDIS_PASSWORD:-root123}@im-redis-private-hot-4:6379/0"
+      IM_GROUP_HOT_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis-group-hot:6379/0"
+      IM_GROUP_HOT_REDIS_URLS: "redis://:${REDIS_PASSWORD:-root123}@im-redis-group-hot:6379/0,redis://:${REDIS_PASSWORD:-root123}@im-redis-group-hot-2:6379/0,redis://:${REDIS_PASSWORD:-root123}@im-redis-group-hot-3:6379/0,redis://:${REDIS_PASSWORD:-root123}@im-redis-group-hot-4:6379/0"
+      IM_PRIVATE_EVENT_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis-events-private:6379/0"
+      IM_GROUP_EVENT_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis-events-group:6379/0"
+      IM_ROUTE_REDIS_URL: "redis://:${REDIS_PASSWORD:-root123}@im-redis-route:6379/0"
       JWT_SECRET: "${JWT_SECRET:-im-access-secret-im-access-secret-im-access-secret-im-access-secret}"
       AUTH_REFRESH_SECRET: "${AUTH_REFRESH_SECRET:-im-refresh-secret-im-refresh-secret-im-refresh-secret-im-refresh-secret}"
       AUTH_WS_TICKET_TTL_SECONDS: "${AUTH_WS_TICKET_TTL_SECONDS:-120}"
@@ -134,7 +463,9 @@ services:
       IM_SERVER_ROUTE_URI: "${IM_SERVER_ROUTE_URI:-http://im-server:8083}"
       IM_SERVER_WS_ROUTE_URI: "${IM_SERVER_WS_ROUTE_URI:-ws://im-server:8083}"
       IM_EVENT_STREAM_KEY: "${IM_EVENT_STREAM_KEY:-im:events}"
-      IM_EVENT_STREAM_MAX_LEN: "${IM_EVENT_STREAM_MAX_LEN:-5000000}"
+      IM_PRIVATE_EVENT_STREAM_KEY: "${IM_PRIVATE_EVENT_STREAM_KEY:-im:events:private}"
+      IM_GROUP_EVENT_STREAM_KEY: "${IM_GROUP_EVENT_STREAM_KEY:-im:events:group}"
+      IM_EVENT_STREAM_MAX_LEN: "${IM_EVENT_STREAM_MAX_LEN:-100000}"
       IM_EVENT_STREAM_BLOCK_MS: "${IM_EVENT_STREAM_BLOCK_MS:-1000}"
       IM_MYSQL_MAX_CONNECTIONS: "${IM_MYSQL_MAX_CONNECTIONS:-64}"
       IM_PUBLISHER_BATCH_SIZE: "${IM_PUBLISHER_BATCH_SIZE:-1000}"
@@ -195,4 +526,15 @@ networks:
 volumes:
   mysql_data:
   redis_data:
+  redis_private_hot_data:
+  redis_private_hot_data_2:
+  redis_private_hot_data_3:
+  redis_private_hot_data_4:
+  redis_group_hot_data:
+  redis_group_hot_data_2:
+  redis_group_hot_data_3:
+  redis_group_hot_data_4:
+  redis_private_events_data:
+  redis_group_events_data:
+  redis_route_data:
   im_files:

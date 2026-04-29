@@ -1,5 +1,5 @@
 use crate::background_task;
-use crate::config::AppConfig;
+use crate::config::{AppConfig, EventStreamConfig, EventStreamKind};
 use crate::observability;
 use crate::redis_streams;
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -21,18 +21,33 @@ pub fn spawn(config: Arc<AppConfig>, db: MySqlPool) {
         tracing::info!("api-server embedded message writer disabled");
         return;
     }
-    let handle = tokio::runtime::Handle::current();
-    background_task::spawn("message-writer", move || run(config, db, handle));
+    for stream in config.event_streams() {
+        let task_config = config.clone();
+        let task_db = db.clone();
+        let handle = tokio::runtime::Handle::current();
+        let task_name = match stream.kind {
+            EventStreamKind::Private => "message-writer-private",
+            EventStreamKind::Group => "message-writer-group",
+        };
+        background_task::spawn(task_name, move || run(task_config, stream, task_db, handle));
+    }
 }
 
-fn run(config: Arc<AppConfig>, db: MySqlPool, handle: tokio::runtime::Handle) {
+fn run(
+    config: Arc<AppConfig>,
+    stream: EventStreamConfig,
+    db: MySqlPool,
+    handle: tokio::runtime::Handle,
+) {
+    let group_id = stream_group_id(&config.writer_group_id, &stream);
     tracing::info!(
-        stream = %config.event_stream_key,
-        group = %config.writer_group_id,
+        kind = stream.kind.as_str(),
+        stream = %stream.stream_key,
+        group = %group_id,
         "api-server embedded message writer started"
     );
     loop {
-        match connect_and_consume(config.clone(), db.clone(), handle.clone()) {
+        match connect_and_consume(config.clone(), stream.clone(), db.clone(), handle.clone()) {
             Ok(()) => {}
             Err(error) => {
                 tracing::warn!(error = %error, "embedded message writer failed");
@@ -44,27 +59,30 @@ fn run(config: Arc<AppConfig>, db: MySqlPool, handle: tokio::runtime::Handle) {
 
 fn connect_and_consume(
     config: Arc<AppConfig>,
+    stream: EventStreamConfig,
     db: MySqlPool,
     handle: tokio::runtime::Handle,
 ) -> anyhow::Result<()> {
-    let redis = redis::Client::open(config.redis_url.as_str())?.get_connection()?;
-    let stream_key = config.event_stream_key.clone();
-    let group_id = config.writer_group_id.clone();
-    let consumer_name = redis_streams::consumer_name("writer");
+    let event_redis = redis::Client::open(stream.redis_url.as_str())?.get_connection()?;
+    let hot_redis = connect_hot_redis_connections(config.hot_redis_urls_for(stream.kind))?;
+    let stream_key = stream.stream_key.clone();
+    let group_id = stream_group_id(&config.writer_group_id, &stream);
+    let consumer_name = redis_streams::consumer_name(&format!("writer-{}", stream.kind.as_str()));
     let mut processor = Processor {
         config,
         db,
-        redis,
+        event_redis,
+        hot_redis,
         message_batch: Vec::new(),
         private_read_batch: Vec::new(),
         group_read_batch: Vec::new(),
         last_flush: Instant::now(),
     };
-    redis_streams::ensure_group(&mut processor.redis, &stream_key, &group_id)?;
+    redis_streams::ensure_group(&mut processor.event_redis, &stream_key, &group_id)?;
 
     loop {
         let events = redis_streams::read_group_events(
-            &mut processor.redis,
+            &mut processor.event_redis,
             &stream_key,
             &group_id,
             &consumer_name,
@@ -80,18 +98,31 @@ fn connect_and_consume(
             ack_ids.push(event_message.stream_id);
         }
         handle.block_on(processor.flush_if_due())?;
-        redis_streams::ack(&mut processor.redis, &stream_key, &group_id, &ack_ids)?;
+        redis_streams::ack(&mut processor.event_redis, &stream_key, &group_id, &ack_ids)?;
     }
 }
 
 struct Processor {
     config: Arc<AppConfig>,
     db: MySqlPool,
-    redis: redis::Connection,
+    event_redis: redis::Connection,
+    hot_redis: Vec<redis::Connection>,
     message_batch: Vec<MessageDto>,
     private_read_batch: Vec<PrivateReadCursor>,
     group_read_batch: Vec<GroupReadCursor>,
     last_flush: Instant,
+}
+
+fn stream_group_id(base_group_id: &str, stream: &EventStreamConfig) -> String {
+    format!("{base_group_id}-{}", stream.kind.as_str())
+}
+
+fn connect_hot_redis_connections(urls: &[String]) -> anyhow::Result<Vec<redis::Connection>> {
+    let mut connections = Vec::with_capacity(urls.len());
+    for url in urls {
+        connections.push(redis::Client::open(url.as_str())?.get_connection()?);
+    }
+    Ok(connections)
 }
 
 impl Processor {
@@ -172,17 +203,29 @@ impl Processor {
             self.read_batch_len(),
         );
 
-        let mut watermarks: HashMap<String, i64> = HashMap::new();
+        let mut watermarks_by_shard: HashMap<usize, HashMap<String, i64>> = HashMap::new();
         for message in &messages {
             if let Ok(message_id) = message.id.parse::<i64>() {
                 let conversation_id = conversation_id_from_message(message);
-                watermarks
+                let Some(shard_index) =
+                    crate::message::shard_index_for_key(&conversation_id, self.hot_redis.len())
+                else {
+                    tracing::warn!("failed to select hot redis shard for db watermark");
+                    continue;
+                };
+                watermarks_by_shard
+                    .entry(shard_index)
+                    .or_default()
                     .entry(conversation_id)
                     .and_modify(|current| *current = (*current).max(message_id))
                     .or_insert(message_id);
             }
         }
-        if !watermarks.is_empty() {
+        for (shard_index, watermarks) in watermarks_by_shard {
+            let Some(hot_redis) = self.hot_redis.get_mut(shard_index) else {
+                tracing::warn!("missing hot redis shard for db watermark");
+                continue;
+            };
             let mut pipe = redis::pipe();
             for (conversation_id, message_id) in watermarks {
                 pipe.set(
@@ -191,7 +234,7 @@ impl Processor {
                 )
                 .ignore();
             }
-            let result: redis::RedisResult<()> = pipe.query(&mut self.redis);
+            let result: redis::RedisResult<()> = pipe.query(hot_redis);
             if let Err(error) = result {
                 tracing::warn!(error = %error, "failed to update db watermarks");
             }

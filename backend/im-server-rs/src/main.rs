@@ -36,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = Arc::new(AppConfig::from_env());
-    let redis_client = redis::Client::open(config.redis_url.as_str())?;
+    let redis_client = redis::Client::open(config.route_redis_url.as_str())?;
     let redis = ConnectionManager::new(redis_client.clone()).await?;
     let service = ImService::new(config.clone(), redis);
     service.spawn_background_tasks(redis_client);
