@@ -41,9 +41,11 @@ pub fn validate_internal_signature(
 
     let body_hash = sha256_base64_url(body);
     let canonical = build_internal_canonical(method, path, &body_hash, &ts, &nonce);
-    verify_hmac(&config.internal_secret, &canonical, &sign)
-        .then_some(())
-        .ok_or_else(AppError::internal_auth_rejected)
+    if verify_hmac(&config.internal_secret, &canonical, &sign)? {
+        Ok(())
+    } else {
+        Err(AppError::internal_auth_rejected())
+    }
 }
 
 pub fn validate_gateway_ws_identity(
@@ -90,9 +92,11 @@ pub fn validate_gateway_ws_identity(
         &ts,
         &nonce,
     );
-    verify_hmac(&config.gateway_auth_secret, &canonical, &sign)
-        .then_some((user_id, username.trim().to_string()))
-        .ok_or_else(AppError::internal_auth_rejected)
+    if verify_hmac(&config.gateway_auth_secret, &canonical, &sign)? {
+        Ok((user_id, username.trim().to_string()))
+    } else {
+        Err(AppError::internal_auth_rejected())
+    }
 }
 
 pub fn internal_signature_headers(
@@ -100,28 +104,28 @@ pub fn internal_signature_headers(
     path: &str,
     body: &[u8],
     config: &AppConfig,
-) -> Vec<(String, String)> {
+) -> Result<Vec<(String, String)>, AppError> {
     let ts = now_ms().to_string();
     let nonce = uuid::Uuid::new_v4().to_string();
     let body_hash = sha256_base64_url(body);
     let canonical = build_internal_canonical(method, path, &body_hash, &ts, &nonce);
-    let sign = sign_hmac(&config.internal_secret, &canonical);
-    vec![
+    let sign = sign_hmac(&config.internal_secret, &canonical)?;
+    Ok(vec![
         (INTERNAL_TS_HEADER.to_string(), ts),
         (INTERNAL_NONCE_HEADER.to_string(), nonce),
         (INTERNAL_SIGN_HEADER.to_string(), sign),
-    ]
+    ])
 }
 
 pub fn sha256_base64_url(value: &[u8]) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(value))
 }
 
-pub fn sign_hmac(secret: &str, canonical: &str) -> String {
-    let mut mac =
-        HmacSha256::new_from_slice(secret.as_bytes()).expect("hmac accepts any key length");
+pub fn sign_hmac(secret: &str, canonical: &str) -> Result<String, AppError> {
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|error| AppError::BadRequest(format!("invalid hmac key: {error}")))?;
     mac.update(canonical.as_bytes());
-    URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes())
+    Ok(URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes()))
 }
 
 fn build_internal_canonical(
@@ -156,14 +160,16 @@ fn build_gateway_canonical(
     )
 }
 
-fn verify_hmac(secret: &str, canonical: &str, signature: &str) -> bool {
-    let expected = sign_hmac(secret, canonical);
-    expected.as_bytes().ct_eq(signature.as_bytes()).into()
+fn verify_hmac(secret: &str, canonical: &str, signature: &str) -> Result<bool, AppError> {
+    let expected = sign_hmac(secret, canonical)?;
+    Ok(expected.as_bytes().ct_eq(signature.as_bytes()).into())
 }
 
 fn within_skew(timestamp_ms: i64, allowed_skew_ms: i64) -> bool {
-    let now = now_ms();
-    (now - timestamp_ms).abs() <= allowed_skew_ms
+    now_ms()
+        .checked_sub(timestamp_ms)
+        .and_then(i64::checked_abs)
+        .is_some_and(|delta| delta <= allowed_skew_ms)
 }
 
 fn normalize_path(path: &str) -> String {
@@ -188,7 +194,7 @@ mod tests {
     use axum::http::HeaderValue;
 
     #[test]
-    fn should_verify_internal_signature() {
+    fn should_verify_internal_signature() -> Result<(), Box<dyn std::error::Error>> {
         let mut cfg = AppConfig::from_env();
         cfg.internal_secret = "secret".to_string();
         let ts = now_ms().to_string();
@@ -197,20 +203,22 @@ mod tests {
         let body_hash = sha256_base64_url(body);
         let canonical =
             build_internal_canonical("POST", "/api/im/online-status", &body_hash, &ts, nonce);
-        let sign = sign_hmac("secret", &canonical);
+        let sign = sign_hmac("secret", &canonical)?;
         let mut headers = HeaderMap::new();
-        headers.insert(INTERNAL_TS_HEADER, HeaderValue::from_str(&ts).unwrap());
+        headers.insert(INTERNAL_TS_HEADER, HeaderValue::from_str(&ts)?);
         headers.insert(INTERNAL_NONCE_HEADER, HeaderValue::from_static(nonce));
-        headers.insert(INTERNAL_SIGN_HEADER, HeaderValue::from_str(&sign).unwrap());
+        headers.insert(INTERNAL_SIGN_HEADER, HeaderValue::from_str(&sign)?);
 
         assert!(
             validate_internal_signature(&headers, "POST", "/api/im/online-status", body, &cfg)
                 .is_ok()
         );
+        Ok(())
     }
 
     #[test]
-    fn should_reject_internal_signature_when_body_changes() {
+    fn should_reject_internal_signature_when_body_changes() -> Result<(), Box<dyn std::error::Error>>
+    {
         let mut cfg = AppConfig::from_env();
         cfg.internal_secret = "secret".to_string();
         let ts = now_ms().to_string();
@@ -218,11 +226,11 @@ mod tests {
         let body_hash = sha256_base64_url(b"{}");
         let canonical =
             build_internal_canonical("POST", "/api/im/online-status", &body_hash, &ts, nonce);
-        let sign = sign_hmac("secret", &canonical);
+        let sign = sign_hmac("secret", &canonical)?;
         let mut headers = HeaderMap::new();
-        headers.insert(INTERNAL_TS_HEADER, HeaderValue::from_str(&ts).unwrap());
+        headers.insert(INTERNAL_TS_HEADER, HeaderValue::from_str(&ts)?);
         headers.insert(INTERNAL_NONCE_HEADER, HeaderValue::from_static(nonce));
-        headers.insert(INTERNAL_SIGN_HEADER, HeaderValue::from_str(&sign).unwrap());
+        headers.insert(INTERNAL_SIGN_HEADER, HeaderValue::from_str(&sign)?);
 
         assert!(validate_internal_signature(
             &headers,
@@ -232,10 +240,12 @@ mod tests {
             &cfg
         )
         .is_err());
+        Ok(())
     }
 
     #[test]
-    fn should_verify_gateway_ws_signature_without_trusting_path_user_id() {
+    fn should_verify_gateway_ws_signature_without_trusting_path_user_id(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut cfg = AppConfig::from_env();
         cfg.gateway_auth_secret = "gateway".to_string();
         let user = "eyJpZCI6N30";
@@ -244,21 +254,22 @@ mod tests {
         let ts = now_ms().to_string();
         let nonce = "nonce-1";
         let canonical = build_gateway_canonical("7", "alice", user, perms, data, &ts, nonce);
-        let sign = sign_hmac("gateway", &canonical);
+        let sign = sign_hmac("gateway", &canonical)?;
         let mut headers = HeaderMap::new();
         headers.insert("X-User-Id", HeaderValue::from_static("7"));
         headers.insert("X-Username", HeaderValue::from_static("alice"));
         headers.insert(AUTH_USER_HEADER, HeaderValue::from_static(user));
         headers.insert(AUTH_PERMS_HEADER, HeaderValue::from_static(perms));
         headers.insert(AUTH_DATA_HEADER, HeaderValue::from_static(data));
-        headers.insert(AUTH_TS_HEADER, HeaderValue::from_str(&ts).unwrap());
+        headers.insert(AUTH_TS_HEADER, HeaderValue::from_str(&ts)?);
         headers.insert(AUTH_NONCE_HEADER, HeaderValue::from_static(nonce));
-        headers.insert(AUTH_SIGN_HEADER, HeaderValue::from_str(&sign).unwrap());
+        headers.insert(AUTH_SIGN_HEADER, HeaderValue::from_str(&sign)?);
 
         assert_eq!(
             (7, "alice".to_string()),
-            validate_gateway_ws_identity(&headers, &cfg).unwrap()
+            validate_gateway_ws_identity(&headers, &cfg)?
         );
+        Ok(())
     }
 
     #[test]

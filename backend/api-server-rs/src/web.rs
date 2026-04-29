@@ -15,13 +15,14 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
-use im_rs_common::api::ApiResponse;
 use im_rs_common::auth::sign_gateway_headers;
+use im_rs_common::{api::ApiResponse, keys};
 use redis::aio::ConnectionManager;
 use reqwest::Client;
 use serde_json::json;
 use sqlx::MySqlPool;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -29,10 +30,20 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<AppConfig>,
-    pub redis: Arc<Mutex<ConnectionManager>>,
+    pub redis_manager: ConnectionManager,
+    pub private_redis_managers: Arc<Vec<ConnectionManager>>,
+    pub group_redis_managers: Arc<Vec<ConnectionManager>>,
+    pub route_redis_manager: ConnectionManager,
     pub db: MySqlPool,
     pub http: Client,
 }
+
+struct WebSocketTargetCache {
+    target: Option<String>,
+    expires_at: Instant,
+}
+
+static WEBSOCKET_TARGET_CACHE: OnceLock<Mutex<WebSocketTargetCache>> = OnceLock::new();
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -236,15 +247,111 @@ async fn message_config() -> Json<ApiResponse<message::MessageConfig>> {
     }))
 }
 
+fn private_redis_shards(state: &AppState) -> Vec<ConnectionManager> {
+    state.private_redis_managers.iter().cloned().collect()
+}
+
+fn group_redis_shards(state: &AppState) -> Vec<ConnectionManager> {
+    state.group_redis_managers.iter().cloned().collect()
+}
+
+fn private_redis_for_conversation(
+    state: &AppState,
+    conversation_id: &str,
+) -> Result<ConnectionManager, AppError> {
+    let index = message::shard_index_for_key(conversation_id, state.private_redis_managers.len())
+        .ok_or_else(|| AppError::Upstream("private hot redis shard missing".to_string()))?;
+    redis_for_index(&state.private_redis_managers, index, "private")
+}
+
+fn group_redis_for_group(state: &AppState, group_id: i64) -> Result<ConnectionManager, AppError> {
+    let index = message::shard_index_for_group_id(group_id, state.group_redis_managers.len())
+        .ok_or_else(|| AppError::Upstream("group hot redis shard missing".to_string()))?;
+    redis_for_index(&state.group_redis_managers, index, "group")
+}
+
+fn private_redis_for_read(
+    state: &AppState,
+    user_id: i64,
+    raw_conversation_id: &str,
+) -> Result<ConnectionManager, AppError> {
+    if group_id_from_conversation(raw_conversation_id).is_some() {
+        return first_redis(&state.private_redis_managers, "private");
+    }
+    let conversation_id = private_conversation_id_for_read(user_id, raw_conversation_id)?;
+    private_redis_for_conversation(state, &conversation_id)
+}
+
+fn group_redis_for_read(
+    state: &AppState,
+    raw_conversation_id: &str,
+) -> Result<ConnectionManager, AppError> {
+    if let Some(group_id) = group_id_from_conversation(raw_conversation_id) {
+        return group_redis_for_group(state, group_id);
+    }
+    first_redis(&state.group_redis_managers, "group")
+}
+
+fn first_redis(shards: &[ConnectionManager], label: &str) -> Result<ConnectionManager, AppError> {
+    redis_for_index(shards, 0, label)
+}
+
+fn redis_for_index(
+    shards: &[ConnectionManager],
+    index: usize,
+    label: &str,
+) -> Result<ConnectionManager, AppError> {
+    shards
+        .get(index)
+        .cloned()
+        .ok_or_else(|| AppError::Upstream(format!("{label} hot redis shard missing")))
+}
+
+fn group_id_from_conversation(raw: &str) -> Option<i64> {
+    let value = raw.trim();
+    value
+        .strip_prefix("group_")
+        .or_else(|| value.strip_prefix("g_"))
+        .and_then(|group_id| group_id.parse::<i64>().ok())
+}
+
+fn private_conversation_id_for_read(user_id: i64, raw: &str) -> Result<String, AppError> {
+    let value = raw.trim();
+    if value.starts_with("p_") {
+        return Ok(value.to_string());
+    }
+    if value.contains('_') {
+        let peer_id = value
+            .split('_')
+            .filter_map(|part| part.parse::<i64>().ok())
+            .find(|id| *id != user_id)
+            .ok_or_else(|| AppError::BadRequest("invalid private conversation".to_string()))?;
+        return Ok(keys::private_conversation_id(user_id, peer_id));
+    }
+    let peer_id = value
+        .parse::<i64>()
+        .map_err(|_| AppError::BadRequest("invalid private conversation".to_string()))?;
+    Ok(keys::private_conversation_id(user_id, peer_id))
+}
+
 async fn send_private(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(request): Json<message::SendPrivateRequest>,
 ) -> Result<Json<ApiResponse<im_rs_common::event::MessageDto>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
-    let dto =
-        message::send_private(&state.config, &mut redis, &state.db, &identity, request).await?;
+    let conversation_id = keys::private_conversation_id(identity.user_id, request.receiver_id);
+    let mut cache_redis = state.redis_manager.clone();
+    let mut hot_redis = private_redis_for_conversation(&state, &conversation_id)?;
+    let dto = message::send_private(
+        &state.config,
+        &mut cache_redis,
+        &mut hot_redis,
+        &state.db,
+        &identity,
+        request,
+    )
+    .await?;
     Ok(Json(ApiResponse::success(dto)))
 }
 
@@ -254,8 +361,17 @@ async fn send_group(
     Json(request): Json<message::SendGroupRequest>,
 ) -> Result<Json<ApiResponse<im_rs_common::event::MessageDto>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
-    let dto = message::send_group(&state.config, &mut redis, &state.db, &identity, request).await?;
+    let mut cache_redis = state.redis_manager.clone();
+    let mut hot_redis = group_redis_for_group(&state, request.group_id)?;
+    let dto = message::send_group(
+        &state.config,
+        &mut cache_redis,
+        &mut hot_redis,
+        &state.db,
+        &identity,
+        request,
+    )
+    .await?;
     Ok(Json(ApiResponse::success(dto)))
 }
 
@@ -265,8 +381,18 @@ async fn mark_read(
     Path(conversation_id): Path<String>,
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
-    message::mark_read(&mut redis, &state.db, &identity, &conversation_id).await?;
+    let mut cache_redis = state.redis_manager.clone();
+    let mut private_redis = private_redis_for_read(&state, identity.user_id, &conversation_id)?;
+    let mut group_redis = group_redis_for_read(&state, &conversation_id)?;
+    message::mark_read(
+        &mut cache_redis,
+        &mut private_redis,
+        &mut group_redis,
+        &state.db,
+        &identity,
+        &conversation_id,
+    )
+    .await?;
     Ok(Json(ApiResponse::success("ok".to_string())))
 }
 
@@ -276,9 +402,11 @@ async fn recall_message(
     Path(message_id): Path<i64>,
 ) -> Result<Json<ApiResponse<im_rs_common::event::MessageDto>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
+    let mut private_redis = private_redis_shards(&state);
+    let mut group_redis = group_redis_shards(&state);
     let dto = message::recall_or_delete(
-        &mut redis,
+        &mut private_redis,
+        &mut group_redis,
         &state.db,
         &identity,
         message_id,
@@ -294,9 +422,11 @@ async fn delete_message(
     Path(message_id): Path<i64>,
 ) -> Result<Json<ApiResponse<im_rs_common::event::MessageDto>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
+    let mut private_redis = private_redis_shards(&state);
+    let mut group_redis = group_redis_shards(&state);
     let dto = message::recall_or_delete(
-        &mut redis,
+        &mut private_redis,
+        &mut group_redis,
         &state.db,
         &identity,
         message_id,
@@ -311,8 +441,10 @@ async fn conversations(
     headers: HeaderMap,
 ) -> Result<Json<ApiResponse<Vec<message::ConversationDto>>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
-    let list = message::conversations(&mut redis, &state.db, &identity).await?;
+    let mut private_redis = private_redis_shards(&state);
+    let mut group_redis = group_redis_shards(&state);
+    let list =
+        message::conversations(&mut private_redis, &mut group_redis, &state.db, &identity).await?;
     Ok(Json(ApiResponse::success(list)))
 }
 
@@ -323,8 +455,18 @@ async fn private_history(
     Query(query): Query<message::HistoryQuery>,
 ) -> Result<Json<ApiResponse<Vec<im_rs_common::event::MessageDto>>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
-    let list = message::private_history(&mut redis, &state.db, &identity, peer_id, query).await?;
+    let conversation_id = keys::private_conversation_id(identity.user_id, peer_id);
+    let mut cache_redis = state.redis_manager.clone();
+    let mut hot_redis = private_redis_for_conversation(&state, &conversation_id)?;
+    let list = message::private_history(
+        &mut cache_redis,
+        &mut hot_redis,
+        &state.db,
+        &identity,
+        peer_id,
+        query,
+    )
+    .await?;
     Ok(Json(ApiResponse::success(list)))
 }
 
@@ -335,8 +477,17 @@ async fn group_history(
     Query(query): Query<message::HistoryQuery>,
 ) -> Result<Json<ApiResponse<Vec<im_rs_common::event::MessageDto>>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let mut redis = state.redis.lock().await;
-    let list = message::group_history(&mut redis, &state.db, &identity, group_id, query).await?;
+    let mut cache_redis = state.redis_manager.clone();
+    let mut hot_redis = group_redis_for_group(&state, group_id)?;
+    let list = message::group_history(
+        &mut cache_redis,
+        &mut hot_redis,
+        &state.db,
+        &identity,
+        group_id,
+        query,
+    )
+    .await?;
     Ok(Json(ApiResponse::success(list)))
 }
 
@@ -345,6 +496,7 @@ async fn websocket_proxy(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(user_id): Path<String>,
+    Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> Response {
     let identity = match identity_from_headers(&headers, &state.config) {
         Ok(identity) => identity,
@@ -354,44 +506,67 @@ async fn websocket_proxy(
         .get(header::COOKIE)
         .and_then(|value| value.to_str().ok())
         .map(ToOwned::to_owned);
+    let query_ticket = query
+        .get("ticket")
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
     let origin = headers.get(header::ORIGIN).cloned();
-    let target_base = select_websocket_target(&state, &user_id).await;
+    let target_base = select_websocket_target(&state).await;
     ws.on_upgrade(move |socket| {
         tunnel_websocket(
             socket,
-            state,
-            identity,
-            user_id,
-            cookie,
-            origin,
-            target_base,
+            TunnelWebsocketArgs {
+                state,
+                identity,
+                user_id,
+                cookie,
+                query_ticket,
+                origin,
+                target_base,
+            },
         )
     })
     .into_response()
 }
 
-async fn tunnel_websocket(
-    socket: WebSocket,
+struct TunnelWebsocketArgs {
     state: AppState,
     identity: im_rs_common::auth::Identity,
     user_id: String,
     cookie: Option<String>,
+    query_ticket: Option<String>,
     origin: Option<HeaderValue>,
     target_base: String,
-) {
+}
+
+async fn tunnel_websocket(socket: WebSocket, args: TunnelWebsocketArgs) {
+    let TunnelWebsocketArgs {
+        state,
+        identity,
+        user_id,
+        cookie,
+        query_ticket,
+        origin,
+        target_base,
+    } = args;
     let target = format!(
         "{}/websocket/{}",
         target_base.trim_end_matches('/'),
         user_id
     );
-    let mut request = match target.into_client_request() {
+    let mut request = match target.as_str().into_client_request() {
         Ok(request) => request,
         Err(error) => {
             tracing::warn!(error = %error, "failed to build websocket proxy request");
             return;
         }
     };
-    if let Some(cookie) = cookie {
+    if let Some(cookie) = upstream_cookie_header(
+        cookie,
+        &state.config.ws_ticket_cookie_name,
+        query_ticket.as_deref(),
+    ) {
         if let Ok(value) = HeaderValue::from_str(&cookie) {
             request.headers_mut().insert(header::COOKIE, value);
         }
@@ -399,11 +574,14 @@ async fn tunnel_websocket(
     if let Some(origin) = origin {
         request.headers_mut().insert(header::ORIGIN, origin);
     }
-    apply_gateway_headers(request.headers_mut(), &state.config, &identity);
+    if let Err(error) = apply_gateway_headers(request.headers_mut(), &state.config, &identity) {
+        tracing::warn!(error = %error, "failed to sign websocket gateway headers");
+        return;
+    }
     let upstream = match connect_async(request).await {
         Ok((upstream, _)) => upstream,
         Err(error) => {
-            tracing::warn!(error = %error, "failed to connect upstream websocket");
+            tracing::warn!(user_id = %user_id, target = %target, error = %error, "failed to connect upstream websocket");
             return;
         }
     };
@@ -445,26 +623,69 @@ async fn tunnel_websocket(
     }
 }
 
-async fn select_websocket_target(state: &AppState, user_id: &str) -> String {
-    let mut redis = state.redis.lock().await;
-    match route::user_routes(&mut redis, &state.config, user_id).await {
-        Ok(routes) => {
-            if let Some(route) = routes
-                .iter()
-                .min_by(|left, right| {
-                    left.session_count
-                        .cmp(&right.session_count)
-                        .then_with(|| left.server_id.cmp(&right.server_id))
-                })
-                .filter(|route| !route.internal_ws_url.trim().is_empty())
-            {
-                return route.internal_ws_url.clone();
+fn upstream_cookie_header(
+    raw_cookie: Option<String>,
+    ticket_cookie_name: &str,
+    query_ticket: Option<&str>,
+) -> Option<String> {
+    let Some(ticket) = query_ticket
+        .map(str::trim)
+        .filter(|ticket| !ticket.is_empty())
+    else {
+        return raw_cookie;
+    };
+
+    let mut parts = vec![format!("{}={}", ticket_cookie_name, ticket)];
+    if let Some(raw_cookie) = raw_cookie {
+        parts.extend(raw_cookie.split(';').filter_map(|part| {
+            let trimmed = part.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            let key = trimmed
+                .split_once('=')
+                .map(|(key, _)| key.trim())
+                .unwrap_or(trimmed);
+            (key != ticket_cookie_name).then(|| trimmed.to_string())
+        }));
+    }
+    Some(parts.join("; "))
+}
+
+async fn select_websocket_target(state: &AppState) -> String {
+    let cache = WEBSOCKET_TARGET_CACHE.get_or_init(|| {
+        Mutex::new(WebSocketTargetCache {
+            target: None,
+            expires_at: Instant::now(),
+        })
+    });
+    let now = Instant::now();
+    {
+        let guard = cache.lock().await;
+        if guard.expires_at > now {
+            if let Some(target) = guard.target.as_ref() {
+                return target.clone();
             }
         }
-        Err(error) => {
-            tracing::warn!(user_id, error = %error, "load existing websocket route failed");
+    }
+
+    let mut guard = cache.lock().await;
+    let now = Instant::now();
+    if guard.expires_at > now {
+        if let Some(target) = guard.target.as_ref() {
+            return target.clone();
         }
     }
+
+    let target = load_websocket_target(state).await;
+    let ttl_ms = u64::try_from(state.config.route_cache_ttl_ms.max(1_000)).unwrap_or(1_000);
+    guard.target = Some(target.clone());
+    guard.expires_at = Instant::now() + Duration::from_millis(ttl_ms);
+    target
+}
+
+async fn load_websocket_target(state: &AppState) -> String {
+    let mut redis = state.route_redis_manager.clone();
     match route::server_nodes(&mut redis, &state.config).await {
         Ok(nodes) => {
             if let Some(node) = nodes.first() {
@@ -513,7 +734,7 @@ async fn proxy(
             identity.user_id,
             &identity.username,
             &state.config.gateway_auth_secret,
-        ) {
+        )? {
             builder = builder.header(name, value);
         }
         builder = builder.header("X-Internal-Secret", &state.config.internal_secret);
@@ -529,9 +750,9 @@ async fn proxy(
         response = response.header(name, value);
     }
     let bytes = upstream.bytes().await?;
-    Ok(response
+    response
         .body(Body::from(bytes))
-        .map_err(|err| AppError::Upstream(err.to_string()))?)
+        .map_err(|err| AppError::Upstream(err.to_string()))
 }
 
 fn route_target<'a>(config: &'a AppConfig, path: &str) -> Option<(&'a str, String)> {
@@ -566,12 +787,12 @@ fn apply_gateway_headers(
     headers: &mut HeaderMap,
     config: &AppConfig,
     identity: &im_rs_common::auth::Identity,
-) {
+) -> Result<(), AppError> {
     for (name, value) in sign_gateway_headers(
         identity.user_id,
         &identity.username,
         &config.gateway_auth_secret,
-    ) {
+    )? {
         if let (Ok(name), Ok(value)) = (
             name.parse::<axum::http::HeaderName>(),
             HeaderValue::from_str(&value),
@@ -582,4 +803,5 @@ fn apply_gateway_headers(
     if let Ok(value) = HeaderValue::from_str(&config.internal_secret) {
         headers.insert("X-Internal-Secret", value);
     }
+    Ok(())
 }

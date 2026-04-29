@@ -27,8 +27,11 @@ pub struct Identity {
 
 pub fn parse_bearer(value: Option<&str>) -> Option<String> {
     let mut token = value?.trim().to_string();
-    if token.len() > 1 && token.starts_with('"') && token.ends_with('"') {
-        token = token[1..token.len() - 1].trim().to_string();
+    if let Some(unquoted) = token
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+    {
+        token = unquoted.trim().to_string();
     }
     if let Some(rest) = token.strip_prefix("Bearer ") {
         token = rest.trim().to_string();
@@ -53,7 +56,11 @@ pub fn validate_access_token(token: &str, secret: &str) -> anyhow::Result<Identi
     })
 }
 
-pub fn sign_gateway_headers(user_id: i64, username: &str, secret: &str) -> Vec<(String, String)> {
+pub fn sign_gateway_headers(
+    user_id: i64,
+    username: &str,
+    secret: &str,
+) -> anyhow::Result<Vec<(String, String)>> {
     let user_b64 = base64_url("null");
     let perms_b64 = base64_url("null");
     let data_b64 = base64_url("null");
@@ -63,8 +70,8 @@ pub fn sign_gateway_headers(user_id: i64, username: &str, secret: &str) -> Vec<(
         "userId={}&username={}&user={}&perms={}&data={}&ts={}&nonce={}",
         user_id, username, user_b64, perms_b64, data_b64, ts, nonce
     );
-    let signature = hmac_sha256_base64_url(secret, canonical.as_bytes());
-    vec![
+    let signature = hmac_sha256_base64_url(secret, canonical.as_bytes())?;
+    Ok(vec![
         ("X-User-Id".to_string(), user_id.to_string()),
         ("X-Username".to_string(), username.to_string()),
         ("X-Auth-User".to_string(), user_b64),
@@ -73,13 +80,14 @@ pub fn sign_gateway_headers(user_id: i64, username: &str, secret: &str) -> Vec<(
         ("X-Auth-Ts".to_string(), ts),
         ("X-Auth-Nonce".to_string(), nonce),
         ("X-Auth-Sign".to_string(), signature),
-    ]
+    ])
 }
 
-pub fn hmac_sha256_base64_url(secret: &str, payload: &[u8]) -> String {
-    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("hmac accepts any key");
+pub fn hmac_sha256_base64_url(secret: &str, payload: &[u8]) -> anyhow::Result<String> {
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
+        .map_err(|error| anyhow::anyhow!("invalid hmac key: {error}"))?;
     mac.update(payload);
-    URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes())
+    Ok(URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes()))
 }
 
 pub fn constant_time_eq(left: &str, right: &str) -> bool {
@@ -99,8 +107,12 @@ fn padded_hs512_secret(secret: &str) -> Vec<u8> {
     if bytes.is_empty() {
         return padded;
     }
-    for index in 0..64 {
-        padded[index] = bytes[index % bytes.len()];
+    let source_len = bytes.len();
+    for (index, slot) in padded.iter_mut().enumerate() {
+        let source_index = index % source_len;
+        if let Some(byte) = bytes.get(source_index) {
+            *slot = *byte;
+        }
     }
     padded
 }

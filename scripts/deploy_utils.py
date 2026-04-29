@@ -102,7 +102,7 @@ def resolve_docker_compose_command(docker_cmd: str) -> list[str]:
 
 def ensure_docker_environment() -> None:
     docker_cmd = resolve_executable("Docker", ["docker"])
-    run_command([docker_cmd, "version"], capture_output=True)
+    run_command([docker_cmd, "ps"], capture_output=True)
     resolve_docker_compose_command(docker_cmd)
 
 
@@ -153,11 +153,27 @@ def run_command(
         cwd=str(cwd) if cwd else None,
         stdin=stdin,
         text=False if stdin is not None else True,
+        encoding=None if stdin is not None else "utf-8",
+        errors=None if stdin is not None else "replace",
         capture_output=capture_output,
     )
     if check and completed.returncode != 0:
-        fatal(f"Command failed with exit code {completed.returncode}: {printable}")
+        details = command_failure_details(completed)
+        fatal(f"Command failed with exit code {completed.returncode}: {printable}{details}")
     return completed
+
+
+def command_failure_details(completed: subprocess.CompletedProcess[str]) -> str:
+    details: list[str] = []
+    stdout = completed.stdout
+    stderr = completed.stderr
+    if isinstance(stdout, str) and stdout.strip():
+        details.append("stdout:\n" + stdout.strip())
+    if isinstance(stderr, str) and stderr.strip():
+        details.append("stderr:\n" + stderr.strip())
+    if not details:
+        return ""
+    return "\n" + "\n".join(details)
 
 
 def compose_service_container(config: DeploymentConfig, service: str) -> str:
@@ -225,7 +241,16 @@ def wait_for_service_completed(
 ) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
-        container_id = compose_service_container(config, service)
+        result = run_command(
+            [*compose_base_command(config), "ps", "-a", "-q", service],
+            cwd=config.project_dir,
+            capture_output=True,
+            check=False,
+        )
+        container_id = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+        if not container_id:
+            time.sleep(2)
+            continue
         state = inspect_container_state(container_id)
         status = state.get("Status")
         exit_code = state.get("ExitCode")

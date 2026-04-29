@@ -12,7 +12,22 @@ from deploy_utils import (
     wait_for_service_ready,
 )
 
-MIDDLEWARE_SERVICES = ["im-mysql", "im-redis", "im-files-init"]
+MIDDLEWARE_SERVICES = [
+    "im-mysql",
+    "im-redis",
+    "im-redis-private-hot",
+    "im-redis-private-hot-2",
+    "im-redis-private-hot-3",
+    "im-redis-private-hot-4",
+    "im-redis-group-hot",
+    "im-redis-group-hot-2",
+    "im-redis-group-hot-3",
+    "im-redis-group-hot-4",
+    "im-redis-events-private",
+    "im-redis-events-group",
+    "im-redis-route",
+    "im-files-init",
+]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,6 +62,17 @@ def main() -> None:
     if not args.no_wait:
         wait_for_service_ready(config, "im-mysql")
         wait_for_service_ready(config, "im-redis")
+        wait_for_service_ready(config, "im-redis-private-hot")
+        wait_for_service_ready(config, "im-redis-private-hot-2")
+        wait_for_service_ready(config, "im-redis-private-hot-3")
+        wait_for_service_ready(config, "im-redis-private-hot-4")
+        wait_for_service_ready(config, "im-redis-group-hot")
+        wait_for_service_ready(config, "im-redis-group-hot-2")
+        wait_for_service_ready(config, "im-redis-group-hot-3")
+        wait_for_service_ready(config, "im-redis-group-hot-4")
+        wait_for_service_ready(config, "im-redis-events-private")
+        wait_for_service_ready(config, "im-redis-events-group")
+        wait_for_service_ready(config, "im-redis-route")
         wait_for_service_completed(config, "im-files-init")
     print("Middleware deployment complete: " + ", ".join(MIDDLEWARE_SERVICES))
 
