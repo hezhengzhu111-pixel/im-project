@@ -2,6 +2,7 @@ use crate::auth::identity_from_headers;
 use crate::auth_api;
 use crate::error::AppError;
 use crate::id_resolver::{resolve_active_group_id, resolve_active_user_id};
+use crate::local_cache;
 use crate::web::AppState;
 use axum::body::Bytes;
 use axum::extract::{OriginalUri, Path, Query, State};
@@ -9,11 +10,15 @@ use axum::http::HeaderMap;
 use axum::Json;
 use chrono::NaiveDateTime;
 use im_rs_common::api::ApiResponse;
-use im_rs_common::ids;
+use im_rs_common::{ids, keys};
+use redis::aio::ConnectionManager;
+use redis::AsyncCommands;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use sqlx::{MySqlPool, Row};
 use std::collections::{BTreeSet, HashMap};
+
+const FRIEND_CACHE_TTL_SECONDS: u64 = 5 * 60;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -156,6 +161,8 @@ pub async fn add_friend(
         return Err(AppError::BadRequest("cannot add yourself".to_string()));
     }
     if are_friends(&state.db, identity.user_id, target_user_id).await? {
+        let mut redis = state.redis_manager.clone();
+        cache_friendship(&mut redis, identity.user_id, target_user_id, true).await;
         return Ok(Json(ApiResponse::success(true)));
     }
     let request_id = ids::next_id(state.config.snowflake_node_id);
@@ -205,6 +212,9 @@ pub async fn accept_friend(
         None,
     )
     .await?;
+    let mut redis = state.redis_manager.clone();
+    cache_friendship(&mut redis, identity.user_id, applicant_id, true).await;
+    cache_friendship(&mut redis, applicant_id, identity.user_id, true).await;
     Ok(Json(ApiResponse::success(true)))
 }
 
@@ -245,6 +255,9 @@ pub async fn remove_friend(
     .bind(identity.user_id)
     .execute(&state.db)
     .await?;
+    let mut redis = state.redis_manager.clone();
+    cache_friendship(&mut redis, identity.user_id, friend_id, false).await;
+    cache_friendship(&mut redis, friend_id, identity.user_id, false).await;
     Ok(Json(ApiResponse::success(true)))
 }
 
@@ -302,19 +315,31 @@ pub async fn create_group(
     .bind(avatar.as_deref())
     .bind(announcement.as_deref())
     .bind(identity.user_id)
-    .bind(member_ids.len() as i32)
+    .bind(
+        i32::try_from(member_ids.len())
+            .map_err(|_| AppError::BadRequest("group member count is too large".to_string()))?,
+    )
     .execute(&state.db)
     .await?;
-    for member_id in member_ids {
+    for member_id in &member_ids {
         add_group_member(
             &state.db,
             state.config.snowflake_node_id,
             group_id,
-            member_id,
-            if member_id == identity.user_id { 3 } else { 1 },
+            *member_id,
+            if *member_id == identity.user_id { 3 } else { 1 },
         )
         .await?;
     }
+    let mut redis = group_redis_for_group(&state, group_id)?;
+    initialize_group_read_sequences(
+        &mut redis,
+        &state.db,
+        state.config.snowflake_node_id,
+        group_id,
+        &member_ids,
+    )
+    .await?;
     let group = load_group(&state.db, group_id).await?;
     Ok(Json(ApiResponse::success(group)))
 }
@@ -375,6 +400,15 @@ pub async fn join_group(
         group_id,
         identity.user_id,
         1,
+    )
+    .await?;
+    let mut redis = group_redis_for_group(&state, group_id)?;
+    initialize_group_read_sequences(
+        &mut redis,
+        &state.db,
+        state.config.snowflake_node_id,
+        group_id,
+        &[identity.user_id],
     )
     .await?;
     refresh_group_member_count(&state.db, group_id).await?;
@@ -460,6 +494,17 @@ pub async fn internal_group_member_ids(
     .fetch_all(&state.db)
     .await?;
     Ok(Json(ApiResponse::success(rows)))
+}
+
+fn group_redis_for_group(state: &AppState, group_id: i64) -> Result<ConnectionManager, AppError> {
+    let index =
+        crate::message::shard_index_for_group_id(group_id, state.group_redis_managers.len())
+            .ok_or_else(|| AppError::Upstream("group hot redis shard missing".to_string()))?;
+    state
+        .group_redis_managers
+        .get(index)
+        .cloned()
+        .ok_or_else(|| AppError::Upstream("group hot redis shard missing".to_string()))
 }
 
 fn friendship_from_row(row: &sqlx::mysql::MySqlRow) -> FriendshipDto {
@@ -608,6 +653,25 @@ async fn upsert_friendship(
     Ok(())
 }
 
+async fn cache_friendship(
+    redis: &mut ConnectionManager,
+    user_id: i64,
+    friend_id: i64,
+    allowed: bool,
+) {
+    let key = format!("im:cache:friend:{user_id}:{friend_id}");
+    local_cache::set_bool(&key, allowed);
+    let value = if allowed { "1" } else { "0" };
+    let result: redis::RedisResult<()> = redis.set_ex(&key, value, FRIEND_CACHE_TTL_SECONDS).await;
+    if let Err(error) = result {
+        tracing::warn!(
+            key = %key,
+            error = %error,
+            "failed to cache friendship validation"
+        );
+    }
+}
+
 async fn ensure_group_exists(db: &MySqlPool, group_id: i64) -> Result<(), AppError> {
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM service_group_service_db.im_group WHERE id = ? AND status = 1",
@@ -673,6 +737,67 @@ async fn add_group_member(
     Ok(())
 }
 
+async fn initialize_group_read_sequences(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    node_id: u16,
+    group_id: i64,
+    user_ids: &[i64],
+) -> Result<(), AppError> {
+    if user_ids.is_empty() {
+        return Ok(());
+    }
+    let sequence = current_group_sequence(redis, db, group_id).await?;
+    for user_id in user_ids {
+        sqlx::query(
+            r#"INSERT INTO service_message_service_db.group_read_cursor
+               (id, group_id, user_id, last_read_seq)
+               VALUES (?, ?, ?, ?)
+               ON DUPLICATE KEY UPDATE
+                 last_read_seq = GREATEST(last_read_seq, VALUES(last_read_seq)),
+                 last_read_at = CURRENT_TIMESTAMP,
+                 updated_time = CURRENT_TIMESTAMP"#,
+        )
+        .bind(ids::next_id(node_id))
+        .bind(group_id)
+        .bind(*user_id)
+        .bind(sequence)
+        .execute(db)
+        .await?;
+    }
+    let mut pipe = redis::pipe();
+    for user_id in user_ids {
+        pipe.set(keys::group_read_sequence_key(*user_id, group_id), sequence)
+            .ignore();
+    }
+    let result: redis::RedisResult<()> = pipe.query_async(redis).await;
+    result?;
+    Ok(())
+}
+
+async fn current_group_sequence(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    group_id: i64,
+) -> Result<i64, AppError> {
+    let key = keys::group_sequence_key(group_id);
+    if let Some(sequence) = redis.get::<_, Option<i64>>(&key).await.ok().flatten() {
+        return Ok(sequence.max(0));
+    }
+    let sequence: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(conversation_seq), 0) \
+         FROM service_message_service_db.messages \
+         WHERE is_group_chat = 1 AND group_id = ? AND status <> 5",
+    )
+    .bind(group_id)
+    .fetch_one(db)
+    .await?;
+    if sequence > 0 {
+        redis.set::<_, _, ()>(&key, sequence).await?;
+    }
+    Ok(sequence)
+}
+
 async fn refresh_group_member_count(db: &MySqlPool, group_id: i64) -> Result<(), AppError> {
     sqlx::query(
         r#"UPDATE service_group_service_db.im_group
@@ -736,7 +861,7 @@ fn value_to_i64(value: &Value) -> Option<i64> {
     match value {
         Value::Number(number) => number
             .as_i64()
-            .or_else(|| number.as_u64().map(|item| item as i64)),
+            .or_else(|| number.as_u64().and_then(|item| i64::try_from(item).ok())),
         Value::String(text) => text.trim().parse().ok(),
         _ => None,
     }

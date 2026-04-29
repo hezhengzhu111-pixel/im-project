@@ -3,9 +3,8 @@ use std::env;
 #[derive(Clone, Debug)]
 pub struct AppConfig {
     pub port: u16,
-    pub redis_url: String,
+    pub route_redis_url: String,
     pub auth_service_url: String,
-    pub group_service_url: String,
     pub internal_secret: String,
     pub internal_max_skew_ms: i64,
     pub gateway_user_id_header: String,
@@ -31,18 +30,17 @@ pub struct AppConfig {
     pub ws_ticket_cookie_secure: String,
     pub max_payload_length: usize,
     pub invalid_payload_threshold: usize,
-    pub group_members_cache_prefix: String,
-    pub group_members_cache_ttl_seconds: u64,
+    pub websocket_outbound_queue_size: usize,
 }
 
 impl AppConfig {
     pub fn from_env() -> Self {
         let port = env_u16("IM_SERVER_RS_PORT", 8083);
+        let redis_url = env_string("REDIS_URL", "redis://127.0.0.1:6379/0");
         Self {
             port,
-            redis_url: env_string("REDIS_URL", "redis://127.0.0.1:6379/0"),
+            route_redis_url: env_string("IM_ROUTE_REDIS_URL", &redis_url),
             auth_service_url: env_string("IM_AUTH_SERVICE_URL", "http://127.0.0.1:8084"),
-            group_service_url: env_string("IM_GROUP_SERVICE_URL", "http://127.0.0.1:8086"),
             internal_secret: env_string(
                 "IM_INTERNAL_SECRET",
                 "im-internal-secret-im-internal-secret-im-internal-secret-im",
@@ -60,14 +58,8 @@ impl AppConfig {
                 "IM_INTERNAL_HTTP_URL",
                 &default_internal_url("http", port),
             ),
-            internal_ws_url: env_string(
-                "IM_INTERNAL_WS_URL",
-                &default_internal_url("ws", port),
-            ),
-            server_registry_key_prefix: env_string(
-                "IM_SERVER_REGISTRY_KEY_PREFIX",
-                "im:server:",
-            ),
+            internal_ws_url: env_string("IM_INTERNAL_WS_URL", &default_internal_url("ws", port)),
+            server_registry_key_prefix: env_string("IM_SERVER_REGISTRY_KEY_PREFIX", "im:server:"),
             server_lease_ttl_seconds: env_u64("IM_SERVER_LEASE_TTL_SECONDS", 15),
             server_renew_interval_ms: env_u64("IM_SERVER_RENEW_INTERVAL_MS", 3_000),
             route_users_key: env_string("IM_ROUTE_USERS_KEY", "im:route:users"),
@@ -83,11 +75,7 @@ impl AppConfig {
             ws_ticket_cookie_secure: env_string("IM_AUTH_COOKIE_WS_TICKET_SECURE", "auto"),
             max_payload_length: env_usize("IM_WEBSOCKET_MAX_PAYLOAD_LENGTH", 8 * 1024),
             invalid_payload_threshold: env_usize("IM_WEBSOCKET_INVALID_PAYLOAD_THRESHOLD", 3),
-            group_members_cache_prefix: env_string(
-                "IM_GROUP_MEMBER_IDS_CACHE_PREFIX",
-                "message:group:members:",
-            ),
-            group_members_cache_ttl_seconds: env_u64("IM_GROUP_MEMBER_IDS_CACHE_TTL_SECONDS", 30),
+            websocket_outbound_queue_size: env_usize("IM_WEBSOCKET_OUTBOUND_QUEUE_SIZE", 1024),
         }
     }
 }

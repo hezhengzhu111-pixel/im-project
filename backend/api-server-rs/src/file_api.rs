@@ -189,11 +189,13 @@ pub async fn file_info(
         .modified()
         .ok()
         .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
-        .map(|value| value.as_millis() as i64)
+        .map(|value| i64::try_from(value.as_millis()).unwrap_or(i64::MAX))
         .unwrap_or_default();
+    let size = i64::try_from(metadata.len())
+        .map_err(|_| AppError::BadRequest("file size is too large".to_string()))?;
     Ok(Json(ApiResponse::success(FileInfoResponse {
         filename: request.filename,
-        size: metadata.len() as i64,
+        size,
         content_type: mime_guess::from_path(&path).first_raw().map(str::to_string),
         last_modified,
     })))
@@ -310,7 +312,7 @@ async fn store_file_from_multipart(
                 .ok_or_else(|| AppError::BadRequest("file is too large".to_string()))?;
             if size > max_size {
                 drop(output);
-                let _ = fs::remove_file(&temp_target).await;
+                remove_temp_file(&temp_target).await;
                 return Err(AppError::BadRequest(format!(
                     "{file_type_name} file size must not exceed {}",
                     format_limit(max_size)
@@ -322,7 +324,7 @@ async fn store_file_from_multipart(
         drop(output);
 
         if size == 0 {
-            let _ = fs::remove_file(&temp_target).await;
+            remove_temp_file(&temp_target).await;
             return Err(AppError::BadRequest(format!(
                 "{file_type_name} file must not be empty"
             )));
@@ -334,7 +336,8 @@ async fn store_file_from_multipart(
             original_filename,
             filename: filename.clone(),
             url: static_file_url(category, &date, &filename),
-            size: size as i64,
+            size: i64::try_from(size)
+                .map_err(|_| AppError::BadRequest("file size is too large".to_string()))?,
             content_type,
             category: category.to_string(),
             upload_date: date,
@@ -345,6 +348,16 @@ async fn store_file_from_multipart(
     Err(AppError::BadRequest(
         "file field must not be empty".to_string(),
     ))
+}
+
+async fn remove_temp_file(path: &Path) {
+    match fs::remove_file(path).await {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            tracing::warn!(path = %path.display(), error = %error, "failed to remove temporary upload file");
+        }
+    }
 }
 
 async fn stream_file(state: AppState, headers: HeaderMap, request: FileLocator) -> Response {
@@ -426,17 +439,20 @@ async fn save_metadata(state: &AppState, response: &FileUploadResponse) {
     let Ok(value) = serde_json::to_string(&metadata) else {
         return;
     };
-    let mut redis = state.redis.lock().await;
-    let _: redis::RedisResult<()> = redis
+    let mut redis = state.redis_manager.clone();
+    let result: redis::RedisResult<()> = redis
         .set(
             metadata_key(&metadata.category, &metadata.date, &metadata.filename),
             value,
         )
         .await;
+    if let Err(error) = result {
+        tracing::warn!(error = %error, "failed to save file metadata");
+    }
 }
 
 async fn get_metadata(state: &AppState, request: &FileLocator) -> Option<FileMetadata> {
-    let mut redis = state.redis.lock().await;
+    let mut redis = state.redis_manager.clone();
     let raw: redis::RedisResult<Option<String>> = redis
         .get(metadata_key(
             &request.category,
@@ -444,20 +460,28 @@ async fn get_metadata(state: &AppState, request: &FileLocator) -> Option<FileMet
             &request.filename,
         ))
         .await;
-    raw.ok()
-        .flatten()
-        .and_then(|value| serde_json::from_str::<FileMetadata>(&value).ok())
+    match raw {
+        Ok(Some(value)) => serde_json::from_str::<FileMetadata>(&value).ok(),
+        Ok(None) => None,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to read file metadata");
+            None
+        }
+    }
 }
 
 async fn delete_metadata(state: &AppState, request: &FileLocator) {
-    let mut redis = state.redis.lock().await;
-    let _: redis::RedisResult<()> = redis
+    let mut redis = state.redis_manager.clone();
+    let result: redis::RedisResult<()> = redis
         .del(metadata_key(
             &request.category,
             &request.date,
             &request.filename,
         ))
         .await;
+    if let Err(error) = result {
+        tracing::warn!(error = %error, "failed to delete file metadata");
+    }
 }
 
 fn metadata_key(category: &str, date: &str, filename: &str) -> String {
@@ -487,8 +511,7 @@ fn static_file_url(category: &str, date: &str, filename: &str) -> String {
 fn safe_segment(value: &str) -> String {
     let sanitized = value
         .replace("..", "_")
-        .replace('\\', "_")
-        .replace('/', "_")
+        .replace(['\\', '/'], "_")
         .trim()
         .to_string();
     if sanitized.is_empty() {

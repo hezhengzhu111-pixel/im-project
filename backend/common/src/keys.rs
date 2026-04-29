@@ -26,6 +26,14 @@ pub fn read_cursor_key(user_id: i64, conversation_id: &str) -> String {
     format!("im:read:{user_id}:{conversation_id}")
 }
 
+pub fn group_sequence_key(group_id: i64) -> String {
+    format!("im:conv:g_{group_id}:seq")
+}
+
+pub fn group_read_sequence_key(user_id: i64, group_id: i64) -> String {
+    format!("im:readseq:{user_id}:g_{group_id}")
+}
+
 pub fn pending_events_key() -> &'static str {
     "im:pending:events"
 }
@@ -50,4 +58,20 @@ pub fn private_conversation_id(a: i64, b: i64) -> String {
 
 pub fn group_conversation_id(group_id: i64) -> String {
     format!("g_{group_id}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_build_group_watermark_keys() -> Result<(), &'static str> {
+        if group_sequence_key(42) != "im:conv:g_42:seq" {
+            return Err("group sequence key format changed");
+        }
+        if group_read_sequence_key(7, 42) != "im:readseq:7:g_42" {
+            return Err("group read sequence key format changed");
+        }
+        Ok(())
+    }
 }

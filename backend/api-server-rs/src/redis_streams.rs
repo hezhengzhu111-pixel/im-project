@@ -1,4 +1,3 @@
-use crate::config::AppConfig;
 use redis::streams::StreamReadReply;
 
 const EVENT_ID_FIELD: &str = "eventId";
@@ -41,18 +40,19 @@ pub fn ensure_group(
     }
 }
 
-pub fn append_event(
-    config: &AppConfig,
-    redis: &mut redis::Connection,
+pub fn append_event_cmd(
+    pipe: &mut redis::Pipeline,
+    stream_key: &str,
+    stream_max_len: usize,
     event_id: &str,
     conversation_id: &str,
     payload: &str,
-) -> redis::RedisResult<String> {
-    redis::cmd("XADD")
-        .arg(&config.event_stream_key)
+) {
+    pipe.cmd("XADD")
+        .arg(stream_key)
         .arg("MAXLEN")
         .arg("~")
-        .arg(config.event_stream_max_len.max(1))
+        .arg(stream_max_len.max(1))
         .arg("*")
         .arg(EVENT_ID_FIELD)
         .arg(event_id)
@@ -60,7 +60,7 @@ pub fn append_event(
         .arg(conversation_id)
         .arg(PAYLOAD_FIELD)
         .arg(payload)
-        .query(redis)
+        .ignore();
 }
 
 pub fn read_group_events(
@@ -71,9 +71,21 @@ pub fn read_group_events(
     count: usize,
     block_ms: u64,
 ) -> redis::RedisResult<Vec<StreamEvent>> {
-    let pending = read_group_events_from(redis, stream, group, consumer, count, 0, "0")?;
-    if !pending.is_empty() {
-        return Ok(pending);
+    loop {
+        let pending = read_group_events_from(redis, stream, group, consumer, count, 0, "0")?;
+        if pending.is_empty() {
+            break;
+        }
+        let (stale_ids, ready) = split_stale_events(pending);
+        if !stale_ids.is_empty() {
+            ack_stale(redis, stream, group, &stale_ids)?;
+        }
+        if !ready.is_empty() {
+            return Ok(ready);
+        }
+        if stale_ids.is_empty() {
+            break;
+        }
     }
     read_group_events_from(redis, stream, group, consumer, count, block_ms, ">")
 }
@@ -87,11 +99,12 @@ pub fn ack(
     if stream_ids.is_empty() {
         return Ok(());
     }
-    let _: i64 = redis::cmd("XACK")
+    let acknowledged: i64 = redis::cmd("XACK")
         .arg(stream)
         .arg(group)
         .arg(stream_ids)
         .query(redis)?;
+    tracing::debug!(stream, group, acknowledged, "acked redis stream messages");
     Ok(())
 }
 
@@ -124,4 +137,67 @@ fn read_group_events_from(
         }
     }
     Ok(events)
+}
+
+fn split_stale_events(events: Vec<StreamEvent>) -> (Vec<String>, Vec<StreamEvent>) {
+    let mut stale_ids = Vec::new();
+    let mut ready = Vec::new();
+    for event in events {
+        if event.payload.is_empty() {
+            stale_ids.push(event.stream_id);
+        } else {
+            ready.push(event);
+        }
+    }
+    (stale_ids, ready)
+}
+
+fn ack_stale(
+    redis: &mut redis::Connection,
+    stream: &str,
+    group: &str,
+    stale_ids: &[String],
+) -> redis::RedisResult<()> {
+    let acknowledged: i64 = redis::cmd("XACK")
+        .arg(stream)
+        .arg(group)
+        .arg(stale_ids)
+        .query(redis)?;
+    tracing::warn!(
+        stream,
+        group,
+        stale_count = stale_ids.len(),
+        acknowledged,
+        "acked stale redis stream pending entries"
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_split_stale_stream_events() -> Result<(), &'static str> {
+        let events = vec![
+            StreamEvent {
+                stream_id: "1-0".to_string(),
+                payload: String::new(),
+            },
+            StreamEvent {
+                stream_id: "2-0".to_string(),
+                payload: "{}".to_string(),
+            },
+        ];
+
+        let (stale, ready) = split_stale_events(events);
+
+        if stale.len() != 1 || stale.first().map(String::as_str) != Some("1-0") {
+            return Err("stale stream id should be collected");
+        }
+        if ready.len() != 1 || ready.first().map(|event| event.payload.as_str()) != Some("{}") {
+            return Err("non-empty payload should remain ready");
+        }
+        Ok(())
+    }
 }

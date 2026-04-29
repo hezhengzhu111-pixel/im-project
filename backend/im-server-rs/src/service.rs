@@ -7,9 +7,10 @@ use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{Arc, RwLock};
-use tokio::sync::mpsc;
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tokio::sync::{mpsc, watch};
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
@@ -30,7 +31,8 @@ struct ImServiceInner {
 pub struct SessionEntry {
     pub session_id: String,
     pub user_id: String,
-    pub sender: mpsc::UnboundedSender<Message>,
+    pub sender: mpsc::Sender<Message>,
+    shutdown: watch::Sender<bool>,
     pub last_heartbeat_ms: AtomicI64,
 }
 
@@ -58,15 +60,12 @@ impl ImService {
         &self.inner.clients
     }
 
-    pub fn redis(&self) -> ConnectionManager {
-        self.inner.redis.clone()
-    }
-
     pub async fn register_session(
         &self,
         user_id: String,
         _username: String,
-        sender: mpsc::UnboundedSender<Message>,
+        sender: mpsc::Sender<Message>,
+        shutdown: watch::Sender<bool>,
     ) -> String {
         let session_id = Uuid::new_v4().to_string();
         let now = now_ms();
@@ -74,16 +73,13 @@ impl ImService {
             session_id: session_id.clone(),
             user_id: user_id.clone(),
             sender,
+            shutdown,
             last_heartbeat_ms: AtomicI64::new(now),
         });
 
         let first_local = {
-            let mut sessions = self.inner.sessions.write().expect("sessions lock poisoned");
-            let mut user_sessions = self
-                .inner
-                .user_sessions
-                .write()
-                .expect("user sessions lock poisoned");
+            let mut sessions = write_lock(&self.inner.sessions, "sessions");
+            let mut user_sessions = write_lock(&self.inner.user_sessions, "user_sessions");
             let ids = user_sessions.entry(user_id.clone()).or_default();
             let first_local = ids.is_empty();
             ids.insert(session_id.clone());
@@ -102,30 +98,8 @@ impl ImService {
     }
 
     pub async fn unregister_session(&self, session_id: &str) -> bool {
-        let entry = {
-            let mut sessions = self.inner.sessions.write().expect("sessions lock poisoned");
-            sessions.remove(session_id)
-        };
-        let Some(entry) = entry else {
+        let Some((entry, user_has_sessions)) = self.remove_session_local(session_id) else {
             return false;
-        };
-
-        let user_has_sessions = {
-            let mut user_sessions = self
-                .inner
-                .user_sessions
-                .write()
-                .expect("user sessions lock poisoned");
-            if let Some(ids) = user_sessions.get_mut(&entry.user_id) {
-                ids.remove(session_id);
-                let has_sessions = !ids.is_empty();
-                if !has_sessions {
-                    user_sessions.remove(&entry.user_id);
-                }
-                has_sessions
-            } else {
-                false
-            }
         };
 
         if user_has_sessions {
@@ -143,6 +117,47 @@ impl ImService {
         true
     }
 
+    async fn drop_session_silently(&self, session_id: &str) -> bool {
+        let Some((entry, user_has_sessions)) = self.remove_session_local(session_id) else {
+            return false;
+        };
+        if user_has_sessions {
+            self.refresh_route_for_user(&entry.user_id).await;
+        } else {
+            self.inner
+                .route_registry
+                .remove_local_route(&entry.user_id)
+                .await;
+        }
+        self.refresh_server_node().await;
+        true
+    }
+
+    fn remove_session_local(&self, session_id: &str) -> Option<(Arc<SessionEntry>, bool)> {
+        let entry = {
+            let mut sessions = write_lock(&self.inner.sessions, "sessions");
+            sessions.remove(session_id)
+        }?;
+        if let Err(error) = entry.shutdown.send(true) {
+            tracing::debug!(error = %error, session_id, "session shutdown receiver already dropped");
+        }
+
+        let user_has_sessions = {
+            let mut user_sessions = write_lock(&self.inner.user_sessions, "user_sessions");
+            if let Some(ids) = user_sessions.get_mut(&entry.user_id) {
+                ids.remove(session_id);
+                let has_sessions = !ids.is_empty();
+                if !has_sessions {
+                    user_sessions.remove(&entry.user_id);
+                }
+                has_sessions
+            } else {
+                false
+            }
+        };
+        Some((entry, user_has_sessions))
+    }
+
     pub async fn user_offline(&self, user_id: &str) -> bool {
         let Some(user_id) = normalize_id(user_id) else {
             return false;
@@ -154,7 +169,7 @@ impl ImService {
         }
         for session_id in sessions {
             if let Some(entry) = self.session_entry(&session_id) {
-                let _ = entry.sender.send(Message::Close(None));
+                send_close(&entry);
             }
             self.unregister_session(&session_id).await;
         }
@@ -224,10 +239,19 @@ impl ImService {
             }
         };
         let mut delivered = false;
+        let mut slow_or_closed_sessions = Vec::new();
         for session in sessions {
-            if session.sender.send(Message::Text(envelope.clone())).is_ok() {
-                delivered = true;
+            match session.sender.try_send(Message::Text(envelope.clone())) {
+                Ok(()) => delivered = true,
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_))
+                | Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    slow_or_closed_sessions.push(session.session_id.clone());
+                }
             }
+        }
+        for session_id in slow_or_closed_sessions {
+            tracing::warn!(session_id = %session_id, "drop slow or closed websocket session");
+            self.drop_session_silently(&session_id).await;
         }
         delivered
     }
@@ -243,7 +267,13 @@ impl ImService {
             "status": status,
             "lastSeen": last_seen.unwrap_or_else(now_iso),
         });
-        let _ = self.push_to_all("ONLINE_STATUS", data).await;
+        if !self.push_to_all("ONLINE_STATUS", data).await {
+            tracing::debug!(
+                user_id,
+                status,
+                "presence broadcast had no local recipients"
+            );
+        }
     }
 
     pub async fn publish_presence(&self, user_id: &str, status: &str) {
@@ -262,26 +292,29 @@ impl ImService {
             return;
         };
         let mut conn = self.inner.redis.clone();
-        let _: redis::RedisResult<i32> = conn
+        let result: redis::RedisResult<i32> = conn
             .publish(&self.inner.config.presence_channel, payload)
             .await;
+        if let Err(error) = result {
+            tracing::warn!(error = %error, "failed to publish presence event");
+        }
     }
 
     pub fn spawn_background_tasks(&self, redis_client: redis::Client) {
         let renew_service = self.clone();
-        tokio::spawn(async move {
+        spawn_detached(async move {
             renew_service.renew_routes_loop().await;
         });
         let server_node_service = self.clone();
-        tokio::spawn(async move {
+        spawn_detached(async move {
             server_node_service.renew_server_node_loop().await;
         });
         let cleanup_service = self.clone();
-        tokio::spawn(async move {
+        spawn_detached(async move {
             cleanup_service.cleanup_stale_sessions_loop().await;
         });
         let presence_service = self.clone();
-        tokio::spawn(async move {
+        spawn_detached(async move {
             presence_service.subscribe_presence_loop(redis_client).await;
         });
     }
@@ -318,16 +351,19 @@ impl ImService {
             let now = now_ms();
             let timeout = self.inner.config.session_heartbeat_timeout_ms.max(1000);
             let stale: Vec<String> = {
-                let sessions = self.inner.sessions.read().expect("sessions lock poisoned");
+                let sessions = read_lock(&self.inner.sessions, "sessions");
                 sessions
                     .values()
-                    .filter(|entry| now - entry.last_heartbeat_ms.load(Ordering::Relaxed) > timeout)
+                    .filter(|entry| {
+                        now.saturating_sub(entry.last_heartbeat_ms.load(Ordering::Relaxed))
+                            > timeout
+                    })
                     .map(|entry| entry.session_id.clone())
                     .collect()
             };
             for session_id in stale {
                 if let Some(entry) = self.session_entry(&session_id) {
-                    let _ = entry.sender.send(Message::Close(None));
+                    send_close(&entry);
                 }
                 self.unregister_session(&session_id).await;
             }
@@ -372,7 +408,7 @@ impl ImService {
 
     async fn push_to_all(&self, ws_type: &str, data: Value) -> bool {
         let sessions: Vec<Arc<SessionEntry>> = {
-            let sessions = self.inner.sessions.read().expect("sessions lock poisoned");
+            let sessions = read_lock(&self.inner.sessions, "sessions");
             sessions.values().cloned().collect()
         };
         if sessions.is_empty() {
@@ -387,10 +423,19 @@ impl ImService {
             Err(_) => return false,
         };
         let mut delivered = false;
+        let mut slow_or_closed_sessions = Vec::new();
         for session in sessions {
-            if session.sender.send(Message::Text(envelope.clone())).is_ok() {
-                delivered = true;
+            match session.sender.try_send(Message::Text(envelope.clone())) {
+                Ok(()) => delivered = true,
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_))
+                | Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    slow_or_closed_sessions.push(session.session_id.clone());
+                }
             }
+        }
+        for session_id in slow_or_closed_sessions {
+            tracing::warn!(session_id = %session_id, "drop slow or closed websocket session");
+            self.drop_session_silently(&session_id).await;
         }
         delivered
     }
@@ -415,18 +460,14 @@ impl ImService {
         if ids.is_empty() {
             return Vec::new();
         }
-        let sessions = self.inner.sessions.read().expect("sessions lock poisoned");
+        let sessions = read_lock(&self.inner.sessions, "sessions");
         ids.into_iter()
             .filter_map(|session_id| sessions.get(&session_id).cloned())
             .collect()
     }
 
     fn local_session_ids(&self, user_id: &str) -> Vec<String> {
-        let user_sessions = self
-            .inner
-            .user_sessions
-            .read()
-            .expect("user sessions lock poisoned");
+        let user_sessions = read_lock(&self.inner.user_sessions, "user_sessions");
         user_sessions
             .get(user_id.trim())
             .map(|ids| ids.iter().cloned().collect())
@@ -434,11 +475,7 @@ impl ImService {
     }
 
     fn local_user_counts(&self) -> Vec<(String, usize)> {
-        let user_sessions = self
-            .inner
-            .user_sessions
-            .read()
-            .expect("user sessions lock poisoned");
+        let user_sessions = read_lock(&self.inner.user_sessions, "user_sessions");
         user_sessions
             .iter()
             .map(|(user_id, ids)| (user_id.clone(), ids.len()))
@@ -446,12 +483,12 @@ impl ImService {
     }
 
     fn total_session_count(&self) -> usize {
-        let sessions = self.inner.sessions.read().expect("sessions lock poisoned");
+        let sessions = read_lock(&self.inner.sessions, "sessions");
         sessions.len()
     }
 
     fn session_entry(&self, session_id: &str) -> Option<Arc<SessionEntry>> {
-        let sessions = self.inner.sessions.read().expect("sessions lock poisoned");
+        let sessions = read_lock(&self.inner.sessions, "sessions");
         sessions.get(session_id.trim()).cloned()
     }
 }
@@ -459,4 +496,37 @@ impl ImService {
 fn normalize_id(value: &str) -> Option<String> {
     let trimmed = value.trim();
     (!trimmed.is_empty()).then_some(trimmed.to_string())
+}
+
+fn read_lock<'a, T>(lock: &'a RwLock<T>, name: &'static str) -> RwLockReadGuard<'a, T> {
+    match lock.read() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            tracing::error!(lock = name, "recovering poisoned read lock");
+            poisoned.into_inner()
+        }
+    }
+}
+
+fn write_lock<'a, T>(lock: &'a RwLock<T>, name: &'static str) -> RwLockWriteGuard<'a, T> {
+    match lock.write() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            tracing::error!(lock = name, "recovering poisoned write lock");
+            poisoned.into_inner()
+        }
+    }
+}
+
+fn send_close(entry: &SessionEntry) {
+    match entry.sender.try_send(Message::Close(None)) {
+        Ok(()) => {}
+        Err(error) => {
+            tracing::debug!(session_id = %entry.session_id, error = %error, "failed to enqueue close frame");
+        }
+    }
+}
+
+fn spawn_detached(future: impl Future<Output = ()> + Send + 'static) {
+    std::mem::drop(tokio::spawn(future));
 }

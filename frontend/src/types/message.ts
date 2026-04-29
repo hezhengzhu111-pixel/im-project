@@ -27,6 +27,7 @@ export interface Message {
   receiverName?: string;
   receiverAvatar?: string;
   groupId?: string;
+  conversationSeq?: number;
   groupName?: string;
   groupAvatar?: string;
   isGroupChat: boolean;
@@ -73,6 +74,8 @@ export interface RawMessageDTO {
   receiverAvatar?: string;
   groupId?: string | number;
   group_id?: string | number;
+  conversationSeq?: number | string;
+  conversation_seq?: number | string;
   group?: {
     id?: string | number;
   };
@@ -151,5 +154,6 @@ export interface ReadReceipt {
   toUserId?: string;
   conversationId?: string;
   lastReadMessageId?: string;
+  lastReadSeq?: number;
   readAt?: string;
 }

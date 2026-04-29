@@ -4,9 +4,16 @@ use std::path::PathBuf;
 #[derive(Clone, Debug)]
 pub struct AppConfig {
     pub port: u16,
-    pub redis_url: String,
+    pub cache_redis_url: String,
+    pub private_hot_redis_urls: Vec<String>,
+    pub group_hot_redis_urls: Vec<String>,
+    pub private_event_redis_url: String,
+    pub group_event_redis_url: String,
+    pub route_redis_url: String,
     pub mysql_url: String,
-    pub event_stream_key: String,
+    pub mysql_max_connections: u32,
+    pub private_event_stream_key: String,
+    pub group_event_stream_key: String,
     pub event_stream_max_len: usize,
     pub stream_consumer_block_ms: u64,
     pub event_publisher_enabled: bool,
@@ -27,8 +34,6 @@ pub struct AppConfig {
     pub jwt_expiration_ms: i64,
     pub refresh_secret: String,
     pub refresh_expiration_ms: i64,
-    pub previous_refresh_grace_seconds: u64,
-    pub refresh_lock_seconds: u64,
     pub ws_ticket_ttl_seconds: u64,
     pub revoked_token_ttl_seconds: u64,
     pub resource_cache_ttl_seconds: u64,
@@ -36,7 +41,6 @@ pub struct AppConfig {
     pub internal_secret: String,
     pub internal_max_skew_ms: i64,
     pub gateway_auth_secret: String,
-    pub gateway_auth_max_skew_ms: i64,
     pub access_cookie_name: String,
     pub refresh_cookie_name: String,
     pub auth_cookie_same_site: String,
@@ -55,11 +59,6 @@ pub struct AppConfig {
     pub file_avatar_max_size: usize,
     pub request_body_limit: usize,
     pub snowflake_node_id: u16,
-    pub auth_service_url: String,
-    pub user_service_url: String,
-    pub group_service_url: String,
-    pub message_service_url: String,
-    pub file_service_url: String,
     pub im_server_url: String,
     pub im_server_ws_url: String,
     pub log_service_url: String,
@@ -68,6 +67,23 @@ pub struct AppConfig {
 
 impl AppConfig {
     pub fn from_env() -> Self {
+        let default_redis_url = env_string("REDIS_URL", "redis://127.0.0.1:6379/0");
+        let cache_redis_url = env_string("IM_CACHE_REDIS_URL", &default_redis_url);
+        let hot_redis_url = env_string("IM_HOT_REDIS_URL", &default_redis_url);
+        let private_hot_redis_url = env_string("IM_PRIVATE_HOT_REDIS_URL", &hot_redis_url);
+        let group_hot_redis_url = env_string("IM_GROUP_HOT_REDIS_URL", &hot_redis_url);
+        let private_hot_redis_urls = env_string_list(
+            "IM_PRIVATE_HOT_REDIS_URLS",
+            std::slice::from_ref(&private_hot_redis_url),
+        );
+        let group_hot_redis_urls = env_string_list(
+            "IM_GROUP_HOT_REDIS_URLS",
+            std::slice::from_ref(&group_hot_redis_url),
+        );
+        let event_redis_url = env_string("IM_EVENT_REDIS_URL", &default_redis_url);
+        let legacy_event_stream_key = env_string("IM_EVENT_STREAM_KEY", "im:events");
+        let default_private_event_stream_key = format!("{legacy_event_stream_key}:private");
+        let default_group_event_stream_key = format!("{legacy_event_stream_key}:group");
         let file_image_max_size = env_usize("IM_FILE_IMAGE_MAX_SIZE", 20_971_520);
         let file_file_max_size = env_usize("IM_FILE_FILE_MAX_SIZE", 536_870_912);
         let file_audio_max_size = env_usize("IM_FILE_AUDIO_MAX_SIZE", 104_857_600);
@@ -85,12 +101,25 @@ impl AppConfig {
         .unwrap_or(file_video_max_size);
         Self {
             port: env_u16("API_SERVER_RS_PORT", env_u16("GATEWAY_RS_PORT", 8082)),
-            redis_url: env_string("REDIS_URL", "redis://127.0.0.1:6379/0"),
+            cache_redis_url,
+            private_hot_redis_urls,
+            group_hot_redis_urls,
+            private_event_redis_url: env_string("IM_PRIVATE_EVENT_REDIS_URL", &event_redis_url),
+            group_event_redis_url: env_string("IM_GROUP_EVENT_REDIS_URL", &event_redis_url),
+            route_redis_url: env_string("IM_ROUTE_REDIS_URL", &default_redis_url),
             mysql_url: env_string(
                 "MYSQL_URL",
                 "mysql://root:root123@127.0.0.1:3306/service_message_service_db",
             ),
-            event_stream_key: env_string("IM_EVENT_STREAM_KEY", "im:events"),
+            mysql_max_connections: env_u32("IM_MYSQL_MAX_CONNECTIONS", 64),
+            private_event_stream_key: env_string(
+                "IM_PRIVATE_EVENT_STREAM_KEY",
+                &default_private_event_stream_key,
+            ),
+            group_event_stream_key: env_string(
+                "IM_GROUP_EVENT_STREAM_KEY",
+                &default_group_event_stream_key,
+            ),
             event_stream_max_len: env_usize("IM_EVENT_STREAM_MAX_LEN", 100_000),
             stream_consumer_block_ms: env_u64("IM_EVENT_STREAM_BLOCK_MS", 1_000),
             event_publisher_enabled: env_bool("IM_EVENT_PUBLISHER_ENABLED", true),
@@ -120,8 +149,6 @@ impl AppConfig {
                 "im-refresh-secret-im-refresh-secret-im-refresh-secret-im",
             ),
             refresh_expiration_ms: env_i64("AUTH_REFRESH_EXPIRATION_MS", 604_800_000),
-            previous_refresh_grace_seconds: env_u64("AUTH_REFRESH_PREVIOUS_GRACE_SECONDS", 10),
-            refresh_lock_seconds: env_u64("AUTH_REFRESH_LOCK_SECONDS", 5),
             ws_ticket_ttl_seconds: env_u64("AUTH_WS_TICKET_TTL_SECONDS", 30),
             revoked_token_ttl_seconds: env_u64("AUTH_REVOKE_TOKEN_TTL_SECONDS", 86_400),
             resource_cache_ttl_seconds: env_u64("AUTH_RESOURCE_CACHE_TTL_SECONDS", 604_800),
@@ -138,7 +165,6 @@ impl AppConfig {
                 "IM_GATEWAY_AUTH_SECRET",
                 "im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret",
             ),
-            gateway_auth_max_skew_ms: env_i64("IM_GATEWAY_AUTH_MAX_SKEW_MS", 300_000),
             access_cookie_name: env_string("IM_AUTH_COOKIE_ACCESS_TOKEN_NAME", "IM_ACCESS_TOKEN"),
             refresh_cookie_name: env_string(
                 "IM_AUTH_COOKIE_REFRESH_TOKEN_NAME",
@@ -169,17 +195,61 @@ impl AppConfig {
                 max_upload_size.saturating_add(8 * 1024 * 1024),
             ),
             snowflake_node_id: env_u16("IM_SNOWFLAKE_NODE_ID", 21),
-            auth_service_url: env_string("IM_AUTH_SERVICE_URL", "http://127.0.0.1:8084"),
-            user_service_url: env_string("IM_USER_SERVICE_URL", "http://127.0.0.1:8085"),
-            group_service_url: env_string("IM_GROUP_SERVICE_URL", "http://127.0.0.1:8086"),
-            message_service_url: env_string("IM_MESSAGE_SERVICE_URL", "http://127.0.0.1:8087"),
-            file_service_url: env_string("IM_FILE_SERVICE_URL", "http://127.0.0.1:8088"),
             im_server_url: env_string("IM_SERVER_ROUTE_URI", "http://127.0.0.1:8083"),
             im_server_ws_url: env_string("IM_SERVER_WS_ROUTE_URI", "ws://127.0.0.1:8083"),
             log_service_url: env_string("IM_LOG_SERVICE_URL", "http://127.0.0.1:8091"),
             registry_service_url: env_string("IM_REGISTRY_SERVICE_URL", "http://127.0.0.1:8090"),
         }
     }
+
+    pub fn private_event_stream(&self) -> EventStreamConfig {
+        EventStreamConfig {
+            kind: EventStreamKind::Private,
+            redis_url: self.private_event_redis_url.clone(),
+            stream_key: self.private_event_stream_key.clone(),
+        }
+    }
+
+    pub fn group_event_stream(&self) -> EventStreamConfig {
+        EventStreamConfig {
+            kind: EventStreamKind::Group,
+            redis_url: self.group_event_redis_url.clone(),
+            stream_key: self.group_event_stream_key.clone(),
+        }
+    }
+
+    pub fn event_streams(&self) -> [EventStreamConfig; 2] {
+        [self.private_event_stream(), self.group_event_stream()]
+    }
+
+    pub fn hot_redis_urls_for(&self, kind: EventStreamKind) -> &[String] {
+        match kind {
+            EventStreamKind::Private => &self.private_hot_redis_urls,
+            EventStreamKind::Group => &self.group_hot_redis_urls,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EventStreamKind {
+    Private,
+    Group,
+}
+
+impl EventStreamKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Private => "private",
+            Self::Group => "group",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct EventStreamConfig {
+    pub kind: EventStreamKind,
+    pub redis_url: String,
+    pub stream_key: String,
 }
 
 fn env_string(key: &str, default: &str) -> String {
@@ -197,6 +267,21 @@ fn env_u16(key: &str, default: u16) -> u16 {
 }
 
 fn env_u64(key: &str, default: u64) -> u64 {
+    env::var(key)
+        .ok()
+        .and_then(|value| value.trim().parse().ok())
+        .unwrap_or(default)
+}
+
+fn env_string_list(key: &str, default: &[String]) -> Vec<String> {
+    env::var(key)
+        .ok()
+        .map(|raw| parse_csv(&raw))
+        .filter(|values| !values.is_empty())
+        .unwrap_or_else(|| default.to_vec())
+}
+
+fn env_u32(key: &str, default: u32) -> u32 {
     env::var(key)
         .ok()
         .and_then(|value| value.trim().parse().ok())
