@@ -20,6 +20,8 @@ const VALIDATION_CACHE_TTL_SECONDS: u64 = 5 * 60;
 const VALIDATION_NEGATIVE_CACHE_TTL_SECONDS: u64 = 60;
 const GROUP_MEMBERS_CACHE_TTL_SECONDS: u64 = 5 * 60;
 const MAX_FRIENDS_PRELOAD: i64 = 10_000;
+const FNV_OFFSET_BASIS: u64 = 14_695_981_039_346_656_037;
+const FNV_PRIME: u64 = 1_099_511_628_211;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -85,9 +87,25 @@ pub struct ConversationDto {
     pub is_muted: bool,
 }
 
+pub fn shard_index_for_key(key: &str, shard_count: usize) -> Option<usize> {
+    if shard_count == 0 {
+        return None;
+    }
+    let shard_count_u64 = u64::try_from(shard_count).ok()?;
+    let hash = key.bytes().fold(FNV_OFFSET_BASIS, |current, byte| {
+        (current ^ u64::from(byte)).wrapping_mul(FNV_PRIME)
+    });
+    usize::try_from(hash % shard_count_u64).ok()
+}
+
+pub fn shard_index_for_group_id(group_id: i64, shard_count: usize) -> Option<usize> {
+    shard_index_for_key(&keys::group_conversation_id(group_id), shard_count)
+}
+
 pub async fn send_private(
     config: &AppConfig,
-    redis: &mut ConnectionManager,
+    cache_redis: &mut ConnectionManager,
+    hot_redis: &mut ConnectionManager,
     db: &MySqlPool,
     identity: &Identity,
     request: SendPrivateRequest,
@@ -98,7 +116,7 @@ pub async fn send_private(
         request.media_url.as_deref(),
     )?;
     let receiver_id = cached_resolve_active_user_id(
-        redis,
+        cache_redis,
         db,
         request.receiver_id,
         "send_private.resolve_active_user",
@@ -110,7 +128,7 @@ pub async fn send_private(
             "cannot send private message to self".to_string(),
         ));
     }
-    validate_friend(redis, db, identity.user_id, receiver_id).await?;
+    validate_friend(cache_redis, db, identity.user_id, receiver_id).await?;
     let conversation_id = keys::private_conversation_id(identity.user_id, receiver_id);
     let message = build_message(
         config,
@@ -129,19 +147,13 @@ pub async fn send_private(
         },
     );
     let event = build_message_created_event(&conversation_id, &message);
-    write_private_message_hot(
-        redis,
-        &conversation_id,
-        &message,
-        &event,
-        &[identity.user_id, receiver_id],
-    )
-    .await
+    write_private_message_hot(hot_redis, &conversation_id, &message, &event).await
 }
 
 pub async fn send_group(
     config: &AppConfig,
-    redis: &mut ConnectionManager,
+    cache_redis: &mut ConnectionManager,
+    hot_redis: &mut ConnectionManager,
     db: &MySqlPool,
     identity: &Identity,
     request: SendGroupRequest,
@@ -152,14 +164,14 @@ pub async fn send_group(
         request.media_url.as_deref(),
     )?;
     let group_id = cached_resolve_active_group_id(
-        redis,
+        cache_redis,
         db,
         request.group_id,
         "send_group.resolve_active_group",
     )
     .await?
     .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
-    validate_group_member(redis, db, group_id, identity.user_id).await?;
+    validate_group_member(cache_redis, db, group_id, identity.user_id).await?;
     let conversation_id = keys::group_conversation_id(group_id);
     let message = build_message(
         config,
@@ -178,88 +190,141 @@ pub async fn send_group(
         },
     );
     let event = build_message_created_event(&conversation_id, &message);
-    write_group_message_hot(redis, group_id, &conversation_id, &message, &event).await
+    write_group_message_hot(hot_redis, group_id, &conversation_id, &message, &event).await
 }
 
 pub async fn mark_read(
-    redis: &mut ConnectionManager,
+    cache_redis: &mut ConnectionManager,
+    private_hot_redis: &mut ConnectionManager,
+    group_hot_redis: &mut ConnectionManager,
     db: &MySqlPool,
     identity: &Identity,
     raw_conversation_id: &str,
 ) -> Result<(), AppError> {
     let mut target = parse_conversation_target(identity.user_id, raw_conversation_id)?;
     if let Some(group_id) = target.group_id {
-        let group_id =
-            cached_resolve_active_group_id(redis, db, group_id, "mark_read.resolve_active_group")
-                .await?
-                .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
+        let group_id = cached_resolve_active_group_id(
+            cache_redis,
+            db,
+            group_id,
+            "mark_read.resolve_active_group",
+        )
+        .await?
+        .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
         target.group_id = Some(group_id);
         target.conversation_id = keys::group_conversation_id(group_id);
         target.frontend_conversation_id = format!("group_{group_id}");
+        mark_group_read(cache_redis, group_hot_redis, db, identity, target, group_id).await?;
     } else if let Some(peer_id) = target.peer_id {
-        let peer_id =
-            cached_resolve_active_user_id(redis, db, peer_id, "mark_read.resolve_active_user")
-                .await?
-                .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
+        let peer_id = cached_resolve_active_user_id(
+            cache_redis,
+            db,
+            peer_id,
+            "mark_read.resolve_active_user",
+        )
+        .await?
+        .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
         target.peer_id = Some(peer_id);
         target.conversation_id = keys::private_conversation_id(identity.user_id, peer_id);
         target.frontend_conversation_id =
             target.conversation_id.trim_start_matches("p_").to_string();
+        mark_private_read(
+            cache_redis,
+            private_hot_redis,
+            db,
+            identity,
+            target,
+            peer_id,
+        )
+        .await?;
     }
-    if let Some(group_id) = target.group_id {
-        validate_group_member(redis, db, group_id, identity.user_id).await?;
-    } else if let Some(peer_id) = target.peer_id {
-        validate_friend(redis, db, identity.user_id, peer_id).await?;
-    }
-    let last_read_message_id = latest_message_id(redis, db, &target.conversation_id).await?;
-    let last_read_seq = if let Some(group_id) = target.group_id {
-        Some(current_group_sequence(redis, db, group_id).await?)
-    } else {
-        None
-    };
+    Ok(())
+}
+
+async fn mark_group_read(
+    cache_redis: &mut ConnectionManager,
+    hot_redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    identity: &Identity,
+    target: ConversationTarget,
+    group_id: i64,
+) -> Result<(), AppError> {
+    validate_group_member(cache_redis, db, group_id, identity.user_id).await?;
+    let last_read_message_id = latest_message_id(hot_redis, db, &target.conversation_id).await?;
+    let last_read_seq = current_group_sequence(hot_redis, db, group_id).await?;
     let read_at = time::now_iso();
     let receipt = ReadReceipt {
         conversation_id: target.frontend_conversation_id.clone(),
         reader_id: identity.user_id.to_string(),
-        to_user_id: target.peer_id.map(|id| id.to_string()),
+        to_user_id: None,
         read_at: read_at.clone(),
         last_read_message_id: last_read_message_id.map(|id| id.to_string()),
-        last_read_seq,
+        last_read_seq: Some(last_read_seq),
     };
     let mut event = ImEvent::new(ImEventType::MessageRead, target.conversation_id.clone());
-    event.target_user_id = target.peer_id.map(|id| id.to_string());
-    event.group_id = target.group_id.map(|id| id.to_string());
-    event.group = target.group_id.is_some();
+    event.group_id = Some(group_id.to_string());
+    event.group = true;
     event.read_receipt = Some(receipt.clone());
-    write_state_event(redis, &target.conversation_id, &event).await?;
-    redis
+    write_state_event(hot_redis, &target.conversation_id, &event).await?;
+    hot_redis
         .set_ex::<_, _, ()>(
             keys::read_cursor_key(identity.user_id, &target.conversation_id),
             serde_json::to_string(&receipt)?,
             keys::CONVERSATION_TTL_SECONDS,
         )
         .await?;
-    if let Some(group_id) = target.group_id {
-        redis
-            .set::<_, _, ()>(
-                keys::group_read_sequence_key(identity.user_id, group_id),
-                last_read_seq.unwrap_or_default(),
-            )
-            .await?;
-    } else {
-        redis
-            .hset::<_, _, _, ()>(
-                keys::user_unread_key(identity.user_id),
-                &target.conversation_id,
-                0_i64,
-            )
-            .await?;
-    }
+    hot_redis
+        .set::<_, _, ()>(
+            keys::group_read_sequence_key(identity.user_id, group_id),
+            last_read_seq,
+        )
+        .await?;
+    Ok(())
+}
+
+async fn mark_private_read(
+    cache_redis: &mut ConnectionManager,
+    hot_redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    identity: &Identity,
+    target: ConversationTarget,
+    peer_id: i64,
+) -> Result<(), AppError> {
+    validate_friend(cache_redis, db, identity.user_id, peer_id).await?;
+    let last_read_message_id = latest_message_id(hot_redis, db, &target.conversation_id).await?;
+    let read_at = time::now_iso();
+    let receipt = ReadReceipt {
+        conversation_id: target.frontend_conversation_id.clone(),
+        reader_id: identity.user_id.to_string(),
+        to_user_id: Some(peer_id.to_string()),
+        read_at: read_at.clone(),
+        last_read_message_id: last_read_message_id.map(|id| id.to_string()),
+        last_read_seq: None,
+    };
+    let mut event = ImEvent::new(ImEventType::MessageRead, target.conversation_id.clone());
+    event.target_user_id = Some(peer_id.to_string());
+    event.read_receipt = Some(receipt.clone());
+    write_state_event(hot_redis, &target.conversation_id, &event).await?;
+    hot_redis
+        .set_ex::<_, _, ()>(
+            keys::read_cursor_key(identity.user_id, &target.conversation_id),
+            serde_json::to_string(&receipt)?,
+            keys::CONVERSATION_TTL_SECONDS,
+        )
+        .await?;
+    hot_redis
+        .hset::<_, _, _, ()>(
+            keys::user_unread_key(identity.user_id),
+            &target.conversation_id,
+            0_i64,
+        )
+        .await?;
     Ok(())
 }
 
 pub async fn recall_or_delete(
-    redis: &mut ConnectionManager,
+    private_redis_shards: &mut [ConnectionManager],
+    group_redis_shards: &mut [ConnectionManager],
     db: &MySqlPool,
     identity: &Identity,
     message_id: i64,
@@ -268,7 +333,46 @@ pub async fn recall_or_delete(
     let message_id = resolve_existing_message_id(db, message_id)
         .await?
         .unwrap_or(message_id);
-    let mut message = load_message(redis, db, message_id).await?;
+    let message =
+        load_message_from_all_hot(private_redis_shards, group_redis_shards, db, message_id).await?;
+    if message.is_group_chat {
+        let group_id = message
+            .group_id
+            .as_deref()
+            .ok_or_else(|| AppError::BadRequest("message groupId missing".to_string()))?
+            .parse::<i64>()
+            .map_err(|_| AppError::BadRequest("invalid groupId".to_string()))?;
+        let index = shard_index_for_group_id(group_id, group_redis_shards.len())
+            .ok_or_else(|| AppError::Upstream("group hot redis shard missing".to_string()))?;
+        let Some(redis) = group_redis_shards.get_mut(index) else {
+            return Err(AppError::Upstream(
+                "group hot redis shard missing".to_string(),
+            ));
+        };
+        apply_message_status(redis, identity, message, status).await
+    } else {
+        let conversation_id = conversation_id_from_message(&message)?;
+        let index = shard_index_for_key(&conversation_id, private_redis_shards.len())
+            .ok_or_else(|| AppError::Upstream("private hot redis shard missing".to_string()))?;
+        let Some(redis) = private_redis_shards.get_mut(index) else {
+            return Err(AppError::Upstream(
+                "private hot redis shard missing".to_string(),
+            ));
+        };
+        apply_message_status(redis, identity, message, status).await
+    }
+}
+
+async fn apply_message_status(
+    redis: &mut ConnectionManager,
+    identity: &Identity,
+    mut message: MessageDto,
+    status: MessageStatus,
+) -> Result<MessageDto, AppError> {
+    let message_id = message
+        .id
+        .parse::<i64>()
+        .map_err(|_| AppError::BadRequest("invalid message id".to_string()))?;
     if message.sender_id != identity.user_id.to_string() {
         return Err(AppError::Forbidden(
             "only sender can change message status".to_string(),
@@ -329,30 +433,34 @@ pub async fn recall_or_delete(
 }
 
 pub async fn conversations(
-    redis: &mut ConnectionManager,
+    private_redis_shards: &mut [ConnectionManager],
+    group_redis_shards: &mut [ConnectionManager],
     db: &MySqlPool,
     identity: &Identity,
 ) -> Result<Vec<ConversationDto>, AppError> {
-    let conv_ids: Vec<String> = redis
-        .zrevrange(keys::user_conversations_key(identity.user_id), 0, 99)
-        .await
-        .unwrap_or_default();
-    let hot_conversation_count = conv_ids.len();
+    let mut hot_conversation_count = 0_usize;
     let mut result = Vec::new();
-    for conversation_id in conv_ids {
-        if conversation_id.starts_with("g_") {
-            continue;
-        }
-        if let Some(last) = load_last_message(redis, &conversation_id).await {
-            let unread = redis
-                .hget(keys::user_unread_key(identity.user_id), &conversation_id)
-                .await
-                .unwrap_or(0_i64);
-            if let Some(dto) =
-                conversation_from_message(db, identity.user_id, &conversation_id, last, unread)
-                    .await?
-            {
-                result.push(dto);
+    for redis in private_redis_shards.iter_mut() {
+        let conv_ids: Vec<String> = redis
+            .zrevrange(keys::user_conversations_key(identity.user_id), 0, 99)
+            .await
+            .unwrap_or_default();
+        hot_conversation_count = hot_conversation_count.saturating_add(conv_ids.len());
+        for conversation_id in conv_ids {
+            if conversation_id.starts_with("g_") {
+                continue;
+            }
+            if let Some(last) = load_last_message(redis, &conversation_id).await {
+                let unread = redis
+                    .hget(keys::user_unread_key(identity.user_id), &conversation_id)
+                    .await
+                    .unwrap_or(0_i64);
+                if let Some(dto) =
+                    conversation_from_message(db, identity.user_id, &conversation_id, last, unread)
+                        .await?
+                {
+                    result.push(dto);
+                }
             }
         }
     }
@@ -366,7 +474,7 @@ pub async fn conversations(
         );
         result = load_private_conversations_from_db(db, identity.user_id).await?;
     }
-    result.extend(load_group_conversations(redis, db, identity.user_id).await?);
+    result.extend(load_group_conversations(group_redis_shards, db, identity.user_id).await?);
     dedup_conversations(&mut result);
     result.sort_by(|a, b| b.last_message_time.cmp(&a.last_message_time));
     Ok(result)
@@ -379,7 +487,7 @@ struct GroupConversationSource {
 }
 
 async fn load_group_conversations(
-    redis: &mut ConnectionManager,
+    redis_shards: &mut [ConnectionManager],
     db: &MySqlPool,
     user_id: i64,
 ) -> Result<Vec<ConversationDto>, AppError> {
@@ -406,6 +514,13 @@ async fn load_group_conversations(
             avatar: row.try_get::<Option<String>, _>("avatar").ok().flatten(),
         };
         let conversation_id = keys::group_conversation_id(source.group_id);
+        let index = shard_index_for_group_id(source.group_id, redis_shards.len())
+            .ok_or_else(|| AppError::Upstream("group hot redis shard missing".to_string()))?;
+        let Some(redis) = redis_shards.get_mut(index) else {
+            return Err(AppError::Upstream(
+                "group hot redis shard missing".to_string(),
+            ));
+        };
         let last = match load_last_message(redis, &conversation_id).await {
             Some(message) => message,
             None => {
@@ -537,35 +652,45 @@ fn dedup_conversations(conversations: &mut Vec<ConversationDto>) {
 }
 
 pub async fn private_history(
-    redis: &mut ConnectionManager,
+    cache_redis: &mut ConnectionManager,
+    hot_redis: &mut ConnectionManager,
     db: &MySqlPool,
     identity: &Identity,
     peer_id: i64,
     query: HistoryQuery,
 ) -> Result<Vec<MessageDto>, AppError> {
-    let peer_id =
-        cached_resolve_active_user_id(redis, db, peer_id, "private_history.resolve_active_user")
-            .await?
-            .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
-    validate_friend(redis, db, identity.user_id, peer_id).await?;
+    let peer_id = cached_resolve_active_user_id(
+        cache_redis,
+        db,
+        peer_id,
+        "private_history.resolve_active_user",
+    )
+    .await?
+    .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
+    validate_friend(cache_redis, db, identity.user_id, peer_id).await?;
     let conversation_id = keys::private_conversation_id(identity.user_id, peer_id);
-    load_history(redis, db, &conversation_id, query).await
+    load_history(hot_redis, db, &conversation_id, query).await
 }
 
 pub async fn group_history(
-    redis: &mut ConnectionManager,
+    cache_redis: &mut ConnectionManager,
+    hot_redis: &mut ConnectionManager,
     db: &MySqlPool,
     identity: &Identity,
     group_id: i64,
     query: HistoryQuery,
 ) -> Result<Vec<MessageDto>, AppError> {
-    let group_id =
-        cached_resolve_active_group_id(redis, db, group_id, "group_history.resolve_active_group")
-            .await?
-            .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
-    validate_group_member(redis, db, group_id, identity.user_id).await?;
+    let group_id = cached_resolve_active_group_id(
+        cache_redis,
+        db,
+        group_id,
+        "group_history.resolve_active_group",
+    )
+    .await?
+    .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
+    validate_group_member(cache_redis, db, group_id, identity.user_id).await?;
     let conversation_id = keys::group_conversation_id(group_id);
-    load_history(redis, db, &conversation_id, query).await
+    load_history(hot_redis, db, &conversation_id, query).await
 }
 
 fn validate_send_input(
@@ -654,34 +779,43 @@ fn build_message_created_event(conversation_id: &str, message: &MessageDto) -> I
     event
 }
 
+fn pending_event_member(event_id: &str, conversation_id: &str) -> String {
+    format!("{event_id}|{conversation_id}")
+}
+
 async fn write_private_message_hot(
     redis: &mut ConnectionManager,
     conversation_id: &str,
     message: &MessageDto,
     event: &ImEvent,
-    recipients: &[i64],
 ) -> Result<MessageDto, AppError> {
     let message_id = message
         .id
         .parse::<i64>()
         .map_err(|_| AppError::BadRequest("invalid message id".to_string()))?;
+    let sender_id = message
+        .sender_id
+        .parse::<i64>()
+        .map_err(|_| AppError::BadRequest("invalid sender id".to_string()))?;
+    let receiver_id = message
+        .receiver_id
+        .as_deref()
+        .ok_or_else(|| AppError::BadRequest("message receiverId missing".to_string()))?
+        .parse::<i64>()
+        .map_err(|_| AppError::BadRequest("invalid receiver id".to_string()))?;
     let event_json = serde_json::to_string(event)?;
     let message_json = serde_json::to_string(message)?;
     let client_key = message
         .client_message_id
         .as_deref()
-        .map(|client_id| {
-            keys::client_message_key(
-                message.sender_id.parse::<i64>().unwrap_or_default(),
-                client_id,
-            )
-        })
+        .map(|client_id| keys::client_message_key(sender_id, client_id))
         .unwrap_or_else(|| format!("im:client:none:{message_id}"));
+    let pending_member = pending_event_member(&event.event_id, conversation_id);
     let script = Script::new(
         r#"
         local existing_id = redis.call('GET', KEYS[1])
         if existing_id then
-          local existing_message = redis.call('GET', ARGV[14] .. existing_id)
+          local existing_message = redis.call('GET', ARGV[13] .. existing_id)
           if existing_message then
             return existing_message
           end
@@ -693,15 +827,12 @@ async fn write_private_message_hot(
         redis.call('SET', KEYS[4], ARGV[3], 'EX', ARGV[6])
         redis.call('ZADD', KEYS[5], ARGV[5], ARGV[15])
         redis.call('SET', KEYS[6], ARGV[8], 'EX', ARGV[9])
-        local recipients = cjson.decode(ARGV[10])
-        for _, uid in ipairs(recipients) do
-          redis.call('ZADD', ARGV[11] .. uid .. ':convs', ARGV[5], ARGV[7])
-          redis.call('EXPIRE', ARGV[11] .. uid .. ':convs', ARGV[6])
-          if tostring(uid) ~= ARGV[12] then
-            redis.call('HINCRBY', ARGV[13] .. uid .. ':unread', ARGV[7], 1)
-            redis.call('EXPIRE', ARGV[13] .. uid .. ':unread', ARGV[6])
-          end
-        end
+        redis.call('ZADD', ARGV[10], ARGV[5], ARGV[7])
+        redis.call('EXPIRE', ARGV[10], ARGV[6])
+        redis.call('ZADD', ARGV[11], ARGV[5], ARGV[7])
+        redis.call('EXPIRE', ARGV[11], ARGV[6])
+        redis.call('HINCRBY', ARGV[12], ARGV[7], 1)
+        redis.call('EXPIRE', ARGV[12], ARGV[6])
         return ARGV[3]
         "#,
     );
@@ -721,12 +852,12 @@ async fn write_private_message_hot(
         .arg(conversation_id)
         .arg(event_json)
         .arg(keys::EVENT_TTL_SECONDS.to_string())
-        .arg(serde_json::to_string(recipients)?)
-        .arg("im:user:")
-        .arg(message.sender_id.clone())
-        .arg("im:user:")
+        .arg(keys::user_conversations_key(sender_id))
+        .arg(keys::user_conversations_key(receiver_id))
+        .arg(keys::user_unread_key(receiver_id))
         .arg("im:msg:")
         .arg(event.event_id.clone())
+        .arg(pending_member)
         .invoke_async(redis)
         .await?;
     Ok(serde_json::from_str(&result)?)
@@ -754,6 +885,7 @@ async fn write_group_message_hot(
         .as_deref()
         .map(|client_id| keys::client_message_key(sender_id, client_id))
         .unwrap_or_else(|| format!("im:client:none:{message_id}"));
+    let pending_member = pending_event_member(&event.event_id, conversation_id);
     let script = Script::new(
         r#"
         local existing_id = redis.call('GET', KEYS[1])
@@ -764,20 +896,14 @@ async fn write_group_message_hot(
           end
         end
         local seq = redis.call('INCR', KEYS[7])
-        local message = cjson.decode(ARGV[3])
-        message['conversationSeq'] = seq
-        local encoded_message = cjson.encode(message)
-        local event = cjson.decode(ARGV[7])
-        if event['payload'] then
-          event['payload']['conversationSeq'] = seq
-        end
-        local encoded_event = cjson.encode(event)
+        local encoded_message = string.gsub(ARGV[3], '"conversationSeq":null', '"conversationSeq":' .. seq)
+        local encoded_event = string.gsub(ARGV[7], '"conversationSeq":null', '"conversationSeq":' .. seq)
         redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
         redis.call('SET', KEYS[2], encoded_message, 'EX', ARGV[4])
         redis.call('ZADD', KEYS[3], seq, ARGV[1])
         redis.call('EXPIRE', KEYS[3], ARGV[6])
         redis.call('SET', KEYS[4], encoded_message, 'EX', ARGV[6])
-        redis.call('ZADD', KEYS[5], ARGV[5], ARGV[9])
+        redis.call('ZADD', KEYS[5], ARGV[5], ARGV[11])
         redis.call('SET', KEYS[6], encoded_event, 'EX', ARGV[10])
         return encoded_message
         "#,
@@ -800,6 +926,7 @@ async fn write_group_message_hot(
         .arg("im:msg:")
         .arg(event.event_id.clone())
         .arg(keys::EVENT_TTL_SECONDS.to_string())
+        .arg(pending_member)
         .invoke_async(redis)
         .await?;
     Ok(serde_json::from_str(&result)?)
@@ -807,10 +934,11 @@ async fn write_group_message_hot(
 
 async fn write_state_event(
     redis: &mut ConnectionManager,
-    _conversation_id: &str,
+    conversation_id: &str,
     event: &ImEvent,
 ) -> Result<(), AppError> {
     let event_json = serde_json::to_string(event)?;
+    let pending_member = pending_event_member(&event.event_id, conversation_id);
     redis
         .set_ex::<_, _, ()>(
             keys::event_key(&event.event_id),
@@ -819,7 +947,7 @@ async fn write_state_event(
         )
         .await?;
     redis
-        .zadd::<_, _, _, ()>(keys::pending_events_key(), &event.event_id, time::now_ms())
+        .zadd::<_, _, _, ()>(keys::pending_events_key(), pending_member, time::now_ms())
         .await?;
     Ok(())
 }
@@ -829,15 +957,49 @@ async fn load_message(
     db: &MySqlPool,
     message_id: i64,
 ) -> Result<MessageDto, AppError> {
-    if let Some(raw) = redis
+    if let Some(message) = load_hot_message(redis, message_id).await? {
+        return Ok(message);
+    }
+    observability::cache_fallback("load_message", "message_cache_miss", None, 0, 1);
+    load_message_from_db(db, message_id).await
+}
+
+async fn load_message_from_all_hot(
+    private_redis_shards: &mut [ConnectionManager],
+    group_redis_shards: &mut [ConnectionManager],
+    db: &MySqlPool,
+    message_id: i64,
+) -> Result<MessageDto, AppError> {
+    for redis in private_redis_shards.iter_mut() {
+        if let Some(message) = load_hot_message(redis, message_id).await? {
+            return Ok(message);
+        }
+    }
+    for redis in group_redis_shards.iter_mut() {
+        if let Some(message) = load_hot_message(redis, message_id).await? {
+            return Ok(message);
+        }
+    }
+    observability::cache_fallback("load_message", "message_cache_miss", None, 0, 1);
+    load_message_from_db(db, message_id).await
+}
+
+async fn load_hot_message(
+    redis: &mut ConnectionManager,
+    message_id: i64,
+) -> Result<Option<MessageDto>, AppError> {
+    let raw = redis
         .get::<_, Option<String>>(keys::message_key(message_id))
         .await
         .ok()
-        .flatten()
-    {
-        return Ok(serde_json::from_str(&raw)?);
+        .flatten();
+    match raw {
+        Some(raw) => Ok(Some(serde_json::from_str(&raw)?)),
+        None => Ok(None),
     }
-    observability::cache_fallback("load_message", "message_cache_miss", None, 0, 1);
+}
+
+async fn load_message_from_db(db: &MySqlPool, message_id: i64) -> Result<MessageDto, AppError> {
     let row = observability::db_query(
         "load_message.by_id",
         sqlx::query(
@@ -1093,6 +1255,7 @@ async fn validate_friend(
     friend_id: i64,
 ) -> Result<(), AppError> {
     let key = format!("im:cache:friend:{user_id}:{friend_id}");
+    let preload_key = format!("im:cache:friend_preload:{user_id}");
     if let Some(allowed) = local_cache::get_bool(&key) {
         return if allowed {
             Ok(())
@@ -1102,7 +1265,7 @@ async fn validate_friend(
             ))
         };
     }
-    let lock = local_cache::key_lock(&key);
+    let lock = local_cache::key_lock(&preload_key);
     let _guard = lock.lock().await;
     if let Some(allowed) = local_cache::get_bool(&key) {
         return if allowed {
@@ -1653,6 +1816,52 @@ mod tests {
     use super::*;
 
     #[test]
+    fn group_message_payload_should_keep_sequence_placeholder(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let message = MessageDto {
+            id: "1".to_string(),
+            message_id: "1".to_string(),
+            client_message_id: None,
+            sender_id: "10".to_string(),
+            sender_name: None,
+            sender_avatar: None,
+            receiver_id: None,
+            receiver_name: None,
+            group_id: Some("20".to_string()),
+            conversation_seq: None,
+            group_name: None,
+            group_avatar: None,
+            is_group_chat: true,
+            is_group: true,
+            message_type: "TEXT".to_string(),
+            content: Some("hello".to_string()),
+            media_url: None,
+            media_size: None,
+            media_name: None,
+            thumbnail_url: None,
+            duration: None,
+            location_info: None,
+            status: "SENT".to_string(),
+            reply_to_message_id: None,
+            created_time: "2026-04-28T00:00:00Z".to_string(),
+            created_at: "2026-04-28T00:00:00Z".to_string(),
+            updated_time: None,
+            updated_at: None,
+        };
+        let event = build_message_created_event("g_20", &message);
+        let message_json = serde_json::to_string(&message)?;
+        let event_json = serde_json::to_string(&event)?;
+
+        if !message_json.contains("\"conversationSeq\":null") {
+            return Err("message JSON must expose the sequence placeholder".into());
+        }
+        if !event_json.contains("\"conversationSeq\":null") {
+            return Err("event payload JSON must expose the sequence placeholder".into());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn group_unread_count_should_saturate() -> Result<(), &'static str> {
         if group_unread_count(10, 3) != 7 {
             return Err("group unread should be group sequence minus read sequence");
@@ -1662,6 +1871,14 @@ mod tests {
         }
         if group_unread_count(-1, 10) != 0 {
             return Err("negative group sequence should be treated as zero");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn pending_event_member_should_include_conversation_id() -> Result<(), &'static str> {
+        if pending_event_member("100", "g_20") != "100|g_20" {
+            return Err("pending event member should encode event and conversation ids");
         }
         Ok(())
     }

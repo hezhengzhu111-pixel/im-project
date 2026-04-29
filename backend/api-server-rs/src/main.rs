@@ -50,8 +50,12 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Arc::new(AppConfig::from_env());
     tokio::fs::create_dir_all(&config.storage_base_dir).await?;
-    let redis_client = redis::Client::open(config.redis_url.as_str())?;
+    let redis_client = redis::Client::open(config.cache_redis_url.as_str())?;
     let redis = ConnectionManager::new(redis_client).await?;
+    let private_redis = connect_redis_managers(&config.private_hot_redis_urls).await?;
+    let group_redis = connect_redis_managers(&config.group_hot_redis_urls).await?;
+    let route_redis_client = redis::Client::open(config.route_redis_url.as_str())?;
+    let route_redis = ConnectionManager::new(route_redis_client).await?;
     let mysql_options = MySqlConnectOptions::from_str(&config.mysql_url)?;
     let db = sqlx::mysql::MySqlPoolOptions::new()
         .max_connections(config.mysql_max_connections)
@@ -60,6 +64,9 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         config: config.clone(),
         redis_manager: redis.clone(),
+        private_redis_managers: Arc::new(private_redis),
+        group_redis_managers: Arc::new(group_redis),
+        route_redis_manager: route_redis.clone(),
         db,
         http: reqwest::Client::new(),
     };
@@ -76,6 +83,15 @@ async fn main() -> anyhow::Result<()> {
         .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())
+}
+
+async fn connect_redis_managers(urls: &[String]) -> anyhow::Result<Vec<ConnectionManager>> {
+    let mut managers = Vec::with_capacity(urls.len());
+    for url in urls {
+        let client = redis::Client::open(url.as_str())?;
+        managers.push(ConnectionManager::new(client).await?);
+    }
+    Ok(managers)
 }
 
 fn log_filter() -> tracing_subscriber::EnvFilter {

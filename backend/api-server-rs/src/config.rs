@@ -4,10 +4,16 @@ use std::path::PathBuf;
 #[derive(Clone, Debug)]
 pub struct AppConfig {
     pub port: u16,
-    pub redis_url: String,
+    pub cache_redis_url: String,
+    pub private_hot_redis_urls: Vec<String>,
+    pub group_hot_redis_urls: Vec<String>,
+    pub private_event_redis_url: String,
+    pub group_event_redis_url: String,
+    pub route_redis_url: String,
     pub mysql_url: String,
     pub mysql_max_connections: u32,
-    pub event_stream_key: String,
+    pub private_event_stream_key: String,
+    pub group_event_stream_key: String,
     pub event_stream_max_len: usize,
     pub stream_consumer_block_ms: u64,
     pub event_publisher_enabled: bool,
@@ -61,6 +67,23 @@ pub struct AppConfig {
 
 impl AppConfig {
     pub fn from_env() -> Self {
+        let default_redis_url = env_string("REDIS_URL", "redis://127.0.0.1:6379/0");
+        let cache_redis_url = env_string("IM_CACHE_REDIS_URL", &default_redis_url);
+        let hot_redis_url = env_string("IM_HOT_REDIS_URL", &default_redis_url);
+        let private_hot_redis_url = env_string("IM_PRIVATE_HOT_REDIS_URL", &hot_redis_url);
+        let group_hot_redis_url = env_string("IM_GROUP_HOT_REDIS_URL", &hot_redis_url);
+        let private_hot_redis_urls = env_string_list(
+            "IM_PRIVATE_HOT_REDIS_URLS",
+            std::slice::from_ref(&private_hot_redis_url),
+        );
+        let group_hot_redis_urls = env_string_list(
+            "IM_GROUP_HOT_REDIS_URLS",
+            std::slice::from_ref(&group_hot_redis_url),
+        );
+        let event_redis_url = env_string("IM_EVENT_REDIS_URL", &default_redis_url);
+        let legacy_event_stream_key = env_string("IM_EVENT_STREAM_KEY", "im:events");
+        let default_private_event_stream_key = format!("{legacy_event_stream_key}:private");
+        let default_group_event_stream_key = format!("{legacy_event_stream_key}:group");
         let file_image_max_size = env_usize("IM_FILE_IMAGE_MAX_SIZE", 20_971_520);
         let file_file_max_size = env_usize("IM_FILE_FILE_MAX_SIZE", 536_870_912);
         let file_audio_max_size = env_usize("IM_FILE_AUDIO_MAX_SIZE", 104_857_600);
@@ -78,13 +101,25 @@ impl AppConfig {
         .unwrap_or(file_video_max_size);
         Self {
             port: env_u16("API_SERVER_RS_PORT", env_u16("GATEWAY_RS_PORT", 8082)),
-            redis_url: env_string("REDIS_URL", "redis://127.0.0.1:6379/0"),
+            cache_redis_url,
+            private_hot_redis_urls,
+            group_hot_redis_urls,
+            private_event_redis_url: env_string("IM_PRIVATE_EVENT_REDIS_URL", &event_redis_url),
+            group_event_redis_url: env_string("IM_GROUP_EVENT_REDIS_URL", &event_redis_url),
+            route_redis_url: env_string("IM_ROUTE_REDIS_URL", &default_redis_url),
             mysql_url: env_string(
                 "MYSQL_URL",
                 "mysql://root:root123@127.0.0.1:3306/service_message_service_db",
             ),
             mysql_max_connections: env_u32("IM_MYSQL_MAX_CONNECTIONS", 64),
-            event_stream_key: env_string("IM_EVENT_STREAM_KEY", "im:events"),
+            private_event_stream_key: env_string(
+                "IM_PRIVATE_EVENT_STREAM_KEY",
+                &default_private_event_stream_key,
+            ),
+            group_event_stream_key: env_string(
+                "IM_GROUP_EVENT_STREAM_KEY",
+                &default_group_event_stream_key,
+            ),
             event_stream_max_len: env_usize("IM_EVENT_STREAM_MAX_LEN", 100_000),
             stream_consumer_block_ms: env_u64("IM_EVENT_STREAM_BLOCK_MS", 1_000),
             event_publisher_enabled: env_bool("IM_EVENT_PUBLISHER_ENABLED", true),
@@ -166,6 +201,55 @@ impl AppConfig {
             registry_service_url: env_string("IM_REGISTRY_SERVICE_URL", "http://127.0.0.1:8090"),
         }
     }
+
+    pub fn private_event_stream(&self) -> EventStreamConfig {
+        EventStreamConfig {
+            kind: EventStreamKind::Private,
+            redis_url: self.private_event_redis_url.clone(),
+            stream_key: self.private_event_stream_key.clone(),
+        }
+    }
+
+    pub fn group_event_stream(&self) -> EventStreamConfig {
+        EventStreamConfig {
+            kind: EventStreamKind::Group,
+            redis_url: self.group_event_redis_url.clone(),
+            stream_key: self.group_event_stream_key.clone(),
+        }
+    }
+
+    pub fn event_streams(&self) -> [EventStreamConfig; 2] {
+        [self.private_event_stream(), self.group_event_stream()]
+    }
+
+    pub fn hot_redis_urls_for(&self, kind: EventStreamKind) -> &[String] {
+        match kind {
+            EventStreamKind::Private => &self.private_hot_redis_urls,
+            EventStreamKind::Group => &self.group_hot_redis_urls,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EventStreamKind {
+    Private,
+    Group,
+}
+
+impl EventStreamKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Private => "private",
+            Self::Group => "group",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct EventStreamConfig {
+    pub kind: EventStreamKind,
+    pub redis_url: String,
+    pub stream_key: String,
 }
 
 fn env_string(key: &str, default: &str) -> String {
@@ -187,6 +271,14 @@ fn env_u64(key: &str, default: u64) -> u64 {
         .ok()
         .and_then(|value| value.trim().parse().ok())
         .unwrap_or(default)
+}
+
+fn env_string_list(key: &str, default: &[String]) -> Vec<String> {
+    env::var(key)
+        .ok()
+        .map(|raw| parse_csv(&raw))
+        .filter(|values| !values.is_empty())
+        .unwrap_or_else(|| default.to_vec())
 }
 
 fn env_u32(key: &str, default: u32) -> u32 {

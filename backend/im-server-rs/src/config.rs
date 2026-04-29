@@ -3,7 +3,7 @@ use std::env;
 #[derive(Clone, Debug)]
 pub struct AppConfig {
     pub port: u16,
-    pub redis_url: String,
+    pub route_redis_url: String,
     pub auth_service_url: String,
     pub internal_secret: String,
     pub internal_max_skew_ms: i64,
@@ -36,9 +36,10 @@ pub struct AppConfig {
 impl AppConfig {
     pub fn from_env() -> Self {
         let port = env_u16("IM_SERVER_RS_PORT", 8083);
+        let redis_url = env_string("REDIS_URL", "redis://127.0.0.1:6379/0");
         Self {
             port,
-            redis_url: env_string("REDIS_URL", "redis://127.0.0.1:6379/0"),
+            route_redis_url: env_string("IM_ROUTE_REDIS_URL", &redis_url),
             auth_service_url: env_string("IM_AUTH_SERVICE_URL", "http://127.0.0.1:8084"),
             internal_secret: env_string(
                 "IM_INTERNAL_SECRET",

@@ -1,6 +1,6 @@
 use crate::auth_api;
 use crate::background_task;
-use crate::config::AppConfig;
+use crate::config::{AppConfig, EventStreamConfig};
 use crate::local_cache;
 use crate::observability;
 use crate::redis_streams;
@@ -26,18 +26,33 @@ pub fn spawn(config: Arc<AppConfig>, db: MySqlPool) {
         tracing::info!("api-server push dispatcher disabled");
         return;
     }
-    let handle = tokio::runtime::Handle::current();
-    background_task::spawn("push-dispatcher", move || run(config, db, handle));
+    for stream in config.event_streams() {
+        let task_config = config.clone();
+        let task_db = db.clone();
+        let handle = tokio::runtime::Handle::current();
+        let task_name = match stream.kind {
+            crate::config::EventStreamKind::Private => "push-dispatcher-private",
+            crate::config::EventStreamKind::Group => "push-dispatcher-group",
+        };
+        background_task::spawn(task_name, move || run(task_config, stream, task_db, handle));
+    }
 }
 
-fn run(config: Arc<AppConfig>, db: MySqlPool, handle: tokio::runtime::Handle) {
+fn run(
+    config: Arc<AppConfig>,
+    stream: EventStreamConfig,
+    db: MySqlPool,
+    handle: tokio::runtime::Handle,
+) {
+    let group_id = stream_group_id(&config.push_dispatcher_group_id, &stream);
     tracing::info!(
-        stream = %config.event_stream_key,
-        group = %config.push_dispatcher_group_id,
+        kind = stream.kind.as_str(),
+        stream = %stream.stream_key,
+        group = %group_id,
         "api-server embedded push dispatcher started"
     );
     loop {
-        match connect_and_consume(config.clone(), db.clone(), handle.clone()) {
+        match connect_and_consume(config.clone(), stream.clone(), db.clone(), handle.clone()) {
             Ok(()) => {}
             Err(error) => {
                 tracing::warn!(error = %error, "embedded push dispatcher failed");
@@ -49,20 +64,23 @@ fn run(config: Arc<AppConfig>, db: MySqlPool, handle: tokio::runtime::Handle) {
 
 fn connect_and_consume(
     config: Arc<AppConfig>,
+    stream: EventStreamConfig,
     db: MySqlPool,
     handle: tokio::runtime::Handle,
 ) -> anyhow::Result<()> {
-    let mut redis = redis::Client::open(config.redis_url.as_str())?.get_connection()?;
-    let stream_key = config.event_stream_key.clone();
-    let group_id = config.push_dispatcher_group_id.clone();
-    let consumer_name = redis_streams::consumer_name("push-dispatcher");
-    redis_streams::ensure_group(&mut redis, &stream_key, &group_id)?;
+    let mut event_redis = redis::Client::open(stream.redis_url.as_str())?.get_connection()?;
+    let mut route_redis = redis::Client::open(config.route_redis_url.as_str())?.get_connection()?;
+    let stream_key = stream.stream_key.clone();
+    let group_id = stream_group_id(&config.push_dispatcher_group_id, &stream);
+    let consumer_name =
+        redis_streams::consumer_name(&format!("push-dispatcher-{}", stream.kind.as_str()));
+    redis_streams::ensure_group(&mut event_redis, &stream_key, &group_id)?;
     let http = Client::new();
     let mut route_cache = HashMap::<String, CachedRoutes>::new();
 
     loop {
         let events = redis_streams::read_group_events(
-            &mut redis,
+            &mut event_redis,
             &stream_key,
             &group_id,
             &consumer_name,
@@ -77,7 +95,7 @@ fn connect_and_consume(
                         &config,
                         &db,
                         &http,
-                        &mut redis,
+                        &mut route_redis,
                         &mut route_cache,
                         event,
                     ))?;
@@ -86,8 +104,12 @@ fn connect_and_consume(
             }
             ack_ids.push(event_message.stream_id);
         }
-        redis_streams::ack(&mut redis, &stream_key, &group_id, &ack_ids)?;
+        redis_streams::ack(&mut event_redis, &stream_key, &group_id, &ack_ids)?;
     }
+}
+
+fn stream_group_id(base_group_id: &str, stream: &EventStreamConfig) -> String {
+    format!("{base_group_id}-{}", stream.kind.as_str())
 }
 
 async fn dispatch_event(

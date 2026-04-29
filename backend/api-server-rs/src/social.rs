@@ -2,6 +2,7 @@ use crate::auth::identity_from_headers;
 use crate::auth_api;
 use crate::error::AppError;
 use crate::id_resolver::{resolve_active_group_id, resolve_active_user_id};
+use crate::local_cache;
 use crate::web::AppState;
 use axum::body::Bytes;
 use axum::extract::{OriginalUri, Path, Query, State};
@@ -16,6 +17,8 @@ use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use sqlx::{MySqlPool, Row};
 use std::collections::{BTreeSet, HashMap};
+
+const FRIEND_CACHE_TTL_SECONDS: u64 = 5 * 60;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -158,6 +161,8 @@ pub async fn add_friend(
         return Err(AppError::BadRequest("cannot add yourself".to_string()));
     }
     if are_friends(&state.db, identity.user_id, target_user_id).await? {
+        let mut redis = state.redis_manager.clone();
+        cache_friendship(&mut redis, identity.user_id, target_user_id, true).await;
         return Ok(Json(ApiResponse::success(true)));
     }
     let request_id = ids::next_id(state.config.snowflake_node_id);
@@ -207,6 +212,9 @@ pub async fn accept_friend(
         None,
     )
     .await?;
+    let mut redis = state.redis_manager.clone();
+    cache_friendship(&mut redis, identity.user_id, applicant_id, true).await;
+    cache_friendship(&mut redis, applicant_id, identity.user_id, true).await;
     Ok(Json(ApiResponse::success(true)))
 }
 
@@ -247,6 +255,9 @@ pub async fn remove_friend(
     .bind(identity.user_id)
     .execute(&state.db)
     .await?;
+    let mut redis = state.redis_manager.clone();
+    cache_friendship(&mut redis, identity.user_id, friend_id, false).await;
+    cache_friendship(&mut redis, friend_id, identity.user_id, false).await;
     Ok(Json(ApiResponse::success(true)))
 }
 
@@ -320,7 +331,7 @@ pub async fn create_group(
         )
         .await?;
     }
-    let mut redis = state.redis_manager.clone();
+    let mut redis = group_redis_for_group(&state, group_id)?;
     initialize_group_read_sequences(
         &mut redis,
         &state.db,
@@ -391,7 +402,7 @@ pub async fn join_group(
         1,
     )
     .await?;
-    let mut redis = state.redis_manager.clone();
+    let mut redis = group_redis_for_group(&state, group_id)?;
     initialize_group_read_sequences(
         &mut redis,
         &state.db,
@@ -483,6 +494,17 @@ pub async fn internal_group_member_ids(
     .fetch_all(&state.db)
     .await?;
     Ok(Json(ApiResponse::success(rows)))
+}
+
+fn group_redis_for_group(state: &AppState, group_id: i64) -> Result<ConnectionManager, AppError> {
+    let index =
+        crate::message::shard_index_for_group_id(group_id, state.group_redis_managers.len())
+            .ok_or_else(|| AppError::Upstream("group hot redis shard missing".to_string()))?;
+    state
+        .group_redis_managers
+        .get(index)
+        .cloned()
+        .ok_or_else(|| AppError::Upstream("group hot redis shard missing".to_string()))
 }
 
 fn friendship_from_row(row: &sqlx::mysql::MySqlRow) -> FriendshipDto {
@@ -629,6 +651,25 @@ async fn upsert_friendship(
     .execute(db)
     .await?;
     Ok(())
+}
+
+async fn cache_friendship(
+    redis: &mut ConnectionManager,
+    user_id: i64,
+    friend_id: i64,
+    allowed: bool,
+) {
+    let key = format!("im:cache:friend:{user_id}:{friend_id}");
+    local_cache::set_bool(&key, allowed);
+    let value = if allowed { "1" } else { "0" };
+    let result: redis::RedisResult<()> = redis.set_ex(&key, value, FRIEND_CACHE_TTL_SECONDS).await;
+    if let Err(error) = result {
+        tracing::warn!(
+            key = %key,
+            error = %error,
+            "failed to cache friendship validation"
+        );
+    }
 }
 
 async fn ensure_group_exists(db: &MySqlPool, group_id: i64) -> Result<(), AppError> {
