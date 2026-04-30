@@ -124,7 +124,8 @@ async fn dispatch_event(
         return Ok(());
     };
     let event_id = event.event_id.clone();
-    let body_data = push.data.clone();
+    let push_kind = Arc::<str>::from(push.kind);
+    let body_data = Arc::new(push.data);
     let route_map = routes_for_users(config, redis, route_cache, &push.user_ids)?;
     let mut batches = HashMap::<String, RouteBatch>::new();
     let mut offline_users = 0_usize;
@@ -140,14 +141,10 @@ async fn dispatch_event(
                 .entry(key)
                 .or_insert_with(|| RouteBatch {
                     route,
-                    requests: Vec::new(),
+                    user_ids: Vec::new(),
                 })
-                .requests
-                .push(InternalPushRequest {
-                    user_id,
-                    kind: push.kind.clone(),
-                    data: body_data.clone(),
-                });
+                .user_ids
+                .push(user_id);
         }
     }
     if offline_users > 0 {
@@ -160,17 +157,28 @@ async fn dispatch_event(
 
     let mut pending = FuturesUnordered::new();
     for batch in batches.into_values() {
-        for chunk in batch.requests.chunks(INTERNAL_PUSH_BATCH_SIZE) {
+        for chunk in batch.user_ids.chunks(INTERNAL_PUSH_BATCH_SIZE) {
             let route = batch.route.clone();
-            let requests = chunk.to_vec();
+            let user_ids = chunk.to_vec();
             let event_id = event_id.clone();
+            let push_kind = Arc::clone(&push_kind);
+            let body_data = Arc::clone(&body_data);
             pending.push(async move {
-                send_internal_push_batch(config, http, &route, &requests).await.map_err(|error| {
+                send_internal_push_batch(
+                    config,
+                    http,
+                    &route,
+                    push_kind.as_ref(),
+                    body_data.as_ref(),
+                    &user_ids,
+                )
+                .await
+                .map_err(|error| {
                     anyhow::anyhow!(
                         "internal websocket batch push failed event_id={} server_id={} count={} error={}",
                         event_id,
                         route.server_id,
-                        requests.len(),
+                        user_ids.len(),
                         error
                     )
                 })
@@ -289,15 +297,15 @@ async fn send_internal_push_batch(
     config: &AppConfig,
     http: &Client,
     route: &UserRoute,
-    requests: &[InternalPushRequest],
+    kind: &str,
+    data: &Value,
+    user_ids: &[i64],
 ) -> anyhow::Result<()> {
-    if requests.is_empty() {
+    if user_ids.is_empty() {
         return Ok(());
     }
     let path = "/api/im/internal/push/batch";
-    let body = serde_json::to_vec(&InternalPushBatchRequest {
-        pushes: requests.to_vec(),
-    })?;
+    let body = serialize_internal_push_batch_request(kind, data, user_ids)?;
     let headers = auth_api::internal_signature_headers("POST", path, &body, config)?;
     let response = http
         .post(format!(
@@ -314,6 +322,19 @@ async fn send_internal_push_batch(
         anyhow::bail!("im-server returned {}", response.status());
     }
     Ok(())
+}
+
+fn serialize_internal_push_batch_request(
+    kind: &str,
+    data: &Value,
+    user_ids: &[i64],
+) -> anyhow::Result<Vec<u8>> {
+    serde_json::to_vec(&InternalPushBatchRequest {
+        user_ids: user_ids.to_vec(),
+        kind: kind.to_string(),
+        data: data.clone(),
+    })
+    .map_err(Into::into)
 }
 
 fn routes_for_users(
@@ -442,22 +463,46 @@ impl CachedRoutes {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct InternalPushRequest {
-    pub user_id: i64,
+struct InternalPushBatchRequest {
+    pub user_ids: Vec<i64>,
     #[serde(rename = "type")]
     pub kind: String,
     pub data: Value,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct InternalPushBatchRequest {
-    pub pushes: Vec<InternalPushRequest>,
-}
-
 struct RouteBatch {
     route: UserRoute,
-    requests: Vec<InternalPushRequest>,
+    user_ids: Vec<i64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::serialize_internal_push_batch_request;
+    use serde_json::{json, Value};
+    use std::error::Error;
+
+    #[test]
+    fn should_serialize_shared_batch_payload_once() -> Result<(), Box<dyn Error>> {
+        let body = serialize_internal_push_batch_request(
+            "MESSAGE",
+            &json!({
+                "messageId": "1",
+                "content": "hello"
+            }),
+            &[7, 8],
+        )?;
+        let payload: Value = serde_json::from_slice(&body)?;
+        if payload["type"] != "MESSAGE" {
+            return Err("batch type should be preserved".into());
+        }
+        if payload["userIds"] != json!([7, 8]) {
+            return Err("batch userIds should be serialized once".into());
+        }
+        if payload["data"]["content"] != "hello" {
+            return Err("shared data should remain intact".into());
+        }
+        Ok(())
+    }
 }

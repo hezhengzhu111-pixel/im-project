@@ -152,25 +152,16 @@ async fn internal_push_batch(
 ) -> Result<Json<ApiResponse<InternalPushBatchResult>>, AppError> {
     validate_internal_signature(&headers, "POST", uri.path(), &body, service.config())?;
     let request: InternalPushBatchRequest = serde_json::from_slice(&body)?;
-    if request.pushes.is_empty() {
-        return Ok(Json(ApiResponse::error(400, "pushes cannot be empty")));
+    if request.user_ids.is_empty() {
+        return Ok(Json(ApiResponse::error(400, "userIds cannot be empty")));
     }
-    for push in request.pushes.iter() {
-        if push.kind.trim().is_empty() {
-            return Ok(Json(ApiResponse::error(400, "push type cannot be empty")));
-        }
+    if request.kind.trim().is_empty() {
+        return Ok(Json(ApiResponse::error(400, "push type cannot be empty")));
     }
-
-    let accepted = request.pushes.len();
-    let mut delivered = 0_usize;
-    for push in request.pushes {
-        if service
-            .push_to_user(push.user_id, push.kind.trim(), push.data)
-            .await
-        {
-            delivered = delivered.saturating_add(1);
-        }
-    }
+    let accepted = request.user_ids.len();
+    let delivered = service
+        .push_to_users(&request.user_ids, request.kind.trim(), &request.data)
+        .await;
     Ok(Json(ApiResponse::success_message(
         "batch push processed",
         InternalPushBatchResult {

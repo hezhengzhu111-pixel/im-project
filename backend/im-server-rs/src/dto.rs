@@ -108,7 +108,10 @@ pub struct InternalPushRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InternalPushBatchRequest {
-    pub pushes: Vec<InternalPushRequest>,
+    pub user_ids: Vec<i64>,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub data: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,6 +151,36 @@ where
     value_to_i64(value)
         .map(Some)
         .ok_or_else(|| de::Error::custom("invalid integer"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InternalPushBatchRequest;
+    use serde_json::json;
+    use std::error::Error;
+
+    #[test]
+    fn should_deserialize_shared_batch_push_request() -> Result<(), Box<dyn Error>> {
+        let raw = json!({
+            "userIds": [1001, 1002],
+            "type": "MESSAGE",
+            "data": {
+                "messageId": "99",
+                "content": "hello"
+            }
+        });
+        let request = serde_json::from_value::<InternalPushBatchRequest>(raw)?;
+        if request.user_ids != vec![1001, 1002] {
+            return Err("userIds should deserialize into shared batch request".into());
+        }
+        if request.kind != "MESSAGE" {
+            return Err("batch type should deserialize".into());
+        }
+        if request.data["content"] != "hello" {
+            return Err("batch data should remain intact".into());
+        }
+        Ok(())
+    }
 }
 
 fn value_to_i64(value: Value) -> Option<i64> {

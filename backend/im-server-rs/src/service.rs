@@ -223,30 +223,25 @@ impl ImService {
     }
 
     pub async fn push_to_user(&self, user_id: i64, ws_type: &str, data: Value) -> bool {
-        let sessions = self.local_sessions(&user_id.to_string());
-        if sessions.is_empty() {
-            return false;
+        self.push_to_users(&[user_id], ws_type, &data).await > 0
+    }
+
+    pub async fn push_to_users(&self, user_ids: &[i64], ws_type: &str, data: &Value) -> usize {
+        if user_ids.is_empty() {
+            return 0;
         }
-        let envelope = match serde_json::to_string(&WsEnvelope {
-            kind: ws_type.to_string(),
-            data,
-            timestamp: now_ms(),
-        }) {
-            Ok(value) => value,
-            Err(err) => {
-                tracing::warn!(error = %err, "failed to serialize websocket envelope");
-                return false;
-            }
+        let Some(envelope) = serialize_ws_envelope(ws_type, data) else {
+            return 0;
         };
-        let mut delivered = false;
+        let mut delivered = 0_usize;
         let mut slow_or_closed_sessions = Vec::new();
-        for session in sessions {
-            match session.sender.try_send(Message::Text(envelope.clone())) {
-                Ok(()) => delivered = true,
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_))
-                | Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    slow_or_closed_sessions.push(session.session_id.clone());
-                }
+        for user_id in user_ids {
+            let sessions = self.local_sessions(&user_id.to_string());
+            if sessions.is_empty() {
+                continue;
+            }
+            if deliver_envelope_to_sessions(&sessions, &envelope, &mut slow_or_closed_sessions) {
+                delivered = delivered.saturating_add(1);
             }
         }
         for session_id in slow_or_closed_sessions {
@@ -414,25 +409,11 @@ impl ImService {
         if sessions.is_empty() {
             return false;
         }
-        let envelope = match serde_json::to_string(&WsEnvelope {
-            kind: ws_type.to_string(),
-            data,
-            timestamp: now_ms(),
-        }) {
-            Ok(value) => value,
-            Err(_) => return false,
-        };
-        let mut delivered = false;
         let mut slow_or_closed_sessions = Vec::new();
-        for session in sessions {
-            match session.sender.try_send(Message::Text(envelope.clone())) {
-                Ok(()) => delivered = true,
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_))
-                | Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    slow_or_closed_sessions.push(session.session_id.clone());
-                }
-            }
-        }
+        let Some(envelope) = serialize_ws_envelope(ws_type, &data) else {
+            return false;
+        };
+        let delivered = deliver_envelope_to_sessions(&sessions, &envelope, &mut slow_or_closed_sessions);
         for session_id in slow_or_closed_sessions {
             tracing::warn!(session_id = %session_id, "drop slow or closed websocket session");
             self.drop_session_silently(&session_id).await;
@@ -527,6 +508,111 @@ fn send_close(entry: &SessionEntry) {
     }
 }
 
+fn serialize_ws_envelope(ws_type: &str, data: &Value) -> Option<String> {
+    match serde_json::to_string(&WsEnvelope {
+        kind: ws_type.to_string(),
+        data: data.clone(),
+        timestamp: now_ms(),
+    }) {
+        Ok(value) => Some(value),
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to serialize websocket envelope");
+            None
+        }
+    }
+}
+
+fn deliver_envelope_to_sessions(
+    sessions: &[Arc<SessionEntry>],
+    envelope: &str,
+    slow_or_closed_sessions: &mut Vec<String>,
+) -> bool {
+    let mut delivered = false;
+    for session in sessions {
+        match session
+            .sender
+            .try_send(Message::Text(envelope.to_string()))
+        {
+            Ok(()) => delivered = true,
+            Err(tokio::sync::mpsc::error::TrySendError::Full(_))
+            | Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                slow_or_closed_sessions.push(session.session_id.clone());
+            }
+        }
+    }
+    delivered
+}
+
 fn spawn_detached(future: impl Future<Output = ()> + Send + 'static) {
     std::mem::drop(tokio::spawn(future));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{deliver_envelope_to_sessions, serialize_ws_envelope, SessionEntry};
+    use axum::extract::ws::Message;
+    use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicI64;
+    use tokio::sync::{mpsc, watch};
+
+    #[test]
+    fn should_serialize_ws_envelope() -> Result<(), Box<dyn Error>> {
+        let Some(envelope) = serialize_ws_envelope("MESSAGE", &json!({ "content": "hi" })) else {
+            return Err("websocket envelope should serialize".into());
+        };
+        if !envelope.contains("\"type\":\"MESSAGE\"") {
+            return Err("envelope type should be present".into());
+        }
+        if !envelope.contains("\"content\":\"hi\"") {
+            return Err("envelope payload should be present".into());
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn should_deliver_shared_envelope_to_multiple_sessions() -> Result<(), Box<dyn Error>> {
+        let (sender_a, mut receiver_a) = mpsc::channel(2);
+        let (sender_b, mut receiver_b) = mpsc::channel(2);
+        let (shutdown_a, _) = watch::channel(false);
+        let (shutdown_b, _) = watch::channel(false);
+        let sessions = vec![
+            Arc::new(SessionEntry {
+                session_id: "a".to_string(),
+                user_id: "1".to_string(),
+                sender: sender_a,
+                shutdown: shutdown_a,
+                last_heartbeat_ms: AtomicI64::new(0),
+            }),
+            Arc::new(SessionEntry {
+                session_id: "b".to_string(),
+                user_id: "2".to_string(),
+                sender: sender_b,
+                shutdown: shutdown_b,
+                last_heartbeat_ms: AtomicI64::new(0),
+            }),
+        ];
+        let Some(envelope) = serialize_ws_envelope("MESSAGE", &json!({ "messageId": "99" })) else {
+            return Err("shared envelope should serialize".into());
+        };
+        let mut slow_or_closed_sessions = Vec::new();
+        if !deliver_envelope_to_sessions(&sessions, &envelope, &mut slow_or_closed_sessions) {
+            return Err("envelope should be delivered".into());
+        }
+        if !slow_or_closed_sessions.is_empty() {
+            return Err("healthy sessions should not be marked slow".into());
+        }
+
+        let Some(Message::Text(received_a)) = receiver_a.recv().await else {
+            return Err("first session should receive text frame".into());
+        };
+        let Some(Message::Text(received_b)) = receiver_b.recv().await else {
+            return Err("second session should receive text frame".into());
+        };
+        if received_a != envelope || received_b != envelope {
+            return Err("all sessions should receive the shared serialized envelope".into());
+        }
+        Ok(())
+    }
 }
