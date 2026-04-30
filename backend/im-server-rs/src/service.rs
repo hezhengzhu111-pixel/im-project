@@ -3,6 +3,7 @@ use crate::config::AppConfig;
 use crate::dto::{now_iso, now_ms, PresenceEvent, WsEnvelope};
 use crate::route::RouteRegistry;
 use axum::extract::ws::Message;
+use futures_util::FutureExt;
 use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
 use serde_json::{json, Value};
@@ -544,7 +545,17 @@ fn deliver_envelope_to_sessions(
 }
 
 fn spawn_detached(future: impl Future<Output = ()> + Send + 'static) {
-    std::mem::drop(tokio::spawn(future));
+    tokio::spawn(async move {
+        let result = std::panic::AssertUnwindSafe(future).catch_unwind().await;
+        if let Err(error) = result {
+            let msg = error
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| error.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic".to_string());
+            tracing::error!(error = %msg, "background task panicked");
+        }
+    });
 }
 
 #[cfg(test)]

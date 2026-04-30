@@ -414,7 +414,7 @@ async fn stream_file(state: AppState, headers: HeaderMap, request: FileLocator) 
 async fn can_read(state: &AppState, user_id: i64, request: &FileLocator) -> bool {
     match get_metadata(state, request).await {
         Some(metadata) => metadata.uploader_id == Some(user_id),
-        None => true,
+        None => false,
     }
 }
 

@@ -1510,7 +1510,7 @@ fn within_recall_window(message: &MessageDto) -> bool {
                 .num_seconds()
                 <= 120
         })
-        .unwrap_or(true)
+        .unwrap_or(false)
 }
 
 fn deserialize_i64<'de, D>(deserializer: D) -> Result<i64, D::Error>
@@ -1639,7 +1639,11 @@ fn message_from_row(row: &sqlx::mysql::MySqlRow) -> MessageDto {
     let message_type: i32 = row.get("message_type");
     let status: i32 = row.get("status");
     let created: chrono::NaiveDateTime = row.get("created_time");
-    let updated: chrono::NaiveDateTime = row.get("updated_time");
+    let updated: chrono::NaiveDateTime = row
+        .try_get::<Option<chrono::NaiveDateTime>, _>("updated_time")
+        .ok()
+        .flatten()
+        .unwrap_or(created);
     MessageDto {
         id: id.to_string(),
         message_id: id.to_string(),

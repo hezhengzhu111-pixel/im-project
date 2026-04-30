@@ -727,6 +727,10 @@ async fn proxy(
         if name == header::HOST || name == header::CONTENT_LENGTH {
             continue;
         }
+        let name_lower = name.as_str().to_ascii_lowercase();
+        if name_lower.starts_with("x-internal-") || name_lower.starts_with("x-auth-") {
+            continue;
+        }
         builder = builder.header(name, value);
     }
     if let Some(identity) = identity.as_ref() {

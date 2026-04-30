@@ -47,17 +47,7 @@ impl IntoResponse for AppError {
             | Self::Serde(_)
             | Self::Anyhow(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        let code = if status == StatusCode::UNAUTHORIZED {
-            401
-        } else if status == StatusCode::FORBIDDEN {
-            403
-        } else if status == StatusCode::NOT_FOUND {
-            404
-        } else if status == StatusCode::BAD_REQUEST {
-            400
-        } else {
-            500
-        };
+        let code = i32::from(status.as_u16());
         (status, Json(ErrorResponse::new(code, self.to_string()))).into_response()
     }
 }

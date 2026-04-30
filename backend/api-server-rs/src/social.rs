@@ -187,11 +187,19 @@ pub async fn accept_friend(
 ) -> Result<Json<ApiResponse<bool>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
     let row = load_friend_request(&state.db, request.request_id).await?;
-    let target_user_id: i64 = row.get("target_user_id");
+    let target_user_id: i64 = row
+        .try_get("target_user_id")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     if target_user_id != identity.user_id {
         return Err(AppError::Forbidden("not request target user".to_string()));
     }
-    let applicant_id: i64 = row.get("applicant_id");
+    let applicant_id: i64 = row
+        .try_get("applicant_id")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     sqlx::query("UPDATE service_user_service_db.friend_request SET status = 1, handle_time = NOW() WHERE id = ?")
         .bind(request.request_id)
         .execute(&state.db)
@@ -225,7 +233,11 @@ pub async fn reject_friend(
 ) -> Result<Json<ApiResponse<bool>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
     let row = load_friend_request(&state.db, request.request_id).await?;
-    let target_user_id: i64 = row.get("target_user_id");
+    let target_user_id: i64 = row
+        .try_get("target_user_id")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     if target_user_id != identity.user_id {
         return Err(AppError::Forbidden("not request target user".to_string()));
     }
@@ -527,7 +539,11 @@ fn friendship_from_row(row: &sqlx::mysql::MySqlRow) -> FriendshipDto {
 fn friend_request_from_row(row: &sqlx::mysql::MySqlRow) -> FriendRequestDto {
     let id: i64 = row.get("id");
     let applicant_id: i64 = row.get("applicant_id");
-    let target_user_id: i64 = row.get("target_user_id");
+    let target_user_id: i64 = row
+        .try_get("target_user_id")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     let status: i32 = row.get("status");
     let apply_time: NaiveDateTime = row.get("apply_time");
     let handle_time: Option<NaiveDateTime> = row.try_get("handle_time").ok().flatten();
