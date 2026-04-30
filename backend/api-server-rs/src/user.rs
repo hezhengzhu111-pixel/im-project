@@ -299,7 +299,8 @@ pub async fn send_phone_code(
     let key = verification_code_key(identity.user_id, "phone", request.target.trim());
     if let Err(error) = state
         .redis_manager
-        .set_ex::<_, _, ()>(&key, &code, 300_usize)
+        .clone()
+        .set_ex::<_, _, ()>(&key, &code, 300_u64)
         .await
     {
         tracing::warn!(error = %error, user_id = identity.user_id, "failed to store phone verification code");
@@ -336,7 +337,8 @@ pub async fn send_email_code(
     let key = verification_code_key(identity.user_id, "email", request.target.trim());
     if let Err(error) = state
         .redis_manager
-        .set_ex::<_, _, ()>(&key, &code, 300_usize)
+        .clone()
+        .set_ex::<_, _, ()>(&key, &code, 300_u64)
         .await
     {
         tracing::warn!(error = %error, user_id = identity.user_id, "failed to store email verification code");
@@ -690,10 +692,11 @@ async fn verify_and_consume_code(
     code: &str,
 ) -> Result<(), AppError> {
     let key = verification_code_key(user_id, kind, target);
-    let stored: redis::RedisResult<Option<String>> = state.redis_manager.get(&key).await;
+    let mut redis = state.redis_manager.clone();
+    let stored: redis::RedisResult<Option<String>> = redis.get(&key).await;
     match stored {
         Ok(Some(stored_code)) if stored_code == code => {
-            let _: redis::RedisResult<()> = state.redis_manager.del(&key).await;
+            let _: redis::RedisResult<()> = redis.del(&key).await;
             Ok(())
         }
         Ok(_) => Err(AppError::BadRequest(

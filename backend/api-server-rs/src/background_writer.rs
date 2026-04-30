@@ -426,7 +426,7 @@ async fn insert_messages(
 
     let records = messages
         .iter()
-        .filter_map(|m| DbMessage::from_message(m))
+        .filter_map(DbMessage::from_message)
         .collect::<Vec<_>>();
 
     for chunk in records.chunks(max_rows_per_statement(MESSAGE_INSERT_BINDS)) {
