@@ -49,6 +49,28 @@ Frontend tests use `jsdom`, mock Pinia stores with `vi.mock()`, and import `vite
 | `cargo build --workspace` | Build all crates |
 | `cargo test -p api-server-rs` | Run api-server Rust tests |
 | `cargo fmt --check` | Rust format check |
+| `cargo clippy -- -D warnings` | **Quality gate** — must pass with zero warnings |
+
+## Rust coding rules (compile-enforced)
+
+All three crates share these lint attributes at the top of `main.rs` / `lib.rs`. Code that violates any of these **will not compile**:
+
+| Lint | What it forbids |
+|------|----------------|
+| `#![forbid(unsafe_code)]` | No `unsafe` blocks, functions, traits, unions, raw pointers, FFI |
+| `#![deny(clippy::unwrap_used)]` | No `.unwrap()` — use `?`, `match`, or `.ok_or_else()` |
+| `#![deny(clippy::expect_used)]` | No `.expect()` — same alternatives as unwrap |
+| `#![deny(clippy::indexing_slicing)]` | No `arr[i]` — use `.get()` or iterators |
+| `#![deny(clippy::panic)]` | No `panic!()`, `todo!()`, `unimplemented!()`, `unreachable!()` |
+| `#![deny(clippy::todo)]` | No `todo!()` |
+| `#![deny(clippy::unimplemented)]` | No `unimplemented!()` |
+| `#![deny(clippy::as_conversions)]` | No `as` casts that may truncate — use `From`/`TryFrom` |
+| `#![deny(unused_must_use)]` | All `Result` and `Option` must be consumed |
+
+- All errors must be propagated with `?` or handled explicitly via `match` / `if let`.
+- Integer arithmetic: prefer `checked_*`, `saturating_*`, or `wrapping_*` over bare operators.
+- Must use **stable Rust** — no `#![feature(...)]`.
+- If a feature seems impossible without `unsafe`, redesign using safe abstractions (e.g. `Arc<Mutex<T>>`, `OnceCell`).
 
 ### Deployment (run from repo root)
 
