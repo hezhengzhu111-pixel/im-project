@@ -225,7 +225,10 @@ export const useChatStore = defineStore("chat", () => {
     const queued = sessionRefreshTail.catch(() => []).then(run);
     sessionRefreshTail = queued.then(
       (result) => result,
-      () => [],
+      (error) => {
+        logger.error("session refresh tail failed", error);
+        return [];
+      },
     );
     sessionRefreshInFlight = queued.finally(() => {
       sessionRefreshInFlight = null;

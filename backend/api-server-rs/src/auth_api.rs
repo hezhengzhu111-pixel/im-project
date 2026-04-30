@@ -264,7 +264,13 @@ pub async fn parse(
     let mut parsed = parse_token(token.as_deref(), &state.config.jwt_secret, allow_expired);
     if parsed.valid && !parsed.expired {
         if let Some(user_id) = parsed.user_id {
-            let resource = get_user_resource(&state, user_id).await.unwrap_or_default();
+            let resource = match get_user_resource(&state, user_id).await {
+                Ok(resource) => resource,
+                Err(error) => {
+                    tracing::warn!(user_id, error = %error, "failed to load user resource in parse, using empty permissions");
+                    Default::default()
+                }
+            };
             parsed.permissions = Some(resource.resource_permissions);
         }
     }
@@ -655,7 +661,13 @@ async fn validate_access_token_result(
         return Err(AppError::Unauthorized("TOKEN_INVALID".to_string()));
     }
     if let Some(user_id) = parsed.user_id {
-        let resource = get_user_resource(state, user_id).await.unwrap_or_default();
+        let resource = match get_user_resource(state, user_id).await {
+            Ok(resource) => resource,
+            Err(error) => {
+                tracing::warn!(user_id, error = %error, "failed to load user resource, using empty permissions");
+                Default::default()
+            }
+        };
         parsed.permissions = Some(resource.resource_permissions);
     }
     Ok(parsed)

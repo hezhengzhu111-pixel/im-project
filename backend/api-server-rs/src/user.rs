@@ -8,6 +8,7 @@ use axum::http::{header, HeaderMap, StatusCode};
 use axum::Json;
 use im_rs_common::api::ApiResponse;
 use im_rs_common::{ids, time};
+use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{MySqlPool, Row};
@@ -292,9 +293,18 @@ pub async fn send_phone_code(
     headers: HeaderMap,
     Json(request): Json<CodeTargetRequest>,
 ) -> Result<Json<ApiResponse<String>>, AppError> {
-    let _identity = identity_from_headers(&headers, &state.config)?;
+    let identity = identity_from_headers(&headers, &state.config)?;
     validate_phone(&request.target)?;
-    Ok(Json(ApiResponse::success("000000".to_string())))
+    let code = generate_verification_code();
+    let key = verification_code_key(identity.user_id, "phone", request.target.trim());
+    if let Err(error) = state
+        .redis_manager
+        .set_ex::<_, _, ()>(&key, &code, 300_usize)
+        .await
+    {
+        tracing::warn!(error = %error, user_id = identity.user_id, "failed to store phone verification code");
+    }
+    Ok(Json(ApiResponse::success(code)))
 }
 
 pub async fn bind_phone(
@@ -305,6 +315,8 @@ pub async fn bind_phone(
     let identity = identity_from_headers(&headers, &state.config)?;
     validate_phone(&request.phone)?;
     validate_code(&request.code)?;
+    verify_and_consume_code(&state, identity.user_id, "phone", request.phone.trim(), request.code.trim())
+        .await?;
     sqlx::query("UPDATE service_user_service_db.users SET phone = ? WHERE id = ? AND status = 1")
         .bind(request.phone.trim())
         .bind(identity.user_id)
@@ -318,9 +330,18 @@ pub async fn send_email_code(
     headers: HeaderMap,
     Json(request): Json<CodeTargetRequest>,
 ) -> Result<Json<ApiResponse<String>>, AppError> {
-    let _identity = identity_from_headers(&headers, &state.config)?;
+    let identity = identity_from_headers(&headers, &state.config)?;
     validate_email(&request.target)?;
-    Ok(Json(ApiResponse::success("000000".to_string())))
+    let code = generate_verification_code();
+    let key = verification_code_key(identity.user_id, "email", request.target.trim());
+    if let Err(error) = state
+        .redis_manager
+        .set_ex::<_, _, ()>(&key, &code, 300_usize)
+        .await
+    {
+        tracing::warn!(error = %error, user_id = identity.user_id, "failed to store email verification code");
+    }
+    Ok(Json(ApiResponse::success(code)))
 }
 
 pub async fn bind_email(
@@ -331,6 +352,8 @@ pub async fn bind_email(
     let identity = identity_from_headers(&headers, &state.config)?;
     validate_email(&request.email)?;
     validate_code(&request.code)?;
+    verify_and_consume_code(&state, identity.user_id, "email", request.email.trim(), request.code.trim())
+        .await?;
     sqlx::query("UPDATE service_user_service_db.users SET email = ? WHERE id = ? AND status = 1")
         .bind(request.email.trim())
         .bind(identity.user_id)
@@ -352,25 +375,27 @@ pub async fn delete_account(
     if !verify_password(&request.password, &user.password) {
         return Err(AppError::Unauthorized("password is incorrect".to_string()));
     }
+    let mut tx = state.db.begin().await?;
     sqlx::query("UPDATE service_user_service_db.users SET status = 0 WHERE id = ?")
         .bind(identity.user_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
     sqlx::query(
         "UPDATE service_user_service_db.im_friend SET status = 2 WHERE user_id = ? OR friend_id = ?",
     )
     .bind(identity.user_id)
     .bind(identity.user_id)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await?;
     sqlx::query("UPDATE service_group_service_db.im_group_member SET status = 0 WHERE user_id = ?")
         .bind(identity.user_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
     sqlx::query("UPDATE service_group_service_db.im_group SET status = 0 WHERE owner_id = ?")
         .bind(identity.user_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     let mut response_headers = HeaderMap::new();
     auth_api::expire_auth_cookies(&mut response_headers, &state.config);
     Ok((
@@ -646,6 +671,41 @@ fn validate_code(code: &str) -> Result<(), AppError> {
         ));
     }
     Ok(())
+}
+
+fn generate_verification_code() -> String {
+    let num = uuid::Uuid::new_v4().as_u128().checked_rem(1_000_000).unwrap_or(0);
+    format!("{num:06}")
+}
+
+fn verification_code_key(user_id: i64, kind: &str, target: &str) -> String {
+    format!("im:code:{user_id}:{kind}:{target}")
+}
+
+async fn verify_and_consume_code(
+    state: &AppState,
+    user_id: i64,
+    kind: &str,
+    target: &str,
+    code: &str,
+) -> Result<(), AppError> {
+    let key = verification_code_key(user_id, kind, target);
+    let stored: redis::RedisResult<Option<String>> = state.redis_manager.get(&key).await;
+    match stored {
+        Ok(Some(stored_code)) if stored_code == code => {
+            let _: redis::RedisResult<()> = state.redis_manager.del(&key).await;
+            Ok(())
+        }
+        Ok(_) => Err(AppError::BadRequest(
+            "verification code is incorrect or expired".to_string(),
+        )),
+        Err(error) => {
+            tracing::warn!(error = %error, user_id, kind, target, "redis error during code verification");
+            Err(AppError::BadRequest(
+                "verification code is incorrect or expired".to_string(),
+            ))
+        }
+    }
 }
 
 fn normalize_optional(raw: Option<&str>) -> Option<String> {

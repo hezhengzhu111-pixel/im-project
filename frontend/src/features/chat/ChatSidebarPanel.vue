@@ -190,6 +190,35 @@
         />
       </div>
     </div>
+
+    <nav class="mobile-nav-bar">
+      <button
+        type="button"
+        :class="{ active: activeTab === 'chat' }"
+        :aria-label="t('sidebar.messagesTitle')"
+        @click="handleChangeTab('chat')"
+      >
+        <span class="mobile-nav-badge" v-if="totalUnreadCount > 0">{{ totalUnreadCount > 99 ? '99+' : totalUnreadCount }}</span>
+        {{ t('sidebar.messagesTitle') }}
+      </button>
+      <button
+        type="button"
+        :class="{ active: activeTab === 'contacts' }"
+        :aria-label="t('sidebar.contactsTitle')"
+        @click="handleChangeTab('contacts')"
+      >
+        <span class="mobile-nav-badge" v-if="pendingRequestsCount > 0">{{ pendingRequestsCount }}</span>
+        {{ t('sidebar.contactsTitle') }}
+      </button>
+      <button
+        type="button"
+        :class="{ active: activeTab === 'groups' }"
+        :aria-label="t('sidebar.groupsTitle')"
+        @click="handleChangeTab('groups')"
+      >
+        {{ t('sidebar.groupsTitle') }}
+      </button>
+    </nav>
   </div>
 </template>
 
@@ -338,6 +367,9 @@ onUnmounted(() => {
   if (searchDebounceTimer.value) {
     clearTimeout(searchDebounceTimer.value);
   }
+  sessionFilterCache.clear();
+  contactFilterCache.clear();
+  groupFilterCache.clear();
 });
 
 const formatTime = (time?: string) => {
@@ -815,6 +847,10 @@ const filteredGroups = computed(() => {
   font-weight: 700;
 }
 
+.mobile-nav-bar {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .chat-layout {
     min-width: 0;
@@ -824,8 +860,55 @@ const filteredGroups = computed(() => {
     display: none;
   }
 
+  .mobile-nav-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: var(--el-bg-color);
+    border-top: 1px solid var(--el-border-color-light);
+    z-index: 100;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+
+    button {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      background: none;
+      border: none;
+      font-size: 12px;
+      color: var(--el-text-color-secondary);
+      cursor: pointer;
+      padding: 4px 0;
+
+      &.active {
+        color: var(--el-color-primary);
+        font-weight: 600;
+      }
+    }
+
+    .mobile-nav-badge {
+      position: absolute;
+      top: 2px;
+      left: calc(50% + 12px);
+      background: var(--el-color-danger);
+      color: #fff;
+      border-radius: 10px;
+      padding: 1px 5px;
+      font-size: 10px;
+      min-width: 16px;
+      text-align: center;
+      line-height: 1.4;
+    }
+  }
+
   .list-panel {
     width: 100%;
+    padding-bottom: 56px;
 
     &.hidden-mobile {
       display: none;

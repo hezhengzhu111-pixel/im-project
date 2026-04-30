@@ -67,7 +67,6 @@ const storeLatestAccessToken = (token?: string | null) => {
   if ("accessToken" in userStore) {
     userStore.accessToken = normalized;
   }
-  writePersistedAccessToken(normalized);
 };
 
 const getLatestAccessToken = (): string => {

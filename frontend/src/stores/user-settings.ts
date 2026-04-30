@@ -129,7 +129,10 @@ export const useUserSettingsStore = defineStore("user-settings", () => {
     await userService.bindPhone(data);
     const userStore = useUserStore();
     if (userStore.currentUser) {
-      userStore.currentUser.phone = data.phone;
+      userStore.setCurrentUser({
+        ...userStore.currentUser,
+        phone: data.phone,
+      });
     }
     return true;
   };
@@ -138,7 +141,10 @@ export const useUserSettingsStore = defineStore("user-settings", () => {
     await userService.bindEmail(data);
     const userStore = useUserStore();
     if (userStore.currentUser) {
-      userStore.currentUser.email = data.email;
+      userStore.setCurrentUser({
+        ...userStore.currentUser,
+        email: data.email,
+      });
     }
     return true;
   };

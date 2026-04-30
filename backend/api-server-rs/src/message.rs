@@ -1083,7 +1083,11 @@ async fn load_history(
             .ok_or_else(|| AppError::BadRequest("history limit overflow".to_string()))?;
         messages.extend(load_history_from_db(db, conversation_id, &query, db_limit).await?);
     }
-    messages.sort_by(|a, b| b.id.cmp(&a.id));
+    messages.sort_by(|a, b| {
+        let aid = a.id.parse::<i64>().unwrap_or(0);
+        let bid = b.id.parse::<i64>().unwrap_or(0);
+        bid.cmp(&aid)
+    });
     messages.dedup_by(|a, b| a.id == b.id);
     messages.truncate(limit_usize);
     Ok(messages)
