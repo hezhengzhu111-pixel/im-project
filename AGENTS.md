@@ -149,7 +149,63 @@ cargo test -p api-server-rs         # unit tests
 
 cd ../frontend
 npm run typecheck                   # TypeScript check
-npm run test:unit                   # Vitest
+  npm run test:unit                   # Vitest
+```
+
+### Docker deployment (run from repo root)
+
+```bash
+# Ensure docker wrapper is in PATH (needed for docker group permissions in WSL2)
+export PATH="$HOME/bin:$PATH"
+
+# 1. Start MySQL + all 13 Redis shards + file-volume init (skip if already running)
+python3 scripts/deploy_middleware.py
+
+# 2. (First time or schema change) Initialize databases
+docker exec -i sit-im-mysql-1 mysql -uroot -proot123 --default-character-set=utf8mb4 < sql/mysql8/init_all.sql
+
+# 3. Build and start all application services
+python3 scripts/deploy_services.py --skip-middleware-check
+
+# Or build directly with docker compose:
+docker compose --env-file .env -f deploy/sit/docker-compose.yml up -d --build im-server im-api-server im-frontend
+```
+
+### Run integration tests with Docker services
+
+```bash
+export PATH="$HOME/bin:$PATH"
+cd backend
+source ~/.cargo/env
+
+DATABASE_URL="mysql://root:root123@127.0.0.1:3306/service_message_service_db" \
+REDIS_URL="redis://127.0.0.1:6379" \
+JWT_SECRET="test-jwt-32-bytes-secret-key!!" \
+AUTH_REFRESH_SECRET="test-refresh-32-bytes---key!!" \
+IM_INTERNAL_SECRET="test-internal-32-bytes--key!!" \
+IM_GATEWAY_AUTH_SECRET="test-gateway-32-bytes--key!!" \
+IM_CACHE_REDIS_URL="redis://127.0.0.1:6379" \
+IM_HOT_REDIS_URL="redis://127.0.0.1:6379" \
+IM_EVENT_REDIS_URL="redis://127.0.0.1:6379" \
+IM_ROUTE_REDIS_URL="redis://127.0.0.1:6379" \
+IM_PRIVATE_HOT_REDIS_URLS="redis://127.0.0.1:6379" \
+IM_GROUP_HOT_REDIS_URLS="redis://127.0.0.1:6379" \
+IM_PRIVATE_EVENT_REDIS_URL="redis://127.0.0.1:6379" \
+IM_GROUP_EVENT_REDIS_URL="redis://127.0.0.1:6379" \
+IM_STORAGE_LOCAL_BASE_DIR="/tmp/im-test" \
+cargo test
+```
+
+### Quick verification
+
+```bash
+# Health checks
+curl http://localhost:8082/health    # API server
+curl http://localhost:8083/health    # IM server
+curl http://localhost:80/             # Frontend
+
+# Container status
+docker compose -f deploy/sit/docker-compose.yml ps
 ```
 
 ### Restart middleware after reboot
