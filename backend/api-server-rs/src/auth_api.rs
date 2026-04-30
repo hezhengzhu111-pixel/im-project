@@ -628,7 +628,7 @@ async fn refresh_token_pair(
         let key = format!("{}{}", REFRESH_JTI_KEY_PREFIX, user_id);
         let mut redis = state.redis_manager.clone();
         let ok: redis::RedisResult<i32> = redis::cmd("EVAL")
-            .arg("if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]) else return 0 end")
+            .arg("if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]) return 1 else return 0 end")
             .arg(1)
             .arg(&key)
             .arg(refresh_jti)

@@ -2,23 +2,15 @@ use api_server_rs::web;
 use axum::body::{to_bytes, Body};
 use axum::http::{StatusCode, Request};
 use serde_json::{json, Value};
-use std::sync::OnceLock;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-static TEST_APP: OnceLock<axum::Router> = OnceLock::new();
-
-async fn test_app() -> &'static axum::Router {
-    if let Some(app) = TEST_APP.get() {
-        return app;
-    }
-    let app = web::create_test_app().await;
-    let _ = TEST_APP.set(app);
-    TEST_APP.get().expect("app set")
+async fn test_app() -> axum::Router {
+    web::create_test_app().await
 }
 
 fn unique_username() -> String {
-    format!("t{}", Uuid::new_v4().to_string().replace('-', ""))
+    format!("t{:0>15}", Uuid::new_v4().as_u64_pair().0 % 1_000_000_000_000_000)
 }
 
 fn valid_password() -> &'static str {

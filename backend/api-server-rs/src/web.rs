@@ -21,7 +21,6 @@ use redis::aio::ConnectionManager;
 use reqwest::Client;
 use serde_json::json;
 use sqlx::MySqlPool;
-use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -811,31 +810,28 @@ fn apply_gateway_headers(
     Ok(())
 }
 
-#[allow(clippy::expect_used)]
+#[allow(clippy::expect_used, clippy::panic)]
 pub async fn create_test_app() -> Router {
-    let mysql_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-        "mysql://root:root123@localhost:3306/service_message_service_db".to_string()
-    });
+    let mysql_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "mysql://root:root123@127.0.0.1:3306/service_message_service_db".into());
     let config = Arc::new(AppConfig::from_env());
-    let redis_client =
-        redis::Client::open(config.cache_redis_url.as_str()).expect("Redis client open");
-    let redis_manager = ConnectionManager::new(redis_client)
+    let redis_client = redis::Client::open(
+        std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".into()).as_str(),
+    )
+    .expect("open Redis test client");
+    let redis_manager = redis::aio::ConnectionManager::new(redis_client)
         .await
-        .expect("Redis connect");
-    let private_redis = vec![redis_manager.clone()];
-    let group_redis = vec![redis_manager.clone()];
-    let mysql_options = sqlx::mysql::MySqlConnectOptions::from_str(&mysql_url)
-        .expect("MySQL URL parse");
+        .expect("connect Redis test manager");
     let db = sqlx::mysql::MySqlPoolOptions::new()
         .max_connections(10)
-        .connect_with(mysql_options)
+        .connect(&mysql_url)
         .await
-        .expect("MySQL connect");
+        .expect("connect MySQL test pool");
     let state = AppState {
         config,
         redis_manager: redis_manager.clone(),
-        private_redis_managers: Arc::new(private_redis),
-        group_redis_managers: Arc::new(group_redis),
+        private_redis_managers: Arc::new(vec![redis_manager.clone()]),
+        group_redis_managers: Arc::new(vec![redis_manager.clone()]),
         route_redis_manager: redis_manager,
         db,
         http: reqwest::Client::new(),
