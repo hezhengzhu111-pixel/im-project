@@ -31,3 +31,4 @@ Thumbs.db
 # Temporary work
 tmp/
 .deploy-tools/
+init.md
