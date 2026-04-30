@@ -113,3 +113,55 @@ Deploy a single service: `python scripts/deploy_services.py api` (aliases: `api`
 - **Docker images use Chinese mirrors**: All base images prefix with `docker.m.daocloud.io/library/`. Dockerfile npm registry is `registry.npmmirror.com`.
 - **im-server needs OpenSSL at runtime**: The `im-server-rs` Dockerfile installs `libssl3` in the runtime stage. `api-server-rs` does not need this.
 - **No CI/CD configs or pre-commit hooks** exist in this repo currently.
+
+## Local dev environment (WSL2)
+
+This repo is developed in WSL2 (Ubuntu 24.04). The following services run in Docker:
+
+| Service | Port | Container Name | Login |
+|---------|------|----------------|-------|
+| MySQL 8.0 | 3306 | `im-mysql` | `root` / `root123` |
+| Redis 7 | 6379 | `im-redis` | passwordless |
+
+### Shell setup (every new terminal session)
+
+```bash
+# Rust toolchain (installed via rustup)
+source ~/.cargo/env
+
+# Docker requires the `docker` group. User is already in the group,
+# but the current shell may not have the group activated.
+# Workaround: prefix docker commands with:
+sg docker -c "docker ps"
+
+# Or start a fresh shell with the group:
+newgrp docker
+```
+
+### Rebuild & verify
+
+```bash
+cd backend
+source ~/.cargo/env
+cargo build -p api-server-rs        # build
+cargo clippy -- -D warnings         # quality gate
+cargo test -p api-server-rs         # unit tests
+
+cd ../frontend
+npm run typecheck                   # TypeScript check
+npm run test:unit                   # Vitest
+```
+
+### Restart middleware after reboot
+
+```bash
+sg docker -c "docker start im-redis im-mysql"
+# MySQL takes ~5s to be ready
+sg docker -c "docker exec im-mysql mysqladmin ping -uroot -proot123 --silent"
+```
+
+### One-shot DB init (if containers are recreated)
+
+```bash
+sg docker -c "docker exec -i im-mysql mysql -uroot -proot123 --default-character-set=utf8mb4" < sql/mysql8/init_all.sql
+```
