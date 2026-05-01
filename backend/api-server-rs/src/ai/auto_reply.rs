@@ -7,6 +7,7 @@ use im_rs_common::{ids, keys};
 use redis::aio::ConnectionManager;
 use serde_json::Value;
 use sqlx::MySqlPool;
+use std::time::Duration;
 
 pub async fn maybe_trigger(
     redis: &mut ConnectionManager,
@@ -91,8 +92,12 @@ async fn trigger_if_enabled(
         .unwrap_or(None);
     let rounds = current_rounds.unwrap_or(0);
     if rounds >= 20 {
-        tracing::info!(conv = %conversation_id, rounds = %rounds, "auto_reply: round limit reached");
-        return Ok(());
+        tracing::info!(conv = %conversation_id, rounds = %rounds, "auto_reply: round limit, pausing 20s then restart");
+        tokio::time::sleep(Duration::from_secs(20)).await;
+        let _: () = redis::cmd("DEL")
+            .arg(&round_key)
+            .query_async::<()>(redis)
+            .await?;
     }
 
     let persona = get_persona_db(db, target_user_id).await?;
