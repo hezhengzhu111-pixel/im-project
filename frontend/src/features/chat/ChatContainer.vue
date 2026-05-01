@@ -112,22 +112,26 @@
                 <span class="chat-title-text">{{ currentSession.targetName }}</span>
               </div>
 
-              <div class="chat-subtitle-row">
+              <div class="chat-status-row">
                 <span
                   v-if="currentSession.type === 'private'"
-                  class="chat-presence"
+                  class="status-chip"
                   :class="{ online: currentSessionOnline }"
                 >
+                  <span class="status-chip-dot"></span>
                   {{ currentSessionOnline ? t("chat.onlineNow") : t("chat.offline") }}
                 </span>
-                <span v-else class="chat-detail-pill">
+                <span v-else class="status-chip">
+                  <span class="status-chip-dot"></span>
                   {{ t("chat.members", { count: groupMemberCount }) }}
                 </span>
-                <span
-                  v-if="currentSession.type === 'group' && groupDescription"
-                  class="chat-detail-text"
-                >
-                  {{ groupDescription }}
+                <span v-if="currentSession.type === 'private'" class="status-chip secure">
+                  <span class="status-chip-dot"></span>
+                  端到端加密
+                </span>
+                <span v-if="autoReplyEnabled" class="status-chip ai">
+                  <span class="status-chip-dot"></span>
+                  AI 助手在线
                 </span>
               </div>
             </div>
@@ -1038,11 +1042,13 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 60px;
-  padding: 8px 18px;
+  min-height: 68px;
+  max-height: 76px;
+  padding: 10px 18px;
   border-bottom: 1px solid var(--chat-panel-border);
   background: var(--chat-panel-bg);
-  backdrop-filter: var(--chat-glass-blur);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 .chat-header-main {
@@ -1114,6 +1120,61 @@ onUnmounted(() => {
 .chat-presence.online {
   color: var(--chat-success);
   font-weight: 700;
+}
+
+.chat-status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--chat-text-tertiary);
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.status-chip-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--chat-text-tertiary);
+  flex-shrink: 0;
+}
+
+.status-chip.online {
+  color: var(--chat-success);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.status-chip.online .status-chip-dot {
+  background: var(--chat-success);
+}
+
+.status-chip.secure {
+  color: var(--color-primary, #6366f1);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.status-chip.secure .status-chip-dot {
+  background: var(--color-primary, #6366f1);
+}
+
+.status-chip.ai {
+  color: var(--color-primary-2, #818cf8);
+  background: rgba(129, 140, 248, 0.08);
+}
+
+.status-chip.ai .status-chip-dot {
+  background: var(--color-primary-2, #818cf8);
 }
 
 .chat-header-side {
@@ -1338,6 +1399,15 @@ onUnmounted(() => {
     min-height: 58px;
     padding: 8px 10px;
     gap: 8px;
+  }
+
+  .chat-status-row {
+    gap: 4px;
+  }
+
+  .status-chip {
+    font-size: 10px;
+    padding: 1px 6px;
   }
 
   .mobile-back {
