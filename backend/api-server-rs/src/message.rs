@@ -152,6 +152,27 @@ pub async fn send_private(
     let result = write_private_message_hot(hot_redis, &conversation_id, &message, &event).await;
 
     if config.ai_enabled && result.is_ok() {
+        let sender_id = identity.user_id;
+        let sender_is_human = !message.is_ai_generated.unwrap_or(false);
+        if sender_is_human {
+            let mut disable_redis = cache_redis.clone();
+            let disable_db = db.clone();
+            let disable_config = config.clone();
+            tokio::spawn(async move {
+                let _ = sqlx::query(
+                    "UPDATE service_user_service_db.user_ai_settings SET auto_reply_enabled=0, updated_time=NOW() WHERE user_id=? AND auto_reply_enabled=1",
+                )
+                .bind(sender_id)
+                .execute(&disable_db)
+                .await;
+                let _ = redis::cmd("DEL")
+                    .arg(keys::ai_auto_reply_key(sender_id))
+                    .query_async::<()>(&mut disable_redis)
+                    .await;
+                tracing::info!(sender = %sender_id, "human intervened, disabled sender auto-reply");
+            });
+        }
+
         let auto_redis = cache_redis.clone();
         let auto_msg_redis = hot_redis_clone;
         let auto_config = config.clone();
