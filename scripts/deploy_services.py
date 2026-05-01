@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 
 from deploy_utils import (
     compose_up_command,
@@ -22,32 +23,38 @@ SERVICE_ALIASES = {
 }
 
 APP_SERVICES = ["im-server", "im-api-server", "im-frontend", "im-spring-ai"]
-REQUIRED_MIDDLEWARE_SERVICES = [
-    "im-mysql",
-    "im-redis",
-    "im-redis-shared",
-    "im-redis-private-hot",
-    "im-redis-private-hot-2",
-    "im-redis-private-hot-3",
-    "im-redis-private-hot-4",
-    "im-redis-group-hot",
-    "im-redis-group-hot-2",
-    "im-redis-group-hot-3",
-    "im-redis-group-hot-4",
-    "im-redis-events-private",
-    "im-redis-events-group",
-    "im-redis-route",
-]
+
+
+def _hot_urls(host_prefix: str, env_key: str, password: str) -> str:
+    count = int(os.getenv(env_key, "4"))
+    urls = []
+    for i in range(1, count + 1):
+        suffix = f"-{i}" if i > 1 else ""
+        urls.append(f"redis://:{password}@{host_prefix}{suffix}:6379/0")
+    return ",".join(urls)
+
+
+def middleware_services() -> list[str]:
+    services = ["im-mysql", "im-redis"]
+    count = int(os.getenv("IM_PRIVATE_HOT_SHARDS", "4"))
+    services.append("im-redis-private-hot")
+    for i in range(2, count + 1):
+        services.append(f"im-redis-private-hot-{i}")
+    count = int(os.getenv("IM_GROUP_HOT_SHARDS", "4"))
+    services.append("im-redis-group-hot")
+    for i in range(2, count + 1):
+        services.append(f"im-redis-group-hot-{i}")
+    return services
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Deploy Docker-built Rust backend services and the frontend."
+        description="Deploy Docker-built Rust backend services, Spring AI, and the frontend."
     )
     parser.add_argument(
         "services",
         nargs="*",
-        help="Optional services: im-server api-server frontend. Empty means all application services.",
+        help="Optional services: api im frontend ai. Empty means all application services.",
     )
     parser.add_argument(
         "--no-build",
@@ -98,8 +105,15 @@ def main() -> None:
     config = load_config()
     services = normalize_services(args.services)
 
+    # Generate dynamic Redis URLs for api-server
+    password = os.getenv("REDIS_PASSWORD", "root123")
+    os.environ.setdefault("IM_PRIVATE_HOT_REDIS_URLS",
+                          _hot_urls("im-redis-private-hot", "IM_PRIVATE_HOT_SHARDS", password))
+    os.environ.setdefault("IM_GROUP_HOT_REDIS_URLS",
+                          _hot_urls("im-redis-group-hot", "IM_GROUP_HOT_SHARDS", password))
+
     if not args.skip_middleware_check:
-        for service in REQUIRED_MIDDLEWARE_SERVICES:
+        for service in middleware_services():
             wait_for_service_ready(config, service)
 
     command = compose_up_command(

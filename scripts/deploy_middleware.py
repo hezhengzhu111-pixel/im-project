@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 
 from deploy_utils import (
     compose_up_command,
@@ -12,23 +13,19 @@ from deploy_utils import (
     wait_for_service_ready,
 )
 
-MIDDLEWARE_SERVICES = [
-    "im-mysql",
-    "im-redis",
-    "im-redis-shared",
-    "im-redis-private-hot",
-    "im-redis-private-hot-2",
-    "im-redis-private-hot-3",
-    "im-redis-private-hot-4",
-    "im-redis-group-hot",
-    "im-redis-group-hot-2",
-    "im-redis-group-hot-3",
-    "im-redis-group-hot-4",
-    "im-redis-events-private",
-    "im-redis-events-group",
-    "im-redis-route",
-    "im-files-init",
-]
+def _hot_services(prefix: str, env_key: str) -> list[str]:
+    count = int(os.getenv(env_key, "4"))
+    services = [prefix]
+    for i in range(2, count + 1):
+        services.append(f"{prefix}-{i}")
+    return services
+
+def middleware_services() -> list[str]:
+    services = ["im-mysql", "im-redis"]
+    services.extend(_hot_services("im-redis-private-hot", "IM_PRIVATE_HOT_SHARDS"))
+    services.extend(_hot_services("im-redis-group-hot", "IM_GROUP_HOT_SHARDS"))
+    services.append("im-files-init")
+    return services
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,30 +50,21 @@ def main() -> None:
     args = build_parser().parse_args()
     ensure_docker_environment()
     config = load_config()
+    services = middleware_services()
     command = compose_up_command(
         config,
-        MIDDLEWARE_SERVICES,
+        services,
         pull=args.pull,
         force_recreate=args.force_recreate,
     )
     run_command(command, cwd=config.project_dir)
     if not args.no_wait:
-        wait_for_service_ready(config, "im-mysql")
-        wait_for_service_ready(config, "im-redis")
-        wait_for_service_ready(config, "im-redis-shared")
-        wait_for_service_ready(config, "im-redis-private-hot")
-        wait_for_service_ready(config, "im-redis-private-hot-2")
-        wait_for_service_ready(config, "im-redis-private-hot-3")
-        wait_for_service_ready(config, "im-redis-private-hot-4")
-        wait_for_service_ready(config, "im-redis-group-hot")
-        wait_for_service_ready(config, "im-redis-group-hot-2")
-        wait_for_service_ready(config, "im-redis-group-hot-3")
-        wait_for_service_ready(config, "im-redis-group-hot-4")
-        wait_for_service_ready(config, "im-redis-events-private")
-        wait_for_service_ready(config, "im-redis-events-group")
-        wait_for_service_ready(config, "im-redis-route")
-        wait_for_service_completed(config, "im-files-init")
-    print("Middleware deployment complete: " + ", ".join(MIDDLEWARE_SERVICES))
+        for service in services:
+            if service == "im-files-init":
+                wait_for_service_completed(config, service)
+            else:
+                wait_for_service_ready(config, service)
+    print("Middleware deployment complete: " + ", ".join(services))
 
 
 if __name__ == "__main__":
