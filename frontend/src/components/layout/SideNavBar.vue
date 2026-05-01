@@ -84,26 +84,25 @@ defineEmits<{
 }
 
 .side-nav-bar {
-  width: 72px;
+  width: 64px;
   height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 22px 0 18px;
+  padding: 20px 0 16px;
   flex-shrink: 0;
-  background:
-    radial-gradient(circle at top, rgba(37, 99, 235, 0.18), transparent 24%),
-    rgba(15, 23, 42, 0.9);
-  backdrop-filter: blur(18px);
-  border-right: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-right: 1px solid rgba(148, 163, 184, 0.12);
 }
 
 .user-avatar {
-  margin-bottom: 28px;
-  padding: 6px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  margin-bottom: 24px;
+  padding: 5px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .nav-icons {
@@ -115,13 +114,13 @@ defineEmits<{
 
 .nav-icon {
   position: relative;
-  width: 46px;
-  height: 46px;
+  width: 42px;
+  height: 42px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
-  color: rgba(226, 232, 240, 0.7);
+  border-radius: 14px;
+  color: rgba(226, 232, 240, 0.6);
   cursor: pointer;
   transition:
     transform 0.18s ease,
@@ -132,13 +131,13 @@ defineEmits<{
   &:hover {
     color: #fff;
     transform: translateY(-1px);
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.1);
   }
 
   &.active {
     color: #fff;
-    background: rgba(37, 99, 235, 0.88);
-    box-shadow: 0 14px 28px rgba(37, 99, 235, 0.24);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.7), rgba(129, 140, 248, 0.7));
+    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.2);
   }
 }
 
@@ -148,28 +147,28 @@ defineEmits<{
 
 .badge {
   position: absolute;
-  top: -3px;
-  right: -2px;
+  top: -2px;
+  right: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
+  min-width: 16px;
+  height: 16px;
   padding: 0 4px;
   border-radius: 999px;
   background: linear-gradient(135deg, #ef4444, #dc2626);
   color: #fff;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   line-height: 1;
 
   &.dot {
-    width: 9px;
-    min-width: 9px;
-    height: 9px;
+    width: 8px;
+    min-width: 8px;
+    height: 8px;
     padding: 0;
-    top: 3px;
-    right: 3px;
+    top: 2px;
+    right: 2px;
   }
 }
 </style>
