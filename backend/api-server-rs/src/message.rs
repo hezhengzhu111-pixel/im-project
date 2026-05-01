@@ -155,22 +155,32 @@ pub async fn send_private(
         let sender_id = identity.user_id;
         let sender_is_human = !message.is_ai_generated.unwrap_or(false);
         if sender_is_human {
-            let mut disable_redis = cache_redis.clone();
-            let disable_db = db.clone();
-            let disable_config = config.clone();
-            tokio::spawn(async move {
-                let _ = sqlx::query(
-                    "UPDATE service_user_service_db.user_ai_settings SET auto_reply_enabled=0, updated_time=NOW() WHERE user_id=? AND auto_reply_enabled=1",
-                )
-                .bind(sender_id)
-                .execute(&disable_db)
-                .await;
-                let _ = redis::cmd("DEL")
-                    .arg(keys::ai_auto_reply_key(sender_id))
-                    .query_async::<()>(&mut disable_redis)
+            let round_key = format!("im:ai:rounds:{conversation_id}");
+            let has_active_conversation: Option<i64> = {
+                let mut check_redis = cache_redis.clone();
+                redis::cmd("GET")
+                    .arg(&round_key)
+                    .query_async::<Option<i64>>(&mut check_redis)
+                    .await
+                    .unwrap_or(None)
+            };
+            if has_active_conversation.unwrap_or(0) > 0 {
+                let disable_db = db.clone();
+                let mut disable_redis = cache_redis.clone();
+                tokio::spawn(async move {
+                    let _ = sqlx::query(
+                        "UPDATE service_user_service_db.user_ai_settings SET auto_reply_enabled=0, updated_time=NOW() WHERE user_id=? AND auto_reply_enabled=1",
+                    )
+                    .bind(sender_id)
+                    .execute(&disable_db)
                     .await;
-                tracing::info!(sender = %sender_id, "human intervened, disabled sender auto-reply");
-            });
+                    let _ = redis::cmd("DEL")
+                        .arg(keys::ai_auto_reply_key(sender_id))
+                        .query_async::<()>(&mut disable_redis)
+                        .await;
+                    tracing::info!(sender = %sender_id, "human intervened in active AI conversation, disabled sender auto-reply");
+                });
+            }
         }
 
         let auto_redis = cache_redis.clone();
