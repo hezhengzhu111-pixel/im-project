@@ -192,7 +192,7 @@ export function createMessageSendQueueModule(
     content: string,
     type: MessageType,
     extra?: Record<string, unknown>,
-    mentionedUserIds?: string[],
+    mentionedUserIds?: string[],  // from composer, converted to number[] before API call
   ) => {
     const currentUser = ctx.getCurrentUser();
     if (!currentUser) {
@@ -250,7 +250,7 @@ export function createMessageSendQueueModule(
               thumbnailUrl: mediaMetadata.thumbnailUrl,
               duration: mediaMetadata.duration,
               extra,
-              mentionedUserIds,
+              mentionedUserIds: mentionedUserIds?.map((id) => Number(id)).filter((n) => Number.isFinite(n)),
             })
           : await ctx.messageService.sendPrivate({
               receiverId: session.targetId,
@@ -301,7 +301,7 @@ export function createMessageSendQueueModule(
     content: string,
     type: MessageType = "TEXT",
     extra?: Record<string, unknown>,
-    mentionedUserIds?: string[],
+    mentionedUserIds?: string[],  // from composer, converted to number[] before API call
   ) => {
     if (!session) {
       return false;
@@ -326,7 +326,7 @@ export function createMessageSendQueueModule(
                 part,
                 type,
                 extra,
-                mentionedUserIds,
+              mentionedUserIds,
               );
               if (!success) {
                 return false;
