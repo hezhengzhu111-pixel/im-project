@@ -8,6 +8,7 @@
 #![deny(clippy::unimplemented)]
 #![deny(clippy::unwrap_used)]
 
+pub mod ai;
 pub mod auth;
 pub mod auth_api;
 pub mod background_publisher;

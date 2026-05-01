@@ -63,6 +63,15 @@ pub struct AppConfig {
     pub im_server_ws_url: String,
     pub log_service_url: String,
     pub registry_service_url: String,
+    pub ai_enabled: bool,
+    pub ai_encryption_key_base64: String,
+    pub ai_spring_url: String,
+    pub ai_task_stream_key: String,
+    pub ai_auto_reply_cache_ttl_sec: u64,
+    pub ai_anti_reentry_ms: i64,
+    pub ai_summary_max_tokens: usize,
+    pub ai_summary_cache_ttl_sec: u64,
+    pub ai_snowflake_node_id: u16,
 }
 
 impl AppConfig {
@@ -199,6 +208,15 @@ impl AppConfig {
             im_server_ws_url: env_string("IM_SERVER_WS_ROUTE_URI", "ws://127.0.0.1:8083"),
             log_service_url: env_string("IM_LOG_SERVICE_URL", "http://127.0.0.1:8091"),
             registry_service_url: env_string("IM_REGISTRY_SERVICE_URL", "http://127.0.0.1:8090"),
+            ai_enabled: env_bool("IM_AI_ENABLED", true),
+            ai_encryption_key_base64: env_string("IM_AI_ENCRYPTION_KEY", ""),
+            ai_spring_url: env_string("IM_AI_SPRING_URL", "http://127.0.0.1:8084"),
+            ai_task_stream_key: env_string("IM_AI_TASK_STREAM_KEY", "im:ai:tasks"),
+            ai_auto_reply_cache_ttl_sec: env_u64("IM_AI_AUTO_REPLY_CACHE_TTL_SEC", 3600),
+            ai_anti_reentry_ms: env_i64("IM_AI_ANTI_REENTRY_MS", 5000),
+            ai_summary_max_tokens: env_usize("IM_AI_SUMMARY_MAX_TOKENS", 4000),
+            ai_summary_cache_ttl_sec: env_u64("IM_AI_SUMMARY_CACHE_TTL_SEC", 1800),
+            ai_snowflake_node_id: env_u16("IM_AI_SNOWFLAKE_NODE_ID", 41),
         }
     }
 
