@@ -278,9 +278,19 @@
 
         <div class="detail-section">
           <div class="detail-section-title">AI 助手</div>
+          <div class="detail-ai-status">
+            <AiStatusBadge
+              :auto-reply-enabled="autoReplyEnabled"
+              :has-human-intervention="false"
+            />
+          </div>
           <div class="detail-info-row">
             <span class="detail-info-label">自动回复</span>
             <span class="detail-info-value">{{ autoReplyEnabled ? "已开启" : "未开启" }}</span>
+          </div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">状态</span>
+            <span class="detail-info-value">{{ autoReplyEnabled ? "AI 持续监听新消息" : "需要手动开启" }}</span>
           </div>
         </div>
       </div>
@@ -317,6 +327,7 @@ import ChatMessageList from "@/features/chat/ChatMessageList.vue";
 import ChatSidebarPanel from "@/features/chat/ChatSidebarPanel.vue";
 import EncryptionBadge from "@/components/security/EncryptionBadge.vue";
 import SecurityPanel from "@/components/security/SecurityPanel.vue";
+import AiStatusBadge from "@/components/ai/AiStatusBadge.vue";
 import {useErrorHandler} from "@/hooks/useErrorHandler";
 import {aiService} from "@/services/ai";
 import {groupService} from "@/services/group";
@@ -1174,6 +1185,10 @@ onUnmounted(() => {
   margin-bottom: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.detail-ai-status {
+  margin-bottom: 12px;
 }
 
 .detail-info-row {

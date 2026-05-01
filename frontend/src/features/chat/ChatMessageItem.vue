@@ -43,6 +43,7 @@
 
             <div v-else-if="messageType === 'AI_REPLY'" class="text-content">
               <span class="ai-badge">AI</span>
+              <span v-if="aiProvider" class="ai-provider">{{ aiProvider }}</span>
               <span v-html="renderedContent"></span>
             </div>
 
@@ -524,6 +525,19 @@ const handleMediaLoaded = () => {
 
 .message-state.is-link {
   cursor: pointer;
+}
+
+.ai-provider {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs, 4px);
+  margin-right: 4px;
+  background: color-mix(in srgb, var(--color-primary, #6366f1), transparent 85%);
+  color: var(--color-primary, #6366f1);
+  vertical-align: middle;
+  text-transform: capitalize;
 }
 
 .system-pill {
