@@ -1,12 +1,10 @@
 package com.im.ai.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.im.ai.llm.LlmClient;
-import com.im.ai.llm.LlmClientFactory;
-import org.springframework.data.redis.core.Cursor;
-import org.springframework.data.redis.core.ScanOptions;
+import com.im.ai.service.ChatClientService;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -15,10 +13,12 @@ import java.util.concurrent.atomic.AtomicReference;
 public class RagQueryHandler {
 
     private final StringRedisTemplate redis;
+    private final ChatClientService chatClientService;
     private final ObjectMapper objectMapper;
 
-    public RagQueryHandler(StringRedisTemplate redis) {
+    public RagQueryHandler(StringRedisTemplate redis, ChatClientService chatClientService) {
         this.redis = redis;
+        this.chatClientService = chatClientService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -26,47 +26,50 @@ public class RagQueryHandler {
     public void handle(Map<String, String> fields) {
         String userId = fields.getOrDefault("userId", "");
         String query = fields.getOrDefault("query", "");
-        String groupId = fields.getOrDefault("groupId", "");
         String taskId = fields.getOrDefault("taskId", "0");
         String provider = fields.getOrDefault("provider", "deepseek");
         String apiKey = fields.getOrDefault("key", "");
 
-        System.out.println("[RAG_QUERY] Starting task=" + taskId + " query=" + query);
+        System.out.println("[RAG_QUERY] Starting task=" + taskId + " query=" + query + " provider=" + provider);
 
         try {
-            // 1. Retrieve relevant chunks from all user's documents
-            List<String> chunks = retrieveChunks(userId, groupId, query);
+            // 1. Retrieve relevant chunks from Redis
+            List<String> chunks = retrieveChunks(userId);
 
             // 2. Build augmented prompt
             String context = String.join("\n\n---\n\n", chunks);
             String systemPrompt = "基于以下知识库内容回答用户问题。如果知识库中没有相关信息，请如实说明。用中文回答。\n\n知识库内容：\n" + context;
 
-            // 3. Call LLM with streaming
-            LlmClient client = LlmClientFactory.create(provider);
-
-            AtomicReference<String> fullText = new AtomicReference<>("");
+            // 3. Call LLM with streaming via ChatClient
+            var chatClient = chatClientService.forUser(provider, apiKey);
             String channel = "im:ai:stream:sub:" + taskId;
+            AtomicReference<String> fullText = new AtomicReference<>("");
 
-            client.streamChat(systemPrompt,
-                    List.of(Map.of("role", "user", "content", query)),
-                    "default", apiKey)
-                    .subscribe(
-                            chunk -> {
-                                redis.convertAndSend(channel, chunk);
-                                fullText.updateAndGet(s -> s + extractChunkContent(chunk));
-                            },
-                            error -> {
-                                String errMsg = "{\"type\":\"error\",\"content\":\"" +
-                                        escapeJson(error.getMessage()) + "\"}";
-                                redis.convertAndSend(channel, errMsg);
-                            },
-                            () -> {
-                                String doneMsg = "{\"type\":\"done\",\"content\":" +
-                                        objectMapper.writeValueAsString(fullText.get()) + "}";
-                                redis.convertAndSend(channel, doneMsg);
-                                System.out.println("[RAG_QUERY] Done task=" + taskId);
-                            }
-                    );
+            Flux<String> stream = chatClient.prompt()
+                    .system(systemPrompt)
+                    .user(query)
+                    .stream()
+                    .content();
+
+            stream.subscribe(
+                    chunk -> {
+                        String json = "{\"type\":\"chunk\",\"content\":" +
+                                escapeJsonValue(chunk) + "}";
+                        redis.convertAndSend(channel, json);
+                        fullText.updateAndGet(s -> s + chunk);
+                    },
+                    error -> {
+                        String errMsg = "{\"type\":\"error\",\"content\":\"" +
+                                escapeJson(error.getMessage()) + "\"}";
+                        redis.convertAndSend(channel, errMsg);
+                    },
+                    () -> {
+                        String doneMsg = "{\"type\":\"done\",\"content\":" +
+                                escapeJsonValue(fullText.get()) + "}";
+                        redis.convertAndSend(channel, doneMsg);
+                        System.out.println("[RAG_QUERY] Done task=" + taskId);
+                    }
+            );
 
         } catch (Exception e) {
             String errMsg = "{\"type\":\"error\",\"content\":\"" + escapeJson(e.getMessage()) + "\"}";
@@ -75,8 +78,7 @@ public class RagQueryHandler {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private List<String> retrieveChunks(String userId, String groupId, String query) {
+    private List<String> retrieveChunks(String userId) {
         List<String> results = new ArrayList<>();
 
         try {
@@ -91,7 +93,13 @@ public class RagQueryHandler {
 
                 if (!"done".equals(status)) continue;
 
-                int chunkCount = Integer.parseInt(chunkCountStr);
+                int chunkCount;
+                try {
+                    chunkCount = Integer.parseInt(chunkCountStr);
+                } catch (NumberFormatException e) {
+                    continue;
+                }
+
                 int limit = Math.min(chunkCount, 5);
 
                 for (int i = 0; i < limit; i++) {
@@ -112,18 +120,16 @@ public class RagQueryHandler {
         return results;
     }
 
-    private String extractChunkContent(String chunk) {
-        try {
-            var node = objectMapper.readTree(chunk);
-            var content = node.get("content");
-            return content != null && !content.isNull() ? content.asText() : "";
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
     private String escapeJson(String s) {
         return s.replace("\\", "\\\\").replace("\"", "\\\"")
                 .replace("\n", "\\n").replace("\r", "\\r");
+    }
+
+    private String escapeJsonValue(String s) {
+        try {
+            return objectMapper.writeValueAsString(s);
+        } catch (Exception e) {
+            return "\"" + escapeJson(s) + "\"";
+        }
     }
 }

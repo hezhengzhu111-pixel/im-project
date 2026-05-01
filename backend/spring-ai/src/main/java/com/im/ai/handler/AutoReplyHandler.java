@@ -2,8 +2,7 @@ package com.im.ai.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.ai.callback.ReplyCallback;
-import com.im.ai.llm.LlmClient;
-import com.im.ai.llm.LlmClientFactory;
+import com.im.ai.service.ChatClientService;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -13,10 +12,12 @@ import java.util.Map;
 public class AutoReplyHandler {
 
     private final ReplyCallback callback;
+    private final ChatClientService chatClientService;
     private final ObjectMapper objectMapper;
 
-    public AutoReplyHandler(ReplyCallback callback) {
+    public AutoReplyHandler(ReplyCallback callback, ChatClientService chatClientService) {
         this.callback = callback;
+        this.chatClientService = chatClientService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -33,19 +34,20 @@ public class AutoReplyHandler {
         long userId = Long.parseLong(userIdStr);
         long taskId = Long.parseLong(taskIdStr);
 
-        System.out.println("[AUTO_REPLY] Starting task=" + taskId + " user=" + userId);
+        System.out.println("[AUTO_REPLY] Starting task=" + taskId + " user=" + userId + " provider=" + provider);
 
         try {
             List<Map<String, String>> messages = objectMapper.readValue(messagesJson, List.class);
             String context = buildContext(messages);
 
             String systemPrompt = buildPersonaPrompt(persona);
+            var chatClient = chatClientService.forUser(provider, apiKey);
 
-            LlmClient client = LlmClientFactory.create(provider);
-
-            String reply = client.chat(systemPrompt,
-                    List.of(Map.of("role", "user", "content", "最近的聊天记录：\n" + context + "\n\n请以你的身份回复最后一条消息，50字以内：")),
-                    "default", apiKey);
+            String reply = chatClient.prompt()
+                    .system(systemPrompt)
+                    .user("最近的聊天记录：\n" + context + "\n\n请以你的身份回复最后一条消息，50字以内：")
+                    .call()
+                    .content();
 
             if (reply == null || reply.trim().isEmpty()) {
                 System.err.println("[AUTO_REPLY] Empty reply for task=" + taskId);
@@ -53,7 +55,7 @@ public class AutoReplyHandler {
             }
 
             callback.sendReply(taskId, conversationId, reply.trim(), userId, provider, "default");
-            System.out.println("[AUTO_REPLY] Done task=" + taskId + " reply=" + reply.substring(0, Math.min(50, reply.length())));
+            System.out.println("[AUTO_REPLY] Done task=" + taskId);
 
         } catch (Exception e) {
             System.err.println("[AUTO_REPLY] Failed: " + e.getMessage());

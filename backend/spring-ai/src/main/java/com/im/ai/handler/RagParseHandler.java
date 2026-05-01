@@ -1,19 +1,19 @@
 package com.im.ai.handler;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.im.ai.llm.LlmClient;
-import com.im.ai.llm.LlmClientFactory;
-import org.apache.tika.Tika;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.reader.tika.TikaDocumentReader;
+import org.springframework.ai.transformer.splitter.TokenTextSplitter;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.io.InputStream;
+import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -21,13 +21,9 @@ import java.util.Map;
 public class RagParseHandler {
 
     private final StringRedisTemplate redis;
-    private final ObjectMapper objectMapper;
-    private final Tika tika;
 
     public RagParseHandler(StringRedisTemplate redis) {
         this.redis = redis;
-        this.objectMapper = new ObjectMapper();
-        this.tika = new Tika();
     }
 
     public void handle(Map<String, String> fields) {
@@ -40,28 +36,36 @@ public class RagParseHandler {
         try {
             // 1. Download document
             byte[] fileData = downloadFile(ossUrl);
-            String contentType = tika.detect(fileData);
-            String text = tika.parseToString(new java.io.ByteArrayInputStream(fileData));
 
-            System.out.println("[RAG_PARSE] doc=" + docId + " extracted " + text.length() + " chars");
+            // 2. Parse with Spring AI TikaDocumentReader
+            var resource = new InputStreamResource(new ByteArrayInputStream(fileData));
+            TikaDocumentReader reader = new TikaDocumentReader(resource);
+            List<Document> documents = reader.read();
 
-            // 2. Chunk the text
-            List<String> chunks = chunkText(text, 500);
+            // 3. Split with Spring AI TokenTextSplitter
+            TokenTextSplitter splitter = TokenTextSplitter.builder()
+                    .withChunkSize(800)
+                    .withMinChunkSizeChars(350)
+                    .withKeepSeparator(true)
+                    .build();
+            List<Document> chunks = splitter.apply(documents);
 
-            // 3. Store chunks in Redis
+            System.out.println("[RAG_PARSE] doc=" + docId + " parsed=" + documents.size() +
+                    " docs, chunks=" + chunks.size());
+
+            // 4. Store chunks in Redis Hash
             for (int i = 0; i < chunks.size(); i++) {
                 String key = "im:ai:doc:" + docId + ":chunk:" + i;
-                Map<String, String> chunkData = Map.of(
-                    "content", chunks.get(i),
-                    "userId", userId,
-                    "index", String.valueOf(i)
-                );
+                Map<String, String> chunkData = new HashMap<>();
+                chunkData.put("content", chunks.get(i).getText());
+                chunkData.put("userId", userId);
+                chunkData.put("index", String.valueOf(i));
                 redis.opsForHash().putAll(key, chunkData);
                 redis.expire(key, Duration.ofDays(30));
             }
 
-            // 4. Update doc metadata
-            Map<String, String> meta = new java.util.HashMap<>();
+            // 5. Update doc metadata
+            Map<String, String> meta = new HashMap<>();
             meta.put("chunkCount", String.valueOf(chunks.size()));
             meta.put("parseStatus", "done");
             redis.opsForHash().putAll("im:ai:doc:" + docId + ":meta", meta);
@@ -70,7 +74,7 @@ public class RagParseHandler {
 
         } catch (Exception e) {
             System.err.println("[RAG_PARSE] Failed doc=" + docId + ": " + e.getMessage());
-            Map<String, String> meta = new java.util.HashMap<>();
+            Map<String, String> meta = new HashMap<>();
             meta.put("parseStatus", "failed");
             redis.opsForHash().putAll("im:ai:doc:" + docId + ":meta", meta);
         }
@@ -90,34 +94,5 @@ public class RagParseHandler {
             throw new RuntimeException("Download failed: HTTP " + response.statusCode());
         }
         return response.body();
-    }
-
-    private List<String> chunkText(String text, int maxChars) {
-        List<String> chunks = new ArrayList<>();
-        String[] paragraphs = text.split("\\n\\s*\\n");
-
-        StringBuilder current = new StringBuilder();
-        for (String para : paragraphs) {
-            para = para.trim();
-            if (para.isEmpty()) continue;
-
-            if (current.length() + para.length() > maxChars && current.length() > 0) {
-                chunks.add(current.toString().trim());
-                current = new StringBuilder();
-            }
-            if (current.length() > 0) {
-                current.append("\n\n");
-            }
-            current.append(para);
-
-            if (current.length() >= maxChars) {
-                chunks.add(current.toString().trim());
-                current = new StringBuilder();
-            }
-        }
-        if (current.length() > 0) {
-            chunks.add(current.toString().trim());
-        }
-        return chunks;
     }
 }

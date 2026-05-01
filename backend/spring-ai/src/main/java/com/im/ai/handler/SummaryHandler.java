@@ -1,10 +1,10 @@
 package com.im.ai.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.im.ai.llm.LlmClient;
-import com.im.ai.llm.LlmClientFactory;
+import com.im.ai.service.ChatClientService;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
 
 import java.time.Duration;
 import java.util.List;
@@ -15,57 +15,60 @@ import java.util.concurrent.atomic.AtomicReference;
 public class SummaryHandler {
 
     private final StringRedisTemplate redis;
+    private final ChatClientService chatClientService;
     private final ObjectMapper objectMapper;
 
-    public SummaryHandler(StringRedisTemplate redis) {
+    public SummaryHandler(StringRedisTemplate redis, ChatClientService chatClientService) {
         this.redis = redis;
+        this.chatClientService = chatClientService;
         this.objectMapper = new ObjectMapper();
     }
 
     @SuppressWarnings("unchecked")
     public void handle(Map<String, String> fields) {
         String conversationId = fields.getOrDefault("conversationId", "");
-        String userId = fields.getOrDefault("userId", "");
         String taskId = fields.getOrDefault("taskId", "0");
         String provider = fields.getOrDefault("provider", "deepseek");
         String apiKey = fields.getOrDefault("key", "");
         String messagesJson = fields.getOrDefault("messages", "[]");
 
-        System.out.println("[SUMMARY] Starting task=" + taskId + " conv=" + conversationId);
+        System.out.println("[SUMMARY] Starting task=" + taskId + " conv=" + conversationId + " provider=" + provider);
 
         try {
             List<Map<String, String>> messages = objectMapper.readValue(messagesJson, List.class);
             String messageText = buildMessageText(messages);
 
-            String systemPrompt = "你是一个聊天记录总结助手。请用3-5个要点总结以下聊天记录，保持简洁，突出关键信息和行动项。用中文回答。";
-
-            LlmClient client = LlmClientFactory.create(provider);
-
-            AtomicReference<String> fullText = new AtomicReference<>("");
+            var chatClient = chatClientService.forUser(provider, apiKey);
             String channel = "im:ai:stream:sub:" + taskId;
+            AtomicReference<String> fullText = new AtomicReference<>("");
 
-            client.streamChat(systemPrompt,
-                    List.of(Map.of("role", "user", "content", "聊天记录：\n" + messageText)),
-                    "default", apiKey)
-                    .subscribe(
-                            chunk -> {
-                                redis.convertAndSend(channel, chunk);
-                                fullText.updateAndGet(s -> s + extractChunkContent(chunk));
-                            },
-                            error -> {
-                                String errMsg = "{\"type\":\"error\",\"content\":\"" +
-                                        escapeJson(error.getMessage()) + "\"}";
-                                redis.convertAndSend(channel, errMsg);
-                            },
-                            () -> {
-                                String doneMsg = "{\"type\":\"done\",\"content\":" +
-                                        objectMapper.writeValueAsString(fullText.get()) + "}";
-                                redis.convertAndSend(channel, doneMsg);
+            Flux<String> stream = chatClient.prompt()
+                    .system("你是一个聊天记录总结助手。请用3-5个要点总结以下聊天记录，保持简洁，突出关键信息和行动项。用中文回答。")
+                    .user("聊天记录：\n" + messageText)
+                    .stream()
+                    .content();
 
-                                cacheSummary(conversationId, userId, fullText.get());
-                                System.out.println("[SUMMARY] Done task=" + taskId);
-                            }
-                    );
+            stream.subscribe(
+                    chunk -> {
+                        String json = "{\"type\":\"chunk\",\"content\":" +
+                                escapeJsonValue(chunk) + "}";
+                        redis.convertAndSend(channel, json);
+                        fullText.updateAndGet(s -> s + chunk);
+                    },
+                    error -> {
+                        String errMsg = "{\"type\":\"error\",\"content\":\"" +
+                                escapeJson(error.getMessage()) + "\"}";
+                        redis.convertAndSend(channel, errMsg);
+                    },
+                    () -> {
+                        String content = fullText.get();
+                        String doneMsg = "{\"type\":\"done\",\"content\":" +
+                                escapeJsonValue(content) + "}";
+                        redis.convertAndSend(channel, doneMsg);
+                        cacheSummary(conversationId, content);
+                        System.out.println("[SUMMARY] Done task=" + taskId);
+                    }
+            );
 
         } catch (Exception e) {
             String errMsg = "{\"type\":\"error\",\"content\":\"" + escapeJson(e.getMessage()) + "\"}";
@@ -85,19 +88,9 @@ public class SummaryHandler {
         return sb.toString();
     }
 
-    private String extractChunkContent(String chunk) {
+    private void cacheSummary(String conversationId, String content) {
         try {
-            var node = objectMapper.readTree(chunk);
-            var content = node.get("content");
-            return content != null && !content.isNull() ? content.asText() : "";
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
-    private void cacheSummary(String conversationId, String userId, String content) {
-        try {
-            String hash = String.valueOf((conversationId + ":" + userId).hashCode());
+            String hash = String.valueOf(conversationId.hashCode());
             String key = "im:ai:summary:" + conversationId + ":" + hash;
             redis.opsForValue().set(key, content, Duration.ofMinutes(30));
         } catch (Exception ignored) {
@@ -107,5 +100,13 @@ public class SummaryHandler {
     private String escapeJson(String s) {
         return s.replace("\\", "\\\\").replace("\"", "\\\"")
                 .replace("\n", "\\n").replace("\r", "\\r");
+    }
+
+    private String escapeJsonValue(String s) {
+        try {
+            return objectMapper.writeValueAsString(s);
+        } catch (Exception e) {
+            return "\"" + escapeJson(s) + "\"";
+        }
     }
 }
