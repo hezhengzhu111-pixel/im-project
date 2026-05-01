@@ -85,7 +85,15 @@ pub async fn handle(
     event.group = false;
     event.payload = Some(ai_message.clone());
 
-    let mut hot_redis = state.redis_manager.clone();
+    let mut hot_redis = {
+        let index = crate::message::shard_index_for_key(&conv_id, state.private_redis_managers.len())
+            .ok_or_else(|| AppError::Upstream("private hot redis shard missing".to_string()))?;
+        state
+            .private_redis_managers
+            .get(index)
+            .ok_or_else(|| AppError::Upstream("private hot redis shard missing".to_string()))?
+            .clone()
+    };
     message::write_private_message_hot(&mut hot_redis, &conv_id, &ai_message, &event)
     .await?;
 
