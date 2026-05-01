@@ -124,7 +124,7 @@ async fn trigger_if_enabled(
         .await?;
     let _: () = redis::cmd("EXPIRE")
         .arg(&round_key)
-        .arg(3600i64)
+        .arg(20i64)
         .query_async::<()>(redis)
         .await?;
 
