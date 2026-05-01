@@ -262,6 +262,7 @@ const messages = {
     "ai.save": "保存",
     "common.confirm": "确定",
     "common.cancel": "取消",
+    "common.optional": "选填",
   },
   "en-US": {
     "app.loading": "Loading...",
@@ -515,6 +516,7 @@ const messages = {
     "ai.save": "Save",
     "common.confirm": "Confirm",
     "common.cancel": "Cancel",
+    "common.optional": "Optional",
   },
 } as const;
 

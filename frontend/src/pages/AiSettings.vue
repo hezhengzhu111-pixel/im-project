@@ -56,26 +56,33 @@
           <h2>{{ t("ai.addKey") }}</h2>
         </div>
         <div class="add-key-form">
-          <el-select v-model="newProvider" :placeholder="t('ai.provider')" size="large" style="width: 160px">
-            <el-option label="DeepSeek" value="deepseek" />
-            <el-option label="MiniMax" value="minimax" />
-            <el-option label="OpenAI" value="openai" />
-          </el-select>
-          <el-input
-            v-model="newKeyName"
-            :placeholder="t('ai.keyNamePlaceholder')"
-            size="large"
-            style="width: 160px"
-          />
-          <el-input
-            v-model="newApiKey"
-            :placeholder="t('ai.apiKeyInput')"
-            type="password"
-            show-password
-            size="large"
-            style="flex: 1"
-            @keyup.enter="addKey"
-          />
+          <div class="add-key-field">
+            <label>{{ t("ai.provider") }}</label>
+            <el-select v-model="newProvider" size="large" style="width: 100%">
+              <el-option label="DeepSeek" value="deepseek" />
+              <el-option label="MiniMax" value="minimax" />
+              <el-option label="OpenAI" value="openai" />
+            </el-select>
+          </div>
+          <div class="add-key-field">
+            <label>{{ t("ai.apiKeyInput") }}</label>
+            <el-input
+              v-model="newApiKey"
+              :placeholder="'sk-...'"
+              type="password"
+              show-password
+              size="large"
+              @keyup.enter="addKey"
+            />
+          </div>
+          <div class="add-key-field">
+            <label>{{ t("ai.keyName") }} <span class="optional">({{ t("common.optional") }})</span></label>
+            <el-input
+              v-model="newKeyName"
+              :placeholder="t('ai.keyNamePlaceholder')"
+              size="large"
+            />
+          </div>
           <button type="button" class="flat-button" :disabled="!canAdd" @click="addKey">
             {{ t("ai.save") }}
           </button>
@@ -405,9 +412,26 @@ onMounted(() => {
 
 .add-key-form {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  flex-direction: column;
+  gap: 12px;
   width: 100%;
-  flex-wrap: wrap;
+}
+
+.add-key-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--chat-text-secondary);
+  }
+
+  .optional {
+    font-weight: 400;
+    color: var(--chat-text-quaternary);
+    font-size: 12px;
+  }
 }
 </style>
