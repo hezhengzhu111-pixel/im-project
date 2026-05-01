@@ -10,6 +10,7 @@ use sqlx::MySqlPool;
 
 pub async fn maybe_trigger(
     redis: &mut ConnectionManager,
+    msg_redis: &mut ConnectionManager,
     db: &MySqlPool,
     config: &AppConfig,
     target_user_id: i64,
@@ -18,7 +19,7 @@ pub async fn maybe_trigger(
 ) {
     tracing::info!(target = %target_user_id, "auto_reply: checking trigger");
     if let Err(e) = trigger_if_enabled(
-        redis, db, config, target_user_id, conversation_id, original_message,
+        redis, msg_redis, db, config, target_user_id, conversation_id, original_message,
     )
     .await
     {
@@ -28,6 +29,7 @@ pub async fn maybe_trigger(
 
 async fn trigger_if_enabled(
     redis: &mut ConnectionManager,
+    msg_redis: &mut ConnectionManager,
     db: &MySqlPool,
     config: &AppConfig,
     target_user_id: i64,
@@ -80,7 +82,7 @@ async fn trigger_if_enabled(
         return Ok(());
     }
 
-    let context = build_reply_context(redis, conversation_id, original_message).await?;
+    let context = build_reply_context(msg_redis, conversation_id, original_message).await?;
     let persona = get_persona_db(db, target_user_id).await?;
 
     let task_id = ids::next_id(config.ai_snowflake_node_id);
@@ -133,6 +135,7 @@ async fn build_reply_context(
     _original: &MessageDto,
 ) -> Result<Vec<Value>, AppError> {
     let key = keys::conversation_messages_key(conv_id);
+    tracing::info!(conv = %conv_id, key = %key, "auto_reply: fetching messages");
     let raw: Vec<String> = redis::cmd("ZREVRANGE")
         .arg(&key)
         .arg("0")

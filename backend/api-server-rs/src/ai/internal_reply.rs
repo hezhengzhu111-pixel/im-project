@@ -41,12 +41,20 @@ pub async fn handle(
 
     let msg_id = ids::next_id(state.config.ai_snowflake_node_id);
     let now = time::now_iso();
+    let sender_name = sqlx::query_scalar::<_, Option<String>>(
+        "SELECT nickname FROM service_user_service_db.users WHERE id = ?",
+    )
+    .bind(request.persona_user_id)
+    .fetch_optional(&state.db)
+    .await?
+    .flatten()
+    .or_else(|| Some(request.persona_user_id.to_string()));
     let ai_message = MessageDto {
         id: msg_id.to_string(),
         message_id: msg_id.to_string(),
         client_message_id: None,
         sender_id: request.persona_user_id.to_string(),
-        sender_name: None,
+        sender_name: sender_name.clone(),
         sender_avatar: None,
         receiver_id: Some(receiver_id.to_string()),
         receiver_name: None,
@@ -94,6 +102,7 @@ pub async fn handle(
             .ok_or_else(|| AppError::Upstream("private hot redis shard missing".to_string()))?
             .clone()
     };
+    let msg_redis = hot_redis.clone();
     message::write_private_message_hot(&mut hot_redis, &conv_id, &ai_message, &event)
     .await?;
 
@@ -106,8 +115,10 @@ pub async fn handle(
         tracing::info!(target = %receiver_id, conv = %auto_conv, "internal_reply: triggering auto-reply for receiver");
         tokio::spawn(async move {
             let mut redis = auto_redis;
+            let mut msg = msg_redis;
             crate::ai::auto_reply::maybe_trigger(
                 &mut redis,
+                &mut msg,
                 &auto_db,
                 &auto_config,
                 receiver_id,

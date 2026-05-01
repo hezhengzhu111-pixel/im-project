@@ -40,14 +40,19 @@ public class AutoReplyHandler {
 
         try {
             List<Map<String, String>> messages = objectMapper.readValue(messagesJson, List.class);
-            String context = buildContext(messages);
+            System.out.println("[AUTO_REPLY] msgs count=" + messages.size()
+                    + " first=" + (messages.isEmpty() ? "none" : messages.get(0).getOrDefault("content","?").substring(0, Math.min(20, messages.get(0).getOrDefault("content","").length()))));
 
             String systemPrompt = buildPersonaPrompt(persona);
+            String history = buildChatHistory(messages, userIdStr);
+
+            System.out.println("[AUTO_REPLY] history=" + history.substring(0, Math.min(200, history.length())) + "...");
+
             var chatClient = chatClientService.forUser(provider, apiKey);
 
             String reply = chatClient.prompt()
                     .system(systemPrompt)
-                    .user("最近的聊天记录：\n" + context + "\n\n请以你的身份回复最后一条消息，50字以内：")
+                    .user(history)
                     .call()
                     .content();
 
@@ -65,23 +70,40 @@ public class AutoReplyHandler {
     }
 
     @SuppressWarnings("unchecked")
-    private String buildContext(List<Map<String, String>> messages) {
+    private String buildChatHistory(List<Map<String, String>> messages, String selfId) {
         StringBuilder sb = new StringBuilder();
-        for (Map<String, String> msg : messages) {
-            String sender = msg.getOrDefault("senderName", msg.getOrDefault("senderId", "unknown"));
-            String content = msg.getOrDefault("content", "");
-            String type = msg.getOrDefault("messageType", "TEXT");
-            if ("TEXT".equals(type)) {
-                sb.append("[").append(sender).append("]: ").append(content).append("\n");
+        sb.append("以下是最近的聊天记录，你需要扮演角色回复最后一条消息。\n\n");
+            for (Map<String, String> msg : messages) {
+                String senderId = msg.getOrDefault("senderId", "unknown");
+                String senderName = msg.getOrDefault("senderName", "");
+                String content = msg.getOrDefault("content", "");
+                String type = msg.getOrDefault("messageType", "");
+                System.out.println("[AUTO_REPLY] msg type=" + type + " contentLen=" + content.length());
+                if (content.isBlank()) continue;
+
+            String name = senderName;
+            if (name == null || name.isBlank()) {
+                if (String.valueOf(selfId).equals(senderId)) {
+                    name = "你";
+                } else {
+                    name = "对方";
+                }
+            }
+
+            if (String.valueOf(selfId).equals(senderId)) {
+                sb.append(name).append("（你）：").append(content).append("\n");
+            } else {
+                sb.append(name).append("：").append(content).append("\n");
             }
         }
+        sb.append("\n请用自然的口语回复，50字以内：");
         return sb.toString();
     }
 
     private String buildPersonaPrompt(String persona) {
         if (persona != null && !persona.isBlank()) {
-            return persona + "\n\n请用自然的口语风格回复，每条回复控制在50字以内。用中文回复。";
+            return persona + "\n\n用中文回复。参考聊天记录中的角色定位，自然地回复。";
         }
-        return "你是一个友好的聊天助手。请用自然的口语风格回复，每条回复控制在50字以内。用中文回复。";
+        return "你是一个友好的聊天助手。参考聊天记录中的角色定位，自然地回复。用中文回复。";
     }
 }

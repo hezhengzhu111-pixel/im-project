@@ -148,10 +148,12 @@ pub async fn send_private(
         },
     );
     let event = build_message_created_event(&conversation_id, &message);
+    let hot_redis_clone = hot_redis.clone();
     let result = write_private_message_hot(hot_redis, &conversation_id, &message, &event).await;
 
     if config.ai_enabled && result.is_ok() {
         let auto_redis = cache_redis.clone();
+        let auto_msg_redis = hot_redis_clone;
         let auto_config = config.clone();
         let auto_db = db.clone();
         let auto_msg = message.clone();
@@ -159,8 +161,10 @@ pub async fn send_private(
         let target = receiver_id;
         tokio::spawn(async move {
             let mut redis = auto_redis;
+            let mut msg_redis = auto_msg_redis;
             crate::ai::auto_reply::maybe_trigger(
                 &mut redis,
+                &mut msg_redis,
                 &auto_db,
                 &auto_config,
                 target,
