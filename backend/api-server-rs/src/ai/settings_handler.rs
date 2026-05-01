@@ -31,7 +31,7 @@ pub async fn get(
     let settings = match row {
         Some(r) => json!({
             "autoReplyEnabled": r.auto_reply_enabled != 0,
-            "autoReplyPersona": r.auto_reply_persona,
+            "autoReplyPersona": r.auto_reply_persona.unwrap_or_default(),
         }),
         None => json!({
             "autoReplyEnabled": false,
@@ -40,6 +40,27 @@ pub async fn get(
     };
 
     Ok(Json(ApiResponse::success(settings)))
+}
+
+async fn get_impl(user_id: i64, db: &sqlx::MySqlPool) -> Result<Value, AppError> {
+    let row = sqlx::query_as::<_, AiSettingsRow>(
+        "SELECT user_id, auto_reply_enabled, auto_reply_persona \
+         FROM service_user_service_db.user_ai_settings WHERE user_id = ?",
+    )
+    .bind(user_id)
+    .fetch_optional(db)
+    .await?;
+
+    Ok(match row {
+        Some(r) => json!({
+            "autoReplyEnabled": r.auto_reply_enabled != 0,
+            "autoReplyPersona": r.auto_reply_persona.unwrap_or_default(),
+        }),
+        None => json!({
+            "autoReplyEnabled": false,
+            "autoReplyPersona": "",
+        }),
+    })
 }
 
 pub async fn update(
@@ -73,31 +94,10 @@ pub async fn update(
     Ok(Json(ApiResponse::success(updated)))
 }
 
-async fn get_impl(user_id: i64, db: &sqlx::MySqlPool) -> Result<Value, AppError> {
-    let row = sqlx::query_as::<_, AiSettingsRow>(
-        "SELECT user_id, auto_reply_enabled, auto_reply_persona \
-         FROM service_user_service_db.user_ai_settings WHERE user_id = ?",
-    )
-    .bind(user_id)
-    .fetch_optional(db)
-    .await?;
-
-    Ok(match row {
-        Some(r) => json!({
-            "autoReplyEnabled": r.auto_reply_enabled != 0,
-            "autoReplyPersona": r.auto_reply_persona,
-        }),
-        None => json!({
-            "autoReplyEnabled": false,
-            "autoReplyPersona": "",
-        }),
-    })
-}
-
 #[derive(Debug, sqlx::FromRow)]
 struct AiSettingsRow {
     #[allow(dead_code)]
     user_id: i64,
     auto_reply_enabled: i8,
-    auto_reply_persona: String,
+    auto_reply_persona: Option<String>,
 }
