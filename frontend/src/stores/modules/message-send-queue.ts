@@ -250,7 +250,7 @@ export function createMessageSendQueueModule(
               thumbnailUrl: mediaMetadata.thumbnailUrl,
               duration: mediaMetadata.duration,
               extra,
-              mentionedUserIds: mentionedUserIds?.map((id) => Number(id)).filter((n) => Number.isFinite(n)),
+              mentionedUserIds,
             })
           : await ctx.messageService.sendPrivate({
               receiverId: session.targetId,
