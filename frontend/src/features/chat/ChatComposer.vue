@@ -137,6 +137,7 @@ const emit = defineEmits<{
     url: string;
     extra?: Record<string, unknown>;
   }): void;
+  (e: "request-members"): void;
 }>();
 
 const shellRef = ref<HTMLElement | null>(null);
@@ -259,6 +260,9 @@ const onInput = () => {
   showMention.value = true;
   mentionStart.value = pos;
   mentionFilter.value = afterAt;
+  if (members.value.length === 0) {
+    emit("request-members");
+  }
 };
 
 const onBlur = () => {

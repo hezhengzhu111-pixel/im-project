@@ -138,6 +138,7 @@
           :members="composerMembers"
           @send-text="sendTextMessage"
           @send-media="sendMediaMessage"
+          @request-members="handleRequestMembers"
         />
       </div>
     </div>
@@ -443,6 +444,13 @@ const handleSessionAction = async (command: string | number | object) => {
 
 const sendTextMessage = async (content: string, mentionedUserIds?: string[]) => {
   await chatStore.sendMessage(content, "TEXT", undefined, mentionedUserIds);
+};
+
+const handleRequestMembers = () => {
+  const session = currentSession.value;
+  if (session?.type === "group") {
+    fetchComposerMembers(session.targetId);
+  }
 };
 
 const sendMediaMessage = async (payload: {
