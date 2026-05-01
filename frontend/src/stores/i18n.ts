@@ -263,6 +263,8 @@ const messages = {
     "common.confirm": "确定",
     "common.cancel": "取消",
     "common.optional": "选填",
+    "mention.noMembers": "暂无成员",
+    "composer.recording": "录音中...",
   },
   "en-US": {
     "app.loading": "Loading...",
@@ -517,6 +519,8 @@ const messages = {
     "common.confirm": "Confirm",
     "common.cancel": "Cancel",
     "common.optional": "Optional",
+    "mention.noMembers": "No members",
+    "composer.recording": "Recording...",
   },
 } as const;
 

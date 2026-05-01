@@ -192,6 +192,7 @@ export function createMessageSendQueueModule(
     content: string,
     type: MessageType,
     extra?: Record<string, unknown>,
+    mentionedUserIds?: string[],
   ) => {
     const currentUser = ctx.getCurrentUser();
     if (!currentUser) {
@@ -249,6 +250,7 @@ export function createMessageSendQueueModule(
               thumbnailUrl: mediaMetadata.thumbnailUrl,
               duration: mediaMetadata.duration,
               extra,
+              mentionedUserIds,
             })
           : await ctx.messageService.sendPrivate({
               receiverId: session.targetId,
@@ -299,6 +301,7 @@ export function createMessageSendQueueModule(
     content: string,
     type: MessageType = "TEXT",
     extra?: Record<string, unknown>,
+    mentionedUserIds?: string[],
   ) => {
     if (!session) {
       return false;
@@ -323,6 +326,7 @@ export function createMessageSendQueueModule(
                 part,
                 type,
                 extra,
+                mentionedUserIds,
               );
               if (!success) {
                 return false;
@@ -333,7 +337,7 @@ export function createMessageSendQueueModule(
         }
       }
 
-      return sendSingleMessage(session, content, type, extra);
+      return sendSingleMessage(session, content, type, extra, mentionedUserIds);
     });
   };
 

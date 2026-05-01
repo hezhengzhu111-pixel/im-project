@@ -135,6 +135,7 @@
 
         <ChatComposer
           :disabled="!currentSession"
+          :members="composerMembers"
           @send-text="sendTextMessage"
           @send-media="sendMediaMessage"
         />
@@ -190,6 +191,35 @@ const showSearchDialog = ref(false);
 const showSessionInfoDrawer = ref(false);
 const groupReadUsers = ref<GroupReadUser[]>([]);
 const sessionInfoMembers = ref<GroupMember[]>([]);
+
+const composerMembers = ref<{ userId: string; name: string; avatar?: string; avatarText: string }[]>([]);
+
+const fetchComposerMembers = async (groupId: string) => {
+  try {
+    const response = await groupService.getMembers(groupId);
+    const members = (response.data || []) as GroupMember[];
+    composerMembers.value = members.map((m) => ({
+      userId: String(m.userId || ""),
+      name: m.nickname || m.username || String(m.userId),
+      avatar: m.avatar,
+      avatarText: getAvatarText(m.nickname || m.username || String(m.userId)),
+    }));
+  } catch {
+    composerMembers.value = [];
+  }
+};
+
+watch(
+  () => currentSession.value,
+  (session) => {
+    if (session?.type === "group") {
+      fetchComposerMembers(session.targetId);
+    } else {
+      composerMembers.value = [];
+    }
+  },
+  { immediate: true },
+);
 const sessionInfoLoading = ref(false);
 const sessionInfoError = ref("");
 const unreadSnapshotBySession = ref(new Map<string, number>());
@@ -411,8 +441,8 @@ const handleSessionAction = async (command: string | number | object) => {
   }
 };
 
-const sendTextMessage = async (content: string) => {
-  await chatStore.sendMessage(content, "TEXT");
+const sendTextMessage = async (content: string, mentionedUserIds?: string[]) => {
+  await chatStore.sendMessage(content, "TEXT", undefined, mentionedUserIds);
 };
 
 const sendMediaMessage = async (payload: {

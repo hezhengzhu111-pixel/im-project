@@ -364,7 +364,8 @@ export const useChatStore = defineStore("chat", () => {
     content: string,
     type: MessageType = "TEXT",
     extra?: Record<string, unknown>,
-  ) => messageStore.sendMessage(sessionStore.currentSession, content, type, extra);
+    mentionedUserIds?: string[],
+  ) => messageStore.sendMessage(sessionStore.currentSession, content, type, extra, mentionedUserIds);
 
   const loadMoreHistory = async (sessionId: string, size = 20) => {
     await messageStore.loadMoreHistory(sessionId, size);

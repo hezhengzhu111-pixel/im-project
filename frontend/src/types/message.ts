@@ -152,6 +152,7 @@ export interface SendGroupMessageRequest {
   thumbnailUrl?: string;
   duration?: number;
   extra?: Record<string, unknown>;
+  mentionedUserIds?: string[];
 }
 
 export interface MessageSearchResult {
