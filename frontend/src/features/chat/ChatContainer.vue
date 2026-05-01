@@ -26,6 +26,15 @@
         <button
           type="button"
           class="topbar-icon-btn"
+          :title="t('nav.settings')"
+          :aria-label="t('nav.settings')"
+          @click="$router.push('/settings')"
+        >
+          <el-icon :size="18"><Setting /></el-icon>
+        </button>
+        <button
+          type="button"
+          class="topbar-icon-btn"
           :title="isDarkTheme ? '切换浅色模式' : '切换深色模式'"
           @click="toggleTheme"
         >
@@ -330,7 +339,7 @@
 
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, ref, watch} from "vue";
-import {ArrowLeft, ChatDotRound, Close, MoreFilled, Moon, Search, Sunny} from "@element-plus/icons-vue";
+import {ArrowLeft, ChatDotRound, Close, MoreFilled, Moon, Search, Setting, Sunny} from "@element-plus/icons-vue";
 import {ElMessageBox} from "element-plus";
 import ChatComposer from "@/features/chat/ChatComposer.vue";
 import ChatDialogs from "@/features/chat/ChatDialogs.vue";
@@ -1122,7 +1131,7 @@ onUnmounted(() => {
 }
 
 .header-ai-badge {
-  pointer-events: none;
+  cursor: pointer;
 }
 
 .security-popover {

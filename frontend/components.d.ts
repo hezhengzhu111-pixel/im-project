@@ -7,6 +7,8 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
+    AiStatusBadge: typeof import('./src/components/ai/AiStatusBadge.vue')['default']
+    ConnectionStatusBar: typeof import('./src/components/status/ConnectionStatusBar.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElAvatar: typeof import('element-plus/es')['ElAvatar']
     ElBadge: typeof import('element-plus/es')['ElBadge']
@@ -21,7 +23,6 @@ declare module 'vue' {
     ElDropdown: typeof import('element-plus/es')['ElDropdown']
     ElDropdownItem: typeof import('element-plus/es')['ElDropdownItem']
     ElDropdownMenu: typeof import('element-plus/es')['ElDropdownMenu']
-    ElEmpty: typeof import('element-plus/es')['ElEmpty']
     ElForm: typeof import('element-plus/es')['ElForm']
     ElFormItem: typeof import('element-plus/es')['ElFormItem']
     ElIcon: typeof import('element-plus/es')['ElIcon']
@@ -37,10 +38,15 @@ declare module 'vue' {
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
     ElTag: typeof import('element-plus/es')['ElTag']
     ElTransfer: typeof import('element-plus/es')['ElTransfer']
-    PerformanceMonitor: typeof import('./src/components/PerformanceMonitor.vue')['default']
+    EmptyState: typeof import('./src/components/common/EmptyState.vue')['default']
+    EncryptionBadge: typeof import('./src/components/security/EncryptionBadge.vue')['default']
+    ErrorState: typeof import('./src/components/common/ErrorState.vue')['default']
+    HumanHandoffNotice: typeof import('./src/components/ai/HumanHandoffNotice.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SecurityPanel: typeof import('./src/components/security/SecurityPanel.vue')['default']
     SideNavBar: typeof import('./src/components/layout/SideNavBar.vue')['default']
+    SkeletonList: typeof import('./src/components/common/SkeletonList.vue')['default']
   }
   export interface ComponentCustomProperties {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

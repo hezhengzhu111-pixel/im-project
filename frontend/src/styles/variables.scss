@@ -1,17 +1,21 @@
-// SCSS变量定义文件
+// ============================================
+// SCSS Variables & Mixins
+// Tokens come from tokens.scss (CSS vars)
+// This file provides SCSS-level helpers
+// ============================================
 
 @use 'sass:color';
 @use 'sass:math';
 
-// 颜色系统
-$primary-color: #409eff;
-$success-color: #67c23a;
-$warning-color: #e6a23c;
-$danger-color: #f56c6c;
-$info-color: #909399;
-$type-color: #5468ff;
+// --- Backward-compatible SCSS vars (reference new token values) ---
+$primary-color: #6366f1;
+$primary-color-2: #8b5cf6;
+$success-color: #22c55e;
+$warning-color: #f59e0b;
+$danger-color: #ef4444;
+$info-color: #64748b;
 
-// 主题颜色变体
+// Primary variants (for components that need SCSS color math)
 $primary-light-1: color.mix(white, $primary-color, 10%);
 $primary-light-2: color.mix(white, $primary-color, 20%);
 $primary-light-3: color.mix(white, $primary-color, 30%);
@@ -21,46 +25,42 @@ $primary-light-6: color.mix(white, $primary-color, 60%);
 $primary-light-7: color.mix(white, $primary-color, 70%);
 $primary-light-8: color.mix(white, $primary-color, 80%);
 $primary-light-9: color.mix(white, $primary-color, 90%);
-
 $primary-dark-1: color.mix(black, $primary-color, 10%);
 $primary-dark-2: color.mix(black, $primary-color, 20%);
 
-// 文字颜色
-$text-color-primary: #303133;
-$text-color-regular: #606266;
-$text-color-secondary: #909399;
-$text-color-placeholder: #c0c4cc;
+// Text
+$text-color-primary: #0f172a;
+$text-color-regular: #475569;
+$text-color-secondary: #94a3b8;
+$text-color-placeholder: #cbd5e1;
 
-// 边框颜色
-$border-color-base: #dcdfe6;
-$border-color-light: #e4e7ed;
-$border-color-lighter: #ebeef5;
-$border-color-extra-light: #f2f6fc;
+// Border
+$border-color-base: rgba(148, 163, 184, 0.32);
+$border-color-light: rgba(148, 163, 184, 0.24);
+$border-color-lighter: rgba(148, 163, 184, 0.12);
+$border-color-extra-light: rgba(148, 163, 184, 0.08);
 
-// 背景颜色
-$background-color-base: #f5f7fa;
-$background-color-light: #fafafa;
+// Background
+$background-color-base: #f8fafc;
+$background-color-light: #f1f5f9;
 $background-color-lighter: #ffffff;
 
-// 填充颜色
+// Fill
 $fill-color-base: #f0f2f5;
 $fill-color-light: #f5f7fa;
 $fill-color-lighter: #fafafa;
 $fill-color-extra-light: #fafcff;
 $fill-color-blank: #ffffff;
-$fill-color-dark: #ebedf0;
-$fill-color-darker: #e6e8eb;
 
-// 阴影
-$box-shadow-base: 0 2px 4px rgba(0, 0, 0, 0.12), 0 0 6px rgba(0, 0, 0, 0.04);
-$box-shadow-dark: 0 2px 4px rgba(0, 0, 0, 0.12), 0 0 6px rgba(0, 0, 0, 0.12);
-$box-shadow-light: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+// Shadow
+$box-shadow-base: 0 12px 32px rgba(15, 23, 42, 0.08);
+$box-shadow-dark: 0 12px 32px rgba(15, 23, 42, 0.16);
+$box-shadow-light: 0 1px 3px rgba(15, 23, 42, 0.04);
 
-// 字体
-$font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-$font-family-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+// Font
+$font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+$font-family-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
 
-// 字体大小
 $font-size-extra-large: 20px;
 $font-size-large: 18px;
 $font-size-medium: 16px;
@@ -68,21 +68,19 @@ $font-size-base: 14px;
 $font-size-small: 13px;
 $font-size-extra-small: 12px;
 
-// 字重
 $font-weight-primary: 500;
 $font-weight-secondary: 400;
 
-// 行高
 $line-height-primary: 24px;
 $line-height-base: 1.5;
 
-// 边框半径
-$border-radius-base: 4px;
-$border-radius-small: 2px;
-$border-radius-round: 20px;
+// Border radius
+$border-radius-base: 10px;
+$border-radius-small: 6px;
+$border-radius-round: 22px;
 $border-radius-circle: 50%;
 
-// 间距
+// Spacing
 $spacing-extra-small: 4px;
 $spacing-small: 8px;
 $spacing-medium: 12px;
@@ -90,12 +88,12 @@ $spacing-base: 16px;
 $spacing-large: 20px;
 $spacing-extra-large: 24px;
 
-// 组件尺寸
+// Component sizes
 $component-size-large: 40px;
 $component-size-default: 32px;
 $component-size-small: 24px;
 
-// 断点
+// Breakpoints
 $breakpoint-xs: 480px;
 $breakpoint-sm: 576px;
 $breakpoint-md: 768px;
@@ -103,7 +101,7 @@ $breakpoint-lg: 992px;
 $breakpoint-xl: 1200px;
 $breakpoint-xxl: 1600px;
 
-// Z-index层级
+// Z-index
 $z-index-normal: 1;
 $z-index-top: 1000;
 $z-index-popper: 2000;
@@ -111,76 +109,72 @@ $z-index-message: 3000;
 $z-index-notification: 4000;
 $z-index-loading: 5000;
 
-// 过渡动画
-$transition-base: all 0.3s cubic-bezier(0.645, 0.045, 0.355, 1);
-$transition-fade: opacity 0.3s cubic-bezier(0.23, 1, 0.32, 1);
-$transition-md-fade: transform 0.3s cubic-bezier(0.23, 1, 0.32, 1), opacity 0.3s cubic-bezier(0.23, 1, 0.32, 1);
-$transition-border: border-color 0.2s cubic-bezier(0.645, 0.045, 0.355, 1);
-$transition-box-shadow: box-shadow 0.2s cubic-bezier(0.645, 0.045, 0.355, 1);
-$transition-color: color 0.2s cubic-bezier(0.645, 0.045, 0.355, 1);
+// Transition
+$transition-base: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+$transition-fade: opacity 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+$transition-border: border-color 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+$transition-box-shadow: box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+$transition-color: color 0.12s cubic-bezier(0.4, 0, 0.2, 1);
 
-// 聊天相关颜色
+// Chat
 $chat-bg-color: #f5f5f5;
 $chat-sidebar-bg: #ffffff;
 $chat-message-bg: #ffffff;
 $chat-message-own-bg: $primary-color;
 $chat-message-other-bg: #ffffff;
 $chat-input-bg: #ffffff;
-$chat-online-color: #67c23a;
-$chat-offline-color: #c0c4cc;
-$chat-away-color: #e6a23c;
-$chat-busy-color: #f56c6c;
+$chat-online-color: #22c55e;
+$chat-offline-color: #94a3b8;
+$chat-away-color: #f59e0b;
+$chat-busy-color: #ef4444;
 
-// 状态颜色
-$status-online: #67c23a;
-$status-offline: #c0c4cc;
-$status-away: #e6a23c;
-$status-busy: #f56c6c;
-$status-invisible: #909399;
+// Status
+$status-online: #22c55e;
+$status-offline: #94a3b8;
+$status-away: #f59e0b;
+$status-busy: #ef4444;
+$status-invisible: #64748b;
 
-// 消息类型颜色
+// Message
 $message-text-color: $text-color-primary;
 $message-time-color: $text-color-secondary;
 $message-system-color: $text-color-secondary;
 $message-error-color: $danger-color;
 $message-success-color: $success-color;
 
-// 头像尺寸
+// Avatar
 $avatar-size-large: 60px;
 $avatar-size-default: 40px;
 $avatar-size-small: 32px;
 $avatar-size-mini: 24px;
 
-// 侧边栏宽度
+// Sidebar
 $sidebar-width: 280px;
-$sidebar-collapsed-width: 60px;
+$sidebar-collapsed-width: 72px;
 
-// 聊天区域
+// Chat area
 $chat-header-height: 60px;
 $chat-input-height: 120px;
 $chat-message-max-width: 60%;
 
-// 滚动条
+// Scrollbar
 $scrollbar-width: 6px;
-$scrollbar-track-color: #f1f1f1;
-$scrollbar-thumb-color: #c1c1c1;
-$scrollbar-thumb-hover-color: #a8a8a8;
 
-// 暗色主题
-$dark-bg-color: #1a1a1a;
-$dark-surface-color: #2d2d2d;
-$dark-border-color: #404040;
-$dark-text-primary: #ffffff;
-$dark-text-secondary: #b3b3b3;
-$dark-text-placeholder: #666666;
+// Dark
+$dark-bg-color: #0f172a;
+$dark-surface-color: #1e293b;
+$dark-border-color: rgba(148, 163, 184, 0.2);
+$dark-text-primary: #f1f5f9;
+$dark-text-secondary: #cbd5e1;
+$dark-text-placeholder: #64748b;
 
-// 渐变
-$gradient-primary: linear-gradient(135deg, $primary-color 0%, $primary-light-2 100%);
+// Gradient
+$gradient-primary: linear-gradient(135deg, $primary-color 0%, $primary-color-2 100%);
 $gradient-success: linear-gradient(135deg, $success-color 0%, color.mix(white, $success-color, 20%) 100%);
 $gradient-warning: linear-gradient(135deg, $warning-color 0%, color.mix(white, $warning-color, 20%) 100%);
 $gradient-danger: linear-gradient(135deg, $danger-color 0%, color.mix(white, $danger-color, 20%) 100%);
 
-// 混合模式函数
+// --- Functions ---
 @function tint($color, $percentage) {
   @return color.mix(white, $color, $percentage);
 }
@@ -189,41 +183,29 @@ $gradient-danger: linear-gradient(135deg, $danger-color 0%, color.mix(white, $da
   @return color.mix(black, $color, $percentage);
 }
 
-// 响应式混合器
+// --- Mixins ---
+
 @mixin respond-to($breakpoint) {
   @if $breakpoint == xs {
-    @media (max-width: #{$breakpoint-xs - 1px}) {
-      @content;
-    }
+    @media (max-width: #{$breakpoint-xs - 1px}) { @content; }
   }
   @if $breakpoint == sm {
-    @media (min-width: #{$breakpoint-sm}) {
-      @content;
-    }
+    @media (min-width: #{$breakpoint-sm}) { @content; }
   }
   @if $breakpoint == md {
-    @media (min-width: #{$breakpoint-md}) {
-      @content;
-    }
+    @media (min-width: #{$breakpoint-md}) { @content; }
   }
   @if $breakpoint == lg {
-    @media (min-width: #{$breakpoint-lg}) {
-      @content;
-    }
+    @media (min-width: #{$breakpoint-lg}) { @content; }
   }
   @if $breakpoint == xl {
-    @media (min-width: #{$breakpoint-xl}) {
-      @content;
-    }
+    @media (min-width: #{$breakpoint-xl}) { @content; }
   }
   @if $breakpoint == xxl {
-    @media (min-width: #{$breakpoint-xxl}) {
-      @content;
-    }
+    @media (min-width: #{$breakpoint-xxl}) { @content; }
   }
 }
 
-// 文本省略混合器
 @mixin text-ellipsis($lines: 1) {
   @if $lines == 1 {
     overflow: hidden;
@@ -237,7 +219,6 @@ $gradient-danger: linear-gradient(135deg, $danger-color 0%, color.mix(white, $da
   }
 }
 
-// Flex布局混合器
 @mixin flex-center {
   display: flex;
   align-items: center;
@@ -262,7 +243,6 @@ $gradient-danger: linear-gradient(135deg, $danger-color 0%, color.mix(white, $da
   justify-content: flex-end;
 }
 
-// 清除浮动
 @mixin clearfix {
   &::after {
     content: '';
@@ -271,7 +251,6 @@ $gradient-danger: linear-gradient(135deg, $danger-color 0%, color.mix(white, $da
   }
 }
 
-// 绝对定位居中
 @mixin absolute-center {
   position: absolute;
   top: 50%;
@@ -279,25 +258,24 @@ $gradient-danger: linear-gradient(135deg, $danger-color 0%, color.mix(white, $da
   transform: translate(-50%, -50%);
 }
 
-// 按钮样式混合器
 @mixin custom-button-variant($color, $background, $border) {
   color: $color;
   background-color: $background;
   border-color: $border;
-  
+
   &:hover,
   &:focus {
     color: $color;
     background-color: tint($background, 20%);
     border-color: tint($border, 20%);
   }
-  
+
   &:active {
     color: $color;
     background-color: shade($background, 10%);
     border-color: shade($border, 10%);
   }
-  
+
   &.is-disabled,
   &.is-disabled:hover,
   &.is-disabled:focus,
@@ -308,66 +286,65 @@ $gradient-danger: linear-gradient(135deg, $danger-color 0%, color.mix(white, $da
   }
 }
 
-// 卡片样式混合器
 @mixin card-style {
-  background-color: $background-color-lighter;
-  border: 1px solid $border-color-lighter;
-  border-radius: $border-radius-base;
-  box-shadow: $box-shadow-light;
-  transition: $transition-box-shadow;
-  
+  background-color: var(--surface-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow var(--motion-normal) var(--motion-ease),
+              transform var(--motion-normal) var(--motion-ease);
+
   &:hover {
-    box-shadow: $box-shadow-base;
+    box-shadow: var(--shadow-soft);
+    transform: translateY(-2px);
   }
 }
 
-// 输入框样式混合器
 @mixin input-style {
   appearance: none;
-  background-color: $background-color-lighter;
-  border: 1px solid $border-color-base;
-  border-radius: $border-radius-base;
-  color: $text-color-primary;
-  font-size: $font-size-base;
-  line-height: $line-height-base;
+  background-color: var(--surface-overlay);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
   padding: 8px 12px;
-  transition: $transition-border;
-  
+  transition: border-color var(--motion-fast) var(--motion-ease);
+
   &:focus {
-    border-color: $primary-color;
+    border-color: var(--color-primary);
     outline: none;
   }
-  
+
   &::placeholder {
-    color: $text-color-placeholder;
+    color: var(--text-placeholder);
   }
-  
+
   &:disabled {
-    background-color: $fill-color-light;
-    border-color: $border-color-lighter;
-    color: $text-color-placeholder;
+    background-color: var(--surface-tertiary);
+    border-color: var(--border-light);
+    color: var(--text-placeholder);
     cursor: not-allowed;
   }
 }
 
-// 滚动条样式混合器
-@mixin scrollbar-style($width: $scrollbar-width) {
+@mixin scrollbar-style($width: 6px) {
   &::-webkit-scrollbar {
     width: $width;
     height: $width;
   }
-  
+
   &::-webkit-scrollbar-track {
-    background: $scrollbar-track-color;
+    background: transparent;
     border-radius: math.div($width, 2);
   }
-  
+
   &::-webkit-scrollbar-thumb {
-    background: $scrollbar-thumb-color;
+    background: rgba(148, 163, 184, 0.4);
     border-radius: math.div($width, 2);
-    
+
     &:hover {
-      background: $scrollbar-thumb-hover-color;
+      background: rgba(100, 116, 139, 0.6);
     }
   }
 }

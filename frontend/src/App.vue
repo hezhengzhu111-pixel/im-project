@@ -131,40 +131,9 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss">
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-html,
-body {
-  height: 100%;
-  color: var(--chat-text-primary, #0f172a);
-  background: var(--chat-shell-bg, #f3f6fa);
-  font-family:
-    Inter,
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    "Helvetica Neue",
-    Arial,
-    sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
+// App-specific layout only.
+// All resets, utilities, scrollbar, Element Plus overrides
+// are in @/styles/global.scss (loaded via index.scss).
 
 #app {
   height: 100vh;
@@ -180,122 +149,6 @@ select {
 .global-loading {
   position: fixed;
   inset: 0;
-  z-index: 9999;
-}
-
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.22s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(226, 232, 240, 0.52);
-  border-radius: 999px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.82);
-  border-radius: 999px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.88);
-}
-
-.el-message {
-  left: 50% !important;
-  top: 22px !important;
-  min-width: 0 !important;
-  width: auto !important;
-  max-width: min(420px, calc(100vw - 32px));
-  padding: 10px 16px;
-  border-radius: 999px;
-  transform: translateX(-50%);
-  box-shadow: 0 16px 44px rgba(15, 23, 42, 0.14);
-}
-
-.el-message .el-message__content {
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-.el-notification .el-notification__title {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.el-notification .el-notification__content {
-  font-size: 14px;
-  line-height: 1.4;
-}
-
-.text-center {
-  text-align: center;
-}
-
-.flex {
-  display: flex;
-}
-
-.flex-center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.flex-between {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.flex-column {
-  display: flex;
-  flex-direction: column;
-}
-
-.flex-1 {
-  flex: 1;
-}
-
-.w-full {
-  width: 100%;
-}
-
-.h-full {
-  height: 100%;
-}
-
-.overflow-hidden {
-  overflow: hidden;
-}
-
-.overflow-auto {
-  overflow: auto;
-}
-
-.cursor-pointer {
-  cursor: pointer;
-}
-
-.select-none {
-  user-select: none;
-}
-
-@media (max-width: 768px) {
-  .el-message {
-    max-width: calc(100vw - 24px);
-  }
+  z-index: var(--z-max);
 }
 </style>
