@@ -232,6 +232,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/ai/keys", post(ai::api_key_handler::create).get(ai::api_key_handler::list))
         .route("/api/ai/keys/:id", put(ai::api_key_handler::update).delete(ai::api_key_handler::delete))
         .route("/api/ai/keys/:id/test", post(ai::api_key_handler::test))
+        .route("/api/ai/settings", get(ai::settings_handler::get).put(ai::settings_handler::update))
         .fallback(proxy)
         .with_state(state)
 }

@@ -145,6 +145,17 @@
           {{ t("settings.clearCache") }}
         </button>
       </section>
+
+      <section
+        class="settings-card ai-card"
+        @click="router.push('/settings/ai')"
+      >
+        <div class="settings-copy">
+          <div class="settings-kicker">AI</div>
+          <h2>{{ t("settings.aiAssistant") }}</h2>
+          <p>{{ t("settings.aiAssistantDesc") }}</p>
+        </div>
+      </section>
     </main>
   </div>
 </template>

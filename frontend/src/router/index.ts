@@ -113,6 +113,15 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
+    path: "/settings/ai",
+    name: "AiSettings",
+    component: () => import("@/pages/AiSettings.vue"),
+    meta: {
+      title: "AI 助手",
+      requiresAuth: true,
+    },
+  },
+  {
     path: "/admin/logs",
     name: "LogMonitor",
     component: () => import("@/pages/LogMonitor.vue"),
