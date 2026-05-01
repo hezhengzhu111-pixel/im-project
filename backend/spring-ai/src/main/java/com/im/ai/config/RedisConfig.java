@@ -26,38 +26,33 @@ public class RedisConfig {
 
         try {
             var template = new StringRedisTemplate(connectionFactory);
-            template.opsForStream().createGroup(TASK_STREAM_KEY, ReadOffset.from("0-0"), CONSUMER_GROUP);
+            template.afterPropertiesSet();
+            template.opsForStream()
+                    .createGroup(TASK_STREAM_KEY, ReadOffset.from("0-0"), CONSUMER_GROUP);
         } catch (Exception e) {
-            // Group already exists, ignore
+            // Group already exists, ignore silently
         }
 
-        var options = StreamMessageListenerContainer.StreamMessageListenerContainerOptions
+        var options = StreamMessageListenerContainer
+                .StreamMessageListenerContainerOptions
                 .builder()
                 .pollTimeout(Duration.ofSeconds(5))
                 .targetType(String.class)
                 .build();
 
-        var container = StreamMessageListenerContainer.create(connectionFactory, options);
+        var container = StreamMessageListenerContainer
+                .create(connectionFactory, options);
 
-        var offset = Consumer.from(CONSUMER_GROUP, CONSUMER_NAME);
-        var streamOffset = StreamOffset.create(TASK_STREAM_KEY, ReadOffset.lastConsumed());
+        var request = StreamMessageListenerContainer.StreamReadRequest
+                .builder(StreamOffset.create(TASK_STREAM_KEY, ReadOffset.lastConsumed()))
+                .consumer(Consumer.from(CONSUMER_GROUP, CONSUMER_NAME))
+                .autoAcknowledge(true)
+                .cancelOnError(err -> false)
+                .build();
 
-        container.register(ContainerBuilder.defaultHandler(offset, streamOffset, listener));
+        container.register(request, listener);
         container.start();
 
         return container;
-    }
-}
-
-// Helper class for the container builder pattern
-class ContainerBuilder {
-    static StreamMessageListenerContainer.StreamReadRequest<String> defaultHandler(
-            Consumer consumer,
-            StreamOffset<String> offset,
-            TaskConsumer listener) {
-        return StreamMessageListenerContainer.StreamReadRequest.builder(offset)
-                .consumer(consumer)
-                .autoAcknowledge(true)
-                .build();
     }
 }

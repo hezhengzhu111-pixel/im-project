@@ -1,52 +1,48 @@
 package com.im.ai.task;
 
+import com.im.ai.handler.AutoReplyHandler;
+import com.im.ai.handler.RagParseHandler;
+import com.im.ai.handler.RagQueryHandler;
+import com.im.ai.handler.SummaryHandler;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Component
 public class TaskRouter {
 
-    public void handleSummary(Map<String, String> fields) {
-        String conversationId = fields.getOrDefault("conversationId", "");
-        String userId = fields.getOrDefault("userId", "");
-        String messages = fields.getOrDefault("messages", "[]");
-        String taskId = fields.getOrDefault("taskId", "0");
-        String provider = fields.getOrDefault("provider", "deepseek");
-        String key = fields.getOrDefault("key", "");
+    private final SummaryHandler summaryHandler;
+    private final AutoReplyHandler autoReplyHandler;
+    private final RagParseHandler ragParseHandler;
+    private final RagQueryHandler ragQueryHandler;
+    private final ExecutorService executor;
 
-        System.out.printf("[SUMMARY] task=%s user=%s conv=%s provider=%s%n", taskId, userId, conversationId, provider);
-        // TODO: Step 6 - Full LLM call implementation
+    public TaskRouter(SummaryHandler summaryHandler,
+                      AutoReplyHandler autoReplyHandler,
+                      RagParseHandler ragParseHandler,
+                      RagQueryHandler ragQueryHandler) {
+        this.summaryHandler = summaryHandler;
+        this.autoReplyHandler = autoReplyHandler;
+        this.ragParseHandler = ragParseHandler;
+        this.ragQueryHandler = ragQueryHandler;
+        this.executor = Executors.newFixedThreadPool(4);
+    }
+
+    public void handleSummary(Map<String, String> fields) {
+        executor.submit(() -> summaryHandler.handle(fields));
     }
 
     public void handleAutoReply(Map<String, String> fields) {
-        String conversationId = fields.getOrDefault("conversationId", "");
-        String userId = fields.getOrDefault("userId", "");
-        String messages = fields.getOrDefault("messages", "[]");
-        String persona = fields.getOrDefault("persona", "");
-        String taskId = fields.getOrDefault("taskId", "0");
-        String provider = fields.getOrDefault("provider", "deepseek");
-        String key = fields.getOrDefault("key", "");
-
-        System.out.printf("[AUTO_REPLY] task=%s user=%s conv=%s persona=%s%n", taskId, userId, conversationId, persona);
-        // TODO: Step 7 - Full auto-reply implementation
+        executor.submit(() -> autoReplyHandler.handle(fields));
     }
 
     public void handleRagParse(Map<String, String> fields) {
-        String docId = fields.getOrDefault("docId", "");
-        String userId = fields.getOrDefault("userId", "");
-        String ossUrl = fields.getOrDefault("ossUrl", "");
-
-        System.out.printf("[RAG_PARSE] doc=%s user=%s url=%s%n", docId, userId, ossUrl);
-        // TODO: Step 8 - Document parsing + chunking + embedding
+        executor.submit(() -> ragParseHandler.handle(fields));
     }
 
     public void handleRagQuery(Map<String, String> fields) {
-        String userId = fields.getOrDefault("userId", "");
-        String query = fields.getOrDefault("query", "");
-        String groupId = fields.getOrDefault("groupId", "");
-
-        System.out.printf("[RAG_QUERY] user=%s group=%s query=%s%n", userId, groupId, query);
-        // TODO: Step 8 - Vector search + augmented LLM call
+        executor.submit(() -> ragQueryHandler.handle(fields));
     }
 }
