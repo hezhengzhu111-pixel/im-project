@@ -129,33 +129,40 @@
         </div>
       </div>
 
-      <el-descriptions :column="1" border class="session-info-card">
-        <el-descriptions-item :label="t('dialog.conversationId')">
-          {{ currentSession.id }}
-        </el-descriptions-item>
+      <div class="session-info-card">
+        <div class="info-row">
+          <span class="info-label">{{ t('dialog.conversationId') }}</span>
+          <span class="info-value">{{ currentSession.id }}</span>
+        </div>
         <template v-if="currentSession.type === 'private'">
-          <el-descriptions-item :label="t('dialog.userId')">
-            {{ currentSession.targetId }}
-          </el-descriptions-item>
-          <el-descriptions-item :label="t('dialog.username')">
-            {{ sessionInfoFriend?.username || "-" }}
-          </el-descriptions-item>
-          <el-descriptions-item :label="t('dialog.remark')">
-            {{ sessionInfoFriend?.remark || "-" }}
-          </el-descriptions-item>
+          <div class="info-row">
+            <span class="info-label">{{ t('dialog.userId') }}</span>
+            <span class="info-value">{{ currentSession.targetId }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ t('dialog.username') }}</span>
+            <span class="info-value">{{ sessionInfoFriend?.username || "-" }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ t('dialog.remark') }}</span>
+            <span class="info-value">{{ sessionInfoFriend?.remark || "-" }}</span>
+          </div>
         </template>
         <template v-else>
-          <el-descriptions-item :label="t('dialog.groupId')">
-            {{ currentSession.targetId }}
-          </el-descriptions-item>
-          <el-descriptions-item :label="t('dialog.members')">
-            {{ sessionInfoMemberCount }}
-          </el-descriptions-item>
-          <el-descriptions-item :label="t('dialog.description')">
-            {{ sessionInfoGroup?.description || sessionInfoGroup?.announcement || "-" }}
-          </el-descriptions-item>
+          <div class="info-row">
+            <span class="info-label">{{ t('dialog.groupId') }}</span>
+            <span class="info-value">{{ currentSession.targetId }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ t('dialog.members') }}</span>
+            <span class="info-value">{{ sessionInfoMemberCount }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ t('dialog.description') }}</span>
+            <span class="info-value">{{ sessionInfoGroup?.description || sessionInfoGroup?.announcement || "-" }}</span>
+          </div>
         </template>
-      </el-descriptions>
+      </div>
 
       <template v-if="currentSession.type === 'group'">
         <div class="member-section-title">{{ t("dialog.members") }}</div>
@@ -176,7 +183,7 @@
             class="member-item"
           >
             <div class="member-avatar-wrap">
-              <el-avatar :size="34" :src="member.avatar">
+              <el-avatar :size="36" :src="member.avatar">
                 {{ (member.nickname || member.username || member.userId).charAt(0) }}
               </el-avatar>
               <span class="member-online-dot" :class="{ online: member.online }"></span>
@@ -186,12 +193,14 @@
                 <span class="member-name">
                   {{ member.nickname || member.username || member.userId }}
                 </span>
-                <span class="member-status" :class="{ online: member.online }">
-                  {{ member.online ? t("chat.onlineNow") : t("chat.offline") }}
+                <span class="role-badge" :class="member.role === 'OWNER' ? 'owner' : 'member'">
+                  {{ member.role === 'OWNER' ? '群主' : '成员' }}
                 </span>
               </div>
               <div class="member-subtitle">
-                {{ member.role }} · {{ t("dialog.joined") }}
+                <span class="member-status-dot" :class="{ online: member.online }"></span>
+                {{ member.online ? t("chat.onlineNow") : t("chat.offline") }}
+                · {{ t("dialog.joined") }}
                 {{ formatMessageTime(member.joinTime) }}
               </div>
             </div>
@@ -468,10 +477,15 @@ const formatMessageTime = (value?: string) => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px;
+  padding: 10px 12px;
   border: 1px solid var(--chat-panel-border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: rgba(248, 250, 252, 0.72);
+  transition: background-color 0.15s ease;
+}
+
+.member-item:hover {
+  background: rgba(248, 250, 252, 0.92);
 }
 
 .member-item + .member-item {
@@ -523,6 +537,40 @@ const formatMessageTime = (value?: string) => {
   color: var(--chat-success);
 }
 
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.role-badge.owner {
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.1);
+}
+
+.role-badge.member {
+  color: var(--chat-text-tertiary);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.member-status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.member-status-dot.online {
+  background: var(--chat-success);
+}
+
 .session-info-subtitle,
 .member-subtitle {
   color: var(--chat-text-tertiary);
@@ -543,6 +591,38 @@ const formatMessageTime = (value?: string) => {
 
 .session-info-card {
   margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--chat-panel-border);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.5);
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 0;
+}
+
+.info-row + .info-row {
+  border-top: 1px solid var(--border-light);
+}
+
+.info-label {
+  font-size: 13px;
+  color: var(--chat-text-tertiary);
+  flex-shrink: 0;
+}
+
+.info-value {
+  font-size: 13px;
+  color: var(--chat-text-primary);
+  font-weight: 500;
+  text-align: right;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .member-section-title {
