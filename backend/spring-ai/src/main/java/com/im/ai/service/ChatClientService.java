@@ -28,6 +28,9 @@ public class ChatClientService {
         String baseUrl = PROVIDER_BASE_URLS.getOrDefault(
                 provider.toLowerCase(), "https://api.deepseek.com/v1");
 
+        System.out.println("[ChatClientService] provider=" + provider + " baseUrl=" + baseUrl
+                + " keyLen=" + (apiKey != null ? apiKey.length() : 0));
+
         var api = OpenAiApi.builder()
                 .baseUrl(baseUrl)
                 .apiKey(apiKey)

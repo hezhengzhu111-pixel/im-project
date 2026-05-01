@@ -57,7 +57,7 @@ pub async fn create(
     .await?;
 
     Ok(Json(ApiResponse::success(json!({
-        "id": id,
+        "id": id.to_string(),
         "provider": provider,
         "keyName": body.key_name,
         "maskedKey": mask_key(body.api_key.trim()),
@@ -85,7 +85,7 @@ pub async fn list(
         .map(|row| {
             let masked = mask_from_encrypted(&row.encrypted_api_key);
             json!({
-                "id": row.id,
+                "id": row.id.to_string(),
                 "provider": row.provider,
                 "keyName": row.key_name,
                 "maskedKey": masked,
@@ -137,7 +137,7 @@ pub async fn update(
 
     let masked = mask_from_encrypted(&encrypted);
     Ok(Json(ApiResponse::success(json!({
-        "id": id,
+        "id": id.to_string(),
         "keyName": key_name,
         "maskedKey": masked,
     }))))
@@ -187,7 +187,7 @@ pub async fn test(
             .execute(&state.db)
             .await;
             Ok(Json(ApiResponse::success(json!({
-                "id": id,
+                "id": id.to_string(),
                 "validateStatus": status,
             }))))
         }

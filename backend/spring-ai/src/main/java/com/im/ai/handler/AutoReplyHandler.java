@@ -34,7 +34,9 @@ public class AutoReplyHandler {
         long userId = Long.parseLong(userIdStr);
         long taskId = Long.parseLong(taskIdStr);
 
-        System.out.println("[AUTO_REPLY] Starting task=" + taskId + " user=" + userId + " provider=" + provider);
+        System.out.println("[AUTO_REPLY] Starting task=" + taskId + " user=" + userId + " provider=" + provider
+                + " keyLen=" + (apiKey != null ? apiKey.length() : 0)
+                + " keyPrefix=" + (apiKey != null && apiKey.length() > 5 ? apiKey.substring(0, 5) + "..." : "null"));
 
         try {
             List<Map<String, String>> messages = objectMapper.readValue(messagesJson, List.class);
