@@ -22,6 +22,7 @@ pub enum MessageType {
     Voice,
     Video,
     System,
+    AiReply,
 }
 
 impl MessageType {
@@ -32,6 +33,7 @@ impl MessageType {
             "VOICE" => Self::Voice,
             "VIDEO" => Self::Video,
             "SYSTEM" => Self::System,
+            "AI_REPLY" => Self::AiReply,
             _ => Self::Text,
         }
     }
@@ -44,6 +46,7 @@ impl MessageType {
             Self::Voice => 4,
             Self::Video => 5,
             Self::System => 7,
+            Self::AiReply => 6,
         }
     }
 
@@ -55,6 +58,7 @@ impl MessageType {
             Self::Voice => "VOICE",
             Self::Video => "VIDEO",
             Self::System => "SYSTEM",
+            Self::AiReply => "AI_REPLY",
         }
     }
 }
@@ -132,6 +136,12 @@ pub struct MessageDto {
     pub created_at: String,
     pub updated_time: Option<String>,
     pub updated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_ai_generated: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_model: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

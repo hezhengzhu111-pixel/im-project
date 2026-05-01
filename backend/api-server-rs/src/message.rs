@@ -774,6 +774,9 @@ fn build_message(config: &AppConfig, identity: &Identity, input: BuildMessageInp
         created_at: now,
         updated_time: None,
         updated_at: None,
+        is_ai_generated: None,
+        ai_provider: None,
+        ai_model: None,
     }
 }
 
@@ -1679,6 +1682,7 @@ fn message_from_row(row: &sqlx::mysql::MySqlRow) -> MessageDto {
             3 => "FILE",
             4 => "VOICE",
             5 => "VIDEO",
+            6 => "AI_REPLY",
             7 => "SYSTEM",
             _ => "TEXT",
         }
@@ -1716,6 +1720,9 @@ fn message_from_row(row: &sqlx::mysql::MySqlRow) -> MessageDto {
         created_at: created.and_utc().to_rfc3339(),
         updated_time: Some(updated.and_utc().to_rfc3339()),
         updated_at: Some(updated.and_utc().to_rfc3339()),
+        is_ai_generated: None,
+        ai_provider: None,
+        ai_model: None,
     }
 }
 
@@ -1864,6 +1871,9 @@ mod tests {
             created_at: "2026-04-28T00:00:00Z".to_string(),
             updated_time: None,
             updated_at: None,
+            is_ai_generated: None,
+            ai_provider: None,
+            ai_model: None,
         };
         let event = build_message_created_event("g_20", &message);
         let message_json = serde_json::to_string(&message)?;

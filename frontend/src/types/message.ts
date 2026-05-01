@@ -4,7 +4,8 @@ export type MessageType =
   | "FILE"
   | "VIDEO"
   | "VOICE"
-  | "SYSTEM";
+  | "SYSTEM"
+  | "AI_REPLY";
 
 export type MessageStatus =
   | "SENDING"
@@ -46,6 +47,9 @@ export interface Message {
   readByCount?: number;
   readStatus?: number;
   readAt?: string;
+  isAiGenerated?: boolean;
+  aiProvider?: string;
+  aiModel?: string;
 }
 
 export interface RawMessageDTO {
@@ -111,6 +115,12 @@ export interface RawMessageDTO {
   readStatus?: number | string;
   readAt?: string;
   read_at?: string;
+  isAiGenerated?: boolean;
+  is_ai_generated?: boolean;
+  aiProvider?: string;
+  ai_provider?: string;
+  aiModel?: string;
+  ai_model?: string;
 }
 
 export interface MessageConfig {

@@ -71,6 +71,47 @@ CREATE TABLE IF NOT EXISTS user_settings (
   PRIMARY KEY (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户设置表';
 
+CREATE TABLE IF NOT EXISTS user_ai_api_keys (
+  id BIGINT NOT NULL COMMENT 'API Key ID',
+  user_id BIGINT NOT NULL COMMENT '用户ID',
+  provider VARCHAR(32) NOT NULL COMMENT '模型提供商：deepseek/minimax',
+  encrypted_api_key VARCHAR(512) NOT NULL COMMENT 'AES-256-GCM 加密的 API Key',
+  key_name VARCHAR(128) DEFAULT '' COMMENT '用户自定义标签',
+  is_active TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用：1-启用，0-禁用',
+  last_validated_at BIGINT DEFAULT NULL COMMENT '最后验证时间（epoch ms）',
+  validate_status VARCHAR(32) DEFAULT '' COMMENT '验证状态：ok/invalid/insufficient/error',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  KEY idx_user_ai_keys_user_provider (user_id, provider)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户 AI API Key 表';
+
+CREATE TABLE IF NOT EXISTS user_ai_settings (
+  user_id BIGINT NOT NULL COMMENT '用户ID',
+  auto_reply_enabled TINYINT NOT NULL DEFAULT 0 COMMENT '自动回复开关：1-开启，0-关闭',
+  auto_reply_persona TEXT DEFAULT '' COMMENT 'AI 回复人设 Prompt',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户 AI 设置表';
+
+CREATE TABLE IF NOT EXISTS user_knowledge_docs (
+  id BIGINT NOT NULL COMMENT '文档ID',
+  user_id BIGINT NOT NULL COMMENT '上传用户ID',
+  group_id BIGINT DEFAULT NULL COMMENT '群组ID（NULL=个人知识库）',
+  file_name VARCHAR(256) NOT NULL COMMENT '原始文件名',
+  file_type VARCHAR(32) NOT NULL COMMENT '文件类型：pdf/docx/txt',
+  file_size BIGINT NOT NULL COMMENT '文件大小（字节）',
+  oss_url VARCHAR(512) NOT NULL COMMENT 'OSS 存储地址',
+  chunk_count INT DEFAULT 0 COMMENT '切片数量',
+  parse_status VARCHAR(32) NOT NULL DEFAULT 'pending' COMMENT '解析状态：pending/parsing/done/failed',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  KEY idx_knowledge_docs_user (user_id),
+  KEY idx_knowledge_docs_group (group_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户知识库文档表';
+
 USE service_group_service_db;
 
 CREATE TABLE IF NOT EXISTS im_group (

@@ -60,6 +60,22 @@ pub fn group_conversation_id(group_id: i64) -> String {
     format!("g_{group_id}")
 }
 
+pub fn ai_auto_reply_key(user_id: i64) -> String {
+    format!("im:ai:auto_reply:{user_id}")
+}
+
+pub fn ai_anti_reentry_key(user_id: i64, conv_id: &str) -> String {
+    format!("im:ai:antireentry:{user_id}:{conv_id}")
+}
+
+pub fn ai_stream_channel(task_id: i64) -> String {
+    format!("im:ai:stream:sub:{task_id}")
+}
+
+pub fn ai_summary_cache_key(conv_id: &str, params_hash: &str) -> String {
+    format!("im:ai:summary:{conv_id}:{params_hash}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
