@@ -23,6 +23,7 @@ APP_SERVICES = ["im-server", "im-api-server", "im-frontend"]
 REQUIRED_MIDDLEWARE_SERVICES = [
     "im-mysql",
     "im-redis",
+    "im-redis-shared",
     "im-redis-private-hot",
     "im-redis-private-hot-2",
     "im-redis-private-hot-3",

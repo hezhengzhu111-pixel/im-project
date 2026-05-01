@@ -15,6 +15,7 @@ from deploy_utils import (
 MIDDLEWARE_SERVICES = [
     "im-mysql",
     "im-redis",
+    "im-redis-shared",
     "im-redis-private-hot",
     "im-redis-private-hot-2",
     "im-redis-private-hot-3",
@@ -62,6 +63,7 @@ def main() -> None:
     if not args.no_wait:
         wait_for_service_ready(config, "im-mysql")
         wait_for_service_ready(config, "im-redis")
+        wait_for_service_ready(config, "im-redis-shared")
         wait_for_service_ready(config, "im-redis-private-hot")
         wait_for_service_ready(config, "im-redis-private-hot-2")
         wait_for_service_ready(config, "im-redis-private-hot-3")
