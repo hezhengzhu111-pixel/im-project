@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.stream.Consumer;
+import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
 import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -20,7 +21,7 @@ public class RedisConfig {
     private static final String CONSUMER_NAME = "worker-1";
 
     @Bean
-    public StreamMessageListenerContainer<String, ?> streamContainer(
+    public StreamMessageListenerContainer<String, MapRecord<String, String, String>> streamContainer(
             RedisConnectionFactory connectionFactory,
             TaskConsumer listener) {
 
@@ -37,11 +38,11 @@ public class RedisConfig {
                 .StreamMessageListenerContainerOptions
                 .builder()
                 .pollTimeout(Duration.ofSeconds(5))
-                .targetType(String.class)
+                .serializer(new org.springframework.data.redis.serializer.StringRedisSerializer())
                 .build();
 
         var container = StreamMessageListenerContainer
-                .create(connectionFactory, options);
+                .<String, MapRecord<String, String, String>>create(connectionFactory, options);
 
         var request = StreamMessageListenerContainer.StreamReadRequest
                 .builder(StreamOffset.create(TASK_STREAM_KEY, ReadOffset.lastConsumed()))

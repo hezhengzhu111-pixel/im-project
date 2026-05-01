@@ -7,12 +7,9 @@ import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class ChatClientService {
-
-    private final OpenAiChatModel templateModel;
 
     private static final Map<String, String> PROVIDER_BASE_URLS = Map.of(
             "deepseek", "https://api.deepseek.com/v1",
@@ -20,8 +17,7 @@ public class ChatClientService {
             "minimax", "https://api.minimax.chat/v1"
     );
 
-    public ChatClientService(OpenAiChatModel templateModel) {
-        this.templateModel = templateModel;
+    public ChatClientService() {
     }
 
     public ChatClient forUser(String provider, String apiKey) {
