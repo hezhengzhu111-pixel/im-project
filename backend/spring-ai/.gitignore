@@ -1,0 +1,5 @@
+target/
+!.mvn/wrapper/maven-wrapper.properties
+*.class
+*.jar
+*.war
