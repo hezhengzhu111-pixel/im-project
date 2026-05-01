@@ -47,9 +47,9 @@ async fn trigger_if_enabled(
     let enabled: Option<String> = redis::cmd("HGET")
         .arg(keys::ai_auto_reply_key(target_user_id))
         .arg("enabled")
-        .query_async(redis)
+        .query_async::<Option<String>>(redis)
         .await
-        .map_err(|_| AppError::Upstream("redis error".to_string()))?;
+        .map_err(|e| AppError::Upstream(format!("redis hget error: {e}")))?;
 
     let is_enabled = enabled.as_deref() == Some("1");
     if !is_enabled {
@@ -72,15 +72,15 @@ async fn trigger_if_enabled(
     }
 
     let anti_key = keys::ai_anti_reentry_key(target_user_id, conversation_id);
-    let locked: Option<i32> = redis::cmd("SET")
+    let locked: Option<String> = redis::cmd("SET")
         .arg(&anti_key)
         .arg("1")
         .arg("PX")
         .arg(config.ai_anti_reentry_ms)
         .arg("NX")
-        .query_async(redis)
+        .query_async::<Option<String>>(redis)
         .await
-        .map_err(|_| AppError::Upstream("redis error".to_string()))?;
+        .map_err(|e| AppError::Upstream(format!("redis set nx error: {e}")))?;
 
     if locked.is_none() {
         return Ok(());
