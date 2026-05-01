@@ -85,6 +85,16 @@
           </button>
 
           <div class="chat-header-side">
+            <button
+              v-if="currentSession.type === 'private'"
+              type="button"
+              class="chat-action-button auto-reply-toggle interactive-reset"
+              :class="{ active: autoReplyEnabled }"
+              :title="autoReplyEnabled ? t('chat.autoReplyOff') : t('chat.autoReplyOn')"
+              @click="toggleAutoReply"
+            >
+              <span class="auto-reply-label">AI</span>
+            </button>
             <div class="chat-actions">
               <el-dropdown trigger="click" @command="handleSessionAction">
                 <button
@@ -171,6 +181,7 @@ import ChatDialogs from "@/features/chat/ChatDialogs.vue";
 import ChatMessageList from "@/features/chat/ChatMessageList.vue";
 import ChatSidebarPanel from "@/features/chat/ChatSidebarPanel.vue";
 import {useErrorHandler} from "@/hooks/useErrorHandler";
+import {aiService} from "@/services/ai";
 import {groupService} from "@/services/group";
 import {useChatStore} from "@/stores/chat";
 import {useI18nStore} from "@/stores/i18n";
@@ -454,6 +465,31 @@ const handleRequestMembers = () => {
     fetchComposerMembers(session.targetId);
   }
 };
+
+const autoReplyEnabled = ref(false);
+
+const fetchAutoReplyStatus = async () => {
+  try {
+    const response = await aiService.getSettings();
+    autoReplyEnabled.value = response.data.autoReplyEnabled;
+  } catch {
+    /* ignore */
+  }
+};
+
+const toggleAutoReply = async () => {
+  const next = !autoReplyEnabled.value;
+  try {
+    await aiService.updateSettings({ autoReplyEnabled: next });
+    autoReplyEnabled.value = next;
+  } catch (err) {
+    capture(err, "Failed to toggle auto-reply");
+  }
+};
+
+onMounted(() => {
+  fetchAutoReplyStatus();
+});
 
 const sendMediaMessage = async (payload: {
   type: "IMAGE" | "FILE" | "VIDEO" | "VOICE";
