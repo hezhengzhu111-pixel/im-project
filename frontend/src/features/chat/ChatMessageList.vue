@@ -24,6 +24,7 @@
       :style="messageScrollerStyle"
     >
       <div class="message-scroller-inner">
+        <div class="chat-timeline-inner">
         <div
           v-for="(item, index) in renderItems"
           :key="item.id"
@@ -56,6 +57,7 @@
             @play-video="playVideo"
             @media-loaded="handleMediaLoaded"
           />
+        </div>
         </div>
       </div>
     </div>
@@ -935,6 +937,12 @@ onUnmounted(() => {
   width: 100%;
 }
 
+.chat-timeline-inner {
+  max-width: var(--chat-timeline-max-width);
+  margin: 0 auto;
+  width: 100%;
+}
+
 .message-scroller.is-short-list .message-scroller-inner {
   transform: translateY(var(--message-top-offset));
 }
@@ -1036,6 +1044,10 @@ onUnmounted(() => {
 @media (max-width: 768px) {
   .message-list {
     padding: 12px 10px 14px;
+  }
+
+  .chat-timeline-inner {
+    max-width: 100%;
   }
 
   .message-empty-card {
