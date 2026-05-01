@@ -37,9 +37,8 @@ public class ChatClientService {
                 .temperature(0.7)
                 .maxTokens(4096);
 
-        if (modelName != null && !modelName.isBlank()) {
-            optionsBuilder.model(modelName);
-        }
+        optionsBuilder.model(modelName != null && !modelName.isBlank()
+                ? modelName : getDefaultModel(provider));
 
         var chatModel = OpenAiChatModel.builder()
                 .openAiApi(api)
@@ -47,5 +46,14 @@ public class ChatClientService {
                 .build();
 
         return ChatClient.builder(chatModel).build();
+    }
+
+    private static String getDefaultModel(String provider) {
+        return switch (provider.toLowerCase()) {
+            case "deepseek" -> "deepseek-chat";
+            case "minimax" -> "abab6.5s-chat";
+            case "openai" -> "gpt-4o-mini";
+            default -> "deepseek-chat";
+        };
     }
 }
