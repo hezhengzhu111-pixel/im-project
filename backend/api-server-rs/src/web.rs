@@ -233,6 +233,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/ai/keys/:id", put(ai::api_key_handler::update).delete(ai::api_key_handler::delete))
         .route("/api/ai/keys/:id/test", post(ai::api_key_handler::test))
         .route("/api/ai/settings", get(ai::settings_handler::get).put(ai::settings_handler::update))
+        .route("/api/ai/summary", post(ai::summary_handler::create))
+        .route("/api/ai/stream/:task_id", get(ai::stream_bridge::subscribe))
         .fallback(proxy)
         .with_state(state)
 }
