@@ -97,6 +97,27 @@ pub async fn handle(
     message::write_private_message_hot(&mut hot_redis, &conv_id, &ai_message, &event)
     .await?;
 
+    if state.config.ai_enabled {
+        let auto_redis = state.redis_manager.clone();
+        let auto_config = state.config.clone();
+        let auto_db = state.db.clone();
+        let auto_msg = ai_message.clone();
+        let auto_conv = conv_id.clone();
+        tracing::info!(target = %receiver_id, conv = %auto_conv, "internal_reply: triggering auto-reply for receiver");
+        tokio::spawn(async move {
+            let mut redis = auto_redis;
+            crate::ai::auto_reply::maybe_trigger(
+                &mut redis,
+                &auto_db,
+                &auto_config,
+                receiver_id,
+                &auto_conv,
+                &auto_msg,
+            )
+            .await;
+        });
+    }
+
     Ok(Json(ApiResponse::success(json!({
         "messageId": msg_id,
         "status": "delivered",

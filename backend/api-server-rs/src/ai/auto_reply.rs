@@ -16,6 +16,7 @@ pub async fn maybe_trigger(
     conversation_id: &str,
     original_message: &MessageDto,
 ) {
+    tracing::info!(target = %target_user_id, "auto_reply: checking trigger");
     if let Err(e) = trigger_if_enabled(
         redis, db, config, target_user_id, conversation_id, original_message,
     )
