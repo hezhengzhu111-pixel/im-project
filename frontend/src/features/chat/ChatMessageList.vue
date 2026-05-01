@@ -76,7 +76,7 @@
       @click.self="contextMenu.close()"
     >
       <div
-        v-if="contextTargetMessage.messageType === 'TEXT'"
+        v-if="contextTargetMessage.messageType === 'TEXT' || contextTargetMessage.messageType === 'AI_REPLY'"
         class="menu-item"
         @click="handleCopy"
       >
@@ -146,6 +146,8 @@ type MessageListItemView = {
   fileName?: string;
   fileSizeLabel?: string;
   durationLabel?: string;
+  isAiGenerated?: boolean;
+  aiProvider?: string;
 };
 
 type MessageRenderItem = {
@@ -373,6 +375,8 @@ const buildRenderDigest = (message: Message) => {
     message.thumbnailUrl || "",
     message.duration || "",
     message.sendTime || "",
+    message.isAiGenerated ? "1" : "",
+    message.aiProvider || "",
     locale.value,
   ].join("|");
 };
@@ -420,6 +424,8 @@ const buildMessageView = (message: Message): MessageListItemView => {
       ? formatFileSize(message.mediaSize)
       : t("message.sizeUnknown"),
     durationLabel: formatDuration(message.duration),
+    isAiGenerated: message.isAiGenerated,
+    aiProvider: message.aiProvider,
   };
 
   messageViewCache.set(key, view);

@@ -146,3 +146,22 @@ body {
     --chat-max-bubble-width: min(84%, calc(100vw - 72px));
   }
 }
+
+.message-item.is-ai .message-bubble {
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.1);
+  background: linear-gradient(135deg, var(--chat-bubble-other), rgba(37, 99, 235, 0.03));
+}
+
+.ai-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 6px;
+  margin-right: 6px;
+  background: var(--chat-accent-soft);
+  color: var(--chat-accent);
+  vertical-align: middle;
+  letter-spacing: 0.03em;
+}

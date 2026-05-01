@@ -6,6 +6,7 @@
       'is-mine': isMine,
       'is-system': isSystemMessage,
       'is-status-only': isRecalled || isDeleted,
+      'is-ai': isAiGenerated,
     }"
     @contextmenu.prevent="handleContextMenu"
   >
@@ -34,6 +35,11 @@
             <div v-else-if="isDeleted" class="status-copy">{{ t("message.deleted") }}</div>
 
             <div v-else-if="messageType === 'TEXT'" class="text-content">
+              <span v-html="renderedContent"></span>
+            </div>
+
+            <div v-else-if="messageType === 'AI_REPLY'" class="text-content">
+              <span class="ai-badge">AI</span>
               <span v-html="renderedContent"></span>
             </div>
 
@@ -164,6 +170,8 @@ interface Props {
   isDeleted: boolean;
   messageType: MessageType;
   content: string;
+  isAiGenerated?: boolean;
+  aiProvider?: string;
   senderName?: string;
   senderAvatar?: string;
   showSenderLabel?: boolean;
