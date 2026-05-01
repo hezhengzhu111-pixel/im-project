@@ -1,3 +1,4 @@
+use crate::ai;
 use crate::auth::{identity_from_headers, is_gateway_whitelist};
 use crate::auth_api;
 use crate::config::AppConfig;
@@ -228,6 +229,9 @@ pub fn router(state: AppState) -> Router {
             axum::routing::put(user::update_settings),
         )
         .route("/websocket/:user_id", get(websocket_proxy))
+        .route("/api/ai/keys", post(ai::api_key_handler::create).get(ai::api_key_handler::list))
+        .route("/api/ai/keys/:id", put(ai::api_key_handler::update).delete(ai::api_key_handler::delete))
+        .route("/api/ai/keys/:id/test", post(ai::api_key_handler::test))
         .fallback(proxy)
         .with_state(state)
 }
