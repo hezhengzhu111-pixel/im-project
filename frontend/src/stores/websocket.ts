@@ -470,6 +470,23 @@ export const useWebSocketStore = defineStore("websocket", () => {
           await chatStore.applyReadReceipt(data.data);
         }
         return;
+      case "FRIEND_REQUEST":
+        await queueContactRefresh({
+          loadFriendRequests: true,
+          notificationTitle: "Friend request",
+          notificationMessage: "You have a new friend request",
+          notificationType: "info",
+        });
+        return;
+      case "FRIEND_ACCEPTED":
+        await queueContactRefresh({
+          loadFriends: true,
+          loadSessions: true,
+          notificationTitle: "Friend accepted",
+          notificationMessage: "Your friend request was accepted",
+          notificationType: "success",
+        });
+        return;
       case "SYSTEM": {
         if (!data.data) {
           return;

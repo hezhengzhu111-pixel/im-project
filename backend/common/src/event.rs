@@ -9,6 +9,8 @@ pub enum ImEventType {
     MessageRead,
     MessageRecalled,
     MessageDeleted,
+    FriendRequestCreated,
+    FriendRequestAccepted,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

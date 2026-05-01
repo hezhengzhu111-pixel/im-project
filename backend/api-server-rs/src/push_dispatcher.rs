@@ -294,6 +294,25 @@ async fn build_push(
                 user_ids,
             }))
         }
+        ImEventType::FriendRequestCreated | ImEventType::FriendRequestAccepted => {
+            let kind = match event.event_type {
+                ImEventType::FriendRequestCreated => "FRIEND_REQUEST",
+                _ => "FRIEND_ACCEPTED",
+            };
+            let data = serde_json::to_value(event)?;
+            let mut user_ids = Vec::new();
+            if let Some(target) = parse_i64_option(event.target_user_id.as_deref()) {
+                user_ids.push(target);
+            }
+            if user_ids.is_empty() {
+                return Ok(None);
+            }
+            Ok(Some(PushPlan {
+                kind: kind.to_string(),
+                data,
+                user_ids,
+            }))
+        }
     }
 }
 

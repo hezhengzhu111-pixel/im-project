@@ -10,7 +10,8 @@ use axum::http::HeaderMap;
 use axum::Json;
 use chrono::NaiveDateTime;
 use im_rs_common::api::ApiResponse;
-use im_rs_common::{ids, keys};
+use im_rs_common::event::{ImEvent, ImEventType};
+use im_rs_common::{ids, keys, time};
 use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
 use serde::{de, Deserialize, Deserializer, Serialize};
@@ -177,6 +178,15 @@ pub async fn add_friend(
     .bind(normalize_optional(request.reason))
     .execute(&state.db)
     .await?;
+    {
+        let mut event = ImEvent::new(
+            ImEventType::FriendRequestCreated,
+            format!("friend_req:{}", request_id),
+        );
+        event.sender_id = Some(identity.user_id.to_string());
+        event.target_user_id = Some(target_user_id.to_string());
+        write_social_event(&state, &event).await;
+    }
     Ok(Json(ApiResponse::success(true)))
 }
 
@@ -223,6 +233,15 @@ pub async fn accept_friend(
     let mut redis = state.redis_manager.clone();
     cache_friendship(&mut redis, identity.user_id, applicant_id, true).await;
     cache_friendship(&mut redis, applicant_id, identity.user_id, true).await;
+    {
+        let mut event = ImEvent::new(
+            ImEventType::FriendRequestAccepted,
+            format!("friend_acc:{}", request.request_id),
+        );
+        event.sender_id = Some(identity.user_id.to_string());
+        event.target_user_id = Some(applicant_id.to_string());
+        write_social_event(&state, &event).await;
+    }
     Ok(Json(ApiResponse::success(true)))
 }
 
@@ -897,4 +916,41 @@ fn distinct(values: Vec<i64>) -> Vec<i64> {
         .into_iter()
         .filter(|value| seen.insert(*value))
         .collect()
+}
+
+#[allow(clippy::as_conversions, clippy::unwrap_used)]
+async fn write_social_event(state: &AppState, event: &ImEvent) {
+    let event_json = match serde_json::to_string(event) {
+        Ok(json) => json,
+        Err(error) => {
+            tracing::warn!(error = %error, event_id = %event.event_id, "failed to serialize social event");
+            return;
+        }
+    };
+    if let Some(private_hot) = state.private_redis_managers.first() {
+        let mut redis = private_hot.clone();
+        let member = format!("{}|{}", event.event_id, event.conversation_id);
+        let event_key = keys::event_key(&event.event_id);
+        let ttl_seconds: i64 = i64::try_from(keys::EVENT_TTL_SECONDS).unwrap_or(604800);
+        let score = time::now_ms() as f64;
+        let result: redis::RedisResult<()> = redis::pipe()
+            .atomic()
+            .set(&event_key, &event_json)
+            .ignore()
+            .expire(&event_key, ttl_seconds)
+            .ignore()
+            .zadd(
+                keys::pending_events_key(),
+                &member,
+                score,
+            )
+            .ignore()
+            .expire(keys::pending_events_key(), ttl_seconds)
+            .ignore()
+            .query_async(&mut redis)
+            .await;
+        if let Err(error) = result {
+            tracing::warn!(error = %error, event_id = %event.event_id, "failed to write social event to redis");
+        }
+    }
 }

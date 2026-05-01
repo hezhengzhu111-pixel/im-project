@@ -150,6 +150,7 @@ impl Processor {
                 self.flush_pending().await?;
                 self.apply_status(event).await?;
             }
+            ImEventType::FriendRequestCreated | ImEventType::FriendRequestAccepted => {}
         }
         Ok(())
     }
