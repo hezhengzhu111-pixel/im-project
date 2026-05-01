@@ -1,5 +1,43 @@
 <template>
   <div class="chat-container">
+    <!-- 顶部全局状态栏 -->
+    <div class="app-topbar">
+      <div class="topbar-left">
+        <el-avatar :size="32" :src="userStore.avatar" class="topbar-avatar">
+          {{ userStore.nickname?.[0] || "U" }}
+        </el-avatar>
+        <span class="topbar-username">{{ userStore.nickname || userStore.userInfo?.username || "User" }}</span>
+        <span class="status-dot" :class="{ offline: connectionStatus !== 'connected' }"></span>
+      </div>
+
+      <div class="topbar-center">
+        <button type="button" class="topbar-search-btn" :aria-label="t('chat.searchMessages')">
+          <el-icon :size="16"><Search /></el-icon>
+          <span class="topbar-search-text">{{ t("chat.searchMessages") }}</span>
+        </button>
+      </div>
+
+      <div class="topbar-right">
+        <span class="topbar-connection" :class="connectionStatus">
+          <span class="connection-dot-sm" :class="connectionStatus"></span>
+          {{ connectionStatusLabel }}
+        </span>
+        <button
+          type="button"
+          class="topbar-icon-btn"
+          :title="isDarkTheme ? '切换浅色模式' : '切换深色模式'"
+          @click="toggleTheme"
+        >
+          <el-icon :size="18">
+            <Moon v-if="!isDarkTheme" />
+            <Sunny v-else />
+          </el-icon>
+        </button>
+      </div>
+    </div>
+
+    <!-- 主体区域 -->
+    <div class="chat-body">
     <ChatSidebarPanel
       class="chat-shell-sidebar"
       :active-tab="activeTab"
@@ -10,6 +48,7 @@
       :pending-requests-count="pendingRequestsCount"
       :total-unread-count="chatStore.totalUnreadCount"
       :is-chat-active-on-mobile="isChatActiveOnMobile"
+      :sessions-loading="chatStore.loading"
       @change-tab="handleTabChange"
       @select-session="selectSession"
       @start-private-chat="startChat"
@@ -85,6 +124,19 @@
           </button>
 
           <div class="chat-header-side">
+            <div class="security-badge-wrap" v-if="currentSession.type === 'private'">
+              <EncryptionBadge
+                :expanded="showSecurityPanel"
+                @toggle="showSecurityPanel = !showSecurityPanel"
+              />
+              <Transition name="panel-fade">
+                <SecurityPanel
+                  v-if="showSecurityPanel"
+                  class="security-popover"
+                  @close="showSecurityPanel = false"
+                />
+              </Transition>
+            </div>
             <button
               v-if="currentSession.type === 'private'"
               type="button"
@@ -138,6 +190,7 @@
           :current-user-avatar="userStore.avatar"
           :loading-history="loadingMoreHistory"
           :opened-unread-count="currentSessionUnreadSnapshot"
+          :session-type="currentSession.type"
           @request-history="loadMoreHistory"
           @mark-read="tryAckRead"
           @show-group-readers="openGroupReadDialog"
@@ -152,6 +205,88 @@
         />
       </div>
     </div>
+
+    <!-- 右侧详情面板 -->
+    <div
+      v-if="showDetailPanel && currentSession"
+      class="chat-detail-panel"
+    >
+      <div class="detail-header">
+        <span class="detail-title">{{ t("chat.contactInfo") }}</span>
+        <button type="button" class="topbar-icon-btn" @click="showDetailPanel = false">
+          <el-icon><Close /></el-icon>
+        </button>
+      </div>
+
+      <div class="detail-body chat-soft-scrollbar">
+        <div class="detail-section">
+          <div class="detail-avatar-wrap">
+            <el-avatar :size="64" :src="headerAvatar">{{ headerAvatarText }}</el-avatar>
+            <span
+              v-if="currentSession.type === 'private'"
+              class="presence-dot detail-presence"
+              :class="{ online: currentSessionOnline }"
+            ></span>
+          </div>
+          <div class="detail-name">{{ currentSession.targetName }}</div>
+          <div class="detail-subtitle">
+            <span v-if="currentSession.type === 'private'" :class="{ online: currentSessionOnline }">
+              {{ currentSessionOnline ? t("chat.onlineNow") : t("chat.offline") }}
+            </span>
+            <span v-else>{{ t("chat.members", { count: groupMemberCount }) }}</span>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-section-title">会话信息</div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">类型</span>
+            <span class="detail-info-value">{{ currentSession.type === "private" ? "私聊" : "群聊" }}</span>
+          </div>
+          <div v-if="currentSession.type === 'group'" class="detail-info-row">
+            <span class="detail-info-label">成员数</span>
+            <span class="detail-info-value">{{ groupMemberCount }}</span>
+          </div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">置顶</span>
+            <span class="detail-info-value">{{ currentSession.isPinned ? "是" : "否" }}</span>
+          </div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">免打扰</span>
+            <span class="detail-info-value">{{ currentSession.isMuted ? "是" : "否" }}</span>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-section-title">安全</div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">加密状态</span>
+            <span class="detail-info-value detail-secure">
+              <span class="status-dot"></span>
+              端对端加密已启用
+            </span>
+          </div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">加密协议</span>
+            <span class="detail-info-value">AES-256-GCM</span>
+          </div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">密钥状态</span>
+            <span class="detail-info-value detail-secure">活跃</span>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-section-title">AI 助手</div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">自动回复</span>
+            <span class="detail-info-value">{{ autoReplyEnabled ? "已开启" : "未开启" }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    </div><!-- .chat-body -->
 
     <ChatDialogs
       v-model:visible-add-friend="showAddFriend"
@@ -174,12 +309,14 @@
 
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, ref, watch} from "vue";
-import {ArrowLeft, ChatDotRound, MoreFilled} from "@element-plus/icons-vue";
+import {ArrowLeft, ChatDotRound, Close, MoreFilled, Moon, Search, Sunny} from "@element-plus/icons-vue";
 import {ElMessageBox} from "element-plus";
 import ChatComposer from "@/features/chat/ChatComposer.vue";
 import ChatDialogs from "@/features/chat/ChatDialogs.vue";
 import ChatMessageList from "@/features/chat/ChatMessageList.vue";
 import ChatSidebarPanel from "@/features/chat/ChatSidebarPanel.vue";
+import EncryptionBadge from "@/components/security/EncryptionBadge.vue";
+import SecurityPanel from "@/components/security/SecurityPanel.vue";
 import {useErrorHandler} from "@/hooks/useErrorHandler";
 import {aiService} from "@/services/ai";
 import {groupService} from "@/services/group";
@@ -201,6 +338,9 @@ const showCreateGroup = ref(false);
 const showGroupReadDialog = ref(false);
 const showSearchDialog = ref(false);
 const showSessionInfoDrawer = ref(false);
+const showDetailPanel = ref(false);
+const showSecurityPanel = ref(false);
+const isDarkTheme = ref(document.body.classList.contains("theme-dark"));
 const groupReadUsers = ref<GroupReadUser[]>([]);
 const sessionInfoMembers = ref<GroupMember[]>([]);
 
@@ -415,6 +555,7 @@ const handleSessionAction = async (command: string | number | object) => {
         chatStore.toggleSessionMuted(session.id);
         return;
       case "open-session-info":
+        showDetailPanel.value = !showDetailPanel.value;
         await openSessionInfoDrawer(session);
         return;
       case "clear-history":
@@ -475,6 +616,12 @@ const fetchAutoReplyStatus = async () => {
   } catch {
     /* ignore */
   }
+};
+
+const toggleTheme = () => {
+  isDarkTheme.value = !isDarkTheme.value;
+  document.body.classList.toggle("theme-dark", isDarkTheme.value);
+  localStorage.setItem("im_theme", isDarkTheme.value ? "dark" : "light");
 };
 
 const toggleAutoReply = async () => {
@@ -589,10 +736,154 @@ onUnmounted(() => {
 .chat-container {
   position: relative;
   display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
   overflow: hidden;
   background: var(--chat-shell-bg);
+}
+
+/* === 顶部状态栏 === */
+.app-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  padding: 0 20px;
+  background: var(--chat-panel-bg);
+  border-bottom: 1px solid var(--chat-panel-border);
+  backdrop-filter: var(--chat-glass-blur);
+  -webkit-backdrop-filter: var(--chat-glass-blur);
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.topbar-avatar {
+  flex-shrink: 0;
+  border: 1px solid var(--chat-panel-border);
+}
+
+.topbar-username {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--chat-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+  flex-shrink: 0;
+
+  &.offline {
+    background: var(--text-tertiary);
+    box-shadow: none;
+  }
+}
+
+.topbar-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.topbar-search-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-radius: var(--radius-full);
+  background: var(--surface-tertiary);
+  border: 1px solid var(--border-light);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
+  min-width: 200px;
+
+  &:hover {
+    background: var(--surface-overlay);
+    border-color: var(--border-default);
+  }
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
+
+  &.connected {
+    color: var(--color-success);
+  }
+
+  &.connecting {
+    color: var(--color-warning);
+  }
+}
+
+.connection-dot-sm {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+
+  &.connected {
+    background: var(--color-success);
+  }
+
+  &.connecting {
+    background: var(--color-warning);
+  }
+}
+
+.topbar-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+
+  &:hover {
+    background: var(--surface-tertiary);
+    color: var(--text-primary);
+  }
+}
+
+/* === 主体区域 === */
+.chat-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .chat-shell-sidebar {
@@ -766,6 +1057,29 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+.security-badge-wrap {
+  position: relative;
+}
+
+.security-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 300px;
+  z-index: 100;
+}
+
+.panel-fade-enter-active,
+.panel-fade-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.panel-fade-enter-from,
+.panel-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
 .chat-actions {
   display: flex;
   align-items: center;
@@ -776,7 +1090,155 @@ onUnmounted(() => {
   display: none;
 }
 
+/* === 右侧详情面板 === */
+.chat-detail-panel {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--chat-panel-border);
+  background: var(--chat-panel-bg);
+  backdrop-filter: var(--chat-glass-blur);
+  -webkit-backdrop-filter: var(--chat-glass-blur);
+  overflow: hidden;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--chat-panel-border);
+  flex-shrink: 0;
+}
+
+.detail-title {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--chat-text-primary);
+}
+
+.detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px;
+}
+
+.detail-section {
+  margin-bottom: 24px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.detail-avatar-wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.detail-presence {
+  position: absolute;
+  right: calc(50% - 36px);
+  bottom: 2px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--chat-panel-bg);
+}
+
+.detail-name {
+  text-align: center;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--chat-text-primary);
+  margin-bottom: 4px;
+}
+
+.detail-subtitle {
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+
+  .online {
+    color: var(--color-success);
+    font-weight: var(--weight-semibold);
+  }
+}
+
+.detail-section-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.detail-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-light);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.detail-info-label {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+.detail-info-value {
+  font-size: var(--text-sm);
+  color: var(--chat-text-primary);
+  font-weight: var(--weight-medium);
+}
+
+.detail-secure {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-success);
+}
+
 @media (max-width: 768px) {
+  .app-topbar {
+    padding: 0 12px;
+    height: 48px;
+  }
+
+  .topbar-search-btn {
+    min-width: 120px;
+  }
+
+  .topbar-search-text {
+    display: none;
+  }
+
+  .topbar-connection {
+    display: none;
+  }
+
+  .chat-detail-panel {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 20;
+    width: 100%;
+    max-width: 320px;
+    box-shadow: var(--shadow-panel);
+  }
+
+  .chat-body {
+    position: relative;
+  }
+
   .chat-main {
     display: none;
 
@@ -793,7 +1255,7 @@ onUnmounted(() => {
 
   .chat-header {
     min-height: 58px;
-    padding: calc(8px + env(safe-area-inset-top, 0px)) 10px 8px;
+    padding: 8px 10px;
     gap: 8px;
   }
 

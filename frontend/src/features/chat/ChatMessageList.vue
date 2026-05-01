@@ -109,6 +109,7 @@ interface Props {
   currentUserAvatar?: string;
   loadingHistory?: boolean;
   openedUnreadCount?: number;
+  sessionType?: "private" | "group";
 }
 
 type SeparatorItem = {
@@ -166,6 +167,7 @@ const props = withDefaults(defineProps<Props>(), {
   openedUnreadCount: 0,
   currentUserName: "",
   currentUserAvatar: "",
+  sessionType: "private",
 });
 
 const emit = defineEmits<{
@@ -441,6 +443,32 @@ const renderItems = computed<RenderItem[]>(() => {
   let previousDateKey = "";
   let previousSenderId = "";
   const activeMessageIds = new Set<string>();
+
+  // Private session encryption notice
+  if (props.sessionType === "private" && props.messages.length > 0) {
+    items.push({
+      id: "encryption-notice",
+      kind: "message",
+      messageId: "encryption-notice",
+      view: {
+        messageId: "encryption-notice",
+        renderDigest: "encryption-notice",
+        isMine: false,
+        isSystemMessage: true,
+        isRecalled: false,
+        isDeleted: false,
+        messageType: "SYSTEM",
+        content: "此会话已启用端对端加密，服务器无法读取消息内容",
+        showSenderLabel: false,
+        timeLabel: "",
+        statusLabel: "",
+        statusTone: "default",
+        groupReadLabel: "",
+        showAvatar: false,
+        compact: false,
+      },
+    });
+  }
 
   props.messages.forEach((message, index) => {
     const key = messageKey(message);
