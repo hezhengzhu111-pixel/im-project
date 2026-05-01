@@ -193,6 +193,12 @@ const showSessionInfoDrawer = ref(false);
 const groupReadUsers = ref<GroupReadUser[]>([]);
 const sessionInfoMembers = ref<GroupMember[]>([]);
 
+const sessionInfoLoading = ref(false);
+const sessionInfoError = ref("");
+const unreadSnapshotBySession = ref(new Map<string, number>());
+
+const currentSession = computed(() => chatStore.currentSession);
+
 const composerMembers = ref<{ userId: string; name: string; avatar?: string; avatarText: string }[]>([]);
 
 const fetchComposerMembers = async (groupId: string) => {
@@ -221,11 +227,7 @@ watch(
   },
   { immediate: true },
 );
-const sessionInfoLoading = ref(false);
-const sessionInfoError = ref("");
-const unreadSnapshotBySession = ref(new Map<string, number>());
 
-const currentSession = computed(() => chatStore.currentSession);
 const loadingMoreHistory = computed(() => {
   const sessionId = currentSession.value?.id;
   return sessionId ? chatStore.loadingHistoryBySession.get(sessionId) || false : false;
