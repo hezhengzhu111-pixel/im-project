@@ -174,7 +174,17 @@ fn publish_due_events(
         *last_observe = Instant::now();
     }
 
-    let event_keys = event_ids
+    let member_event_ids: Vec<String> = event_ids
+        .iter()
+        .map(|member| {
+            member
+                .split('|')
+                .next()
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| member.clone())
+        })
+        .collect();
+    let event_keys = member_event_ids
         .iter()
         .map(|event_id| keys::event_key(event_id))
         .collect::<Vec<_>>();
