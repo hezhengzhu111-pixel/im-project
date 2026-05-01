@@ -484,11 +484,6 @@ const headerAvatar = computed(
 const headerAvatarText = computed(() =>
   getAvatarText(currentSession.value?.targetName || currentSession.value?.targetId),
 );
-const groupDescription = computed(() => {
-  const description =
-    sessionInfoGroup.value?.description || sessionInfoGroup.value?.announcement || "";
-  return description.trim();
-});
 const groupMemberCount = computed(() => {
   if (currentSession.value?.type !== "group") {
     return 0;
