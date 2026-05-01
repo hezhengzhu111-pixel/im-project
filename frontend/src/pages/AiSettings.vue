@@ -115,7 +115,7 @@
             type="textarea"
             :rows="4"
             :placeholder="t('ai.autoReplyPersonaPlaceholder')"
-            @blur="updatePersona"
+            @input="onPersonaInput"
           />
         </div>
       </section>
@@ -215,14 +215,16 @@ async function loadSettings() {
     const s = response.data;
     autoReplyEnabled.value = s.autoReplyEnabled;
     autoReplyPersona.value = s.autoReplyPersona || "";
-    settingsLoaded.value = true;
   } catch (err) {
     capture(err, "Failed to load AI settings");
+  } finally {
+    settingsLoaded.value = true;
   }
 }
 
+let personaTimer: ReturnType<typeof setTimeout> | null = null;
+
 async function updateAutoReply() {
-  if (!settingsLoaded.value) return;
   try {
     await aiService.updateSettings({ autoReplyEnabled: autoReplyEnabled.value });
   } catch (err) {
@@ -232,12 +234,16 @@ async function updateAutoReply() {
 }
 
 async function updatePersona() {
-  if (!settingsLoaded.value) return;
   try {
     await aiService.updateSettings({ autoReplyPersona: autoReplyPersona.value });
   } catch (err) {
     capture(err, "Failed to update persona");
   }
+}
+
+function onPersonaInput() {
+  if (personaTimer) clearTimeout(personaTimer);
+  personaTimer = setTimeout(() => updatePersona(), 500);
 }
 
 onMounted(() => {
