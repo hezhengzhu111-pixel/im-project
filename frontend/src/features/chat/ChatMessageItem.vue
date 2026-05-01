@@ -284,7 +284,7 @@ const handleMediaLoaded = () => {
   }
 
   &.is-compact {
-    margin-bottom: 4px;
+    margin-bottom: 2px;
   }
 }
 
@@ -328,7 +328,7 @@ const handleMediaLoaded = () => {
   border: 1px solid var(--chat-panel-border);
   background: var(--chat-bubble-other);
   color: var(--chat-text-primary);
-  box-shadow: var(--chat-message-shadow);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
   backdrop-filter: var(--chat-glass-blur);
   overflow: hidden;
   transition: box-shadow 0.15s ease;
@@ -337,7 +337,7 @@ const handleMediaLoaded = () => {
     border-color: transparent;
     background: linear-gradient(135deg, var(--color-primary, #6366f1), var(--color-primary-2, #818cf8));
     color: #fff;
-    box-shadow: 0 2px 12px rgba(99, 102, 241, 0.2);
+    box-shadow: 0 1px 4px rgba(99, 102, 241, 0.12);
   }
 
   &.is-muted {
@@ -491,8 +491,9 @@ const handleMediaLoaded = () => {
   gap: 6px;
   padding: 0 2px;
   color: var(--chat-text-quaternary);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.2;
+  opacity: 0.7;
 
   &.is-mine {
     justify-content: flex-end;
@@ -573,7 +574,7 @@ const handleMediaLoaded = () => {
   }
 
   .message-item.is-compact {
-    margin-bottom: 3px;
+    margin-bottom: 1px;
   }
 
   .message-avatar {

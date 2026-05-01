@@ -33,7 +33,7 @@
   --chat-danger: var(--color-danger);
 
   // Chat bubbles
-  --chat-bubble-other: rgba(255, 255, 255, 0.86);
+  --chat-bubble-other: rgba(255, 255, 255, 0.94);
   --chat-bubble-own: color-mix(in srgb, var(--color-primary), transparent 8%);
   --chat-bubble-system: rgba(226, 232, 240, 0.72);
 
@@ -59,7 +59,7 @@ body.theme-dark {
   --chat-card-hover: rgba(30, 41, 59, 0.72);
   --chat-card-active: color-mix(in srgb, var(--color-primary), transparent 78%);
   --chat-card-active-border: color-mix(in srgb, #60a5fa, transparent 56%);
-  --chat-bubble-other: rgba(30, 41, 59, 0.86);
+  --chat-bubble-other: rgba(30, 41, 59, 0.94);
   --chat-bubble-system: rgba(30, 41, 59, 0.72);
 }
 
