@@ -445,7 +445,7 @@ onUnmounted(() => { cancelRecording(); });
 }
 
 .toolbar-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-primary, #6366f1), transparent 90%);
+  background: rgba(99, 102, 241, 0.08);
   color: var(--color-primary, #6366f1);
   transform: translateY(-1px);
 }
@@ -523,18 +523,19 @@ onUnmounted(() => { cancelRecording(); });
   flex-shrink: 0;
   width: 74px;
   height: 40px;
-  border-radius: var(--radius-sm, 8px);
-  background: var(--surface-elevated, #e2e8f0);
-  color: var(--chat-text-quaternary);
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--color-primary, #6366f1), var(--color-primary-2, #818cf8));
+  color: rgba(255, 255, 255, 0.4);
   font-size: 13px;
   font-weight: 700;
   cursor: not-allowed;
-  transition: background-color var(--motion-fast, 0.18s) ease, color var(--motion-fast, 0.18s) ease, transform var(--motion-fast, 0.18s) ease, box-shadow var(--motion-fast, 0.18s) ease;
+  opacity: 0.5;
+  transition: background-color var(--motion-fast, 0.18s) ease, color var(--motion-fast, 0.18s) ease, transform var(--motion-fast, 0.18s) ease, box-shadow var(--motion-fast, 0.18s) ease, opacity var(--motion-fast, 0.18s) ease;
 }
 
 .send-button.can-send {
   cursor: pointer;
-  background: linear-gradient(135deg, var(--color-primary, #6366f1), var(--color-primary-2, #818cf8));
+  opacity: 1;
   color: #fff;
   box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
 }
@@ -600,6 +601,7 @@ onUnmounted(() => { cancelRecording(); });
   .send-button {
     width: 62px;
     height: 44px;
+    border-radius: 10px;
   }
 }
 </style>
