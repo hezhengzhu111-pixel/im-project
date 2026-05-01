@@ -37,6 +37,8 @@ pub async fn handle(
         return Err(AppError::BadRequest("conversationId and content required".to_string()));
     }
 
+    let receiver_id = extract_peer_id(&conv_id, request.persona_user_id)?;
+
     let msg_id = ids::next_id(state.config.ai_snowflake_node_id);
     let now = time::now_iso();
     let ai_message = MessageDto {
@@ -46,7 +48,7 @@ pub async fn handle(
         sender_id: request.persona_user_id.to_string(),
         sender_name: None,
         sender_avatar: None,
-        receiver_id: Some(request.conversation_id.clone()),
+        receiver_id: Some(receiver_id.to_string()),
         receiver_name: None,
         group_id: None,
         conversation_seq: None,
@@ -84,4 +86,24 @@ pub async fn handle(
         "messageId": msg_id,
         "status": "delivered",
     }))))
+}
+
+fn extract_peer_id(conv_id: &str, persona_user_id: i64) -> Result<i64, AppError> {
+    let rest = conv_id
+        .strip_prefix("p_")
+        .ok_or_else(|| AppError::BadRequest("invalid conversation id format".to_string()))?;
+    let (a_str, b_str) = rest
+        .split_once('_')
+        .ok_or_else(|| AppError::BadRequest("invalid conversation id format".to_string()))?;
+    let a: i64 = a_str
+        .parse()
+        .map_err(|_| AppError::BadRequest("invalid conversation id".to_string()))?;
+    let b: i64 = b_str
+        .parse()
+        .map_err(|_| AppError::BadRequest("invalid conversation id".to_string()))?;
+    if a == persona_user_id {
+        Ok(b)
+    } else {
+        Ok(a)
+    }
 }

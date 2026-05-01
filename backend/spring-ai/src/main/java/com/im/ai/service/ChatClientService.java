@@ -12,9 +12,9 @@ import java.util.Map;
 public class ChatClientService {
 
     private static final Map<String, String> PROVIDER_BASE_URLS = Map.of(
-            "deepseek", "https://api.deepseek.com/v1",
-            "openai", "https://api.openai.com/v1",
-            "minimax", "https://api.minimax.chat/v1"
+            "deepseek", "https://api.deepseek.com",
+            "openai", "https://api.openai.com",
+            "minimax", "https://api.minimax.chat"
     );
 
     public ChatClientService() {
@@ -26,7 +26,7 @@ public class ChatClientService {
 
     public ChatClient forUser(String provider, String apiKey, String modelName) {
         String baseUrl = PROVIDER_BASE_URLS.getOrDefault(
-                provider.toLowerCase(), "https://api.deepseek.com/v1");
+                provider.toLowerCase(), "https://api.deepseek.com");
 
         System.out.println("[ChatClientService] provider=" + provider + " baseUrl=" + baseUrl
                 + " keyLen=" + (apiKey != null ? apiKey.length() : 0));

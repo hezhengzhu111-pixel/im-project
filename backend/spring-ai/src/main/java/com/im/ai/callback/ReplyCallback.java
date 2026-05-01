@@ -36,6 +36,7 @@ public class ReplyCallback {
                 "model", model != null ? model : ""
             );
             byte[] bodyBytes = objectMapper.writeValueAsBytes(body);
+            System.out.println("[REPLY_CALLBACK] body=" + new String(bodyBytes));
             String path = "/api/ai/internal/reply";
 
             var headers = HmacSigner.signRequest("POST", path, bodyBytes, internalSecret);

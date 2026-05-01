@@ -440,7 +440,7 @@ services:
       IM_INTERNAL_SECRET: "${IM_INTERNAL_SECRET:-im-internal-secret-im-internal-secret-im-internal-secret-im}"
       spring.ai.openai.api-key: placeholder
     ports:
-      - "${SPRING_AI_PORT:-8084}:8084"
+      - "${SPRING_AI_PORT:-8084}:8080"
     networks:
       - im-sit-network
 

@@ -124,13 +124,13 @@ async fn check_auto_reply_db(db: &MySqlPool, user_id: i64) -> Result<bool, AppEr
 }
 
 async fn get_persona_db(db: &MySqlPool, user_id: i64) -> Result<String, AppError> {
-    let row: Option<(String,)> = sqlx::query_as(
+    let row: Option<(Option<String>,)> = sqlx::query_as(
         "SELECT auto_reply_persona FROM service_user_service_db.user_ai_settings WHERE user_id = ?",
     )
     .bind(user_id)
     .fetch_optional(db)
     .await?;
-    Ok(row.map_or_else(String::new, |r| r.0))
+    Ok(row.map_or_else(String::new, |r| r.0.unwrap_or_default()))
 }
 
 async fn build_reply_context(
