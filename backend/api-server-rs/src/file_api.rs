@@ -33,6 +33,31 @@ pub struct FileUploadResponse {
     pub uploader_id: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct KnowledgeFileSaved {
+    pub url: String,
+    pub size: i64,
+}
+
+pub fn store_knowledge_file(
+    base_dir: &std::path::Path,
+    _original_name: &str,
+    file_type: &str,
+    data: &[u8],
+) -> Result<KnowledgeFileSaved, AppError> {
+    let date = Local::now().format("%Y-%m-%d").to_string();
+    let safe_name = format!("{}.{}", uuid::Uuid::new_v4(), file_type);
+    let dir = base_dir.join("knowledge").join(&date);
+    std::fs::create_dir_all(&dir).map_err(|e| AppError::Io(e))?;
+    let path = dir.join(&safe_name);
+    std::fs::write(&path, data).map_err(|e| AppError::Io(e))?;
+    let url = format!("/files/knowledge/{}/{}", date, safe_name);
+    Ok(KnowledgeFileSaved {
+        url,
+        size: data.len() as i64,
+    })
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileInfoResponse {

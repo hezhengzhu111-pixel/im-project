@@ -2,6 +2,7 @@ pub mod api_key_handler;
 pub mod auto_reply;
 pub mod crypto;
 pub mod internal_reply;
+pub mod rag_handler;
 pub mod settings_handler;
 pub mod stream_bridge;
 pub mod summary_handler;

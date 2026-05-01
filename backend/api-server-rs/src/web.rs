@@ -236,6 +236,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/ai/summary", post(ai::summary_handler::create))
         .route("/api/ai/stream/:task_id", get(ai::stream_bridge::subscribe))
         .route("/api/ai/internal/reply", post(ai::internal_reply::handle))
+        .route("/api/ai/rag/docs", post(ai::rag_handler::upload).get(ai::rag_handler::list))
+        .route("/api/ai/rag/docs/:id", delete(ai::rag_handler::delete_doc))
+        .route("/api/ai/rag/query", post(ai::rag_handler::query))
         .fallback(proxy)
         .with_state(state)
 }
