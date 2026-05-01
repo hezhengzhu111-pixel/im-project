@@ -2,13 +2,13 @@ import { http } from "@/utils/request";
 import type { ApiResponse } from "@/types/api";
 
 export interface AiApiKey {
-  id: number;
+  id: string;
   provider: string;
   keyName: string;
   maskedKey: string;
   isActive: boolean;
   validateStatus: string;
-  lastValidatedAt?: number;
+  lastValidatedAt?: string;
 }
 
 export interface AiSettings {
@@ -16,18 +16,40 @@ export interface AiSettings {
   autoReplyPersona: string;
 }
 
+function normalizeKey(raw: Record<string, unknown>): AiApiKey {
+  return {
+    id: String(raw.id ?? ""),
+    provider: String(raw.provider ?? ""),
+    keyName: String(raw.keyName ?? ""),
+    maskedKey: String(raw.maskedKey ?? ""),
+    isActive: Boolean(raw.isActive),
+    validateStatus: String(raw.validateStatus ?? ""),
+    lastValidatedAt: raw.lastValidatedAt != null ? String(raw.lastValidatedAt) : undefined,
+  };
+}
+
 export const aiService = {
-  listKeys: () => http.get<AiApiKey[]>("/ai/keys"),
+  listKeys: () =>
+    http.get<unknown[]>("/ai/keys").then((r) => ({
+      ...r,
+      data: (r.data || []).map((item) => normalizeKey(item as Record<string, unknown>)),
+    })) as Promise<ApiResponse<AiApiKey[]>>,
 
   createKey: (data: { provider: string; apiKey: string; keyName?: string }) =>
-    http.post<AiApiKey>("/ai/keys", data),
+    http.post<Record<string, unknown>>("/ai/keys", data).then((r) => ({
+      ...r,
+      data: normalizeKey(r.data || {}),
+    })) as Promise<ApiResponse<AiApiKey>>,
 
-  updateKey: (id: number, data: { apiKey?: string; keyName?: string }) =>
-    http.put<AiApiKey>(`/ai/keys/${id}`, data),
+  updateKey: (id: string, data: { apiKey?: string; keyName?: string }) =>
+    http.put<Record<string, unknown>>(`/ai/keys/${id}`, data).then((r) => ({
+      ...r,
+      data: normalizeKey(r.data || {}),
+    })) as Promise<ApiResponse<AiApiKey>>,
 
-  deleteKey: (id: number) => http.delete<{ deleted: boolean }>(`/ai/keys/${id}`),
+  deleteKey: (id: string) => http.delete<{ deleted: boolean }>(`/ai/keys/${id}`),
 
-  testKey: (id: number) => http.post<{ validateStatus: string }>(`/ai/keys/${id}/test`),
+  testKey: (id: string) => http.post<{ validateStatus: string }>(`/ai/keys/${id}/test`),
 
   getSettings: () => http.get<AiSettings>("/ai/settings"),
 

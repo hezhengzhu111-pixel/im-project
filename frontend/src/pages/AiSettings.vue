@@ -139,7 +139,7 @@ const { capture } = useErrorHandler("AiSettings");
 
 const keys = ref<AiApiKey[]>([]);
 const keyLoading = ref(false);
-const testingId = ref<number | null>(null);
+const testingId = ref<string | null>(null);
 const autoReplyEnabled = ref(false);
 const autoReplyPersona = ref("");
 const settingsLoaded = ref(false);
@@ -179,7 +179,7 @@ async function addKey() {
   }
 }
 
-async function testKey(id: number) {
+async function testKey(id: string) {
   testingId.value = id;
   try {
     const response = await aiService.testKey(id);
@@ -195,7 +195,7 @@ async function testKey(id: number) {
   }
 }
 
-async function removeKey(id: number) {
+async function removeKey(id: string) {
   try {
     await ElMessageBox.confirm(t("ai.deleteConfirm"), t("ai.deleteKey"), {
       confirmButtonText: t("common.confirm"),
