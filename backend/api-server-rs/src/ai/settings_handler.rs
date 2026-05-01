@@ -90,6 +90,24 @@ pub async fn update(
     .execute(&state.db)
     .await?;
 
+    if let Some(enabled_val) = auto_reply_enabled {
+        let mut redis = state.redis_manager.clone();
+        let key = im_rs_common::keys::ai_auto_reply_key(identity.user_id);
+        if enabled_val == 0 {
+            let _ = redis::cmd("DEL")
+                .arg(&key)
+                .query_async::<()>(&mut redis)
+                .await;
+        } else {
+            let _ = redis::cmd("HSET")
+                .arg(&key)
+                .arg("enabled")
+                .arg("1")
+                .query_async::<()>(&mut redis)
+                .await;
+        }
+    }
+
     let updated = get_impl(identity.user_id, &state.db).await?;
     Ok(Json(ApiResponse::success(updated)))
 }

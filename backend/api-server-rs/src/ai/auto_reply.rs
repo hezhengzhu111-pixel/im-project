@@ -83,6 +83,18 @@ async fn trigger_if_enabled(
     }
 
     let context = build_reply_context(msg_redis, conversation_id, original_message).await?;
+    let round_key = format!("im:ai:rounds:{conversation_id}");
+    let current_rounds: Option<i64> = redis::cmd("GET")
+        .arg(&round_key)
+        .query_async::<Option<i64>>(redis)
+        .await
+        .unwrap_or(None);
+    let rounds = current_rounds.unwrap_or(0);
+    if rounds >= 20 {
+        tracing::info!(conv = %conversation_id, rounds = %rounds, "auto_reply: round limit reached");
+        return Ok(());
+    }
+
     let persona = get_persona_db(db, target_user_id).await?;
 
     let task_id = ids::next_id(config.ai_snowflake_node_id);
@@ -105,6 +117,16 @@ async fn trigger_if_enabled(
         },
     )
     .await?;
+
+    let _: () = redis::cmd("INCR")
+        .arg(&round_key)
+        .query_async::<()>(redis)
+        .await?;
+    let _: () = redis::cmd("EXPIRE")
+        .arg(&round_key)
+        .arg(3600i64)
+        .query_async::<()>(redis)
+        .await?;
 
     Ok(())
 }
