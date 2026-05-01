@@ -137,16 +137,14 @@
                 />
               </Transition>
             </div>
-            <button
-              v-if="currentSession.type === 'private'"
-              type="button"
-              class="chat-action-button auto-reply-toggle interactive-reset"
-              :class="{ active: autoReplyEnabled }"
-              :title="autoReplyEnabled ? t('chat.autoReplyOff') : t('chat.autoReplyOn')"
-              @click="toggleAutoReply"
-            >
-              <span class="auto-reply-label">AI</span>
-            </button>
+            <div v-if="currentSession.type === 'private'" class="header-ai-badge-wrap">
+              <AiStatusBadge
+                :auto-reply-enabled="autoReplyEnabled"
+                :has-human-intervention="humanIntervention"
+                class="header-ai-badge"
+                @click="toggleAutoReply"
+              />
+            </div>
             <div class="chat-actions">
               <el-dropdown trigger="click" @command="handleSessionAction">
                 <button
@@ -281,7 +279,7 @@
           <div class="detail-ai-status">
             <AiStatusBadge
               :auto-reply-enabled="autoReplyEnabled"
-              :has-human-intervention="false"
+              :has-human-intervention="humanIntervention"
             />
           </div>
           <div class="detail-info-row">
@@ -289,8 +287,20 @@
             <span class="detail-info-value">{{ autoReplyEnabled ? "已开启" : "未开启" }}</span>
           </div>
           <div class="detail-info-row">
-            <span class="detail-info-label">状态</span>
-            <span class="detail-info-value">{{ autoReplyEnabled ? "AI 持续监听新消息" : "需要手动开启" }}</span>
+            <span class="detail-info-label">人工介入</span>
+            <span class="detail-info-value">{{ humanIntervention ? "已接管" : "未检测到" }}</span>
+          </div>
+          <div v-if="lastAiReplyInfo" class="detail-info-row">
+            <span class="detail-info-label">最近 AI 回复</span>
+            <span class="detail-info-value">{{ formatDetailTime(lastAiReplyInfo.time) }}</span>
+          </div>
+          <div v-if="lastAiReplyInfo?.provider" class="detail-info-row">
+            <span class="detail-info-label">AI 提供商</span>
+            <span class="detail-info-value">{{ lastAiReplyInfo.provider }}</span>
+          </div>
+          <div v-if="lastAiReplyInfo?.model" class="detail-info-row">
+            <span class="detail-info-label">AI 模型</span>
+            <span class="detail-info-value">{{ lastAiReplyInfo.model }}</span>
           </div>
         </div>
       </div>
@@ -619,6 +629,39 @@ const handleRequestMembers = () => {
 };
 
 const autoReplyEnabled = ref(false);
+
+// Derive human intervention from last message context (no dedicated session field)
+const humanIntervention = computed(() => {
+  const session = currentSession.value;
+  if (!session?.lastMessage) return false;
+  // If last message is a SYSTEM type about handoff, infer intervention
+  const msg = session.lastMessage;
+  if (msg.messageType === "SYSTEM" && msg.content?.includes("接管")) return true;
+  return false;
+});
+
+const lastAiReplyInfo = computed(() => {
+  const session = currentSession.value;
+  if (!session?.lastMessage?.isAiGenerated) return null;
+  const msg = session.lastMessage;
+  return {
+    time: msg.sendTime,
+    provider: msg.aiProvider,
+    model: msg.aiModel,
+  };
+});
+
+const formatDetailTime = (time?: string) => {
+  if (!time) return "";
+  const d = new Date(time);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+};
 
 const fetchAutoReplyStatus = async () => {
   try {
@@ -1070,6 +1113,14 @@ onUnmounted(() => {
 
 .security-badge-wrap {
   position: relative;
+}
+
+.header-ai-badge-wrap {
+  cursor: pointer;
+}
+
+.header-ai-badge {
+  pointer-events: none;
 }
 
 .security-popover {
