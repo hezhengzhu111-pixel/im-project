@@ -71,6 +71,7 @@ def ensure_project_layout(config: DeploymentConfig) -> None:
         config.backend_root / "Cargo.toml",
         config.backend_root / "api-server-rs" / "Dockerfile",
         config.backend_root / "im-server-rs" / "Dockerfile",
+        config.backend_root / "spring-ai" / "Dockerfile",
         config.frontend_root / "package.json",
         config.frontend_root / "Dockerfile",
         config.frontend_root / "nginx.conf",

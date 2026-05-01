@@ -17,9 +17,11 @@ SERVICE_ALIASES = {
     "im": "im-server",
     "im-server": "im-server",
     "frontend": "im-frontend",
+    "ai": "im-spring-ai",
+    "spring-ai": "im-spring-ai",
 }
 
-APP_SERVICES = ["im-server", "im-api-server", "im-frontend"]
+APP_SERVICES = ["im-server", "im-api-server", "im-frontend", "im-spring-ai"]
 REQUIRED_MIDDLEWARE_SERVICES = [
     "im-mysql",
     "im-redis",

@@ -523,7 +523,7 @@ services:
     networks:
       - im-sit-network
 
-  im-frontend:
+   im-frontend:
     image: im-project-sit/im-frontend:latest
     build:
       context: ../../frontend
@@ -547,6 +547,29 @@ services:
         hard: 200000
     volumes:
       - im_files:/data/im-files:ro
+    networks:
+      - im-sit-network
+
+  im-spring-ai:
+    image: im-project-sit/im-spring-ai:latest
+    build:
+      context: ../../backend/spring-ai
+      args:
+        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
+    restart: unless-stopped
+    depends_on:
+      im-redis-shared:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      REDIS_HOST: im-redis-shared
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-root123}"
+      IM_API_SERVER_URL: http://im-api-server:8082
+      IM_INTERNAL_SECRET: "${IM_INTERNAL_SECRET:-im-internal-secret-im-internal-secret-im-internal-secret-im}"
+      spring.ai.openai.api-key: placeholder
+    ports:
+      - "${SPRING_AI_PORT:-8084}:8084"
     networks:
       - im-sit-network
 
