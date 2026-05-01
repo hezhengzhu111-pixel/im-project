@@ -167,7 +167,7 @@ Service name mapping:
 
 ## Key quirks
 
-- **Redis is heavily sharded**: 4 private-hot shards, 4 group-hot shards, plus dedicated instances for events (private & group), and route registry. The deploy scripts bring up all 13 Redis containers. Don't assume a single Redis instance.
+- **Redis is sharded for hot data**: private-hot and group-hot each use N instances (default 1, set `IM_PRIVATE_HOT_SHARDS` / `IM_GROUP_HOT_SHARDS` in `.env` for production). All other Redis usage (cache, auth, event streams, route registry, Pub/Sub) shares a single `im-redis` instance. The deploy scripts auto-generate Redis URL lists based on the shard count.
 - **SCSS auto-import**: Every `.vue` `<style lang="scss">` automatically has `@use "@/styles/variables.scss" as *;` injected via Vite config. Never add that import manually.
 - **Frontend build is `es2020`**: The Vite build targets ES2020. Don't use ES2021+ syntax in frontend code.
 - **Message outbox pattern**: Messages go through a durable outbox (`message_outbox` table) before delivery. The `dispatch_status` and `attempt_count` columns track retries. There's also a separate `message_state_outbox` and a `pending_status_event` backlog.
