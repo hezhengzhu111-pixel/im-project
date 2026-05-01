@@ -41,6 +41,7 @@ export interface Message {
   sendTime: string;
   status: MessageStatus;
   extra?: Record<string, unknown>;
+  mentionedUserIds?: string[];
   readBy?: string[];
   readByCount?: number;
   readStatus?: number;

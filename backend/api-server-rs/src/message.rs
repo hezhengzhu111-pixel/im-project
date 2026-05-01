@@ -51,6 +51,7 @@ pub struct SendGroupRequest {
     pub media_name: Option<String>,
     pub thumbnail_url: Option<String>,
     pub duration: Option<i32>,
+    pub mentioned_user_ids: Option<Vec<i64>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -172,6 +173,13 @@ pub async fn send_group(
     .await?
     .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
     validate_group_member(cache_redis, db, group_id, identity.user_id).await?;
+    if let Some(ref mentioned) = request.mentioned_user_ids {
+        for user_id in mentioned {
+            if *user_id != identity.user_id {
+                validate_group_member(cache_redis, db, group_id, *user_id).await?;
+            }
+        }
+    }
     let conversation_id = keys::group_conversation_id(group_id);
     let message = build_message(
         config,
@@ -189,7 +197,8 @@ pub async fn send_group(
             duration: request.duration,
         },
     );
-    let event = build_message_created_event(&conversation_id, &message);
+    let mut event = build_message_created_event(&conversation_id, &message);
+    event.mentioned_user_ids = request.mentioned_user_ids.clone();
     write_group_message_hot(hot_redis, group_id, &conversation_id, &message, &event).await
 }
 

@@ -34,7 +34,7 @@
             <div v-else-if="isDeleted" class="status-copy">{{ t("message.deleted") }}</div>
 
             <div v-else-if="messageType === 'TEXT'" class="text-content">
-              {{ content }}
+              <span v-html="renderedContent"></span>
             </div>
 
             <button
@@ -212,6 +212,17 @@ const emit = defineEmits<{
 const {t} = useI18nStore();
 const senderAvatarText = computed(() => getAvatarText(props.senderName || t("message.unknownUser")));
 const mediaSource = computed(() => props.mediaUrl || props.content);
+const renderedContent = computed(() => {
+  const text = props.content || "";
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return escaped.replace(
+    /@(\S+)/g,
+    '<span class="mention-highlight">@$1</span>',
+  );
+});
 const bubbleClass = computed(() => ({
   "is-own": props.isMine,
   "is-muted": props.isRecalled || props.isDeleted,
@@ -514,5 +525,15 @@ const handleMediaLoaded = () => {
   .media-card {
     width: min(280px, 64vw);
   }
+}
+</style>
+
+<style>
+.mention-highlight {
+  color: var(--el-color-primary);
+  background: rgba(var(--el-color-primary-rgb, 64, 158, 255), 0.1);
+  border-radius: 3px;
+  padding: 0 2px;
+  font-weight: 500;
 }
 </style>
