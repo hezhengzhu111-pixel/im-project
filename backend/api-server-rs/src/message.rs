@@ -148,7 +148,30 @@ pub async fn send_private(
         },
     );
     let event = build_message_created_event(&conversation_id, &message);
-    write_private_message_hot(hot_redis, &conversation_id, &message, &event).await
+    let result = write_private_message_hot(hot_redis, &conversation_id, &message, &event).await;
+
+    if config.ai_enabled && result.is_ok() {
+        let auto_redis = cache_redis.clone();
+        let auto_config = config.clone();
+        let auto_db = db.clone();
+        let auto_msg = message.clone();
+        let auto_conv = conversation_id;
+        let target = receiver_id;
+        tokio::spawn(async move {
+            let mut redis = auto_redis;
+            crate::ai::auto_reply::maybe_trigger(
+                &mut redis,
+                &auto_db,
+                &auto_config,
+                target,
+                &auto_conv,
+                &auto_msg,
+            )
+            .await;
+        });
+    }
+
+    result
 }
 
 pub async fn send_group(
@@ -795,7 +818,7 @@ fn pending_event_member(event_id: &str, conversation_id: &str) -> String {
     format!("{event_id}|{conversation_id}")
 }
 
-async fn write_private_message_hot(
+pub async fn write_private_message_hot(
     redis: &mut ConnectionManager,
     conversation_id: &str,
     message: &MessageDto,
