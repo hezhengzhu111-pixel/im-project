@@ -523,7 +523,7 @@ services:
     networks:
       - im-sit-network
 
-   im-frontend:
+  im-frontend:
     image: im-project-sit/im-frontend:latest
     build:
       context: ../../frontend

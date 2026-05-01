@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS user_ai_api_keys (
 CREATE TABLE IF NOT EXISTS user_ai_settings (
   user_id BIGINT NOT NULL COMMENT '用户ID',
   auto_reply_enabled TINYINT NOT NULL DEFAULT 0 COMMENT '自动回复开关：1-开启，0-关闭',
-  auto_reply_persona TEXT DEFAULT '' COMMENT 'AI 回复人设 Prompt',
+  auto_reply_persona TEXT NULL COMMENT 'AI 回复人设 Prompt',
   created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (user_id)
