@@ -75,11 +75,18 @@ pub async fn handle(
         ai_model: request.model,
     };
 
-    let mut hot_redis = state.redis_manager.clone();
-    message::write_private_message_hot(&mut hot_redis, &conv_id, &ai_message, &im_rs_common::event::ImEvent::new(
+    let mut event = im_rs_common::event::ImEvent::new(
         im_rs_common::event::ImEventType::MessageCreated,
         conv_id.clone(),
-    ))
+    );
+    event.message_id = Some(ai_message.id.clone());
+    event.sender_id = Some(ai_message.sender_id.clone());
+    event.receiver_id = ai_message.receiver_id.clone();
+    event.group = false;
+    event.payload = Some(ai_message.clone());
+
+    let mut hot_redis = state.redis_manager.clone();
+    message::write_private_message_hot(&mut hot_redis, &conv_id, &ai_message, &event)
     .await?;
 
     Ok(Json(ApiResponse::success(json!({
