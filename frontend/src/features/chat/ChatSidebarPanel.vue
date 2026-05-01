@@ -903,6 +903,7 @@ const filteredGroups = computed(() => {
   font-weight: 800;
   line-height: 20px;
   text-align: center;
+  animation: badge-scale var(--motion-fast, 120ms) var(--motion-spring, cubic-bezier(0.34, 1.56, 0.64, 1));
 }
 
 .presence-dot {

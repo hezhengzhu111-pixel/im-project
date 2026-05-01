@@ -1046,7 +1046,7 @@ onUnmounted(() => {
   cursor: pointer;
   border-radius: 8px;
   padding: 4px;
-  transition: background-color 0.18s ease;
+  transition: background-color var(--motion-normal, 180ms) var(--motion-ease, ease);
 }
 
 .chat-header-main:hover {
@@ -1135,7 +1135,8 @@ onUnmounted(() => {
 
 .panel-fade-enter-active,
 .panel-fade-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  transition: opacity var(--motion-normal, 180ms) var(--motion-ease, ease),
+    transform var(--motion-normal, 180ms) var(--motion-ease, ease);
 }
 
 .panel-fade-enter-from,
