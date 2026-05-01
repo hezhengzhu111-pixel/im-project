@@ -1,5 +1,6 @@
 <template>
   <div class="chat-container">
+    <ConnectionStatusBar />
     <!-- 顶部全局状态栏 -->
     <div class="app-topbar">
       <div class="topbar-left">
@@ -338,6 +339,7 @@ import ChatSidebarPanel from "@/features/chat/ChatSidebarPanel.vue";
 import EncryptionBadge from "@/components/security/EncryptionBadge.vue";
 import SecurityPanel from "@/components/security/SecurityPanel.vue";
 import AiStatusBadge from "@/components/ai/AiStatusBadge.vue";
+import ConnectionStatusBar from "@/components/status/ConnectionStatusBar.vue";
 import {useErrorHandler} from "@/hooks/useErrorHandler";
 import {aiService} from "@/services/ai";
 import {groupService} from "@/services/group";

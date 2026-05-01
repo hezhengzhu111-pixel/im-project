@@ -92,13 +92,13 @@
         </div>
       </template>
 
-      <div v-if="loading" class="loading-block">
-        <el-skeleton :rows="5" animated />
-      </div>
+      <SkeletonList v-if="loading" :rows="5" />
 
-      <div v-else-if="filteredFriends.length === 0" class="empty-state">
-        暂无联系人
-      </div>
+      <EmptyState
+        v-else-if="filteredFriends.length === 0"
+        title="暂无联系人"
+        description="通过搜索添加好友开始聊天"
+      />
 
       <div v-else class="friend-list">
         <div
@@ -257,6 +257,8 @@ import {
   type FormRules,
 } from "element-plus";
 import { ArrowLeft, MoreFilled, Plus, Search } from "@element-plus/icons-vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import SkeletonList from "@/components/common/SkeletonList.vue";
 import {
   getFriendRequestAvatar,
   getFriendRequestDisplayName,
@@ -682,7 +684,6 @@ onMounted(() => {
   background: #67c23a;
 }
 
-.empty-state,
 .loading-block {
   padding: 24px 0;
 }

@@ -30,13 +30,13 @@
         </div>
       </template>
 
-      <div v-if="loading" class="loading-block">
-        <el-skeleton :rows="5" animated />
-      </div>
+      <SkeletonList v-if="loading" :rows="5" />
 
-      <div v-else-if="filteredGroups.length === 0" class="empty-state">
-        暂无群组
-      </div>
+      <EmptyState
+        v-else-if="filteredGroups.length === 0"
+        title="暂无群组"
+        description="创建或加入群组开始群聊"
+      />
 
       <div v-else class="group-list">
         <div
@@ -163,6 +163,8 @@ import {
   type FormRules,
 } from "element-plus";
 import { ArrowLeft, MoreFilled, Plus, Search } from "@element-plus/icons-vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import SkeletonList from "@/components/common/SkeletonList.vue";
 import { fileService } from "@/services/file";
 import { groupService } from "@/services/group";
 import { useChatStore } from "@/stores/chat";
@@ -479,8 +481,7 @@ onMounted(() => {
   margin-top: 4px;
 }
 
-.loading-block,
-.empty-state {
+.loading-block {
   padding: 24px 0;
 }
 

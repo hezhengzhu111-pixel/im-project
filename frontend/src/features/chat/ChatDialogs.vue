@@ -165,10 +165,9 @@
         <div v-else-if="sessionInfoError" class="member-state member-error">
           {{ sessionInfoError }}
         </div>
-        <el-empty
+        <EmptyState
           v-else-if="sessionInfoMembers.length === 0"
-          :description="t('dialog.noMemberDetails')"
-          :image-size="60"
+          :title="t('dialog.noMemberDetails')"
         />
         <div v-else class="member-list chat-soft-scrollbar">
           <div
@@ -207,6 +206,7 @@
 import {computed, defineAsyncComponent, reactive, ref} from "vue";
 import {useFileMessageUpload} from "@/features/chat/composables/useFileMessageUpload";
 import {useErrorHandler} from "@/hooks/useErrorHandler";
+import EmptyState from "@/components/common/EmptyState.vue";
 import {useChatStore} from "@/stores/chat";
 import {useI18nStore} from "@/stores/i18n";
 import {useUserStore} from "@/stores/user";

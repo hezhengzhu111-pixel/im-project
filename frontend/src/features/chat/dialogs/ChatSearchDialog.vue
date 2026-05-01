@@ -14,15 +14,13 @@
       />
 
       <div class="search-results chat-soft-scrollbar">
-        <el-empty
+        <EmptyState
           v-if="!messageSearchKeyword.trim()"
-          :description="t('dialog.searchHint')"
-          :image-size="60"
+          :title="t('dialog.searchHint')"
         />
-        <el-empty
+        <EmptyState
           v-else-if="searchResults.length === 0"
-          :description="t('dialog.noMatches')"
-          :image-size="60"
+          :title="t('dialog.noMatches')"
         />
         <template v-else>
           <div
@@ -47,6 +45,7 @@
 
 <script setup lang="ts">
 import {computed, ref, watch} from "vue";
+import EmptyState from "@/components/common/EmptyState.vue";
 import {useChatStore} from "@/stores/chat";
 import {useI18nStore} from "@/stores/i18n";
 import type {Message, MessageSearchResult} from "@/types";

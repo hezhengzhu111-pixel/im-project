@@ -61,17 +61,29 @@
       </div>
 
       <div v-show="activeTab === 'chat'" class="session-list chat-soft-scrollbar" role="list">
+        <!-- 加载态 skeleton -->
+        <template v-if="sessionsLoading && filteredSessionItems.length === 0">
+          <div v-for="n in 6" :key="`sk-${n}`" class="session-skeleton">
+            <el-skeleton :rows="2" animated />
+          </div>
+        </template>
+
+        <!-- 会话列表 -->
         <button
           v-for="item in filteredSessionItems"
           :key="item.session.id"
           type="button"
           class="session-item interactive-reset"
-          :class="{ active: currentSessionId === item.session.id, unread: item.session.unreadCount > 0 }"
+          :class="{
+            active: currentSessionId === item.session.id,
+            unread: item.session.unreadCount > 0,
+            pinned: item.session.isPinned,
+          }"
           @click="handleSelectSession(item.session)"
         >
           <span class="session-accent"></span>
           <div class="session-avatar-wrap">
-            <el-avatar :size="40" :src="item.session.targetAvatar">
+            <el-avatar :size="42" :src="item.session.targetAvatar">
               {{ item.session.targetName?.charAt(0) || "U" }}
             </el-avatar>
             <span
@@ -95,11 +107,12 @@
                   </el-icon>
                   <el-icon
                     v-if="item.session.isMuted"
-                    class="session-flag"
+                    class="session-flag muted"
                     :aria-label="t('sidebar.mutedConversation')"
                   >
                     <Bell />
                   </el-icon>
+                  <span v-if="item.isAi" class="session-ai-mark">AI</span>
                 </span>
               </div>
               <span class="session-time">{{ formatTime(item.session.lastActiveTime) }}</span>
@@ -130,10 +143,12 @@
             </div>
           </div>
         </button>
-        <el-empty
-          v-if="filteredSessionItems.length === 0"
-          :description="t('sidebar.noConversations')"
-          :image-size="60"
+
+        <!-- 空状态 -->
+        <EmptyState
+          v-if="!sessionsLoading && filteredSessionItems.length === 0"
+          :title="t('sidebar.noConversations')"
+          :description="t('sidebar.noConversationsDesc')"
         />
       </div>
 
@@ -164,7 +179,7 @@
             </button>
           </div>
         </template>
-        <el-empty v-else :description="t('sidebar.noContacts')" :image-size="60" />
+        <EmptyState v-else :title="t('sidebar.noContacts')" />
       </div>
 
       <div v-show="activeTab === 'groups'" class="group-list chat-soft-scrollbar" role="list">
@@ -183,10 +198,9 @@
             <div class="group-meta">{{ t("sidebar.members", { count: group.memberCount || 0 }) }}</div>
           </div>
         </button>
-        <el-empty
+        <EmptyState
           v-if="filteredGroups.length === 0"
-          :description="t('sidebar.noGroups')"
-          :image-size="60"
+          :title="t('sidebar.noGroups')"
         />
       </div>
     </div>
@@ -225,6 +239,7 @@
 <script setup lang="ts">
 import {computed, onUnmounted, ref, watch} from "vue";
 import {Bell, Plus, Search, Top} from "@element-plus/icons-vue";
+import EmptyState from "@/components/common/EmptyState.vue";
 import SideNavBar from "@/components/layout/SideNavBar.vue";
 import {useI18nStore} from "@/stores/i18n";
 import {useWebSocketStore} from "@/stores/websocket";
@@ -239,6 +254,7 @@ interface Props {
   pendingRequestsCount: number;
   totalUnreadCount: number;
   isChatActiveOnMobile: boolean;
+  sessionsLoading?: boolean;
   searchKeyword?: string;
 }
 
@@ -480,6 +496,7 @@ const sessionItems = computed(() =>
       online: cached.online,
       preview: cached.preview,
       searchText: cached.searchText,
+      isAi: Boolean(session.lastMessage?.isAiGenerated),
     };
   }),
 );
@@ -664,35 +681,36 @@ const filteredGroups = computed(() => {
   gap: 10px;
   padding: 10px;
   margin-bottom: 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   text-align: left;
   cursor: pointer;
   border: 1px solid transparent;
-  background: #fff;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+  background: var(--surface-elevated);
   transition:
-    border-color 0.18s ease,
-    background-color 0.18s ease,
-    transform 0.18s ease,
-    box-shadow 0.18s ease;
+    border-color var(--motion-normal) var(--motion-ease),
+    background-color var(--motion-normal) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-normal) var(--motion-ease);
 
   &:hover {
-    transform: translateY(-1px);
-    background: rgba(255, 255, 255, 0.82);
-    border-color: rgba(37, 99, 235, 0.22);
-    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+    background: var(--chat-card-hover);
+    border-color: var(--border-light);
   }
 }
 
 .session-item.active {
   background: var(--chat-card-active);
   border-color: var(--chat-card-active-border);
-  box-shadow: 0 16px 38px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.1);
 }
 
 .session-item.unread:not(.active) {
-  border-color: #bfdbfe;
-  background: #f8fbff;
+  background: color-mix(in srgb, var(--color-primary), transparent 95%);
+  border-color: color-mix(in srgb, var(--color-primary), transparent 85%);
+}
+
+.session-item.pinned {
+  background: var(--surface-overlay);
 }
 
 .session-accent {
@@ -750,6 +768,16 @@ const filteredGroups = computed(() => {
   font-weight: 800;
 }
 
+.session-item.unread .session-name {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.session-item.unread .session-preview {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
 .session-flags {
   display: inline-flex;
   align-items: center;
@@ -760,6 +788,68 @@ const filteredGroups = computed(() => {
 .session-flag {
   color: var(--chat-text-tertiary);
   font-size: 12px;
+}
+
+.session-flag.muted {
+  opacity: 0.6;
+}
+
+.session-ai-mark {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  height: 16px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--color-primary), transparent 90%);
+  color: var(--color-primary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Skeleton loading */
+.session-skeleton {
+  padding: 12px;
+  margin-bottom: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-light);
+}
+
+/* Empty state */
+.session-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.session-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-primary), transparent 92%);
+  color: var(--color-primary-muted);
+  margin-bottom: 16px;
+}
+
+.session-empty-title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.session-empty-desc {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  line-height: var(--leading-relaxed);
+  max-width: 240px;
 }
 
 .session-time {
@@ -840,8 +930,8 @@ const filteredGroups = computed(() => {
   z-index: 1;
   margin-bottom: 8px;
   padding: 6px 10px;
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: var(--radius-xs);
+  background: var(--surface-tertiary);
   color: var(--chat-text-tertiary);
   font-size: 12px;
   font-weight: 700;
