@@ -37,13 +37,6 @@ async fn trigger_if_enabled(
         return Ok(());
     }
 
-    if original_message
-        .is_ai_generated
-        .unwrap_or(false)
-    {
-        return Ok(());
-    }
-
     let enabled: Option<String> = redis::cmd("HGET")
         .arg(keys::ai_auto_reply_key(target_user_id))
         .arg("enabled")
