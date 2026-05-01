@@ -76,7 +76,7 @@ pub async fn update(
     sqlx::query(
         "INSERT INTO service_user_service_db.user_ai_settings \
          (user_id, auto_reply_enabled, auto_reply_persona, created_time, updated_time) \
-         VALUES (?, ?, ?, NOW(), NOW()) \
+         VALUES (?, COALESCE(?, DEFAULT(auto_reply_enabled)), ?, NOW(), NOW()) \
          ON DUPLICATE KEY UPDATE \
          auto_reply_enabled = COALESCE(?, auto_reply_enabled), \
          auto_reply_persona = COALESCE(?, auto_reply_persona), \
