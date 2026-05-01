@@ -148,6 +148,8 @@ type MessageListItemView = {
   durationLabel?: string;
   isAiGenerated?: boolean;
   aiProvider?: string;
+  showAvatar: boolean;
+  compact: boolean;
 };
 
 type MessageRenderItem = {
@@ -426,6 +428,8 @@ const buildMessageView = (message: Message): MessageListItemView => {
     durationLabel: formatDuration(message.duration),
     isAiGenerated: message.isAiGenerated,
     aiProvider: message.aiProvider,
+    showAvatar: true,
+    compact: false,
   };
 
   messageViewCache.set(key, view);
@@ -435,6 +439,7 @@ const buildMessageView = (message: Message): MessageListItemView => {
 const renderItems = computed<RenderItem[]>(() => {
   const items: RenderItem[] = [];
   let previousDateKey = "";
+  let previousSenderId = "";
   const activeMessageIds = new Set<string>();
 
   props.messages.forEach((message, index) => {
@@ -446,6 +451,7 @@ const renderItems = computed<RenderItem[]>(() => {
       ? ""
       : dateFormatter.value.format(currentDate);
 
+    // 日期变化时重置分组
     if (currentDateKey && currentDateKey !== previousDateKey) {
       items.push({
         id: `separator-${currentDateKey}-${key}`,
@@ -453,6 +459,7 @@ const renderItems = computed<RenderItem[]>(() => {
         label: currentDateKey,
       });
       previousDateKey = currentDateKey;
+      previousSenderId = "";
     }
 
     if (unreadBoundaryIndex.value === index) {
@@ -464,6 +471,13 @@ const renderItems = computed<RenderItem[]>(() => {
     }
 
     const view = buildMessageView(message);
+
+    // 连续消息分组：同一 sender 紧凑模式
+    const isSameSender = previousSenderId === message.senderId && !view.isSystemMessage;
+    view.showAvatar = !isSameSender;
+    view.compact = isSameSender;
+    previousSenderId = message.senderId;
+
     const cached = messageRenderItemCache.get(key);
     if (cached?.view === view) {
       items.push(cached);

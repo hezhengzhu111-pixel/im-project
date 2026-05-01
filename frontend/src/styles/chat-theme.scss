@@ -1,28 +1,48 @@
+// ============================================
+// Chat Theme — Chat-specific CSS variables
+// General tokens live in tokens.scss
+// ============================================
+
 :root {
-  --chat-shell-bg: linear-gradient(135deg, #eef5ff 0%, #f8fafc 48%, #effdf7 100%);
-  --chat-panel-bg: rgba(255, 255, 255, 0.72);
+  // Chat shell
+  --chat-shell-bg: var(--bg-gradient);
+  --chat-panel-bg: var(--surface-elevated);
   --chat-panel-strong: rgba(255, 255, 255, 0.9);
-  --chat-panel-border: rgba(148, 163, 184, 0.28);
+  --chat-panel-border: var(--border-light);
   --chat-panel-muted: rgba(248, 250, 252, 0.78);
+
+  // Chat cards
   --chat-card-hover: rgba(255, 255, 255, 0.76);
-  --chat-card-active: rgba(219, 234, 254, 0.62);
-  --chat-card-active-border: rgba(37, 99, 235, 0.34);
-  --chat-accent: #2563eb;
-  --chat-accent-soft: rgba(37, 99, 235, 0.1);
-  --chat-accent-strong: #1d4ed8;
-  --chat-text-primary: #0f172a;
-  --chat-text-secondary: #475569;
-  --chat-text-tertiary: #64748b;
-  --chat-text-quaternary: #94a3b8;
-  --chat-success: #10b981;
-  --chat-warning: #d97706;
-  --chat-danger: #dc2626;
+  --chat-card-active: color-mix(in srgb, var(--color-primary), white 85%);
+  --chat-card-active-border: color-mix(in srgb, var(--color-primary), transparent 65%);
+
+  // Chat accent (delegates to design system primary)
+  --chat-accent: var(--color-primary);
+  --chat-accent-soft: var(--color-primary-light);
+  --chat-accent-strong: var(--color-primary-2);
+
+  // Chat text (delegates to design system)
+  --chat-text-primary: var(--text-primary);
+  --chat-text-secondary: var(--text-secondary);
+  --chat-text-tertiary: var(--text-tertiary);
+  --chat-text-quaternary: var(--text-placeholder);
+
+  // Chat semantic colors
+  --chat-success: var(--color-success);
+  --chat-warning: var(--color-warning);
+  --chat-danger: var(--color-danger);
+
+  // Chat bubbles
   --chat-bubble-other: rgba(255, 255, 255, 0.86);
-  --chat-bubble-own: rgba(37, 99, 235, 0.92);
+  --chat-bubble-own: color-mix(in srgb, var(--color-primary), transparent 8%);
   --chat-bubble-system: rgba(226, 232, 240, 0.72);
-  --chat-message-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
-  --chat-surface-shadow: 0 18px 58px rgba(15, 23, 42, 0.08);
-  --chat-divider: rgba(148, 163, 184, 0.24);
+
+  // Chat shadows
+  --chat-message-shadow: var(--shadow-soft);
+  --chat-surface-shadow: var(--shadow-panel);
+
+  // Chat misc
+  --chat-divider: var(--border-light);
   --chat-badge-bg: #e11d48;
   --chat-badge-shadow: 0 8px 18px rgba(225, 29, 72, 0.22);
   --chat-glass-blur: blur(18px);
@@ -31,23 +51,15 @@
   --chat-max-bubble-width: min(72%, 640px);
 }
 
+// Dark theme overrides for chat-specific vars
 body.theme-dark {
-  --chat-shell-bg: linear-gradient(135deg, #111827 0%, #0f172a 50%, #10201b 100%);
-  --chat-panel-bg: rgba(15, 23, 42, 0.72);
   --chat-panel-strong: rgba(15, 23, 42, 0.9);
-  --chat-panel-border: rgba(148, 163, 184, 0.22);
   --chat-panel-muted: rgba(30, 41, 59, 0.64);
   --chat-card-hover: rgba(30, 41, 59, 0.72);
-  --chat-card-active: rgba(37, 99, 235, 0.22);
-  --chat-card-active-border: rgba(96, 165, 250, 0.44);
-  --chat-text-primary: #f8fafc;
-  --chat-text-secondary: #cbd5e1;
-  --chat-text-tertiary: #94a3b8;
-  --chat-text-quaternary: #64748b;
+  --chat-card-active: color-mix(in srgb, var(--color-primary), transparent 78%);
+  --chat-card-active-border: color-mix(in srgb, #60a5fa, transparent 56%);
   --chat-bubble-other: rgba(30, 41, 59, 0.86);
   --chat-bubble-system: rgba(30, 41, 59, 0.72);
-  --chat-message-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
-  --chat-surface-shadow: 0 18px 58px rgba(0, 0, 0, 0.22);
 }
 
 body {
@@ -55,32 +67,36 @@ body {
   text-size-adjust: 100%;
 }
 
+// Chat glass surface utility
 .chat-glass-surface {
   background: var(--chat-panel-bg);
   border: 1px solid var(--chat-panel-border);
   box-shadow: var(--chat-surface-shadow);
   backdrop-filter: var(--chat-glass-blur);
+  -webkit-backdrop-filter: var(--chat-glass-blur);
 }
 
+// Chat scrollbar utility
 .chat-soft-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 .chat-soft-scrollbar::-webkit-scrollbar-track {
-  background: rgba(226, 232, 240, 0.52);
+  background: transparent;
   border-radius: 999px;
 }
 
 .chat-soft-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.82);
+  background: rgba(148, 163, 184, 0.4);
   border-radius: 999px;
 }
 
 .chat-soft-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.88);
+  background: rgba(100, 116, 139, 0.6);
 }
 
+// Chat action button
 .chat-action-button {
   display: inline-flex;
   align-items: center;
@@ -88,28 +104,28 @@ body {
   width: var(--chat-touch-size);
   height: var(--chat-touch-size);
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--chat-text-secondary);
   transition:
-    transform 0.18s ease,
-    background-color 0.18s ease,
-    color 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease;
+    transform var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
 }
 
 .chat-action-button:hover {
   transform: translateY(-1px);
   color: var(--chat-accent);
-  background: rgba(37, 99, 235, 0.1);
-  border-color: rgba(37, 99, 235, 0.22);
+  background: var(--chat-accent-soft);
+  border-color: var(--chat-card-active-border);
 }
 
 .chat-action-button:active,
 .chat-action-button.is-active {
   color: var(--chat-accent-strong);
-  background: rgba(37, 99, 235, 0.16);
+  background: var(--chat-card-active);
 }
 
 .chat-action-button.auto-reply-toggle {
@@ -117,26 +133,31 @@ body {
   font-weight: 800;
   letter-spacing: 0.03em;
   color: var(--chat-text-quaternary);
-  transition: background-color 0.18s, color 0.18s, box-shadow 0.18s;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
 }
 
 .chat-action-button.auto-reply-toggle.active {
   color: #fff;
   background: var(--chat-accent);
-  box-shadow: 0 0 6px rgba(37, 99, 235, 0.3);
+  box-shadow: var(--shadow-glow);
 }
 
 .auto-reply-label {
   pointer-events: none;
 }
 
+// Chat shell dialog / drawer overrides
 .chat-shell-dialog .el-dialog,
 .chat-shell-drawer .el-drawer {
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--chat-panel-border);
   background: var(--chat-panel-bg);
   box-shadow: var(--chat-surface-shadow);
   backdrop-filter: var(--chat-glass-blur);
+  -webkit-backdrop-filter: var(--chat-glass-blur);
 }
 
 .chat-shell-dialog .el-dialog__header,
@@ -158,6 +179,7 @@ body {
   padding: 18px 20px 20px;
 }
 
+// Mobile responsive
 @media (max-width: 768px) {
   :root {
     --chat-touch-size: var(--chat-touch-size-mobile);
@@ -165,21 +187,26 @@ body {
   }
 }
 
-.message-item.is-ai .message-bubble {
-  border: 1px solid rgba(37, 99, 235, 0.25);
-  box-shadow: 0 0 8px rgba(37, 99, 235, 0.1);
-  background: linear-gradient(135deg, var(--chat-bubble-other), rgba(37, 99, 235, 0.03));
+// AI message styling
+.message-item.is-ai .message-bubble:not(.is-own) {
+  border: 1px solid color-mix(in srgb, var(--color-primary), transparent 80%);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--color-primary), transparent 92%);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-primary), transparent 95%),
+    color-mix(in srgb, var(--color-primary-2), transparent 95%)
+  );
 }
 
 .ai-badge {
   display: inline-block;
   font-size: 11px;
   font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 6px;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
   margin-right: 6px;
-  background: var(--chat-accent-soft);
-  color: var(--chat-accent);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-2));
+  color: #fff;
   vertical-align: middle;
   letter-spacing: 0.03em;
 }

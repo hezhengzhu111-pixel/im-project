@@ -7,6 +7,7 @@
       'is-system': isSystemMessage,
       'is-status-only': isRecalled || isDeleted,
       'is-ai': isAiGenerated,
+      'is-compact': compact,
     }"
     @contextmenu.prevent="handleContextMenu"
   >
@@ -16,13 +17,15 @@
 
     <template v-else>
       <el-avatar
-        v-if="!isMine"
+        v-if="!isMine && showAvatar"
         :size="32"
         :src="senderAvatar"
         class="message-avatar"
       >
         {{ senderAvatarText }}
       </el-avatar>
+
+      <div v-else-if="!isMine" class="message-avatar-spacer"></div>
 
       <div class="message-lane">
         <div v-if="showSenderLabel" class="message-sender">
@@ -188,6 +191,8 @@ interface Props {
   durationLabel?: string;
   audioPlaying?: boolean;
   imageScrollContainer?: HTMLElement | null;
+  showAvatar?: boolean;
+  compact?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -205,6 +210,8 @@ const props = withDefaults(defineProps<Props>(), {
   durationLabel: "",
   audioPlaying: false,
   imageScrollContainer: null,
+  showAvatar: true,
+  compact: false,
 });
 
 const emit = defineEmits<{
@@ -263,7 +270,8 @@ const handleMediaLoaded = () => {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+  animation: msgFadeIn 0.25s var(--motion-out, ease-out) both;
 
   &.is-mine {
     justify-content: flex-end;
@@ -271,13 +279,22 @@ const handleMediaLoaded = () => {
 
   &.is-system {
     justify-content: center;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
+  }
+
+  &.is-compact {
+    margin-bottom: 4px;
   }
 }
 
 .message-avatar {
   flex-shrink: 0;
   border: 1px solid var(--chat-panel-border);
+}
+
+.message-avatar-spacer {
+  flex-shrink: 0;
+  width: 32px;
 }
 
 .message-lane {
@@ -305,19 +322,21 @@ const handleMediaLoaded = () => {
 .message-bubble {
   position: relative;
   max-width: 100%;
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md, 12px);
   border: 1px solid var(--chat-panel-border);
   background: var(--chat-bubble-other);
   color: var(--chat-text-primary);
   box-shadow: var(--chat-message-shadow);
   backdrop-filter: var(--chat-glass-blur);
   overflow: hidden;
+  transition: box-shadow 0.15s ease;
 
   &.is-own {
-    border-color: rgba(37, 99, 235, 0.6);
-    background: var(--chat-bubble-own);
+    border-color: transparent;
+    background: linear-gradient(135deg, var(--color-primary, #6366f1), var(--color-primary-2, #818cf8));
     color: #fff;
+    box-shadow: 0 2px 12px rgba(99, 102, 241, 0.2);
   }
 
   &.is-muted {
@@ -326,10 +345,15 @@ const handleMediaLoaded = () => {
   }
 }
 
+.message-item.is-ai .message-bubble:not(.is-own) {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(139, 92, 246, 0.06));
+  border-color: rgba(99, 102, 241, 0.15);
+}
+
 .text-content,
 .status-copy {
   font-size: 14px;
-  line-height: 1.45;
+  line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
@@ -338,7 +362,7 @@ const handleMediaLoaded = () => {
 .media-card,
 .attachment-card {
   width: min(320px, 62vw);
-  border-radius: 8px;
+  border-radius: var(--radius-sm, 8px);
   background: rgba(248, 250, 252, 0.94);
   overflow: hidden;
 }
@@ -403,9 +427,9 @@ const handleMediaLoaded = () => {
   justify-content: center;
   width: 34px;
   height: 34px;
-  border-radius: 8px;
-  background: rgba(59, 130, 246, 0.12);
-  color: var(--chat-accent);
+  border-radius: var(--radius-sm, 8px);
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--color-primary, #6366f1);
   font-size: 18px;
   flex-shrink: 0;
 }
@@ -438,17 +462,26 @@ const handleMediaLoaded = () => {
 .attachment-action {
   flex-shrink: 0;
   padding: 8px 10px;
-  border-radius: 8px;
-  background: rgba(37, 99, 235, 0.12);
-  color: var(--chat-accent-strong);
+  border-radius: var(--radius-sm, 8px);
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--color-primary, #6366f1);
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: rgba(99, 102, 241, 0.18);
+  }
 }
 
 .message-bubble.is-own .attachment-action {
   background: rgba(255, 255, 255, 0.2);
   color: #fff;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
 }
 
 .message-meta {
@@ -482,11 +515,11 @@ const handleMediaLoaded = () => {
 }
 
 .message-state.is-failed {
-  color: var(--chat-danger);
+  color: var(--chat-danger, #ef4444);
 }
 
 .message-state.is-read {
-  color: var(--chat-success);
+  color: var(--chat-success, #22c55e);
 }
 
 .message-state.is-link {
@@ -498,19 +531,35 @@ const handleMediaLoaded = () => {
   align-items: center;
   justify-content: center;
   max-width: min(100%, 460px);
-  padding: 5px 10px;
-  border-radius: 999px;
+  padding: 6px 14px;
+  border-radius: var(--radius-full, 999px);
   background: var(--chat-bubble-system);
   color: var(--chat-text-tertiary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   text-align: center;
+  backdrop-filter: blur(8px);
+}
+
+@keyframes msgFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 768px) {
   .message-item {
-    gap: 8px;
-    margin-bottom: 8px;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .message-item.is-compact {
+    margin-bottom: 3px;
   }
 
   .message-avatar {
@@ -518,9 +567,13 @@ const handleMediaLoaded = () => {
     height: 36px;
   }
 
+  .message-avatar-spacer {
+    width: 36px;
+  }
+
   .message-bubble {
     padding: 8px 10px;
-    border-radius: 8px;
+    border-radius: var(--radius-sm, 8px);
   }
 
   .text-content,
