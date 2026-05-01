@@ -387,7 +387,7 @@ onMounted(() => {
 .groups-page {
   min-height: 100%;
   padding: 20px;
-  background: #f5f7fa;
+  background: var(--bg-gradient);
 }
 
 .page-header,
@@ -428,7 +428,7 @@ onMounted(() => {
 }
 
 .subtle-text {
-  color: #909399;
+  color: var(--text-tertiary);
   font-size: 13px;
 }
 
@@ -442,12 +442,12 @@ onMounted(() => {
   gap: 14px;
   padding: 16px;
   border-radius: 12px;
-  background: #f8fafc;
+  background: var(--surface-elevated);
   cursor: pointer;
 }
 
 .group-item:hover {
-  background: #eef5ff;
+  background: var(--chat-card-hover, rgba(99, 102, 241, 0.06));
 }
 
 .group-avatar-wrap {
@@ -467,13 +467,13 @@ onMounted(() => {
 
 .group-name {
   font-weight: 600;
-  color: #303133;
+  color: var(--text-primary);
 }
 
 .group-time,
 .group-desc,
 .group-meta {
-  color: #909399;
+  color: var(--text-tertiary);
   font-size: 13px;
 }
 

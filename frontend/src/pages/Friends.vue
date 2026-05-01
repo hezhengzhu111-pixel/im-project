@@ -570,7 +570,7 @@ onMounted(() => {
 .friends-page {
   min-height: 100%;
   padding: 20px;
-  background: #f5f7fa;
+  background: var(--bg-gradient);
 }
 
 .page-header,
@@ -611,7 +611,7 @@ onMounted(() => {
 }
 
 .subtle-text {
-  color: #909399;
+  color: var(--text-tertiary);
   font-size: 13px;
 }
 
@@ -629,7 +629,7 @@ onMounted(() => {
   gap: 14px;
   padding: 14px;
   border-radius: 12px;
-  background: #f8fafc;
+  background: var(--surface-elevated);
 }
 
 .friend-item {
@@ -639,7 +639,7 @@ onMounted(() => {
 .friend-item:hover,
 .search-result-item:hover,
 .search-result-item.active {
-  background: #eef5ff;
+  background: var(--chat-card-hover, rgba(99, 102, 241, 0.06));
 }
 
 .request-content,
@@ -653,7 +653,7 @@ onMounted(() => {
 .friend-name,
 .search-result-name {
   font-weight: 600;
-  color: #303133;
+  color: var(--text-primary);
 }
 
 .request-message,
@@ -662,7 +662,7 @@ onMounted(() => {
 .friend-subtitle,
 .search-result-desc {
   font-size: 13px;
-  color: #909399;
+  color: var(--text-tertiary);
 }
 
 .friend-avatar-wrap {
@@ -676,12 +676,12 @@ onMounted(() => {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #c0c4cc;
-  border: 2px solid #fff;
+  background: var(--text-tertiary);
+  border: 2px solid var(--surface-elevated, #fff);
 }
 
 .presence-dot.online {
-  background: #67c23a;
+  background: var(--color-success);
 }
 
 .loading-block {
