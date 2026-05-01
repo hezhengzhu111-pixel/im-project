@@ -440,4 +440,44 @@ onMounted(() => {
     font-size: 12px;
   }
 }
+
+@media (max-width: 768px) {
+  .ai-settings-page {
+    padding: 16px;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .settings-hero {
+    gap: 12px;
+
+    .hero-copy h1 {
+      font-size: 20px;
+    }
+  }
+
+  .settings-card {
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .key-actions {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 390px) {
+  .ai-settings-page {
+    padding: 12px;
+  }
+
+  .settings-card {
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  .settings-copy h2 {
+    font-size: 15px;
+  }
+}
 </style>

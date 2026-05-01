@@ -1278,6 +1278,7 @@ onUnmounted(() => {
   .app-topbar {
     padding: 0 12px;
     height: 48px;
+    padding-top: env(safe-area-inset-top, 0px);
   }
 
   .topbar-search-btn {
@@ -1301,6 +1302,7 @@ onUnmounted(() => {
     width: 100%;
     max-width: 320px;
     box-shadow: var(--shadow-panel);
+    animation: slideInRight var(--motion-normal, 180ms) var(--motion-ease, ease);
   }
 
   .chat-body {
@@ -1317,7 +1319,8 @@ onUnmounted(() => {
       display: flex;
       width: 100%;
       height: 100%;
-      background: rgba(255, 255, 255, 0.9);
+      background: var(--chat-shell-bg);
+      animation: slideInRight var(--motion-normal, 180ms) var(--motion-ease, ease);
     }
   }
 

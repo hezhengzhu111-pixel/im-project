@@ -1,0 +1,109 @@
+// ============================================
+// Motion System — Transitions & Animations
+// ============================================
+
+// --- Transition utilities ---
+.transition-fast {
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--motion-ease);
+}
+
+.transition {
+  transition-duration: var(--motion-normal);
+  transition-timing-function: var(--motion-ease);
+}
+
+.transition-slow {
+  transition-duration: var(--motion-slow);
+  transition-timing-function: var(--motion-ease);
+}
+
+.transition-spring {
+  transition-duration: var(--motion-normal);
+  transition-timing-function: var(--motion-spring);
+}
+
+// --- Keyframes ---
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slide-out-right {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+// --- Animation utility classes ---
+.animate-fade-in {
+  animation: fade-in var(--motion-normal) var(--motion-ease) both;
+}
+
+.animate-slide-up {
+  animation: slide-up var(--motion-slow) var(--motion-out) both;
+}
+
+.animate-slide-down {
+  animation: slide-down var(--motion-slow) var(--motion-out) both;
+}
+
+.animate-scale-in {
+  animation: scale-in var(--motion-normal) var(--motion-spring) both;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+// --- Route transition ---
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity var(--motion-normal) var(--motion-ease);
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+// --- Reduced motion ---
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

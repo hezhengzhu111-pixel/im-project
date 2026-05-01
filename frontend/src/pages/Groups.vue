@@ -498,6 +498,8 @@ onMounted(() => {
 @media (max-width: 768px) {
   .groups-page {
     padding: 16px;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   }
 
   .toolbar {
@@ -507,6 +509,26 @@ onMounted(() => {
 
   .sort-select {
     width: 100%;
+  }
+
+  :deep(.el-dialog) {
+    width: calc(100vw - 32px) !important;
+    margin: 16px !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .groups-page {
+    padding: 12px;
+  }
+
+  .page-header h2 {
+    font-size: 18px;
+  }
+
+  .group-item {
+    padding: 12px;
+    gap: 10px;
   }
 }
 </style>
