@@ -6,6 +6,15 @@
           <button
             type="button"
             class="toolbar-button interactive-reset"
+            title="表情"
+            aria-label="表情"
+            disabled
+          >
+            <el-icon><ChatDotRound /></el-icon>
+          </button>
+          <button
+            type="button"
+            class="toolbar-button interactive-reset"
             :title="t('composer.sendImage')"
             :aria-label="t('composer.sendImage')"
             :disabled="disabled || uploading || isRecording"
@@ -36,6 +45,15 @@
               <VideoPause v-if="isRecording" />
               <Microphone v-else />
             </el-icon>
+          </button>
+          <button
+            type="button"
+            class="toolbar-button interactive-reset"
+            title="AI 助手"
+            aria-label="AI 助手"
+            disabled
+          >
+            <el-icon><MagicStick /></el-icon>
           </button>
         </div>
 
@@ -93,6 +111,13 @@
       </div>
     </div>
 
+    <div class="typing-indicator" style="display: none">
+      <span class="typing-dot"></span>
+      <span class="typing-dot"></span>
+      <span class="typing-dot"></span>
+      <span class="typing-text">对方正在输入...</span>
+    </div>
+
     <input
       ref="imageInputRef"
       type="file"
@@ -111,7 +136,7 @@
 
 <script setup lang="ts">
 import {computed, nextTick, onMounted, onUnmounted, ref, watch} from "vue";
-import {Microphone, Paperclip, Picture, VideoPause} from "@element-plus/icons-vue";
+import {ChatDotRound, MagicStick, Microphone, Paperclip, Picture, VideoPause} from "@element-plus/icons-vue";
 import {useFileMessageUpload} from "@/features/chat/composables/useFileMessageUpload";
 import {useVoiceRecorder} from "@/features/chat/composables/useVoiceRecorder";
 import {useI18nStore} from "@/stores/i18n";
@@ -375,13 +400,20 @@ onUnmounted(() => { cancelRecording(); });
 }
 
 .composer-surface {
-  border-radius: 8px;
+  border-radius: var(--radius-lg, 16px);
   border: 1px solid var(--chat-panel-border);
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  background: var(--surface-overlay, rgba(255, 255, 255, 0.72));
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: var(--shadow-soft, 0 14px 34px rgba(15, 23, 42, 0.06));
+  transition: border-color var(--motion-fast, 0.18s) ease, box-shadow var(--motion-fast, 0.18s) ease;
 }
-.composer-surface.is-focused { border-color: #8ab4f8; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14); }
+
+.composer-surface.is-focused {
+  border-color: var(--color-primary, #6366f1);
+  box-shadow: var(--shadow-glow, 0 0 0 3px rgba(99, 102, 241, 0.14));
+}
+
 .composer-surface.is-disabled { opacity: 0.72; }
 
 .composer-row {
@@ -393,26 +425,56 @@ onUnmounted(() => { cancelRecording(); });
   padding: 8px;
 }
 
-.toolbar-group { display: flex; align-items: center; gap: 4px; padding-bottom: 3px; }
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-bottom: 3px;
+}
 
 .toolbar-button {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; border-radius: 8px;
-  color: var(--chat-text-secondary); cursor: pointer;
-  transition: background-color 0.18s ease, color 0.18s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm, 8px);
+  color: var(--chat-text-secondary);
+  cursor: pointer;
+  transition: background-color var(--motion-fast, 0.18s) ease, color var(--motion-fast, 0.18s) ease, transform var(--motion-fast, 0.18s) ease;
 }
-.toolbar-button:hover:not(:disabled) { background: rgba(37, 99, 235, 0.1); color: var(--chat-accent); }
-.toolbar-button.is-recording { background: rgba(239, 68, 68, 0.12); color: var(--chat-danger); animation: recordingPulse 1.2s ease-in-out infinite; }
-.toolbar-button:disabled { cursor: not-allowed; opacity: 0.48; }
+
+.toolbar-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary, #6366f1), transparent 90%);
+  color: var(--color-primary, #6366f1);
+  transform: translateY(-1px);
+}
+
+.toolbar-button.is-recording {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--chat-danger, #ef4444);
+  animation: recordingPulse 1.2s ease-in-out infinite;
+}
+
+.toolbar-button:disabled { cursor: not-allowed; opacity: 0.4; }
 
 .textarea-wrapper { position: relative; width: 100%; }
 
 .chat-textarea {
-  width: 100%; min-height: 40px; max-height: 116px;
-  padding: 9px 6px; border: 0; resize: none; outline: none;
-  background: transparent; color: var(--chat-text-primary);
-  font-family: inherit; font-size: 14px; line-height: 1.45;
+  width: 100%;
+  min-height: 40px;
+  max-height: 116px;
+  padding: 9px 6px;
+  border: 0;
+  resize: none;
+  outline: none;
+  background: transparent;
+  color: var(--chat-text-primary);
+  font-family: var(--font-sans, inherit);
+  font-size: 14px;
+  line-height: 1.5;
 }
+
 .chat-textarea::placeholder { color: var(--chat-text-quaternary); }
 
 .mention-popup {
@@ -423,41 +485,121 @@ onUnmounted(() => { cancelRecording(); });
   overflow-y: auto;
   background: var(--chat-panel-strong);
   border: 1px solid var(--chat-panel-border);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  border-radius: var(--radius-md, 12px);
+  box-shadow: var(--shadow-panel, 0 8px 24px rgba(15, 23, 42, 0.12));
+  backdrop-filter: blur(18px);
   z-index: 20;
   padding: 4px;
 }
 
 .mention-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 8px; border-radius: 8px; cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 8px);
+  cursor: pointer;
   transition: background-color 0.12s;
 }
+
 .mention-item:hover, .mention-item.active { background: var(--chat-card-active); }
 
-.mention-name { font-size: 13px; color: var(--chat-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mention-name {
+  font-size: 13px;
+  color: var(--chat-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-.mention-empty { padding: 12px; text-align: center; font-size: 13px; color: var(--chat-text-quaternary); }
+.mention-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--chat-text-quaternary);
+}
 
 .send-button {
-  flex-shrink: 0; width: 74px; height: 38px; border-radius: 8px;
-  background: #e2e8f0; color: var(--chat-text-quaternary);
-  font-size: 13px; font-weight: 700; cursor: not-allowed;
-  transition: background-color 0.18s ease, color 0.18s ease;
+  flex-shrink: 0;
+  width: 74px;
+  height: 40px;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-elevated, #e2e8f0);
+  color: var(--chat-text-quaternary);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: not-allowed;
+  transition: background-color var(--motion-fast, 0.18s) ease, color var(--motion-fast, 0.18s) ease, transform var(--motion-fast, 0.18s) ease, box-shadow var(--motion-fast, 0.18s) ease;
 }
-.send-button.can-send { cursor: pointer; background: var(--chat-accent); color: #fff; }
-.send-button.can-send:hover { background: #1d4ed8; }
+
+.send-button.can-send {
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--color-primary, #6366f1), var(--color-primary-2, #818cf8));
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+}
+
+.send-button.can-send:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+}
+
+.send-button.can-send:active {
+  transform: translateY(0);
+}
+
+// Typing indicator
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 18px 0;
+  font-size: 12px;
+  color: var(--chat-text-tertiary);
+}
+
+.typing-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--chat-text-tertiary);
+  animation: typingBounce 1.4s ease-in-out infinite;
+
+  &:nth-child(2) { animation-delay: 0.2s; }
+  &:nth-child(3) { animation-delay: 0.4s; }
+}
+
+.typing-text { margin-left: 2px; }
 
 @keyframes recordingPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.18); }
   50% { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
 }
 
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-3px); }
+}
+
 @media (max-width: 768px) {
-  .composer-shell { padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px)); }
-  .composer-row { grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; padding: 7px; }
-  .toolbar-button { width: 32px; height: 32px; }
-  .send-button { width: 62px; }
+  .composer-shell {
+    padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .composer-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 6px;
+    padding: 7px;
+  }
+
+  .toolbar-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .send-button {
+    width: 62px;
+    height: 44px;
+  }
 }
 </style>
