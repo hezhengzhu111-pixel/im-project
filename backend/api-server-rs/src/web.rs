@@ -244,6 +244,22 @@ pub fn router(state: AppState) -> Router {
             "/api/moments/comments/:id",
             delete(moments::interaction_handler::delete_comment),
         )
+        .route(
+            "/moments/notifications",
+            get(moments::notification_handler::get_notifications),
+        )
+        .route(
+            "/api/moments/notifications",
+            get(moments::notification_handler::get_notifications),
+        )
+        .route(
+            "/moments/notifications/read",
+            put(moments::notification_handler::mark_all_read),
+        )
+        .route(
+            "/api/moments/notifications/read",
+            put(moments::notification_handler::mark_all_read),
+        )
         .route("/user/login", post(user::login))
         .route("/api/user/login", post(user::login))
         .route("/user/register", post(user::register))
