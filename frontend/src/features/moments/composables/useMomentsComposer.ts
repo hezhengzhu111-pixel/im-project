@@ -38,9 +38,10 @@ export function useMomentsComposer() {
             uploadResult = await fileService.upload(file)
           }
 
+          // uploadResult is ApiResponse<FileUploadResponse>, URL is at data.url
           const url =
-            uploadResult && typeof uploadResult === 'object' && 'url' in uploadResult
-              ? (uploadResult as { url: string }).url
+            uploadResult && typeof uploadResult === 'object' && 'data' in uploadResult
+              ? (uploadResult as { data: { url: string } }).data.url || ''
               : ''
 
           if (url) {
