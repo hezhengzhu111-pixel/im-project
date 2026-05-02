@@ -41,6 +41,20 @@
       >
         <el-icon :size="24"><UserFilled /></el-icon>
       </button>
+
+      <button
+        type="button"
+        class="nav-icon interactive-reset"
+        :class="{ active: activeTab === 'moments' }"
+        :title="t('nav.moments')"
+        :aria-label="t('nav.moments')"
+        @click="$emit('change-tab', 'moments')"
+      >
+        <el-icon :size="24"><PictureFilled /></el-icon>
+        <span v-if="(momentsUnreadCount || 0) > 0" class="badge">
+          {{ (momentsUnreadCount || 0) > 99 ? "99+" : momentsUnreadCount || 0 }}
+        </span>
+      </button>
     </div>
 
     <div class="bottom-icons">
@@ -58,17 +72,24 @@
 </template>
 
 <script setup lang="ts">
-import {ChatDotRound, Setting, User, UserFilled,} from "@element-plus/icons-vue";
-import {useI18nStore} from "@/stores/i18n";
-import {useUserStore} from "@/stores/user";
+import {
+  ChatDotRound,
+  PictureFilled,
+  Setting,
+  User,
+  UserFilled,
+} from "@element-plus/icons-vue";
+import { useI18nStore } from "@/stores/i18n";
+import { useUserStore } from "@/stores/user";
 
 const userStore = useUserStore();
-const {t} = useI18nStore();
+const { t } = useI18nStore();
 
 defineProps<{
   activeTab: string;
   unreadCount?: number;
   pendingRequests?: number;
+  momentsUnreadCount?: number;
 }>();
 
 defineEmits<{
@@ -136,7 +157,11 @@ defineEmits<{
 
   &.active {
     color: #fff;
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.7), rgba(129, 140, 248, 0.7));
+    background: linear-gradient(
+      135deg,
+      rgba(99, 102, 241, 0.7),
+      rgba(129, 140, 248, 0.7)
+    );
     box-shadow: 0 8px 20px rgba(99, 102, 241, 0.2);
   }
 }

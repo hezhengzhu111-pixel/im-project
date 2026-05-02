@@ -1,4 +1,4 @@
-import {computed, ref} from "vue";
+import { computed, ref } from "vue";
 
 export type Locale = "zh-CN" | "en-US";
 
@@ -22,6 +22,7 @@ const messages = {
     "nav.messages": "消息",
     "nav.contacts": "联系人",
     "nav.groups": "群组",
+    "nav.moments": "朋友圈",
     "nav.settings": "设置",
     "sidebar.search": "搜索",
     "sidebar.searchAria": "搜索联系人、群组或会话",
@@ -30,6 +31,7 @@ const messages = {
     "sidebar.messagesTitle": "消息",
     "sidebar.contactsTitle": "联系人",
     "sidebar.groupsTitle": "群组",
+    "sidebar.momentsTitle": "朋友圈",
     "sidebar.activeConversations": "{count} 个活跃会话",
     "sidebar.contactsAvailable": "{count} 位联系人",
     "sidebar.groupsReady": "{count} 个群组",
@@ -249,7 +251,8 @@ const messages = {
     "ai.autoReplyEnabled": "启用自动回复",
     "ai.autoReplyPersona": "AI 人设",
     "ai.autoReplyPersonaPlaceholder": "描述你想让 AI 扮演的角色和说话风格...",
-    "ai.autoReplyPersonaHint": "例如：你是一个幽默风趣的程序员，喜欢用梗和表情包",
+    "ai.autoReplyPersonaHint":
+      "例如：你是一个幽默风趣的程序员，喜欢用梗和表情包",
     "ai.provider": "模型提供商",
     "ai.keyName": "标签",
     "ai.keyNamePlaceholder": "给这个 Key 起个名字",
@@ -291,6 +294,7 @@ const messages = {
     "nav.messages": "Messages",
     "nav.contacts": "Contacts",
     "nav.groups": "Groups",
+    "nav.moments": "Moments",
     "nav.settings": "Settings",
     "sidebar.search": "Search",
     "sidebar.searchAria": "Search contacts, groups, or conversations",
@@ -299,12 +303,14 @@ const messages = {
     "sidebar.messagesTitle": "Messages",
     "sidebar.contactsTitle": "Contacts",
     "sidebar.groupsTitle": "Groups",
+    "sidebar.momentsTitle": "Moments",
     "sidebar.activeConversations": "{count} active conversations",
     "sidebar.contactsAvailable": "{count} contacts available",
     "sidebar.groupsReady": "{count} groups ready",
     "sidebar.pendingRequests": "Pending requests ({count})",
     "sidebar.noConversations": "No conversations yet",
-    "sidebar.noConversationsDesc": "Start a chat by selecting a contact or creating an encrypted conversation",
+    "sidebar.noConversationsDesc":
+      "Start a chat by selecting a contact or creating an encrypted conversation",
     "sidebar.noContacts": "No contacts found",
     "sidebar.noGroups": "No groups found",
     "sidebar.online": "Online",
@@ -515,7 +521,8 @@ const messages = {
       "Clear local UI cache? Your login session will be kept.",
     "settings.cacheCleared": "Cache cleared",
     "settings.aiAssistant": "AI Assistant",
-    "settings.aiAssistantDesc": "Configure LLM API keys, auto-reply, knowledge base",
+    "settings.aiAssistantDesc":
+      "Configure LLM API keys, auto-reply, knowledge base",
     "ai.title": "AI Assistant",
     "ai.apiKeys": "API Keys",
     "ai.apiKeysDesc": "Configure your LLM API keys (DeepSeek, MiniMax, etc.)",
@@ -523,8 +530,10 @@ const messages = {
     "ai.autoReplyDesc": "AI will reply to messages on your behalf",
     "ai.autoReplyEnabled": "Enable Auto Reply",
     "ai.autoReplyPersona": "AI Persona",
-    "ai.autoReplyPersonaPlaceholder": "Describe the role and speaking style for the AI...",
-    "ai.autoReplyPersonaHint": "e.g. You are a witty programmer who loves memes and emojis",
+    "ai.autoReplyPersonaPlaceholder":
+      "Describe the role and speaking style for the AI...",
+    "ai.autoReplyPersonaHint":
+      "e.g. You are a witty programmer who loves memes and emojis",
     "ai.provider": "Provider",
     "ai.keyName": "Label",
     "ai.keyNamePlaceholder": "Give this key a name",
@@ -543,7 +552,8 @@ const messages = {
     "common.optional": "Optional",
     "mention.noMembers": "No members",
     "composer.recording": "Recording...",
-    "error.networkFailed": "Network connection failed. Please check your network settings.",
+    "error.networkFailed":
+      "Network connection failed. Please check your network settings.",
     "error.authExpired": "Session expired. Redirecting to login.",
     "error.badRequest": "Invalid request parameters",
     "error.unauthorized": "Unauthorized",

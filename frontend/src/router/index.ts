@@ -132,6 +132,24 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
+    path: "/moments",
+    name: "Moments",
+    component: () => import("@/features/moments/MomentsContainer.vue"),
+    meta: {
+      title: "朋友圈",
+      requiresAuth: true,
+    },
+  },
+  {
+    path: "/moments/user/:userId",
+    name: "MomentsUserProfile",
+    component: () => import("@/features/moments/MomentsUserProfile.vue"),
+    meta: {
+      title: "用户朋友圈",
+      requiresAuth: true,
+    },
+  },
+  {
     path: "/:pathMatch(.*)*",
     name: "NotFound",
     component: () => import("@/pages/NotFound.vue"),

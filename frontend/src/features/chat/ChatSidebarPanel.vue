@@ -5,6 +5,7 @@
       :active-tab="activeTab"
       :unread-count="totalUnreadCount"
       :pending-requests="pendingRequestsCount"
+      :moments-unread-count="momentsUnreadCount"
       @change-tab="handleChangeTab"
       @settings="handleOpenSettings"
     />
@@ -60,7 +61,11 @@
         />
       </div>
 
-      <div v-show="activeTab === 'chat'" class="session-list chat-soft-scrollbar" role="list">
+      <div
+        v-show="activeTab === 'chat'"
+        class="session-list chat-soft-scrollbar"
+        role="list"
+      >
         <!-- 加载态 skeleton -->
         <template v-if="sessionsLoading && filteredSessionItems.length === 0">
           <div v-for="n in 6" :key="`sk-${n}`" class="session-skeleton">
@@ -115,7 +120,9 @@
                   <span v-if="item.isAi" class="session-ai-mark">AI</span>
                 </span>
               </div>
-              <span class="session-time">{{ formatTime(item.session.lastActiveTime) }}</span>
+              <span class="session-time">{{
+                formatTime(item.session.lastActiveTime)
+              }}</span>
             </div>
 
             <div class="session-meta-row">
@@ -127,14 +134,24 @@
                 {{ item.online ? t("sidebar.online") : t("sidebar.offline") }}
               </span>
               <span v-else class="session-presence">
-                {{ t("sidebar.members", { count: item.session.memberCount || 0 }) }}
+                {{
+                  t("sidebar.members", { count: item.session.memberCount || 0 })
+                }}
               </span>
               <span
                 v-if="item.session.unreadCount > 0"
                 class="unread-badge"
-                :aria-label="t('sidebar.unreadMessages', { count: item.session.unreadCount })"
+                :aria-label="
+                  t('sidebar.unreadMessages', {
+                    count: item.session.unreadCount,
+                  })
+                "
               >
-                {{ item.session.unreadCount > 99 ? "99+" : item.session.unreadCount }}
+                {{
+                  item.session.unreadCount > 99
+                    ? "99+"
+                    : item.session.unreadCount
+                }}
               </span>
             </div>
 
@@ -152,7 +169,11 @@
         />
       </div>
 
-      <div v-show="activeTab === 'contacts'" class="contact-list chat-soft-scrollbar" role="list">
+      <div
+        v-show="activeTab === 'contacts'"
+        class="contact-list chat-soft-scrollbar"
+        role="list"
+      >
         <template v-if="groupedContacts.length > 0">
           <div
             v-for="group in groupedContacts"
@@ -168,7 +189,11 @@
               @click="handleStartPrivateChat(contact)"
             >
               <el-avatar :size="40" :src="contact.avatar">
-                {{ contact.nickname?.charAt(0) || contact.username?.charAt(0) || "U" }}
+                {{
+                  contact.nickname?.charAt(0) ||
+                  contact.username?.charAt(0) ||
+                  "U"
+                }}
               </el-avatar>
               <div class="contact-info">
                 <div class="contact-name">
@@ -182,7 +207,11 @@
         <EmptyState v-else :title="t('sidebar.noContacts')" />
       </div>
 
-      <div v-show="activeTab === 'groups'" class="group-list chat-soft-scrollbar" role="list">
+      <div
+        v-show="activeTab === 'groups'"
+        class="group-list chat-soft-scrollbar"
+        role="list"
+      >
         <button
           v-for="group in filteredGroups"
           :key="group.id"
@@ -195,7 +224,9 @@
           </el-avatar>
           <div class="group-info">
             <div class="group-name">{{ group.groupName }}</div>
-            <div class="group-meta">{{ t("sidebar.members", { count: group.memberCount || 0 }) }}</div>
+            <div class="group-meta">
+              {{ t("sidebar.members", { count: group.memberCount || 0 }) }}
+            </div>
           </div>
         </button>
         <EmptyState
@@ -212,8 +243,10 @@
         :aria-label="t('sidebar.messagesTitle')"
         @click="handleChangeTab('chat')"
       >
-        <span class="mobile-nav-badge" v-if="totalUnreadCount > 0">{{ totalUnreadCount > 99 ? '99+' : totalUnreadCount }}</span>
-        {{ t('sidebar.messagesTitle') }}
+        <span class="mobile-nav-badge" v-if="totalUnreadCount > 0">{{
+          totalUnreadCount > 99 ? "99+" : totalUnreadCount
+        }}</span>
+        {{ t("sidebar.messagesTitle") }}
       </button>
       <button
         type="button"
@@ -221,8 +254,10 @@
         :aria-label="t('sidebar.contactsTitle')"
         @click="handleChangeTab('contacts')"
       >
-        <span class="mobile-nav-badge" v-if="pendingRequestsCount > 0">{{ pendingRequestsCount }}</span>
-        {{ t('sidebar.contactsTitle') }}
+        <span class="mobile-nav-badge" v-if="pendingRequestsCount > 0">{{
+          pendingRequestsCount
+        }}</span>
+        {{ t("sidebar.contactsTitle") }}
       </button>
       <button
         type="button"
@@ -230,36 +265,48 @@
         :aria-label="t('sidebar.groupsTitle')"
         @click="handleChangeTab('groups')"
       >
-        {{ t('sidebar.groupsTitle') }}
+        {{ t("sidebar.groupsTitle") }}
+      </button>
+      <button
+        type="button"
+        :class="{ active: activeTab === 'moments' }"
+        :aria-label="t('sidebar.momentsTitle')"
+        @click="handleChangeTab('moments')"
+      >
+        <span class="mobile-nav-badge" v-if="(momentsUnreadCount || 0) > 0">{{
+          (momentsUnreadCount || 0) > 99 ? "99+" : momentsUnreadCount || 0
+        }}</span>
+        {{ t("sidebar.momentsTitle") }}
       </button>
       <button
         type="button"
         :aria-label="t('nav.settings')"
         @click="handleOpenSettings"
       >
-        {{ t('nav.settings') }}
+        {{ t("nav.settings") }}
       </button>
     </nav>
   </div>
 </template>
 
 <script setup lang="ts">
-import {computed, onUnmounted, ref, watch} from "vue";
-import {Bell, Plus, Search, Setting, Top} from "@element-plus/icons-vue";
+import { computed, onUnmounted, ref, watch } from "vue";
+import { Bell, Plus, Search, Setting, Top } from "@element-plus/icons-vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import SideNavBar from "@/components/layout/SideNavBar.vue";
-import {useI18nStore} from "@/stores/i18n";
-import {useWebSocketStore} from "@/stores/websocket";
-import type {ChatSession, Friend, Group} from "@/types";
+import { useI18nStore } from "@/stores/i18n";
+import { useWebSocketStore } from "@/stores/websocket";
+import type { ChatSession, Friend, Group } from "@/types";
 
 interface Props {
-  activeTab: "chat" | "contacts" | "groups";
+  activeTab: "chat" | "contacts" | "groups" | "moments";
   sessions: ChatSession[];
   currentSessionId?: string;
   friends: Friend[];
   groups: Group[];
   pendingRequestsCount: number;
   totalUnreadCount: number;
+  momentsUnreadCount?: number;
   isChatActiveOnMobile: boolean;
   sessionsLoading?: boolean;
   searchKeyword?: string;
@@ -271,7 +318,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<{
-  (e: "change-tab", tab: "chat" | "contacts" | "groups"): void;
+  (e: "change-tab", tab: "chat" | "contacts" | "groups" | "moments"): void;
   (e: "select-session", session: ChatSession): void;
   (e: "start-private-chat", contact: Friend): void;
   (e: "start-group-chat", group: Group): void;
@@ -281,7 +328,7 @@ const emit = defineEmits<{
 }>();
 
 const webSocketStore = useWebSocketStore();
-const {locale, t} = useI18nStore();
+const { locale, t } = useI18nStore();
 const localSearchKeyword = ref(props.searchKeyword);
 const debouncedSearchKeyword = ref(props.searchKeyword.trim().toLowerCase());
 const resolvePinyinInitial = ref<((value: string) => string) | null>(null);
@@ -294,7 +341,10 @@ const contactFilterCache = new Map<
   string,
   { sourceKey: string; searchText: string; initial: string }
 >();
-const groupFilterCache = new Map<string, { sourceKey: string; searchText: string }>();
+const groupFilterCache = new Map<
+  string,
+  { sourceKey: string; searchText: string }
+>();
 
 const normalizedSearchKeyword = computed(() => debouncedSearchKeyword.value);
 
@@ -310,16 +360,16 @@ const panelTitle = computed(() => {
 
 const panelSubtitle = computed(() => {
   if (props.activeTab === "contacts") {
-    return t("sidebar.contactsAvailable", {count: props.friends.length});
+    return t("sidebar.contactsAvailable", { count: props.friends.length });
   }
   if (props.activeTab === "groups") {
-    return t("sidebar.groupsReady", {count: props.groups.length});
+    return t("sidebar.groupsReady", { count: props.groups.length });
   }
-  return t("sidebar.activeConversations", {count: props.sessions.length});
+  return t("sidebar.activeConversations", { count: props.sessions.length });
 });
 
 const handleChangeTab = (tab: string) => {
-  if (tab === "chat" || tab === "contacts" || tab === "groups") {
+  if (tab === "chat" || tab === "contacts" || tab === "groups" || tab === "moments") {
     emit("change-tab", tab);
   }
 };
@@ -366,7 +416,7 @@ watch(
       searchDebounceTimer.value = null;
     }, 150);
   },
-  {immediate: true},
+  { immediate: true },
 );
 
 watch(
@@ -375,7 +425,7 @@ watch(
     if (tab !== "contacts" || resolvePinyinInitial.value) {
       return;
     }
-    const {pinyin} = await import("pinyin-pro");
+    const { pinyin } = await import("pinyin-pro");
     resolvePinyinInitial.value = (value: string) =>
       pinyin(value, {
         pattern: "first",
@@ -383,7 +433,7 @@ watch(
       }).toUpperCase();
     contactFilterCache.clear();
   },
-  {immediate: true},
+  { immediate: true },
 );
 
 onUnmounted(() => {
@@ -405,10 +455,10 @@ const formatTime = (time?: string) => {
     return t("sidebar.justNow");
   }
   if (diff < 3_600_000) {
-    return t("sidebar.minutesAgo", {count: Math.floor(diff / 60_000)});
+    return t("sidebar.minutesAgo", { count: Math.floor(diff / 60_000) });
   }
   if (diff < 86_400_000) {
-    return t("sidebar.hoursAgo", {count: Math.floor(diff / 3_600_000)});
+    return t("sidebar.hoursAgo", { count: Math.floor(diff / 3_600_000) });
   }
   return date.toLocaleDateString(locale.value, {
     month: "numeric",
@@ -424,7 +474,9 @@ const previewMessage = (message?: ChatSession["lastMessage"]) => {
     case "IMAGE":
       return t("sidebar.image");
     case "FILE":
-      return message.mediaName ? `${t("sidebar.file")} ${message.mediaName}` : t("sidebar.file");
+      return message.mediaName
+        ? `${t("sidebar.file")} ${message.mediaName}`
+        : t("sidebar.file");
     case "VOICE":
       return t("sidebar.voice");
     case "VIDEO":
@@ -449,7 +501,7 @@ const sessionPreview = (session: ChatSession, online: boolean) => {
     return online ? t("sidebar.availableNow") : t("sidebar.noRecentMessages");
   }
   if (session.memberCount && session.memberCount > 0) {
-    return t("sidebar.members", {count: session.memberCount});
+    return t("sidebar.members", { count: session.memberCount });
   }
   return t("sidebar.noRecentMessages");
 };
@@ -530,7 +582,8 @@ const resolveContactInitial = (name: string) => {
 
 const getContactCacheEntry = (contact: Friend) => {
   const contactId = contact.friendId;
-  const displayName = contact.nickname || contact.username || contact.friendId || "";
+  const displayName =
+    contact.nickname || contact.username || contact.friendId || "";
   const sourceKey = [
     contact.friendId,
     contact.nickname,
@@ -544,7 +597,12 @@ const getContactCacheEntry = (contact: Friend) => {
 
   const next = {
     sourceKey,
-    searchText: [contact.nickname, contact.username, contact.friendId, contact.remark]
+    searchText: [
+      contact.nickname,
+      contact.username,
+      contact.friendId,
+      contact.remark,
+    ]
       .filter(Boolean)
       .join(" ")
       .toLowerCase(),
@@ -559,7 +617,9 @@ const filteredContacts = computed(() => {
     return props.friends;
   }
   return props.friends.filter((contact) =>
-    getContactCacheEntry(contact).searchText.includes(normalizedSearchKeyword.value),
+    getContactCacheEntry(contact).searchText.includes(
+      normalizedSearchKeyword.value,
+    ),
   );
 });
 
@@ -576,12 +636,17 @@ const groupedContacts = computed(() => {
       if (right === "#") return -1;
       return left.localeCompare(right);
     })
-    .map(([key, contacts]) => ({key, contacts}));
+    .map(([key, contacts]) => ({ key, contacts }));
 });
 
 const getGroupCacheEntry = (group: Group) => {
   const groupId = String(group.id);
-  const sourceKey = [group.id, group.groupName, group.name, group.memberCount || 0].join("|");
+  const sourceKey = [
+    group.id,
+    group.groupName,
+    group.name,
+    group.memberCount || 0,
+  ].join("|");
   const cached = groupFilterCache.get(groupId);
   if (cached?.sourceKey === sourceKey) {
     return cached;
@@ -602,7 +667,9 @@ const filteredGroups = computed(() => {
     return props.groups;
   }
   return props.groups.filter((group) =>
-    getGroupCacheEntry(group).searchText.includes(normalizedSearchKeyword.value),
+    getGroupCacheEntry(group).searchText.includes(
+      normalizedSearchKeyword.value,
+    ),
   );
 });
 </script>
@@ -910,7 +977,8 @@ const filteredGroups = computed(() => {
   font-weight: 800;
   line-height: 20px;
   text-align: center;
-  animation: badge-scale var(--motion-fast, 120ms) var(--motion-spring, cubic-bezier(0.34, 1.56, 0.64, 1));
+  animation: badge-scale var(--motion-fast, 120ms)
+    var(--motion-spring, cubic-bezier(0.34, 1.56, 0.64, 1));
 }
 
 .presence-dot {
