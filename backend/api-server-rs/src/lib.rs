@@ -20,6 +20,7 @@ pub mod file_api;
 pub mod id_resolver;
 pub mod local_cache;
 pub mod message;
+pub mod moments;
 pub mod observability;
 pub mod push_dispatcher;
 pub mod redis_streams;

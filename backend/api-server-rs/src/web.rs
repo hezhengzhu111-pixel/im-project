@@ -5,6 +5,7 @@ use crate::config::AppConfig;
 use crate::error::AppError;
 use crate::file_api;
 use crate::message;
+use crate::moments;
 use crate::route;
 use crate::social;
 use crate::user;
@@ -186,6 +187,26 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/group/internal/memberIds/:group_id",
             get(social::internal_group_member_ids),
+        )
+        .route("/moments", post(moments::post_handler::create_post))
+        .route("/api/moments", post(moments::post_handler::create_post))
+        .route("/moments/feed", get(moments::post_handler::get_feed))
+        .route("/api/moments/feed", get(moments::post_handler::get_feed))
+        .route(
+            "/moments/:id",
+            get(moments::post_handler::get_post).delete(moments::post_handler::delete_post),
+        )
+        .route(
+            "/api/moments/:id",
+            get(moments::post_handler::get_post).delete(moments::post_handler::delete_post),
+        )
+        .route(
+            "/moments/user/:user_id",
+            get(moments::post_handler::get_user_posts),
+        )
+        .route(
+            "/api/moments/user/:user_id",
+            get(moments::post_handler::get_user_posts),
         )
         .route("/user/login", post(user::login))
         .route("/api/user/login", post(user::login))
