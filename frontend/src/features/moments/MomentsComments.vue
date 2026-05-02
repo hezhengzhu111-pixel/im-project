@@ -2,9 +2,16 @@
   <div class="moments-comments">
     <!-- Comment input -->
     <div class="comment-input-wrapper">
+      <div v-if="replyTo" class="reply-hint">
+        回复 <span class="reply-target">{{ replyTo.nickname || '未知用户' }}</span>
+        <button class="reply-cancel" @click="cancelReply">
+          <el-icon><Close /></el-icon>
+        </button>
+      </div>
       <el-input
+        ref="inputRef"
         v-model="commentText"
-        placeholder="写评论..."
+        :placeholder="replyTo ? `回复 ${replyTo.nickname || '未知用户'}...` : '写评论...'"
         :rows="2"
         type="textarea"
         resize="none"
@@ -49,29 +56,31 @@
             <span class="comment-nickname">{{ comment.nickname || '未知用户' }}</span>
             <span class="comment-time">{{ formatTime(comment.createdAt) }}</span>
           </div>
-          <div class="comment-content">{{ comment.content }}</div>
-          <div v-if="comment.parentId" class="comment-reply-hint">
-            回复了评论
+          <div class="comment-content">
+            <span v-if="comment.parentId" class="comment-reply-tag">
+              回复 {{ getParentNickname(comment.parentId) }}：
+            </span>
+            {{ comment.content }}
+          </div>
+          <div class="comment-actions">
+            <button class="reply-btn" @click="startReply(comment)">回复</button>
+            <button
+              v-if="isCommentOwner(comment)"
+              class="delete-btn"
+              @click="handleDeleteComment(comment.id)"
+            >
+              删除
+            </button>
           </div>
         </div>
-
-        <el-button
-          v-if="isCommentOwner(comment)"
-          type="danger"
-          size="small"
-          text
-          class="comment-delete-btn"
-          @click="handleDeleteComment(comment.id)"
-        >
-          删除
-        </el-button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
+import { Close } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useMomentsInteractions } from './composables/useMomentsInteractions'
@@ -88,6 +97,8 @@ const { comments, loadingComments, loadComments, addComment, removeComment } =
 
 const commentText = ref('')
 const submitting = ref(false)
+const replyTo = ref<MomentComment | null>(null)
+const inputRef = ref<{ focus: () => void } | null>(null)
 
 onMounted(() => {
   loadComments()
@@ -97,14 +108,32 @@ const isCommentOwner = (comment: MomentComment) => {
   return userStore.currentUser?.id === comment.userId
 }
 
+const getParentNickname = (parentId: string) => {
+  const parent = comments.value.find((c) => c.id === parentId)
+  return parent?.nickname || '未知用户'
+}
+
+const startReply = (comment: MomentComment) => {
+  replyTo.value = comment
+  commentText.value = ''
+  nextTick(() => {
+    inputRef.value?.focus()
+  })
+}
+
+const cancelReply = () => {
+  replyTo.value = null
+}
+
 const handleSubmitComment = async () => {
   const content = commentText.value.trim()
   if (!content) return
 
   submitting.value = true
   try {
-    await addComment(content)
+    await addComment(content, replyTo.value?.id)
     commentText.value = ''
+    replyTo.value = null
   } catch {
     // Error handled by composable
   } finally {
@@ -134,12 +163,43 @@ const handleDeleteComment = async (commentId: string) => {
 
 .comment-input-wrapper {
   display: flex;
+  flex-direction: column;
   gap: 8px;
-  align-items: flex-start;
   margin-bottom: 12px;
 
   .el-input {
     flex: 1;
+  }
+}
+
+.reply-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  padding: 4px 8px;
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
+}
+
+.reply-target {
+  color: var(--el-color-primary);
+  font-weight: 500;
+}
+
+.reply-cancel {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--el-text-color-secondary);
+  padding: 2px;
+  display: flex;
+  align-items: center;
+
+  &:hover {
+    color: var(--el-text-color-primary);
   }
 }
 
@@ -197,19 +257,33 @@ const handleDeleteComment = async (commentId: string) => {
   word-break: break-word;
 }
 
-.comment-reply-hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+.comment-reply-tag {
+  color: var(--el-color-primary);
+  font-weight: 500;
+}
+
+.comment-actions {
+  display: flex;
+  gap: 12px;
   margin-top: 4px;
 }
 
-.comment-delete-btn {
-  flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 0.2s ease;
+.reply-btn,
+.delete-btn {
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  color: var(--el-text-color-secondary);
+  transition: color 0.15s ease;
 
-  .comment-item:hover & {
-    opacity: 1;
+  &:hover {
+    color: var(--el-color-primary);
   }
+}
+
+.delete-btn:hover {
+  color: var(--el-color-danger);
 }
 </style>
