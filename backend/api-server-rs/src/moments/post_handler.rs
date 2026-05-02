@@ -43,6 +43,29 @@ pub struct PostDto {
     pub updated_at: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaDto {
+    pub id: String,
+    pub post_id: String,
+    #[serde(rename = "type")]
+    pub media_type: i8,
+    pub url: String,
+    pub sort_order: i8,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostWithDetailsDto {
+    pub post: PostDto,
+    pub media: Vec<MediaDto>,
+    pub like_count: i64,
+    pub comment_count: i64,
+    pub is_liked: bool,
+    pub user_nickname: Option<String>,
+    pub user_avatar: Option<String>,
+}
+
 fn post_from_row(row: &sqlx::mysql::MySqlRow) -> PostDto {
     let created_at: chrono::NaiveDateTime = row.try_get("created_at").unwrap_or_default();
     let updated_at: chrono::NaiveDateTime = row.try_get("updated_at").unwrap_or_default();
@@ -65,6 +88,184 @@ fn post_from_row(row: &sqlx::mysql::MySqlRow) -> PostDto {
         created_at: created_at.format("%Y-%m-%dT%H:%M:%S").to_string(),
         updated_at: updated_at.format("%Y-%m-%dT%H:%M:%S").to_string(),
     }
+}
+
+fn media_from_row(row: &sqlx::mysql::MySqlRow) -> MediaDto {
+    MediaDto {
+        id: row
+            .try_get::<i64, _>("id")
+            .unwrap_or_default()
+            .to_string(),
+        post_id: row
+            .try_get::<i64, _>("post_id")
+            .unwrap_or_default()
+            .to_string(),
+        media_type: row.try_get::<i8, _>("type").unwrap_or_default(),
+        url: row.try_get("url").unwrap_or_default(),
+        sort_order: row.try_get::<i8, _>("sort_order").unwrap_or_default(),
+    }
+}
+
+/// Build PostWithDetailsDto from a list of PostDto, enriching with media, counts, user info.
+async fn enrich_posts(
+    state: &AppState,
+    posts: Vec<PostDto>,
+    user_id: i64,
+) -> Result<Vec<PostWithDetailsDto>, AppError> {
+    if posts.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let post_ids: Vec<i64> = posts
+        .iter()
+        .filter_map(|p| p.id.parse::<i64>().ok())
+        .collect();
+    let user_ids: Vec<i64> = posts
+        .iter()
+        .filter_map(|p| p.user_id.parse::<i64>().ok())
+        .collect();
+
+    // Batch fetch media
+    let media_rows = if post_ids.is_empty() {
+        vec![]
+    } else {
+        let placeholders = post_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT id, post_id, type, url, sort_order FROM service_message_service_db.moments_media WHERE post_id IN ({}) ORDER BY sort_order ASC",
+            placeholders
+        );
+        let mut q = sqlx::query(&sql);
+        for id in &post_ids {
+            q = q.bind(id);
+        }
+        q.fetch_all(&state.db).await?
+    };
+
+    let mut media_map: std::collections::HashMap<String, Vec<MediaDto>> =
+        std::collections::HashMap::new();
+    for row in media_rows {
+        let m = media_from_row(&row);
+        media_map
+            .entry(m.post_id.clone())
+            .or_default()
+            .push(m);
+    }
+
+    // Batch fetch like counts
+    let like_count_rows = if post_ids.is_empty() {
+        vec![]
+    } else {
+        let placeholders = post_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT post_id, COUNT(*) as cnt FROM service_message_service_db.moments_like WHERE post_id IN ({}) GROUP BY post_id",
+            placeholders
+        );
+        let mut q = sqlx::query(&sql);
+        for id in &post_ids {
+            q = q.bind(id);
+        }
+        q.fetch_all(&state.db).await?
+    };
+
+    let mut like_count_map: std::collections::HashMap<String, i64> =
+        std::collections::HashMap::new();
+    for row in like_count_rows {
+        let pid: i64 = row.try_get("post_id").unwrap_or_default();
+        let cnt: i64 = row.try_get("cnt").unwrap_or_default();
+        like_count_map.insert(pid.to_string(), cnt);
+    }
+
+    // Batch fetch comment counts
+    let comment_count_rows = if post_ids.is_empty() {
+        vec![]
+    } else {
+        let placeholders = post_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT post_id, COUNT(*) as cnt FROM service_message_service_db.moments_comment WHERE post_id IN ({}) GROUP BY post_id",
+            placeholders
+        );
+        let mut q = sqlx::query(&sql);
+        for id in &post_ids {
+            q = q.bind(id);
+        }
+        q.fetch_all(&state.db).await?
+    };
+
+    let mut comment_count_map: std::collections::HashMap<String, i64> =
+        std::collections::HashMap::new();
+    for row in comment_count_rows {
+        let pid: i64 = row.try_get("post_id").unwrap_or_default();
+        let cnt: i64 = row.try_get("cnt").unwrap_or_default();
+        comment_count_map.insert(pid.to_string(), cnt);
+    }
+
+    // Check which posts the current user has liked
+    let liked_rows = if post_ids.is_empty() {
+        vec![]
+    } else {
+        let placeholders = post_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT post_id FROM service_message_service_db.moments_like WHERE user_id = ? AND post_id IN ({})",
+            placeholders
+        );
+        let mut q = sqlx::query(&sql).bind(user_id);
+        for id in &post_ids {
+            q = q.bind(id);
+        }
+        q.fetch_all(&state.db).await?
+    };
+
+    let mut liked_set: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    for row in liked_rows {
+        let pid: i64 = row.try_get("post_id").unwrap_or_default();
+        liked_set.insert(pid.to_string());
+    }
+
+    // Batch fetch user info (nickname, avatar) from service_user_service_db.users
+    let user_rows = if user_ids.is_empty() {
+        vec![]
+    } else {
+        let placeholders = user_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT id, nickname, avatar FROM service_user_service_db.users WHERE id IN ({})",
+            placeholders
+        );
+        let mut q = sqlx::query(&sql);
+        for id in &user_ids {
+            q = q.bind(id);
+        }
+        q.fetch_all(&state.db).await?
+    };
+
+    let mut user_map: std::collections::HashMap<String, (Option<String>, Option<String>)> =
+        std::collections::HashMap::new();
+    for row in user_rows {
+        let uid: i64 = row.try_get("id").unwrap_or_default();
+        let nickname: Option<String> = row.try_get("nickname").unwrap_or_default();
+        let avatar: Option<String> = row.try_get("avatar").unwrap_or_default();
+        user_map.insert(uid.to_string(), (nickname, avatar));
+    }
+
+    // Assemble
+    let result: Vec<PostWithDetailsDto> = posts
+        .into_iter()
+        .map(|post| {
+            let pid = post.id.clone();
+            let (nickname, avatar) = user_map.get(&post.user_id).cloned().unwrap_or((None, None));
+            PostWithDetailsDto {
+                post,
+                media: media_map.remove(&pid).unwrap_or_default(),
+                like_count: like_count_map.get(&pid).copied().unwrap_or(0),
+                comment_count: comment_count_map.get(&pid).copied().unwrap_or(0),
+                is_liked: liked_set.contains(&pid),
+                user_nickname: nickname,
+                user_avatar: avatar,
+            }
+        })
+        .collect();
+
+    Ok(result)
 }
 
 pub async fn create_post(
@@ -93,8 +294,6 @@ pub async fn create_post(
     .execute(&state.db)
     .await?;
 
-    // TODO: Trigger async fan-out to friends' feed caches
-
     Ok(Json(ApiResponse::success(serde_json::json!({
         "id": post_id.to_string()
     }))))
@@ -104,13 +303,11 @@ pub async fn get_feed(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(query): Query<FeedQuery>,
-) -> Result<Json<ApiResponse<Vec<PostDto>>>, AppError> {
+) -> Result<Json<ApiResponse<Vec<PostWithDetailsDto>>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let _user_id = identity.user_id;
+    let user_id = identity.user_id;
     let cursor = query.cursor.unwrap_or(i64::MAX);
     let limit = query.limit.unwrap_or(20).min(50);
-
-    // TODO: Check Redis cache first, fallback to MySQL
 
     let rows = sqlx::query(
         r#"SELECT id, user_id, content, visibility, link_url, link_title, link_cover, location, status, created_at, updated_at
@@ -125,15 +322,17 @@ pub async fn get_feed(
     .await?;
 
     let posts: Vec<PostDto> = rows.iter().map(post_from_row).collect();
-    Ok(Json(ApiResponse::success(posts)))
+    let enriched = enrich_posts(&state, posts, user_id).await?;
+    Ok(Json(ApiResponse::success(enriched)))
 }
 
 pub async fn get_post(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(post_id): Path<i64>,
-) -> Result<Json<ApiResponse<PostDto>>, AppError> {
-    let _identity = identity_from_headers(&headers, &state.config)?;
+) -> Result<Json<ApiResponse<PostWithDetailsDto>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let user_id = identity.user_id;
 
     let row = sqlx::query(
         r#"SELECT id, user_id, content, visibility, link_url, link_title, link_cover, location, status, created_at, updated_at
@@ -145,7 +344,14 @@ pub async fn get_post(
     .await?;
 
     match row {
-        Some(r) => Ok(Json(ApiResponse::success(post_from_row(&r)))),
+        Some(r) => {
+            let post = post_from_row(&r);
+            let mut enriched = enrich_posts(&state, vec![post], user_id).await?;
+            match enriched.pop() {
+                Some(details) => Ok(Json(ApiResponse::success(details))),
+                None => Err(AppError::NotFound("Post not found".to_string())),
+            }
+        }
         None => Err(AppError::NotFound("Post not found".to_string())),
     }
 }
@@ -173,8 +379,6 @@ pub async fn delete_post(
         ));
     }
 
-    // TODO: Clean up Redis cache
-
     Ok(Json(ApiResponse::success(true)))
 }
 
@@ -183,8 +387,9 @@ pub async fn get_user_posts(
     headers: HeaderMap,
     Path(target_user_id): Path<i64>,
     Query(query): Query<FeedQuery>,
-) -> Result<Json<ApiResponse<Vec<PostDto>>>, AppError> {
-    let _identity = identity_from_headers(&headers, &state.config)?;
+) -> Result<Json<ApiResponse<Vec<PostWithDetailsDto>>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let user_id = identity.user_id;
     let cursor = query.cursor.unwrap_or(i64::MAX);
     let limit = query.limit.unwrap_or(20).min(50);
 
@@ -202,5 +407,6 @@ pub async fn get_user_posts(
     .await?;
 
     let posts: Vec<PostDto> = rows.iter().map(post_from_row).collect();
-    Ok(Json(ApiResponse::success(posts)))
+    let enriched = enrich_posts(&state, posts, user_id).await?;
+    Ok(Json(ApiResponse::success(enriched)))
 }
