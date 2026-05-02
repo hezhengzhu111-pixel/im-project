@@ -208,6 +208,42 @@ pub fn router(state: AppState) -> Router {
             "/api/moments/user/:user_id",
             get(moments::post_handler::get_user_posts),
         )
+        .route(
+            "/moments/:id/like",
+            post(moments::interaction_handler::like_post)
+                .delete(moments::interaction_handler::unlike_post),
+        )
+        .route(
+            "/api/moments/:id/like",
+            post(moments::interaction_handler::like_post)
+                .delete(moments::interaction_handler::unlike_post),
+        )
+        .route(
+            "/moments/:id/likes",
+            get(moments::interaction_handler::get_likes),
+        )
+        .route(
+            "/api/moments/:id/likes",
+            get(moments::interaction_handler::get_likes),
+        )
+        .route(
+            "/moments/:id/comments",
+            post(moments::interaction_handler::create_comment)
+                .get(moments::interaction_handler::get_comments),
+        )
+        .route(
+            "/api/moments/:id/comments",
+            post(moments::interaction_handler::create_comment)
+                .get(moments::interaction_handler::get_comments),
+        )
+        .route(
+            "/moments/comments/:id",
+            delete(moments::interaction_handler::delete_comment),
+        )
+        .route(
+            "/api/moments/comments/:id",
+            delete(moments::interaction_handler::delete_comment),
+        )
         .route("/user/login", post(user::login))
         .route("/api/user/login", post(user::login))
         .route("/user/register", post(user::register))
