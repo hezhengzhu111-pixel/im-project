@@ -76,6 +76,33 @@ pub fn ai_summary_cache_key(conv_id: &str, params_hash: &str) -> String {
     format!("im:ai:summary:{conv_id}:{params_hash}")
 }
 
+// Moments keys
+pub const MOMENTS_FEED_PREFIX: &str = "moments:feed:";
+pub const MOMENTS_POST_PREFIX: &str = "moments:post:";
+pub const MOMENTS_LIKES_PREFIX: &str = "moments:likes:";
+pub const MOMENTS_NOTIFY_PREFIX: &str = "moments:notify:";
+
+pub const MOMENTS_FEED_TTL: i64 = 7 * 24 * 3600; // 7 days
+pub const MOMENTS_POST_TTL: i64 = 24 * 3600; // 24 hours
+pub const MOMENTS_LIKES_TTL: i64 = 24 * 3600; // 24 hours
+pub const MOMENTS_NOTIFY_TTL: i64 = 30 * 24 * 3600; // 30 days
+
+pub fn moments_feed_key(user_id: i64) -> String {
+    format!("{MOMENTS_FEED_PREFIX}{user_id}")
+}
+
+pub fn moments_post_key(post_id: i64) -> String {
+    format!("{MOMENTS_POST_PREFIX}{post_id}")
+}
+
+pub fn moments_likes_key(post_id: i64) -> String {
+    format!("{MOMENTS_LIKES_PREFIX}{post_id}")
+}
+
+pub fn moments_notify_key(user_id: i64) -> String {
+    format!("{MOMENTS_NOTIFY_PREFIX}{user_id}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
