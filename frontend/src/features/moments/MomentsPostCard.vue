@@ -132,9 +132,9 @@
       :post-id="post.post.id"
     />
 
-    <!-- Comments section (will be implemented in Task 14) -->
+    <!-- Comments section -->
     <MomentsComments
-      v-if="showComments && post.commentCount > 0"
+      v-if="showComments"
       :post-id="post.post.id"
     />
   </div>
