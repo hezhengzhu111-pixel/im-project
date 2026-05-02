@@ -29,6 +29,8 @@ pub struct LikeDto {
     pub id: String,
     pub user_id: String,
     pub created_at: String,
+    pub nickname: Option<String>,
+    pub avatar: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -40,6 +42,8 @@ pub struct CommentDto {
     pub parent_id: Option<String>,
     pub content: String,
     pub created_at: String,
+    pub nickname: Option<String>,
+    pub avatar: Option<String>,
 }
 
 fn like_from_row(row: &sqlx::mysql::MySqlRow) -> LikeDto {
@@ -54,6 +58,8 @@ fn like_from_row(row: &sqlx::mysql::MySqlRow) -> LikeDto {
             .unwrap_or_default()
             .to_string(),
         created_at: created_at.format("%Y-%m-%dT%H:%M:%S").to_string(),
+        nickname: row.try_get("display_name").unwrap_or_default(),
+        avatar: row.try_get("avatar").unwrap_or_default(),
     }
 }
 
@@ -76,6 +82,8 @@ fn comment_from_row(row: &sqlx::mysql::MySqlRow) -> CommentDto {
         parent_id: parent_id.map(|v| v.to_string()),
         content: row.try_get("content").unwrap_or_default(),
         created_at: created_at.format("%Y-%m-%dT%H:%M:%S").to_string(),
+        nickname: row.try_get("display_name").unwrap_or_default(),
+        avatar: row.try_get("avatar").unwrap_or_default(),
     }
 }
 
@@ -134,10 +142,12 @@ pub async fn get_likes(
     let _identity = identity_from_headers(&headers, &state.config)?;
 
     let rows = sqlx::query(
-        r#"SELECT id, user_id, created_at
-           FROM service_message_service_db.moments_like
-           WHERE post_id = ?
-           ORDER BY created_at DESC"#,
+        r#"SELECT l.id, l.user_id, l.created_at,
+                  COALESCE(u.nickname, u.username) as display_name, u.avatar
+           FROM service_message_service_db.moments_like l
+           LEFT JOIN service_user_service_db.users u ON l.user_id = u.id
+           WHERE l.post_id = ?
+           ORDER BY l.created_at DESC"#,
     )
     .bind(post_id)
     .fetch_all(&state.db)
@@ -171,9 +181,11 @@ pub async fn create_comment(
     .await?;
 
     let row = sqlx::query(
-        r#"SELECT id, post_id, user_id, parent_id, content, created_at
-           FROM service_message_service_db.moments_comment
-           WHERE id = ?"#,
+        r#"SELECT c.id, c.post_id, c.user_id, c.parent_id, c.content, c.created_at,
+                  COALESCE(u.nickname, u.username) as display_name, u.avatar
+           FROM service_message_service_db.moments_comment c
+           LEFT JOIN service_user_service_db.users u ON c.user_id = u.id
+           WHERE c.id = ?"#,
     )
     .bind(comment_id)
     .fetch_one(&state.db)
@@ -220,10 +232,12 @@ pub async fn get_comments(
 
     let rows = if cursor > 0 {
         sqlx::query(
-            r#"SELECT id, post_id, user_id, parent_id, content, created_at
-               FROM service_message_service_db.moments_comment
-               WHERE post_id = ? AND id > ?
-               ORDER BY id ASC
+            r#"SELECT c.id, c.post_id, c.user_id, c.parent_id, c.content, c.created_at,
+                      COALESCE(u.nickname, u.username) as display_name, u.avatar
+               FROM service_message_service_db.moments_comment c
+               LEFT JOIN service_user_service_db.users u ON c.user_id = u.id
+               WHERE c.post_id = ? AND c.id > ?
+               ORDER BY c.id ASC
                LIMIT ?"#,
         )
         .bind(post_id)
@@ -233,10 +247,12 @@ pub async fn get_comments(
         .await?
     } else {
         sqlx::query(
-            r#"SELECT id, post_id, user_id, parent_id, content, created_at
-               FROM service_message_service_db.moments_comment
-               WHERE post_id = ?
-               ORDER BY id ASC
+            r#"SELECT c.id, c.post_id, c.user_id, c.parent_id, c.content, c.created_at,
+                      COALESCE(u.nickname, u.username) as display_name, u.avatar
+               FROM service_message_service_db.moments_comment c
+               LEFT JOIN service_user_service_db.users u ON c.user_id = u.id
+               WHERE c.post_id = ?
+               ORDER BY c.id ASC
                LIMIT ?"#,
         )
         .bind(post_id)
