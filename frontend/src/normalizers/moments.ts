@@ -1,24 +1,11 @@
-import type { MomentPost, PostWithDetails } from "@/types/moments";
+import type { MomentMedia, MomentPost, PostWithDetails } from "@/types/moments";
 import { asString, isRecord } from "@/types/utils";
 
-/**
- * Normalize flat PostDto from backend into PostWithDetails.
- * Backend returns flat: { id, userId, content, visibility, ... }
- * Frontend expects nested: { post: MomentPost, media: [], likeCount, ... }
- */
-export const normalizePostWithDetails = (raw: unknown): PostWithDetails | null => {
+const normalizePost = (raw: unknown): MomentPost | null => {
   if (!isRecord(raw)) return null;
-
-  // If already nested (has `post` field), return as-is
-  if (raw.post && isRecord(raw.post)) {
-    return raw as unknown as PostWithDetails;
-  }
-
-  // Flat PostDto → build PostWithDetails
   const id = asString(raw.id);
   if (!id) return null;
-
-  const post: MomentPost = {
+  return {
     id,
     userId: asString(raw.userId),
     content: asString(raw.content) || undefined,
@@ -31,15 +18,56 @@ export const normalizePostWithDetails = (raw: unknown): PostWithDetails | null =
     createdAt: asString(raw.createdAt),
     updatedAt: asString(raw.updatedAt),
   };
+};
 
+const normalizeMedia = (raw: unknown): MomentMedia | null => {
+  if (!isRecord(raw)) return null;
+  const id = asString(raw.id);
+  if (!id) return null;
+  return {
+    id,
+    postId: asString(raw.postId),
+    type: (raw.type as 0 | 1) ?? 0,
+    url: asString(raw.url),
+    sortOrder: typeof raw.sortOrder === "number" ? raw.sortOrder : 0,
+  };
+};
+
+/**
+ * Normalize API response into PostWithDetails.
+ * Handles both:
+ * - Nested format: { post: {...}, media: [...], likeCount, ... }
+ * - Flat format:   { id, userId, content, ... } (legacy)
+ */
+export const normalizePostWithDetails = (raw: unknown): PostWithDetails | null => {
+  if (!isRecord(raw)) return null;
+
+  // Nested format (from enriched backend)
+  if (raw.post && isRecord(raw.post)) {
+    const post = normalizePost(raw.post);
+    if (!post) return null;
+    return {
+      post,
+      media: Array.isArray(raw.media)
+        ? raw.media.map(normalizeMedia).filter((m): m is MomentMedia => m != null)
+        : [],
+      likeCount: typeof raw.likeCount === "number" ? raw.likeCount : 0,
+      commentCount: typeof raw.commentCount === "number" ? raw.commentCount : 0,
+      isLiked: Boolean(raw.isLiked),
+      userNickname: asString(raw.userNickname) || undefined,
+      userAvatar: asString(raw.userAvatar) || undefined,
+    };
+  }
+
+  // Flat format (fallback)
+  const post = normalizePost(raw);
+  if (!post) return null;
   return {
     post,
-    media: Array.isArray(raw.media) ? raw.media : [],
-    likeCount: typeof raw.likeCount === "number" ? raw.likeCount : 0,
-    commentCount: typeof raw.commentCount === "number" ? raw.commentCount : 0,
-    isLiked: Boolean(raw.isLiked),
-    userNickname: asString(raw.userNickname) || undefined,
-    userAvatar: asString(raw.userAvatar) || undefined,
+    media: [],
+    likeCount: 0,
+    commentCount: 0,
+    isLiked: false,
   };
 };
 
