@@ -63,7 +63,10 @@ export const momentsService = {
 
   // Comments
   createComment: (postId: string, data: CreateCommentRequest) =>
-    http.post<MomentComment>(`/moments/${postId}/comments`, data),
+    http.post<MomentComment>(`/moments/${postId}/comments`, {
+      ...data,
+      parentId: data.parentId ? Number(data.parentId) : undefined,
+    }),
 
   deleteComment: (commentId: string) =>
     http.delete<void>(`/moments/comments/${commentId}`),
