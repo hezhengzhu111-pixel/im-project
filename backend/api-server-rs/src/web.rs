@@ -245,6 +245,14 @@ pub fn router(state: AppState) -> Router {
             delete(moments::interaction_handler::delete_comment),
         )
         .route(
+            "/moments/:id/media",
+            post(moments::post_handler::add_media),
+        )
+        .route(
+            "/api/moments/:id/media",
+            post(moments::post_handler::add_media),
+        )
+        .route(
             "/moments/notifications",
             get(moments::notification_handler::get_notifications),
         )

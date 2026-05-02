@@ -382,6 +382,74 @@ pub async fn delete_post(
     Ok(Json(ApiResponse::success(true)))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddMediaItem {
+    pub url: String,
+    #[serde(rename = "type")]
+    pub media_type: Option<i8>,
+    pub sort_order: Option<i8>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddMediaRequest {
+    pub media: Vec<AddMediaItem>,
+}
+
+pub async fn add_media(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(post_id): Path<i64>,
+    Json(form): Json<AddMediaRequest>,
+) -> Result<Json<ApiResponse<bool>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let user_id = identity.user_id;
+
+    // Verify the post belongs to the user
+    let row = sqlx::query(
+        "SELECT user_id FROM service_message_service_db.moments_post WHERE id = ? AND status = 0",
+    )
+    .bind(post_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    match row {
+        Some(r) => {
+            let owner: i64 = r.try_get("user_id").unwrap_or_default();
+            if owner != user_id {
+                return Err(AppError::NotFound(
+                    "Post not found or unauthorized".to_string(),
+                ));
+            }
+        }
+        None => {
+            return Err(AppError::NotFound("Post not found".to_string()));
+        }
+    }
+
+    for (i, item) in form.media.iter().enumerate() {
+        let media_id = ids::next_id(state.config.snowflake_node_id);
+        let media_type = item.media_type.unwrap_or(0);
+        let sort_order = item.sort_order.unwrap_or(i as i8);
+
+        sqlx::query(
+            r#"INSERT INTO service_message_service_db.moments_media
+               (id, post_id, type, url, sort_order)
+               VALUES (?, ?, ?, ?, ?)"#,
+        )
+        .bind(media_id)
+        .bind(post_id)
+        .bind(media_type)
+        .bind(&item.url)
+        .bind(sort_order)
+        .execute(&state.db)
+        .await?;
+    }
+
+    Ok(Json(ApiResponse::success(true)))
+}
+
 pub async fn get_user_posts(
     State(state): State<AppState>,
     headers: HeaderMap,

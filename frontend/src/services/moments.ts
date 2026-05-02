@@ -34,6 +34,9 @@ export const momentsService = {
   deletePost: (id: string) =>
     http.delete<void>(`/moments/${id}`),
 
+  addMedia: (postId: string, media: { url: string; type?: number; sortOrder?: number }[]) =>
+    http.post<void>(`/moments/${postId}/media`, { media }),
+
   async getUserPosts(
     userId: string,
     query?: FeedQuery,
