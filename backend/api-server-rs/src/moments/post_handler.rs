@@ -222,13 +222,13 @@ async fn enrich_posts(
         liked_set.insert(pid.to_string());
     }
 
-    // Batch fetch user info (nickname, avatar) from service_user_service_db.users
+    // Batch fetch user info (nickname/username, avatar) from service_user_service_db.users
     let user_rows = if user_ids.is_empty() {
         vec![]
     } else {
         let placeholders = user_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let sql = format!(
-            "SELECT id, nickname, avatar FROM service_user_service_db.users WHERE id IN ({})",
+            "SELECT id, COALESCE(nickname, username) as display_name, avatar FROM service_user_service_db.users WHERE id IN ({})",
             placeholders
         );
         let mut q = sqlx::query(&sql);
@@ -242,9 +242,9 @@ async fn enrich_posts(
         std::collections::HashMap::new();
     for row in user_rows {
         let uid: i64 = row.try_get("id").unwrap_or_default();
-        let nickname: Option<String> = row.try_get("nickname").unwrap_or_default();
+        let display_name: Option<String> = row.try_get("display_name").unwrap_or_default();
         let avatar: Option<String> = row.try_get("avatar").unwrap_or_default();
-        user_map.insert(uid.to_string(), (nickname, avatar));
+        user_map.insert(uid.to_string(), (display_name, avatar));
     }
 
     // Assemble
