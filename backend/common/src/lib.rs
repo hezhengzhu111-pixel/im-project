@@ -13,4 +13,5 @@ pub mod auth;
 pub mod event;
 pub mod ids;
 pub mod keys;
+pub mod moments;
 pub mod time;
