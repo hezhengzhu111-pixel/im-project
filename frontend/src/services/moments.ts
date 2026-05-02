@@ -9,6 +9,10 @@ import type {
   CreateCommentRequest,
   FeedQuery,
 } from "@/types/moments";
+import {
+  normalizePostWithDetails,
+  normalizePostWithDetailsList,
+} from "@/normalizers/moments";
 
 export const momentsService = {
   // Post CRUD
@@ -16,14 +20,16 @@ export const momentsService = {
     http.post<MomentPost>("/moments", data),
 
   async getFeed(query?: FeedQuery): Promise<PostWithDetails[]> {
-    const response = await http.get<PostWithDetails[]>("/moments/feed", {
+    const response = await http.get("/moments/feed", {
       params: query,
     });
-    return Array.isArray(response.data) ? response.data : [];
+    return normalizePostWithDetailsList(response.data);
   },
 
-  getPost: (id: string) =>
-    http.get<PostWithDetails>(`/moments/${id}`),
+  async getPost(id: string): Promise<PostWithDetails | null> {
+    const response = await http.get(`/moments/${id}`);
+    return normalizePostWithDetails(response.data);
+  },
 
   deletePost: (id: string) =>
     http.delete<void>(`/moments/${id}`),
@@ -32,11 +38,10 @@ export const momentsService = {
     userId: string,
     query?: FeedQuery,
   ): Promise<PostWithDetails[]> {
-    const response = await http.get<PostWithDetails[]>(
-      `/moments/user/${userId}`,
-      { params: query },
-    );
-    return Array.isArray(response.data) ? response.data : [];
+    const response = await http.get(`/moments/user/${userId}`, {
+      params: query,
+    });
+    return normalizePostWithDetailsList(response.data);
   },
 
   // Likes

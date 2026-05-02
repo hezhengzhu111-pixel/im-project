@@ -1,14 +1,14 @@
-import {computed, ref} from "vue";
-import {defineStore} from "pinia";
-import {ElMessage, ElNotification} from "element-plus";
-import {STORAGE_CONFIG, WS_CONFIG} from "@/config";
-import {authService, userService} from "@/services";
-import {normalizeMessage} from "@/normalizers/message";
-import {buildSessionId} from "@/normalizers/chat";
-import type {Message, OnlineStatus, WebSocketMessage} from "@/types";
-import {useChatStore} from "@/stores/chat";
-import {useUserStore} from "@/stores/user";
-import {logger} from "@/utils/logger";
+import { computed, ref } from "vue";
+import { defineStore } from "pinia";
+import { ElMessage, ElNotification } from "element-plus";
+import { STORAGE_CONFIG, WS_CONFIG } from "@/config";
+import { authService, userService } from "@/services";
+import { normalizeMessage } from "@/normalizers/message";
+import { buildSessionId } from "@/normalizers/chat";
+import type { Message, OnlineStatus, WebSocketMessage } from "@/types";
+import { useChatStore } from "@/stores/chat";
+import { useUserStore } from "@/stores/user";
+import { logger } from "@/utils/logger";
 
 type TimerHandle = ReturnType<typeof setInterval>;
 
@@ -113,7 +113,9 @@ export const useWebSocketStore = defineStore("websocket", () => {
     }
     if (message.senderId && message.receiverId) {
       const targetId =
-        message.senderId === currentUserId ? message.receiverId : message.senderId;
+        message.senderId === currentUserId
+          ? message.receiverId
+          : message.senderId;
       if (targetId) {
         return buildSessionId("private", currentUserId, targetId);
       }
@@ -181,7 +183,10 @@ export const useWebSocketStore = defineStore("websocket", () => {
     }
     if (pending.loadSessions) {
       tasks.push(
-        chatStore.refreshSessionSkeletons({force: true, refreshPresence: false}),
+        chatStore.refreshSessionSkeletons({
+          force: true,
+          refreshPresence: false,
+        }),
       );
     }
 
@@ -209,17 +214,22 @@ export const useWebSocketStore = defineStore("websocket", () => {
   }) => {
     pendingContactRefresh.value = {
       loadFriendRequests:
-        pendingContactRefresh.value.loadFriendRequests || Boolean(options.loadFriendRequests),
+        pendingContactRefresh.value.loadFriendRequests ||
+        Boolean(options.loadFriendRequests),
       loadFriends:
         pendingContactRefresh.value.loadFriends || Boolean(options.loadFriends),
       loadSessions:
-        pendingContactRefresh.value.loadSessions || Boolean(options.loadSessions),
+        pendingContactRefresh.value.loadSessions ||
+        Boolean(options.loadSessions),
       notificationTitle:
-        options.notificationTitle || pendingContactRefresh.value.notificationTitle,
+        options.notificationTitle ||
+        pendingContactRefresh.value.notificationTitle,
       notificationMessage:
-        options.notificationMessage || pendingContactRefresh.value.notificationMessage,
+        options.notificationMessage ||
+        pendingContactRefresh.value.notificationMessage,
       notificationType:
-        options.notificationType || pendingContactRefresh.value.notificationType,
+        options.notificationType ||
+        pendingContactRefresh.value.notificationType,
     };
     await debouncedRefreshContactData();
   };
@@ -325,11 +335,13 @@ export const useWebSocketStore = defineStore("websocket", () => {
         stopReconnect();
         saveConnectionCache(userId);
         startHeartbeat();
-        void useChatStore().scheduleRealtimeResume({
-          forceSessionRefresh: false,
-        }).catch((error) => {
-          logger.warn("failed to resume realtime sync", error);
-        });
+        void useChatStore()
+          .scheduleRealtimeResume({
+            forceSessionRefresh: false,
+          })
+          .catch((error) => {
+            logger.warn("failed to resume realtime sync", error);
+          });
       };
 
       socket.value.onmessage = (event) => {
@@ -359,7 +371,10 @@ export const useWebSocketStore = defineStore("websocket", () => {
         isConnecting.value = false;
         stopHeartbeat();
         clearConnectionCache();
-        if (!manualDisconnect.value && event.reason !== DUPLICATE_CONNECTION_REASON) {
+        if (
+          !manualDisconnect.value &&
+          event.reason !== DUPLICATE_CONNECTION_REASON
+        ) {
           scheduleReconnect(userId);
         }
       };
@@ -404,8 +419,9 @@ export const useWebSocketStore = defineStore("websocket", () => {
         }
         const rawMessage = data.data as Record<string, unknown>;
         const isSystemMessage =
-          String(rawMessage.messageType || rawMessage.type || "").toUpperCase() ===
-          "SYSTEM";
+          String(
+            rawMessage.messageType || rawMessage.type || "",
+          ).toUpperCase() === "SYSTEM";
 
         if (isSystemMessage) {
           const content = String(rawMessage.content || "");
@@ -437,7 +453,9 @@ export const useWebSocketStore = defineStore("websocket", () => {
             return;
           }
           // FIX: 除内存去重外，再检查本地消息状态，避免服务端重试导致重复渲染和重复提示。
-          if (hasMessageInLocalState(chatStore, normalizedMessage, currentUserId)) {
+          if (
+            hasMessageInLocalState(chatStore, normalizedMessage, currentUserId)
+          ) {
             return;
           }
           recentMessageIds.value.set(messageId, now);
@@ -456,7 +474,9 @@ export const useWebSocketStore = defineStore("websocket", () => {
         if (!data.data) {
           return;
         }
-        const normalizedMessage = normalizeMessage(data.data as Record<string, unknown>);
+        const normalizedMessage = normalizeMessage(
+          data.data as Record<string, unknown>,
+        );
         await chatStore.addMessage(normalizedMessage);
         return;
       }
@@ -652,6 +672,28 @@ export const useWebSocketStore = defineStore("websocket", () => {
     return heartbeat(userIds);
   };
 
+  const setupLifecycleListeners = (
+    getUserId: () => string | null,
+  ): (() => void) => {
+    let cleanupFns: (() => void)[] = [];
+
+    const tryReconnect = () => {
+      const uid = getUserId();
+      if (uid && !isConnected.value && !isConnecting.value) {
+        void connect(uid);
+      }
+    };
+
+    import("@/services/platform/app-lifecycle.service").then(({ appLifecycleService }) => {
+      cleanupFns.push(appLifecycleService.onForeground(tryReconnect));
+    });
+    import("@/services/platform/network-status.service").then(({ networkStatusService }) => {
+      cleanupFns.push(networkStatusService.onOnline(tryReconnect));
+    });
+
+    return () => cleanupFns.forEach((fn) => fn());
+  };
+
   return {
     socket,
     isConnected,
@@ -667,5 +709,6 @@ export const useWebSocketStore = defineStore("websocket", () => {
     refreshKnownOnlineStatus,
     loadConnectionCache,
     clearConnectionCache,
+    setupLifecycleListeners,
   };
 });
