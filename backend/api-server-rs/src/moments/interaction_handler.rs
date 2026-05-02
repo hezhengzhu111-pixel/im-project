@@ -13,7 +13,7 @@ use sqlx::Row;
 #[serde(rename_all = "camelCase")]
 pub struct CreateCommentRequest {
     pub content: String,
-    pub parent_id: Option<i64>,
+    pub parent_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -166,6 +166,10 @@ pub async fn create_comment(
     let identity = identity_from_headers(&headers, &state.config)?;
     let user_id = identity.user_id;
     let comment_id = ids::next_id(state.config.snowflake_node_id);
+    let parent_id: Option<i64> = form
+        .parent_id
+        .as_ref()
+        .and_then(|s| s.parse::<i64>().ok());
 
     sqlx::query(
         r#"INSERT INTO service_message_service_db.moments_comment
@@ -175,7 +179,7 @@ pub async fn create_comment(
     .bind(comment_id)
     .bind(post_id)
     .bind(user_id)
-    .bind(form.parent_id)
+    .bind(parent_id)
     .bind(&form.content)
     .execute(&state.db)
     .await?;
