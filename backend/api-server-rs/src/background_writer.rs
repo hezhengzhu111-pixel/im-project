@@ -151,6 +151,7 @@ impl Processor {
                 self.apply_status(event).await?;
             }
             ImEventType::FriendRequestCreated | ImEventType::FriendRequestAccepted => {}
+            ImEventType::MomentNew | ImEventType::MomentLike | ImEventType::MomentComment => {}
         }
         Ok(())
     }

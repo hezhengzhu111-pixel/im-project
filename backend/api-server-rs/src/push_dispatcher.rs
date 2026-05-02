@@ -313,6 +313,9 @@ async fn build_push(
                 user_ids,
             }))
         }
+        ImEventType::MomentNew | ImEventType::MomentLike | ImEventType::MomentComment => {
+            Ok(None)
+        }
     }
 }
 
