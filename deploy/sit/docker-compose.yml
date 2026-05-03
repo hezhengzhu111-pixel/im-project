@@ -310,6 +310,12 @@ services:
       nofile:
         soft: 200000
         hard: 200000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - im-sit-network
 
@@ -391,6 +397,12 @@ services:
         hard: 200000
     volumes:
       - im_files:/data/im-files
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - im-sit-network
 
@@ -418,6 +430,12 @@ services:
         hard: 200000
     volumes:
       - im_files:/data/im-files:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - im-sit-network
 
@@ -441,6 +459,12 @@ services:
       spring.ai.openai.api-key: placeholder
     ports:
       - "${SPRING_AI_PORT:-8084}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks:
       - im-sit-network
 
