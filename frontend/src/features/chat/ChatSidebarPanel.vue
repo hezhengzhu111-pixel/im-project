@@ -291,7 +291,7 @@
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue";
-import { Bell, Plus, Search, Setting, Top } from "@element-plus/icons-vue";
+import { Bell, Plus, Search, Top } from "@element-plus/icons-vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import SideNavBar from "@/components/layout/SideNavBar.vue";
 import { useI18nStore } from "@/stores/i18n";

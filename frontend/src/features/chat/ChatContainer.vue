@@ -452,7 +452,6 @@ import {
 const {
   userStore,
   chatStore,
-  webSocketStore,
   t,
   activeTab,
   showAddFriend,

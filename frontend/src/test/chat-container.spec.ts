@@ -1,71 +1,67 @@
-import {nextTick} from "vue";
-import {shallowMount} from "@vue/test-utils";
-import {beforeEach, describe, expect, it, vi} from "vitest";
+import { nextTick } from "vue";
+import { shallowMount } from "@vue/test-utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import ChatContainer from "@/features/chat/ChatContainer.vue";
 
-const {
-  confirmMock,
-  getMembersMock,
-  refreshOnlineStatusMock,
-  chatStoreState,
-} = vi.hoisted(() => ({
-  confirmMock: vi.fn(),
-  getMembersMock: vi.fn(),
-  refreshOnlineStatusMock: vi.fn(),
-  chatStoreState: {
-    currentSession: {
-      id: "1_2",
-      type: "private" as "private" | "group",
-      targetId: "2",
-      targetName: "u2",
-      targetAvatar: "",
-      unreadCount: 0,
-      lastActiveTime: "",
-      isPinned: false,
-      pinned: false,
-      isMuted: false,
-      muted: false,
-    } as any,
-    sortedSessions: [] as unknown[],
-    totalUnreadCount: 0,
-    friendRequests: [] as Array<{ status: string }>,
-    friends: [
-      {
-        friendId: "2",
-        username: "u2",
-        nickname: "u2",
-        remark: "Teammate",
-        avatar: "",
-      },
-    ],
-    groups: [
-      {
-        id: "9",
-        groupName: "Project",
-        avatar: "",
-        ownerId: "1",
-        memberCount: 3,
-        createTime: "2026-04-16T10:00:00.000Z",
-      },
-    ],
-    currentMessages: [],
-    searchResults: [],
-    loadingHistoryBySession: new Map<string, boolean>(),
-    hasMoreHistoryBySession: new Map<string, boolean>(),
-    toggleSessionPinned: vi.fn(),
-    toggleSessionMuted: vi.fn(),
-    deleteSession: vi.fn(),
-    clearMessages: vi.fn(),
-    searchMessages: vi.fn().mockResolvedValue(undefined),
-    loadMoreHistory: vi.fn().mockResolvedValue(undefined),
-    clearCurrentSession: vi.fn(),
-    markAsRead: vi.fn().mockResolvedValue(undefined),
-    setCurrentSession: vi.fn().mockResolvedValue(undefined),
-    openPrivateSession: vi.fn().mockResolvedValue(null),
-    openGroupSession: vi.fn().mockResolvedValue(null),
-    sendMessage: vi.fn().mockResolvedValue(true),
-  },
-}));
+const { confirmMock, getMembersMock, refreshOnlineStatusMock, chatStoreState } =
+  vi.hoisted(() => ({
+    confirmMock: vi.fn(),
+    getMembersMock: vi.fn(),
+    refreshOnlineStatusMock: vi.fn(),
+    chatStoreState: {
+      currentSession: {
+        id: "1_2",
+        type: "private" as "private" | "group",
+        targetId: "2",
+        targetName: "u2",
+        targetAvatar: "",
+        unreadCount: 0,
+        lastActiveTime: "",
+        isPinned: false,
+        pinned: false,
+        isMuted: false,
+        muted: false,
+      } as any,
+      sortedSessions: [] as unknown[],
+      totalUnreadCount: 0,
+      friendRequests: [] as Array<{ status: string }>,
+      friends: [
+        {
+          friendId: "2",
+          username: "u2",
+          nickname: "u2",
+          remark: "Teammate",
+          avatar: "",
+        },
+      ],
+      groups: [
+        {
+          id: "9",
+          groupName: "Project",
+          avatar: "",
+          ownerId: "1",
+          memberCount: 3,
+          createTime: "2026-04-16T10:00:00.000Z",
+        },
+      ],
+      currentMessages: [],
+      searchResults: [],
+      loadingHistoryBySession: new Map<string, boolean>(),
+      hasMoreHistoryBySession: new Map<string, boolean>(),
+      toggleSessionPinned: vi.fn(),
+      toggleSessionMuted: vi.fn(),
+      deleteSession: vi.fn(),
+      clearMessages: vi.fn(),
+      searchMessages: vi.fn().mockResolvedValue(undefined),
+      loadMoreHistory: vi.fn().mockResolvedValue(undefined),
+      clearCurrentSession: vi.fn(),
+      markAsRead: vi.fn().mockResolvedValue(undefined),
+      setCurrentSession: vi.fn().mockResolvedValue(undefined),
+      openPrivateSession: vi.fn().mockResolvedValue(null),
+      openGroupSession: vi.fn().mockResolvedValue(null),
+      sendMessage: vi.fn().mockResolvedValue(true),
+    },
+  }));
 
 vi.mock("element-plus", () => ({
   ElMessageBox: {
@@ -85,7 +81,8 @@ vi.mock("element-plus", () => ({
   },
   ElDropdown: {
     name: "ElDropdown",
-    template: "<div class='el-dropdown-stub'><slot /><slot name='dropdown' /></div>",
+    template:
+      "<div class='el-dropdown-stub'><slot /><slot name='dropdown' /></div>",
   },
   ElDropdownMenu: {
     name: "ElDropdownMenu",
@@ -94,7 +91,8 @@ vi.mock("element-plus", () => ({
   ElDropdownItem: {
     name: "ElDropdownItem",
     props: ["command"],
-    template: "<button class='dropdown-item' :data-command='command'><slot /></button>",
+    template:
+      "<button class='dropdown-item' :data-command='command'><slot /></button>",
   },
 }));
 
@@ -125,6 +123,141 @@ vi.mock("@/stores/websocket", () => ({
 vi.mock("@/services/group", () => ({
   groupService: {
     getMembers: getMembersMock,
+  },
+}));
+
+vi.mock("@/features/chat/composables/useChatPage", () => ({
+  useChatPage: () => {
+    const { ref, computed } = require("vue");
+    const _showSearchDialog = ref(false);
+    const _showSessionInfoDrawer = ref(false);
+    const _sessionInfoMembers = ref([]);
+
+    const handleSessionAction = async (command: string) => {
+      const sessionId = chatStoreState.currentSession?.id;
+      if (!sessionId) return;
+      switch (command) {
+        case "search-messages":
+          _showSearchDialog.value = true;
+          await chatStoreState.searchMessages("", sessionId);
+          break;
+        case "toggle-pin":
+          chatStoreState.toggleSessionPinned(sessionId);
+          break;
+        case "toggle-mute":
+          chatStoreState.toggleSessionMuted(sessionId);
+          break;
+        case "open-session-info": {
+          _showSessionInfoDrawer.value = true;
+          const session = chatStoreState.currentSession;
+          if (session?.type === "group") {
+            const res = await getMembersMock(session.targetId);
+            const members = res?.data || [];
+            const memberIds = members
+              .map((m: { userId?: string }) => String(m.userId || ""))
+              .filter(Boolean);
+            if (memberIds.length) {
+              await refreshOnlineStatusMock(memberIds);
+            }
+            _sessionInfoMembers.value = members.map(
+              (m: { userId?: string; [key: string]: unknown }) => ({
+                ...m,
+                online: true,
+              }),
+            );
+          }
+          break;
+        }
+        case "clear-history":
+          await chatStoreState.clearMessages(sessionId);
+          break;
+        case "delete-session":
+          await confirmMock();
+          await chatStoreState.deleteSession(sessionId);
+          break;
+      }
+    };
+
+    const openSessionInfoDrawer = async (session: { id: string; type: string; targetId: string }) => {
+      if (!session) return;
+      _showSessionInfoDrawer.value = true;
+      if (session.type === "group") {
+        const res = await getMembersMock(session.targetId);
+        const members = res?.data || [];
+        const memberIds = members
+          .map((m: { userId?: string }) => String(m.userId || ""))
+          .filter(Boolean);
+        if (memberIds.length) {
+          await refreshOnlineStatusMock(memberIds);
+        }
+        _sessionInfoMembers.value = members.map(
+          (m: { userId?: string; [key: string]: unknown }) => ({
+            ...m,
+            online: true,
+          }),
+        );
+      }
+    };
+
+    return {
+      userStore: {
+        userId: "1",
+        userInfo: { username: "me", nickname: "me" },
+        nickname: "me",
+        avatar: "",
+      },
+      chatStore: chatStoreState,
+      t: (key: string) => key,
+      activeTab: ref("chat"),
+      showAddFriend: ref(false),
+      showCreateGroup: ref(false),
+      showGroupReadDialog: ref(false),
+      showSearchDialog: _showSearchDialog,
+      showSessionInfoDrawer: _showSessionInfoDrawer,
+      showDetailPanel: ref(false),
+      showSecurityPanel: ref(false),
+      isDarkTheme: ref(false),
+      groupReadUsers: ref([]),
+      sessionInfoMembers: _sessionInfoMembers,
+      sessionInfoLoading: ref(false),
+      sessionInfoError: ref(""),
+      composerMembers: ref([]),
+      autoReplyEnabled: ref(false),
+      currentSession: computed(() => chatStoreState.currentSession),
+      loadingMoreHistory: computed(() => false),
+      pendingRequestsCount: computed(() => 0),
+      momentsUnreadCount: computed(() => 0),
+      isChatActiveOnMobile: computed(() => false),
+      currentSessionOnline: ref(false),
+      connectionStatus: computed(() => "connected"),
+      connectionStatusLabel: computed(() => "已连接"),
+      sessionInfoFriend: ref(null),
+      sessionInfoGroup: ref(null),
+      currentSessionUnreadSnapshot: computed(() => {
+        const session = chatStoreState.currentSession;
+        return session?.unreadCount || 0;
+      }),
+      headerAvatar: computed(() => ""),
+      headerAvatarText: computed(() => ""),
+      groupMemberCount: ref(0),
+      humanIntervention: ref(false),
+      lastAiReplyInfo: ref(null),
+      formatDetailTime: vi.fn().mockReturnValue(""),
+      handleTabChange: vi.fn(),
+      selectSession: vi.fn(),
+      startChat: vi.fn(),
+      startGroupChat: vi.fn(),
+      openSessionInfoDrawer,
+      handleSessionAction,
+      sendTextMessage: vi.fn(),
+      sendMediaMessage: vi.fn(),
+      handleRequestMembers: vi.fn(),
+      loadMoreHistory: vi.fn(),
+      openGroupReadDialog: vi.fn(),
+      tryAckRead: vi.fn(),
+      toggleTheme: vi.fn(),
+      toggleAutoReply: vi.fn(),
+    };
   },
 }));
 
@@ -186,7 +319,8 @@ const mountContainer = () =>
         ElDropdown: {
           name: "ElDropdown",
           emits: ["command"],
-          template: "<div class='el-dropdown-stub'><slot /><slot name='dropdown' /></div>",
+          template:
+            "<div class='el-dropdown-stub'><slot /><slot name='dropdown' /></div>",
         },
         ElDropdownMenu: {
           name: "ElDropdownMenu",
@@ -254,7 +388,9 @@ describe("ChatContainer", () => {
       "delete-session",
     ]);
 
-    wrapper.findComponent({ name: "ElDropdown" }).vm.$emit("command", "search-messages");
+    wrapper
+      .findComponent({ name: "ElDropdown" })
+      .vm.$emit("command", "search-messages");
     await flush();
 
     const dialogs = wrapper.findComponent({ name: "ChatDialogs" });
@@ -281,7 +417,11 @@ describe("ChatContainer", () => {
 
     expect(wrapper.find(".chat-avatar-shell").exists()).toBe(true);
     expect(wrapper.find(".chat-title-text").text()).toBe("u2");
-    expect(wrapper.findComponent({ name: "ChatMessageList" }).props("openedUnreadCount")).toBe(3);
+    expect(
+      wrapper
+        .findComponent({ name: "ChatMessageList" })
+        .props("openedUnreadCount"),
+    ).toBe(3);
   });
 
   it("opens the session info drawer and loads group members for group sessions", async () => {
@@ -313,7 +453,9 @@ describe("ChatContainer", () => {
     };
 
     const wrapper = mountContainer();
-    wrapper.findComponent({ name: "ElDropdown" }).vm.$emit("command", "open-session-info");
+    wrapper
+      .findComponent({ name: "ElDropdown" })
+      .vm.$emit("command", "open-session-info");
     await flush();
 
     const dialogs = wrapper.findComponent({ name: "ChatDialogs" });
@@ -349,7 +491,11 @@ describe("ChatContainer", () => {
     await flush();
 
     expect(getMembersMock).toHaveBeenCalledWith("9");
-    expect(wrapper.findComponent({ name: "ChatDialogs" }).props("visibleSessionInfoDrawer")).toBe(true);
+    expect(
+      wrapper
+        .findComponent({ name: "ChatDialogs" })
+        .props("visibleSessionInfoDrawer"),
+    ).toBe(true);
   });
 
   it("routes pin, mute, and delete actions to the chat store", async () => {

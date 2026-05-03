@@ -675,7 +675,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
   const setupLifecycleListeners = (
     getUserId: () => string | null,
   ): (() => void) => {
-    let cleanupFns: (() => void)[] = [];
+    const cleanupFns: (() => void)[] = [];
 
     const tryReconnect = () => {
       const uid = getUserId();

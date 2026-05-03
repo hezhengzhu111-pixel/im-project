@@ -148,7 +148,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onUnmounted, ref } from "vue";
 import {
   ChatDotRound,
   MagicStick,
@@ -160,7 +160,6 @@ import {
 import { useFileMessageUpload } from "@/features/chat/composables/useFileMessageUpload";
 import { useVoiceRecorder } from "@/features/chat/composables/useVoiceRecorder";
 import { useI18nStore } from "@/stores/i18n";
-import { getAvatarText } from "@/utils/common";
 import type { MessageType } from "@/types";
 import { isCameraAvailable, takePhoto, pickFromGallery, base64ToFile } from "@/services/camera.service";
 import { compressImage, blobToFile } from "@/utils/image-compression";

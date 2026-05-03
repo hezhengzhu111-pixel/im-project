@@ -1,14 +1,22 @@
-import type {AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig,} from "axios";
+import type {
+  AxiosInstance,
+  AxiosRequestConfig,
+  AxiosResponse,
+  InternalAxiosRequestConfig,
+} from "axios";
 import axios from "axios";
 import qs from "qs";
-import {ElMessage} from "element-plus";
-import {useUserStore} from "@/stores/user";
-import {useI18nStore} from "@/stores/i18n";
-import type {ApiResponse} from "@/types/api";
+import { ElMessage } from "element-plus";
+import { useUserStore } from "@/stores/user";
+import { useI18nStore } from "@/stores/i18n";
+import type { ApiResponse } from "@/types/api";
 import router from "@/router";
-import {refreshAccessTokenCoordinated, type RefreshAccessTokenStatus,} from "@/services/auth-refresh";
-import {logger} from "@/utils/logger";
-import {STORAGE_CONFIG} from "@/config";
+import {
+  refreshAccessTokenCoordinated,
+  type RefreshAccessTokenStatus,
+} from "@/services/auth-refresh";
+import { logger } from "@/utils/logger";
+import { STORAGE_CONFIG } from "@/config";
 
 function createTraceId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -46,6 +54,7 @@ const readPersistedAccessToken = (): string => {
   return typeof token === "string" ? token.trim() : "";
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const writePersistedAccessToken = (token?: string | null) => {
   if (typeof localStorage === "undefined") {
     return;
@@ -75,13 +84,19 @@ const getLatestAccessToken = (): string => {
   if (typeof userStore.getAccessToken === "function") {
     return String(userStore.getAccessToken() || "").trim();
   }
-  if (typeof userStore.accessToken === "string" && userStore.accessToken.trim()) {
+  if (
+    typeof userStore.accessToken === "string" &&
+    userStore.accessToken.trim()
+  ) {
     return userStore.accessToken.trim();
   }
   return readPersistedAccessToken();
 };
 
-const getHeaderValue = (headers: HeaderBag | undefined, name: string): string => {
+const getHeaderValue = (
+  headers: HeaderBag | undefined,
+  name: string,
+): string => {
   if (!headers) {
     return "";
   }
@@ -93,7 +108,11 @@ const getHeaderValue = (headers: HeaderBag | undefined, name: string): string =>
   return directValue == null ? "" : String(directValue).trim();
 };
 
-const setHeaderValue = (headers: HeaderBag | undefined, name: string, value?: string) => {
+const setHeaderValue = (
+  headers: HeaderBag | undefined,
+  name: string,
+  value?: string,
+) => {
   if (!headers) {
     return;
   }
@@ -168,7 +187,7 @@ const promptReLogin = () => {
     })
     .finally(() => {
       reauthPromptInFlight = false;
-  });
+    });
 };
 
 const getSessionGeneration = (): number => {
@@ -178,7 +197,10 @@ const getSessionGeneration = (): number => {
     : 0;
 };
 
-const hasSessionChangedSince = (tokenBeforeRefresh?: string, generationBeforeRefresh?: number) => {
+const hasSessionChangedSince = (
+  tokenBeforeRefresh?: string,
+  generationBeforeRefresh?: number,
+) => {
   const latestToken = getLatestAccessToken();
   if (latestToken && latestToken !== (tokenBeforeRefresh || "")) {
     return true;
@@ -212,7 +234,10 @@ const tryRefreshAccessToken = async (
         ? await userStore.restoreSession()
         : true;
     if (restored === false) {
-      return hasSessionChangedSince(tokenBeforeRefresh, generationBeforeRefresh);
+      return hasSessionChangedSince(
+        tokenBeforeRefresh,
+        generationBeforeRefresh,
+      );
     }
   } catch {
     return hasSessionChangedSince(tokenBeforeRefresh, generationBeforeRefresh);
@@ -226,7 +251,11 @@ const shouldClearSession = (url?: string) =>
   !url?.includes("/user/heartbeat");
 
 const retryWithFreshAccessToken = async (config?: Record<string, unknown>) => {
-  if (!config || config.__retry401 || shouldSkipRefresh(String(config.url || ""))) {
+  if (
+    !config ||
+    config.__retry401 ||
+    shouldSkipRefresh(String(config.url || ""))
+  ) {
     return null;
   }
   config.__retry401 = true;
@@ -245,9 +274,13 @@ const retryWithFreshAccessToken = async (config?: Record<string, unknown>) => {
   return request(config);
 };
 
-const getRefreshStatus = (config?: Record<string, unknown>): RefreshAccessTokenStatus | "" => {
+const getRefreshStatus = (
+  config?: Record<string, unknown>,
+): RefreshAccessTokenStatus | "" => {
   const status = config?.__refreshStatus;
-  return status === "success" || status === "authInvalid" || status === "transientError"
+  return status === "success" ||
+    status === "authInvalid" ||
+    status === "transientError"
     ? status
     : "";
 };
@@ -289,7 +322,11 @@ request.interceptors.request.use(
     if (headers) {
       setHeaderValue(headers, "X-Gateway-Route", "true");
       const existingTraceId = getHeaderValue(headers, "X-Trace-Id");
-      setHeaderValue(config.headers as HeaderBag, "X-Trace-Id", existingTraceId || createTraceId());
+      setHeaderValue(
+        config.headers as HeaderBag,
+        "X-Trace-Id",
+        existingTraceId || createTraceId(),
+      );
       if (!getHeaderValue(headers, "Authorization")) {
         const accessToken = getLatestAccessToken();
         if (accessToken) {
@@ -330,7 +367,9 @@ request.interceptors.response.use(
       typeof responseData.success === "boolean"
     ) {
       const authMessage =
-        typeof responseData.message === "string" ? responseData.message : t("error.operationFailed");
+        typeof responseData.message === "string"
+          ? responseData.message
+          : t("error.operationFailed");
       if (responseData.success) {
         return responseData;
       } else {
@@ -367,14 +406,19 @@ request.interceptors.response.use(
     // 业务错误
     if (code === 401) {
       if (shouldSkipRefresh(response.config?.url)) {
-        return Promise.reject(new Error(messageText || t("error.unauthorized")));
+        return Promise.reject(
+          new Error(messageText || t("error.unauthorized")),
+        );
       }
       const config = response.config as any;
       const retried = await retryWithFreshAccessToken(config);
       if (retried) {
         return retried;
       }
-      if (shouldClearSession(response.config.url) && shouldClearAfterRefreshFailure(config)) {
+      if (
+        shouldClearSession(response.config.url) &&
+        shouldClearAfterRefreshFailure(config)
+      ) {
         await clearAuthSession();
         promptReLogin();
       }
@@ -389,12 +433,16 @@ request.interceptors.response.use(
 
     if (code === 404) {
       ElMessage.error(t("error.notFound"));
-      return Promise.reject(new Error(messageText || t("error.resourceNotFound")));
+      return Promise.reject(
+        new Error(messageText || t("error.resourceNotFound")),
+      );
     }
 
     if (code === 500) {
       ElMessage.error(t("error.serverError"));
-      return Promise.reject(new Error(messageText || t("error.serverInternal")));
+      return Promise.reject(
+        new Error(messageText || t("error.serverInternal")),
+      );
     }
 
     // 其他业务错误
@@ -429,7 +477,10 @@ request.interceptors.response.use(
         if (retried) {
           return retried;
         }
-        if (shouldClearSession(error.config?.url) && shouldClearAfterRefreshFailure(config)) {
+        if (
+          shouldClearSession(error.config?.url) &&
+          shouldClearAfterRefreshFailure(config)
+        ) {
           await clearAuthSession();
           promptReLogin();
         }

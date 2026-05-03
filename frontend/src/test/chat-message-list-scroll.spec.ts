@@ -1,8 +1,8 @@
-import {mount} from "@vue/test-utils";
-import {nextTick} from "vue";
-import {beforeEach, describe, expect, it, vi} from "vitest";
+import { mount } from "@vue/test-utils";
+import { defineComponent, h, nextTick, ref } from "vue";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import ChatMessageList from "@/features/chat/ChatMessageList.vue";
-import type {Message} from "@/types";
+import type { Message } from "@/types";
 
 vi.mock("@/features/chat/composables/useAudioPlayer", () => ({
   useAudioPlayer: () => ({
@@ -28,6 +28,34 @@ vi.mock("@/features/chat/composables/useMessageContextMenu", () => ({
     targetMessage: { value: null },
     open: vi.fn(),
     close: vi.fn(),
+  }),
+}));
+
+// Stub RecycleScroller as a simple scrollable container that renders items via its default slot
+vi.mock("vue-virtual-scroller", () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RecycleScroller: (defineComponent as any)({
+    props: ["items", "itemSize", "keyField", "buffer"],
+    emits: ["scroll"],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setup(props: any, { slots, emit }: any) {
+      const elRef = ref<HTMLElement | null>(null);
+      return () => {
+        const items = props.items || [];
+        const children = items.map((item: Record<string, unknown>) =>
+          slots.default ? slots.default({ item }) : null,
+        );
+        return h(
+          "div",
+          {
+            class: "message-scroller",
+            ref: elRef,
+            onScroll: () => emit("scroll"),
+          },
+          children,
+        );
+      };
+    },
   }),
 }));
 
@@ -58,7 +86,10 @@ const setScrollMetrics = (
   element.scrollTop = metrics.scrollTop;
 };
 
-const mountList = (messages: Message[], extraProps: Record<string, unknown> = {}) =>
+const mountList = (
+  messages: Message[],
+  extraProps: Record<string, unknown> = {},
+) =>
   mount(ChatMessageList, {
     props: {
       messages,
@@ -97,12 +128,17 @@ describe("ChatMessageList scroll behavior", () => {
   });
 
   it("restores scroll position after prepending history messages", async () => {
-    const wrapper = mountList([message("3"), message("4")], { openedUnreadCount: 1 });
-    const container = wrapper.find(".message-list").element as HTMLElement;
+    const wrapper = mountList([message("3"), message("4")], {
+      openedUnreadCount: 1,
+    });
+    await flushListEffects();
+
+    const scroller = wrapper.find(".message-scroller");
+    const container = scroller.element as HTMLElement;
     const metrics = { scrollHeight: 1000, clientHeight: 400, scrollTop: 40 };
     setScrollMetrics(container, metrics);
 
-    await wrapper.find(".message-list").trigger("scroll");
+    await scroller.trigger("scroll");
 
     expect(wrapper.emitted("request-history")).toHaveLength(1);
 
@@ -117,11 +153,14 @@ describe("ChatMessageList scroll behavior", () => {
 
   it("keeps the latest appended messages visible", async () => {
     const wrapper = mountList([message("1")]);
-    const container = wrapper.find(".message-list").element as HTMLElement;
+    await flushListEffects();
+
+    const scroller = wrapper.find(".message-scroller");
+    const container = scroller.element as HTMLElement;
     const metrics = { scrollHeight: 1000, clientHeight: 400, scrollTop: 430 };
     setScrollMetrics(container, metrics);
 
-    await wrapper.find(".message-list").trigger("scroll");
+    await scroller.trigger("scroll");
 
     metrics.scrollHeight = 1200;
     await wrapper.setProps({ messages: [message("1"), message("2")] });
@@ -131,7 +170,7 @@ describe("ChatMessageList scroll behavior", () => {
 
     metrics.scrollTop = 100;
     container.scrollTop = 100;
-    await wrapper.find(".message-list").trigger("scroll");
+    await scroller.trigger("scroll");
     metrics.scrollHeight = 1400;
     await wrapper.setProps({
       messages: [message("1"), message("2"), message("3")],
@@ -151,11 +190,13 @@ describe("ChatMessageList scroll behavior", () => {
 
   it("keeps the plain message list stable when media reports loaded", async () => {
     const wrapper = mountList([message("1")]);
+    await flushListEffects();
 
     await wrapper.find(".message-item-stub").trigger("click");
     await flushListEffects();
 
-    expect(wrapper.findAll(".message-item-stub")).toHaveLength(1);
+    // 1 encryption notice + 1 message = 2 stubs
+    expect(wrapper.findAll(".message-item-stub")).toHaveLength(2);
   });
 
   it("renders unread separators without breaking the message stream", async () => {
@@ -166,6 +207,7 @@ describe("ChatMessageList scroll behavior", () => {
     await flushListEffects();
 
     expect(wrapper.find(".unread-pill").text()).not.toHaveLength(0);
-    expect(wrapper.findAll(".message-item-stub")).toHaveLength(3);
+    // 1 encryption notice + 3 messages = 4 stubs (unread separator is not a MessageItem)
+    expect(wrapper.findAll(".message-item-stub")).toHaveLength(4);
   });
 });
