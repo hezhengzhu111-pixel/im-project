@@ -125,11 +125,10 @@
       </div>
     </div>
 
-    <div class="typing-indicator" style="display: none">
+    <div v-if="isOtherTyping" class="typing-indicator">
       <span class="typing-dot"></span>
       <span class="typing-dot"></span>
       <span class="typing-dot"></span>
-      <span class="typing-text">对方正在输入...</span>
     </div>
 
     <input
@@ -177,6 +176,7 @@ interface MentionMember {
 const props = defineProps<{
   disabled?: boolean;
   members?: MentionMember[];
+  isOtherTyping?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -190,6 +190,7 @@ const emit = defineEmits<{
     },
   ): void;
   (e: "request-members"): void;
+  (e: "typing"): void;
 }>();
 
 const shellRef = ref<HTMLElement | null>(null);
@@ -289,7 +290,18 @@ const scrollMentionIntoView = () => {
   });
 };
 
+let typingTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function onTextareaInput() {
+  if (typingTimeout) clearTimeout(typingTimeout);
+  emit("typing");
+  typingTimeout = setTimeout(() => {
+    typingTimeout = null;
+  }, 2000);
+}
+
 const onInput = () => {
+  onTextareaInput();
   const ta = textareaRef.value;
   if (!ta) return;
   const pos = ta.selectionStart;
@@ -505,6 +517,7 @@ const toggleVoiceRecording = async () => {
 };
 
 onUnmounted(() => {
+  if (typingTimeout) clearTimeout(typingTimeout);
   cancelRecording();
 });
 </script>
