@@ -302,17 +302,20 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onMounted, reactive, ref} from "vue";
-import {useRouter} from "vue-router";
-import {type FormInstance, type FormRules} from "element-plus";
-import {ArrowLeft} from "@element-plus/icons-vue";
-import {useErrorHandler} from "@/hooks/useErrorHandler";
-import {defaultUserSettings} from "@/normalizers/user";
-import {fileService} from "@/services/file";
-import {userService} from "@/services/user";
-import {useI18nStore} from "@/stores/i18n";
-import {useUserStore} from "@/stores/user";
-import {useUserSettingsStore} from "@/stores/user-settings";
+import { computed, onMounted, reactive, ref } from "vue";
+import { useRouter } from "vue-router";
+import { type FormInstance, type FormRules } from "element-plus";
+import { ArrowLeft } from "@element-plus/icons-vue";
+import { ActionSheet } from "@capacitor/action-sheet";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { defaultUserSettings } from "@/normalizers/user";
+import { isCameraAvailable, takePhoto, pickFromGallery, base64ToFile } from "@/services/camera.service";
+import { fileService } from "@/services/file";
+import { userService } from "@/services/user";
+import { compressImage, blobToFile } from "@/utils/image-compression";
+import { useI18nStore } from "@/stores/i18n";
+import { useUserStore } from "@/stores/user";
+import { useUserSettingsStore } from "@/stores/user-settings";
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -428,8 +431,49 @@ const initForm = () => {
   });
 };
 
-const openAvatarPicker = () => {
-  avatarInputRef.value?.click();
+const openAvatarPicker = async () => {
+  if (isCameraAvailable()) {
+    try {
+      const result = await ActionSheet.showActions({
+        title: t("profile.changeAvatar"),
+        options: [
+          { title: "拍照" },
+          { title: "从相册选择" },
+        ],
+      });
+      if (result.index === 0) {
+        const photo = await takePhoto();
+        const file = base64ToFile(photo.base64, photo.format);
+        const compressed = await compressImage(file);
+        await uploadAvatar(blobToFile(compressed, file.name));
+      } else if (result.index === 1) {
+        const photo = await pickFromGallery();
+        const file = base64ToFile(photo.base64, photo.format);
+        const compressed = await compressImage(file);
+        await uploadAvatar(blobToFile(compressed, file.name));
+      }
+    } catch {
+      avatarInputRef.value?.click();
+    }
+  } else {
+    avatarInputRef.value?.click();
+  }
+};
+
+const uploadAvatar = async (file: File) => {
+  try {
+    const response = await fileService.uploadImage(file);
+    if (response.code !== 200 || !response.data?.url) {
+      throw new Error(response.message || t("profile.uploadFailed"));
+    }
+    const updateResponse = await userService.updateProfile({
+      avatar: response.data.url,
+    });
+    userStore.setCurrentUser(updateResponse.data);
+    notifySuccess(t("profile.avatarUpdated"));
+  } catch (error) {
+    capture(error, t("profile.uploadFailed"));
+  }
 };
 
 const loadPrivacySettings = async () => {

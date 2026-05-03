@@ -61,18 +61,25 @@
             <div class="group-title-row">
               <div class="group-name">{{ group.groupName || group.name }}</div>
               <div class="group-time">
-                {{ formatTime(group.lastMessageTime || group.lastActivityAt || group.createTime) }}
+                {{
+                  formatTime(
+                    group.lastMessageTime ||
+                      group.lastActivityAt ||
+                      group.createTime,
+                  )
+                }}
               </div>
             </div>
             <div class="group-desc">
               {{ group.description || group.announcement || "暂无群组描述" }}
             </div>
-            <div class="group-meta">
-              {{ group.memberCount || 0 }} 位成员
-            </div>
+            <div class="group-meta">{{ group.memberCount || 0 }} 位成员</div>
           </div>
 
-          <el-dropdown trigger="click" @command="handleGroupAction($event, group)">
+          <el-dropdown
+            trigger="click"
+            @command="handleGroupAction($event, group)"
+          >
             <el-button link :icon="MoreFilled" @click.stop />
             <template #dropdown>
               <el-dropdown-menu>
@@ -157,18 +164,17 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import {
-  ElMessageBox,
-  type FormInstance,
-  type FormRules,
-} from "element-plus";
+import { ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 import { ArrowLeft, MoreFilled, Plus, Search } from "@element-plus/icons-vue";
+import { ActionSheet } from "@capacitor/action-sheet";
 import EmptyState from "@/components/common/EmptyState.vue";
 import SkeletonList from "@/components/common/SkeletonList.vue";
+import { isCameraAvailable, takePhoto, pickFromGallery, base64ToFile } from "@/services/camera.service";
 import { fileService } from "@/services/file";
 import { groupService } from "@/services/group";
 import { useChatStore } from "@/stores/chat";
 import type { Group } from "@/types";
+import { compressImage, blobToFile } from "@/utils/image-compression";
 import { useErrorHandler } from "@/hooks/useErrorHandler";
 
 type SortMode = "name" | "time" | "members";
@@ -196,14 +202,20 @@ const createGroupForm = reactive({
 const createGroupRules: FormRules = {
   name: [
     { required: true, message: "请输入群组名称", trigger: "blur" },
-    { min: 2, max: 20, message: "群组名称长度为 2 到 20 个字符", trigger: "blur" },
+    {
+      min: 2,
+      max: 20,
+      message: "群组名称长度为 2 到 20 个字符",
+      trigger: "blur",
+    },
   ],
 };
 
 const transferFriends = computed(() =>
   chatStore.friends.map((friend) => ({
     key: friend.friendId,
-    label: friend.remark || friend.nickname || friend.username || friend.friendId,
+    label:
+      friend.remark || friend.nickname || friend.username || friend.friendId,
   })),
 );
 
@@ -258,17 +270,36 @@ const loadData = async () => {
   }
 };
 
-const openAvatarPicker = () => {
-  avatarInputRef.value?.click();
+const openAvatarPicker = async () => {
+  if (isCameraAvailable()) {
+    try {
+      const result = await ActionSheet.showActions({
+        title: "更换群组头像",
+        options: [
+          { title: "拍照" },
+          { title: "从相册选择" },
+        ],
+      });
+      if (result.index === 0) {
+        const photo = await takePhoto();
+        const file = base64ToFile(photo.base64, photo.format);
+        const compressed = await compressImage(file);
+        await uploadGroupAvatar(blobToFile(compressed, file.name));
+      } else if (result.index === 1) {
+        const photo = await pickFromGallery();
+        const file = base64ToFile(photo.base64, photo.format);
+        const compressed = await compressImage(file);
+        await uploadGroupAvatar(blobToFile(compressed, file.name));
+      }
+    } catch {
+      avatarInputRef.value?.click();
+    }
+  } else {
+    avatarInputRef.value?.click();
+  }
 };
 
-const handleAvatarChange = async (event: Event) => {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = "";
-  if (!file) {
-    return;
-  }
+const uploadGroupAvatar = async (file: File) => {
   try {
     const response = await fileService.uploadImage(file);
     if (response.code !== 200 || !response.data?.url) {
@@ -278,6 +309,16 @@ const handleAvatarChange = async (event: Event) => {
   } catch (error) {
     capture(error, "头像上传失败");
   }
+};
+
+const handleAvatarChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) {
+    return;
+  }
+  await uploadGroupAvatar(file);
 };
 
 const createGroup = async () => {
@@ -336,9 +377,13 @@ const viewMembers = async (group: Group) => {
               return `${member.nickname || member.username || member.userId}（${role}）`;
             })
             .join("\n");
-    await ElMessageBox.alert(content, `${group.groupName || group.name} 成员列表`, {
-      confirmButtonText: "关闭",
-    });
+    await ElMessageBox.alert(
+      content,
+      `${group.groupName || group.name} 成员列表`,
+      {
+        confirmButtonText: "关闭",
+      },
+    );
   } catch (error) {
     capture(error, "加载群成员失败");
   }
