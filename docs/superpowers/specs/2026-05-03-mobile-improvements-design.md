@@ -1,7 +1,7 @@
 # Mobile Improvements Design Spec
 
 Date: 2026-05-03
-Status: Draft
+Status: Reviewed
 Scope: Full mobile experience improvements for Android (Capacitor)
 
 ## Background
@@ -50,7 +50,7 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   androidScheme: 'https',
   android: {
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#0f172a',
     allowMixedContent: false,
     webContentsDebuggingEnabled: true,
   },
@@ -61,12 +61,12 @@ const config: CapacitorConfig = {
     },
     StatusBar: {
       style: 'DARK',
-      backgroundColor: '#1a1a2e',
+      backgroundColor: '#0f172a',
     },
     SplashScreen: {
       launchAutoHide: true,
       launchShowDuration: 1500,
-      backgroundColor: '#1a1a2e',
+      backgroundColor: '#0f172a',
       showSpinner: false,
     },
   },
@@ -93,7 +93,7 @@ Add permissions:
 
 ```html
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<meta name="theme-color" content="#1a1a2e" />
+<meta name="theme-color" content="#0f172a" />
 ```
 
 ### A5. Clean Up Dead Code
@@ -412,11 +412,16 @@ File: `src/features/chat/ChatMessageList.vue`
 
 ### E5. Typing Indicator
 
-Requires backend WebSocket protocol support:
-- New event type: `{ type: "typing", conversationId, userId }`
-- Frontend `ChatComposer`: on input, send typing event (debounced 2s)
-- Frontend display: in `MobileChatHeader` or message list footer, show "对方正在输入..."
+**Frontend work** (can be implemented independently):
+- `ChatComposer`: detect input events, emit typing event via WebSocket (debounced 2s)
+- Display component: show "对方正在输入..." in message list footer
 - Auto-hide after 3s of no typing events
+- Hide the permanently-hidden `style="display: none"` typing indicator template
+
+**Backend work** (separate task, not in this spec's scope):
+- New WebSocket event type: `{ type: "typing", conversationId, userId }`
+- Server-side relay: broadcast typing events to conversation participants
+- Rate limiting: max 1 typing event per user per 2s
 
 ### E6. Message Delivery Status Animations
 
