@@ -5,6 +5,7 @@ import { userService } from "@/services/user";
 import type { Friendship } from "@/types";
 import { useUserStore } from "@/stores/user";
 import { logger } from "@/utils/logger";
+import { appLifecycleService } from "@/services/platform/app-lifecycle.service";
 
 export class HeartbeatService {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -17,6 +18,8 @@ export class HeartbeatService {
   private readonly retryDelay = 5000;
   private readonly HEARTBEAT_INTERVAL = 30000;
   private readonly USER_STATUS_CHECK_INTERVAL = 60000;
+  private foregroundUnsub: (() => void) | null = null;
+  private backgroundUnsub: (() => void) | null = null;
 
   constructor() {
     void this.loadFriends();
@@ -26,6 +29,12 @@ export class HeartbeatService {
         this.handleOnlineStatusChanged as EventListener,
       );
     }
+    this.foregroundUnsub = appLifecycleService.onForeground(() => {
+      this.start();
+    });
+    this.backgroundUnsub = appLifecycleService.onBackground(() => {
+      this.stop();
+    });
   }
 
   private handleOnlineStatusChanged = (event: Event) => {
@@ -91,6 +100,18 @@ export class HeartbeatService {
     this.retryCount = 0;
   }
 
+  destroy() {
+    this.stop();
+    this.foregroundUnsub?.();
+    this.backgroundUnsub?.();
+    if (typeof window !== "undefined") {
+      window.removeEventListener(
+        "onlineStatusChanged",
+        this.handleOnlineStatusChanged as EventListener,
+      );
+    }
+  }
+
   private async checkFriendsOnlineStatus() {
     if (this.friends.value.length === 0) {
       return;
@@ -107,7 +128,10 @@ export class HeartbeatService {
         this.friendsOnlineStatus.value = statusMap;
         return;
       }
-      logger.warn("heartbeat: failed to update friend status", response.message);
+      logger.warn(
+        "heartbeat: failed to update friend status",
+        response.message,
+      );
     } catch (error) {
       logger.warn("heartbeat: failed to check friend status", error);
       if (this.retryCount < this.maxRetries) {
