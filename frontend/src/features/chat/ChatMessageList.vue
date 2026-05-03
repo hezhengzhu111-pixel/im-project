@@ -25,39 +25,39 @@
     >
       <div class="message-scroller-inner">
         <div class="chat-timeline-inner">
-        <div
-          v-for="(item, index) in renderItems"
-          :key="item.id"
-          class="message-row"
-          :data-index="index"
-        >
-          <div v-if="item.kind === 'separator'" class="message-separator">
-            <span class="separator-pill">{{ item.label }}</span>
-          </div>
-
           <div
-            v-else-if="item.kind === 'unread'"
-            class="message-separator message-separator-unread"
+            v-for="(item, index) in renderItems"
+            :key="item.id"
+            class="message-row"
+            :data-index="index"
           >
-            <span class="separator-line"></span>
-            <span class="separator-pill unread-pill">{{ item.label }}</span>
-            <span class="separator-line"></span>
-          </div>
+            <div v-if="item.kind === 'separator'" class="message-separator">
+              <span class="separator-pill">{{ item.label }}</span>
+            </div>
 
-          <MessageItem
-            v-else
-            v-bind="item.view"
-            :audio-playing="playingMessageId === item.messageId"
-            :image-scroll-container="scrollContainerRef"
-            @show-group-readers="handleShowGroupReaders"
-            @open-context-menu="openContextMenu"
-            @toggle-audio="toggleAudioById"
-            @download-file="downloadFile"
-            @preview-image="previewImage"
-            @play-video="playVideo"
-            @media-loaded="handleMediaLoaded"
-          />
-        </div>
+            <div
+              v-else-if="item.kind === 'unread'"
+              class="message-separator message-separator-unread"
+            >
+              <span class="separator-line"></span>
+              <span class="separator-pill unread-pill">{{ item.label }}</span>
+              <span class="separator-line"></span>
+            </div>
+
+            <MessageItem
+              v-else
+              v-bind="item.view"
+              :audio-playing="playingMessageId === item.messageId"
+              :image-scroll-container="scrollContainerRef"
+              @show-group-readers="handleShowGroupReaders"
+              @open-context-menu="openContextMenu"
+              @toggle-audio="toggleAudioById"
+              @download-file="handleDownloadFile"
+              @preview-image="previewImage"
+              @play-video="playVideo"
+              @media-loaded="handleMediaLoaded"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -78,7 +78,10 @@
       @click.self="contextMenu.close()"
     >
       <div
-        v-if="contextTargetMessage.messageType === 'TEXT' || contextTargetMessage.messageType === 'AI_REPLY'"
+        v-if="
+          contextTargetMessage.messageType === 'TEXT' ||
+          contextTargetMessage.messageType === 'AI_REPLY'
+        "
         class="menu-item"
         @click="handleCopy"
       >
@@ -91,18 +94,26 @@
         {{ t("message.delete") }}
       </div>
     </div>
+
+    <ImageViewer
+      v-model:visible="viewerVisible"
+      :images="viewerImages"
+      :initial-index="viewerIndex"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, onMounted, onUnmounted, ref, watch} from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import MessageItem from "@/features/chat/ChatMessageItem.vue";
-import {useAudioPlayer} from "@/features/chat/composables/useAudioPlayer";
-import {useMessageActions} from "@/features/chat/composables/useMessageActions";
-import {useMessageContextMenu} from "@/features/chat/composables/useMessageContextMenu";
-import {useI18nStore} from "@/stores/i18n";
-import {formatFileSize} from "@/utils/common";
-import type {Message} from "@/types";
+import ImageViewer from "@/components/common/ImageViewer.vue";
+import { downloadFile } from "@/services/download.service";
+import { useAudioPlayer } from "@/features/chat/composables/useAudioPlayer";
+import { useMessageActions } from "@/features/chat/composables/useMessageActions";
+import { useMessageContextMenu } from "@/features/chat/composables/useMessageContextMenu";
+import { useI18nStore } from "@/stores/i18n";
+import { formatFileSize } from "@/utils/common";
+import type { Message } from "@/types";
 
 interface Props {
   messages: Message[];
@@ -200,6 +211,9 @@ const suppressScrollTracking = ref(false);
 const pendingHistoryAnchor = ref<HistoryAnchor | null>(null);
 const historyFallbackTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 const refreshScheduled = ref(false);
+const viewerVisible = ref(false);
+const viewerImages = ref<string[]>([]);
+const viewerIndex = ref(0);
 const messageViewCache = new Map<string, MessageListItemView>();
 const messageRenderItemCache = new Map<string, MessageRenderItem>();
 const { locale, t } = useI18nStore();
@@ -503,7 +517,8 @@ const renderItems = computed<RenderItem[]>(() => {
     const view = buildMessageView(message);
 
     // 连续消息分组：同一 sender 紧凑模式
-    const isSameSender = previousSenderId === message.senderId && !view.isSystemMessage;
+    const isSameSender =
+      previousSenderId === message.senderId && !view.isSystemMessage;
     view.showAvatar = !isSameSender;
     view.compact = isSameSender;
     previousSenderId = message.senderId;
@@ -637,14 +652,17 @@ const previewImage = (messageId: string) => {
   if (!message) {
     return;
   }
-  window.open(
-    message.mediaUrl || message.content,
-    "_blank",
-    "noopener,noreferrer",
-  );
+  const url = message.mediaUrl || message.content;
+  const allImages = props.messages
+    .filter((m) => m.messageType === "IMAGE" && (m.mediaUrl || m.content))
+    .map((m) => m.mediaUrl || m.content);
+  const idx = allImages.indexOf(url);
+  viewerImages.value = allImages;
+  viewerIndex.value = idx >= 0 ? idx : 0;
+  viewerVisible.value = true;
 };
 
-const downloadFile = (messageId: string) => {
+const handleDownloadFile = (messageId: string) => {
   const message = resolveMessageById(messageId);
   if (!message) {
     return;
@@ -653,14 +671,7 @@ const downloadFile = (messageId: string) => {
   if (!url) {
     return;
   }
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = resolveFileName(message);
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+  void downloadFile(url, resolveFileName(message) || "download");
 };
 
 const playVideo = (_messageId: string) => {

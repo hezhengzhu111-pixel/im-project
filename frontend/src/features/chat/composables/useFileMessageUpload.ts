@@ -1,7 +1,8 @@
-import {ref} from "vue";
-import {fileService} from "@/services/file";
-import type {MessageType} from "@/types";
-import {useErrorHandler} from "@/hooks/useErrorHandler";
+import { ref } from "vue";
+import { fileService } from "@/services/file";
+import type { MessageType } from "@/types";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { compressImage, blobToFile } from "@/utils/image-compression";
 
 type UploadKind = Extract<MessageType, "IMAGE" | "FILE" | "VIDEO" | "VOICE">;
 
@@ -33,7 +34,7 @@ const formatFileSize = (size: number) => {
 };
 
 export function useFileMessageUpload() {
-  const {capture, notifyInfo} = useErrorHandler("file-upload");
+  const { capture, notifyInfo } = useErrorHandler("file-upload");
   const uploading = ref(false);
 
   const upload = async (file: File, kind: UploadKind) => {
@@ -41,13 +42,27 @@ export function useFileMessageUpload() {
     try {
       const limit = UPLOAD_LIMITS[kind];
       if (file.size > limit) {
-        throw new Error(`${uploadLabel(kind)}不能超过 ${formatFileSize(limit)}`);
+        throw new Error(
+          `${uploadLabel(kind)}不能超过 ${formatFileSize(limit)}`,
+        );
+      }
+
+      // Before upload, compress images
+      let uploadFile = file;
+      if (kind === "IMAGE" && file.size > 1024 * 1024) {
+        try {
+          const compressed = await compressImage(file);
+          uploadFile = blobToFile(compressed, file.name);
+        } catch {
+          // Compression failed — upload original
+          uploadFile = file;
+        }
       }
 
       notifyInfo(`正在上传${uploadLabel(kind)}...`);
       const response =
         kind === "IMAGE"
-          ? await fileService.uploadImage(file)
+          ? await fileService.uploadImage(uploadFile)
           : kind === "VIDEO"
             ? await fileService.uploadVideo(file)
             : kind === "VOICE"

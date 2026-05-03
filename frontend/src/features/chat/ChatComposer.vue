@@ -1,6 +1,9 @@
 <template>
   <div class="composer-shell" ref="shellRef">
-    <div class="composer-surface" :class="{ 'is-disabled': disabled, 'is-focused': isFocused }">
+    <div
+      class="composer-surface"
+      :class="{ 'is-disabled': disabled, 'is-focused': isFocused }"
+    >
       <div class="composer-row">
         <div class="toolbar-group">
           <button
@@ -36,8 +39,12 @@
             type="button"
             class="toolbar-button interactive-reset"
             :class="{ 'is-recording': isRecording }"
-            :title="isRecording ? t('composer.stopVoice') : t('composer.recordVoice')"
-            :aria-label="isRecording ? t('composer.stopVoice') : t('composer.recordVoice')"
+            :title="
+              isRecording ? t('composer.stopVoice') : t('composer.recordVoice')
+            "
+            :aria-label="
+              isRecording ? t('composer.stopVoice') : t('composer.recordVoice')
+            "
             :disabled="disabled || uploading"
             @click="toggleVoiceRecording"
           >
@@ -85,12 +92,17 @@
             <div
               v-for="(member, idx) in filteredMembers"
               :key="member.userId"
-              :ref="(el: unknown) => mentionItemRefs[idx] = (el as HTMLElement | null)"
+              :ref="
+                (el: unknown) =>
+                  (mentionItemRefs[idx] = el as HTMLElement | null)
+              "
               class="mention-item"
               :class="{ active: mentionIndex === idx }"
               @mousedown.prevent="selectMention(member)"
             >
-              <el-avatar :size="24" :src="member.avatar">{{ member.avatarText }}</el-avatar>
+              <el-avatar :size="24" :src="member.avatar">{{
+                member.avatarText
+              }}</el-avatar>
               <span class="mention-name">{{ member.name }}</span>
             </div>
             <div v-if="filteredMembers.length === 0" class="mention-empty">
@@ -106,7 +118,9 @@
           :disabled="!canSend"
           @click="handleSend"
         >
-          <span>{{ uploading ? t("composer.sending") : t("composer.send") }}</span>
+          <span>{{
+            uploading ? t("composer.sending") : t("composer.send")
+          }}</span>
         </button>
       </div>
     </div>
@@ -135,13 +149,23 @@
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, onMounted, onUnmounted, ref, watch} from "vue";
-import {ChatDotRound, MagicStick, Microphone, Paperclip, Picture, VideoPause} from "@element-plus/icons-vue";
-import {useFileMessageUpload} from "@/features/chat/composables/useFileMessageUpload";
-import {useVoiceRecorder} from "@/features/chat/composables/useVoiceRecorder";
-import {useI18nStore} from "@/stores/i18n";
-import {getAvatarText} from "@/utils/common";
-import type {MessageType} from "@/types";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import {
+  ChatDotRound,
+  MagicStick,
+  Microphone,
+  Paperclip,
+  Picture,
+  VideoPause,
+} from "@element-plus/icons-vue";
+import { useFileMessageUpload } from "@/features/chat/composables/useFileMessageUpload";
+import { useVoiceRecorder } from "@/features/chat/composables/useVoiceRecorder";
+import { useI18nStore } from "@/stores/i18n";
+import { getAvatarText } from "@/utils/common";
+import type { MessageType } from "@/types";
+import { isCameraAvailable, takePhoto, pickFromGallery, base64ToFile } from "@/services/camera.service";
+import { compressImage, blobToFile } from "@/utils/image-compression";
+import { ActionSheet } from "@capacitor/action-sheet";
 
 interface MentionMember {
   userId: string;
@@ -157,11 +181,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "send-text", value: string, mentionedUserIds: string[]): void;
-  (e: "send-media", payload: {
-    type: Extract<MessageType, "IMAGE" | "FILE" | "VIDEO" | "VOICE">;
-    url: string;
-    extra?: Record<string, unknown>;
-  }): void;
+  (
+    e: "send-media",
+    payload: {
+      type: Extract<MessageType, "IMAGE" | "FILE" | "VIDEO" | "VOICE">;
+      url: string;
+      extra?: Record<string, unknown>;
+    },
+  ): void;
   (e: "request-members"): void;
 }>();
 
@@ -173,25 +200,26 @@ const mentionRef = ref<HTMLElement | null>(null);
 const mentionItemRefs = ref<(HTMLElement | null)[]>([]);
 const messageInput = ref("");
 const isFocused = ref(false);
-const {uploading, upload} = useFileMessageUpload();
-const {isRecording, startRecording, finishRecording, cancelRecording} = useVoiceRecorder();
-const {t} = useI18nStore();
+const { uploading, upload } = useFileMessageUpload();
+const { isRecording, startRecording, finishRecording, cancelRecording } =
+  useVoiceRecorder();
+const { t } = useI18nStore();
 
 const showMention = ref(false);
 const mentionIndex = ref(0);
 const mentionStart = ref(0);
 const mentionFilter = ref("");
 const mentionedIds = ref<string[]>([]);
-const mentionStyle = ref({top: "auto", bottom: "56px", left: "8px"});
+const mentionStyle = ref({ top: "auto", bottom: "56px", left: "8px" });
 
 const members = computed(() => props.members || []);
 
 const filteredMembers = computed(() => {
   if (!mentionFilter.value) return members.value.slice(0, 8);
   const q = mentionFilter.value.toLowerCase();
-  return members.value.filter(m =>
-    m.name.toLowerCase().includes(q) || m.userId.includes(q)
-  ).slice(0, 8);
+  return members.value
+    .filter((m) => m.name.toLowerCase().includes(q) || m.userId.includes(q))
+    .slice(0, 8);
 });
 
 const placeholderText = computed(() => {
@@ -201,7 +229,11 @@ const placeholderText = computed(() => {
 });
 
 const canSend = computed(
-  () => !props.disabled && !uploading.value && !isRecording.value && Boolean(messageInput.value.trim()),
+  () =>
+    !props.disabled &&
+    !uploading.value &&
+    !isRecording.value &&
+    Boolean(messageInput.value.trim()),
 );
 
 const focusTextarea = () => {
@@ -242,13 +274,18 @@ const mentionUp = () => {
 
 const mentionDown = () => {
   if (!showMention.value) return;
-  mentionIndex.value = Math.min(filteredMembers.value.length - 1, mentionIndex.value + 1);
+  mentionIndex.value = Math.min(
+    filteredMembers.value.length - 1,
+    mentionIndex.value + 1,
+  );
   scrollMentionIntoView();
 };
 
 const scrollMentionIntoView = () => {
   nextTick(() => {
-    mentionItemRefs.value[mentionIndex.value]?.scrollIntoView({ block: "nearest" });
+    mentionItemRefs.value[mentionIndex.value]?.scrollIntoView({
+      block: "nearest",
+    });
   });
 };
 
@@ -259,7 +296,10 @@ const onInput = () => {
   const before = messageInput.value.slice(0, pos);
 
   const atIdx = before.lastIndexOf("@");
-  if (atIdx === -1 || (atIdx > 0 && before[atIdx - 1] !== " " && before[atIdx - 1] !== "\n")) {
+  if (
+    atIdx === -1 ||
+    (atIdx > 0 && before[atIdx - 1] !== " " && before[atIdx - 1] !== "\n")
+  ) {
     resetMention();
     return;
   }
@@ -278,8 +318,8 @@ const onInput = () => {
     const shellRect = shellRef.value?.getBoundingClientRect();
     if (shellRect) {
       mentionStyle.value.top = "auto";
-      mentionStyle.value.bottom = (shellRect.bottom - rect.top + 8) + "px";
-      mentionStyle.value.left = (rect.left - shellRect.left + 8) + "px";
+      mentionStyle.value.bottom = shellRect.bottom - rect.top + 8 + "px";
+      mentionStyle.value.left = rect.left - shellRect.left + 8 + "px";
     }
   }
   showMention.value = true;
@@ -320,14 +360,63 @@ const handleShiftEnter = (event: KeyboardEvent) => {
   });
 };
 
-const selectImage = () => imageInputRef.value?.click();
+async function selectImage() {
+  if (isCameraAvailable()) {
+    try {
+      const result = await ActionSheet.showActions({
+        title: "选择图片",
+        options: [
+          { title: "拍照" },
+          { title: "从相册选择" },
+        ],
+      });
+      if (result.index === 0) {
+        const photo = await takePhoto();
+        const file = base64ToFile(photo.base64, photo.format);
+        const compressed = await compressImage(file);
+        const finalFile = blobToFile(compressed, file.name);
+        await emitUploadedMedia(finalFile, "IMAGE");
+      } else if (result.index === 1) {
+        const photo = await pickFromGallery();
+        const file = base64ToFile(photo.base64, photo.format);
+        const compressed = await compressImage(file);
+        const finalFile = blobToFile(compressed, file.name);
+        await emitUploadedMedia(finalFile, "IMAGE");
+      }
+    } catch {
+      // Fallback to file input
+      imageInputRef.value?.click();
+    }
+  } else {
+    imageInputRef.value?.click();
+  }
+}
 const selectFile = () => fileInputRef.value?.click();
 
-const emitUploadedMedia = async (file: File, kind: Extract<MessageType, "IMAGE" | "FILE" | "VIDEO" | "VOICE">, extra?: Record<string, unknown>) => {
+const emitUploadedMedia = async (
+  file: File,
+  kind: Extract<MessageType, "IMAGE" | "FILE" | "VIDEO" | "VOICE">,
+  extra?: Record<string, unknown>,
+) => {
   try {
     const result = await upload(file, kind);
-    const mediaName = result.fileName || result.originalFilename || result.filename || file.name;
-    emit("send-media", { type: kind, url: result.url, extra: { mediaName, mediaSize: result.size ?? file.size, contentType: result.contentType || file.type, category: result.category, filename: result.filename, ...extra } });
+    const mediaName =
+      result.fileName ||
+      result.originalFilename ||
+      result.filename ||
+      file.name;
+    emit("send-media", {
+      type: kind,
+      url: result.url,
+      extra: {
+        mediaName,
+        mediaSize: result.size ?? file.size,
+        contentType: result.contentType || file.type,
+        category: result.category,
+        filename: result.filename,
+        ...extra,
+      },
+    });
     focusTextarea();
     return true;
   } catch {
@@ -343,18 +432,37 @@ const handleImageSelect = async (event: Event) => {
   await emitUploadedMedia(file, "IMAGE");
 };
 
-const readMediaDuration = (file: File) => new Promise<number | undefined>((resolve) => {
-  if (!file.type.startsWith("audio/") && !file.type.startsWith("video/")) { resolve(undefined); return; }
-  const objectUrl = URL.createObjectURL(file);
-  const media = file.type.startsWith("video/") ? document.createElement("video") : document.createElement("audio");
-  const cleanup = () => { URL.revokeObjectURL(objectUrl); media.removeAttribute("src"); media.load(); };
-  media.preload = "metadata";
-  media.onloadedmetadata = () => { const d = Math.round(media.duration); cleanup(); resolve(Number.isFinite(d) && d > 0 ? d : undefined); };
-  media.onerror = () => { cleanup(); resolve(undefined); };
-  media.src = objectUrl;
-});
+const readMediaDuration = (file: File) =>
+  new Promise<number | undefined>((resolve) => {
+    if (!file.type.startsWith("audio/") && !file.type.startsWith("video/")) {
+      resolve(undefined);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    const media = file.type.startsWith("video/")
+      ? document.createElement("video")
+      : document.createElement("audio");
+    const cleanup = () => {
+      URL.revokeObjectURL(objectUrl);
+      media.removeAttribute("src");
+      media.load();
+    };
+    media.preload = "metadata";
+    media.onloadedmetadata = () => {
+      const d = Math.round(media.duration);
+      cleanup();
+      resolve(Number.isFinite(d) && d > 0 ? d : undefined);
+    };
+    media.onerror = () => {
+      cleanup();
+      resolve(undefined);
+    };
+    media.src = objectUrl;
+  });
 
-const resolveFileMessageKind = (file: File): Extract<MessageType, "IMAGE" | "FILE" | "VIDEO" | "VOICE"> => {
+const resolveFileMessageKind = (
+  file: File,
+): Extract<MessageType, "IMAGE" | "FILE" | "VIDEO" | "VOICE"> => {
   if (file.type.startsWith("image/")) return "IMAGE";
   if (file.type.startsWith("audio/")) return "VOICE";
   if (file.type.startsWith("video/")) return "VIDEO";
@@ -366,13 +474,18 @@ const handleFileSelect = async (event: Event) => {
   (event.target as HTMLInputElement).value = "";
   if (!file) return;
   const kind = resolveFileMessageKind(file);
-  const duration = kind === "VOICE" || kind === "VIDEO" ? await readMediaDuration(file) : undefined;
+  const duration =
+    kind === "VOICE" || kind === "VIDEO"
+      ? await readMediaDuration(file)
+      : undefined;
   await emitUploadedMedia(file, kind, { duration });
 };
 
 const handlePaste = async (event: ClipboardEvent) => {
   if (props.disabled || uploading.value || isRecording.value) return;
-  const file = Array.from(event.clipboardData?.items || []).find(i => i.type.startsWith("image/"))?.getAsFile();
+  const file = Array.from(event.clipboardData?.items || [])
+    .find((i) => i.type.startsWith("image/"))
+    ?.getAsFile();
   if (!file) return;
   event.preventDefault();
   await emitUploadedMedia(file, "IMAGE");
@@ -380,16 +493,27 @@ const handlePaste = async (event: ClipboardEvent) => {
 
 const toggleVoiceRecording = async () => {
   if (props.disabled || uploading.value) return;
-  if (!isRecording.value) { await startRecording(); return; }
+  if (!isRecording.value) {
+    await startRecording();
+    return;
+  }
   const recorded = await finishRecording();
-  if (recorded) await emitUploadedMedia(recorded.file, "VOICE", { duration: recorded.duration });
+  if (recorded)
+    await emitUploadedMedia(recorded.file, "VOICE", {
+      duration: recorded.duration,
+    });
 };
 
-onUnmounted(() => { cancelRecording(); });
+onUnmounted(() => {
+  cancelRecording();
+});
 </script>
 
 <style scoped lang="scss">
-.interactive-reset { border: 0; background: transparent; }
+.interactive-reset {
+  border: 0;
+  background: transparent;
+}
 
 .composer-shell {
   padding: 10px 18px 14px;
@@ -406,7 +530,9 @@ onUnmounted(() => { cancelRecording(); });
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   box-shadow: var(--shadow-soft, 0 14px 34px rgba(15, 23, 42, 0.06));
-  transition: border-color var(--motion-fast, 0.18s) ease, box-shadow var(--motion-fast, 0.18s) ease;
+  transition:
+    border-color var(--motion-fast, 0.18s) ease,
+    box-shadow var(--motion-fast, 0.18s) ease;
 }
 
 .composer-surface.is-focused {
@@ -414,7 +540,9 @@ onUnmounted(() => { cancelRecording(); });
   box-shadow: var(--shadow-glow, 0 0 0 3px rgba(99, 102, 241, 0.14));
 }
 
-.composer-surface.is-disabled { opacity: 0.72; }
+.composer-surface.is-disabled {
+  opacity: 0.72;
+}
 
 .composer-row {
   display: grid;
@@ -441,7 +569,10 @@ onUnmounted(() => { cancelRecording(); });
   border-radius: var(--radius-sm, 8px);
   color: var(--chat-text-secondary);
   cursor: pointer;
-  transition: background-color var(--motion-fast, 0.18s) ease, color var(--motion-fast, 0.18s) ease, transform var(--motion-fast, 0.18s) ease;
+  transition:
+    background-color var(--motion-fast, 0.18s) ease,
+    color var(--motion-fast, 0.18s) ease,
+    transform var(--motion-fast, 0.18s) ease;
 }
 
 .toolbar-button:hover:not(:disabled) {
@@ -456,9 +587,15 @@ onUnmounted(() => { cancelRecording(); });
   animation: recordingPulse 1.2s ease-in-out infinite;
 }
 
-.toolbar-button:disabled { cursor: not-allowed; opacity: 0.4; }
+.toolbar-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
 
-.textarea-wrapper { position: relative; width: 100%; }
+.textarea-wrapper {
+  position: relative;
+  width: 100%;
+}
 
 .chat-textarea {
   width: 100%;
@@ -475,7 +612,9 @@ onUnmounted(() => { cancelRecording(); });
   line-height: 1.5;
 }
 
-.chat-textarea::placeholder { color: var(--chat-text-quaternary); }
+.chat-textarea::placeholder {
+  color: var(--chat-text-quaternary);
+}
 
 .mention-popup {
   position: absolute;
@@ -502,7 +641,10 @@ onUnmounted(() => { cancelRecording(); });
   transition: background-color 0.12s;
 }
 
-.mention-item:hover, .mention-item.active { background: var(--chat-card-active); }
+.mention-item:hover,
+.mention-item.active {
+  background: var(--chat-card-active);
+}
 
 .mention-name {
   font-size: 13px;
@@ -524,13 +666,22 @@ onUnmounted(() => { cancelRecording(); });
   width: 74px;
   height: 40px;
   border-radius: 10px;
-  background: linear-gradient(135deg, var(--color-primary, #6366f1), var(--color-primary-2, #818cf8));
+  background: linear-gradient(
+    135deg,
+    var(--color-primary, #6366f1),
+    var(--color-primary-2, #818cf8)
+  );
   color: rgba(255, 255, 255, 0.4);
   font-size: 13px;
   font-weight: 700;
   cursor: not-allowed;
   opacity: 0.5;
-  transition: background-color var(--motion-fast, 0.18s) ease, color var(--motion-fast, 0.18s) ease, transform var(--motion-fast, 0.18s) ease, box-shadow var(--motion-fast, 0.18s) ease, opacity var(--motion-fast, 0.18s) ease;
+  transition:
+    background-color var(--motion-fast, 0.18s) ease,
+    color var(--motion-fast, 0.18s) ease,
+    transform var(--motion-fast, 0.18s) ease,
+    box-shadow var(--motion-fast, 0.18s) ease,
+    opacity var(--motion-fast, 0.18s) ease;
 }
 
 .send-button.can-send {
@@ -566,20 +717,37 @@ onUnmounted(() => { cancelRecording(); });
   background: var(--chat-text-tertiary);
   animation: typingBounce 1.4s ease-in-out infinite;
 
-  &:nth-child(2) { animation-delay: 0.2s; }
-  &:nth-child(3) { animation-delay: 0.4s; }
+  &:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  &:nth-child(3) {
+    animation-delay: 0.4s;
+  }
 }
 
-.typing-text { margin-left: 2px; }
+.typing-text {
+  margin-left: 2px;
+}
 
 @keyframes recordingPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.18); }
-  50% { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(239, 68, 68, 0);
+  }
 }
 
 @keyframes typingBounce {
-  0%, 60%, 100% { transform: translateY(0); }
-  30% { transform: translateY(-3px); }
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-3px);
+  }
 }
 
 @media (max-width: 768px) {
