@@ -10,7 +10,10 @@ RUN ./mvnw package -DskipTests -B -q
 FROM docker.m.daocloud.io/library/eclipse-temurin:25-jre-noble
 ARG IM_BUILD_NONCE
 LABEL im.build.nonce=$IM_BUILD_NONCE
-RUN useradd -r -u 10001 appuser
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -r -u 10001 appuser
 WORKDIR /app
 COPY --from=builder /app/target/spring-ai-im-*.jar app.jar
 USER appuser

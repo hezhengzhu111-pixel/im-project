@@ -12,7 +12,7 @@ FROM docker.m.daocloud.io/library/debian:bookworm-slim
 ARG IM_BUILD_NONCE
 LABEL im.build.nonce=$IM_BUILD_NONCE
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libssl3 \
+    && apt-get install -y --no-install-recommends ca-certificates libssl3 curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -r -u 10001 appuser
 WORKDIR /app
