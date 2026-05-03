@@ -34,8 +34,12 @@
 
         <div class="message-stack">
           <div class="message-bubble" :class="bubbleClass">
-            <div v-if="isRecalled" class="status-copy">{{ t("message.recalled") }}</div>
-            <div v-else-if="isDeleted" class="status-copy">{{ t("message.deleted") }}</div>
+            <div v-if="isRecalled" class="status-copy">
+              {{ t("message.recalled") }}
+            </div>
+            <div v-else-if="isDeleted" class="status-copy">
+              {{ t("message.deleted") }}
+            </div>
 
             <div v-else-if="messageType === 'TEXT'" class="text-content">
               <span v-html="renderedContent"></span>
@@ -43,7 +47,9 @@
 
             <div v-else-if="messageType === 'AI_REPLY'" class="text-content">
               <span class="ai-badge">AI</span>
-              <span v-if="aiProvider" class="ai-provider">{{ aiProvider }}</span>
+              <span v-if="aiProvider" class="ai-provider">{{
+                aiProvider
+              }}</span>
               <span v-html="renderedContent"></span>
             </div>
 
@@ -65,10 +71,14 @@
                 @error="handleMediaLoaded"
               >
                 <template #placeholder>
-                  <div class="media-placeholder">{{ t("message.loadingImage") }}</div>
+                  <div class="media-placeholder">
+                    {{ t("message.loadingImage") }}
+                  </div>
                 </template>
                 <template #error>
-                  <div class="media-placeholder">{{ t("message.previewUnavailable") }}</div>
+                  <div class="media-placeholder">
+                    {{ t("message.previewUnavailable") }}
+                  </div>
                 </template>
               </el-image>
             </button>
@@ -78,8 +88,12 @@
                 <el-icon><Document /></el-icon>
               </div>
               <div class="attachment-meta">
-                <div class="attachment-title">{{ fileName || t("message.unknownFile") }}</div>
-                <div class="attachment-subtitle">{{ fileSizeLabel || t("message.sizeUnknown") }}</div>
+                <div class="attachment-title">
+                  {{ fileName || t("message.unknownFile") }}
+                </div>
+                <div class="attachment-subtitle">
+                  {{ fileSizeLabel || t("message.sizeUnknown") }}
+                </div>
               </div>
               <button
                 type="button"
@@ -104,13 +118,22 @@
               </div>
               <div class="attachment-meta">
                 <div class="attachment-title">
-                  {{ audioPlaying ? t("message.playingVoice") : t("message.voice") }}
+                  {{
+                    audioPlaying
+                      ? t("message.playingVoice")
+                      : t("message.voice")
+                  }}
                 </div>
-                <div class="attachment-subtitle">{{ durationLabel || "0:00" }}</div>
+                <div class="attachment-subtitle">
+                  {{ durationLabel || "0:00" }}
+                </div>
               </div>
             </button>
 
-            <div v-else-if="messageType === 'VIDEO'" class="media-card media-card-video">
+            <div
+              v-else-if="messageType === 'VIDEO'"
+              class="media-card media-card-video"
+            >
               <video
                 :src="mediaSource"
                 :poster="thumbnailUrl"
@@ -134,10 +157,40 @@
               :class="statusToneClass"
               :aria-label="statusLabel"
             >
-              <el-icon v-if="statusTone === 'loading'" class="message-state-icon is-loading">
-                <Loading />
-              </el-icon>
-              <el-icon v-else-if="statusTone === 'failed'" class="message-state-icon">
+              <span
+                v-if="statusTone === 'sending'"
+                class="status-icon status-sending"
+              >
+                <el-icon class="spin"><Loading /></el-icon>
+              </span>
+              <span
+                v-else-if="statusTone === 'loading'"
+                class="status-icon status-sending"
+              >
+                <el-icon class="spin"><Loading /></el-icon>
+              </span>
+              <span
+                v-else-if="statusTone === 'sent'"
+                class="status-icon status-sent"
+              >
+                <el-icon><Check /></el-icon>
+              </span>
+              <span
+                v-else-if="statusTone === 'delivered'"
+                class="status-icon status-delivered"
+              >
+                <el-icon><Check /></el-icon>
+              </span>
+              <span
+                v-else-if="statusTone === 'read'"
+                class="status-icon status-read"
+              >
+                <el-icon><Check /></el-icon>
+              </span>
+              <el-icon
+                v-else-if="statusTone === 'failed'"
+                class="message-state-icon"
+              >
                 <Warning />
               </el-icon>
               {{ statusLabel }}
@@ -159,11 +212,18 @@
 </template>
 
 <script setup lang="ts">
-import {computed} from "vue";
-import {Document, Loading, Microphone, VideoPause, Warning} from "@element-plus/icons-vue";
-import {useI18nStore} from "@/stores/i18n";
-import {getAvatarText} from "@/utils/common";
-import type {MessageType} from "@/types";
+import { computed } from "vue";
+import {
+  Check,
+  Document,
+  Loading,
+  Microphone,
+  VideoPause,
+  Warning,
+} from "@element-plus/icons-vue";
+import { useI18nStore } from "@/stores/i18n";
+import { getAvatarText } from "@/utils/common";
+import type { MessageType } from "@/types";
 
 interface Props {
   messageId: string;
@@ -183,7 +243,14 @@ interface Props {
   currentUserAvatar?: string;
   timeLabel?: string;
   statusLabel?: string;
-  statusTone?: "default" | "loading" | "failed" | "read";
+  statusTone?:
+    | "default"
+    | "loading"
+    | "sending"
+    | "sent"
+    | "delivered"
+    | "failed"
+    | "read";
   groupReadLabel?: string;
   mediaUrl?: string;
   thumbnailUrl?: string;
@@ -225,8 +292,10 @@ const emit = defineEmits<{
   (e: "media-loaded", messageId: string): void;
 }>();
 
-const {t} = useI18nStore();
-const senderAvatarText = computed(() => getAvatarText(props.senderName || t("message.unknownUser")));
+const { t } = useI18nStore();
+const senderAvatarText = computed(() =>
+  getAvatarText(props.senderName || t("message.unknownUser")),
+);
 const mediaSource = computed(() => props.mediaUrl || props.content);
 const renderedContent = computed(() => {
   const text = props.content || "";
@@ -246,6 +315,9 @@ const bubbleClass = computed(() => ({
 const statusToneClass = computed(() => ({
   "is-failed": props.statusTone === "failed",
   "is-read": props.statusTone === "read",
+  "is-sending": props.statusTone === "sending",
+  "is-sent": props.statusTone === "sent",
+  "is-delivered": props.statusTone === "delivered",
 }));
 
 const handleContextMenu = (event: MouseEvent) => {
@@ -335,7 +407,11 @@ const handleMediaLoaded = () => {
 
   &.is-own {
     border-color: transparent;
-    background: linear-gradient(135deg, var(--color-primary, #6366f1), var(--color-primary-2, #818cf8));
+    background: linear-gradient(
+      135deg,
+      var(--color-primary, #6366f1),
+      var(--color-primary-2, #818cf8)
+    );
     color: #fff;
     box-shadow: 0 1px 4px rgba(99, 102, 241, 0.12);
   }
@@ -347,7 +423,11 @@ const handleMediaLoaded = () => {
 }
 
 .message-item.is-ai .message-bubble:not(.is-own) {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(139, 92, 246, 0.06));
+  background: linear-gradient(
+    135deg,
+    rgba(99, 102, 241, 0.06),
+    rgba(139, 92, 246, 0.06)
+  );
   border-color: rgba(99, 102, 241, 0.15);
 }
 
@@ -528,6 +608,62 @@ const handleMediaLoaded = () => {
   cursor: pointer;
 }
 
+.status-icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+}
+
+.status-sending {
+  color: var(--text-placeholder);
+}
+
+.status-sent {
+  color: var(--text-placeholder);
+  animation: fadeIn 0.3s ease;
+}
+
+.status-delivered {
+  color: var(--text-secondary);
+  animation: fadeIn 0.3s ease;
+}
+
+.status-read {
+  color: var(--el-color-primary);
+  animation: colorShift 0.3s ease;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes colorShift {
+  from {
+    color: var(--text-secondary);
+  }
+  to {
+    color: var(--el-color-primary);
+  }
+}
+
 .ai-provider {
   display: inline-block;
   font-size: 10px;
@@ -535,7 +671,11 @@ const handleMediaLoaded = () => {
   padding: 1px 5px;
   border-radius: var(--radius-xs, 4px);
   margin-right: 4px;
-  background: color-mix(in srgb, var(--color-primary, #6366f1), transparent 85%);
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #6366f1),
+    transparent 85%
+  );
   color: var(--color-primary, #6366f1);
   vertical-align: middle;
   text-transform: capitalize;
