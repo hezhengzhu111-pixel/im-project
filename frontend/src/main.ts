@@ -1,5 +1,5 @@
-import {createApp} from "vue";
-import {createPinia} from "pinia";
+import { createApp } from "vue";
+import { createPinia } from "pinia";
 import router from "./router";
 import App from "./App.vue";
 
@@ -8,7 +8,8 @@ import "element-plus/theme-chalk/el-message.css";
 import "element-plus/theme-chalk/el-message-box.css";
 import "@/styles/index.scss";
 import "vue-virtual-scroller/dist/vue-virtual-scroller.css";
-import {logger} from "@/utils/logger";
+import { logger } from "@/utils/logger";
+import { initCapacitorPlugins } from "@/services/platform/capacitor-init";
 
 const app = createApp(App);
 
@@ -24,3 +25,5 @@ app.config.warnHandler = (msg, _vm, trace) => {
 };
 
 app.mount("#app");
+
+void initCapacitorPlugins();
