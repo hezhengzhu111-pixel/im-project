@@ -1,10 +1,8 @@
 <template>
   <div
-    ref="scrollContainerRef"
-    class="message-list chat-soft-scrollbar"
+    class="message-list"
     role="log"
     aria-live="polite"
-    @scroll.passive="handleScroll"
   >
     <div v-if="loadingHistory" class="history-indicator">
       {{ t("message.loadingMore") }}
@@ -16,51 +14,47 @@
       </div>
     </div>
 
-    <div
-      v-else
+    <RecycleScroller
+      v-if="renderItems.length > 0"
       ref="scrollerRef"
-      class="message-scroller"
-      :class="{ 'is-short-list': messageTopOffset > 0 }"
-      :style="messageScrollerStyle"
+      class="message-scroller chat-soft-scrollbar"
+      :items="renderItems"
+      :item-size="estimatedItemSize"
+      key-field="id"
+      :buffer="200"
+      @scroll="handleScrollerScroll"
     >
-      <div class="message-scroller-inner">
-        <div class="chat-timeline-inner">
-          <div
-            v-for="(item, index) in renderItems"
-            :key="item.id"
-            class="message-row"
-            :data-index="index"
-          >
-            <div v-if="item.kind === 'separator'" class="message-separator">
-              <span class="separator-pill">{{ item.label }}</span>
-            </div>
-
-            <div
-              v-else-if="item.kind === 'unread'"
-              class="message-separator message-separator-unread"
-            >
-              <span class="separator-line"></span>
-              <span class="separator-pill unread-pill">{{ item.label }}</span>
-              <span class="separator-line"></span>
-            </div>
-
-            <MessageItem
-              v-else
-              v-bind="item.view"
-              :audio-playing="playingMessageId === item.messageId"
-              :image-scroll-container="scrollContainerRef"
-              @show-group-readers="handleShowGroupReaders"
-              @open-context-menu="openContextMenu"
-              @toggle-audio="toggleAudioById"
-              @download-file="handleDownloadFile"
-              @preview-image="previewImage"
-              @play-video="playVideo"
-              @media-loaded="handleMediaLoaded"
-            />
+      <template #default="{ item }">
+        <div class="message-row">
+          <div v-if="item.kind === 'separator'" class="message-separator">
+            <span class="separator-pill">{{ item.label }}</span>
           </div>
+
+          <div
+            v-else-if="item.kind === 'unread'"
+            class="message-separator message-separator-unread"
+          >
+            <span class="separator-line"></span>
+            <span class="separator-pill unread-pill">{{ item.label }}</span>
+            <span class="separator-line"></span>
+          </div>
+
+          <MessageItem
+            v-else
+            v-bind="item.view"
+            :audio-playing="playingMessageId === item.messageId"
+            :image-scroll-container="scrollContainerRef"
+            @show-group-readers="handleShowGroupReaders"
+            @open-context-menu="openContextMenu"
+            @toggle-audio="toggleAudioById"
+            @download-file="handleDownloadFile"
+            @preview-image="previewImage"
+            @play-video="playVideo"
+            @media-loaded="handleMediaLoaded"
+          />
         </div>
-      </div>
-    </div>
+      </template>
+    </RecycleScroller>
 
     <button
       v-if="showScrollToLatest"
@@ -105,6 +99,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { RecycleScroller } from "vue-virtual-scroller";
 import MessageItem from "@/features/chat/ChatMessageItem.vue";
 import ImageViewer from "@/components/common/ImageViewer.vue";
 import { downloadFile } from "@/services/download.service";
@@ -196,11 +191,12 @@ type HistoryAnchor = {
   length: number;
 };
 
+const estimatedItemSize = 60;
 const BOTTOM_FOLLOW_THRESHOLD = 180;
 const READ_ACK_BOTTOM_THRESHOLD = 120;
 const HISTORY_TRIGGER_TOP = 80;
 const HISTORY_FALLBACK_MS = 2000;
-const scrollerRef = ref<HTMLElement | null>(null);
+const scrollerRef = ref<InstanceType<typeof RecycleScroller> | null>(null);
 const scrollContainerRef = ref<HTMLElement | null>(null);
 const loadingHistoryLocal = ref(false);
 const nearBottom = ref(true);
@@ -560,9 +556,6 @@ const tailMessageSignal = computed(() => {
 const showScrollToLatest = computed(
   () => !nearBottom.value && props.messages.length > 0,
 );
-const messageScrollerStyle = computed(() => ({
-  "--message-top-offset": `${messageTopOffset.value}px`,
-}));
 
 const messageListSignal = computed(() => ({
   length: props.messages.length,
@@ -601,17 +594,15 @@ const nextFrame = () =>
 const updateShortListOffset = async () => {
   await nextTick();
   await nextFrame();
-  const scrollerElement = scrollerRef.value;
-  const wrapper = scrollerElement?.querySelector<HTMLElement>(
-    ".message-scroller-inner",
-  );
-  if (!scrollerElement || !wrapper) {
+  const scrollerElement = scrollerRef.value?.$el as HTMLElement | undefined;
+  if (!scrollerElement) {
     messageTopOffset.value = 0;
     return;
   }
+  const contentHeight = scrollerElement.scrollHeight;
   const nextOffset = Math.max(
     0,
-    scrollerElement.clientHeight - wrapper.offsetHeight - 8,
+    scrollerElement.clientHeight - contentHeight - 8,
   );
   messageTopOffset.value = nextOffset > 12 ? nextOffset : 0;
 };
@@ -812,6 +803,14 @@ const handleScroll = async () => {
   }
 };
 
+const handleScrollerScroll = () => {
+  const scrollerEl = scrollerRef.value?.$el as HTMLElement | undefined;
+  if (scrollerEl) {
+    scrollContainerRef.value = scrollerEl;
+  }
+  void handleScroll();
+};
+
 watch(
   () => props.loadingHistory,
   (value) => {
@@ -873,6 +872,10 @@ onMounted(() => {
   window.addEventListener("click", closeContextMenu);
   window.addEventListener("contextmenu", closeContextMenu);
   window.addEventListener("resize", handleResize);
+  const scrollerEl = scrollerRef.value?.$el as HTMLElement | undefined;
+  if (scrollerEl) {
+    scrollContainerRef.value = scrollerEl;
+  }
   void updateShortListOffset();
 });
 
@@ -941,7 +944,8 @@ onUnmounted(() => {
 }
 
 .message-scroller {
-  min-height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .message-scroller-inner {
@@ -952,10 +956,6 @@ onUnmounted(() => {
   max-width: var(--chat-timeline-max-width);
   margin: 0 auto;
   width: 100%;
-}
-
-.message-scroller.is-short-list .message-scroller-inner {
-  transform: translateY(var(--message-top-offset));
 }
 
 .message-row {
