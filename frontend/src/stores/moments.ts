@@ -17,7 +17,7 @@ export const useMomentsStore = defineStore("moments", () => {
   // Getters
   const sortedFeed = computed(() =>
     [...feed.value].sort(
-      (a, b) => Number(BigInt(b.post.id) - BigInt(a.post.id)),
+      (a, b) => Number(BigInt(b?.post?.id || 0) - BigInt(a?.post?.id || 0)),
     ),
   );
 

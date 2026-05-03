@@ -1,9 +1,9 @@
-import {onUnmounted, ref} from "vue";
-import type {Message} from "@/types";
-import {useErrorHandler} from "@/hooks/useErrorHandler";
+import { onUnmounted, ref } from "vue";
+import type { Message } from "@/types";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
 
 export function useAudioPlayer() {
-  const {capture} = useErrorHandler("audio-player");
+  const { capture } = useErrorHandler("audio-player");
   const playingMessageId = ref<string>("");
   let audioPlayer: HTMLAudioElement | null = null;
 

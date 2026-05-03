@@ -45,14 +45,16 @@ export const groupService = {
   quit: (groupId: string) => http.post<void>(`/group/${groupId}/leave`),
   dismiss: (groupId: string) => http.delete<void>(`/group/${groupId}`),
   update: (groupId: string, data: UpdateGroupRequest, operatorId?: string) =>
-    http.put<RawGroupDTO>(`/group/${groupId}`, {
-      ...data,
-      groupId: String(groupId),
-      operatorId: String(operatorId || ""),
-    }).then((response) => {
-      if (response.code === 200 && response.data) {
-        return { ...response, data: normalizeGroup(response.data) };
-      }
-      return response as unknown as ApiResponse<Group>;
-    }),
+    http
+      .put<RawGroupDTO>(`/group/${groupId}`, {
+        ...data,
+        groupId: String(groupId),
+        operatorId: String(operatorId || ""),
+      })
+      .then((response) => {
+        if (response.code === 200 && response.data) {
+          return { ...response, data: normalizeGroup(response.data) };
+        }
+        return response as unknown as ApiResponse<Group>;
+      }),
 };

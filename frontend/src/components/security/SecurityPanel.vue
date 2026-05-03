@@ -10,13 +10,24 @@
     <div class="panel-body">
       <div class="security-status">
         <div class="status-icon-wrap">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
         </div>
         <div class="status-text">
           <span class="status-label">端对端加密已启用</span>
-          <span class="status-desc">消息在设备上加密和解密，服务器无法读取内容。</span>
+          <span class="status-desc"
+            >消息在设备上加密和解密，服务器无法读取内容。</span
+          >
         </div>
       </div>
 
@@ -43,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import {Close} from "@element-plus/icons-vue";
+import { Close } from "@element-plus/icons-vue";
 
 const emit = defineEmits<{
   (e: "close"): void;
@@ -104,8 +115,13 @@ const emit = defineEmits<{
   gap: 12px;
   padding: 14px;
   border-radius: var(--radius-md, 12px);
-  background: color-mix(in srgb, var(--color-success, #22c55e), transparent 92%);
-  border: 1px solid color-mix(in srgb, var(--color-success, #22c55e), transparent 75%);
+  background: color-mix(
+    in srgb,
+    var(--color-success, #22c55e),
+    transparent 92%
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--color-success, #22c55e), transparent 75%);
   margin-bottom: 16px;
 }
 
@@ -116,7 +132,11 @@ const emit = defineEmits<{
   width: 40px;
   height: 40px;
   border-radius: var(--radius-sm, 8px);
-  background: color-mix(in srgb, var(--color-success, #22c55e), transparent 85%);
+  background: color-mix(
+    in srgb,
+    var(--color-success, #22c55e),
+    transparent 85%
+  );
   color: var(--color-success, #22c55e);
   flex-shrink: 0;
 }

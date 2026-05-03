@@ -110,7 +110,14 @@ export interface TokenParseResultDTO {
 export type UpdateUserRequest = Partial<
   Pick<
     User,
-    "nickname" | "avatar" | "email" | "phone" | "gender" | "birthday" | "signature" | "location"
+    | "nickname"
+    | "avatar"
+    | "email"
+    | "phone"
+    | "gender"
+    | "birthday"
+    | "signature"
+    | "location"
   >
 >;
 

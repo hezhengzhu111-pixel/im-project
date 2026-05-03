@@ -1,6 +1,10 @@
 <template>
   <Transition name="status-slide">
-    <div v-if="connectionStatus !== 'connected'" class="connection-status-bar" :class="connectionStatus">
+    <div
+      v-if="connectionStatus !== 'connected'"
+      class="connection-status-bar"
+      :class="connectionStatus"
+    >
       <span class="status-dot-bar"></span>
       <span class="status-text">{{ statusLabel }}</span>
     </div>
@@ -8,20 +12,23 @@
 </template>
 
 <script setup lang="ts">
-import {computed} from "vue";
-import {useWebSocketStore} from "@/stores/websocket";
-import {useI18nStore} from "@/stores/i18n";
+import { computed } from "vue";
+import { useWebSocketStore } from "@/stores/websocket";
+import { useI18nStore } from "@/stores/i18n";
 
 const webSocketStore = useWebSocketStore();
-const {t} = useI18nStore();
+const { t } = useI18nStore();
 
 const connectionStatus = computed(() => webSocketStore.connectionStatus);
 
 const statusLabel = computed(() => {
   switch (connectionStatus.value) {
-    case "connecting": return t("chat.connecting");
-    case "disconnected": return t("chat.offline");
-    default: return "";
+    case "connecting":
+      return t("chat.connecting");
+    case "disconnected":
+      return t("chat.offline");
+    default:
+      return "";
   }
 });
 </script>
@@ -40,15 +47,21 @@ const statusLabel = computed(() => {
 }
 
 .connection-status-bar.connecting {
-  background: color-mix(in srgb, var(--color-warning, #f59e0b), transparent 90%);
+  background: color-mix(
+    in srgb,
+    var(--color-warning, #f59e0b),
+    transparent 90%
+  );
   color: var(--color-warning, #f59e0b);
-  border-bottom: 1px solid color-mix(in srgb, var(--color-warning, #f59e0b), transparent 70%);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--color-warning, #f59e0b), transparent 70%);
 }
 
 .connection-status-bar.disconnected {
   background: color-mix(in srgb, var(--color-danger, #ef4444), transparent 90%);
   color: var(--color-danger, #ef4444);
-  border-bottom: 1px solid color-mix(in srgb, var(--color-danger, #ef4444), transparent 70%);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--color-danger, #ef4444), transparent 70%);
 }
 
 .status-dot-bar {
@@ -63,8 +76,13 @@ const statusLabel = computed(() => {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .status-slide-enter-active,

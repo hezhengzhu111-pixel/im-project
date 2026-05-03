@@ -1,6 +1,6 @@
-import {beforeEach, describe, expect, it, vi} from "vitest";
-import {shallowMount} from "@vue/test-utils";
-import {createPinia, setActivePinia} from "pinia";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { shallowMount } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
 import MessageItem from "@/features/chat/ChatMessageItem.vue";
 
 vi.mock("element-plus", () => ({

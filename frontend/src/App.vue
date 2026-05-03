@@ -19,16 +19,18 @@
 </template>
 
 <script setup lang="ts">
-import {onMounted, onUnmounted, ref, watch} from "vue";
-import {useRouter} from "vue-router";
-import {ElMessage} from "element-plus";
-import {APP_CONFIG} from "@/config";
-import {useChatStore} from "@/stores/chat";
-import {useI18nStore} from "@/stores/i18n";
-import {useUserStore} from "@/stores/user";
-import {useWebSocketStore} from "@/stores/websocket";
-import {logger} from "@/utils/logger";
+import { onMounted, onUnmounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
+import { APP_CONFIG } from "@/config";
+import { useChatStore } from "@/stores/chat";
+import { useI18nStore } from "@/stores/i18n";
+import { useUserStore } from "@/stores/user";
+import { useWebSocketStore } from "@/stores/websocket";
+import { useIsMobile } from "@/composables/useIsMobile";
+import { logger } from "@/utils/logger";
 
+const { isMobile } = useIsMobile();
 const loading = ref(false);
 const bootstrapped = ref(false);
 const router = useRouter();
@@ -38,6 +40,7 @@ const webSocketStore = useWebSocketStore();
 const { t } = useI18nStore();
 
 let isPageVisible = true;
+let cleanupLifecycle: (() => void) | null = null;
 
 const initUserServices = async () => {
   if (!userStore.isLoggedIn || !userStore.userId || bootstrapped.value) {
@@ -95,13 +98,23 @@ const handleBeforeUnload = () => {
   }
 };
 
+const setupLifecycleHooks = () => {
+  cleanupLifecycle?.();
+  cleanupLifecycle = webSocketStore.setupLifecycleListeners(() =>
+    userStore.isLoggedIn && userStore.userId ? String(userStore.userId) : null,
+  );
+};
+
 watch(
   () => userStore.isLoggedIn,
   async (isLoggedIn) => {
     if (isLoggedIn) {
       await initUserServices();
+      setupLifecycleHooks();
       return;
     }
+    cleanupLifecycle?.();
+    cleanupLifecycle = null;
     resetUserServices();
   },
 );
@@ -117,15 +130,28 @@ watch(
   { immediate: true },
 );
 
+watch(
+  isMobile,
+  (mobile) => {
+    document.body.classList.toggle("body-mobile", mobile);
+  },
+  { immediate: true },
+);
+
 onMounted(async () => {
   await initApp();
   document.addEventListener("visibilitychange", handleVisibilityChange);
   window.addEventListener("beforeunload", handleBeforeUnload);
+  if (userStore.isLoggedIn) {
+    setupLifecycleHooks();
+  }
 });
 
 onUnmounted(() => {
   document.removeEventListener("visibilitychange", handleVisibilityChange);
   window.removeEventListener("beforeunload", handleBeforeUnload);
+  cleanupLifecycle?.();
+  cleanupLifecycle = null;
   resetUserServices();
 });
 </script>

@@ -1,6 +1,11 @@
 import type { ApiResponse } from "./api";
 import type { RawConversationDTO, ChatSession } from "./chat";
-import type { RawGroupDTO, RawGroupMemberDTO, Group, GroupMember } from "./group";
+import type {
+  RawGroupDTO,
+  RawGroupMemberDTO,
+  Group,
+  GroupMember,
+} from "./group";
 import type { RawMessageDTO, Message } from "./message";
 import type {
   FriendRequest,
@@ -75,7 +80,9 @@ export function isUser(obj: unknown): obj is User {
   );
 }
 
-export function isApiResponse<T = unknown>(obj: unknown): obj is ApiResponse<T> {
+export function isApiResponse<T = unknown>(
+  obj: unknown,
+): obj is ApiResponse<T> {
   if (!isRecord(obj)) return false;
   const resp = obj as Record<string, unknown>;
   return "code" in resp && "message" in resp && "data" in resp;
@@ -149,7 +156,8 @@ export type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 /**
  * 将指定属性变为必选
  */
-export type RequiredBy<T, K extends keyof T> = Omit<T, K> & Required<Pick<T, K>>;
+export type RequiredBy<T, K extends keyof T> = Omit<T, K> &
+  Required<Pick<T, K>>;
 
 /**
  * 深度可选

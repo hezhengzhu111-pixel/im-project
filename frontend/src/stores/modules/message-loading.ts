@@ -1,15 +1,15 @@
-import type {Ref} from "vue";
-import type {messageRepo} from "@/utils/messageRepo";
-import type {messageService} from "@/services/message";
-import type {ChatSession, Message} from "@/types";
+import type { Ref } from "vue";
+import type { messageRepo } from "@/utils/messageRepo";
+import type { messageService } from "@/services/message";
+import type { ChatSession, Message } from "@/types";
 import {
-    findOldestLoadedServerMessageId,
-    getServerMessages,
-    limitMessageWindow,
-    mergeMessagesChronologically,
-    sortMessagesAscending,
+  findOldestLoadedServerMessageId,
+  getServerMessages,
+  limitMessageWindow,
+  mergeMessagesChronologically,
+  sortMessagesAscending,
 } from "@/stores/modules/message-helpers";
-import {toBigIntId} from "@/normalizers/chat";
+import { toBigIntId } from "@/normalizers/chat";
 
 type MessageHistoryResponse =
   | Awaited<ReturnType<typeof messageService.getPrivateHistoryCursor>>
@@ -64,7 +64,10 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
       return;
     }
 
-    if (options?.preserveHasMore && ctx.hasMoreHistoryBySession.value.has(sessionId)) {
+    if (
+      options?.preserveHasMore &&
+      ctx.hasMoreHistoryBySession.value.has(sessionId)
+    ) {
       return;
     }
 
@@ -78,13 +81,18 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
     ctx.fallbackHistoryPageBySession.value.delete(sessionId);
   };
 
-  const reviveCachedMessages = async (sessionId: string): Promise<Message[]> => {
+  const reviveCachedMessages = async (
+    sessionId: string,
+  ): Promise<Message[]> => {
     const cached = await ctx.messageRepo.listConversation(sessionId);
     if (cached.length === 0) {
       return [];
     }
     const revived = cached.map((message) => {
-      if (String(message.id).startsWith("local_") && message.status === "SENDING") {
+      if (
+        String(message.id).startsWith("local_") &&
+        message.status === "SENDING"
+      ) {
         return {
           ...message,
           status: "FAILED" as const,
@@ -103,14 +111,20 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
     size: number,
     afterMessageId?: string,
   ): Promise<MessageHistoryResponse> => {
-    const baseParams: Record<string, unknown> = {limit: size};
+    const baseParams: Record<string, unknown> = { limit: size };
     if (afterMessageId) {
       baseParams.after_message_id = afterMessageId;
       baseParams.limit = Math.max(size, 50);
     }
     return session.type === "group"
-      ? await ctx.messageService.getGroupHistoryCursor(session.targetId, baseParams)
-      : await ctx.messageService.getPrivateHistoryCursor(session.targetId, baseParams);
+      ? await ctx.messageService.getGroupHistoryCursor(
+          session.targetId,
+          baseParams,
+        )
+      : await ctx.messageService.getPrivateHistoryCursor(
+          session.targetId,
+          baseParams,
+        );
   };
 
   const fetchHistoryByCursor = async (
@@ -124,7 +138,10 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
     };
     return session.type === "group"
       ? await ctx.messageService.getGroupHistoryCursor(session.targetId, params)
-      : await ctx.messageService.getPrivateHistoryCursor(session.targetId, params);
+      : await ctx.messageService.getPrivateHistoryCursor(
+          session.targetId,
+          params,
+        );
   };
 
   const fetchHistoryByPage = async (
@@ -133,17 +150,26 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
     size: number,
   ): Promise<MessageHistoryResponse> =>
     session.type === "group"
-      ? await ctx.messageService.getGroupHistory(session.targetId, {page, size})
-      : await ctx.messageService.getPrivateHistory(session.targetId, {page, size});
+      ? await ctx.messageService.getGroupHistory(session.targetId, {
+          page,
+          size,
+        })
+      : await ctx.messageService.getPrivateHistory(session.targetId, {
+          page,
+          size,
+        });
 
   const loadMessages = async (sessionId: string, size = 20) => {
     ctx.loading.value = true;
     try {
       if (!ctx.messages.value.has(sessionId)) {
-        const revived = limitMessageWindow(await reviveCachedMessages(sessionId), "latest");
+        const revived = limitMessageWindow(
+          await reviveCachedMessages(sessionId),
+          "latest",
+        );
         if (revived.length > 0) {
           ctx.messages.value.set(sessionId, revived);
-          syncHistoryState(sessionId, revived, {preserveHasMore: true});
+          syncHistoryState(sessionId, revived, { preserveHasMore: true });
         }
       }
 
@@ -165,13 +191,22 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
 
       let response: MessageHistoryResponse;
       try {
-        response = await fetchLatestMessages(session, size, maxServerId?.toString());
+        response = await fetchLatestMessages(
+          session,
+          size,
+          maxServerId?.toString(),
+        );
       } catch {
         response = await fetchHistoryByPage(session, 0, size);
       }
 
-      const normalizedMessages = response.data.slice().sort(sortMessagesAscending);
-      const visibleMessages = ctx.filterClearedMessages(sessionId, normalizedMessages);
+      const normalizedMessages = response.data
+        .slice()
+        .sort(sortMessagesAscending);
+      const visibleMessages = ctx.filterClearedMessages(
+        sessionId,
+        normalizedMessages,
+      );
       const pendingMessages = existingMessages.filter((message) =>
         String(message.id).startsWith("local_"),
       );
@@ -188,7 +223,10 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
           .filter((item): item is string => Boolean(item)),
       );
       const nextMessages = merged.filter((message) => {
-        if (!String(message.id).startsWith("local_") || !message.clientMessageId) {
+        if (
+          !String(message.id).startsWith("local_") ||
+          !message.clientMessageId
+        ) {
           return true;
         }
         return !serverClientIds.has(message.clientMessageId);
@@ -196,7 +234,7 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
 
       const windowedMessages = limitMessageWindow(nextMessages, "latest");
       ctx.messages.value.set(sessionId, windowedMessages);
-      syncHistoryState(sessionId, windowedMessages, {preserveHasMore: true});
+      syncHistoryState(sessionId, windowedMessages, { preserveHasMore: true });
       await ctx.scheduleServerMessagePersist(sessionId, visibleMessages);
     } finally {
       ctx.loading.value = false;
@@ -223,7 +261,7 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
       findOldestLoadedServerMessageId(existingMessages);
 
     if (!oldestMessageId) {
-      syncHistoryState(sessionId, existingMessages, {hasMoreHistory: false});
+      syncHistoryState(sessionId, existingMessages, { hasMoreHistory: false });
       return;
     }
 
@@ -233,13 +271,19 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
       try {
         response = await fetchHistoryByCursor(session, size, oldestMessageId);
       } catch {
-        const fallbackPage = ctx.fallbackHistoryPageBySession.value.get(sessionId) ?? 1;
+        const fallbackPage =
+          ctx.fallbackHistoryPageBySession.value.get(sessionId) ?? 1;
         response = await fetchHistoryByPage(session, fallbackPage, size);
         ctx.fallbackHistoryPageBySession.value.set(sessionId, fallbackPage + 1);
       }
 
-      const normalizedMessages = response.data.slice().sort(sortMessagesAscending);
-      const visibleMessages = ctx.filterClearedMessages(sessionId, normalizedMessages);
+      const normalizedMessages = response.data
+        .slice()
+        .sort(sortMessagesAscending);
+      const visibleMessages = ctx.filterClearedMessages(
+        sessionId,
+        normalizedMessages,
+      );
       const merged = limitMessageWindow(
         mergeMessagesChronologically(visibleMessages, existingMessages),
         "oldest",

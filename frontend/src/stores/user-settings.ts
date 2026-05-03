@@ -1,15 +1,15 @@
-import {defineStore} from "pinia";
-import {ref} from "vue";
-import {ElMessage} from "element-plus";
-import {userService} from "@/services/user";
-import {defaultUserSettings} from "@/normalizers/user";
-import {useUserStore} from "@/stores/user";
+import { defineStore } from "pinia";
+import { ref } from "vue";
+import { ElMessage } from "element-plus";
+import { userService } from "@/services/user";
+import { defaultUserSettings } from "@/normalizers/user";
+import { useUserStore } from "@/stores/user";
 import type {
-    BindEmailRequest,
-    BindPhoneRequest,
-    ChangePasswordRequest,
-    DeleteAccountRequest,
-    UserSettings,
+  BindEmailRequest,
+  BindPhoneRequest,
+  ChangePasswordRequest,
+  DeleteAccountRequest,
+  UserSettings,
 } from "@/types";
 
 const ALLOW_INSECURE_VOICE_RECORDING_KEY = "im_allow_insecure_voice_recording";

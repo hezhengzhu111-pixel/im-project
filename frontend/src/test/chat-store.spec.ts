@@ -1,5 +1,5 @@
-import {beforeEach, describe, expect, it, vi} from "vitest";
-import {createPinia, setActivePinia} from "pinia";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
 
 vi.mock("element-plus", () => ({
   ElMessage: {
@@ -139,11 +139,26 @@ describe("chat store", () => {
     messageRepoMock.clearConversation.mockReset();
     refreshOnlineStatusMock.mockReset();
 
-    messageServiceMock.getPrivateHistoryCursor.mockResolvedValue({ code: 200, data: [] });
-    messageServiceMock.getGroupHistoryCursor.mockResolvedValue({ code: 200, data: [] });
-    messageServiceMock.getPrivateHistory.mockResolvedValue({ code: 200, data: [] });
-    messageServiceMock.getGroupHistory.mockResolvedValue({ code: 200, data: [] });
-    messageServiceMock.getConversations.mockResolvedValue({ code: 200, data: [] });
+    messageServiceMock.getPrivateHistoryCursor.mockResolvedValue({
+      code: 200,
+      data: [],
+    });
+    messageServiceMock.getGroupHistoryCursor.mockResolvedValue({
+      code: 200,
+      data: [],
+    });
+    messageServiceMock.getPrivateHistory.mockResolvedValue({
+      code: 200,
+      data: [],
+    });
+    messageServiceMock.getGroupHistory.mockResolvedValue({
+      code: 200,
+      data: [],
+    });
+    messageServiceMock.getConversations.mockResolvedValue({
+      code: 200,
+      data: [],
+    });
     messageServiceMock.getConfig.mockResolvedValue({
       code: 200,
       data: { textEnforce: true, textMaxLength: 2000 },
@@ -305,7 +320,10 @@ describe("chat store", () => {
     const { useChatStore } = await import("@/stores/chat");
     const store = useChatStore();
 
-    await store.refreshSessionSkeletons({ force: true, refreshPresence: false });
+    await store.refreshSessionSkeletons({
+      force: true,
+      refreshPresence: false,
+    });
 
     expect(store.sessions[0]?.lastMessage?.content).toBe("hello preview");
   });
@@ -361,7 +379,9 @@ describe("chat store", () => {
       "2",
       expect.objectContaining({ limit: 20 }),
     );
-    expect(store.currentMessages.map((item) => item.content)).toEqual(["hello first"]);
+    expect(store.currentMessages.map((item) => item.content)).toEqual([
+      "hello first",
+    ]);
   });
 
   it("loads older history with the oldest loaded server message id as cursor", async () => {
@@ -432,7 +452,9 @@ describe("chat store", () => {
       "100",
       "101",
     ]);
-    expect(store.oldestLoadedServerMessageIdBySession.get(session!.id)).toBe("98");
+    expect(store.oldestLoadedServerMessageIdBySession.get(session!.id)).toBe(
+      "98",
+    );
   });
 
   it("falls back to page history loading when cursor history fails", async () => {
@@ -544,8 +566,14 @@ describe("chat store", () => {
     const { useChatStore } = await import("@/stores/chat");
     const store = useChatStore();
 
-    const first = store.refreshSessionSkeletons({force: true, refreshPresence: false});
-    const second = store.refreshSessionSkeletons({force: true, refreshPresence: false});
+    const first = store.refreshSessionSkeletons({
+      force: true,
+      refreshPresence: false,
+    });
+    const second = store.refreshSessionSkeletons({
+      force: true,
+      refreshPresence: false,
+    });
     await flushMicrotasks(1);
 
     expect(messageServiceMock.getConversations).toHaveBeenCalledTimes(1);
@@ -575,7 +603,9 @@ describe("chat store", () => {
       status: "SENT",
     });
 
-    expect(store.sessions.some((session) => session.id === "group_9")).toBe(true);
+    expect(store.sessions.some((session) => session.id === "group_9")).toBe(
+      true,
+    );
     expect(store.messages.get("group_9")?.[0]?.content).toBe("群消息");
   });
 
@@ -596,7 +626,9 @@ describe("chat store", () => {
 
     expect(first?.id).toBe("group_9");
     expect(second?.id).toBe("group_9");
-    expect(store.sessions.filter((session) => session.id === "group_9")).toHaveLength(1);
+    expect(
+      store.sessions.filter((session) => session.id === "group_9"),
+    ).toHaveLength(1);
     expect(store.currentSession?.id).toBe("group_9");
     expect(store.currentSession?.memberCount).toBe(8);
   });
@@ -629,7 +661,9 @@ describe("chat store", () => {
       first!.id,
       second!.id,
     ]);
-    expect(store.sessions.find((item) => item.id === first!.id)?.isPinned).toBe(true);
+    expect(store.sessions.find((item) => item.id === first!.id)?.isPinned).toBe(
+      true,
+    );
   });
 
   it("toggles session mute locally and removes sessions without dropping cached messages", async () => {
@@ -653,14 +687,18 @@ describe("chat store", () => {
     store.hasMoreHistoryBySession.set(session!.id, true);
 
     store.toggleSessionMuted(session!.id);
-    expect(store.sessions.find((item) => item.id === session!.id)?.isMuted).toBe(true);
+    expect(
+      store.sessions.find((item) => item.id === session!.id)?.isMuted,
+    ).toBe(true);
     expect(store.currentSession?.muted).toBe(true);
 
     store.deleteSession(session!.id);
 
     expect(store.sessions.some((item) => item.id === session!.id)).toBe(false);
     expect(store.currentSession).toBeNull();
-    expect(store.messages.get(session!.id)?.map((item) => item.id)).toEqual(["100"]);
+    expect(store.messages.get(session!.id)?.map((item) => item.id)).toEqual([
+      "100",
+    ]);
     expect(store.hasMoreHistoryBySession.has(session!.id)).toBe(false);
   });
 
@@ -766,7 +804,9 @@ describe("chat store", () => {
 
     await store.loadMessages(session!.id, 0, 20);
 
-    expect(store.messages.get(session!.id)?.map((item) => item.id)).toEqual(["101"]);
+    expect(store.messages.get(session!.id)?.map((item) => item.id)).toEqual([
+      "101",
+    ]);
   });
 
   it("passes avatar through createGroup and opens the refreshed group session", async () => {
@@ -887,9 +927,15 @@ describe("chat store", () => {
     expect(ok).toBe(true);
     expect(messageServiceMock.getConfig).toHaveBeenCalledTimes(1);
     expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(3);
-    expect(messageServiceMock.sendPrivate.mock.calls[0][0].content.length).toBe(2000);
-    expect(messageServiceMock.sendPrivate.mock.calls[1][0].content.length).toBe(2000);
-    expect(messageServiceMock.sendPrivate.mock.calls[2][0].content.length).toBe(500);
+    expect(messageServiceMock.sendPrivate.mock.calls[0][0].content.length).toBe(
+      2000,
+    );
+    expect(messageServiceMock.sendPrivate.mock.calls[1][0].content.length).toBe(
+      2000,
+    );
+    expect(messageServiceMock.sendPrivate.mock.calls[2][0].content.length).toBe(
+      500,
+    );
   });
 
   it("does not split long text when text enforcement is disabled", async () => {
@@ -921,7 +967,9 @@ describe("chat store", () => {
 
     expect(ok).toBe(true);
     expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(1);
-    expect(messageServiceMock.sendPrivate.mock.calls[0][0].content.length).toBe(4500);
+    expect(messageServiceMock.sendPrivate.mock.calls[0][0].content.length).toBe(
+      4500,
+    );
   });
 
   it("serializes sends within the same session through a promise queue", async () => {
@@ -958,7 +1006,9 @@ describe("chat store", () => {
     await flushMicrotasks();
 
     expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(1);
-    expect(messageServiceMock.sendPrivate.mock.calls[0][0].content).toBe("first");
+    expect(messageServiceMock.sendPrivate.mock.calls[0][0].content).toBe(
+      "first",
+    );
 
     resolveFirst?.({
       code: 200,
@@ -978,7 +1028,9 @@ describe("chat store", () => {
     await secondSend;
 
     expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(2);
-    expect(messageServiceMock.sendPrivate.mock.calls[1][0].content).toBe("second");
+    expect(messageServiceMock.sendPrivate.mock.calls[1][0].content).toBe(
+      "second",
+    );
   });
 
   it("keeps sends across different sessions parallel", async () => {
@@ -1009,7 +1061,11 @@ describe("chat store", () => {
       );
 
     const sendFirst = messageStore.sendMessage(firstSession!, "first", "TEXT");
-    const sendSecond = messageStore.sendMessage(secondSession!, "second", "TEXT");
+    const sendSecond = messageStore.sendMessage(
+      secondSession!,
+      "second",
+      "TEXT",
+    );
     await flushMicrotasks();
 
     expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(2);
@@ -1059,13 +1115,15 @@ describe("chat store", () => {
     store.sessions.find((item) => item.id === unreadThree!.id)!.unreadCount = 3;
 
     const started: string[] = [];
-    messageServiceMock.getPrivateHistoryCursor.mockImplementation(async (targetId: string) => {
-      started.push(targetId);
-      return {
-        code: 200,
-        data: [],
-      };
-    });
+    messageServiceMock.getPrivateHistoryCursor.mockImplementation(
+      async (targetId: string) => {
+        started.push(targetId);
+        return {
+          code: 200,
+          data: [],
+        };
+      },
+    );
 
     await store.syncOfflineMessages({
       refreshSessions: false,

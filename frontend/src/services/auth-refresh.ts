@@ -43,9 +43,17 @@ const normalizeNumber = (value: unknown): number | undefined => {
   return Number.isFinite(numberValue) ? numberValue : undefined;
 };
 
-const classifyFailureStatus = (status?: number, code?: unknown): RefreshAccessTokenStatus => {
+const classifyFailureStatus = (
+  status?: number,
+  code?: unknown,
+): RefreshAccessTokenStatus => {
   const numericCode = typeof code === "number" ? code : Number(code);
-  if (status === 401 || status === 403 || numericCode === 401 || numericCode === 403) {
+  if (
+    status === 401 ||
+    status === 403 ||
+    numericCode === 401 ||
+    numericCode === 403
+  ) {
     return "authInvalid";
   }
   if (status === 400 || numericCode === 400) {
@@ -68,7 +76,8 @@ export const refreshAccessTokenCoordinated = async (
       if (payload?.code !== 200) {
         return {
           status: classifyFailureStatus(response?.status, payload?.code),
-          message: typeof payload?.message === "string" ? payload.message : undefined,
+          message:
+            typeof payload?.message === "string" ? payload.message : undefined,
         };
       }
 
@@ -94,7 +103,10 @@ export const refreshAccessTokenCoordinated = async (
     } catch (error) {
       if (axios.isAxiosError(error)) {
         return {
-          status: classifyFailureStatus(error.response?.status, error.response?.data?.code),
+          status: classifyFailureStatus(
+            error.response?.status,
+            error.response?.data?.code,
+          ),
           message:
             typeof error.response?.data?.message === "string"
               ? error.response.data.message

@@ -6,7 +6,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed} from "vue";
+import { computed } from "vue";
 
 const props = defineProps<{
   autoReplyEnabled?: boolean;
@@ -47,21 +47,32 @@ const statusText = computed(() => {
 
 // AI active — green
 .ai-status-badge.is-active {
-  background: color-mix(in srgb, var(--color-success, #22c55e), transparent 90%);
+  background: color-mix(
+    in srgb,
+    var(--color-success, #22c55e),
+    transparent 90%
+  );
   color: var(--color-success, #22c55e);
-  border: 1px solid color-mix(in srgb, var(--color-success, #22c55e), transparent 70%);
+  border: 1px solid
+    color-mix(in srgb, var(--color-success, #22c55e), transparent 70%);
 
   .ai-status-dot {
     background: var(--color-success, #22c55e);
-    box-shadow: 0 0 6px color-mix(in srgb, var(--color-success, #22c55e), transparent 50%);
+    box-shadow: 0 0 6px
+      color-mix(in srgb, var(--color-success, #22c55e), transparent 50%);
   }
 }
 
 // Human intervention — orange
 .ai-status-badge.is-human {
-  background: color-mix(in srgb, var(--color-warning, #f59e0b), transparent 90%);
+  background: color-mix(
+    in srgb,
+    var(--color-warning, #f59e0b),
+    transparent 90%
+  );
   color: var(--color-warning, #f59e0b);
-  border: 1px solid color-mix(in srgb, var(--color-warning, #f59e0b), transparent 70%);
+  border: 1px solid
+    color-mix(in srgb, var(--color-warning, #f59e0b), transparent 70%);
 
   .ai-status-dot {
     background: var(--color-warning, #f59e0b);

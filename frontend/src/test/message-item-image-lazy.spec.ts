@@ -1,5 +1,5 @@
-import {mount} from "@vue/test-utils";
-import {describe, expect, it, vi} from "vitest";
+import { mount } from "@vue/test-utils";
+import { describe, expect, it, vi } from "vitest";
 import MessageItem from "@/features/chat/ChatMessageItem.vue";
 
 vi.mock("element-plus", () => ({
@@ -82,11 +82,13 @@ describe("MessageItem image lazy loading", () => {
         renderDigest: "system-1",
         isSystemMessage: true,
         messageType: "SYSTEM",
-          content: "You joined the conversation",
+        content: "You joined the conversation",
       },
     });
 
-    expect(wrapper.find(".system-pill").text()).toContain("You joined the conversation");
+    expect(wrapper.find(".system-pill").text()).toContain(
+      "You joined the conversation",
+    );
   });
 
   it("renders file and voice messages with unified attachment cards", () => {

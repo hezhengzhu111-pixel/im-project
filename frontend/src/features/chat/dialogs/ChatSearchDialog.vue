@@ -29,10 +29,14 @@
             class="search-result-item"
           >
             <div class="search-result-meta">
-              <span>{{ result.message.senderName || result.message.senderId }}</span>
+              <span>{{
+                result.message.senderName || result.message.senderId
+              }}</span>
               <span>{{ formatMessageTime(result.message.sendTime) }}</span>
             </div>
-            <div class="search-result-content">{{ formatMessageContent(result.message) }}</div>
+            <div class="search-result-content">
+              {{ formatMessageContent(result.message) }}
+            </div>
             <div v-if="result.context.length > 1" class="search-result-context">
               {{ formatContext(result) }}
             </div>
@@ -44,11 +48,11 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref, watch} from "vue";
+import { computed, ref, watch } from "vue";
 import EmptyState from "@/components/common/EmptyState.vue";
-import {useChatStore} from "@/stores/chat";
-import {useI18nStore} from "@/stores/i18n";
-import type {Message, MessageSearchResult} from "@/types";
+import { useChatStore } from "@/stores/chat";
+import { useI18nStore } from "@/stores/i18n";
+import type { Message, MessageSearchResult } from "@/types";
 
 const props = defineProps<{
   modelValue: boolean;
@@ -61,7 +65,7 @@ const emit = defineEmits<{
 }>();
 
 const chatStore = useChatStore();
-const {locale, t} = useI18nStore();
+const { locale, t } = useI18nStore();
 const messageSearchKeyword = ref("");
 
 const visible = computed({
@@ -104,7 +108,9 @@ const formatMessageContent = (message: Message) => {
     case "IMAGE":
       return t("sidebar.image");
     case "FILE":
-      return message.mediaName ? `${t("sidebar.file")} ${message.mediaName}` : t("sidebar.file");
+      return message.mediaName
+        ? `${t("sidebar.file")} ${message.mediaName}`
+        : t("sidebar.file");
     case "VOICE":
       return t("sidebar.voice");
     case "VIDEO":

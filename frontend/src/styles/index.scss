@@ -17,5 +17,11 @@
 // 5. Motion system (transitions + animations)
 @use 'motion';
 
-// 6. Global styles (reset + utilities + element overrides)
+// 6. Safe area (CSS env bridge)
+@use 'safe-area';
+
+// 7. Mobile base styles
+@use 'mobile';
+
+// 8. Global styles (reset + utilities + element overrides)
 @use 'global';

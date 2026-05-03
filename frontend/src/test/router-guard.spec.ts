@@ -113,7 +113,11 @@ describe("router auth guard", () => {
     await beforeEachGuard?.(
       {
         fullPath: "/admin/logs",
-        meta: { requiresAuth: true, hideForAuth: false, permission: "log:read" },
+        meta: {
+          requiresAuth: true,
+          hideForAuth: false,
+          permission: "log:read",
+        },
       },
       { fullPath: "/" },
       next,

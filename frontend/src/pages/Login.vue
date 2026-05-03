@@ -4,7 +4,16 @@
     <div class="login-brand">
       <div class="brand-content">
         <div class="brand-badge animate-slide-up">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
@@ -15,14 +24,29 @@
           Secure.<br />Private.<br />Instant.
         </h1>
 
-        <p class="brand-subtitle animate-slide-up" style="animation-delay: 140ms">
+        <p
+          class="brand-subtitle animate-slide-up"
+          style="animation-delay: 140ms"
+        >
           端对端加密即时通信系统，您的消息仅在设备上解密。
         </p>
 
-        <div class="brand-features animate-slide-up" style="animation-delay: 200ms">
+        <div
+          class="brand-features animate-slide-up"
+          style="animation-delay: 200ms"
+        >
           <div class="feature-item">
             <div class="feature-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                 <path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
@@ -35,7 +59,16 @@
 
           <div class="feature-item">
             <div class="feature-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
                 <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
               </svg>
             </div>
@@ -47,7 +80,16 @@
 
           <div class="feature-item">
             <div class="feature-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
               </svg>
             </div>
@@ -59,7 +101,16 @@
 
           <div class="feature-item">
             <div class="feature-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
                 <circle cx="12" cy="12" r="10" />
                 <path d="M8 14s1.5 2 4 2 4-2 4-2" />
                 <line x1="9" y1="9" x2="9.01" y2="9" />
@@ -138,7 +189,9 @@
 
         <div class="login-footer">
           <span>还没有账户？</span>
-          <el-link type="primary" @click="$router.push('/register')">立即注册</el-link>
+          <el-link type="primary" @click="$router.push('/register')"
+            >立即注册</el-link
+          >
         </div>
       </div>
     </div>
@@ -167,12 +220,19 @@ const loginForm = reactive<LoginForm>({
 const loginRules = {
   username: [
     { required: true, message: "请输入用户名", trigger: "blur" },
-    { min: 3, max: 20, message: "用户名长度在 3 到 20 个字符", trigger: "blur" },
-    { pattern: /^[a-zA-Z0-9_]+$/, message: "用户名只能包含字母、数字和下划线", trigger: "blur" },
+    {
+      min: 3,
+      max: 20,
+      message: "用户名长度在 3 到 20 个字符",
+      trigger: "blur",
+    },
+    {
+      pattern: /^[a-zA-Z0-9_]+$/,
+      message: "用户名只能包含字母、数字和下划线",
+      trigger: "blur",
+    },
   ],
-  password: [
-    { required: true, message: "请输入密码", trigger: "blur" },
-  ],
+  password: [{ required: true, message: "请输入密码", trigger: "blur" }],
 };
 
 const handleLogin = async () => {
@@ -280,7 +340,8 @@ onMounted(async () => {
   background: var(--surface-overlay);
   backdrop-filter: blur(12px);
   border: 1px solid var(--border-light);
-  transition: transform var(--motion-fast) var(--motion-ease),
+  transition:
+    transform var(--motion-fast) var(--motion-ease),
     box-shadow var(--motion-fast) var(--motion-ease);
 
   &:hover {
@@ -330,7 +391,11 @@ onMounted(async () => {
   height: 400px;
   top: -100px;
   right: -100px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.08) 0%, transparent 70%);
+  background: radial-gradient(
+    circle,
+    rgba(99, 102, 241, 0.08) 0%,
+    transparent 70%
+  );
 }
 
 .brand-deco-2 {
@@ -338,7 +403,11 @@ onMounted(async () => {
   height: 300px;
   bottom: -80px;
   left: -80px;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.06) 0%, transparent 70%);
+  background: radial-gradient(
+    circle,
+    rgba(139, 92, 246, 0.06) 0%,
+    transparent 70%
+  );
 }
 
 .brand-deco-3 {
@@ -346,7 +415,11 @@ onMounted(async () => {
   height: 200px;
   top: 40%;
   right: 10%;
-  background: radial-gradient(circle, rgba(34, 197, 94, 0.05) 0%, transparent 70%);
+  background: radial-gradient(
+    circle,
+    rgba(34, 197, 94, 0.05) 0%,
+    transparent 70%
+  );
 }
 
 /* === 右侧表单区 === */
@@ -405,7 +478,8 @@ onMounted(async () => {
   background: var(--surface-elevated);
   border: 1px solid var(--border-light);
   box-shadow: none;
-  transition: border-color var(--motion-fast) var(--motion-ease),
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
     box-shadow var(--motion-fast) var(--motion-ease);
 
   &:focus-within,
@@ -434,11 +508,16 @@ onMounted(async () => {
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-2));
+  background: linear-gradient(
+    135deg,
+    var(--color-primary),
+    var(--color-primary-2)
+  );
   border: none;
   color: var(--text-inverse);
   cursor: pointer;
-  transition: transform var(--motion-fast) var(--motion-ease),
+  transition:
+    transform var(--motion-fast) var(--motion-ease),
     box-shadow var(--motion-fast) var(--motion-ease),
     opacity var(--motion-fast) var(--motion-ease);
   box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);

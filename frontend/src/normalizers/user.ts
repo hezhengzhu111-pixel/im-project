@@ -26,10 +26,18 @@ const normalizePresence = (value: unknown): UserPresence => {
 
 const normalizeFriendRequestStatus = (value: unknown): FriendRequestStatus => {
   const normalized = asString(value).toUpperCase();
-  if (normalized === "ACCEPTED" || normalized === "1" || normalized === "已同意") {
+  if (
+    normalized === "ACCEPTED" ||
+    normalized === "1" ||
+    normalized === "已同意"
+  ) {
     return "ACCEPTED";
   }
-  if (normalized === "REJECTED" || normalized === "2" || normalized === "已拒绝") {
+  if (
+    normalized === "REJECTED" ||
+    normalized === "2" ||
+    normalized === "已拒绝"
+  ) {
     return "REJECTED";
   }
   return "PENDING";
@@ -64,7 +72,8 @@ export const normalizeFriendship = (raw: unknown): Friendship => {
     nickname: asString(record.nickname) || undefined,
     avatar: asString(record.avatar) || undefined,
     remark: asString(record.remark) || undefined,
-    isOnline: typeof record.isOnline === "boolean" ? record.isOnline : undefined,
+    isOnline:
+      typeof record.isOnline === "boolean" ? record.isOnline : undefined,
     lastActiveTime: asString(record.lastActiveTime) || undefined,
     createdAt: asString(record.createdAt) || undefined,
     createTime: asString(record.createTime) || undefined,
@@ -78,15 +87,21 @@ export const normalizeFriendRequest = (raw: unknown): FriendRequest => {
   const fromUser = isRecord(record.fromUser) ? record.fromUser : {};
   return {
     id: asString(record.id),
-    applicantId: asString(record.applicantId ?? record.fromUserId ?? record.senderId),
+    applicantId: asString(
+      record.applicantId ?? record.fromUserId ?? record.senderId,
+    ),
     applicantUsername: asString(
       record.applicantUsername ?? fromUser.username ?? record.username,
     ),
-    applicantNickname: asString(
-      record.applicantNickname ?? fromUser.nickname ?? record.nickname,
-    ) || undefined,
-    applicantAvatar: asString(record.applicantAvatar ?? fromUser.avatar ?? record.avatar) || undefined,
-    targetUserId: asString(record.targetUserId ?? record.receiverId) || undefined,
+    applicantNickname:
+      asString(
+        record.applicantNickname ?? fromUser.nickname ?? record.nickname,
+      ) || undefined,
+    applicantAvatar:
+      asString(record.applicantAvatar ?? fromUser.avatar ?? record.avatar) ||
+      undefined,
+    targetUserId:
+      asString(record.targetUserId ?? record.receiverId) || undefined,
     targetUsername: asString(record.targetUsername) || undefined,
     targetNickname: asString(record.targetNickname) || undefined,
     targetAvatar: asString(record.targetAvatar) || undefined,
@@ -162,7 +177,9 @@ export const normalizeUserSettings = (raw: unknown): UserSettings => {
   return {
     general: {
       language:
-        asString(general.language) === "en-US" ? "en-US" : defaults.general.language,
+        asString(general.language) === "en-US"
+          ? "en-US"
+          : defaults.general.language,
       theme:
         asString(general.theme) === "dark"
           ? "dark"

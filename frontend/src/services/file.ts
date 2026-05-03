@@ -1,6 +1,6 @@
-import {http} from "@/utils/request";
-import {asNumber, asString, isRecord} from "@/types/utils";
-import type {ApiResponse, FileUploadResponse} from "@/types/api";
+import { http } from "@/utils/request";
+import { asNumber, asString, isRecord } from "@/types/utils";
+import type { ApiResponse, FileUploadResponse } from "@/types/api";
 
 export interface FileDeletePath {
   category: string;
@@ -31,7 +31,10 @@ const normalizeUploadResponse = (raw: unknown): FileUploadResponse => {
     originalFilename ||
     filename;
   const size = asNumber(record.size, Number.NaN);
-  const uploadTime = asNumber(record.uploadTime ?? record.upload_time, Number.NaN);
+  const uploadTime = asNumber(
+    record.uploadTime ?? record.upload_time,
+    Number.NaN,
+  );
   return {
     url: asString(record.url),
     thumbnailUrl:
@@ -44,8 +47,7 @@ const normalizeUploadResponse = (raw: unknown): FileUploadResponse => {
     category: asString(record.category) || undefined,
     uploadDate: asString(record.uploadDate ?? record.upload_date) || undefined,
     uploadTime: Number.isFinite(uploadTime) ? uploadTime : undefined,
-    uploaderId:
-      asString(record.uploaderId ?? record.uploader_id) || undefined,
+    uploaderId: asString(record.uploaderId ?? record.uploader_id) || undefined,
     fileName: fileName || undefined,
     fileType: asString(record.fileType ?? record.file_type) || undefined,
   };
@@ -69,16 +71,16 @@ const extractFromSegments = (segments: string[]): FileDeletePath | null => {
   const date = safeDecode(segments[segments.length - 2]);
   const filename = safeDecode(segments[segments.length - 1]);
   if (!category || !date || !filename) return null;
-  return {category, date, filename};
+  return { category, date, filename };
 };
 
 export const resolveFilePath = (
   fileRef: FileDeleteRef,
 ): FileDeletePath | null => {
   if (typeof fileRef === "object" && fileRef) {
-    const {category, date, filename} = fileRef;
+    const { category, date, filename } = fileRef;
     if (category && date && filename) {
-      return {category, date, filename};
+      return { category, date, filename };
     }
     return null;
   }

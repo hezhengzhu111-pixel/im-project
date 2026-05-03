@@ -1,10 +1,10 @@
-import {computed, ref} from "vue";
-import {defineStore} from "pinia";
-import {messageService} from "@/services/message";
-import {buildSessionId, normalizeConversation} from "@/normalizers/chat";
-import type {ChatSession, ChatSessionType, Group, Message} from "@/types";
-import {useUserStore} from "@/stores/user";
-import {isChatSession} from "@/types/utils";
+import { computed, ref } from "vue";
+import { defineStore } from "pinia";
+import { messageService } from "@/services/message";
+import { buildSessionId, normalizeConversation } from "@/normalizers/chat";
+import type { ChatSession, ChatSessionType, Group, Message } from "@/types";
+import { useUserStore } from "@/stores/user";
+import { isChatSession } from "@/types/utils";
 
 const CURRENT_SESSION_STORAGE_KEY = "im_current_session";
 const LOAD_SESSIONS_THROTTLE_MS = 800;
@@ -43,8 +43,10 @@ export const useSessionStore = defineStore("session", () => {
       }
       const leftTime = new Date(left.lastActiveTime || 0).getTime();
       const rightTime = new Date(right.lastActiveTime || 0).getTime();
-      return (Number.isFinite(rightTime) ? rightTime : 0) -
-        (Number.isFinite(leftTime) ? leftTime : 0);
+      return (
+        (Number.isFinite(rightTime) ? rightTime : 0) -
+        (Number.isFinite(leftTime) ? leftTime : 0)
+      );
     });
   });
 
@@ -88,7 +90,8 @@ export const useSessionStore = defineStore("session", () => {
       );
       Object.assign(existing, withLegacySessionAliases(session), {
         lastActiveTime:
-          normalizeSessionTime(session.lastActiveTime) || existing.lastActiveTime,
+          normalizeSessionTime(session.lastActiveTime) ||
+          existing.lastActiveTime,
         unreadCount,
       });
       unreadCounts.value.set(existing.id, unreadCount);
@@ -203,9 +206,9 @@ export const useSessionStore = defineStore("session", () => {
       currentSession.value?.type === "private" &&
       currentSession.value.targetId === targetId
     ) {
-      currentSession.value = sessions.value.find(
-        (item) => item.id === currentSession.value?.id,
-      ) || currentSession.value;
+      currentSession.value =
+        sessions.value.find((item) => item.id === currentSession.value?.id) ||
+        currentSession.value;
     }
   };
 
@@ -278,7 +281,9 @@ export const useSessionStore = defineStore("session", () => {
             : session.memberCount,
         unreadCount: group.unreadCount ?? session.unreadCount,
         lastActiveTime:
-          group.lastMessageTime || group.lastActivityAt || session.lastActiveTime,
+          group.lastMessageTime ||
+          group.lastActivityAt ||
+          session.lastActiveTime,
       });
     });
     if (currentSession.value?.type === "group") {
@@ -290,7 +295,9 @@ export const useSessionStore = defineStore("session", () => {
   };
 
   const removeSession = (sessionId: string) => {
-    sessions.value = sessions.value.filter((session) => session.id !== sessionId);
+    sessions.value = sessions.value.filter(
+      (session) => session.id !== sessionId,
+    );
     unreadCounts.value.delete(sessionId);
     if (currentSession.value?.id === sessionId) {
       clearCurrentSession();
@@ -299,7 +306,9 @@ export const useSessionStore = defineStore("session", () => {
 
   const removeGroupSession = (groupId: string) => {
     const userStore = useUserStore();
-    removeSession(buildSessionId("group", String(userStore.userId || ""), groupId));
+    removeSession(
+      buildSessionId("group", String(userStore.userId || ""), groupId),
+    );
   };
 
   const restorePersistedCurrentSession = (

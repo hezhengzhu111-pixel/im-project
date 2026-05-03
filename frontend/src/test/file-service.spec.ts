@@ -1,6 +1,6 @@
-import {beforeEach, describe, expect, it, vi} from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const {uploadMock, deleteMock} = vi.hoisted(() => ({
+const { uploadMock, deleteMock } = vi.hoisted(() => ({
   uploadMock: vi.fn(),
   deleteMock: vi.fn(),
 }));

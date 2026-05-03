@@ -1,6 +1,9 @@
 import { http } from "@/utils/request";
 import { extractFriendRequestList } from "@/normalizers/friendRequest";
-import { normalizeFriendRequest, normalizeFriendship } from "@/normalizers/user";
+import {
+  normalizeFriendRequest,
+  normalizeFriendship,
+} from "@/normalizers/user";
 import type {
   Friendship,
   FriendRequest,

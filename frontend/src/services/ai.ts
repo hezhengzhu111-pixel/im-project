@@ -24,7 +24,8 @@ function normalizeKey(raw: Record<string, unknown>): AiApiKey {
     maskedKey: String(raw.maskedKey ?? ""),
     isActive: Boolean(raw.isActive),
     validateStatus: String(raw.validateStatus ?? ""),
-    lastValidatedAt: raw.lastValidatedAt != null ? String(raw.lastValidatedAt) : undefined,
+    lastValidatedAt:
+      raw.lastValidatedAt != null ? String(raw.lastValidatedAt) : undefined,
   };
 }
 
@@ -32,7 +33,9 @@ export const aiService = {
   listKeys: () =>
     http.get<unknown[]>("/ai/keys").then((r) => ({
       ...r,
-      data: (r.data || []).map((item) => normalizeKey(item as Record<string, unknown>)),
+      data: (r.data || []).map((item) =>
+        normalizeKey(item as Record<string, unknown>),
+      ),
     })) as Promise<ApiResponse<AiApiKey[]>>,
 
   createKey: (data: { provider: string; apiKey: string; keyName?: string }) =>
@@ -47,12 +50,16 @@ export const aiService = {
       data: normalizeKey(r.data || {}),
     })) as Promise<ApiResponse<AiApiKey>>,
 
-  deleteKey: (id: string) => http.delete<{ deleted: boolean }>(`/ai/keys/${id}`),
+  deleteKey: (id: string) =>
+    http.delete<{ deleted: boolean }>(`/ai/keys/${id}`),
 
-  testKey: (id: string) => http.post<{ validateStatus: string }>(`/ai/keys/${id}/test`),
+  testKey: (id: string) =>
+    http.post<{ validateStatus: string }>(`/ai/keys/${id}/test`),
 
   getSettings: () => http.get<AiSettings>("/ai/settings"),
 
-  updateSettings: (data: { autoReplyEnabled?: boolean; autoReplyPersona?: string }) =>
-    http.put<AiSettings>("/ai/settings", data),
+  updateSettings: (data: {
+    autoReplyEnabled?: boolean;
+    autoReplyPersona?: string;
+  }) => http.put<AiSettings>("/ai/settings", data),
 };

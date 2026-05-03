@@ -2,7 +2,16 @@
   <div class="empty-state">
     <div class="empty-icon">
       <slot name="icon">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg
+          width="48"
+          height="48"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
           <rect x="2" y="2" width="20" height="20" rx="4" />
           <path d="M8 12h8" />
           <path d="M12 8v8" />
@@ -41,7 +50,11 @@ defineProps<{
   width: 72px;
   height: 72px;
   border-radius: var(--radius-lg, 16px);
-  background: color-mix(in srgb, var(--color-primary, #6366f1), transparent 92%);
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #6366f1),
+    transparent 92%
+  );
   color: var(--color-primary, #6366f1);
   margin-bottom: 16px;
 }

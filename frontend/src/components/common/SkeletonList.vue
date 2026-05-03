@@ -1,6 +1,11 @@
 <template>
   <div class="skeleton-list">
-    <div v-for="n in rows" :key="n" class="skeleton-item" :class="{ 'no-animate': !animated }">
+    <div
+      v-for="n in rows"
+      :key="n"
+      class="skeleton-item"
+      :class="{ 'no-animate': !animated }"
+    >
       <div class="skeleton-avatar"></div>
       <div class="skeleton-content">
         <div class="skeleton-line skeleton-line-title"></div>
@@ -11,13 +16,16 @@
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{
-  rows?: number;
-  animated?: boolean;
-}>(), {
-  rows: 5,
-  animated: true,
-});
+withDefaults(
+  defineProps<{
+    rows?: number;
+    animated?: boolean;
+  }>(),
+  {
+    rows: 5,
+    animated: true,
+  },
+);
 </script>
 
 <style scoped lang="scss">
@@ -103,8 +111,12 @@ withDefaults(defineProps<{
 }
 
 @keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

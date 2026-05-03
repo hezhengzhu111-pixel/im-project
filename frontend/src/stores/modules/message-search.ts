@@ -1,5 +1,5 @@
-import type {Ref} from "vue";
-import type {Message, MessageSearchResult} from "@/types";
+import type { Ref } from "vue";
+import type { Message, MessageSearchResult } from "@/types";
 
 type MessageSearchModuleContext = {
   messages: Ref<Map<string, Message[]>>;
@@ -14,7 +14,10 @@ type SearchIndexEntry = {
 
 export function createMessageSearchModule(ctx: MessageSearchModuleContext) {
   const searchIndexCache = new WeakMap<Message[], SearchIndexEntry[]>();
-  const resultCache = new WeakMap<Message[], Map<string, MessageSearchResult[]>>();
+  const resultCache = new WeakMap<
+    Message[],
+    Map<string, MessageSearchResult[]>
+  >();
 
   const buildSearchIndex = (list: Message[]): SearchIndexEntry[] => {
     const cached = searchIndexCache.get(list);
@@ -30,8 +33,12 @@ export function createMessageSearchModule(ctx: MessageSearchModuleContext) {
     return built;
   };
 
-  const searchInSession = (list: Message[], keyword: string): MessageSearchResult[] => {
-    const perListCache = resultCache.get(list) || new Map<string, MessageSearchResult[]>();
+  const searchInSession = (
+    list: Message[],
+    keyword: string,
+  ): MessageSearchResult[] => {
+    const perListCache =
+      resultCache.get(list) || new Map<string, MessageSearchResult[]>();
     if (perListCache.has(keyword)) {
       return perListCache.get(keyword) || [];
     }
@@ -41,7 +48,10 @@ export function createMessageSearchModule(ctx: MessageSearchModuleContext) {
       .map((entry) => ({
         message: entry.message,
         highlight: keyword,
-        context: list.slice(Math.max(0, entry.index - 1), Math.min(list.length, entry.index + 2)),
+        context: list.slice(
+          Math.max(0, entry.index - 1),
+          Math.min(list.length, entry.index + 2),
+        ),
       }));
 
     perListCache.set(keyword, results);
@@ -56,7 +66,9 @@ export function createMessageSearchModule(ctx: MessageSearchModuleContext) {
       return;
     }
 
-    const sessionIds = sessionId ? [sessionId] : Array.from(ctx.messages.value.keys());
+    const sessionIds = sessionId
+      ? [sessionId]
+      : Array.from(ctx.messages.value.keys());
     const nextResults: MessageSearchResult[] = [];
     sessionIds.forEach((id) => {
       const list = ctx.messages.value.get(id) || [];

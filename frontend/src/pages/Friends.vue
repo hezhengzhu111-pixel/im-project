@@ -74,7 +74,13 @@
             </template>
             <el-tag
               v-else
-              :type="request.status === 'ACCEPTED' ? 'success' : request.status === 'REJECTED' ? 'danger' : 'info'"
+              :type="
+                request.status === 'ACCEPTED'
+                  ? 'success'
+                  : request.status === 'REJECTED'
+                    ? 'danger'
+                    : 'info'
+              "
               size="small"
             >
               {{ requestStatusLabel(request.status) }}
@@ -123,7 +129,11 @@
                 {{ friend.remark || friend.nickname || friend.username }}
               </div>
               <div class="friend-status">
-                {{ isOnline(friend.friendId) ? "在线" : getLastSeenText(friend.lastSeen) }}
+                {{
+                  isOnline(friend.friendId)
+                    ? "在线"
+                    : getLastSeenText(friend.lastSeen)
+                }}
               </div>
             </div>
             <div class="friend-subtitle">
@@ -131,7 +141,10 @@
             </div>
           </div>
 
-          <el-dropdown trigger="click" @command="handleFriendAction($event, friend)">
+          <el-dropdown
+            trigger="click"
+            @command="handleFriendAction($event, friend)"
+          >
             <el-button link :icon="MoreFilled" @click.stop />
             <template #dropdown>
               <el-dropdown-menu>
@@ -169,7 +182,9 @@
             clearable
           >
             <template #append>
-              <el-button :loading="searching" @click="searchUsers">搜索</el-button>
+              <el-button :loading="searching" @click="searchUsers"
+                >搜索</el-button
+              >
             </template>
           </el-input>
         </el-form-item>
@@ -202,7 +217,10 @@
           </div>
         </el-form-item>
 
-        <el-form-item v-if="selectedSearchUser && !isFriend(selectedSearchUser.id)" label="验证消息">
+        <el-form-item
+          v-if="selectedSearchUser && !isFriend(selectedSearchUser.id)"
+          label="验证消息"
+        >
           <el-input
             v-model="addFriendForm.message"
             type="textarea"
@@ -227,7 +245,12 @@
     </el-dialog>
 
     <el-dialog v-model="showSetRemark" title="设置备注" width="420px">
-      <el-form ref="remarkFormRef" :model="remarkForm" :rules="remarkRules" label-width="80px">
+      <el-form
+        ref="remarkFormRef"
+        :model="remarkForm"
+        :rules="remarkRules"
+        label-width="80px"
+      >
         <el-form-item label="好友备注" prop="remark">
           <el-input
             v-model="remarkForm.remark"
@@ -240,7 +263,11 @@
 
       <template #footer>
         <el-button @click="showSetRemark = false">取消</el-button>
-        <el-button type="primary" :loading="updatingRemark" @click="updateRemark">
+        <el-button
+          type="primary"
+          :loading="updatingRemark"
+          @click="updateRemark"
+        >
           保存
         </el-button>
       </template>
@@ -251,11 +278,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import {
-  ElMessageBox,
-  type FormInstance,
-  type FormRules,
-} from "element-plus";
+import { ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 import { ArrowLeft, MoreFilled, Plus, Search } from "@element-plus/icons-vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import SkeletonList from "@/components/common/SkeletonList.vue";
@@ -338,11 +361,17 @@ const filteredFriends = computed(() => {
       const leftOnline = isOnline(left.friendId);
       const rightOnline = isOnline(right.friendId);
       if (leftOnline === rightOnline) {
-        return displayFriendName(left).localeCompare(displayFriendName(right), "zh-CN");
+        return displayFriendName(left).localeCompare(
+          displayFriendName(right),
+          "zh-CN",
+        );
       }
       return leftOnline ? -1 : 1;
     }
-    return displayFriendName(left).localeCompare(displayFriendName(right), "zh-CN");
+    return displayFriendName(left).localeCompare(
+      displayFriendName(right),
+      "zh-CN",
+    );
   });
 });
 
@@ -420,7 +449,9 @@ const searchUsers = async () => {
       type: searchType.value,
       keyword: addFriendForm.keyword.trim(),
     });
-    searchResults.value = users.filter((user) => user.id !== currentUserId.value);
+    searchResults.value = users.filter(
+      (user) => user.id !== currentUserId.value,
+    );
     selectedSearchUser.value = searchResults.value[0] || null;
   } catch (error) {
     capture(error, "搜索用户失败");
@@ -449,8 +480,7 @@ const sendFriendRequest = async () => {
     });
     await chatStore.loadFriendRequests();
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "发送好友申请失败";
+    const message = error instanceof Error ? error.message : "发送好友申请失败";
     if (message.includes("已有待处理的好友申请")) {
       await chatStore.loadFriendRequests().catch(() => undefined);
       notifyInfo("已有待处理的好友申请，已同步到好友申请列表");
@@ -527,7 +557,10 @@ const updateRemark = async () => {
   try {
     await remarkFormRef.value.validate();
     updatingRemark.value = true;
-    await chatStore.updateFriendRemark(currentFriend.value.friendId, remarkForm.remark.trim());
+    await chatStore.updateFriendRemark(
+      currentFriend.value.friendId,
+      remarkForm.remark.trim(),
+    );
     notifySuccess("备注已更新");
     showSetRemark.value = false;
   } catch (error) {

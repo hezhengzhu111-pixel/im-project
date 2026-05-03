@@ -17,10 +17,18 @@ type MockItem = {
 };
 
 const responseQueue: Record<string, MockItem[]> = {};
-const observedRequests: Record<string, Array<{ headers: Record<string, unknown> }>> = {};
-let requestOnFulfilled: ((config: Record<string, unknown>) => unknown) | null = null;
+const observedRequests: Record<
+  string,
+  Array<{ headers: Record<string, unknown> }>
+> = {};
+let requestOnFulfilled: ((config: Record<string, unknown>) => unknown) | null =
+  null;
 let responseOnFulfilled:
-  | ((response: { data: unknown; status: number; config: Record<string, unknown> }) => unknown)
+  | ((response: {
+      data: unknown;
+      status: number;
+      config: Record<string, unknown>;
+    }) => unknown)
   | null = null;
 let responseOnRejected: ((error: unknown) => unknown) | null = null;
 
@@ -80,11 +88,13 @@ const dispatch = async (config: Record<string, unknown>) => {
   return response;
 };
 
-const requestInstance: Record<string, unknown> = vi.fn((config: Record<string, unknown>) =>
-  dispatch(config),
+const requestInstance: Record<string, unknown> = vi.fn(
+  (config: Record<string, unknown>) => dispatch(config),
 ) as unknown as Record<string, unknown>;
-(requestInstance as any).get = (url: string, config?: Record<string, unknown>) =>
-  dispatch({ ...(config || {}), method: "get", url });
+(requestInstance as any).get = (
+  url: string,
+  config?: Record<string, unknown>,
+) => dispatch({ ...(config || {}), method: "get", url });
 (requestInstance as any).post = (
   url: string,
   data?: unknown,
@@ -95,8 +105,10 @@ const requestInstance: Record<string, unknown> = vi.fn((config: Record<string, u
   data?: unknown,
   config?: Record<string, unknown>,
 ) => dispatch({ ...(config || {}), method: "put", url, data });
-(requestInstance as any).delete = (url: string, config?: Record<string, unknown>) =>
-  dispatch({ ...(config || {}), method: "delete", url });
+(requestInstance as any).delete = (
+  url: string,
+  config?: Record<string, unknown>,
+) => dispatch({ ...(config || {}), method: "delete", url });
 (requestInstance as any).patch = (
   url: string,
   data?: unknown,
@@ -170,7 +182,9 @@ describe("request refresh and retry", () => {
   beforeEach(() => {
     vi.resetModules();
     Object.keys(responseQueue).forEach((key) => delete responseQueue[key]);
-    Object.keys(observedRequests).forEach((key) => delete observedRequests[key]);
+    Object.keys(observedRequests).forEach(
+      (key) => delete observedRequests[key],
+    );
     requestOnFulfilled = null;
     responseOnFulfilled = null;
     responseOnRejected = null;
@@ -209,8 +223,12 @@ describe("request refresh and retry", () => {
     expect(clearSession).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
     expect(observedRequests["/secure"]).toHaveLength(2);
-    expect(observedRequests["/secure"][0].headers.Authorization).toBe("Bearer old-token");
-    expect(observedRequests["/secure"][1].headers.Authorization).toBe("Bearer new-token");
+    expect(observedRequests["/secure"][0].headers.Authorization).toBe(
+      "Bearer old-token",
+    );
+    expect(observedRequests["/secure"][1].headers.Authorization).toBe(
+      "Bearer new-token",
+    );
     expect(currentAccessToken).toBe("new-token");
   });
 

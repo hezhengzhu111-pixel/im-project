@@ -2,7 +2,12 @@
   <div class="ai-settings-page">
     <header class="settings-hero">
       <div class="hero-actions">
-        <button type="button" class="icon-button" :aria-label="t('settings.back')" @click="router.back()">
+        <button
+          type="button"
+          class="icon-button"
+          :aria-label="t('settings.back')"
+          @click="router.back()"
+        >
           <el-icon><ArrowLeft /></el-icon>
         </button>
       </div>
@@ -22,11 +27,18 @@
         </div>
       </section>
 
-      <div v-if="keys.length === 0 && !keyLoading" class="settings-card empty-card">
+      <div
+        v-if="keys.length === 0 && !keyLoading"
+        class="settings-card empty-card"
+      >
         <p>{{ t("ai.noKeys") }}</p>
       </div>
 
-      <section v-for="item in keys" :key="item.id" class="settings-card key-card">
+      <section
+        v-for="item in keys"
+        :key="item.id"
+        class="settings-card key-card"
+      >
         <div class="settings-copy">
           <div class="settings-kicker">{{ item.provider }}</div>
           <h2>{{ item.keyName || item.maskedKey }}</h2>
@@ -42,9 +54,15 @@
             :disabled="testingId === item.id"
             @click="testKey(item.id)"
           >
-            {{ testingId === item.id ? t("ai.testing") : t("ai.testConnection") }}
+            {{
+              testingId === item.id ? t("ai.testing") : t("ai.testConnection")
+            }}
           </button>
-          <button type="button" class="flat-button small" @click="removeKey(item.id)">
+          <button
+            type="button"
+            class="flat-button small"
+            @click="removeKey(item.id)"
+          >
             {{ t("ai.deleteKey") }}
           </button>
         </div>
@@ -76,14 +94,22 @@
             />
           </div>
           <div class="add-key-field">
-            <label>{{ t("ai.keyName") }} <span class="optional">({{ t("common.optional") }})</span></label>
+            <label
+              >{{ t("ai.keyName") }}
+              <span class="optional">({{ t("common.optional") }})</span></label
+            >
             <el-input
               v-model="newKeyName"
               :placeholder="t('ai.keyNamePlaceholder')"
               size="large"
             />
           </div>
-          <button type="button" class="flat-button" :disabled="!canAdd" @click="addKey">
+          <button
+            type="button"
+            class="flat-button"
+            :disabled="!canAdd"
+            @click="addKey"
+          >
             {{ t("ai.save") }}
           </button>
         </div>
@@ -226,7 +252,9 @@ let personaTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function updateAutoReply() {
   try {
-    await aiService.updateSettings({ autoReplyEnabled: autoReplyEnabled.value });
+    await aiService.updateSettings({
+      autoReplyEnabled: autoReplyEnabled.value,
+    });
   } catch (err) {
     autoReplyEnabled.value = !autoReplyEnabled.value;
     capture(err, "Failed to update auto-reply");
@@ -235,7 +263,9 @@ async function updateAutoReply() {
 
 async function updatePersona() {
   try {
-    await aiService.updateSettings({ autoReplyPersona: autoReplyPersona.value });
+    await aiService.updateSettings({
+      autoReplyPersona: autoReplyPersona.value,
+    });
   } catch (err) {
     capture(err, "Failed to update persona");
   }
