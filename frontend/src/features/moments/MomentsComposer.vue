@@ -323,4 +323,25 @@ async function handlePublish() {
   border-radius: 8px;
   margin-top: 8px;
 }
+
+@media (max-width: 768px) {
+  .composer-media-preview {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 6px;
+  }
+
+  .composer-textarea :deep(.el-textarea__inner) {
+    font-size: 16px;
+  }
+
+  .publish-btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 390px) {
+  .moments-composer {
+    padding: 12px;
+  }
+}
 </style>

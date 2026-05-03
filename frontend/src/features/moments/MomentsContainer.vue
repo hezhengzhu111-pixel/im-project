@@ -10,19 +10,23 @@
 
     <MomentsFeed />
 
-    <el-drawer v-model="showComposer" title="发布动态" size="400px">
+    <el-drawer v-model="showComposer" title="发布动态" :size="drawerSize" direction="btt">
       <MomentsComposer @close="showComposer = false" />
     </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
+import { useIsMobile } from '@/composables/useIsMobile'
 import MomentsFeed from './MomentsFeed.vue'
 import MomentsComposer from './MomentsComposer.vue'
 
 const showComposer = ref(false)
+
+const { isMobile } = useIsMobile()
+const drawerSize = computed(() => (isMobile.value ? '100vw' : 'min(400px, 100vw)'))
 </script>
 
 <style scoped lang="scss">

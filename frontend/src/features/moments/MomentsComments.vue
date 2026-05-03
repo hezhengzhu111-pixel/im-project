@@ -286,4 +286,16 @@ const handleDeleteComment = async (commentId: string) => {
 .delete-btn:hover {
   color: var(--el-color-danger);
 }
+
+@media (max-width: 768px) {
+  .moments-comments {
+    gap: 6px;
+    font-size: 13px;
+  }
+
+  .comment-input-wrapper .el-input :deep(.el-textarea__inner) {
+    font-size: 16px;
+    min-height: 44px;
+  }
+}
 </style>

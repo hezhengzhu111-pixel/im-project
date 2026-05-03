@@ -497,4 +497,41 @@ const handleMoreAction = async (command: string) => {
   font-size: 13px;
   font-weight: 500;
 }
+
+@media (max-width: 768px) {
+  .moments-post-card {
+    padding: 12px;
+  }
+
+  .post-avatar {
+    width: 36px;
+    height: 36px;
+  }
+
+  .post-nickname {
+    font-size: 14px;
+  }
+
+  .post-content {
+    font-size: 14px;
+  }
+
+  .media-grid {
+    gap: 4px;
+  }
+
+  .media-grid.grid-2,
+  .media-grid.grid-3 {
+    max-width: 280px;
+  }
+
+  .media-grid.grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .action-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
 </style>

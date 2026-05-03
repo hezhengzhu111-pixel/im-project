@@ -82,4 +82,11 @@ onMounted(() => {
   color: var(--el-text-color-secondary);
   margin-right: 4px;
 }
+
+@media (max-width: 768px) {
+  .moments-like-bar {
+    gap: 6px;
+    font-size: 13px;
+  }
+}
 </style>

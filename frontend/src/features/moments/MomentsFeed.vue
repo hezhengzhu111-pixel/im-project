@@ -72,4 +72,10 @@ function handleScroll() {
   color: var(--el-text-color-secondary);
   font-size: 14px;
 }
+
+@media (max-width: 768px) {
+  .moments-feed {
+    padding-bottom: calc(12px + var(--mobile-tabbar-height, 56px) + env(safe-area-inset-bottom, 0px));
+  }
+}
 </style>

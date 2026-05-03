@@ -2,8 +2,17 @@
   <div class="log-monitor">
     <h2>实时日志监控 (SSE)</h2>
     <div class="controls">
-      <el-input v-model="filterKeyword" placeholder="关键字过滤" style="width: 200px" />
-      <el-select v-model="filterLevel" placeholder="日志级别" clearable style="width: 150px">
+      <el-input
+        v-model="filterKeyword"
+        placeholder="关键字过滤"
+        style="width: 200px"
+      />
+      <el-select
+        v-model="filterLevel"
+        placeholder="日志级别"
+        clearable
+        style="width: 150px"
+      >
         <el-option label="INFO" value="INFO" />
         <el-option label="WARN" value="WARN" />
         <el-option label="ERROR" value="ERROR" />
@@ -11,13 +20,20 @@
       <el-button @click="connectSSE" type="primary">连接 SSE</el-button>
       <el-button @click="disconnectSSE" type="danger">断开连接</el-button>
     </div>
-    
+
     <!-- 虚拟滚动列表 -->
     <div class="log-list" ref="logContainer">
-      <div v-for="(log, index) in filteredLogs" :key="index" class="log-item" :class="log.level.toLowerCase()">
+      <div
+        v-for="(log, index) in filteredLogs"
+        :key="index"
+        class="log-item"
+        :class="log.level.toLowerCase()"
+      >
         <span class="time">{{ log.timestamp }}</span>
         <span class="level">[{{ log.level }}]</span>
-        <span class="traceId" v-if="log.traceId" @click="showTrace(log.traceId)">[TraceId: {{ log.traceId }}]</span>
+        <span class="traceId" v-if="log.traceId" @click="showTrace(log.traceId)"
+          >[TraceId: {{ log.traceId }}]</span
+        >
         <span class="msg">{{ log.message }}</span>
       </div>
     </div>
@@ -25,19 +41,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ref, computed, onBeforeUnmount } from "vue";
+import { ElMessage } from "element-plus";
 
 const logs = ref<any[]>([]);
-const filterKeyword = ref('');
-const filterLevel = ref('');
+const filterKeyword = ref("");
+const filterLevel = ref("");
 let eventSource: EventSource | null = null;
 const sseEndpoint = "/api/logs/stream";
 
 const filteredLogs = computed(() => {
-  return logs.value.filter(log => {
-    const matchKeyword = filterKeyword.value ? log.message.includes(filterKeyword.value) : true;
-    const matchLevel = filterLevel.value ? log.level === filterLevel.value : true;
+  return logs.value.filter((log) => {
+    const matchKeyword = filterKeyword.value
+      ? log.message.includes(filterKeyword.value)
+      : true;
+    const matchLevel = filterLevel.value
+      ? log.level === filterLevel.value
+      : true;
     return matchKeyword && matchLevel;
   });
 });
@@ -46,11 +66,12 @@ const connectSSE = () => {
   if (eventSource) return;
 
   eventSource = new EventSource(sseEndpoint, { withCredentials: true });
-  
+
   eventSource.onmessage = (event) => {
     // 假设后端传过来的格式是原始字符串，前端做简单正则解析，或者后端传 JSON
     const raw = event.data;
-    const regex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\s+\[.*?\]\s+(\w+)\s+\[traceId=(.*?)\]\s+(.*?)\s+-\s+(.*)$/;
+    const regex =
+      /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\s+\[.*?\]\s+(\w+)\s+\[traceId=(.*?)\]\s+(.*?)\s+-\s+(.*)$/;
     const match = raw.match(regex);
     if (match) {
       logs.value.push({
@@ -58,7 +79,7 @@ const connectSSE = () => {
         level: match[2],
         traceId: match[3],
         service: match[4],
-        message: match[5]
+        message: match[5],
       });
       if (logs.value.length > 1000) {
         logs.value.shift(); // 保持最大1000条
@@ -66,16 +87,16 @@ const connectSSE = () => {
     } else {
       logs.value.push({
         timestamp: new Date().toISOString(),
-        level: 'INFO',
-        traceId: '',
-        service: '',
-        message: raw
+        level: "INFO",
+        traceId: "",
+        service: "",
+        message: raw,
       });
     }
   };
 
   eventSource.onerror = () => {
-    ElMessage.error('SSE 连接断开');
+    ElMessage.error("SSE 连接断开");
     disconnectSSE();
   };
 };
@@ -122,10 +143,55 @@ onBeforeUnmount(() => {
   margin-bottom: 4px;
   word-break: break-all;
 }
-.log-item.error { color: #f56c6c; }
-.log-item.warn { color: #e6a23c; }
-.log-item.info { color: #67c23a; }
-.time { color: #888; margin-right: 8px; }
-.level { margin-right: 8px; font-weight: bold; }
-.traceId { color: #409eff; cursor: pointer; text-decoration: underline; margin-right: 8px; }
+.log-item.error {
+  color: #f56c6c;
+}
+.log-item.warn {
+  color: #e6a23c;
+}
+.log-item.info {
+  color: #67c23a;
+}
+.time {
+  color: #888;
+  margin-right: 8px;
+}
+.level {
+  margin-right: 8px;
+  font-weight: bold;
+}
+.traceId {
+  color: #409eff;
+  cursor: pointer;
+  text-decoration: underline;
+  margin-right: 8px;
+}
+
+@media (max-width: 768px) {
+  .controls {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .controls .el-input {
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .controls .el-select {
+    flex: 1;
+    min-width: 100px;
+  }
+}
+
+@media (max-width: 390px) {
+  .controls {
+    flex-direction: column;
+  }
+
+  .controls .el-input,
+  .controls .el-select {
+    width: 100%;
+  }
+}
 </style>
