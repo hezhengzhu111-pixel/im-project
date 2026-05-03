@@ -3,7 +3,20 @@
     class="message-list"
     role="log"
     aria-live="polite"
+    @touchstart.passive="onPullStart"
+    @touchmove.passive="onPullMove"
+    @touchend="onPullEnd"
   >
+    <div
+      v-if="pullState !== 'idle'"
+      class="pull-indicator"
+      :style="{ height: pullDistance + 'px', opacity: pullDistance / PULL_THRESHOLD }"
+    >
+      <el-icon v-if="pullState === 'loading'" class="spin"><Loading /></el-icon>
+      <el-icon v-else-if="pullDistance >= PULL_THRESHOLD"><Bottom /></el-icon>
+      <el-icon v-else><Top /></el-icon>
+    </div>
+
     <div v-if="loadingHistory" class="history-indicator">
       {{ t("message.loadingMore") }}
     </div>
@@ -682,6 +695,31 @@ function handleActionSelect(index: number) {
   }
 }
 
+function onPullStart(e: TouchEvent) {
+  const el = scrollContainerRef.value;
+  if (!el || el.scrollTop > 0 || pullState.value === "loading") return;
+  pullStartY = e.touches[0].clientY;
+  pullState.value = "pulling";
+}
+
+function onPullMove(e: TouchEvent) {
+  if (pullState.value !== "pulling") return;
+  const dy = e.touches[0].clientY - pullStartY;
+  pullDistance.value = Math.max(0, Math.min(120, dy * 0.5));
+}
+
+function onPullEnd() {
+  if (pullState.value !== "pulling") return;
+  if (pullDistance.value >= PULL_THRESHOLD) {
+    pullState.value = "loading";
+    pullDistance.value = 50;
+    emit("request-history");
+  } else {
+    pullState.value = "idle";
+    pullDistance.value = 0;
+  }
+}
+
 const previewImage = (messageId: string) => {
   const message = resolveMessageById(messageId);
   if (!message) {
@@ -864,6 +902,16 @@ watch(
       pendingHistoryAnchor.value == null
     ) {
       releaseHistoryLoading();
+    }
+  },
+);
+
+watch(
+  () => props.loadingHistory,
+  (loading, wasLoading) => {
+    if (wasLoading && !loading && pullState.value === "loading") {
+      pullState.value = "idle";
+      pullDistance.value = 0;
     }
   },
 );
@@ -1094,6 +1142,23 @@ onUnmounted(() => {
 .menu-item.danger:hover {
   background: rgba(254, 242, 242, 0.94);
   color: var(--chat-danger);
+}
+
+.pull-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--text-tertiary);
+
+  .spin {
+    animation: spin 1s linear infinite;
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 @media (max-width: 768px) {
