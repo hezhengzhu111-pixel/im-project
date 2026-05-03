@@ -94,18 +94,28 @@
       :images="viewerImages"
       :initial-index="viewerIndex"
     />
+
+    <ActionSheet
+      v-model:visible="actionSheetVisible"
+      :options="actionSheetOptions"
+      @select="handleActionSelect"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { RecycleScroller } from "vue-virtual-scroller";
+import { Loading, Bottom, Top } from "@element-plus/icons-vue";
 import MessageItem from "@/features/chat/ChatMessageItem.vue";
 import ImageViewer from "@/components/common/ImageViewer.vue";
+import ActionSheet from "@/components/common/ActionSheet.vue";
+import type { ActionSheetOption } from "@/components/common/ActionSheet.vue";
 import { downloadFile } from "@/services/download.service";
 import { useAudioPlayer } from "@/features/chat/composables/useAudioPlayer";
 import { useMessageActions } from "@/features/chat/composables/useMessageActions";
 import { useMessageContextMenu } from "@/features/chat/composables/useMessageContextMenu";
+import { useIsMobile } from "@/composables/useIsMobile";
 import { useI18nStore } from "@/stores/i18n";
 import { formatFileSize } from "@/utils/common";
 import type { Message } from "@/types";
@@ -210,12 +220,19 @@ const refreshScheduled = ref(false);
 const viewerVisible = ref(false);
 const viewerImages = ref<string[]>([]);
 const viewerIndex = ref(0);
+const pullState = ref<"idle" | "pulling" | "loading">("idle");
+const pullDistance = ref(0);
+const PULL_THRESHOLD = 60;
+let pullStartY = 0;
 const messageViewCache = new Map<string, MessageListItemView>();
 const messageRenderItemCache = new Map<string, MessageRenderItem>();
 const { locale, t } = useI18nStore();
 const { playingMessageId, toggle: toggleAudio, stop } = useAudioPlayer();
 const { copy, recall, remove } = useMessageActions();
 const contextMenu = useMessageContextMenu();
+const { isMobile } = useIsMobile();
+const actionSheetVisible = ref(false);
+const actionSheetTarget = ref<Message | null>(null);
 const contextTargetMessage = computed(() => contextMenu.targetMessage.value);
 const timeFormatter = computed(
   () =>
@@ -614,7 +631,12 @@ const openContextMenu = (messageId: string, event: MouseEvent) => {
   if (!message) {
     return;
   }
-  contextMenu.open(message, event);
+  if (isMobile.value) {
+    actionSheetTarget.value = message;
+    actionSheetVisible.value = true;
+  } else {
+    contextMenu.open(message, event);
+  }
 };
 
 const handleCopy = async () => {
@@ -637,6 +659,28 @@ const handleDelete = async () => {
   }
   closeContextMenu();
 };
+
+const actionSheetOptions = computed<ActionSheetOption[]>(() => {
+  const opts: ActionSheetOption[] = [{ label: "复制" }];
+  if (actionSheetTarget.value && isOwnMessage(actionSheetTarget.value)) {
+    opts.push({ label: "撤回" });
+  }
+  opts.push({ label: "删除", destructive: true });
+  return opts;
+});
+
+function handleActionSelect(index: number) {
+  const msg = actionSheetTarget.value;
+  if (!msg) return;
+  const isOwn = isOwnMessage(msg);
+  if (index === 0) {
+    copy(msg);
+  } else if (index === 1 && isOwn) {
+    recall(msg);
+  } else {
+    remove(msg);
+  }
+}
 
 const previewImage = (messageId: string) => {
   const message = resolveMessageById(messageId);
