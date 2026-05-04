@@ -607,13 +607,15 @@ onUnmounted(() => {
 .textarea-wrapper {
   position: relative;
   width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .chat-textarea {
   width: 100%;
   min-height: 40px;
   max-height: 116px;
-  padding: 9px 6px;
+  padding: 9px 10px;
   border: 0;
   resize: none;
   outline: none;
@@ -622,6 +624,9 @@ onUnmounted(() => {
   font-family: var(--font-sans, inherit);
   font-size: 14px;
   line-height: 1.5;
+  text-align: left;
+  direction: ltr;
+  unicode-bidi: normal;
 }
 
 .chat-textarea::placeholder {
@@ -792,7 +797,7 @@ onUnmounted(() => {
   .chat-textarea {
     min-height: 36px;
     max-height: 80px;
-    padding: 7px 4px;
+    padding: 7px 8px;
     font-size: 16px; /* prevent iOS zoom on focus */
   }
 

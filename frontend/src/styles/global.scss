@@ -33,6 +33,8 @@ input,
 textarea,
 select {
   font: inherit;
+  text-align: left;
+  direction: ltr;
 }
 
 a {
