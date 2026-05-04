@@ -146,6 +146,12 @@ pub struct MessageDto {
     pub ai_provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ai_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encrypted: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub e2ee_header: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub e2ee_device_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -194,7 +200,10 @@ mod tests {
             "createdTime":"2026-04-28T00:00:00Z",
             "createdAt":"2026-04-28T00:00:00Z",
             "updatedTime":null,
-            "updatedAt":null
+            "updatedAt":null,
+            "encrypted":null,
+            "e2eeHeader":null,
+            "e2eeDeviceId":null
         }"#;
 
         let message = serde_json::from_str::<MessageDto>(raw)?;

@@ -36,6 +36,9 @@ pub struct SendPrivateRequest {
     pub media_name: Option<String>,
     pub thumbnail_url: Option<String>,
     pub duration: Option<i32>,
+    pub encrypted: Option<bool>,
+    pub e2ee_header: Option<String>,
+    pub e2ee_device_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -115,6 +118,7 @@ pub async fn send_private(
         request.message_type.as_deref(),
         request.content.as_deref(),
         request.media_url.as_deref(),
+        request.encrypted,
     )?;
     let receiver_id = cached_resolve_active_user_id(
         cache_redis,
@@ -145,6 +149,9 @@ pub async fn send_private(
             media_name: request.media_name,
             thumbnail_url: request.thumbnail_url,
             duration: request.duration,
+            encrypted: request.encrypted,
+            e2ee_header: request.e2ee_header,
+            e2ee_device_id: request.e2ee_device_id,
         },
     );
     let event = build_message_created_event(&conversation_id, &message);
@@ -221,6 +228,7 @@ pub async fn send_group(
         request.message_type.as_deref(),
         request.content.as_deref(),
         request.media_url.as_deref(),
+        None,
     )?;
     let group_id = cached_resolve_active_group_id(
         cache_redis,
@@ -257,6 +265,9 @@ pub async fn send_group(
             media_name: request.media_name,
             thumbnail_url: request.thumbnail_url,
             duration: request.duration,
+            encrypted: None,
+            e2ee_header: None,
+            e2ee_device_id: None,
         },
     );
     let mut event = build_message_created_event(&conversation_id, &message);
@@ -772,6 +783,7 @@ fn validate_send_input(
     message_type: Option<&str>,
     content: Option<&str>,
     media_url: Option<&str>,
+    encrypted: Option<bool>,
 ) -> Result<(), AppError> {
     let ty = MessageType::from_text(message_type.unwrap_or("TEXT"));
     if matches!(ty, MessageType::Text | MessageType::System) {
@@ -780,7 +792,9 @@ fn validate_send_input(
                 "message content cannot be blank".to_string(),
             ));
         }
-        if content.unwrap_or_default().chars().count() > 2000 {
+        // Encrypted messages contain ciphertext which can be much longer than plaintext;
+        // skip the 2000-char limit for E2EE messages.
+        if !encrypted.unwrap_or(false) && content.unwrap_or_default().chars().count() > 2000 {
             return Err(AppError::BadRequest(
                 "message content cannot exceed 2000 characters".to_string(),
             ));
@@ -802,6 +816,9 @@ struct BuildMessageInput {
     media_name: Option<String>,
     thumbnail_url: Option<String>,
     duration: Option<i32>,
+    encrypted: Option<bool>,
+    e2ee_header: Option<String>,
+    e2ee_device_id: Option<String>,
 }
 
 fn build_message(config: &AppConfig, identity: &Identity, input: BuildMessageInput) -> MessageDto {
@@ -843,6 +860,9 @@ fn build_message(config: &AppConfig, identity: &Identity, input: BuildMessageInp
         is_ai_generated: None,
         ai_provider: None,
         ai_model: None,
+        encrypted: input.encrypted,
+        e2ee_header: input.e2ee_header,
+        e2ee_device_id: input.e2ee_device_id,
     }
 }
 
@@ -1789,6 +1809,9 @@ fn message_from_row(row: &sqlx::mysql::MySqlRow) -> MessageDto {
         is_ai_generated: None,
         ai_provider: None,
         ai_model: None,
+        encrypted: None,
+        e2ee_header: None,
+        e2ee_device_id: None,
     }
 }
 
@@ -1940,6 +1963,9 @@ mod tests {
             is_ai_generated: None,
             ai_provider: None,
             ai_model: None,
+            encrypted: None,
+            e2ee_header: None,
+            e2ee_device_id: None,
         };
         let event = build_message_created_event("g_20", &message);
         let message_json = serde_json::to_string(&message)?;

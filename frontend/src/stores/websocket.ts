@@ -462,6 +462,42 @@ export const useWebSocketStore = defineStore("websocket", () => {
           cleanupRecentMessageIds(now);
         }
 
+        // E2EE decrypt intercept
+        const rawMsg = data.data as Record<string, unknown>;
+        const isEncrypted = rawMsg.encrypted === true || rawMsg.encrypted === 1;
+
+        if (isEncrypted && normalizedMessage.messageType !== "SYSTEM") {
+          try {
+            const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
+
+            const senderId = String(normalizedMessage.senderId || "");
+            const peerId = senderId === currentUserId
+              ? String(normalizedMessage.receiverId || "")
+              : senderId;
+            const sessionId = buildSessionId("private", currentUserId, peerId);
+
+            const headerRaw = rawMsg.e2eeHeader || rawMsg.e2ee_header;
+            const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
+
+            const senderIdentityKey = rawMsg.e2eeSenderIdentityKey as string | undefined;
+            const ephemeralKey = rawMsg.e2eeEphemeralKey as string | undefined;
+
+            if (header && normalizedMessage.content) {
+              const decrypted = await e2eeManager.decryptMessage(
+                sessionId, peerId, header, normalizedMessage.content,
+                senderIdentityKey, ephemeralKey,
+              );
+              if (decrypted) {
+                normalizedMessage.content = decrypted;
+                (normalizedMessage as unknown as Record<string, unknown>).encrypted = false;
+              }
+            }
+          } catch (e) {
+            console.error("[E2EE] Decrypt failed:", e);
+            (normalizedMessage as unknown as Record<string, unknown>).encrypted = true;
+          }
+        }
+
         const isSelfMessage =
           String(normalizedMessage.senderId) === currentUserId;
         await chatStore.addMessage(normalizedMessage);

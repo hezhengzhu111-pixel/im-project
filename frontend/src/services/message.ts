@@ -33,6 +33,21 @@ export const messageService = {
       data: normalizeMessage(response.data, new Date().toISOString()),
     } as ApiResponse<Message>;
   },
+  async sendPrivateEncrypted(data: {
+    receiverId: string;
+    clientMessageId?: string;
+    messageType: string;
+    content: string;
+    encrypted: boolean;
+    e2eeHeader: string;
+    e2eeDeviceId: string;
+  }): Promise<ApiResponse<Message>> {
+    const response = await http.post<unknown>("/message/send/private", data);
+    return {
+      ...response,
+      data: normalizeMessage(response.data, new Date().toISOString()),
+    } as ApiResponse<Message>;
+  },
   async sendGroup(
     data: SendGroupMessageRequest,
   ): Promise<ApiResponse<Message>> {

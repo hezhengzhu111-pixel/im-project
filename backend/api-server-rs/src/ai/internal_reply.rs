@@ -81,6 +81,9 @@ pub async fn handle(
         is_ai_generated: Some(true),
         ai_provider: request.provider,
         ai_model: request.model,
+        encrypted: None,
+        e2ee_header: None,
+        e2ee_device_id: None,
     };
 
     let mut event = im_rs_common::event::ImEvent::new(

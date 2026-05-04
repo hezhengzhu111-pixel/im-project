@@ -252,6 +252,22 @@ export function createMessageSendQueueModule(
       pendingMessage,
     );
 
+    // E2EE encryption intercept
+    let encryptedPayload: { ciphertext: string; header: import('@/features/e2ee/types').RatchetHeader; deviceId: string } | null = null;
+
+    if (session.type === "private") {
+      try {
+        const { e2eeManager } = await import('@/features/e2ee/manager/e2ee-manager');
+        const { getLocalSessionStatus } = await import('@/features/e2ee/manager/negotiation');
+
+        if (getLocalSessionStatus(session.id) === 'encrypted') {
+          encryptedPayload = await e2eeManager.encryptMessage(session.id, content);
+        }
+      } catch (e2eeError) {
+        console.error('[E2EE] Encryption intercept failed, sending as plaintext:', e2eeError);
+      }
+    }
+
     const commonSendFields = {
       clientMessageId,
       messageType: type,
@@ -265,17 +281,29 @@ export function createMessageSendQueueModule(
     };
 
     try {
-      const response =
-        session.type === "group"
-          ? await ctx.messageService.sendGroup({
-              ...commonSendFields,
-              groupId: session.targetId,
-              mentionedUserIds,
-            })
-          : await ctx.messageService.sendPrivate({
-              ...commonSendFields,
-              receiverId: session.targetId,
-            });
+      let response;
+      if (session.type === "group") {
+        response = await ctx.messageService.sendGroup({
+          ...commonSendFields,
+          groupId: session.targetId,
+          mentionedUserIds,
+        });
+      } else if (encryptedPayload) {
+        response = await ctx.messageService.sendPrivateEncrypted({
+          receiverId: session.targetId,
+          clientMessageId,
+          messageType: String(type),
+          content: encryptedPayload.ciphertext,
+          encrypted: true,
+          e2eeHeader: JSON.stringify(encryptedPayload.header),
+          e2eeDeviceId: encryptedPayload.deviceId,
+        });
+      } else {
+        response = await ctx.messageService.sendPrivate({
+          ...commonSendFields,
+          receiverId: session.targetId,
+        });
+      }
 
       const serverMessage: Message = {
         ...response.data,
