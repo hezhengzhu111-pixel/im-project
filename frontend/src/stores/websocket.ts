@@ -467,13 +467,13 @@ export const useWebSocketStore = defineStore("websocket", () => {
         const isEncrypted = rawMsg.encrypted === true || rawMsg.encrypted === 1;
 
         if (isEncrypted && normalizedMessage.messageType !== "SYSTEM") {
+          const senderId = String(normalizedMessage.senderId || "");
+          // Skip decryption for own messages — already encrypted locally, decrypting would desync ratchet state
+          if (senderId !== currentUserId) {
           try {
             const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
 
-            const senderId = String(normalizedMessage.senderId || "");
-            const peerId = senderId === currentUserId
-              ? String(normalizedMessage.receiverId || "")
-              : senderId;
+            const peerId = senderId;
             const sessionId = buildSessionId("private", currentUserId, peerId);
 
             const headerRaw = rawMsg.e2eeHeader || rawMsg.e2ee_header;
@@ -495,6 +495,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
           } catch (e) {
             console.error("[E2EE] Decrypt failed:", e);
             (normalizedMessage as unknown as Record<string, unknown>).encrypted = true;
+          }
           }
         }
 

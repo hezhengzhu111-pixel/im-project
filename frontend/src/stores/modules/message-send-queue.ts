@@ -348,6 +348,13 @@ export function createMessageSendQueueModule(
                 data: {
                   ...commonSendFields,
                   receiverId: session.targetId,
+                  ...(encryptedPayload
+                    ? {
+                        encrypted: true,
+                        e2eeHeader: JSON.stringify(encryptedPayload.header),
+                        e2eeDeviceId: encryptedPayload.deviceId,
+                      }
+                    : {}),
                 },
               };
         await ctx.messageRepo.addPendingMessage(
