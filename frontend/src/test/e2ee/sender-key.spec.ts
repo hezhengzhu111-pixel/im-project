@@ -151,33 +151,8 @@ describe('Sender Key', () => {
     // Verify sender counter is now at 5
     expect(senderKey.counter).toBe(5);
 
-    // Create receiver key from the original chain key (before any encryption)
-    const distSerialized = await serializeSenderKey(senderKey);
-    const receiverKey = await deserializeSenderKey({
-      ...distSerialized,
-      counter: 0, // Receiver starts at counter 0
-    });
-    // Restore original chainKey by re-generating and using the same signing keys
-    // Actually, the serialized key has the CURRENT chainKey (after 5 encryptions)
-    // We need the ORIGINAL chainKey. Let's use a different approach:
-    // Re-generate a fresh sender key, copy signing keys, use original chainKey
-
-    // Better approach: serialize before encryption, then use that for distribution
-    const freshSenderKey = await generateSenderKey();
-    const freshSerialized = await serializeSenderKey(freshSenderKey);
-
-    // Use the same signing keys as the original sender
-    const senderSerialized = await serializeSenderKey(senderKey);
-    const receiverSerialized = {
-      ...freshSerialized,
-      signingPrivateJwk: senderSerialized.signingPrivateJwk,
-      signingPublicJwk: senderSerialized.signingPublicJwk,
-      counter: 0,
-    };
-    // This won't work because the chainKey is different. Let me think...
-
-    // Actually, the simplest test: create a new sender key, serialize it,
-    // then encrypt messages with the original, decrypt with the deserialized copy
+    // Create a new sender key, serialize it, then encrypt messages with the original,
+    // decrypt with the deserialized copy
     const testKey = await generateSenderKey();
     const testSerialized = await serializeSenderKey(testKey);
     const testReceiver = await deserializeSenderKey(testSerialized);

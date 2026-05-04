@@ -107,6 +107,9 @@ pub async fn enable_group_encryption(
     // 验证管理员权限
     ensure_group_admin(&state.db, group_id, identity.user_id).await?;
 
+    // 开启事务，保证 e2ee_groups 和 e2ee_sender_keys 的原子写入
+    let mut tx = state.db.begin().await?;
+
     // 插入群聊加密状态记录（幂等：已存在则更新）
     sqlx::query(
         r#"INSERT INTO service_user_service_db.e2ee_groups (group_id, status, enabled_by)
@@ -115,7 +118,7 @@ pub async fn enable_group_encryption(
     )
     .bind(group_id)
     .bind(identity.user_id)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await?;
 
     // 批量插入加密后的 Sender Key
@@ -133,9 +136,11 @@ pub async fn enable_group_encryption(
         .bind(&entry.device_id)
         .bind(entry.recipient_id)
         .bind(&entry.encrypted_sender_key)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
     }
+
+    tx.commit().await?;
 
     Ok(Json(ApiResponse::success("ok".to_string())))
 }
@@ -263,7 +268,12 @@ pub async fn remove_member_sender_keys(
     headers: HeaderMap,
     Path((group_id, user_id)): Path<(i64, i64)>,
 ) -> Result<Json<ApiResponse<String>>, AppError> {
-    let _identity = identity_from_headers(&headers, &state.config)?;
+    let identity = identity_from_headers(&headers, &state.config)?;
+
+    // 允许自己删除自己的 sender key，或管理员/群主删除他人的
+    if identity.user_id != user_id {
+        ensure_group_admin(&state.db, group_id, identity.user_id).await?;
+    }
 
     sqlx::query(
         "DELETE FROM service_user_service_db.e2ee_sender_keys \
@@ -331,6 +341,9 @@ pub async fn enable_group_encryption_legacy(
     // 验证管理员权限
     ensure_group_admin(&state.db, request.group_id, identity.user_id).await?;
 
+    // 开启事务，保证 e2ee_groups 和 e2ee_sender_keys 的原子写入
+    let mut tx = state.db.begin().await?;
+
     // 插入群聊加密状态记录（幂等：已存在则更新）
     sqlx::query(
         r#"INSERT INTO service_user_service_db.e2ee_groups (group_id, status, enabled_by)
@@ -339,7 +352,7 @@ pub async fn enable_group_encryption_legacy(
     )
     .bind(request.group_id)
     .bind(identity.user_id)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await?;
 
     // 批量插入加密后的 Sender Key
@@ -357,9 +370,11 @@ pub async fn enable_group_encryption_legacy(
         .bind(&entry.device_id)
         .bind(entry.recipient_id)
         .bind(&entry.encrypted_sender_key)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
     }
+
+    tx.commit().await?;
 
     Ok(Json(ApiResponse::success("ok".to_string())))
 }
