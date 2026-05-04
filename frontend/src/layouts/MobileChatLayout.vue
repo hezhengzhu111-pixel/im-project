@@ -14,10 +14,14 @@
         @open-create-group="showCreateGroup = true"
       />
 
-      <div v-else-if="activeTab === 'contacts'" class="mobile-tab-placeholder">
-        <el-icon :size="48" color="var(--text-tertiary)"><User /></el-icon>
-        <p>{{ t("sidebar.contactsTitle") }}</p>
-      </div>
+      <MobileContactList
+        v-else-if="activeTab === 'contacts'"
+        :friends="chatStore.friends"
+        :loading="chatStore.loading"
+        :pending-requests-count="pendingRequestsCount"
+        @start-private-chat="startPrivateChat"
+        @open-add-friend="showAddFriend = true"
+      />
 
       <MobileTabBar
         :active-tab="activeTab"
@@ -71,17 +75,18 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted } from "vue";
-import { User } from "@element-plus/icons-vue";
 import { useRouter } from "vue-router";
 import { App as CapApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import ChatDialogs from "@/features/chat/ChatDialogs.vue";
 import ConnectionStatusBar from "@/components/status/ConnectionStatusBar.vue";
 import MobileChatRoom from "@/components/mobile/MobileChatRoom.vue";
+import MobileContactList from "@/components/mobile/MobileContactList.vue";
 import MobileConversationList from "@/components/mobile/MobileConversationList.vue";
 import MobileTabBar from "@/components/mobile/MobileTabBar.vue";
 import { useChatPage } from "@/features/chat/composables/useChatPage";
 import { setupBackButtonHandler } from "@/services/platform/capacitor-init";
+import type { Friend } from "@/types";
 
 const router = useRouter();
 
@@ -110,6 +115,7 @@ const {
   currentSessionUnreadSnapshot,
   handleTabChange,
   selectSession,
+  startChat,
   sendTextMessage,
   sendMediaMessage,
   handleRequestMembers,
@@ -130,6 +136,10 @@ const handleMobileTabChange = (tab: string) => {
   if (tab === "chat" || tab === "contacts" || tab === "groups") {
     handleTabChange(tab);
   }
+};
+
+const startPrivateChat = (contact: Friend) => {
+  startChat(contact);
 };
 
 onMounted(() => {
@@ -172,15 +182,4 @@ onUnmounted(() => {
   background: var(--chat-shell-bg);
 }
 
-.mobile-tab-placeholder {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding-bottom: var(--mobile-tabbar-height, 56px);
-  color: var(--text-tertiary);
-  font-size: var(--text-base);
-}
 </style>
