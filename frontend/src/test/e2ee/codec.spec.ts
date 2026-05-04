@@ -9,7 +9,7 @@ import {
 describe('e2ee codec', () => {
   it('bufferToBase64 and base64ToBuffer are inverse', () => {
     const original = randomBytes(32);
-    const base64 = bufferToBase64(original.buffer);
+    const base64 = bufferToBase64(original.buffer as ArrayBuffer);
     const restored = new Uint8Array(base64ToBuffer(base64));
     expect(restored).toEqual(original);
   });
