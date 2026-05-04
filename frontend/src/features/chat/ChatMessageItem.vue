@@ -336,6 +336,7 @@ const handleMediaLoaded = () => {
   border: 0;
   background: transparent;
   padding: 0;
+  margin: 0;
 }
 
 .message-item {
@@ -375,6 +376,7 @@ const handleMediaLoaded = () => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow: hidden;
 }
 
 .message-stack {
@@ -440,7 +442,8 @@ const handleMediaLoaded = () => {
 }
 
 .media-card {
-  display: inline-block;
+  display: block;
+  width: 100%;
   max-width: min(320px, 62vw);
   border-radius: var(--radius-sm, 8px);
   background: rgba(248, 250, 252, 0.94);
@@ -449,6 +452,7 @@ const handleMediaLoaded = () => {
 
 .attachment-card {
   width: min(320px, 62vw);
+  max-width: 100%;
   border-radius: var(--radius-sm, 8px);
   background: rgba(248, 250, 252, 0.94);
   overflow: hidden;
@@ -469,14 +473,17 @@ const handleMediaLoaded = () => {
 
 .message-image {
   display: block;
-  max-width: 100%;
+  width: 100%;
   height: auto;
+  max-height: 320px;
+  object-fit: cover;
 }
 
 .message-video {
   display: block;
   width: 100%;
   max-height: 260px;
+  object-fit: cover;
   background: rgba(15, 23, 42, 0.88);
 }
 
@@ -485,6 +492,7 @@ const handleMediaLoaded = () => {
   align-items: center;
   justify-content: center;
   width: 240px;
+  max-width: 100%;
   aspect-ratio: 4 / 3;
   color: var(--chat-text-tertiary);
   font-size: 13px;
@@ -754,7 +762,7 @@ const handleMediaLoaded = () => {
   }
 
   .media-card {
-    max-width: min(280px, 64vw);
+    max-width: min(280px, 72vw);
   }
 }
 </style>

@@ -32,9 +32,10 @@
       ref="scrollerRef"
       class="message-scroller chat-soft-scrollbar"
       :items="renderItems"
-      :item-size="estimatedItemSize"
+      :item-size="null"
+      :min-item-size="40"
       key-field="id"
-      :buffer="200"
+      :buffer="400"
       @scroll="handleScrollerScroll"
     >
       <template #default="{ item }">
@@ -214,7 +215,6 @@ type HistoryAnchor = {
   length: number;
 };
 
-const estimatedItemSize = 60;
 const BOTTOM_FOLLOW_THRESHOLD = 180;
 const READ_ACK_BOTTOM_THRESHOLD = 120;
 const HISTORY_TRIGGER_TOP = 80;

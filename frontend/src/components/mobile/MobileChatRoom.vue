@@ -117,7 +117,6 @@ const handleSendText = (text: string, mentionedUserIds?: string[]) => {
 .mcr-messages {
   flex: 1;
   min-height: 0;
-  padding-bottom: var(--mcr-keyboard-inset, 0px);
 }
 
 .mcr-composer {

@@ -764,24 +764,44 @@ onUnmounted(() => {
 
 @media (max-width: 768px) {
   .composer-shell {
-    padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+    padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .composer-surface {
+    border-radius: var(--radius-md, 12px);
   }
 
   .composer-row {
     grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 6px;
-    padding: 7px;
+    gap: 4px;
+    padding: 6px;
+    min-height: 48px;
+  }
+
+  .toolbar-group {
+    gap: 0;
+    padding-bottom: 0;
   }
 
   .toolbar-button {
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+  }
+
+  .chat-textarea {
+    min-height: 36px;
+    max-height: 80px;
+    padding: 7px 4px;
+    font-size: 16px; /* prevent iOS zoom on focus */
   }
 
   .send-button {
-    width: 62px;
-    height: 44px;
-    border-radius: 10px;
+    width: 56px;
+    height: 40px;
+    min-width: 56px;
+    border-radius: 8px;
+    font-size: 14px;
   }
 }
 </style>
