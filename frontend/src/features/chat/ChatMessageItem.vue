@@ -65,7 +65,6 @@
                 :preview-src-list="[]"
                 :scroll-container="imageScrollContainer || undefined"
                 fit="cover"
-                lazy
                 class="message-image"
                 @load="handleMediaLoaded"
                 @error="handleMediaLoaded"
@@ -341,7 +340,7 @@ const handleMediaLoaded = () => {
 
 .message-item {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: 8px;
   margin-bottom: 12px;
   animation: msgFadeIn 0.25s var(--motion-out, ease-out) both;

@@ -64,7 +64,7 @@ describe("MessageItem image lazy loading", () => {
 
     const image = wrapper.findComponent({ name: "ElImage" });
 
-    expect(image.props("lazy")).toBe(true);
+    expect(image.props("lazy")).toBeFalsy();
     expect(image.props("scrollContainer")).toBe(scrollContainer);
     expect(image.props("src")).toBe(baseProps.mediaUrl);
 
