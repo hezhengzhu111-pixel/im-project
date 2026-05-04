@@ -3,9 +3,12 @@
     <div class="page-header">
       <el-button link :icon="ArrowLeft" @click="$router.back()">返回</el-button>
       <h2>群组</h2>
-      <el-button type="primary" :icon="Plus" @click="showCreateGroup = true">
-        创建群组
-      </el-button>
+      <div class="header-actions">
+        <el-button :icon="Search" @click="openJoinGroupDialog">加入群聊</el-button>
+        <el-button type="primary" :icon="Plus" @click="showCreateGroup = true">
+          创建群组
+        </el-button>
+      </div>
     </div>
 
     <div class="toolbar">
@@ -158,6 +161,51 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showJoinGroup" title="加入群聊" width="520px">
+      <div class="join-group-dialog">
+        <div class="join-search-bar">
+          <el-input
+            v-model="joinKeyword"
+            placeholder="搜索群组名称"
+            :prefix-icon="Search"
+            clearable
+            @keyup.enter="searchJoinGroups"
+          />
+          <el-button type="primary" :loading="joinSearching" @click="searchJoinGroups">
+            搜索
+          </el-button>
+        </div>
+
+        <div class="join-results">
+          <div v-if="joinSearching && joinResults.length === 0" class="join-empty">
+            搜索中...
+          </div>
+          <div v-else-if="joinResults.length === 0" class="join-empty">
+            {{ joinKeyword.trim() ? "未找到相关群组" : "输入关键词搜索群组" }}
+          </div>
+          <div v-else class="join-list">
+            <div v-for="group in joinResults" :key="group.id" class="join-item">
+              <el-avatar :size="44" :src="group.avatar" shape="square">
+                {{ (group.groupName || group.name || "G").charAt(0) }}
+              </el-avatar>
+              <div class="join-info">
+                <div class="join-name">{{ group.groupName || group.name }}</div>
+                <div class="join-meta">{{ group.memberCount || 0 }} 位成员</div>
+              </div>
+              <el-button
+                type="primary"
+                size="small"
+                :loading="joiningGroupId === group.id"
+                @click="joinGroup(group)"
+              >
+                加入
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -191,6 +239,12 @@ const creating = ref(false);
 const showCreateGroup = ref(false);
 const searchKeyword = ref("");
 const sortBy = ref<SortMode>("name");
+
+const showJoinGroup = ref(false);
+const joinKeyword = ref("");
+const joinResults = ref<Group[]>([]);
+const joinSearching = ref(false);
+const joiningGroupId = ref<string | null>(null);
 
 const createGroupForm = reactive({
   name: "",
@@ -423,6 +477,40 @@ const handleGroupAction = async (command: string, group: Group) => {
   }
 };
 
+const searchJoinGroups = async () => {
+  const keyword = joinKeyword.value.trim();
+  if (!keyword) return;
+  joinSearching.value = true;
+  try {
+    const response = await groupService.searchGroups(keyword);
+    joinResults.value = response.data || [];
+  } catch (error) {
+    capture(error, "搜索群组失败");
+  } finally {
+    joinSearching.value = false;
+  }
+};
+
+const joinGroup = async (group: Group) => {
+  joiningGroupId.value = group.id;
+  try {
+    await groupService.join(group.id);
+    notifySuccess(`已申请加入「${group.groupName || group.name}」`);
+    await chatStore.loadGroups();
+    showJoinGroup.value = false;
+  } catch (error) {
+    capture(error, "加入群组失败");
+  } finally {
+    joiningGroupId.value = null;
+  }
+};
+
+const openJoinGroupDialog = () => {
+  joinKeyword.value = "";
+  joinResults.value = [];
+  showJoinGroup.value = true;
+};
+
 onMounted(() => {
   void loadData();
 });
@@ -448,6 +536,11 @@ onMounted(() => {
 .page-header {
   justify-content: space-between;
   margin-bottom: 20px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .page-header h2 {
@@ -538,6 +631,67 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.join-group-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.join-search-bar {
+  display: flex;
+  gap: 8px;
+}
+
+.join-search-bar .el-input {
+  flex: 1;
+}
+
+.join-results {
+  min-height: 200px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.join-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
+.join-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.join-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface-elevated);
+}
+
+.join-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.join-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.join-meta {
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: 13px;
 }
 
 @media (max-width: 768px) {

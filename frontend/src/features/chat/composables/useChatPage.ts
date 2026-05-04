@@ -244,15 +244,11 @@ export function useChatPage() {
     }
   };
 
-  const openSessionInfoDrawer = async (session: ChatSession) => {
-    showSessionInfoDrawer.value = true;
-    sessionInfoMembers.value = [];
-    sessionInfoError.value = "";
-    sessionInfoLoading.value = false;
-    if (session.type !== "group") return;
+  const refreshSessionMembers = async (groupId: string) => {
     sessionInfoLoading.value = true;
+    sessionInfoError.value = "";
     try {
-      const response = await groupService.getMembers(session.targetId);
+      const response = await groupService.getMembers(groupId);
       const members = response.data || [];
       const memberIds = members
         .map((member) => String(member.userId || ""))
@@ -271,6 +267,15 @@ export function useChatPage() {
     } finally {
       sessionInfoLoading.value = false;
     }
+  };
+
+  const openSessionInfoDrawer = async (session: ChatSession) => {
+    showSessionInfoDrawer.value = true;
+    sessionInfoMembers.value = [];
+    sessionInfoError.value = "";
+    sessionInfoLoading.value = false;
+    if (session.type !== "group") return;
+    await refreshSessionMembers(session.targetId);
   };
 
   const handleSessionAction = async (command: string | number | object) => {
@@ -514,6 +519,7 @@ export function useChatPage() {
     startChat,
     startGroupChat,
     openSessionInfoDrawer,
+    refreshSessionMembers,
     handleSessionAction,
     sendTextMessage,
     sendMediaMessage,

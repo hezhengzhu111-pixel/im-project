@@ -42,6 +42,22 @@ export const groupService = {
         return response as unknown as ApiResponse<GroupMember[]>;
       }),
   join: (groupId: string) => http.post<void>(`/group/${groupId}/join`),
+  addMembers: (groupId: string, memberIds: string[]) =>
+    http.post<void>(`/group/${groupId}/add-members`, {
+      memberIds: memberIds.map(Number),
+    }),
+  searchGroups: (keyword: string): Promise<ApiResponse<Group[]>> =>
+    http
+      .get<RawGroupDTO[]>(`/group/search`, { params: { q: keyword } })
+      .then((response) => {
+        if (response.code === 200 && Array.isArray(response.data)) {
+          return {
+            ...response,
+            data: response.data.map((item) => normalizeGroup(item)),
+          };
+        }
+        return response as unknown as ApiResponse<Group[]>;
+      }),
   quit: (groupId: string) => http.post<void>(`/group/${groupId}/leave`),
   dismiss: (groupId: string) => http.delete<void>(`/group/${groupId}`),
   update: (groupId: string, data: UpdateGroupRequest, operatorId?: string) =>

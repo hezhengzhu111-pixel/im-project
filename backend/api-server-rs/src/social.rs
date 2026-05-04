@@ -402,6 +402,33 @@ pub async fn user_groups(
     )))
 }
 
+pub async fn search_groups(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<ApiResponse<Vec<GroupDto>>>, AppError> {
+    let _identity = identity_from_headers(&headers, &state.config)?;
+    let keyword = params
+        .get("q")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| AppError::BadRequest("search keyword is required".to_string()))?;
+    let like_pattern = format!("%{}%", keyword);
+    let rows = sqlx::query(
+        r#"SELECT id, name, avatar, announcement, owner_id, type, max_members, member_count, status, created_time
+           FROM service_group_service_db.im_group
+           WHERE status = 1 AND name LIKE ?
+           ORDER BY member_count DESC
+           LIMIT 20"#,
+    )
+    .bind(&like_pattern)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(ApiResponse::success(
+        rows.iter().map(group_from_row).collect(),
+    )))
+}
+
 pub async fn group_members(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -443,6 +470,54 @@ pub async fn join_group(
     )
     .await?;
     refresh_group_member_count(&state.db, group_id).await?;
+    Ok(Json(ApiResponse::success(true)))
+}
+
+pub async fn add_group_members(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<i64>,
+    Json(payload): Json<Value>,
+) -> Result<Json<ApiResponse<bool>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let group_id = resolve_group_id_or_not_found(&state.db, group_id).await?;
+    ensure_group_member(&state.db, group_id, identity.user_id).await?;
+    let member_ids_raw: Vec<i64> = payload
+        .get("memberIds")
+        .and_then(Value::as_array)
+        .map(|arr| arr.iter().filter_map(value_to_i64).collect())
+        .unwrap_or_default();
+    if member_ids_raw.is_empty() {
+        return Err(AppError::BadRequest(
+            "memberIds is required".to_string(),
+        ));
+    }
+    let mut added_ids = Vec::new();
+    for member_id in member_ids_raw {
+        if let Some(resolved) = resolve_active_user_id(&state.db, member_id).await? {
+            add_group_member(
+                &state.db,
+                state.config.snowflake_node_id,
+                group_id,
+                resolved,
+                1,
+            )
+            .await?;
+            added_ids.push(resolved);
+        }
+    }
+    if !added_ids.is_empty() {
+        let mut redis = group_redis_for_group(&state, group_id)?;
+        initialize_group_read_sequences(
+            &mut redis,
+            &state.db,
+            state.config.snowflake_node_id,
+            group_id,
+            &added_ids,
+        )
+        .await?;
+        refresh_group_member_count(&state.db, group_id).await?;
+    }
     Ok(Json(ApiResponse::success(true)))
 }
 

@@ -191,7 +191,17 @@
       </div>
 
       <template v-if="currentSession.type === 'group'">
-        <div class="member-section-title">{{ t("dialog.members") }}</div>
+        <div class="member-section-title">
+          {{ t("dialog.members") }}
+          <el-button
+            type="primary"
+            link
+            size="small"
+            @click="openAddMemberDialog"
+          >
+            + 添加成员
+          </el-button>
+        </div>
         <div v-if="sessionInfoLoading" class="member-state">
           {{ t("dialog.loadingMembers") }}
         </div>
@@ -248,6 +258,36 @@
       </template>
     </template>
   </el-drawer>
+
+  <el-dialog
+    v-model="showAddMemberDialog"
+    title="添加群成员"
+    width="520px"
+    append-to-body
+    class="chat-shell-dialog"
+  >
+    <el-transfer
+      v-model="addMemberForm.memberIds"
+      :data="friendsForTransfer"
+      :titles="transferTitles"
+      filterable
+      filter-placeholder="搜索好友"
+      style="width: 100%"
+    />
+    <template #footer>
+      <el-button @click="showAddMemberDialog = false">
+        {{ t("common.cancel") }}
+      </el-button>
+      <el-button
+        type="primary"
+        :loading="addMemberLoading"
+        :disabled="addMemberForm.memberIds.length === 0"
+        @click="confirmAddMembers"
+      >
+        确认添加
+      </el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
@@ -255,6 +295,7 @@ import { computed, defineAsyncComponent, reactive, ref } from "vue";
 import { useFileMessageUpload } from "@/features/chat/composables/useFileMessageUpload";
 import { useErrorHandler } from "@/hooks/useErrorHandler";
 import EmptyState from "@/components/common/EmptyState.vue";
+import { groupService } from "@/services/group";
 import { useChatStore } from "@/stores/chat";
 import { useI18nStore } from "@/stores/i18n";
 import { useUserStore } from "@/stores/user";
@@ -290,6 +331,7 @@ const props = defineProps<{
   sessionInfoLoading: boolean;
   sessionInfoError: string;
   privateSessionOnline: boolean;
+  friends: Friend[];
 }>();
 
 const emit = defineEmits<{
@@ -298,6 +340,7 @@ const emit = defineEmits<{
   (e: "update:visibleGroupReadDialog", value: boolean): void;
   (e: "update:visibleSearchDialog", value: boolean): void;
   (e: "update:visibleSessionInfoDrawer", value: boolean): void;
+  (e: "refresh-members"): void;
 }>();
 
 const chatStore = useChatStore();
@@ -490,6 +533,45 @@ const createGroup = async () => {
     });
   } catch (error) {
     capture(error, t("dialog.failedCreateGroup"));
+  }
+};
+
+const showAddMemberDialog = ref(false);
+const addMemberForm = reactive({ memberIds: [] as string[] });
+const addMemberLoading = ref(false);
+
+const existingMemberIds = computed(() =>
+  new Set(sessionInfoMembers.value.map((m) => String(m.userId))),
+);
+
+const friendsForTransfer = computed(() =>
+  props.friends
+    .filter((f) => !existingMemberIds.value.has(String(f.friendId)))
+    .map((f) => ({
+      key: f.friendId,
+      label: f.nickname || f.username,
+    })),
+);
+
+const openAddMemberDialog = () => {
+  addMemberForm.memberIds = [];
+  showAddMemberDialog.value = true;
+};
+
+const confirmAddMembers = async () => {
+  if (addMemberForm.memberIds.length === 0) return;
+  const groupId = currentSession.value?.targetId;
+  if (!groupId) return;
+  addMemberLoading.value = true;
+  try {
+    await groupService.addMembers(groupId, addMemberForm.memberIds);
+    notifySuccess("成员已添加");
+    showAddMemberDialog.value = false;
+    emit("refresh-members");
+  } catch (error) {
+    capture(error, "添加成员失败");
+  } finally {
+    addMemberLoading.value = false;
   }
 };
 
@@ -689,6 +771,9 @@ const formatMessageTime = (value?: string) => {
 }
 
 .member-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 10px;
   color: var(--chat-text-primary);
   font-size: 13px;

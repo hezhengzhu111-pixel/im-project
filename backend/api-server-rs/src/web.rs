@@ -172,6 +172,16 @@ pub fn router(state: AppState) -> Router {
         .route("/api/group/user/:user_id", get(social::user_groups))
         .route("/group/members/list", post(social::group_members))
         .route("/api/group/members/list", post(social::group_members))
+        .route(
+            "/group/:group_id/add-members",
+            post(social::add_group_members),
+        )
+        .route(
+            "/api/group/:group_id/add-members",
+            post(social::add_group_members),
+        )
+        .route("/group/search", get(social::search_groups))
+        .route("/api/group/search", get(social::search_groups))
         .route("/group/:group_id/join", post(social::join_group))
         .route("/api/group/:group_id/join", post(social::join_group))
         .route("/group/:group_id/leave", post(social::leave_group))

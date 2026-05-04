@@ -424,6 +424,8 @@
       :session-info-loading="sessionInfoLoading"
       :session-info-error="sessionInfoError"
       :private-session-online="currentSessionOnline"
+      :friends="chatStore.friends"
+      @refresh-members="currentSession?.targetId && refreshSessionMembers(currentSession.targetId)"
     />
   </div>
 </template>
@@ -490,6 +492,7 @@ const {
   startChat,
   startGroupChat,
   openSessionInfoDrawer,
+  refreshSessionMembers,
   handleSessionAction,
   sendTextMessage,
   sendMediaMessage,
