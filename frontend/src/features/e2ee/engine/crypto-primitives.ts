@@ -199,10 +199,11 @@ export async function aesGcmEncrypt(
   key: CryptoKey,
   plaintext: ArrayBuffer,
   iv?: Uint8Array,
+  additionalData?: ArrayBuffer,
 ): Promise<{ ciphertext: ArrayBuffer; iv: Uint8Array }> {
   const nonce = iv ?? randomBytes(12);
   const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: nonce },
+    { name: 'AES-GCM', iv: nonce, ...(additionalData ? { additionalData } : {}) },
     key,
     plaintext,
   );
@@ -216,9 +217,10 @@ export async function aesGcmDecrypt(
   key: CryptoKey,
   ciphertext: ArrayBuffer,
   iv: Uint8Array,
+  additionalData?: ArrayBuffer,
 ): Promise<ArrayBuffer> {
   return crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv, ...(additionalData ? { additionalData } : {}) },
     key,
     ciphertext,
   );

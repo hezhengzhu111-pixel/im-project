@@ -15,6 +15,12 @@ import { cryptoKeyToJwk, jwkToCryptoKey } from '../engine/codec';
 // 序列化类型
 // ---------------------------------------------------------------------------
 
+/** 序列化后的单个跳过消息密钥条目 */
+interface SerializedSkippedKey {
+  key: string;
+  messageKey: JsonWebKey;
+}
+
 /** 序列化后的 RatchetState（所有 CryptoKey 转为 JWK） */
 interface SerializedRatchetState {
   rootKey: JsonWebKey;
@@ -26,6 +32,7 @@ interface SerializedRatchetState {
   dhPrivateKey: JsonWebKey;
   dhPublicKey: JsonWebKey;
   remotePublicKey: JsonWebKey | null;
+  skippedMessageKeys: SerializedSkippedKey[];
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +79,12 @@ function openDB(): Promise<IDBDatabase> {
  * @param state - 当前棘轮状态
  */
 export async function saveRatchetState(sessionId: string, state: RatchetState): Promise<void> {
+  // 序列化跳过消息密钥
+  const skippedEntries: SerializedSkippedKey[] = [];
+  for (const [key, messageKey] of state.skippedMessageKeys) {
+    skippedEntries.push({ key, messageKey: await cryptoKeyToJwk(messageKey) });
+  }
+
   const serialized: SerializedRatchetState = {
     rootKey: await cryptoKeyToJwk(state.rootKey),
     sendingChainKey: state.sendingChainKey ? await cryptoKeyToJwk(state.sendingChainKey) : null,
@@ -82,6 +95,7 @@ export async function saveRatchetState(sessionId: string, state: RatchetState): 
     dhPrivateKey: await cryptoKeyToJwk(state.dhKeyPair.privateKey),
     dhPublicKey: await cryptoKeyToJwk(state.dhKeyPair.publicKey),
     remotePublicKey: state.remotePublicKey ? await cryptoKeyToJwk(state.remotePublicKey) : null,
+    skippedMessageKeys: skippedEntries,
   };
 
   const db = await openDB();
@@ -172,6 +186,15 @@ async function deserializeRatchetState(data: SerializedRatchetState): Promise<Ra
     ? await jwkToCryptoKey(data.remotePublicKey, ecdhParams, [])
     : null;
 
+  // 反序列化跳过消息密钥
+  const skippedMessageKeys = new Map<string, CryptoKey>();
+  if (data.skippedMessageKeys) {
+    for (const entry of data.skippedMessageKeys) {
+      const mk = await jwkToCryptoKey(entry.messageKey, aesParams, ['encrypt', 'decrypt']);
+      skippedMessageKeys.set(entry.key, mk);
+    }
+  }
+
   return {
     rootKey,
     sendingChainKey,
@@ -181,5 +204,6 @@ async function deserializeRatchetState(data: SerializedRatchetState): Promise<Ra
     previousCounter: data.previousCounter,
     dhKeyPair: { privateKey: dhPrivateKey, publicKey: dhPublicKey },
     remotePublicKey,
+    skippedMessageKeys,
   };
 }

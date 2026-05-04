@@ -45,6 +45,11 @@ export interface RatchetState {
   dhKeyPair: CryptoKeyPair;
   /** 远端 DH 公钥（首次收到远端消息后不为 null） */
   remotePublicKey: CryptoKey | null;
+  /**
+   * 跳过消息密钥缓存（支持乱序解密）
+   * key 格式: `${ratchetPublicKeyBase64}_${counter}`
+   */
+  skippedMessageKeys: Map<string, CryptoKey>;
 }
 
 /** KDF 链分割结果 */
@@ -75,6 +80,19 @@ function toBuffer(data: ArrayBufferLike): ArrayBuffer {
   const buf = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(buf).set(bytes);
   return buf;
+}
+
+/**
+ * 构建 AES-GCM 的 AAD (Additional Authenticated Data)
+ *
+ * 将消息头的关键字段（ratchetPublicKey + counter + previousCounter）序列化为
+ * ArrayBuffer，作为 AES-GCM 的 AAD。接收方可以用相同方式重建 AAD，
+ * 确保消息头未被篡改。
+ */
+function buildAad(ratchetPublicKey: string, counter: number, previousCounter: number): ArrayBuffer {
+  return new TextEncoder().encode(
+    JSON.stringify({ ratchetPublicKey, counter, previousCounter }),
+  ).buffer as ArrayBuffer;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,11 +183,13 @@ async function performDhRatchet(state: RatchetState, newRemotePub: CryptoKey): P
 
   // --- 步骤 1: 接收方向 ---
   // 使用当前 DH 私钥 + 远端新公钥 → 派生接收链
+  // 使用 INFO_SENDING_CHAIN 与 initSendingChain/initReceivingChain 保持一致，
+  // 确保 Alice 的 sendingChainKey 与 Bob 的 receivingChainKey 匹配
   const dh1 = await ecdhDeriveBits(state.dhKeyPair.privateKey, newRemotePub);
   const { newRootKey: rk1, chainKey: receivingChainKey } = await kdfRootKey(
     state.rootKey,
     toBuffer(dh1),
-    INFO_RECEIVING_CHAIN,
+    INFO_SENDING_CHAIN,
   );
   state.rootKey = rk1;
   state.receivingChainKey = receivingChainKey;
@@ -220,19 +240,21 @@ export async function ratchetEncrypt(
   const { messageKey, chainKey: newChainKey } = await splitChainKey(state.sendingChainKey);
   state.sendingChainKey = newChainKey;
 
-  // AES-256-GCM 加密
-  const iv = randomBytes(12);
-  const ptBuffer: ArrayBuffer = new TextEncoder().encode(plaintext).buffer as ArrayBuffer;
-  const { ciphertext } = await aesGcmEncrypt(messageKey, ptBuffer, iv);
-
   // 构建消息头
   const pubRaw = await exportPublicKey(state.dhKeyPair.publicKey);
+  const ratchetPublicKey = bufferToBase64(toBuffer(pubRaw));
   const header: RatchetHeader = {
-    ratchetPublicKey: bufferToBase64(toBuffer(pubRaw)),
+    ratchetPublicKey,
     counter: state.sendCounter,
     previousCounter: state.previousCounter,
-    iv: bufferToBase64(iv.buffer as ArrayBuffer),
+    iv: bufferToBase64(randomBytes(12).buffer as ArrayBuffer),
   };
+
+  // 构建 AAD 并 AES-256-GCM 加密
+  const aad = buildAad(ratchetPublicKey, header.counter, header.previousCounter);
+  const iv = new Uint8Array(base64ToBuffer(header.iv));
+  const ptBuffer: ArrayBuffer = new TextEncoder().encode(plaintext).buffer as ArrayBuffer;
+  const { ciphertext } = await aesGcmEncrypt(messageKey, ptBuffer, iv, aad);
 
   state.sendCounter++;
   return { header, ciphertext: bufferToBase64(ciphertext) };
@@ -282,20 +304,31 @@ export async function ratchetDecrypt(
     state.remotePublicKey = remotePub;
   }
 
+  // 构建 AAD（与加密端使用相同的方式）
+  const aad = buildAad(header.ratchetPublicKey, header.counter, header.previousCounter);
+
+  // 检查跳过消息密钥缓存
+  const skipKey = `${header.ratchetPublicKey}_${header.counter}`;
+  const cachedMessageKey = state.skippedMessageKeys.get(skipKey);
+  if (cachedMessageKey) {
+    state.skippedMessageKeys.delete(skipKey);
+    const decrypted = await aesGcmDecrypt(cachedMessageKey, ciphertext, iv, aad);
+    return new TextDecoder().decode(decrypted);
+  }
+
   if (!state.receivingChainKey) {
     throw new Error('Double Ratchet: receiving chain not initialized');
   }
 
-  // 推进接收链到目标计数器位置
+  // 推进接收链到目标计数器位置，缓存跳过的消息密钥
   let currentChainKey = state.receivingChainKey;
   const targetCounter = header.counter;
 
-  // 跳过已处理的消息（counter < receiveCounter 由上层 buffer 处理）
-  // 这里推进链到 targetCounter 位置
   for (let i = state.receiveCounter; i < targetCounter; i++) {
-    const { chainKey: nextChainKey } = await splitChainKey(currentChainKey);
-    // 注意: 跳过的消息密钥应缓存以支持乱序解密
-    // 简化实现: 不缓存，乱序消息将无法解密
+    const { messageKey: skippedKey, chainKey: nextChainKey } = await splitChainKey(currentChainKey);
+    // 缓存跳过的消息密钥，支持乱序解密
+    const skippedRatchetPub = header.ratchetPublicKey;
+    state.skippedMessageKeys.set(`${skippedRatchetPub}_${i}`, skippedKey);
     currentChainKey = nextChainKey;
   }
 
@@ -303,8 +336,8 @@ export async function ratchetDecrypt(
   const { messageKey, chainKey: newChainKey } = await splitChainKey(currentChainKey);
   state.receivingChainKey = newChainKey;
 
-  // AES-256-GCM 解密
-  const decrypted = await aesGcmDecrypt(messageKey, ciphertext, iv);
+  // AES-256-GCM 解密（带 AAD）
+  const decrypted = await aesGcmDecrypt(messageKey, ciphertext, iv, aad);
   state.receiveCounter = targetCounter + 1;
 
   return new TextDecoder().decode(decrypted);
@@ -351,6 +384,7 @@ export async function initSendingChain(
     previousCounter: 0,
     dhKeyPair,
     remotePublicKey: null,
+    skippedMessageKeys: new Map(),
   };
 }
 
@@ -382,5 +416,6 @@ export async function initReceivingChain(
     previousCounter: 0,
     dhKeyPair,
     remotePublicKey: null,
+    skippedMessageKeys: new Map(),
   };
 }

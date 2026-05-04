@@ -353,4 +353,179 @@ describe('Double Ratchet', () => {
     const ivBytes = atob(header.iv);
     expect(ivBytes.length).toBe(12);
   });
+
+  // ---------------------------------------------------------------------------
+  // DH 轮换测试
+  // ---------------------------------------------------------------------------
+
+  it('DH ratchet rotation: new remote public key triggers ratchet step', async () => {
+    const alice = await generateKeyBundle();
+    const bob = await generateKeyBundle();
+
+    const aliceResult = await x3dhInitiate(
+      alice.identityKeyPair,
+      createRemoteBundle(bob),
+    );
+    await x3dhRespond(
+      bob.identityKeyPair,
+      bob.signedPreKeyPair,
+      bob.oneTimePreKeyPairs[0],
+      alice.bundle.identityKey,
+      aliceResult.ephemeralPublicKey,
+    );
+
+    const rootKey = await importRootKey(aliceResult.rootKey);
+    const aliceState = await initSendingChain(rootKey, alice.identityKeyPair);
+    const bobState = await initReceivingChain(rootKey, bob.identityKeyPair);
+
+    // --- 第一轮: Alice → Bob (使用初始发送链) ---
+    const msg1 = await ratchetEncrypt(aliceState, 'round 1 msg 1');
+    const msg2 = await ratchetEncrypt(aliceState, 'round 1 msg 2');
+    expect(await ratchetDecrypt(bobState, msg1.header, msg1.ciphertext)).toBe('round 1 msg 1');
+    expect(await ratchetDecrypt(bobState, msg2.header, msg2.ciphertext)).toBe('round 1 msg 2');
+
+    // 记录 Alice 当前的 ratchet 公钥
+    const alicePubKey1 = msg1.header.ratchetPublicKey;
+    expect(msg2.header.ratchetPublicKey).toBe(alicePubKey1); // 同一轮，公钥相同
+
+    // --- 模拟 Alice 发送带新 DH 公钥的消息 ---
+    // Alice 生成新 DH 密钥对，用当前 rootKey + ECDH(newPriv, bobPub) 派生新发送链
+    // 这与 Bob 的 performDhRatchet step 1 (接收方向) 完全对称:
+    //   Bob: dh = ECDH(bob.priv, aliceNewPub) → recvChain = HKDF(rootKey_raw||dh, salt, INFO)
+    //   Alice: dh = ECDH(aliceNew.priv, bob.pub) → sendChain = HKDF(rootKey_raw||dh, salt, INFO)
+    // 由于 ECDH 交换律: ECDH(bob.priv, aliceNew.pub) == ECDH(aliceNew.priv, bob.pub)
+    // 且双方使用相同的 rootKey，所以 sendChain == recvChain ✓
+    const { generateEphemeralKeyPair: genNewKeyPair } = await import(
+      '@/features/e2ee/engine/crypto-primitives'
+    );
+    const { ecdhDeriveBits: ecdh, hkdfDeriveKey: hkdf } = await import(
+      '@/features/e2ee/engine/crypto-primitives'
+    );
+
+    const HKDF_SALT = new Uint8Array(0).buffer as ArrayBuffer;
+    const INFO_ROOT_KEY = new TextEncoder().encode('RootKey').buffer as ArrayBuffer;
+    const INFO_CHAIN = new TextEncoder().encode('SendingChainKey').buffer as ArrayBuffer;
+
+    // 生成新 DH 密钥对
+    const newKeyPair = await genNewKeyPair();
+
+    // ECDH(newPriv, bob.pub) — 与 Bob 的 ECDH(bob.priv, newPub) 相同（交换律）
+    const dh = await ecdh(newKeyPair.privateKey, bobState.dhKeyPair.publicKey);
+    const rootKeyRaw = await crypto.subtle.exportKey('raw', aliceState.rootKey);
+    const kdfInput = new Uint8Array(rootKeyRaw.byteLength + dh.byteLength);
+    kdfInput.set(new Uint8Array(rootKeyRaw), 0);
+    kdfInput.set(new Uint8Array(dh), rootKeyRaw.byteLength);
+
+    // 派生新 rootKey 和发送链（与 performDhRatchet step 1 使用相同参数）
+    const newRootKey = await hkdf(kdfInput.buffer as ArrayBuffer, HKDF_SALT, INFO_ROOT_KEY);
+    const newSendingChainKey = await hkdf(kdfInput.buffer as ArrayBuffer, HKDF_SALT, INFO_CHAIN);
+
+    // 更新 Alice 状态
+    aliceState.rootKey = newRootKey;
+    aliceState.sendingChainKey = newSendingChainKey;
+    aliceState.dhKeyPair = newKeyPair;
+    aliceState.previousCounter = aliceState.sendCounter;
+    aliceState.sendCounter = 0;
+
+    // --- 第二轮: Alice → Bob (使用新发送链和新密钥对) ---
+    const msg3 = await ratchetEncrypt(aliceState, 'round 2 msg 1');
+
+    // 验证 ratchet 公钥已变化
+    expect(msg3.header.ratchetPublicKey).not.toBe(alicePubKey1);
+
+    // Bob 解密: 检测到新公钥 → 触发 performDhRatchet → 成功解密
+    expect(await ratchetDecrypt(bobState, msg3.header, msg3.ciphertext)).toBe('round 2 msg 1');
+    expect(bobState.receiveCounter).toBe(1); // DH 轮换后 receiveCounter 重置
+    expect(bobState.sendingChainKey).not.toBeNull(); // Bob 也获得发送链
+  });
+
+  // ---------------------------------------------------------------------------
+  // 乱序消息解密测试
+  // ---------------------------------------------------------------------------
+
+  it('out-of-order messages are decryptable via skipped message key cache', async () => {
+    const alice = await generateKeyBundle();
+    const bob = await generateKeyBundle();
+
+    const aliceResult = await x3dhInitiate(
+      alice.identityKeyPair,
+      createRemoteBundle(bob),
+    );
+    await x3dhRespond(
+      bob.identityKeyPair,
+      bob.signedPreKeyPair,
+      bob.oneTimePreKeyPairs[0],
+      alice.bundle.identityKey,
+      aliceResult.ephemeralPublicKey,
+    );
+
+    const rootKey = await importRootKey(aliceResult.rootKey);
+    const aliceState = await initSendingChain(rootKey, alice.identityKeyPair);
+    const bobState = await initReceivingChain(rootKey, bob.identityKeyPair);
+
+    // Alice 发送 5 条消息
+    const msgs = ['msg 0', 'msg 1', 'msg 2', 'msg 3', 'msg 4'];
+    const encrypted: { header: RatchetHeader; ciphertext: string }[] = [];
+    for (const msg of msgs) {
+      encrypted.push(await ratchetEncrypt(aliceState, msg));
+    }
+
+    // Bob 先收到第 3 条消息（counter=2），产生 counter gap
+    // receiveCounter=0, targetCounter=2 → 跳过 counter 0 和 1，缓存其消息密钥
+    const dec3 = await ratchetDecrypt(bobState, encrypted[2].header, encrypted[2].ciphertext);
+    expect(dec3).toBe('msg 2');
+
+    // Bob 收到之前跳过的第 0 条消息（从缓存解密）
+    const dec1 = await ratchetDecrypt(bobState, encrypted[0].header, encrypted[0].ciphertext);
+    expect(dec1).toBe('msg 0');
+
+    // Bob 收到之前跳过的第 1 条消息（从缓存解密）
+    const dec2 = await ratchetDecrypt(bobState, encrypted[1].header, encrypted[1].ciphertext);
+    expect(dec2).toBe('msg 1');
+
+    // Bob 收到第 4 条消息（counter=3），正常推进
+    const dec4 = await ratchetDecrypt(bobState, encrypted[3].header, encrypted[3].ciphertext);
+    expect(dec4).toBe('msg 3');
+
+    // Bob 收到第 5 条消息（counter=4），正常推进
+    const dec5 = await ratchetDecrypt(bobState, encrypted[4].header, encrypted[4].ciphertext);
+    expect(dec5).toBe('msg 4');
+
+    // 验证所有 5 条消息都成功解密
+    expect(bobState.receiveCounter).toBe(5);
+    expect(bobState.skippedMessageKeys.size).toBe(0);
+  });
+
+  // ---------------------------------------------------------------------------
+  // AES-GCM AAD 篡改检测测试
+  // ---------------------------------------------------------------------------
+
+  it('AES-GCM AAD prevents header tampering', async () => {
+    const alice = await generateKeyBundle();
+    const bob = await generateKeyBundle();
+
+    const aliceResult = await x3dhInitiate(
+      alice.identityKeyPair,
+      createRemoteBundle(bob),
+    );
+    await x3dhRespond(
+      bob.identityKeyPair,
+      bob.signedPreKeyPair,
+      bob.oneTimePreKeyPairs[0],
+      alice.bundle.identityKey,
+      aliceResult.ephemeralPublicKey,
+    );
+
+    const rootKey = await importRootKey(aliceResult.rootKey);
+    const aliceState = await initSendingChain(rootKey, alice.identityKeyPair);
+    const bobState = await initReceivingChain(rootKey, bob.identityKeyPair);
+
+    const { header, ciphertext } = await ratchetEncrypt(aliceState, 'tamper test');
+
+    // 篡改 counter（修改 AAD 中的字段）
+    const tamperedHeader: RatchetHeader = { ...header, counter: header.counter + 1 };
+
+    // 解密应该失败（AAD 不匹配）
+    await expect(ratchetDecrypt(bobState, tamperedHeader, ciphertext)).rejects.toThrow();
+  });
 });
