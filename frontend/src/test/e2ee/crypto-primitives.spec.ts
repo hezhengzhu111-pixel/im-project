@@ -18,6 +18,14 @@ import {
   pbkdf2DeriveKey,
 } from '@/features/e2ee/engine/crypto-primitives';
 
+/** 将 ArrayBufferLike 安全转为 ArrayBuffer（兼容 SharedArrayBuffer 场景） */
+function ab(data: ArrayBufferLike): ArrayBuffer {
+  const bytes = new Uint8Array(data);
+  const buf = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buf).set(bytes);
+  return buf;
+}
+
 describe('e2ee crypto-primitives', () => {
   // -----------------------------------------------------------------------
   // Key Generation — extractable 属性
@@ -106,24 +114,24 @@ describe('e2ee crypto-primitives', () => {
   // -----------------------------------------------------------------------
 
   it('HKDF derives consistent key from same input', async () => {
-    const ikm = new Uint8Array(32).buffer; // zero-filled
-    const salt = new Uint8Array(16).buffer;
-    const info = new TextEncoder().encode('e2ee-session-key').buffer;
+    const ikm = ab(new Uint8Array(32).buffer);
+    const salt = ab(new Uint8Array(16).buffer);
+    const info = ab(new TextEncoder().encode('e2ee-session-key').buffer);
 
     const key1 = await hkdfDeriveKey(ikm, salt, info);
     const key2 = await hkdfDeriveKey(ikm, salt, info);
 
     // 两个密钥应可用于加解密互操作
-    const plaintext = new TextEncoder().encode('hello').buffer;
+    const plaintext = ab(new TextEncoder().encode('hello').buffer);
     const { ciphertext, iv } = await aesGcmEncrypt(key1, plaintext);
     const decrypted = await aesGcmDecrypt(key2, ciphertext, iv);
     expect(new Uint8Array(decrypted)).toEqual(new Uint8Array(plaintext));
   });
 
   it('hkdfDeriveBits returns correct length', async () => {
-    const ikm = new Uint8Array(32).buffer;
-    const salt = new Uint8Array(16).buffer;
-    const info = new TextEncoder().encode('test').buffer;
+    const ikm = ab(new Uint8Array(32).buffer);
+    const salt = ab(new Uint8Array(16).buffer);
+    const info = ab(new TextEncoder().encode('test').buffer);
 
     const bits = await hkdfDeriveBits(ikm, salt, info, 256);
     expect(bits.byteLength).toBe(32);
@@ -135,12 +143,12 @@ describe('e2ee crypto-primitives', () => {
 
   it('AES-256-GCM encrypt/decrypt round-trip', async () => {
     const key = await hkdfDeriveKey(
-      new Uint8Array(32).buffer,
-      new Uint8Array(16).buffer,
-      new TextEncoder().encode('test').buffer,
+      ab(new Uint8Array(32).buffer),
+      ab(new Uint8Array(16).buffer),
+      ab(new TextEncoder().encode('test').buffer),
     );
 
-    const plaintext = new TextEncoder().encode('Hello, E2EE!').buffer;
+    const plaintext = ab(new TextEncoder().encode('Hello, E2EE!').buffer);
     const { ciphertext, iv } = await aesGcmEncrypt(key, plaintext);
 
     expect(ciphertext.byteLength).toBeGreaterThan(0);
@@ -152,13 +160,13 @@ describe('e2ee crypto-primitives', () => {
 
   it('AES-256-GCM uses provided iv', async () => {
     const key = await hkdfDeriveKey(
-      new Uint8Array(32).buffer,
-      new Uint8Array(16).buffer,
-      new TextEncoder().encode('test').buffer,
+      ab(new Uint8Array(32).buffer),
+      ab(new Uint8Array(16).buffer),
+      ab(new TextEncoder().encode('test').buffer),
     );
 
     const customIv = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
-    const plaintext = new TextEncoder().encode('custom iv').buffer;
+    const plaintext = ab(new TextEncoder().encode('custom iv').buffer);
     const { ciphertext, iv } = await aesGcmEncrypt(key, plaintext, customIv);
 
     expect(iv).toEqual(customIv);
@@ -169,17 +177,17 @@ describe('e2ee crypto-primitives', () => {
 
   it('AES-256-GCM fails with wrong key', async () => {
     const key1 = await hkdfDeriveKey(
-      new Uint8Array(32).buffer,
-      new Uint8Array(16).buffer,
-      new TextEncoder().encode('key1').buffer,
+      ab(new Uint8Array(32).buffer),
+      ab(new Uint8Array(16).buffer),
+      ab(new TextEncoder().encode('key1').buffer),
     );
     const key2 = await hkdfDeriveKey(
-      new Uint8Array(32).buffer,
-      new Uint8Array(16).buffer,
-      new TextEncoder().encode('key2').buffer,
+      ab(new Uint8Array(32).buffer),
+      ab(new Uint8Array(16).buffer),
+      ab(new TextEncoder().encode('key2').buffer),
     );
 
-    const plaintext = new TextEncoder().encode('secret').buffer;
+    const plaintext = ab(new TextEncoder().encode('secret').buffer);
     const { ciphertext, iv } = await aesGcmEncrypt(key1, plaintext);
 
     await expect(aesGcmDecrypt(key2, ciphertext, iv)).rejects.toThrow();
@@ -191,7 +199,7 @@ describe('e2ee crypto-primitives', () => {
 
   it('ECDSA sign and verify (positive)', async () => {
     const kp = await generateSigningKeyPair();
-    const data = new TextEncoder().encode('message to sign').buffer;
+    const data = ab(new TextEncoder().encode('message to sign').buffer);
 
     const signature = await ecdsaSign(kp.privateKey, data);
     expect(signature.byteLength).toBeGreaterThan(0);
@@ -202,8 +210,8 @@ describe('e2ee crypto-primitives', () => {
 
   it('ECDSA verify fails with tampered data (negative)', async () => {
     const kp = await generateSigningKeyPair();
-    const data = new TextEncoder().encode('original').buffer;
-    const tampered = new TextEncoder().encode('tampered').buffer;
+    const data = ab(new TextEncoder().encode('original').buffer);
+    const tampered = ab(new TextEncoder().encode('tampered').buffer);
 
     const signature = await ecdsaSign(kp.privateKey, data);
     const valid = await ecdsaVerify(kp.publicKey, signature, tampered);
@@ -213,7 +221,7 @@ describe('e2ee crypto-primitives', () => {
   it('ECDSA verify fails with wrong public key (negative)', async () => {
     const kp1 = await generateSigningKeyPair();
     const kp2 = await generateSigningKeyPair();
-    const data = new TextEncoder().encode('message').buffer;
+    const data = ab(new TextEncoder().encode('message').buffer);
 
     const signature = await ecdsaSign(kp1.privateKey, data);
     const valid = await ecdsaVerify(kp2.publicKey, signature, data);
@@ -225,7 +233,7 @@ describe('e2ee crypto-primitives', () => {
   // -----------------------------------------------------------------------
 
   it('PBKDF2 derives key with correct algorithm', async () => {
-    const salt = new Uint8Array(16).buffer;
+    const salt = ab(new Uint8Array(16).buffer);
     const key = await pbkdf2DeriveKey('my-password', salt);
 
     expect(key.type).toBe('secret');
@@ -234,10 +242,10 @@ describe('e2ee crypto-primitives', () => {
   });
 
   it('PBKDF2 key can encrypt and decrypt', async () => {
-    const salt = new Uint8Array(16).buffer;
+    const salt = ab(new Uint8Array(16).buffer);
     const key = await pbkdf2DeriveKey('test-password', salt);
 
-    const plaintext = new TextEncoder().encode('PBKDF2 test').buffer;
+    const plaintext = ab(new TextEncoder().encode('PBKDF2 test').buffer);
     const { ciphertext, iv } = await aesGcmEncrypt(key, plaintext);
     const decrypted = await aesGcmDecrypt(key, ciphertext, iv);
 
@@ -245,11 +253,11 @@ describe('e2ee crypto-primitives', () => {
   });
 
   it('PBKDF2 with same password and salt derives same key', async () => {
-    const salt = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]).buffer;
+    const salt = ab(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]).buffer);
     const key1 = await pbkdf2DeriveKey('same-password', salt);
     const key2 = await pbkdf2DeriveKey('same-password', salt);
 
-    const plaintext = new TextEncoder().encode('consistent').buffer;
+    const plaintext = ab(new TextEncoder().encode('consistent').buffer);
     const { ciphertext, iv } = await aesGcmEncrypt(key1, plaintext);
     const decrypted = await aesGcmDecrypt(key2, ciphertext, iv);
 
@@ -257,11 +265,11 @@ describe('e2ee crypto-primitives', () => {
   });
 
   it('PBKDF2 with different passwords derives different keys', async () => {
-    const salt = new Uint8Array(16).buffer;
+    const salt = ab(new Uint8Array(16).buffer);
     const key1 = await pbkdf2DeriveKey('password-a', salt);
     const key2 = await pbkdf2DeriveKey('password-b', salt);
 
-    const plaintext = new TextEncoder().encode('test').buffer;
+    const plaintext = ab(new TextEncoder().encode('test').buffer);
     const { ciphertext, iv } = await aesGcmEncrypt(key1, plaintext);
 
     await expect(aesGcmDecrypt(key2, ciphertext, iv)).rejects.toThrow();
