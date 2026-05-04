@@ -459,6 +459,14 @@ const handleMediaLoaded = () => {
   background: rgba(255, 255, 255, 0.16);
 }
 
+.message-bubble:has(.media-card) {
+  padding: 0;
+
+  .media-card {
+    border-radius: 0;
+  }
+}
+
 .message-image,
 .message-video {
   display: block;
