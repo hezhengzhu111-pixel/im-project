@@ -54,6 +54,7 @@ async fn main() -> anyhow::Result<()> {
     api_server_rs::background_publisher::spawn(config.clone());
     api_server_rs::background_writer::spawn(config.clone(), state.db.clone());
     api_server_rs::push_dispatcher::spawn(config.clone(), state.db.clone());
+    api_server_rs::e2ee::cleanup::spawn(state.db.clone());
     let app = web::router(state)
         .layer(DefaultBodyLimit::max(config.request_body_limit))
         .layer(TraceLayer::new_for_http());

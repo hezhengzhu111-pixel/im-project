@@ -2,6 +2,7 @@ use crate::ai;
 use crate::auth::{identity_from_headers, is_gateway_whitelist};
 use crate::auth_api;
 use crate::config::AppConfig;
+use crate::e2ee;
 use crate::error::AppError;
 use crate::file_api;
 use crate::message;
@@ -152,6 +153,34 @@ pub fn router(state: AppState) -> Router {
         .route("/api/message/group/:group_id", get(group_history))
         .route("/message/group/:group_id/cursor", get(group_history))
         .route("/api/message/group/:group_id/cursor", get(group_history))
+        .route("/api/keys/bundle", post(e2ee::key_api::upload_bundle))
+        .route("/api/keys/bundle", get(e2ee::key_api::get_bundle))
+        .route("/api/keys/devices", get(e2ee::key_api::get_devices))
+        .route("/api/keys/heartbeat", post(e2ee::key_api::heartbeat))
+        .route("/api/keys/salt", get(e2ee::key_api::get_salt))
+        .route("/api/keys/backup", post(e2ee::key_api::upload_backup))
+        .route("/api/keys/backup", get(e2ee::key_api::get_backup))
+        .route("/api/keys/device/:id", delete(e2ee::key_api::delete_device))
+        .route(
+            "/api/e2ee/request",
+            post(e2ee::session_api::request_encryption),
+        )
+        .route(
+            "/api/e2ee/accept",
+            post(e2ee::session_api::accept_encryption),
+        )
+        .route(
+            "/api/e2ee/reject",
+            post(e2ee::session_api::reject_encryption),
+        )
+        .route(
+            "/api/e2ee/group/enable",
+            post(e2ee::group_api::enable_group_encryption),
+        )
+        .route(
+            "/api/e2ee/group/disable",
+            post(e2ee::group_api::disable_group_encryption),
+        )
         .route("/friend/list", get(social::friend_list))
         .route("/api/friend/list", get(social::friend_list))
         .route("/friend/requests", get(social::friend_requests))

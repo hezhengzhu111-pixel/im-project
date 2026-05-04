@@ -10,6 +10,7 @@
 
 pub mod ai;
 pub mod auth;
+pub mod e2ee;
 pub mod auth_api;
 pub mod background_publisher;
 pub mod background_task;
