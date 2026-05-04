@@ -64,7 +64,7 @@
                 :src="mediaSource"
                 :preview-src-list="[]"
                 :scroll-container="imageScrollContainer || undefined"
-                fit="cover"
+                fit="contain"
                 class="message-image"
                 @load="handleMediaLoaded"
                 @error="handleMediaLoaded"
@@ -440,8 +440,8 @@ const handleMediaLoaded = () => {
 }
 
 .media-card {
-  width: min(320px, 62vw);
-  aspect-ratio: 4 / 3;
+  display: inline-block;
+  max-width: min(320px, 62vw);
   border-radius: var(--radius-sm, 8px);
   background: rgba(248, 250, 252, 0.94);
   overflow: hidden;
@@ -467,17 +467,15 @@ const handleMediaLoaded = () => {
   }
 }
 
-.message-image,
+.message-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
 .message-video {
   display: block;
   width: 100%;
-}
-
-.message-image {
-  aspect-ratio: 4 / 3;
-}
-
-.message-video {
   max-height: 260px;
   background: rgba(15, 23, 42, 0.88);
 }
@@ -486,7 +484,7 @@ const handleMediaLoaded = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
+  width: 240px;
   aspect-ratio: 4 / 3;
   color: var(--chat-text-tertiary);
   font-size: 13px;
@@ -756,7 +754,7 @@ const handleMediaLoaded = () => {
   }
 
   .media-card {
-    width: min(280px, 64vw);
+    max-width: min(280px, 64vw);
   }
 }
 </style>
