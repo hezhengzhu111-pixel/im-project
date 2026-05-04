@@ -22,7 +22,7 @@ pub async fn request_encryption(
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     let _identity = identity_from_headers(&headers, &state.config)?;
     let _ = request;
-    Err(AppError::NotFound("E2EE not implemented yet".to_string()))
+    Err(AppError::NotImplemented("E2EE not implemented yet".to_string()))
 }
 
 pub async fn accept_encryption(
@@ -32,7 +32,7 @@ pub async fn accept_encryption(
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     let _identity = identity_from_headers(&headers, &state.config)?;
     let _ = request;
-    Err(AppError::NotFound("E2EE not implemented yet".to_string()))
+    Err(AppError::NotImplemented("E2EE not implemented yet".to_string()))
 }
 
 pub async fn reject_encryption(
@@ -42,5 +42,5 @@ pub async fn reject_encryption(
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     let _identity = identity_from_headers(&headers, &state.config)?;
     let _ = request;
-    Err(AppError::NotFound("E2EE not implemented yet".to_string()))
+    Err(AppError::NotImplemented("E2EE not implemented yet".to_string()))
 }

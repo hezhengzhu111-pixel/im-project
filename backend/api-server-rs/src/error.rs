@@ -14,6 +14,8 @@ pub enum AppError {
     #[error("{0}")]
     NotFound(String),
     #[error("{0}")]
+    NotImplemented(String),
+    #[error("{0}")]
     Conflict(String),
     #[error("{0}")]
     Upstream(String),
@@ -38,6 +40,7 @@ impl IntoResponse for AppError {
             Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
+            Self::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::Upstream(_) => StatusCode::BAD_GATEWAY,
             Self::Redis(_)

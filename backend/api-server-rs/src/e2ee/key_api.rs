@@ -46,7 +46,7 @@ pub async fn upload_bundle(
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     let _identity = identity_from_headers(&headers, &state.config)?;
     let _ = request;
-    Err(AppError::NotFound("E2EE not implemented yet".to_string()))
+    Err(AppError::NotImplemented("E2EE not implemented yet".to_string()))
 }
 
 pub async fn get_bundle(
@@ -56,7 +56,7 @@ pub async fn get_bundle(
 ) -> Result<Json<ApiResponse<PreKeyBundleDto>>, AppError> {
     let _identity = identity_from_headers(&headers, &state.config)?;
     let _ = params;
-    Err(AppError::NotFound("E2EE not implemented yet".to_string()))
+    Err(AppError::NotImplemented("E2EE not implemented yet".to_string()))
 }
 
 pub async fn get_devices(
@@ -66,7 +66,7 @@ pub async fn get_devices(
 ) -> Result<Json<ApiResponse<Vec<DeviceDto>>>, AppError> {
     let _identity = identity_from_headers(&headers, &state.config)?;
     let _ = params;
-    Err(AppError::NotFound("E2EE not implemented yet".to_string()))
+    Err(AppError::NotImplemented("E2EE not implemented yet".to_string()))
 }
 
 pub async fn heartbeat(
@@ -76,7 +76,7 @@ pub async fn heartbeat(
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     let _identity = identity_from_headers(&headers, &state.config)?;
     let _ = body;
-    Err(AppError::NotFound("E2EE not implemented yet".to_string()))
+    Err(AppError::NotImplemented("E2EE not implemented yet".to_string()))
 }
 
 pub async fn get_salt(
@@ -84,7 +84,7 @@ pub async fn get_salt(
     headers: HeaderMap,
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     let _identity = identity_from_headers(&headers, &state.config)?;
-    Err(AppError::NotFound("E2EE not implemented yet".to_string()))
+    Err(AppError::NotImplemented("E2EE not implemented yet".to_string()))
 }
 
 pub async fn upload_backup(
@@ -94,7 +94,7 @@ pub async fn upload_backup(
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     let _identity = identity_from_headers(&headers, &state.config)?;
     let _ = body;
-    Err(AppError::NotFound("E2EE not implemented yet".to_string()))
+    Err(AppError::NotImplemented("E2EE not implemented yet".to_string()))
 }
 
 pub async fn get_backup(
@@ -102,7 +102,7 @@ pub async fn get_backup(
     headers: HeaderMap,
 ) -> Result<Json<ApiResponse<Value>>, AppError> {
     let _identity = identity_from_headers(&headers, &state.config)?;
-    Err(AppError::NotFound("E2EE not implemented yet".to_string()))
+    Err(AppError::NotImplemented("E2EE not implemented yet".to_string()))
 }
 
 pub async fn delete_device(
@@ -112,5 +112,5 @@ pub async fn delete_device(
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     let _identity = identity_from_headers(&headers, &state.config)?;
     let _ = device_id;
-    Err(AppError::NotFound("E2EE not implemented yet".to_string()))
+    Err(AppError::NotImplemented("E2EE not implemented yet".to_string()))
 }
