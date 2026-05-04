@@ -31,30 +31,39 @@ vi.mock("@/features/chat/composables/useMessageContextMenu", () => ({
   }),
 }));
 
-// Stub RecycleScroller as a simple scrollable container that renders items via its default slot
+// Stub DynamicScroller as a simple scrollable container that renders items via its default slot
 vi.mock("vue-virtual-scroller", () => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RecycleScroller: (defineComponent as any)({
-    props: ["items", "itemSize", "keyField", "buffer"],
-    emits: ["scroll"],
+  DynamicScroller: (defineComponent as any)({
+    props: ["items", "minItemSize", "keyField"],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setup(props: any, { slots, emit }: any) {
+    setup(props: any, { slots }: any) {
       const elRef = ref<HTMLElement | null>(null);
       return () => {
         const items = props.items || [];
-        const children = items.map((item: Record<string, unknown>) =>
-          slots.default ? slots.default({ item }) : null,
+        const children = items.map(
+          (item: Record<string, unknown>, index: number) =>
+            slots.default
+              ? slots.default({ item, index, active: true })
+              : null,
         );
         return h(
           "div",
           {
             class: "message-scroller",
             ref: elRef,
-            onScroll: () => emit("scroll"),
           },
           children,
         );
       };
+    },
+  }),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  DynamicScrollerItem: (defineComponent as any)({
+    props: ["item", "active", "dataIndex"],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setup(_props: any, { slots }: any) {
+      return () => slots.default?.();
     },
   }),
 }));

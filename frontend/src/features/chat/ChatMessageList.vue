@@ -27,48 +27,51 @@
       </div>
     </div>
 
-    <RecycleScroller
+    <DynamicScroller
       v-if="renderItems.length > 0"
       ref="scrollerRef"
       class="message-scroller chat-soft-scrollbar"
       :items="renderItems"
-      :item-size="null"
       :min-item-size="40"
       key-field="id"
-      :buffer="400"
-      @scroll="handleScrollerScroll"
     >
-      <template #default="{ item }">
-        <div class="message-row">
-          <div v-if="item.kind === 'separator'" class="message-separator">
-            <span class="separator-pill">{{ item.label }}</span>
-          </div>
+      <template #default="{ item, index, active }">
+        <DynamicScrollerItem
+          :item="item"
+          :active="active"
+          :data-index="index"
+        >
+          <div class="message-row">
+            <div v-if="item.kind === 'separator'" class="message-separator">
+              <span class="separator-pill">{{ item.label }}</span>
+            </div>
 
-          <div
-            v-else-if="item.kind === 'unread'"
-            class="message-separator message-separator-unread"
-          >
-            <span class="separator-line"></span>
-            <span class="separator-pill unread-pill">{{ item.label }}</span>
-            <span class="separator-line"></span>
-          </div>
+            <div
+              v-else-if="item.kind === 'unread'"
+              class="message-separator message-separator-unread"
+            >
+              <span class="separator-line"></span>
+              <span class="separator-pill unread-pill">{{ item.label }}</span>
+              <span class="separator-line"></span>
+            </div>
 
-          <MessageItem
-            v-else
-            v-bind="item.view"
-            :audio-playing="playingMessageId === item.messageId"
-            :image-scroll-container="scrollContainerRef"
-            @show-group-readers="handleShowGroupReaders"
-            @open-context-menu="openContextMenu"
-            @toggle-audio="toggleAudioById"
-            @download-file="handleDownloadFile"
-            @preview-image="previewImage"
-            @play-video="playVideo"
-            @media-loaded="handleMediaLoaded"
-          />
-        </div>
+            <MessageItem
+              v-else
+              v-bind="item.view"
+              :audio-playing="playingMessageId === item.messageId"
+              :image-scroll-container="scrollContainerRef"
+              @show-group-readers="handleShowGroupReaders"
+              @open-context-menu="openContextMenu"
+              @toggle-audio="toggleAudioById"
+              @download-file="handleDownloadFile"
+              @preview-image="previewImage"
+              @play-video="playVideo"
+              @media-loaded="handleMediaLoaded"
+            />
+          </div>
+        </DynamicScrollerItem>
       </template>
-    </RecycleScroller>
+    </DynamicScroller>
 
     <button
       v-if="showScrollToLatest"
@@ -119,7 +122,10 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { RecycleScroller } from "vue-virtual-scroller";
+import {
+  DynamicScroller,
+  DynamicScrollerItem,
+} from "vue-virtual-scroller";
 import { Loading, Bottom, Top } from "@element-plus/icons-vue";
 import MessageItem from "@/features/chat/ChatMessageItem.vue";
 import ImageViewer from "@/components/common/ImageViewer.vue";
@@ -219,7 +225,7 @@ const BOTTOM_FOLLOW_THRESHOLD = 180;
 const READ_ACK_BOTTOM_THRESHOLD = 120;
 const HISTORY_TRIGGER_TOP = 80;
 const HISTORY_FALLBACK_MS = 2000;
-const scrollerRef = ref<InstanceType<typeof RecycleScroller> | null>(null);
+const scrollerRef = ref<InstanceType<typeof DynamicScroller> | null>(null);
 const scrollContainerRef = ref<HTMLElement | null>(null);
 const loadingHistoryLocal = ref(false);
 const nearBottom = ref(true);
@@ -624,7 +630,7 @@ const nextFrame = () =>
 const updateShortListOffset = async () => {
   await nextTick();
   await nextFrame();
-  const scrollerElement = scrollerRef.value?.$el as HTMLElement | undefined;
+  const scrollerElement = scrollEl || (scrollerRef.value?.$el as HTMLElement | undefined);
   if (!scrollerElement) {
     messageTopOffset.value = 0;
     return;
@@ -886,10 +892,6 @@ const handleScroll = async () => {
 };
 
 const handleScrollerScroll = () => {
-  const scrollerEl = scrollerRef.value?.$el as HTMLElement | undefined;
-  if (scrollerEl) {
-    scrollContainerRef.value = scrollerEl;
-  }
   void handleScroll();
 };
 
@@ -960,13 +962,18 @@ watch(
   { flush: "post" },
 );
 
-onMounted(() => {
+let scrollEl: HTMLElement | null = null;
+
+onMounted(async () => {
   window.addEventListener("click", closeContextMenu);
   window.addEventListener("contextmenu", closeContextMenu);
   window.addEventListener("resize", handleResize);
-  const scrollerEl = scrollerRef.value?.$el as HTMLElement | undefined;
-  if (scrollerEl) {
-    scrollContainerRef.value = scrollerEl;
+  await nextTick();
+  const el = scrollerRef.value?.$el as HTMLElement | undefined;
+  if (el) {
+    scrollEl = el;
+    scrollContainerRef.value = el;
+    el.addEventListener("scroll", handleScrollerScroll, { passive: true });
   }
   void updateShortListOffset();
 });
@@ -976,6 +983,7 @@ onUnmounted(() => {
   clearHistoryFallbackTimer();
   messageViewCache.clear();
   messageRenderItemCache.clear();
+  scrollEl?.removeEventListener("scroll", handleScrollerScroll);
   window.removeEventListener("click", closeContextMenu);
   window.removeEventListener("contextmenu", closeContextMenu);
   window.removeEventListener("resize", handleResize);
