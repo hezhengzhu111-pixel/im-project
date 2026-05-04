@@ -341,7 +341,7 @@ const handleMediaLoaded = () => {
 
 .message-item {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 8px;
   margin-bottom: 12px;
   animation: msgFadeIn 0.25s var(--motion-out, ease-out) both;
@@ -440,7 +440,14 @@ const handleMediaLoaded = () => {
   overflow-wrap: anywhere;
 }
 
-.media-card,
+.media-card {
+  width: min(320px, 62vw);
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm, 8px);
+  background: rgba(248, 250, 252, 0.94);
+  overflow: hidden;
+}
+
 .attachment-card {
   width: min(320px, 62vw);
   border-radius: var(--radius-sm, 8px);
@@ -737,7 +744,10 @@ const handleMediaLoaded = () => {
     line-height: 1.6;
   }
 
-  .attachment-card,
+  .attachment-card {
+    width: min(280px, 64vw);
+  }
+
   .media-card {
     width: min(280px, 64vw);
   }
