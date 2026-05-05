@@ -1,6 +1,6 @@
 <template>
   <div v-if="status !== 'plaintext'" class="encryption-banner" :class="status">
-    <template v-if="status === 'pending'">
+    <template v-if="status === 'negotiating'">
       <el-icon class="banner-icon spin"><Loading /></el-icon>
       <span class="banner-text">加密协商中...</span>
     </template>
@@ -10,6 +10,10 @@
       <button type="button" class="banner-link" @click="emit('showInfo')">
         详情
       </button>
+    </template>
+    <template v-else-if="status === 'failed'">
+      <el-icon class="banner-icon"><Lock /></el-icon>
+      <span class="banner-text">端到端加密异常</span>
     </template>
   </div>
 </template>
@@ -39,7 +43,7 @@ const emit = defineEmits<{
   border-bottom: 1px solid var(--chat-panel-border);
   transition: background-color 0.2s ease, color 0.2s ease;
 
-  &.pending {
+  &.negotiating {
     background: rgba(251, 191, 36, 0.08);
     color: #b45309;
     border-bottom-color: rgba(251, 191, 36, 0.2);
@@ -49,6 +53,12 @@ const emit = defineEmits<{
     background: rgba(34, 197, 94, 0.08);
     color: #15803d;
     border-bottom-color: rgba(34, 197, 94, 0.2);
+  }
+
+  &.failed {
+    background: rgba(239, 68, 68, 0.08);
+    color: #b91c1c;
+    border-bottom-color: rgba(239, 68, 68, 0.2);
   }
 }
 

@@ -1,5 +1,5 @@
 /** E2EE 会话加密状态 */
-export type E2eeSessionStatus = 'plaintext' | 'pending' | 'encrypted';
+export type E2eeSessionStatus = 'plaintext' | 'negotiating' | 'encrypted' | 'failed';
 
 /** 设备信息 */
 export interface E2eeDevice {

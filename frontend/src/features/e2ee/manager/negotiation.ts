@@ -14,17 +14,21 @@ import { importRootKey, initSendingChain, initReceivingChain } from '../engine/d
 import { saveRatchetState, getRatchetState } from '../store/session-store';
 import { getIdentityKeyPair, getSignedPreKey } from '../store/key-store';
 import type { PreKeyBundle, E2eeSessionStatus } from '../types';
+import { emitE2eeStatusChange } from '../status-events';
 
 const SESSION_STATUS_PREFIX = 'e2ee:status:';
 
 export function getLocalSessionStatus(sessionId: string): E2eeSessionStatus {
   const raw = localStorage.getItem(SESSION_STATUS_PREFIX + sessionId);
-  if (raw === 'encrypted' || raw === 'pending') return raw;
+  if (raw === 'encrypted' || raw === 'negotiating' || raw === 'failed') return raw;
+  // backward compat: treat legacy 'pending' as 'negotiating'
+  if (raw === 'pending') return 'negotiating';
   return 'plaintext';
 }
 
 export function setLocalSessionStatus(sessionId: string, status: E2eeSessionStatus): void {
   localStorage.setItem(SESSION_STATUS_PREFIX + sessionId, status);
+  emitE2eeStatusChange(sessionId, status);
 }
 
 /**
@@ -36,6 +40,7 @@ export async function initiateNegotiation(
   remoteUserId: string,
   remoteDeviceId?: string,
 ): Promise<boolean> {
+  setLocalSessionStatus(sessionId, 'negotiating');
   try {
     const identityKeyPair = await getIdentityKeyPair();
     if (!identityKeyPair) {
@@ -80,6 +85,7 @@ export async function initiateNegotiation(
     return true;
   } catch (error) {
     console.error('[E2EE] Negotiation initiation failed:', error);
+    setLocalSessionStatus(sessionId, 'failed');
     return false;
   }
 }
@@ -93,6 +99,7 @@ export async function respondToNegotiation(
   remoteIdentityKeyBase64: string,
   ephemeralPublicKeyBase64: string,
 ): Promise<boolean> {
+  setLocalSessionStatus(sessionId, 'negotiating');
   try {
     const identityKeyPair = await getIdentityKeyPair();
     if (!identityKeyPair) throw new Error('Local identity key not found');
@@ -118,6 +125,7 @@ export async function respondToNegotiation(
     return true;
   } catch (error) {
     console.error('[E2EE] Negotiation response failed:', error);
+    setLocalSessionStatus(sessionId, 'failed');
     return false;
   }
 }

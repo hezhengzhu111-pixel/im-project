@@ -148,6 +148,7 @@ interface Props {
   loadingHistory?: boolean;
   openedUnreadCount?: number;
   sessionType?: "private" | "group";
+  e2eeStatus?: "plaintext" | "negotiating" | "encrypted" | "failed";
 }
 
 type SeparatorItem = {
@@ -206,6 +207,7 @@ const props = withDefaults(defineProps<Props>(), {
   currentUserName: "",
   currentUserAvatar: "",
   sessionType: "private",
+  e2eeStatus: "plaintext",
 });
 
 const emit = defineEmits<{
@@ -492,8 +494,12 @@ const renderItems = computed<RenderItem[]>(() => {
   let previousSenderId = "";
   const activeMessageIds = new Set<string>();
 
-  // Private session encryption notice
-  if (props.sessionType === "private" && props.messages.length > 0) {
+  // Private session encryption notice — only when E2EE is actually active
+  if (
+    props.sessionType === "private" &&
+    props.e2eeStatus === "encrypted" &&
+    props.messages.length > 0
+  ) {
     items.push({
       id: "encryption-notice",
       kind: "message",

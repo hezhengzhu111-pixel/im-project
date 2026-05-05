@@ -148,11 +148,25 @@
                     {{ t("chat.members", { count: groupMemberCount }) }}
                   </span>
                   <span
-                    v-if="currentSession.type === 'private'"
+                    v-if="currentSession.type === 'private' && e2eeStatus === 'encrypted'"
                     class="status-chip secure"
                   >
                     <span class="status-chip-dot"></span>
                     端到端加密
+                  </span>
+                  <span
+                    v-else-if="currentSession.type === 'private' && e2eeStatus === 'negotiating'"
+                    class="status-chip negotiating"
+                  >
+                    <span class="status-chip-dot"></span>
+                    协商加密中
+                  </span>
+                  <span
+                    v-else-if="currentSession.type === 'private' && e2eeStatus === 'failed'"
+                    class="status-chip failed"
+                  >
+                    <span class="status-chip-dot"></span>
+                    加密异常
                   </span>
                   <span v-if="autoReplyEnabled" class="status-chip ai">
                     <span class="status-chip-dot"></span>
@@ -168,12 +182,14 @@
                 v-if="currentSession.type === 'private'"
               >
                 <EncryptionBadge
+                  :status="e2eeStatus"
                   :expanded="showSecurityPanel"
                   @toggle="showSecurityPanel = !showSecurityPanel"
                 />
                 <Transition name="panel-fade">
                   <SecurityPanel
                     v-if="showSecurityPanel"
+                    :status="e2eeStatus"
                     class="security-popover"
                     @close="showSecurityPanel = false"
                   />
@@ -266,6 +282,7 @@
             :loading-history="loadingMoreHistory"
             :opened-unread-count="currentSessionUnreadSnapshot"
             :session-type="currentSession.type"
+            :e2ee-status="currentSession.type === 'private' ? e2eeStatus : undefined"
             @request-history="loadMoreHistory"
             @mark-read="tryAckRead"
             @show-group-readers="openGroupReadDialog"
@@ -431,6 +448,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import ChatComposer from "@/features/chat/ChatComposer.vue";
 import ChatDialogs from "@/features/chat/ChatDialogs.vue";
 import ChatMessageList from "@/features/chat/ChatMessageList.vue";
@@ -440,6 +458,7 @@ import SecurityPanel from "@/components/security/SecurityPanel.vue";
 import AiStatusBadge from "@/components/ai/AiStatusBadge.vue";
 import ConnectionStatusBar from "@/components/status/ConnectionStatusBar.vue";
 import { useChatPage } from "@/features/chat/composables/useChatPage";
+import { useE2eeSessionStatus } from "@/features/e2ee/composables/useE2eeSessionStatus";
 import {
   ArrowLeft,
   ChatDotRound,
@@ -503,6 +522,10 @@ const {
   toggleTheme,
   toggleAutoReply,
 } = useChatPage();
+
+const e2eeStatus = useE2eeSessionStatus(
+  computed(() => currentSession.value?.id),
+);
 </script>
 
 <style scoped lang="scss">
@@ -872,12 +895,30 @@ const {
 }
 
 .status-chip.secure {
-  color: var(--color-primary, #6366f1);
-  background: rgba(99, 102, 241, 0.08);
+  color: var(--color-success, #22c55e);
+  background: rgba(34, 197, 94, 0.08);
 }
 
 .status-chip.secure .status-chip-dot {
-  background: var(--color-primary, #6366f1);
+  background: var(--color-success, #22c55e);
+}
+
+.status-chip.negotiating {
+  color: var(--color-warning, #f59e0b);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.status-chip.negotiating .status-chip-dot {
+  background: var(--color-warning, #f59e0b);
+}
+
+.status-chip.failed {
+  color: var(--color-danger, #ef4444);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.status-chip.failed .status-chip-dot {
+  background: var(--color-danger, #ef4444);
 }
 
 .status-chip.ai {

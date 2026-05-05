@@ -198,7 +198,7 @@ describe("ChatMessageList scroll behavior", () => {
   });
 
   it("keeps the plain message list stable when media reports loaded", async () => {
-    const wrapper = mountList([message("1")]);
+    const wrapper = mountList([message("1")], { e2eeStatus: "encrypted" });
     await flushListEffects();
 
     await wrapper.find(".message-item-stub").trigger("click");
@@ -211,6 +211,7 @@ describe("ChatMessageList scroll behavior", () => {
   it("renders unread separators without breaking the message stream", async () => {
     const wrapper = mountList([message("1"), message("2"), message("3")], {
       openedUnreadCount: 2,
+      e2eeStatus: "encrypted",
     });
 
     await flushListEffects();
