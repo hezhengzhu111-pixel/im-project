@@ -361,20 +361,27 @@ export function createMessageSendQueueModule(
                   mentionedUserIds,
                 },
               }
-            : {
-                sendType: "private" as const,
-                data: {
-                  ...commonSendFields,
-                  receiverId: session.targetId,
-                  ...(encryptedPayload
-                    ? {
-                        encrypted: true,
-                        e2eeHeader: JSON.stringify(encryptedPayload.header),
-                        e2eeDeviceId: encryptedPayload.deviceId,
-                      }
-                    : {}),
-                },
-              };
+            : encryptedPayload
+              ? {
+                  sendType: "private" as const,
+                  encrypted: true as const,
+                  data: {
+                    receiverId: session.targetId,
+                    clientMessageId,
+                    messageType: type,
+                    content: encryptedPayload.ciphertext,
+                    encrypted: true,
+                    e2eeHeader: JSON.stringify(encryptedPayload.header),
+                    e2eeDeviceId: encryptedPayload.deviceId,
+                  },
+                }
+              : {
+                  sendType: "private" as const,
+                  data: {
+                    ...commonSendFields,
+                    receiverId: session.targetId,
+                  },
+                };
         await ctx.messageRepo.addPendingMessage(
           session.id,
           localId,

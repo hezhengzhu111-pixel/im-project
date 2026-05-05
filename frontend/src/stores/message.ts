@@ -20,6 +20,7 @@ import {
 } from "@/stores/modules/message-helpers";
 import { createMessageLoadingModule } from "@/stores/modules/message-loading";
 import { createMessageSendQueueModule } from "@/stores/modules/message-send-queue";
+import { retryPendingMessages } from "@/stores/modules/message-retry";
 import { createMessageReadModule } from "@/stores/modules/message-read";
 import { createMessageSearchModule } from "@/stores/modules/message-search";
 
@@ -307,34 +308,21 @@ export const useMessageStore = defineStore("message", () => {
     retryListenersBound = true;
 
     let retryInProgress = false;
-    const retryPendingMessages = async () => {
+    const runRetry = async () => {
       if (retryInProgress) return;
       retryInProgress = true;
       try {
-        const pending = await messageRepo.listPendingMessages();
-        for (const item of pending) {
-          try {
-            const payload = JSON.parse(item.payload);
-            if (payload.sendType === "group") {
-              await messageService.sendGroup(payload.data);
-            } else {
-              await messageService.sendPrivate(payload.data);
-            }
-            await messageRepo.removePendingMessage(item.localId);
-          } catch {
-            // Still failing — leave in queue
-          }
-        }
+        await retryPendingMessages(messageService, messageRepo);
       } finally {
         retryInProgress = false;
       }
     };
 
     appLifecycleService.onForeground(() => {
-      void retryPendingMessages();
+      void runRetry();
     });
     networkStatusService.onOnline(() => {
-      void retryPendingMessages();
+      void runRetry();
     });
   }
 
