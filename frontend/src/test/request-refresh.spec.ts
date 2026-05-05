@@ -1,14 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const push = vi.fn();
-const warning = vi.fn();
-const error = vi.fn();
-const restoreSession = vi.fn();
-const clearSession = vi.fn();
-const logout = vi.fn();
 const refreshAccessTokenCoordinated = vi.fn();
 let currentAccessToken = "";
 let sessionGeneration = 0;
+const clearSession = vi.fn();
+const restoreSession = vi.fn();
+const push = vi.fn();
+const warning = vi.fn();
+const error = vi.fn();
 
 type MockItem = {
   status?: number;
@@ -148,6 +147,12 @@ vi.mock("element-plus", () => ({
   },
 }));
 
+vi.mock("@/stores/i18n", () => ({
+  useI18nStore: () => ({
+    t: (key: string) => key,
+  }),
+}));
+
 vi.mock("@/stores/user", () => ({
   useUserStore: () => ({
     accessToken: currentAccessToken,
@@ -159,7 +164,6 @@ vi.mock("@/stores/user", () => ({
     getSessionGeneration: () => sessionGeneration,
     restoreSession,
     clearSession,
-    logout,
   }),
 }));
 
@@ -191,7 +195,6 @@ describe("request refresh and retry", () => {
     refreshAccessTokenCoordinated.mockReset();
     restoreSession.mockReset();
     clearSession.mockReset();
-    logout.mockReset();
     push.mockReset();
     warning.mockReset();
     error.mockReset();
