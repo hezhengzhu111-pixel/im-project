@@ -211,6 +211,8 @@ def wait_for_service_ready(
     timeout_seconds: int = 180,
 ) -> None:
     deadline = time.time() + timeout_seconds
+    prev_restart_count = -1
+    consecutive_restarts = 0
     while time.time() < deadline:
         result = run_command(
             [*compose_base_command(config), "ps", "-q", service],
@@ -228,6 +230,25 @@ def wait_for_service_ready(
         health_status = (state.get("Health") or {}).get("Status")
         if status in {"exited", "dead"}:
             fatal(f"Container failed to start: {service}")
+        if status == "restarting":
+            restart_count = state.get("RestartCount", 0)
+            if restart_count == prev_restart_count:
+                consecutive_restarts += 1
+            else:
+                consecutive_restarts = 1
+                prev_restart_count = restart_count
+            if consecutive_restarts >= 5:
+                logs_cmd = [*compose_base_command(config), "logs", "--tail", "10", service]
+                logs_result = run_command(logs_cmd, cwd=config.project_dir, capture_output=True, check=False)
+                log_tail = logs_result.stdout.strip() if logs_result.stdout else ""
+                fatal(
+                    f"Container {service} is stuck in a restart loop (restart count: {restart_count}).\n"
+                    f"Recent logs:\n{log_tail}"
+                )
+            time.sleep(2)
+            continue
+        consecutive_restarts = 0
+        prev_restart_count = -1
         if health_status == "healthy" or (health_status is None and state.get("Running") is True):
             print(f"Service is ready: {service}")
             return
