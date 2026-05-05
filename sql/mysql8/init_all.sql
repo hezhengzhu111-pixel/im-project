@@ -112,6 +112,53 @@ CREATE TABLE IF NOT EXISTS user_knowledge_docs (
   KEY idx_knowledge_docs_group (group_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户知识库文档表';
 
+-- E2EE 设备注册表
+CREATE TABLE IF NOT EXISTS e2ee_devices (
+  user_id               BIGINT NOT NULL COMMENT '用户ID',
+  device_id             VARCHAR(64) NOT NULL COMMENT '设备ID',
+  identity_key          TEXT NOT NULL COMMENT '身份公钥(Base64)',
+  signed_pre_key        TEXT NOT NULL COMMENT '签名预公钥(Base64)',
+  signed_pre_key_signature TEXT NOT NULL COMMENT '签名预公钥签名(Base64)',
+  last_active_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最后活跃时间',
+  created_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (user_id, device_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE设备注册表';
+
+-- E2EE 一次性预密钥池
+CREATE TABLE IF NOT EXISTS e2ee_one_time_pre_keys (
+  id           BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增ID',
+  user_id      BIGINT NOT NULL COMMENT '用户ID',
+  device_id    VARCHAR(64) NOT NULL COMMENT '设备ID',
+  pre_key      TEXT NOT NULL COMMENT '一次性预公钥(Base64)',
+  consumed     TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已消费: 0-否 1-是',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  consumed_time DATETIME NULL COMMENT '消费时间',
+  PRIMARY KEY (id),
+  KEY idx_otp_user_device_consumed (user_id, device_id, consumed)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE一次性预密钥池';
+
+-- E2EE 私聊加密会话协商表
+CREATE TABLE IF NOT EXISTS e2ee_sessions (
+  session_id            VARCHAR(64) NOT NULL COMMENT '会话ID',
+  requester_id          BIGINT NOT NULL COMMENT '发起方用户ID',
+  target_user_id        BIGINT NOT NULL COMMENT '目标用户ID',
+  status                VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '协商状态: pending/encrypted/rejected',
+  request_payload_json  TEXT NULL COMMENT '协商请求载荷JSON',
+  created_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (session_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE私聊加密会话协商表';
+
+-- E2EE 密钥备份表
+CREATE TABLE IF NOT EXISTS e2ee_key_backups (
+  user_id              BIGINT NOT NULL COMMENT '用户ID',
+  encrypted_backup_json TEXT NOT NULL COMMENT '加密的备份数据JSON',
+  salt                 VARCHAR(64) NOT NULL COMMENT 'PBKDF2盐值(Base64)',
+  updated_time         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE密钥备份表';
+
 USE service_group_service_db;
 
 CREATE TABLE IF NOT EXISTS im_group (
