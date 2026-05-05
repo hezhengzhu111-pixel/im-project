@@ -7,7 +7,6 @@ export type RefreshAccessTokenStatus =
 
 export interface RefreshAccessTokenResult {
   status: RefreshAccessTokenStatus;
-  accessToken?: string;
   expiresInMs?: number;
   refreshExpiresInMs?: number;
   message?: string;
@@ -85,18 +84,9 @@ export const refreshAccessTokenCoordinated = async (
         payload?.data && typeof payload.data === "object"
           ? (payload.data as Record<string, unknown>)
           : {};
-      const accessToken =
-        typeof data.accessToken === "string" ? data.accessToken.trim() : "";
-      if (!accessToken) {
-        return {
-          status: "transientError",
-          message: "refresh response missing access token",
-        };
-      }
 
       return {
         status: "success",
-        accessToken,
         expiresInMs: normalizeNumber(data.expiresInMs),
         refreshExpiresInMs: normalizeNumber(data.refreshExpiresInMs),
       };

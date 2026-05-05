@@ -209,7 +209,6 @@ describe("request refresh and retry", () => {
     ];
     refreshAccessTokenCoordinated.mockResolvedValue({
       status: "success",
-      accessToken: "new-token",
       expiresInMs: 60_000,
     });
 
@@ -227,9 +226,9 @@ describe("request refresh and retry", () => {
       "Bearer old-token",
     );
     expect(observedRequests["/secure"][1].headers.Authorization).toBe(
-      "Bearer new-token",
+      "Bearer old-token",
     );
-    expect(currentAccessToken).toBe("new-token");
+    expect(currentAccessToken).toBe("old-token");
   });
 
   it("clears session and redirects to login when refresh failed", async () => {
@@ -255,7 +254,6 @@ describe("request refresh and retry", () => {
     ];
     refreshAccessTokenCoordinated.mockResolvedValue({
       status: "success",
-      accessToken: "fresh-token",
       expiresInMs: 60_000,
     });
 
@@ -268,7 +266,7 @@ describe("request refresh and retry", () => {
       "Bearer expired-token",
     );
     expect(observedRequests["/secure-http"][1].headers.Authorization).toBe(
-      "Bearer fresh-token",
+      "Bearer expired-token",
     );
   });
 
@@ -287,7 +285,6 @@ describe("request refresh and retry", () => {
         () =>
           resolve({
             status: "success",
-            accessToken: "shared-token",
             expiresInMs: 60_000,
           }),
         10,
@@ -306,10 +303,10 @@ describe("request refresh and retry", () => {
     expect(refreshAccessTokenCoordinated).toHaveBeenCalledTimes(2);
     expect(restoreSession).toHaveBeenCalledTimes(2);
     expect(observedRequests["/secure-a"][1].headers.Authorization).toBe(
-      "Bearer shared-token",
+      "Bearer old-token",
     );
     expect(observedRequests["/secure-b"][1].headers.Authorization).toBe(
-      "Bearer shared-token",
+      "Bearer old-token",
     );
   });
 
