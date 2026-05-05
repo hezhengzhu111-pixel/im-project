@@ -1,3 +1,4 @@
+use crate::access_control;
 use crate::auth::identity_from_headers;
 use crate::auth_api;
 use crate::error::AppError;
@@ -439,7 +440,7 @@ pub async fn group_members(
     let group_id = value_to_i64(payload.get("groupId").unwrap_or(&Value::Null))
         .ok_or_else(|| AppError::BadRequest("groupId is required".to_string()))?;
     let group_id = resolve_group_id_or_not_found(&state.db, group_id).await?;
-    ensure_group_member(&state.db, group_id, identity.user_id).await?;
+    access_control::ensure_group_member(&state.db, group_id, identity.user_id).await?;
     let members = load_group_members(&state.db, group_id).await?;
     Ok(Json(ApiResponse::success(GroupMembersResponse { members })))
 }
@@ -481,16 +482,14 @@ pub async fn add_group_members(
 ) -> Result<Json<ApiResponse<bool>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
     let group_id = resolve_group_id_or_not_found(&state.db, group_id).await?;
-    ensure_group_member(&state.db, group_id, identity.user_id).await?;
+    access_control::ensure_group_member(&state.db, group_id, identity.user_id).await?;
     let member_ids_raw: Vec<i64> = payload
         .get("memberIds")
         .and_then(Value::as_array)
         .map(|arr| arr.iter().filter_map(value_to_i64).collect())
         .unwrap_or_default();
     if member_ids_raw.is_empty() {
-        return Err(AppError::BadRequest(
-            "memberIds is required".to_string(),
-        ));
+        return Err(AppError::BadRequest("memberIds is required".to_string()));
     }
     let mut added_ids = Vec::new();
     for member_id in member_ids_raw {
@@ -580,12 +579,10 @@ pub async fn dismiss_group(
         .await?;
 
     // 清理该群的所有 sender keys
-    sqlx::query(
-        "DELETE FROM service_user_service_db.e2ee_sender_keys WHERE group_id = ?",
-    )
-    .bind(group_id)
-    .execute(&state.db)
-    .await?;
+    sqlx::query("DELETE FROM service_user_service_db.e2ee_sender_keys WHERE group_id = ?")
+        .bind(group_id)
+        .execute(&state.db)
+        .await?;
 
     Ok(Json(ApiResponse::success(true)))
 }
@@ -831,20 +828,6 @@ async fn ensure_group_exists(db: &MySqlPool, group_id: i64) -> Result<(), AppErr
     Ok(())
 }
 
-async fn ensure_group_member(db: &MySqlPool, group_id: i64, user_id: i64) -> Result<(), AppError> {
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM service_group_service_db.im_group_member WHERE group_id = ? AND user_id = ? AND status = 1",
-    )
-    .bind(group_id)
-    .bind(user_id)
-    .fetch_one(db)
-    .await?;
-    if count <= 0 {
-        return Err(AppError::Forbidden("not group member".to_string()));
-    }
-    Ok(())
-}
-
 async fn ensure_group_owner(db: &MySqlPool, group_id: i64, user_id: i64) -> Result<(), AppError> {
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM service_group_service_db.im_group WHERE id = ? AND owner_id = ? AND status = 1",
@@ -1050,11 +1033,7 @@ async fn write_social_event(state: &AppState, event: &ImEvent) {
             .ignore()
             .expire(&event_key, ttl_seconds)
             .ignore()
-            .zadd(
-                keys::pending_events_key(),
-                &member,
-                score,
-            )
+            .zadd(keys::pending_events_key(), &member, score)
             .ignore()
             .expire(keys::pending_events_key(), ttl_seconds)
             .ignore()

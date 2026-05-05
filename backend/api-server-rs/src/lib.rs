@@ -8,14 +8,15 @@
 #![deny(clippy::unimplemented)]
 #![deny(clippy::unwrap_used)]
 
+pub mod access_control;
 pub mod ai;
 pub mod auth;
-pub mod e2ee;
 pub mod auth_api;
 pub mod background_publisher;
 pub mod background_task;
 pub mod background_writer;
 pub mod config;
+pub mod e2ee;
 pub mod error;
 pub mod file_api;
 pub mod id_resolver;
@@ -26,6 +27,7 @@ pub mod observability;
 pub mod push_dispatcher;
 pub mod redis_streams;
 pub mod route;
+pub mod routes;
 pub mod social;
 pub mod user;
 pub mod web;
