@@ -260,16 +260,23 @@ async fn test_refresh_success() -> Result<(), Box<dyn std::error::Error>> {
     let refresh_response = app.clone().oneshot(refresh_request).await?;
     assert_eq!(refresh_response.status(), StatusCode::OK);
 
+    // 响应 header 必须包含 Set-Cookie（HttpOnly 下发 token）
+    let set_cookie = refresh_response
+        .headers()
+        .get("set-cookie")
+        .expect("Set-Cookie header must be present")
+        .to_str()
+        .unwrap();
+    assert!(set_cookie.contains("HttpOnly"), "cookie must be HttpOnly");
+
     let refresh_json = read_json(refresh_response).await;
     assert_eq!(refresh_json["success"], json!(true));
-    let new_access = refresh_json["data"]["accessToken"]
-        .as_str()
-        .ok_or_else(|| "accessToken missing".to_string())?;
-    let new_refresh = refresh_json["data"]["refreshToken"]
-        .as_str()
-        .ok_or_else(|| "new refreshToken missing".to_string())?;
-    assert!(!new_access.is_empty());
-    assert!(!new_refresh.is_empty());
+    // 响应体不得暴露 token
+    assert!(refresh_json["data"]["accessToken"].is_null(), "accessToken must not be in response body");
+    assert!(refresh_json["data"]["refreshToken"].is_null(), "refreshToken must not be in response body");
+    // 新字段
+    assert_eq!(refresh_json["data"]["authenticated"], json!(true));
+    assert!(refresh_json["data"]["expiresInMs"].as_i64().is_some(), "expiresInMs must be present");
     Ok(())
 }
 

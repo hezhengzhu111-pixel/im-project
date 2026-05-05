@@ -44,6 +44,14 @@ pub struct TokenPairDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+pub struct RefreshResponseDto {
+    pub expires_in_ms: Option<i64>,
+    pub refresh_expires_in_ms: Option<i64>,
+    pub authenticated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct TokenParseResultDto {
     pub valid: bool,
     pub expired: bool,
@@ -236,7 +244,7 @@ pub async fn refresh(
     State(state): State<AppState>,
     headers: HeaderMap,
     body: Bytes,
-) -> Result<(StatusCode, HeaderMap, Json<ApiResponse<TokenPairDto>>), AppError> {
+) -> Result<(StatusCode, HeaderMap, Json<ApiResponse<RefreshResponseDto>>), AppError> {
     let mut request: RefreshTokenRequest = optional_json(&body)?;
     if request.refresh_token.as_deref().is_none_or(str::is_empty) {
         request.refresh_token = cookie_value(&headers, &state.config.refresh_cookie_name);
@@ -244,10 +252,15 @@ pub async fn refresh(
     let token_pair = refresh_token_pair(&state, request).await?;
     let mut response_headers = HeaderMap::new();
     append_auth_cookies(&mut response_headers, &state.config, &token_pair)?;
+    let response = RefreshResponseDto {
+        expires_in_ms: token_pair.expires_in_ms,
+        refresh_expires_in_ms: token_pair.refresh_expires_in_ms,
+        authenticated: true,
+    };
     Ok((
         StatusCode::OK,
         response_headers,
-        Json(ApiResponse::success(token_pair)),
+        Json(ApiResponse::success(response)),
     ))
 }
 

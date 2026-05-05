@@ -160,34 +160,27 @@ describe("user auth store", () => {
   });
 
   it("refreshes when cookie session probe fails", async () => {
-    parseAccessToken.mockResolvedValue({
-      code: 200,
-      data: {
-        valid: false,
-        expired: true,
-        userId: null,
-      },
-    });
+    parseAccessToken
+      .mockResolvedValueOnce({
+        code: 200,
+        data: {
+          valid: false,
+          expired: true,
+          userId: null,
+        },
+      })
+      .mockResolvedValueOnce({
+        code: 200,
+        data: {
+          valid: true,
+          expired: false,
+          userId: "2",
+          username: "u2",
+        },
+      });
     refreshAccessTokenCoordinated.mockResolvedValue({
       status: "success",
-      accessToken: "refreshed-token",
       expiresInMs: 60_000,
-    });
-    parseAccessToken.mockResolvedValueOnce({
-      code: 200,
-      data: {
-        valid: false,
-        expired: true,
-        userId: null,
-      },
-    }).mockResolvedValueOnce({
-      code: 200,
-      data: {
-        valid: true,
-        expired: false,
-        userId: "2",
-        username: "u2",
-      },
     });
 
     const { useUserStore } = await import("@/stores/user");
@@ -196,10 +189,12 @@ describe("user auth store", () => {
     const ok = await store.restoreSession();
 
     expect(ok).toBe(true);
-    expect(parseAccessToken).toHaveBeenCalledWith(undefined, true);
+    expect(parseAccessToken).toHaveBeenCalledTimes(2);
+    expect(parseAccessToken).toHaveBeenNthCalledWith(1, undefined, true);
+    expect(parseAccessToken).toHaveBeenNthCalledWith(2, undefined, true);
     expect(refreshAccessTokenCoordinated).toHaveBeenCalledTimes(1);
     expect(store.currentUser?.id).toBe("2");
-    expect(store.accessToken).toBe("refreshed-token");
+    expect(store.accessToken).toBe("");
     expect(localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY)).toBeNull();
   });
 
@@ -224,7 +219,6 @@ describe("user auth store", () => {
       });
     refreshAccessTokenCoordinated.mockResolvedValue({
       status: "success",
-      accessToken: "fresh-token",
       expiresInMs: 60_000,
     });
 
@@ -236,9 +230,9 @@ describe("user auth store", () => {
     expect(ok).toBe(true);
     expect(refreshAccessTokenCoordinated).toHaveBeenCalledTimes(1);
     expect(parseAccessToken).toHaveBeenNthCalledWith(1, undefined, true);
-    expect(parseAccessToken).toHaveBeenNthCalledWith(2, "fresh-token", true);
+    expect(parseAccessToken).toHaveBeenNthCalledWith(2, undefined, true);
     expect(store.currentUser?.id).toBe("3");
-    expect(store.accessToken).toBe("fresh-token");
+    expect(store.accessToken).toBe("");
     expect(localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY)).toBeNull();
   });
 

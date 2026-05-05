@@ -44,18 +44,6 @@ type HeaderBag = Record<string, unknown> & {
 
 const getUserStore = (): UserStoreLike => useUserStore() as UserStoreLike;
 
-const storeLatestAccessToken = (token?: string | null) => {
-  const normalized = typeof token === "string" ? token.trim() : "";
-  const userStore = getUserStore();
-  if (typeof userStore.setAccessToken === "function") {
-    userStore.setAccessToken(normalized);
-    return;
-  }
-  if ("accessToken" in userStore) {
-    userStore.accessToken = normalized;
-  }
-};
-
 const getLatestAccessToken = (): string => {
   const userStore = getUserStore();
   if (typeof userStore.getAccessToken === "function") {
@@ -199,11 +187,10 @@ const tryRefreshAccessToken = async (
   if (config) {
     config.__refreshStatus = refreshResult.status;
   }
-  if (refreshResult.status !== "success" || !refreshResult.accessToken) {
+  if (refreshResult.status !== "success") {
     return hasSessionChangedSince(tokenBeforeRefresh, generationBeforeRefresh);
   }
 
-  storeLatestAccessToken(refreshResult.accessToken);
   try {
     const userStore = getUserStore();
     const restored =

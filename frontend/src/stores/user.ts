@@ -234,12 +234,12 @@ export const useUserStore = defineStore("user", () => {
     persistedUser?: User | null,
   ): Promise<RefreshAccessTokenResult> => {
     const refreshResult = await refreshAccessTokenCoordinated();
-    if (refreshResult.status !== "success" || !refreshResult.accessToken) {
+    if (refreshResult.status !== "success") {
       return refreshResult;
     }
     try {
       const parseResponse = await authService.parseAccessToken(
-        refreshResult.accessToken,
+        undefined,
         true,
       );
       const result = parseResponse.data;
@@ -249,7 +249,7 @@ export const useUserStore = defineStore("user", () => {
           message: result?.error || "refreshed access token invalid",
         };
       }
-      applyValidatedSession(result, persistedUser, refreshResult.accessToken);
+      applyValidatedSession(result, persistedUser, undefined);
       return refreshResult;
     } catch (error) {
       logger.warn("refreshPersistedSession parse failed", error);

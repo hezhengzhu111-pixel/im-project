@@ -70,7 +70,7 @@ export const authService = {
       code: 200,
       message: "ok",
       data: {
-        accessToken: result.accessToken,
+        accessToken: "",
         expiresInMs: result.expiresInMs || 0,
         refreshExpiresInMs: result.refreshExpiresInMs || 0,
       },
