@@ -150,6 +150,7 @@
 
           <div class="message-meta" :class="{ 'is-mine': isMine }">
             <span class="message-time">{{ timeLabel }}</span>
+            <ChatEncryptionBadge :encrypted="encrypted" />
             <span
               v-if="statusLabel"
               class="message-state"
@@ -222,6 +223,7 @@ import {
 } from "@element-plus/icons-vue";
 import { useI18nStore } from "@/stores/i18n";
 import { getAvatarText } from "@/utils/common";
+import ChatEncryptionBadge from "@/features/chat/ChatEncryptionBadge.vue";
 import type { MessageType } from "@/types";
 
 interface Props {
@@ -260,6 +262,7 @@ interface Props {
   imageScrollContainer?: HTMLElement | null;
   showAvatar?: boolean;
   compact?: boolean;
+  encrypted?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -279,6 +282,7 @@ const props = withDefaults(defineProps<Props>(), {
   imageScrollContainer: null,
   showAvatar: true,
   compact: false,
+  encrypted: false,
 });
 
 const emit = defineEmits<{
