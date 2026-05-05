@@ -11,15 +11,6 @@ const refreshAccessToken = vi.fn();
 const refreshAccessTokenCoordinated = vi.fn();
 const push = vi.fn();
 
-const createUnsignedAccessToken = (payload: Record<string, unknown>) => {
-  const encode = (value: Record<string, unknown>) =>
-    btoa(JSON.stringify(value))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/g, "");
-  return `${encode({ alg: "none", typ: "JWT" })}.${encode(payload)}.sig`;
-};
-
 vi.mock("element-plus", () => ({
   ElMessage: {
     success: vi.fn(),
@@ -101,9 +92,7 @@ describe("user auth store", () => {
     });
     expect(store.currentUser?.id).toBe("1");
     expect(store.accessToken).toBe("access-token-1");
-    expect(localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY)).toBe(
-      "access-token-1",
-    );
+    expect(localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY)).toBeNull();
     expect(localStorage.getItem(STORAGE_CONFIG.USER_SNAPSHOT_KEY)).toContain(
       '"id":"1"',
     );
@@ -130,6 +119,8 @@ describe("user auth store", () => {
 
     const { useUserStore } = await import("@/stores/user");
     const store = useUserStore();
+    // 模拟旧版 localStorage 遗留的 token
+    localStorage.setItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY, "legacy-token");
     store.setAccessToken("to-be-cleared");
     store.currentUser = {
       id: "1",
@@ -147,8 +138,7 @@ describe("user auth store", () => {
     expect(push).toHaveBeenCalled();
   });
 
-  it("prefers persisted access token when restoring session", async () => {
-    localStorage.setItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY, "persisted-token");
+  it("restores session from cookie when backend validates it", async () => {
     parseAccessToken.mockResolvedValue({
       code: 200,
       data: {
@@ -165,30 +155,40 @@ describe("user auth store", () => {
     const ok = await store.restoreSession();
 
     expect(ok).toBe(true);
-    expect(parseAccessToken).toHaveBeenCalledWith("persisted-token", true);
+    expect(parseAccessToken).toHaveBeenCalledWith(undefined, true);
     expect(store.currentUser?.id).toBe("1");
   });
 
-  it("falls back to cookie session when persisted access token is invalid", async () => {
-    localStorage.setItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY, "stale-token");
-    parseAccessToken
-      .mockResolvedValueOnce({
-        code: 200,
-        data: {
-          valid: false,
-          expired: true,
-          userId: null,
-        },
-      })
-      .mockResolvedValueOnce({
-        code: 200,
-        data: {
-          valid: true,
-          expired: false,
-          userId: "2",
-          username: "u2",
-        },
-      });
+  it("refreshes when cookie session probe fails", async () => {
+    parseAccessToken.mockResolvedValue({
+      code: 200,
+      data: {
+        valid: false,
+        expired: true,
+        userId: null,
+      },
+    });
+    refreshAccessTokenCoordinated.mockResolvedValue({
+      status: "success",
+      accessToken: "refreshed-token",
+      expiresInMs: 60_000,
+    });
+    parseAccessToken.mockResolvedValueOnce({
+      code: 200,
+      data: {
+        valid: false,
+        expired: true,
+        userId: null,
+      },
+    }).mockResolvedValueOnce({
+      code: 200,
+      data: {
+        valid: true,
+        expired: false,
+        userId: "2",
+        username: "u2",
+      },
+    });
 
     const { useUserStore } = await import("@/stores/user");
     const store = useUserStore();
@@ -196,31 +196,20 @@ describe("user auth store", () => {
     const ok = await store.restoreSession();
 
     expect(ok).toBe(true);
-    expect(parseAccessToken).toHaveBeenNthCalledWith(1, "stale-token", true);
-    expect(parseAccessToken).toHaveBeenNthCalledWith(2, undefined, true);
-    expect(refreshAccessTokenCoordinated).not.toHaveBeenCalled();
+    expect(parseAccessToken).toHaveBeenCalledWith(undefined, true);
+    expect(refreshAccessTokenCoordinated).toHaveBeenCalledTimes(1);
     expect(store.currentUser?.id).toBe("2");
-    expect(store.accessToken).toBe("");
+    expect(store.accessToken).toBe("refreshed-token");
     expect(localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY)).toBeNull();
   });
 
-  it("refreshes an expired persisted access token when restoring session", async () => {
-    localStorage.setItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY, "expired-token");
+  it("refreshes when cookie probe fails then succeeds on refreshed token", async () => {
     parseAccessToken
       .mockResolvedValueOnce({
         code: 200,
         data: {
           valid: false,
           expired: true,
-          userId: "3",
-          username: "u3",
-        },
-      })
-      .mockResolvedValueOnce({
-        code: 200,
-        data: {
-          valid: false,
-          expired: false,
           userId: null,
         },
       })
@@ -246,21 +235,14 @@ describe("user auth store", () => {
 
     expect(ok).toBe(true);
     expect(refreshAccessTokenCoordinated).toHaveBeenCalledTimes(1);
-    expect(parseAccessToken).toHaveBeenNthCalledWith(1, "expired-token", true);
-    expect(parseAccessToken).toHaveBeenNthCalledWith(2, undefined, true);
-    expect(parseAccessToken).toHaveBeenNthCalledWith(3, "fresh-token", true);
+    expect(parseAccessToken).toHaveBeenNthCalledWith(1, undefined, true);
+    expect(parseAccessToken).toHaveBeenNthCalledWith(2, "fresh-token", true);
     expect(store.currentUser?.id).toBe("3");
     expect(store.accessToken).toBe("fresh-token");
-    expect(localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY)).toBe(
-      "fresh-token",
-    );
+    expect(localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY)).toBeNull();
   });
 
-  it("keeps local snapshot when startup probes cannot revalidate immediately", async () => {
-    localStorage.setItem(
-      STORAGE_CONFIG.ACCESS_TOKEN_KEY,
-      "possibly-valid-token",
-    );
+  it("keeps user snapshot when cookie probe and refresh both fail", async () => {
     localStorage.setItem(
       STORAGE_CONFIG.USER_SNAPSHOT_KEY,
       JSON.stringify({
@@ -289,25 +271,15 @@ describe("user auth store", () => {
 
     expect(ok).toBe(false);
     expect(store.currentUser?.id).toBe("4");
-    expect(store.accessToken).toBe("possibly-valid-token");
-    expect(parseAccessToken).toHaveBeenCalledWith("possibly-valid-token", true);
-    expect(localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY)).toBe(
-      "possibly-valid-token",
-    );
+    expect(store.accessToken).toBe("");
+    expect(parseAccessToken).toHaveBeenCalledWith(undefined, true);
+    expect(localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY)).toBeNull();
     expect(localStorage.getItem(STORAGE_CONFIG.USER_SNAPSHOT_KEY)).toContain(
       '"id":"4"',
     );
   });
 
-  it("does not authenticate from an unsigned persisted access token when backend rejects it", async () => {
-    localStorage.setItem(
-      STORAGE_CONFIG.ACCESS_TOKEN_KEY,
-      createUnsignedAccessToken({
-        userId: 5,
-        username: "u5",
-        typ: "access",
-      }),
-    );
+  it("clears session when cookie probe and refresh both fail with authInvalid", async () => {
     parseAccessToken.mockResolvedValue({
       code: 200,
       data: {
@@ -325,7 +297,8 @@ describe("user auth store", () => {
 
     expect(ok).toBe(false);
     expect(store.currentUser).toBeNull();
-    expect(parseAccessToken).toHaveBeenCalled();
+    expect(store.accessToken).toBe("");
+    expect(parseAccessToken).toHaveBeenCalledWith(undefined, true);
   });
 
   it("probes backend cookie session when there is no local auth state", async () => {
@@ -351,8 +324,7 @@ describe("user auth store", () => {
     expect(store.hasPermission("log:read")).toBe(true);
   });
 
-  it("keeps persisted session on transient restore failure", async () => {
-    localStorage.setItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY, "persisted-token");
+  it("keeps user snapshot on transient restore failure", async () => {
     localStorage.setItem(
       STORAGE_CONFIG.USER_SNAPSHOT_KEY,
       JSON.stringify({
@@ -374,7 +346,7 @@ describe("user auth store", () => {
 
     expect(ok).toBe(false);
     expect(store.currentUser?.id).toBe("9");
-    expect(store.accessToken).toBe("persisted-token");
+    expect(store.accessToken).toBe("");
     expect(store.isAuthenticated).toBe(false);
   });
 });

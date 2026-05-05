@@ -18,25 +18,6 @@ import type {
 import { APP_CONFIG, STORAGE_CONFIG } from "@/config";
 import { logger } from "@/utils/logger";
 
-const readPersistedAccessToken = (): string => {
-  if (typeof localStorage === "undefined") {
-    return "";
-  }
-  const token = localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY);
-  return typeof token === "string" ? token.trim() : "";
-};
-
-const persistAccessToken = (token: string): void => {
-  if (typeof localStorage === "undefined") {
-    return;
-  }
-  if (token) {
-    localStorage.setItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY, token);
-    return;
-  }
-  localStorage.removeItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY);
-};
-
 const readPersistedUser = (): User | null => {
   if (typeof localStorage === "undefined") {
     return null;
@@ -123,7 +104,7 @@ const isAccessTokenExpiringSoon = (token: string, skewMs = 30_000): boolean => {
 
 export const useUserStore = defineStore("user", () => {
   const currentUser = ref<User | null>(readPersistedUser());
-  const accessToken = ref(readPersistedAccessToken());
+  const accessToken = ref("");
   const permissions = ref<string[]>([]);
   const loading = ref(false);
   const authReady = ref(false);
@@ -177,7 +158,6 @@ export const useUserStore = defineStore("user", () => {
   const setAccessToken = (token?: string | null) => {
     const normalized = typeof token === "string" ? token.trim() : "";
     accessToken.value = normalized;
-    persistAccessToken(normalized);
   };
 
   const setCurrentUser = (user?: User | null) => {
@@ -187,14 +167,7 @@ export const useUserStore = defineStore("user", () => {
   };
 
   const getAccessToken = (): string => {
-    if (accessToken.value) {
-      return accessToken.value;
-    }
-    const persisted = readPersistedAccessToken();
-    if (persisted) {
-      accessToken.value = persisted;
-    }
-    return persisted;
+    return accessToken.value;
   };
 
   const clearSession = () => {
@@ -205,6 +178,10 @@ export const useUserStore = defineStore("user", () => {
     lastSessionValid.value = false;
     authReady.value = true;
     sessionGeneration.value += 1;
+    // 清理旧版 localStorage 中遗留的 token
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY);
+    }
   };
 
   const markSessionValid = () => {
@@ -298,26 +275,12 @@ export const useUserStore = defineStore("user", () => {
         setCurrentUser(persistedUser);
       }
       try {
-        const persistedToken = getAccessToken();
-
-        let response = await authService.parseAccessToken(
-          persistedToken || undefined,
-          true,
-        );
-        let result = response.data;
+        const response = await authService.parseAccessToken(undefined, true);
+        const result = response.data;
 
         if (isValidTokenResult(result)) {
-          applyValidatedSession(result, persistedUser, persistedToken || null);
+          applyValidatedSession(result, persistedUser, undefined);
           return true;
-        }
-
-        if (persistedToken) {
-          response = await authService.parseAccessToken(undefined, true);
-          result = response.data;
-          if (isValidTokenResult(result)) {
-            applyValidatedSession(result, persistedUser, "");
-            return true;
-          }
         }
 
         const refreshResult = await refreshPersistedSession(persistedUser);

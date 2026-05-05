@@ -16,8 +16,6 @@ import {
   type RefreshAccessTokenStatus,
 } from "@/services/auth-refresh";
 import { logger } from "@/utils/logger";
-import { STORAGE_CONFIG } from "@/config";
-
 function createTraceId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -46,27 +44,6 @@ type HeaderBag = Record<string, unknown> & {
 
 const getUserStore = (): UserStoreLike => useUserStore() as UserStoreLike;
 
-const readPersistedAccessToken = (): string => {
-  if (typeof localStorage === "undefined") {
-    return "";
-  }
-  const token = localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY);
-  return typeof token === "string" ? token.trim() : "";
-};
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const writePersistedAccessToken = (token?: string | null) => {
-  if (typeof localStorage === "undefined") {
-    return;
-  }
-  const normalized = typeof token === "string" ? token.trim() : "";
-  if (normalized) {
-    localStorage.setItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY, normalized);
-    return;
-  }
-  localStorage.removeItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY);
-};
-
 const storeLatestAccessToken = (token?: string | null) => {
   const normalized = typeof token === "string" ? token.trim() : "";
   const userStore = getUserStore();
@@ -90,7 +67,7 @@ const getLatestAccessToken = (): string => {
   ) {
     return userStore.accessToken.trim();
   }
-  return readPersistedAccessToken();
+  return "";
 };
 
 const getHeaderValue = (
