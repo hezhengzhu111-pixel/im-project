@@ -84,6 +84,119 @@ async fn ensure_group_admin(db: &sqlx::MySqlPool, group_id: i64, user_id: i64) -
     Ok(())
 }
 
+/// 校验单个用户是否为群组有效成员（status=1）
+async fn ensure_group_member(
+    db: &sqlx::MySqlPool,
+    group_id: i64,
+    user_id: i64,
+) -> Result<(), AppError> {
+    let exists: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM service_group_service_db.im_group_member \
+         WHERE group_id = ? AND user_id = ? AND status = 1",
+    )
+    .bind(group_id)
+    .bind(user_id)
+    .fetch_one(db)
+    .await?;
+
+    if !exists {
+        return Err(AppError::Forbidden(
+            "recipient is not a group member".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// 校验单个设备属于指定用户且处于有效状态
+async fn ensure_device_exists(
+    db: &sqlx::MySqlPool,
+    recipient_id: i64,
+    device_id: &str,
+) -> Result<(), AppError> {
+    let exists: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM service_user_service_db.e2ee_devices \
+         WHERE user_id = ? AND device_id = ? AND status = 'active'",
+    )
+    .bind(recipient_id)
+    .bind(device_id)
+    .fetch_one(db)
+    .await?;
+
+    if !exists {
+        return Err(AppError::Forbidden(
+            "recipient device is not registered".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// 批量校验所有 (recipient_id, device_id) 对属于对应用户且处于有效状态
+async fn ensure_all_devices_belong_to_recipients(
+    db: &sqlx::MySqlPool,
+    entries: &[(i64, String)],
+) -> Result<(), AppError> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+
+    // 用 OR 条件逐对校验（兼容 MySQL + sqlx 参数绑定）
+    let or_clauses: String = entries
+        .iter()
+        .map(|_| "(user_id = ? AND device_id = ?)")
+        .collect::<Vec<_>>()
+        .join(" OR ");
+    let sql = format!(
+        "SELECT COUNT(*) FROM service_user_service_db.e2ee_devices \
+         WHERE status = 'active' AND ({or_clauses})"
+    );
+
+    let mut query = sqlx::query_scalar::<_, i64>(&sql);
+    for (rid, did) in entries {
+        query = query.bind(*rid).bind(did);
+    }
+    let found_count: i64 = query.fetch_one(db).await?;
+
+    if found_count as usize != entries.len() {
+        return Err(AppError::Forbidden(
+            "recipient device is not registered".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// 批量校验所有 recipient_id 是否为群组有效成员（一条 IN (...) SQL）
+///
+/// 若存在任一非成员，返回 403 错误；全部合法则返回 Ok。
+async fn ensure_all_recipients_are_members(
+    db: &sqlx::MySqlPool,
+    group_id: i64,
+    recipient_ids: &[i64],
+) -> Result<(), AppError> {
+    if recipient_ids.is_empty() {
+        return Ok(());
+    }
+
+    // 构造 SELECT user_id WHERE status=1 AND group_id=? AND user_id IN (?,?,…)
+    let placeholders: String = recipient_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT user_id FROM service_group_service_db.im_group_member \
+         WHERE group_id = ? AND status = 1 AND user_id IN ({placeholders})"
+    );
+
+    let mut query = sqlx::query_scalar::<_, i64>(&sql).bind(group_id);
+    for &rid in recipient_ids {
+        query = query.bind(rid);
+    }
+    let found: Vec<i64> = query.fetch_all(db).await?;
+
+    if found.len() != recipient_ids.len() {
+        return Err(AppError::Forbidden(
+            "recipient is not a group member".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // 处理器
 // ---------------------------------------------------------------------------
@@ -106,6 +219,18 @@ pub async fn enable_group_encryption(
 
     // 验证管理员权限
     ensure_group_admin(&state.db, group_id, identity.user_id).await?;
+
+    // 批量校验所有 recipient 必须是群成员
+    let recipient_ids: Vec<i64> = request.sender_keys.iter().map(|e| e.recipient_id).collect();
+    ensure_all_recipients_are_members(&state.db, group_id, &recipient_ids).await?;
+
+    // 批量校验所有 device 属于对应 recipient 且处于有效状态
+    let device_entries: Vec<(i64, String)> = request
+        .sender_keys
+        .iter()
+        .map(|e| (e.recipient_id, e.device_id.clone()))
+        .collect();
+    ensure_all_devices_belong_to_recipients(&state.db, &device_entries).await?;
 
     // 开启事务，保证 e2ee_groups 和 e2ee_sender_keys 的原子写入
     let mut tx = state.db.begin().await?;
@@ -202,6 +327,12 @@ pub async fn push_sender_key(
         return Err(AppError::Forbidden("not a group member".to_string()));
     }
 
+    // 校验接收方也是群成员
+    ensure_group_member(&state.db, group_id, request.recipient_id).await?;
+
+    // 校验设备属于接收方且处于有效状态
+    ensure_device_exists(&state.db, request.recipient_id, &request.device_id).await?;
+
     // 插入 Sender Key
     sqlx::query(
         r#"INSERT INTO service_user_service_db.e2ee_sender_keys
@@ -232,6 +363,9 @@ pub async fn get_my_sender_keys(
 ) -> Result<Json<ApiResponse<Vec<SenderKeyDto>>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
 
+    // 校验当前用户是群组有效成员
+    ensure_group_member(&state.db, group_id, identity.user_id).await?;
+
     let rows = sqlx::query(
         r#"SELECT sender_id, device_id, encrypted_sender_key, counter
            FROM service_user_service_db.e2ee_sender_keys
@@ -248,10 +382,14 @@ pub async fn get_my_sender_keys(
         .map(|row| {
             let sender_id: i64 = row.get("sender_id");
             let counter: i32 = row.get("counter");
+            let encrypted_sender_key: String = row
+                .try_get::<Vec<u8>, _>("encrypted_sender_key")
+                .map(|v| String::from_utf8_lossy(&v).into_owned())
+                .unwrap_or_else(|_| row.get::<String, _>("encrypted_sender_key"));
             SenderKeyDto {
                 sender_id: sender_id.to_string(),
                 device_id: row.get("device_id"),
-                encrypted_sender_key: row.get("encrypted_sender_key"),
+                encrypted_sender_key,
                 counter,
             }
         })
@@ -340,6 +478,18 @@ pub async fn enable_group_encryption_legacy(
 
     // 验证管理员权限
     ensure_group_admin(&state.db, request.group_id, identity.user_id).await?;
+
+    // 批量校验所有 recipient 必须是群成员
+    let recipient_ids: Vec<i64> = request.encrypted_sender_keys.iter().map(|e| e.recipient_id).collect();
+    ensure_all_recipients_are_members(&state.db, request.group_id, &recipient_ids).await?;
+
+    // 批量校验所有 device 属于对应 recipient 且处于有效状态
+    let device_entries: Vec<(i64, String)> = request
+        .encrypted_sender_keys
+        .iter()
+        .map(|e| (e.recipient_id, e.device_id.clone()))
+        .collect();
+    ensure_all_devices_belong_to_recipients(&state.db, &device_entries).await?;
 
     // 开启事务，保证 e2ee_groups 和 e2ee_sender_keys 的原子写入
     let mut tx = state.db.begin().await?;

@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS user_knowledge_docs (
 CREATE TABLE IF NOT EXISTS e2ee_devices (
   user_id               BIGINT NOT NULL COMMENT '用户ID',
   device_id             VARCHAR(64) NOT NULL COMMENT '设备ID',
+  status                VARCHAR(20) NOT NULL DEFAULT 'active' COMMENT '设备状态: active/deleted',
   identity_key          TEXT NOT NULL COMMENT '身份公钥(Base64)',
   signed_pre_key        TEXT NOT NULL COMMENT '签名预公钥(Base64)',
   signed_pre_key_signature TEXT NOT NULL COMMENT '签名预公钥签名(Base64)',

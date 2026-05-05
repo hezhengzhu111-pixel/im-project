@@ -528,13 +528,39 @@ pub async fn leave_group(
 ) -> Result<Json<ApiResponse<bool>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
     let group_id = resolve_group_id_or_not_found(&state.db, group_id).await?;
+
+    let mut tx = state.db.begin().await?;
+
+    // 更新成员状态为退出
     sqlx::query(
         "UPDATE service_group_service_db.im_group_member SET status = 0 WHERE group_id = ? AND user_id = ?",
     )
     .bind(group_id)
     .bind(identity.user_id)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await?;
+
+    // 清理该用户相关的 sender keys（作为发送者和接收者）
+    sqlx::query(
+        "DELETE FROM service_user_service_db.e2ee_sender_keys \
+         WHERE group_id = ? AND sender_id = ?",
+    )
+    .bind(group_id)
+    .bind(identity.user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        "DELETE FROM service_user_service_db.e2ee_sender_keys \
+         WHERE group_id = ? AND recipient_id = ?",
+    )
+    .bind(group_id)
+    .bind(identity.user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
     refresh_group_member_count(&state.db, group_id).await?;
     Ok(Json(ApiResponse::success(true)))
 }
@@ -547,10 +573,20 @@ pub async fn dismiss_group(
     let identity = identity_from_headers(&headers, &state.config)?;
     let group_id = resolve_group_id_or_not_found(&state.db, group_id).await?;
     ensure_group_owner(&state.db, group_id, identity.user_id).await?;
+
     sqlx::query("UPDATE service_group_service_db.im_group SET status = 0 WHERE id = ?")
         .bind(group_id)
         .execute(&state.db)
         .await?;
+
+    // 清理该群的所有 sender keys
+    sqlx::query(
+        "DELETE FROM service_user_service_db.e2ee_sender_keys WHERE group_id = ?",
+    )
+    .bind(group_id)
+    .execute(&state.db)
+    .await?;
+
     Ok(Json(ApiResponse::success(true)))
 }
 

@@ -121,9 +121,10 @@ pub async fn upload_bundle(
     // 幂等 upsert 设备记录
     sqlx::query(
         r#"INSERT INTO service_user_service_db.e2ee_devices
-           (user_id, device_id, identity_key, signed_pre_key, signed_pre_key_signature)
-           VALUES (?, ?, ?, ?, ?)
+           (user_id, device_id, status, identity_key, signed_pre_key, signed_pre_key_signature)
+           VALUES (?, ?, 'active', ?, ?, ?)
            ON DUPLICATE KEY UPDATE
+             status = 'active',
              identity_key = VALUES(identity_key),
              signed_pre_key = VALUES(signed_pre_key),
              signed_pre_key_signature = VALUES(signed_pre_key_signature),
@@ -197,7 +198,7 @@ pub async fn get_bundle(
     let device_row = sqlx::query(
         r#"SELECT identity_key, signed_pre_key, signed_pre_key_signature
            FROM service_user_service_db.e2ee_devices
-           WHERE user_id = ? AND device_id = ?"#,
+           WHERE user_id = ? AND device_id = ? AND status = 'active'"#,
     )
     .bind(target_user_id)
     .bind(device_id)
@@ -274,7 +275,7 @@ pub async fn get_devices(
     let rows = sqlx::query(
         r#"SELECT device_id, identity_key, signed_pre_key, last_active_at
            FROM service_user_service_db.e2ee_devices
-           WHERE user_id = ?
+           WHERE user_id = ? AND status = 'active'
            ORDER BY last_active_at DESC"#,
     )
     .bind(target_user_id)
@@ -319,7 +320,7 @@ pub async fn heartbeat(
     let affected = sqlx::query(
         "UPDATE service_user_service_db.e2ee_devices \
          SET last_active_at = NOW() \
-         WHERE user_id = ? AND device_id = ?",
+         WHERE user_id = ? AND device_id = ? AND status = 'active'",
     )
     .bind(identity.user_id)
     .bind(device_id)
@@ -470,10 +471,11 @@ pub async fn delete_device(
 
     let mut tx = state.db.begin().await?;
 
-    // 删除设备记录（只能删自己的）
+    // 软删除设备记录（只能删自己的）
     let affected = sqlx::query(
-        "DELETE FROM service_user_service_db.e2ee_devices \
-         WHERE user_id = ? AND device_id = ?",
+        "UPDATE service_user_service_db.e2ee_devices \
+         SET status = 'deleted' \
+         WHERE user_id = ? AND device_id = ? AND status = 'active'",
     )
     .bind(identity.user_id)
     .bind(&device_id)
