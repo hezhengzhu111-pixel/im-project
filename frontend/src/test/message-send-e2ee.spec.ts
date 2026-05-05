@@ -241,4 +241,88 @@ describe("message-send-queue E2EE", () => {
     expect(getLocalSessionStatusMock).not.toHaveBeenCalled();
     expect(ctx._mocks.sendGroup).toHaveBeenCalled();
   });
+
+  it("encrypted offline payload does not contain plaintext content", async () => {
+    const ctx = makeCtx();
+    const { sendMessage } = createMessageSendQueueModule(ctx as never);
+
+    getLocalSessionStatusMock.mockReturnValue("encrypted");
+    encryptMessageMock.mockResolvedValue({
+      ciphertext: "encrypted_data_only",
+      header: { dhPubKey: "abc" },
+      deviceId: "dev_1",
+    });
+
+    // Make the send call throw a network error to trigger offline payload storage
+    ctx._mocks.sendPrivateEncrypted.mockRejectedValue(
+      Object.assign(new Error("Network Error"), { code: "ERR_NETWORK" }),
+    );
+
+    const session = makeSession();
+    const result = await sendMessage(session, "secret plaintext message", "TEXT");
+
+    expect(result).toBe(false);
+
+    const addCalls = ctx._mocks.addPendingMessage.mock.calls;
+    expect(addCalls.length).toBe(1);
+    const payload = addCalls[0][2];
+
+    // Must be marked encrypted
+    expect(payload.encrypted).toBe(true);
+    expect(payload.data.encrypted).toBe(true);
+
+    // Content must be ciphertext, not plaintext
+    expect(payload.data.content).toBe("encrypted_data_only");
+    expect(payload.data.content).not.toBe("secret plaintext message");
+
+    // Must contain E2EE fields
+    expect(payload.data.e2eeHeader).toBeTruthy();
+    expect(payload.data.e2eeDeviceId).toBe("dev_1");
+
+    // Must NOT contain media fields or other plaintext-leaking fields
+    expect(payload.data).not.toHaveProperty("mediaUrl");
+    expect(payload.data).not.toHaveProperty("mediaSize");
+    expect(payload.data).not.toHaveProperty("mediaName");
+    expect(payload.data).not.toHaveProperty("thumbnailUrl");
+    expect(payload.data).not.toHaveProperty("duration");
+    expect(payload.data).not.toHaveProperty("extra");
+  });
+
+  it("plaintext offline payload preserves original fields for non-encrypted send", async () => {
+    const ctx = makeCtx();
+    const { sendMessage } = createMessageSendQueueModule(ctx as never);
+
+    getLocalSessionStatusMock.mockReturnValue("plaintext");
+
+    ctx._mocks.sendPrivate.mockRejectedValue(
+      Object.assign(new Error("Network Error"), { code: "ERR_NETWORK" }),
+    );
+
+    const session = makeSession();
+    const result = await sendMessage(session, "normal message", "TEXT");
+
+    expect(result).toBe(false);
+
+    const addCalls = ctx._mocks.addPendingMessage.mock.calls;
+    expect(addCalls.length).toBe(1);
+    const payload = addCalls[0][2];
+
+    expect(payload.sendType).toBe("private");
+    expect(payload.data.content).toBe("normal message");
+    expect(payload.data).not.toHaveProperty("encrypted");
+  });
+
+  it("encryption failure does not create offline retry task", async () => {
+    const ctx = makeCtx();
+    const { sendMessage } = createMessageSendQueueModule(ctx as never);
+
+    getLocalSessionStatusMock.mockReturnValue("encrypted");
+    encryptMessageMock.mockRejectedValue(new Error("ratchet corrupted"));
+
+    const session = makeSession();
+    const result = await sendMessage(session, "hello", "TEXT");
+
+    expect(result).toBe(false);
+    expect(ctx._mocks.addPendingMessage).not.toHaveBeenCalled();
+  });
 });
