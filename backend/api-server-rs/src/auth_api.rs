@@ -251,7 +251,7 @@ pub async fn refresh(
     }
     let token_pair = refresh_token_pair(&state, request).await?;
     let mut response_headers = HeaderMap::new();
-    append_auth_cookies(&mut response_headers, &state.config, &token_pair)?;
+    append_auth_cookies(&mut response_headers, &state.config, &token_pair, &headers)?;
     let response = RefreshResponseDto {
         expires_in_ms: token_pair.expires_in_ms,
         refresh_expires_in_ms: token_pair.refresh_expires_in_ms,
@@ -575,40 +575,46 @@ pub fn internal_signature_headers(
 }
 
 pub fn append_auth_cookies(
-    headers: &mut HeaderMap,
+    response_headers: &mut HeaderMap,
     config: &AppConfig,
     token_pair: &TokenPairDto,
+    request_headers: &HeaderMap,
 ) -> Result<(), AppError> {
+    let secure = resolve_cookie_secure(config, request_headers);
     if let Some(access) = token_pair.access_token.as_deref() {
         append_cookie(
-            headers,
+            response_headers,
             &config.access_cookie_name,
             access,
             token_pair.expires_in_ms.unwrap_or_default(),
             "/",
             &config.auth_cookie_same_site,
-            resolve_cookie_secure(config, HeaderMap::new()),
+            secure,
         )?;
     }
     if let Some(refresh) = token_pair.refresh_token.as_deref() {
         append_cookie(
-            headers,
+            response_headers,
             &config.refresh_cookie_name,
             refresh,
             token_pair.refresh_expires_in_ms.unwrap_or_default(),
             "/",
             &config.auth_cookie_same_site,
-            resolve_cookie_secure(config, HeaderMap::new()),
+            secure,
         )?;
     }
     Ok(())
 }
 
-pub fn expire_auth_cookies(headers: &mut HeaderMap, config: &AppConfig) {
-    let secure = resolve_cookie_secure(config, HeaderMap::new());
-    expire_cookie(headers, &config.access_cookie_name, secure);
-    expire_cookie(headers, &config.refresh_cookie_name, secure);
-    expire_cookie(headers, &config.ws_ticket_cookie_name, secure);
+pub fn expire_auth_cookies(
+    response_headers: &mut HeaderMap,
+    config: &AppConfig,
+    request_headers: &HeaderMap,
+) {
+    let secure = resolve_cookie_secure(config, request_headers);
+    expire_cookie(response_headers, &config.access_cookie_name, secure);
+    expire_cookie(response_headers, &config.refresh_cookie_name, secure);
+    expire_cookie(response_headers, &config.ws_ticket_cookie_name, secure);
 }
 
 async fn refresh_token_pair(
@@ -1177,7 +1183,7 @@ fn normalize_same_site(value: &str) -> &str {
     }
 }
 
-fn resolve_cookie_secure(config: &AppConfig, headers: HeaderMap) -> bool {
+fn resolve_cookie_secure(config: &AppConfig, request_headers: &HeaderMap) -> bool {
     match config
         .auth_cookie_secure
         .trim()
@@ -1185,8 +1191,8 @@ fn resolve_cookie_secure(config: &AppConfig, headers: HeaderMap) -> bool {
         .as_str()
     {
         "true" => true,
-        "auto" => headers
-            .get(axum::http::header::HeaderName::from_static("x-forwarded-proto"))
+        "auto" => request_headers
+            .get("x-forwarded-proto")
             .and_then(|v| v.to_str().ok())
             .map(|v| v.eq_ignore_ascii_case("https"))
             .unwrap_or(false),
@@ -1309,4 +1315,168 @@ where
     T: Deserialize<'de> + Default,
 {
     Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config_with_secure(secure: &str) -> AppConfig {
+        AppConfig {
+            port: 0,
+            cache_redis_url: String::new(),
+            private_hot_redis_urls: vec![],
+            group_hot_redis_urls: vec![],
+            private_event_redis_url: String::new(),
+            group_event_redis_url: String::new(),
+            route_redis_url: String::new(),
+            mysql_url: String::new(),
+            mysql_max_connections: 0,
+            private_event_stream_key: String::new(),
+            group_event_stream_key: String::new(),
+            event_stream_max_len: 0,
+            stream_consumer_block_ms: 0,
+            event_publisher_enabled: false,
+            message_writer_enabled: false,
+            publisher_batch_size: 0,
+            publisher_loop_interval_ms: 0,
+            writer_group_id: String::new(),
+            writer_batch_size: 0,
+            writer_flush_interval_ms: 0,
+            writer_snowflake_node_id: 0,
+            push_dispatcher_enabled: false,
+            push_dispatcher_group_id: String::new(),
+            push_dispatcher_batch_size: 0,
+            route_users_key: String::new(),
+            route_cache_ttl_ms: 0,
+            server_registry_key_prefix: String::new(),
+            jwt_secret: String::new(),
+            jwt_expiration_ms: 0,
+            refresh_secret: String::new(),
+            refresh_expiration_ms: 0,
+            ws_ticket_ttl_seconds: 0,
+            revoked_token_ttl_seconds: 0,
+            resource_cache_ttl_seconds: 0,
+            token_revocation_check_enabled: false,
+            internal_secret: String::new(),
+            internal_max_skew_ms: 0,
+            gateway_auth_secret: String::new(),
+            access_cookie_name: "IM_ACCESS_TOKEN".to_string(),
+            refresh_cookie_name: "IM_REFRESH_TOKEN".to_string(),
+            auth_cookie_same_site: "Lax".to_string(),
+            auth_cookie_secure: secure.to_string(),
+            ws_ticket_cookie_name: "IM_WS_TICKET".to_string(),
+            ws_ticket_cookie_path: "/websocket".to_string(),
+            ws_ticket_cookie_same_site: "Strict".to_string(),
+            ws_ticket_cookie_secure: "false".to_string(),
+            admin_usernames: vec![],
+            admin_user_ids: vec![],
+            storage_base_dir: std::path::PathBuf::new(),
+            file_image_max_size: 0,
+            file_file_max_size: 0,
+            file_audio_max_size: 0,
+            file_video_max_size: 0,
+            file_avatar_max_size: 0,
+            request_body_limit: 0,
+            snowflake_node_id: 0,
+            im_server_url: String::new(),
+            im_server_ws_url: String::new(),
+            log_service_url: String::new(),
+            registry_service_url: String::new(),
+            ai_enabled: false,
+            ai_encryption_key_base64: String::new(),
+            ai_spring_url: String::new(),
+            ai_task_stream_key: String::new(),
+            ai_auto_reply_cache_ttl_sec: 0,
+            ai_anti_reentry_ms: 0,
+            ai_summary_max_tokens: 0,
+            ai_summary_cache_ttl_sec: 0,
+            ai_snowflake_node_id: 0,
+        }
+    }
+
+    fn set_cookie_contains_secure(headers: &HeaderMap, cookie_name: &str) -> bool {
+        headers
+            .get_all(header::SET_COOKIE)
+            .into_iter()
+            .filter_map(|v| v.to_str().ok())
+            .any(|v| v.starts_with(cookie_name) && v.contains("; Secure"))
+    }
+
+    #[test]
+    fn resolve_secure_auto_with_https_header() {
+        let config = config_with_secure("auto");
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-proto", HeaderValue::from_static("https"));
+        assert!(resolve_cookie_secure(&config, &headers));
+    }
+
+    #[test]
+    fn resolve_secure_auto_without_https_header() {
+        let config = config_with_secure("auto");
+        let headers = HeaderMap::new();
+        assert!(!resolve_cookie_secure(&config, &headers));
+    }
+
+    #[test]
+    fn resolve_secure_true_always_secure() {
+        let config = config_with_secure("true");
+        let headers = HeaderMap::new();
+        assert!(resolve_cookie_secure(&config, &headers));
+    }
+
+    #[test]
+    fn append_cookies_auto_https_sets_secure() {
+        let config = config_with_secure("auto");
+        let mut request_headers = HeaderMap::new();
+        request_headers.insert("x-forwarded-proto", HeaderValue::from_static("https"));
+
+        let token_pair = TokenPairDto {
+            access_token: Some("at".to_string()),
+            refresh_token: Some("rt".to_string()),
+            expires_in_ms: Some(60_000),
+            refresh_expires_in_ms: Some(3_600_000),
+        };
+        let mut response_headers = HeaderMap::new();
+        append_auth_cookies(&mut response_headers, &config, &token_pair, &request_headers).unwrap();
+
+        assert!(set_cookie_contains_secure(&response_headers, "IM_ACCESS_TOKEN"));
+        assert!(set_cookie_contains_secure(&response_headers, "IM_REFRESH_TOKEN"));
+    }
+
+    #[test]
+    fn append_cookies_auto_no_https_omits_secure() {
+        let config = config_with_secure("auto");
+        let request_headers = HeaderMap::new();
+
+        let token_pair = TokenPairDto {
+            access_token: Some("at".to_string()),
+            refresh_token: Some("rt".to_string()),
+            expires_in_ms: Some(60_000),
+            refresh_expires_in_ms: Some(3_600_000),
+        };
+        let mut response_headers = HeaderMap::new();
+        append_auth_cookies(&mut response_headers, &config, &token_pair, &request_headers).unwrap();
+
+        assert!(!set_cookie_contains_secure(&response_headers, "IM_ACCESS_TOKEN"));
+        assert!(!set_cookie_contains_secure(&response_headers, "IM_REFRESH_TOKEN"));
+    }
+
+    #[test]
+    fn append_cookies_true_always_sets_secure() {
+        let config = config_with_secure("true");
+        let request_headers = HeaderMap::new();
+
+        let token_pair = TokenPairDto {
+            access_token: Some("at".to_string()),
+            refresh_token: Some("rt".to_string()),
+            expires_in_ms: Some(60_000),
+            refresh_expires_in_ms: Some(3_600_000),
+        };
+        let mut response_headers = HeaderMap::new();
+        append_auth_cookies(&mut response_headers, &config, &token_pair, &request_headers).unwrap();
+
+        assert!(set_cookie_contains_secure(&response_headers, "IM_ACCESS_TOKEN"));
+        assert!(set_cookie_contains_secure(&response_headers, "IM_REFRESH_TOKEN"));
+    }
 }
