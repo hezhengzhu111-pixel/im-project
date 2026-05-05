@@ -152,7 +152,7 @@ pub async fn login(
         .await?;
 
     let mut headers = HeaderMap::new();
-    auth_api::append_auth_cookies(&mut headers, &state.config, &token_pair)?;
+    auth_api::append_auth_cookies(&mut headers, &state.config, &token_pair, &HeaderMap::new())?;
 
     Ok((
         StatusCode::OK,
@@ -224,7 +224,7 @@ pub async fn logout(
     State(state): State<AppState>,
 ) -> (StatusCode, HeaderMap, Json<ApiResponse<String>>) {
     let mut headers = HeaderMap::new();
-    auth_api::expire_auth_cookies(&mut headers, &state.config);
+    auth_api::expire_auth_cookies(&mut headers, &state.config, &HeaderMap::new());
     (
         StatusCode::OK,
         headers,
@@ -399,7 +399,7 @@ pub async fn delete_account(
         .await?;
     tx.commit().await?;
     let mut response_headers = HeaderMap::new();
-    auth_api::expire_auth_cookies(&mut response_headers, &state.config);
+    auth_api::expire_auth_cookies(&mut response_headers, &state.config, &headers);
     Ok((
         StatusCode::OK,
         response_headers,
