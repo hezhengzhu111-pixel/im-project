@@ -126,6 +126,13 @@ vi.mock("@/services/group", () => ({
   },
 }));
 
+vi.mock("@/features/e2ee/composables/useE2eeSessionStatus", () => ({
+  useE2eeSessionStatus: () => {
+    const { ref } = require("vue");
+    return ref("plaintext");
+  },
+}));
+
 vi.mock("@/features/chat/composables/useChatPage", () => ({
   useChatPage: () => {
     const { ref, computed } = require("vue");
@@ -289,6 +296,7 @@ const mountContainer = () =>
             "currentUserAvatar",
             "loadingHistory",
             "openedUnreadCount",
+            "e2eeStatus",
           ],
           template: "<div class='chat-message-list-stub' />",
         },
