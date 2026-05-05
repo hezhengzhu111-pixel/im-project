@@ -15,14 +15,20 @@ use redis::aio::ConnectionManager;
 use redis::{AsyncCommands, Script};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use sqlx::{MySqlPool, Row};
+use std::collections::HashMap;
+use std::time::Instant;
 
 const VALIDATION_CACHE_TTL_SECONDS: u64 = 5 * 60;
 const VALIDATION_NEGATIVE_CACHE_TTL_SECONDS: u64 = 60;
-const GROUP_MEMBERS_CACHE_TTL_SECONDS: u64 = 5 * 60;
 const MAX_FRIENDS_PRELOAD: i64 = 10_000;
 const FNV_OFFSET_BASIS: u64 = 14_695_981_039_346_656_037;
 const FNV_PRIME: u64 = 1_099_511_628_211;
 
+/// 私聊消息发送请求体。
+///
+/// `receiver_id` 支持数字和字符串两种 JSON 格式（通过 `deserialize_i64` 兼容）。
+/// E2EE 相关字段（`encrypted`、`e2ee_header`、`e2ee_device_id`）为可选，
+/// 用于端到端加密消息的元数据传递。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SendPrivateRequest {
@@ -41,6 +47,10 @@ pub struct SendPrivateRequest {
     pub e2ee_device_id: Option<String>,
 }
 
+/// 群聊消息发送请求体。
+///
+/// `mentioned_user_ids` 为可选的 @提及列表，服务端会校验被提及用户是否为群成员。
+/// 发送者自身会被自动排除在 @提及列表之外。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SendGroupRequest {
@@ -57,6 +67,11 @@ pub struct SendGroupRequest {
     pub mentioned_user_ids: Option<Vec<String>>,
 }
 
+/// 历史消息查询参数，支持游标分页和数量限制。
+///
+/// `last_message_id`：返回此 ID 之前的消息（向前翻页）；
+/// `after_message_id`：返回此 ID 之后的消息（向后翻页）；
+/// `limit`/`size`：每页数量，取值范围 [1, 100]，默认 20。
 #[derive(Debug, Deserialize)]
 pub struct HistoryQuery {
     pub size: Option<i64>,
@@ -65,6 +80,7 @@ pub struct HistoryQuery {
     pub after_message_id: Option<i64>,
 }
 
+/// 消息客户端配置，告知前端当前的消息约束。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageConfig {
@@ -72,6 +88,11 @@ pub struct MessageConfig {
     pub text_max_length: i32,
 }
 
+/// 会话摘要 DTO，用于会话列表展示。
+///
+/// `conversation_type`：1=私聊，2=群聊。
+/// `unread_count` 从 Redis Hash（`im:user:{uid}:unread`）中读取，
+/// 群聊未读数通过 `group_seq - read_seq` 计算。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationDto {
@@ -91,6 +112,9 @@ pub struct ConversationDto {
     pub is_muted: bool,
 }
 
+/// 使用 FNV-1a 哈希计算给定 key 对应的热 Redis 分片索引。
+///
+/// `shard_count` 为 0 时返回 `None`。用于私聊消息的会话级分片路由。
 pub fn shard_index_for_key(key: &str, shard_count: usize) -> Option<usize> {
     if shard_count == 0 {
         return None;
@@ -102,10 +126,26 @@ pub fn shard_index_for_key(key: &str, shard_count: usize) -> Option<usize> {
     usize::try_from(hash % shard_count_u64).ok()
 }
 
+/// 计算群聊消息对应的热 Redis 分片索引。
+///
+/// 内部将 `group_id` 转换为 `g_{group_id}` 格式的会话 ID 后调用 [`shard_index_for_key`]。
 pub fn shard_index_for_group_id(group_id: i64, shard_count: usize) -> Option<usize> {
     shard_index_for_key(&keys::group_conversation_id(group_id), shard_count)
 }
 
+/// 发送私聊消息。
+///
+/// **鉴权要求**：通过 `identity` 参数传入已验证的调用者身份。
+///
+/// **业务流程**：
+/// 1. 校验输入（消息类型、内容长度、E2EE 加密消息跳过 2000 字符限制）
+/// 2. 解析并缓存校验接收方用户是否有效
+/// 3. 校验双方好友关系（三级缓存：本地 LRU → Redis → MySQL，含批量预加载）
+/// 4. 构建 `MessageDto`，通过 Lua 脚本**原子热写入 Redis**（客户端去重 + 消息体 +
+///    会话索引 + 最后消息 + 未读计数 + 待处理事件队列）
+/// 5. 异步触发 AI 自动回复（`ai::auto_reply::maybe_trigger`，通过 `tokio::spawn`）
+///
+/// **返回**：写入成功后的完整 `MessageDto`（含服务端生成的 Snowflake ID）。
 pub async fn send_private(
     config: &AppConfig,
     cache_redis: &mut ConnectionManager,
@@ -216,6 +256,18 @@ pub async fn send_private(
     result
 }
 
+/// 发送群聊消息。
+///
+/// **鉴权要求**：通过 `identity` 参数传入已验证的调用者身份。
+///
+/// **业务流程**：
+/// 1. 校验输入、解析并缓存校验群组是否有效
+/// 2. 校验发送者是否为群成员
+/// 3. 批量校验 @提及的用户是否为群成员（非成员直接拒绝）
+/// 4. 通过 Lua 脚本原子热写入 Redis，群聊消息额外生成 `conversation_seq`
+///    （Lua 内 `INCR`，并通过 `string.gsub` 替换 JSON 中的 `null` 占位符）
+///
+/// **返回**：写入成功后的完整 `MessageDto`。
 pub async fn send_group(
     config: &AppConfig,
     cache_redis: &mut ConnectionManager,
@@ -239,17 +291,14 @@ pub async fn send_group(
     .await?
     .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
     validate_group_member(cache_redis, db, group_id, identity.user_id).await?;
-    if let Some(ref mentioned) = request.mentioned_user_ids {
-        for user_id in mentioned {
-            let uid: i64 = user_id
-                .trim()
-                .parse()
-                .map_err(|_| AppError::BadRequest("invalid mentioned user id".to_string()))?;
-            if uid != identity.user_id {
-                validate_group_member(cache_redis, db, group_id, uid).await?;
-            }
-        }
-    }
+    let validated_mentioned_ids = batch_validate_mentioned_members(
+        cache_redis,
+        db,
+        group_id,
+        identity.user_id,
+        request.mentioned_user_ids.as_deref(),
+    )
+    .await?;
     let conversation_id = keys::group_conversation_id(group_id);
     let message = build_message(
         config,
@@ -271,14 +320,23 @@ pub async fn send_group(
         },
     );
     let mut event = build_message_created_event(&conversation_id, &message);
-    event.mentioned_user_ids = request.mentioned_user_ids.map(|ids| {
-        ids.iter()
-            .filter_map(|s| s.trim().parse::<i64>().ok())
-            .collect()
-    });
+    if request.mentioned_user_ids.is_some() {
+        let mut mentioned_ids = validated_mentioned_ids;
+        mentioned_ids.push(identity.user_id);
+        mentioned_ids.sort_unstable();
+        mentioned_ids.dedup();
+        event.mentioned_user_ids = Some(mentioned_ids);
+    }
     write_group_message_hot(hot_redis, group_id, &conversation_id, &message, &event).await
 }
 
+/// 标记会话为已读。
+///
+/// **鉴权要求**：通过 `identity` 参数传入已验证的调用者身份。
+///
+/// **业务流程**：自动识别私聊/群聊会话，分别调用对应的已读处理逻辑。
+/// 私聊会更新读游标并清除未读计数；群聊额外更新 `last_read_seq`。
+/// 已读事件通过 `write_state_event` 写入待处理事件队列，由后台推送分发器异步投递。
 pub async fn mark_read(
     cache_redis: &mut ConnectionManager,
     private_hot_redis: &mut ConnectionManager,
@@ -408,6 +466,15 @@ async fn mark_private_read(
     Ok(())
 }
 
+/// 撤回或删除消息。
+///
+/// **鉴权要求**：仅消息发送者可以操作，否则返回 403。
+///
+/// **安全约束**：撤回操作（`MessageStatus::Recalled`）限制在消息发送后 2 分钟内。
+/// 删除操作（`MessageStatus::Deleted`）无时间限制。
+///
+/// **业务流程**：从所有热 Redis 分片中查找消息（缓存未命中时回退到 MySQL），
+/// 更新消息状态并写入状态变更事件到待处理队列。
 pub async fn recall_or_delete(
     private_redis_shards: &mut [ConnectionManager],
     group_redis_shards: &mut [ConnectionManager],
@@ -518,14 +585,26 @@ async fn apply_message_status(
     Ok(message)
 }
 
+/// 查询当前用户的会话列表。
+///
+/// **鉴权要求**：通过 `identity` 参数传入已验证的调用者身份。
+///
+/// **业务流程**：
+/// 1. 遍历所有私聊热 Redis 分片，读取用户会话索引（`ZREVRANGE` 前 100 条）
+/// 2. 批量加载最后消息、未读计数、用户/群组元数据
+/// 3. 从 MySQL 加载用户加入的群组会话作为补充
+/// 4. 去重并按最后消息时间降序排序
+///
+/// **缓存策略**：热数据从 Redis 读取，缓存未命中时回退到 MySQL。
 pub async fn conversations(
     private_redis_shards: &mut [ConnectionManager],
     group_redis_shards: &mut [ConnectionManager],
     db: &MySqlPool,
     identity: &Identity,
 ) -> Result<Vec<ConversationDto>, AppError> {
+    let started = Instant::now();
     let mut hot_conversation_count = 0_usize;
-    let mut result = Vec::new();
+    let mut all_conv_ids = Vec::new();
     for redis in private_redis_shards.iter_mut() {
         let conv_ids: Vec<String> = redis
             .zrevrange(keys::user_conversations_key(identity.user_id), 0, 99)
@@ -533,20 +612,85 @@ pub async fn conversations(
             .unwrap_or_default();
         hot_conversation_count = hot_conversation_count.saturating_add(conv_ids.len());
         for conversation_id in conv_ids {
-            if conversation_id.starts_with("g_") {
-                continue;
+            if !conversation_id.starts_with("g_") {
+                all_conv_ids.push(conversation_id);
             }
-            if let Some(last) = load_last_message(redis, &conversation_id).await {
-                let unread = redis
-                    .hget(keys::user_unread_key(identity.user_id), &conversation_id)
-                    .await
-                    .unwrap_or(0_i64);
-                if let Some(dto) =
-                    conversation_from_message(db, identity.user_id, &conversation_id, last, unread)
-                        .await?
-                {
-                    result.push(dto);
+        }
+    }
+    let mut result = Vec::new();
+    if !all_conv_ids.is_empty() {
+        let redis = private_redis_shards
+            .get_mut(0)
+            .ok_or_else(|| AppError::Upstream("private hot redis shard missing".to_string()))?;
+        let last_messages = batch_load_last_messages(redis, &all_conv_ids).await;
+        let unread_counts = batch_load_unread_counts(redis, identity.user_id, &all_conv_ids).await;
+        let mut peer_ids = Vec::new();
+        for message in last_messages.values() {
+            if !message.is_group_chat {
+                if let Some(peer_id) = extract_peer_id(identity.user_id, message) {
+                    peer_ids.push(peer_id);
                 }
+            }
+        }
+        peer_ids.sort_unstable();
+        peer_ids.dedup();
+        let user_metadata = batch_load_user_metadata(db, &peer_ids).await?;
+        for conversation_id in &all_conv_ids {
+            let Some(message) = last_messages.get(conversation_id) else {
+                continue;
+            };
+            let unread = unread_counts.get(conversation_id).copied().unwrap_or(0);
+            if message.is_group_chat {
+                let group_id = message
+                    .group_id
+                    .as_deref()
+                    .and_then(|value| value.parse::<i64>().ok())
+                    .unwrap_or_default();
+                let group_metadata = batch_load_group_metadata(db, &[group_id]).await?;
+                let (name, avatar) = group_metadata
+                    .get(&group_id)
+                    .cloned()
+                    .unwrap_or((None, None));
+                result.push(ConversationDto {
+                    conversation_id: group_id.to_string(),
+                    conversation_type: 2,
+                    target_id: group_id.to_string(),
+                    conversation_name: name.unwrap_or_else(|| group_id.to_string()),
+                    conversation_avatar: avatar,
+                    last_message: message.content.clone().unwrap_or_default(),
+                    last_message_type: message.message_type.clone(),
+                    last_message_sender_id: Some(message.sender_id.clone()),
+                    last_message_sender_name: message.sender_name.clone(),
+                    last_message_time: Some(message.created_time.clone()),
+                    unread_count: unread,
+                    is_online: false,
+                    is_pinned: false,
+                    is_muted: false,
+                });
+            } else {
+                let Some(peer_id) = extract_peer_id(identity.user_id, message) else {
+                    continue;
+                };
+                let (username, nickname, avatar) = user_metadata
+                    .get(&peer_id)
+                    .cloned()
+                    .unwrap_or((None, None, None));
+                result.push(ConversationDto {
+                    conversation_id: peer_id.to_string(),
+                    conversation_type: 1,
+                    target_id: peer_id.to_string(),
+                    conversation_name: nickname.or(username).unwrap_or_else(|| peer_id.to_string()),
+                    conversation_avatar: avatar,
+                    last_message: message.content.clone().unwrap_or_default(),
+                    last_message_type: message.message_type.clone(),
+                    last_message_sender_id: Some(message.sender_id.clone()),
+                    last_message_sender_name: message.sender_name.clone(),
+                    last_message_time: Some(message.created_time.clone()),
+                    unread_count: unread,
+                    is_online: false,
+                    is_pinned: false,
+                    is_muted: false,
+                });
             }
         }
     }
@@ -563,6 +707,14 @@ pub async fn conversations(
     result.extend(load_group_conversations(group_redis_shards, db, identity.user_id).await?);
     dedup_conversations(&mut result);
     result.sort_by(|a, b| b.last_message_time.cmp(&a.last_message_time));
+    tracing::debug!(
+        target: "im_observe",
+        kind = "conversations_query",
+        elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        private_count = result.iter().filter(|c| c.conversation_type == 1).count(),
+        group_count = result.iter().filter(|c| c.conversation_type == 2).count(),
+        "conversations query completed"
+    );
     Ok(result)
 }
 
@@ -590,51 +742,50 @@ async fn load_group_conversations(
         .fetch_all(db),
     )
     .await?;
+    let group_ids: Vec<i64> = rows.iter().map(|row| row.get::<i64, _>("id")).collect();
+    let conversation_ids: Vec<String> = group_ids
+        .iter()
+        .map(|id| keys::group_conversation_id(*id))
+        .collect();
+    let redis = redis_shards
+        .get_mut(0)
+        .ok_or_else(|| AppError::Upstream("group hot redis shard missing".to_string()))?;
+    let mut last_messages = batch_load_last_messages(redis, &conversation_ids).await;
+    let missing_conv_ids: Vec<String> = conversation_ids
+        .iter()
+        .filter(|id| !last_messages.contains_key(*id))
+        .cloned()
+        .collect();
+    if !missing_conv_ids.is_empty() {
+        let db_messages = batch_load_last_messages_from_db(db, &missing_conv_ids).await?;
+        last_messages.extend(db_messages);
+    }
+    let group_sequences = batch_load_group_sequences(redis, db, &group_ids).await?;
+    let read_sequences = batch_load_group_read_sequences(redis, db, user_id, &group_ids).await?;
     let mut result = Vec::new();
-    for row in rows {
-        let source = GroupConversationSource {
-            group_id: row.get("id"),
-            name: row
-                .try_get::<String, _>("name")
-                .unwrap_or_else(|_| "group".to_string()),
-            avatar: row.try_get::<Option<String>, _>("avatar").ok().flatten(),
+    for row in &rows {
+        let group_id: i64 = row.get("id");
+        let conversation_id = keys::group_conversation_id(group_id);
+        let Some(last) = last_messages.get(&conversation_id) else {
+            continue;
         };
-        let conversation_id = keys::group_conversation_id(source.group_id);
-        let index = shard_index_for_group_id(source.group_id, redis_shards.len())
-            .ok_or_else(|| AppError::Upstream("group hot redis shard missing".to_string()))?;
-        let Some(redis) = redis_shards.get_mut(index) else {
-            return Err(AppError::Upstream(
-                "group hot redis shard missing".to_string(),
-            ));
-        };
-        let last = match load_last_message(redis, &conversation_id).await {
-            Some(message) => message,
-            None => {
-                let history = load_history_from_db(
-                    db,
-                    &conversation_id,
-                    &HistoryQuery {
-                        size: None,
-                        limit: Some(1),
-                        last_message_id: None,
-                        after_message_id: None,
-                    },
-                    1,
-                )
-                .await?;
-                let Some(message) = history.into_iter().next() else {
-                    continue;
-                };
-                message
-            }
-        };
-        let group_seq = current_group_sequence(redis, db, source.group_id)
-            .await?
+        let group_seq = group_sequences
+            .get(&group_id)
+            .copied()
+            .unwrap_or(0)
             .max(last.conversation_seq.unwrap_or_default());
-        let read_seq = current_group_read_sequence(redis, db, user_id, source.group_id).await?;
+        let read_seq = read_sequences.get(&group_id).copied().unwrap_or(0);
+        let name = row
+            .try_get::<String, _>("name")
+            .unwrap_or_else(|_| "group".to_string());
+        let avatar = row.try_get::<Option<String>, _>("avatar").ok().flatten();
         result.push(group_conversation_from_message(
-            source,
-            last,
+            GroupConversationSource {
+                group_id,
+                name,
+                avatar,
+            },
+            last.clone(),
             group_unread_count(group_seq, read_seq),
         ));
     }
@@ -690,6 +841,7 @@ async fn current_group_sequence(
     Ok(sequence)
 }
 
+#[allow(dead_code)]
 async fn current_group_read_sequence(
     redis: &mut ConnectionManager,
     db: &MySqlPool,
@@ -737,6 +889,256 @@ fn dedup_conversations(conversations: &mut Vec<ConversationDto>) {
     });
 }
 
+fn extract_peer_id(user_id: i64, message: &MessageDto) -> Option<i64> {
+    if message.sender_id == user_id.to_string() {
+        message
+            .receiver_id
+            .as_deref()
+            .and_then(|v| v.parse::<i64>().ok())
+    } else {
+        message.sender_id.parse::<i64>().ok()
+    }
+}
+
+async fn batch_load_last_messages(
+    redis: &mut ConnectionManager,
+    conversation_ids: &[String],
+) -> HashMap<String, MessageDto> {
+    if conversation_ids.is_empty() {
+        return HashMap::new();
+    }
+    let last_keys: Vec<String> = conversation_ids
+        .iter()
+        .map(|id| keys::conversation_last_key(id))
+        .collect();
+    let values: Vec<Option<String>> = redis.mget(&last_keys).await.unwrap_or_default();
+    let mut result = HashMap::new();
+    for (conv_id, value) in conversation_ids.iter().zip(values) {
+        if let Some(raw) = value {
+            if let Ok(message) = serde_json::from_str::<MessageDto>(&raw) {
+                result.insert(conv_id.clone(), message);
+            }
+        }
+    }
+    result
+}
+
+async fn batch_load_unread_counts(
+    redis: &mut ConnectionManager,
+    user_id: i64,
+    conversation_ids: &[String],
+) -> HashMap<String, i64> {
+    if conversation_ids.is_empty() {
+        return HashMap::new();
+    }
+    let unread_key = keys::user_unread_key(user_id);
+    let mut pipe = redis::pipe();
+    for conv_id in conversation_ids {
+        pipe.hget(&unread_key, conv_id);
+    }
+    let values: Vec<i64> = pipe.query_async(redis).await.unwrap_or_default();
+    conversation_ids
+        .iter()
+        .zip(values)
+        .map(|(id, count)| (id.clone(), count))
+        .collect()
+}
+
+async fn batch_load_user_metadata(
+    db: &MySqlPool,
+    peer_ids: &[i64],
+) -> Result<HashMap<i64, (Option<String>, Option<String>, Option<String>)>, AppError> {
+    if peer_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let placeholders = peer_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT id, username, nickname, avatar FROM service_user_service_db.users WHERE id IN ({placeholders})"
+    );
+    let mut query = sqlx::query(&sql);
+    for peer_id in peer_ids {
+        query = query.bind(peer_id);
+    }
+    let rows = observability::db_query("batch_user_metadata", query.fetch_all(db)).await?;
+    let mut result = HashMap::new();
+    for row in rows {
+        let id: i64 = row.get("id");
+        let username: Option<String> = row.try_get("username").ok().flatten();
+        let nickname: Option<String> = row.try_get("nickname").ok().flatten();
+        let avatar: Option<String> = row.try_get("avatar").ok().flatten();
+        result.insert(id, (username, nickname, avatar));
+    }
+    Ok(result)
+}
+
+async fn batch_load_group_metadata(
+    db: &MySqlPool,
+    group_ids: &[i64],
+) -> Result<HashMap<i64, (Option<String>, Option<String>)>, AppError> {
+    if group_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let placeholders = group_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT id, name, avatar FROM service_group_service_db.im_group WHERE id IN ({placeholders})"
+    );
+    let mut query = sqlx::query(&sql);
+    for group_id in group_ids {
+        query = query.bind(group_id);
+    }
+    let rows = observability::db_query("batch_group_metadata", query.fetch_all(db)).await?;
+    let mut result = HashMap::new();
+    for row in rows {
+        let id: i64 = row.get("id");
+        let name: Option<String> = row.try_get("name").ok().flatten();
+        let avatar: Option<String> = row.try_get("avatar").ok().flatten();
+        result.insert(id, (name, avatar));
+    }
+    Ok(result)
+}
+
+async fn batch_load_group_sequences(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    group_ids: &[i64],
+) -> Result<HashMap<i64, i64>, AppError> {
+    if group_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let seq_keys: Vec<String> = group_ids
+        .iter()
+        .map(|id| keys::group_sequence_key(*id))
+        .collect();
+    let values: Vec<Option<i64>> = redis.mget(&seq_keys).await.unwrap_or_default();
+    let mut result = HashMap::new();
+    let mut missing = Vec::new();
+    for (group_id, value) in group_ids.iter().zip(values) {
+        if let Some(seq) = value {
+            result.insert(*group_id, seq.max(0));
+        } else {
+            missing.push(*group_id);
+        }
+    }
+    if !missing.is_empty() {
+        let placeholders = missing.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT group_id, COALESCE(MAX(conversation_seq), 0) AS max_seq \
+             FROM service_message_service_db.messages \
+             WHERE is_group_chat = 1 AND group_id IN ({placeholders}) AND status <> 5 \
+             GROUP BY group_id"
+        );
+        let mut query = sqlx::query(&sql);
+        for group_id in &missing {
+            query = query.bind(group_id);
+        }
+        let rows = observability::db_query("batch_group_sequences", query.fetch_all(db)).await?;
+        let mut pipe = redis::pipe();
+        let mut has_pipe = false;
+        for row in rows {
+            let group_id: i64 = row.get("group_id");
+            let seq: i64 = row.get("max_seq");
+            if seq > 0 {
+                result.insert(group_id, seq);
+                pipe.set(keys::group_sequence_key(group_id), seq).ignore();
+                has_pipe = true;
+            }
+        }
+        if has_pipe {
+            let _: redis::RedisResult<()> = pipe.query_async(redis).await;
+        }
+    }
+    Ok(result)
+}
+
+async fn batch_load_group_read_sequences(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    user_id: i64,
+    group_ids: &[i64],
+) -> Result<HashMap<i64, i64>, AppError> {
+    if group_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let read_keys: Vec<String> = group_ids
+        .iter()
+        .map(|id| keys::group_read_sequence_key(user_id, *id))
+        .collect();
+    let values: Vec<Option<i64>> = redis.mget(&read_keys).await.unwrap_or_default();
+    let mut result = HashMap::new();
+    let mut missing = Vec::new();
+    for (group_id, value) in group_ids.iter().zip(values) {
+        if let Some(seq) = value {
+            result.insert(*group_id, seq.max(0));
+        } else {
+            missing.push(*group_id);
+        }
+    }
+    if !missing.is_empty() {
+        let placeholders = missing.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT group_id, COALESCE(MAX(last_read_seq), 0) AS max_seq \
+             FROM service_message_service_db.group_read_cursor \
+             WHERE user_id = ? AND group_id IN ({placeholders}) \
+             GROUP BY group_id"
+        );
+        let mut query = sqlx::query(&sql).bind(user_id);
+        for group_id in &missing {
+            query = query.bind(group_id);
+        }
+        let rows =
+            observability::db_query("batch_group_read_sequences", query.fetch_all(db)).await?;
+        let mut pipe = redis::pipe();
+        let mut has_pipe = false;
+        for row in rows {
+            let group_id: i64 = row.get("group_id");
+            let seq: i64 = row.get("max_seq");
+            if seq > 0 {
+                result.insert(group_id, seq);
+                pipe.set(keys::group_read_sequence_key(user_id, group_id), seq)
+                    .ignore();
+                has_pipe = true;
+            }
+        }
+        if has_pipe {
+            let _: redis::RedisResult<()> = pipe.query_async(redis).await;
+        }
+    }
+    Ok(result)
+}
+
+async fn batch_load_last_messages_from_db(
+    db: &MySqlPool,
+    conversation_ids: &[String],
+) -> Result<HashMap<String, MessageDto>, AppError> {
+    if conversation_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let mut result = HashMap::new();
+    for conversation_id in conversation_ids {
+        let messages = load_history_from_db(
+            db,
+            conversation_id,
+            &HistoryQuery {
+                size: None,
+                limit: Some(1),
+                last_message_id: None,
+                after_message_id: None,
+            },
+            1,
+        )
+        .await?;
+        if let Some(message) = messages.into_iter().next() {
+            result.insert(conversation_id.clone(), message);
+        }
+    }
+    Ok(result)
+}
+
+/// 查询私聊历史消息。
+///
+/// **鉴权要求**：需要有效的身份，且与对方存在好友关系。
+///
+/// **返回**：按消息 ID 降序排列的消息列表（最新在前），已删除的消息自动过滤。
 pub async fn private_history(
     cache_redis: &mut ConnectionManager,
     hot_redis: &mut ConnectionManager,
@@ -758,6 +1160,11 @@ pub async fn private_history(
     load_history(hot_redis, db, &conversation_id, query).await
 }
 
+/// 查询群聊历史消息。
+///
+/// **鉴权要求**：需要有效的身份，且为群组有效成员。
+///
+/// **返回**：按消息 ID 降序排列的消息列表，已删除的消息自动过滤。
 pub async fn group_history(
     cache_redis: &mut ConnectionManager,
     hot_redis: &mut ConnectionManager,
@@ -881,6 +1288,18 @@ fn pending_event_member(event_id: &str, conversation_id: &str) -> String {
     format!("{event_id}|{conversation_id}")
 }
 
+/// 通过 Lua 脚本原子写入私聊消息到热 Redis。
+///
+/// **原子操作**（单次 Lua 调用）：
+/// - 客户端去重（`im:client:{sid}:{cid}`）
+/// - 消息体存储（`im:msg:{id}`，TTL 14 天）
+/// - 会话消息索引（`ZADD im:conv:{conv}:msgs`）
+/// - 最后消息更新（`im:conv:{conv}:last`）
+/// - 双方用户会话索引（`ZADD im:user:{uid}:convs`）
+/// - 接收方未读计数递增（`HINCRBY im:user:{uid}:unread`）
+/// - 待处理事件队列（`ZADD im:pending:events` + 事件体缓存）
+///
+/// **返回**：写入后的 `MessageDto`（如果客户端去重命中，返回已有消息）。
 pub async fn write_private_message_hot(
     redis: &mut ConnectionManager,
     conversation_id: &str,
@@ -1116,6 +1535,7 @@ async fn load_message_from_db(db: &MySqlPool, message_id: i64) -> Result<Message
     Ok(message_from_row(&row))
 }
 
+#[allow(dead_code)]
 async fn load_last_message(
     redis: &mut ConnectionManager,
     conversation_id: &str,
@@ -1494,8 +1914,8 @@ async fn validate_group_member(
             ))
         };
     }
-    let members = load_group_members(redis, db, group_id).await?;
-    let allowed = members.contains(&user_id);
+    let result = crate::access_control::ensure_group_member(db, group_id, user_id).await;
+    let allowed = result.is_ok();
     write_cached_bool(redis, &key, allowed).await;
     if !allowed {
         return Err(AppError::Forbidden(
@@ -1530,48 +1950,6 @@ async fn write_cached_bool(redis: &mut ConnectionManager, key: &str, value: bool
     if let Err(error) = result {
         tracing::warn!(key, error = %error, "failed to cache boolean validation result");
     }
-}
-
-async fn load_group_members(
-    redis: &mut ConnectionManager,
-    db: &MySqlPool,
-    group_id: i64,
-) -> Result<Vec<i64>, AppError> {
-    let key = format!("im:cache:group_members:{group_id}");
-    if let Some(members) = local_cache::get_i64_vec(&key) {
-        return Ok(members);
-    }
-    let lock = local_cache::key_lock(&key);
-    let _guard = lock.lock().await;
-    if let Some(members) = local_cache::get_i64_vec(&key) {
-        return Ok(members);
-    }
-    let cached: Option<String> = redis.get(&key).await.ok().flatten();
-    if let Some(raw) = cached {
-        if let Ok(members) = serde_json::from_str::<Vec<i64>>(&raw) {
-            local_cache::set_i64_vec(&key, members.clone());
-            return Ok(members);
-        }
-    }
-    let rows: Vec<i64> = observability::db_query(
-        "load_group_members",
-        sqlx::query_scalar(
-            "SELECT user_id FROM service_group_service_db.im_group_member WHERE group_id = ? AND status = 1",
-        )
-        .bind(group_id)
-        .fetch_all(db),
-    )
-    .await?;
-    local_cache::set_i64_vec(&key, rows.clone());
-    if let Ok(raw) = serde_json::to_string(&rows) {
-        let result: redis::RedisResult<()> = redis
-            .set_ex(&key, raw, GROUP_MEMBERS_CACHE_TTL_SECONDS)
-            .await;
-        if let Err(error) = result {
-            tracing::warn!(key = %key, error = %error, "failed to cache group members");
-        }
-    }
-    Ok(rows)
 }
 
 fn conversation_id_from_message(message: &MessageDto) -> Result<String, AppError> {
@@ -1815,6 +2193,7 @@ fn message_from_row(row: &sqlx::mysql::MySqlRow) -> MessageDto {
     }
 }
 
+#[allow(dead_code)]
 async fn conversation_from_message(
     db: &MySqlPool,
     user_id: i64,
@@ -1908,20 +2287,91 @@ async fn load_private_conversations_from_db(
     )
     .await?;
     let mut seen = std::collections::HashSet::new();
-    let mut result = Vec::new();
+    let mut messages = Vec::new();
     for row in rows {
         let message = message_from_row(&row);
         let conversation_id = conversation_id_from_message(&message)?;
-        if !seen.insert(conversation_id.clone()) {
-            continue;
+        if seen.insert(conversation_id) {
+            messages.push(message);
         }
-        if let Some(conversation) =
-            conversation_from_message(db, user_id, &conversation_id, message, 0).await?
-        {
-            result.push(conversation);
+    }
+    let mut peer_ids: Vec<i64> = messages
+        .iter()
+        .filter_map(|m| extract_peer_id(user_id, m))
+        .collect();
+    peer_ids.sort_unstable();
+    peer_ids.dedup();
+    let user_metadata = batch_load_user_metadata(db, &peer_ids).await?;
+    let mut result = Vec::new();
+    for message in messages {
+        let Some(peer_id) = extract_peer_id(user_id, &message) else {
+            continue;
+        };
+        let (username, nickname, avatar) = user_metadata
+            .get(&peer_id)
+            .cloned()
+            .unwrap_or((None, None, None));
+        result.push(ConversationDto {
+            conversation_id: peer_id.to_string(),
+            conversation_type: 1,
+            target_id: peer_id.to_string(),
+            conversation_name: nickname.or(username).unwrap_or_else(|| peer_id.to_string()),
+            conversation_avatar: avatar,
+            last_message: message.content.clone().unwrap_or_default(),
+            last_message_type: message.message_type.clone(),
+            last_message_sender_id: Some(message.sender_id.clone()),
+            last_message_sender_name: message.sender_name.clone(),
+            last_message_time: Some(message.created_time.clone()),
+            unread_count: 0,
+            is_online: false,
+            is_pinned: false,
+            is_muted: false,
+        });
+    }
+    Ok(result)
+}
+
+fn validate_mentioned_user_ids(mentioned: &[String], sender_id: i64) -> Result<Vec<i64>, AppError> {
+    let mut seen = std::collections::HashSet::new();
+    let mut result = Vec::new();
+    for raw in mentioned {
+        let uid: i64 = raw
+            .trim()
+            .parse()
+            .map_err(|_| AppError::BadRequest("invalid mentioned user id".to_string()))?;
+        if uid != sender_id && seen.insert(uid) {
+            result.push(uid);
         }
     }
     Ok(result)
+}
+
+async fn batch_validate_mentioned_members(
+    redis: &mut ConnectionManager,
+    db: &MySqlPool,
+    group_id: i64,
+    sender_id: i64,
+    mentioned: Option<&[String]>,
+) -> Result<Vec<i64>, AppError> {
+    let Some(mentioned) = mentioned else {
+        return Ok(Vec::new());
+    };
+    let user_ids = validate_mentioned_user_ids(mentioned, sender_id)?;
+    if user_ids.is_empty() {
+        return Ok(user_ids);
+    }
+    let valid_ids =
+        crate::access_control::ensure_group_members_batch(db, group_id, &user_ids).await?;
+    for uid in &valid_ids {
+        let key = format!("im:cache:group_member:{group_id}:{uid}");
+        local_cache::set_bool(&key, true);
+        let result: redis::RedisResult<()> =
+            redis.set_ex(&key, "1", VALIDATION_CACHE_TTL_SECONDS).await;
+        if let Err(error) = result {
+            tracing::warn!(key = %key, error = %error, "failed to cache group member validation");
+        }
+    }
+    Ok(valid_ids)
 }
 
 #[cfg(test)]
@@ -1999,6 +2449,53 @@ mod tests {
         if pending_event_member("100", "g_20") != "100|g_20" {
             return Err("pending event member should encode event and conversation ids");
         }
+        Ok(())
+    }
+
+    #[test]
+    fn validate_mentioned_user_ids_deduplicates() -> Result<(), Box<dyn std::error::Error>> {
+        let input = vec!["100".to_string(), "200".to_string(), "100".to_string()];
+        let result = validate_mentioned_user_ids(&input, 1)?;
+        assert_eq!(result, vec![100, 200]);
+        Ok(())
+    }
+
+    #[test]
+    fn validate_mentioned_user_ids_excludes_sender() -> Result<(), Box<dyn std::error::Error>> {
+        let input = vec!["100".to_string(), "200".to_string()];
+        let result = validate_mentioned_user_ids(&input, 100)?;
+        assert_eq!(result, vec![200]);
+        Ok(())
+    }
+
+    #[test]
+    fn validate_mentioned_user_ids_rejects_invalid_string() {
+        let input = vec!["abc".to_string()];
+        let result = validate_mentioned_user_ids(&input, 1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_mentioned_user_ids_trims_whitespace() -> Result<(), Box<dyn std::error::Error>> {
+        let input = vec![" 100 ".to_string(), "\t200\t".to_string()];
+        let result = validate_mentioned_user_ids(&input, 1)?;
+        assert_eq!(result, vec![100, 200]);
+        Ok(())
+    }
+
+    #[test]
+    fn validate_mentioned_user_ids_empty_input() -> Result<(), Box<dyn std::error::Error>> {
+        let input: Vec<String> = vec![];
+        let result = validate_mentioned_user_ids(&input, 1)?;
+        assert!(result.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn validate_mentioned_user_ids_all_sender_excluded() -> Result<(), Box<dyn std::error::Error>> {
+        let input = vec!["50".to_string(), "50".to_string()];
+        let result = validate_mentioned_user_ids(&input, 50)?;
+        assert!(result.is_empty());
         Ok(())
     }
 }
