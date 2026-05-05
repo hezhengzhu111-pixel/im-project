@@ -1,13 +1,22 @@
-import {computed, ref} from "vue";
-import {defineStore} from "pinia";
-import {ElMessage} from "element-plus";
+import { computed, ref } from "vue";
+import { defineStore } from "pinia";
+import { ElMessage } from "element-plus";
 import router from "@/router";
-import {authService, userService} from "@/services";
-import {refreshAccessTokenCoordinated, type RefreshAccessTokenResult,} from "@/services/auth-refresh";
-import {normalizeUser} from "@/normalizers/user";
-import type {LoginRequest, RegisterRequest, TokenParseResultDTO, UpdateUserRequest, User,} from "@/types";
-import {APP_CONFIG, STORAGE_CONFIG} from "@/config";
-import {logger} from "@/utils/logger";
+import { authService, userService } from "@/services";
+import {
+  refreshAccessTokenCoordinated,
+  type RefreshAccessTokenResult,
+} from "@/services/auth-refresh";
+import { normalizeUser } from "@/normalizers/user";
+import type {
+  LoginRequest,
+  RegisterRequest,
+  TokenParseResultDTO,
+  UpdateUserRequest,
+  User,
+} from "@/types";
+import { APP_CONFIG, STORAGE_CONFIG } from "@/config";
+import { logger } from "@/utils/logger";
 
 const readPersistedAccessToken = (): string => {
   if (typeof localStorage === "undefined") {
@@ -52,10 +61,7 @@ const persistUser = (user: User | null): void => {
     localStorage.removeItem(STORAGE_CONFIG.USER_SNAPSHOT_KEY);
     return;
   }
-  localStorage.setItem(
-    STORAGE_CONFIG.USER_SNAPSHOT_KEY,
-    JSON.stringify(user),
-  );
+  localStorage.setItem(STORAGE_CONFIG.USER_SNAPSHOT_KEY, JSON.stringify(user));
 };
 
 const isValidTokenResult = (
@@ -80,7 +86,9 @@ const normalizePermissions = (permissions?: unknown): string[] => {
     .filter(Boolean);
 };
 
-const decodeAccessTokenClaims = (token: string): Record<string, unknown> | null => {
+const decodeAccessTokenClaims = (
+  token: string,
+): Record<string, unknown> | null => {
   const normalized = token.trim().replace(/^Bearer\s+/i, "");
   const [, payload] = normalized.split(".");
   if (!payload || typeof atob === "undefined") {
@@ -124,13 +132,16 @@ export const useUserStore = defineStore("user", () => {
   const sessionGeneration = ref(0);
   let sessionCheckInFlight: Promise<boolean> | null = null;
 
-  const isAuthenticated = computed(() => lastSessionValid.value && !!currentUser.value);
+  const isAuthenticated = computed(
+    () => lastSessionValid.value && !!currentUser.value,
+  );
   const isLoggedIn = computed(() => isAuthenticated.value);
   const avatar = computed(
     () => currentUser.value?.avatar || APP_CONFIG.DEFAULT_AVATAR,
   );
   const nickname = computed(
-    () => currentUser.value?.nickname || currentUser.value?.username || "未知用户",
+    () =>
+      currentUser.value?.nickname || currentUser.value?.username || "未知用户",
   );
   const userId = computed(() => currentUser.value?.id || "");
   const userInfo = computed(() => currentUser.value);
@@ -151,7 +162,9 @@ export const useUserStore = defineStore("user", () => {
     );
   };
 
-  const hasAnyPermission = (requiredPermissions?: string[] | string): boolean => {
+  const hasAnyPermission = (
+    requiredPermissions?: string[] | string,
+  ): boolean => {
     if (!requiredPermissions) {
       return true;
     }
@@ -265,7 +278,8 @@ export const useUserStore = defineStore("user", () => {
       logger.warn("refreshPersistedSession parse failed", error);
       return {
         status: "transientError",
-        message: error instanceof Error ? error.message : "refresh parse failed",
+        message:
+          error instanceof Error ? error.message : "refresh parse failed",
       };
     }
   };
@@ -348,7 +362,8 @@ export const useUserStore = defineStore("user", () => {
     }
 
     const tokenBeforeRefresh = getAccessToken();
-    const needsFreshToken = !!tokenBeforeRefresh && isAccessTokenExpiringSoon(tokenBeforeRefresh);
+    const needsFreshToken =
+      !!tokenBeforeRefresh && isAccessTokenExpiringSoon(tokenBeforeRefresh);
 
     if (needsFreshToken) {
       const refreshResult = await refreshPersistedSession(

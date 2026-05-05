@@ -28,8 +28,10 @@ const write = (level: LogLevel, message: string, payload?: unknown) => {
 };
 
 export const logger = {
-  debug: (message: string, payload?: unknown) => write("debug", message, payload),
+  debug: (message: string, payload?: unknown) =>
+    write("debug", message, payload),
   info: (message: string, payload?: unknown) => write("info", message, payload),
   warn: (message: string, payload?: unknown) => write("warn", message, payload),
-  error: (message: string, payload?: unknown) => write("error", message, payload),
+  error: (message: string, payload?: unknown) =>
+    write("error", message, payload),
 };

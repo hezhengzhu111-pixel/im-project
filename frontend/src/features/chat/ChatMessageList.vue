@@ -1,11 +1,22 @@
 <template>
   <div
-    ref="scrollContainerRef"
-    class="message-list chat-soft-scrollbar"
+    class="message-list"
     role="log"
     aria-live="polite"
-    @scroll.passive="handleScroll"
+    @touchstart.passive="onPullStart"
+    @touchmove.passive="onPullMove"
+    @touchend="onPullEnd"
   >
+    <div
+      v-if="pullState !== 'idle'"
+      class="pull-indicator"
+      :style="{ height: pullDistance + 'px', opacity: pullDistance / PULL_THRESHOLD }"
+    >
+      <el-icon v-if="pullState === 'loading'" class="spin"><Loading /></el-icon>
+      <el-icon v-else-if="pullDistance >= PULL_THRESHOLD"><Bottom /></el-icon>
+      <el-icon v-else><Top /></el-icon>
+    </div>
+
     <div v-if="loadingHistory" class="history-indicator">
       {{ t("message.loadingMore") }}
     </div>
@@ -16,49 +27,51 @@
       </div>
     </div>
 
-    <div
-      v-else
+    <DynamicScroller
+      v-if="renderItems.length > 0"
       ref="scrollerRef"
-      class="message-scroller"
-      :class="{ 'is-short-list': messageTopOffset > 0 }"
-      :style="messageScrollerStyle"
+      class="message-scroller chat-soft-scrollbar"
+      :items="renderItems"
+      :min-item-size="40"
+      key-field="id"
     >
-      <div class="message-scroller-inner">
-        <div
-          v-for="(item, index) in renderItems"
-          :key="item.id"
-          class="message-row"
+      <template #default="{ item, index, active }">
+        <DynamicScrollerItem
+          :item="item"
+          :active="active"
           :data-index="index"
         >
-          <div v-if="item.kind === 'separator'" class="message-separator">
-            <span class="separator-pill">{{ item.label }}</span>
-          </div>
+          <div class="message-row">
+            <div v-if="item.kind === 'separator'" class="message-separator">
+              <span class="separator-pill">{{ item.label }}</span>
+            </div>
 
-          <div
-            v-else-if="item.kind === 'unread'"
-            class="message-separator message-separator-unread"
-          >
-            <span class="separator-line"></span>
-            <span class="separator-pill unread-pill">{{ item.label }}</span>
-            <span class="separator-line"></span>
-          </div>
+            <div
+              v-else-if="item.kind === 'unread'"
+              class="message-separator message-separator-unread"
+            >
+              <span class="separator-line"></span>
+              <span class="separator-pill unread-pill">{{ item.label }}</span>
+              <span class="separator-line"></span>
+            </div>
 
-          <MessageItem
-            v-else
-            v-bind="item.view"
-            :audio-playing="playingMessageId === item.messageId"
-            :image-scroll-container="scrollContainerRef"
-            @show-group-readers="handleShowGroupReaders"
-            @open-context-menu="openContextMenu"
-            @toggle-audio="toggleAudioById"
-            @download-file="downloadFile"
-            @preview-image="previewImage"
-            @play-video="playVideo"
-            @media-loaded="handleMediaLoaded"
-          />
-        </div>
-      </div>
-    </div>
+            <MessageItem
+              v-else
+              v-bind="item.view"
+              :audio-playing="playingMessageId === item.messageId"
+              :image-scroll-container="scrollContainerRef"
+              @show-group-readers="handleShowGroupReaders"
+              @open-context-menu="openContextMenu"
+              @toggle-audio="toggleAudioById"
+              @download-file="handleDownloadFile"
+              @preview-image="previewImage"
+              @play-video="playVideo"
+              @media-loaded="handleMediaLoaded"
+            />
+          </div>
+        </DynamicScrollerItem>
+      </template>
+    </DynamicScroller>
 
     <button
       v-if="showScrollToLatest"
@@ -76,7 +89,10 @@
       @click.self="contextMenu.close()"
     >
       <div
-        v-if="contextTargetMessage.messageType === 'TEXT'"
+        v-if="
+          contextTargetMessage.messageType === 'TEXT' ||
+          contextTargetMessage.messageType === 'AI_REPLY'
+        "
         class="menu-item"
         @click="handleCopy"
       >
@@ -89,18 +105,40 @@
         {{ t("message.delete") }}
       </div>
     </div>
+
+    <ImageViewer
+      v-model:visible="viewerVisible"
+      :images="viewerImages"
+      :initial-index="viewerIndex"
+    />
+
+    <ActionSheet
+      v-model:visible="actionSheetVisible"
+      :options="actionSheetOptions"
+      @select="handleActionSelect"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, onMounted, onUnmounted, ref, watch} from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import {
+  DynamicScroller,
+  DynamicScrollerItem,
+} from "vue-virtual-scroller";
+import { Loading, Bottom, Top } from "@element-plus/icons-vue";
 import MessageItem from "@/features/chat/ChatMessageItem.vue";
-import {useAudioPlayer} from "@/features/chat/composables/useAudioPlayer";
-import {useMessageActions} from "@/features/chat/composables/useMessageActions";
-import {useMessageContextMenu} from "@/features/chat/composables/useMessageContextMenu";
-import {useI18nStore} from "@/stores/i18n";
-import {formatFileSize} from "@/utils/common";
-import type {Message} from "@/types";
+import ImageViewer from "@/components/common/ImageViewer.vue";
+import ActionSheet from "@/components/common/ActionSheet.vue";
+import type { ActionSheetOption } from "@/components/common/ActionSheet.vue";
+import { downloadFile } from "@/services/download.service";
+import { useAudioPlayer } from "@/features/chat/composables/useAudioPlayer";
+import { useMessageActions } from "@/features/chat/composables/useMessageActions";
+import { useMessageContextMenu } from "@/features/chat/composables/useMessageContextMenu";
+import { useIsMobile } from "@/composables/useIsMobile";
+import { useI18nStore } from "@/stores/i18n";
+import { formatFileSize } from "@/utils/common";
+import type { Message } from "@/types";
 
 interface Props {
   messages: Message[];
@@ -109,6 +147,7 @@ interface Props {
   currentUserAvatar?: string;
   loadingHistory?: boolean;
   openedUnreadCount?: number;
+  sessionType?: "private" | "group";
 }
 
 type SeparatorItem = {
@@ -146,6 +185,10 @@ type MessageListItemView = {
   fileName?: string;
   fileSizeLabel?: string;
   durationLabel?: string;
+  isAiGenerated?: boolean;
+  aiProvider?: string;
+  showAvatar: boolean;
+  compact: boolean;
 };
 
 type MessageRenderItem = {
@@ -162,6 +205,7 @@ const props = withDefaults(defineProps<Props>(), {
   openedUnreadCount: 0,
   currentUserName: "",
   currentUserAvatar: "",
+  sessionType: "private",
 });
 
 const emit = defineEmits<{
@@ -181,7 +225,7 @@ const BOTTOM_FOLLOW_THRESHOLD = 180;
 const READ_ACK_BOTTOM_THRESHOLD = 120;
 const HISTORY_TRIGGER_TOP = 80;
 const HISTORY_FALLBACK_MS = 2000;
-const scrollerRef = ref<HTMLElement | null>(null);
+const scrollerRef = ref<InstanceType<typeof DynamicScroller> | null>(null);
 const scrollContainerRef = ref<HTMLElement | null>(null);
 const loadingHistoryLocal = ref(false);
 const nearBottom = ref(true);
@@ -192,12 +236,22 @@ const suppressScrollTracking = ref(false);
 const pendingHistoryAnchor = ref<HistoryAnchor | null>(null);
 const historyFallbackTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 const refreshScheduled = ref(false);
+const viewerVisible = ref(false);
+const viewerImages = ref<string[]>([]);
+const viewerIndex = ref(0);
+const pullState = ref<"idle" | "pulling" | "loading">("idle");
+const pullDistance = ref(0);
+const PULL_THRESHOLD = 60;
+let pullStartY = 0;
 const messageViewCache = new Map<string, MessageListItemView>();
 const messageRenderItemCache = new Map<string, MessageRenderItem>();
 const { locale, t } = useI18nStore();
 const { playingMessageId, toggle: toggleAudio, stop } = useAudioPlayer();
 const { copy, recall, remove } = useMessageActions();
 const contextMenu = useMessageContextMenu();
+const { isMobile } = useIsMobile();
+const actionSheetVisible = ref(false);
+const actionSheetTarget = ref<Message | null>(null);
 const contextTargetMessage = computed(() => contextMenu.targetMessage.value);
 const timeFormatter = computed(
   () =>
@@ -373,6 +427,8 @@ const buildRenderDigest = (message: Message) => {
     message.thumbnailUrl || "",
     message.duration || "",
     message.sendTime || "",
+    message.isAiGenerated ? "1" : "",
+    message.aiProvider || "",
     locale.value,
   ].join("|");
 };
@@ -420,6 +476,10 @@ const buildMessageView = (message: Message): MessageListItemView => {
       ? formatFileSize(message.mediaSize)
       : t("message.sizeUnknown"),
     durationLabel: formatDuration(message.duration),
+    isAiGenerated: message.isAiGenerated,
+    aiProvider: message.aiProvider,
+    showAvatar: true,
+    compact: false,
   };
 
   messageViewCache.set(key, view);
@@ -429,7 +489,34 @@ const buildMessageView = (message: Message): MessageListItemView => {
 const renderItems = computed<RenderItem[]>(() => {
   const items: RenderItem[] = [];
   let previousDateKey = "";
+  let previousSenderId = "";
   const activeMessageIds = new Set<string>();
+
+  // Private session encryption notice
+  if (props.sessionType === "private" && props.messages.length > 0) {
+    items.push({
+      id: "encryption-notice",
+      kind: "message",
+      messageId: "encryption-notice",
+      view: {
+        messageId: "encryption-notice",
+        renderDigest: "encryption-notice",
+        isMine: false,
+        isSystemMessage: true,
+        isRecalled: false,
+        isDeleted: false,
+        messageType: "SYSTEM",
+        content: "此会话已启用端对端加密，服务器无法读取消息内容",
+        showSenderLabel: false,
+        timeLabel: "",
+        statusLabel: "",
+        statusTone: "default",
+        groupReadLabel: "",
+        showAvatar: false,
+        compact: false,
+      },
+    });
+  }
 
   props.messages.forEach((message, index) => {
     const key = messageKey(message);
@@ -440,6 +527,7 @@ const renderItems = computed<RenderItem[]>(() => {
       ? ""
       : dateFormatter.value.format(currentDate);
 
+    // 日期变化时重置分组
     if (currentDateKey && currentDateKey !== previousDateKey) {
       items.push({
         id: `separator-${currentDateKey}-${key}`,
@@ -447,6 +535,7 @@ const renderItems = computed<RenderItem[]>(() => {
         label: currentDateKey,
       });
       previousDateKey = currentDateKey;
+      previousSenderId = "";
     }
 
     if (unreadBoundaryIndex.value === index) {
@@ -458,6 +547,14 @@ const renderItems = computed<RenderItem[]>(() => {
     }
 
     const view = buildMessageView(message);
+
+    // 连续消息分组：同一 sender 紧凑模式
+    const isSameSender =
+      previousSenderId === message.senderId && !view.isSystemMessage;
+    view.showAvatar = !isSameSender;
+    view.compact = isSameSender;
+    previousSenderId = message.senderId;
+
     const cached = messageRenderItemCache.get(key);
     if (cached?.view === view) {
       items.push(cached);
@@ -495,9 +592,6 @@ const tailMessageSignal = computed(() => {
 const showScrollToLatest = computed(
   () => !nearBottom.value && props.messages.length > 0,
 );
-const messageScrollerStyle = computed(() => ({
-  "--message-top-offset": `${messageTopOffset.value}px`,
-}));
 
 const messageListSignal = computed(() => ({
   length: props.messages.length,
@@ -536,17 +630,15 @@ const nextFrame = () =>
 const updateShortListOffset = async () => {
   await nextTick();
   await nextFrame();
-  const scrollerElement = scrollerRef.value;
-  const wrapper = scrollerElement?.querySelector<HTMLElement>(
-    ".message-scroller-inner",
-  );
-  if (!scrollerElement || !wrapper) {
+  const scrollerElement = scrollEl || (scrollerRef.value?.$el as HTMLElement | undefined);
+  if (!scrollerElement) {
     messageTopOffset.value = 0;
     return;
   }
+  const contentHeight = scrollerElement.scrollHeight;
   const nextOffset = Math.max(
     0,
-    scrollerElement.clientHeight - wrapper.offsetHeight - 8,
+    scrollerElement.clientHeight - contentHeight - 8,
   );
   messageTopOffset.value = nextOffset > 12 ? nextOffset : 0;
 };
@@ -558,7 +650,12 @@ const openContextMenu = (messageId: string, event: MouseEvent) => {
   if (!message) {
     return;
   }
-  contextMenu.open(message, event);
+  if (isMobile.value) {
+    actionSheetTarget.value = message;
+    actionSheetVisible.value = true;
+  } else {
+    contextMenu.open(message, event);
+  }
 };
 
 const handleCopy = async () => {
@@ -582,19 +679,69 @@ const handleDelete = async () => {
   closeContextMenu();
 };
 
+const actionSheetOptions = computed<ActionSheetOption[]>(() => {
+  const opts: ActionSheetOption[] = [{ label: "复制" }];
+  if (actionSheetTarget.value && isOwnMessage(actionSheetTarget.value)) {
+    opts.push({ label: "撤回" });
+  }
+  opts.push({ label: "删除", destructive: true });
+  return opts;
+});
+
+function handleActionSelect(index: number) {
+  const msg = actionSheetTarget.value;
+  if (!msg) return;
+  const isOwn = isOwnMessage(msg);
+  if (index === 0) {
+    copy(msg);
+  } else if (index === 1 && isOwn) {
+    recall(msg);
+  } else {
+    remove(msg);
+  }
+}
+
+function onPullStart(e: TouchEvent) {
+  const el = scrollContainerRef.value;
+  if (!el || el.scrollTop > 0 || pullState.value === "loading") return;
+  pullStartY = e.touches[0].clientY;
+  pullState.value = "pulling";
+}
+
+function onPullMove(e: TouchEvent) {
+  if (pullState.value !== "pulling") return;
+  const dy = e.touches[0].clientY - pullStartY;
+  pullDistance.value = Math.max(0, Math.min(120, dy * 0.5));
+}
+
+function onPullEnd() {
+  if (pullState.value !== "pulling") return;
+  if (pullDistance.value >= PULL_THRESHOLD) {
+    pullState.value = "loading";
+    pullDistance.value = 50;
+    emit("request-history");
+  } else {
+    pullState.value = "idle";
+    pullDistance.value = 0;
+  }
+}
+
 const previewImage = (messageId: string) => {
   const message = resolveMessageById(messageId);
   if (!message) {
     return;
   }
-  window.open(
-    message.mediaUrl || message.content,
-    "_blank",
-    "noopener,noreferrer",
-  );
+  const url = message.mediaUrl || message.content;
+  const allImages = props.messages
+    .filter((m) => m.messageType === "IMAGE" && (m.mediaUrl || m.content))
+    .map((m) => m.mediaUrl || m.content);
+  const idx = allImages.indexOf(url);
+  viewerImages.value = allImages;
+  viewerIndex.value = idx >= 0 ? idx : 0;
+  viewerVisible.value = true;
 };
 
-const downloadFile = (messageId: string) => {
+const handleDownloadFile = (messageId: string) => {
   const message = resolveMessageById(messageId);
   if (!message) {
     return;
@@ -603,14 +750,7 @@ const downloadFile = (messageId: string) => {
   if (!url) {
     return;
   }
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = resolveFileName(message);
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+  void downloadFile(url, resolveFileName(message) || "download");
 };
 
 const playVideo = (_messageId: string) => {
@@ -751,6 +891,10 @@ const handleScroll = async () => {
   }
 };
 
+const handleScrollerScroll = () => {
+  void handleScroll();
+};
+
 watch(
   () => props.loadingHistory,
   (value) => {
@@ -760,6 +904,16 @@ watch(
       pendingHistoryAnchor.value == null
     ) {
       releaseHistoryLoading();
+    }
+  },
+);
+
+watch(
+  () => props.loadingHistory,
+  (loading, wasLoading) => {
+    if (wasLoading && !loading && pullState.value === "loading") {
+      pullState.value = "idle";
+      pullDistance.value = 0;
     }
   },
 );
@@ -808,10 +962,19 @@ watch(
   { flush: "post" },
 );
 
-onMounted(() => {
+let scrollEl: HTMLElement | null = null;
+
+onMounted(async () => {
   window.addEventListener("click", closeContextMenu);
   window.addEventListener("contextmenu", closeContextMenu);
   window.addEventListener("resize", handleResize);
+  await nextTick();
+  const el = scrollerRef.value?.$el as HTMLElement | undefined;
+  if (el) {
+    scrollEl = el;
+    scrollContainerRef.value = el;
+    el.addEventListener("scroll", handleScrollerScroll, { passive: true });
+  }
   void updateShortListOffset();
 });
 
@@ -820,6 +983,7 @@ onUnmounted(() => {
   clearHistoryFallbackTimer();
   messageViewCache.clear();
   messageRenderItemCache.clear();
+  scrollEl?.removeEventListener("scroll", handleScrollerScroll);
   window.removeEventListener("click", closeContextMenu);
   window.removeEventListener("contextmenu", closeContextMenu);
   window.removeEventListener("resize", handleResize);
@@ -880,15 +1044,18 @@ onUnmounted(() => {
 }
 
 .message-scroller {
-  min-height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .message-scroller-inner {
   width: 100%;
 }
 
-.message-scroller.is-short-list .message-scroller-inner {
-  transform: translateY(var(--message-top-offset));
+.chat-timeline-inner {
+  max-width: var(--chat-timeline-max-width);
+  margin: 0 auto;
+  width: 100%;
 }
 
 .message-row {
@@ -985,9 +1152,30 @@ onUnmounted(() => {
   color: var(--chat-danger);
 }
 
+.pull-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--text-tertiary);
+
+  .spin {
+    animation: spin 1s linear infinite;
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 @media (max-width: 768px) {
   .message-list {
     padding: 12px 10px 14px;
+  }
+
+  .chat-timeline-inner {
+    max-width: 100%;
   }
 
   .message-empty-card {

@@ -7,10 +7,11 @@
  */
 
 // 从子模块重新导出所有类型
-export * from './user';
-export * from './message';
-export * from './chat';
-export * from './group';
-export * from './api';
-export * from './common';
-export * from './utils';
+export * from "./user";
+export * from "./message";
+export * from "./chat";
+export * from "./group";
+export * from "./api";
+export * from "./common";
+export * from "./utils";
+export * from "./moments";

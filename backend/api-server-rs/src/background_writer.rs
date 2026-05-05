@@ -150,6 +150,8 @@ impl Processor {
                 self.flush_pending().await?;
                 self.apply_status(event).await?;
             }
+            ImEventType::FriendRequestCreated | ImEventType::FriendRequestAccepted => {}
+            ImEventType::MomentNew | ImEventType::MomentLike | ImEventType::MomentComment => {}
         }
         Ok(())
     }
@@ -188,12 +190,12 @@ impl Processor {
             return Ok(false);
         }
 
-        let messages = std::mem::take(&mut self.message_batch);
-        let count = messages.len();
+        let count = self.message_batch.len();
         let started = Instant::now();
         let mut tx = self.db.begin().await?;
-        insert_messages(&mut tx, &messages).await?;
+        insert_messages(&mut tx, &self.message_batch).await?;
         tx.commit().await?;
+        let messages = std::mem::take(&mut self.message_batch);
         tracing::debug!(count, "batch inserted messages");
         observability::writer_flush(
             "messages",
@@ -249,12 +251,14 @@ impl Processor {
         let started = Instant::now();
         let count = self.read_batch_len();
 
-        let private = coalesce_private_read_cursors(std::mem::take(&mut self.private_read_batch));
-        let group = coalesce_group_read_cursors(std::mem::take(&mut self.group_read_batch));
+        let private = coalesce_private_read_cursors(self.private_read_batch.clone());
+        let group = coalesce_group_read_cursors(self.group_read_batch.clone());
         let mut tx = self.db.begin().await?;
         upsert_private_read_cursors(&mut tx, &private).await?;
         upsert_group_read_cursors(&mut tx, &group).await?;
         tx.commit().await?;
+        self.private_read_batch.clear();
+        self.group_read_batch.clear();
         tracing::debug!(
             private_count = private.len(),
             group_count = group.len(),
@@ -356,7 +360,7 @@ struct DbMessage {
 }
 
 impl DbMessage {
-    fn from_message(message: &MessageDto) -> Self {
+    fn from_message(message: &MessageDto) -> Option<Self> {
         let created = parse_datetime(&message.created_time);
         let updated = message
             .updated_time
@@ -364,9 +368,17 @@ impl DbMessage {
             .map(parse_datetime)
             .unwrap_or(created);
 
-        Self {
-            id: parse_i64(&message.id).unwrap_or_default(),
-            sender_id: parse_i64(&message.sender_id).unwrap_or_default(),
+        let message_id = match parse_i64(&message.id) {
+            Some(id) if id > 0 => id,
+            other => {
+                tracing::warn!(id = %message.id, ?other, "skipping message with invalid id");
+                return None;
+            }
+        };
+
+        Some(Self {
+            id: message_id,
+            sender_id: parse_i64(&message.sender_id).unwrap_or(0),
             receiver_id: message.receiver_id.as_deref().and_then(parse_i64),
             group_id: message.group_id.as_deref().and_then(parse_i64),
             conversation_seq: message.conversation_seq,
@@ -384,7 +396,7 @@ impl DbMessage {
             reply_to_message_id: message.reply_to_message_id.as_deref().and_then(parse_i64),
             created_time: created,
             updated_time: updated,
-        }
+        })
     }
 }
 
@@ -416,7 +428,7 @@ async fn insert_messages(
 
     let records = messages
         .iter()
-        .map(DbMessage::from_message)
+        .filter_map(DbMessage::from_message)
         .collect::<Vec<_>>();
 
     for chunk in records.chunks(max_rows_per_statement(MESSAGE_INSERT_BINDS)) {

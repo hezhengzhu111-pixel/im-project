@@ -11,7 +11,9 @@ const createTraceId = (): string => {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-const invalidParseResponse = (message = "未登录"): ApiResponse<TokenParseResultDTO> => ({
+const invalidParseResponse = (
+  message = "未登录",
+): ApiResponse<TokenParseResultDTO> => ({
   code: 200,
   message: "ok",
   data: {

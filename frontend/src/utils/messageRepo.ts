@@ -1,4 +1,4 @@
-import type {Message} from "@/types/message";
+import type { Message } from "@/types/message";
 
 type StoredMessage = Message & {
   conversationId: string;
@@ -9,8 +9,9 @@ type StoredMessage = Message & {
 };
 
 const DB_NAME = "im_message_repo";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_MESSAGES = "messages";
+const STORE_PENDING = "pending_messages";
 
 const memoryConversationCache = new Map<string, StoredMessage[]>();
 
@@ -49,6 +50,13 @@ async function openDb(): Promise<IDBDatabase> {
           ["conversationId", "_createdAtMs"],
           { unique: false },
         );
+      }
+      if (!db.objectStoreNames.contains(STORE_PENDING)) {
+        const pendingStore = db.createObjectStore(STORE_PENDING, {
+          keyPath: "localId",
+        });
+        pendingStore.createIndex("byConversation", "conversationId");
+        pendingStore.createIndex("byStatus", "status");
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -178,30 +186,52 @@ export const messageRepo = {
   },
 
   async removePendingMessage(
-    conversationId: string,
-    localId: string,
+    conversationIdOrLocalId: string,
+    maybeLocalId?: string,
   ): Promise<void> {
-    if (!hasIndexedDb()) {
-      setMemoryConversation(
-        conversationId,
-        getMemoryConversation(conversationId).filter(
-          (item) => item._localId !== localId,
-        ),
-      );
-      return;
+    if (maybeLocalId !== undefined) {
+      // Existing behavior: remove from messages store by conversationId + localId
+      const conversationId = conversationIdOrLocalId;
+      const localId = maybeLocalId;
+      if (!hasIndexedDb()) {
+        setMemoryConversation(
+          conversationId,
+          getMemoryConversation(conversationId).filter(
+            (item) => item._localId !== localId,
+          ),
+        );
+        return;
+      }
+      const db = await openDb();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE_MESSAGES, "readwrite");
+        tx.objectStore(STORE_MESSAGES).delete(
+          buildLocalKey(conversationId, localId),
+        );
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+      db.close();
+    } else {
+      // New behavior: remove from pending_messages store by localId
+      const localId = conversationIdOrLocalId;
+      if (!hasIndexedDb()) return;
+      const db = await openDb();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE_PENDING, "readwrite");
+        tx.objectStore(STORE_PENDING).delete(localId);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
     }
-    const db = await openDb();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE_MESSAGES, "readwrite");
-      tx.objectStore(STORE_MESSAGES).delete(buildLocalKey(conversationId, localId));
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
-    db.close();
   },
 
-  async listConversation(conversationId: string, limit = 50): Promise<Message[]> {
+  async listConversation(
+    conversationId: string,
+    limit = 50,
+  ): Promise<Message[]> {
     if (!hasIndexedDb()) {
       return getMemoryConversation(conversationId)
         .slice(-Math.max(1, limit))
@@ -263,5 +293,75 @@ export const messageRepo = {
       tx.onabort = () => reject(tx.error);
     });
     db.close();
+  },
+
+  async addPendingMessage(
+    conversationId: string,
+    localId: string,
+    payload: unknown,
+  ): Promise<void> {
+    if (!hasIndexedDb()) return;
+    const db = await openDb();
+    const tx = db.transaction(STORE_PENDING, "readwrite");
+    const store = tx.objectStore(STORE_PENDING);
+    store.put({
+      localId,
+      conversationId,
+      payload: JSON.stringify(payload),
+      status: "pending",
+      createdAt: Date.now(),
+      retryCount: 0,
+    });
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+
+  async listPendingMessages(
+    conversationId?: string,
+  ): Promise<
+    Array<{ localId: string; conversationId: string; payload: string }>
+  > {
+    if (!hasIndexedDb()) return [];
+    const db = await openDb();
+    const tx = db.transaction(STORE_PENDING, "readonly");
+    const store = tx.objectStore(STORE_PENDING);
+
+    return new Promise((resolve, reject) => {
+      const results: Array<{
+        localId: string;
+        conversationId: string;
+        payload: string;
+      }> = [];
+      const request = conversationId
+        ? store
+            .index("byConversation")
+            .openCursor(IDBKeyRange.only(conversationId))
+        : store.openCursor();
+
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          results.push(cursor.value);
+          cursor.continue();
+        } else {
+          resolve(results);
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+  },
+
+  async clearPendingMessages(): Promise<void> {
+    if (!hasIndexedDb()) return;
+    const db = await openDb();
+    const tx = db.transaction(STORE_PENDING, "readwrite");
+    const store = tx.objectStore(STORE_PENDING);
+    store.clear();
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
   },
 };

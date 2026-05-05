@@ -1,25 +1,27 @@
-import {computed, ref} from "vue";
-import {defineStore} from "pinia";
-import {ElMessage} from "element-plus";
-import {messageService} from "@/services/message";
-import {messageRepo} from "@/utils/messageRepo";
-import {buildSessionId, toBigIntId} from "@/normalizers/chat";
-import type {Message, MessageConfig, MessageSearchResult} from "@/types";
-import {useGroupStore} from "@/stores/group";
-import {useSessionStore} from "@/stores/session";
-import {useUserStore} from "@/stores/user";
-import {STORAGE_CONFIG} from "@/config";
+import { computed, ref } from "vue";
+import { defineStore } from "pinia";
+import { ElMessage } from "element-plus";
+import { messageService } from "@/services/message";
+import { messageRepo } from "@/utils/messageRepo";
+import { appLifecycleService } from "@/services/platform/app-lifecycle.service";
+import { networkStatusService } from "@/services/platform/network-status.service";
+import { buildSessionId, toBigIntId } from "@/normalizers/chat";
+import type { Message, MessageConfig, MessageSearchResult } from "@/types";
+import { useGroupStore } from "@/stores/group";
+import { useSessionStore } from "@/stores/session";
+import { useUserStore } from "@/stores/user";
+import { STORAGE_CONFIG } from "@/config";
 import {
-    ConversationClearMarker,
-    getServerMessages,
-    hasSameMessageIdentity,
-    limitMessageWindow,
-    sortMessagesAscending,
+  ConversationClearMarker,
+  getServerMessages,
+  hasSameMessageIdentity,
+  limitMessageWindow,
+  sortMessagesAscending,
 } from "@/stores/modules/message-helpers";
-import {createMessageLoadingModule} from "@/stores/modules/message-loading";
-import {createMessageSendQueueModule} from "@/stores/modules/message-send-queue";
-import {createMessageReadModule} from "@/stores/modules/message-read";
-import {createMessageSearchModule} from "@/stores/modules/message-search";
+import { createMessageLoadingModule } from "@/stores/modules/message-loading";
+import { createMessageSendQueueModule } from "@/stores/modules/message-send-queue";
+import { createMessageReadModule } from "@/stores/modules/message-read";
+import { createMessageSearchModule } from "@/stores/modules/message-search";
 
 type PersistHandle =
   | { kind: "idle"; id: number }
@@ -46,6 +48,7 @@ const readPersistedClearMarkers = (): Record<
 };
 
 let persistenceListenersBound = false;
+let retryListenersBound = false;
 
 export const useMessageStore = defineStore("message", () => {
   const messages = ref<Map<string, Message[]>>(new Map());
@@ -300,6 +303,41 @@ export const useMessageStore = defineStore("message", () => {
     });
   }
 
+  if (!retryListenersBound && typeof window !== "undefined") {
+    retryListenersBound = true;
+
+    let retryInProgress = false;
+    const retryPendingMessages = async () => {
+      if (retryInProgress) return;
+      retryInProgress = true;
+      try {
+        const pending = await messageRepo.listPendingMessages();
+        for (const item of pending) {
+          try {
+            const payload = JSON.parse(item.payload);
+            if (payload.sendType === "group") {
+              await messageService.sendGroup(payload.data);
+            } else {
+              await messageService.sendPrivate(payload.data);
+            }
+            await messageRepo.removePendingMessage(item.localId);
+          } catch {
+            // Still failing — leave in queue
+          }
+        }
+      } finally {
+        retryInProgress = false;
+      }
+    };
+
+    appLifecycleService.onForeground(() => {
+      void retryPendingMessages();
+    });
+    networkStatusService.onOnline(() => {
+      void retryPendingMessages();
+    });
+  }
+
   const loadingModule = createMessageLoadingModule({
     messages,
     loading,
@@ -534,6 +572,7 @@ export const useMessageStore = defineStore("message", () => {
       cancelPersistHandle(sessionId);
     });
     flushPromiseBySession.clear();
+    void messageRepo.clearPendingMessages();
   };
 
   return {

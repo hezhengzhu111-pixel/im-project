@@ -10,7 +10,11 @@
       {{ t("dialog.noReaders") }}
     </div>
     <div v-else class="group-read-list chat-soft-scrollbar">
-      <div v-for="reader in groupReadUsers" :key="reader.userId" class="group-read-item">
+      <div
+        v-for="reader in groupReadUsers"
+        :key="reader.userId"
+        class="group-read-item"
+      >
         <span class="group-read-name">{{ reader.displayName }}</span>
         <span class="group-read-id">ID: {{ reader.userId }}</span>
       </div>
@@ -19,9 +23,9 @@
 </template>
 
 <script setup lang="ts">
-import {computed} from "vue";
-import {useI18nStore} from "@/stores/i18n";
-import type {GroupReadUser} from "@/types";
+import { computed } from "vue";
+import { useI18nStore } from "@/stores/i18n";
+import type { GroupReadUser } from "@/types";
 
 const props = defineProps<{
   modelValue: boolean;
@@ -32,7 +36,7 @@ const emit = defineEmits<{
   (e: "update:modelValue", value: boolean): void;
 }>();
 
-const {t} = useI18nStore();
+const { t } = useI18nStore();
 const visible = computed({
   get: () => props.modelValue,
   set: (value: boolean) => emit("update:modelValue", value),

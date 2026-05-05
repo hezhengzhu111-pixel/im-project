@@ -1,6 +1,8 @@
 # Environment
+.env
 .env.local
 .env.*.local
+.env.bak
 
 # Logs and runtime data
 logs/
@@ -31,3 +33,5 @@ Thumbs.db
 # Temporary work
 tmp/
 .deploy-tools/
+init.md
+.superpowers/

@@ -1,9 +1,12 @@
+use crate::ai;
 use crate::auth::{identity_from_headers, is_gateway_whitelist};
 use crate::auth_api;
 use crate::config::AppConfig;
+use crate::e2ee;
 use crate::error::AppError;
 use crate::file_api;
 use crate::message;
+use crate::moments;
 use crate::route;
 use crate::social;
 use crate::user;
@@ -150,6 +153,66 @@ pub fn router(state: AppState) -> Router {
         .route("/api/message/group/:group_id", get(group_history))
         .route("/message/group/:group_id/cursor", get(group_history))
         .route("/api/message/group/:group_id/cursor", get(group_history))
+        .route("/api/keys/bundle", post(e2ee::key_api::upload_bundle))
+        .route("/api/keys/bundle", get(e2ee::key_api::get_bundle))
+        .route("/api/keys/devices", get(e2ee::key_api::get_devices))
+        .route("/api/keys/heartbeat", post(e2ee::key_api::heartbeat))
+        .route("/api/keys/salt", get(e2ee::key_api::get_salt))
+        .route("/api/keys/backup", post(e2ee::key_api::upload_backup))
+        .route("/api/keys/backup", get(e2ee::key_api::get_backup))
+        .route("/api/keys/device/:id", delete(e2ee::key_api::delete_device))
+        .route(
+            "/api/e2ee/request",
+            post(e2ee::session_api::request_encryption),
+        )
+        .route(
+            "/api/e2ee/accept",
+            post(e2ee::session_api::accept_encryption),
+        )
+        .route(
+            "/api/e2ee/reject",
+            post(e2ee::session_api::reject_encryption),
+        )
+        .route(
+            "/api/e2ee/group/enable",
+            post(e2ee::group_api::enable_group_encryption_legacy),
+        )
+        .route(
+            "/api/e2ee/group/disable",
+            post(e2ee::group_api::disable_group_encryption_legacy),
+        )
+        .route(
+            "/api/e2ee/groups/:group_id/enable",
+            post(e2ee::group_api::enable_group_encryption),
+        )
+        .route(
+            "/api/e2ee/groups/:group_id/disable",
+            post(e2ee::group_api::disable_group_encryption),
+        )
+        .route(
+            "/api/e2ee/groups/:group_id/sender-key",
+            post(e2ee::group_api::push_sender_key),
+        )
+        .route(
+            "/api/e2ee/groups/:group_id/sender-keys",
+            get(e2ee::group_api::get_my_sender_keys),
+        )
+        .route(
+            "/api/e2ee/groups/:group_id/sender-keys/:user_id",
+            delete(e2ee::group_api::remove_member_sender_keys),
+        )
+        .route(
+            "/api/e2ee/groups/:group_id/status",
+            get(e2ee::group_api::get_group_status),
+        )
+        .route(
+            "/api/e2ee/devices/:user_id",
+            get(e2ee::key_api::get_devices),
+        )
+        .route(
+            "/api/e2ee/groups/:group_id/devices",
+            get(e2ee::key_api::get_devices),
+        )
         .route("/friend/list", get(social::friend_list))
         .route("/api/friend/list", get(social::friend_list))
         .route("/friend/requests", get(social::friend_requests))
@@ -170,6 +233,16 @@ pub fn router(state: AppState) -> Router {
         .route("/api/group/user/:user_id", get(social::user_groups))
         .route("/group/members/list", post(social::group_members))
         .route("/api/group/members/list", post(social::group_members))
+        .route(
+            "/group/:group_id/add-members",
+            post(social::add_group_members),
+        )
+        .route(
+            "/api/group/:group_id/add-members",
+            post(social::add_group_members),
+        )
+        .route("/group/search", get(social::search_groups))
+        .route("/api/group/search", get(social::search_groups))
         .route("/group/:group_id/join", post(social::join_group))
         .route("/api/group/:group_id/join", post(social::join_group))
         .route("/group/:group_id/leave", post(social::leave_group))
@@ -185,6 +258,86 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/group/internal/memberIds/:group_id",
             get(social::internal_group_member_ids),
+        )
+        .route("/moments", post(moments::post_handler::create_post))
+        .route("/api/moments", post(moments::post_handler::create_post))
+        .route("/moments/feed", get(moments::post_handler::get_feed))
+        .route("/api/moments/feed", get(moments::post_handler::get_feed))
+        .route(
+            "/moments/:id",
+            get(moments::post_handler::get_post).delete(moments::post_handler::delete_post),
+        )
+        .route(
+            "/api/moments/:id",
+            get(moments::post_handler::get_post).delete(moments::post_handler::delete_post),
+        )
+        .route(
+            "/moments/user/:user_id",
+            get(moments::post_handler::get_user_posts),
+        )
+        .route(
+            "/api/moments/user/:user_id",
+            get(moments::post_handler::get_user_posts),
+        )
+        .route(
+            "/moments/:id/like",
+            post(moments::interaction_handler::like_post)
+                .delete(moments::interaction_handler::unlike_post),
+        )
+        .route(
+            "/api/moments/:id/like",
+            post(moments::interaction_handler::like_post)
+                .delete(moments::interaction_handler::unlike_post),
+        )
+        .route(
+            "/moments/:id/likes",
+            get(moments::interaction_handler::get_likes),
+        )
+        .route(
+            "/api/moments/:id/likes",
+            get(moments::interaction_handler::get_likes),
+        )
+        .route(
+            "/moments/:id/comments",
+            post(moments::interaction_handler::create_comment)
+                .get(moments::interaction_handler::get_comments),
+        )
+        .route(
+            "/api/moments/:id/comments",
+            post(moments::interaction_handler::create_comment)
+                .get(moments::interaction_handler::get_comments),
+        )
+        .route(
+            "/moments/comments/:id",
+            delete(moments::interaction_handler::delete_comment),
+        )
+        .route(
+            "/api/moments/comments/:id",
+            delete(moments::interaction_handler::delete_comment),
+        )
+        .route(
+            "/moments/:id/media",
+            post(moments::post_handler::add_media),
+        )
+        .route(
+            "/api/moments/:id/media",
+            post(moments::post_handler::add_media),
+        )
+        .route(
+            "/moments/notifications",
+            get(moments::notification_handler::get_notifications),
+        )
+        .route(
+            "/api/moments/notifications",
+            get(moments::notification_handler::get_notifications),
+        )
+        .route(
+            "/moments/notifications/read",
+            put(moments::notification_handler::mark_all_read),
+        )
+        .route(
+            "/api/moments/notifications/read",
+            put(moments::notification_handler::mark_all_read),
         )
         .route("/user/login", post(user::login))
         .route("/api/user/login", post(user::login))
@@ -228,6 +381,16 @@ pub fn router(state: AppState) -> Router {
             axum::routing::put(user::update_settings),
         )
         .route("/websocket/:user_id", get(websocket_proxy))
+        .route("/api/ai/keys", post(ai::api_key_handler::create).get(ai::api_key_handler::list))
+        .route("/api/ai/keys/:id", put(ai::api_key_handler::update).delete(ai::api_key_handler::delete))
+        .route("/api/ai/keys/:id/test", post(ai::api_key_handler::test))
+        .route("/api/ai/settings", get(ai::settings_handler::get).put(ai::settings_handler::update))
+        .route("/api/ai/summary", post(ai::summary_handler::create))
+        .route("/api/ai/stream/:task_id", get(ai::stream_bridge::subscribe))
+        .route("/api/ai/internal/reply", post(ai::internal_reply::handle))
+        .route("/api/ai/rag/docs", post(ai::rag_handler::upload).get(ai::rag_handler::list))
+        .route("/api/ai/rag/docs/:id", delete(ai::rag_handler::delete_doc))
+        .route("/api/ai/rag/query", post(ai::rag_handler::query))
         .fallback(proxy)
         .with_state(state)
 }
@@ -727,6 +890,10 @@ async fn proxy(
         if name == header::HOST || name == header::CONTENT_LENGTH {
             continue;
         }
+        let name_lower = name.as_str().to_ascii_lowercase();
+        if name_lower.starts_with("x-internal-") || name_lower.starts_with("x-auth-") {
+            continue;
+        }
         builder = builder.header(name, value);
     }
     if let Some(identity) = identity.as_ref() {
@@ -804,4 +971,35 @@ fn apply_gateway_headers(
         headers.insert("X-Internal-Secret", value);
     }
     Ok(())
+}
+
+#[allow(clippy::expect_used, clippy::panic)]
+pub async fn create_test_app() -> Router {
+    let mysql_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "mysql://root:root123@127.0.0.1:3306/service_message_service_db".into());
+    let config = Arc::new(AppConfig::from_env());
+    let redis_client = redis::Client::open(
+        std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".into()).as_str(),
+    )
+    .expect("open Redis test client");
+    let redis_manager = redis::aio::ConnectionManager::new(redis_client)
+        .await
+        .expect("connect Redis test manager");
+    let db = sqlx::mysql::MySqlPoolOptions::new()
+        .max_connections(10)
+        .connect(&mysql_url)
+        .await
+        .expect("connect MySQL test pool");
+    let state = AppState {
+        config,
+        redis_manager: redis_manager.clone(),
+        private_redis_managers: Arc::new(vec![redis_manager.clone()]),
+        group_redis_managers: Arc::new(vec![redis_manager.clone()]),
+        route_redis_manager: redis_manager,
+        db,
+        http: reqwest::Client::new(),
+    };
+    Router::new()
+        .merge(router(state))
+        .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
 }

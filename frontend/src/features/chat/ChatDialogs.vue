@@ -32,12 +32,19 @@
         </el-select>
       </el-form-item>
       <el-form-item :label="t('dialog.message')">
-        <el-input v-model="addFriendForm.message" :placeholder="t('dialog.sayHello')" />
+        <el-input
+          v-model="addFriendForm.message"
+          :placeholder="t('dialog.sayHello')"
+        />
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="showAddFriend = false">{{ t("common.cancel") }}</el-button>
-      <el-button type="primary" @click="addFriend">{{ t("dialog.sendRequest") }}</el-button>
+      <el-button @click="showAddFriend = false">{{
+        t("common.cancel")
+      }}</el-button>
+      <el-button type="primary" @click="addFriend">{{
+        t("dialog.sendRequest")
+      }}</el-button>
     </template>
   </el-dialog>
 
@@ -67,7 +74,10 @@
         </div>
       </el-form-item>
       <el-form-item :label="t('dialog.name')">
-        <el-input v-model="createGroupForm.name" :placeholder="t('dialog.groupName')" />
+        <el-input
+          v-model="createGroupForm.name"
+          :placeholder="t('dialog.groupName')"
+        />
       </el-form-item>
       <el-form-item :label="t('dialog.desc')">
         <el-input
@@ -85,8 +95,12 @@
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="showCreateGroup = false">{{ t("common.cancel") }}</el-button>
-      <el-button type="primary" @click="createGroup">{{ t("dialog.create") }}</el-button>
+      <el-button @click="showCreateGroup = false">{{
+        t("common.cancel")
+      }}</el-button>
+      <el-button type="primary" @click="createGroup">{{
+        t("dialog.create")
+      }}</el-button>
     </template>
   </el-dialog>
 
@@ -105,7 +119,11 @@
 
   <el-drawer
     v-model="showSessionInfoDrawer"
-    :title="currentSession?.type === 'group' ? t('chat.groupInfo') : t('chat.contactInfo')"
+    :title="
+      currentSession?.type === 'group'
+        ? t('chat.groupInfo')
+        : t('chat.contactInfo')
+    "
     size="380px"
     append-to-body
     class="chat-shell-drawer"
@@ -129,46 +147,70 @@
         </div>
       </div>
 
-      <el-descriptions :column="1" border class="session-info-card">
-        <el-descriptions-item :label="t('dialog.conversationId')">
-          {{ currentSession.id }}
-        </el-descriptions-item>
+      <div class="session-info-card">
+        <div class="info-row">
+          <span class="info-label">{{ t("dialog.conversationId") }}</span>
+          <span class="info-value">{{ currentSession.id }}</span>
+        </div>
         <template v-if="currentSession.type === 'private'">
-          <el-descriptions-item :label="t('dialog.userId')">
-            {{ currentSession.targetId }}
-          </el-descriptions-item>
-          <el-descriptions-item :label="t('dialog.username')">
-            {{ sessionInfoFriend?.username || "-" }}
-          </el-descriptions-item>
-          <el-descriptions-item :label="t('dialog.remark')">
-            {{ sessionInfoFriend?.remark || "-" }}
-          </el-descriptions-item>
+          <div class="info-row">
+            <span class="info-label">{{ t("dialog.userId") }}</span>
+            <span class="info-value">{{ currentSession.targetId }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ t("dialog.username") }}</span>
+            <span class="info-value">{{
+              sessionInfoFriend?.username || "-"
+            }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ t("dialog.remark") }}</span>
+            <span class="info-value">{{
+              sessionInfoFriend?.remark || "-"
+            }}</span>
+          </div>
         </template>
         <template v-else>
-          <el-descriptions-item :label="t('dialog.groupId')">
-            {{ currentSession.targetId }}
-          </el-descriptions-item>
-          <el-descriptions-item :label="t('dialog.members')">
-            {{ sessionInfoMemberCount }}
-          </el-descriptions-item>
-          <el-descriptions-item :label="t('dialog.description')">
-            {{ sessionInfoGroup?.description || sessionInfoGroup?.announcement || "-" }}
-          </el-descriptions-item>
+          <div class="info-row">
+            <span class="info-label">{{ t("dialog.groupId") }}</span>
+            <span class="info-value">{{ currentSession.targetId }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ t("dialog.members") }}</span>
+            <span class="info-value">{{ sessionInfoMemberCount }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ t("dialog.description") }}</span>
+            <span class="info-value">{{
+              sessionInfoGroup?.description ||
+              sessionInfoGroup?.announcement ||
+              "-"
+            }}</span>
+          </div>
         </template>
-      </el-descriptions>
+      </div>
 
       <template v-if="currentSession.type === 'group'">
-        <div class="member-section-title">{{ t("dialog.members") }}</div>
+        <div class="member-section-title">
+          {{ t("dialog.members") }}
+          <el-button
+            type="primary"
+            link
+            size="small"
+            @click="openAddMemberDialog"
+          >
+            + 添加成员
+          </el-button>
+        </div>
         <div v-if="sessionInfoLoading" class="member-state">
           {{ t("dialog.loadingMembers") }}
         </div>
         <div v-else-if="sessionInfoError" class="member-state member-error">
           {{ sessionInfoError }}
         </div>
-        <el-empty
+        <EmptyState
           v-else-if="sessionInfoMembers.length === 0"
-          :description="t('dialog.noMemberDetails')"
-          :image-size="60"
+          :title="t('dialog.noMemberDetails')"
         />
         <div v-else class="member-list chat-soft-scrollbar">
           <div
@@ -177,22 +219,37 @@
             class="member-item"
           >
             <div class="member-avatar-wrap">
-              <el-avatar :size="34" :src="member.avatar">
-                {{ (member.nickname || member.username || member.userId).charAt(0) }}
+              <el-avatar :size="36" :src="member.avatar">
+                {{
+                  (member.nickname || member.username || member.userId).charAt(
+                    0,
+                  )
+                }}
               </el-avatar>
-              <span class="member-online-dot" :class="{ online: member.online }"></span>
+              <span
+                class="member-online-dot"
+                :class="{ online: member.online }"
+              ></span>
             </div>
             <div class="member-meta">
               <div class="member-name-row">
                 <span class="member-name">
                   {{ member.nickname || member.username || member.userId }}
                 </span>
-                <span class="member-status" :class="{ online: member.online }">
-                  {{ member.online ? t("chat.onlineNow") : t("chat.offline") }}
+                <span
+                  class="role-badge"
+                  :class="member.role === 'OWNER' ? 'owner' : 'member'"
+                >
+                  {{ member.role === "OWNER" ? "群主" : "成员" }}
                 </span>
               </div>
               <div class="member-subtitle">
-                {{ member.role }} · {{ t("dialog.joined") }}
+                <span
+                  class="member-status-dot"
+                  :class="{ online: member.online }"
+                ></span>
+                {{ member.online ? t("chat.onlineNow") : t("chat.offline") }}
+                · {{ t("dialog.joined") }}
                 {{ formatMessageTime(member.joinTime) }}
               </div>
             </div>
@@ -201,16 +258,56 @@
       </template>
     </template>
   </el-drawer>
+
+  <el-dialog
+    v-model="showAddMemberDialog"
+    title="添加群成员"
+    width="520px"
+    append-to-body
+    class="chat-shell-dialog"
+  >
+    <el-transfer
+      v-model="addMemberForm.memberIds"
+      :data="friendsForTransfer"
+      :titles="transferTitles"
+      filterable
+      filter-placeholder="搜索好友"
+      style="width: 100%"
+    />
+    <template #footer>
+      <el-button @click="showAddMemberDialog = false">
+        {{ t("common.cancel") }}
+      </el-button>
+      <el-button
+        type="primary"
+        :loading="addMemberLoading"
+        :disabled="addMemberForm.memberIds.length === 0"
+        @click="confirmAddMembers"
+      >
+        确认添加
+      </el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
-import {computed, defineAsyncComponent, reactive, ref} from "vue";
-import {useFileMessageUpload} from "@/features/chat/composables/useFileMessageUpload";
-import {useErrorHandler} from "@/hooks/useErrorHandler";
-import {useChatStore} from "@/stores/chat";
-import {useI18nStore} from "@/stores/i18n";
-import {useUserStore} from "@/stores/user";
-import type {ChatSession, Friend, Group, GroupMember, GroupReadUser, MessageSearchResult, User,} from "@/types";
+import { computed, defineAsyncComponent, reactive, ref } from "vue";
+import { useFileMessageUpload } from "@/features/chat/composables/useFileMessageUpload";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import EmptyState from "@/components/common/EmptyState.vue";
+import { groupService } from "@/services/group";
+import { useChatStore } from "@/stores/chat";
+import { useI18nStore } from "@/stores/i18n";
+import { useUserStore } from "@/stores/user";
+import type {
+  ChatSession,
+  Friend,
+  Group,
+  GroupMember,
+  GroupReadUser,
+  MessageSearchResult,
+  User,
+} from "@/types";
 
 const AsyncChatSearchDialog = defineAsyncComponent(
   () => import("@/features/chat/dialogs/ChatSearchDialog.vue"),
@@ -234,6 +331,7 @@ const props = defineProps<{
   sessionInfoLoading: boolean;
   sessionInfoError: string;
   privateSessionOnline: boolean;
+  friends: Friend[];
 }>();
 
 const emit = defineEmits<{
@@ -242,13 +340,14 @@ const emit = defineEmits<{
   (e: "update:visibleGroupReadDialog", value: boolean): void;
   (e: "update:visibleSearchDialog", value: boolean): void;
   (e: "update:visibleSessionInfoDrawer", value: boolean): void;
+  (e: "refresh-members"): void;
 }>();
 
 const chatStore = useChatStore();
 const userStore = useUserStore();
-const {locale, t} = useI18nStore();
-const {capture, notifyInfo, notifySuccess} = useErrorHandler("chat-dialogs");
-const {upload} = useFileMessageUpload();
+const { locale, t } = useI18nStore();
+const { capture, notifyInfo, notifySuccess } = useErrorHandler("chat-dialogs");
+const { upload } = useFileMessageUpload();
 
 const showAddFriend = computed({
   get: () => props.visibleAddFriend,
@@ -280,11 +379,12 @@ const sessionInfoMembers = computed(() => props.sessionInfoMembers);
 const sessionInfoLoading = computed(() => props.sessionInfoLoading);
 const sessionInfoError = computed(() => props.sessionInfoError);
 const privateSessionOnline = computed(() => props.privateSessionOnline);
-const sessionInfoMemberCount = computed(() =>
-  sessionInfoMembers.value.length ||
-  sessionInfoGroup.value?.memberCount ||
-  currentSession.value?.memberCount ||
-  0,
+const sessionInfoMemberCount = computed(
+  () =>
+    sessionInfoMembers.value.length ||
+    sessionInfoGroup.value?.memberCount ||
+    currentSession.value?.memberCount ||
+    0,
 );
 
 const isSearchingUsers = ref(false);
@@ -307,7 +407,10 @@ const contactsForTransfer = computed(() =>
     label: contact.nickname || contact.username,
   })),
 );
-const transferTitles = computed(() => [t("dialog.available"), t("dialog.selected")]);
+const transferTitles = computed(() => [
+  t("dialog.available"),
+  t("dialog.selected"),
+]);
 
 const sessionInfoDisplayName = computed(() => {
   if (currentSession.value?.type === "group") {
@@ -340,8 +443,13 @@ const handleUserSearch = async (query: string) => {
   }
   isSearchingUsers.value = true;
   try {
-    const users = await chatStore.searchUsers({type: "username", keyword: query});
-    userSearchResults.value = users.filter((user) => user.id !== userStore.userId);
+    const users = await chatStore.searchUsers({
+      type: "username",
+      keyword: query,
+    });
+    userSearchResults.value = users.filter(
+      (user) => user.id !== userStore.userId,
+    );
   } catch (error) {
     capture(error, t("dialog.failedSearchUsers"));
     userSearchResults.value = [];
@@ -352,7 +460,10 @@ const handleUserSearch = async (query: string) => {
 
 const addFriend = async () => {
   if (!addFriendForm.targetUserId) {
-    capture(new Error(t("dialog.pleaseSelectUser")), t("dialog.pleaseSelectUser"));
+    capture(
+      new Error(t("dialog.pleaseSelectUser")),
+      t("dialog.pleaseSelectUser"),
+    );
     return;
   }
   try {
@@ -366,7 +477,8 @@ const addFriend = async () => {
     addFriendForm.message = t("dialog.sayHello");
     userSearchResults.value = [];
   } catch (error) {
-    const message = error instanceof Error ? error.message : t("dialog.failedAddFriend");
+    const message =
+      error instanceof Error ? error.message : t("dialog.failedAddFriend");
     if (message.includes("pending")) {
       await chatStore.loadFriendRequests().catch(() => undefined);
       notifyInfo(t("dialog.friendRequestPending"));
@@ -399,7 +511,10 @@ const createGroup = async () => {
   try {
     const name = createGroupForm.name.trim();
     if (!name) {
-      capture(new Error(t("dialog.pleaseEnterGroupName")), t("dialog.pleaseEnterGroupName"));
+      capture(
+        new Error(t("dialog.pleaseEnterGroupName")),
+        t("dialog.pleaseEnterGroupName"),
+      );
       return;
     }
     await chatStore.createGroup({
@@ -418,6 +533,45 @@ const createGroup = async () => {
     });
   } catch (error) {
     capture(error, t("dialog.failedCreateGroup"));
+  }
+};
+
+const showAddMemberDialog = ref(false);
+const addMemberForm = reactive({ memberIds: [] as string[] });
+const addMemberLoading = ref(false);
+
+const existingMemberIds = computed(() =>
+  new Set(sessionInfoMembers.value.map((m) => String(m.userId))),
+);
+
+const friendsForTransfer = computed(() =>
+  props.friends
+    .filter((f) => !existingMemberIds.value.has(String(f.friendId)))
+    .map((f) => ({
+      key: f.friendId,
+      label: f.nickname || f.username,
+    })),
+);
+
+const openAddMemberDialog = () => {
+  addMemberForm.memberIds = [];
+  showAddMemberDialog.value = true;
+};
+
+const confirmAddMembers = async () => {
+  if (addMemberForm.memberIds.length === 0) return;
+  const groupId = currentSession.value?.targetId;
+  if (!groupId) return;
+  addMemberLoading.value = true;
+  try {
+    await groupService.addMembers(groupId, addMemberForm.memberIds);
+    notifySuccess("成员已添加");
+    showAddMemberDialog.value = false;
+    emit("refresh-members");
+  } catch (error) {
+    capture(error, "添加成员失败");
+  } finally {
+    addMemberLoading.value = false;
   }
 };
 
@@ -468,10 +622,15 @@ const formatMessageTime = (value?: string) => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px;
+  padding: 10px 12px;
   border: 1px solid var(--chat-panel-border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: rgba(248, 250, 252, 0.72);
+  transition: background-color 0.15s ease;
+}
+
+.member-item:hover {
+  background: rgba(248, 250, 252, 0.92);
 }
 
 .member-item + .member-item {
@@ -523,6 +682,40 @@ const formatMessageTime = (value?: string) => {
   color: var(--chat-success);
 }
 
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.role-badge.owner {
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.1);
+}
+
+.role-badge.member {
+  color: var(--chat-text-tertiary);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.member-status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.member-status-dot.online {
+  background: var(--chat-success);
+}
+
 .session-info-subtitle,
 .member-subtitle {
   color: var(--chat-text-tertiary);
@@ -543,9 +736,44 @@ const formatMessageTime = (value?: string) => {
 
 .session-info-card {
   margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--chat-panel-border);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.5);
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 0;
+}
+
+.info-row + .info-row {
+  border-top: 1px solid var(--border-light);
+}
+
+.info-label {
+  font-size: 13px;
+  color: var(--chat-text-tertiary);
+  flex-shrink: 0;
+}
+
+.info-value {
+  font-size: 13px;
+  color: var(--chat-text-primary);
+  font-weight: 500;
+  text-align: right;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .member-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 10px;
   color: var(--chat-text-primary);
   font-size: 13px;

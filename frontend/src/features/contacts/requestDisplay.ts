@@ -12,7 +12,11 @@ export const getFriendRequestDisplayName = (
       "待验证用户"
     );
   }
-  return request.applicantNickname || request.applicantUsername || request.applicantId;
+  return (
+    request.applicantNickname ||
+    request.applicantUsername ||
+    request.applicantId
+  );
 };
 
 export const getFriendRequestAvatar = (
@@ -25,7 +29,9 @@ export const getFriendRequestAvatar = (
   return request.applicantAvatar;
 };
 
-export const getFriendRequestStatusLabel = (status: FriendRequest["status"]) => {
+export const getFriendRequestStatusLabel = (
+  status: FriendRequest["status"],
+) => {
   if (status === "ACCEPTED") return "已同意";
   if (status === "REJECTED") return "已拒绝";
   return "等待处理";

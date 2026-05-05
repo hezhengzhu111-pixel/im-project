@@ -1,4 +1,8 @@
-import { normalizeUser, normalizeUserAuthResponse, normalizeUserSettings } from "@/normalizers/user";
+import {
+  normalizeUser,
+  normalizeUserAuthResponse,
+  normalizeUserSettings,
+} from "@/normalizers/user";
 import { http } from "@/utils/request";
 import type { ApiResponse } from "@/types/api";
 import type {

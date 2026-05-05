@@ -1,6 +1,7 @@
 import { isRecord } from "@/types/utils";
 
-const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+const asArray = (value: unknown): unknown[] =>
+  Array.isArray(value) ? value : [];
 const firstNonEmptyArray = (...values: unknown[]): unknown[] => {
   for (const value of values) {
     if (Array.isArray(value)) {

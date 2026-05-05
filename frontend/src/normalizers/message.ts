@@ -1,5 +1,12 @@
-import type {Message, MessageConfig, MessageStatus, MessageType, RawMessageDTO, ReadReceipt,} from "@/types";
-import {asNumber, asString, isRawMessage, isRecord} from "@/types/utils";
+import type {
+  Message,
+  MessageConfig,
+  MessageStatus,
+  MessageType,
+  RawMessageDTO,
+  ReadReceipt,
+} from "@/types";
+import { asNumber, asString, isRawMessage, isRecord } from "@/types/utils";
 
 const MESSAGE_TYPES: MessageType[] = [
   "TEXT",
@@ -8,6 +15,7 @@ const MESSAGE_TYPES: MessageType[] = [
   "VIDEO",
   "VOICE",
   "SYSTEM",
+  "AI_REPLY",
 ];
 
 const normalizeFractionalSeconds = (value: unknown): string => {
@@ -157,7 +165,10 @@ export const normalizeMessage = (
     receiverAvatar:
       asString(record.receiverAvatar ?? record.receiver?.avatar) || undefined,
     groupId: asString(groupId) || undefined,
-    conversationSeq: firstNumber(record.conversationSeq, record.conversation_seq),
+    conversationSeq: firstNumber(
+      record.conversationSeq,
+      record.conversation_seq,
+    ),
     groupName: asString(record.groupName) || undefined,
     groupAvatar: asString(record.groupAvatar) || undefined,
     isGroupChat: Boolean(isGroupMessage),
@@ -184,6 +195,20 @@ export const normalizeMessage = (
       : undefined,
     readAt:
       normalizeFractionalSeconds(record.readAt ?? record.read_at) || undefined,
+    isAiGenerated: Boolean(
+      (record as Record<string, unknown>).isAiGenerated ??
+        (record as Record<string, unknown>).is_ai_generated,
+    ),
+    aiProvider:
+      asString(
+        (record as Record<string, unknown>).aiProvider ??
+          (record as Record<string, unknown>).ai_provider,
+      ) || undefined,
+    aiModel:
+      asString(
+        (record as Record<string, unknown>).aiModel ??
+          (record as Record<string, unknown>).ai_model,
+      ) || undefined,
   };
 };
 

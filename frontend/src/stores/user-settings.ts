@@ -1,15 +1,15 @@
-import {defineStore} from "pinia";
-import {ref} from "vue";
-import {ElMessage} from "element-plus";
-import {userService} from "@/services/user";
-import {defaultUserSettings} from "@/normalizers/user";
-import {useUserStore} from "@/stores/user";
+import { defineStore } from "pinia";
+import { ref } from "vue";
+import { ElMessage } from "element-plus";
+import { userService } from "@/services/user";
+import { defaultUserSettings } from "@/normalizers/user";
+import { useUserStore } from "@/stores/user";
 import type {
-    BindEmailRequest,
-    BindPhoneRequest,
-    ChangePasswordRequest,
-    DeleteAccountRequest,
-    UserSettings,
+  BindEmailRequest,
+  BindPhoneRequest,
+  ChangePasswordRequest,
+  DeleteAccountRequest,
+  UserSettings,
 } from "@/types";
 
 const ALLOW_INSECURE_VOICE_RECORDING_KEY = "im_allow_insecure_voice_recording";
@@ -129,7 +129,10 @@ export const useUserSettingsStore = defineStore("user-settings", () => {
     await userService.bindPhone(data);
     const userStore = useUserStore();
     if (userStore.currentUser) {
-      userStore.currentUser.phone = data.phone;
+      userStore.setCurrentUser({
+        ...userStore.currentUser,
+        phone: data.phone,
+      });
     }
     return true;
   };
@@ -138,7 +141,10 @@ export const useUserSettingsStore = defineStore("user-settings", () => {
     await userService.bindEmail(data);
     const userStore = useUserStore();
     if (userStore.currentUser) {
-      userStore.currentUser.email = data.email;
+      userStore.setCurrentUser({
+        ...userStore.currentUser,
+        email: data.email,
+      });
     }
     return true;
   };

@@ -1,6 +1,7 @@
-import {ref} from "vue";
-import {useErrorHandler} from "@/hooks/useErrorHandler";
-import {useUserSettingsStore} from "@/stores/user-settings";
+import { ref } from "vue";
+import { Capacitor } from "@capacitor/core";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { useUserSettingsStore } from "@/stores/user-settings";
 
 const AUDIO_MIME_CANDIDATES = [
   "audio/webm;codecs=opus",
@@ -40,6 +41,9 @@ const isLocalhost = () => {
 };
 
 const isRecordingContextSecure = () => {
+  if (Capacitor.isNativePlatform()) {
+    return true;
+  }
   if (typeof window === "undefined") {
     return false;
   }
@@ -75,7 +79,7 @@ const getMicrophoneErrorMessage = (error: unknown) => {
 };
 
 export function useVoiceRecorder() {
-  const {capture} = useErrorHandler("voice-recorder");
+  const { capture } = useErrorHandler("voice-recorder");
   const settingsStore = useUserSettingsStore();
   const isRecording = ref(false);
   const recordingStartTime = ref(0);
@@ -108,11 +112,11 @@ export function useVoiceRecorder() {
 
     let stream: MediaStream | null = null;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({audio: true});
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = getPreferredAudioMimeType();
       mediaRecorder = new MediaRecorder(
         stream,
-        mimeType ? {mimeType} : undefined,
+        mimeType ? { mimeType } : undefined,
       );
       recordedMimeType = mediaRecorder.mimeType || mimeType || "audio/webm";
       audioChunks = [];
@@ -158,7 +162,9 @@ export function useVoiceRecorder() {
           return;
         }
 
-        const duration = Math.round((Date.now() - recordingStartTime.value) / 1000);
+        const duration = Math.round(
+          (Date.now() - recordingStartTime.value) / 1000,
+        );
         if (duration < 1) {
           capture(new Error("Recording too short"), "录音时间太短");
           resolve(null);
@@ -166,14 +172,15 @@ export function useVoiceRecorder() {
           return;
         }
 
-        const rawMimeType = recorder.mimeType || recordedMimeType || "audio/webm";
+        const rawMimeType =
+          recorder.mimeType || recordedMimeType || "audio/webm";
         const mimeType = normalizeAudioMimeType(rawMimeType);
-        const blob = new Blob(audioChunks, {type: mimeType});
+        const blob = new Blob(audioChunks, { type: mimeType });
         resolve({
           file: new File(
             [blob],
             `voice_${Date.now()}.${getAudioFileExtension(rawMimeType)}`,
-            {type: mimeType},
+            { type: mimeType },
           ),
           duration,
         });

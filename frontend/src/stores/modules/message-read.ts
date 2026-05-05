@@ -1,8 +1,8 @@
-import type {Ref} from "vue";
-import type {messageService} from "@/services/message";
-import {buildSessionId, toBigIntId} from "@/normalizers/chat";
-import {normalizeReadReceipt} from "@/utils/messageNormalize";
-import type {ChatSession, Message, ReadReceipt} from "@/types";
+import type { Ref } from "vue";
+import type { messageService } from "@/services/message";
+import { buildSessionId, toBigIntId } from "@/normalizers/chat";
+import { normalizeReadReceipt } from "@/utils/messageNormalize";
+import type { ChatSession, Message, ReadReceipt } from "@/types";
 
 type SessionStoreLike = {
   sessions: ChatSession[];

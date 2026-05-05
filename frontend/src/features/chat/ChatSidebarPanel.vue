@@ -5,6 +5,7 @@
       :active-tab="activeTab"
       :unread-count="totalUnreadCount"
       :pending-requests="pendingRequestsCount"
+      :moments-unread-count="momentsUnreadCount"
       @change-tab="handleChangeTab"
       @settings="handleOpenSettings"
     />
@@ -60,18 +61,34 @@
         />
       </div>
 
-      <div v-show="activeTab === 'chat'" class="session-list chat-soft-scrollbar" role="list">
+      <div
+        v-show="activeTab === 'chat'"
+        class="session-list chat-soft-scrollbar"
+        role="list"
+      >
+        <!-- 加载态 skeleton -->
+        <template v-if="sessionsLoading && filteredSessionItems.length === 0">
+          <div v-for="n in 6" :key="`sk-${n}`" class="session-skeleton">
+            <el-skeleton :rows="2" animated />
+          </div>
+        </template>
+
+        <!-- 会话列表 -->
         <button
           v-for="item in filteredSessionItems"
           :key="item.session.id"
           type="button"
           class="session-item interactive-reset"
-          :class="{ active: currentSessionId === item.session.id, unread: item.session.unreadCount > 0 }"
+          :class="{
+            active: currentSessionId === item.session.id,
+            unread: item.session.unreadCount > 0,
+            pinned: item.session.isPinned,
+          }"
           @click="handleSelectSession(item.session)"
         >
           <span class="session-accent"></span>
           <div class="session-avatar-wrap">
-            <el-avatar :size="40" :src="item.session.targetAvatar">
+            <el-avatar :size="42" :src="item.session.targetAvatar">
               {{ item.session.targetName?.charAt(0) || "U" }}
             </el-avatar>
             <span
@@ -95,14 +112,17 @@
                   </el-icon>
                   <el-icon
                     v-if="item.session.isMuted"
-                    class="session-flag"
+                    class="session-flag muted"
                     :aria-label="t('sidebar.mutedConversation')"
                   >
                     <Bell />
                   </el-icon>
+                  <span v-if="item.isAi" class="session-ai-mark">AI</span>
                 </span>
               </div>
-              <span class="session-time">{{ formatTime(item.session.lastActiveTime) }}</span>
+              <span class="session-time">{{
+                formatTime(item.session.lastActiveTime)
+              }}</span>
             </div>
 
             <div class="session-meta-row">
@@ -114,14 +134,24 @@
                 {{ item.online ? t("sidebar.online") : t("sidebar.offline") }}
               </span>
               <span v-else class="session-presence">
-                {{ t("sidebar.members", { count: item.session.memberCount || 0 }) }}
+                {{
+                  t("sidebar.members", { count: item.session.memberCount || 0 })
+                }}
               </span>
               <span
                 v-if="item.session.unreadCount > 0"
                 class="unread-badge"
-                :aria-label="t('sidebar.unreadMessages', { count: item.session.unreadCount })"
+                :aria-label="
+                  t('sidebar.unreadMessages', {
+                    count: item.session.unreadCount,
+                  })
+                "
               >
-                {{ item.session.unreadCount > 99 ? "99+" : item.session.unreadCount }}
+                {{
+                  item.session.unreadCount > 99
+                    ? "99+"
+                    : item.session.unreadCount
+                }}
               </span>
             </div>
 
@@ -130,14 +160,20 @@
             </div>
           </div>
         </button>
-        <el-empty
-          v-if="filteredSessionItems.length === 0"
-          :description="t('sidebar.noConversations')"
-          :image-size="60"
+
+        <!-- 空状态 -->
+        <EmptyState
+          v-if="!sessionsLoading && filteredSessionItems.length === 0"
+          :title="t('sidebar.noConversations')"
+          :description="t('sidebar.noConversationsDesc')"
         />
       </div>
 
-      <div v-show="activeTab === 'contacts'" class="contact-list chat-soft-scrollbar" role="list">
+      <div
+        v-show="activeTab === 'contacts'"
+        class="contact-list chat-soft-scrollbar"
+        role="list"
+      >
         <template v-if="groupedContacts.length > 0">
           <div
             v-for="group in groupedContacts"
@@ -153,7 +189,11 @@
               @click="handleStartPrivateChat(contact)"
             >
               <el-avatar :size="40" :src="contact.avatar">
-                {{ contact.nickname?.charAt(0) || contact.username?.charAt(0) || "U" }}
+                {{
+                  contact.nickname?.charAt(0) ||
+                  contact.username?.charAt(0) ||
+                  "U"
+                }}
               </el-avatar>
               <div class="contact-info">
                 <div class="contact-name">
@@ -164,10 +204,14 @@
             </button>
           </div>
         </template>
-        <el-empty v-else :description="t('sidebar.noContacts')" :image-size="60" />
+        <EmptyState v-else :title="t('sidebar.noContacts')" />
       </div>
 
-      <div v-show="activeTab === 'groups'" class="group-list chat-soft-scrollbar" role="list">
+      <div
+        v-show="activeTab === 'groups'"
+        class="group-list chat-soft-scrollbar"
+        role="list"
+      >
         <button
           v-for="group in filteredGroups"
           :key="group.id"
@@ -180,36 +224,91 @@
           </el-avatar>
           <div class="group-info">
             <div class="group-name">{{ group.groupName }}</div>
-            <div class="group-meta">{{ t("sidebar.members", { count: group.memberCount || 0 }) }}</div>
+            <div class="group-meta">
+              {{ t("sidebar.members", { count: group.memberCount || 0 }) }}
+            </div>
           </div>
         </button>
-        <el-empty
+        <EmptyState
           v-if="filteredGroups.length === 0"
-          :description="t('sidebar.noGroups')"
-          :image-size="60"
+          :title="t('sidebar.noGroups')"
         />
       </div>
     </div>
+
+    <nav class="mobile-nav-bar">
+      <button
+        type="button"
+        :class="{ active: activeTab === 'chat' }"
+        :aria-label="t('sidebar.messagesTitle')"
+        @click="handleChangeTab('chat')"
+      >
+        <span class="mobile-nav-badge" v-if="totalUnreadCount > 0">{{
+          totalUnreadCount > 99 ? "99+" : totalUnreadCount
+        }}</span>
+        {{ t("sidebar.messagesTitle") }}
+      </button>
+      <button
+        type="button"
+        :class="{ active: activeTab === 'contacts' }"
+        :aria-label="t('sidebar.contactsTitle')"
+        @click="handleChangeTab('contacts')"
+      >
+        <span class="mobile-nav-badge" v-if="pendingRequestsCount > 0">{{
+          pendingRequestsCount
+        }}</span>
+        {{ t("sidebar.contactsTitle") }}
+      </button>
+      <button
+        type="button"
+        :class="{ active: activeTab === 'groups' }"
+        :aria-label="t('sidebar.groupsTitle')"
+        @click="handleChangeTab('groups')"
+      >
+        {{ t("sidebar.groupsTitle") }}
+      </button>
+      <button
+        type="button"
+        :class="{ active: activeTab === 'moments' }"
+        :aria-label="t('sidebar.momentsTitle')"
+        @click="handleChangeTab('moments')"
+      >
+        <span class="mobile-nav-badge" v-if="(momentsUnreadCount || 0) > 0">{{
+          (momentsUnreadCount || 0) > 99 ? "99+" : momentsUnreadCount || 0
+        }}</span>
+        {{ t("sidebar.momentsTitle") }}
+      </button>
+      <button
+        type="button"
+        :aria-label="t('nav.settings')"
+        @click="handleOpenSettings"
+      >
+        {{ t("nav.settings") }}
+      </button>
+    </nav>
   </div>
 </template>
 
 <script setup lang="ts">
-import {computed, onUnmounted, ref, watch} from "vue";
-import {Bell, Plus, Search, Top} from "@element-plus/icons-vue";
+import { computed, onUnmounted, ref, watch } from "vue";
+import { Bell, Plus, Search, Top } from "@element-plus/icons-vue";
+import EmptyState from "@/components/common/EmptyState.vue";
 import SideNavBar from "@/components/layout/SideNavBar.vue";
-import {useI18nStore} from "@/stores/i18n";
-import {useWebSocketStore} from "@/stores/websocket";
-import type {ChatSession, Friend, Group} from "@/types";
+import { useI18nStore } from "@/stores/i18n";
+import { useWebSocketStore } from "@/stores/websocket";
+import type { ChatSession, Friend, Group } from "@/types";
 
 interface Props {
-  activeTab: "chat" | "contacts" | "groups";
+  activeTab: "chat" | "contacts" | "groups" | "moments";
   sessions: ChatSession[];
   currentSessionId?: string;
   friends: Friend[];
   groups: Group[];
   pendingRequestsCount: number;
   totalUnreadCount: number;
+  momentsUnreadCount?: number;
   isChatActiveOnMobile: boolean;
+  sessionsLoading?: boolean;
   searchKeyword?: string;
 }
 
@@ -219,7 +318,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<{
-  (e: "change-tab", tab: "chat" | "contacts" | "groups"): void;
+  (e: "change-tab", tab: "chat" | "contacts" | "groups" | "moments"): void;
   (e: "select-session", session: ChatSession): void;
   (e: "start-private-chat", contact: Friend): void;
   (e: "start-group-chat", group: Group): void;
@@ -229,7 +328,7 @@ const emit = defineEmits<{
 }>();
 
 const webSocketStore = useWebSocketStore();
-const {locale, t} = useI18nStore();
+const { locale, t } = useI18nStore();
 const localSearchKeyword = ref(props.searchKeyword);
 const debouncedSearchKeyword = ref(props.searchKeyword.trim().toLowerCase());
 const resolvePinyinInitial = ref<((value: string) => string) | null>(null);
@@ -242,7 +341,10 @@ const contactFilterCache = new Map<
   string,
   { sourceKey: string; searchText: string; initial: string }
 >();
-const groupFilterCache = new Map<string, { sourceKey: string; searchText: string }>();
+const groupFilterCache = new Map<
+  string,
+  { sourceKey: string; searchText: string }
+>();
 
 const normalizedSearchKeyword = computed(() => debouncedSearchKeyword.value);
 
@@ -258,16 +360,16 @@ const panelTitle = computed(() => {
 
 const panelSubtitle = computed(() => {
   if (props.activeTab === "contacts") {
-    return t("sidebar.contactsAvailable", {count: props.friends.length});
+    return t("sidebar.contactsAvailable", { count: props.friends.length });
   }
   if (props.activeTab === "groups") {
-    return t("sidebar.groupsReady", {count: props.groups.length});
+    return t("sidebar.groupsReady", { count: props.groups.length });
   }
-  return t("sidebar.activeConversations", {count: props.sessions.length});
+  return t("sidebar.activeConversations", { count: props.sessions.length });
 });
 
 const handleChangeTab = (tab: string) => {
-  if (tab === "chat" || tab === "contacts" || tab === "groups") {
+  if (tab === "chat" || tab === "contacts" || tab === "groups" || tab === "moments") {
     emit("change-tab", tab);
   }
 };
@@ -314,7 +416,7 @@ watch(
       searchDebounceTimer.value = null;
     }, 150);
   },
-  {immediate: true},
+  { immediate: true },
 );
 
 watch(
@@ -323,7 +425,7 @@ watch(
     if (tab !== "contacts" || resolvePinyinInitial.value) {
       return;
     }
-    const {pinyin} = await import("pinyin-pro");
+    const { pinyin } = await import("pinyin-pro");
     resolvePinyinInitial.value = (value: string) =>
       pinyin(value, {
         pattern: "first",
@@ -331,13 +433,16 @@ watch(
       }).toUpperCase();
     contactFilterCache.clear();
   },
-  {immediate: true},
+  { immediate: true },
 );
 
 onUnmounted(() => {
   if (searchDebounceTimer.value) {
     clearTimeout(searchDebounceTimer.value);
   }
+  sessionFilterCache.clear();
+  contactFilterCache.clear();
+  groupFilterCache.clear();
 });
 
 const formatTime = (time?: string) => {
@@ -350,10 +455,10 @@ const formatTime = (time?: string) => {
     return t("sidebar.justNow");
   }
   if (diff < 3_600_000) {
-    return t("sidebar.minutesAgo", {count: Math.floor(diff / 60_000)});
+    return t("sidebar.minutesAgo", { count: Math.floor(diff / 60_000) });
   }
   if (diff < 86_400_000) {
-    return t("sidebar.hoursAgo", {count: Math.floor(diff / 3_600_000)});
+    return t("sidebar.hoursAgo", { count: Math.floor(diff / 3_600_000) });
   }
   return date.toLocaleDateString(locale.value, {
     month: "numeric",
@@ -369,7 +474,9 @@ const previewMessage = (message?: ChatSession["lastMessage"]) => {
     case "IMAGE":
       return t("sidebar.image");
     case "FILE":
-      return message.mediaName ? `${t("sidebar.file")} ${message.mediaName}` : t("sidebar.file");
+      return message.mediaName
+        ? `${t("sidebar.file")} ${message.mediaName}`
+        : t("sidebar.file");
     case "VOICE":
       return t("sidebar.voice");
     case "VIDEO":
@@ -394,7 +501,7 @@ const sessionPreview = (session: ChatSession, online: boolean) => {
     return online ? t("sidebar.availableNow") : t("sidebar.noRecentMessages");
   }
   if (session.memberCount && session.memberCount > 0) {
-    return t("sidebar.members", {count: session.memberCount});
+    return t("sidebar.members", { count: session.memberCount });
   }
   return t("sidebar.noRecentMessages");
 };
@@ -448,6 +555,7 @@ const sessionItems = computed(() =>
       online: cached.online,
       preview: cached.preview,
       searchText: cached.searchText,
+      isAi: Boolean(session.lastMessage?.isAiGenerated),
     };
   }),
 );
@@ -474,7 +582,8 @@ const resolveContactInitial = (name: string) => {
 
 const getContactCacheEntry = (contact: Friend) => {
   const contactId = contact.friendId;
-  const displayName = contact.nickname || contact.username || contact.friendId || "";
+  const displayName =
+    contact.nickname || contact.username || contact.friendId || "";
   const sourceKey = [
     contact.friendId,
     contact.nickname,
@@ -488,7 +597,12 @@ const getContactCacheEntry = (contact: Friend) => {
 
   const next = {
     sourceKey,
-    searchText: [contact.nickname, contact.username, contact.friendId, contact.remark]
+    searchText: [
+      contact.nickname,
+      contact.username,
+      contact.friendId,
+      contact.remark,
+    ]
       .filter(Boolean)
       .join(" ")
       .toLowerCase(),
@@ -503,7 +617,9 @@ const filteredContacts = computed(() => {
     return props.friends;
   }
   return props.friends.filter((contact) =>
-    getContactCacheEntry(contact).searchText.includes(normalizedSearchKeyword.value),
+    getContactCacheEntry(contact).searchText.includes(
+      normalizedSearchKeyword.value,
+    ),
   );
 });
 
@@ -520,12 +636,17 @@ const groupedContacts = computed(() => {
       if (right === "#") return -1;
       return left.localeCompare(right);
     })
-    .map(([key, contacts]) => ({key, contacts}));
+    .map(([key, contacts]) => ({ key, contacts }));
 });
 
 const getGroupCacheEntry = (group: Group) => {
   const groupId = String(group.id);
-  const sourceKey = [group.id, group.groupName, group.name, group.memberCount || 0].join("|");
+  const sourceKey = [
+    group.id,
+    group.groupName,
+    group.name,
+    group.memberCount || 0,
+  ].join("|");
   const cached = groupFilterCache.get(groupId);
   if (cached?.sourceKey === sourceKey) {
     return cached;
@@ -546,7 +667,9 @@ const filteredGroups = computed(() => {
     return props.groups;
   }
   return props.groups.filter((group) =>
-    getGroupCacheEntry(group).searchText.includes(normalizedSearchKeyword.value),
+    getGroupCacheEntry(group).searchText.includes(
+      normalizedSearchKeyword.value,
+    ),
   );
 });
 </script>
@@ -632,35 +755,36 @@ const filteredGroups = computed(() => {
   gap: 10px;
   padding: 10px;
   margin-bottom: 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   text-align: left;
   cursor: pointer;
   border: 1px solid transparent;
-  background: #fff;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+  background: var(--surface-elevated);
   transition:
-    border-color 0.18s ease,
-    background-color 0.18s ease,
-    transform 0.18s ease,
-    box-shadow 0.18s ease;
+    border-color var(--motion-normal) var(--motion-ease),
+    background-color var(--motion-normal) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-normal) var(--motion-ease);
 
   &:hover {
-    transform: translateY(-1px);
-    background: rgba(255, 255, 255, 0.82);
-    border-color: rgba(37, 99, 235, 0.22);
-    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+    background: var(--chat-card-hover);
+    border-color: var(--border-light);
   }
 }
 
 .session-item.active {
   background: var(--chat-card-active);
   border-color: var(--chat-card-active-border);
-  box-shadow: 0 16px 38px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.1);
 }
 
 .session-item.unread:not(.active) {
-  border-color: #bfdbfe;
-  background: #f8fbff;
+  background: color-mix(in srgb, var(--color-primary), transparent 95%);
+  border-color: color-mix(in srgb, var(--color-primary), transparent 85%);
+}
+
+.session-item.pinned {
+  background: var(--surface-overlay);
 }
 
 .session-accent {
@@ -718,6 +842,16 @@ const filteredGroups = computed(() => {
   font-weight: 800;
 }
 
+.session-item.unread .session-name {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.session-item.unread .session-preview {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
 .session-flags {
   display: inline-flex;
   align-items: center;
@@ -728,6 +862,68 @@ const filteredGroups = computed(() => {
 .session-flag {
   color: var(--chat-text-tertiary);
   font-size: 12px;
+}
+
+.session-flag.muted {
+  opacity: 0.6;
+}
+
+.session-ai-mark {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  height: 16px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--color-primary), transparent 90%);
+  color: var(--color-primary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Skeleton loading */
+.session-skeleton {
+  padding: 12px;
+  margin-bottom: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-light);
+}
+
+/* Empty state */
+.session-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.session-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-primary), transparent 92%);
+  color: var(--color-primary-muted);
+  margin-bottom: 16px;
+}
+
+.session-empty-title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.session-empty-desc {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  line-height: var(--leading-relaxed);
+  max-width: 240px;
 }
 
 .session-time {
@@ -781,6 +977,8 @@ const filteredGroups = computed(() => {
   font-weight: 800;
   line-height: 20px;
   text-align: center;
+  animation: badge-scale var(--motion-fast, 120ms)
+    var(--motion-spring, cubic-bezier(0.34, 1.56, 0.64, 1));
 }
 
 .presence-dot {
@@ -808,11 +1006,15 @@ const filteredGroups = computed(() => {
   z-index: 1;
   margin-bottom: 8px;
   padding: 6px 10px;
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: var(--radius-xs);
+  background: var(--surface-tertiary);
   color: var(--chat-text-tertiary);
   font-size: 12px;
   font-weight: 700;
+}
+
+.mobile-nav-bar {
+  display: none;
 }
 
 @media (max-width: 768px) {
@@ -824,8 +1026,55 @@ const filteredGroups = computed(() => {
     display: none;
   }
 
+  .mobile-nav-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: var(--el-bg-color);
+    border-top: 1px solid var(--el-border-color-light);
+    z-index: 100;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+
+    button {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      background: none;
+      border: none;
+      font-size: 12px;
+      color: var(--el-text-color-secondary);
+      cursor: pointer;
+      padding: 4px 0;
+
+      &.active {
+        color: var(--el-color-primary);
+        font-weight: 600;
+      }
+    }
+
+    .mobile-nav-badge {
+      position: absolute;
+      top: 2px;
+      left: calc(50% + 12px);
+      background: var(--el-color-danger);
+      color: #fff;
+      border-radius: 10px;
+      padding: 1px 5px;
+      font-size: 10px;
+      min-width: 16px;
+      text-align: center;
+      line-height: 1.4;
+    }
+  }
+
   .list-panel {
     width: 100%;
+    padding-bottom: 56px;
 
     &.hidden-mobile {
       display: none;

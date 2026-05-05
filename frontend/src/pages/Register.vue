@@ -367,11 +367,37 @@ onMounted(async () => {
 }
 
 /* 响应式设计 */
-@media (max-width: 480px) {
+@media (max-width: 768px) {
+  .register-container {
+    padding: 16px;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    align-items: flex-start;
+  }
+
   .register-card {
-    padding: 30px 20px;
+    padding: 32px 20px;
     box-shadow: none;
     background: transparent;
+    max-width: 100%;
+  }
+
+  .register-title {
+    font-size: 20px;
+  }
+
+  .register-subtitle {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 390px) {
+  .register-container {
+    padding: 12px;
+  }
+
+  .register-card {
+    padding: 24px 16px;
   }
 }
 </style>

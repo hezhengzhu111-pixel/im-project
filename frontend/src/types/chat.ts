@@ -1,4 +1,4 @@
-import type {Message} from "./message";
+import type { Message } from "./message";
 
 export type ChatSessionType = "private" | "group";
 
@@ -64,7 +64,9 @@ export interface WebSocketMessage<TData = unknown> {
     | "ONLINE_STATUS"
     | "READ_RECEIPT"
     | "READ_SYNC"
-    | "SYSTEM";
+    | "SYSTEM"
+    | "FRIEND_REQUEST"
+    | "FRIEND_ACCEPTED";
   data: TData;
   timestamp: number;
 }

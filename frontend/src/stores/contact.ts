@@ -1,7 +1,12 @@
 import { ref } from "vue";
 import { defineStore } from "pinia";
 import { friendService, userService } from "@/services";
-import type { AddFriendRequest, FriendRequest, Friendship, User } from "@/types";
+import type {
+  AddFriendRequest,
+  FriendRequest,
+  Friendship,
+  User,
+} from "@/types";
 import { useErrorHandler } from "@/hooks/useErrorHandler";
 
 export const useContactStore = defineStore("contact", () => {

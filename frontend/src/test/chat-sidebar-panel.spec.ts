@@ -1,6 +1,6 @@
-import {nextTick} from "vue";
-import {mount} from "@vue/test-utils";
-import {beforeEach, describe, expect, it, vi} from "vitest";
+import { nextTick } from "vue";
+import { mount } from "@vue/test-utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import ChatSidebarPanel from "@/features/chat/ChatSidebarPanel.vue";
 
 const pinyinMock = vi.fn((value: string) => {
@@ -160,7 +160,7 @@ describe("ChatSidebarPanel", () => {
 
     await wrapper.find(".el-input-stub").setValue("张");
     await flushDebounce();
-    await wrapper.setProps({pendingRequestsCount: 1});
+    await wrapper.setProps({ pendingRequestsCount: 1 });
     await nextTick();
 
     expect(pinyinMock).toHaveBeenCalledTimes(2);

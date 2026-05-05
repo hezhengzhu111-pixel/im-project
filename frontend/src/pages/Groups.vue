@@ -3,9 +3,12 @@
     <div class="page-header">
       <el-button link :icon="ArrowLeft" @click="$router.back()">返回</el-button>
       <h2>群组</h2>
-      <el-button type="primary" :icon="Plus" @click="showCreateGroup = true">
-        创建群组
-      </el-button>
+      <div class="header-actions">
+        <el-button :icon="Search" @click="openJoinGroupDialog">加入群聊</el-button>
+        <el-button type="primary" :icon="Plus" @click="showCreateGroup = true">
+          创建群组
+        </el-button>
+      </div>
     </div>
 
     <div class="toolbar">
@@ -30,13 +33,13 @@
         </div>
       </template>
 
-      <div v-if="loading" class="loading-block">
-        <el-skeleton :rows="5" animated />
-      </div>
+      <SkeletonList v-if="loading" :rows="5" />
 
-      <div v-else-if="filteredGroups.length === 0" class="empty-state">
-        暂无群组
-      </div>
+      <EmptyState
+        v-else-if="filteredGroups.length === 0"
+        title="暂无群组"
+        description="创建或加入群组开始群聊"
+      />
 
       <div v-else class="group-list">
         <div
@@ -61,18 +64,25 @@
             <div class="group-title-row">
               <div class="group-name">{{ group.groupName || group.name }}</div>
               <div class="group-time">
-                {{ formatTime(group.lastMessageTime || group.lastActivityAt || group.createTime) }}
+                {{
+                  formatTime(
+                    group.lastMessageTime ||
+                      group.lastActivityAt ||
+                      group.createTime,
+                  )
+                }}
               </div>
             </div>
             <div class="group-desc">
               {{ group.description || group.announcement || "暂无群组描述" }}
             </div>
-            <div class="group-meta">
-              {{ group.memberCount || 0 }} 位成员
-            </div>
+            <div class="group-meta">{{ group.memberCount || 0 }} 位成员</div>
           </div>
 
-          <el-dropdown trigger="click" @command="handleGroupAction($event, group)">
+          <el-dropdown
+            trigger="click"
+            @command="handleGroupAction($event, group)"
+          >
             <el-button link :icon="MoreFilled" @click.stop />
             <template #dropdown>
               <el-dropdown-menu>
@@ -151,22 +161,68 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showJoinGroup" title="加入群聊" width="520px">
+      <div class="join-group-dialog">
+        <div class="join-search-bar">
+          <el-input
+            v-model="joinKeyword"
+            placeholder="搜索群组名称"
+            :prefix-icon="Search"
+            clearable
+            @keyup.enter="searchJoinGroups"
+          />
+          <el-button type="primary" :loading="joinSearching" @click="searchJoinGroups">
+            搜索
+          </el-button>
+        </div>
+
+        <div class="join-results">
+          <div v-if="joinSearching && joinResults.length === 0" class="join-empty">
+            搜索中...
+          </div>
+          <div v-else-if="joinResults.length === 0" class="join-empty">
+            {{ joinKeyword.trim() ? "未找到相关群组" : "输入关键词搜索群组" }}
+          </div>
+          <div v-else class="join-list">
+            <div v-for="group in joinResults" :key="group.id" class="join-item">
+              <el-avatar :size="44" :src="group.avatar" shape="square">
+                {{ (group.groupName || group.name || "G").charAt(0) }}
+              </el-avatar>
+              <div class="join-info">
+                <div class="join-name">{{ group.groupName || group.name }}</div>
+                <div class="join-meta">{{ group.memberCount || 0 }} 位成员</div>
+              </div>
+              <el-button
+                type="primary"
+                size="small"
+                :loading="joiningGroupId === group.id"
+                @click="joinGroup(group)"
+              >
+                加入
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import {
-  ElMessageBox,
-  type FormInstance,
-  type FormRules,
-} from "element-plus";
+import { ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 import { ArrowLeft, MoreFilled, Plus, Search } from "@element-plus/icons-vue";
+import { ActionSheet } from "@capacitor/action-sheet";
+import EmptyState from "@/components/common/EmptyState.vue";
+import SkeletonList from "@/components/common/SkeletonList.vue";
+import { isCameraAvailable, takePhoto, pickFromGallery, base64ToFile } from "@/services/camera.service";
 import { fileService } from "@/services/file";
 import { groupService } from "@/services/group";
 import { useChatStore } from "@/stores/chat";
 import type { Group } from "@/types";
+import { compressImage, blobToFile } from "@/utils/image-compression";
 import { useErrorHandler } from "@/hooks/useErrorHandler";
 
 type SortMode = "name" | "time" | "members";
@@ -184,6 +240,12 @@ const showCreateGroup = ref(false);
 const searchKeyword = ref("");
 const sortBy = ref<SortMode>("name");
 
+const showJoinGroup = ref(false);
+const joinKeyword = ref("");
+const joinResults = ref<Group[]>([]);
+const joinSearching = ref(false);
+const joiningGroupId = ref<string | null>(null);
+
 const createGroupForm = reactive({
   name: "",
   description: "",
@@ -194,14 +256,20 @@ const createGroupForm = reactive({
 const createGroupRules: FormRules = {
   name: [
     { required: true, message: "请输入群组名称", trigger: "blur" },
-    { min: 2, max: 20, message: "群组名称长度为 2 到 20 个字符", trigger: "blur" },
+    {
+      min: 2,
+      max: 20,
+      message: "群组名称长度为 2 到 20 个字符",
+      trigger: "blur",
+    },
   ],
 };
 
 const transferFriends = computed(() =>
   chatStore.friends.map((friend) => ({
     key: friend.friendId,
-    label: friend.remark || friend.nickname || friend.username || friend.friendId,
+    label:
+      friend.remark || friend.nickname || friend.username || friend.friendId,
   })),
 );
 
@@ -256,17 +324,36 @@ const loadData = async () => {
   }
 };
 
-const openAvatarPicker = () => {
-  avatarInputRef.value?.click();
+const openAvatarPicker = async () => {
+  if (isCameraAvailable()) {
+    try {
+      const result = await ActionSheet.showActions({
+        title: "更换群组头像",
+        options: [
+          { title: "拍照" },
+          { title: "从相册选择" },
+        ],
+      });
+      if (result.index === 0) {
+        const photo = await takePhoto();
+        const file = base64ToFile(photo.base64, photo.format);
+        const compressed = await compressImage(file);
+        await uploadGroupAvatar(blobToFile(compressed, file.name));
+      } else if (result.index === 1) {
+        const photo = await pickFromGallery();
+        const file = base64ToFile(photo.base64, photo.format);
+        const compressed = await compressImage(file);
+        await uploadGroupAvatar(blobToFile(compressed, file.name));
+      }
+    } catch {
+      avatarInputRef.value?.click();
+    }
+  } else {
+    avatarInputRef.value?.click();
+  }
 };
 
-const handleAvatarChange = async (event: Event) => {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = "";
-  if (!file) {
-    return;
-  }
+const uploadGroupAvatar = async (file: File) => {
   try {
     const response = await fileService.uploadImage(file);
     if (response.code !== 200 || !response.data?.url) {
@@ -276,6 +363,16 @@ const handleAvatarChange = async (event: Event) => {
   } catch (error) {
     capture(error, "头像上传失败");
   }
+};
+
+const handleAvatarChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) {
+    return;
+  }
+  await uploadGroupAvatar(file);
 };
 
 const createGroup = async () => {
@@ -334,9 +431,13 @@ const viewMembers = async (group: Group) => {
               return `${member.nickname || member.username || member.userId}（${role}）`;
             })
             .join("\n");
-    await ElMessageBox.alert(content, `${group.groupName || group.name} 成员列表`, {
-      confirmButtonText: "关闭",
-    });
+    await ElMessageBox.alert(
+      content,
+      `${group.groupName || group.name} 成员列表`,
+      {
+        confirmButtonText: "关闭",
+      },
+    );
   } catch (error) {
     capture(error, "加载群成员失败");
   }
@@ -376,6 +477,40 @@ const handleGroupAction = async (command: string, group: Group) => {
   }
 };
 
+const searchJoinGroups = async () => {
+  const keyword = joinKeyword.value.trim();
+  if (!keyword) return;
+  joinSearching.value = true;
+  try {
+    const response = await groupService.searchGroups(keyword);
+    joinResults.value = response.data || [];
+  } catch (error) {
+    capture(error, "搜索群组失败");
+  } finally {
+    joinSearching.value = false;
+  }
+};
+
+const joinGroup = async (group: Group) => {
+  joiningGroupId.value = group.id;
+  try {
+    await groupService.join(group.id);
+    notifySuccess(`已申请加入「${group.groupName || group.name}」`);
+    await chatStore.loadGroups();
+    showJoinGroup.value = false;
+  } catch (error) {
+    capture(error, "加入群组失败");
+  } finally {
+    joiningGroupId.value = null;
+  }
+};
+
+const openJoinGroupDialog = () => {
+  joinKeyword.value = "";
+  joinResults.value = [];
+  showJoinGroup.value = true;
+};
+
 onMounted(() => {
   void loadData();
 });
@@ -385,7 +520,7 @@ onMounted(() => {
 .groups-page {
   min-height: 100%;
   padding: 20px;
-  background: #f5f7fa;
+  background: var(--bg-gradient);
 }
 
 .page-header,
@@ -401,6 +536,11 @@ onMounted(() => {
 .page-header {
   justify-content: space-between;
   margin-bottom: 20px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .page-header h2 {
@@ -426,7 +566,7 @@ onMounted(() => {
 }
 
 .subtle-text {
-  color: #909399;
+  color: var(--text-tertiary);
   font-size: 13px;
 }
 
@@ -440,12 +580,12 @@ onMounted(() => {
   gap: 14px;
   padding: 16px;
   border-radius: 12px;
-  background: #f8fafc;
+  background: var(--surface-elevated);
   cursor: pointer;
 }
 
 .group-item:hover {
-  background: #eef5ff;
+  background: var(--chat-card-hover, rgba(99, 102, 241, 0.06));
 }
 
 .group-avatar-wrap {
@@ -465,13 +605,13 @@ onMounted(() => {
 
 .group-name {
   font-weight: 600;
-  color: #303133;
+  color: var(--text-primary);
 }
 
 .group-time,
 .group-desc,
 .group-meta {
-  color: #909399;
+  color: var(--text-tertiary);
   font-size: 13px;
 }
 
@@ -479,8 +619,7 @@ onMounted(() => {
   margin-top: 4px;
 }
 
-.loading-block,
-.empty-state {
+.loading-block {
   padding: 24px 0;
 }
 
@@ -494,9 +633,72 @@ onMounted(() => {
   gap: 8px;
 }
 
+.join-group-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.join-search-bar {
+  display: flex;
+  gap: 8px;
+}
+
+.join-search-bar .el-input {
+  flex: 1;
+}
+
+.join-results {
+  min-height: 200px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.join-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
+.join-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.join-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface-elevated);
+}
+
+.join-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.join-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.join-meta {
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
 @media (max-width: 768px) {
   .groups-page {
     padding: 16px;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   }
 
   .toolbar {
@@ -506,6 +708,26 @@ onMounted(() => {
 
   .sort-select {
     width: 100%;
+  }
+
+  :deep(.el-dialog) {
+    width: calc(100vw - 32px) !important;
+    margin: 16px !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .groups-page {
+    padding: 12px;
+  }
+
+  .page-header h2 {
+    font-size: 18px;
+  }
+
+  .group-item {
+    padding: 12px;
+    gap: 10px;
   }
 }
 </style>

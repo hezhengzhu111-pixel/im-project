@@ -113,6 +113,15 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
+    path: "/settings/ai",
+    name: "AiSettings",
+    component: () => import("@/pages/AiSettings.vue"),
+    meta: {
+      title: "AI 助手",
+      requiresAuth: true,
+    },
+  },
+  {
     path: "/admin/logs",
     name: "LogMonitor",
     component: () => import("@/pages/LogMonitor.vue"),
@@ -120,6 +129,24 @@ const routes: RouteRecordRaw[] = [
       title: "日志监控",
       requiresAuth: true,
       permission: "log:read",
+    },
+  },
+  {
+    path: "/moments",
+    name: "Moments",
+    component: () => import("@/features/moments/MomentsContainer.vue"),
+    meta: {
+      title: "朋友圈",
+      requiresAuth: true,
+    },
+  },
+  {
+    path: "/moments/user/:userId",
+    name: "MomentsUserProfile",
+    component: () => import("@/features/moments/MomentsUserProfile.vue"),
+    meta: {
+      title: "用户朋友圈",
+      requiresAuth: true,
     },
   },
   {

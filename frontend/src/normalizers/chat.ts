@@ -1,5 +1,10 @@
-import type {ChatSession, ChatSessionType, Message, RawConversationDTO,} from "@/types";
-import {asBoolean, asNumber, asString, isRecord} from "@/types/utils";
+import type {
+  ChatSession,
+  ChatSessionType,
+  Message,
+  RawConversationDTO,
+} from "@/types";
+import { asBoolean, asNumber, asString, isRecord } from "@/types/utils";
 
 export const toBigIntId = (value: unknown): bigint | null => {
   if (value == null) return null;
@@ -91,8 +96,7 @@ export const normalizeConversation = (
   const record = (isRecord(raw) ? raw : {}) as RawConversationDTO;
   const conversationType = asString(record.conversationType ?? record.type);
   const isGroup =
-    conversationType === "2" ||
-    conversationType.toUpperCase() === "GROUP";
+    conversationType === "2" || conversationType.toUpperCase() === "GROUP";
 
   const rawTargetId =
     record.targetId ?? record.partnerId ?? record.friendId ?? record.userId;

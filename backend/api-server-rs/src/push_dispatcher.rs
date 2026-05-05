@@ -87,23 +87,25 @@ fn connect_and_consume(
             config.push_dispatcher_batch_size,
             config.stream_consumer_block_ms,
         )?;
-        let mut ack_ids = Vec::with_capacity(events.len());
-        for event_message in events {
-            match serde_json::from_str::<ImEvent>(&event_message.payload) {
-                Ok(event) => {
-                    handle.block_on(dispatch_event(
-                        &config,
-                        &db,
-                        &http,
-                        &mut route_redis,
-                        &mut route_cache,
-                        event,
-                    ))?;
+    let mut ack_ids = Vec::with_capacity(events.len());
+    for event_message in events {
+        match serde_json::from_str::<ImEvent>(&event_message.payload) {
+            Ok(event) => {
+                if let Err(error) = handle.block_on(dispatch_event(
+                    &config,
+                    &db,
+                    &http,
+                    &mut route_redis,
+                    &mut route_cache,
+                    event,
+                )) {
+                    tracing::warn!(error = %error, stream_id = %event_message.stream_id, "dispatch event failed");
                 }
-                Err(error) => tracing::warn!(error = %error, "skip invalid push event json"),
             }
-            ack_ids.push(event_message.stream_id);
+            Err(error) => tracing::warn!(error = %error, "skip invalid push event json"),
         }
+        ack_ids.push(event_message.stream_id);
+    }
         redis_streams::ack(&mut event_redis, &stream_key, &group_id, &ack_ids)?;
     }
 }
@@ -186,7 +188,9 @@ async fn dispatch_event(
         }
     }
     while let Some(result) = pending.next().await {
-        result?;
+        if let Err(error) = result {
+            tracing::warn!(error = %error, "internal websocket batch push failed");
+        }
     }
     Ok(())
 }
@@ -289,6 +293,28 @@ async fn build_push(
                 data,
                 user_ids,
             }))
+        }
+        ImEventType::FriendRequestCreated | ImEventType::FriendRequestAccepted => {
+            let kind = match event.event_type {
+                ImEventType::FriendRequestCreated => "FRIEND_REQUEST",
+                _ => "FRIEND_ACCEPTED",
+            };
+            let data = serde_json::to_value(event)?;
+            let mut user_ids = Vec::new();
+            if let Some(target) = parse_i64_option(event.target_user_id.as_deref()) {
+                user_ids.push(target);
+            }
+            if user_ids.is_empty() {
+                return Ok(None);
+            }
+            Ok(Some(PushPlan {
+                kind: kind.to_string(),
+                data,
+                user_ids,
+            }))
+        }
+        ImEventType::MomentNew | ImEventType::MomentLike | ImEventType::MomentComment => {
+            Ok(None)
         }
     }
 }
