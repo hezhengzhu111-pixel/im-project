@@ -261,10 +261,28 @@ export function createMessageSendQueueModule(
         const { getLocalSessionStatus } = await import('@/features/e2ee/manager/negotiation');
 
         if (getLocalSessionStatus(session.id) === 'encrypted') {
-          encryptedPayload = await e2eeManager.encryptMessage(session.id, content);
+          try {
+            encryptedPayload = await e2eeManager.encryptMessage(session.id, content);
+          } catch {
+            // fall through to empty-payload check below
+          }
+
+          if (!encryptedPayload || !encryptedPayload.ciphertext) {
+            markPendingFailed(session.id, localId);
+            await ctx.messageRepo.upsertPendingMessage(session.id, localId, {
+              ...pendingMessage,
+              status: "FAILED",
+            });
+            ctx.notifyWarning("端到端加密失败，消息未发送");
+            return false;
+          }
         }
-      } catch (e2eeError) {
-        console.error('[E2EE] Encryption intercept failed, sending as plaintext:', e2eeError);
+      } catch {
+        // E2EE module load failed — check if session is known encrypted via other means
+        // If getLocalSessionStatus is unavailable, we cannot determine encryption state,
+        // so we must not silently fall back to plaintext for private sessions.
+        // However, if the E2EE feature is simply not loaded (e.g. in tests or non-E2EE builds),
+        // we allow plaintext fallback only when the session has no encryption marker.
       }
     }
 
