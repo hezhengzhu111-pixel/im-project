@@ -1,5 +1,5 @@
-import {describe, expect, it} from "vitest";
-import {normalizeMessage} from "@/normalizers/message";
+import { describe, expect, it } from "vitest";
+import { normalizeMessage } from "@/normalizers/message";
 
 describe("message normalizer", () => {
   it("normalizes media fields from snake case and extra metadata", () => {

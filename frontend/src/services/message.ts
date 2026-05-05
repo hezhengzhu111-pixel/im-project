@@ -1,8 +1,20 @@
-import {normalizeConversation, safePreferExistingId,} from "@/normalizers/chat";
-import {normalizeMessage, normalizeMessageConfig,} from "@/normalizers/message";
-import {http} from "@/utils/request";
-import type {ApiResponse} from "@/types/api";
-import type {ChatSession, Message, MessageConfig, SendGroupMessageRequest, SendPrivateMessageRequest,} from "@/types";
+import {
+  normalizeConversation,
+  safePreferExistingId,
+} from "@/normalizers/chat";
+import {
+  normalizeMessage,
+  normalizeMessageConfig,
+} from "@/normalizers/message";
+import { http } from "@/utils/request";
+import type { ApiResponse } from "@/types/api";
+import type {
+  ChatSession,
+  Message,
+  MessageConfig,
+  SendGroupMessageRequest,
+  SendPrivateMessageRequest,
+} from "@/types";
 
 const normalizeMessages = (raw: unknown): Message[] => {
   if (!Array.isArray(raw)) {
@@ -12,14 +24,33 @@ const normalizeMessages = (raw: unknown): Message[] => {
 };
 
 export const messageService = {
-  async sendPrivate(data: SendPrivateMessageRequest): Promise<ApiResponse<Message>> {
+  async sendPrivate(
+    data: SendPrivateMessageRequest,
+  ): Promise<ApiResponse<Message>> {
     const response = await http.post<unknown>("/message/send/private", data);
     return {
       ...response,
       data: normalizeMessage(response.data, new Date().toISOString()),
     } as ApiResponse<Message>;
   },
-  async sendGroup(data: SendGroupMessageRequest): Promise<ApiResponse<Message>> {
+  async sendPrivateEncrypted(data: {
+    receiverId: string;
+    clientMessageId?: string;
+    messageType: string;
+    content: string;
+    encrypted: boolean;
+    e2eeHeader: string;
+    e2eeDeviceId: string;
+  }): Promise<ApiResponse<Message>> {
+    const response = await http.post<unknown>("/message/send/private", data);
+    return {
+      ...response,
+      data: normalizeMessage(response.data, new Date().toISOString()),
+    } as ApiResponse<Message>;
+  },
+  async sendGroup(
+    data: SendGroupMessageRequest,
+  ): Promise<ApiResponse<Message>> {
     const response = await http.post<unknown>("/message/send/group", data);
     return {
       ...response,
@@ -76,7 +107,8 @@ export const messageService = {
       data: normalizeMessages(response.data),
     } as ApiResponse<Message[]>;
   },
-  markRead: (conversationId: string) => http.post(`/message/read/${conversationId}`),
+  markRead: (conversationId: string) =>
+    http.post(`/message/read/${conversationId}`),
   async recallMessage(messageId: string): Promise<ApiResponse<Message>> {
     const response = await http.post<unknown>(`/message/recall/${messageId}`);
     return {
@@ -91,7 +123,9 @@ export const messageService = {
       data: normalizeMessage(response.data, new Date().toISOString()),
     } as ApiResponse<Message>;
   },
-  async getConversations(currentUserId: string): Promise<ApiResponse<ChatSession[]>> {
+  async getConversations(
+    currentUserId: string,
+  ): Promise<ApiResponse<ChatSession[]>> {
     const response = await http.get<unknown[]>("/message/conversations");
     const data = Array.isArray(response.data)
       ? response.data

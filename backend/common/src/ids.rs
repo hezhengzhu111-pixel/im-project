@@ -18,13 +18,13 @@ pub fn next_id(node_id: u16) -> i64 {
         } else {
             (last_ms.saturating_add(1), 0)
         };
-        let next = ms.checked_shl(12).unwrap_or(u64::MAX) | seq;
+        let next = (ms << 12) | seq;
         if LAST_MS_AND_SEQ
             .compare_exchange(current, next, Ordering::SeqCst, Ordering::Relaxed)
             .is_ok()
         {
-            let timestamp_part = (ms & 0x1ffffffffff).checked_shl(22).unwrap_or(u64::MAX);
-            let node_part = node.checked_shl(12).unwrap_or(u64::MAX);
+            let timestamp_part = (ms & 0x1ffffffffff) << 22;
+            let node_part = node << 12;
             let id = timestamp_part | node_part | seq;
             if let Ok(id) = i64::try_from(id) {
                 return id;

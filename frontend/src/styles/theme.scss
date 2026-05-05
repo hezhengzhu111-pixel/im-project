@@ -1,0 +1,45 @@
+// ============================================
+// Theme — Light (default) & Dark
+// ============================================
+
+// Dark theme overrides
+body.theme-dark {
+  // Color: Primary (shift toward lighter for dark bg)
+  --color-primary-light: color-mix(in srgb, var(--color-primary), #0f172a 85%);
+  --color-primary-soft: color-mix(in srgb, var(--color-primary), #0f172a 70%);
+  --color-primary-muted: color-mix(in srgb, var(--color-primary), #0f172a 50%);
+  --color-primary-subtle: color-mix(in srgb, var(--color-primary), #0f172a 30%);
+
+  // Color: Text
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #94a3b8;
+  --text-placeholder: #64748b;
+  --text-inverse: #0f172a;
+
+  // Color: Surface
+  --surface-primary: #0f172a;
+  --surface-secondary: #1e293b;
+  --surface-tertiary: #334155;
+  --surface-elevated: rgba(15, 23, 42, 0.72);
+  --surface-overlay: rgba(15, 23, 42, 0.65);
+  --surface-sunken: #020617;
+
+  // Color: Border
+  --border-light: rgba(148, 163, 184, 0.12);
+  --border-default: rgba(148, 163, 184, 0.2);
+  --border-strong: rgba(148, 163, 184, 0.32);
+
+  // Shadow (darker, more pronounced)
+  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.24);
+  --shadow-panel: 0 24px 80px rgba(0, 0, 0, 0.32);
+  --shadow-glow: 0 0 24px rgba(99, 102, 241, 0.25);
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-card-hover: 0 16px 48px rgba(0, 0, 0, 0.28);
+
+  // Background Gradient (deep tech feel)
+  --bg-gradient: radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.06) 0%, transparent 50%),
+    linear-gradient(180deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+}

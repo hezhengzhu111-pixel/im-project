@@ -36,6 +36,9 @@ pub struct SendPrivateRequest {
     pub media_name: Option<String>,
     pub thumbnail_url: Option<String>,
     pub duration: Option<i32>,
+    pub encrypted: Option<bool>,
+    pub e2ee_header: Option<String>,
+    pub e2ee_device_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,6 +54,7 @@ pub struct SendGroupRequest {
     pub media_name: Option<String>,
     pub thumbnail_url: Option<String>,
     pub duration: Option<i32>,
+    pub mentioned_user_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,6 +118,7 @@ pub async fn send_private(
         request.message_type.as_deref(),
         request.content.as_deref(),
         request.media_url.as_deref(),
+        request.encrypted,
     )?;
     let receiver_id = cached_resolve_active_user_id(
         cache_redis,
@@ -144,10 +149,71 @@ pub async fn send_private(
             media_name: request.media_name,
             thumbnail_url: request.thumbnail_url,
             duration: request.duration,
+            encrypted: request.encrypted,
+            e2ee_header: request.e2ee_header,
+            e2ee_device_id: request.e2ee_device_id,
         },
     );
     let event = build_message_created_event(&conversation_id, &message);
-    write_private_message_hot(hot_redis, &conversation_id, &message, &event).await
+    let hot_redis_clone = hot_redis.clone();
+    let result = write_private_message_hot(hot_redis, &conversation_id, &message, &event).await;
+
+    if config.ai_enabled && result.is_ok() {
+        let sender_id = identity.user_id;
+        let sender_is_human = !message.is_ai_generated.unwrap_or(false);
+        if sender_is_human {
+            let round_key = format!("im:ai:rounds:{conversation_id}");
+            let has_active_conversation: Option<i64> = {
+                let mut check_redis = cache_redis.clone();
+                redis::cmd("GET")
+                    .arg(&round_key)
+                    .query_async::<Option<i64>>(&mut check_redis)
+                    .await
+                    .unwrap_or(None)
+            };
+            if has_active_conversation.unwrap_or(0) > 0 {
+                let disable_db = db.clone();
+                let mut disable_redis = cache_redis.clone();
+                tokio::spawn(async move {
+                    let _ = sqlx::query(
+                        "UPDATE service_user_service_db.user_ai_settings SET auto_reply_enabled=0, updated_time=NOW() WHERE user_id=? AND auto_reply_enabled=1",
+                    )
+                    .bind(sender_id)
+                    .execute(&disable_db)
+                    .await;
+                    let _ = redis::cmd("DEL")
+                        .arg(keys::ai_auto_reply_key(sender_id))
+                        .query_async::<()>(&mut disable_redis)
+                        .await;
+                    tracing::info!(sender = %sender_id, "human intervened in active AI conversation, disabled sender auto-reply");
+                });
+            }
+        }
+
+        let auto_redis = cache_redis.clone();
+        let auto_msg_redis = hot_redis_clone;
+        let auto_config = config.clone();
+        let auto_db = db.clone();
+        let auto_msg = message.clone();
+        let auto_conv = conversation_id;
+        let target = receiver_id;
+        tokio::spawn(async move {
+            let mut redis = auto_redis;
+            let mut msg_redis = auto_msg_redis;
+            crate::ai::auto_reply::maybe_trigger(
+                &mut redis,
+                &mut msg_redis,
+                &auto_db,
+                &auto_config,
+                target,
+                &auto_conv,
+                &auto_msg,
+            )
+            .await;
+        });
+    }
+
+    result
 }
 
 pub async fn send_group(
@@ -162,6 +228,7 @@ pub async fn send_group(
         request.message_type.as_deref(),
         request.content.as_deref(),
         request.media_url.as_deref(),
+        None,
     )?;
     let group_id = cached_resolve_active_group_id(
         cache_redis,
@@ -172,6 +239,17 @@ pub async fn send_group(
     .await?
     .ok_or_else(|| AppError::NotFound("group not found".to_string()))?;
     validate_group_member(cache_redis, db, group_id, identity.user_id).await?;
+    if let Some(ref mentioned) = request.mentioned_user_ids {
+        for user_id in mentioned {
+            let uid: i64 = user_id
+                .trim()
+                .parse()
+                .map_err(|_| AppError::BadRequest("invalid mentioned user id".to_string()))?;
+            if uid != identity.user_id {
+                validate_group_member(cache_redis, db, group_id, uid).await?;
+            }
+        }
+    }
     let conversation_id = keys::group_conversation_id(group_id);
     let message = build_message(
         config,
@@ -187,9 +265,17 @@ pub async fn send_group(
             media_name: request.media_name,
             thumbnail_url: request.thumbnail_url,
             duration: request.duration,
+            encrypted: None,
+            e2ee_header: None,
+            e2ee_device_id: None,
         },
     );
-    let event = build_message_created_event(&conversation_id, &message);
+    let mut event = build_message_created_event(&conversation_id, &message);
+    event.mentioned_user_ids = request.mentioned_user_ids.map(|ids| {
+        ids.iter()
+            .filter_map(|s| s.trim().parse::<i64>().ok())
+            .collect()
+    });
     write_group_message_hot(hot_redis, group_id, &conversation_id, &message, &event).await
 }
 
@@ -697,6 +783,7 @@ fn validate_send_input(
     message_type: Option<&str>,
     content: Option<&str>,
     media_url: Option<&str>,
+    encrypted: Option<bool>,
 ) -> Result<(), AppError> {
     let ty = MessageType::from_text(message_type.unwrap_or("TEXT"));
     if matches!(ty, MessageType::Text | MessageType::System) {
@@ -705,7 +792,9 @@ fn validate_send_input(
                 "message content cannot be blank".to_string(),
             ));
         }
-        if content.unwrap_or_default().chars().count() > 2000 {
+        // Encrypted messages contain ciphertext which can be much longer than plaintext;
+        // skip the 2000-char limit for E2EE messages.
+        if !encrypted.unwrap_or(false) && content.unwrap_or_default().chars().count() > 2000 {
             return Err(AppError::BadRequest(
                 "message content cannot exceed 2000 characters".to_string(),
             ));
@@ -727,6 +816,9 @@ struct BuildMessageInput {
     media_name: Option<String>,
     thumbnail_url: Option<String>,
     duration: Option<i32>,
+    encrypted: Option<bool>,
+    e2ee_header: Option<String>,
+    e2ee_device_id: Option<String>,
 }
 
 fn build_message(config: &AppConfig, identity: &Identity, input: BuildMessageInput) -> MessageDto {
@@ -765,6 +857,12 @@ fn build_message(config: &AppConfig, identity: &Identity, input: BuildMessageInp
         created_at: now,
         updated_time: None,
         updated_at: None,
+        is_ai_generated: None,
+        ai_provider: None,
+        ai_model: None,
+        encrypted: input.encrypted,
+        e2ee_header: input.e2ee_header,
+        e2ee_device_id: input.e2ee_device_id,
     }
 }
 
@@ -783,7 +881,7 @@ fn pending_event_member(event_id: &str, conversation_id: &str) -> String {
     format!("{event_id}|{conversation_id}")
 }
 
-async fn write_private_message_hot(
+pub async fn write_private_message_hot(
     redis: &mut ConnectionManager,
     conversation_id: &str,
     message: &MessageDto,
@@ -1083,7 +1181,11 @@ async fn load_history(
             .ok_or_else(|| AppError::BadRequest("history limit overflow".to_string()))?;
         messages.extend(load_history_from_db(db, conversation_id, &query, db_limit).await?);
     }
-    messages.sort_by(|a, b| b.id.cmp(&a.id));
+    messages.sort_by(|a, b| {
+        let aid = a.id.parse::<i64>().unwrap_or(0);
+        let bid = b.id.parse::<i64>().unwrap_or(0);
+        bid.cmp(&aid)
+    });
     messages.dedup_by(|a, b| a.id == b.id);
     messages.truncate(limit_usize);
     Ok(messages)
@@ -1506,7 +1608,7 @@ fn within_recall_window(message: &MessageDto) -> bool {
                 .num_seconds()
                 <= 120
         })
-        .unwrap_or(true)
+        .unwrap_or(false)
 }
 
 fn deserialize_i64<'de, D>(deserializer: D) -> Result<i64, D::Error>
@@ -1635,7 +1737,11 @@ fn message_from_row(row: &sqlx::mysql::MySqlRow) -> MessageDto {
     let message_type: i32 = row.get("message_type");
     let status: i32 = row.get("status");
     let created: chrono::NaiveDateTime = row.get("created_time");
-    let updated: chrono::NaiveDateTime = row.get("updated_time");
+    let updated: chrono::NaiveDateTime = row
+        .try_get::<Option<chrono::NaiveDateTime>, _>("updated_time")
+        .ok()
+        .flatten()
+        .unwrap_or(created);
     MessageDto {
         id: id.to_string(),
         message_id: id.to_string(),
@@ -1662,6 +1768,7 @@ fn message_from_row(row: &sqlx::mysql::MySqlRow) -> MessageDto {
             3 => "FILE",
             4 => "VOICE",
             5 => "VIDEO",
+            6 => "AI_REPLY",
             7 => "SYSTEM",
             _ => "TEXT",
         }
@@ -1699,6 +1806,12 @@ fn message_from_row(row: &sqlx::mysql::MySqlRow) -> MessageDto {
         created_at: created.and_utc().to_rfc3339(),
         updated_time: Some(updated.and_utc().to_rfc3339()),
         updated_at: Some(updated.and_utc().to_rfc3339()),
+        is_ai_generated: None,
+        ai_provider: None,
+        ai_model: None,
+        encrypted: None,
+        e2ee_header: None,
+        e2ee_device_id: None,
     }
 }
 
@@ -1847,6 +1960,12 @@ mod tests {
             created_at: "2026-04-28T00:00:00Z".to_string(),
             updated_time: None,
             updated_at: None,
+            is_ai_generated: None,
+            ai_provider: None,
+            ai_model: None,
+            encrypted: None,
+            e2ee_header: None,
+            e2ee_device_id: None,
         };
         let event = build_message_created_event("g_20", &message);
         let message_json = serde_json::to_string(&message)?;

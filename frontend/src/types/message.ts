@@ -4,7 +4,8 @@ export type MessageType =
   | "FILE"
   | "VIDEO"
   | "VOICE"
-  | "SYSTEM";
+  | "SYSTEM"
+  | "AI_REPLY";
 
 export type MessageStatus =
   | "SENDING"
@@ -41,10 +42,14 @@ export interface Message {
   sendTime: string;
   status: MessageStatus;
   extra?: Record<string, unknown>;
+  mentionedUserIds?: string[];
   readBy?: string[];
   readByCount?: number;
   readStatus?: number;
   readAt?: string;
+  isAiGenerated?: boolean;
+  aiProvider?: string;
+  aiModel?: string;
 }
 
 export interface RawMessageDTO {
@@ -110,6 +115,12 @@ export interface RawMessageDTO {
   readStatus?: number | string;
   readAt?: string;
   read_at?: string;
+  isAiGenerated?: boolean;
+  is_ai_generated?: boolean;
+  aiProvider?: string;
+  ai_provider?: string;
+  aiModel?: string;
+  ai_model?: string;
 }
 
 export interface MessageConfig {
@@ -141,6 +152,7 @@ export interface SendGroupMessageRequest {
   thumbnailUrl?: string;
   duration?: number;
   extra?: Record<string, unknown>;
+  mentionedUserIds?: string[];
 }
 
 export interface MessageSearchResult {

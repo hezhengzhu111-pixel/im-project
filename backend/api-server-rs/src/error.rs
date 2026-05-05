@@ -14,6 +14,8 @@ pub enum AppError {
     #[error("{0}")]
     NotFound(String),
     #[error("{0}")]
+    NotImplemented(String),
+    #[error("{0}")]
     Conflict(String),
     #[error("{0}")]
     Upstream(String),
@@ -38,6 +40,7 @@ impl IntoResponse for AppError {
             Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
+            Self::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::Upstream(_) => StatusCode::BAD_GATEWAY,
             Self::Redis(_)
@@ -47,17 +50,55 @@ impl IntoResponse for AppError {
             | Self::Serde(_)
             | Self::Anyhow(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        let code = if status == StatusCode::UNAUTHORIZED {
-            401
-        } else if status == StatusCode::FORBIDDEN {
-            403
-        } else if status == StatusCode::NOT_FOUND {
-            404
-        } else if status == StatusCode::BAD_REQUEST {
-            400
-        } else {
-            500
-        };
+        let code = i32::from(status.as_u16());
         (status, Json(ErrorResponse::new(code, self.to_string()))).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    #[test]
+    fn bad_request_returns_400_with_code_400() {
+        let resp = AppError::BadRequest("test".into()).into_response();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[test]
+    fn unauthorized_returns_401_with_code_401() {
+        let resp = AppError::Unauthorized("test".into()).into_response();
+        assert_eq!(resp.status(), 401);
+    }
+
+    #[test]
+    fn forbidden_returns_403_with_code_403() {
+        let resp = AppError::Forbidden("test".into()).into_response();
+        assert_eq!(resp.status(), 403);
+    }
+
+    #[test]
+    fn not_found_returns_404_with_code_404() {
+        let resp = AppError::NotFound("test".into()).into_response();
+        assert_eq!(resp.status(), 404);
+    }
+
+    #[test]
+    fn conflict_returns_409_with_code_409() {
+        let resp = AppError::Conflict("test".into()).into_response();
+        assert_eq!(resp.status(), 409);
+    }
+
+    #[test]
+    fn upstream_returns_502_with_code_502() {
+        let resp = AppError::Upstream("test".into()).into_response();
+        assert_eq!(resp.status(), 502);
+    }
+
+    #[test]
+    fn internal_errors_return_500() {
+        let resp = AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, "test")).into_response();
+        assert_eq!(resp.status(), 500);
     }
 }

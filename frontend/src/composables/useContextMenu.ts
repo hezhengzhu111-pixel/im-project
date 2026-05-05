@@ -33,7 +33,9 @@ export function useContextMenu() {
 
   let outsideHandlersBound = false;
 
-  const resolveOptions = (options?: ContextMenuOptions): Required<ContextMenuOptions> => ({
+  const resolveOptions = (
+    options?: ContextMenuOptions,
+  ): Required<ContextMenuOptions> => ({
     ...DEFAULT_OPTIONS,
     ...(options || {}),
   });
@@ -70,7 +72,11 @@ export function useContextMenu() {
   };
 
   const bindOutsideHandlers = () => {
-    if (outsideHandlersBound || typeof document === "undefined" || typeof window === "undefined") {
+    if (
+      outsideHandlersBound ||
+      typeof document === "undefined" ||
+      typeof window === "undefined"
+    ) {
       return;
     }
     outsideHandlersBound = true;
@@ -81,7 +87,11 @@ export function useContextMenu() {
   };
 
   const unbindOutsideHandlers = () => {
-    if (!outsideHandlersBound || typeof document === "undefined" || typeof window === "undefined") {
+    if (
+      !outsideHandlersBound ||
+      typeof document === "undefined" ||
+      typeof window === "undefined"
+    ) {
       return;
     }
     outsideHandlersBound = false;

@@ -264,7 +264,13 @@ pub async fn parse(
     let mut parsed = parse_token(token.as_deref(), &state.config.jwt_secret, allow_expired);
     if parsed.valid && !parsed.expired {
         if let Some(user_id) = parsed.user_id {
-            let resource = get_user_resource(&state, user_id).await.unwrap_or_default();
+            let resource = match get_user_resource(&state, user_id).await {
+                Ok(resource) => resource,
+                Err(error) => {
+                    tracing::warn!(user_id, error = %error, "failed to load user resource in parse, using empty permissions");
+                    Default::default()
+                }
+            };
             parsed.permissions = Some(resource.resource_permissions);
         }
     }
@@ -586,9 +592,10 @@ pub fn append_auth_cookies(
 }
 
 pub fn expire_auth_cookies(headers: &mut HeaderMap, config: &AppConfig) {
-    expire_cookie(headers, &config.access_cookie_name);
-    expire_cookie(headers, &config.refresh_cookie_name);
-    expire_cookie(headers, &config.ws_ticket_cookie_name);
+    let secure = resolve_cookie_secure(config, HeaderMap::new());
+    expire_cookie(headers, &config.access_cookie_name, secure);
+    expire_cookie(headers, &config.refresh_cookie_name, secure);
+    expire_cookie(headers, &config.ws_ticket_cookie_name, secure);
 }
 
 async fn refresh_token_pair(
@@ -616,21 +623,37 @@ async fn refresh_token_pair(
         .as_deref()
         .ok_or_else(|| AppError::Unauthorized("TOKEN_INVALID".to_string()))?;
 
-    let stored: Option<String> = {
+    let cas_refresh_jti = uuid::Uuid::new_v4().to_string();
+    {
+        let key = format!("{}{}", REFRESH_JTI_KEY_PREFIX, user_id);
         let mut redis = state.redis_manager.clone();
-        redis
-            .get(format!("{}{}", REFRESH_JTI_KEY_PREFIX, user_id))
-            .await?
-    };
-    if stored.as_deref() != Some(refresh_jti) {
-        return Err(AppError::Unauthorized("TOKEN_INVALID".to_string()));
+        let ok: redis::RedisResult<i32> = redis::cmd("EVAL")
+            .arg("if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]) return 1 else return 0 end")
+            .arg(1)
+            .arg(&key)
+            .arg(refresh_jti)
+            .arg(&cas_refresh_jti)
+            .arg(state.config.refresh_expiration_ms)
+            .query_async(&mut redis)
+            .await;
+        match ok {
+            Ok(v) if v != 0 => {}
+            _ => {
+                return Err(AppError::Unauthorized("TOKEN_INVALID".to_string()));
+            }
+        }
     }
 
+    let user_resource = get_user_resource(state, user_id).await.ok();
     issue_token_pair(
         state,
         IssueTokenRequest {
             user_id: Some(user_id),
             username: Some(username),
+            permissions: user_resource
+                .as_ref()
+                .map(|r| r.resource_permissions.clone())
+                .unwrap_or_default(),
             ..Default::default()
         },
     )
@@ -655,7 +678,13 @@ async fn validate_access_token_result(
         return Err(AppError::Unauthorized("TOKEN_INVALID".to_string()));
     }
     if let Some(user_id) = parsed.user_id {
-        let resource = get_user_resource(state, user_id).await.unwrap_or_default();
+        let resource = match get_user_resource(state, user_id).await {
+            Ok(resource) => resource,
+            Err(error) => {
+                tracing::warn!(user_id, error = %error, "failed to load user resource, using empty permissions");
+                Default::default()
+            }
+        };
         parsed.permissions = Some(resource.resource_permissions);
     }
     Ok(parsed)
@@ -968,7 +997,10 @@ fn internal_canonical(method: &str, path: &str, body_hash: &str, ts: &str, nonce
 }
 
 fn normalize_path(path: &str) -> String {
-    let without_query = path.split('?').next().unwrap_or("/");
+    let Some(without_query) = path.split('?').next() else {
+        return path.to_string();
+    };
+    let without_query = without_query.to_string();
     if without_query.starts_with('/') {
         without_query.to_string()
     } else {
@@ -1107,9 +1139,10 @@ fn append_cookie(
     Ok(())
 }
 
-fn expire_cookie(headers: &mut HeaderMap, name: &str) {
+fn expire_cookie(headers: &mut HeaderMap, name: &str, secure: bool) {
+    let secure_attr = if secure { "; Secure" } else { "" };
     if let Ok(value) = HeaderValue::from_str(&format!(
-        "{name}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax"
+        "{name}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax{secure_attr}"
     )) {
         headers.append(header::SET_COOKIE, value);
     }
@@ -1131,15 +1164,21 @@ fn normalize_same_site(value: &str) -> &str {
     }
 }
 
-fn resolve_cookie_secure(config: &AppConfig, _headers: HeaderMap) -> bool {
-    matches!(
-        config
-            .auth_cookie_secure
-            .trim()
-            .to_ascii_lowercase()
-            .as_str(),
-        "true"
-    )
+fn resolve_cookie_secure(config: &AppConfig, headers: HeaderMap) -> bool {
+    match config
+        .auth_cookie_secure
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "true" => true,
+        "auto" => headers
+            .get(axum::http::header::HeaderName::from_static("x-forwarded-proto"))
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.eq_ignore_ascii_case("https"))
+            .unwrap_or(false),
+        _ => false,
+    }
 }
 
 fn resolve_ws_ticket_cookie_secure(config: &AppConfig) -> bool {

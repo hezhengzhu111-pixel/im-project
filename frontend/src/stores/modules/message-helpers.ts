@@ -1,5 +1,5 @@
-import {safePreferExistingId, toBigIntId} from "@/normalizers/chat";
-import type {Message} from "@/types";
+import { safePreferExistingId, toBigIntId } from "@/normalizers/chat";
+import type { Message } from "@/types";
 
 export const MESSAGE_WINDOW_SIZE = 50;
 
@@ -13,7 +13,10 @@ export const messageIdentityValues = (message: Message): string[] =>
     .map((item) => String(item || ""))
     .filter(Boolean);
 
-export const hasSameMessageIdentity = (left: Message, right: Message): boolean => {
+export const hasSameMessageIdentity = (
+  left: Message,
+  right: Message,
+): boolean => {
   const rightValues = new Set(messageIdentityValues(right));
   return messageIdentityValues(left).some((item) => rightValues.has(item));
 };
@@ -23,7 +26,10 @@ export const messageTimeValue = (message: Message): number => {
   return Number.isFinite(value) ? value : 0;
 };
 
-export const sortMessagesAscending = (left: Message, right: Message): number => {
+export const sortMessagesAscending = (
+  left: Message,
+  right: Message,
+): number => {
   const timeDiff = messageTimeValue(left) - messageTimeValue(right);
   if (timeDiff !== 0) {
     return timeDiff;
@@ -49,7 +55,9 @@ export const findOldestLoadedServerMessageId = (
   return oldestId?.toString();
 };
 
-export const mergeMessagesChronologically = (...lists: Message[][]): Message[] => {
+export const mergeMessagesChronologically = (
+  ...lists: Message[][]
+): Message[] => {
   const merged: Message[] = [];
   const identityIndex = new Map<string, number>();
 
@@ -61,7 +69,9 @@ export const mergeMessagesChronologically = (...lists: Message[][]): Message[] =
 
   const upsertMessage = (message: Message) => {
     const identities = messageIdentityValues(message);
-    const matchedIdentity = identities.find((identity) => identityIndex.has(identity));
+    const matchedIdentity = identities.find((identity) =>
+      identityIndex.has(identity),
+    );
     if (matchedIdentity) {
       const index = identityIndex.get(matchedIdentity);
       if (index != null) {

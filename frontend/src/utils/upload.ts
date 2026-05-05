@@ -122,7 +122,8 @@ export async function uploadFile(file: File): Promise<UploadResult> {
           response.data.originalFilename ||
           file.name,
         size: response.data.size || file.size,
-        fileType: response.data.fileType || response.data.contentType || file.type,
+        fileType:
+          response.data.fileType || response.data.contentType || file.type,
       };
     } else {
       throw new Error(response.message || "上传失败");

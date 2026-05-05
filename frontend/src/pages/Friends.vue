@@ -74,7 +74,13 @@
             </template>
             <el-tag
               v-else
-              :type="request.status === 'ACCEPTED' ? 'success' : request.status === 'REJECTED' ? 'danger' : 'info'"
+              :type="
+                request.status === 'ACCEPTED'
+                  ? 'success'
+                  : request.status === 'REJECTED'
+                    ? 'danger'
+                    : 'info'
+              "
               size="small"
             >
               {{ requestStatusLabel(request.status) }}
@@ -92,13 +98,13 @@
         </div>
       </template>
 
-      <div v-if="loading" class="loading-block">
-        <el-skeleton :rows="5" animated />
-      </div>
+      <SkeletonList v-if="loading" :rows="5" />
 
-      <div v-else-if="filteredFriends.length === 0" class="empty-state">
-        暂无联系人
-      </div>
+      <EmptyState
+        v-else-if="filteredFriends.length === 0"
+        title="暂无联系人"
+        description="通过搜索添加好友开始聊天"
+      />
 
       <div v-else class="friend-list">
         <div
@@ -123,7 +129,11 @@
                 {{ friend.remark || friend.nickname || friend.username }}
               </div>
               <div class="friend-status">
-                {{ isOnline(friend.friendId) ? "在线" : getLastSeenText(friend.lastSeen) }}
+                {{
+                  isOnline(friend.friendId)
+                    ? "在线"
+                    : getLastSeenText(friend.lastSeen)
+                }}
               </div>
             </div>
             <div class="friend-subtitle">
@@ -131,7 +141,10 @@
             </div>
           </div>
 
-          <el-dropdown trigger="click" @command="handleFriendAction($event, friend)">
+          <el-dropdown
+            trigger="click"
+            @command="handleFriendAction($event, friend)"
+          >
             <el-button link :icon="MoreFilled" @click.stop />
             <template #dropdown>
               <el-dropdown-menu>
@@ -169,7 +182,9 @@
             clearable
           >
             <template #append>
-              <el-button :loading="searching" @click="searchUsers">搜索</el-button>
+              <el-button :loading="searching" @click="searchUsers"
+                >搜索</el-button
+              >
             </template>
           </el-input>
         </el-form-item>
@@ -202,7 +217,10 @@
           </div>
         </el-form-item>
 
-        <el-form-item v-if="selectedSearchUser && !isFriend(selectedSearchUser.id)" label="验证消息">
+        <el-form-item
+          v-if="selectedSearchUser && !isFriend(selectedSearchUser.id)"
+          label="验证消息"
+        >
           <el-input
             v-model="addFriendForm.message"
             type="textarea"
@@ -227,7 +245,12 @@
     </el-dialog>
 
     <el-dialog v-model="showSetRemark" title="设置备注" width="420px">
-      <el-form ref="remarkFormRef" :model="remarkForm" :rules="remarkRules" label-width="80px">
+      <el-form
+        ref="remarkFormRef"
+        :model="remarkForm"
+        :rules="remarkRules"
+        label-width="80px"
+      >
         <el-form-item label="好友备注" prop="remark">
           <el-input
             v-model="remarkForm.remark"
@@ -240,7 +263,11 @@
 
       <template #footer>
         <el-button @click="showSetRemark = false">取消</el-button>
-        <el-button type="primary" :loading="updatingRemark" @click="updateRemark">
+        <el-button
+          type="primary"
+          :loading="updatingRemark"
+          @click="updateRemark"
+        >
           保存
         </el-button>
       </template>
@@ -251,12 +278,10 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import {
-  ElMessageBox,
-  type FormInstance,
-  type FormRules,
-} from "element-plus";
+import { ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 import { ArrowLeft, MoreFilled, Plus, Search } from "@element-plus/icons-vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import SkeletonList from "@/components/common/SkeletonList.vue";
 import {
   getFriendRequestAvatar,
   getFriendRequestDisplayName,
@@ -336,11 +361,17 @@ const filteredFriends = computed(() => {
       const leftOnline = isOnline(left.friendId);
       const rightOnline = isOnline(right.friendId);
       if (leftOnline === rightOnline) {
-        return displayFriendName(left).localeCompare(displayFriendName(right), "zh-CN");
+        return displayFriendName(left).localeCompare(
+          displayFriendName(right),
+          "zh-CN",
+        );
       }
       return leftOnline ? -1 : 1;
     }
-    return displayFriendName(left).localeCompare(displayFriendName(right), "zh-CN");
+    return displayFriendName(left).localeCompare(
+      displayFriendName(right),
+      "zh-CN",
+    );
   });
 });
 
@@ -418,7 +449,9 @@ const searchUsers = async () => {
       type: searchType.value,
       keyword: addFriendForm.keyword.trim(),
     });
-    searchResults.value = users.filter((user) => user.id !== currentUserId.value);
+    searchResults.value = users.filter(
+      (user) => user.id !== currentUserId.value,
+    );
     selectedSearchUser.value = searchResults.value[0] || null;
   } catch (error) {
     capture(error, "搜索用户失败");
@@ -447,8 +480,7 @@ const sendFriendRequest = async () => {
     });
     await chatStore.loadFriendRequests();
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "发送好友申请失败";
+    const message = error instanceof Error ? error.message : "发送好友申请失败";
     if (message.includes("已有待处理的好友申请")) {
       await chatStore.loadFriendRequests().catch(() => undefined);
       notifyInfo("已有待处理的好友申请，已同步到好友申请列表");
@@ -525,7 +557,10 @@ const updateRemark = async () => {
   try {
     await remarkFormRef.value.validate();
     updatingRemark.value = true;
-    await chatStore.updateFriendRemark(currentFriend.value.friendId, remarkForm.remark.trim());
+    await chatStore.updateFriendRemark(
+      currentFriend.value.friendId,
+      remarkForm.remark.trim(),
+    );
     notifySuccess("备注已更新");
     showSetRemark.value = false;
   } catch (error) {
@@ -568,7 +603,7 @@ onMounted(() => {
 .friends-page {
   min-height: 100%;
   padding: 20px;
-  background: #f5f7fa;
+  background: var(--bg-gradient);
 }
 
 .page-header,
@@ -609,7 +644,7 @@ onMounted(() => {
 }
 
 .subtle-text {
-  color: #909399;
+  color: var(--text-tertiary);
   font-size: 13px;
 }
 
@@ -627,7 +662,7 @@ onMounted(() => {
   gap: 14px;
   padding: 14px;
   border-radius: 12px;
-  background: #f8fafc;
+  background: var(--surface-elevated);
 }
 
 .friend-item {
@@ -637,7 +672,7 @@ onMounted(() => {
 .friend-item:hover,
 .search-result-item:hover,
 .search-result-item.active {
-  background: #eef5ff;
+  background: var(--chat-card-hover, rgba(99, 102, 241, 0.06));
 }
 
 .request-content,
@@ -651,7 +686,7 @@ onMounted(() => {
 .friend-name,
 .search-result-name {
   font-weight: 600;
-  color: #303133;
+  color: var(--text-primary);
 }
 
 .request-message,
@@ -660,7 +695,7 @@ onMounted(() => {
 .friend-subtitle,
 .search-result-desc {
   font-size: 13px;
-  color: #909399;
+  color: var(--text-tertiary);
 }
 
 .friend-avatar-wrap {
@@ -674,15 +709,14 @@ onMounted(() => {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #c0c4cc;
-  border: 2px solid #fff;
+  background: var(--text-tertiary);
+  border: 2px solid var(--surface-elevated, #fff);
 }
 
 .presence-dot.online {
-  background: #67c23a;
+  background: var(--color-success);
 }
 
-.empty-state,
 .loading-block {
   padding: 24px 0;
 }
@@ -690,6 +724,8 @@ onMounted(() => {
 @media (max-width: 768px) {
   .friends-page {
     padding: 16px;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   }
 
   .toolbar {
@@ -699,6 +735,27 @@ onMounted(() => {
 
   .sort-select {
     width: 100%;
+  }
+
+  :deep(.el-dialog) {
+    width: calc(100vw - 32px) !important;
+    margin: 16px !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .friends-page {
+    padding: 12px;
+  }
+
+  .page-header h2 {
+    font-size: 18px;
+  }
+
+  .request-item,
+  .friend-item {
+    padding: 10px;
+    gap: 10px;
   }
 }
 </style>

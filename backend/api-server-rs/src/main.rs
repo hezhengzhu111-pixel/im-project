@@ -8,27 +8,8 @@
 #![deny(clippy::unimplemented)]
 #![deny(clippy::unwrap_used)]
 
-mod auth;
-mod auth_api;
-mod background_publisher;
-mod background_task;
-mod background_writer;
-mod config;
-mod error;
-mod file_api;
-mod id_resolver;
-mod local_cache;
-mod message;
-mod observability;
-mod push_dispatcher;
-mod redis_streams;
-mod route;
-mod social;
-mod user;
-mod web;
-
-use crate::config::AppConfig;
-use crate::web::AppState;
+use api_server_rs::config::AppConfig;
+use api_server_rs::web::{self, AppState};
 use axum::extract::DefaultBodyLimit;
 use redis::aio::ConnectionManager;
 use sqlx::mysql::MySqlConnectOptions;
@@ -70,9 +51,10 @@ async fn main() -> anyhow::Result<()> {
         db,
         http: reqwest::Client::new(),
     };
-    background_publisher::spawn(config.clone());
-    background_writer::spawn(config.clone(), state.db.clone());
-    push_dispatcher::spawn(config.clone(), state.db.clone());
+    api_server_rs::background_publisher::spawn(config.clone());
+    api_server_rs::background_writer::spawn(config.clone(), state.db.clone());
+    api_server_rs::push_dispatcher::spawn(config.clone(), state.db.clone());
+    api_server_rs::e2ee::cleanup::spawn(state.db.clone());
     let app = web::router(state)
         .layer(DefaultBodyLimit::max(config.request_body_limit))
         .layer(TraceLayer::new_for_http());

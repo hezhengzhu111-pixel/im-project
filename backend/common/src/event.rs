@@ -9,6 +9,12 @@ pub enum ImEventType {
     MessageRead,
     MessageRecalled,
     MessageDeleted,
+    FriendRequestCreated,
+    FriendRequestAccepted,
+    // Moments events
+    MomentNew,
+    MomentLike,
+    MomentComment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -20,6 +26,7 @@ pub enum MessageType {
     Voice,
     Video,
     System,
+    AiReply,
 }
 
 impl MessageType {
@@ -30,6 +37,7 @@ impl MessageType {
             "VOICE" => Self::Voice,
             "VIDEO" => Self::Video,
             "SYSTEM" => Self::System,
+            "AI_REPLY" => Self::AiReply,
             _ => Self::Text,
         }
     }
@@ -42,6 +50,7 @@ impl MessageType {
             Self::Voice => 4,
             Self::Video => 5,
             Self::System => 7,
+            Self::AiReply => 6,
         }
     }
 
@@ -53,6 +62,7 @@ impl MessageType {
             Self::Voice => "VOICE",
             Self::Video => "VIDEO",
             Self::System => "SYSTEM",
+            Self::AiReply => "AI_REPLY",
         }
     }
 }
@@ -130,6 +140,18 @@ pub struct MessageDto {
     pub created_at: String,
     pub updated_time: Option<String>,
     pub updated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_ai_generated: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encrypted: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub e2ee_header: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub e2ee_device_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -178,7 +200,10 @@ mod tests {
             "createdTime":"2026-04-28T00:00:00Z",
             "createdAt":"2026-04-28T00:00:00Z",
             "updatedTime":null,
-            "updatedAt":null
+            "updatedAt":null,
+            "encrypted":null,
+            "e2eeHeader":null,
+            "e2eeDeviceId":null
         }"#;
 
         let message = serde_json::from_str::<MessageDto>(raw)?;
@@ -223,6 +248,7 @@ pub struct ImEvent {
     pub receiver_id: Option<String>,
     pub group_id: Option<String>,
     pub target_user_id: Option<String>,
+    pub mentioned_user_ids: Option<Vec<i64>>,
     pub group: bool,
     pub new_status: Option<String>,
     pub payload: Option<MessageDto>,
@@ -241,6 +267,7 @@ impl ImEvent {
             receiver_id: None,
             group_id: None,
             target_user_id: None,
+            mentioned_user_ids: None,
             group: false,
             new_status: None,
             payload: None,

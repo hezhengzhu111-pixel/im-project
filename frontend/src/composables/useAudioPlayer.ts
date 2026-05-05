@@ -3,7 +3,11 @@ import { onUnmounted, ref, shallowRef } from "vue";
 type PlayableSource = string | null | undefined;
 
 const clampProgress = (currentTime: number, totalDuration: number) => {
-  if (!Number.isFinite(currentTime) || !Number.isFinite(totalDuration) || totalDuration <= 0) {
+  if (
+    !Number.isFinite(currentTime) ||
+    !Number.isFinite(totalDuration) ||
+    totalDuration <= 0
+  ) {
     return 0;
   }
   return Math.min(1, Math.max(0, currentTime / totalDuration));
@@ -21,7 +25,10 @@ export function useAudioPlayer() {
       progress.value = 0;
       return;
     }
-    progress.value = clampProgress(audio.value.currentTime, audio.value.duration);
+    progress.value = clampProgress(
+      audio.value.currentTime,
+      audio.value.duration,
+    );
   };
 
   const syncDuration = () => {

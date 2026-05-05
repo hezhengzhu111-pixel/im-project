@@ -1,5 +1,15 @@
-import type { Group, GroupMember, RawGroupDTO, RawGroupMemberDTO } from "@/types";
-import { asNumber, asString, isRawGroup, isRawGroupMember } from "@/types/utils";
+import type {
+  Group,
+  GroupMember,
+  RawGroupDTO,
+  RawGroupMemberDTO,
+} from "@/types";
+import {
+  asNumber,
+  asString,
+  isRawGroup,
+  isRawGroupMember,
+} from "@/types/utils";
 
 const normalizeMemberRole = (role: unknown): GroupMember["role"] => {
   if (role === 3 || role === "3" || role === "OWNER") return "OWNER";
@@ -14,7 +24,8 @@ export const normalizeGroup = (raw: RawGroupDTO | Group | unknown): Group => {
     id: asString(record.id),
     name: asString(record.name) || undefined,
     groupName,
-    description: asString(record.description ?? record.announcement) || undefined,
+    description:
+      asString(record.description ?? record.announcement) || undefined,
     announcement: asString(record.announcement) || undefined,
     type: record.type,
     avatar: asString(record.avatar) || undefined,

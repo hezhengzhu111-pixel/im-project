@@ -1,11 +1,11 @@
-import {computed} from "vue";
-import {defineStore} from "pinia";
-import {useContactStore} from "@/stores/contact";
-import {useGroupStore} from "@/stores/group";
-import {useMessageStore} from "@/stores/message";
-import {useSessionStore} from "@/stores/session";
-import type {ChatSession, Group, MessageType} from "@/types";
-import {logger} from "@/utils/logger";
+import { computed } from "vue";
+import { defineStore } from "pinia";
+import { useContactStore } from "@/stores/contact";
+import { useGroupStore } from "@/stores/group";
+import { useMessageStore } from "@/stores/message";
+import { useSessionStore } from "@/stores/session";
+import type { ChatSession, Group, MessageType } from "@/types";
+import { logger } from "@/utils/logger";
 
 const sleep = (durationMs: number) =>
   new Promise<void>((resolve) => {
@@ -49,7 +49,9 @@ export const useChatStore = defineStore("chat", () => {
       }
     });
     if (sessionStore.currentSession?.type === "private") {
-      const targetId = String(sessionStore.currentSession.targetId || "").trim();
+      const targetId = String(
+        sessionStore.currentSession.targetId || "",
+      ).trim();
       if (targetId) {
         ids.add(targetId);
       }
@@ -66,12 +68,16 @@ export const useChatStore = defineStore("chat", () => {
     await useWebSocketStore().refreshOnlineStatus(userIds);
   };
 
-  const restoreCurrentSession = async (options?: { loadMessages?: boolean }) => {
+  const restoreCurrentSession = async (options?: {
+    loadMessages?: boolean;
+  }) => {
     const shouldLoadMessages = options?.loadMessages !== false;
     const restored = sessionStore.restorePersistedCurrentSession(
       (targetId) => {
         const existing = sessionStore.sessions.find(
-          (item) => item.type === "private" && String(item.targetId) === String(targetId),
+          (item) =>
+            item.type === "private" &&
+            String(item.targetId) === String(targetId),
         );
         if (existing) {
           return existing;
@@ -90,12 +96,15 @@ export const useChatStore = defineStore("chat", () => {
       },
       (targetId) => {
         const existing = sessionStore.sessions.find(
-          (item) => item.type === "group" && String(item.targetId) === String(targetId),
+          (item) =>
+            item.type === "group" && String(item.targetId) === String(targetId),
         );
         if (existing) {
           return existing;
         }
-        const group = groupStore.groups.find((item) => String(item.id) === String(targetId));
+        const group = groupStore.groups.find(
+          (item) => String(item.id) === String(targetId),
+        );
         return group ? sessionStore.ensureGroupSession(group) : null;
       },
     );
@@ -119,7 +128,10 @@ export const useChatStore = defineStore("chat", () => {
   const initChatBootstrap = async () => {
     let initialSessions: ChatSession[] = [];
     try {
-      initialSessions = await refreshSessionSkeletons({ force: true, refreshPresence: false });
+      initialSessions = await refreshSessionSkeletons({
+        force: true,
+        refreshPresence: false,
+      });
     } catch (error) {
       warnBootstrapStep("initial session skeleton refresh", error);
     }
@@ -133,7 +145,9 @@ export const useChatStore = defineStore("chat", () => {
 
     if (!restored && !sessionStore.currentSession) {
       try {
-        await selectFirstAvailableSession(initialSessions, { loadMessages: true });
+        await selectFirstAvailableSession(initialSessions, {
+          loadMessages: true,
+        });
       } catch (error) {
         warnBootstrapStep("select first session", error);
       }
@@ -179,9 +193,12 @@ export const useChatStore = defineStore("chat", () => {
 
       if (!restored) {
         try {
-          restored = await selectFirstAvailableSession(sessionStore.sortedSessions, {
-            loadMessages: false,
-          });
+          restored = await selectFirstAvailableSession(
+            sessionStore.sortedSessions,
+            {
+              loadMessages: false,
+            },
+          );
         } catch (error) {
           warnBootstrapStep("background select first session", error);
           restored = null;
@@ -225,7 +242,10 @@ export const useChatStore = defineStore("chat", () => {
     const queued = sessionRefreshTail.catch(() => []).then(run);
     sessionRefreshTail = queued.then(
       (result) => result,
-      () => [],
+      (error) => {
+        logger.error("session refresh tail failed", error);
+        return [];
+      },
     );
     sessionRefreshInFlight = queued.finally(() => {
       sessionRefreshInFlight = null;
@@ -274,7 +294,9 @@ export const useChatStore = defineStore("chat", () => {
     return session;
   };
 
-  const openGroupSession = async (group: Group): Promise<ChatSession | null> => {
+  const openGroupSession = async (
+    group: Group,
+  ): Promise<ChatSession | null> => {
     const session = sessionStore.ensureGroupSession(group);
     if (!session) {
       return null;
@@ -305,8 +327,10 @@ export const useChatStore = defineStore("chat", () => {
   const searchUsers = async (params: { type: string; keyword: string }) =>
     contactStore.searchUsers(params);
 
-  const sendFriendRequest = async (params: { userId: string; message: string }) =>
-    contactStore.sendFriendRequest(params);
+  const sendFriendRequest = async (params: {
+    userId: string;
+    message: string;
+  }) => contactStore.sendFriendRequest(params);
 
   const acceptFriendRequest = async (requestId: string) => {
     await contactStore.acceptFriendRequest(requestId);
@@ -330,7 +354,9 @@ export const useChatStore = defineStore("chat", () => {
 
   const updateFriendRemark = async (friendId: string, remark: string) => {
     await contactStore.updateFriendRemark(friendId, remark);
-    const friend = contactStore.friends.find((item) => item.friendId === friendId);
+    const friend = contactStore.friends.find(
+      (item) => item.friendId === friendId,
+    );
     sessionStore.updatePrivateSessionDisplay(
       friendId,
       remark || friend?.nickname || friend?.username || friendId,
@@ -346,7 +372,8 @@ export const useChatStore = defineStore("chat", () => {
   }) => {
     const created = await groupStore.createGroup(params);
     await Promise.all([loadGroups(), loadSessions()]);
-    const refreshedGroup = groupStore.groups.find((item) => item.id === created.id) || created;
+    const refreshedGroup =
+      groupStore.groups.find((item) => item.id === created.id) || created;
     await openGroupSession(refreshedGroup);
     return refreshedGroup;
   };
@@ -361,7 +388,15 @@ export const useChatStore = defineStore("chat", () => {
     content: string,
     type: MessageType = "TEXT",
     extra?: Record<string, unknown>,
-  ) => messageStore.sendMessage(sessionStore.currentSession, content, type, extra);
+    mentionedUserIds?: string[],
+  ) =>
+    messageStore.sendMessage(
+      sessionStore.currentSession,
+      content,
+      type,
+      extra,
+      mentionedUserIds,
+    );
 
   const loadMoreHistory = async (sessionId: string, size = 20) => {
     await messageStore.loadMoreHistory(sessionId, size);
@@ -400,7 +435,11 @@ export const useChatStore = defineStore("chat", () => {
       const seen = new Set<string>();
       const enqueue = (sessionId?: string) => {
         const normalizedId = String(sessionId || "").trim();
-        if (!normalizedId || excludedSessionIds.has(normalizedId) || seen.has(normalizedId)) {
+        if (
+          !normalizedId ||
+          excludedSessionIds.has(normalizedId) ||
+          seen.has(normalizedId)
+        ) {
           return;
         }
         seen.add(normalizedId);
@@ -426,7 +465,9 @@ export const useChatStore = defineStore("chat", () => {
       for (let index = 0; index < restSessionIds.length; index += batchSize) {
         const batch = restSessionIds.slice(index, index + batchSize);
         await Promise.all(
-          batch.map((sessionId) => messageStore.loadMessages(sessionId, 0, loadSize)),
+          batch.map((sessionId) =>
+            messageStore.loadMessages(sessionId, 0, loadSize),
+          ),
         );
         if (index + batchSize < restSessionIds.length && batchDelayMs > 0) {
           await sleep(batchDelayMs);
@@ -484,8 +525,12 @@ export const useChatStore = defineStore("chat", () => {
     messages: computed(() => messageStore.messages),
     currentMessages: computed(() => messageStore.currentMessages),
     searchResults: computed(() => messageStore.searchResults),
-    loadingHistoryBySession: computed(() => messageStore.loadingHistoryBySession),
-    hasMoreHistoryBySession: computed(() => messageStore.hasMoreHistoryBySession),
+    loadingHistoryBySession: computed(
+      () => messageStore.loadingHistoryBySession,
+    ),
+    hasMoreHistoryBySession: computed(
+      () => messageStore.hasMoreHistoryBySession,
+    ),
     oldestLoadedServerMessageIdBySession: computed(
       () => messageStore.oldestLoadedServerMessageIdBySession,
     ),
@@ -521,7 +566,11 @@ export const useChatStore = defineStore("chat", () => {
             avatar: targetAvatar,
             memberCount: 0,
           } as Group)
-        : sessionStore.ensurePrivateSession(targetId, targetName || targetId, targetAvatar),
+        : sessionStore.ensurePrivateSession(
+            targetId,
+            targetName || targetId,
+            targetAvatar,
+          ),
     openPrivateSession,
     openGroupSession,
     loadMessages: messageStore.loadMessages,

@@ -145,22 +145,33 @@
           {{ t("settings.clearCache") }}
         </button>
       </section>
+
+      <section
+        class="settings-card ai-card"
+        @click="router.push('/settings/ai')"
+      >
+        <div class="settings-copy">
+          <div class="settings-kicker">AI</div>
+          <h2>{{ t("settings.aiAssistant") }}</h2>
+          <p>{{ t("settings.aiAssistantDesc") }}</p>
+        </div>
+      </section>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import {computed, onMounted, ref, watch} from "vue";
-import {useRouter} from "vue-router";
-import {ElMessage, ElMessageBox} from "element-plus";
-import {ArrowLeft, SwitchButton} from "@element-plus/icons-vue";
-import {useErrorHandler} from "@/hooks/useErrorHandler";
-import {defaultUserSettings} from "@/normalizers/user";
-import {useI18nStore} from "@/stores/i18n";
-import {useUserStore} from "@/stores/user";
-import {useUserSettingsStore} from "@/stores/user-settings";
-import {getAvatarText} from "@/utils/common";
-import type {UserSettings} from "@/types";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { ArrowLeft, SwitchButton } from "@element-plus/icons-vue";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { defaultUserSettings } from "@/normalizers/user";
+import { useI18nStore } from "@/stores/i18n";
+import { useUserStore } from "@/stores/user";
+import { useUserSettingsStore } from "@/stores/user-settings";
+import { getAvatarText } from "@/utils/common";
+import type { UserSettings } from "@/types";
 
 type ThemeMode = "light" | "dark" | "auto";
 type MessageKey = "enableNotification" | "enableSound";
@@ -226,8 +237,7 @@ const syncSettingsState = (settings: UserSettings) => {
   notificationEnabled.value = settings.message.enableNotification;
   soundEnabled.value = settings.message.enableSound;
   readReceiptEnabled.value = settings.privacy.messageReadReceipt;
-  allowInsecureVoiceRecording.value =
-    settingsStore.allowInsecureVoiceRecording;
+  allowInsecureVoiceRecording.value = settingsStore.allowInsecureVoiceRecording;
 };
 
 const loadSettings = async () => {
@@ -262,8 +272,7 @@ const updatePrivacySetting = async (key: PrivacyKey, value: boolean) => {
 
 const updateInsecureVoiceSetting = (value: boolean) => {
   settingsStore.updateAllowInsecureVoiceRecording(value);
-  allowInsecureVoiceRecording.value =
-    settingsStore.allowInsecureVoiceRecording;
+  allowInsecureVoiceRecording.value = settingsStore.allowInsecureVoiceRecording;
 };
 
 const clearCache = async () => {

@@ -17,7 +17,7 @@ export interface FileInfo {
 export interface UploadProgress {
   file: File;
   progress: number;
-  status: 'UPLOADING' | 'SUCCESS' | 'ERROR';
+  status: "UPLOADING" | "SUCCESS" | "ERROR";
   url?: string;
   error?: string;
 }
@@ -55,7 +55,11 @@ export interface FormRule {
   min?: number;
   max?: number;
   pattern?: RegExp;
-  validator?: (rule: unknown, value: unknown, callback: (error?: Error) => void) => void;
+  validator?: (
+    rule: unknown,
+    value: unknown,
+    callback: (error?: Error) => void,
+  ) => void;
 }
 
 /** 表单规则集合 */

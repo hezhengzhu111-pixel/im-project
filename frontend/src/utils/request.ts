@@ -1,13 +1,22 @@
-import type {AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig,} from "axios";
+import type {
+  AxiosInstance,
+  AxiosRequestConfig,
+  AxiosResponse,
+  InternalAxiosRequestConfig,
+} from "axios";
 import axios from "axios";
 import qs from "qs";
-import {ElMessage} from "element-plus";
-import {useUserStore} from "@/stores/user";
-import type {ApiResponse} from "@/types/api";
+import { ElMessage } from "element-plus";
+import { useUserStore } from "@/stores/user";
+import { useI18nStore } from "@/stores/i18n";
+import type { ApiResponse } from "@/types/api";
 import router from "@/router";
-import {refreshAccessTokenCoordinated, type RefreshAccessTokenStatus,} from "@/services/auth-refresh";
-import {logger} from "@/utils/logger";
-import {STORAGE_CONFIG} from "@/config";
+import {
+  refreshAccessTokenCoordinated,
+  type RefreshAccessTokenStatus,
+} from "@/services/auth-refresh";
+import { logger } from "@/utils/logger";
+import { STORAGE_CONFIG } from "@/config";
 
 function createTraceId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -45,6 +54,7 @@ const readPersistedAccessToken = (): string => {
   return typeof token === "string" ? token.trim() : "";
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const writePersistedAccessToken = (token?: string | null) => {
   if (typeof localStorage === "undefined") {
     return;
@@ -67,7 +77,6 @@ const storeLatestAccessToken = (token?: string | null) => {
   if ("accessToken" in userStore) {
     userStore.accessToken = normalized;
   }
-  writePersistedAccessToken(normalized);
 };
 
 const getLatestAccessToken = (): string => {
@@ -75,13 +84,19 @@ const getLatestAccessToken = (): string => {
   if (typeof userStore.getAccessToken === "function") {
     return String(userStore.getAccessToken() || "").trim();
   }
-  if (typeof userStore.accessToken === "string" && userStore.accessToken.trim()) {
+  if (
+    typeof userStore.accessToken === "string" &&
+    userStore.accessToken.trim()
+  ) {
     return userStore.accessToken.trim();
   }
   return readPersistedAccessToken();
 };
 
-const getHeaderValue = (headers: HeaderBag | undefined, name: string): string => {
+const getHeaderValue = (
+  headers: HeaderBag | undefined,
+  name: string,
+): string => {
   if (!headers) {
     return "";
   }
@@ -93,7 +108,11 @@ const getHeaderValue = (headers: HeaderBag | undefined, name: string): string =>
   return directValue == null ? "" : String(directValue).trim();
 };
 
-const setHeaderValue = (headers: HeaderBag | undefined, name: string, value?: string) => {
+const setHeaderValue = (
+  headers: HeaderBag | undefined,
+  name: string,
+  value?: string,
+) => {
   if (!headers) {
     return;
   }
@@ -146,10 +165,19 @@ const shouldSkipRefresh = (url?: string) => {
   );
 };
 
+const getI18nT = () => {
+  try {
+    return useI18nStore().t;
+  } catch {
+    return (key: string) => key;
+  }
+};
+
 const promptReLogin = () => {
   if (reauthPromptInFlight) return;
   reauthPromptInFlight = true;
-  ElMessage.warning("登录状态已过期，已为您跳转到登录页");
+  const t = getI18nT();
+  ElMessage.warning(t("error.authExpired"));
   Promise.resolve()
     .then(() => {
       if (router.currentRoute?.value?.path !== "/login") {
@@ -159,7 +187,7 @@ const promptReLogin = () => {
     })
     .finally(() => {
       reauthPromptInFlight = false;
-  });
+    });
 };
 
 const getSessionGeneration = (): number => {
@@ -169,7 +197,10 @@ const getSessionGeneration = (): number => {
     : 0;
 };
 
-const hasSessionChangedSince = (tokenBeforeRefresh?: string, generationBeforeRefresh?: number) => {
+const hasSessionChangedSince = (
+  tokenBeforeRefresh?: string,
+  generationBeforeRefresh?: number,
+) => {
   const latestToken = getLatestAccessToken();
   if (latestToken && latestToken !== (tokenBeforeRefresh || "")) {
     return true;
@@ -203,7 +234,10 @@ const tryRefreshAccessToken = async (
         ? await userStore.restoreSession()
         : true;
     if (restored === false) {
-      return hasSessionChangedSince(tokenBeforeRefresh, generationBeforeRefresh);
+      return hasSessionChangedSince(
+        tokenBeforeRefresh,
+        generationBeforeRefresh,
+      );
     }
   } catch {
     return hasSessionChangedSince(tokenBeforeRefresh, generationBeforeRefresh);
@@ -217,7 +251,11 @@ const shouldClearSession = (url?: string) =>
   !url?.includes("/user/heartbeat");
 
 const retryWithFreshAccessToken = async (config?: Record<string, unknown>) => {
-  if (!config || config.__retry401 || shouldSkipRefresh(String(config.url || ""))) {
+  if (
+    !config ||
+    config.__retry401 ||
+    shouldSkipRefresh(String(config.url || ""))
+  ) {
     return null;
   }
   config.__retry401 = true;
@@ -236,9 +274,13 @@ const retryWithFreshAccessToken = async (config?: Record<string, unknown>) => {
   return request(config);
 };
 
-const getRefreshStatus = (config?: Record<string, unknown>): RefreshAccessTokenStatus | "" => {
+const getRefreshStatus = (
+  config?: Record<string, unknown>,
+): RefreshAccessTokenStatus | "" => {
   const status = config?.__refreshStatus;
-  return status === "success" || status === "authInvalid" || status === "transientError"
+  return status === "success" ||
+    status === "authInvalid" ||
+    status === "transientError"
     ? status
     : "";
 };
@@ -280,7 +322,11 @@ request.interceptors.request.use(
     if (headers) {
       setHeaderValue(headers, "X-Gateway-Route", "true");
       const existingTraceId = getHeaderValue(headers, "X-Trace-Id");
-      setHeaderValue(config.headers as HeaderBag, "X-Trace-Id", existingTraceId || createTraceId());
+      setHeaderValue(
+        config.headers as HeaderBag,
+        "X-Trace-Id",
+        existingTraceId || createTraceId(),
+      );
       if (!getHeaderValue(headers, "Authorization")) {
         const accessToken = getLatestAccessToken();
         if (accessToken) {
@@ -313,13 +359,17 @@ request.interceptors.response.use(
         ? (response.data as Record<string, unknown>)
         : {};
 
+    const t = getI18nT();
+
     // 处理UserAuthResponse格式（登录接口）
     if (
       "success" in responseData &&
       typeof responseData.success === "boolean"
     ) {
       const authMessage =
-        typeof responseData.message === "string" ? responseData.message : "操作失败";
+        typeof responseData.message === "string"
+          ? responseData.message
+          : t("error.operationFailed");
       if (responseData.success) {
         return responseData;
       } else {
@@ -356,45 +406,56 @@ request.interceptors.response.use(
     // 业务错误
     if (code === 401) {
       if (shouldSkipRefresh(response.config?.url)) {
-        return Promise.reject(new Error(messageText || "未授权"));
+        return Promise.reject(
+          new Error(messageText || t("error.unauthorized")),
+        );
       }
       const config = response.config as any;
       const retried = await retryWithFreshAccessToken(config);
       if (retried) {
         return retried;
       }
-      if (shouldClearSession(response.config.url) && shouldClearAfterRefreshFailure(config)) {
+      if (
+        shouldClearSession(response.config.url) &&
+        shouldClearAfterRefreshFailure(config)
+      ) {
         await clearAuthSession();
         promptReLogin();
       }
 
-      return Promise.reject(new Error(messageText || "未授权"));
+      return Promise.reject(new Error(messageText || t("error.unauthorized")));
     }
 
     if (code === 403) {
-      ElMessage.error("权限不足");
-      return Promise.reject(new Error(messageText || "权限不足"));
+      ElMessage.error(t("error.forbidden"));
+      return Promise.reject(new Error(messageText || t("error.forbidden")));
     }
 
     if (code === 404) {
-      ElMessage.error("请求的资源不存在");
-      return Promise.reject(new Error(messageText || "资源不存在"));
+      ElMessage.error(t("error.notFound"));
+      return Promise.reject(
+        new Error(messageText || t("error.resourceNotFound")),
+      );
     }
 
     if (code === 500) {
-      ElMessage.error("服务器内部错误");
-      return Promise.reject(new Error(messageText || "服务器错误"));
+      ElMessage.error(t("error.serverError"));
+      return Promise.reject(
+        new Error(messageText || t("error.serverInternal")),
+      );
     }
 
     // 其他业务错误
-    ElMessage.error(messageText || "请求失败");
-    return Promise.reject(new Error(messageText || "请求失败"));
+    ElMessage.error(messageText || t("error.requestFailed"));
+    return Promise.reject(new Error(messageText || t("error.requestFailed")));
   },
   async (error) => {
+    const t = getI18nT();
+
     // 网络错误
     if (!error.response) {
       logger.error("response interceptor failed", error);
-      ElMessage.error("网络连接失败，请检查网络设置");
+      ElMessage.error(t("error.networkFailed"));
       return Promise.reject(error);
     }
 
@@ -405,7 +466,7 @@ request.interceptors.response.use(
 
     switch (status) {
       case 400:
-        ElMessage.error("请求参数错误");
+        ElMessage.error(t("error.badRequest"));
         break;
       case 401: {
         if (shouldSkipRefresh(error.config?.url)) {
@@ -416,38 +477,41 @@ request.interceptors.response.use(
         if (retried) {
           return retried;
         }
-        if (shouldClearSession(error.config?.url) && shouldClearAfterRefreshFailure(config)) {
+        if (
+          shouldClearSession(error.config?.url) &&
+          shouldClearAfterRefreshFailure(config)
+        ) {
           await clearAuthSession();
           promptReLogin();
         }
         break;
       }
       case 403:
-        ElMessage.error("权限不足");
+        ElMessage.error(t("error.forbidden"));
         break;
       case 404:
-        ElMessage.error("请求的资源不存在");
+        ElMessage.error(t("error.notFound"));
         break;
       case 408:
-        ElMessage.error("请求超时");
+        ElMessage.error(t("error.requestTimeout"));
         break;
       case 413:
-        ElMessage.error("文件过大，请选择更小的文件");
+        ElMessage.error(t("error.fileTooLarge"));
         break;
       case 500:
-        ElMessage.error("服务器内部错误");
+        ElMessage.error(t("error.serverError"));
         break;
       case 502:
-        ElMessage.error("网关错误");
+        ElMessage.error(t("error.badGateway"));
         break;
       case 503:
-        ElMessage.error("服务不可用");
+        ElMessage.error(t("error.serviceUnavailable"));
         break;
       case 504:
-        ElMessage.error("网关超时");
+        ElMessage.error(t("error.gatewayTimeout"));
         break;
       default:
-        ElMessage.error(`请求失败: ${status} ${statusText}`);
+        ElMessage.error(`${t("error.requestFailed")}: ${status} ${statusText}`);
     }
 
     return Promise.reject(error);

@@ -10,7 +10,8 @@ use axum::http::HeaderMap;
 use axum::Json;
 use chrono::NaiveDateTime;
 use im_rs_common::api::ApiResponse;
-use im_rs_common::{ids, keys};
+use im_rs_common::event::{ImEvent, ImEventType};
+use im_rs_common::{ids, keys, time};
 use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
 use serde::{de, Deserialize, Deserializer, Serialize};
@@ -177,6 +178,15 @@ pub async fn add_friend(
     .bind(normalize_optional(request.reason))
     .execute(&state.db)
     .await?;
+    {
+        let mut event = ImEvent::new(
+            ImEventType::FriendRequestCreated,
+            format!("friend_req:{}", request_id),
+        );
+        event.sender_id = Some(identity.user_id.to_string());
+        event.target_user_id = Some(target_user_id.to_string());
+        write_social_event(&state, &event).await;
+    }
     Ok(Json(ApiResponse::success(true)))
 }
 
@@ -187,11 +197,19 @@ pub async fn accept_friend(
 ) -> Result<Json<ApiResponse<bool>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
     let row = load_friend_request(&state.db, request.request_id).await?;
-    let target_user_id: i64 = row.get("target_user_id");
+    let target_user_id: i64 = row
+        .try_get("target_user_id")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     if target_user_id != identity.user_id {
         return Err(AppError::Forbidden("not request target user".to_string()));
     }
-    let applicant_id: i64 = row.get("applicant_id");
+    let applicant_id: i64 = row
+        .try_get("applicant_id")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     sqlx::query("UPDATE service_user_service_db.friend_request SET status = 1, handle_time = NOW() WHERE id = ?")
         .bind(request.request_id)
         .execute(&state.db)
@@ -215,6 +233,15 @@ pub async fn accept_friend(
     let mut redis = state.redis_manager.clone();
     cache_friendship(&mut redis, identity.user_id, applicant_id, true).await;
     cache_friendship(&mut redis, applicant_id, identity.user_id, true).await;
+    {
+        let mut event = ImEvent::new(
+            ImEventType::FriendRequestAccepted,
+            format!("friend_acc:{}", request.request_id),
+        );
+        event.sender_id = Some(identity.user_id.to_string());
+        event.target_user_id = Some(applicant_id.to_string());
+        write_social_event(&state, &event).await;
+    }
     Ok(Json(ApiResponse::success(true)))
 }
 
@@ -225,7 +252,11 @@ pub async fn reject_friend(
 ) -> Result<Json<ApiResponse<bool>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
     let row = load_friend_request(&state.db, request.request_id).await?;
-    let target_user_id: i64 = row.get("target_user_id");
+    let target_user_id: i64 = row
+        .try_get("target_user_id")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     if target_user_id != identity.user_id {
         return Err(AppError::Forbidden("not request target user".to_string()));
     }
@@ -371,6 +402,33 @@ pub async fn user_groups(
     )))
 }
 
+pub async fn search_groups(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<ApiResponse<Vec<GroupDto>>>, AppError> {
+    let _identity = identity_from_headers(&headers, &state.config)?;
+    let keyword = params
+        .get("q")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| AppError::BadRequest("search keyword is required".to_string()))?;
+    let like_pattern = format!("%{}%", keyword);
+    let rows = sqlx::query(
+        r#"SELECT id, name, avatar, announcement, owner_id, type, max_members, member_count, status, created_time
+           FROM service_group_service_db.im_group
+           WHERE status = 1 AND name LIKE ?
+           ORDER BY member_count DESC
+           LIMIT 20"#,
+    )
+    .bind(&like_pattern)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(ApiResponse::success(
+        rows.iter().map(group_from_row).collect(),
+    )))
+}
+
 pub async fn group_members(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -412,6 +470,54 @@ pub async fn join_group(
     )
     .await?;
     refresh_group_member_count(&state.db, group_id).await?;
+    Ok(Json(ApiResponse::success(true)))
+}
+
+pub async fn add_group_members(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<i64>,
+    Json(payload): Json<Value>,
+) -> Result<Json<ApiResponse<bool>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let group_id = resolve_group_id_or_not_found(&state.db, group_id).await?;
+    ensure_group_member(&state.db, group_id, identity.user_id).await?;
+    let member_ids_raw: Vec<i64> = payload
+        .get("memberIds")
+        .and_then(Value::as_array)
+        .map(|arr| arr.iter().filter_map(value_to_i64).collect())
+        .unwrap_or_default();
+    if member_ids_raw.is_empty() {
+        return Err(AppError::BadRequest(
+            "memberIds is required".to_string(),
+        ));
+    }
+    let mut added_ids = Vec::new();
+    for member_id in member_ids_raw {
+        if let Some(resolved) = resolve_active_user_id(&state.db, member_id).await? {
+            add_group_member(
+                &state.db,
+                state.config.snowflake_node_id,
+                group_id,
+                resolved,
+                1,
+            )
+            .await?;
+            added_ids.push(resolved);
+        }
+    }
+    if !added_ids.is_empty() {
+        let mut redis = group_redis_for_group(&state, group_id)?;
+        initialize_group_read_sequences(
+            &mut redis,
+            &state.db,
+            state.config.snowflake_node_id,
+            group_id,
+            &added_ids,
+        )
+        .await?;
+        refresh_group_member_count(&state.db, group_id).await?;
+    }
     Ok(Json(ApiResponse::success(true)))
 }
 
@@ -527,7 +633,11 @@ fn friendship_from_row(row: &sqlx::mysql::MySqlRow) -> FriendshipDto {
 fn friend_request_from_row(row: &sqlx::mysql::MySqlRow) -> FriendRequestDto {
     let id: i64 = row.get("id");
     let applicant_id: i64 = row.get("applicant_id");
-    let target_user_id: i64 = row.get("target_user_id");
+    let target_user_id: i64 = row
+        .try_get("target_user_id")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     let status: i32 = row.get("status");
     let apply_time: NaiveDateTime = row.get("apply_time");
     let handle_time: Option<NaiveDateTime> = row.try_get("handle_time").ok().flatten();
@@ -881,4 +991,41 @@ fn distinct(values: Vec<i64>) -> Vec<i64> {
         .into_iter()
         .filter(|value| seen.insert(*value))
         .collect()
+}
+
+#[allow(clippy::as_conversions, clippy::unwrap_used)]
+async fn write_social_event(state: &AppState, event: &ImEvent) {
+    let event_json = match serde_json::to_string(event) {
+        Ok(json) => json,
+        Err(error) => {
+            tracing::warn!(error = %error, event_id = %event.event_id, "failed to serialize social event");
+            return;
+        }
+    };
+    if let Some(private_hot) = state.private_redis_managers.first() {
+        let mut redis = private_hot.clone();
+        let member = format!("{}|{}", event.event_id, event.conversation_id);
+        let event_key = keys::event_key(&event.event_id);
+        let ttl_seconds: i64 = i64::try_from(keys::EVENT_TTL_SECONDS).unwrap_or(604800);
+        let score = time::now_ms() as f64;
+        let result: redis::RedisResult<()> = redis::pipe()
+            .atomic()
+            .set(&event_key, &event_json)
+            .ignore()
+            .expire(&event_key, ttl_seconds)
+            .ignore()
+            .zadd(
+                keys::pending_events_key(),
+                &member,
+                score,
+            )
+            .ignore()
+            .expire(keys::pending_events_key(), ttl_seconds)
+            .ignore()
+            .query_async(&mut redis)
+            .await;
+        if let Err(error) = result {
+            tracing::warn!(error = %error, event_id = %event.event_id, "failed to write social event to redis");
+        }
+    }
 }

@@ -45,7 +45,10 @@ impl RouteRegistry {
         let Some(user_id) = normalize_id(user_id) else {
             return;
         };
-        let _guard = self.acquire_lock(&user_id).await;
+        let Some(_guard) = self.acquire_lock(&user_id).await else {
+            tracing::warn!(user_id = %user_id, "failed to acquire route lock, skipping upsert");
+            return;
+        };
         let now = now_ms();
         let mut snapshot = self.load_snapshot(&user_id, now).await;
         if session_count == 0 {
@@ -125,7 +128,10 @@ impl RouteRegistry {
         let Some(user_id) = normalize_id(user_id) else {
             return BTreeMap::new();
         };
-        let _guard = self.acquire_lock(&user_id).await;
+        let Some(_guard) = self.acquire_lock(&user_id).await else {
+            tracing::warn!(user_id = %user_id, "failed to acquire route lock for session counts");
+            return BTreeMap::new();
+        };
         let now = now_ms();
         let snapshot = self.load_snapshot(&user_id, now).await;
         self.persist_snapshot(&user_id, &snapshot, now).await;

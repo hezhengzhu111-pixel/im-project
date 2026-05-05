@@ -1,6 +1,6 @@
-import {beforeEach, describe, expect, it, vi} from "vitest";
-import {createPinia, setActivePinia} from "pinia";
-import type {Message} from "@/types";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
+import type { Message } from "@/types";
 
 const issueWsTicket = vi.fn();
 const checkOnlineStatus = vi.fn();
@@ -119,7 +119,7 @@ describe("websocket store", () => {
     expect(issueWsTicket).toHaveBeenCalledTimes(1);
     expect(FakeWebSocket.instances).toHaveLength(1);
     expect(FakeWebSocket.instances[0].url).toContain("/websocket/42");
-    expect(FakeWebSocket.instances[0].url).not.toContain("ticket=");
+    expect(FakeWebSocket.instances[0].url).toContain("ticket=ticket-123");
     expect(FakeWebSocket.instances[0].url).not.toContain("token=");
 
     FakeWebSocket.instances[0].onopen?.();
@@ -129,7 +129,7 @@ describe("websocket store", () => {
     expect(scheduleRealtimeResume).toHaveBeenCalledWith({
       forceSessionRefresh: false,
     });
-    expect(localStorage.getItem("im_ws_cache")).toContain("\"userId\":\"42\"");
+    expect(localStorage.getItem("im_ws_cache")).toContain('"userId":"42"');
   });
 
   it("retries with a new ticket when issuing the first ticket fails", async () => {
@@ -155,7 +155,7 @@ describe("websocket store", () => {
     expect(issueWsTicket).toHaveBeenCalledTimes(2);
     expect(FakeWebSocket.instances).toHaveLength(1);
     expect(FakeWebSocket.instances[0].url).toContain("/websocket/42");
-    expect(FakeWebSocket.instances[0].url).not.toContain("ticket=");
+    expect(FakeWebSocket.instances[0].url).toContain("ticket=ticket-456");
     expect(messageError).toHaveBeenCalled();
   });
 

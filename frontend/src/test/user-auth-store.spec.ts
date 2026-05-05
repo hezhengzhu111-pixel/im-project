@@ -65,7 +65,9 @@ describe("user auth store", () => {
     push.mockReset();
     localStorage.clear();
     refreshAccessToken.mockResolvedValue({ code: 500, data: {} });
-    refreshAccessTokenCoordinated.mockResolvedValue({ status: "transientError" });
+    refreshAccessTokenCoordinated.mockResolvedValue({
+      status: "transientError",
+    });
   });
 
   it("trims username before login", async () => {
@@ -102,7 +104,9 @@ describe("user auth store", () => {
     expect(localStorage.getItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY)).toBe(
       "access-token-1",
     );
-    expect(localStorage.getItem(STORAGE_CONFIG.USER_SNAPSHOT_KEY)).toContain('"id":"1"');
+    expect(localStorage.getItem(STORAGE_CONFIG.USER_SNAPSHOT_KEY)).toContain(
+      '"id":"1"',
+    );
   });
 
   it("returns false when register failed", async () => {
@@ -253,7 +257,10 @@ describe("user auth store", () => {
   });
 
   it("keeps local snapshot when startup probes cannot revalidate immediately", async () => {
-    localStorage.setItem(STORAGE_CONFIG.ACCESS_TOKEN_KEY, "possibly-valid-token");
+    localStorage.setItem(
+      STORAGE_CONFIG.ACCESS_TOKEN_KEY,
+      "possibly-valid-token",
+    );
     localStorage.setItem(
       STORAGE_CONFIG.USER_SNAPSHOT_KEY,
       JSON.stringify({
@@ -271,7 +278,9 @@ describe("user auth store", () => {
         userId: null,
       },
     });
-    refreshAccessTokenCoordinated.mockResolvedValue({ status: "transientError" });
+    refreshAccessTokenCoordinated.mockResolvedValue({
+      status: "transientError",
+    });
 
     const { useUserStore } = await import("@/stores/user");
     const store = useUserStore();
@@ -354,7 +363,9 @@ describe("user auth store", () => {
       }),
     );
     parseAccessToken.mockRejectedValue(new Error("network"));
-    refreshAccessTokenCoordinated.mockResolvedValue({ status: "transientError" });
+    refreshAccessTokenCoordinated.mockResolvedValue({
+      status: "transientError",
+    });
 
     const { useUserStore } = await import("@/stores/user");
     const store = useUserStore();

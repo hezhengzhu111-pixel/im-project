@@ -1,5 +1,5 @@
-import {ElMessage} from "element-plus";
-import {logger} from "@/utils/logger";
+import { ElMessage } from "element-plus";
+import { logger } from "@/utils/logger";
 
 const showBubbleMessage = (
   type: "success" | "info" | "warning" | "error",

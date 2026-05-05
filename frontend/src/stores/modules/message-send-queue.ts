@@ -1,9 +1,9 @@
-import type {Ref} from "vue";
-import type {messageService} from "@/services/message";
-import type {messageRepo} from "@/utils/messageRepo";
-import {safePreferExistingId} from "@/normalizers/chat";
-import {splitTextByCodePoints} from "@/utils/messageNormalize";
-import type {ChatSession, Message, MessageConfig, MessageType} from "@/types";
+import type { Ref } from "vue";
+import type { messageService } from "@/services/message";
+import type { messageRepo } from "@/utils/messageRepo";
+import { safePreferExistingId } from "@/normalizers/chat";
+import { splitTextByCodePoints } from "@/utils/messageNormalize";
+import type { ChatSession, Message, MessageConfig, MessageType } from "@/types";
 
 const DEFAULT_MESSAGE_CONFIG: MessageConfig = {
   textEnforce: true,
@@ -77,6 +77,22 @@ const firstNumber = (...values: unknown[]) => {
     }
   }
   return undefined;
+};
+
+const isNetworkError = (error: unknown): boolean => {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    return true;
+  }
+  if (error && typeof error === "object") {
+    const e = error as Record<string, unknown>;
+    if (!("response" in e) && "message" in e && String(e.message).toLowerCase().includes("network")) {
+      return true;
+    }
+    if ("code" in e && (e.code === "ERR_NETWORK" || e.code === "ECONNABORTED")) {
+      return true;
+    }
+  }
+  return false;
 };
 
 const safeDecode = (value: string) => {
@@ -192,6 +208,7 @@ export function createMessageSendQueueModule(
     content: string,
     type: MessageType,
     extra?: Record<string, unknown>,
+    mentionedUserIds?: string[], // from composer, converted to number[] before API call
   ) => {
     const currentUser = ctx.getCurrentUser();
     if (!currentUser) {
@@ -235,33 +252,58 @@ export function createMessageSendQueueModule(
       pendingMessage,
     );
 
+    // E2EE encryption intercept
+    let encryptedPayload: { ciphertext: string; header: import('@/features/e2ee/types').RatchetHeader; deviceId: string } | null = null;
+
+    if (session.type === "private") {
+      try {
+        const { e2eeManager } = await import('@/features/e2ee/manager/e2ee-manager');
+        const { getLocalSessionStatus } = await import('@/features/e2ee/manager/negotiation');
+
+        if (getLocalSessionStatus(session.id) === 'encrypted') {
+          encryptedPayload = await e2eeManager.encryptMessage(session.id, content);
+        }
+      } catch (e2eeError) {
+        console.error('[E2EE] Encryption intercept failed, sending as plaintext:', e2eeError);
+      }
+    }
+
+    const commonSendFields = {
+      clientMessageId,
+      messageType: type,
+      content: isTextLike ? content : undefined,
+      mediaUrl: isTextLike ? undefined : content,
+      mediaSize: mediaMetadata.mediaSize,
+      mediaName: mediaMetadata.mediaName,
+      thumbnailUrl: mediaMetadata.thumbnailUrl,
+      duration: mediaMetadata.duration,
+      extra,
+    };
+
     try {
-      const response =
-        session.type === "group"
-          ? await ctx.messageService.sendGroup({
-              groupId: session.targetId,
-              clientMessageId,
-              messageType: type,
-              content: isTextLike ? content : undefined,
-              mediaUrl: isTextLike ? undefined : content,
-              mediaSize: mediaMetadata.mediaSize,
-              mediaName: mediaMetadata.mediaName,
-              thumbnailUrl: mediaMetadata.thumbnailUrl,
-              duration: mediaMetadata.duration,
-              extra,
-            })
-          : await ctx.messageService.sendPrivate({
-              receiverId: session.targetId,
-              clientMessageId,
-              messageType: type,
-              content: isTextLike ? content : undefined,
-              mediaUrl: isTextLike ? undefined : content,
-              mediaSize: mediaMetadata.mediaSize,
-              mediaName: mediaMetadata.mediaName,
-              thumbnailUrl: mediaMetadata.thumbnailUrl,
-              duration: mediaMetadata.duration,
-              extra,
-            });
+      let response;
+      if (session.type === "group") {
+        response = await ctx.messageService.sendGroup({
+          ...commonSendFields,
+          groupId: session.targetId,
+          mentionedUserIds,
+        });
+      } else if (encryptedPayload) {
+        response = await ctx.messageService.sendPrivateEncrypted({
+          receiverId: session.targetId,
+          clientMessageId,
+          messageType: String(type),
+          content: encryptedPayload.ciphertext,
+          encrypted: true,
+          e2eeHeader: JSON.stringify(encryptedPayload.header),
+          e2eeDeviceId: encryptedPayload.deviceId,
+        });
+      } else {
+        response = await ctx.messageService.sendPrivate({
+          ...commonSendFields,
+          receiverId: session.targetId,
+        });
+      }
 
       const serverMessage: Message = {
         ...response.data,
@@ -284,12 +326,43 @@ export function createMessageSendQueueModule(
       await ctx.scheduleServerMessagePersist(session.id, [serverMessage]);
       ctx.sessionStore.applyMessageToSession(session.id, serverMessage);
       return true;
-    } catch {
+    } catch (error) {
       markPendingFailed(session.id, localId);
       await ctx.messageRepo.upsertPendingMessage(session.id, localId, {
         ...pendingMessage,
         status: "FAILED",
       });
+      if (isNetworkError(error)) {
+        const offlinePayload =
+          session.type === "group"
+            ? {
+                sendType: "group" as const,
+                data: {
+                  ...commonSendFields,
+                  groupId: session.targetId,
+                  mentionedUserIds,
+                },
+              }
+            : {
+                sendType: "private" as const,
+                data: {
+                  ...commonSendFields,
+                  receiverId: session.targetId,
+                  ...(encryptedPayload
+                    ? {
+                        encrypted: true,
+                        e2eeHeader: JSON.stringify(encryptedPayload.header),
+                        e2eeDeviceId: encryptedPayload.deviceId,
+                      }
+                    : {}),
+                },
+              };
+        await ctx.messageRepo.addPendingMessage(
+          session.id,
+          localId,
+          offlinePayload,
+        );
+      }
       return false;
     }
   };
@@ -299,6 +372,7 @@ export function createMessageSendQueueModule(
     content: string,
     type: MessageType = "TEXT",
     extra?: Record<string, unknown>,
+    mentionedUserIds?: string[], // from composer, converted to number[] before API call
   ) => {
     if (!session) {
       return false;
@@ -323,6 +397,7 @@ export function createMessageSendQueueModule(
                 part,
                 type,
                 extra,
+                mentionedUserIds,
               );
               if (!success) {
                 return false;
@@ -333,7 +408,7 @@ export function createMessageSendQueueModule(
         }
       }
 
-      return sendSingleMessage(session, content, type, extra);
+      return sendSingleMessage(session, content, type, extra, mentionedUserIds);
     });
   };
 
