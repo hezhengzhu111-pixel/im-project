@@ -81,7 +81,7 @@ Copy `.env.example` → `.env` and edit secrets first.
 python scripts/deploy_middleware.py          # Start MySQL + 9 Redis instances + file-volume init
 python scripts/init_db.py --full             # Init 9 databases (first time or schema change)
 python scripts/deploy_services.py            # Build & start all 4 services
-python scripts/full_backend_api_test.py      # Run end-to-end integration test suite
+python scripts/test.py                       # Run end-to-end integration test suite
 ```
 
 Deploy a single service:
@@ -527,15 +527,19 @@ System env (highest priority)
 
 ### Deployment Scripts (`scripts/`)
 
-**`deploy_utils.py`** (265 lines): `DeploymentConfig` dataclass (project_dir, env_file, compose_file, etc.). Key functions: `load_env_file` (skips existing vars, strips quotes), `ensure_project_layout` (validates 9 required files), `compose_base_command`, `wait_for_service_ready` (180s timeout, 2s poll), `wait_for_service_completed` (120s for one-shot containers).
+Six deployment entry scripts are kept: `docker_clean.py`, `generate_env.py`, `deploy_middleware.py`, `init_db.py`, `deploy_services.py`, and `test.py`. Shared helper code lives in `deploy_utils.py`.
 
-**`deploy_middleware.py`**: Starts MySQL + Redis + N private-hot + N group-hot + im-files-init. Hot shard count from `IM_PRIVATE_HOT_SHARDS`/`IM_GROUP_HOT_SHARDS` env vars (default 4). Waits for all services ready; im-files-init waits for completion.
+**`docker_clean.py`**: removes one container/image by name or id, or performs a confirmed full Docker reset with `--full --yes`.
+
+**`generate_env.py`**: generates root `.env` and the matching frontend env file for `--dev`, `--sit`, or `--prd`; existing non-placeholder secrets are preserved unless `--force-secrets` is used.
+
+**`deploy_middleware.py`**: Checks MySQL + Redis + N private-hot + N group-hot + im-files-init, starts only missing or unready middleware, then waits for readiness; im-files-init waits for completion.
 
 **`deploy_services.py`**: Service aliases: `api/api-server→im-api-server`, `im/im-server→im-server`, `frontend→im-frontend`, `ai/spring-ai→im-spring-ai`. `_hot_urls()` dynamically generates comma-separated Redis URL list based on shard count. Supports `--no-build`, `--pull`, `--no-deps`, `--with-deps`, `--skip-middleware-check`.
 
 **`init_db.py`**: `--full` mode: stops app services → parses CREATE DATABASE from SQL → DROP each → imports full SQL via docker exec stdin.
 
-**`full_backend_api_test.py`** (996 lines): `ApiClient` HTTP client with cookie management, JSON handling, Bearer auth. Tests: health → register 3 users → seed relationships via MySQL direct insert → login → auth chain (parse/refresh/introspect/permission/ws-ticket) → user profile → phone/email bind → password change → heartbeat → friends → groups → files → messages (private + WS push verification) → group messages → WS heartbeat → account cleanup. WebSocket implementation: pure socket handshake + frame parsing (masked frame, 2-byte/8-byte length). Internal HMAC signing: `method={}&path={}&bodyHash={SHA256_BASE64}&ts={ms}&nonce={uuid}`.
+**`test.py`**: `ApiClient` HTTP client with cookie management, JSON handling, Bearer auth, and root `.env` loading. Tests: health → register 3 users → seed relationships via MySQL direct insert → login → auth chain (parse/refresh/introspect/permission/ws-ticket) → user profile → phone/email bind → password change → heartbeat → friends → groups → files → messages (private + WS push verification) → group messages → WS heartbeat → account cleanup. WebSocket implementation: pure socket handshake + frame parsing (masked frame, 2-byte/8-byte length). Internal HMAC signing: `method={}&path={}&bodyHash={SHA256_BASE64}&ts={ms}&nonce={uuid}`.
 
 ### Hot Shard Port Mapping
 
@@ -550,11 +554,7 @@ System env (highest priority)
 
 `worker_processes auto`, `worker_rlimit_nofile 200000`, `worker_connections 65535`, `multi_accept on`, `keepalive_timeout 300s`, `keepalive_requests 100000`, `server_tokens off`.
 
-### Redis Migration Tools (`scripts/`)
-
-- `migrate_redis.sh` (135 lines) — Merges 4 low-traffic Redis instances into `im-redis-shared`. Uses SCAN + DUMP + RESTORE with prefix isolation (`route:`, `evt_priv:`, `evt_grp:`, `default:`). Supports `--dry-run`, `--resume` (checkpoint recovery).
-- `rollback_redis.sh` (51 lines) — Reverts docker-compose.yml URL mappings via sed.
-- `verify_redis.sh` (157 lines) — Validates migration: DBSIZE comparison, prefix distribution, 100-key sample comparison (string/hash/list/set/zset/stream types), optional `redis-benchmark`.
+Deployment entry scripts are intentionally limited to `docker_clean.py`, `generate_env.py`, `deploy_middleware.py`, `init_db.py`, `deploy_services.py`, and `test.py`. Shared helper code lives in `deploy_utils.py`.
 
 ---
 

@@ -79,7 +79,7 @@ user route table for precise push delivery.
 Run the full backend simulation after the stack is up:
 
 ```powershell
-python scripts/full_backend_api_test.py
+python scripts/test.py
 ```
 
 The script registers users, logs in, refreshes/parses tokens, tests internal

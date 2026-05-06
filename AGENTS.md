@@ -129,7 +129,7 @@ python scripts/init_db.py --full
 python scripts/deploy_services.py
 
 # 4. Run integration test suite
-python scripts/full_backend_api_test.py
+python scripts/test.py
 ```
 
 Deploy a single service:

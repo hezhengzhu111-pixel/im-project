@@ -27,6 +27,12 @@ APPLICATION_SERVICES = ["im-frontend", "im-api-server", "im-server"]
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Initialize the Rust IM MySQL database.")
     parser.add_argument(
+        "mode",
+        nargs="?",
+        choices=["check", "full"],
+        help="Use 'full' to drop and re-import all databases; default is check.",
+    )
+    parser.add_argument(
         "--full",
         action="store_true",
         help=(
@@ -91,6 +97,7 @@ def stop_application_services(config) -> None:
 
 def main() -> None:
     args = build_parser().parse_args()
+    full_import = args.full or args.mode == "full"
     ensure_docker_environment()
     config = load_config()
     docker_cmd = resolve_executable("Docker", ["docker"])
@@ -98,7 +105,7 @@ def main() -> None:
     run_command(compose_up_command(config, ["im-mysql"], pull=False), cwd=config.project_dir)
     wait_for_service_ready(config, "im-mysql")
 
-    if not args.full:
+    if not full_import:
         print(f"SQL file check passed: {config.sql_init_file}")
         return
 

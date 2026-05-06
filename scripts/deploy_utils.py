@@ -24,6 +24,18 @@ class DeploymentConfig:
     mysql_root_password: str
 
 
+@dataclass(frozen=True)
+class ServiceStatus:
+    service: str
+    container_id: str
+    status: str
+    health_status: str | None
+    exit_code: int | None
+    restart_count: int
+    ready: bool
+    detail: str
+
+
 def fatal(message: str) -> NoReturn:
     print(f"ERROR: {message}", file=sys.stderr)
     sys.exit(1)
@@ -190,6 +202,16 @@ def compose_service_container(config: DeploymentConfig, service: str) -> str:
     return container_id.splitlines()[0]
 
 
+def compose_service_container_id(config: DeploymentConfig, service: str) -> str:
+    result = run_command(
+        [*compose_base_command(config), "ps", "-a", "-q", service],
+        cwd=config.project_dir,
+        capture_output=True,
+        check=False,
+    )
+    return result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+
+
 def inspect_container_state(container_id: str) -> dict:
     docker_cmd = resolve_executable("Docker", ["docker"])
     result = run_command(
@@ -203,6 +225,63 @@ def inspect_container_state(container_id: str) -> dict:
         return json.loads(result.stdout.strip())
     except json.JSONDecodeError:
         return {}
+
+
+def service_status(
+    config: DeploymentConfig,
+    service: str,
+    *,
+    one_shot: bool = False,
+) -> ServiceStatus:
+    container_id = compose_service_container_id(config, service)
+    if not container_id:
+        return ServiceStatus(
+            service=service,
+            container_id="",
+            status="missing",
+            health_status=None,
+            exit_code=None,
+            restart_count=0,
+            ready=False,
+            detail="container missing",
+        )
+
+    state = inspect_container_state(container_id)
+    status = str(state.get("Status") or "unknown")
+    health_status = (state.get("Health") or {}).get("Status")
+    exit_code = state.get("ExitCode")
+    restart_count = int(state.get("RestartCount") or 0)
+    running = state.get("Running") is True
+    if one_shot:
+        ready = status == "exited" and exit_code == 0
+    else:
+        ready = health_status == "healthy" or (health_status is None and running)
+    details = [status]
+    if health_status:
+        details.append(f"health={health_status}")
+    if status == "exited":
+        details.append(f"exit={exit_code}")
+    if restart_count:
+        details.append(f"restarts={restart_count}")
+    return ServiceStatus(
+        service=service,
+        container_id=container_id,
+        status=status,
+        health_status=health_status,
+        exit_code=exit_code if isinstance(exit_code, int) else None,
+        restart_count=restart_count,
+        ready=ready,
+        detail=", ".join(details),
+    )
+
+
+def print_service_statuses(statuses: Sequence[ServiceStatus]) -> None:
+    if not statuses:
+        return
+    print("Service status:")
+    for status in statuses:
+        marker = "ready" if status.ready else "pending"
+        print(f"  {status.service}: {marker} ({status.detail})")
 
 
 def wait_for_service_ready(

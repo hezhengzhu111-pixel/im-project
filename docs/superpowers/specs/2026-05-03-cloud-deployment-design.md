@@ -226,7 +226,7 @@ Contents:
    ```bash
    curl http://<SERVER_IP>/          # frontend
    curl http://<SERVER_IP>:8082/health  # API server
-   python scripts/full_backend_api_test.py
+   python scripts/test.py
    ```
 6. **Troubleshooting**: Common issues and solutions
 

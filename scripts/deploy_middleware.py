@@ -8,7 +8,9 @@ from deploy_utils import (
     compose_up_command,
     ensure_docker_environment,
     load_config,
+    print_service_statuses,
     run_command,
+    service_status,
     wait_for_service_completed,
     wait_for_service_ready,
 )
@@ -43,6 +45,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Do not wait for middleware readiness after starting containers.",
     )
+    parser.add_argument(
+        "--status-only",
+        action="store_true",
+        help="Only print middleware status; do not start missing containers.",
+    )
     return parser
 
 
@@ -51,20 +58,39 @@ def main() -> None:
     ensure_docker_environment()
     config = load_config()
     services = middleware_services()
+    one_shot_services = {"im-files-init"}
+    statuses = [
+        service_status(config, service, one_shot=service in one_shot_services)
+        for service in services
+    ]
+    print_service_statuses(statuses)
+    missing_services = [
+        status.service for status in statuses if not status.ready or args.force_recreate
+    ]
+    if args.status_only:
+        return
+    if not missing_services:
+        print("Middleware is already ready; nothing to deploy.")
+        return
+
+    recreate_unready = any(
+        status.container_id and not status.ready for status in statuses
+    )
+    print("Deploying missing/unready middleware: " + ", ".join(missing_services))
     command = compose_up_command(
         config,
-        services,
+        missing_services,
         pull=args.pull,
-        force_recreate=args.force_recreate,
+        force_recreate=args.force_recreate or recreate_unready,
     )
     run_command(command, cwd=config.project_dir)
     if not args.no_wait:
-        for service in services:
-            if service == "im-files-init":
+        for service in missing_services:
+            if service in one_shot_services:
                 wait_for_service_completed(config, service)
             else:
                 wait_for_service_ready(config, service)
-    print("Middleware deployment complete: " + ", ".join(services))
+    print("Middleware deployment complete: " + ", ".join(missing_services))
 
 
 if __name__ == "__main__":

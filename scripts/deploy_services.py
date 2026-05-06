@@ -7,8 +7,12 @@ import os
 from deploy_utils import (
     compose_up_command,
     ensure_docker_environment,
+    fatal,
     load_config,
+    print_service_statuses,
     run_command,
+    service_status,
+    wait_for_service_completed,
     wait_for_service_ready,
 )
 
@@ -44,6 +48,7 @@ def middleware_services() -> list[str]:
     services.append("im-redis-group-hot")
     for i in range(2, count + 1):
         services.append(f"im-redis-group-hot-{i}")
+    services.append("im-files-init")
     return services
 
 
@@ -99,6 +104,27 @@ def normalize_services(raw_services: list[str]) -> list[str]:
     return services
 
 
+def ensure_middleware_ready(config) -> None:
+    one_shot_services = {"im-files-init"}
+    statuses = [
+        service_status(config, service, one_shot=service in one_shot_services)
+        for service in middleware_services()
+    ]
+    print_service_statuses(statuses)
+    missing = [status.service for status in statuses if status.status == "missing"]
+    if missing:
+        fatal(
+            "Missing middleware containers: "
+            + ", ".join(missing)
+            + ". Run scripts/deploy_middleware.py first."
+        )
+    for status in statuses:
+        if status.service in one_shot_services:
+            wait_for_service_completed(config, status.service)
+        else:
+            wait_for_service_ready(config, status.service)
+
+
 def main() -> None:
     args = build_parser().parse_args()
     ensure_docker_environment()
@@ -113,8 +139,7 @@ def main() -> None:
                           _hot_urls("im-redis-group-hot", "IM_GROUP_HOT_SHARDS", password))
 
     if not args.skip_middleware_check:
-        for service in middleware_services():
-            wait_for_service_ready(config, service)
+        ensure_middleware_ready(config)
 
     command = compose_up_command(
         config,
