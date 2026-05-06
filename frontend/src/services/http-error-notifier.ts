@@ -1,6 +1,9 @@
 import { ElMessage } from "element-plus";
 import { useI18nStore } from "@/stores/i18n";
-import { registerResponseInterceptor } from "@/utils/httpClient";
+import {
+  getHttpErrorMessage,
+  registerResponseInterceptor,
+} from "@/utils/httpClient";
 
 const getI18nT = () => {
   try {
@@ -27,6 +30,11 @@ export const notifyHttpError = (err: any): void => {
     return;
   }
   const t = getI18nT();
+  const responseMessage = getHttpErrorMessage(err);
+  if (responseMessage) {
+    ElMessage.error(responseMessage);
+    return;
+  }
   const { status, statusText } = err.response;
   const i18nKey = ERROR_MESSAGES[status];
   if (i18nKey) {

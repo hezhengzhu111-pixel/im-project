@@ -114,6 +114,38 @@ describe("user auth store", () => {
     expect(ok).toBe(false);
   });
 
+  it("surfaces backend conflict message when register username exists", async () => {
+    const error = Object.assign(
+      new Error("Request failed with status code 409"),
+      {
+        response: {
+          status: 409,
+          data: {
+            code: 409,
+            message: "用户名已存在",
+            success: false,
+          },
+        },
+      },
+    );
+    error.message = error.response.data.message;
+    register.mockRejectedValue(error);
+
+    const { ElMessage } = await import("element-plus");
+    const { useUserStore } = await import("@/stores/user");
+    const store = useUserStore();
+
+    const ok = await store.register({
+      username: "u1",
+      password: "123456",
+      email: "u1@test.com",
+      nickname: "u1",
+    });
+
+    expect(ok).toBe(false);
+    expect(ElMessage.error).toHaveBeenCalledWith("用户名已存在");
+  });
+
   it("clears local auth state even when server logout fails", async () => {
     logout.mockRejectedValue(new Error("network"));
 
