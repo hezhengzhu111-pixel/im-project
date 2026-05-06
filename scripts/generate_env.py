@@ -291,6 +291,7 @@ def main() -> None:
         source = secret_sources.get(env_key, "unchanged")
         print(f"  {description}: {source}")
     print("Keep .env secure and do not commit it.")
+    print("Next step: run scripts/deploy_services.py to apply database migrations and start services.")
 
 
 if __name__ == "__main__":
