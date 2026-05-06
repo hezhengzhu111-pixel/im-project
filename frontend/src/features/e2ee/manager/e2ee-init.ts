@@ -9,20 +9,11 @@
  * 5. 启动设备心跳（30 分钟间隔）
  */
 
-import { resolveDeviceId } from './device-identity';
-import {
-  getLocalPublicBundle,
-  hasIdentityKey,
-  saveIdentityKeyPair,
-  saveLocalPublicBundle,
-  saveSignedPreKey,
-} from '../store/key-store';
-import { generateKeyBundle } from '../engine/x3dh';
-import { keyService } from '../api/key-service';
 import { e2eeManager } from './e2ee-manager';
 import { logger } from '@/utils/logger';
+import { ensureLocalE2eeDeviceRegistered } from './local-device';
+import { keyService } from '../api/key-service';
 
-const SIGNED_PRE_KEY_ID = 1;
 const HEARTBEAT_INTERVAL_MS = 30 * 60 * 1000; // 30 分钟
 
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -35,14 +26,8 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
  */
 export async function initE2ee(): Promise<void> {
   try {
-    const deviceId = await resolveDeviceId();
+    const deviceId = await ensureLocalE2eeDeviceRegistered();
     await e2eeManager.init(deviceId);
-
-    const hasKey = await hasIdentityKey();
-    const hasV2Bundle = Boolean(await getLocalPublicBundle());
-    if (!hasKey || !hasV2Bundle) {
-      await generateAndUploadBundle(deviceId);
-    }
 
     startDeviceHeartbeat(deviceId);
     logger.info('[E2EE] initialized', { deviceId });
@@ -50,37 +35,6 @@ export async function initE2ee(): Promise<void> {
     // E2EE 初始化失败不应阻塞应用启动
     logger.warn('[E2EE] initialization failed, encryption will be unavailable', error);
   }
-}
-
-/**
- * 生成 Key Bundle 并上传到服务端。
- * 仅在首次使用 E2EE 时调用。
- */
-async function generateAndUploadBundle(deviceId: string): Promise<void> {
-  const bundle = await generateKeyBundle();
-
-  // 保存到本地 IndexedDB
-  await saveIdentityKeyPair(bundle.identityKeyPair);
-  await saveSignedPreKey(SIGNED_PRE_KEY_ID, bundle.signedPreKeyPair);
-
-  // 上传公钥 Bundle 到服务端
-  await keyService.uploadBundle({
-    deviceId,
-    identityKey: bundle.bundle.identityKey,
-    signingIdentityKey: bundle.bundle.signingIdentityKey,
-    signedPreKey: bundle.bundle.signedPreKey,
-    signedPreKeySignature: bundle.bundle.signedPreKeySignature,
-    oneTimePreKeys: [],
-  });
-  await saveLocalPublicBundle({
-    version: 2,
-    identityKey: bundle.bundle.identityKey,
-    signingIdentityKey: bundle.bundle.signingIdentityKey,
-    signedPreKey: bundle.bundle.signedPreKey,
-    signedPreKeySignature: bundle.bundle.signedPreKeySignature,
-  });
-
-  logger.info('[E2EE] key bundle generated and uploaded');
 }
 
 /**

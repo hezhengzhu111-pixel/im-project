@@ -65,8 +65,9 @@ fn validate_optional_key(value: Option<&str>, field_name: &str) -> Result<(), Ap
 /// 认证要求：需要有效的 JWT access token。
 /// 安全约束：session_id 格式为 `{id_a}_{id_b}`，发起者必须是其中一方；
 /// 仅保存公钥材料（identity_key、signed_pre_key、request_payload_json），
-/// 不保存任何私钥。已加密的会话不可重复发起。
-/// 返回语义：成功返回 "ok"，幂等更新（rejected/pending 状态可重新发起）。
+/// 不保存任何私钥。已加密的会话可以重新发起协商以完成换钥或恢复。
+/// 返回语义：成功返回 "ok"，幂等更新；已有 encrypted 记录也允许重新发起，
+/// 用于本地密钥丢失、换设备或主动轮换会话密钥后的恢复。
 pub async fn request_encryption(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -102,12 +103,8 @@ pub async fn request_encryption(
     .fetch_optional(&state.db)
     .await?;
 
-    if let Some(row) = existing {
-        let status: String = row.get("status");
-        if status == "encrypted" {
-            return Err(AppError::Conflict("session already encrypted".to_string()));
-        }
-        // 如果是 rejected 或 pending，允许重新请求：更新记录
+    if existing.is_some() {
+        // 允许重新请求：更新记录并将服务端协商状态重置为 pending。
         sqlx::query(
             r#"UPDATE service_user_service_db.e2ee_sessions
                SET requester_id = ?, target_user_id = ?, status = 'pending',
@@ -256,16 +253,27 @@ pub async fn reject_encryption(
 
 /// 解析 session_id（格式 `{id_a}_{id_b}`）为两个用户 ID。
 fn parse_session_partners(session_id: &str) -> Result<(i64, i64), AppError> {
-    let parts: Vec<&str> = session_id.split('_').collect();
+    let normalized = session_id.strip_prefix("p_").unwrap_or(session_id);
+    let parts: Vec<&str> = normalized.split('_').collect();
     if parts.len() != 2 {
         return Err(AppError::BadRequest(
-            "session_id must be in format '{id_a}_{id_b}'".to_string(),
+            "session_id must be in format '{id_a}_{id_b}' or 'p_{id_a}_{id_b}'".to_string(),
         ));
     }
-    let id_a: i64 = parts[0]
+    let Some(id_a_raw) = parts.first() else {
+        return Err(AppError::BadRequest(
+            "session_id must include left user id".to_string(),
+        ));
+    };
+    let Some(id_b_raw) = parts.get(1) else {
+        return Err(AppError::BadRequest(
+            "session_id must include right user id".to_string(),
+        ));
+    };
+    let id_a: i64 = id_a_raw
         .parse()
         .map_err(|_| AppError::BadRequest("invalid user id in session_id".to_string()))?;
-    let id_b: i64 = parts[1]
+    let id_b: i64 = id_b_raw
         .parse()
         .map_err(|_| AppError::BadRequest("invalid user id in session_id".to_string()))?;
     if id_a == id_b {
@@ -274,4 +282,35 @@ fn parse_session_partners(session_id: &str) -> Result<(i64, i64), AppError> {
         ));
     }
     Ok((id_a, id_b))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_session_partners;
+
+    #[test]
+    fn parse_session_partners_accepts_frontend_session_id() -> Result<(), &'static str> {
+        let parsed = parse_session_partners("1_2").map_err(|_| "parse failed")?;
+        if parsed != (1, 2) {
+            return Err("unexpected partners");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_session_partners_accepts_backend_conversation_id() -> Result<(), &'static str> {
+        let parsed = parse_session_partners("p_1_2").map_err(|_| "parse failed")?;
+        if parsed != (1, 2) {
+            return Err("unexpected partners");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_session_partners_rejects_same_user() -> Result<(), &'static str> {
+        if parse_session_partners("7_7").is_ok() {
+            return Err("same user session should be rejected");
+        }
+        Ok(())
+    }
 }

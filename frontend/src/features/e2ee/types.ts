@@ -3,6 +3,7 @@ export type E2eeSessionStatus = 'plaintext' | 'negotiating' | 'encrypted' | 'fai
 
 /** 设备信息 */
 export interface E2eeDevice {
+  userId?: string;
   deviceId: string;
   identityKey: string;       // Base64
   signedPreKey: string;      // Base64

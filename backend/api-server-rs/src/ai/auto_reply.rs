@@ -151,7 +151,7 @@ async fn check_auto_reply_db(db: &MySqlPool, user_id: i64) -> Result<bool, AppEr
     .bind(user_id)
     .fetch_optional(db)
     .await?;
-    Ok(row.map_or(false, |r| r.0 != 0))
+    Ok(row.is_some_and(|r| r.0 != 0))
 }
 
 async fn get_persona_db(db: &MySqlPool, user_id: i64) -> Result<String, AppError> {

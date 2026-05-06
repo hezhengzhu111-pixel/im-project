@@ -59,10 +59,10 @@ pub fn routes() -> Router<AppState> {
         )
         .route(
             "/api/e2ee/devices/:user_id",
-            get(e2ee::key_api::get_devices),
+            get(e2ee::key_api::get_devices_by_user_path),
         )
         .route(
             "/api/e2ee/groups/:group_id/devices",
-            get(e2ee::key_api::get_devices),
+            get(e2ee::key_api::get_group_devices),
         )
 }

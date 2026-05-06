@@ -62,7 +62,8 @@ pub async fn upload(
                 .bytes()
                 .await
                 .map_err(|_| AppError::BadRequest("read upload failed".into()))?;
-            let file_size = data.len() as i64;
+            let file_size = i64::try_from(data.len())
+                .map_err(|_| AppError::BadRequest("file too large".to_string()))?;
             let file_type = match content_type.as_str() {
                 "application/pdf" => "pdf",
                 "application/msword" => "doc",

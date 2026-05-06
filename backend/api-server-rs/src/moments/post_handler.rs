@@ -421,7 +421,9 @@ pub async fn add_media(
     for (i, item) in form.media.iter().enumerate() {
         let media_id = ids::next_id(state.config.snowflake_node_id);
         let media_type = item.media_type.unwrap_or(0);
-        let sort_order = item.sort_order.unwrap_or(i as i8);
+        let fallback_sort_order = i8::try_from(i)
+            .map_err(|_| AppError::BadRequest("too many media items".to_string()))?;
+        let sort_order = item.sort_order.unwrap_or(fallback_sort_order);
 
         sqlx::query(
             r#"INSERT INTO service_message_service_db.moments_media

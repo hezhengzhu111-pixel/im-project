@@ -70,7 +70,7 @@ pub async fn update(
 ) -> Result<Json<ApiResponse<Value>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
 
-    let auto_reply_enabled = body.auto_reply_enabled.map(|v| i8::from(v));
+    let auto_reply_enabled = body.auto_reply_enabled.map(i8::from);
     let auto_reply_persona = body.auto_reply_persona.map(|v| v.trim().to_string());
 
     sqlx::query(

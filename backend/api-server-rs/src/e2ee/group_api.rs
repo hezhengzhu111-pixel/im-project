@@ -135,7 +135,9 @@ async fn ensure_all_devices_belong_to_recipients(
     }
     let found_count: i64 = query.fetch_one(db).await?;
 
-    if found_count as usize != entries.len() {
+    let found_count = usize::try_from(found_count)
+        .map_err(|_| AppError::Upstream("invalid device count".to_string()))?;
+    if found_count != entries.len() {
         return Err(AppError::Forbidden(
             "recipient device is not registered".to_string(),
         ));

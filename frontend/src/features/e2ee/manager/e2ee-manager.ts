@@ -11,6 +11,7 @@ import { MessageBuffer } from '../engine/message-buffer';
 import { getLocalSessionStatus, initiateNegotiation, respondToNegotiation } from './negotiation';
 import type { RatchetHeader, E2eeSessionStatus } from '../types';
 import { keyService } from '../api/key-service';
+import { resolveDeviceId } from './device-identity';
 
 export interface EncryptedPayload {
   ciphertext: string;
@@ -24,6 +25,13 @@ class E2eeManager {
 
   async init(deviceId: string): Promise<void> {
     this.deviceId = deviceId;
+  }
+
+  private async resolveCurrentDeviceId(): Promise<string> {
+    if (!this.deviceId) {
+      this.deviceId = await resolveDeviceId();
+    }
+    return this.deviceId;
   }
 
   getSessionStatus(sessionId: string): E2eeSessionStatus {
@@ -49,7 +57,7 @@ class E2eeManager {
     const { header, ciphertext } = await ratchetEncrypt(state, plaintext);
     await saveRatchetState(sessionId, state);
 
-    return { ciphertext, header, deviceId: this.deviceId };
+    return { ciphertext, header, deviceId: await this.resolveCurrentDeviceId() };
   }
 
   /**
