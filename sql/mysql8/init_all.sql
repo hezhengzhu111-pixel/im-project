@@ -192,7 +192,8 @@ CREATE TABLE IF NOT EXISTS im_group_member (
   PRIMARY KEY (id),
   UNIQUE KEY uk_group_member_group_user (group_id, user_id),
   KEY idx_group_member_group (group_id),
-  KEY idx_group_member_user (user_id)
+  KEY idx_group_member_user (user_id),
+  KEY idx_group_member_user_status_group (user_id, status, group_id) COMMENT '用户群会话列表查询：WHERE user_id=? AND status=1'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='群成员表';
 
 USE service_message_service_db;

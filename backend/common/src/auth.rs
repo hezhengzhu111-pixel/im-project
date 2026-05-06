@@ -40,11 +40,17 @@ pub fn parse_bearer(value: Option<&str>) -> Option<String> {
 }
 
 pub fn validate_access_token(token: &str, secret: &str) -> anyhow::Result<Identity> {
+    if secret.len() < 64 {
+        anyhow::bail!(
+            "JWT secret must be at least 64 bytes (got {} bytes)",
+            secret.len()
+        );
+    }
     let mut validation = Validation::new(Algorithm::HS512);
     validation.validate_exp = true;
     let data = decode::<Claims>(
         token,
-        &DecodingKey::from_secret(&padded_hs512_secret(secret)),
+        &DecodingKey::from_secret(secret.as_bytes()),
         &validation,
     )?;
     if data.claims.typ != "access" {
@@ -98,21 +104,96 @@ pub fn base64_url(value: &str) -> String {
     URL_SAFE_NO_PAD.encode(value.as_bytes())
 }
 
-fn padded_hs512_secret(secret: &str) -> Vec<u8> {
-    let bytes = secret.as_bytes();
-    if bytes.len() >= 64 {
-        return bytes.to_vec();
+/// Returns an error if the JWT secret is empty or shorter than 64 bytes.
+pub fn validate_jwt_secret(name: &str, secret: &str) -> anyhow::Result<()> {
+    if secret.is_empty() {
+        anyhow::bail!("{name} must not be empty");
     }
-    let mut padded = vec![0_u8; 64];
-    if bytes.is_empty() {
-        return padded;
+    if secret.len() < 64 {
+        anyhow::bail!(
+            "{name} must be at least 64 bytes (got {} bytes)",
+            secret.len()
+        );
     }
-    let source_len = bytes.len();
-    for (index, slot) in padded.iter_mut().enumerate() {
-        let source_index = index % source_len;
-        if let Some(byte) = bytes.get(source_index) {
-            *slot = *byte;
-        }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+
+    fn sign_token(secret: &str) -> String {
+        let claims = Claims {
+            user_id: 1,
+            username: "test".to_string(),
+            typ: "access".to_string(),
+            jti: Some("jti1".to_string()),
+            sub: Some("test".to_string()),
+            iat: Some(1_000_000),
+            exp: 9_999_999_999,
+        };
+        encode(
+            &Header::new(Algorithm::HS512),
+            &claims,
+            &EncodingKey::from_secret(secret.as_bytes()),
+        )
+        .expect("encode should succeed")
     }
-    padded
+
+    #[test]
+    fn empty_secret_validate_access_token_fails() {
+        let token = sign_token(&"a".repeat(64));
+        let result = validate_access_token(&token, "");
+        assert!(result.is_err(), "empty secret should fail");
+        assert!(
+            result.unwrap_err().to_string().contains("64 bytes"),
+            "error should mention length requirement"
+        );
+    }
+
+    #[test]
+    fn short_secret_validate_access_token_fails() {
+        let short = "short-secret";
+        let token = sign_token(&"a".repeat(64));
+        let result = validate_access_token(&token, short);
+        assert!(result.is_err(), "short secret should fail");
+        assert!(
+            result.unwrap_err().to_string().contains("64 bytes"),
+            "error should mention length requirement"
+        );
+    }
+
+    #[test]
+    fn valid_secret_sign_and_validate_succeeds() {
+        let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
+        assert!(secret.len() >= 64, "test secret must be >= 64 bytes");
+        let token = sign_token(secret);
+        let identity = validate_access_token(&token, secret).expect("should succeed");
+        assert_eq!(identity.user_id, 1);
+        assert_eq!(identity.username, "test");
+    }
+
+    #[test]
+    fn validate_jwt_secret_empty_fails() {
+        let result = validate_jwt_secret("JWT_SECRET", "");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("must not be empty"));
+    }
+
+    #[test]
+    fn validate_jwt_secret_short_fails() {
+        let result = validate_jwt_secret("JWT_SECRET", "short");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("64 bytes"));
+    }
+
+    #[test]
+    fn validate_jwt_secret_64_bytes_passes() {
+        let secret = "a".repeat(64);
+        assert!(validate_jwt_secret("JWT_SECRET", &secret).is_ok());
+    }
 }

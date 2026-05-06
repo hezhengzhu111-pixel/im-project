@@ -24,8 +24,8 @@ pub fn load_master_key(encoded: &str) -> Result<[u8; 32], AppError> {
 ///
 /// Returns a base64-encoded string consisting of: `nonce (12) || ciphertext || tag (16)`.
 pub fn encrypt(plaintext: &str, master_key: &[u8; 32]) -> Result<String, AppError> {
-    let cipher =
-        Aes256Gcm::new_from_slice(master_key).map_err(|_| AppError::BadRequest("bad key".into()))?;
+    let cipher = Aes256Gcm::new_from_slice(master_key)
+        .map_err(|_| AppError::BadRequest("bad key".into()))?;
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
     let ciphertext = cipher
         .encrypt(&nonce, plaintext.as_bytes())
@@ -46,8 +46,8 @@ pub fn decrypt(encoded: &str, master_key: &[u8; 32]) -> Result<String, AppError>
     }
     let (nonce_bytes, ciphertext) = data.split_at(12);
     let nonce = aes_gcm::Nonce::from_slice(nonce_bytes);
-    let cipher =
-        Aes256Gcm::new_from_slice(master_key).map_err(|_| AppError::BadRequest("bad key".into()))?;
+    let cipher = Aes256Gcm::new_from_slice(master_key)
+        .map_err(|_| AppError::BadRequest("bad key".into()))?;
     let plaintext = cipher
         .decrypt(nonce, ciphertext)
         .map_err(|_| AppError::BadRequest("decryption failed".into()))?;

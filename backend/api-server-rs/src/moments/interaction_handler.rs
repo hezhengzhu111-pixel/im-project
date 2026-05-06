@@ -49,10 +49,7 @@ pub struct CommentDto {
 fn like_from_row(row: &sqlx::mysql::MySqlRow) -> LikeDto {
     let created_at: chrono::NaiveDateTime = row.try_get("created_at").unwrap_or_default();
     LikeDto {
-        id: row
-            .try_get::<i64, _>("id")
-            .unwrap_or_default()
-            .to_string(),
+        id: row.try_get::<i64, _>("id").unwrap_or_default().to_string(),
         user_id: row
             .try_get::<i64, _>("user_id")
             .unwrap_or_default()
@@ -67,10 +64,7 @@ fn comment_from_row(row: &sqlx::mysql::MySqlRow) -> CommentDto {
     let created_at: chrono::NaiveDateTime = row.try_get("created_at").unwrap_or_default();
     let parent_id: Option<i64> = row.try_get("parent_id").unwrap_or_default();
     CommentDto {
-        id: row
-            .try_get::<i64, _>("id")
-            .unwrap_or_default()
-            .to_string(),
+        id: row.try_get::<i64, _>("id").unwrap_or_default().to_string(),
         post_id: row
             .try_get::<i64, _>("post_id")
             .unwrap_or_default()
@@ -166,10 +160,7 @@ pub async fn create_comment(
     let identity = identity_from_headers(&headers, &state.config)?;
     let user_id = identity.user_id;
     let comment_id = ids::next_id(state.config.snowflake_node_id);
-    let parent_id: Option<i64> = form
-        .parent_id
-        .as_ref()
-        .and_then(|s| s.parse::<i64>().ok());
+    let parent_id: Option<i64> = form.parent_id.as_ref().and_then(|s| s.parse::<i64>().ok());
 
     sqlx::query(
         r#"INSERT INTO service_message_service_db.moments_comment

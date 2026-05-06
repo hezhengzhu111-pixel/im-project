@@ -79,9 +79,8 @@ const DEFAULT_REDIS_URL: &str = "redis://127.0.0.1:6379/0";
 const DEFAULT_JWT_SECRET: &str =
     "im-access-secret-im-access-secret-im-access-secret-im-access-secret";
 const DEFAULT_REFRESH_SECRET: &str =
-    "im-refresh-secret-im-refresh-secret-im-refresh-secret-im";
-const DEFAULT_INTERNAL_SECRET: &str =
-    "im-internal-secret-im-internal-secret-im-internal-secret-im";
+    "im-refresh-secret-im-refresh-secret-im-refresh-secret-im-refresh";
+const DEFAULT_INTERNAL_SECRET: &str = "im-internal-secret-im-internal-secret-im-internal-secret-im";
 const DEFAULT_GATEWAY_AUTH_SECRET: &str =
     "im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret";
 
@@ -169,10 +168,7 @@ impl AppConfig {
             ),
             internal_secret: env_string("IM_INTERNAL_SECRET", DEFAULT_INTERNAL_SECRET),
             internal_max_skew_ms: env_i64("IM_INTERNAL_MAX_SKEW_MS", 300_000),
-            gateway_auth_secret: env_string(
-                "IM_GATEWAY_AUTH_SECRET",
-                DEFAULT_GATEWAY_AUTH_SECRET,
-            ),
+            gateway_auth_secret: env_string("IM_GATEWAY_AUTH_SECRET", DEFAULT_GATEWAY_AUTH_SECRET),
             access_cookie_name: env_string("IM_AUTH_COOKIE_ACCESS_TOKEN_NAME", "IM_ACCESS_TOKEN"),
             refresh_cookie_name: env_string(
                 "IM_AUTH_COOKIE_REFRESH_TOKEN_NAME",
@@ -217,6 +213,10 @@ impl AppConfig {
             ai_summary_cache_ttl_sec: env_u64("IM_AI_SUMMARY_CACHE_TTL_SEC", 1800),
             ai_snowflake_node_id: env_u16("IM_AI_SNOWFLAKE_NODE_ID", 41),
         };
+        if let Err(e) = config.validate_jwt_secret_lengths() {
+            eprintln!("FATAL: JWT secret validation failed:\n{e}");
+            std::process::exit(1);
+        }
         if is_local_dev_or_test() {
             config.warn_dev_secrets();
         } else if let Err(e) = config.validate_production_secrets() {
@@ -258,18 +258,85 @@ impl AppConfig {
             return;
         }
         warn_if_example("JWT_SECRET", &self.jwt_secret, DEFAULT_JWT_SECRET);
-        warn_if_example("AUTH_REFRESH_SECRET", &self.refresh_secret, DEFAULT_REFRESH_SECRET);
-        warn_if_example("IM_INTERNAL_SECRET", &self.internal_secret, DEFAULT_INTERNAL_SECRET);
-        warn_if_example("IM_GATEWAY_AUTH_SECRET", &self.gateway_auth_secret, DEFAULT_GATEWAY_AUTH_SECRET);
+        warn_if_example(
+            "AUTH_REFRESH_SECRET",
+            &self.refresh_secret,
+            DEFAULT_REFRESH_SECRET,
+        );
+        warn_if_example(
+            "IM_INTERNAL_SECRET",
+            &self.internal_secret,
+            DEFAULT_INTERNAL_SECRET,
+        );
+        warn_if_example(
+            "IM_GATEWAY_AUTH_SECRET",
+            &self.gateway_auth_secret,
+            DEFAULT_GATEWAY_AUTH_SECRET,
+        );
     }
 
     pub fn validate_production_secrets(&self) -> Result<(), String> {
         let mut errors: Vec<String> = Vec::new();
-        validate_secret("JWT_SECRET", &self.jwt_secret, DEFAULT_JWT_SECRET, 64, &mut errors);
-        validate_secret("AUTH_REFRESH_SECRET", &self.refresh_secret, DEFAULT_REFRESH_SECRET, 64, &mut errors);
-        validate_secret("IM_INTERNAL_SECRET", &self.internal_secret, DEFAULT_INTERNAL_SECRET, 32, &mut errors);
-        validate_secret("IM_GATEWAY_AUTH_SECRET", &self.gateway_auth_secret, DEFAULT_GATEWAY_AUTH_SECRET, 32, &mut errors);
-        if errors.is_empty() { Ok(()) } else { Err(errors.join("\n")) }
+        validate_secret(
+            "JWT_SECRET",
+            &self.jwt_secret,
+            DEFAULT_JWT_SECRET,
+            64,
+            &mut errors,
+        );
+        validate_secret(
+            "AUTH_REFRESH_SECRET",
+            &self.refresh_secret,
+            DEFAULT_REFRESH_SECRET,
+            64,
+            &mut errors,
+        );
+        validate_secret(
+            "IM_INTERNAL_SECRET",
+            &self.internal_secret,
+            DEFAULT_INTERNAL_SECRET,
+            32,
+            &mut errors,
+        );
+        validate_secret(
+            "IM_GATEWAY_AUTH_SECRET",
+            &self.gateway_auth_secret,
+            DEFAULT_GATEWAY_AUTH_SECRET,
+            32,
+            &mut errors,
+        );
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("\n"))
+        }
+    }
+
+    /// Validates JWT secret lengths in all environments (including dev/test).
+    /// Empty or short secrets cause a startup failure.
+    pub fn validate_jwt_secret_lengths(&self) -> Result<(), String> {
+        let mut errors: Vec<String> = Vec::new();
+        if self.jwt_secret.is_empty() {
+            errors.push("JWT_SECRET must not be empty".to_string());
+        } else if self.jwt_secret.len() < 64 {
+            errors.push(format!(
+                "JWT_SECRET must be at least 64 bytes (got {} bytes)",
+                self.jwt_secret.len()
+            ));
+        }
+        if self.refresh_secret.is_empty() {
+            errors.push("AUTH_REFRESH_SECRET must not be empty".to_string());
+        } else if self.refresh_secret.len() < 64 {
+            errors.push(format!(
+                "AUTH_REFRESH_SECRET must be at least 64 bytes (got {} bytes)",
+                self.refresh_secret.len()
+            ));
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("\n"))
+        }
     }
 }
 
@@ -385,13 +452,22 @@ fn warn_if_example(name: &str, value: &str, example: &str) {
     }
 }
 
-fn validate_secret(name: &str, value: &str, example: &str, min_len: usize, errors: &mut Vec<String>) {
+fn validate_secret(
+    name: &str,
+    value: &str,
+    example: &str,
+    min_len: usize,
+    errors: &mut Vec<String>,
+) {
     if value.is_empty() {
         errors.push(format!("{name} must be explicitly set"));
     } else if value == example {
         errors.push(format!("{name} must not use the example default value"));
     } else if value.len() < min_len {
-        errors.push(format!("{name} must be at least {min_len} bytes (got {} bytes)", value.len()));
+        errors.push(format!(
+            "{name} must be at least {min_len} bytes (got {} bytes)",
+            value.len()
+        ));
     }
 }
 
@@ -484,7 +560,10 @@ mod tests {
         let mut cfg = valid_config();
         cfg.jwt_secret = String::new();
         let err = cfg.validate_production_secrets().unwrap_err();
-        assert!(err.contains("JWT_SECRET"), "error should mention JWT_SECRET, got: {err}");
+        assert!(
+            err.contains("JWT_SECRET"),
+            "error should mention JWT_SECRET, got: {err}"
+        );
     }
 
     #[test]
@@ -492,13 +571,18 @@ mod tests {
         let mut cfg = valid_config();
         cfg.jwt_secret = DEFAULT_JWT_SECRET.to_string();
         let err = cfg.validate_production_secrets().unwrap_err();
-        assert!(err.contains("JWT_SECRET"), "error should mention JWT_SECRET, got: {err}");
+        assert!(
+            err.contains("JWT_SECRET"),
+            "error should mention JWT_SECRET, got: {err}"
+        );
     }
 
     #[test]
     fn production_valid_jwt_secret_passes() {
         let mut cfg = valid_config();
-        cfg.jwt_secret = "a-unique-production-jwt-secret-that-is-at-least-64-bytes-long-for-testing!!!".to_string();
+        cfg.jwt_secret =
+            "a-unique-production-jwt-secret-that-is-at-least-64-bytes-long-for-testing!!!"
+                .to_string();
         assert!(cfg.validate_production_secrets().is_ok());
     }
 
@@ -570,5 +654,67 @@ mod tests {
         // Restore to safe state
         env::remove_var("APP_ENV");
         env::remove_var("IM_ENV");
+    }
+
+    #[test]
+    fn jwt_secret_lengths_valid_config_passes() {
+        let cfg = valid_config();
+        assert!(cfg.validate_jwt_secret_lengths().is_ok());
+    }
+
+    #[test]
+    fn jwt_secret_lengths_empty_jwt_secret_fails() {
+        let mut cfg = valid_config();
+        cfg.jwt_secret = String::new();
+        let err = cfg.validate_jwt_secret_lengths().unwrap_err();
+        assert!(
+            err.contains("JWT_SECRET"),
+            "error should mention JWT_SECRET, got: {err}"
+        );
+        assert!(
+            err.contains("must not be empty"),
+            "error should mention empty, got: {err}"
+        );
+    }
+
+    #[test]
+    fn jwt_secret_lengths_short_jwt_secret_fails() {
+        let mut cfg = valid_config();
+        cfg.jwt_secret = "short".to_string();
+        let err = cfg.validate_jwt_secret_lengths().unwrap_err();
+        assert!(
+            err.contains("JWT_SECRET"),
+            "error should mention JWT_SECRET, got: {err}"
+        );
+        assert!(
+            err.contains("64"),
+            "error should mention 64 bytes, got: {err}"
+        );
+    }
+
+    #[test]
+    fn jwt_secret_lengths_empty_refresh_secret_fails() {
+        let mut cfg = valid_config();
+        cfg.refresh_secret = String::new();
+        let err = cfg.validate_jwt_secret_lengths().unwrap_err();
+        assert!(
+            err.contains("AUTH_REFRESH_SECRET"),
+            "error should mention AUTH_REFRESH_SECRET, got: {err}"
+        );
+    }
+
+    #[test]
+    fn jwt_secret_lengths_short_refresh_secret_fails() {
+        let mut cfg = valid_config();
+        cfg.refresh_secret = "short".to_string();
+        let err = cfg.validate_jwt_secret_lengths().unwrap_err();
+        assert!(
+            err.contains("AUTH_REFRESH_SECRET"),
+            "error should mention AUTH_REFRESH_SECRET, got: {err}"
+        );
+        assert!(
+            err.contains("64"),
+            "error should mention 64 bytes, got: {err}"
+        );
     }
 }

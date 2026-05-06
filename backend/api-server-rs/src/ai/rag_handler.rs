@@ -58,7 +58,10 @@ pub async fn upload(
                 )));
             }
 
-            let data = field.bytes().await.map_err(|_| AppError::BadRequest("read upload failed".into()))?;
+            let data = field
+                .bytes()
+                .await
+                .map_err(|_| AppError::BadRequest("read upload failed".into()))?;
             let file_size = data.len() as i64;
             let file_type = match content_type.as_str() {
                 "application/pdf" => "pdf",
@@ -154,7 +157,9 @@ pub async fn list(
         })
         .collect();
 
-    Ok(Json(ApiResponse::success(serde_json::to_value(items).unwrap_or_default())))
+    Ok(Json(ApiResponse::success(
+        serde_json::to_value(items).unwrap_or_default(),
+    )))
 }
 
 pub async fn delete_doc(

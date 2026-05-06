@@ -47,7 +47,10 @@ pub async fn enqueue_task(
     let task_id = payload.task_id.unwrap_or(0);
     let mut fields: Vec<(String, String)> = Vec::new();
 
-    fields.push(("taskType".to_string(), payload.task_type.as_str().to_string()));
+    fields.push((
+        "taskType".to_string(),
+        payload.task_type.as_str().to_string(),
+    ));
     fields.push(("userId".to_string(), payload.user_id.to_string()));
     fields.push(("taskId".to_string(), task_id.to_string()));
 
@@ -89,9 +92,10 @@ pub async fn enqueue_task(
         cmd.arg(k).arg(v);
     }
 
-    let _stream_id: String = cmd.query_async(redis).await.map_err(|e| {
-        AppError::Upstream(format!("failed to enqueue AI task: {e}"))
-    })?;
+    let _stream_id: String = cmd
+        .query_async(redis)
+        .await
+        .map_err(|e| AppError::Upstream(format!("failed to enqueue AI task: {e}")))?;
 
     Ok(task_id)
 }

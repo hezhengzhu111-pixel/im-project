@@ -96,7 +96,9 @@ pub async fn list(
         })
         .collect();
 
-    Ok(Json(ApiResponse::success(serde_json::to_value(items).unwrap_or_default())))
+    Ok(Json(ApiResponse::success(
+        serde_json::to_value(items).unwrap_or_default(),
+    )))
 }
 
 pub async fn update(
@@ -225,7 +227,10 @@ async fn call_spring_test(
         .map_err(|err| format!("spring AI unreachable: {err}"))?;
 
     let status = response.status();
-    let raw: Value = response.json().await.map_err(|err| format!("bad response: {err}"))?;
+    let raw: Value = response
+        .json()
+        .await
+        .map_err(|err| format!("bad response: {err}"))?;
 
     if status.is_success() {
         Ok(raw

@@ -1,6 +1,6 @@
 use api_server_rs::web;
 use axum::body::{to_bytes, Body};
-use axum::http::{StatusCode, Request};
+use axum::http::{Request, StatusCode};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -10,7 +10,10 @@ async fn test_app() -> axum::Router {
 }
 
 fn unique_username() -> String {
-    format!("t{:0>15}", Uuid::new_v4().as_u64_pair().0 % 1_000_000_000_000_000)
+    format!(
+        "t{:0>15}",
+        Uuid::new_v4().as_u64_pair().0 % 1_000_000_000_000_000
+    )
 }
 
 fn valid_password() -> &'static str {
@@ -272,11 +275,20 @@ async fn test_refresh_success() -> Result<(), Box<dyn std::error::Error>> {
     let refresh_json = read_json(refresh_response).await;
     assert_eq!(refresh_json["success"], json!(true));
     // 响应体不得暴露 token
-    assert!(refresh_json["data"]["accessToken"].is_null(), "accessToken must not be in response body");
-    assert!(refresh_json["data"]["refreshToken"].is_null(), "refreshToken must not be in response body");
+    assert!(
+        refresh_json["data"]["accessToken"].is_null(),
+        "accessToken must not be in response body"
+    );
+    assert!(
+        refresh_json["data"]["refreshToken"].is_null(),
+        "refreshToken must not be in response body"
+    );
     // 新字段
     assert_eq!(refresh_json["data"]["authenticated"], json!(true));
-    assert!(refresh_json["data"]["expiresInMs"].as_i64().is_some(), "expiresInMs must be present");
+    assert!(
+        refresh_json["data"]["expiresInMs"].as_i64().is_some(),
+        "expiresInMs must be present"
+    );
     Ok(())
 }
 

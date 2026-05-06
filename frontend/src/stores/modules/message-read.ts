@@ -9,10 +9,11 @@ type SessionStoreLike = {
   markSessionReadLocally: (sessionId: string) => void;
 };
 
-type MessageReadModuleContext = {
+export type MessageReadModuleContext = {
   messages: Ref<Map<string, Message[]>>;
   readSessionLocks: Ref<Set<string>>;
   readSessionLastAt: Ref<Map<string, number>>;
+  readSessionDirty: Ref<Set<string>>;
   messageService: typeof messageService;
   sessionStore: SessionStoreLike;
   getCurrentUserId: () => string;
@@ -68,16 +69,27 @@ export function createMessageReadModule(ctx: MessageReadModuleContext) {
     const now = Date.now();
     const last = ctx.readSessionLastAt.value.get(sessionId) || 0;
     if (now - last < 400 || ctx.readSessionLocks.value.has(sessionId)) {
+      ctx.readSessionDirty.value.add(sessionId);
       ctx.sessionStore.markSessionReadLocally(sessionId);
       return;
     }
+    await doFlushMarkRead(sessionId, now);
+  };
+
+  const doFlushMarkRead = async (sessionId: string, now: number) => {
     ctx.readSessionLocks.value.add(sessionId);
+    let succeeded = false;
     try {
       await ctx.messageService.markRead(resolveReadConversationId(sessionId));
-      ctx.readSessionLastAt.value.set(sessionId, now);
       ctx.sessionStore.markSessionReadLocally(sessionId);
+      succeeded = true;
     } finally {
       ctx.readSessionLocks.value.delete(sessionId);
+      ctx.readSessionLastAt.value.set(sessionId, now);
+      if (succeeded && ctx.readSessionDirty.value.has(sessionId)) {
+        ctx.readSessionDirty.value.delete(sessionId);
+        doFlushMarkRead(sessionId, Date.now()).catch(() => {});
+      }
     }
   };
 

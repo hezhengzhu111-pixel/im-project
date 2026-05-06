@@ -65,6 +65,7 @@ export const useMessageStore = defineStore("message", () => {
   const messageTextConfig = ref<MessageConfig | null>(null);
   const readSessionLocks = ref<Set<string>>(new Set());
   const readSessionLastAt = ref<Map<string, number>>(new Map());
+  const readSessionDirty = ref<Set<string>>(new Set());
   const clearMarkers = ref<Map<string, ConversationClearMarker>>(
     new Map(Object.entries(readPersistedClearMarkers())),
   );
@@ -472,6 +473,7 @@ export const useMessageStore = defineStore("message", () => {
     messages,
     readSessionLocks,
     readSessionLastAt,
+    readSessionDirty,
     messageService,
     sessionStore,
     getCurrentUserId: () => String(useUserStore().userId || ""),
@@ -495,6 +497,7 @@ export const useMessageStore = defineStore("message", () => {
     loadingModule.resetHistoryState(sessionId);
     readSessionLocks.value.delete(sessionId);
     readSessionLastAt.value.delete(sessionId);
+    readSessionDirty.value.delete(sessionId);
     sendQueueBySession.value.delete(sessionId);
     cancelPersistHandle(sessionId);
   };
@@ -555,6 +558,7 @@ export const useMessageStore = defineStore("message", () => {
     messageTextConfig.value = null;
     readSessionLocks.value.clear();
     readSessionLastAt.value.clear();
+    readSessionDirty.value.clear();
     pendingServerPersistBySession.clear();
     pendingPersistHandleBySession.forEach((_handle, sessionId) => {
       cancelPersistHandle(sessionId);

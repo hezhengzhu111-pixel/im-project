@@ -190,13 +190,7 @@ async fn test_create_post_empty_content() {
     let username = unique_username("ce");
     let user = register_and_login(&app, &username, "Pass1234").await;
 
-    let resp = post(
-        &app,
-        "/api/moments",
-        Some(&user.token),
-        &json!({}),
-    )
-    .await;
+    let resp = post(&app, "/api/moments", Some(&user.token), &json!({})).await;
     // Empty content is allowed (link-only posts)
     assert_eq!(resp.status, 200);
 }
@@ -205,13 +199,7 @@ async fn test_create_post_empty_content() {
 async fn test_create_post_unauthorized() {
     let app = create_test_app().await;
 
-    let resp = post(
-        &app,
-        "/api/moments",
-        None,
-        &json!({"content": "No auth"}),
-    )
-    .await;
+    let resp = post(&app, "/api/moments", None, &json!({"content": "No auth"})).await;
     assert_eq!(resp.status, 401);
 }
 
@@ -468,7 +456,9 @@ async fn test_like_post() {
     .await;
     assert_eq!(likes_resp.status, 200);
     let likes = likes_resp.body["data"].as_array().unwrap();
-    assert!(likes.iter().any(|l| l["userId"].as_str() == Some(liker.user_id.to_string().as_str())));
+    assert!(likes
+        .iter()
+        .any(|l| l["userId"].as_str() == Some(liker.user_id.to_string().as_str())));
 }
 
 #[tokio::test]
@@ -514,7 +504,9 @@ async fn test_unlike_post() {
     )
     .await;
     let likes = likes_resp.body["data"].as_array().unwrap();
-    assert!(!likes.iter().any(|l| l["userId"].as_str() == Some(liker.user_id.to_string().as_str())));
+    assert!(!likes
+        .iter()
+        .any(|l| l["userId"].as_str() == Some(liker.user_id.to_string().as_str())));
 }
 
 #[tokio::test]
@@ -632,7 +624,10 @@ async fn test_create_reply_comment() {
     .await;
     assert_eq!(resp.status, 200);
     let pid_str = parent_id.to_string();
-    assert_eq!(resp.body["data"]["parentId"].as_str(), Some(pid_str.as_str()));
+    assert_eq!(
+        resp.body["data"]["parentId"].as_str(),
+        Some(pid_str.as_str())
+    );
 }
 
 #[tokio::test]
@@ -879,7 +874,9 @@ async fn test_full_moments_flow() {
     )
     .await;
     let likes = likes_resp.body["data"].as_array().unwrap();
-    assert!(likes.iter().any(|l| l["userId"].as_str() == Some(user2.user_id.to_string().as_str())));
+    assert!(likes
+        .iter()
+        .any(|l| l["userId"].as_str() == Some(user2.user_id.to_string().as_str())));
 
     // 6. Verify comments
     let comments_resp = get(
@@ -889,7 +886,9 @@ async fn test_full_moments_flow() {
     )
     .await;
     let comments = comments_resp.body["data"].as_array().unwrap();
-    assert!(comments.iter().any(|c| c["id"].as_str() == Some(comment_id)));
+    assert!(comments
+        .iter()
+        .any(|c| c["id"].as_str() == Some(comment_id)));
 
     // 7. user2 deletes their comment
     let del_comment_resp = delete(
@@ -917,7 +916,9 @@ async fn test_full_moments_flow() {
     )
     .await;
     let likes_arr = likes_after.body["data"].as_array().unwrap();
-    assert!(!likes_arr.iter().any(|l| l["userId"].as_str() == Some(user2.user_id.to_string().as_str())));
+    assert!(!likes_arr
+        .iter()
+        .any(|l| l["userId"].as_str() == Some(user2.user_id.to_string().as_str())));
 
     // 10. user1 deletes the post
     let del_resp = delete(

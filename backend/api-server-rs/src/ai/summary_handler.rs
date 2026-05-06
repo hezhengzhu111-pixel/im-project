@@ -138,10 +138,7 @@ fn truncate_messages(messages: &[Value], max_tokens: usize) -> Vec<Value> {
     let chars_per_token = 4usize;
 
     for msg in messages.iter().rev() {
-        let content = msg
-            .get("content")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
         total_chars = total_chars.saturating_add(content.chars().count());
         kept.push(msg.clone());
         if total_chars / chars_per_token >= max_tokens {

@@ -70,10 +70,7 @@ fn post_from_row(row: &sqlx::mysql::MySqlRow) -> PostDto {
     let created_at: chrono::NaiveDateTime = row.try_get("created_at").unwrap_or_default();
     let updated_at: chrono::NaiveDateTime = row.try_get("updated_at").unwrap_or_default();
     PostDto {
-        id: row
-            .try_get::<i64, _>("id")
-            .unwrap_or_default()
-            .to_string(),
+        id: row.try_get::<i64, _>("id").unwrap_or_default().to_string(),
         user_id: row
             .try_get::<i64, _>("user_id")
             .unwrap_or_default()
@@ -92,10 +89,7 @@ fn post_from_row(row: &sqlx::mysql::MySqlRow) -> PostDto {
 
 fn media_from_row(row: &sqlx::mysql::MySqlRow) -> MediaDto {
     MediaDto {
-        id: row
-            .try_get::<i64, _>("id")
-            .unwrap_or_default()
-            .to_string(),
+        id: row.try_get::<i64, _>("id").unwrap_or_default().to_string(),
         post_id: row
             .try_get::<i64, _>("post_id")
             .unwrap_or_default()
@@ -145,10 +139,7 @@ async fn enrich_posts(
         std::collections::HashMap::new();
     for row in media_rows {
         let m = media_from_row(&row);
-        media_map
-            .entry(m.post_id.clone())
-            .or_default()
-            .push(m);
+        media_map.entry(m.post_id.clone()).or_default().push(m);
     }
 
     // Batch fetch like counts
@@ -215,8 +206,7 @@ async fn enrich_posts(
         q.fetch_all(&state.db).await?
     };
 
-    let mut liked_set: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
+    let mut liked_set: std::collections::HashSet<String> = std::collections::HashSet::new();
     for row in liked_rows {
         let pid: i64 = row.try_get("post_id").unwrap_or_default();
         liked_set.insert(pid.to_string());

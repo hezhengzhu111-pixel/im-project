@@ -33,6 +33,11 @@ const LEGACY_INTERNAL_TS_HEADER: &str = "X-Internal-Ts";
 const INTERNAL_NONCE_HEADER: &str = "X-Internal-Nonce";
 const INTERNAL_SIGN_HEADER: &str = "X-Internal-Signature";
 
+/// JWT access/refresh 令牌对。
+///
+/// 由 [`issue_token_pair`] 签发，access token 有效期较短（默认由 `jwt_expiration_ms` 控制），
+/// refresh token 有效期较长（由 `refresh_expiration_ms` 控制）。
+/// 两者均使用 HS512 算法签名，secret 长度不少于 64 字节。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenPairDto {
@@ -42,6 +47,9 @@ pub struct TokenPairDto {
     pub refresh_expires_in_ms: Option<i64>,
 }
 
+/// 刷新令牌成功后返回给客户端的响应体。
+///
+/// 仅暴露新令牌的过期时间，不重复返回 token 本身（token 通过 Set-Cookie 下发）。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RefreshResponseDto {
@@ -50,6 +58,10 @@ pub struct RefreshResponseDto {
     pub authenticated: bool,
 }
 
+/// Token 解析结果 DTO，用于 `/auth/parse` 等公开端点。
+///
+/// 当 `valid=false` 或 `expired=true` 时，身份字段（`user_id`、`username` 等）会被清空，
+/// 以防止客户端误用过期或无效的身份信息。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenParseResultDto {
@@ -82,6 +94,11 @@ impl TokenParseResultDto {
     }
 }
 
+/// 内省（introspect）结果 DTO，由 `/auth/internal/introspect` 返回。
+///
+/// 与 [`TokenParseResultDto`] 不同，此结构额外包含 `user_info`、`resource_permissions`
+/// 和 `data_scopes`，供内部服务做细粒度鉴权决策。
+/// 仅限内部 HMAC 签名校验通过后才可调用。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthIntrospectResultDto {
@@ -105,6 +122,10 @@ pub struct AuthIntrospectResultDto {
     pub data_scopes: HashMap<String, Value>,
 }
 
+/// 用户资源信息 DTO，包含用户元数据、权限列表和数据范围。
+///
+/// 缓存在 Redis（key: `auth:user:{user_id}`），TTL 由 `resource_cache_ttl_seconds` 控制。
+/// 管理员用户会自动注入 `admin`、`file:delete`、`file:read`、`log:read` 权限。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthUserResourceDto {
@@ -123,6 +144,10 @@ pub struct AuthUserResourceDto {
     pub data_scopes: HashMap<String, Value>,
 }
 
+/// 内部签发令牌请求体，由 `/auth/internal/token` 使用。
+///
+/// 需要 HMAC 内部签名。`user_id` 和 `username` 为必填。
+/// `permissions` 中的权限会被写入 Redis 用户资源缓存；管理员用户自动追加管理权限。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct IssueTokenRequest {
@@ -137,6 +162,7 @@ pub struct IssueTokenRequest {
     pub permissions: Vec<String>,
 }
 
+/// 刷新令牌请求体，支持从请求体 JSON 或 Cookie 中获取 refresh token。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RefreshTokenRequest {
@@ -144,6 +170,8 @@ pub struct RefreshTokenRequest {
     pub access_token: Option<String>,
 }
 
+/// 解析令牌请求体。`token` 为空时自动从 Cookie 中提取。
+/// `allow_expired=true` 时会返回过期令牌的身份信息（但 `valid` 仍为 `false`）。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ParseTokenRequest {
@@ -151,6 +179,10 @@ pub struct ParseTokenRequest {
     pub allow_expired: Option<bool>,
 }
 
+/// 权限校验请求体，由 `/auth/internal/check-permission` 使用。
+///
+/// 支持三种匹配模式：精确权限（`permission`）、资源+动作（`resource`+`action`）、
+/// 通配符（`resource:*`）。拥有 `*` 或 `admin` 权限的用户始终通过。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckPermissionRequest {
@@ -161,6 +193,7 @@ pub struct CheckPermissionRequest {
     pub action: Option<String>,
 }
 
+/// 权限校验结果 DTO。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionCheckResultDto {
@@ -177,6 +210,10 @@ pub struct PermissionCheckResultDto {
     pub reason: Option<String>,
 }
 
+/// 撤销单个令牌请求体，由 `/auth/internal/revoke-token` 使用。
+///
+/// 被撤销的令牌哈希存入 Redis 黑名单（key: `auth:revoked:token:{hash}`），
+/// TTL 由 `revoked_token_ttl_seconds` 控制。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RevokeTokenRequest {
@@ -184,6 +221,7 @@ pub struct RevokeTokenRequest {
     pub reason: Option<String>,
 }
 
+/// 令牌撤销结果 DTO。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenRevokeResultDto {
@@ -198,6 +236,10 @@ pub struct TokenRevokeResultDto {
     pub token_type: Option<String>,
 }
 
+/// WebSocket 票据 DTO，由 `/auth/ws-ticket` 签发。
+///
+/// 票据为一次性使用（消费后立即删除），存于 Redis（key: `auth:ws:ticket:{ticket}`），
+/// TTL 由 `ws_ticket_ttl_seconds` 控制。客户端在 WebSocket 握手时通过 Cookie 或查询参数携带。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct WsTicketDto {
@@ -205,6 +247,10 @@ pub struct WsTicketDto {
     pub expires_in_ms: Option<i64>,
 }
 
+/// 消费 WebSocket 票据请求体，由 `/auth/internal/ws-ticket/consume` 使用。
+///
+/// 仅限内部服务（经 HMAC 签名校验）调用。消费操作是原子的（Lua GET+DEL），
+/// 确保同一票据不会被重复使用。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ConsumeWsTicketRequest {
@@ -213,6 +259,11 @@ pub struct ConsumeWsTicketRequest {
     pub user_id: Option<i64>,
 }
 
+/// WebSocket 票据消费结果 DTO。
+///
+/// `valid=true` 且 `status="VALID"` 表示票据有效且用户匹配；
+/// `status="USER_MISMATCH"` 表示票据有效但请求的 `user_id` 与票据记录不一致；
+/// `status="INVALID"` 表示票据无效或已过期。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct WsTicketConsumeResultDto {
@@ -240,6 +291,14 @@ struct Claims {
     exp: i64,
 }
 
+/// 刷新 access token。
+///
+/// **鉴权要求**：客户端需提供有效的 refresh token（通过请求体或 Cookie）。
+///
+/// **安全约束**：使用 Redis Lua CAS 脚本原子比对 refresh JTI，防止并发刷新竞态。
+/// 刷新成功后会同时签发新的 access + refresh 令牌对，并通过 Set-Cookie 下发。
+///
+/// **返回**：新的令牌过期时间信息，token 本身仅通过 HttpOnly Cookie 传递。
 pub async fn refresh(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -264,6 +323,11 @@ pub async fn refresh(
     ))
 }
 
+/// 解析 access token，返回身份和权限信息。
+///
+/// **鉴权要求**：无（公开端点）。token 从请求体或 Cookie 中提取。
+///
+/// **返回**：有效时返回 `valid=true` 及身份信息；过期时 `expired=true` 且身份字段被清空。
 pub async fn parse(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -290,6 +354,12 @@ pub async fn parse(
     Ok(Json(ApiResponse::success(parsed)))
 }
 
+/// 签发一次性 WebSocket 握手票据。
+///
+/// **鉴权要求**：需要有效的 access token（通过 `identity_from_headers` 校验）。
+///
+/// **安全约束**：票据为 UUID v4，存入 Redis 并设 TTL，消费后立即删除（原子 Lua 脚本）。
+/// 票据通过 Set-Cookie 下发，客户端在 WebSocket 握手时携带。
 pub async fn issue_ws_ticket(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -328,6 +398,13 @@ pub async fn issue_ws_ticket(
     ))
 }
 
+/// 内部接口：签发 JWT 令牌对。
+///
+/// **鉴权要求**：HMAC-SHA256 内部签名（`X-Internal-Signature` + `X-Internal-Timestamp` + `X-Internal-Nonce`）。
+///
+/// **安全约束**：签名验证通过 `validate_internal_signature`，包含时间戳偏移校验
+/// （`internal_max_skew_ms`）和 nonce 防重放。签发的 access/refresh token 使用 HS512，
+/// secret 长度不少于 64 字节。
 pub async fn internal_issue_token(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -341,6 +418,11 @@ pub async fn internal_issue_token(
     )))
 }
 
+/// 内部接口：查询指定用户的资源信息（权限、用户元数据、数据范围）。
+///
+/// **鉴权要求**：HMAC 内部签名。
+///
+/// **返回**：从 Redis 缓存读取用户资源；缓存未命中时返回仅含 `user_id` 的默认结构。
 pub async fn internal_user_resource(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -353,6 +435,12 @@ pub async fn internal_user_resource(
     )))
 }
 
+/// 内部接口：验证 access token 有效性并返回解析结果。
+///
+/// **鉴权要求**：HMAC 内部签名。
+///
+/// **安全约束**：当 `token_revocation_check_enabled` 开启时，会检查令牌黑名单和用户级撤销时间戳。
+/// 无效或已撤销的令牌直接返回 `AppError::Unauthorized`。
 pub async fn internal_validate_token(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -367,6 +455,12 @@ pub async fn internal_validate_token(
     )))
 }
 
+/// 内部接口：内省 access token，返回完整的身份 + 权限 + 数据范围。
+///
+/// **鉴权要求**：HMAC 内部签名。
+///
+/// **返回**：比 `internal_validate_token` 更丰富，包含 `user_info`、`resource_permissions`、`data_scopes`。
+/// 主要供 im-server 等内部服务做细粒度鉴权决策。
 pub async fn internal_introspect(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -396,6 +490,11 @@ pub async fn internal_introspect(
     })))
 }
 
+/// 内部接口：校验用户是否拥有指定权限。
+///
+/// **鉴权要求**：HMAC 内部签名。
+///
+/// **返回**：`granted=true` 表示权限通过。支持精确匹配、资源:动作匹配和通配符匹配。
 pub async fn internal_check_permission(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -409,6 +508,12 @@ pub async fn internal_check_permission(
     )))
 }
 
+/// 内部接口：撤销单个 access token。
+///
+/// **鉴权要求**：HMAC 内部签名。
+///
+/// **安全约束**：将令牌的 SHA-256 哈希写入 Redis 黑名单（key: `auth:revoked:token:{hash}`），
+/// TTL 由 `revoked_token_ttl_seconds` 控制。后续验证时会检查此黑名单。
 pub async fn internal_revoke_token(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -422,6 +527,12 @@ pub async fn internal_revoke_token(
     )))
 }
 
+/// 内部接口：撤销指定用户的所有令牌（用户级撤销）。
+///
+/// **鉴权要求**：HMAC 内部签名。
+///
+/// **安全约束**：写入用户级撤销时间戳（key: `auth:user:revoke_after:{user_id}`），
+/// 签发时间早于此时间戳的所有令牌均被视为无效。同时清除该用户的 refresh JTI 和资源缓存。
 pub async fn internal_revoke_user_tokens(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -449,6 +560,12 @@ pub async fn internal_revoke_user_tokens(
     Ok(Json(ApiResponse::success(true)))
 }
 
+/// 内部接口：消费一次性 WebSocket 票据。
+///
+/// **鉴权要求**：HMAC 内部签名。
+///
+/// **安全约束**：使用 Lua 脚本原子执行 GET+DEL，确保票据只能消费一次。
+/// 校验票据中记录的 `user_id` 与请求中的 `user_id` 一致，防止票据被其他用户冒用。
 pub async fn internal_consume_ws_ticket(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -504,6 +621,10 @@ pub async fn internal_consume_ws_ticket(
     })))
 }
 
+/// 签发 JWT access + refresh 令牌对。
+///
+/// 同时将用户资源信息写入 Redis 缓存，将 refresh JTI 写入 Redis 用于后续 CAS 刷新校验。
+/// `user_id` 和 `username` 为必填字段，缺失时返回 `BadRequest`。
 pub async fn issue_token_pair(
     state: &AppState,
     request: IssueTokenRequest,
@@ -547,6 +668,11 @@ pub async fn issue_token_pair(
     Ok(dto)
 }
 
+/// 构造内部 HMAC-SHA256 签名请求头。
+///
+/// 生成 `X-Internal-Timestamp`、`X-Internal-Nonce`、`X-Internal-Signature` 三个头部，
+/// 供内部服务间调用时的身份验证。签名的 canonical 格式为：
+/// `method=POST&path=/api/...&bodyHash={sha256_base64_url}&ts={ms}&nonce={uuid}`。
 pub fn internal_signature_headers(
     method: &str,
     path: &str,
@@ -574,6 +700,10 @@ pub fn internal_signature_headers(
     Ok(headers)
 }
 
+/// 将 access/refresh token 追加为 HttpOnly Set-Cookie。
+///
+/// `Secure` 属性根据 `config.auth_cookie_secure` 和请求头中的 `x-forwarded-proto` 决定
+/// （支持 `true`/`false`/`auto` 三种模式）。
 pub fn append_auth_cookies(
     response_headers: &mut HeaderMap,
     config: &AppConfig,
@@ -606,6 +736,9 @@ pub fn append_auth_cookies(
     Ok(())
 }
 
+/// 立即过期所有认证相关的 Cookie（access、refresh、ws-ticket）。
+///
+/// 用于登出场景，通过设置 `Max-Age=0` 使浏览器删除对应 Cookie。
 pub fn expire_auth_cookies(
     response_headers: &mut HeaderMap,
     config: &AppConfig,
@@ -913,6 +1046,12 @@ fn build_token(
     typ: &str,
     jti: &str,
 ) -> Result<String, AppError> {
+    if secret.len() < 64 {
+        return Err(AppError::BadRequest(format!(
+            "JWT secret must be at least 64 bytes (got {} bytes)",
+            secret.len()
+        )));
+    }
     let now_ms = time::now_ms();
     let claims = Claims {
         user_id,
@@ -926,7 +1065,7 @@ fn build_token(
     encode(
         &Header::new(Algorithm::HS512),
         &claims,
-        &EncodingKey::from_secret(&padded_hs512_secret(secret)),
+        &EncodingKey::from_secret(secret.as_bytes()),
     )
     .map_err(|err| AppError::BadRequest(err.to_string()))
 }
@@ -944,7 +1083,7 @@ fn parse_token(token: Option<&str>, secret: &str, allow_expired: bool) -> TokenP
     validation.validate_exp = false;
     match decode::<Claims>(
         &normalized,
-        &DecodingKey::from_secret(&padded_hs512_secret(secret)),
+        &DecodingKey::from_secret(secret.as_bytes()),
         &validation,
     ) {
         Ok(data) => {
@@ -976,6 +1115,14 @@ fn parse_token(token: Option<&str>, secret: &str, allow_expired: bool) -> TokenP
     }
 }
 
+/// 校验内部 HMAC-SHA256 签名。
+///
+/// **安全约束**：
+/// - 验证 `X-Internal-Timestamp` 在 `internal_max_skew_ms` 偏移范围内（防重放）
+/// - 使用 `subtle::ConstantTimeEq` 比较签名（防时序攻击）
+/// - Body 哈希使用 SHA-256 Base64 URL 编码
+///
+/// 签名失败返回 `AppError::Unauthorized("INTERNAL_AUTH_REJECTED")`。
 pub(crate) fn validate_internal_signature(
     headers: &HeaderMap,
     method: &str,
@@ -1064,25 +1211,6 @@ fn sha256_hex(value: &str) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
-}
-
-fn padded_hs512_secret(secret: &str) -> Vec<u8> {
-    let bytes = secret.as_bytes();
-    if bytes.len() >= 64 {
-        return bytes.to_vec();
-    }
-    let mut padded = vec![0_u8; 64];
-    if bytes.is_empty() {
-        return padded;
-    }
-    let source_len = bytes.len();
-    for (index, slot) in padded.iter_mut().enumerate() {
-        let source_index = index % source_len;
-        if let Some(byte) = bytes.get(source_index) {
-            *slot = *byte;
-        }
-    }
-    padded
 }
 
 fn normalize_bearer(token: Option<&str>) -> Option<String> {
@@ -1438,10 +1566,22 @@ mod tests {
             refresh_expires_in_ms: Some(3_600_000),
         };
         let mut response_headers = HeaderMap::new();
-        append_auth_cookies(&mut response_headers, &config, &token_pair, &request_headers).unwrap();
+        append_auth_cookies(
+            &mut response_headers,
+            &config,
+            &token_pair,
+            &request_headers,
+        )
+        .unwrap();
 
-        assert!(set_cookie_contains_secure(&response_headers, "IM_ACCESS_TOKEN"));
-        assert!(set_cookie_contains_secure(&response_headers, "IM_REFRESH_TOKEN"));
+        assert!(set_cookie_contains_secure(
+            &response_headers,
+            "IM_ACCESS_TOKEN"
+        ));
+        assert!(set_cookie_contains_secure(
+            &response_headers,
+            "IM_REFRESH_TOKEN"
+        ));
     }
 
     #[test]
@@ -1456,10 +1596,22 @@ mod tests {
             refresh_expires_in_ms: Some(3_600_000),
         };
         let mut response_headers = HeaderMap::new();
-        append_auth_cookies(&mut response_headers, &config, &token_pair, &request_headers).unwrap();
+        append_auth_cookies(
+            &mut response_headers,
+            &config,
+            &token_pair,
+            &request_headers,
+        )
+        .unwrap();
 
-        assert!(!set_cookie_contains_secure(&response_headers, "IM_ACCESS_TOKEN"));
-        assert!(!set_cookie_contains_secure(&response_headers, "IM_REFRESH_TOKEN"));
+        assert!(!set_cookie_contains_secure(
+            &response_headers,
+            "IM_ACCESS_TOKEN"
+        ));
+        assert!(!set_cookie_contains_secure(
+            &response_headers,
+            "IM_REFRESH_TOKEN"
+        ));
     }
 
     #[test]
@@ -1474,9 +1626,70 @@ mod tests {
             refresh_expires_in_ms: Some(3_600_000),
         };
         let mut response_headers = HeaderMap::new();
-        append_auth_cookies(&mut response_headers, &config, &token_pair, &request_headers).unwrap();
+        append_auth_cookies(
+            &mut response_headers,
+            &config,
+            &token_pair,
+            &request_headers,
+        )
+        .unwrap();
 
-        assert!(set_cookie_contains_secure(&response_headers, "IM_ACCESS_TOKEN"));
-        assert!(set_cookie_contains_secure(&response_headers, "IM_REFRESH_TOKEN"));
+        assert!(set_cookie_contains_secure(
+            &response_headers,
+            "IM_ACCESS_TOKEN"
+        ));
+        assert!(set_cookie_contains_secure(
+            &response_headers,
+            "IM_REFRESH_TOKEN"
+        ));
+    }
+
+    #[test]
+    fn build_token_empty_secret_fails() {
+        let result = build_token("", 3_600_000, 1, "user", "access", "jti1");
+        assert!(result.is_err(), "empty secret should fail");
+    }
+
+    #[test]
+    fn build_token_short_secret_fails() {
+        let result = build_token("short", 3_600_000, 1, "user", "access", "jti1");
+        assert!(result.is_err(), "short secret should fail");
+    }
+
+    #[test]
+    fn build_token_valid_secret_succeeds() {
+        let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
+        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1");
+        assert!(
+            token.is_ok(),
+            "valid secret should succeed: {:?}",
+            token.err()
+        );
+    }
+
+    #[test]
+    fn parse_token_with_valid_secret_succeeds() {
+        let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
+        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1").unwrap();
+        let result = parse_token(Some(&format!("Bearer {token}")), secret, false);
+        assert!(result.valid, "parse should succeed");
+        assert_eq!(result.user_id, Some(1));
+        assert_eq!(result.username.as_deref(), Some("user"));
+    }
+
+    #[test]
+    fn parse_token_empty_secret_fails() {
+        let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
+        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1").unwrap();
+        let result = parse_token(Some(&token), "", false);
+        assert!(!result.valid, "empty secret should fail validation");
+    }
+
+    #[test]
+    fn parse_token_short_secret_fails() {
+        let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
+        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1").unwrap();
+        let result = parse_token(Some(&token), "short", false);
+        assert!(!result.valid, "short secret should fail validation");
     }
 }
