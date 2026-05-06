@@ -51,7 +51,7 @@ def load_env_file(env_file: Path) -> None:
             continue
         key, value = line.split("=", 1)
         key = key.strip()
-        if not key or key in os.environ:
+        if not key:
             continue
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
