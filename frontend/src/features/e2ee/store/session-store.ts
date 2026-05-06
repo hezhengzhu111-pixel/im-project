@@ -40,8 +40,9 @@ interface SerializedRatchetState {
 // ---------------------------------------------------------------------------
 
 const DB_NAME = 'e2ee_keys';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'sessions';
+const STORES = ['identity', 'prekeys', 'sessions', 'sender_keys', 'meta'] as const;
 
 // ---------------------------------------------------------------------------
 // IndexedDB 底层操作
@@ -58,8 +59,10 @@ function openDB(): Promise<IDBDatabase> {
 
     request.onupgradeneeded = () => {
       const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
+      for (const storeName of STORES) {
+        if (!db.objectStoreNames.contains(storeName)) {
+          db.createObjectStore(storeName);
+        }
       }
     };
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   generateIdentityKeyPair,
   generateEphemeralKeyPair,
+  generateRatchetKeyPair,
   generateSignedPreKeyPair,
   generateOneTimePreKeyPair,
   generateSigningKeyPair,
@@ -40,6 +41,12 @@ describe('e2ee crypto-primitives', () => {
   it('Ephemeral Key is not extractable', async () => {
     const kp = await generateEphemeralKeyPair();
     expect(kp.privateKey.extractable).toBe(false);
+  });
+
+  it('Ratchet Key is extractable', async () => {
+    const kp = await generateRatchetKeyPair();
+    expect(kp.privateKey.extractable).toBe(true);
+    expect(kp.publicKey.extractable).toBe(true);
   });
 
   it('Signed Pre Key is extractable', async () => {

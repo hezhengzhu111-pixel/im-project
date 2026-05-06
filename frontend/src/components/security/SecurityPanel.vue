@@ -69,7 +69,7 @@
         v-if="canEnable"
         type="button"
         class="enable-button"
-        @click="emit('enableEncryption')"
+        @click.stop="emit('enableEncryption')"
       >
         启用端到端加密
       </button>

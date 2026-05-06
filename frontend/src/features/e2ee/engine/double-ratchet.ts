@@ -12,7 +12,7 @@
  */
 
 import {
-  generateEphemeralKeyPair,
+  generateRatchetKeyPair,
   exportPublicKey,
   importPublicKey,
   ecdhDeriveBits,
@@ -33,7 +33,7 @@ export interface RatchetState {
   rootKey: CryptoKey;
   /** 发送链密钥（首次初始化后不为 null） */
   sendingChainKey: CryptoKey | null;
-  /** 接收链密钥（首次收到远端消息后不为 null） */
+  /** 接收链密钥（初始化后通常不为 null） */
   receivingChainKey: CryptoKey | null;
   /** 发送消息计数器 */
   sendCounter: number;
@@ -196,7 +196,7 @@ async function performDhRatchet(state: RatchetState, newRemotePub: CryptoKey): P
 
   // --- 步骤 2: 发送方向 ---
   // 生成新 DH 密钥对
-  state.dhKeyPair = await generateEphemeralKeyPair();
+  state.dhKeyPair = await generateRatchetKeyPair();
   // 使用新 DH 私钥 + 同一远端公钥 → 派生发送链
   const dh2 = await ecdhDeriveBits(state.dhKeyPair.privateKey, newRemotePub);
   const { newRootKey: rk2, chainKey: sendingChainKey } = await kdfRootKey(
@@ -361,28 +361,30 @@ async function isDifferentPublicKey(
 /**
  * 初始化发送链（X3DH 完成后调用）
  *
- * 从 X3DH 派生的根密钥中提取发送链密钥。
- * 接收链密钥为 null，等待首次收到远端消息时通过 DH 轮换初始化。
+ * 从 X3DH 派生的根密钥中提取发起方发送链和接收链密钥。
+ * RatchetState 会写入 IndexedDB，因此 DH 密钥对使用可导出的 ratchet key。
  *
  * @param rootKey - X3DH 派生的根密钥 (CryptoKey, 需提前通过 importRootKey 转换)
- * @param dhKeyPair - 发起方的 DH 密钥对（通常是 Identity Key Pair）
+ * @param _identityKeyPair - 发起方 Identity Key Pair（保留参数用于兼容现有调用）
  * @returns 初始化的 RatchetState
  */
 export async function initSendingChain(
   rootKey: CryptoKey,
-  dhKeyPair: CryptoKeyPair,
+  _identityKeyPair: CryptoKeyPair,
 ): Promise<RatchetState> {
   const rootKeyRaw = await crypto.subtle.exportKey('raw', rootKey);
   const sendingChainKey = await hkdfDeriveKey(toBuffer(rootKeyRaw), HKDF_SALT, INFO_SENDING_CHAIN);
+  const receivingChainKey = await hkdfDeriveKey(toBuffer(rootKeyRaw), HKDF_SALT, INFO_RECEIVING_CHAIN);
+  const ratchetKeyPair = await generateRatchetKeyPair();
 
   return {
     rootKey,
     sendingChainKey,
-    receivingChainKey: null,
+    receivingChainKey,
     sendCounter: 0,
     receiveCounter: 0,
     previousCounter: 0,
-    dhKeyPair,
+    dhKeyPair: ratchetKeyPair,
     remotePublicKey: null,
     skippedMessageKeys: new Map(),
   };
@@ -391,30 +393,31 @@ export async function initSendingChain(
 /**
  * 初始化接收链（响应方在 X3DH 完成后调用）
  *
- * 从 X3DH 派生的根密钥中提取接收链密钥。
- * 使用与 initSendingChain 相同的 HKDF info，确保双方派生出相同的初始链密钥。
- * 发送链密钥为 null，等待首次发送消息时通过 DH 轮换初始化。
+ * 从 X3DH 派生的根密钥中提取响应方接收链和发送链密钥。
+ * 响应方接收链匹配发起方发送链，响应方发送链匹配发起方接收链。
  *
  * @param rootKey - X3DH 派生的根密钥 (CryptoKey)
- * @param dhKeyPair - 响应方的 DH 密钥对（通常是 Identity Key Pair）
+ * @param _identityKeyPair - 响应方 Identity Key Pair（保留参数用于兼容现有调用）
  * @returns 初始化的 RatchetState
  */
 export async function initReceivingChain(
   rootKey: CryptoKey,
-  dhKeyPair: CryptoKeyPair,
+  _identityKeyPair: CryptoKeyPair,
 ): Promise<RatchetState> {
   const rootKeyRaw = await crypto.subtle.exportKey('raw', rootKey);
   // 使用与 initSendingChain 相同的 info，确保双方初始链密钥一致
   const receivingChainKey = await hkdfDeriveKey(toBuffer(rootKeyRaw), HKDF_SALT, INFO_SENDING_CHAIN);
+  const sendingChainKey = await hkdfDeriveKey(toBuffer(rootKeyRaw), HKDF_SALT, INFO_RECEIVING_CHAIN);
+  const ratchetKeyPair = await generateRatchetKeyPair();
 
   return {
     rootKey,
-    sendingChainKey: null,
+    sendingChainKey,
     receivingChainKey,
     sendCounter: 0,
     receiveCounter: 0,
     previousCounter: 0,
-    dhKeyPair,
+    dhKeyPair: ratchetKeyPair,
     remotePublicKey: null,
     skippedMessageKeys: new Map(),
   };
