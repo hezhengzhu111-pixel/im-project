@@ -50,6 +50,11 @@ export interface Message {
   isAiGenerated?: boolean;
   aiProvider?: string;
   aiModel?: string;
+  encrypted?: boolean;
+  e2eeHeader?: string;
+  e2eeDeviceId?: string;
+  e2eeSenderIdentityKey?: string;
+  e2eeEphemeralKey?: string;
 }
 
 export interface RawMessageDTO {
@@ -121,6 +126,15 @@ export interface RawMessageDTO {
   ai_provider?: string;
   aiModel?: string;
   ai_model?: string;
+  encrypted?: boolean | number;
+  e2eeHeader?: string;
+  e2ee_header?: string;
+  e2eeDeviceId?: string;
+  e2ee_device_id?: string;
+  e2eeSenderIdentityKey?: string;
+  e2ee_sender_identity_key?: string;
+  e2eeEphemeralKey?: string;
+  e2ee_ephemeral_key?: string;
 }
 
 export interface MessageConfig {

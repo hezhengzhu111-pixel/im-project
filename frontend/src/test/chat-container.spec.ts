@@ -392,6 +392,7 @@ describe("ChatContainer", () => {
       "toggle-pin",
       "toggle-mute",
       "open-session-info",
+      "enable-encryption",
       "clear-history",
       "delete-session",
     ]);

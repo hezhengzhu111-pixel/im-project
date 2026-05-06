@@ -190,7 +190,9 @@
                   <SecurityPanel
                     v-if="showSecurityPanel"
                     :status="e2eeStatus"
+                    :can-enable="e2eeStatus === 'plaintext' || e2eeStatus === 'failed'"
                     class="security-popover"
+                    @enable-encryption="openEncryptionDialog"
                     @close="showSecurityPanel = false"
                   />
                 </Transition>
@@ -207,7 +209,7 @@
                 />
               </div>
               <div class="chat-actions">
-                <el-dropdown trigger="click" @command="handleSessionAction">
+                <el-dropdown trigger="click" @command="handleChatAction">
                   <button
                     type="button"
                     class="chat-action-button interactive-reset"
@@ -252,6 +254,13 @@
                             ? t("chat.groupInfo")
                             : t("chat.contactInfo")
                         }}
+                      </el-dropdown-item>
+                      <el-dropdown-item
+                        v-if="currentSession.type === 'private' && (e2eeStatus === 'plaintext' || e2eeStatus === 'failed')"
+                        command="enable-encryption"
+                        data-command="enable-encryption"
+                      >
+                        启用端到端加密
                       </el-dropdown-item>
                       <el-dropdown-item
                         command="clear-history"
@@ -444,13 +453,22 @@
       :friends="chatStore.friends"
       @refresh-members="currentSession?.targetId && refreshSessionMembers(currentSession.targetId)"
     />
+    <ChatEncryptionDialog
+      v-if="currentSession?.type === 'private'"
+      v-model="showEncryptionDialog"
+      :peer-name="currentSession.targetName"
+      :peer-id="currentSession.targetId"
+      :session-id="currentSession.id"
+      @encrypted="handleEncryptionEnabled"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import ChatComposer from "@/features/chat/ChatComposer.vue";
 import ChatDialogs from "@/features/chat/ChatDialogs.vue";
+import ChatEncryptionDialog from "@/features/chat/ChatEncryptionDialog.vue";
 import ChatMessageList from "@/features/chat/ChatMessageList.vue";
 import ChatSidebarPanel from "@/features/chat/ChatSidebarPanel.vue";
 import EncryptionBadge from "@/components/security/EncryptionBadge.vue";
@@ -526,6 +544,25 @@ const {
 const e2eeStatus = useE2eeSessionStatus(
   computed(() => currentSession.value?.id),
 );
+const showEncryptionDialog = ref(false);
+
+const openEncryptionDialog = () => {
+  if (currentSession.value?.type !== "private") return;
+  showSecurityPanel.value = false;
+  showEncryptionDialog.value = true;
+};
+
+const handleEncryptionEnabled = () => {
+  showEncryptionDialog.value = false;
+};
+
+const handleChatAction = (command: string | number | object) => {
+  if (command === "enable-encryption") {
+    openEncryptionDialog();
+    return;
+  }
+  void handleSessionAction(command);
+};
 </script>
 
 <style scoped lang="scss">

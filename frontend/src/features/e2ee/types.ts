@@ -14,6 +14,7 @@ export interface PreKeyBundle {
   userId: string;
   deviceId: string;
   identityKey: string;           // Base64
+  signingIdentityKey: string;    // Base64
   signedPreKey: string;          // Base64
   signedPreKeySignature: string; // Base64
   oneTimePreKey?: string;        // Base64, 可选
@@ -23,6 +24,7 @@ export interface PreKeyBundle {
 export interface UploadBundleRequest {
   deviceId: string;
   identityKey: string;              // Base64
+  signingIdentityKey: string;       // Base64
   signedPreKey: string;             // Base64
   signedPreKeySignature: string;    // Base64
   oneTimePreKeys: string[];         // Vec<Base64>

@@ -277,15 +277,21 @@ export function createMessageSendQueueModule(
 
     // E2EE encryption intercept
     let encryptedPayload: { ciphertext: string; header: import('@/features/e2ee/types').RatchetHeader; deviceId: string } | null = null;
+    let initialHandshake: {
+      senderIdentityKey: string;
+      ephemeralPublicKey: string;
+      deviceId: string;
+    } | null = null;
 
     if (session.type === "private") {
       try {
         const { e2eeManager } = await import('@/features/e2ee/manager/e2ee-manager');
-        const { getLocalSessionStatus } = await import('@/features/e2ee/manager/negotiation');
+        const { getLocalSessionStatus, getPendingInitialHandshake } = await import('@/features/e2ee/manager/negotiation');
 
         if (getLocalSessionStatus(session.id) === 'encrypted') {
           try {
             encryptedPayload = await e2eeManager.encryptMessage(session.id, content);
+            initialHandshake = getPendingInitialHandshake(session.id);
           } catch {
             // fall through to empty-payload check below
           }
@@ -338,6 +344,8 @@ export function createMessageSendQueueModule(
           encrypted: true,
           e2eeHeader: JSON.stringify(encryptedPayload.header),
           e2eeDeviceId: encryptedPayload.deviceId,
+          e2eeSenderIdentityKey: initialHandshake?.senderIdentityKey,
+          e2eeEphemeralKey: initialHandshake?.ephemeralPublicKey,
         });
       } else {
         response = await ctx.messageService.sendPrivate({
@@ -363,6 +371,10 @@ export function createMessageSendQueueModule(
         status: "SENT",
       };
       replaceLocalMessage(session.id, localId, serverMessage);
+      if (encryptedPayload && initialHandshake) {
+        const { clearPendingInitialHandshake } = await import('@/features/e2ee/manager/negotiation');
+        clearPendingInitialHandshake(session.id);
+      }
       await ctx.messageRepo.removePendingMessage(session.id, localId);
       await ctx.scheduleServerMessagePersist(session.id, [serverMessage]);
       ctx.sessionStore.applyMessageToSession(session.id, serverMessage);
@@ -396,6 +408,8 @@ export function createMessageSendQueueModule(
                     encrypted: true,
                     e2eeHeader: JSON.stringify(encryptedPayload.header),
                     e2eeDeviceId: encryptedPayload.deviceId,
+                    e2eeSenderIdentityKey: initialHandshake?.senderIdentityKey,
+                    e2eeEphemeralKey: initialHandshake?.ephemeralPublicKey,
                   },
                 }
               : {

@@ -45,6 +45,8 @@ pub struct SendPrivateRequest {
     pub encrypted: Option<bool>,
     pub e2ee_header: Option<String>,
     pub e2ee_device_id: Option<String>,
+    pub e2ee_sender_identity_key: Option<String>,
+    pub e2ee_ephemeral_key: Option<String>,
 }
 
 /// 群聊消息发送请求体。
@@ -192,6 +194,8 @@ pub async fn send_private(
             encrypted: request.encrypted,
             e2ee_header: request.e2ee_header,
             e2ee_device_id: request.e2ee_device_id,
+            e2ee_sender_identity_key: request.e2ee_sender_identity_key,
+            e2ee_ephemeral_key: request.e2ee_ephemeral_key,
         },
     );
     let event = build_message_created_event(&conversation_id, &message);
@@ -317,6 +321,8 @@ pub async fn send_group(
             encrypted: None,
             e2ee_header: None,
             e2ee_device_id: None,
+            e2ee_sender_identity_key: None,
+            e2ee_ephemeral_key: None,
         },
     );
     let mut event = build_message_created_event(&conversation_id, &message);
@@ -1226,6 +1232,8 @@ struct BuildMessageInput {
     encrypted: Option<bool>,
     e2ee_header: Option<String>,
     e2ee_device_id: Option<String>,
+    e2ee_sender_identity_key: Option<String>,
+    e2ee_ephemeral_key: Option<String>,
 }
 
 fn build_message(config: &AppConfig, identity: &Identity, input: BuildMessageInput) -> MessageDto {
@@ -1270,6 +1278,8 @@ fn build_message(config: &AppConfig, identity: &Identity, input: BuildMessageInp
         encrypted: input.encrypted,
         e2ee_header: input.e2ee_header,
         e2ee_device_id: input.e2ee_device_id,
+        e2ee_sender_identity_key: input.e2ee_sender_identity_key,
+        e2ee_ephemeral_key: input.e2ee_ephemeral_key,
     }
 }
 
@@ -1522,6 +1532,7 @@ async fn load_message_from_db(db: &MySqlPool, message_id: i64) -> Result<Message
         sqlx::query(
         r#"SELECT id, sender_id, receiver_id, group_id, conversation_seq, client_message_id, message_type, content,
                   media_url, media_size, media_name, thumbnail_url, duration, location_info,
+                  encrypted, e2ee_header, e2ee_device_id, e2ee_sender_identity_key, e2ee_ephemeral_key,
                   status, is_group_chat, reply_to_message_id, created_time, updated_time
            FROM service_message_service_db.messages WHERE id = ?"#,
         )
@@ -1620,7 +1631,8 @@ async fn load_history_from_db(
     let scope = parse_db_scope(conversation_id)?;
     let mut sql = String::from(
         "SELECT id, sender_id, receiver_id, group_id, conversation_seq, client_message_id, message_type, content, \
-         media_url, media_size, media_name, thumbnail_url, duration, location_info, status, \
+         media_url, media_size, media_name, thumbnail_url, duration, location_info, encrypted, e2ee_header, \
+         e2ee_device_id, e2ee_sender_identity_key, e2ee_ephemeral_key, status, \
          is_group_chat, reply_to_message_id, created_time, updated_time \
          FROM service_message_service_db.messages WHERE status <> 5 AND ",
     );
@@ -2187,9 +2199,26 @@ fn message_from_row(row: &sqlx::mysql::MySqlRow) -> MessageDto {
         is_ai_generated: None,
         ai_provider: None,
         ai_model: None,
-        encrypted: None,
-        e2ee_header: None,
-        e2ee_device_id: None,
+        encrypted: row
+            .try_get::<i8, _>("encrypted")
+            .ok()
+            .map(|value| value != 0),
+        e2ee_header: row
+            .try_get::<Option<String>, _>("e2ee_header")
+            .ok()
+            .flatten(),
+        e2ee_device_id: row
+            .try_get::<Option<String>, _>("e2ee_device_id")
+            .ok()
+            .flatten(),
+        e2ee_sender_identity_key: row
+            .try_get::<Option<String>, _>("e2ee_sender_identity_key")
+            .ok()
+            .flatten(),
+        e2ee_ephemeral_key: row
+            .try_get::<Option<String>, _>("e2ee_ephemeral_key")
+            .ok()
+            .flatten(),
     }
 }
 
@@ -2416,6 +2445,8 @@ mod tests {
             encrypted: None,
             e2ee_header: None,
             e2ee_device_id: None,
+            e2ee_sender_identity_key: None,
+            e2ee_ephemeral_key: None,
         };
         let event = build_message_created_event("g_20", &message);
         let message_json = serde_json::to_string(&message)?;

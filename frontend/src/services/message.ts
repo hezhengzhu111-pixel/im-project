@@ -41,6 +41,8 @@ export const messageService = {
     encrypted: boolean;
     e2eeHeader: string;
     e2eeDeviceId: string;
+    e2eeSenderIdentityKey?: string;
+    e2eeEphemeralKey?: string;
   }): Promise<ApiResponse<Message>> {
     const response = await http.post<unknown>("/message/send/private", data);
     return {

@@ -12,11 +12,18 @@ import { keyService } from '../api/key-service';
 import { x3dhInitiate, x3dhRespond } from '../engine/x3dh';
 import { importRootKey, initSendingChain, initReceivingChain } from '../engine/double-ratchet';
 import { saveRatchetState, getRatchetState } from '../store/session-store';
-import { getIdentityKeyPair, getSignedPreKey } from '../store/key-store';
+import { getIdentityKeyPair, getLocalPublicBundle, getSignedPreKey } from '../store/key-store';
 import type { PreKeyBundle, E2eeSessionStatus } from '../types';
 import { emitE2eeStatusChange } from '../status-events';
 
 const SESSION_STATUS_PREFIX = 'e2ee:status:';
+const INITIAL_HANDSHAKE_PREFIX = 'e2ee:initial-handshake:';
+
+export interface InitialE2eeHandshake {
+  senderIdentityKey: string;
+  ephemeralPublicKey: string;
+  deviceId: string;
+}
 
 export function getLocalSessionStatus(sessionId: string): E2eeSessionStatus {
   const raw = localStorage.getItem(SESSION_STATUS_PREFIX + sessionId);
@@ -29,6 +36,45 @@ export function getLocalSessionStatus(sessionId: string): E2eeSessionStatus {
 export function setLocalSessionStatus(sessionId: string, status: E2eeSessionStatus): void {
   localStorage.setItem(SESSION_STATUS_PREFIX + sessionId, status);
   emitE2eeStatusChange(sessionId, status);
+}
+
+export function getPendingInitialHandshake(sessionId: string): InitialE2eeHandshake | null {
+  const raw = localStorage.getItem(INITIAL_HANDSHAKE_PREFIX + sessionId);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<InitialE2eeHandshake>;
+    if (
+      typeof parsed.senderIdentityKey === 'string' &&
+      typeof parsed.ephemeralPublicKey === 'string' &&
+      typeof parsed.deviceId === 'string'
+    ) {
+      return {
+        senderIdentityKey: parsed.senderIdentityKey,
+        ephemeralPublicKey: parsed.ephemeralPublicKey,
+        deviceId: parsed.deviceId,
+      };
+    }
+  } catch {
+    // ignore corrupt metadata
+  }
+  localStorage.removeItem(INITIAL_HANDSHAKE_PREFIX + sessionId);
+  return null;
+}
+
+export function clearPendingInitialHandshake(sessionId: string): void {
+  localStorage.removeItem(INITIAL_HANDSHAKE_PREFIX + sessionId);
+}
+
+function savePendingInitialHandshake(sessionId: string, handshake: InitialE2eeHandshake): void {
+  localStorage.setItem(INITIAL_HANDSHAKE_PREFIX + sessionId, JSON.stringify(handshake));
+}
+
+function newestDevice<T extends { lastActiveAt?: string }>(devices: T[]): T | undefined {
+  return [...devices].sort((a, b) => {
+    const left = new Date(a.lastActiveAt || 0).getTime();
+    const right = new Date(b.lastActiveAt || 0).getTime();
+    return right - left;
+  })[0];
 }
 
 /**
@@ -46,32 +92,39 @@ export async function initiateNegotiation(
     if (!identityKeyPair) {
       throw new Error('Local identity key not found');
     }
+    const localBundle = await getLocalPublicBundle();
+    if (!localBundle) {
+      throw new Error('Local E2EE public bundle not found');
+    }
 
-    const bundleResp = await keyService.getBundle(remoteUserId, remoteDeviceId);
+    const devicesResp = await keyService.getDevices(remoteUserId);
+    const targetDevice = newestDevice(devicesResp.data || []);
+    if (!targetDevice?.deviceId) {
+      throw new Error('Remote user has no active E2EE device');
+    }
+
+    const bundleResp = await keyService.getBundle(
+      remoteUserId,
+      remoteDeviceId || targetDevice.deviceId,
+    );
     if (!bundleResp.data) {
       throw new Error('Remote user has no E2EE key bundle');
     }
-
-    const bundleData = bundleResp.data as unknown as Record<string, unknown>;
 
     const remoteBundle: PreKeyBundle = {
       userId: remoteUserId,
       deviceId: bundleResp.data.deviceId,
       identityKey: bundleResp.data.identityKey,
+      signingIdentityKey: bundleResp.data.signingIdentityKey,
       signedPreKey: bundleResp.data.signedPreKey,
       signedPreKeySignature: bundleResp.data.signedPreKeySignature,
-      oneTimePreKey: bundleData.oneTimePreKey as string | undefined,
     };
 
-    // x3dhInitiate expects a signingIdentityKey for SPK signature verification.
-    // The server bundle may include it; fall back to identityKey if missing.
     const bundleForX3dh = {
       identityKey: remoteBundle.identityKey,
-      signingIdentityKey:
-        (bundleData.signingIdentityKey as string | undefined) ?? remoteBundle.identityKey,
+      signingIdentityKey: remoteBundle.signingIdentityKey,
       signedPreKey: remoteBundle.signedPreKey,
       signedPreKeySignature: remoteBundle.signedPreKeySignature,
-      oneTimePreKey: remoteBundle.oneTimePreKey,
     };
 
     const { rootKey, ephemeralPublicKey } = await x3dhInitiate(identityKeyPair, bundleForX3dh);
@@ -80,11 +133,24 @@ export async function initiateNegotiation(
     const ratchetState = await initSendingChain(rootCryptoKey, identityKeyPair);
 
     await saveRatchetState(sessionId, ratchetState);
+    const handshake: InitialE2eeHandshake = {
+      senderIdentityKey: localBundle.identityKey,
+      ephemeralPublicKey,
+      deviceId: remoteBundle.deviceId,
+    };
+    savePendingInitialHandshake(sessionId, handshake);
+    await keyService.requestEncryption(
+      sessionId,
+      localBundle.identityKey,
+      localBundle.signedPreKey,
+      JSON.stringify(handshake),
+    );
     setLocalSessionStatus(sessionId, 'encrypted');
 
     return true;
   } catch (error) {
     console.error('[E2EE] Negotiation initiation failed:', error);
+    clearPendingInitialHandshake(sessionId);
     setLocalSessionStatus(sessionId, 'failed');
     return false;
   }

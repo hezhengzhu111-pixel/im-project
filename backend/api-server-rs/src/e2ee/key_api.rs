@@ -35,6 +35,7 @@ const MAX_SALT_LEN: usize = 64;
 pub struct UploadBundleRequest {
     pub device_id: String,
     pub identity_key: String,
+    pub signing_identity_key: String,
     pub signed_pre_key: String,
     pub signed_pre_key_signature: String,
     pub one_time_pre_keys: Vec<String>,
@@ -50,6 +51,7 @@ pub struct PreKeyBundleDto {
     pub user_id: String,
     pub device_id: String,
     pub identity_key: String,
+    pub signing_identity_key: String,
     pub signed_pre_key: String,
     pub signed_pre_key_signature: String,
     pub one_time_pre_key: Option<String>,
@@ -78,6 +80,11 @@ fn validate_bundle(req: &UploadBundleRequest) -> Result<(), AppError> {
     }
     if req.identity_key.is_empty() || req.identity_key.len() > MAX_KEY_FIELD_LEN {
         return Err(AppError::BadRequest("invalid identity_key".to_string()));
+    }
+    if req.signing_identity_key.is_empty() || req.signing_identity_key.len() > MAX_KEY_FIELD_LEN {
+        return Err(AppError::BadRequest(
+            "invalid signing_identity_key".to_string(),
+        ));
     }
     if req.signed_pre_key.is_empty() || req.signed_pre_key.len() > MAX_KEY_FIELD_LEN {
         return Err(AppError::BadRequest("invalid signed_pre_key".to_string()));
@@ -138,11 +145,12 @@ pub async fn upload_bundle(
     // 幂等 upsert 设备记录
     sqlx::query(
         r#"INSERT INTO service_user_service_db.e2ee_devices
-           (user_id, device_id, status, identity_key, signed_pre_key, signed_pre_key_signature)
-           VALUES (?, ?, 'active', ?, ?, ?)
+           (user_id, device_id, status, identity_key, signing_identity_key, signed_pre_key, signed_pre_key_signature)
+           VALUES (?, ?, 'active', ?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE
              status = 'active',
              identity_key = VALUES(identity_key),
+             signing_identity_key = VALUES(signing_identity_key),
              signed_pre_key = VALUES(signed_pre_key),
              signed_pre_key_signature = VALUES(signed_pre_key_signature),
              last_active_at = NOW()"#,
@@ -150,6 +158,7 @@ pub async fn upload_bundle(
     .bind(user_id)
     .bind(device_id)
     .bind(&request.identity_key)
+    .bind(&request.signing_identity_key)
     .bind(&request.signed_pre_key)
     .bind(&request.signed_pre_key_signature)
     .execute(&mut *tx)
@@ -217,7 +226,8 @@ pub async fn get_bundle(
 
     // 查询设备信息
     let device_row = sqlx::query(
-        r#"SELECT identity_key, signed_pre_key, signed_pre_key_signature
+        r#"SELECT identity_key, COALESCE(signing_identity_key, identity_key) AS signing_identity_key,
+                  signed_pre_key, signed_pre_key_signature
            FROM service_user_service_db.e2ee_devices
            WHERE user_id = ? AND device_id = ? AND status = 'active'"#,
     )
@@ -231,6 +241,7 @@ pub async fn get_bundle(
     };
 
     let identity_key: String = device_row.get("identity_key");
+    let signing_identity_key: String = device_row.get("signing_identity_key");
     let signed_pre_key: String = device_row.get("signed_pre_key");
     let signed_pre_key_signature: String = device_row.get("signed_pre_key_signature");
 
@@ -269,6 +280,7 @@ pub async fn get_bundle(
         user_id: target_user_id.to_string(),
         device_id: device_id.clone(),
         identity_key,
+        signing_identity_key,
         signed_pre_key,
         signed_pre_key_signature,
         one_time_pre_key,

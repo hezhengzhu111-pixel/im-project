@@ -83,10 +83,16 @@ CREATE TABLE IF NOT EXISTS e2ee_sender_keys (
     INDEX idx_group_recipient (group_id, recipient_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Sender Key存储';
 
+ALTER TABLE e2ee_devices ADD COLUMN signing_identity_key TEXT NULL COMMENT 'E2EE signing identity public key(Base64)' AFTER identity_key;
+
 USE service_message_service_db;
 
 -- messages 表新增字段
 ALTER TABLE messages ADD COLUMN encrypted TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否E2EE加密: 0-否 1-是';
+ALTER TABLE messages ADD COLUMN e2ee_header TEXT NULL COMMENT 'E2EE Double Ratchet header JSON';
+ALTER TABLE messages ADD COLUMN e2ee_device_id VARCHAR(64) NULL COMMENT 'E2EE sender device ID';
+ALTER TABLE messages ADD COLUMN e2ee_sender_identity_key TEXT NULL COMMENT 'E2EE sender identity public key';
+ALTER TABLE messages ADD COLUMN e2ee_ephemeral_key TEXT NULL COMMENT 'E2EE sender ephemeral public key';
 
 -- 消息投递表
 CREATE TABLE IF NOT EXISTS message_deliveries (

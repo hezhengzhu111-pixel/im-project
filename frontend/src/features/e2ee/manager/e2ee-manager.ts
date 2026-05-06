@@ -10,6 +10,7 @@ import { getRatchetState, saveRatchetState } from '../store/session-store';
 import { MessageBuffer } from '../engine/message-buffer';
 import { getLocalSessionStatus, initiateNegotiation, respondToNegotiation } from './negotiation';
 import type { RatchetHeader, E2eeSessionStatus } from '../types';
+import { keyService } from '../api/key-service';
 
 export interface EncryptedPayload {
   ciphertext: string;
@@ -94,6 +95,9 @@ class E2eeManager {
       decryptedParts.push(plaintext);
     }
     await saveRatchetState(sessionId, state);
+    if (senderIdentityKey && ephemeralPublicKey && getLocalSessionStatus(sessionId) === 'encrypted') {
+      await keyService.acceptEncryption(sessionId).catch(() => undefined);
+    }
 
     return decryptedParts.join('');
   }

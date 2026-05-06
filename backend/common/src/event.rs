@@ -152,6 +152,10 @@ pub struct MessageDto {
     pub e2ee_header: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub e2ee_device_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub e2ee_sender_identity_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub e2ee_ephemeral_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
