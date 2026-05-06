@@ -117,6 +117,26 @@ const getLatestAccessToken = (): string => {
   return "";
 };
 
+export const getHttpErrorMessage = (error: any): string => {
+  const data = error?.response?.data;
+  if (data && typeof data === "object") {
+    const message = (data as Record<string, unknown>).message;
+    if (typeof message === "string" && message.trim()) {
+      return message.trim();
+    }
+  }
+  return error instanceof Error ? error.message : "";
+};
+
+const normalizeHttpError = (error: any): any => {
+  const message = getHttpErrorMessage(error);
+  if (!message || !(error instanceof Error)) {
+    return error;
+  }
+  error.message = message;
+  return error;
+};
+
 const httpClient: AxiosInstance = axios.create({
   baseURL: "/api",
   timeout: 10000,
@@ -235,7 +255,15 @@ httpClient.interceptors.response.use(
 
     const { status } = error.response;
     if (!(status === 401 && shouldSkipRefresh(error.config?.url))) {
-      logger.error("response interceptor failed", error);
+      if (status >= 500) {
+        logger.error("response interceptor failed", error);
+      } else {
+        logger.warn("request rejected", {
+          status,
+          url: error.config?.url,
+          message: getHttpErrorMessage(error),
+        });
+      }
     }
 
     // Delegate to adapter response interceptors for error handling
@@ -251,7 +279,7 @@ httpClient.interceptors.response.use(
       }
     }
 
-    return Promise.reject(error);
+    return Promise.reject(normalizeHttpError(error));
   },
 );
 
