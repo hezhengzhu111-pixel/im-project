@@ -29,6 +29,7 @@ import { useUserStore } from "@/stores/user";
 import { useWebSocketStore } from "@/stores/websocket";
 import { useIsMobile } from "@/composables/useIsMobile";
 import { logger } from "@/utils/logger";
+import { initE2ee, stopDeviceHeartbeat } from "@/features/e2ee/manager/e2ee-init";
 
 const { isMobile } = useIsMobile();
 const loading = ref(false);
@@ -49,6 +50,7 @@ const initUserServices = async () => {
   try {
     await chatStore.initChatBootstrap();
     await webSocketStore.connect(String(userStore.userId));
+    void initE2ee();
     bootstrapped.value = true;
   } catch (error) {
     logger.error("failed to initialize authenticated services", error);
@@ -59,6 +61,7 @@ const resetUserServices = () => {
   bootstrapped.value = false;
   webSocketStore.disconnect();
   chatStore.clear();
+  stopDeviceHeartbeat();
 };
 
 const initApp = async () => {
