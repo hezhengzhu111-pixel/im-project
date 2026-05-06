@@ -658,7 +658,7 @@ curl -s http://localhost:8083/health
 # Expected: {"status":"ok"} or similar
 
 # Full integration test
-python scripts/full_backend_api_test.py
+python scripts/test.py
 ```
 
 ## 7. Access the App

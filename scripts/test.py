@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import argparse
 import http.client
 import http.cookiejar
 import json
@@ -30,6 +31,10 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Iterable
 
+from deploy_utils import PROJECT_ROOT, load_env_file
+
+load_env_file(PROJECT_ROOT / ".env")
+
 API_BASE = os.environ.get("IM_API_BASE", "http://localhost:8082").rstrip("/")
 IM_WS_BASE = os.environ.get("IM_WS_BASE")
 MYSQL_CONTAINER = os.environ.get("IM_MYSQL_CONTAINER", "sit-im-mysql-1")
@@ -38,6 +43,30 @@ INTERNAL_SECRET = os.environ.get(
     "IM_INTERNAL_SECRET",
     "im-internal-secret-im-internal-secret-im-internal-secret-im",
 )
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run full IM backend API and WebSocket integration tests."
+    )
+    parser.add_argument("--api-base", default=API_BASE, help="HTTP API base URL.")
+    parser.add_argument("--ws-base", default=IM_WS_BASE, help="Optional WebSocket base URL.")
+    parser.add_argument(
+        "--mysql-container",
+        default=MYSQL_CONTAINER,
+        help="MySQL container name for test data seeding.",
+    )
+    parser.add_argument(
+        "--mysql-root-password",
+        default=MYSQL_ROOT_PASSWORD,
+        help="MySQL root password.",
+    )
+    parser.add_argument(
+        "--internal-secret",
+        default=INTERNAL_SECRET,
+        help="Internal HMAC secret.",
+    )
+    return parser.parse_args()
 
 
 class TestFailure(RuntimeError):
@@ -416,6 +445,14 @@ def query(params: dict[str, Any]) -> str:
 
 
 def main() -> int:
+    global API_BASE, IM_WS_BASE, MYSQL_CONTAINER, MYSQL_ROOT_PASSWORD, INTERNAL_SECRET
+    args = parse_args()
+    API_BASE = str(args.api_base).rstrip("/")
+    IM_WS_BASE = args.ws_base.rstrip("/") if args.ws_base else None
+    MYSQL_CONTAINER = args.mysql_container
+    MYSQL_ROOT_PASSWORD = args.mysql_root_password
+    INTERNAL_SECRET = args.internal_secret
+
     random.seed()
     suffix = unique_suffix()
     password = f"Pass{suffix}123"
