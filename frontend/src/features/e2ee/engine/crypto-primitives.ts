@@ -36,6 +36,20 @@ export async function generateEphemeralKeyPair(): Promise<CryptoKeyPair> {
 }
 
 /**
+ * 生成可持久化的 Double Ratchet DH 密钥对。
+ *
+ * X3DH 临时密钥仍保持不可导出；RatchetState 需要写入 IndexedDB，
+ * 因此这里的私钥必须可导出为 JWK。
+ */
+export async function generateRatchetKeyPair(): Promise<CryptoKeyPair> {
+  return crypto.subtle.generateKey(
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    ['deriveKey', 'deriveBits'],
+  );
+}
+
+/**
  * 生成 Signed Pre Key 对 (ECDH P-256)
  * extractable: true（需要导出公钥上传服务端）, 用途: deriveKey, deriveBits
  */

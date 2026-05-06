@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto';
 import { describe, it, expect } from 'vitest';
 import {
   generateKeyBundle,
@@ -11,6 +12,7 @@ import {
   ratchetEncrypt,
   ratchetDecrypt,
 } from '@/features/e2ee/engine/double-ratchet';
+import { saveRatchetState, getRatchetState } from '@/features/e2ee/store/session-store';
 import type { RatchetHeader } from '@/features/e2ee/types';
 
 /** 创建 Bob 的远程 Bundle（x3dhInitiate 需要 signingIdentityKey） */
@@ -63,7 +65,7 @@ describe('Double Ratchet', () => {
 
     expect(state.rootKey).toBeDefined();
     expect(state.sendingChainKey).not.toBeNull();
-    expect(state.receivingChainKey).toBeNull();
+    expect(state.receivingChainKey).not.toBeNull();
     expect(state.sendCounter).toBe(0);
     expect(state.receiveCounter).toBe(0);
     expect(state.previousCounter).toBe(0);
@@ -83,14 +85,34 @@ describe('Double Ratchet', () => {
     const state = await initReceivingChain(rootKey, bob.identityKeyPair);
 
     expect(state.rootKey).toBeDefined();
-    expect(state.sendingChainKey).toBeNull();
+    expect(state.sendingChainKey).not.toBeNull();
     expect(state.receivingChainKey).not.toBeNull();
     expect(state.sendCounter).toBe(0);
     expect(state.receiveCounter).toBe(0);
     expect(state.remotePublicKey).toBeNull();
   });
 
-  it('initSendingChain and initReceivingChain derive the same initial chain key', async () => {
+  it('initSendingChain creates a persistable ratchet state', async () => {
+    const alice = await generateKeyBundle();
+    const bob = await generateKeyBundle();
+
+    const { rootKey: rootKeyBase64 } = await x3dhInitiate(
+      alice.identityKeyPair,
+      createRemoteBundle(bob),
+    );
+
+    const rootKey = await importRootKey(rootKeyBase64);
+    const state = await initSendingChain(rootKey, alice.identityKeyPair);
+
+    await saveRatchetState('persistable_sending_chain', state);
+    const restored = await getRatchetState('persistable_sending_chain');
+
+    expect(restored).not.toBeNull();
+    expect(restored!.sendingChainKey).not.toBeNull();
+    expect(restored!.dhKeyPair.privateKey.extractable).toBe(true);
+  });
+
+  it('initSendingChain and initReceivingChain derive matching initial chain keys', async () => {
     const alice = await generateKeyBundle();
     const bob = await generateKeyBundle();
 
@@ -103,13 +125,19 @@ describe('Double Ratchet', () => {
     const aliceState = await initSendingChain(rootKey, alice.identityKeyPair);
     const bobState = await initReceivingChain(rootKey, bob.identityKeyPair);
 
-    // 双方的初始链密钥应该相同（使用相同的 HKDF info）
-    const aliceChainRaw = await crypto.subtle.exportKey('raw', aliceState.sendingChainKey!);
-    const bobChainRaw = await crypto.subtle.exportKey('raw', bobState.receivingChainKey!);
+    const aliceSendRaw = await crypto.subtle.exportKey('raw', aliceState.sendingChainKey!);
+    const bobReceiveRaw = await crypto.subtle.exportKey('raw', bobState.receivingChainKey!);
+    const bobSendRaw = await crypto.subtle.exportKey('raw', bobState.sendingChainKey!);
+    const aliceReceiveRaw = await crypto.subtle.exportKey('raw', aliceState.receivingChainKey!);
 
-    const aliceHex = Buffer.from(new Uint8Array(aliceChainRaw)).toString('hex');
-    const bobHex = Buffer.from(new Uint8Array(bobChainRaw)).toString('hex');
-    expect(aliceHex).toBe(bobHex);
+    const aliceSendHex = Buffer.from(new Uint8Array(aliceSendRaw)).toString('hex');
+    const bobReceiveHex = Buffer.from(new Uint8Array(bobReceiveRaw)).toString('hex');
+    const bobSendHex = Buffer.from(new Uint8Array(bobSendRaw)).toString('hex');
+    const aliceReceiveHex = Buffer.from(new Uint8Array(aliceReceiveRaw)).toString('hex');
+
+    expect(aliceSendHex).toBe(bobReceiveHex);
+    expect(bobSendHex).toBe(aliceReceiveHex);
+    expect(aliceSendHex).not.toBe(aliceReceiveHex);
   });
 
   // ---------------------------------------------------------------------------
@@ -154,8 +182,8 @@ describe('Double Ratchet', () => {
     );
 
     const rootKey = await importRootKey(rootKeyBase64);
-    // Bob 的状态没有发送链
     const bobState = await initReceivingChain(rootKey, bob.identityKeyPair);
+    bobState.sendingChainKey = null;
 
     await expect(ratchetEncrypt(bobState, 'test')).rejects.toThrow(
       'Double Ratchet: sending chain not initialized',
@@ -201,6 +229,35 @@ describe('Double Ratchet', () => {
     const decrypted = await ratchetDecrypt(bobState, header, ciphertext);
 
     expect(decrypted).toBe(plaintext);
+  });
+
+  it('supports bidirectional first messages after X3DH', async () => {
+    const alice = await generateKeyBundle();
+    const bob = await generateKeyBundle();
+
+    const aliceResult = await x3dhInitiate(
+      alice.identityKeyPair,
+      createRemoteBundle(bob),
+    );
+    await x3dhRespond(
+      bob.identityKeyPair,
+      bob.signedPreKeyPair,
+      bob.oneTimePreKeyPairs[0],
+      alice.bundle.identityKey,
+      aliceResult.ephemeralPublicKey,
+    );
+
+    const rootKey = await importRootKey(aliceResult.rootKey);
+    const aliceState = await initSendingChain(rootKey, alice.identityKeyPair);
+    const bobState = await initReceivingChain(rootKey, bob.identityKeyPair);
+
+    const aliceMessage = await ratchetEncrypt(aliceState, 'hello bob');
+    expect(await ratchetDecrypt(bobState, aliceMessage.header, aliceMessage.ciphertext))
+      .toBe('hello bob');
+
+    const bobMessage = await ratchetEncrypt(bobState, 'hello alice');
+    expect(await ratchetDecrypt(aliceState, bobMessage.header, bobMessage.ciphertext))
+      .toBe('hello alice');
   });
 
   // ---------------------------------------------------------------------------

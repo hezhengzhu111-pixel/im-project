@@ -10,7 +10,7 @@ import { cryptoKeyToJwk, jwkToCryptoKey } from '../engine/codec';
 import { exportPublicKey, importPublicKey } from '../engine/crypto-primitives';
 
 const DB_NAME = 'e2ee_keys';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const STORES = ['identity', 'prekeys', 'sessions', 'sender_keys', 'meta'] as const;
 
