@@ -155,6 +155,7 @@ async fn test_e2ee_upload_bundle_then_get_devices() {
         &json!({
             "deviceId": &device_id,
             "identityKey": "dGVzdF9pZGVudGl0eV9rZXk=",
+            "signingIdentityKey": "dGVzdF9zaWduaW5nX2lkZW50aXR5X2tleQ==",
             "signedPreKey": "dGVzdF9zaWduZWRfcHJlX2tleQ==",
             "signedPreKeySignature": "dGVzdF9zaWduYXR1cmU=",
             "oneTimePreKeys": ["otp1", "otp2"]
@@ -203,6 +204,7 @@ async fn test_e2ee_get_bundle_consumes_one_time_pre_key() {
         &json!({
             "deviceId": &device_id,
             "identityKey": "a2V5X2lkZW50aXR5",
+            "signingIdentityKey": "c2lnbmluZ19pZGVudGl0eQ==",
             "signedPreKey": "c2lnbmVkX3ByZV9rZXk=",
             "signedPreKeySignature": "c2lnbmF0dXJl",
             "oneTimePreKeys": ["first_otp_key", "second_otp_key"]
@@ -281,6 +283,7 @@ async fn test_e2ee_cannot_delete_other_user_device() {
         &json!({
             "deviceId": &device_id,
             "identityKey": "dGVzdA==",
+            "signingIdentityKey": "dGVzdA==",
             "signedPreKey": "dGVzdA==",
             "signedPreKeySignature": "dGVzdA==",
             "oneTimePreKeys": []
@@ -319,6 +322,7 @@ async fn test_e2ee_unauthenticated_returns_401() {
         &json!({
             "deviceId": "test",
             "identityKey": "test",
+            "signingIdentityKey": "test",
             "signedPreKey": "test",
             "signedPreKeySignature": "test",
             "oneTimePreKeys": []

@@ -128,6 +128,7 @@ async fn register_device(app: &axum::Router, token: &str) -> String {
         &json!({
             "deviceId": &device_id,
             "identityKey": "dGVzdF9pZGVudGl0eV9rZXk=",
+            "signingIdentityKey": "dGVzdF9zaWduaW5nX2lkZW50aXR5X2tleQ==",
             "signedPreKey": "dGVzdF9zaWduZWRfcHJlX2tleQ==",
             "signedPreKeySignature": "dGVzdF9zaWduYXR1cmU=",
             "oneTimePreKeys": ["otp1"]

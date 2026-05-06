@@ -30,6 +30,7 @@ interface EncryptionNegotiationBody {
   sessionId: string;
   identityKey?: string;
   signedPreKey?: string;
+  requestPayloadJson?: string;
 }
 
 /** 群聊加密启用请求体 */
@@ -149,10 +150,12 @@ export const keyService = {
     sessionId: string,
     identityKey?: string,
     signedPreKey?: string,
+    requestPayloadJson?: string,
   ): Promise<ApiResponse<string>> {
     const body: EncryptionNegotiationBody = { sessionId };
     if (identityKey) body.identityKey = identityKey;
     if (signedPreKey) body.signedPreKey = signedPreKey;
+    if (requestPayloadJson) body.requestPayloadJson = requestPayloadJson;
     return http.post<string>('/e2ee/request', body);
   },
 

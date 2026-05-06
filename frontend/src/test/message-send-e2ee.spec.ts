@@ -4,6 +4,8 @@ import type { Message, ChatSession } from "@/types";
 
 const encryptMessageMock = vi.fn();
 const getLocalSessionStatusMock = vi.fn();
+const getPendingInitialHandshakeMock = vi.fn((..._args: unknown[]) => null);
+const clearPendingInitialHandshakeMock = vi.fn((..._args: unknown[]) => undefined);
 
 vi.mock("@/features/e2ee/manager/e2ee-manager", () => ({
   e2eeManager: {
@@ -14,6 +16,10 @@ vi.mock("@/features/e2ee/manager/e2ee-manager", () => ({
 vi.mock("@/features/e2ee/manager/negotiation", () => ({
   getLocalSessionStatus: (...args: unknown[]) =>
     getLocalSessionStatusMock(...args),
+  getPendingInitialHandshake: (...args: unknown[]) =>
+    getPendingInitialHandshakeMock(...args),
+  clearPendingInitialHandshake: (...args: unknown[]) =>
+    clearPendingInitialHandshakeMock(...args),
 }));
 
 vi.mock("@/normalizers/chat", () => ({

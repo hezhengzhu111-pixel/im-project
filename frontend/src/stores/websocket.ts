@@ -479,8 +479,14 @@ export const useWebSocketStore = defineStore("websocket", () => {
             const headerRaw = rawMsg.e2eeHeader || rawMsg.e2ee_header;
             const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
 
-            const senderIdentityKey = rawMsg.e2eeSenderIdentityKey as string | undefined;
-            const ephemeralKey = rawMsg.e2eeEphemeralKey as string | undefined;
+            const senderIdentityKey = (
+              rawMsg.e2eeSenderIdentityKey ||
+              rawMsg.e2ee_sender_identity_key
+            ) as string | undefined;
+            const ephemeralKey = (
+              rawMsg.e2eeEphemeralKey ||
+              rawMsg.e2ee_ephemeral_key
+            ) as string | undefined;
 
             if (header && normalizedMessage.content) {
               const decrypted = await e2eeManager.decryptMessage(

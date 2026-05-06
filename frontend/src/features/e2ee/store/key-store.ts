@@ -157,6 +157,29 @@ export async function getDeviceId(): Promise<string | undefined> {
 }
 
 // ---------------------------------------------------------------------------
+// Uploaded public bundle metadata
+// ---------------------------------------------------------------------------
+
+export interface LocalPublicBundle {
+  version: 2;
+  identityKey: string;
+  signingIdentityKey: string;
+  signedPreKey: string;
+  signedPreKeySignature: string;
+}
+
+export async function saveLocalPublicBundle(bundle: LocalPublicBundle): Promise<void> {
+  await idbPut('meta', 'localPublicBundle', bundle);
+}
+
+export async function getLocalPublicBundle(): Promise<LocalPublicBundle | null> {
+  const result = (await idbGet('meta', 'localPublicBundle')) as
+    | LocalPublicBundle
+    | undefined;
+  return result?.version === 2 ? result : null;
+}
+
+// ---------------------------------------------------------------------------
 // Pre-Key Bundle 元数据
 // ---------------------------------------------------------------------------
 

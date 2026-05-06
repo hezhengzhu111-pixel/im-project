@@ -10,7 +10,13 @@
  */
 
 import { resolveDeviceId } from './device-identity';
-import { hasIdentityKey, saveIdentityKeyPair, saveSignedPreKey } from '../store/key-store';
+import {
+  getLocalPublicBundle,
+  hasIdentityKey,
+  saveIdentityKeyPair,
+  saveLocalPublicBundle,
+  saveSignedPreKey,
+} from '../store/key-store';
 import { generateKeyBundle } from '../engine/x3dh';
 import { keyService } from '../api/key-service';
 import { e2eeManager } from './e2ee-manager';
@@ -33,7 +39,8 @@ export async function initE2ee(): Promise<void> {
     await e2eeManager.init(deviceId);
 
     const hasKey = await hasIdentityKey();
-    if (!hasKey) {
+    const hasV2Bundle = Boolean(await getLocalPublicBundle());
+    if (!hasKey || !hasV2Bundle) {
       await generateAndUploadBundle(deviceId);
     }
 
@@ -60,9 +67,17 @@ async function generateAndUploadBundle(deviceId: string): Promise<void> {
   await keyService.uploadBundle({
     deviceId,
     identityKey: bundle.bundle.identityKey,
+    signingIdentityKey: bundle.bundle.signingIdentityKey,
     signedPreKey: bundle.bundle.signedPreKey,
     signedPreKeySignature: bundle.bundle.signedPreKeySignature,
-    oneTimePreKeys: bundle.bundle.oneTimePreKeys,
+    oneTimePreKeys: [],
+  });
+  await saveLocalPublicBundle({
+    version: 2,
+    identityKey: bundle.bundle.identityKey,
+    signingIdentityKey: bundle.bundle.signingIdentityKey,
+    signedPreKey: bundle.bundle.signedPreKey,
+    signedPreKeySignature: bundle.bundle.signedPreKeySignature,
   });
 
   logger.info('[E2EE] key bundle generated and uploaded');

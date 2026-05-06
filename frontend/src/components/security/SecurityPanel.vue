@@ -64,6 +64,15 @@
           <span class="info-value">当前版本未返回设备详情</span>
         </div>
       </div>
+
+      <button
+        v-if="canEnable"
+        type="button"
+        class="enable-button"
+        @click="emit('enableEncryption')"
+      >
+        启用端到端加密
+      </button>
     </div>
   </div>
 </template>
@@ -75,10 +84,12 @@ import type { E2eeSessionStatus } from "@/features/e2ee/types";
 
 const props = defineProps<{
   status: E2eeSessionStatus;
+  canEnable?: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: "close"): void;
+  (e: "enableEncryption"): void;
 }>();
 
 const statusLabel = computed(() => {
@@ -309,6 +320,24 @@ const keyStatusLabel = computed(() => {
 
 .info-value-ok {
   color: var(--color-success, #22c55e);
+}
+
+.enable-button {
+  width: 100%;
+  margin-top: 14px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--color-primary, #6366f1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+
+  &:hover {
+    background: var(--color-primary-2, #818cf8);
+  }
 }
 
 .spin {

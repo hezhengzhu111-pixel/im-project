@@ -12,7 +12,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const MYSQL_BIND_LIMIT: usize = 60_000;
-const MESSAGE_INSERT_BINDS: usize = 19;
+const MESSAGE_INSERT_BINDS: usize = 24;
 const PRIVATE_READ_CURSOR_INSERT_BINDS: usize = 6;
 const GROUP_READ_CURSOR_INSERT_BINDS: usize = 8;
 
@@ -352,6 +352,11 @@ struct DbMessage {
     thumbnail_url: Option<String>,
     duration: Option<i32>,
     location_info: Option<String>,
+    encrypted: i8,
+    e2ee_header: Option<String>,
+    e2ee_device_id: Option<String>,
+    e2ee_sender_identity_key: Option<String>,
+    e2ee_ephemeral_key: Option<String>,
     status: i32,
     is_group_chat: i8,
     reply_to_message_id: Option<i64>,
@@ -391,6 +396,15 @@ impl DbMessage {
             thumbnail_url: message.thumbnail_url.clone(),
             duration: message.duration,
             location_info: message.location_info.clone(),
+            encrypted: if message.encrypted.unwrap_or(false) {
+                1_i8
+            } else {
+                0_i8
+            },
+            e2ee_header: message.e2ee_header.clone(),
+            e2ee_device_id: message.e2ee_device_id.clone(),
+            e2ee_sender_identity_key: message.e2ee_sender_identity_key.clone(),
+            e2ee_ephemeral_key: message.e2ee_ephemeral_key.clone(),
             status: MessageStatus::from_text(&message.status).db_code(),
             is_group_chat: if message.is_group_chat { 1_i8 } else { 0_i8 },
             reply_to_message_id: message.reply_to_message_id.as_deref().and_then(parse_i64),
@@ -435,7 +449,8 @@ async fn insert_messages(
         let mut query = QueryBuilder::<MySql>::new(
             "INSERT INTO service_message_service_db.messages \
              (id, sender_id, receiver_id, group_id, conversation_seq, client_message_id, message_type, content, \
-              media_url, media_size, media_name, thumbnail_url, duration, location_info, status, \
+              media_url, media_size, media_name, thumbnail_url, duration, location_info, encrypted, e2ee_header, \
+              e2ee_device_id, e2ee_sender_identity_key, e2ee_ephemeral_key, status, \
               is_group_chat, reply_to_message_id, created_time, updated_time) ",
         );
         query.push_values(chunk.iter(), |mut row, message| {
@@ -453,6 +468,11 @@ async fn insert_messages(
                 .push_bind(message.thumbnail_url.clone())
                 .push_bind(message.duration)
                 .push_bind(message.location_info.clone())
+                .push_bind(message.encrypted)
+                .push_bind(message.e2ee_header.clone())
+                .push_bind(message.e2ee_device_id.clone())
+                .push_bind(message.e2ee_sender_identity_key.clone())
+                .push_bind(message.e2ee_ephemeral_key.clone())
                 .push_bind(message.status)
                 .push_bind(message.is_group_chat)
                 .push_bind(message.reply_to_message_id)

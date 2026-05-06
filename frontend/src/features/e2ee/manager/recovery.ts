@@ -13,15 +13,13 @@ import {
   pbkdf2DeriveKey,
   aesGcmEncrypt,
   aesGcmDecrypt,
-  generateIdentityKeyPair,
-  generateSignedPreKeyPair,
-  generateOneTimePreKeyPair,
   exportPublicKey,
-  ecdsaSign,
 } from '../engine/crypto-primitives';
+import { generateKeyBundle } from '../engine/x3dh';
 import { bufferToBase64, base64ToBuffer, randomBytes } from '../engine/codec';
 import {
   saveIdentityKeyPair,
+  saveLocalPublicBundle,
   saveSignedPreKey,
 } from '../store/key-store';
 import { keyService } from '../api/key-service';
@@ -30,9 +28,6 @@ import { resolveDeviceId } from './device-identity';
 // ---------------------------------------------------------------------------
 // 常量
 // ---------------------------------------------------------------------------
-
-/** One-Time Pre Key 数量 */
-const ONE_TIME_PRE_KEY_COUNT = 10;
 
 /** Signed Pre Key ID（简单递增，实际应用可持久化计数器） */
 const SIGNED_PRE_KEY_ID = 1;
@@ -140,42 +135,29 @@ export async function recoverWithPassword(password: string): Promise<void> {
   }
 
   // 5. 重新生成密钥对
-  const identityKeyPair = await generateIdentityKeyPair();
-  const signedPreKeyPair = await generateSignedPreKeyPair();
-
-  // 生成 One-Time Pre Keys
-  const oneTimePreKeyPairs: CryptoKeyPair[] = [];
-  for (let i = 0; i < ONE_TIME_PRE_KEY_COUNT; i++) {
-    oneTimePreKeyPairs.push(await generateOneTimePreKeyPair());
-  }
+  const bundle = await generateKeyBundle();
 
   // 6. 保存到本地存储
-  await saveIdentityKeyPair(identityKeyPair);
-  await saveSignedPreKey(SIGNED_PRE_KEY_ID, signedPreKeyPair);
+  await saveIdentityKeyPair(bundle.identityKeyPair);
+  await saveSignedPreKey(SIGNED_PRE_KEY_ID, bundle.signedPreKeyPair);
 
   // 7. 准备上传数据
   const deviceId = await resolveDeviceId();
 
-  const identityKeyBase64 = await exportPublicKeyBase64(identityKeyPair.publicKey);
-  const signedPreKeyBase64 = await exportPublicKeyBase64(signedPreKeyPair.publicKey);
-
-  // 签名 Signed Pre Key
-  const signedPreKeyRaw = await exportPublicKey(signedPreKeyPair.publicKey);
-  const signatureBuffer = await ecdsaSign(identityKeyPair.privateKey, signedPreKeyRaw);
-  const signedPreKeySignatureBase64 = bufferToBase64(signatureBuffer);
-
-  const oneTimePreKeysBase64: string[] = [];
-  for (const otpk of oneTimePreKeyPairs) {
-    const pubKeyBase64 = await exportPublicKeyBase64(otpk.publicKey);
-    oneTimePreKeysBase64.push(pubKeyBase64);
-  }
-
   // 8. 上传新 Bundle
   await keyService.uploadBundle({
     deviceId,
-    identityKey: identityKeyBase64,
-    signedPreKey: signedPreKeyBase64,
-    signedPreKeySignature: signedPreKeySignatureBase64,
-    oneTimePreKeys: oneTimePreKeysBase64,
+    identityKey: bundle.bundle.identityKey,
+    signingIdentityKey: bundle.bundle.signingIdentityKey,
+    signedPreKey: bundle.bundle.signedPreKey,
+    signedPreKeySignature: bundle.bundle.signedPreKeySignature,
+    oneTimePreKeys: [],
+  });
+  await saveLocalPublicBundle({
+    version: 2,
+    identityKey: bundle.bundle.identityKey,
+    signingIdentityKey: bundle.bundle.signingIdentityKey,
+    signedPreKey: bundle.bundle.signedPreKey,
+    signedPreKeySignature: bundle.bundle.signedPreKeySignature,
   });
 }
