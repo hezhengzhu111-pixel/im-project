@@ -15,6 +15,7 @@ import { saveRatchetState, getRatchetState } from '../store/session-store';
 import { getIdentityKeyPair, getLocalPublicBundle, getSignedPreKey } from '../store/key-store';
 import type { PreKeyBundle, E2eeSessionStatus } from '../types';
 import { emitE2eeStatusChange } from '../status-events';
+import { ensureLocalE2eeDeviceRegistered } from './local-device';
 
 const SESSION_STATUS_PREFIX = 'e2ee:status:';
 const INITIAL_HANDSHAKE_PREFIX = 'e2ee:initial-handshake:';
@@ -88,6 +89,8 @@ export async function initiateNegotiation(
 ): Promise<boolean> {
   setLocalSessionStatus(sessionId, 'negotiating');
   try {
+    await ensureLocalE2eeDeviceRegistered();
+
     const identityKeyPair = await getIdentityKeyPair();
     if (!identityKeyPair) {
       throw new Error('Local identity key not found');

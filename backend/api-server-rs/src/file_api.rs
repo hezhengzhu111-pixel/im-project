@@ -48,13 +48,15 @@ pub fn store_knowledge_file(
     let date = Local::now().format("%Y-%m-%d").to_string();
     let safe_name = format!("{}.{}", uuid::Uuid::new_v4(), file_type);
     let dir = base_dir.join("knowledge").join(&date);
-    std::fs::create_dir_all(&dir).map_err(|e| AppError::Io(e))?;
+    std::fs::create_dir_all(&dir).map_err(AppError::Io)?;
     let path = dir.join(&safe_name);
-    std::fs::write(&path, data).map_err(|e| AppError::Io(e))?;
+    std::fs::write(&path, data).map_err(AppError::Io)?;
     let url = format!("/files/knowledge/{}/{}", date, safe_name);
+    let size = i64::try_from(data.len())
+        .map_err(|_| AppError::BadRequest("file too large".to_string()))?;
     Ok(KnowledgeFileSaved {
         url,
-        size: data.len() as i64,
+        size,
     })
 }
 

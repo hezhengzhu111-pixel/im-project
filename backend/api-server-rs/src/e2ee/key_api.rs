@@ -1,3 +1,4 @@
+use crate::access_control;
 use crate::auth::identity_from_headers;
 use crate::error::AppError;
 use crate::web::AppState;
@@ -7,6 +8,7 @@ use axum::Json;
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
 use im_rs_common::api::ApiResponse;
+use im_rs_common::auth::Identity;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::Row;
@@ -64,6 +66,7 @@ pub struct PreKeyBundleDto {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceDto {
+    pub user_id: String,
     pub device_id: String,
     pub identity_key: String,
     pub signed_pre_key: String,
@@ -113,6 +116,60 @@ fn validate_bundle(req: &UploadBundleRequest) -> Result<(), AppError> {
 
 fn format_datetime(dt: chrono::NaiveDateTime) -> String {
     dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+}
+
+fn parse_user_id(value: &str) -> Result<i64, AppError> {
+    let user_id = value
+        .parse::<i64>()
+        .map_err(|_| AppError::BadRequest("invalid userId".to_string()))?;
+    if user_id <= 0 {
+        return Err(AppError::BadRequest("invalid userId".to_string()));
+    }
+    Ok(user_id)
+}
+
+fn target_user_id_from_query(
+    identity: &Identity,
+    params: &HashMap<String, String>,
+) -> Result<i64, AppError> {
+    params
+        .get("userId")
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(parse_user_id)
+        .unwrap_or(Ok(identity.user_id))
+}
+
+async fn fetch_user_devices(
+    db: &sqlx::MySqlPool,
+    target_user_id: i64,
+) -> Result<Vec<DeviceDto>, AppError> {
+    let rows = sqlx::query(
+        r#"SELECT device_id, identity_key, signed_pre_key, last_active_at
+           FROM service_user_service_db.e2ee_devices
+           WHERE user_id = ? AND status = 'active'
+           ORDER BY last_active_at DESC"#,
+    )
+    .bind(target_user_id)
+    .fetch_all(db)
+    .await?;
+
+    let devices: Vec<DeviceDto> = rows
+        .iter()
+        .map(|row| {
+            let last_active_at: chrono::NaiveDateTime = row.get("last_active_at");
+            DeviceDto {
+                user_id: target_user_id.to_string(),
+                device_id: row.get("device_id"),
+                identity_key: row.get("identity_key"),
+                signed_pre_key: row.get("signed_pre_key"),
+                last_active_at: format_datetime(last_active_at),
+            }
+        })
+        .collect();
+
+    Ok(devices)
 }
 
 // ---------------------------------------------------------------------------
@@ -302,29 +359,60 @@ pub async fn get_devices(
     headers: HeaderMap,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<ApiResponse<Vec<DeviceDto>>>, AppError> {
-    let _identity = identity_from_headers(&headers, &state.config)?;
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let target_user_id = target_user_id_from_query(&identity, &params)?;
+    let devices = fetch_user_devices(&state.db, target_user_id).await?;
 
-    let target_user_id: i64 = params
-        .get("userId")
-        .ok_or_else(|| AppError::BadRequest("missing userId".to_string()))?
-        .parse()
-        .map_err(|_| AppError::BadRequest("invalid userId".to_string()))?;
+    Ok(Json(ApiResponse::success(devices)))
+}
+
+/// 获取路径中指定用户的公开设备信息。
+///
+/// GET /api/e2ee/devices/:user_id
+pub async fn get_devices_by_user_path(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<i64>,
+) -> Result<Json<ApiResponse<Vec<DeviceDto>>>, AppError> {
+    let _identity = identity_from_headers(&headers, &state.config)?;
+    if user_id <= 0 {
+        return Err(AppError::BadRequest("invalid userId".to_string()));
+    }
+    let devices = fetch_user_devices(&state.db, user_id).await?;
+
+    Ok(Json(ApiResponse::success(devices)))
+}
+
+/// 获取指定群组内所有成员的公开设备信息。
+///
+/// GET /api/e2ee/groups/:group_id/devices
+pub async fn get_group_devices(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<i64>,
+) -> Result<Json<ApiResponse<Vec<DeviceDto>>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    access_control::ensure_group_member(&state.db, group_id, identity.user_id).await?;
 
     let rows = sqlx::query(
-        r#"SELECT device_id, identity_key, signed_pre_key, last_active_at
-           FROM service_user_service_db.e2ee_devices
-           WHERE user_id = ? AND status = 'active'
-           ORDER BY last_active_at DESC"#,
+        r#"SELECT m.user_id, d.device_id, d.identity_key, d.signed_pre_key, d.last_active_at
+           FROM service_group_service_db.im_group_member m
+           JOIN service_user_service_db.e2ee_devices d
+             ON d.user_id = m.user_id AND d.status = 'active'
+           WHERE m.group_id = ? AND m.status = 1
+           ORDER BY m.user_id ASC, d.last_active_at DESC"#,
     )
-    .bind(target_user_id)
+    .bind(group_id)
     .fetch_all(&state.db)
     .await?;
 
     let devices: Vec<DeviceDto> = rows
         .iter()
         .map(|row| {
+            let user_id: i64 = row.get("user_id");
             let last_active_at: chrono::NaiveDateTime = row.get("last_active_at");
             DeviceDto {
+                user_id: user_id.to_string(),
                 device_id: row.get("device_id"),
                 identity_key: row.get("identity_key"),
                 signed_pre_key: row.get("signed_pre_key"),
@@ -409,7 +497,7 @@ pub async fn get_salt(
     let mut buf = [0u8; 32];
     getrandom::getrandom(&mut buf)
         .map_err(|e| AppError::Upstream(format!("random generation failed: {e}")))?;
-    let salt = B64.encode(&buf);
+    let salt = B64.encode(buf);
 
     // 持久化（UPSERT：备份可能已存在但没有 salt 的情况不会发生，因为是同一张表）
     sqlx::query(
