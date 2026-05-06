@@ -316,8 +316,14 @@ pub async fn bind_phone(
     let identity = identity_from_headers(&headers, &state.config)?;
     validate_phone(&request.phone)?;
     validate_code(&request.code)?;
-    verify_and_consume_code(&state, identity.user_id, "phone", request.phone.trim(), request.code.trim())
-        .await?;
+    verify_and_consume_code(
+        &state,
+        identity.user_id,
+        "phone",
+        request.phone.trim(),
+        request.code.trim(),
+    )
+    .await?;
     sqlx::query("UPDATE service_user_service_db.users SET phone = ? WHERE id = ? AND status = 1")
         .bind(request.phone.trim())
         .bind(identity.user_id)
@@ -354,8 +360,14 @@ pub async fn bind_email(
     let identity = identity_from_headers(&headers, &state.config)?;
     validate_email(&request.email)?;
     validate_code(&request.code)?;
-    verify_and_consume_code(&state, identity.user_id, "email", request.email.trim(), request.code.trim())
-        .await?;
+    verify_and_consume_code(
+        &state,
+        identity.user_id,
+        "email",
+        request.email.trim(),
+        request.code.trim(),
+    )
+    .await?;
     sqlx::query("UPDATE service_user_service_db.users SET email = ? WHERE id = ? AND status = 1")
         .bind(request.email.trim())
         .bind(identity.user_id)
@@ -676,7 +688,10 @@ fn validate_code(code: &str) -> Result<(), AppError> {
 }
 
 fn generate_verification_code() -> String {
-    let num = uuid::Uuid::new_v4().as_u128().checked_rem(1_000_000).unwrap_or(0);
+    let num = uuid::Uuid::new_v4()
+        .as_u128()
+        .checked_rem(1_000_000)
+        .unwrap_or(0);
     format!("{num:06}")
 }
 

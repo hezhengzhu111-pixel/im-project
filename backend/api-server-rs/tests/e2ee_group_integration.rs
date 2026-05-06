@@ -50,7 +50,11 @@ async fn register_and_login(app: &axum::Router) -> AuthedUser {
         .unwrap();
     let reg_resp = app.clone().oneshot(reg_req).await.unwrap();
     let reg_json = read_json(reg_resp).await;
-    assert_eq!(reg_json["success"], json!(true), "register failed: {reg_json}");
+    assert_eq!(
+        reg_json["success"],
+        json!(true),
+        "register failed: {reg_json}"
+    );
     let user_id: i64 = reg_json["data"]["id"].as_str().unwrap().parse().unwrap();
 
     // Login
@@ -67,7 +71,11 @@ async fn register_and_login(app: &axum::Router) -> AuthedUser {
         .unwrap();
     let login_resp = app.clone().oneshot(login_req).await.unwrap();
     let login_json = read_json(login_resp).await;
-    assert_eq!(login_json["success"], json!(true), "login failed: {login_json}");
+    assert_eq!(
+        login_json["success"],
+        json!(true),
+        "login failed: {login_json}"
+    );
     let token = login_json["data"]["token"].as_str().unwrap().to_string();
 
     AuthedUser { token, user_id }
@@ -95,11 +103,7 @@ async fn post_json(
     (status, json)
 }
 
-async fn get_json(
-    app: &axum::Router,
-    uri: &str,
-    token: Option<&str>,
-) -> (StatusCode, Value) {
+async fn get_json(app: &axum::Router, uri: &str, token: Option<&str>) -> (StatusCode, Value) {
     let mut builder = Request::builder()
         .uri(uri)
         .method("GET")
@@ -148,11 +152,7 @@ async fn setup_group_with_member(app: &axum::Router) -> (i64, AuthedUser, Authed
     )
     .await;
     assert_eq!(status, StatusCode::OK, "create group failed: {body}");
-    let group_id: i64 = body["data"]["id"]
-        .as_str()
-        .unwrap()
-        .parse()
-        .unwrap();
+    let group_id: i64 = body["data"]["id"].as_str().unwrap().parse().unwrap();
 
     // member 加入群组（role=1 普通成员）
     let (status, body) = post_json(
@@ -234,7 +234,10 @@ async fn test_e2ee_group_enable_admin_to_nonmember_returns_403() {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "expected 403: {body}");
     assert!(
-        body["message"].as_str().unwrap_or("").contains("not a group member"),
+        body["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("not a group member"),
         "error message should mention 'not a group member': {body}"
     );
 
@@ -247,7 +250,8 @@ async fn test_e2ee_group_enable_admin_to_nonmember_returns_403() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
-        body["data"]["status"], json!("plaintext"),
+        body["data"]["status"],
+        json!("plaintext"),
         "group encryption should remain plaintext after failed enable"
     );
 }
@@ -276,7 +280,10 @@ async fn test_e2ee_group_push_sender_key_to_nonmember_returns_403() {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "expected 403: {body}");
     assert!(
-        body["message"].as_str().unwrap_or("").contains("not a group member"),
+        body["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("not a group member"),
         "error message should mention 'not a group member': {body}"
     );
 }
@@ -534,7 +541,10 @@ async fn test_e2ee_group_nonmember_read_sender_keys_returns_403() {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "expected 403: {body}");
     assert!(
-        body["message"].as_str().unwrap_or("").contains("not a group member"),
+        body["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("not a group member"),
         "error message should mention 'not a group member': {body}"
     );
 }
@@ -590,7 +600,11 @@ async fn test_e2ee_group_leave_deletes_sender_keys() {
         Some(&owner.token),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "owner read sender keys failed: {body}");
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "owner read sender keys failed: {body}"
+    );
     let keys = body["data"].as_array().unwrap();
     // member 的 sender key 应该被清理，owner 自己的应该保留
     for key in keys {
@@ -600,4 +614,103 @@ async fn test_e2ee_group_leave_deletes_sender_keys() {
             "member's sender key should have been deleted"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// 测试 11: 群成员查询加密状态成功
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_group_status_member_succeeds() {
+    let app = test_app().await;
+    let (group_id, owner, member) = setup_group_with_member(&app).await;
+
+    // member（普通群成员）查询状态 → 应成功，返回 plaintext
+    let (status, body) = get_json(
+        &app,
+        &format!("/api/e2ee/groups/{group_id}/status"),
+        Some(&member.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "member query status failed: {body}");
+    assert_eq!(body["data"]["status"], json!("plaintext"));
+    assert_eq!(body["data"]["enabledBy"], Value::Null);
+
+    // owner 启用加密后再查
+    let device_id = register_device(&app, &member.token).await;
+    let (status, _) = post_json(
+        &app,
+        &format!("/api/e2ee/groups/{group_id}/enable"),
+        Some(&owner.token),
+        &json!({
+            "senderKeys": [{
+                "recipientId": member.user_id,
+                "deviceId": &device_id,
+                "encryptedSenderKey": "dGVzdF9rZXk="
+            }]
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, body) = get_json(
+        &app,
+        &format!("/api/e2ee/groups/{group_id}/status"),
+        Some(&member.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["status"], json!("encrypted"));
+    assert_eq!(
+        body["data"]["enabledBy"].as_str().unwrap(),
+        owner.user_id.to_string()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试 12: 非群成员查询加密状态返回 403
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_group_status_nonmember_returns_403() {
+    let app = test_app().await;
+    let (group_id, _owner, _member) = setup_group_with_member(&app).await;
+    let outsider = register_and_login(&app).await;
+
+    let (status, body) = get_json(
+        &app,
+        &format!("/api/e2ee/groups/{group_id}/status"),
+        Some(&outsider.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "expected 403: {body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("not a group member"),
+        "error message should mention 'not a group member': {body}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试 13: 不存在的 group_id 查询返回 403（成员校验先于状态查询）
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_group_status_nonexistent_group_returns_403() {
+    let app = test_app().await;
+    let user = register_and_login(&app).await;
+
+    // 不存在的 group_id → 成员校验失败 → 403（不泄露 group 是否存在）
+    let (status, body) =
+        get_json(&app, "/api/e2ee/groups/999999999/status", Some(&user.token)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "expected 403: {body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("not a group member"),
+        "error message should mention 'not a group member': {body}"
+    );
 }

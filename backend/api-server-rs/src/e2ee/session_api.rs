@@ -20,6 +20,10 @@ const MAX_PAYLOAD_LEN: usize = 50_000;
 // 请求类型
 // ---------------------------------------------------------------------------
 
+/// E2EE 会话协商请求体。
+///
+/// 用于发起、接受或拒绝端到端加密会话。仅传递公钥/密文材料，
+/// 服务端不保存任何私钥。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct E2eeSessionRequest {
@@ -53,12 +57,16 @@ fn validate_optional_key(value: Option<&str>, field_name: &str) -> Result<(), Ap
 // 处理器
 // ---------------------------------------------------------------------------
 
-/// 发起加密协商请求
+/// 发起端到端加密协商请求。
 ///
 /// POST /api/e2ee/request
 ///
-/// 校验调用者身份，创建 e2ee_sessions 记录（pending 状态）。
-/// session_id 格式应为 `{smaller_id}_{larger_id}`，由客户端生成。
+/// 业务目的：向目标用户发起 E2EE 会话协商，创建 pending 状态的会话记录。
+/// 认证要求：需要有效的 JWT access token。
+/// 安全约束：session_id 格式为 `{id_a}_{id_b}`，发起者必须是其中一方；
+/// 仅保存公钥材料（identity_key、signed_pre_key、request_payload_json），
+/// 不保存任何私钥。已加密的会话不可重复发起。
+/// 返回语义：成功返回 "ok"，幂等更新（rejected/pending 状态可重新发起）。
 pub async fn request_encryption(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -97,9 +105,7 @@ pub async fn request_encryption(
     if let Some(row) = existing {
         let status: String = row.get("status");
         if status == "encrypted" {
-            return Err(AppError::Conflict(
-                "session already encrypted".to_string(),
-            ));
+            return Err(AppError::Conflict("session already encrypted".to_string()));
         }
         // 如果是 rejected 或 pending，允许重新请求：更新记录
         sqlx::query(
@@ -131,11 +137,15 @@ pub async fn request_encryption(
     Ok(Json(ApiResponse::success("ok".to_string())))
 }
 
-/// 接受加密协商
+/// 接受端到端加密协商。
 ///
 /// POST /api/e2ee/accept
 ///
-/// 只有 target_user_id 可以接受。将状态更新为 encrypted。
+/// 业务目的：目标用户接受加密协商请求，将会话状态从 pending 更新为 encrypted。
+/// 认证要求：需要有效的 JWT access token。
+/// 安全约束：只有 target_user_id（被请求方）可以接受；
+/// 仅传递公钥材料，不传递私钥。会话不存在返回 404，非 pending 状态返回 409。
+/// 返回语义：成功返回 "ok"。
 pub async fn accept_encryption(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -184,11 +194,15 @@ pub async fn accept_encryption(
     Ok(Json(ApiResponse::success("ok".to_string())))
 }
 
-/// 拒绝加密协商
+/// 拒绝端到端加密协商。
 ///
 /// POST /api/e2ee/reject
 ///
-/// 只有 target_user_id 可以拒绝。将状态更新为 rejected。
+/// 业务目的：目标用户拒绝加密协商请求，将会话状态从 pending 更新为 rejected。
+/// 认证要求：需要有效的 JWT access token。
+/// 安全约束：只有 target_user_id（被请求方）可以拒绝。
+/// 会话不存在返回 404，非 pending 状态返回 409。
+/// 返回语义：成功返回 "ok"。
 pub async fn reject_encryption(
     State(state): State<AppState>,
     headers: HeaderMap,

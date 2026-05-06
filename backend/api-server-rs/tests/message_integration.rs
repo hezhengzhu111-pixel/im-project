@@ -7,8 +7,8 @@ use redis::aio::ConnectionManager;
 use serde_json::{json, Value};
 use sqlx::mysql::MySqlConnectOptions;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tower::ServiceExt;
 
 fn build_config() -> AppConfig {
@@ -61,12 +61,9 @@ fn unique_username(prefix: &str) -> String {
 }
 
 async fn test_router() -> Router {
-    let state = build_state()
-        .await
-        .ok()
-        .unwrap_or_else(|| {
-            std::process::exit(1);
-        });
+    let state = build_state().await.ok().unwrap_or_else(|| {
+        std::process::exit(1);
+    });
     api_server_rs::web::router(state)
 }
 
@@ -138,11 +135,7 @@ async fn login(app: &Router, username: &str, password: &str) -> anyhow::Result<S
     Ok(token)
 }
 
-async fn send_friend_request(
-    app: &Router,
-    token: &str,
-    target_user_id: i64,
-) -> anyhow::Result<()> {
+async fn send_friend_request(app: &Router, token: &str, target_user_id: i64) -> anyhow::Result<()> {
     let request = Request::builder()
         .method("POST")
         .uri("/api/friend/request")
@@ -155,7 +148,11 @@ async fn send_friend_request(
     let status = response.status();
     if !status.is_success() {
         let body = axum::body::to_bytes(response.into_body(), usize::MAX).await?;
-        anyhow::bail!("friend request failed: {} {}", status, String::from_utf8_lossy(&body));
+        anyhow::bail!(
+            "friend request failed: {} {}",
+            status,
+            String::from_utf8_lossy(&body)
+        );
     }
     Ok(())
 }
@@ -175,35 +172,35 @@ async fn get_friend_requests(
         .pointer("/data")
         .and_then(Value::as_array)
         .map(|arr| {
-            arr.iter().filter_map(|item| {
-                let id = item.get("id")?.as_str()?.to_string();
-                let applicant_id = item.get("applicantId")?.as_str()?.to_string();
-                let status = item.get("status")?.as_str()?.to_string();
-                Some((id, applicant_id, status))
-            }).collect()
+            arr.iter()
+                .filter_map(|item| {
+                    let id = item.get("id")?.as_str()?.to_string();
+                    let applicant_id = item.get("applicantId")?.as_str()?.to_string();
+                    let status = item.get("status")?.as_str()?.to_string();
+                    Some((id, applicant_id, status))
+                })
+                .collect()
         })
         .unwrap_or_default();
     Ok(items)
 }
 
-async fn accept_friend_request(
-    app: &Router,
-    token: &str,
-    request_id: &str,
-) -> anyhow::Result<()> {
+async fn accept_friend_request(app: &Router, token: &str, request_id: &str) -> anyhow::Result<()> {
     let request = Request::builder()
         .method("POST")
         .uri("/api/friend/accept")
         .header(header::CONTENT_TYPE, "application/json")
         .header(auth_header(token).0, auth_header(token).1)
-        .body(Body::from(
-            json!({"requestId": request_id}).to_string(),
-        ))?;
+        .body(Body::from(json!({"requestId": request_id}).to_string()))?;
     let response = app.clone().oneshot(request).await?;
     let status = response.status();
     if !status.is_success() {
         let body = axum::body::to_bytes(response.into_body(), usize::MAX).await?;
-        anyhow::bail!("accept friend failed: {} {}", status, String::from_utf8_lossy(&body));
+        anyhow::bail!(
+            "accept friend failed: {} {}",
+            status,
+            String::from_utf8_lossy(&body)
+        );
     }
     Ok(())
 }
@@ -330,9 +327,7 @@ async fn get_private_history_paged(
     limit: i64,
     last_message_id: Option<i64>,
 ) -> anyhow::Result<(StatusCode, Value)> {
-    let mut uri = format!(
-        "/api/message/private/{peer_id}?limit={limit}"
-    );
+    let mut uri = format!("/api/message/private/{peer_id}?limit={limit}");
     if let Some(before) = last_message_id {
         uri.push_str(&format!("&lastMessageId={before}"));
     }
@@ -348,7 +343,11 @@ async fn get_private_history_paged(
     Ok((status, json))
 }
 
-async fn mark_read(app: &Router, token: &str, conversation_id: &str) -> anyhow::Result<(StatusCode, Value)> {
+async fn mark_read(
+    app: &Router,
+    token: &str,
+    conversation_id: &str,
+) -> anyhow::Result<(StatusCode, Value)> {
     let request = Request::builder()
         .method("POST")
         .uri(format!("/api/message/read/{conversation_id}"))
@@ -361,7 +360,11 @@ async fn mark_read(app: &Router, token: &str, conversation_id: &str) -> anyhow::
     Ok((status, json))
 }
 
-async fn recall_message(app: &Router, token: &str, message_id: &str) -> anyhow::Result<(StatusCode, Value)> {
+async fn recall_message(
+    app: &Router,
+    token: &str,
+    message_id: &str,
+) -> anyhow::Result<(StatusCode, Value)> {
     let request = Request::builder()
         .method("POST")
         .uri(format!("/api/message/recall/{message_id}"))
@@ -374,7 +377,11 @@ async fn recall_message(app: &Router, token: &str, message_id: &str) -> anyhow::
     Ok((status, json))
 }
 
-async fn delete_message(app: &Router, token: &str, message_id: &str) -> anyhow::Result<(StatusCode, Value)> {
+async fn delete_message(
+    app: &Router,
+    token: &str,
+    message_id: &str,
+) -> anyhow::Result<(StatusCode, Value)> {
     let request = Request::builder()
         .method("POST")
         .uri(format!("/api/message/delete/{message_id}"))
@@ -425,13 +432,17 @@ async fn test_send_private_success() -> anyhow::Result<()> {
     let app = test_router().await;
     let u1 = unique_username("sp");
     let u2 = unique_username("sp");
-    let (_id1, token1, id2, _token2) =
-        make_friends(&app, &u1, &u2, "Test1234!").await?;
+    let (_id1, token1, id2, _token2) = make_friends(&app, &u1, &u2, "Test1234!").await?;
 
     let (status, body) = send_private_msg(&app, &token1, id2, "Hello").await?;
     assert_eq!(status, StatusCode::OK, "expected 200, got {status}: {body}");
-    let data = body.get("data").ok_or_else(|| anyhow::anyhow!("response missing data"))?;
-    assert_eq!(data.get("messageType").and_then(Value::as_str), Some("TEXT"));
+    let data = body
+        .get("data")
+        .ok_or_else(|| anyhow::anyhow!("response missing data"))?;
+    assert_eq!(
+        data.get("messageType").and_then(Value::as_str),
+        Some("TEXT")
+    );
     assert_eq!(data.get("status").and_then(Value::as_str), Some("SENT"));
     Ok(())
 }
@@ -441,11 +452,14 @@ async fn test_send_private_empty_content() -> anyhow::Result<()> {
     let app = test_router().await;
     let u1 = unique_username("ec");
     let u2 = unique_username("ec");
-    let (_id1, token1, id2, _token2) =
-        make_friends(&app, &u1, &u2, "Test1234!").await?;
+    let (_id1, token1, id2, _token2) = make_friends(&app, &u1, &u2, "Test1234!").await?;
 
     let (status, _body) = send_private_msg(&app, &token1, id2, "").await?;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "expected 400 for empty content");
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "expected 400 for empty content"
+    );
     Ok(())
 }
 
@@ -487,8 +501,7 @@ async fn test_private_history() -> anyhow::Result<()> {
     let app = test_router().await;
     let u1 = unique_username("hi");
     let u2 = unique_username("hi");
-    let (_id1, token1, id2, _token2) =
-        make_friends(&app, &u1, &u2, "Test1234!").await?;
+    let (_id1, token1, id2, _token2) = make_friends(&app, &u1, &u2, "Test1234!").await?;
 
     send_private_msg(&app, &token1, id2, "msg1").await?;
     send_private_msg(&app, &token1, id2, "msg2").await?;
@@ -499,7 +512,9 @@ async fn test_private_history() -> anyhow::Result<()> {
     let messages = extract_messages(&body);
     assert!(!messages.is_empty(), "expected at least one message");
     assert!(
-        messages.iter().any(|m| m.get("content").and_then(Value::as_str) == Some("msg1")),
+        messages
+            .iter()
+            .any(|m| m.get("content").and_then(Value::as_str) == Some("msg1")),
         "should contain msg1"
     );
     Ok(())
@@ -510,8 +525,7 @@ async fn test_private_history_cursor_pagination() -> anyhow::Result<()> {
     let app = test_router().await;
     let u1 = unique_username("cp");
     let u2 = unique_username("cp");
-    let (_id1, token1, id2, _token2) =
-        make_friends(&app, &u1, &u2, "Test1234!").await?;
+    let (_id1, token1, id2, _token2) = make_friends(&app, &u1, &u2, "Test1234!").await?;
 
     for i in 1..=20_i64 {
         send_private_msg(&app, &token1, id2, &format!("msg{i}")).await?;
@@ -542,8 +556,7 @@ async fn test_private_history_empty() -> anyhow::Result<()> {
     let app = test_router().await;
     let u1 = unique_username("eh");
     let u2 = unique_username("eh");
-    let (_id1, token1, id2, _token2) =
-        make_friends(&app, &u1, &u2, "Test1234!").await?;
+    let (_id1, token1, id2, _token2) = make_friends(&app, &u1, &u2, "Test1234!").await?;
 
     let (status, body) = get_private_history(&app, &token1, id2).await?;
     assert_eq!(status, StatusCode::OK, "expected 200 for empty history");
@@ -557,8 +570,7 @@ async fn test_mark_read_private() -> anyhow::Result<()> {
     let app = test_router().await;
     let u1 = unique_username("mr");
     let u2 = unique_username("mr");
-    let (id1, token1, id2, token2) =
-        make_friends(&app, &u1, &u2, "Test1234!").await?;
+    let (id1, token1, id2, token2) = make_friends(&app, &u1, &u2, "Test1234!").await?;
 
     send_private_msg(&app, &token1, id2, "ping").await?;
     let conversation_id = format!("{}_{}", id1.min(id2), id1.max(id2));
@@ -573,16 +585,21 @@ async fn test_recall_own_message() -> anyhow::Result<()> {
     let app = test_router().await;
     let u1 = unique_username("rc");
     let u2 = unique_username("rc");
-    let (_id1, token1, id2, _token2) =
-        make_friends(&app, &u1, &u2, "Test1234!").await?;
+    let (_id1, token1, id2, _token2) = make_friends(&app, &u1, &u2, "Test1234!").await?;
 
     let (_status, body) = send_private_msg(&app, &token1, id2, "to recall").await?;
     let message_id = extract_send_message_id(&body)
         .ok_or_else(|| anyhow::anyhow!("message id not found in send response"))?;
 
     let (status, recall_body) = recall_message(&app, &token1, &message_id).await?;
-    assert_eq!(status, StatusCode::OK, "recall should succeed: {recall_body}");
-    let data = recall_body.get("data").ok_or_else(|| anyhow::anyhow!("response missing data"))?;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "recall should succeed: {recall_body}"
+    );
+    let data = recall_body
+        .get("data")
+        .ok_or_else(|| anyhow::anyhow!("response missing data"))?;
     assert_eq!(data.get("status").and_then(Value::as_str), Some("RECALLED"));
     Ok(())
 }
@@ -592,15 +609,18 @@ async fn test_recall_other_user_message() -> anyhow::Result<()> {
     let app = test_router().await;
     let u1 = unique_username("ro");
     let u2 = unique_username("ro");
-    let (_id1, token1, id2, token2) =
-        make_friends(&app, &u1, &u2, "Test1234!").await?;
+    let (_id1, token1, id2, token2) = make_friends(&app, &u1, &u2, "Test1234!").await?;
 
     let (_status, body) = send_private_msg(&app, &token1, id2, "my message").await?;
     let message_id = extract_send_message_id(&body)
         .ok_or_else(|| anyhow::anyhow!("message id not found in send response"))?;
 
     let (status, _body) = recall_message(&app, &token2, &message_id).await?;
-    assert_eq!(status, StatusCode::FORBIDDEN, "other user should not be able to recall");
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "other user should not be able to recall"
+    );
     Ok(())
 }
 
@@ -609,8 +629,7 @@ async fn test_delete_own_message() -> anyhow::Result<()> {
     let app = test_router().await;
     let u1 = unique_username("dm");
     let u2 = unique_username("dm");
-    let (_id1, token1, id2, _token2) =
-        make_friends(&app, &u1, &u2, "Test1234!").await?;
+    let (_id1, token1, id2, _token2) = make_friends(&app, &u1, &u2, "Test1234!").await?;
 
     let (_status, body) = send_private_msg(&app, &token1, id2, "to delete").await?;
     let message_id = extract_send_message_id(&body)
@@ -618,7 +637,9 @@ async fn test_delete_own_message() -> anyhow::Result<()> {
 
     let (status, del_body) = delete_message(&app, &token1, &message_id).await?;
     assert_eq!(status, StatusCode::OK, "delete should succeed: {del_body}");
-    let data = del_body.get("data").ok_or_else(|| anyhow::anyhow!("response missing data"))?;
+    let data = del_body
+        .get("data")
+        .ok_or_else(|| anyhow::anyhow!("response missing data"))?;
     assert_eq!(data.get("status").and_then(Value::as_str), Some("DELETED"));
     Ok(())
 }
@@ -628,15 +649,18 @@ async fn test_delete_other_user() -> anyhow::Result<()> {
     let app = test_router().await;
     let u1 = unique_username("do");
     let u2 = unique_username("do");
-    let (_id1, token1, id2, token2) =
-        make_friends(&app, &u1, &u2, "Test1234!").await?;
+    let (_id1, token1, id2, token2) = make_friends(&app, &u1, &u2, "Test1234!").await?;
 
     let (_status, body) = send_private_msg(&app, &token1, id2, "my message").await?;
     let message_id = extract_send_message_id(&body)
         .ok_or_else(|| anyhow::anyhow!("message id not found in send response"))?;
 
     let (status, _body) = delete_message(&app, &token2, &message_id).await?;
-    assert_eq!(status, StatusCode::FORBIDDEN, "other user should not be able to delete");
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "other user should not be able to delete"
+    );
     Ok(())
 }
 
@@ -645,8 +669,7 @@ async fn test_conversation_list() -> anyhow::Result<()> {
     let app = test_router().await;
     let u1 = unique_username("cl");
     let u2 = unique_username("cl");
-    let (_id1, token1, id2, _token2) =
-        make_friends(&app, &u1, &u2, "Test1234!").await?;
+    let (_id1, token1, id2, _token2) = make_friends(&app, &u1, &u2, "Test1234!").await?;
 
     send_private_msg(&app, &token1, id2, "conversation test").await?;
 

@@ -414,7 +414,8 @@ impl ImService {
         let Some(envelope) = serialize_ws_envelope(ws_type, &data) else {
             return false;
         };
-        let delivered = deliver_envelope_to_sessions(&sessions, &envelope, &mut slow_or_closed_sessions);
+        let delivered =
+            deliver_envelope_to_sessions(&sessions, &envelope, &mut slow_or_closed_sessions);
         for session_id in slow_or_closed_sessions {
             tracing::warn!(session_id = %session_id, "drop slow or closed websocket session");
             self.drop_session_silently(&session_id).await;
@@ -530,10 +531,7 @@ fn deliver_envelope_to_sessions(
 ) -> bool {
     let mut delivered = false;
     for session in sessions {
-        match session
-            .sender
-            .try_send(Message::Text(envelope.to_string()))
-        {
+        match session.sender.try_send(Message::Text(envelope.to_string())) {
             Ok(()) => delivered = true,
             Err(tokio::sync::mpsc::error::TrySendError::Full(_))
             | Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
@@ -564,8 +562,8 @@ mod tests {
     use axum::extract::ws::Message;
     use serde_json::json;
     use std::error::Error;
-    use std::sync::Arc;
     use std::sync::atomic::AtomicI64;
+    use std::sync::Arc;
     use tokio::sync::{mpsc, watch};
 
     #[test]

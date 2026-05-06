@@ -20,7 +20,13 @@ pub async fn maybe_trigger(
 ) {
     tracing::info!(target = %target_user_id, "auto_reply: checking trigger");
     if let Err(e) = trigger_if_enabled(
-        redis, msg_redis, db, config, target_user_id, conversation_id, original_message,
+        redis,
+        msg_redis,
+        db,
+        config,
+        target_user_id,
+        conversation_id,
+        original_message,
     )
     .await
     {
@@ -50,7 +56,9 @@ async fn trigger_if_enabled(
 
     let is_enabled = enabled.as_deref() == Some("1");
     if !is_enabled {
-        let from_db = check_auto_reply_db(db, target_user_id).await.unwrap_or(false);
+        let from_db = check_auto_reply_db(db, target_user_id)
+            .await
+            .unwrap_or(false);
         if !from_db {
             return Ok(());
         }

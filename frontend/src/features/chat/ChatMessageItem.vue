@@ -42,7 +42,10 @@
             </div>
 
             <div v-else-if="messageType === 'TEXT'" class="text-content">
-              <span v-html="renderedContent"></span>
+              <template v-for="(token, ti) in messageTokens" :key="ti">
+                <span v-if="token.type === 'mention'" class="mention-highlight">{{ token.text }}</span>
+                <template v-else>{{ token.text }}</template>
+              </template>
             </div>
 
             <div v-else-if="messageType === 'AI_REPLY'" class="text-content">
@@ -50,7 +53,10 @@
               <span v-if="aiProvider" class="ai-provider">{{
                 aiProvider
               }}</span>
-              <span v-html="renderedContent"></span>
+              <template v-for="(token, ti) in messageTokens" :key="ti">
+                <span v-if="token.type === 'mention'" class="mention-highlight">{{ token.text }}</span>
+                <template v-else>{{ token.text }}</template>
+              </template>
             </div>
 
             <button
@@ -224,6 +230,7 @@ import {
 import { useI18nStore } from "@/stores/i18n";
 import { getAvatarText } from "@/utils/common";
 import ChatEncryptionBadge from "@/features/chat/ChatEncryptionBadge.vue";
+import { parseMessageTokens } from "@/features/chat/utils/renderMessageTokens";
 import type { MessageType } from "@/types";
 
 interface Props {
@@ -300,17 +307,7 @@ const senderAvatarText = computed(() =>
   getAvatarText(props.senderName || t("message.unknownUser")),
 );
 const mediaSource = computed(() => props.mediaUrl || props.content);
-const renderedContent = computed(() => {
-  const text = props.content || "";
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  return escaped.replace(
-    /@(\S+)/g,
-    '<span class="mention-highlight">@$1</span>',
-  );
-});
+const messageTokens = computed(() => parseMessageTokens(props.content || ""));
 const bubbleClass = computed(() => ({
   "is-own": props.isMine,
   "is-muted": props.isRecalled || props.isDeleted,

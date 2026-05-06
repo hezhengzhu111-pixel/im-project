@@ -26,6 +26,10 @@ const MAX_SALT_LEN: usize = 64;
 // 请求 / 响应类型
 // ---------------------------------------------------------------------------
 
+/// 上传 PreKey Bundle 的请求体。
+///
+/// 包含设备公钥材料（identity key、signed pre-key、one-time pre-keys），
+/// 服务端仅保存公钥/密文材料，不保存任何私钥。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UploadBundleRequest {
@@ -36,6 +40,10 @@ pub struct UploadBundleRequest {
     pub one_time_pre_keys: Vec<String>,
 }
 
+/// PreKey Bundle 响应 DTO。
+///
+/// 返回目标用户的公钥材料，用于发起 E2EE 会话协商。
+/// 仅包含公钥/签名数据，不包含任何私钥。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreKeyBundleDto {
@@ -47,6 +55,10 @@ pub struct PreKeyBundleDto {
     pub one_time_pre_key: Option<String>,
 }
 
+/// 设备公开信息 DTO。
+///
+/// 返回设备的公钥材料和最后活跃时间，供其他用户查询可用设备。
+/// 仅包含公钥数据，不包含私钥。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceDto {
@@ -100,11 +112,16 @@ fn format_datetime(dt: chrono::NaiveDateTime) -> String {
 // 处理器
 // ---------------------------------------------------------------------------
 
-/// 上传当前设备的 PreKey Bundle
+/// 上传当前设备的 PreKey Bundle。
 ///
 /// POST /api/keys/bundle
 ///
-/// 幂等：同一 (user_id, device_id) 则更新设备记录，删除旧的一次性预密钥后重新插入。
+/// 业务目的：注册或更新当前设备的 E2EE 公钥材料，供其他用户发起会话协商时拉取。
+/// 认证要求：需要有效的 JWT access token。
+/// 安全约束：仅保存公钥（identity_key、signed_pre_key、one_time_pre_keys）及签名，
+/// 不保存任何私钥。幂等操作——同一 (user_id, device_id) 会更新设备记录，
+/// 删除旧的一次性预密钥后重新插入。
+/// 返回语义：成功返回 "ok"。
 pub async fn upload_bundle(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -167,12 +184,16 @@ pub async fn upload_bundle(
     Ok(Json(ApiResponse::success("ok".to_string())))
 }
 
-/// 获取目标用户的 PreKey Bundle
+/// 获取目标用户的 PreKey Bundle。
 ///
 /// GET /api/keys/bundle?userId=xxx&deviceId=yyy
 ///
-/// 如果存在 one-time pre-key，事务内原子标记 consumed 并返回一个；
+/// 业务目的：拉取目标设备的公钥材料，用于发起 X3DH 密钥协商。
+/// 认证要求：需要有效的 JWT access token。
+/// 安全约束：仅返回公钥/签名数据，不返回任何私钥。
+/// 返回语义：如果存在未消费的 one-time pre-key，事务内原子标记 consumed 并返回一个；
 /// 没有 one-time pre-key 时返回 signed pre key（one_time_pre_key 为 null）。
+/// 设备不存在返回 404。
 pub async fn get_bundle(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -254,11 +275,16 @@ pub async fn get_bundle(
     })))
 }
 
-/// 获取目标用户的公开设备信息
+/// 获取目标用户的公开设备信息。
 ///
 /// GET /api/keys/devices?userId=xxx
 /// GET /api/e2ee/devices/:user_id
 /// GET /api/e2ee/groups/:group_id/devices
+///
+/// 业务目的：查询目标用户所有活跃设备的公钥材料和最后活跃时间。
+/// 认证要求：需要有效的 JWT access token。
+/// 安全约束：仅返回公钥数据（identity_key、signed_pre_key），不返回私钥。
+/// 返回语义：按 last_active_at 降序返回设备列表。
 pub async fn get_devices(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -298,9 +324,14 @@ pub async fn get_devices(
     Ok(Json(ApiResponse::success(devices)))
 }
 
-/// 更新设备心跳
+/// 更新设备心跳。
 ///
 /// POST /api/keys/heartbeat
+///
+/// 业务目的：刷新当前设备的 last_active_at 时间戳，保持设备活跃状态。
+/// 认证要求：需要有效的 JWT access token。
+/// 安全约束：只能更新自己的设备，设备不存在返回 404。
+/// 返回语义：成功返回 "ok"。
 pub async fn heartbeat(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -335,27 +366,31 @@ pub async fn heartbeat(
     Ok(Json(ApiResponse::success("ok".to_string())))
 }
 
-/// 获取当前用户的 backup salt
+/// 获取当前用户的 backup salt。
 ///
 /// GET /api/keys/salt
 ///
-/// 不存在则生成随机 salt 并持久化。
+/// 业务目的：获取或生成用于密钥备份加密的 salt 值。
+/// 认证要求：需要有效的 JWT access token。
+/// 安全约束：salt 由服务端生成（32 字节随机 Base64），用于客户端派生加密密钥。
+/// 返回语义：已存在则返回现有 salt，不存在则生成新的随机 salt 并持久化后返回。
 pub async fn get_salt(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<ApiResponse<Value>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
 
-    let row = sqlx::query(
-        "SELECT salt FROM service_user_service_db.e2ee_key_backups WHERE user_id = ?",
-    )
-    .bind(identity.user_id)
-    .fetch_optional(&state.db)
-    .await?;
+    let row =
+        sqlx::query("SELECT salt FROM service_user_service_db.e2ee_key_backups WHERE user_id = ?")
+            .bind(identity.user_id)
+            .fetch_optional(&state.db)
+            .await?;
 
     if let Some(row) = row {
         let salt: String = row.get("salt");
-        return Ok(Json(ApiResponse::success(serde_json::json!({ "salt": salt }))));
+        return Ok(Json(ApiResponse::success(
+            serde_json::json!({ "salt": salt }),
+        )));
     }
 
     // 生成 32 字节随机 salt 并 Base64 编码
@@ -375,12 +410,20 @@ pub async fn get_salt(
     .execute(&state.db)
     .await?;
 
-    Ok(Json(ApiResponse::success(serde_json::json!({ "salt": salt }))))
+    Ok(Json(ApiResponse::success(
+        serde_json::json!({ "salt": salt }),
+    )))
 }
 
-/// 上传加密备份
+/// 上传加密备份。
 ///
 /// POST /api/keys/backup
+///
+/// 业务目的：保存客户端加密后的密钥备份数据，用于跨设备恢复。
+/// 认证要求：需要有效的 JWT access token。
+/// 安全约束：服务端仅保存客户端加密后的密文（encryptedBackup），
+/// 不保存明文私钥，解密密钥仅在客户端持有。
+/// 返回语义：成功返回 "ok"，幂等更新。
 pub async fn upload_backup(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -422,9 +465,14 @@ pub async fn upload_backup(
     Ok(Json(ApiResponse::success("ok".to_string())))
 }
 
-/// 获取当前用户的加密备份
+/// 获取当前用户的加密备份。
 ///
 /// GET /api/keys/backup
+///
+/// 业务目的：拉取之前上传的加密密钥备份，用于跨设备恢复密钥。
+/// 认证要求：需要有效的 JWT access token。
+/// 安全约束：返回的是客户端加密后的密文，服务端不持有解密能力。
+/// 返回语义：返回 encryptedBackup 和 salt，不存在返回 404。
 pub async fn get_backup(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -453,11 +501,14 @@ pub async fn get_backup(
     }
 }
 
-/// 删除当前用户的指定设备
+/// 删除当前用户的指定设备。
 ///
 /// DELETE /api/keys/device/:id
 ///
-/// 同时删除该设备的一次性预密钥。
+/// 业务目的：软删除指定设备及其关联的一次性预密钥，使其不再被其他用户发现。
+/// 认证要求：需要有效的 JWT access token。
+/// 安全约束：只能删除自己的设备（user_id 匹配），事务内操作。
+/// 返回语义：成功返回 "ok"，设备不存在返回 404。
 pub async fn delete_device(
     State(state): State<AppState>,
     headers: HeaderMap,

@@ -32,10 +32,7 @@ fn notification_from_row(row: &sqlx::mysql::MySqlRow) -> NotificationDto {
     let comment_id: Option<i64> = row.try_get("comment_id").unwrap_or_default();
     let is_read: i8 = row.try_get("is_read").unwrap_or_default();
     NotificationDto {
-        id: row
-            .try_get::<i64, _>("id")
-            .unwrap_or_default()
-            .to_string(),
+        id: row.try_get::<i64, _>("id").unwrap_or_default().to_string(),
         actor_id: row
             .try_get::<i64, _>("actor_id")
             .unwrap_or_default()

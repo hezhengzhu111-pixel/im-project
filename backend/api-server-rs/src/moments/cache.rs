@@ -33,7 +33,11 @@ pub async fn get_feed(
 ) -> RedisResult<Vec<i64>> {
     let key = keys::moments_feed_key(user_id);
     // ZREVRANGEBYSCORE key (cursor] -inf LIMIT 0 count
-    let max = if cursor <= 0 { "+inf" } else { &cursor.to_string() };
+    let max = if cursor <= 0 {
+        "+inf"
+    } else {
+        &cursor.to_string()
+    };
     let results: Vec<i64> = redis::cmd("ZREVRANGEBYSCORE")
         .arg(&key)
         .arg(max)
@@ -69,10 +73,7 @@ pub async fn get_cached_post(
     post_id: i64,
 ) -> RedisResult<Option<String>> {
     let key = keys::moments_post_key(post_id);
-    redis::cmd("GET")
-        .arg(&key)
-        .query_async(redis)
-        .await
+    redis::cmd("GET").arg(&key).query_async(redis).await
 }
 
 /// Remove a post from the cache.

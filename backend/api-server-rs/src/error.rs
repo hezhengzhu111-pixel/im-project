@@ -98,7 +98,8 @@ mod tests {
 
     #[test]
     fn internal_errors_return_500() {
-        let resp = AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, "test")).into_response();
+        let resp =
+            AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, "test")).into_response();
         assert_eq!(resp.status(), 500);
     }
 }

@@ -23,6 +23,7 @@ vi.mock("element-plus", () => ({
       </div>
     `,
   },
+  ElTooltip: { name: "ElTooltip", template: "<span><slot /></span>" },
   ElMessage: {
     warning: vi.fn(),
     success: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock("element-plus", () => ({
 vi.mock("@element-plus/icons-vue", () => ({
   Document: { template: "<span />" },
   Loading: { template: "<span />" },
+  Lock: { template: "<span />" },
   Microphone: { template: "<span />" },
   Warning: { template: "<span />" },
   VideoPause: { template: "<span />" },

@@ -54,7 +54,11 @@ async fn register_and_login(app: &axum::Router) -> AuthedUser {
         .unwrap();
     let reg_resp = app.clone().oneshot(reg_req).await.unwrap();
     let reg_json = read_json(reg_resp).await;
-    assert_eq!(reg_json["success"], json!(true), "register failed: {reg_json}");
+    assert_eq!(
+        reg_json["success"],
+        json!(true),
+        "register failed: {reg_json}"
+    );
     let user_id = reg_json["data"]["id"].as_str().unwrap().to_string();
 
     // Login
@@ -71,7 +75,11 @@ async fn register_and_login(app: &axum::Router) -> AuthedUser {
         .unwrap();
     let login_resp = app.clone().oneshot(login_req).await.unwrap();
     let login_json = read_json(login_resp).await;
-    assert_eq!(login_json["success"], json!(true), "login failed: {login_json}");
+    assert_eq!(
+        login_json["success"],
+        json!(true),
+        "login failed: {login_json}"
+    );
     let token = login_json["data"]["token"].as_str().unwrap().to_string();
 
     AuthedUser { token, user_id }
@@ -99,11 +107,7 @@ async fn post_json(
     (status, json)
 }
 
-async fn get_json(
-    app: &axum::Router,
-    uri: &str,
-    token: Option<&str>,
-) -> (StatusCode, Value) {
+async fn get_json(app: &axum::Router, uri: &str, token: Option<&str>) -> (StatusCode, Value) {
     let mut builder = Request::builder()
         .uri(uri)
         .method("GET")
@@ -118,11 +122,7 @@ async fn get_json(
     (status, json)
 }
 
-async fn delete_json(
-    app: &axum::Router,
-    uri: &str,
-    token: Option<&str>,
-) -> (StatusCode, Value) {
+async fn delete_json(app: &axum::Router, uri: &str, token: Option<&str>) -> (StatusCode, Value) {
     let mut builder = Request::builder()
         .uri(uri)
         .method("DELETE")
@@ -209,7 +209,11 @@ async fn test_e2ee_get_bundle_consumes_one_time_pre_key() {
         }),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "upload_bundle failed: {upload_body}");
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "upload_bundle failed: {upload_body}"
+    );
 
     // First get_bundle — should return first one-time pre-key
     let (status, body) = get_json(
@@ -328,12 +332,7 @@ async fn test_e2ee_unauthenticated_returns_401() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 
     // Get bundle without token
-    let (status, _) = get_json(
-        &app,
-        "/api/keys/bundle?userId=1&deviceId=test",
-        None,
-    )
-    .await;
+    let (status, _) = get_json(&app, "/api/keys/bundle?userId=1&deviceId=test", None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 
     // Heartbeat without token
@@ -380,11 +379,12 @@ async fn test_e2ee_session_request_accept_reject_flow() {
     let user_b = register_and_login(&app).await;
 
     // 构造 session_id: smaller_larger
-    let (id_a, id_b) = if user_a.user_id.parse::<i64>().unwrap() < user_b.user_id.parse::<i64>().unwrap() {
-        (&user_a.user_id, &user_b.user_id)
-    } else {
-        (&user_b.user_id, &user_a.user_id)
-    };
+    let (id_a, id_b) =
+        if user_a.user_id.parse::<i64>().unwrap() < user_b.user_id.parse::<i64>().unwrap() {
+            (&user_a.user_id, &user_b.user_id)
+        } else {
+            (&user_b.user_id, &user_a.user_id)
+        };
     let session_id = format!("{id_a}_{id_b}");
 
     // User A requests encryption
@@ -439,7 +439,9 @@ async fn test_e2ee_backup_upload_and_get() {
     // Get salt (auto-generates)
     let (status, body) = get_json(&app, "/api/keys/salt", Some(&user.token)).await;
     assert_eq!(status, StatusCode::OK);
-    let salt = body["data"]["salt"].as_str().expect("salt should be present");
+    let salt = body["data"]["salt"]
+        .as_str()
+        .expect("salt should be present");
     assert!(!salt.is_empty());
 
     // Upload backup
@@ -458,6 +460,9 @@ async fn test_e2ee_backup_upload_and_get() {
     // Get backup
     let (status, body) = get_json(&app, "/api/keys/backup", Some(&user.token)).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["encryptedBackup"], json!("encrypted_data_here"));
+    assert_eq!(
+        body["data"]["encryptedBackup"],
+        json!("encrypted_data_here")
+    );
     assert_eq!(body["data"]["salt"], json!(salt));
 }

@@ -1,8 +1,7 @@
 use std::env;
 
 const DEFAULT_REDIS_URL: &str = "redis://127.0.0.1:6379/0";
-const DEFAULT_INTERNAL_SECRET: &str =
-    "im-internal-secret-im-internal-secret-im-internal-secret-im";
+const DEFAULT_INTERNAL_SECRET: &str = "im-internal-secret-im-internal-secret-im-internal-secret-im";
 const DEFAULT_GATEWAY_AUTH_SECRET: &str =
     "im-gateway-auth-secret-im-gateway-auth-secret-im-gateway-auth-secret";
 
@@ -51,10 +50,7 @@ impl AppConfig {
             internal_max_skew_ms: env_i64("IM_INTERNAL_MAX_SKEW_MS", 300_000),
             gateway_user_id_header: env_string("IM_GATEWAY_USER_ID_HEADER", "X-User-Id"),
             gateway_username_header: env_string("IM_GATEWAY_USERNAME_HEADER", "X-Username"),
-            gateway_auth_secret: env_string(
-                "IM_GATEWAY_AUTH_SECRET",
-                DEFAULT_GATEWAY_AUTH_SECRET,
-            ),
+            gateway_auth_secret: env_string("IM_GATEWAY_AUTH_SECRET", DEFAULT_GATEWAY_AUTH_SECRET),
             gateway_auth_max_skew_ms: env_i64("IM_GATEWAY_AUTH_MAX_SKEW_MS", 300_000),
             instance_id: env_string("IM_INSTANCE_ID", &default_instance_id(port)),
             internal_http_url: env_string(
@@ -93,15 +89,39 @@ impl AppConfig {
         if !is_local_dev_or_test() {
             return;
         }
-        warn_if_example("IM_INTERNAL_SECRET", &self.internal_secret, DEFAULT_INTERNAL_SECRET);
-        warn_if_example("IM_GATEWAY_AUTH_SECRET", &self.gateway_auth_secret, DEFAULT_GATEWAY_AUTH_SECRET);
+        warn_if_example(
+            "IM_INTERNAL_SECRET",
+            &self.internal_secret,
+            DEFAULT_INTERNAL_SECRET,
+        );
+        warn_if_example(
+            "IM_GATEWAY_AUTH_SECRET",
+            &self.gateway_auth_secret,
+            DEFAULT_GATEWAY_AUTH_SECRET,
+        );
     }
 
     pub fn validate_production_secrets(&self) -> Result<(), String> {
         let mut errors: Vec<String> = Vec::new();
-        validate_secret("IM_INTERNAL_SECRET", &self.internal_secret, DEFAULT_INTERNAL_SECRET, 32, &mut errors);
-        validate_secret("IM_GATEWAY_AUTH_SECRET", &self.gateway_auth_secret, DEFAULT_GATEWAY_AUTH_SECRET, 32, &mut errors);
-        if errors.is_empty() { Ok(()) } else { Err(errors.join("\n")) }
+        validate_secret(
+            "IM_INTERNAL_SECRET",
+            &self.internal_secret,
+            DEFAULT_INTERNAL_SECRET,
+            32,
+            &mut errors,
+        );
+        validate_secret(
+            "IM_GATEWAY_AUTH_SECRET",
+            &self.gateway_auth_secret,
+            DEFAULT_GATEWAY_AUTH_SECRET,
+            32,
+            &mut errors,
+        );
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("\n"))
+        }
     }
 }
 
@@ -186,13 +206,22 @@ fn warn_if_example(name: &str, value: &str, example: &str) {
     }
 }
 
-fn validate_secret(name: &str, value: &str, example: &str, min_len: usize, errors: &mut Vec<String>) {
+fn validate_secret(
+    name: &str,
+    value: &str,
+    example: &str,
+    min_len: usize,
+    errors: &mut Vec<String>,
+) {
     if value.is_empty() {
         errors.push(format!("{name} must be explicitly set"));
     } else if value == example {
         errors.push(format!("{name} must not use the example default value"));
     } else if value.len() < min_len {
-        errors.push(format!("{name} must be at least {min_len} bytes (got {} bytes)", value.len()));
+        errors.push(format!(
+            "{name} must be at least {min_len} bytes (got {} bytes)",
+            value.len()
+        ));
     }
 }
 
@@ -245,7 +274,10 @@ mod tests {
         let mut cfg = valid_config();
         cfg.internal_secret = String::new();
         let err = cfg.validate_production_secrets().unwrap_err();
-        assert!(err.contains("IM_INTERNAL_SECRET"), "error should mention IM_INTERNAL_SECRET, got: {err}");
+        assert!(
+            err.contains("IM_INTERNAL_SECRET"),
+            "error should mention IM_INTERNAL_SECRET, got: {err}"
+        );
     }
 
     #[test]
@@ -253,7 +285,10 @@ mod tests {
         let mut cfg = valid_config();
         cfg.gateway_auth_secret = String::new();
         let err = cfg.validate_production_secrets().unwrap_err();
-        assert!(err.contains("IM_GATEWAY_AUTH_SECRET"), "error should mention IM_GATEWAY_AUTH_SECRET, got: {err}");
+        assert!(
+            err.contains("IM_GATEWAY_AUTH_SECRET"),
+            "error should mention IM_GATEWAY_AUTH_SECRET, got: {err}"
+        );
     }
 
     #[test]

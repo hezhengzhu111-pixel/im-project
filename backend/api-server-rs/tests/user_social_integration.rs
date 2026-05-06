@@ -105,9 +105,7 @@ async fn call(
         builder = builder.header(header::AUTHORIZATION, auth_header(t));
     }
     let req = if let Some(b) = body_value {
-        builder
-            .body(Body::from(b.to_string()))
-            .unwrap()
+        builder.body(Body::from(b.to_string())).unwrap()
     } else {
         builder.body(Body::empty()).unwrap()
     };
@@ -129,7 +127,12 @@ async fn put(app: &Router, uri: &str, token: Option<&str>, body: &Value) -> Test
     call(app, "PUT", uri, token, Some(body)).await
 }
 
-async fn delete(app: &Router, uri: &str, token: Option<&str>, body: Option<&Value>) -> TestResponse {
+async fn delete(
+    app: &Router,
+    uri: &str,
+    token: Option<&str>,
+    body: Option<&Value>,
+) -> TestResponse {
     call(app, "DELETE", uri, token, body).await
 }
 
@@ -199,10 +202,7 @@ async fn test_update_nickname() {
     .await;
     assert_eq!(resp.status, 200);
     assert_eq!(resp.body["code"], 200);
-    assert_eq!(
-        resp.body["data"]["nickname"].as_str(),
-        Some("AliceNew")
-    );
+    assert_eq!(resp.body["data"]["nickname"].as_str(), Some("AliceNew"));
 }
 
 #[tokio::test]
@@ -419,7 +419,9 @@ async fn test_search_by_username() {
     assert_eq!(resp.status, 200);
     let results = resp.body["data"].as_array().unwrap();
     assert!(!results.is_empty());
-    assert!(results.iter().any(|u| u["username"].as_str() == Some(&username)));
+    assert!(results
+        .iter()
+        .any(|u| u["username"].as_str() == Some(&username)));
 }
 
 #[tokio::test]
@@ -527,7 +529,9 @@ async fn test_accept_friend_success() {
     let requests = reqs_resp.body["data"].as_array().unwrap();
     let request_id: i64 = requests
         .iter()
-        .find(|r| r["applicantId"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(user1.user_id)))
+        .find(|r| {
+            r["applicantId"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(user1.user_id))
+        })
         .and_then(|r| r["id"].as_str()?.parse().ok())
         .unwrap();
 
@@ -545,7 +549,9 @@ async fn test_accept_friend_success() {
     // user1's friend list now contains user2
     let list = get(&app, "/api/friend/list", Some(&user1.token)).await;
     let friends = list.body["data"].as_array().unwrap();
-    assert!(friends.iter().any(|f| f["friendId"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(user2.user_id))));
+    assert!(friends.iter().any(
+        |f| f["friendId"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(user2.user_id))
+    ));
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -573,7 +579,9 @@ async fn test_friend_list() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|r| r["applicantId"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(user1.user_id)))
+        .find(|r| {
+            r["applicantId"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(user1.user_id))
+        })
         .and_then(|r| r["id"].as_str()?.parse().ok())
         .unwrap();
     post(
@@ -587,7 +595,9 @@ async fn test_friend_list() {
     let resp = get(&app, "/api/friend/list", Some(&user1.token)).await;
     assert_eq!(resp.status, 200);
     let friends = resp.body["data"].as_array().unwrap();
-    assert!(friends.iter().any(|f| f["friendId"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(user2.user_id))));
+    assert!(friends.iter().any(
+        |f| f["friendId"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(user2.user_id))
+    ));
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -615,7 +625,9 @@ async fn test_remove_friend() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|r| r["applicantId"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(user1.user_id)))
+        .find(|r| {
+            r["applicantId"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(user1.user_id))
+        })
         .and_then(|r| r["id"].as_str()?.parse().ok())
         .unwrap();
     post(
@@ -639,7 +651,9 @@ async fn test_remove_friend() {
     // verify user1's friend list no longer contains user2
     let list = get(&app, "/api/friend/list", Some(&user1.token)).await;
     let friends = list.body["data"].as_array().unwrap();
-    let contains = friends.iter().any(|f| f["friendId"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(user2.user_id)));
+    let contains = friends.iter().any(|f| {
+        f["friendId"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(user2.user_id))
+    });
     assert!(!contains, "friend should have been removed");
 }
 
@@ -794,7 +808,9 @@ async fn test_user_groups() {
     .await;
     assert_eq!(resp.status, 200);
     let groups = resp.body["data"].as_array().unwrap();
-    assert!(groups.iter().any(|g| g["id"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(group_id))));
+    assert!(groups
+        .iter()
+        .any(|g| g["id"].as_str().map(|s| s.parse::<i64>().ok()) == Some(Some(group_id))));
 }
 
 // ══════════════════════════════════════════════════════════════════

@@ -34,7 +34,9 @@ pub async fn handle(
 
     let conv_id = request.conversation_id.trim().to_string();
     if conv_id.is_empty() || request.content.trim().is_empty() {
-        return Err(AppError::BadRequest("conversationId and content required".to_string()));
+        return Err(AppError::BadRequest(
+            "conversationId and content required".to_string(),
+        ));
     }
 
     let receiver_id = extract_peer_id(&conv_id, request.persona_user_id)?;
@@ -97,8 +99,9 @@ pub async fn handle(
     event.payload = Some(ai_message.clone());
 
     let mut hot_redis = {
-        let index = crate::message::shard_index_for_key(&conv_id, state.private_redis_managers.len())
-            .ok_or_else(|| AppError::Upstream("private hot redis shard missing".to_string()))?;
+        let index =
+            crate::message::shard_index_for_key(&conv_id, state.private_redis_managers.len())
+                .ok_or_else(|| AppError::Upstream("private hot redis shard missing".to_string()))?;
         state
             .private_redis_managers
             .get(index)
@@ -106,8 +109,7 @@ pub async fn handle(
             .clone()
     };
     let msg_redis = hot_redis.clone();
-    message::write_private_message_hot(&mut hot_redis, &conv_id, &ai_message, &event)
-    .await?;
+    message::write_private_message_hot(&mut hot_redis, &conv_id, &ai_message, &event).await?;
 
     if state.config.ai_enabled {
         let auto_redis = state.redis_manager.clone();
