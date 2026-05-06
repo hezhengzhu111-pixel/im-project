@@ -107,6 +107,8 @@ def clean_full(docker_cmd: str, *, dry_run: bool) -> None:
         print(f"$ {docker_cmd} rm -f <all-containers>")
         print(f"$ {docker_cmd} images -aq")
         print(f"$ {docker_cmd} rmi -f <all-images>")
+        print(f"$ {docker_cmd} volume ls -q")
+        print(f"$ {docker_cmd} volume rm -f <all-volumes>")
         print(f"$ {docker_cmd} volume prune -f")
         print(f"$ {docker_cmd} network prune -f")
         print(f"$ {docker_cmd} builder prune -af")
@@ -124,6 +126,12 @@ def clean_full(docker_cmd: str, *, dry_run: bool) -> None:
         run_batched(docker_cmd, ["rmi", "-f"], images, dry_run=dry_run)
     else:
         print("No Docker images to remove.")
+
+    volumes = docker_ids(docker_cmd, ["volume", "ls", "-q"])
+    if volumes:
+        run_batched(docker_cmd, ["volume", "rm", "-f"], volumes, dry_run=dry_run)
+    else:
+        print("No Docker volumes to remove.")
 
     run_docker(docker_cmd, ["volume", "prune", "-f"], dry_run=dry_run)
     run_docker(docker_cmd, ["network", "prune", "-f"], dry_run=dry_run)
