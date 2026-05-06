@@ -304,6 +304,24 @@ const mountContainer = () =>
           name: "ChatComposer",
           template: "<div class='chat-composer-stub' />",
         },
+        EncryptionBadge: {
+          name: "EncryptionBadge",
+          emits: ["toggle"],
+          template: "<button class='encryption-badge-stub' @click='$emit(\"toggle\")' />",
+        },
+        SecurityPanel: {
+          name: "SecurityPanel",
+          props: ["status", "canEnable"],
+          emits: ["enable-encryption", "close"],
+          template:
+            "<button v-if='canEnable' class='security-enable-stub' @click='$emit(\"enable-encryption\")'>enable</button>",
+        },
+        ChatEncryptionDialog: {
+          name: "ChatEncryptionDialog",
+          props: ["modelValue"],
+          emits: ["update:modelValue", "encrypted"],
+          template: "<div class='encryption-dialog-stub' />",
+        },
         ChatDialogs: {
           name: "ChatDialogs",
           props: [
@@ -431,6 +449,19 @@ describe("ChatContainer", () => {
         .findComponent({ name: "ChatMessageList" })
         .props("openedUnreadCount"),
     ).toBe(3);
+  });
+
+  it("opens the encryption dialog from the security panel action", async () => {
+    const wrapper = mountContainer();
+
+    await wrapper.find(".encryption-badge-stub").trigger("click");
+    await flush();
+    await wrapper.find(".security-enable-stub").trigger("click");
+    await flush();
+
+    expect(
+      wrapper.findComponent({ name: "ChatEncryptionDialog" }).props("modelValue"),
+    ).toBe(true);
   });
 
   it("opens the session info drawer and loads group members for group sessions", async () => {

@@ -69,7 +69,7 @@
         v-if="canEnable"
         type="button"
         class="enable-button"
-        @click.stop="emit('enableEncryption')"
+        @click.stop="emit('enable-encryption')"
       >
         启用端到端加密
       </button>
@@ -89,7 +89,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "close"): void;
-  (e: "enableEncryption"): void;
+  (e: "enable-encryption"): void;
 }>();
 
 const statusLabel = computed(() => {
