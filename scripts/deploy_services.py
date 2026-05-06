@@ -5,11 +5,13 @@ import argparse
 import os
 
 from deploy_utils import (
+    compose_service_container,
     compose_up_command,
     ensure_docker_environment,
     fatal,
     load_config,
     print_service_statuses,
+    resolve_executable,
     run_command,
     service_status,
     wait_for_service_completed,
@@ -125,6 +127,26 @@ def ensure_middleware_ready(config) -> None:
             wait_for_service_ready(config, status.service)
 
 
+def apply_database_migrations(config) -> None:
+    docker_cmd = resolve_executable("Docker", ["docker"])
+    mysql_container = compose_service_container(config, "im-mysql")
+    print(f"Applying database migrations: {config.sql_migration_file}")
+    with config.sql_migration_file.open("rb") as sql_stream:
+        run_command(
+            [
+                docker_cmd,
+                "exec",
+                "-i",
+                mysql_container,
+                "mysql",
+                "-uroot",
+                f"-p{config.mysql_root_password}",
+                "--default-character-set=utf8mb4",
+            ],
+            stdin=sql_stream,
+        )
+
+
 def main() -> None:
     args = build_parser().parse_args()
     ensure_docker_environment()
@@ -140,6 +162,9 @@ def main() -> None:
 
     if not args.skip_middleware_check:
         ensure_middleware_ready(config)
+
+    if "im-api-server" in services:
+        apply_database_migrations(config)
 
     command = compose_up_command(
         config,

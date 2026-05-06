@@ -21,6 +21,7 @@ class DeploymentConfig:
     backend_root: Path
     frontend_root: Path
     sql_init_file: Path
+    sql_migration_file: Path
     mysql_root_password: str
 
 
@@ -72,6 +73,7 @@ def load_config(project_dir: Path | None = None) -> DeploymentConfig:
         backend_root=root / "backend",
         frontend_root=root / "frontend",
         sql_init_file=root / "sql" / "mysql8" / "init_all.sql",
+        sql_migration_file=root / "sql" / "mysql8" / "e2ee_migration.sql",
         mysql_root_password=os.getenv("MYSQL_ROOT_PASSWORD", "root123"),
     )
     ensure_project_layout(config)
@@ -88,6 +90,7 @@ def ensure_project_layout(config: DeploymentConfig) -> None:
         config.frontend_root / "Dockerfile",
         config.frontend_root / "nginx.conf",
         config.sql_init_file,
+        config.sql_migration_file,
         config.compose_file,
     ]
     missing = [str(path) for path in required_files if not path.is_file()]
