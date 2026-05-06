@@ -742,6 +742,7 @@ const handleChatAction = (command: string | number | object) => {
 }
 
 .chat-content {
+  position: relative;
   display: flex;
   height: 100%;
   min-height: 0;
@@ -810,6 +811,8 @@ const handleChatAction = (command: string | number | object) => {
 }
 
 .chat-header {
+  position: relative;
+  z-index: 30;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -975,6 +978,7 @@ const handleChatAction = (command: string | number | object) => {
 
 .security-badge-wrap {
   position: relative;
+  z-index: 40;
 }
 
 .header-ai-badge-wrap {
@@ -990,7 +994,8 @@ const handleChatAction = (command: string | number | object) => {
   top: calc(100% + 8px);
   right: 0;
   width: 300px;
-  z-index: 100;
+  z-index: 1000;
+  pointer-events: auto;
 }
 
 .panel-fade-enter-active,
