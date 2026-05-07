@@ -33,6 +33,14 @@ interface EncryptionNegotiationBody {
   requestPayloadJson?: string;
 }
 
+export interface PendingEncryptionRequest {
+  sessionId: string;
+  requesterId: string;
+  requesterName: string;
+  targetUserId: string;
+  requestPayloadJson?: string;
+}
+
 /** 群聊加密启用请求体 */
 interface EnableGroupEncryptionBody {
   groupId: number;
@@ -186,6 +194,14 @@ export const keyService = {
    */
   rejectEncryption(sessionId: string): Promise<ApiResponse<string>> {
     return http.post<string>('/e2ee/reject', { sessionId });
+  },
+
+  /**
+   * 获取当前用户待确认的私聊加密协商请求
+   * GET /api/e2ee/pending
+   */
+  getPendingNegotiations(): Promise<ApiResponse<PendingEncryptionRequest[]>> {
+    return http.get<PendingEncryptionRequest[]>('/e2ee/pending');
   },
 
   /**

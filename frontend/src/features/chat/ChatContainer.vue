@@ -461,13 +461,23 @@
       :session-id="currentSession.id"
       @encrypted="handleEncryptionEnabled"
     />
+    <ChatE2eeNegotiationDialog
+      v-if="pendingNegotiation"
+      v-model="showNegotiationDialog"
+      :requester-name="pendingNegotiation.requesterName"
+      :session-id="pendingNegotiation.sessionId"
+      :request-payload-json="pendingNegotiation.requestPayloadJson"
+      @accepted="handleNegotiationAccepted"
+      @rejected="handleNegotiationRejected"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import ChatComposer from "@/features/chat/ChatComposer.vue";
 import ChatDialogs from "@/features/chat/ChatDialogs.vue";
+import ChatE2eeNegotiationDialog from "@/features/chat/ChatE2eeNegotiationDialog.vue";
 import ChatEncryptionDialog from "@/features/chat/ChatEncryptionDialog.vue";
 import ChatMessageList from "@/features/chat/ChatMessageList.vue";
 import ChatSidebarPanel from "@/features/chat/ChatSidebarPanel.vue";
@@ -477,6 +487,9 @@ import AiStatusBadge from "@/components/ai/AiStatusBadge.vue";
 import ConnectionStatusBar from "@/components/status/ConnectionStatusBar.vue";
 import { useChatPage } from "@/features/chat/composables/useChatPage";
 import { useE2eeSessionStatus } from "@/features/e2ee/composables/useE2eeSessionStatus";
+import { onE2eeNegotiation } from "@/features/e2ee/negotiation-events";
+import type { E2eeNegotiationEvent } from "@/features/e2ee/negotiation-events";
+import { buildSessionId } from "@/normalizers/chat";
 import {
   ArrowLeft,
   ChatDotRound,
@@ -554,6 +567,94 @@ const openEncryptionDialog = () => {
 
 const handleEncryptionEnabled = () => {
   showEncryptionDialog.value = false;
+};
+
+// E2EE negotiation (responder side)
+const showNegotiationDialog = ref(false);
+const pendingNegotiation = ref<E2eeNegotiationEvent | null>(null);
+// Cache negotiation requests that arrive when user is on a different session
+const negotiationCache = ref<Map<string, E2eeNegotiationEvent>>(new Map());
+
+const unsubNegotiation = onE2eeNegotiation((event) => {
+  if (event.action === "request") {
+    const currentUserId = String(userStore.userId || "");
+    // Only handle requests targeted at the current user
+    if (event.targetUserId !== currentUserId) return;
+
+    const currentSid = currentSession.value?.id;
+    if (currentSid === event.sessionId) {
+      // User is on the target session — show dialog immediately
+      pendingNegotiation.value = event;
+      showNegotiationDialog.value = true;
+    } else {
+      // Cache for when user switches to that session
+      negotiationCache.value.set(event.sessionId, event);
+    }
+  } else if (event.action === "accepted") {
+    // The requester (Alice) receives acceptance — update local status
+    import("@/features/e2ee/manager/negotiation").then(({ setLocalSessionStatus }) => {
+      setLocalSessionStatus(event.sessionId, "encrypted");
+    });
+  } else if (event.action === "rejected") {
+    import("@/features/e2ee/manager/negotiation").then(({ resetNegotiation }) => {
+      resetNegotiation(event.sessionId, "plaintext");
+    });
+  }
+});
+
+onBeforeUnmount(() => {
+  unsubNegotiation();
+});
+
+// When switching sessions, check for cached negotiation requests
+watch(
+  () => currentSession.value?.id,
+  (sessionId) => {
+    if (!sessionId) return;
+    const cached = negotiationCache.value.get(sessionId);
+    if (cached) {
+      negotiationCache.value.delete(sessionId);
+      pendingNegotiation.value = cached;
+      showNegotiationDialog.value = true;
+    }
+  },
+);
+
+// On mount, check for pending negotiation requests from the server
+onMounted(async () => {
+  try {
+    const { keyService } = await import("@/features/e2ee/api/key-service");
+    const resp = await keyService.getPendingNegotiations();
+    const requests = resp.data || [];
+    for (const req of requests) {
+      const event: E2eeNegotiationEvent = {
+        action: "request",
+        sessionId: req.sessionId,
+        requesterId: req.requesterId,
+        requesterName: req.requesterName,
+        targetUserId: req.targetUserId,
+        requestPayloadJson: req.requestPayloadJson,
+      };
+      if (currentSession.value?.id === req.sessionId) {
+        pendingNegotiation.value = event;
+        showNegotiationDialog.value = true;
+      } else {
+        negotiationCache.value.set(req.sessionId, event);
+      }
+    }
+  } catch {
+    // Non-critical — pending requests will arrive via WS push anyway
+  }
+});
+
+const handleNegotiationAccepted = () => {
+  showNegotiationDialog.value = false;
+  pendingNegotiation.value = null;
+};
+
+const handleNegotiationRejected = () => {
+  showNegotiationDialog.value = false;
+  pendingNegotiation.value = null;
 };
 
 const handleChatAction = (command: string | number | object) => {

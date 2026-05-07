@@ -8,9 +8,8 @@
 import { ratchetEncrypt, ratchetDecrypt } from '../engine/double-ratchet';
 import { getRatchetState, saveRatchetState } from '../store/session-store';
 import { MessageBuffer } from '../engine/message-buffer';
-import { getLocalSessionStatus, initiateNegotiation, respondToNegotiation } from './negotiation';
+import { initiateNegotiation, getLocalSessionStatus } from './negotiation';
 import type { RatchetHeader, E2eeSessionStatus } from '../types';
-import { keyService } from '../api/key-service';
 import { resolveDeviceId } from './device-identity';
 
 export interface EncryptedPayload {
@@ -78,11 +77,9 @@ class E2eeManager {
   ): Promise<string> {
     let state = await getRatchetState(sessionId);
 
-    // 如果没有会话状态，尝试作为响应方协商
+    // 接收方必须先在协商弹窗中显式确认，不能在收到首条密文时静默建链。
     if (!state && senderIdentityKey && ephemeralPublicKey) {
-      const ok = await respondToNegotiation(sessionId, senderIdentityKey, ephemeralPublicKey);
-      if (!ok) throw new Error('Failed to respond to E2EE negotiation');
-      state = await getRatchetState(sessionId);
+      throw new Error('E2EE negotiation has not been accepted');
     }
 
     if (!state) throw new Error(`No ratchet state for session ${sessionId}`);
@@ -103,9 +100,6 @@ class E2eeManager {
       decryptedParts.push(plaintext);
     }
     await saveRatchetState(sessionId, state);
-    if (senderIdentityKey && ephemeralPublicKey && getLocalSessionStatus(sessionId) === 'encrypted') {
-      await keyService.acceptEncryption(sessionId).catch(() => undefined);
-    }
 
     return decryptedParts.join('');
   }

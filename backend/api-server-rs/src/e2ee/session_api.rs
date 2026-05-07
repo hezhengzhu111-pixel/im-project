@@ -1,11 +1,15 @@
 use crate::auth::identity_from_headers;
+use crate::auth_api;
 use crate::error::AppError;
+use crate::route::parse_user_routes;
 use crate::web::AppState;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::Json;
 use im_rs_common::api::ApiResponse;
-use serde::Deserialize;
+use redis::AsyncCommands;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sqlx::Row;
 
 // ---------------------------------------------------------------------------
@@ -31,6 +35,36 @@ pub struct E2eeSessionRequest {
     pub identity_key: Option<String>,
     pub signed_pre_key: Option<String>,
     pub request_payload_json: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingE2eeSessionDto {
+    pub session_id: String,
+    pub requester_id: String,
+    pub requester_name: String,
+    pub target_user_id: String,
+    pub request_payload_json: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct E2eeNegotiationPush {
+    pub action: String,
+    pub session_id: String,
+    pub requester_id: String,
+    pub requester_name: String,
+    pub target_user_id: String,
+    pub request_payload_json: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InternalPushBatchRequest {
+    pub user_ids: Vec<i64>,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub data: Value,
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +165,60 @@ pub async fn request_encryption(
         .await?;
     }
 
+    let requester_name = resolve_user_display_name(&state, identity.user_id)
+        .await?
+        .unwrap_or_else(|| identity.username.clone());
+    let push = E2eeNegotiationPush {
+        action: "request".to_string(),
+        session_id: request.session_id.clone(),
+        requester_id: identity.user_id.to_string(),
+        requester_name,
+        target_user_id: target_user_id.to_string(),
+        request_payload_json: request.request_payload_json.clone(),
+    };
+    if let Err(error) = push_negotiation_event(&state, target_user_id, &push).await {
+        tracing::warn!(
+            error = %error,
+            session_id = %request.session_id,
+            target_user_id = %target_user_id,
+            "failed to push e2ee negotiation request"
+        );
+    }
+
     Ok(Json(ApiResponse::success("ok".to_string())))
+}
+
+/// 查询当前用户待确认的 E2EE 私聊协商请求。
+pub async fn pending_encryption_requests(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<Vec<PendingE2eeSessionDto>>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let rows = sqlx::query(
+        r#"SELECT s.session_id, s.requester_id, s.target_user_id, s.request_payload_json,
+                  COALESCE(NULLIF(u.nickname, ''), u.username, CAST(s.requester_id AS CHAR)) AS requester_name
+           FROM service_user_service_db.e2ee_sessions s
+           LEFT JOIN service_user_service_db.users u ON u.id = s.requester_id
+           WHERE s.target_user_id = ? AND s.status = 'pending'
+           ORDER BY s.updated_time DESC
+           LIMIT 20"#,
+    )
+    .bind(identity.user_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let requests = rows
+        .into_iter()
+        .map(|row| PendingE2eeSessionDto {
+            session_id: row.get::<String, _>("session_id"),
+            requester_id: row.get::<i64, _>("requester_id").to_string(),
+            requester_name: row.get::<String, _>("requester_name"),
+            target_user_id: row.get::<i64, _>("target_user_id").to_string(),
+            request_payload_json: row.get::<Option<String>, _>("request_payload_json"),
+        })
+        .collect();
+
+    Ok(Json(ApiResponse::success(requests)))
 }
 
 /// 接受端到端加密协商。
@@ -187,6 +274,25 @@ pub async fn accept_encryption(
     .bind(&request.session_id)
     .execute(&state.db)
     .await?;
+
+    let push = E2eeNegotiationPush {
+        action: "accepted".to_string(),
+        session_id: request.session_id.clone(),
+        requester_id: row.get::<i64, _>("requester_id").to_string(),
+        requester_name: String::new(),
+        target_user_id: target_user_id.to_string(),
+        request_payload_json: None,
+    };
+    if let Err(error) =
+        push_negotiation_event(&state, row.get::<i64, _>("requester_id"), &push).await
+    {
+        tracing::warn!(
+            error = %error,
+            session_id = %request.session_id,
+            requester_id = %row.get::<i64, _>("requester_id"),
+            "failed to push e2ee negotiation acceptance"
+        );
+    }
 
     Ok(Json(ApiResponse::success("ok".to_string())))
 }
@@ -244,6 +350,25 @@ pub async fn reject_encryption(
     .execute(&state.db)
     .await?;
 
+    let push = E2eeNegotiationPush {
+        action: "rejected".to_string(),
+        session_id: request.session_id.clone(),
+        requester_id: row.get::<i64, _>("requester_id").to_string(),
+        requester_name: String::new(),
+        target_user_id: target_user_id.to_string(),
+        request_payload_json: None,
+    };
+    if let Err(error) =
+        push_negotiation_event(&state, row.get::<i64, _>("requester_id"), &push).await
+    {
+        tracing::warn!(
+            error = %error,
+            session_id = %request.session_id,
+            requester_id = %row.get::<i64, _>("requester_id"),
+            "failed to push e2ee negotiation rejection"
+        );
+    }
+
     Ok(Json(ApiResponse::success("ok".to_string())))
 }
 
@@ -282,6 +407,71 @@ fn parse_session_partners(session_id: &str) -> Result<(i64, i64), AppError> {
         ));
     }
     Ok((id_a, id_b))
+}
+
+async fn resolve_user_display_name(
+    state: &AppState,
+    user_id: i64,
+) -> Result<Option<String>, AppError> {
+    let row = sqlx::query(
+        "SELECT COALESCE(NULLIF(nickname, ''), username) AS display_name \
+         FROM service_user_service_db.users WHERE id = ?",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await?;
+    Ok(row.map(|item| item.get::<String, _>("display_name")))
+}
+
+async fn push_negotiation_event(
+    state: &AppState,
+    user_id: i64,
+    payload: &E2eeNegotiationPush,
+) -> Result<(), AppError> {
+    let mut redis = state.route_redis_manager.clone();
+    let raw: Option<Vec<u8>> = redis
+        .hget(&state.config.route_users_key, user_id.to_string())
+        .await?;
+    let routes = parse_user_routes(raw.as_deref(), &state.config);
+    if routes.is_empty() {
+        return Ok(());
+    }
+
+    let path = "/api/im/internal/push/batch";
+    let body = serde_json::to_vec(&InternalPushBatchRequest {
+        user_ids: vec![user_id],
+        kind: "E2EE_NEGOTIATION".to_string(),
+        data: serde_json::to_value(payload)?,
+    })?;
+
+    for route in routes {
+        let response = state
+            .http
+            .post(format!(
+                "{}{}",
+                route.internal_http_url.trim_end_matches('/'),
+                path
+            ))
+            .headers(auth_api::internal_signature_headers(
+                "POST",
+                path,
+                &body,
+                &state.config,
+            )?)
+            .header("Content-Type", "application/json")
+            .body(body.clone())
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            tracing::warn!(
+                status = %response.status(),
+                user_id = %user_id,
+                "im-server rejected e2ee negotiation push"
+            );
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

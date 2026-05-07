@@ -238,6 +238,22 @@ export function createMessageSendQueueModule(
       return false;
     }
 
+    let privateE2eeStatus: string | null = null;
+    if (session.type === "private") {
+      try {
+        const { getLocalSessionStatus } = await import(
+          "@/features/e2ee/manager/negotiation"
+        );
+        privateE2eeStatus = getLocalSessionStatus(session.id);
+        if (privateE2eeStatus === "negotiating") {
+          ctx.notifyWarning("端到端加密协商尚未完成，请等待对方确认。");
+          return false;
+        }
+      } catch {
+        // If the E2EE module is unavailable, keep the existing plaintext path.
+      }
+    }
+
     const localId = `local_${generateUUID()}`;
     const clientMessageId = `cm_${generateUUID()}`;
     const isTextLike = type === "TEXT";
@@ -288,7 +304,7 @@ export function createMessageSendQueueModule(
         const { e2eeManager } = await import('@/features/e2ee/manager/e2ee-manager');
         const { getLocalSessionStatus, getPendingInitialHandshake } = await import('@/features/e2ee/manager/negotiation');
 
-        if (getLocalSessionStatus(session.id) === 'encrypted') {
+        if ((privateE2eeStatus || getLocalSessionStatus(session.id)) === 'encrypted') {
           try {
             encryptedPayload = await e2eeManager.encryptMessage(session.id, content);
             initialHandshake = getPendingInitialHandshake(session.id);

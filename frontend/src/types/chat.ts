@@ -66,7 +66,8 @@ export interface WebSocketMessage<TData = unknown> {
     | "READ_SYNC"
     | "SYSTEM"
     | "FRIEND_REQUEST"
-    | "FRIEND_ACCEPTED";
+    | "FRIEND_ACCEPTED"
+    | "E2EE_NEGOTIATION";
   data: TData;
   timestamp: number;
 }

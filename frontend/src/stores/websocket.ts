@@ -584,6 +584,31 @@ export const useWebSocketStore = defineStore("websocket", () => {
         }
         return;
       }
+      case "E2EE_NEGOTIATION": {
+        if (!data.data) return;
+        const evt = data.data as Record<string, unknown>;
+        const action = String(evt.action || "");
+        const sessionId = String(evt.sessionId || evt.session_id || "");
+        if (!sessionId) return;
+        try {
+          const { emitE2eeNegotiation } = await import("@/features/e2ee/negotiation-events");
+          emitE2eeNegotiation({
+            action: action as "request" | "accepted" | "rejected",
+            sessionId,
+            requesterId: String(evt.requesterId || evt.requester_id || ""),
+            requesterName: String(evt.requesterName || evt.requester_name || ""),
+            targetUserId: String(evt.targetUserId || evt.target_user_id || ""),
+            requestPayloadJson: evt.requestPayloadJson
+              ? String(evt.requestPayloadJson)
+              : evt.request_payload_json
+                ? String(evt.request_payload_json)
+                : undefined,
+          });
+        } catch (e) {
+          console.error("[E2EE] Failed to dispatch negotiation event:", e);
+        }
+        return;
+      }
       case "HEARTBEAT":
       default:
         return;
