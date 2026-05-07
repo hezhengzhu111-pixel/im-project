@@ -18,6 +18,10 @@ pub fn routes() -> Router<AppState> {
             post(e2ee::session_api::request_encryption),
         )
         .route(
+            "/api/e2ee/pending",
+            get(e2ee::session_api::pending_encryption_requests),
+        )
+        .route(
             "/api/e2ee/accept",
             post(e2ee::session_api::accept_encryption),
         )

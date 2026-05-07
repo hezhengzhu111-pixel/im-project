@@ -11,7 +11,7 @@
 import { keyService } from '../api/key-service';
 import { x3dhInitiate, x3dhRespond } from '../engine/x3dh';
 import { importRootKey, initSendingChain, initReceivingChain } from '../engine/double-ratchet';
-import { saveRatchetState, getRatchetState } from '../store/session-store';
+import { saveRatchetState, getRatchetState, deleteRatchetState } from '../store/session-store';
 import { getIdentityKeyPair, getLocalPublicBundle, getSignedPreKey } from '../store/key-store';
 import type { PreKeyBundle, E2eeSessionStatus } from '../types';
 import { emitE2eeStatusChange } from '../status-events';
@@ -80,7 +80,7 @@ function newestDevice<T extends { lastActiveAt?: string }>(devices: T[]): T | un
 
 /**
  * 发起 E2EE 协商（主动方 Alice）
- * 流程：检查本地密钥 → 获取对方 Bundle → X3DH → 初始化 Double Ratchet → 保存状态
+ * 流程：检查本地密钥 → 获取对方 Bundle → X3DH → 初始化 Double Ratchet → 保存状态 → 等待对方确认
  */
 export async function initiateNegotiation(
   sessionId: string,
@@ -148,7 +148,7 @@ export async function initiateNegotiation(
       localBundle.signedPreKey,
       JSON.stringify(handshake),
     );
-    setLocalSessionStatus(sessionId, 'encrypted');
+    setLocalSessionStatus(sessionId, 'negotiating');
 
     return true;
   } catch (error) {
@@ -170,6 +170,8 @@ export async function respondToNegotiation(
 ): Promise<boolean> {
   setLocalSessionStatus(sessionId, 'negotiating');
   try {
+    await ensureLocalE2eeDeviceRegistered();
+
     const identityKeyPair = await getIdentityKeyPair();
     if (!identityKeyPair) throw new Error('Local identity key not found');
 
@@ -200,8 +202,17 @@ export async function respondToNegotiation(
 }
 
 export async function restoreE2eeSession(sessionId: string): Promise<boolean> {
+  if (getLocalSessionStatus(sessionId) !== 'encrypted') {
+    return false;
+  }
   const state = await getRatchetState(sessionId);
   if (!state) return false;
   setLocalSessionStatus(sessionId, 'encrypted');
   return true;
+}
+
+export async function resetNegotiation(sessionId: string, status: E2eeSessionStatus = 'plaintext'): Promise<void> {
+  clearPendingInitialHandshake(sessionId);
+  await deleteRatchetState(sessionId);
+  setLocalSessionStatus(sessionId, status);
 }
