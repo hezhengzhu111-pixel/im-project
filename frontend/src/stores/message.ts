@@ -342,6 +342,7 @@ export const useMessageStore = defineStore("message", () => {
     notifyWarning: (message) => {
       ElMessage.warning(message);
     },
+    getCurrentUser: () => useUserStore().currentUser,
   });
 
   const addMessage = async (message: Message) => {

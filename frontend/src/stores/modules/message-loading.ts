@@ -9,7 +9,83 @@ import {
   mergeMessagesChronologically,
   sortMessagesAscending,
 } from "@/stores/modules/message-helpers";
-import { toBigIntId } from "@/normalizers/chat";
+import { toBigIntId, buildSessionId } from "@/normalizers/chat";
+
+/**
+ * Decrypt E2EE messages in-place for messages from other users.
+ * Messages are processed in chronological order to maintain ratchet sequence.
+ */
+async function decryptE2eeMessages(
+  messages: Message[],
+  currentUserId: string,
+): Promise<void> {
+  // Filter to encrypted messages from other users, sorted ascending by time
+  const encrypted = messages
+    .filter((m) => {
+      const raw = m as unknown as Record<string, unknown>;
+      return (raw.encrypted === true || raw.encrypted === 1) &&
+        String(m.senderId) !== currentUserId &&
+        m.messageType !== "SYSTEM";
+    })
+    .sort((a, b) => {
+      const ta = new Date(a.sendTime || 0).getTime();
+      const tb = new Date(b.sendTime || 0).getTime();
+      return ta - tb;
+    });
+
+  if (encrypted.length === 0) return;
+
+  try {
+    const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
+
+    for (const msg of encrypted) {
+      const raw = msg as unknown as Record<string, unknown>;
+      try {
+        const peerId = String(msg.senderId);
+        const sessionId = buildSessionId("private", currentUserId, peerId);
+
+        const headerRaw = raw.e2eeHeader || raw.e2ee_header;
+        const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
+
+        if (header && msg.content) {
+          const decrypted = await e2eeManager.decryptMessage(
+            sessionId, peerId, header, msg.content,
+          );
+          if (decrypted) {
+            msg.content = decrypted;
+            raw.encrypted = false;
+          }
+        }
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        const isNoRatchetState = errMsg.includes("No ratchet state") || errMsg.includes("negotiation has not been accepted");
+
+        if (isNoRatchetState) {
+          // Cache this and remaining messages for deferred decryption
+          const { cachePendingMessage } = await import("@/features/e2ee/manager/pending-messages");
+          const peerId = String(msg.senderId);
+          const sessionId = buildSessionId("private", currentUserId, peerId);
+          const headerRaw = raw.e2eeHeader || raw.e2ee_header;
+          const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
+
+          cachePendingMessage({
+            sessionId,
+            peerId,
+            content: msg.content,
+            header,
+            messageRef: msg as unknown as { content: string; encrypted: boolean | number },
+          });
+          // Remaining messages will also fail — stop processing
+          console.warn(`[E2EE] No ratchet state for session=${sessionId}, cached ${encrypted.length} messages for deferred decryption.`);
+          break;
+        }
+        // Other decrypt errors — leave as ciphertext
+      }
+    }
+  } catch {
+    // E2EE module unavailable — skip decryption
+  }
+}
 
 type MessageHistoryResponse =
   | Awaited<ReturnType<typeof messageService.getPrivateHistoryCursor>>
@@ -38,6 +114,7 @@ type MessageLoadingModuleContext = {
     options?: { immediate?: boolean },
   ) => Promise<void> | void;
   notifyWarning: (message: string) => void;
+  getCurrentUser?: () => { id: string } | null;
 };
 
 export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
@@ -203,6 +280,13 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
       const normalizedMessages = response.data
         .slice()
         .sort(sortMessagesAscending);
+
+      // E2EE: decrypt historical messages from other users
+      const currentUserId = String(ctx.getCurrentUser?.()?.id || "");
+      if (currentUserId) {
+        await decryptE2eeMessages(normalizedMessages, currentUserId);
+      }
+
       const visibleMessages = ctx.filterClearedMessages(
         sessionId,
         normalizedMessages,
@@ -280,6 +364,13 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
       const normalizedMessages = response.data
         .slice()
         .sort(sortMessagesAscending);
+
+      // E2EE: decrypt historical messages from other users
+      const currentUserId = String(ctx.getCurrentUser?.()?.id || "");
+      if (currentUserId) {
+        await decryptE2eeMessages(normalizedMessages, currentUserId);
+      }
+
       const visibleMessages = ctx.filterClearedMessages(
         sessionId,
         normalizedMessages,

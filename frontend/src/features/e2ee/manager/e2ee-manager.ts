@@ -107,6 +107,12 @@ class E2eeManager {
   async clearSession(sessionId: string): Promise<void> {
     this.buffers.delete(sessionId);
     localStorage.removeItem('e2ee:status:' + sessionId);
+    try {
+      const { deleteRatchetState } = await import('../store/session-store');
+      await deleteRatchetState(sessionId);
+    } catch {
+      // Ignore — IndexedDB cleanup is best-effort
+    }
   }
 }
 

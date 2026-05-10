@@ -105,8 +105,14 @@ export async function saveRatchetState(sessionId: string, state: RatchetState): 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     tx.objectStore(STORE_NAME).put(serialized, sessionId);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+    tx.oncomplete = () => {
+      console.log(`[E2EE] saveRatchetState OK: session=${sessionId}, sendCounter=${state.sendCounter}, receiveCounter=${state.receiveCounter}`);
+      resolve();
+    };
+    tx.onerror = () => {
+      console.error(`[E2EE] saveRatchetState FAILED: session=${sessionId}`, tx.error);
+      reject(tx.error);
+    };
   });
 }
 
@@ -124,12 +130,20 @@ export async function getRatchetState(sessionId: string): Promise<RatchetState |
     req.onsuccess = () => {
       const data = req.result as SerializedRatchetState | undefined;
       if (!data) {
+        console.warn(`[E2EE] getRatchetState: no data for session=${sessionId}`);
         resolve(null);
         return;
       }
-      deserializeRatchetState(data).then(resolve).catch(reject);
+      console.log(`[E2EE] getRatchetState: found state for session=${sessionId}, sendCounter=${data.sendCounter}, receiveCounter=${data.receiveCounter}`);
+      deserializeRatchetState(data).then(resolve).catch((err) => {
+        console.error(`[E2EE] getRatchetState: deserialize failed for session=${sessionId}`, err);
+        reject(err);
+      });
     };
-    req.onerror = () => reject(req.error);
+    req.onerror = () => {
+      console.error(`[E2EE] getRatchetState: IndexedDB error for session=${sessionId}`, req.error);
+      reject(req.error);
+    };
   });
 }
 

@@ -136,6 +136,16 @@ export async function initiateNegotiation(
     const ratchetState = await initSendingChain(rootCryptoKey, identityKeyPair);
 
     await saveRatchetState(sessionId, ratchetState);
+
+    // Verify the state was actually persisted
+    const verifyState = await getRatchetState(sessionId);
+    if (!verifyState) {
+      console.error(`[E2EE] CRITICAL: Ratchet state was NOT persisted after initiation for session=${sessionId}`);
+      clearPendingInitialHandshake(sessionId);
+      setLocalSessionStatus(sessionId, 'failed');
+      return false;
+    }
+
     const handshake: InitialE2eeHandshake = {
       senderIdentityKey: localBundle.identityKey,
       ephemeralPublicKey,
@@ -191,6 +201,15 @@ export async function respondToNegotiation(
     const ratchetState = await initReceivingChain(rootCryptoKey, identityKeyPair);
 
     await saveRatchetState(sessionId, ratchetState);
+
+    // Verify the state was actually persisted
+    const verifyState = await getRatchetState(sessionId);
+    if (!verifyState) {
+      console.error(`[E2EE] CRITICAL: Ratchet state was NOT persisted after negotiation for session=${sessionId}`);
+      setLocalSessionStatus(sessionId, 'failed');
+      return false;
+    }
+
     setLocalSessionStatus(sessionId, 'encrypted');
 
     return true;

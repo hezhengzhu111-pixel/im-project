@@ -475,6 +475,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { ElNotification } from "element-plus";
 import ChatComposer from "@/features/chat/ChatComposer.vue";
 import ChatDialogs from "@/features/chat/ChatDialogs.vue";
 import ChatE2eeNegotiationDialog from "@/features/chat/ChatE2eeNegotiationDialog.vue";
@@ -589,11 +590,18 @@ const unsubNegotiation = onE2eeNegotiation((event) => {
     } else {
       // Cache for when user switches to that session
       negotiationCache.value.set(event.sessionId, event);
+      ElNotification({
+        title: "端到端加密请求",
+        message: `${event.requesterName} 请求与你开启端到端加密`,
+        type: "info",
+        duration: 5000,
+      });
     }
   } else if (event.action === "accepted") {
     // The requester (Alice) receives acceptance — update local status
     import("@/features/e2ee/manager/negotiation").then(({ setLocalSessionStatus }) => {
       setLocalSessionStatus(event.sessionId, "encrypted");
+      retryDecryptPendingMessages(event.sessionId);
     });
   } else if (event.action === "rejected") {
     import("@/features/e2ee/manager/negotiation").then(({ resetNegotiation }) => {
@@ -647,9 +655,47 @@ onMounted(async () => {
   }
 });
 
+const retryDecryptPendingMessages = async (sessionId: string) => {
+  try {
+    const { getPendingMessages, clearPendingMessages } = await import("@/features/e2ee/manager/pending-messages");
+    const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
+    const pending = getPendingMessages(sessionId);
+    if (pending.length === 0) return;
+
+    let decryptedCount = 0;
+    for (const msg of pending) {
+      try {
+        if (msg.header && msg.content) {
+          const decrypted = await e2eeManager.decryptMessage(
+            sessionId, msg.peerId, msg.header as import("@/features/e2ee/types").RatchetHeader, msg.content,
+            msg.senderIdentityKey, msg.ephemeralPublicKey,
+          );
+          if (decrypted) {
+            msg.messageRef.content = decrypted;
+            msg.messageRef.encrypted = false;
+            decryptedCount++;
+          }
+        }
+      } catch {
+        // Individual message decrypt failed
+      }
+    }
+    clearPendingMessages(sessionId);
+    if (decryptedCount > 0) {
+      console.log(`[E2EE] Decrypted ${decryptedCount}/${pending.length} pending messages for session=${sessionId}`);
+    }
+  } catch {
+    // Pending message retry is best-effort
+  }
+};
+
 const handleNegotiationAccepted = () => {
   showNegotiationDialog.value = false;
+  const sessionId = pendingNegotiation.value?.sessionId;
   pendingNegotiation.value = null;
+  if (sessionId) {
+    retryDecryptPendingMessages(sessionId);
+  }
 };
 
 const handleNegotiationRejected = () => {
