@@ -54,10 +54,7 @@ pub fn store_knowledge_file(
     let url = format!("/files/knowledge/{}/{}", date, safe_name);
     let size = i64::try_from(data.len())
         .map_err(|_| AppError::BadRequest("file too large".to_string()))?;
-    Ok(KnowledgeFileSaved {
-        url,
-        size,
-    })
+    Ok(KnowledgeFileSaved { url, size })
 }
 
 #[derive(Debug, Serialize)]

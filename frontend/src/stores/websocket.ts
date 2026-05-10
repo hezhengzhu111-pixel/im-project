@@ -468,29 +468,25 @@ export const useWebSocketStore = defineStore("websocket", () => {
 
         if (isEncrypted && normalizedMessage.messageType !== "SYSTEM") {
           const senderId = String(normalizedMessage.senderId || "");
-          // Skip decryption for own messages — already encrypted locally, decrypting would desync ratchet state
           if (senderId !== currentUserId) {
+          const sessionId = buildSessionId("private", currentUserId, senderId);
+          const headerRaw = rawMsg.e2eeHeader || rawMsg.e2ee_header;
+          const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
+          const senderIdentityKey = (
+            rawMsg.e2eeSenderIdentityKey ||
+            rawMsg.e2ee_sender_identity_key
+          ) as string | undefined;
+          const ephemeralKey = (
+            rawMsg.e2eeEphemeralKey ||
+            rawMsg.e2ee_ephemeral_key
+          ) as string | undefined;
+
           try {
             const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
 
-            const peerId = senderId;
-            const sessionId = buildSessionId("private", currentUserId, peerId);
-
-            const headerRaw = rawMsg.e2eeHeader || rawMsg.e2ee_header;
-            const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
-
-            const senderIdentityKey = (
-              rawMsg.e2eeSenderIdentityKey ||
-              rawMsg.e2ee_sender_identity_key
-            ) as string | undefined;
-            const ephemeralKey = (
-              rawMsg.e2eeEphemeralKey ||
-              rawMsg.e2ee_ephemeral_key
-            ) as string | undefined;
-
             if (header && normalizedMessage.content) {
               const decrypted = await e2eeManager.decryptMessage(
-                sessionId, peerId, header, normalizedMessage.content,
+                sessionId, senderId, header, normalizedMessage.content,
                 senderIdentityKey, ephemeralKey,
               );
               if (decrypted) {
@@ -499,9 +495,63 @@ export const useWebSocketStore = defineStore("websocket", () => {
               }
             }
           } catch (e) {
-            console.error("[E2EE] Decrypt failed:", e);
+            const errMsg = e instanceof Error ? e.message : String(e);
+            const isNoRatchetState = errMsg.includes("No ratchet state") || errMsg.includes("negotiation has not been accepted");
+
+            if (isNoRatchetState) {
+              const { getLocalSessionStatus, setLocalSessionStatus } = await import("@/features/e2ee/manager/negotiation");
+              const status = getLocalSessionStatus(sessionId);
+
+              if (status === "encrypted") {
+                console.error(`[E2EE] Status is 'encrypted' but no ratchet state for session=${sessionId}. Resetting to plaintext.`);
+                setLocalSessionStatus(sessionId, "plaintext");
+                ElNotification({ title: "加密状态异常", message: "端到端加密状态已重置，请重新发起加密协商。", type: "warning", duration: 8000 });
+              } else if (status === "negotiating") {
+                console.warn(`[E2EE] Negotiation in progress for session=${sessionId}, message will be decrypted after completion.`);
+                ElMessage({ message: "加密协商进行中，消息将在协商完成后解密。", type: "info", duration: 3000 });
+              } else {
+                console.log(`[E2EE] No ratchet state for session=${sessionId} (status=${status}), auto-triggering negotiation.`);
+                try {
+                  const { initiateNegotiation } = await import("@/features/e2ee/manager/negotiation");
+                  const { cachePendingMessage } = await import("@/features/e2ee/manager/pending-messages");
+                  cachePendingMessage({
+                    sessionId,
+                    peerId: senderId,
+                    content: normalizedMessage.content,
+                    header,
+                    senderIdentityKey,
+                    ephemeralPublicKey: ephemeralKey,
+                    messageRef: normalizedMessage as unknown as { content: string; encrypted: boolean | number },
+                  });
+                  initiateNegotiation(sessionId, senderId).then((ok) => {
+                    if (ok) {
+                      ElNotification({ title: "端到端加密请求", message: "收到加密消息但尚未建立加密通道，已自动发起协商请求。", type: "info", duration: 5000 });
+                    }
+                  });
+                } catch {
+                  // Auto-negotiation failed — message stays encrypted
+                }
+              }
+            } else {
+              console.error("[E2EE] Decrypt failed:", e);
+            }
             (normalizedMessage as unknown as Record<string, unknown>).encrypted = true;
           }
+          } else {
+            // Own message synced via WebSocket — preserve local plaintext
+            const sessionId = normalizedMessage.receiverId
+              ? buildSessionId("private", currentUserId, normalizedMessage.receiverId)
+              : null;
+            if (sessionId) {
+              const existingList = (chatStore.messages as Map<string, Message[]>).get(sessionId) || [];
+              const existing = existingList.find(
+                (m) => m.clientMessageId && m.clientMessageId === normalizedMessage.clientMessageId,
+              );
+              if (existing && existing.content) {
+                normalizedMessage.content = existing.content;
+              }
+            }
+            (normalizedMessage as unknown as Record<string, unknown>).encrypted = true;
           }
         }
 

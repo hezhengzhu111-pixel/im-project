@@ -19,9 +19,7 @@ pub async fn ensure_group_member(
     .await?;
 
     if !exists {
-        return Err(AppError::Forbidden(
-            "not a group member".to_string(),
-        ));
+        return Err(AppError::Forbidden("not a group member".to_string()));
     }
     Ok(())
 }
@@ -55,11 +53,7 @@ pub async fn ensure_group_admin(
 /// 校验两个用户之间是否存在有效的好友关系（双向 status=1）。
 ///
 /// 若不存在好友关系，返回 403 Forbidden。
-pub async fn ensure_friend(
-    db: &MySqlPool,
-    user_id: i64,
-    friend_id: i64,
-) -> Result<(), AppError> {
+pub async fn ensure_friend(db: &MySqlPool, user_id: i64, friend_id: i64) -> Result<(), AppError> {
     let exists: bool = sqlx::query_scalar(
         "SELECT COUNT(*) > 0 FROM service_user_service_db.im_friend \
          WHERE user_id = ? AND friend_id = ? AND status = 1",
@@ -89,11 +83,7 @@ pub async fn ensure_group_members_batch(
         return Ok(Vec::new());
     }
 
-    let placeholders: String = user_ids
-        .iter()
-        .map(|_| "?")
-        .collect::<Vec<_>>()
-        .join(",");
+    let placeholders: String = user_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
     let sql = format!(
         "SELECT user_id FROM service_group_service_db.im_group_member \
          WHERE group_id = ? AND status = 1 AND user_id IN ({placeholders})"

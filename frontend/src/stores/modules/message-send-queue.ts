@@ -386,6 +386,11 @@ export function createMessageSendQueueModule(
         groupId: response.data.groupId || pendingMessage.groupId,
         status: "SENT",
       };
+      // E2EE: server stores ciphertext — preserve the local plaintext for the sender
+      if (encryptedPayload) {
+        serverMessage.content = pendingMessage.content;
+        (serverMessage as unknown as Record<string, unknown>).encrypted = true;
+      }
       replaceLocalMessage(session.id, localId, serverMessage);
       if (encryptedPayload && initialHandshake) {
         const { clearPendingInitialHandshake } = await import('@/features/e2ee/manager/negotiation');
