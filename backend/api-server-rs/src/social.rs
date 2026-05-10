@@ -1012,7 +1012,6 @@ fn distinct(values: Vec<i64>) -> Vec<i64> {
         .collect()
 }
 
-#[allow(clippy::as_conversions, clippy::unwrap_used)]
 async fn write_social_event(state: &AppState, event: &ImEvent) {
     let event_json = match serde_json::to_string(event) {
         Ok(json) => json,
@@ -1025,8 +1024,14 @@ async fn write_social_event(state: &AppState, event: &ImEvent) {
         let mut redis = private_hot.clone();
         let member = format!("{}|{}", event.event_id, event.conversation_id);
         let event_key = keys::event_key(&event.event_id);
-        let ttl_seconds: i64 = i64::try_from(keys::EVENT_TTL_SECONDS).unwrap_or(604800);
-        let score = time::now_ms() as f64;
+        let ttl_seconds = match i64::try_from(keys::EVENT_TTL_SECONDS) {
+            Ok(ttl) => ttl,
+            Err(error) => {
+                tracing::warn!(error = %error, "invalid event ttl seconds");
+                604_800
+            }
+        };
+        let score = time::now_ms();
         let result: redis::RedisResult<()> = redis::pipe()
             .atomic()
             .set(&event_key, &event_json)

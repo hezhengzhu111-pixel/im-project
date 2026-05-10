@@ -555,26 +555,41 @@ mod tests {
         assert!(cfg.validate_production_secrets().is_ok());
     }
 
-    #[test]
-    fn production_missing_jwt_secret_fails() {
-        let mut cfg = valid_config();
-        cfg.jwt_secret = String::new();
-        let err = cfg.validate_production_secrets().unwrap_err();
-        assert!(
-            err.contains("JWT_SECRET"),
-            "error should mention JWT_SECRET, got: {err}"
-        );
+    fn validation_error<T>(result: Result<T, String>, context: &str) -> anyhow::Result<String> {
+        let Err(err) = result else {
+            anyhow::bail!("{context}");
+        };
+        Ok(err)
     }
 
     #[test]
-    fn production_example_jwt_secret_fails() {
+    fn production_missing_jwt_secret_fails() -> anyhow::Result<()> {
         let mut cfg = valid_config();
-        cfg.jwt_secret = DEFAULT_JWT_SECRET.to_string();
-        let err = cfg.validate_production_secrets().unwrap_err();
+        cfg.jwt_secret = String::new();
+        let err = validation_error(
+            cfg.validate_production_secrets(),
+            "missing JWT secret should fail production validation",
+        )?;
         assert!(
             err.contains("JWT_SECRET"),
             "error should mention JWT_SECRET, got: {err}"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn production_example_jwt_secret_fails() -> anyhow::Result<()> {
+        let mut cfg = valid_config();
+        cfg.jwt_secret = DEFAULT_JWT_SECRET.to_string();
+        let err = validation_error(
+            cfg.validate_production_secrets(),
+            "example JWT secret should fail production validation",
+        )?;
+        assert!(
+            err.contains("JWT_SECRET"),
+            "error should mention JWT_SECRET, got: {err}"
+        );
+        Ok(())
     }
 
     #[test]
@@ -587,45 +602,65 @@ mod tests {
     }
 
     #[test]
-    fn production_short_jwt_secret_fails() {
+    fn production_short_jwt_secret_fails() -> anyhow::Result<()> {
         let mut cfg = valid_config();
         cfg.jwt_secret = "short".to_string();
-        let err = cfg.validate_production_secrets().unwrap_err();
+        let err = validation_error(
+            cfg.validate_production_secrets(),
+            "short JWT secret should fail production validation",
+        )?;
         assert!(err.contains("JWT_SECRET"));
         assert!(err.contains("64"));
+        Ok(())
     }
 
     #[test]
-    fn production_default_refresh_secret_fails() {
+    fn production_default_refresh_secret_fails() -> anyhow::Result<()> {
         let mut cfg = valid_config();
         cfg.refresh_secret = DEFAULT_REFRESH_SECRET.to_string();
-        let err = cfg.validate_production_secrets().unwrap_err();
+        let err = validation_error(
+            cfg.validate_production_secrets(),
+            "default refresh secret should fail production validation",
+        )?;
         assert!(err.contains("AUTH_REFRESH_SECRET"));
+        Ok(())
     }
 
     #[test]
-    fn production_default_internal_secret_fails() {
+    fn production_default_internal_secret_fails() -> anyhow::Result<()> {
         let mut cfg = valid_config();
         cfg.internal_secret = DEFAULT_INTERNAL_SECRET.to_string();
-        let err = cfg.validate_production_secrets().unwrap_err();
+        let err = validation_error(
+            cfg.validate_production_secrets(),
+            "default internal secret should fail production validation",
+        )?;
         assert!(err.contains("IM_INTERNAL_SECRET"));
+        Ok(())
     }
 
     #[test]
-    fn production_short_internal_secret_fails() {
+    fn production_short_internal_secret_fails() -> anyhow::Result<()> {
         let mut cfg = valid_config();
         cfg.internal_secret = "short".to_string();
-        let err = cfg.validate_production_secrets().unwrap_err();
+        let err = validation_error(
+            cfg.validate_production_secrets(),
+            "short internal secret should fail production validation",
+        )?;
         assert!(err.contains("IM_INTERNAL_SECRET"));
         assert!(err.contains("32"));
+        Ok(())
     }
 
     #[test]
-    fn production_default_gateway_auth_secret_fails() {
+    fn production_default_gateway_auth_secret_fails() -> anyhow::Result<()> {
         let mut cfg = valid_config();
         cfg.gateway_auth_secret = DEFAULT_GATEWAY_AUTH_SECRET.to_string();
-        let err = cfg.validate_production_secrets().unwrap_err();
+        let err = validation_error(
+            cfg.validate_production_secrets(),
+            "default gateway auth secret should fail production validation",
+        )?;
         assert!(err.contains("IM_GATEWAY_AUTH_SECRET"));
+        Ok(())
     }
 
     #[test]
@@ -663,10 +698,13 @@ mod tests {
     }
 
     #[test]
-    fn jwt_secret_lengths_empty_jwt_secret_fails() {
+    fn jwt_secret_lengths_empty_jwt_secret_fails() -> anyhow::Result<()> {
         let mut cfg = valid_config();
         cfg.jwt_secret = String::new();
-        let err = cfg.validate_jwt_secret_lengths().unwrap_err();
+        let err = validation_error(
+            cfg.validate_jwt_secret_lengths(),
+            "empty JWT secret should fail length validation",
+        )?;
         assert!(
             err.contains("JWT_SECRET"),
             "error should mention JWT_SECRET, got: {err}"
@@ -675,13 +713,17 @@ mod tests {
             err.contains("must not be empty"),
             "error should mention empty, got: {err}"
         );
+        Ok(())
     }
 
     #[test]
-    fn jwt_secret_lengths_short_jwt_secret_fails() {
+    fn jwt_secret_lengths_short_jwt_secret_fails() -> anyhow::Result<()> {
         let mut cfg = valid_config();
         cfg.jwt_secret = "short".to_string();
-        let err = cfg.validate_jwt_secret_lengths().unwrap_err();
+        let err = validation_error(
+            cfg.validate_jwt_secret_lengths(),
+            "short JWT secret should fail length validation",
+        )?;
         assert!(
             err.contains("JWT_SECRET"),
             "error should mention JWT_SECRET, got: {err}"
@@ -690,24 +732,32 @@ mod tests {
             err.contains("64"),
             "error should mention 64 bytes, got: {err}"
         );
+        Ok(())
     }
 
     #[test]
-    fn jwt_secret_lengths_empty_refresh_secret_fails() {
+    fn jwt_secret_lengths_empty_refresh_secret_fails() -> anyhow::Result<()> {
         let mut cfg = valid_config();
         cfg.refresh_secret = String::new();
-        let err = cfg.validate_jwt_secret_lengths().unwrap_err();
+        let err = validation_error(
+            cfg.validate_jwt_secret_lengths(),
+            "empty refresh secret should fail length validation",
+        )?;
         assert!(
             err.contains("AUTH_REFRESH_SECRET"),
             "error should mention AUTH_REFRESH_SECRET, got: {err}"
         );
+        Ok(())
     }
 
     #[test]
-    fn jwt_secret_lengths_short_refresh_secret_fails() {
+    fn jwt_secret_lengths_short_refresh_secret_fails() -> anyhow::Result<()> {
         let mut cfg = valid_config();
         cfg.refresh_secret = "short".to_string();
-        let err = cfg.validate_jwt_secret_lengths().unwrap_err();
+        let err = validation_error(
+            cfg.validate_jwt_secret_lengths(),
+            "short refresh secret should fail length validation",
+        )?;
         assert!(
             err.contains("AUTH_REFRESH_SECRET"),
             "error should mention AUTH_REFRESH_SECRET, got: {err}"
@@ -716,5 +766,6 @@ mod tests {
             err.contains("64"),
             "error should mention 64 bytes, got: {err}"
         );
+        Ok(())
     }
 }

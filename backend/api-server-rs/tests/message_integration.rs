@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use api_server_rs::config::AppConfig;
 use api_server_rs::web::AppState;
 use axum::body::Body;
@@ -55,7 +57,7 @@ fn unique_username(prefix: &str) -> String {
     let seq = SUFFIX.fetch_add(1, Ordering::Relaxed);
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as u64)
+        .map(|d| d.as_secs())
         .unwrap_or(0);
     format!("{prefix}{ts:x}{seq:x}")
 }
@@ -217,11 +219,11 @@ async fn make_friends(
     let token2 = login(app, user2, password).await?;
     send_friend_request(app, &token1, id2).await?;
     let requests = get_friend_requests(app, &token2).await?;
-    let (_req_id, _applicant, _status) = requests
+    let (req_id, _applicant, _status) = requests
         .iter()
         .find(|(_, applicant, s)| applicant == &id1.to_string() && s == "PENDING")
         .ok_or_else(|| anyhow::anyhow!("friend request not found"))?;
-    accept_friend_request(app, &token2, &_req_id).await?;
+    accept_friend_request(app, &token2, req_id).await?;
     Ok((id1, token1, id2, token2))
 }
 
@@ -546,7 +548,7 @@ async fn test_private_history_cursor_pagination() -> anyhow::Result<()> {
         let (status2, body2) = get_private_history_paged(&app, &token1, id2, 5, Some(last)).await?;
         assert_eq!(status2, StatusCode::OK, "second page: expected 200");
         let page2 = extract_messages(&body2);
-        assert!(page2.len() > 0, "second page should have more messages");
+        assert!(!page2.is_empty(), "second page should have more messages");
     }
     Ok(())
 }

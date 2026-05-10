@@ -1554,7 +1554,7 @@ mod tests {
     }
 
     #[test]
-    fn append_cookies_auto_https_sets_secure() {
+    fn append_cookies_auto_https_sets_secure() -> anyhow::Result<()> {
         let config = config_with_secure("auto");
         let mut request_headers = HeaderMap::new();
         request_headers.insert("x-forwarded-proto", HeaderValue::from_static("https"));
@@ -1571,8 +1571,7 @@ mod tests {
             &config,
             &token_pair,
             &request_headers,
-        )
-        .unwrap();
+        )?;
 
         assert!(set_cookie_contains_secure(
             &response_headers,
@@ -1582,10 +1581,11 @@ mod tests {
             &response_headers,
             "IM_REFRESH_TOKEN"
         ));
+        Ok(())
     }
 
     #[test]
-    fn append_cookies_auto_no_https_omits_secure() {
+    fn append_cookies_auto_no_https_omits_secure() -> anyhow::Result<()> {
         let config = config_with_secure("auto");
         let request_headers = HeaderMap::new();
 
@@ -1601,8 +1601,7 @@ mod tests {
             &config,
             &token_pair,
             &request_headers,
-        )
-        .unwrap();
+        )?;
 
         assert!(!set_cookie_contains_secure(
             &response_headers,
@@ -1612,10 +1611,11 @@ mod tests {
             &response_headers,
             "IM_REFRESH_TOKEN"
         ));
+        Ok(())
     }
 
     #[test]
-    fn append_cookies_true_always_sets_secure() {
+    fn append_cookies_true_always_sets_secure() -> anyhow::Result<()> {
         let config = config_with_secure("true");
         let request_headers = HeaderMap::new();
 
@@ -1631,8 +1631,7 @@ mod tests {
             &config,
             &token_pair,
             &request_headers,
-        )
-        .unwrap();
+        )?;
 
         assert!(set_cookie_contains_secure(
             &response_headers,
@@ -1642,6 +1641,7 @@ mod tests {
             &response_headers,
             "IM_REFRESH_TOKEN"
         ));
+        Ok(())
     }
 
     #[test]
@@ -1668,28 +1668,31 @@ mod tests {
     }
 
     #[test]
-    fn parse_token_with_valid_secret_succeeds() {
+    fn parse_token_with_valid_secret_succeeds() -> anyhow::Result<()> {
         let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
-        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1").unwrap();
+        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1")?;
         let result = parse_token(Some(&format!("Bearer {token}")), secret, false);
         assert!(result.valid, "parse should succeed");
         assert_eq!(result.user_id, Some(1));
         assert_eq!(result.username.as_deref(), Some("user"));
+        Ok(())
     }
 
     #[test]
-    fn parse_token_empty_secret_fails() {
+    fn parse_token_empty_secret_fails() -> anyhow::Result<()> {
         let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
-        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1").unwrap();
+        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1")?;
         let result = parse_token(Some(&token), "", false);
         assert!(!result.valid, "empty secret should fail validation");
+        Ok(())
     }
 
     #[test]
-    fn parse_token_short_secret_fails() {
+    fn parse_token_short_secret_fails() -> anyhow::Result<()> {
         let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
-        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1").unwrap();
+        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1")?;
         let result = parse_token(Some(&token), "short", false);
         assert!(!result.valid, "short secret should fail validation");
+        Ok(())
     }
 }

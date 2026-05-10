@@ -518,13 +518,13 @@ mod tests {
             &[7, 8],
         )?;
         let payload: Value = serde_json::from_slice(&body)?;
-        if payload["type"] != "MESSAGE" {
+        if payload.get("type") != Some(&json!("MESSAGE")) {
             return Err("batch type should be preserved".into());
         }
-        if payload["userIds"] != json!([7, 8]) {
+        if payload.get("userIds") != Some(&json!([7, 8])) {
             return Err("batch userIds should be serialized once".into());
         }
-        if payload["data"]["content"] != "hello" {
+        if payload.pointer("/data/content").and_then(Value::as_str) != Some("hello") {
             return Err("shared data should remain intact".into());
         }
         Ok(())

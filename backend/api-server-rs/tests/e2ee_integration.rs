@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use api_server_rs::web;
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
@@ -176,7 +178,7 @@ async fn test_e2ee_upload_bundle_then_get_devices() {
     assert_eq!(body["success"], json!(true));
 
     let devices = body["data"].as_array().expect("data should be array");
-    assert!(devices.len() >= 1, "expected at least 1 device");
+    assert!(!devices.is_empty(), "expected at least 1 device");
 
     let found = devices.iter().find(|d| d["deviceId"] == json!(device_id));
     assert!(found.is_some(), "uploaded device not found in get_devices");
