@@ -130,20 +130,26 @@ mod tests {
         MySqlPool::connect(&url).await.ok()
     }
 
+    fn app_error_text<T>(result: Result<T, AppError>, context: &str) -> anyhow::Result<String> {
+        let Err(err) = result else {
+            anyhow::bail!("{context}");
+        };
+        Ok(err.to_string())
+    }
+
     // ---------- ensure_group_member ----------
 
     #[tokio::test]
     #[ignore]
-    async fn test_ensure_group_member_success() {
+    async fn test_ensure_group_member_success() -> anyhow::Result<()> {
         let Some(db) = test_db().await else {
-            return;
+            return Ok(());
         };
         let group_id: i64 = sqlx::query_scalar(
             "SELECT id FROM service_group_service_db.im_group WHERE status = 1 LIMIT 1",
         )
         .fetch_one(&db)
-        .await
-        .expect("need at least one active group");
+        .await?;
 
         let user_id: i64 = sqlx::query_scalar(
             "SELECT user_id FROM service_group_service_db.im_group_member \
@@ -151,45 +157,44 @@ mod tests {
         )
         .bind(group_id)
         .fetch_one(&db)
-        .await
-        .expect("need at least one member in the group");
+        .await?;
 
-        assert!(ensure_group_member(&db, group_id, user_id).await.is_ok());
+        ensure_group_member(&db, group_id, user_id).await?;
+        Ok(())
     }
 
     #[tokio::test]
     #[ignore]
-    async fn test_ensure_group_member_failure_non_member() {
+    async fn test_ensure_group_member_failure_non_member() -> anyhow::Result<()> {
         let Some(db) = test_db().await else {
-            return;
+            return Ok(());
         };
         let group_id: i64 = sqlx::query_scalar(
             "SELECT id FROM service_group_service_db.im_group WHERE status = 1 LIMIT 1",
         )
         .fetch_one(&db)
-        .await
-        .expect("need at least one active group");
+        .await?;
 
         let result = ensure_group_member(&db, group_id, 999_999_999).await;
         assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
+        let err = app_error_text(result, "non-member should fail group member check")?;
         assert!(err.contains("not a group member"));
+        Ok(())
     }
 
     // ---------- ensure_group_admin ----------
 
     #[tokio::test]
     #[ignore]
-    async fn test_ensure_group_admin_success() {
+    async fn test_ensure_group_admin_success() -> anyhow::Result<()> {
         let Some(db) = test_db().await else {
-            return;
+            return Ok(());
         };
         let group_id: i64 = sqlx::query_scalar(
             "SELECT id FROM service_group_service_db.im_group WHERE status = 1 LIMIT 1",
         )
         .fetch_one(&db)
-        .await
-        .expect("need at least one active group");
+        .await?;
 
         let user_id: i64 = sqlx::query_scalar(
             "SELECT user_id FROM service_group_service_db.im_group_member \
@@ -197,24 +202,23 @@ mod tests {
         )
         .bind(group_id)
         .fetch_one(&db)
-        .await
-        .expect("need at least one admin/owner in the group");
+        .await?;
 
-        assert!(ensure_group_admin(&db, group_id, user_id).await.is_ok());
+        ensure_group_admin(&db, group_id, user_id).await?;
+        Ok(())
     }
 
     #[tokio::test]
     #[ignore]
-    async fn test_ensure_group_admin_failure_regular_member() {
+    async fn test_ensure_group_admin_failure_regular_member() -> anyhow::Result<()> {
         let Some(db) = test_db().await else {
-            return;
+            return Ok(());
         };
         let group_id: i64 = sqlx::query_scalar(
             "SELECT id FROM service_group_service_db.im_group WHERE status = 1 LIMIT 1",
         )
         .fetch_one(&db)
-        .await
-        .expect("need at least one active group");
+        .await?;
 
         let user_id: Option<i64> = sqlx::query_scalar(
             "SELECT user_id FROM service_group_service_db.im_group_member \
@@ -222,83 +226,83 @@ mod tests {
         )
         .bind(group_id)
         .fetch_optional(&db)
-        .await
-        .expect("query should succeed");
+        .await?;
 
         let Some(user_id) = user_id else {
-            return;
+            return Ok(());
         };
 
         let result = ensure_group_admin(&db, group_id, user_id).await;
         assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
+        let err = app_error_text(result, "regular member should fail group admin check")?;
         assert!(err.contains("only group admin or owner"));
+        Ok(())
     }
 
     #[tokio::test]
     #[ignore]
-    async fn test_ensure_group_admin_failure_non_member() {
+    async fn test_ensure_group_admin_failure_non_member() -> anyhow::Result<()> {
         let Some(db) = test_db().await else {
-            return;
+            return Ok(());
         };
         let group_id: i64 = sqlx::query_scalar(
             "SELECT id FROM service_group_service_db.im_group WHERE status = 1 LIMIT 1",
         )
         .fetch_one(&db)
-        .await
-        .expect("need at least one active group");
+        .await?;
 
         let result = ensure_group_admin(&db, group_id, 999_999_999).await;
         assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
+        let err = app_error_text(result, "non-member should fail group admin check")?;
         assert!(err.contains("only group admin or owner"));
+        Ok(())
     }
 
     // ---------- ensure_friend ----------
 
     #[tokio::test]
     #[ignore]
-    async fn test_ensure_friend_success() {
+    async fn test_ensure_friend_success() -> anyhow::Result<()> {
         let Some(db) = test_db().await else {
-            return;
+            return Ok(());
         };
         let (user_id, friend_id): (i64, i64) = sqlx::query_as(
             "SELECT user_id, friend_id FROM service_user_service_db.im_friend \
              WHERE status = 1 LIMIT 1",
         )
         .fetch_one(&db)
-        .await
-        .expect("need at least one active friendship");
+        .await?;
 
-        assert!(ensure_friend(&db, user_id, friend_id).await.is_ok());
+        ensure_friend(&db, user_id, friend_id).await?;
+        Ok(())
     }
 
     #[tokio::test]
     #[ignore]
-    async fn test_ensure_friend_failure_no_relationship() {
+    async fn test_ensure_friend_failure_no_relationship() -> anyhow::Result<()> {
         let Some(db) = test_db().await else {
-            return;
+            return Ok(());
         };
         let result = ensure_friend(&db, 111_111_111, 222_222_222).await;
         assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
+        let err = app_error_text(result, "missing friendship should fail friend check")?;
         assert!(err.contains("friend relationship not found"));
+        Ok(())
     }
 
     // ---------- ensure_group_members_batch ----------
 
     #[tokio::test]
     #[ignore]
-    async fn test_ensure_group_members_batch_success() {
+    async fn test_ensure_group_members_batch_success() -> anyhow::Result<()> {
         let Some(db) = test_db().await else {
-            return;
+            return Ok(());
         };
         let group_id: i64 = sqlx::query_scalar(
             "SELECT id FROM service_group_service_db.im_group WHERE status = 1 LIMIT 1",
         )
         .fetch_one(&db)
-        .await
-        .expect("need at least one active group");
+        .await?;
 
         let members: Vec<i64> = sqlx::query_scalar(
             "SELECT user_id FROM service_group_service_db.im_group_member \
@@ -306,34 +310,31 @@ mod tests {
         )
         .bind(group_id)
         .fetch_all(&db)
-        .await
-        .expect("query should succeed");
+        .await?;
 
         if members.is_empty() {
-            return;
+            return Ok(());
         }
 
-        let result = ensure_group_members_batch(&db, group_id, &members).await;
-        assert!(result.is_ok());
-        let found = result.unwrap();
+        let found = ensure_group_members_batch(&db, group_id, &members).await?;
         assert_eq!(found.len(), members.len());
         for uid in &members {
             assert!(found.contains(uid));
         }
+        Ok(())
     }
 
     #[tokio::test]
     #[ignore]
-    async fn test_ensure_group_members_batch_failure_non_member() {
+    async fn test_ensure_group_members_batch_failure_non_member() -> anyhow::Result<()> {
         let Some(db) = test_db().await else {
-            return;
+            return Ok(());
         };
         let group_id: i64 = sqlx::query_scalar(
             "SELECT id FROM service_group_service_db.im_group WHERE status = 1 LIMIT 1",
         )
         .fetch_one(&db)
-        .await
-        .expect("need at least one active group");
+        .await?;
 
         let members: Vec<i64> = sqlx::query_scalar(
             "SELECT user_id FROM service_group_service_db.im_group_member \
@@ -341,11 +342,10 @@ mod tests {
         )
         .bind(group_id)
         .fetch_all(&db)
-        .await
-        .expect("query should succeed");
+        .await?;
 
         if members.is_empty() {
-            return;
+            return Ok(());
         }
 
         let mut test_ids = members;
@@ -353,19 +353,20 @@ mod tests {
 
         let result = ensure_group_members_batch(&db, group_id, &test_ids).await;
         assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
+        let err = app_error_text(result, "non-member should fail batch group member check")?;
         assert!(err.contains("are not members of group"));
         assert!(err.contains("999999999"));
+        Ok(())
     }
 
     #[tokio::test]
     #[ignore]
-    async fn test_ensure_group_members_batch_empty_input() {
+    async fn test_ensure_group_members_batch_empty_input() -> anyhow::Result<()> {
         let Some(db) = test_db().await else {
-            return;
+            return Ok(());
         };
-        let result = ensure_group_members_batch(&db, 1, &[]).await;
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let result = ensure_group_members_batch(&db, 1, &[]).await?;
+        assert!(result.is_empty());
+        Ok(())
     }
 }

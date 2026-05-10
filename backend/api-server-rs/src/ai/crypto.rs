@@ -59,31 +59,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn encrypt_decrypt_roundtrip() {
+    fn encrypt_decrypt_roundtrip() -> Result<(), AppError> {
         let key: [u8; 32] = [0xAA; 32];
         let plain = "sk-test-api-key-123456";
-        let encoded = encrypt(plain, &key).expect("encrypt");
-        let decrypted = decrypt(&encoded, &key).expect("decrypt");
+        let encoded = encrypt(plain, &key)?;
+        let decrypted = decrypt(&encoded, &key)?;
         assert_eq!(decrypted, plain);
+        Ok(())
     }
 
     #[test]
-    fn different_ciphertext_each_time() {
+    fn different_ciphertext_each_time() -> Result<(), AppError> {
         let key: [u8; 32] = [0xBB; 32];
         let plain = "hello";
-        let a = encrypt(plain, &key).expect("encrypt");
-        let b = encrypt(plain, &key).expect("encrypt");
+        let a = encrypt(plain, &key)?;
+        let b = encrypt(plain, &key)?;
         assert_ne!(a, b);
+        Ok(())
     }
 
     #[test]
-    fn tampered_ciphertext_fails() {
+    fn tampered_ciphertext_fails() -> Result<(), AppError> {
         let key: [u8; 32] = [0xCC; 32];
-        let encoded = encrypt("secret", &key).expect("encrypt");
+        let encoded = encrypt("secret", &key)?;
         let mut tampered = encoded.clone();
         tampered.replace_range(14..15, "X");
         let result = decrypt(&tampered, &key);
         assert!(result.is_err());
+        Ok(())
     }
 
     #[test]

@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use api_server_rs::web::{self, AppState};
 use axum::{
     body::Body,

@@ -377,26 +377,37 @@ fn apply_gateway_headers(
     Ok(())
 }
 
-#[allow(clippy::expect_used, clippy::panic)]
 pub async fn create_test_app() -> Router {
     let mysql_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
         "mysql://root:root123@127.0.0.1:3306/service_message_service_db".into()
     });
     let config = Arc::new(AppConfig::from_env());
-    let redis_client = redis::Client::open(
-        std::env::var("REDIS_URL")
-            .unwrap_or_else(|_| "redis://127.0.0.1:6379".into())
-            .as_str(),
-    )
-    .expect("open Redis test client");
-    let redis_manager = redis::aio::ConnectionManager::new(redis_client)
-        .await
-        .expect("connect Redis test manager");
-    let db = sqlx::mysql::MySqlPoolOptions::new()
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".into());
+    let redis_client = match redis::Client::open(redis_url.as_str()) {
+        Ok(client) => client,
+        Err(err) => {
+            eprintln!("failed to open Redis test client: {err}");
+            std::process::exit(1);
+        }
+    };
+    let redis_manager = match redis::aio::ConnectionManager::new(redis_client).await {
+        Ok(manager) => manager,
+        Err(err) => {
+            eprintln!("failed to connect Redis test manager: {err}");
+            std::process::exit(1);
+        }
+    };
+    let db = match sqlx::mysql::MySqlPoolOptions::new()
         .max_connections(10)
         .connect(&mysql_url)
         .await
-        .expect("connect MySQL test pool");
+    {
+        Ok(pool) => pool,
+        Err(err) => {
+            eprintln!("failed to connect MySQL test pool: {err}");
+            std::process::exit(1);
+        }
+    };
     let state = AppState {
         config,
         redis_manager: redis_manager.clone(),

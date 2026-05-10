@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use api_server_rs::web;
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};

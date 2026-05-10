@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
