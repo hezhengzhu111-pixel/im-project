@@ -643,7 +643,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
         try {
           const { emitE2eeNegotiation } = await import("@/features/e2ee/negotiation-events");
           emitE2eeNegotiation({
-            action: action as "request" | "accepted" | "rejected",
+            action: action as "request" | "accepted" | "rejected" | "disabled",
             sessionId,
             requesterId: String(evt.requesterId || evt.requester_id || ""),
             requesterName: String(evt.requesterName || evt.requester_name || ""),

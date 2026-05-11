@@ -197,6 +197,14 @@ export const keyService = {
   },
 
   /**
+   * 退出私聊端到端加密通道
+   * POST /api/e2ee/disable
+   */
+  disableEncryption(sessionId: string): Promise<ApiResponse<string>> {
+    return http.post<string>('/e2ee/disable', { sessionId });
+  },
+
+  /**
    * 获取当前用户待确认的私聊加密协商请求
    * GET /api/e2ee/pending
    */

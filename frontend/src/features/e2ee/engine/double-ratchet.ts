@@ -283,10 +283,22 @@ export async function ratchetDecrypt(
   header: RatchetHeader,
   ciphertextBase64: string,
 ): Promise<string> {
-  // 导入远端公钥
-  const remotePub = await importPublicKey(base64ToBuffer(header.ratchetPublicKey));
   const ciphertext = base64ToBuffer(ciphertextBase64);
   const iv = new Uint8Array(base64ToBuffer(header.iv));
+  const targetCounter = header.counter;
+  const aad = buildAad(header.ratchetPublicKey, targetCounter, header.previousCounter);
+
+  // 检查跳过消息密钥缓存
+  const skipKey = `${header.ratchetPublicKey}_${targetCounter}`;
+  const cachedMessageKey = state.skippedMessageKeys.get(skipKey);
+  if (cachedMessageKey) {
+    state.skippedMessageKeys.delete(skipKey);
+    const decrypted = await aesGcmDecrypt(cachedMessageKey, ciphertext, iv, aad);
+    return new TextDecoder().decode(decrypted);
+  }
+
+  // 导入远端公钥
+  const remotePub = await importPublicKey(base64ToBuffer(header.ratchetPublicKey));
 
   // 检查是否需要 DH 轮换
   // 仅当已有远端公钥且与消息中的不同时才执行 DH 轮换
@@ -295,6 +307,9 @@ export async function ratchetDecrypt(
     state.remotePublicKey,
     header.ratchetPublicKey,
   );
+  if (targetCounter < state.receiveCounter && !needsRatchet) {
+    throw new Error('Double Ratchet: duplicate or expired message');
+  }
   if (needsRatchet) {
     await performDhRatchet(state, remotePub);
   }
@@ -304,25 +319,12 @@ export async function ratchetDecrypt(
     state.remotePublicKey = remotePub;
   }
 
-  // 构建 AAD（与加密端使用相同的方式）
-  const aad = buildAad(header.ratchetPublicKey, header.counter, header.previousCounter);
-
-  // 检查跳过消息密钥缓存
-  const skipKey = `${header.ratchetPublicKey}_${header.counter}`;
-  const cachedMessageKey = state.skippedMessageKeys.get(skipKey);
-  if (cachedMessageKey) {
-    state.skippedMessageKeys.delete(skipKey);
-    const decrypted = await aesGcmDecrypt(cachedMessageKey, ciphertext, iv, aad);
-    return new TextDecoder().decode(decrypted);
-  }
-
   if (!state.receivingChainKey) {
     throw new Error('Double Ratchet: receiving chain not initialized');
   }
 
   // 推进接收链到目标计数器位置，缓存跳过的消息密钥
   let currentChainKey = state.receivingChainKey;
-  const targetCounter = header.counter;
 
   for (let i = state.receiveCounter; i < targetCounter; i++) {
     const { messageKey: skippedKey, chainKey: nextChainKey } = await splitChainKey(currentChainKey);

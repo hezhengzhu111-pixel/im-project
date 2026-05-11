@@ -73,6 +73,15 @@
       >
         启用端到端加密
       </button>
+
+      <button
+        v-if="canDisable"
+        type="button"
+        class="disable-button"
+        @click.stop="emit('disable-encryption')"
+      >
+        退出加密通道
+      </button>
     </div>
   </div>
 </template>
@@ -85,11 +94,13 @@ import type { E2eeSessionStatus } from "@/features/e2ee/types";
 const props = defineProps<{
   status: E2eeSessionStatus;
   canEnable?: boolean;
+  canDisable?: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: "close"): void;
   (e: "enable-encryption"): void;
+  (e: "disable-encryption"): void;
 }>();
 
 const statusLabel = computed(() => {
@@ -337,6 +348,27 @@ const keyStatusLabel = computed(() => {
 
   &:hover {
     background: var(--color-primary-2, #818cf8);
+  }
+}
+
+.disable-button {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-danger, #ef4444), transparent 70%);
+  border-radius: var(--radius-sm, 8px);
+  background: color-mix(in srgb, var(--color-danger, #ef4444), transparent 94%);
+  color: var(--color-danger, #ef4444);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--color-danger, #ef4444), transparent 55%);
+    background: color-mix(in srgb, var(--color-danger, #ef4444), transparent 90%);
   }
 }
 

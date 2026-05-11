@@ -830,7 +830,7 @@ describe('E2EE Integration Tests', () => {
       console.log('✓ All 5 historical messages decrypted successfully');
     });
 
-    it('should handle out-of-order historical messages via message buffer', async () => {
+    it('should decrypt out-of-order historical messages via skipped key cache', async () => {
       // Use unique session IDs
       const oooAliceSession = '3001_3002';
       const oooBobSession = '3002_3001';
@@ -878,26 +878,24 @@ describe('E2EE Integration Tests', () => {
         encrypted.push(enc!);
       }
 
-      // Bob receives messages out of order: 3rd, 1st, 2nd
-      // Receive 3rd message first (counter=2) — should be buffered
+      // Bob receives messages out of order: 3rd, 1st, 2nd.
+      // The ratchet advances to counter=2 and caches skipped keys for 0 and 1.
       const dec3 = await e2eeManager.decryptMessage(
         oooBobSession, oooAliceId, encrypted[2].header, encrypted[2].ciphertext,
       );
-      // Buffer returns empty string for out-of-order
-      expect(dec3).toBe('');
+      expect(dec3).toBe('Third');
 
-      // Receive 1st message (counter=0) — decrypts 1st only (2nd not yet received)
+      // Receive 1st message (counter=0) from the skipped key cache
       const dec1 = await e2eeManager.decryptMessage(
         oooBobSession, oooAliceId, encrypted[0].header, encrypted[0].ciphertext,
       );
       expect(dec1).toBe('First');
 
-      // Receive 2nd message (counter=1) — decrypts 2nd and flushes buffered 3rd
-      // decryptMessage returns concatenated result of all flushed messages
+      // Receive 2nd message (counter=1) from the skipped key cache
       const dec2 = await e2eeManager.decryptMessage(
         oooBobSession, oooAliceId, encrypted[1].header, encrypted[1].ciphertext,
       );
-      expect(dec2).toBe('SecondThird');
+      expect(dec2).toBe('Second');
     });
   });
 

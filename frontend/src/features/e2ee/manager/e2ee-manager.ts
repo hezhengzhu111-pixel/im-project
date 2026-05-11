@@ -7,10 +7,11 @@
 
 import { ratchetEncrypt, ratchetDecrypt } from '../engine/double-ratchet';
 import { getRatchetState, saveRatchetState } from '../store/session-store';
-import { MessageBuffer } from '../engine/message-buffer';
 import { initiateNegotiation, getLocalSessionStatus } from './negotiation';
 import type { RatchetHeader, E2eeSessionStatus } from '../types';
 import { resolveDeviceId } from './device-identity';
+
+const MAX_COUNTER_GAP = 2000;
 
 export interface EncryptedPayload {
   ciphertext: string;
@@ -19,7 +20,6 @@ export interface EncryptedPayload {
 }
 
 class E2eeManager {
-  private buffers = new Map<string, MessageBuffer>();
   private deviceId: string = '';
 
   async init(deviceId: string): Promise<void> {
@@ -35,13 +35,6 @@ class E2eeManager {
 
   getSessionStatus(sessionId: string): E2eeSessionStatus {
     return getLocalSessionStatus(sessionId);
-  }
-
-  private getBuffer(sessionId: string): MessageBuffer {
-    if (!this.buffers.has(sessionId)) {
-      this.buffers.set(sessionId, new MessageBuffer());
-    }
-    return this.buffers.get(sessionId)!;
   }
 
   /**
@@ -84,28 +77,18 @@ class E2eeManager {
 
     if (!state) throw new Error(`No ratchet state for session ${sessionId}`);
 
-    const buffer = this.getBuffer(sessionId);
-    const result = buffer.enqueue(header.counter, header, ciphertext, state.receiveCounter);
-
-    if (result.action === 'drop') return '';
-    if (result.action === 'renegotiate') {
+    if (header.counter > state.receiveCounter + MAX_COUNTER_GAP) {
       await initiateNegotiation(sessionId, senderId);
       throw new Error('Session renegotiation required');
     }
-    if (result.action === 'buffer') return '';
 
-    const decryptedParts: string[] = [];
-    for (const msg of result.messages) {
-      const plaintext = await ratchetDecrypt(state, msg.header, msg.ciphertext);
-      decryptedParts.push(plaintext);
-    }
+    const plaintext = await ratchetDecrypt(state, header, ciphertext);
     await saveRatchetState(sessionId, state);
 
-    return decryptedParts.join('');
+    return plaintext;
   }
 
   async clearSession(sessionId: string): Promise<void> {
-    this.buffers.delete(sessionId);
     localStorage.removeItem('e2ee:status:' + sessionId);
     try {
       const { deleteRatchetState } = await import('../store/session-store');

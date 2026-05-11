@@ -42,7 +42,10 @@
             </div>
 
             <div v-else-if="messageType === 'TEXT'" class="text-content">
-              <template v-for="(token, ti) in messageTokens" :key="ti">
+              <template v-if="shouldMaskEncryptedContent">
+                <span class="encrypted-placeholder">加密消息暂无法解密</span>
+              </template>
+              <template v-else v-for="(token, ti) in messageTokens" :key="ti">
                 <span v-if="token.type === 'mention'" class="mention-highlight">{{ token.text }}</span>
                 <template v-else>{{ token.text }}</template>
               </template>
@@ -53,7 +56,10 @@
               <span v-if="aiProvider" class="ai-provider">{{
                 aiProvider
               }}</span>
-              <template v-for="(token, ti) in messageTokens" :key="ti">
+              <template v-if="shouldMaskEncryptedContent">
+                <span class="encrypted-placeholder">加密消息暂无法解密</span>
+              </template>
+              <template v-else v-for="(token, ti) in messageTokens" :key="ti">
                 <span v-if="token.type === 'mention'" class="mention-highlight">{{ token.text }}</span>
                 <template v-else>{{ token.text }}</template>
               </template>
@@ -308,6 +314,7 @@ const senderAvatarText = computed(() =>
 );
 const mediaSource = computed(() => props.mediaUrl || props.content);
 const messageTokens = computed(() => parseMessageTokens(props.content || ""));
+const shouldMaskEncryptedContent = computed(() => props.encrypted && !props.isMine);
 const bubbleClass = computed(() => ({
   "is-own": props.isMine,
   "is-muted": props.isRecalled || props.isDeleted,
@@ -440,6 +447,11 @@ const handleMediaLoaded = () => {
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
+}
+
+.encrypted-placeholder {
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 .media-card {
