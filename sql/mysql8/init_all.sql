@@ -161,6 +161,29 @@ CREATE TABLE IF NOT EXISTS e2ee_key_backups (
   PRIMARY KEY (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE密钥备份表';
 
+-- E2EE group status
+CREATE TABLE IF NOT EXISTS e2ee_groups (
+  group_id     BIGINT NOT NULL COMMENT 'Group ID',
+  status       VARCHAR(20) NOT NULL DEFAULT 'plaintext' COMMENT 'Encryption status: plaintext/encrypted',
+  enabled_by   BIGINT NOT NULL COMMENT 'Enabling user ID',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created time',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated time',
+  PRIMARY KEY (group_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE group status';
+
+-- E2EE group sender keys
+CREATE TABLE IF NOT EXISTS e2ee_sender_keys (
+  group_id              BIGINT NOT NULL COMMENT 'Group ID',
+  sender_id             BIGINT NOT NULL COMMENT 'Sender user ID',
+  device_id             VARCHAR(64) NOT NULL COMMENT 'Sender device ID',
+  recipient_id          BIGINT NOT NULL COMMENT 'Recipient user ID',
+  encrypted_sender_key  TEXT NOT NULL COMMENT 'Encrypted sender key',
+  created_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created time',
+  updated_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated time',
+  PRIMARY KEY (group_id, sender_id, device_id, recipient_id),
+  KEY idx_e2ee_sender_keys_recipient (recipient_id, device_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE group sender keys';
+
 USE service_group_service_db;
 
 CREATE TABLE IF NOT EXISTS im_group (
@@ -286,6 +309,18 @@ CREATE TABLE IF NOT EXISTS messages (
   KEY idx_messages_group_seq (group_id, conversation_seq),
   KEY idx_messages_reply (reply_to_message_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='消息表';
+
+CREATE TABLE IF NOT EXISTS message_deliveries (
+  id          BIGINT NOT NULL AUTO_INCREMENT COMMENT 'Auto increment ID',
+  message_id  BIGINT NOT NULL COMMENT 'Message ID',
+  device_id   VARCHAR(64) NOT NULL COMMENT 'Target device ID',
+  ciphertext  LONGTEXT NOT NULL COMMENT 'Device-specific ciphertext',
+  header      JSON NULL COMMENT 'Double Ratchet header',
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created time',
+  PRIMARY KEY (id),
+  INDEX idx_message_device (message_id, device_id),
+  INDEX idx_device_messages (device_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE message deliveries';
 
 CREATE TABLE IF NOT EXISTS messages_archive (
   conversation_seq BIGINT NULL COMMENT 'group conversation sequence',

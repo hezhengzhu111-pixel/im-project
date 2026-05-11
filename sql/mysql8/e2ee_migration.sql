@@ -42,10 +42,50 @@ DELIMITER ;
 
 CALL add_column_if_missing(
     'e2ee_devices',
+    'status',
+    'VARCHAR(20) NOT NULL DEFAULT ''active'' COMMENT ''Device status: active/deleted'' AFTER `device_id`'
+);
+CALL add_column_if_missing(
+    'e2ee_devices',
     'signing_identity_key',
     'TEXT NULL COMMENT ''Signing identity public key(Base64)'' AFTER `identity_key`'
 );
+CALL add_column_if_missing(
+    'e2ee_devices',
+    'signed_pre_key_signature',
+    'TEXT NULL COMMENT ''Signed pre-key signature(Base64)'' AFTER `signed_pre_key`'
+);
+CALL add_column_if_missing(
+    'e2ee_devices',
+    'last_active_at',
+    'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT ''Last active time'''
+);
+CALL add_column_if_missing(
+    'e2ee_devices',
+    'created_time',
+    'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT ''Created time'''
+);
+CALL add_column_if_missing(
+    'e2ee_devices',
+    'updated_time',
+    'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT ''Updated time'''
+);
 DROP PROCEDURE IF EXISTS add_column_if_missing;
+
+UPDATE e2ee_devices
+SET signing_identity_key = identity_key
+WHERE (signing_identity_key IS NULL OR signing_identity_key = '')
+  AND identity_key IS NOT NULL
+  AND identity_key <> '';
+
+-- Legacy rows without a signed-pre-key signature cannot pass X3DH verification.
+-- The next client refresh re-uploads the bundle and reactivates the same device_id.
+UPDATE e2ee_devices
+SET status = 'deleted'
+WHERE signed_pre_key_signature IS NULL
+   OR signed_pre_key_signature = ''
+   OR signing_identity_key IS NULL
+   OR signing_identity_key = '';
 
 CREATE TABLE IF NOT EXISTS e2ee_one_time_pre_keys (
     id             BIGINT NOT NULL AUTO_INCREMENT COMMENT 'Auto increment ID',
@@ -63,7 +103,7 @@ CREATE TABLE IF NOT EXISTS e2ee_sessions (
     session_id            VARCHAR(64) NOT NULL COMMENT 'Session ID',
     requester_id          BIGINT NOT NULL COMMENT 'Requester user ID',
     target_user_id        BIGINT NOT NULL COMMENT 'Target user ID',
-    status                VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT 'Negotiation status: pending/encrypted/rejected',
+    status                VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT 'Negotiation status: pending/encrypted/rejected/plaintext',
     request_payload_json  TEXT NULL COMMENT 'Negotiation request payload JSON',
     created_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created time',
     updated_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated time',
