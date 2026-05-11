@@ -23,6 +23,24 @@ services:
     networks:
       - im-sit-network
 
+  im-db-migrate:
+    image: "${MYSQL_IMAGE:-docker.m.daocloud.io/library/mysql:8.0.39}"
+    restart: "no"
+    depends_on:
+      im-mysql:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_PWD: "${MYSQL_ROOT_PASSWORD:-root123}"
+    volumes:
+      - ../../sql/mysql8/e2ee_migration.sql:/migrations/e2ee_migration.sql:ro
+    command:
+      - sh
+      - -c
+      - mysql -him-mysql -uroot --default-character-set=utf8mb4 < /migrations/e2ee_migration.sql
+    networks:
+      - im-sit-network
+
   im-redis:
     image: "${REDIS_IMAGE:-docker.m.daocloud.io/library/redis:7.2-alpine}"
     restart: unless-stopped
@@ -330,6 +348,8 @@ services:
     depends_on:
       im-mysql:
         condition: service_healthy
+      im-db-migrate:
+        condition: service_completed_successfully
       im-redis:
         condition: service_healthy
       im-redis-private-hot:
