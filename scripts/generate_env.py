@@ -253,7 +253,7 @@ def render_root_env(profile: str, *, force_secrets: bool) -> tuple[str, dict[str
 
 
 def render_frontend_env(profile: str) -> tuple[Path, str]:
-    frontend_file = PROJECT_ROOT / "frontend" / FRONTEND_ENV_FILES[profile]
+    frontend_file = PROJECT_ROOT / "frontend" / "apps" / "web" / FRONTEND_ENV_FILES[profile]
     base_content = frontend_file.read_text(encoding="utf-8") if frontend_file.is_file() else ""
     values = {"VITE_API_BASE_URL": "/api", "VITE_WS_BASE_URL": "", "VITE_UPLOAD_MAX_SIZE": "10485760"}
     values.update({key: value for key, value in PROFILE_VALUES[profile].items() if key in FRONTEND_KEYS})

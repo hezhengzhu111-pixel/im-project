@@ -429,7 +429,7 @@ services:
   im-frontend:
     image: im-project-sit/im-frontend:latest
     build:
-      context: ../../frontend
+      context: ../../frontend/apps/web
       args:
         FRONTEND_BUILD_MODE: "${FRONTEND_BUILD_MODE:-sit}"
         IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
