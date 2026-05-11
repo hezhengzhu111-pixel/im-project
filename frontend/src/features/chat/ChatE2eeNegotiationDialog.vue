@@ -121,6 +121,7 @@ const handleAccept = async () => {
     const payload = JSON.parse(props.requestPayloadJson) as {
       senderIdentityKey?: string;
       ephemeralPublicKey?: string;
+      deviceId?: string;
     };
 
     if (!payload.senderIdentityKey || !payload.ephemeralPublicKey) {
@@ -135,6 +136,7 @@ const handleAccept = async () => {
       props.sessionId,
       payload.senderIdentityKey,
       payload.ephemeralPublicKey,
+      payload.deviceId,
     );
 
     if (!ok) {

@@ -66,6 +66,11 @@ export function clearPendingInitialHandshake(sessionId: string): void {
   localStorage.removeItem(INITIAL_HANDSHAKE_PREFIX + sessionId);
 }
 
+export function markNegotiationAccepted(sessionId: string): void {
+  clearPendingInitialHandshake(sessionId);
+  setLocalSessionStatus(sessionId, 'encrypted');
+}
+
 function savePendingInitialHandshake(sessionId: string, handshake: InitialE2eeHandshake): void {
   localStorage.setItem(INITIAL_HANDSHAKE_PREFIX + sessionId, JSON.stringify(handshake));
 }
@@ -177,10 +182,14 @@ export async function respondToNegotiation(
   sessionId: string,
   remoteIdentityKeyBase64: string,
   ephemeralPublicKeyBase64: string,
+  expectedDeviceId?: string,
 ): Promise<boolean> {
   setLocalSessionStatus(sessionId, 'negotiating');
   try {
-    await ensureLocalE2eeDeviceRegistered();
+    const deviceId = await ensureLocalE2eeDeviceRegistered();
+    if (expectedDeviceId && deviceId !== expectedDeviceId) {
+      throw new Error('E2EE negotiation request targets a different device');
+    }
 
     const identityKeyPair = await getIdentityKeyPair();
     if (!identityKeyPair) throw new Error('Local identity key not found');

@@ -599,8 +599,8 @@ const unsubNegotiation = onE2eeNegotiation((event) => {
     }
   } else if (event.action === "accepted") {
     // The requester (Alice) receives acceptance — update local status
-    import("@/features/e2ee/manager/negotiation").then(({ setLocalSessionStatus }) => {
-      setLocalSessionStatus(event.sessionId, "encrypted");
+    import("@/features/e2ee/manager/negotiation").then(({ markNegotiationAccepted }) => {
+      markNegotiationAccepted(event.sessionId);
       retryDecryptPendingMessages(event.sessionId);
     });
   } else if (event.action === "rejected") {

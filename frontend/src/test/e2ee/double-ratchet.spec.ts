@@ -260,6 +260,34 @@ describe('Double Ratchet', () => {
       .toBe('hello alice');
   });
 
+  it('decrypts when responder sends the first encrypted message after X3DH', async () => {
+    const alice = await generateKeyBundle();
+    const bob = await generateKeyBundle();
+
+    const aliceResult = await x3dhInitiate(
+      alice.identityKeyPair,
+      createRemoteBundle(bob),
+    );
+    const bobRootKeyBase64 = await x3dhRespond(
+      bob.identityKeyPair,
+      bob.signedPreKeyPair,
+      bob.oneTimePreKeyPairs[0],
+      alice.bundle.identityKey,
+      aliceResult.ephemeralPublicKey,
+    );
+
+    expect(bobRootKeyBase64).toBe(aliceResult.rootKey);
+
+    const aliceRootKey = await importRootKey(aliceResult.rootKey);
+    const bobRootKey = await importRootKey(bobRootKeyBase64);
+    const aliceState = await initSendingChain(aliceRootKey, alice.identityKeyPair);
+    const bobState = await initReceivingChain(bobRootKey, bob.identityKeyPair);
+
+    const bobMessage = await ratchetEncrypt(bobState, 'responder first');
+    expect(await ratchetDecrypt(aliceState, bobMessage.header, bobMessage.ciphertext))
+      .toBe('responder first');
+  });
+
   // ---------------------------------------------------------------------------
   // 多条消息按序加解密
   // ---------------------------------------------------------------------------
