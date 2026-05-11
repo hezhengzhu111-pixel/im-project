@@ -8,6 +8,7 @@ import {
 } from "@/normalizers/message";
 import { http } from "@/utils/request";
 import type { ApiResponse } from "@/types/api";
+import type { E2eeEnvelope } from "@/features/e2ee/types";
 import type {
   ChatSession,
   Message,
@@ -37,8 +38,9 @@ export const messageService = {
     receiverId: string;
     clientMessageId?: string;
     messageType: string;
-    content: string;
+    content?: string;
     encrypted: boolean;
+    e2eeEnvelope: E2eeEnvelope;
     e2eeHeader: string;
     e2eeDeviceId: string;
     e2eeSenderIdentityKey?: string;

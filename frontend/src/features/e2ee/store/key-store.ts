@@ -3,11 +3,10 @@
  *
  * Web 端使用 IndexedDB，通过 structured clone 存储 CryptoKey 对象。
  * Identity Key (extractable: false) 直接以 CryptoKey 形式存储，不可导出。
- * Signed Pre Key (extractable: true) 以 JWK + raw public key 形式存储。
+ * Signed Pre Key 直接以不可导出 CryptoKey 形式存储，只导出公钥。
  */
 
-import { cryptoKeyToJwk, jwkToCryptoKey } from '../engine/codec';
-import { exportPublicKey, importPublicKey } from '../engine/crypto-primitives';
+import { exportPublicKey } from '../engine/crypto-primitives';
 
 const DB_NAME = 'e2ee_keys';
 const DB_VERSION = 2;
@@ -98,43 +97,37 @@ export async function hasIdentityKey(): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
-// Signed Pre Key — extractable: true，以 JWK + raw public key 存储
+// Signed Pre Key — private key stored as non-extractable CryptoKey
 // ---------------------------------------------------------------------------
 
 interface StoredSignedPreKey {
-  privateKeyJwk: JsonWebKey;
+  keyPair: CryptoKeyPair;
   publicKeyRaw: ArrayBuffer;
 }
 
-/**
- * 保存 Signed Pre Key Pair（ECDH P-256，extractable: true）
- * 私钥以 JWK 格式存储，公钥以 raw ArrayBuffer 存储。
- */
+function assertNonExtractablePrivateKey(key: CryptoKey): void {
+  if (key.extractable) {
+    throw new Error('unsupported_browser_crypto');
+  }
+}
+
 export async function saveSignedPreKey(id: number, keyPair: CryptoKeyPair): Promise<void> {
-  const privateKeyJwk = await cryptoKeyToJwk(keyPair.privateKey);
+  assertNonExtractablePrivateKey(keyPair.privateKey);
   const publicKeyRaw = await exportPublicKey(keyPair.publicKey);
 
   await idbPut('prekeys', `signedPreKey_${id}`, {
-    privateKeyJwk,
+    keyPair,
     publicKeyRaw,
   } satisfies StoredSignedPreKey);
 }
 
-/**
- * 读取 Signed Pre Key Pair
- */
 export async function getSignedPreKey(id: number): Promise<CryptoKeyPair | null> {
-  const stored = (await idbGet('prekeys', `signedPreKey_${id}`)) as StoredSignedPreKey | undefined;
-  if (!stored) return null;
-
-  const privateKey = await jwkToCryptoKey(
-    stored.privateKeyJwk,
-    { name: 'ECDH', namedCurve: 'P-256' } as EcKeyImportParams,
-    ['deriveKey', 'deriveBits'],
-  );
-  const publicKey = await importPublicKey(stored.publicKeyRaw);
-
-  return { privateKey, publicKey };
+  const stored = (await idbGet('prekeys', `signedPreKey_${id}`)) as
+    | StoredSignedPreKey
+    | undefined;
+  if (!stored?.keyPair) return null;
+  assertNonExtractablePrivateKey(stored.keyPair.privateKey);
+  return stored.keyPair;
 }
 
 // ---------------------------------------------------------------------------

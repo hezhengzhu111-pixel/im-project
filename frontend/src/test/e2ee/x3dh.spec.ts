@@ -30,9 +30,9 @@ describe('e2ee X3DH key exchange', () => {
     // IK 不可提取（ECDH）
     expect(result.identityKeyPair.privateKey.extractable).toBe(false);
     // 签名 IK 可提取（ECDSA）
-    expect(result.signingIdentityKeyPair.privateKey.extractable).toBe(true);
+    expect(result.signingIdentityKeyPair.privateKey.extractable).toBe(false);
     // SPK 可提取
-    expect(result.signedPreKeyPair.privateKey.extractable).toBe(true);
+    expect(result.signedPreKeyPair.privateKey.extractable).toBe(false);
     // OPK 可提取
     result.oneTimePreKeyPairs.forEach((kp) => {
       expect(kp.privateKey.extractable).toBe(true);

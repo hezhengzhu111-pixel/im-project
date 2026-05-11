@@ -220,6 +220,7 @@ export const normalizeMessage = (
     e2eeEphemeralKey:
       asString(record.e2eeEphemeralKey ?? record.e2ee_ephemeral_key) ||
       undefined,
+    e2eeEnvelope: record.e2eeEnvelope ?? record.e2ee_envelope,
   };
 };
 

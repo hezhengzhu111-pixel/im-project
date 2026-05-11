@@ -65,8 +65,8 @@ describe('Sender Key', () => {
 
     expect(serialized.chainKey).toBeDefined();
     expect(typeof serialized.chainKey).toBe('string');
-    expect(serialized.signingPrivateJwk).toBeDefined();
-    expect(serialized.signingPublicJwk).toBeDefined();
+    expect(serialized.signingKeyPair).toBeDefined();
+    expect(serialized.signingPublicKey).toBeDefined();
     expect(serialized.counter).toBe(0);
 
     const restored = await deserializeSenderKey(serialized);

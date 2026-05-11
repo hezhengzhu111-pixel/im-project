@@ -82,3 +82,31 @@ export interface E2eeGroupState {
   status: E2eeSessionStatus;
   enabledBy?: string;
 }
+
+/** Unified E2EE envelope transported over network/storage. */
+export interface E2eeEnvelope {
+  version: 1;
+  alg: 'AES-256-GCM';
+  conversationId: string;
+  clientMsgId: string;
+  serverMessageId?: string;
+  senderUserId: string;
+  senderDeviceId: string;
+  recipientUserId?: string;
+  recipientDeviceIds: string[];
+  sessionId: string;
+  keyId: string;
+  keyVersion: number;
+  iv: string;
+  aad: string;
+  ciphertext: string;
+  createdAt: number;
+}
+
+export type E2eeEncryptionFailureReason =
+  | 'missing_recipient_key'
+  | 'missing_local_private_key'
+  | 'crypto_failed'
+  | 'session_not_ready'
+  | 'device_revoked'
+  | 'unsupported_browser_crypto';
