@@ -1,8 +1,12 @@
 import { logger } from "@/utils/logger";
 import { keyService } from "../api/key-service";
+import { bufferToBase64 } from "../engine/codec";
+import { exportPublicKey } from "../engine/crypto-primitives";
 import { generateKeyBundle } from "../engine/x3dh";
 import {
+  getIdentityKeyPair,
   getLocalPublicBundle,
+  getSignedPreKey,
   hasIdentityKey,
   saveIdentityKeyPair,
   saveLocalPublicBundle,
@@ -38,9 +42,44 @@ async function ensureLocalE2eeDeviceRegisteredInternal(): Promise<string> {
     return deviceId;
   }
 
+  const isConsistent = await isLocalBundleConsistent(localBundle);
+  if (!isConsistent) {
+    logger.warn("[E2EE] local key bundle is inconsistent; regenerating", {
+      deviceId,
+    });
+    await generateAndUploadBundle(deviceId);
+    return deviceId;
+  }
+
   await uploadPublicBundle(deviceId, localBundle);
   logger.info("[E2EE] key bundle uploaded for current account", { deviceId });
   return deviceId;
+}
+
+async function isLocalBundleConsistent(
+  localBundle: LocalPublicBundle,
+): Promise<boolean> {
+  try {
+    const identityKeyPair = await getIdentityKeyPair();
+    const signedPreKeyPair = await getSignedPreKey(SIGNED_PRE_KEY_ID);
+
+    if (!identityKeyPair || !signedPreKeyPair) {
+      return false;
+    }
+
+    const [identityKeyRaw, signedPreKeyRaw] = await Promise.all([
+      exportPublicKey(identityKeyPair.publicKey),
+      exportPublicKey(signedPreKeyPair.publicKey),
+    ]);
+
+    return (
+      bufferToBase64(identityKeyRaw) === localBundle.identityKey &&
+      bufferToBase64(signedPreKeyRaw) === localBundle.signedPreKey
+    );
+  } catch (error) {
+    logger.warn("[E2EE] failed to verify local key bundle", error);
+    return false;
+  }
 }
 
 async function generateAndUploadBundle(deviceId: string): Promise<void> {
