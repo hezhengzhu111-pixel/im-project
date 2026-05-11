@@ -431,6 +431,44 @@ async fn test_e2ee_session_request_accept_reject_flow() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "accept_encryption failed: {body}");
+
+    // User C (not in session) cannot disable the encrypted channel
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/disable",
+        Some(&user_c.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "user C should not be able to disable"
+    );
+
+    // Either participant can exit the encrypted channel
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/disable",
+        Some(&user_a.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "disable_encryption failed: {body}");
+
+    // After disabling, the channel can be negotiated again
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_b.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "test_key_2",
+            "signedPreKey": "test_spk_2"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "renegotiation failed: {body}");
 }
 
 // ---------------------------------------------------------------------------

@@ -191,8 +191,10 @@
                     v-if="showSecurityPanel"
                     :status="e2eeStatus"
                     :can-enable="e2eeStatus === 'plaintext' || e2eeStatus === 'failed'"
+                    :can-disable="e2eeStatus === 'encrypted' || e2eeStatus === 'negotiating'"
                     class="security-popover"
                     @enable-encryption="openEncryptionDialog"
+                    @disable-encryption="disableEncryptionChannel"
                     @close="showSecurityPanel = false"
                   />
                 </Transition>
@@ -261,6 +263,13 @@
                         data-command="enable-encryption"
                       >
                         启用端到端加密
+                      </el-dropdown-item>
+                      <el-dropdown-item
+                        v-if="currentSession.type === 'private' && (e2eeStatus === 'encrypted' || e2eeStatus === 'negotiating')"
+                        command="disable-encryption"
+                        data-command="disable-encryption"
+                      >
+                        退出加密通道
                       </el-dropdown-item>
                       <el-dropdown-item
                         command="clear-history"
@@ -475,7 +484,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { ElNotification } from "element-plus";
+import { ElMessageBox, ElNotification } from "element-plus";
 import ChatComposer from "@/features/chat/ChatComposer.vue";
 import ChatDialogs from "@/features/chat/ChatDialogs.vue";
 import ChatE2eeNegotiationDialog from "@/features/chat/ChatE2eeNegotiationDialog.vue";
@@ -602,10 +611,21 @@ const unsubNegotiation = onE2eeNegotiation((event) => {
     import("@/features/e2ee/manager/negotiation").then(({ markNegotiationAccepted }) => {
       markNegotiationAccepted(event.sessionId);
       retryDecryptPendingMessages(event.sessionId);
+      retryDecryptVisibleEncryptedMessages(event.sessionId);
     });
   } else if (event.action === "rejected") {
     import("@/features/e2ee/manager/negotiation").then(({ resetNegotiation }) => {
       resetNegotiation(event.sessionId, "plaintext");
+    });
+  } else if (event.action === "disabled") {
+    import("@/features/e2ee/manager/negotiation").then(({ resetNegotiation }) => {
+      resetNegotiation(event.sessionId, "plaintext");
+      ElNotification({
+        title: "端到端加密已退出",
+        message: `${event.requesterName || "对方"} 已退出当前加密通道。`,
+        type: "info",
+        duration: 5000,
+      });
     });
   }
 });
@@ -689,12 +709,60 @@ const retryDecryptPendingMessages = async (sessionId: string) => {
   }
 };
 
+const retryDecryptVisibleEncryptedMessages = async (sessionId: string) => {
+  try {
+    const currentUserId = String(userStore.userId || "");
+    if (!currentUserId) return;
+    const messagesMap = chatStore.messages as Map<string, Record<string, unknown>[]>;
+    const messages = messagesMap.get(sessionId) || [];
+    if (messages.length === 0) return;
+
+    const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
+    let decryptedCount = 0;
+    for (const msg of messages) {
+      const isEncrypted = msg.encrypted === true || msg.encrypted === 1;
+      const senderId = String(msg.senderId || "");
+      const content = typeof msg.content === "string" ? msg.content : "";
+      if (!isEncrypted || !senderId || senderId === currentUserId || !content) {
+        continue;
+      }
+
+      const headerRaw = msg.e2eeHeader || msg.e2ee_header;
+      const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
+      if (!header) continue;
+
+      try {
+        const decrypted = await e2eeManager.decryptMessage(
+          sessionId,
+          senderId,
+          header as import("@/features/e2ee/types").RatchetHeader,
+          content,
+        );
+        if (decrypted) {
+          msg.content = decrypted;
+          msg.encrypted = false;
+          decryptedCount++;
+        }
+      } catch {
+        // Keep the message encrypted; the bubble masks ciphertext.
+      }
+    }
+
+    if (decryptedCount > 0) {
+      messagesMap.set(sessionId, [...messages]);
+    }
+  } catch {
+    // Visible message retry is best-effort
+  }
+};
+
 const handleNegotiationAccepted = () => {
   showNegotiationDialog.value = false;
   const sessionId = pendingNegotiation.value?.sessionId;
   pendingNegotiation.value = null;
   if (sessionId) {
     retryDecryptPendingMessages(sessionId);
+    retryDecryptVisibleEncryptedMessages(sessionId);
   }
 };
 
@@ -703,9 +771,52 @@ const handleNegotiationRejected = () => {
   pendingNegotiation.value = null;
 };
 
+const disableEncryptionChannel = async () => {
+  const session = currentSession.value;
+  if (!session || session.type !== "private") return;
+
+  try {
+    await ElMessageBox.confirm(
+      "退出后，此会话会回到明文发送状态。需要加密时可重新发起协商。",
+      "退出加密通道",
+      {
+        confirmButtonText: "退出",
+        cancelButtonText: "取消",
+        type: "warning",
+      },
+    );
+
+    const [{ keyService }, { resetNegotiation }] = await Promise.all([
+      import("@/features/e2ee/api/key-service"),
+      import("@/features/e2ee/manager/negotiation"),
+    ]);
+    await keyService.disableEncryption(session.id);
+    await resetNegotiation(session.id, "plaintext");
+    showSecurityPanel.value = false;
+    ElNotification({
+      title: "端到端加密已退出",
+      message: "当前会话已切换为明文通道，可重新发起端到端加密协商。",
+      type: "success",
+      duration: 5000,
+    });
+  } catch (error) {
+    if (error === "cancel" || error === "close") return;
+    ElNotification({
+      title: "退出加密失败",
+      message: "未能退出端到端加密通道，请稍后重试。",
+      type: "error",
+      duration: 5000,
+    });
+  }
+};
+
 const handleChatAction = (command: string | number | object) => {
   if (command === "enable-encryption") {
     openEncryptionDialog();
+    return;
+  }
+  if (command === "disable-encryption") {
+    void disableEncryptionChannel();
     return;
   }
   void handleSessionAction(command);

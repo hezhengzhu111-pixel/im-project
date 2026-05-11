@@ -177,6 +177,10 @@ export function createMessageLoadingModule(ctx: MessageLoadingModuleContext) {
       }
       return message;
     });
+    const currentUserId = String(ctx.getCurrentUser?.()?.id || "");
+    if (currentUserId) {
+      await decryptE2eeMessages(revived, currentUserId);
+    }
     if (revived.some((message) => message.status === "FAILED")) {
       ctx.notifyWarning("Detected unsent messages and marked them as failed.");
     }

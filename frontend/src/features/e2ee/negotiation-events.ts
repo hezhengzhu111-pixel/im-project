@@ -5,7 +5,7 @@
  */
 
 export interface E2eeNegotiationEvent {
-  action: 'request' | 'accepted' | 'rejected';
+  action: 'request' | 'accepted' | 'rejected' | 'disabled';
   sessionId: string;
   requesterId: string;
   requesterName: string;

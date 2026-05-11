@@ -30,6 +30,10 @@ pub fn routes() -> Router<AppState> {
             post(e2ee::session_api::reject_encryption),
         )
         .route(
+            "/api/e2ee/disable",
+            post(e2ee::session_api::disable_encryption),
+        )
+        .route(
             "/api/e2ee/group/enable",
             post(e2ee::group_api::enable_group_encryption_legacy),
         )

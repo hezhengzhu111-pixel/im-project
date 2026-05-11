@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS e2ee_sessions (
   session_id            VARCHAR(64) NOT NULL COMMENT '会话ID',
   requester_id          BIGINT NOT NULL COMMENT '发起方用户ID',
   target_user_id        BIGINT NOT NULL COMMENT '目标用户ID',
-  status                VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '协商状态: pending/encrypted/rejected',
+  status                VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '协商状态: pending/encrypted/rejected/plaintext',
   request_payload_json  TEXT NULL COMMENT '协商请求载荷JSON',
   created_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',

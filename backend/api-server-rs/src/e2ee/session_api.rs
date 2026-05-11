@@ -372,6 +372,76 @@ pub async fn reject_encryption(
     Ok(Json(ApiResponse::success("ok".to_string())))
 }
 
+/// 退出端到端加密通道。
+///
+/// POST /api/e2ee/disable
+///
+/// 业务目的：任一会话参与方都可以主动退出私聊 E2EE，将服务端协商状态置为 plaintext，
+/// 并通知另一端清理本地 ratchet state。操作保持幂等，便于本地密钥损坏时重置通道。
+pub async fn disable_encryption(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<E2eeSessionRequest>,
+) -> Result<Json<ApiResponse<String>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    validate_session_id(&request.session_id)?;
+
+    let (id_a, id_b) = parse_session_partners(&request.session_id)?;
+    if identity.user_id != id_a && identity.user_id != id_b {
+        return Err(AppError::Forbidden(
+            "session_id does not include caller".to_string(),
+        ));
+    }
+    let peer_user_id = if identity.user_id == id_a { id_b } else { id_a };
+
+    let result = sqlx::query(
+        r#"UPDATE service_user_service_db.e2ee_sessions
+           SET requester_id = ?, target_user_id = ?, status = 'plaintext',
+               request_payload_json = NULL, updated_time = NOW()
+           WHERE session_id = ?"#,
+    )
+    .bind(identity.user_id)
+    .bind(peer_user_id)
+    .bind(&request.session_id)
+    .execute(&state.db)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        sqlx::query(
+            r#"INSERT INTO service_user_service_db.e2ee_sessions
+               (session_id, requester_id, target_user_id, status, request_payload_json)
+               VALUES (?, ?, ?, 'plaintext', NULL)"#,
+        )
+        .bind(&request.session_id)
+        .bind(identity.user_id)
+        .bind(peer_user_id)
+        .execute(&state.db)
+        .await?;
+    }
+
+    let requester_name = resolve_user_display_name(&state, identity.user_id)
+        .await?
+        .unwrap_or_else(|| identity.username.clone());
+    let push = E2eeNegotiationPush {
+        action: "disabled".to_string(),
+        session_id: request.session_id.clone(),
+        requester_id: identity.user_id.to_string(),
+        requester_name,
+        target_user_id: peer_user_id.to_string(),
+        request_payload_json: None,
+    };
+    if let Err(error) = push_negotiation_event(&state, peer_user_id, &push).await {
+        tracing::warn!(
+            error = %error,
+            session_id = %request.session_id,
+            peer_user_id = %peer_user_id,
+            "failed to push e2ee disable event"
+        );
+    }
+
+    Ok(Json(ApiResponse::success("ok".to_string())))
+}
+
 // ---------------------------------------------------------------------------
 // 辅助函数
 // ---------------------------------------------------------------------------
