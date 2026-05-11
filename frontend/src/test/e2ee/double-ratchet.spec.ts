@@ -109,7 +109,7 @@ describe('Double Ratchet', () => {
 
     expect(restored).not.toBeNull();
     expect(restored!.sendingChainKey).not.toBeNull();
-    expect(restored!.dhKeyPair.privateKey.extractable).toBe(true);
+    expect(restored!.dhKeyPair.privateKey.extractable).toBe(false);
   });
 
   it('initSendingChain and initReceivingChain derive matching initial chain keys', async () => {

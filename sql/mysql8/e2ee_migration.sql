@@ -162,3 +162,73 @@ CREATE TABLE IF NOT EXISTS message_deliveries (
     INDEX idx_message_device (message_id, device_id),
     INDEX idx_device_messages (device_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE message deliveries';
+
+-- 2026-05-10 E2EE envelope/session hardening
+ALTER TABLE e2ee_devices
+  ADD COLUMN IF NOT EXISTS id BIGINT NULL AUTO_INCREMENT UNIQUE,
+  ADD COLUMN IF NOT EXISTS identity_public_key TEXT NULL COMMENT 'E2EE identity public key',
+  ADD COLUMN IF NOT EXISTS fingerprint VARCHAR(64) NULL COMMENT 'public key fingerprint',
+  ADD COLUMN IF NOT EXISTS key_version INT NOT NULL DEFAULT 1 COMMENT 'device key version',
+  ADD COLUMN IF NOT EXISTS revoked_at DATETIME NULL COMMENT 'device revoke time',
+  ADD COLUMN IF NOT EXISTS last_seen_at DATETIME NULL COMMENT 'last seen time';
+
+UPDATE e2ee_devices SET identity_public_key = identity_key WHERE identity_public_key IS NULL;
+UPDATE e2ee_devices SET fingerprint = LEFT(SHA2(identity_key, 256), 32) WHERE fingerprint IS NULL;
+UPDATE e2ee_devices SET revoked_at = updated_time WHERE status = 'deleted' AND revoked_at IS NULL;
+
+ALTER TABLE e2ee_one_time_pre_keys
+  ADD COLUMN IF NOT EXISTS pre_key_id BIGINT NULL COMMENT 'client pre-key id',
+  ADD COLUMN IF NOT EXISTS public_key TEXT NULL COMMENT 'one-time public key',
+  ADD COLUMN IF NOT EXISTS claimed_at DATETIME NULL COMMENT 'claim time',
+  ADD COLUMN IF NOT EXISTS claimed_by_user_id BIGINT NULL COMMENT 'claimant user',
+  ADD COLUMN IF NOT EXISTS claimed_by_device_id VARCHAR(64) NULL COMMENT 'claimant device';
+
+UPDATE e2ee_one_time_pre_keys SET pre_key_id = id WHERE pre_key_id IS NULL;
+UPDATE e2ee_one_time_pre_keys SET public_key = pre_key WHERE public_key IS NULL;
+UPDATE e2ee_one_time_pre_keys SET claimed_at = consumed_time WHERE consumed = 1 AND claimed_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS e2ee_conversation_sessions (
+  conversation_id VARCHAR(128) NOT NULL,
+  session_id VARCHAR(64) NOT NULL,
+  key_id VARCHAR(64) NOT NULL,
+  key_version INT NOT NULL DEFAULT 1,
+  epoch INT NOT NULL DEFAULT 1,
+  created_by_user_id BIGINT NOT NULL,
+  sender_device_id VARCHAR(64) NOT NULL,
+  recipient_device_ids_json TEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'active',
+  needs_rotation TINYINT(1) NOT NULL DEFAULT 0,
+  rotate_reason VARCHAR(32) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (conversation_id),
+  UNIQUE KEY uk_e2ee_conversation_session_id (session_id),
+  KEY idx_e2ee_conversation_status (conversation_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE active conversation session metadata';
+
+CREATE TABLE IF NOT EXISTS e2ee_conversation_session_members (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  conversation_id VARCHAR(128) NOT NULL,
+  user_id BIGINT NOT NULL,
+  device_id VARCHAR(64) NOT NULL,
+  key_version INT NOT NULL,
+  epoch INT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_e2ee_session_member (conversation_id, user_id, device_id, epoch)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE session recipient metadata';
+
+CREATE TABLE IF NOT EXISTS e2ee_group_epochs (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  group_id BIGINT NOT NULL,
+  epoch INT NOT NULL,
+  key_version INT NOT NULL,
+  rotate_reason VARCHAR(32) NOT NULL,
+  created_by_user_id BIGINT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_e2ee_group_epoch (group_id, epoch)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE group epoch history';
+
+ALTER TABLE service_message_service_db.messages
+  ADD COLUMN IF NOT EXISTS e2ee_envelope_json JSON NULL COMMENT 'Unified E2EE envelope JSON';

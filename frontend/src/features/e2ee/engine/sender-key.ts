@@ -45,6 +45,7 @@ export interface SenderKey {
   chainKey: ArrayBuffer;
   /** 签名密钥对（ECDSA P-256） */
   signingKeyPair: CryptoKeyPair;
+  signingPublicKey?: CryptoKey;
   /** 消息计数器 */
   counter: number;
 }
@@ -53,10 +54,10 @@ export interface SenderKey {
 export interface SerializedSenderKey {
   /** 链密钥原始字节（Base64） */
   chainKey: string;
-  /** 签名私钥（JWK 格式） */
-  signingPrivateJwk: JsonWebKey;
-  /** 签名公钥（JWK 格式） */
-  signingPublicJwk: JsonWebKey;
+  /** 签名公钥（Base64 raw） */
+  signingPublicKey: string;
+  /** 本地安全存储用，不会 JSON 序列化出私钥材料。 */
+  signingKeyPair?: CryptoKeyPair;
   /** 消息计数器 */
   counter: number;
 }
@@ -124,6 +125,7 @@ export async function generateSenderKey(): Promise<SenderKey> {
   return {
     chainKey,
     signingKeyPair,
+    signingPublicKey: signingKeyPair.publicKey,
     counter: 0,
   };
 }
@@ -200,6 +202,9 @@ export async function senderKeyEncrypt(
   senderKey.chainKey = newChainKey;
 
   // 导出签名公钥
+  if (!senderKey.signingKeyPair) {
+    throw new Error('missing_local_private_key');
+  }
   const signingPubRaw = await exportPublicKey(senderKey.signingKeyPair.publicKey);
   const signingPubkey = bufferToBase64(toBuffer(signingPubRaw));
 
@@ -290,13 +295,12 @@ export async function senderKeyDecrypt(
  * @returns 序列化格式
  */
 export async function serializeSenderKey(senderKey: SenderKey): Promise<SerializedSenderKey> {
-  const signingPrivateJwk = await crypto.subtle.exportKey('jwk', senderKey.signingKeyPair.privateKey);
-  const signingPublicJwk = await crypto.subtle.exportKey('jwk', senderKey.signingKeyPair.publicKey);
+  const signingPublicKey = bufferToBase64(await exportPublicKey(senderKey.signingKeyPair.publicKey));
 
   return {
     chainKey: bufferToBase64(senderKey.chainKey),
-    signingPrivateJwk,
-    signingPublicJwk,
+    signingPublicKey,
+    signingKeyPair: senderKey.signingKeyPair,
     counter: senderKey.counter,
   };
 }
@@ -309,26 +313,12 @@ export async function serializeSenderKey(senderKey: SenderKey): Promise<Serializ
  */
 export async function deserializeSenderKey(data: SerializedSenderKey): Promise<SenderKey> {
   const chainKey = base64ToBuffer(data.chainKey);
-
-  const privateKey = await crypto.subtle.importKey(
-    'jwk',
-    data.signingPrivateJwk,
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    true,
-    ['sign'],
-  );
-
-  const publicKey = await crypto.subtle.importKey(
-    'jwk',
-    data.signingPublicJwk,
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    true,
-    ['verify'],
-  );
+  const signingPublicKey = await importSigningPublicKey(base64ToBuffer(data.signingPublicKey));
 
   return {
     chainKey,
-    signingKeyPair: { privateKey, publicKey },
+    signingKeyPair: data.signingKeyPair ?? await generateSigningKeyPair(),
+    signingPublicKey,
     counter: data.counter,
   };
 }
