@@ -9,6 +9,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@im/shared-api-contract": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "^5.8.0"
   }
