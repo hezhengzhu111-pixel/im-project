@@ -1,5 +1,6 @@
 import { http } from "@/utils/request";
 import { extractFriendRequestList } from "@/normalizers/friendRequest";
+import { FRIEND_ENDPOINTS } from "@im/shared-api-contract";
 import {
   normalizeFriendRequest,
   normalizeFriendship,
@@ -13,7 +14,7 @@ import type {
 
 export const friendService = {
   async getList() {
-    const response = await http.get<unknown[]>("/friend/list");
+    const response = await http.get<unknown[]>(FRIEND_ENDPOINTS.LIST);
     return {
       ...response,
       data: Array.isArray(response.data)
@@ -22,12 +23,12 @@ export const friendService = {
     } as typeof response & { data: Friendship[] };
   },
   add: (data: AddFriendRequest) =>
-    http.post<void>("/friend/request", {
+    http.post<void>(FRIEND_ENDPOINTS.REQUEST, {
       targetUserId: data.userId,
       reason: data.message,
     }),
   async getRequests() {
-    const response = await http.get<unknown>("/friend/requests");
+    const response = await http.get<unknown>(FRIEND_ENDPOINTS.REQUESTS);
     const requestList = extractFriendRequestList(response.data);
     return {
       ...response,
@@ -36,13 +37,13 @@ export const friendService = {
   },
   handleRequest: (data: HandleFriendRequestRequest) =>
     http.post<void>(
-      data.action === "ACCEPT" ? "/friend/accept" : "/friend/reject",
+      data.action === "ACCEPT" ? FRIEND_ENDPOINTS.ACCEPT : FRIEND_ENDPOINTS.REJECT,
       data,
     ),
   delete: (friendId: string) =>
-    http.delete<void>("/friend/remove", { friendUserId: friendId }),
+    http.delete<void>(FRIEND_ENDPOINTS.REMOVE, { friendUserId: friendId }),
   updateRemark: (friendId: string, remark: string) =>
-    http.put<void>("/friend/remark", undefined, {
+    http.put<void>(FRIEND_ENDPOINTS.REMARK, undefined, {
       params: { friendUserId: friendId, remark },
     }),
 };

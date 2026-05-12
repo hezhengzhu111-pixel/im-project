@@ -1,5 +1,6 @@
 import { http } from "@/utils/request";
 import { normalizeGroup, normalizeGroupMember } from "@/normalizers/group";
+import { GROUP_ENDPOINTS } from "@im/shared-api-contract";
 import type {
   Group,
   GroupMember,
@@ -11,14 +12,14 @@ import type { ApiResponse } from "@/types/api";
 
 export const groupService = {
   async create(data: CreateGroupRequest): Promise<ApiResponse<Group>> {
-    const response = await http.post<RawGroupDTO>("/group/create", data);
+    const response = await http.post<RawGroupDTO>(GROUP_ENDPOINTS.CREATE, data);
     if (response.code === 200 && response.data) {
       return { ...response, data: normalizeGroup(response.data) };
     }
     return response as unknown as ApiResponse<Group>;
   },
   async getList(userId: string): Promise<ApiResponse<Group[]>> {
-    const response = await http.get<RawGroupDTO[]>(`/group/user/${userId}`);
+    const response = await http.get<RawGroupDTO[]>(GROUP_ENDPOINTS.USER_GROUPS.replace(":userId", userId));
     if (response.code === 200 && Array.isArray(response.data)) {
       return {
         ...response,
@@ -29,7 +30,7 @@ export const groupService = {
   },
   getMembers: (groupId: string): Promise<ApiResponse<GroupMember[]>> =>
     http
-      .post<{ members?: unknown[] }>("/group/members/list", {
+      .post<{ members?: unknown[] }>(GROUP_ENDPOINTS.MEMBERS_LIST, {
         groupId: String(groupId),
       })
       .then((response) => {
@@ -41,14 +42,14 @@ export const groupService = {
         }
         return response as unknown as ApiResponse<GroupMember[]>;
       }),
-  join: (groupId: string) => http.post<void>(`/group/${groupId}/join`),
+  join: (groupId: string) => http.post<void>(GROUP_ENDPOINTS.JOIN.replace(":groupId", groupId)),
   addMembers: (groupId: string, memberIds: string[]) =>
-    http.post<void>(`/group/${groupId}/add-members`, {
+    http.post<void>(GROUP_ENDPOINTS.ADD_MEMBERS.replace(":groupId", groupId), {
       memberIds: memberIds.map(Number),
     }),
   searchGroups: (keyword: string): Promise<ApiResponse<Group[]>> =>
     http
-      .get<RawGroupDTO[]>(`/group/search`, { params: { q: keyword } })
+      .get<RawGroupDTO[]>(GROUP_ENDPOINTS.SEARCH, { params: { q: keyword } })
       .then((response) => {
         if (response.code === 200 && Array.isArray(response.data)) {
           return {
@@ -58,11 +59,11 @@ export const groupService = {
         }
         return response as unknown as ApiResponse<Group[]>;
       }),
-  quit: (groupId: string) => http.post<void>(`/group/${groupId}/leave`),
-  dismiss: (groupId: string) => http.delete<void>(`/group/${groupId}`),
+  quit: (groupId: string) => http.post<void>(GROUP_ENDPOINTS.LEAVE.replace(":groupId", groupId)),
+  dismiss: (groupId: string) => http.delete<void>(GROUP_ENDPOINTS.DISMISS.replace(":groupId", groupId)),
   update: (groupId: string, data: UpdateGroupRequest, operatorId?: string) =>
     http
-      .put<RawGroupDTO>(`/group/${groupId}`, {
+      .put<RawGroupDTO>(GROUP_ENDPOINTS.UPDATE.replace(":groupId", groupId), {
         ...data,
         groupId: String(groupId),
         operatorId: String(operatorId || ""),

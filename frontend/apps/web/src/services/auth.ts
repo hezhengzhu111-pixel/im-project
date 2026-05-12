@@ -1,6 +1,7 @@
 import axios from "axios";
 import { http } from "@/utils/request";
 import { refreshAccessTokenCoordinated } from "@/services/auth-refresh";
+import { AUTH_ENDPOINTS } from "@im/shared-api-contract";
 import type { ApiResponse } from "@/types/api";
 import type { TokenParseResultDTO, TokenPairDTO, WsTicketDTO } from "@/types";
 
@@ -28,7 +29,7 @@ export const authService = {
   async parseAccessToken(token?: string, allowExpired = true) {
     try {
       const response = await axios.post<ApiResponse<TokenParseResultDTO>>(
-        "/api/auth/parse",
+        `/api${AUTH_ENDPOINTS.PARSE}`,
         {
           ...(token ? { token } : {}),
           allowExpired,
@@ -55,7 +56,7 @@ export const authService = {
       throw error;
     }
   },
-  issueWsTicket: () => http.post<WsTicketDTO>("/auth/ws-ticket"),
+  issueWsTicket: () => http.post<WsTicketDTO>(AUTH_ENDPOINTS.WS_TICKET),
   async refreshAccessToken(): Promise<ApiResponse<TokenPairDTO>> {
     const result = await refreshAccessTokenCoordinated();
     if (result.status !== "success") {

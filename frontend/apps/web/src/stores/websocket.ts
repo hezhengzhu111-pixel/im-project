@@ -5,6 +5,7 @@ import { STORAGE_CONFIG, WS_CONFIG } from "@/config";
 import { authService, userService } from "@/services";
 import { normalizeMessage } from "@/normalizers/message";
 import { buildSessionId } from "@/normalizers/chat";
+import { WS_MESSAGE_TYPE } from "@im/shared-api-contract";
 import type { Message, OnlineStatus, WebSocketMessage } from "@/types";
 import { useChatStore } from "@/stores/chat";
 import { useUserStore } from "@/stores/user";
@@ -151,7 +152,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
   };
 
   const shouldProcessSequentially = (message: WebSocketMessage): boolean => {
-    if (message.type !== "MESSAGE" || !message.data) {
+    if (message.type !== WS_MESSAGE_TYPE.MESSAGE || !message.data) {
       return false;
     }
     const rawMessage = message.data as Record<string, unknown>;
@@ -413,7 +414,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
     const chatStore = useChatStore();
 
     switch (data.type) {
-      case "MESSAGE": {
+      case WS_MESSAGE_TYPE.MESSAGE: {
         if (!data.data) {
           return;
         }
@@ -563,7 +564,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
         }
         return;
       }
-      case "MESSAGE_STATUS_CHANGED": {
+      case WS_MESSAGE_TYPE.MESSAGE_STATUS_CHANGED: {
         if (!data.data) {
           return;
         }
@@ -573,17 +574,17 @@ export const useWebSocketStore = defineStore("websocket", () => {
         await chatStore.addMessage(normalizedMessage);
         return;
       }
-      case "ONLINE_STATUS":
+      case WS_MESSAGE_TYPE.ONLINE_STATUS:
         if (data.data) {
           updateOnlineStatus(data.data as OnlineStatus);
         }
         return;
-      case "READ_RECEIPT":
+      case WS_MESSAGE_TYPE.READ_RECEIPT:
         if (data.data) {
           await chatStore.applyReadReceipt(data.data);
         }
         return;
-      case "FRIEND_REQUEST":
+      case WS_MESSAGE_TYPE.FRIEND_REQUEST:
         await queueContactRefresh({
           loadFriendRequests: true,
           notificationTitle: "Friend request",
@@ -591,7 +592,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
           notificationType: "info",
         });
         return;
-      case "FRIEND_ACCEPTED":
+      case WS_MESSAGE_TYPE.FRIEND_ACCEPTED:
         await queueContactRefresh({
           loadFriends: true,
           loadSessions: true,
@@ -600,7 +601,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
           notificationType: "success",
         });
         return;
-      case "SYSTEM": {
+      case WS_MESSAGE_TYPE.SYSTEM: {
         if (!data.data) {
           return;
         }
@@ -634,7 +635,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
         }
         return;
       }
-      case "E2EE_NEGOTIATION": {
+      case WS_MESSAGE_TYPE.E2EE_NEGOTIATION: {
         if (!data.data) return;
         const evt = data.data as Record<string, unknown>;
         const action = String(evt.action || "");
@@ -659,7 +660,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
         }
         return;
       }
-      case "HEARTBEAT":
+      case WS_MESSAGE_TYPE.HEARTBEAT:
       default:
         return;
     }
@@ -695,7 +696,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
       try {
         socket.value.send(
           JSON.stringify({
-            type: "HEARTBEAT",
+            type: WS_MESSAGE_TYPE.HEARTBEAT,
             data: { timestamp: Date.now() },
             timestamp: Date.now(),
           } satisfies WebSocketMessage),
