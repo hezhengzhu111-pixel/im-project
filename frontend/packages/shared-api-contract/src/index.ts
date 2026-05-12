@@ -1,2 +1,10 @@
-// @im/shared-api-contract — will be populated in later phases
-export {};
+export { AUTH_ENDPOINTS } from './auth.endpoints.js';
+export { USER_ENDPOINTS } from './user.endpoints.js';
+export { MESSAGE_ENDPOINTS } from './message.endpoints.js';
+export { FRIEND_ENDPOINTS } from './friend.endpoints.js';
+export { GROUP_ENDPOINTS } from './group.endpoints.js';
+export { AI_ENDPOINTS } from './ai.endpoints.js';
+export { FILE_ENDPOINTS } from './file.endpoints.js';
+export { WS_ENDPOINTS } from './websocket.endpoints.js';
+export { WS_MESSAGE_TYPE, API_CODES } from './codes.js';
+export type { WsMessageType } from './codes.js';
