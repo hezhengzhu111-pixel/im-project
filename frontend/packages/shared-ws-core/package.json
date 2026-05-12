@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@im/shared-api-contract": "workspace:*"
+    "@im/shared-api-contract": "*"
   },
   "devDependencies": {
     "typescript": "^5.8.0"
