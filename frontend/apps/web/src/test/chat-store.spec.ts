@@ -79,6 +79,18 @@ vi.mock("@/stores/websocket", () => ({
   }),
 }));
 
+vi.mock("@/features/e2ee/manager/negotiation", () => ({
+  getLocalSessionStatus: vi.fn(() => "plaintext"),
+  getPendingInitialHandshake: vi.fn(() => null),
+  clearPendingInitialHandshake: vi.fn(),
+}));
+
+vi.mock("@/features/e2ee/manager/e2ee-manager", () => ({
+  e2eeManager: {
+    encryptMessage: vi.fn(),
+  },
+}));
+
 vi.mock("@/stores/user", () => ({
   useUserStore: () => ({
     userId: "1",
@@ -108,13 +120,14 @@ const flushMicrotasks = async (count = 6) => {
 };
 
 const waitForSendPrivateCalls = async (expectedCalls: number) => {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < 150; attempt += 1) {
     await flushMicrotasks();
     if (messageServiceMock.sendPrivate.mock.calls.length >= expectedCalls) {
       return;
     }
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
+  throw new Error(`sendPrivate was not called ${expectedCalls} times`);
 };
 
 describe("chat store", () => {
@@ -1046,6 +1059,8 @@ describe("chat store", () => {
   it("keeps sends across different sessions parallel", async () => {
     const { useChatStore } = await import("@/stores/chat");
     const { useMessageStore } = await import("@/stores/message");
+    await import("@/features/e2ee/manager/negotiation");
+    await import("@/features/e2ee/manager/e2ee-manager");
     const store = useChatStore();
     const messageStore = useMessageStore();
 
@@ -1054,21 +1069,20 @@ describe("chat store", () => {
 
     let resolveFirst: ((value: unknown) => void) | undefined;
     let resolveSecond: ((value: unknown) => void) | undefined;
-    messageServiceMock.sendPrivate
-      .mockImplementationOnce(
-        ({ receiverId }) =>
-          new Promise((resolve) => {
+    messageServiceMock.sendPrivate.mockImplementation(
+      ({ receiverId }) =>
+        new Promise((resolve, reject) => {
+          if (receiverId === "2") {
             resolveFirst = resolve;
-            expect(receiverId).toBe("2");
-          }),
-      )
-      .mockImplementationOnce(
-        ({ receiverId }) =>
-          new Promise((resolve) => {
+            return;
+          }
+          if (receiverId === "3") {
             resolveSecond = resolve;
-            expect(receiverId).toBe("3");
-          }),
-      );
+            return;
+          }
+          reject(new Error(`unexpected receiver ${receiverId}`));
+        }),
+    );
 
     const sendFirst = messageStore.sendMessage(firstSession!, "first", "TEXT");
     const sendSecond = messageStore.sendMessage(
