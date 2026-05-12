@@ -7,6 +7,10 @@
 # Logs and runtime data
 logs/
 *.log
+!frontend/apps/mobile/src/screens/logs/
+!frontend/apps/mobile/src/screens/logs/**
+!frontend/apps/mobile/src/services/logs/
+!frontend/apps/mobile/src/services/logs/**
 
 # Python
 __pycache__/
@@ -22,6 +26,11 @@ frontend/apps/*/dist/
 frontend/packages/*/dist/
 frontend/apps/*/coverage/
 frontend/packages/*/coverage/
+frontend/apps/mobile/android/.gradle/
+frontend/apps/mobile/android/build/
+frontend/apps/mobile/android/app/build/
+frontend/apps/mobile/ios/Pods/
+frontend/apps/mobile/ios/build/
 
 # Rust
 backend/target/
