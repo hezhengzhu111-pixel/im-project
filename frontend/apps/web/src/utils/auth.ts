@@ -1,6 +1,11 @@
 // 认证相关工具函数
 
 import {STORAGE_KEYS} from "@/constants";
+import {
+  isTokenExpired as isTokenExpiredCore,
+  getUserIdFromToken as getUserIdFromTokenCore,
+  getUserRolesFromToken as getUserRolesFromTokenCore,
+} from "@im/shared-auth-core";
 
 // Token存储键名
 const TOKEN_KEY = STORAGE_KEYS.TOKEN;
@@ -93,18 +98,7 @@ export function isLoggedIn(): boolean {
 export function isTokenExpired(token?: string): boolean {
   const tokenToCheck = token || getToken();
   if (!tokenToCheck) return true;
-
-  try {
-    // 解析JWT token
-    const payload = JSON.parse(atob(tokenToCheck.split(".")[1]));
-    const currentTime = Math.floor(Date.now() / 1000);
-
-    // 检查是否过期（提前5分钟判断为过期）
-    return payload.exp < currentTime + 300;
-  } catch (error) {
-    console.error("Token解析失败:", error);
-    return true;
-  }
+  return isTokenExpiredCore(tokenToCheck);
 }
 
 /**
@@ -113,15 +107,7 @@ export function isTokenExpired(token?: string): boolean {
 export function getUserIdFromToken(token?: string): string | null {
   const tokenToCheck = token || getToken();
   if (!tokenToCheck) return null;
-
-  try {
-    const payload = JSON.parse(atob(tokenToCheck.split(".")[1]));
-    const userId = payload.sub || payload.userId || payload.id;
-    return userId == null ? null : String(userId);
-  } catch (error) {
-    console.error("Token解析失败:", error);
-    return null;
-  }
+  return getUserIdFromTokenCore(tokenToCheck);
 }
 
 /**
@@ -130,14 +116,7 @@ export function getUserIdFromToken(token?: string): string | null {
 export function getUserRolesFromToken(token?: string): string[] {
   const tokenToCheck = token || getToken();
   if (!tokenToCheck) return [];
-
-  try {
-    const payload = JSON.parse(atob(tokenToCheck.split(".")[1]));
-    return payload.roles || payload.authorities || [];
-  } catch (error) {
-    console.error("Token解析失败:", error);
-    return [];
-  }
+  return getUserRolesFromTokenCore(tokenToCheck);
 }
 
 /**

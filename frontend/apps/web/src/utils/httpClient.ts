@@ -8,6 +8,7 @@ import axios from "axios";
 import qs from "qs";
 import { logger } from "@/utils/logger";
 import type { ApiResponse } from "@/types/api";
+import { shouldSkipRefreshEndpoint } from "@im/shared-auth-core";
 
 type HeaderBag = Record<string, unknown> & {
   get?: (name: string) => unknown;
@@ -283,17 +284,9 @@ httpClient.interceptors.response.use(
   },
 );
 
-export const shouldSkipRefresh = (url?: string) => {
+export const shouldSkipRefresh = (url?: string): boolean => {
   if (!url) return false;
-  return (
-    url.includes("/auth/parse") ||
-    url.includes("/auth/refresh") ||
-    url.includes("/user/login") ||
-    url.includes("/user/register") ||
-    url.includes("/user/logout") ||
-    url.includes("/user/offline") ||
-    url.includes("/user/heartbeat")
-  );
+  return shouldSkipRefreshEndpoint(url);
 };
 
 export const http = {
