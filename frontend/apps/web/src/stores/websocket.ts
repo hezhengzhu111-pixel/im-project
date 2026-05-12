@@ -7,6 +7,13 @@ import { normalizeMessage } from "@/normalizers/message";
 import { buildSessionId } from "@/normalizers/chat";
 import { resolveMessageSessionId } from "@im/shared-im-core";
 import { WS_MESSAGE_TYPE } from "@im/shared-api-contract";
+import {
+  createTicketedWebSocketUrl,
+  createHeartbeatPayload,
+  shouldProcessSequentially,
+  createReconnectDelay,
+  DUPLICATE_CONNECTION_REASON,
+} from "@im/shared-ws-core";
 import type { Message, OnlineStatus, WebSocketMessage } from "@/types";
 import { useChatStore } from "@/stores/chat";
 import { useUserStore } from "@/stores/user";
@@ -14,21 +21,7 @@ import { logger } from "@/utils/logger";
 
 type TimerHandle = ReturnType<typeof setInterval>;
 
-const DUPLICATE_CONNECTION_REASON = "duplicate_connection";
 const FRIEND_REFRESH_DEBOUNCE_MS = 1500;
-
-export const createTicketedWebSocketUrl = (
-  userId: string,
-  ticket?: string,
-): string => {
-  const isDev = import.meta.env.DEV;
-  const wsBaseUrl = isDev ? "" : WS_CONFIG.BASE_URL;
-  const baseUrl = `${wsBaseUrl}/websocket/${userId}`;
-  if (!ticket) {
-    return baseUrl;
-  }
-  return `${baseUrl}?ticket=${encodeURIComponent(ticket)}`;
-};
 
 export const useWebSocketStore = defineStore("websocket", () => {
   const socket = ref<WebSocket | null>(null);
@@ -131,17 +124,6 @@ export const useWebSocketStore = defineStore("websocket", () => {
       }
     }
     return false;
-  };
-
-  const shouldProcessSequentially = (message: WebSocketMessage): boolean => {
-    if (message.type !== WS_MESSAGE_TYPE.MESSAGE || !message.data) {
-      return false;
-    }
-    const rawMessage = message.data as Record<string, unknown>;
-    const normalizedMessageType = String(
-      rawMessage.messageType || rawMessage.type || "",
-    ).toUpperCase();
-    return normalizedMessageType !== "SYSTEM";
   };
 
   const debouncedRefreshContactData = createAsyncDebounce(async () => {
@@ -310,7 +292,8 @@ export const useWebSocketStore = defineStore("websocket", () => {
 
       isConnecting.value = true;
       const ticket = await requestWsTicket();
-      socket.value = new WebSocket(createTicketedWebSocketUrl(userId, ticket));
+      const wsBaseUrl = import.meta.env.DEV ? "" : WS_CONFIG.BASE_URL;
+      socket.value = new WebSocket(createTicketedWebSocketUrl(wsBaseUrl, userId, ticket));
 
       socket.value.onopen = () => {
         isConnected.value = true;
@@ -330,7 +313,10 @@ export const useWebSocketStore = defineStore("websocket", () => {
       socket.value.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data) as WebSocketMessage;
-          if (shouldProcessSequentially(data)) {
+          const innerType = data.data
+            ? String((data.data as Record<string, unknown>).messageType || (data.data as Record<string, unknown>).type || "")
+            : "";
+          if (shouldProcessSequentially(data.type, innerType)) {
             // FIX: 普通聊天消息保留串行处理，确保时序敏感消息仍按顺序落库与渲染。
             incomingProcessing.value = incomingProcessing.value
               .then(() => handleMessage(data))
@@ -676,13 +662,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
         return;
       }
       try {
-        socket.value.send(
-          JSON.stringify({
-            type: WS_MESSAGE_TYPE.HEARTBEAT,
-            data: { timestamp: Date.now() },
-            timestamp: Date.now(),
-          } satisfies WebSocketMessage),
-        );
+        socket.value.send(createHeartbeatPayload());
       } catch (error) {
         logger.warn("failed to send heartbeat", error);
       }
@@ -708,7 +688,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
     reconnectTimer.value = setTimeout(() => {
       reconnectTimer.value = null;
       void connect(userId);
-    }, WS_CONFIG.RECONNECT_INTERVAL * reconnectAttempts.value);
+    }, createReconnectDelay(reconnectAttempts.value, WS_CONFIG.RECONNECT_INTERVAL));
   };
 
   const stopReconnect = () => {

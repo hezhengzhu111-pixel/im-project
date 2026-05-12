@@ -160,9 +160,9 @@ describe("websocket store", () => {
   });
 
   it("keeps query ticket URL helper for fallback compatibility", async () => {
-    const { createTicketedWebSocketUrl } = await import("@/stores/websocket");
+    const { createTicketedWebSocketUrl } = await import("@im/shared-ws-core");
 
-    expect(createTicketedWebSocketUrl("42", "ticket-fallback")).toContain(
+    expect(createTicketedWebSocketUrl("", "42", "ticket-fallback")).toContain(
       "/websocket/42?ticket=ticket-fallback",
     );
   });
