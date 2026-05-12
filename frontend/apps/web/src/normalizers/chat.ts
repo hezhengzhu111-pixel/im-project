@@ -1,7 +1,2 @@
-export {
-  toBigIntId,
-  compareIds,
-  buildSessionId,
-  safePreferExistingId,
-  normalizeConversation,
-} from '@im/shared-normalizers';
+export { normalizeConversation } from '@im/shared-normalizers';
+export { toBigIntId, compareIds, buildSessionId, safePreferExistingId } from '@im/shared-im-core';
