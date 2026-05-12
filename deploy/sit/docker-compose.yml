@@ -429,7 +429,8 @@ services:
   im-frontend:
     image: im-project-sit/im-frontend:latest
     build:
-      context: ../../frontend/apps/web
+      context: ../../frontend
+      dockerfile: apps/web/Dockerfile
       args:
         FRONTEND_BUILD_MODE: "${FRONTEND_BUILD_MODE:-sit}"
         IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"

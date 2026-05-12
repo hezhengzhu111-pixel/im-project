@@ -19,13 +19,14 @@ backend/
   im-server-rs/      → WebSocket fanout & presence service (separate process, 9 source files)
   spring-ai/         → Java 25 + Spring Boot 3.5 + Spring AI 1.1.5 LLM microservice
 frontend/
-  src/stores/        → 7 Pinia stores (chat is facade orchestrator over session/message/contact/group)
-  src/services/      → API service layer (auth, user, message, friend, group, file, heartbeat, ai)
-  src/features/chat/ → Feature-based chat module (ChatContainer, ChatMessageList, ChatComposer, composables)
-  src/normalizers/   → DTO → domain object normalization (message, chat, user, group)
-  src/utils/         → request.ts (Axios+interceptors), messageRepo.ts (IndexedDB), auth.ts (JWT)
-  src/config/        → Global config (API, WS, APP, STORAGE, MESSAGE, UI constants)
-  src/types/         → TypeScript interfaces (message, chat, user, group, api)
+  apps/web/src/stores/        → 7 Pinia stores (chat is facade orchestrator over session/message/contact/group)
+  apps/web/src/services/      → API service layer (auth, user, message, friend, group, file, heartbeat, ai)
+  apps/web/src/features/chat/ → Feature-based chat module (ChatContainer, ChatMessageList, ChatComposer, composables)
+  apps/web/src/normalizers/   → DTO → domain object normalization (message, chat, user, group)
+  apps/web/src/utils/         → request.ts (Axios+interceptors), messageRepo.ts (IndexedDB), auth.ts (JWT)
+  apps/web/src/config/        → Global config (API, WS, APP, STORAGE, MESSAGE, UI constants)
+  apps/web/src/types/         → TypeScript interfaces (message, chat, user, group, api)
+  packages/*                 → npm workspace shared TypeScript packages
 scripts/             → Python deployment & integration test tools
 deploy/sit/          → docker-compose.yml (14 services: MySQL, 9 Redis, 4 app services)
 sql/mysql8/          → Schema (9 databases, 17+ tables, transactional outbox pattern)
@@ -36,13 +37,13 @@ sql/mysql8/          → Schema (9 databases, 17+ tables, transactional outbox p
 ### Frontend (run from `frontend/`)
 
 ```bash
-npm run dev          # Dev server on port 3000, Vite proxy to api-server (VITE_GATEWAY_HOST:VITE_GATEWAY_PORT)
-npm run typecheck    # vue-tsc --noEmit
-npm run lint         # ESLint with --fix
-npm run lint:check   # ESLint without fix (CI-safe)
-npm run test         # Vitest with coverage
-npm run test:unit    # Vitest without coverage
-npm run build        # typecheck + Vite build (type errors block the build)
+npm install          # Install all workspace dependencies and update frontend/package-lock.json
+npm run web:dev      # Web dev server on port 3000, Vite proxy to api-server (VITE_GATEWAY_HOST:VITE_GATEWAY_PORT)
+npm run typecheck    # Type check all packages and apps
+npm run web:lint     # Web ESLint with --fix
+npm run web:lint:check # Web ESLint without fix (CI-safe)
+npm run test         # Run all workspace tests
+npm run web:build    # typecheck + Vite build (type errors block the build)
 ```
 
 ### Backend Rust (run from `backend/`)
@@ -204,7 +205,7 @@ Lightweight WebSocket push service. Entire codebase is ~1500 lines.
 
 ### Nginx Configuration
 
-**Location routing** (in `frontend/nginx.conf`):
+**Location routing** (in `frontend/apps/web/nginx.conf`):
 | Path | Behavior |
 |------|----------|
 | `/` | `try_files $uri $uri/ /index.html` — SPA fallback |
@@ -550,7 +551,7 @@ Six deployment entry scripts are kept: `docker_clean.py`, `generate_env.py`, `de
 | 3 | 6387 | 6389 |
 | 4 | 6388 | 6390 |
 
-### Nginx Main Config (`frontend/nginx-main.conf`)
+### Nginx Main Config (`frontend/apps/web/nginx-main.conf`)
 
 `worker_processes auto`, `worker_rlimit_nofile 200000`, `worker_connections 65535`, `multi_accept on`, `keepalive_timeout 300s`, `keepalive_requests 100000`, `server_tokens off`.
 
@@ -596,7 +597,7 @@ Uses HTTP status codes directly (400/401/403/404/409/502/500). No custom busines
 
 Tests use `tower::ServiceExt::oneshot` for in-process HTTP testing. Need running MySQL + Redis. Usernames generated with `AtomicU64` counter + timestamp for uniqueness.
 
-### Frontend Tests (`frontend/src/test/`)
+### Frontend Tests (`frontend/apps/web/src/test/`)
 
 | File | Tests | Focus |
 |------|-------|-------|
@@ -635,7 +636,7 @@ Integer arithmetic: prefer `checked_*`, `saturating_*`, or `wrapping_*` over bar
 
 - **SCSS auto-import**: Every `.vue` `<style lang="scss">` automatically has `@use "@/styles/variables.scss" as *;` injected via Vite config. Never add that import manually.
 - **Build target**: ES2020. Don't use ES2021+ syntax in frontend code.
-- **Tests**: Vitest with jsdom, Pinia stores mocked via `vi.mock()`, globals imported from `src/test/setup.ts`. Test files: `*.spec.ts` under `frontend/src/test/`.
+- **Tests**: Vitest with jsdom, Pinia stores mocked via `vi.mock()`, globals imported from `apps/web/src/test/setup.ts`. Test files: `*.spec.ts` under `frontend/apps/web/src/test/`.
 - **Path alias**: `@` → `src/` directory.
 - **Facade store pattern**: `chatStore` is the single entry point for components. It orchestrates `sessionStore`, `messageStore`, `contactStore`, `groupStore`. Components should not directly depend on the inner stores.
 - **WS circular import**: `websocketStore` imports `chatStore` at runtime via `import("@/stores/websocket")` to avoid circular dependency. Do not use top-level import.
@@ -670,9 +671,9 @@ Integer arithmetic: prefer `checked_*`, `saturating_*`, or `wrapping_*` over bar
 
 ## Generated Files (don't edit)
 
-- `frontend/auto-imports.d.ts` — unplugin-auto-import
-- `frontend/components.d.ts` — unplugin-vue-components
-- `frontend/dist/` — build output
+- `frontend/apps/web/auto-imports.d.ts` — unplugin-auto-import
+- `frontend/apps/web/components.d.ts` — unplugin-vue-components
+- `frontend/apps/web/dist/` — build output
 - `backend/spring-ai/target/` — Maven build output (gitignored)
 - `backend/spring-ai/mvnw` / `mvnw.cmd` / `.mvn/` — Maven Wrapper (committed intentionally)
 

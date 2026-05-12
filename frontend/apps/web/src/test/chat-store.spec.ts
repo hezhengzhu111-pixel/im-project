@@ -107,6 +107,16 @@ const flushMicrotasks = async (count = 6) => {
   }
 };
 
+const waitForSendPrivateCalls = async (expectedCalls: number) => {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await flushMicrotasks();
+    if (messageServiceMock.sendPrivate.mock.calls.length >= expectedCalls) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+};
+
 describe("chat store", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -1003,7 +1013,7 @@ describe("chat store", () => {
 
     const firstSend = store.sendMessage("first", "TEXT");
     const secondSend = store.sendMessage("second", "TEXT");
-    await flushMicrotasks();
+    await waitForSendPrivateCalls(1);
 
     expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(1);
     expect(messageServiceMock.sendPrivate.mock.calls[0][0].content).toBe(
@@ -1066,7 +1076,7 @@ describe("chat store", () => {
       "second",
       "TEXT",
     );
-    await flushMicrotasks();
+    await waitForSendPrivateCalls(2);
 
     expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(2);
 
