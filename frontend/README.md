@@ -38,11 +38,13 @@ shared-platform-ports (standalone)
 
 ## Commands
 
+Run all install, build, typecheck, and test commands from this `frontend/` workspace root.
+
 ```bash
-npm install              # Install all workspace dependencies
-npm run web:dev          # Dev server
-npm run web:build        # Production build
-npm run web:typecheck    # Type check web app
+cd frontend
+npm install              # Install all workspace dependencies and update the root package-lock.json
+npm run web:dev          # Web dev server
+npm run web:build        # Production web build
 npm run typecheck        # Type check all packages + apps
 npm run test             # Run all tests across workspaces
 ```
@@ -58,10 +60,4 @@ npm run test --workspace=@im/shared-auth-core
 npm run test --workspace=@im/shared-im-core
 npm run test --workspace=@im/shared-normalizers
 npm run test --workspace=@im/shared-ws-core
-
-# Run vitest directly in a package directory
-cd packages/shared-normalizers && npx vitest run
-cd packages/shared-im-core && npx vitest run
-cd packages/shared-auth-core && npx vitest run
-cd packages/shared-ws-core && npx vitest run
 ```
