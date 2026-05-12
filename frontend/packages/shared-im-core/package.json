@@ -9,6 +9,10 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@im/shared-types": "*",
+    "@im/shared-normalizers": "*"
+  },
   "devDependencies": {
     "typescript": "^5.8.0"
   }
