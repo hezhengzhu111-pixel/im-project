@@ -5,6 +5,7 @@ import { STORAGE_CONFIG, WS_CONFIG } from "@/config";
 import { authService, userService } from "@/services";
 import { normalizeMessage } from "@/normalizers/message";
 import { buildSessionId } from "@/normalizers/chat";
+import { resolveMessageSessionId } from "@im/shared-im-core";
 import { WS_MESSAGE_TYPE } from "@im/shared-api-contract";
 import type { Message, OnlineStatus, WebSocketMessage } from "@/types";
 import { useChatStore } from "@/stores/chat";
@@ -103,25 +104,6 @@ export const useWebSocketStore = defineStore("websocket", () => {
         recentMessageIds.value.delete(id);
       }
     });
-  };
-
-  const resolveMessageSessionId = (
-    message: Message,
-    currentUserId: string,
-  ): string | null => {
-    if (message.isGroupChat && message.groupId) {
-      return buildSessionId("group", currentUserId, message.groupId);
-    }
-    if (message.senderId && message.receiverId) {
-      const targetId =
-        message.senderId === currentUserId
-          ? message.receiverId
-          : message.senderId;
-      if (targetId) {
-        return buildSessionId("private", currentUserId, targetId);
-      }
-    }
-    return null;
   };
 
   const hasMessageInLocalState = (
