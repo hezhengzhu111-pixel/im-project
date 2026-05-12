@@ -407,7 +407,7 @@ const contactsForTransfer = computed(() =>
     label: contact.nickname || contact.username,
   })),
 );
-const transferTitles = computed(() => [
+const transferTitles = computed((): [string, string] => [
   t("dialog.available"),
   t("dialog.selected"),
 ]);

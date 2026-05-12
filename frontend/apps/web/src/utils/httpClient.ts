@@ -9,6 +9,7 @@ import qs from "qs";
 import { logger } from "@/utils/logger";
 import type { ApiResponse } from "@/types/api";
 import { shouldSkipRefreshEndpoint } from "@im/shared-auth-core";
+import { createTraceId } from "@im/shared-utils";
 
 type HeaderBag = Record<string, unknown> & {
   get?: (name: string) => unknown;
@@ -23,13 +24,6 @@ type AdapterRequestHandler = (
 type AdapterResponseFulfilled = (response: AxiosResponse) => any;
 
 type AdapterResponseRejected = (error: any) => any;
-
-function createTraceId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
 
 export const getHeaderValue = (
   headers: HeaderBag | undefined,

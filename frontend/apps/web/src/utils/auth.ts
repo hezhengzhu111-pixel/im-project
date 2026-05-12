@@ -6,6 +6,13 @@ import {
   getUserIdFromToken as getUserIdFromTokenCore,
   getUserRolesFromToken as getUserRolesFromTokenCore,
 } from "@im/shared-auth-core";
+import {
+  validateEmail as validateEmailCore,
+  validatePhone as validatePhoneCore,
+  validateUsername as validateUsernameCore,
+  validatePasswordStrength as validatePasswordStrengthCore,
+  maskSensitiveInfo as maskSensitiveInfoCore,
+} from "@im/shared-utils";
 
 // Token存储键名
 const TOKEN_KEY = STORAGE_KEYS.TOKEN;
@@ -166,109 +173,29 @@ export function generateState(): string {
 }
 
 /**
- * 验证密码强度
+ * 验证密码强度（委托给 @im/shared-utils）
  */
-export function validatePasswordStrength(password: string): {
-  isValid: boolean;
-  score: number;
-  feedback: string[];
-} {
-  const feedback: string[] = [];
-  let score = 0;
-
-  // 长度检查
-  if (password.length >= 8) {
-    score += 1;
-  } else {
-    feedback.push("密码长度至少8位");
-  }
-
-  // 包含小写字母
-  if (/[a-z]/.test(password)) {
-    score += 1;
-  } else {
-    feedback.push("密码应包含小写字母");
-  }
-
-  // 包含大写字母
-  if (/[A-Z]/.test(password)) {
-    score += 1;
-  } else {
-    feedback.push("密码应包含大写字母");
-  }
-
-  // 包含数字
-  if (/\d/.test(password)) {
-    score += 1;
-  } else {
-    feedback.push("密码应包含数字");
-  }
-
-  // 包含特殊字符
-  if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-    score += 1;
-  } else {
-    feedback.push("密码应包含特殊字符");
-  }
-
-  return {
-    isValid: score >= 4,
-    score,
-    feedback,
-  };
-}
+export const validatePasswordStrength = validatePasswordStrengthCore;
 
 /**
- * 验证邮箱格式
+ * 验证邮箱格式（委托给 @im/shared-utils）
  */
-export function validateEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
-}
+export const validateEmail = validateEmailCore;
 
 /**
- * 验证手机号格式（中国大陆）
+ * 验证手机号格式（中国大陆，委托给 @im/shared-utils）
  */
-export function validatePhone(phone: string): boolean {
-  const phoneRegex = /^1[3-9]\d{9}$/;
-  return phoneRegex.test(phone);
-}
+export const validatePhone = validatePhoneCore;
 
 /**
- * 验证用户名格式
+ * 验证用户名格式（委托给 @im/shared-utils）
  */
-export function validateUsername(username: string): boolean {
-  // 用户名：3-20位，只能包含字母、数字、下划线
-  const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
-  return usernameRegex.test(username);
-}
+export const validateUsername = validateUsernameCore;
 
 /**
- * 脱敏处理
+ * 脱敏处理（委托给 @im/shared-utils）
  */
-export const maskSensitiveInfo = {
-  // 脱敏邮箱
-  email(email: string): string {
-    if (!email) return "";
-    const [username, domain] = email.split("@");
-    if (username.length <= 2) {
-      return `${username[0]}***@${domain}`;
-    }
-    return `${username.slice(0, 2)}***${username.slice(-1)}@${domain}`;
-  },
-
-  // 脱敏手机号
-  phone(phone: string): string {
-    if (!phone) return "";
-    return phone.replace(/(\d{3})\d{4}(\d{4})/, "$1****$2");
-  },
-
-  // 脱敏身份证号
-  idCard(idCard: string): string {
-    if (!idCard) return "";
-    return idCard.replace(/(\d{6})\d{8}(\d{4})/, "$1********$2");
-  },
-};
+export const maskSensitiveInfo = maskSensitiveInfoCore;
 
 /**
  * 安全相关常量
