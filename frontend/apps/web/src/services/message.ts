@@ -7,6 +7,7 @@ import {
   normalizeMessageConfig,
 } from "@/normalizers/message";
 import { http } from "@/utils/request";
+import { MESSAGE_ENDPOINTS } from "@im/shared-api-contract";
 import type { ApiResponse } from "@/types/api";
 import type {
   ChatSession,
@@ -27,7 +28,7 @@ export const messageService = {
   async sendPrivate(
     data: SendPrivateMessageRequest,
   ): Promise<ApiResponse<Message>> {
-    const response = await http.post<unknown>("/message/send/private", data);
+    const response = await http.post<unknown>(MESSAGE_ENDPOINTS.SEND_PRIVATE, data);
     return {
       ...response,
       data: normalizeMessage(response.data, new Date().toISOString()),
@@ -44,7 +45,7 @@ export const messageService = {
     e2eeSenderIdentityKey?: string;
     e2eeEphemeralKey?: string;
   }): Promise<ApiResponse<Message>> {
-    const response = await http.post<unknown>("/message/send/private", data);
+    const response = await http.post<unknown>(MESSAGE_ENDPOINTS.SEND_PRIVATE, data);
     return {
       ...response,
       data: normalizeMessage(response.data, new Date().toISOString()),
@@ -53,7 +54,7 @@ export const messageService = {
   async sendGroup(
     data: SendGroupMessageRequest,
   ): Promise<ApiResponse<Message>> {
-    const response = await http.post<unknown>("/message/send/group", data);
+    const response = await http.post<unknown>(MESSAGE_ENDPOINTS.SEND_GROUP, data);
     return {
       ...response,
       data: normalizeMessage(response.data, new Date().toISOString()),
@@ -63,7 +64,7 @@ export const messageService = {
     friendId: string,
     params: Record<string, unknown>,
   ): Promise<ApiResponse<Message[]>> {
-    const response = await http.get<unknown[]>(`/message/private/${friendId}`, {
+    const response = await http.get<unknown[]>(MESSAGE_ENDPOINTS.PRIVATE_HISTORY.replace(":friendId", friendId), {
       params,
     });
     return {
@@ -76,7 +77,7 @@ export const messageService = {
     params: Record<string, unknown>,
   ): Promise<ApiResponse<Message[]>> {
     const response = await http.get<unknown[]>(
-      `/message/private/${friendId}/cursor`,
+      MESSAGE_ENDPOINTS.PRIVATE_HISTORY_CURSOR.replace(":friendId", friendId),
       { params },
     );
     return {
@@ -88,7 +89,7 @@ export const messageService = {
     groupId: string,
     params: Record<string, unknown>,
   ): Promise<ApiResponse<Message[]>> {
-    const response = await http.get<unknown[]>(`/message/group/${groupId}`, {
+    const response = await http.get<unknown[]>(MESSAGE_ENDPOINTS.GROUP_HISTORY.replace(":groupId", groupId), {
       params,
     });
     return {
@@ -101,7 +102,7 @@ export const messageService = {
     params: Record<string, unknown>,
   ): Promise<ApiResponse<Message[]>> {
     const response = await http.get<unknown[]>(
-      `/message/group/${groupId}/cursor`,
+      MESSAGE_ENDPOINTS.GROUP_HISTORY_CURSOR.replace(":groupId", groupId),
       { params },
     );
     return {
@@ -110,16 +111,16 @@ export const messageService = {
     } as ApiResponse<Message[]>;
   },
   markRead: (conversationId: string) =>
-    http.post(`/message/read/${conversationId}`),
+    http.post(MESSAGE_ENDPOINTS.MARK_READ.replace(":conversationId", conversationId)),
   async recallMessage(messageId: string): Promise<ApiResponse<Message>> {
-    const response = await http.post<unknown>(`/message/recall/${messageId}`);
+    const response = await http.post<unknown>(MESSAGE_ENDPOINTS.RECALL.replace(":messageId", messageId));
     return {
       ...response,
       data: normalizeMessage(response.data, new Date().toISOString()),
     } as ApiResponse<Message>;
   },
   async deleteMessage(messageId: string): Promise<ApiResponse<Message>> {
-    const response = await http.post<unknown>(`/message/delete/${messageId}`);
+    const response = await http.post<unknown>(MESSAGE_ENDPOINTS.DELETE.replace(":messageId", messageId));
     return {
       ...response,
       data: normalizeMessage(response.data, new Date().toISOString()),
@@ -128,7 +129,7 @@ export const messageService = {
   async getConversations(
     currentUserId: string,
   ): Promise<ApiResponse<ChatSession[]>> {
-    const response = await http.get<unknown[]>("/message/conversations");
+    const response = await http.get<unknown[]>(MESSAGE_ENDPOINTS.CONVERSATIONS);
     const data = Array.isArray(response.data)
       ? response.data
           .map((item) => normalizeConversation(item, currentUserId))
@@ -144,7 +145,7 @@ export const messageService = {
     } as ApiResponse<ChatSession[]>;
   },
   async getConfig(): Promise<ApiResponse<MessageConfig>> {
-    const response = await http.get<unknown>("/message/config");
+    const response = await http.get<unknown>(MESSAGE_ENDPOINTS.CONFIG);
     return {
       ...response,
       data: normalizeMessageConfig(response.data),

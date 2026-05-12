@@ -1,4 +1,5 @@
 import { http } from "@/utils/request";
+import { AI_ENDPOINTS } from "@im/shared-api-contract";
 import type { ApiResponse } from "@/types/api";
 
 export interface AiApiKey {
@@ -31,7 +32,7 @@ function normalizeKey(raw: Record<string, unknown>): AiApiKey {
 
 export const aiService = {
   listKeys: () =>
-    http.get<unknown[]>("/ai/keys").then((r) => ({
+    http.get<unknown[]>(AI_ENDPOINTS.KEYS).then((r) => ({
       ...r,
       data: (r.data || []).map((item) =>
         normalizeKey(item as Record<string, unknown>),
@@ -39,27 +40,27 @@ export const aiService = {
     })) as Promise<ApiResponse<AiApiKey[]>>,
 
   createKey: (data: { provider: string; apiKey: string; keyName?: string }) =>
-    http.post<Record<string, unknown>>("/ai/keys", data).then((r) => ({
+    http.post<Record<string, unknown>>(AI_ENDPOINTS.KEYS, data).then((r) => ({
       ...r,
       data: normalizeKey(r.data || {}),
     })) as Promise<ApiResponse<AiApiKey>>,
 
   updateKey: (id: string, data: { apiKey?: string; keyName?: string }) =>
-    http.put<Record<string, unknown>>(`/ai/keys/${id}`, data).then((r) => ({
+    http.put<Record<string, unknown>>(AI_ENDPOINTS.KEY_BY_ID.replace(":id", id), data).then((r) => ({
       ...r,
       data: normalizeKey(r.data || {}),
     })) as Promise<ApiResponse<AiApiKey>>,
 
   deleteKey: (id: string) =>
-    http.delete<{ deleted: boolean }>(`/ai/keys/${id}`),
+    http.delete<{ deleted: boolean }>(AI_ENDPOINTS.KEY_BY_ID.replace(":id", id)),
 
   testKey: (id: string) =>
-    http.post<{ validateStatus: string }>(`/ai/keys/${id}/test`),
+    http.post<{ validateStatus: string }>(AI_ENDPOINTS.KEY_TEST.replace(":id", id)),
 
-  getSettings: () => http.get<AiSettings>("/ai/settings"),
+  getSettings: () => http.get<AiSettings>(AI_ENDPOINTS.SETTINGS),
 
   updateSettings: (data: {
     autoReplyEnabled?: boolean;
     autoReplyPersona?: string;
-  }) => http.put<AiSettings>("/ai/settings", data),
+  }) => http.put<AiSettings>(AI_ENDPOINTS.SETTINGS, data),
 };

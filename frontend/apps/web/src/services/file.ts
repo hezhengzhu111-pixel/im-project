@@ -1,5 +1,6 @@
 import { http } from "@/utils/request";
 import { asNumber, asString, isRecord } from "@/types/utils";
+import { FILE_ENDPOINTS } from "@im/shared-api-contract";
 import type { ApiResponse, FileUploadResponse } from "@/types/api";
 
 export interface FileDeletePath {
@@ -116,18 +117,18 @@ export const resolveFilePath = (
 
 export const fileService = {
   upload: (file: File, onProgress?: (progress: number) => void) =>
-    uploadWithNormalization("/file/upload/file", file, onProgress),
+    uploadWithNormalization(FILE_ENDPOINTS.UPLOAD_FILE, file, onProgress),
   uploadImage: (file: File, onProgress?: (progress: number) => void) =>
-    uploadWithNormalization("/file/upload/image", file, onProgress),
+    uploadWithNormalization(FILE_ENDPOINTS.UPLOAD_IMAGE, file, onProgress),
   uploadVideo: (file: File, onProgress?: (progress: number) => void) =>
-    uploadWithNormalization("/file/upload/video", file, onProgress),
+    uploadWithNormalization(FILE_ENDPOINTS.UPLOAD_VIDEO, file, onProgress),
   uploadAudio: (file: File, onProgress?: (progress: number) => void) =>
-    uploadWithNormalization("/file/upload/audio", file, onProgress),
+    uploadWithNormalization(FILE_ENDPOINTS.UPLOAD_AUDIO, file, onProgress),
   delete: (fileRef: FileDeleteRef) => {
     const filePath = resolveFilePath(fileRef);
     if (!filePath) {
       return Promise.reject(new Error("无法解析文件路径"));
     }
-    return http.delete<boolean>("/file/delete", filePath);
+    return http.delete<boolean>(FILE_ENDPOINTS.DELETE, filePath);
   },
 };
