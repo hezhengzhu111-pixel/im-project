@@ -1,2 +1,10 @@
-// @im/shared-types — will be populated in later phases
-export {};
+export * from './api.js';
+export * from './auth.js';
+export * from './user.js';
+export * from './message.js';
+export * from './session.js';
+export * from './friend.js';
+export * from './group.js';
+export * from './websocket.js';
+export * from './moments.js';
+export * from './utils.js';
