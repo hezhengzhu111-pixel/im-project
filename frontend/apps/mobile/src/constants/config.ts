@@ -1,34 +1,21 @@
-export interface RuntimeConfig {
-  API_BASE_URL: string;
-  WS_BASE_URL: string;
-  FILE_BASE_URL: string;
-}
+import { getRuntimeConfig, type RuntimeConfigSource, type RuntimeConfigUrls } from './runtimeConfig';
+
+export interface RuntimeConfig extends RuntimeConfigUrls {}
 
 declare global {
-  var IM_MOBILE_RUNTIME_CONFIG: Partial<RuntimeConfig> | undefined;
+  var IM_MOBILE_RUNTIME_CONFIG: RuntimeConfigSource | undefined;
 }
 
-const readProcessEnv = (key: keyof RuntimeConfig): string => {
-  const env = typeof process !== 'undefined' ? process.env : undefined;
-  return typeof env?.[key] === 'string' ? env[key] || '' : '';
-};
-
-const runtime = globalThis.IM_MOBILE_RUNTIME_CONFIG || {};
+const runtimeConfig = getRuntimeConfig();
 
 export const APP_CONFIG: RuntimeConfig = {
-  API_BASE_URL:
-    runtime.API_BASE_URL ||
-    readProcessEnv('API_BASE_URL') ||
-    'http://10.0.2.2:8082/api',
-  WS_BASE_URL:
-    runtime.WS_BASE_URL ||
-    readProcessEnv('WS_BASE_URL') ||
-    'ws://10.0.2.2:8082',
-  FILE_BASE_URL:
-    runtime.FILE_BASE_URL ||
-    readProcessEnv('FILE_BASE_URL') ||
-    'http://10.0.2.2:8082',
+  API_BASE_URL: runtimeConfig.API_BASE_URL,
+  WS_BASE_URL: runtimeConfig.WS_BASE_URL,
+  FILE_BASE_URL: runtimeConfig.FILE_BASE_URL,
 };
+
+export const MOBILE_APP_ENV = runtimeConfig.APP_ENV;
+export const IS_RELEASE_RUNTIME = runtimeConfig.IS_RELEASE_BUILD;
 
 export const STORAGE_KEYS = {
   accessToken: 'im.mobile.access-token',

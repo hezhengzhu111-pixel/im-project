@@ -44,27 +44,123 @@ npm run mobile:android
 
 If you restart the emulator or reconnect a physical device, `npm run mobile:android` attempts to restore `adb reverse` automatically. You can still run `npm run mobile:reverse` manually before tapping Reload on an already-open red error screen.
 
-## Android Emulator API URLs
+## Environment Layers
 
-Use the emulator loopback host:
+Android runtime config supports these environments:
+
+- `dev-emulator`: default emulator loopback, safe fallback for debug
+- `dev-device`: physical device over LAN
+- `sit`: SIT gateway
+- `prod`: production placeholder, injected outside source control
+
+Release builds must not silently fall back to `10.0.2.2`. If a release build still resolves to emulator URLs, Gradle fails the build unless `IM_MOBILE_APP_ENV=internal` or `debug` is explicitly set for an internal-only release.
+
+Injection keys:
 
 ```bash
-API_BASE_URL=http://10.0.2.2:8082/api
-WS_BASE_URL=ws://10.0.2.2:8082
-FILE_BASE_URL=http://10.0.2.2:8082
+IM_MOBILE_APP_ENV
+IM_MOBILE_API_BASE_URL
+IM_MOBILE_WS_BASE_URL
+IM_MOBILE_FILE_BASE_URL
 ```
 
-## Physical Device API URLs
+JS config priority:
+
+1. Runtime injected config
+2. Environment variables / native Android `BuildConfig`
+3. Built-in `dev-emulator` fallback
+
+Validation:
+
+- `IM_MOBILE_API_BASE_URL`: `http://` or `https://`
+- `IM_MOBILE_WS_BASE_URL`: `ws://` or `wss://`
+- `IM_MOBILE_FILE_BASE_URL`: `http://` or `https://`
+
+## Android Emulator
+
+Default debug behavior already points to the emulator loopback. You can still set it explicitly:
+
+```bash
+IM_MOBILE_APP_ENV=dev-emulator
+IM_MOBILE_API_BASE_URL=http://10.0.2.2:8082/api
+IM_MOBILE_WS_BASE_URL=ws://10.0.2.2:8082
+IM_MOBILE_FILE_BASE_URL=http://10.0.2.2:8082
+```
+
+PowerShell example:
+
+```bash
+$env:IM_MOBILE_APP_ENV="dev-emulator"
+$env:IM_MOBILE_API_BASE_URL="http://10.0.2.2:8082/api"
+$env:IM_MOBILE_WS_BASE_URL="ws://10.0.2.2:8082"
+$env:IM_MOBILE_FILE_BASE_URL="http://10.0.2.2:8082"
+cd frontend
+npm run mobile:android
+```
+
+## Physical Device
 
 Use the LAN IP of the machine running the backend:
 
 ```bash
-API_BASE_URL=http://192.168.x.x:8082/api
-WS_BASE_URL=ws://192.168.x.x:8082
-FILE_BASE_URL=http://192.168.x.x:8082
+IM_MOBILE_APP_ENV=dev-device
+IM_MOBILE_API_BASE_URL=http://192.168.x.x:8082/api
+IM_MOBILE_WS_BASE_URL=ws://192.168.x.x:8082
+IM_MOBILE_FILE_BASE_URL=http://192.168.x.x:8082
 ```
 
 The phone and backend machine must be on the same reachable network. Firewalls must allow ports 8082 and the WebSocket endpoint.
+
+PowerShell example:
+
+```bash
+$env:IM_MOBILE_APP_ENV="dev-device"
+$env:IM_MOBILE_API_BASE_URL="http://192.168.x.x:8082/api"
+$env:IM_MOBILE_WS_BASE_URL="ws://192.168.x.x:8082"
+$env:IM_MOBILE_FILE_BASE_URL="http://192.168.x.x:8082"
+cd frontend
+npm run mobile:android
+```
+
+## SIT
+
+Use the SIT gateway values provided by deployment or QA:
+
+```bash
+IM_MOBILE_APP_ENV=sit
+IM_MOBILE_API_BASE_URL=https://sit.example.invalid/api
+IM_MOBILE_WS_BASE_URL=wss://sit.example.invalid
+IM_MOBILE_FILE_BASE_URL=https://sit.example.invalid
+```
+
+PowerShell example:
+
+```bash
+$env:IM_MOBILE_APP_ENV="sit"
+$env:IM_MOBILE_API_BASE_URL="https://sit.example.invalid/api"
+$env:IM_MOBILE_WS_BASE_URL="wss://sit.example.invalid"
+$env:IM_MOBILE_FILE_BASE_URL="https://sit.example.invalid"
+cd frontend
+npm run mobile:android
+```
+
+## Release / Prod
+
+Release builds must inject addresses explicitly:
+
+```bash
+$env:IM_MOBILE_APP_ENV="prod"
+$env:IM_MOBILE_API_BASE_URL="https://prod.example.invalid/api"
+$env:IM_MOBILE_WS_BASE_URL="wss://prod.example.invalid"
+$env:IM_MOBILE_FILE_BASE_URL="https://prod.example.invalid"
+cd frontend\apps\mobile\android
+.\gradlew.bat assembleRelease
+```
+
+Notes:
+
+- Do not commit real production endpoints, signing secrets, or environment-specific files.
+- If you intentionally need an internal-only release build against emulator URLs, set `IM_MOBILE_APP_ENV=internal` or `debug` explicitly. Otherwise the Gradle build fails fast.
 
 ## Permissions
 
@@ -110,6 +206,12 @@ Backend push-device APIs are still `BACKEND_REQUIRED`, so local development shou
 
 - Debug builds set `usesCleartextTraffic=true` for `10.0.2.2` and LAN backend testing.
 - Release builds set `usesCleartextTraffic=false` by default.
+- Android native config is exported through `BuildConfig` and a lightweight RN `ConfigModule`.
+- Runtime addresses can be injected through Gradle properties or environment variables:
+  - `IM_MOBILE_APP_ENV`
+  - `IM_MOBILE_API_BASE_URL`
+  - `IM_MOBILE_WS_BASE_URL`
+  - `IM_MOBILE_FILE_BASE_URL`
 - Version values can be overridden with Gradle properties or environment variables:
   - `IM_MOBILE_VERSION_CODE`
   - `IM_MOBILE_VERSION_NAME`
@@ -164,6 +266,7 @@ Backend push-device APIs are still `BACKEND_REQUIRED`, so local development shou
 
 - Ensure `api-server-rs` is running on the host and bound to a reachable interface.
 - Confirm the URL includes `/api` for HTTP calls.
+- Confirm the app is using the expected environment injection keys and not stale values from an earlier shell.
 
 ## Verification
 
