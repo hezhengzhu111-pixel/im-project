@@ -22,6 +22,15 @@ cd frontend
 npm run mobile:start
 ```
 
+When Metro is already running but the app shows `Unable to load script`, configure Android port forwarding:
+
+```bash
+cd frontend
+npm run mobile:reverse
+```
+
+This script locates `adb` from `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or `apps/mobile/android/local.properties`.
+
 ## Run Android
 
 In another terminal:
@@ -109,6 +118,13 @@ Do not commit real Firebase secrets or environment-specific files unless the rep
 `No connected devices`:
 
 - Start an emulator from Android Studio or connect a USB device with debugging enabled.
+
+`Unable to load script` on the red React Native error screen:
+
+- Start Metro with `npm run mobile:start -- --reset-cache`.
+- Run `npm run mobile:reverse` after the emulator/device is connected.
+- If using a physical device over Wi-Fi instead of USB reverse, open the React Native dev menu and set the debug server host to `<computer LAN IP>:8081`.
+- If running a release APK, build a release bundle; debug APKs are expected to load JavaScript from Metro.
 
 `Java version mismatch` or Gradle toolchain download hangs:
 
