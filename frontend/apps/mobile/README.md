@@ -43,6 +43,9 @@ Use `10.0.2.2` for Android Emulator. Use the development machine LAN IP for a ph
 
 - Auth/session restore with Keychain token storage, cookie mirroring, refresh coordinator, 401 retry, and session generation guard.
 - Real HTTP services for auth, user, friends, groups, messages, files, moments, AI settings, and logs.
+- Session IDs are resolved through `@im/shared-im-core` (`buildSessionId` / message session resolver). Mobile no longer hand-builds private or group conversation IDs.
+- Backend DTO parsing goes through `@im/shared-normalizers`; mobile keeps adapter-only conversion for `MobileMessage`, `ChatSession`, and local storage view models.
+- Message identity and merge behavior reuse `@im/shared-im-core` helpers before writing Zustand state or SQLite.
 - Zustand stores for auth, user, chat, sessions, messages, contacts, groups, settings, websocket, moments, notifications, and uploads.
 - SQLite-backed message/session/pending/upload repositories with in-memory fallback when native SQLite is unavailable.
 - Offline pending-message retry with exponential backoff and upload task state.
@@ -57,6 +60,17 @@ Use `10.0.2.2` for Android Emulator. Use the development machine LAN IP for a ph
 - `LOCAL_STORAGE_DESIGN.md` describes Keychain, MMKV, SQLite, cache cleanup, logout cleanup, pending queue, and upload queue.
 - `PUSH_BACKEND_CONTRACT.md` defines missing server push-device endpoints.
 - `ANDROID_RUNBOOK.md` describes Android setup, runtime URLs, permissions, FCM placeholders, and common build issues.
+- `MOBILE_ANDROID_FIX_REPORT.md` records Android core fix scope, verification, and remaining release checklist.
+
+## Firebase / FCM Local Development
+
+FCM is optional for local debug. If `apps/mobile/android/app/google-services.json` is absent or Firebase Messaging is unavailable, the app logs a warning, returns an empty FCM token, and continues with Notifee local notifications. Offline push still requires a local Firebase config plus the backend push-device APIs documented in `PUSH_BACKEND_CONTRACT.md`.
+
+Do not commit a real `google-services.json`.
+
+## Android Release Notes
+
+Debug builds allow cleartext traffic for emulator and LAN backend testing. Release builds default `usesCleartextTraffic=false`, read `IM_MOBILE_VERSION_CODE` / `IM_MOBILE_VERSION_NAME`, and use release signing only when the `IM_MOBILE_RELEASE_*` keystore variables are provided.
 
 ## E2EE Degradation
 

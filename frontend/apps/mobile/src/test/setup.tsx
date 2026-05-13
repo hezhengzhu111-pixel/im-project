@@ -136,9 +136,8 @@ jest.mock('@notifee/react-native', () => ({
   EventType: { PRESS: 1 },
 }));
 
-jest.mock('@react-native-firebase/messaging', () => ({
-  __esModule: true,
-  default: () => ({
+jest.mock('@react-native-firebase/messaging', () => {
+  const messaging = jest.fn(() => ({
     registerDeviceForRemoteMessages: jest.fn(() => Promise.resolve()),
     getToken: jest.fn(() => Promise.resolve('fcm-test-token')),
     getInitialNotification: jest.fn(() => Promise.resolve(null)),
@@ -146,8 +145,12 @@ jest.mock('@react-native-firebase/messaging', () => ({
     onMessage: jest.fn(),
     onNotificationOpenedApp: jest.fn(),
     setBackgroundMessageHandler: jest.fn(),
-  }),
-}));
+  }));
+  return {
+    __esModule: true,
+    default: messaging,
+  };
+});
 
 jest.mock('@react-native-community/netinfo', () => ({
   addEventListener: jest.fn(() => jest.fn()),

@@ -15,6 +15,19 @@ const SENSITIVE_DATA_KEYS = ['token', 'cookie', 'password', 'apikey', 'api_key',
 
 let initialized = false;
 let backgroundHandlersRegistered = false;
+let fcmUnavailableLogged = false;
+
+const getMessaging = (): ReturnType<typeof messaging> | null => {
+  try {
+    return messaging();
+  } catch (error) {
+    if (!fcmUnavailableLogged) {
+      fcmUnavailableLogged = true;
+      logger.warn('notification', 'Firebase Messaging unavailable; FCM disabled for this run', error);
+    }
+    return null;
+  }
+};
 
 const shouldRedactKey = (key: string) => {
   const normalized = key.replace(/[-_]/g, '').toLowerCase();
@@ -106,23 +119,24 @@ export async function initializeNotifications(): Promise<void> {
       void handleNotificationOpen(detail.notification?.data, 'notifee_foreground_press');
     }
   });
-  messaging().onTokenRefresh((token) => {
+  const firebaseMessaging = getMessaging();
+  firebaseMessaging?.onTokenRefresh((token) => {
     kvStorage.setString(STORAGE_KEYS.fcmToken, token);
     notificationEventRepository.record('fcm_token_refresh');
   });
-  messaging().onMessage(async (message) => {
+  firebaseMessaging?.onMessage(async (message) => {
     await displaySystemNotification(
       message.notification?.title || 'IM',
       message.notification?.body || 'New notification',
       message.data,
     );
   });
-  messaging().onNotificationOpenedApp((message) => {
+  firebaseMessaging?.onNotificationOpenedApp((message) => {
     void handleNotificationOpen(message.data, 'fcm_notification_opened');
   });
   const [notifeeInitial, messagingInitial] = await Promise.allSettled([
     notifee.getInitialNotification(),
-    messaging().getInitialNotification(),
+    firebaseMessaging?.getInitialNotification() ?? Promise.resolve(null),
   ]);
   if (notifeeInitial.status === 'fulfilled' && notifeeInitial.value?.notification?.data) {
     await handleNotificationOpen(notifeeInitial.value.notification.data, 'notifee_initial_notification');
@@ -144,7 +158,8 @@ export function registerNotificationBackgroundHandlers(): void {
       await handleNotificationOpen(detail.notification?.data, 'notifee_background_press');
     }
   });
-  messaging().setBackgroundMessageHandler(async (message: FirebaseMessagingTypes.RemoteMessage) => {
+  const firebaseMessaging = getMessaging();
+  firebaseMessaging?.setBackgroundMessageHandler(async (message: FirebaseMessagingTypes.RemoteMessage) => {
     await initializeStorage();
     notificationEventRepository.record('fcm_background_message', undefined, sanitizeNotificationData(message.data));
     await displaySystemNotification(
@@ -156,9 +171,13 @@ export function registerNotificationBackgroundHandlers(): void {
 }
 
 export async function getFcmToken(): Promise<string> {
+  const firebaseMessaging = getMessaging();
+  if (!firebaseMessaging) {
+    return '';
+  }
   try {
-    await messaging().registerDeviceForRemoteMessages();
-    const token = await messaging().getToken();
+    await firebaseMessaging.registerDeviceForRemoteMessages();
+    const token = await firebaseMessaging.getToken();
     kvStorage.setString(STORAGE_KEYS.fcmToken, token);
     return token;
   } catch (error) {

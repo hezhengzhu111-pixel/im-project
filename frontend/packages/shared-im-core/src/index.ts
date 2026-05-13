@@ -23,6 +23,8 @@ export {
 export {
   dedupeMessages,
   mergeMessagesChronologically,
+  mergeServerMessageWithPending,
+  applyMessageToMessageList,
 } from "./message-dedup.js";
 
 export {

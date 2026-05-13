@@ -41,11 +41,18 @@ export const pendingMessageRepository = {
       ? messageDatabase.memoryList('mobile_pending_messages')
       : messageDatabase.query(
           `SELECT * FROM mobile_pending_messages
-           WHERE status IN ('pending', 'failed') AND (nextRetryAt IS NULL OR nextRetryAt <= ?)
+           WHERE status = 'pending' AND (nextRetryAt IS NULL OR nextRetryAt <= ?)
            ORDER BY createdAt ASC`,
           [now],
         );
-    return rows.map(normalize).filter((item) => item.status !== 'blocked' && (item.nextRetryAt || 0) <= now);
+    return rows.map(normalize).filter((item) => item.status === 'pending' && (item.nextRetryAt || 0) <= now);
+  },
+
+  get(localId: string): PendingMessage | undefined {
+    const rows = messageDatabase.isMemoryFallback()
+      ? messageDatabase.memoryList('mobile_pending_messages').filter((row) => row.localId === localId)
+      : messageDatabase.query('SELECT * FROM mobile_pending_messages WHERE localId = ? LIMIT 1', [localId]);
+    return rows[0] ? normalize(rows[0]) : undefined;
   },
 
   update(item: PendingMessage): void {

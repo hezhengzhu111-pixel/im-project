@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { resolveGroupSessionId, resolvePrivateSessionId } from '@/adapters/sessionAdapter';
 import { messageService } from '@/services/chat/messageService';
 import { messageRepository } from '@/services/storage/messageRepository';
 import { uploadService } from '@/services/upload/uploadService';
@@ -61,7 +62,7 @@ export const useChatStore = create<ChatState>((set) => ({
   async openPrivateSession(target) {
     const userId = useAuthStore.getState().currentUser?.id || '';
     await useChatStore.getState().openSession({
-      id: `private_${userId}_${target.targetId}`,
+      id: resolvePrivateSessionId(userId, target.targetId),
       type: 'private',
       targetId: target.targetId,
       targetName: target.targetName,
@@ -72,7 +73,7 @@ export const useChatStore = create<ChatState>((set) => ({
 
   async openGroupSession(group) {
     await useChatStore.getState().openSession({
-      id: `group_${group.id}`,
+      id: resolveGroupSessionId(group.id),
       type: 'group',
       targetId: group.id,
       targetName: group.groupName || group.name || group.id,

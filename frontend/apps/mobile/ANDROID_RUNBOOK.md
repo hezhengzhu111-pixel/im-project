@@ -78,7 +78,9 @@ The Android manifest declares:
 - `READ_MEDIA_IMAGES`
 - `READ_MEDIA_VIDEO`
 - `READ_MEDIA_AUDIO`
+- `READ_MEDIA_VISUAL_USER_SELECTED`
 - legacy external storage permissions with SDK guards
+- `VIBRATE`
 - `FOREGROUND_SERVICE`
 - `FOREGROUND_SERVICE_MICROPHONE`
 
@@ -90,15 +92,33 @@ Runtime permission behavior:
 - Android 13+ notification permission is requested before system notifications.
 - Denied permissions show a user-facing message path and can open system settings through the platform service.
 
-## FCM Placeholder
+## FCM Placeholder and Local Degradation
 
-Firebase Messaging client code is present, but a real app requires Android Firebase configuration:
+Firebase Messaging client code is present, but FCM is optional for local debug. Without `google-services.json`, Firebase Messaging may be unavailable; the app catches that condition, logs a warning, returns an empty FCM token, and keeps Notifee local notifications working.
+
+A real offline push setup requires Android Firebase configuration:
 
 - Add `google-services.json` under `apps/mobile/android/app/`.
 - Configure the Firebase Android app id/package.
 - Add backend push device endpoints described in `PUSH_BACKEND_CONTRACT.md`.
 
 Do not commit real Firebase secrets or environment-specific files unless the repository policy explicitly allows them.
+
+Backend push-device APIs are still `BACKEND_REQUIRED`, so local development should treat FCM as token-adapter-only until those APIs exist.
+
+## Debug and Release Build Configuration
+
+- Debug builds set `usesCleartextTraffic=true` for `10.0.2.2` and LAN backend testing.
+- Release builds set `usesCleartextTraffic=false` by default.
+- Version values can be overridden with Gradle properties or environment variables:
+  - `IM_MOBILE_VERSION_CODE`
+  - `IM_MOBILE_VERSION_NAME`
+- Release signing is intentionally environment-driven:
+  - `IM_MOBILE_RELEASE_STORE_FILE`
+  - `IM_MOBILE_RELEASE_STORE_PASSWORD`
+  - `IM_MOBILE_RELEASE_KEY_ALIAS`
+  - `IM_MOBILE_RELEASE_KEY_PASSWORD`
+- `IM_MOBILE_MINIFY_RELEASE=true` can enable release minification later; it remains off by default for this phase.
 
 ## Common Build Issues
 

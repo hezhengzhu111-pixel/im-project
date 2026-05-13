@@ -66,14 +66,18 @@ export const normalizeUser = (raw: RawUserDTO | User): User => {
 export const normalizeFriendship = (raw: unknown): Friendship => {
   const record = isRecord(raw) ? raw : {};
   return {
-    id: asString(record.id ?? record.friendId),
-    friendId: asString(record.friendId ?? record.userId ?? record.id),
+    id: asString(record.id ?? record.friendId ?? record.friend_user_id),
+    friendId: asString(record.friendId ?? record.friend_user_id ?? record.userId ?? record.user_id ?? record.id),
     username: asString(record.username),
     nickname: asString(record.nickname) || undefined,
     avatar: asString(record.avatar) || undefined,
     remark: asString(record.remark) || undefined,
     isOnline:
-      typeof record.isOnline === "boolean" ? record.isOnline : undefined,
+      typeof record.isOnline === "boolean"
+        ? record.isOnline
+        : typeof record.online === "boolean"
+          ? record.online
+          : undefined,
     lastActiveTime: asString(record.lastActiveTime) || undefined,
     createdAt: asString(record.createdAt) || undefined,
     createTime: asString(record.createTime) || undefined,
@@ -86,9 +90,9 @@ export const normalizeFriendRequest = (raw: unknown): FriendRequest => {
   const record = isRecord(raw) ? raw : {};
   const fromUser = isRecord(record.fromUser) ? record.fromUser : {};
   return {
-    id: asString(record.id),
+    id: asString(record.id ?? record.requestId),
     applicantId: asString(
-      record.applicantId ?? record.fromUserId ?? record.senderId,
+      record.applicantId ?? record.fromUserId ?? record.from_user_id ?? record.senderId,
     ),
     applicantUsername: asString(
       record.applicantUsername ?? fromUser.username ?? record.username,
@@ -101,14 +105,14 @@ export const normalizeFriendRequest = (raw: unknown): FriendRequest => {
       asString(record.applicantAvatar ?? fromUser.avatar ?? record.avatar) ||
       undefined,
     targetUserId:
-      asString(record.targetUserId ?? record.receiverId) || undefined,
+      asString(record.targetUserId ?? record.toUserId ?? record.to_user_id ?? record.receiverId) || undefined,
     targetUsername: asString(record.targetUsername) || undefined,
     targetNickname: asString(record.targetNickname) || undefined,
     targetAvatar: asString(record.targetAvatar) || undefined,
     reason: asString(record.reason ?? record.message) || undefined,
     status: normalizeFriendRequestStatus(record.status),
-    createTime: asString(record.createTime),
-    updateTime: asString(record.updateTime) || undefined,
+    createTime: asString(record.createTime ?? record.createdAt ?? record.created_at),
+    updateTime: asString(record.updateTime ?? record.updatedAt ?? record.updated_at) || undefined,
   };
 };
 
