@@ -65,6 +65,18 @@ def enableProguardInReleaseBuilds = false
 def propOrEnv = { propName, envName, fallbackValue ->
     project.findProperty(propName) ?: System.getenv(envName) ?: fallbackValue
 }
+def parsePositiveInt = { fieldName, value, fallbackValue ->
+    def normalized = String.valueOf(value ?: fallbackValue).trim()
+    try {
+        def parsed = Integer.parseInt(normalized)
+        if (parsed <= 0) {
+            throw new NumberFormatException("must be greater than 0")
+        }
+        return parsed
+    } catch (NumberFormatException exception) {
+        throw new GradleException("${fieldName} must be a positive integer: ${normalized}", exception)
+    }
+}
 def quoteBuildConfig = { value ->
     "\"${String.valueOf(value).replace("\\", "\\\\").replace("\"", "\\\"")}\""
 }
@@ -87,6 +99,9 @@ def defaultApiBaseUrl = "http://10.0.2.2:8082/api"
 def defaultWsBaseUrl = "ws://10.0.2.2:8082"
 def defaultFileBaseUrl = "http://10.0.2.2:8082"
 def allowedAppEnvs = ["dev-emulator", "dev-device", "sit", "prod", "internal", "debug"] as Set
+def releaseBuildRequested = gradle.startParameter.taskNames.any { taskName ->
+    String.valueOf(taskName).toLowerCase(Locale.ROOT).contains("release")
+}
 def mobileAppEnv = String.valueOf(propOrEnv("IM_MOBILE_APP_ENV", "IM_MOBILE_APP_ENV", defaultAppEnv)).trim()
 if (!mobileAppEnv) {
     mobileAppEnv = defaultAppEnv
@@ -100,14 +115,30 @@ def mobileFileBaseUrl = String.valueOf(propOrEnv("IM_MOBILE_FILE_BASE_URL", "IM_
 validateUrl("IM_MOBILE_API_BASE_URL", mobileApiBaseUrl, ["http", "https"])
 validateUrl("IM_MOBILE_WS_BASE_URL", mobileWsBaseUrl, ["ws", "wss"])
 validateUrl("IM_MOBILE_FILE_BASE_URL", mobileFileBaseUrl, ["http", "https"])
-def mobileVersionCode = propOrEnv("IM_MOBILE_VERSION_CODE", "IM_MOBILE_VERSION_CODE", "1").toInteger()
-def mobileVersionName = propOrEnv("IM_MOBILE_VERSION_NAME", "IM_MOBILE_VERSION_NAME", "0.0.1")
+def mobileVersionCode = parsePositiveInt("IM_MOBILE_VERSION_CODE", propOrEnv("IM_MOBILE_VERSION_CODE", "IM_MOBILE_VERSION_CODE", "1"), "1")
+def mobileVersionName = String.valueOf(propOrEnv("IM_MOBILE_VERSION_NAME", "IM_MOBILE_VERSION_NAME", "0.0.1")).trim()
+if (!mobileVersionName) {
+    mobileVersionName = "0.0.1"
+}
 def enableReleaseMinify = propOrEnv("IM_MOBILE_MINIFY_RELEASE", "IM_MOBILE_MINIFY_RELEASE", "false").toBoolean()
-def releaseStoreFilePath = propOrEnv("IM_MOBILE_RELEASE_STORE_FILE", "IM_MOBILE_RELEASE_STORE_FILE", "")
-def hasReleaseSigning = releaseStoreFilePath &&
-        propOrEnv("IM_MOBILE_RELEASE_STORE_PASSWORD", "IM_MOBILE_RELEASE_STORE_PASSWORD", "") &&
-        propOrEnv("IM_MOBILE_RELEASE_KEY_ALIAS", "IM_MOBILE_RELEASE_KEY_ALIAS", "") &&
-        propOrEnv("IM_MOBILE_RELEASE_KEY_PASSWORD", "IM_MOBILE_RELEASE_KEY_PASSWORD", "")
+def releaseSigning = [
+        IM_MOBILE_RELEASE_STORE_FILE    : String.valueOf(propOrEnv("IM_MOBILE_RELEASE_STORE_FILE", "IM_MOBILE_RELEASE_STORE_FILE", "")).trim(),
+        IM_MOBILE_RELEASE_STORE_PASSWORD: String.valueOf(propOrEnv("IM_MOBILE_RELEASE_STORE_PASSWORD", "IM_MOBILE_RELEASE_STORE_PASSWORD", "")).trim(),
+        IM_MOBILE_RELEASE_KEY_ALIAS     : String.valueOf(propOrEnv("IM_MOBILE_RELEASE_KEY_ALIAS", "IM_MOBILE_RELEASE_KEY_ALIAS", "")).trim(),
+        IM_MOBILE_RELEASE_KEY_PASSWORD  : String.valueOf(propOrEnv("IM_MOBILE_RELEASE_KEY_PASSWORD", "IM_MOBILE_RELEASE_KEY_PASSWORD", "")).trim(),
+]
+def missingReleaseSigning = releaseSigning.findAll { !it.value }.collect { it.key }
+def hasReleaseSigning = missingReleaseSigning.isEmpty()
+if (releaseBuildRequested && !hasReleaseSigning) {
+    throw new GradleException(
+            "Release signing requires all environment variables or Gradle properties: " +
+                    "IM_MOBILE_RELEASE_STORE_FILE, IM_MOBILE_RELEASE_STORE_PASSWORD, IM_MOBILE_RELEASE_KEY_ALIAS, IM_MOBILE_RELEASE_KEY_PASSWORD. " +
+                    "Missing: ${missingReleaseSigning.join(', ')}"
+    )
+}
+if (hasReleaseSigning && !file(releaseSigning.IM_MOBILE_RELEASE_STORE_FILE).exists()) {
+    throw new GradleException("Release keystore file does not exist: ${releaseSigning.IM_MOBILE_RELEASE_STORE_FILE}")
+}
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -151,10 +182,10 @@ android {
         }
         release {
             if (hasReleaseSigning) {
-                storeFile file(releaseStoreFilePath)
-                storePassword propOrEnv("IM_MOBILE_RELEASE_STORE_PASSWORD", "IM_MOBILE_RELEASE_STORE_PASSWORD", "")
-                keyAlias propOrEnv("IM_MOBILE_RELEASE_KEY_ALIAS", "IM_MOBILE_RELEASE_KEY_ALIAS", "")
-                keyPassword propOrEnv("IM_MOBILE_RELEASE_KEY_PASSWORD", "IM_MOBILE_RELEASE_KEY_PASSWORD", "")
+                storeFile file(releaseSigning.IM_MOBILE_RELEASE_STORE_FILE)
+                storePassword releaseSigning.IM_MOBILE_RELEASE_STORE_PASSWORD
+                keyAlias releaseSigning.IM_MOBILE_RELEASE_KEY_ALIAS
+                keyPassword releaseSigning.IM_MOBILE_RELEASE_KEY_PASSWORD
             }
         }
     }

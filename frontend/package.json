@@ -19,6 +19,8 @@
     "web:lint:check": "npm run lint:check --workspace=@im/web",
     "mobile:start": "npm run start --workspace=@im/mobile --",
     "mobile:android": "npm run android --workspace=@im/mobile --",
+    "mobile:android:release:apk": "npm run android:release:apk --workspace=@im/mobile --",
+    "mobile:android:release:aab": "npm run android:release:aab --workspace=@im/mobile --",
     "mobile:reverse": "npm run reverse --workspace=@im/mobile",
     "mobile:ios": "npm run ios --workspace=@im/mobile --",
     "mobile:typecheck": "npm run typecheck --workspace=@im/mobile",
