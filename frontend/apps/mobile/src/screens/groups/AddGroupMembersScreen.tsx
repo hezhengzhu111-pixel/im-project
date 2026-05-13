@@ -17,11 +17,11 @@ export function AddGroupMembersScreen() {
       <PrimaryButton
         label="Add"
         disabled={session?.type !== 'group'}
-        onPress={() =>
+        onPress={() => {
           void addMembers(session?.targetId || '', memberIds.split(',').map((item) => item.trim()).filter(Boolean)).then(() =>
             Alert.alert('Members added'),
-          )
-        }
+          );
+        }}
       />
     </Screen>
   );

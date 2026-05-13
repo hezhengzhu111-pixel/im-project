@@ -24,7 +24,11 @@ export function GroupsScreen() {
         data={groups}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <Pressable onPress={() => void openGroupSession(item).then(() => navigation.navigate('ChatStack', { screen: 'ChatScreen' }))}>
+          <Pressable
+            onPress={() => {
+              void openGroupSession(item).then(() => navigation.navigate('ChatStack', { screen: 'ChatScreen' }));
+            }}
+          >
             <Text>{item.groupName || item.name || item.id} ({item.memberCount || 0})</Text>
           </Pressable>
         )}

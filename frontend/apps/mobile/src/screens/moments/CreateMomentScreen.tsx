@@ -14,8 +14,18 @@ export function CreateMomentScreen() {
   return (
     <Screen title="Create Moment">
       <TextField label="Content" value={content} multiline onChangeText={setContent} />
-      <PrimaryButton label={`Pick image (${files.length})`} onPress={() => void mediaService.pickImage().then((file) => file && setFiles([...files, file]))} />
-      <PrimaryButton label="Publish" onPress={() => void createPost(content, files).then(() => Alert.alert('Published'))} />
+      <PrimaryButton
+        label={`Pick image (${files.length})`}
+        onPress={() => {
+          void mediaService.pickImage().then((file) => file && setFiles([...files, file]));
+        }}
+      />
+      <PrimaryButton
+        label="Publish"
+        onPress={() => {
+          void createPost(content, files).then(() => Alert.alert('Published'));
+        }}
+      />
     </Screen>
   );
 }

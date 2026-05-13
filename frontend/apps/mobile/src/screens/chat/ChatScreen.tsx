@@ -72,7 +72,9 @@ export function ChatScreen() {
             <MessageBubble
               message={item}
               mine={item.senderId === currentUser?.id}
-              onRetry={() => void retryMessage(item.id)}
+              onRetry={() => {
+                void retryMessage(item.id);
+              }}
               onLongPress={() => Alert.alert('Message', item.content || item.mediaName || item.messageType)}
             />
           )}

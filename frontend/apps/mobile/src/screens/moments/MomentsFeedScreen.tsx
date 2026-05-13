@@ -18,7 +18,15 @@ export function MomentsFeedScreen() {
   }, [loadFeed]);
 
   return (
-    <Screen title="Moments" scroll={false} refreshing={loading} onRefresh={() => void loadFeed(true)} right={<PrimaryButton label="Post" onPress={() => navigation.navigate('CreateMomentScreen')} />}>
+    <Screen
+      title="Moments"
+      scroll={false}
+      refreshing={loading}
+      onRefresh={() => {
+        void loadFeed(true);
+      }}
+      right={<PrimaryButton label="Post" onPress={() => navigation.navigate('CreateMomentScreen')} />}
+    >
       {feed.length === 0 ? <EmptyState title="No moments" /> : null}
       <FlatList
         data={feed}
@@ -26,7 +34,11 @@ export function MomentsFeedScreen() {
         renderItem={({ item }) => (
           <Pressable onPress={() => navigation.navigate('MomentDetailScreen')}>
             <Text>{item.post.content}</Text>
-            <Pressable onPress={() => void toggleLike(item.post.id)}>
+            <Pressable
+              onPress={() => {
+                void toggleLike(item.post.id);
+              }}
+            >
               <Text>{item.isLiked ? 'Unlike' : 'Like'} {item.likeCount || 0}</Text>
             </Pressable>
           </Pressable>

@@ -22,7 +22,12 @@ export function ProfileScreen() {
       {hasPermission('log:read') ? (
         <Pressable onPress={() => navigation.navigate('LogMonitorScreen')}><Text>Admin logs</Text></Pressable>
       ) : null}
-      <PrimaryButton label="Logout" onPress={() => void logout()} />
+      <PrimaryButton
+        label="Logout"
+        onPress={() => {
+          void logout();
+        }}
+      />
     </Screen>
   );
 }

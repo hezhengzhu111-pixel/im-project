@@ -18,8 +18,18 @@ export function MomentDetailScreen() {
     <Screen title="Moment">
       <Text>{post.post.content}</Text>
       <TextField label="Comment" value={comment} onChangeText={setComment} />
-      <PrimaryButton label="Comment" onPress={() => void createComment(post.post.id, comment).then(() => setComment(''))} />
-      <PrimaryButton label="Delete moment" onPress={() => void deletePost(post.post.id).then(() => Alert.alert('Deleted'))} />
+      <PrimaryButton
+        label="Comment"
+        onPress={() => {
+          void createComment(post.post.id, comment).then(() => setComment(''));
+        }}
+      />
+      <PrimaryButton
+        label="Delete moment"
+        onPress={() => {
+          void deletePost(post.post.id).then(() => Alert.alert('Deleted'));
+        }}
+      />
     </Screen>
   );
 }

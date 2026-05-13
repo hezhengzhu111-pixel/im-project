@@ -31,12 +31,17 @@ export function EditProfileScreen() {
       <TextField label="Email" value={email} onChangeText={setEmail} />
       <TextField label="Phone" value={phone} onChangeText={setPhone} />
       <TextField label="Signature" value={signature} onChangeText={setSignature} />
-      <PrimaryButton label="Upload avatar" onPress={() => void pickAvatar()} />
+      <PrimaryButton
+        label="Upload avatar"
+        onPress={() => {
+          void pickAvatar();
+        }}
+      />
       <PrimaryButton
         label="Save"
-        onPress={() =>
-          void updateProfile({ nickname, email, phone, signature, avatar }).then(() => Alert.alert('Saved'))
-        }
+        onPress={() => {
+          void updateProfile({ nickname, email, phone, signature, avatar }).then(() => Alert.alert('Saved'));
+        }}
       />
     </Screen>
   );

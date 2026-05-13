@@ -16,12 +16,21 @@ export function AddFriendScreen() {
     <Screen title="Add Friend">
       <TextField label="Keyword" value={keyword} onChangeText={setKeyword} />
       <TextField label="Message" value={message} onChangeText={setMessage} />
-      <PrimaryButton label="Search" onPress={() => void searchUsers(keyword)} />
+      <PrimaryButton
+        label="Search"
+        onPress={() => {
+          void searchUsers(keyword);
+        }}
+      />
       <FlatList
         data={results}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <Pressable onPress={() => void addFriend(item.id, message)}>
+          <Pressable
+            onPress={() => {
+              void addFriend(item.id, message);
+            }}
+          >
             <Text>{item.nickname || item.username || item.id} - Add</Text>
           </Pressable>
         )}
