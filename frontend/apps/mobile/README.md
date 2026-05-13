@@ -17,12 +17,15 @@ Run from `frontend/`:
 ```bash
 npm install
 npm run mobile:start
+npm run mobile:reverse
 npm run mobile:android
 npm run mobile:typecheck
 npm run mobile:test
 npm run mobile:lint
 npm run mobile:clean
 ```
+
+Keep `mobile:start` running in its own terminal. `mobile:android` does not start Metro; this avoids the React Native CLI port prompt when Metro is already listening on 8081. The Android script discovers the SDK from `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or `apps/mobile/android/local.properties` and injects `platform-tools` into PATH for `adb`.
 
 ## Runtime Config
 

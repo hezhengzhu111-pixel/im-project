@@ -10,6 +10,7 @@ import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
 import { maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
 import { displaySystemNotification } from '@/services/notification/notificationService';
 import { authService } from '@/services/auth/authService';
+import { fileService } from '@/services/file/fileService';
 import { messageService } from '@/services/chat/messageService';
 import { userService } from '@/services/user/userService';
 import { useAuthStore } from '@/stores/authStore';
@@ -180,6 +181,48 @@ describe('mobile core', () => {
     await useMessageStore.getState().sendText(session, 'hello');
     const failed = useMessageStore.getState().messagesBySession[session.id].some((item) => item.status === 'FAILED');
     expect(failed).toBe(true);
+  });
+
+  test('media retry uploads once through persisted upload task before sending', async () => {
+    const uploadSpy = jest
+      .spyOn(fileService, 'upload')
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({
+        code: 200,
+        message: 'ok',
+        data: { url: 'https://cdn.example/a.png', fileName: 'a.png', size: 10 },
+      });
+    const sendSpy = jest.spyOn(messageService, 'sendPrivate').mockResolvedValue({
+      code: 200,
+      message: 'ok',
+      data: {
+        ...message('server_media'),
+        messageType: 'IMAGE',
+        mediaUrl: 'https://cdn.example/a.png',
+      },
+    });
+
+    await useMessageStore.getState().sendMedia(
+      session,
+      { uri: 'file:///tmp/a.png', name: 'a.png', type: 'image/png', size: 10 },
+      'IMAGE',
+    );
+
+    expect(sendSpy).not.toHaveBeenCalled();
+    const local = useMessageStore
+      .getState()
+      .messagesBySession[session.id].find((item) => item.messageType === 'IMAGE');
+    expect(local?.status).toBe('FAILED');
+    const task = uploadTaskRepository.findByLocalMessageId(local?.id || '');
+    expect(task?.status).toBe('failed');
+
+    const pending = pendingMessageRepository.listReady(Date.now() + 120_000)[0];
+    pendingMessageRepository.update({ ...pending, status: 'pending', nextRetryAt: Date.now() - 1 });
+    await useMessageStore.getState().retryPending();
+
+    expect(uploadSpy).toHaveBeenCalledTimes(2);
+    expect(sendSpy).toHaveBeenCalledWith(expect.objectContaining({ mediaUrl: 'https://cdn.example/a.png' }));
+    expect(uploadTaskRepository.findByLocalMessageId(local?.id || '')?.status).toBe('uploaded');
   });
 
   test('websocket message dispatch writes normalized message', async () => {

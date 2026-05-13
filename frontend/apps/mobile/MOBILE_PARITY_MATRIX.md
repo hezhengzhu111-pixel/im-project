@@ -47,17 +47,17 @@ Status values: `DONE`, `PARTIAL`, `BACKEND_REQUIRED`, `DEFERRED`, `BLOCKED_BY_SC
 | 41 | 私聊 | `pages/Chat.vue` | `messageService.sendPrivate` | `ChatScreen` | DONE | 是 | 是 | 否 | `mobile:test` | optimistic + pending queue |
 | 42 | 群聊 | `pages/Chat.vue` | `messageService.sendGroup` | `ChatScreen` | DONE | 是 | 是 | 否 | typecheck | optimistic + pending queue |
 | 43 | 文本消息发送 | `pages/Chat.vue` | `message-send-queue.ts` | `messageStore.sendText` | DONE | 是 | 是 | 否 | `mobile:test` | local pending first |
-| 44 | 图片消息发送 | `pages/Chat.vue` | `fileService`, `messageService` | `mediaService`, `uploadService` | DONE | 是 | 是 | 相机/媒体 | typecheck | picker + upload task |
-| 45 | 文件消息发送 | `pages/Chat.vue` | `fileService`, `download.service.ts` | `mediaService.pickDocument`, `uploadService` | DONE | 是 | 是 | 文件 | typecheck | 使用 document picker |
+| 44 | 图片消息发送 | `pages/Chat.vue` | `fileService`, `messageService` | `mediaService`, `uploadService` | DONE | 是 | 是 | 相机/媒体 | `mobile:test` | picker + stable upload task；重试先上传再发送 |
+| 45 | 文件消息发送 | `pages/Chat.vue` | `fileService`, `download.service.ts` | `mediaService.pickDocument`, `uploadService` | DONE | 是 | 是 | 文件 | `mobile:test` | document picker + stable upload task；不把本地 URI 当远端文件发送 |
 | 46 | 视频消息展示 / 播放 | `pages/Chat.vue` | message media renderer | `MessageBubble`, `react-native-video` | PARTIAL | 是 | 否 | 媒体 | typecheck | 播放组件接入；发送能力以后端/真实 Web 入口为准 |
 | 47 | 语音消息录制 | `pages/Chat.vue` | recorder/media service | `mediaService`, permissions | DONE | 是 | 否 | 麦克风 | typecheck | 使用成熟录音库替代 deprecated recorder |
-| 48 | 语音消息发送 | `pages/Chat.vue` | `fileService`, `messageService` | `messageStore.sendMedia` | DONE | 是 | 是 | 麦克风 | typecheck | 先上传再发消息 |
+| 48 | 语音消息发送 | `pages/Chat.vue` | `fileService`, `messageService` | `messageStore.sendMedia` | DONE | 是 | 是 | 麦克风 | `mobile:test` | 复用上传任务，上传成功后才发送消息 |
 | 49 | 语音消息播放 | `pages/Chat.vue` | audio renderer | `mediaService.playAudio` | DONE | 是 | 否 | 否 | typecheck | 切换时可停止播放 |
 | 50 | 消息分页加载 | `stores/message.ts` | `messageService.getHistory` | `messageStore.loadMessages` | DONE | 是 | 否 | 否 | typecheck | SQLite + service history |
 | 51 | 历史消息加载 | `stores/message.ts` | `messageRepo`, `messageService` | `ChatScreen` | DONE | 是 | 否 | 否 | typecheck | 下拉加载历史 |
 | 52 | 消息本地缓存 | `utils/messageRepo.ts` | `messageRepo` | `messageRepository` | DONE | 是 | 否 | 否 | `mobile:test` | SQLite with dedupe indexes |
 | 53 | 离线发送队列 | `message-send-queue.ts` | send queue module | `pendingMessageRepository` | DONE | 是 | 否 | 否 | `mobile:test` | 重启后保留 pending |
-| 54 | 发送失败重试 | `message-retry.ts` | retry module | `messageStore.retryPending` | DONE | 是 | 是 | 否 | `mobile:test` | 最大次数 + 退避 |
+| 54 | 发送失败重试 | `message-retry.ts` | retry module | `messageStore.retryPending` | DONE | 是 | 是 | 否 | `mobile:test` | 最大次数 + 退避；媒体重试复用同一 upload task |
 | 55 | 消息发送状态 | `stores/message.ts` | message store | `MessageBubble` | DONE | 是 | 否 | 否 | `mobile:test` | SENDING/SENT/FAILED |
 | 56 | 已读回执 | `modules/message-read.ts` | `messageService.markRead` | `messageStore.markRead` | PARTIAL | 是 | 是 | 否 | typecheck | 接口和 WS dispatch 接入，真实服务端语义待设备验证 |
 | 57 | 群消息已读详情 | `modules/message-read.ts` | `messageService.getGroupReadDetail` | `GroupReadDetailScreen` | PARTIAL | 是 | 否 | 否 | typecheck | 页面/服务接入，后端字段按 Web |
@@ -99,7 +99,7 @@ Status values: `DONE`, `PARTIAL`, `BACKEND_REQUIRED`, `DEFERRED`, `BLOCKED_BY_SC
 | 92 | 本地存储 | `utils/messageRepo.ts`, browser storage | storage ports | `kvStorage`, repositories | DONE | 是 | 否 | 否 | `mobile:test` | MMKV + SQLite |
 | 93 | 敏感存储 | browser cookie/session | `auth-session-adapter.ts` | `secureStorage` | DONE | 是 | 否 | 否 | `mobile:test` | Keychain + Cookie Manager |
 | 94 | 消息数据库 | `utils/messageRepo.ts` | message repo | `messageDatabase`, repos | DONE | 是 | 否 | 否 | `mobile:test` | schema version + migration |
-| 95 | 上传任务队列 | Web upload service | `fileService` | `uploadTaskRepository`, `uploadService` | DONE | 是 | 否 | 文件/媒体/麦克风 | `mobile:test` | 上传状态/进度/重试结构 |
+| 95 | 上传任务队列 | Web upload service | `fileService` | `uploadTaskRepository`, `uploadService` | DONE | 是 | 否 | 文件/媒体/麦克风 | `mobile:test` | SQLite 持久化上传状态/进度/重试；pending payload 引用 `uploadTaskId` |
 | 96 | E2EE 安全降级 | `features/e2ee/*` | Web E2EE modules | `e2ee/*`, `ChatScreen` | BLOCKED_BY_SCOPE | 是 | 否 | 否 | `mobile:test` | E2EE 实现本轮排除；遮罩和禁发已实现 |
 | 96.1 | E2EE 协商 | `features/e2ee/*` | Web E2EE manager | none | DEFERRED | 是 | 否 | 否 | 文档审计 | 不实现协商，只记录 WS 事件 |
 | 96.2 | E2EE 加密发送 | `features/e2ee/*` | `sendPrivateEncrypted` | none | DEFERRED | 是 | 否 | 否 | `mobile:test` | 不发送 `encrypted=true`，不调用 encrypted send |

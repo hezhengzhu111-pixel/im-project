@@ -11,6 +11,13 @@ import { useSessionStore } from './sessionStore';
 import type { ChatSession, MessageType, MobileMessage, PendingMessage } from '@/types/models';
 import type { MobileFile } from '@/services/file/fileService';
 
+interface PendingSendPayload {
+  sendType: 'private' | 'group';
+  data: SendMessagePayload;
+  encrypted?: boolean;
+  uploadTaskId?: string;
+}
+
 interface MessageState {
   messagesBySession: Record<string, MobileMessage[]>;
   loading: boolean;
@@ -90,13 +97,18 @@ const payloadFor = (session: ChatSession, message: MobileMessage): SendMessagePa
   extra: message.extra,
 });
 
-const enqueuePending = (session: ChatSession, message: MobileMessage, payload: SendMessagePayload) => {
+const enqueuePending = (
+  session: ChatSession,
+  message: MobileMessage,
+  payload: SendMessagePayload,
+  uploadTaskId?: string,
+) => {
   const now = Date.now();
   const pending: PendingMessage = {
     localId: message.id,
     conversationId: session.id,
     sendType: session.type,
-    payloadJson: JSON.stringify({ sendType: session.type, data: payload }),
+    payloadJson: JSON.stringify({ sendType: session.type, data: payload, uploadTaskId }),
     status: 'pending',
     retryCount: 0,
     createdAt: now,
@@ -166,19 +178,12 @@ export const useMessageStore = create<MessageState>((set, get) => ({
       mediaUrl: file.uri,
     });
     get().addMessage(message, session.id);
-    enqueuePending(session, message, payloadFor(session, message));
-    try {
-      const uploaded = await uploadService.uploadFile(file, type, {
-        conversationId: session.id,
-        localMessageId: message.id,
-      });
-      const next = { ...message, mediaUrl: uploaded.url };
-      get().addMessage(next, session.id);
-      enqueuePending(session, next, payloadFor(session, next));
-      await get().retryMessage(next.id);
-    } catch {
-      get().addMessage({ ...message, status: 'FAILED' }, session.id);
-    }
+    const uploadTask = uploadService.createTask(file, type, {
+      conversationId: session.id,
+      localMessageId: message.id,
+    });
+    enqueuePending(session, message, payloadFor(session, message), uploadTask.taskId);
+    await get().retryMessage(message.id);
   },
 
   async retryPending() {
@@ -193,15 +198,46 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     if (!pending) {
       return;
     }
-    const payload = JSON.parse(pending.payloadJson) as { sendType: 'private' | 'group'; data: SendMessagePayload; encrypted?: boolean };
+    const payload = JSON.parse(pending.payloadJson) as PendingSendPayload;
     if (blockEncryptedPendingPayload(payload)) {
       pendingMessageRepository.update({ ...pending, status: 'blocked', lastError: 'E2EE deferred' });
       return;
     }
     try {
+      const data = { ...payload.data };
+      if (payload.uploadTaskId) {
+        const uploaded = await uploadService.uploadExistingTask(payload.uploadTaskId);
+        data.mediaUrl = uploaded.url;
+        data.thumbnailUrl = uploaded.thumbnailUrl || data.thumbnailUrl;
+        data.mediaName = uploaded.fileName || data.mediaName;
+        data.mediaSize = uploaded.size || data.mediaSize;
+        pendingMessageRepository.update({
+          ...pending,
+          payloadJson: JSON.stringify({ ...payload, data }),
+          status: 'sending',
+        });
+        const list = get().messagesBySession[pending.conversationId] || [];
+        set({
+          messagesBySession: {
+            ...get().messagesBySession,
+            [pending.conversationId]: list.map((item) =>
+              item.id === localId
+                ? {
+                    ...item,
+                    mediaUrl: uploaded.url,
+                    thumbnailUrl: uploaded.thumbnailUrl || item.thumbnailUrl,
+                    mediaName: uploaded.fileName || item.mediaName,
+                    mediaSize: uploaded.size || item.mediaSize,
+                    status: 'SENDING',
+                  }
+                : item,
+            ),
+          },
+        });
+      }
       const response = payload.sendType === 'group'
-        ? await messageService.sendGroup(payload.data)
-        : await messageService.sendPrivate(payload.data);
+        ? await messageService.sendGroup(data)
+        : await messageService.sendPrivate(data);
       get().addMessage({ ...response.data, status: 'SENT' }, pending.conversationId);
       pendingMessageRepository.remove(localId);
     } catch (error) {
