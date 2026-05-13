@@ -11,15 +11,18 @@ import type { ApiResponse } from '@/types/models';
 let accessTokenProvider: () => string = () => '';
 let onAuthInvalid: (generation: number) => void = () => {};
 let sessionGenerationProvider: () => number = () => 0;
+let onSessionRefreshed: () => void = () => {};
 
 export const registerAuthHooks = (hooks: {
   getAccessToken: () => string;
   getSessionGeneration: () => number;
   onAuthInvalid: (generation: number) => void;
+  onSessionRefreshed?: () => void;
 }) => {
   accessTokenProvider = hooks.getAccessToken;
   sessionGenerationProvider = hooks.getSessionGeneration;
   onAuthInvalid = hooks.onAuthInvalid;
+  onSessionRefreshed = hooks.onSessionRefreshed || (() => {});
 };
 
 export const apiClient = axios.create({
@@ -104,11 +107,11 @@ apiClient.interceptors.response.use(
     config._retry = true;
     const result = await refreshCoordinator.refresh(createTraceId());
     if (result.status !== 'success') {
-      if (result.status === 'authInvalid') {
-        onAuthInvalid(generation);
-      }
+      onAuthInvalid(generation);
       return Promise.reject(error);
     }
+    onSessionRefreshed();
+    config.headers.delete('Authorization');
     return apiClient.request(config);
   },
 );

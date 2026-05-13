@@ -77,4 +77,18 @@ export const kvStorage = {
       STORAGE_KEYS.lastSyncAt,
     ].forEach((key) => this.remove(key));
   },
+
+  clearSessionScope(options?: { preserveFcmToken?: boolean }): void {
+    const preserveFcmToken = options?.preserveFcmToken !== false;
+    [
+      STORAGE_KEYS.userSnapshot,
+      STORAGE_KEYS.currentSessionId,
+      STORAGE_KEYS.drafts,
+      STORAGE_KEYS.wsCache,
+      STORAGE_KEYS.lastSyncAt,
+    ].forEach((key) => this.remove(key));
+    if (!preserveFcmToken) {
+      this.remove(STORAGE_KEYS.fcmToken);
+    }
+  },
 };
