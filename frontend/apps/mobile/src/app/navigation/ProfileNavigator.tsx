@@ -11,6 +11,7 @@ import { ThemeSettingsScreen } from '@/screens/settings/ThemeSettingsScreen';
 import { StorageSettingsScreen } from '@/screens/settings/StorageSettingsScreen';
 import { AiSettingsScreen } from '@/screens/settings/AiSettingsScreen';
 import { AboutScreen } from '@/screens/settings/AboutScreen';
+import { DebugDiagnosticsScreen } from '@/screens/settings/DebugDiagnosticsScreen';
 import { LogMonitorScreen } from '@/screens/logs/LogMonitorScreen';
 
 export type ProfileStackParamList = {
@@ -25,6 +26,7 @@ export type ProfileStackParamList = {
   StorageSettingsScreen: undefined;
   AiSettingsScreen: undefined;
   AboutScreen: undefined;
+  DebugDiagnosticsScreen: undefined;
   LogMonitorScreen: undefined;
 };
 
@@ -44,6 +46,7 @@ export function ProfileNavigator() {
       <Stack.Screen name="StorageSettingsScreen" component={StorageSettingsScreen} />
       <Stack.Screen name="AiSettingsScreen" component={AiSettingsScreen} />
       <Stack.Screen name="AboutScreen" component={AboutScreen} />
+      <Stack.Screen name="DebugDiagnosticsScreen" component={DebugDiagnosticsScreen} />
       <Stack.Screen name="LogMonitorScreen" component={LogMonitorScreen} />
     </Stack.Navigator>
   );
