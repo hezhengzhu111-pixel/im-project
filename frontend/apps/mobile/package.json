@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "android": "node scripts/run-android.cjs",
+    "android:release:apk": "node scripts/android-release.cjs apk",
+    "android:release:aab": "node scripts/android-release.cjs aab",
     "ios": "react-native run-ios",
     "reverse": "node scripts/adb-reverse.cjs",
     "typecheck": "tsc --noEmit",
