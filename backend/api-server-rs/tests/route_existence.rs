@@ -85,6 +85,46 @@ async fn test_route_ai_settings_exists() {
 }
 
 #[tokio::test]
+async fn test_route_push_register_exists() {
+    let app = api_server_rs::web::create_test_app().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/push/devices/register")
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_ne!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "route /api/push/devices/register should exist"
+    );
+}
+
+#[tokio::test]
+async fn test_route_push_settings_exists() {
+    let app = api_server_rs::web::create_test_app().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/push/settings")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_ne!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "route /api/push/settings should exist"
+    );
+}
+
+#[tokio::test]
 async fn test_route_health_exists() {
     let app = api_server_rs::web::create_test_app().await;
     let response = app
