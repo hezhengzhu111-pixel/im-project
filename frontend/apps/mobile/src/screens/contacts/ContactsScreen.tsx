@@ -33,13 +33,13 @@ export function ContactsScreen() {
         keyExtractor={(item) => item.friendId}
         renderItem={({ item }) => (
           <Pressable
-            onPress={() =>
+            onPress={() => {
               void openPrivateSession({
                 targetId: item.friendId,
                 targetName: item.remark || item.nickname || item.username || item.friendId,
                 targetAvatar: item.avatar,
-              }).then(() => navigation.navigate('ChatStack', { screen: 'ChatScreen' }))
-            }
+              }).then(() => navigation.navigate('ChatStack', { screen: 'ChatScreen' }));
+            }}
           >
             <Text>{item.remark || item.nickname || item.username || item.friendId} {item.online ? 'online' : ''}</Text>
           </Pressable>

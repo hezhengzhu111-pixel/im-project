@@ -24,8 +24,20 @@ export function FriendRequestsScreen() {
           <View>
             <Text>{item.nickname || item.username || item.fromUserId}</Text>
             <Text>{item.reason}</Text>
-            <Pressable onPress={() => void acceptRequest(item.requestId)}><Text>Accept</Text></Pressable>
-            <Pressable onPress={() => void rejectRequest(item.requestId)}><Text>Reject</Text></Pressable>
+            <Pressable
+              onPress={() => {
+                void acceptRequest(item.requestId);
+              }}
+            >
+              <Text>Accept</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                void rejectRequest(item.requestId);
+              }}
+            >
+              <Text>Reject</Text>
+            </Pressable>
           </View>
         )}
       />

@@ -15,9 +15,9 @@ export function ChangePasswordScreen() {
       <TextField label="New password" value={newPassword} secureTextEntry onChangeText={setNewPassword} />
       <PrimaryButton
         label="Save"
-        onPress={() =>
-          void userService.changePassword({ oldPassword, newPassword }).then(() => Alert.alert('Password changed'))
-        }
+        onPress={() => {
+          void userService.changePassword({ oldPassword, newPassword }).then(() => Alert.alert('Password changed'));
+        }}
       />
     </Screen>
   );

@@ -20,15 +20,20 @@ export function FriendProfileScreen() {
       <Text>{friend.remark}</Text>
       <PrimaryButton
         label="Message"
-        onPress={() =>
+        onPress={() => {
           void openPrivateSession({
             targetId: friend.friendId,
             targetName: friend.remark || friend.nickname || friend.username || friend.friendId,
             targetAvatar: friend.avatar,
-          })
-        }
+          });
+        }}
       />
-      <PrimaryButton label="Delete friend" onPress={() => void deleteFriend(friend.friendId)} />
+      <PrimaryButton
+        label="Delete friend"
+        onPress={() => {
+          void deleteFriend(friend.friendId);
+        }}
+      />
     </Screen>
   );
 }

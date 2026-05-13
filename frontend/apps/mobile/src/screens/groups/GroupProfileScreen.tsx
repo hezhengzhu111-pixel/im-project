@@ -13,7 +13,13 @@ export function GroupProfileScreen() {
     <Screen title="Group Profile">
       <Text>{session?.targetName || 'No group selected'}</Text>
       <Text>{session?.memberCount || 0} members</Text>
-      <PrimaryButton disabled={session?.type !== 'group'} label="Leave group" onPress={() => void leaveGroup(session?.targetId || '')} />
+      <PrimaryButton
+        disabled={session?.type !== 'group'}
+        label="Leave group"
+        onPress={() => {
+          void leaveGroup(session?.targetId || '');
+        }}
+      />
     </Screen>
   );
 }

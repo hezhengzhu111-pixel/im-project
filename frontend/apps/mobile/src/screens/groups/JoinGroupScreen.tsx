@@ -14,12 +14,21 @@ export function JoinGroupScreen() {
   return (
     <Screen title="Join Group">
       <TextField label="Keyword" value={keyword} onChangeText={setKeyword} />
-      <PrimaryButton label="Search" onPress={() => void searchGroups(keyword)} />
+      <PrimaryButton
+        label="Search"
+        onPress={() => {
+          void searchGroups(keyword);
+        }}
+      />
       <FlatList
         data={searchResults}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <Pressable onPress={() => void joinGroup(item.id)}>
+          <Pressable
+            onPress={() => {
+              void joinGroup(item.id);
+            }}
+          >
             <Text>{item.groupName || item.name || item.id} - Join</Text>
           </Pressable>
         )}

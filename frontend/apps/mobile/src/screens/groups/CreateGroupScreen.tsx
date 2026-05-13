@@ -18,13 +18,13 @@ export function CreateGroupScreen() {
       <TextField label="Member IDs, comma separated" value={memberIds} onChangeText={setMemberIds} />
       <PrimaryButton
         label="Create"
-        onPress={() =>
+        onPress={() => {
           void createGroup({
             name,
             description,
             memberIds: memberIds.split(',').map((item) => item.trim()).filter(Boolean),
-          }).then(() => Alert.alert('Group created'))
-        }
+          }).then(() => Alert.alert('Group created'));
+        }}
       />
     </Screen>
   );

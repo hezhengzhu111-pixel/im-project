@@ -8,7 +8,15 @@ export function PrivacySettingsScreen() {
   const updatePrivacySetting = useSettingsStore((state) => state.updatePrivacySetting);
   return (
     <Screen title="Privacy">
-      <View><Text>Read receipts</Text><Switch value={readReceiptEnabled} onValueChange={(v) => void updatePrivacySetting('messageReadReceipt', v)} /></View>
+      <View>
+        <Text>Read receipts</Text>
+        <Switch
+          value={readReceiptEnabled}
+          onValueChange={(v) => {
+            void updatePrivacySetting('messageReadReceipt', v);
+          }}
+        />
+      </View>
     </Screen>
   );
 }

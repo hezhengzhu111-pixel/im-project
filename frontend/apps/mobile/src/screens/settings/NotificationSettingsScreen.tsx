@@ -9,8 +9,24 @@ export function NotificationSettingsScreen() {
   const updateMessageSetting = useSettingsStore((state) => state.updateMessageSetting);
   return (
     <Screen title="Notifications">
-      <View><Text>Notifications</Text><Switch value={notificationEnabled} onValueChange={(v) => void updateMessageSetting('enableNotification', v)} /></View>
-      <View><Text>Sound</Text><Switch value={soundEnabled} onValueChange={(v) => void updateMessageSetting('enableSound', v)} /></View>
+      <View>
+        <Text>Notifications</Text>
+        <Switch
+          value={notificationEnabled}
+          onValueChange={(v) => {
+            void updateMessageSetting('enableNotification', v);
+          }}
+        />
+      </View>
+      <View>
+        <Text>Sound</Text>
+        <Switch
+          value={soundEnabled}
+          onValueChange={(v) => {
+            void updateMessageSetting('enableSound', v);
+          }}
+        />
+      </View>
     </Screen>
   );
 }

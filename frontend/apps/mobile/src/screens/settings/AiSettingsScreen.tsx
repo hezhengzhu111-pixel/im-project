@@ -35,27 +35,42 @@ export function AiSettingsScreen() {
       <Text>Auto reply</Text>
       <Switch
         value={settings.autoReplyEnabled}
-        onValueChange={(value) =>
-          void aiService.updateSettings({ autoReplyEnabled: value }).then((response) => setSettings(response.data))
-        }
+        onValueChange={(value) => {
+          void aiService.updateSettings({ autoReplyEnabled: value }).then((response) => setSettings(response.data));
+        }}
       />
       <TextField
         label="Persona"
         value={settings.autoReplyPersona}
         onChangeText={(value) => setSettings({ ...settings, autoReplyPersona: value })}
       />
-      <PrimaryButton label="Save persona" onPress={() => void aiService.updateSettings(settings).then((r) => setSettings(r.data))} />
+      <PrimaryButton
+        label="Save persona"
+        onPress={() => {
+          void aiService.updateSettings(settings).then((r) => setSettings(r.data));
+        }}
+      />
       <TextField label="Provider" value={provider} onChangeText={setProvider} />
       <TextField label="Key name" value={keyName} onChangeText={setKeyName} />
       <TextField label="API key" value={apiKey} secureTextEntry onChangeText={setApiKey} />
-      <PrimaryButton disabled={!apiKey} label="Add API key" onPress={() => void create()} />
+      <PrimaryButton
+        disabled={!apiKey}
+        label="Add API key"
+        onPress={() => {
+          void create();
+        }}
+      />
       <FlatList
         data={keys}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <Pressable
-            onPress={() => void aiService.testKey(item.id).then((r) => Alert.alert('Key test', r.data.validateStatus))}
-            onLongPress={() => void aiService.deleteKey(item.id).then(load)}
+            onPress={() => {
+              void aiService.testKey(item.id).then((r) => Alert.alert('Key test', r.data.validateStatus));
+            }}
+            onLongPress={() => {
+              void aiService.deleteKey(item.id).then(load);
+            }}
           >
             <Text>{item.keyName || item.provider}: {item.maskedKey} {item.validateStatus}</Text>
           </Pressable>
