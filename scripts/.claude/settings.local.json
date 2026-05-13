@@ -21,7 +21,8 @@
       "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\);const p=JSON.parse\\(d\\);console.log\\('vitest:',p.devDependencies?.vitest||'NOT FOUND'\\)\")",
       "Bash(node -e \"const p=require\\('./apps/web/package.json'\\); console.log\\('vitest:', p.devDependencies?.vitest || 'NOT FOUND'\\)\")",
       "Bash(./apps/web/node_modules/.bin/vitest run *)",
-      "Bash(../../apps/web/node_modules/.bin/vitest run *)"
+      "Bash(../../apps/web/node_modules/.bin/vitest run *)",
+      "Bash(claude *)"
     ]
   }
 }
