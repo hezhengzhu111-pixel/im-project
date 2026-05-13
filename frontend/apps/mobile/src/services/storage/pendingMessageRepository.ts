@@ -51,17 +51,18 @@ export const pendingMessageRepository = {
   },
 
   listReady(now = Date.now()): PendingMessage[] {
+    return this.listAll().filter((item) => ['pending', 'sending'].includes(item.status) && (item.nextRetryAt || 0) <= now);
+  },
+
+  listAll(): PendingMessage[] {
     const rows = messageDatabase.isMemoryFallback()
       ? messageDatabase.memoryList('mobile_pending_messages')
-      : messageDatabase.query(
-          `SELECT * FROM mobile_pending_messages
-           WHERE status IN ('pending', 'sending') AND (nextRetryAt IS NULL OR nextRetryAt <= ?)
-           ORDER BY createdAt ASC`,
-          [now],
-        );
-    return rows
-      .map(normalize)
-      .filter((item) => ['pending', 'sending'].includes(item.status) && (item.nextRetryAt || 0) <= now);
+      : messageDatabase.query('SELECT * FROM mobile_pending_messages ORDER BY createdAt ASC');
+    return rows.map(normalize);
+  },
+
+  countAll(): number {
+    return this.listAll().length;
   },
 
   get(localId: string): PendingMessage | undefined {

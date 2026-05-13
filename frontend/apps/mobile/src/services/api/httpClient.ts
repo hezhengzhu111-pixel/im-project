@@ -4,6 +4,7 @@ import { AUTH_ENDPOINTS } from '@im/shared-api-contract';
 import { createRefreshCoordinator, shouldSkipRefreshEndpoint } from '@im/shared-auth-core';
 import { createTraceId } from '@im/shared-utils';
 import { APP_CONFIG, STORAGE_KEYS } from '@/constants/config';
+import { debugTelemetry } from '@/services/debug/debugTelemetry';
 import { secureStorage } from '@/services/storage/secureStorage';
 import { logger } from '@/utils/logger';
 import type { ApiResponse } from '@/types/models';
@@ -68,6 +69,9 @@ apiClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) =>
 });
 
 const is401 = (response?: AxiosResponse | undefined) => response?.status === 401 || response?.data?.code === 401;
+const captureApiError = (input: { message: string; status?: number; url?: string }) => {
+  debugTelemetry.recordApiError(input);
+};
 
 apiClient.interceptors.response.use(
   (response: AxiosResponse): AxiosResponse => {
@@ -79,8 +83,18 @@ apiClient.interceptors.response.use(
         return response;
       }
       if (apiData.code === 401 && !shouldSkipRefreshEndpoint(response.config.url || '')) {
+        captureApiError({
+          message: apiData.message || 'Unauthorized',
+          status: 401,
+          url: response.config.url,
+        });
         throw new AxiosError(apiData.message, 'ERR_BAD_RESPONSE', response.config, response.request, response);
       }
+      captureApiError({
+        message: apiData.message || 'Request failed',
+        status: typeof apiData.code === 'number' ? apiData.code : response.status,
+        url: response.config.url,
+      });
       throw new Error(apiData.message || 'Request failed');
     }
     response.data = {
@@ -94,6 +108,11 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const config = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
     if (!config || config._retry || shouldSkipRefreshEndpoint(config.url || '') || !is401(error.response)) {
+      captureApiError({
+        message: error.message || 'Request failed',
+        status: error.response?.status,
+        url: config?.url,
+      });
       if (error.response?.status && error.response.status >= 500) {
         logger.error('http', 'server request failed', {
           status: error.response.status,

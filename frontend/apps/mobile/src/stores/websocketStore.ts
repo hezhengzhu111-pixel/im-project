@@ -11,6 +11,7 @@ import {
 import { createSessionFromMessage, resolveMessageSessionId } from '@/adapters/sessionAdapter';
 import { APP_CONFIG, WS_CONFIG } from '@/constants/config';
 import { authService } from '@/services/auth/authService';
+import { debugTelemetry } from '@/services/debug/debugTelemetry';
 import { displayMessageNotification } from '@/services/notification/notificationService';
 import { appLifecycle } from '@/services/platform/appLifecycle';
 import { networkStatus } from '@/services/platform/networkStatus';
@@ -39,6 +40,15 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let manualDisconnect = false;
 let incomingTail = Promise.resolve();
 let lifecycleBound = false;
+let lastWebsocketEventAt = 0;
+
+const recordWebsocketError = (message: string, detail?: unknown) => {
+  lastWebsocketEventAt = Date.now();
+  debugTelemetry.recordWsError({
+    message: detail instanceof Error ? `${message}: ${detail.message}` : message,
+    url: APP_CONFIG.WS_BASE_URL,
+  });
+};
 
 const stopHeartbeat = () => {
   if (heartbeatTimer) {
@@ -90,6 +100,7 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
       }
       socket = new WebSocket(createTicketedWebSocketUrl(APP_CONFIG.WS_BASE_URL, userId, ticket));
       socket.onopen = () => {
+        lastWebsocketEventAt = Date.now();
         set({ connected: true, connecting: false, reconnectAttempts: 0 });
         startHeartbeat();
       };
@@ -107,12 +118,16 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
       };
       socket.onerror = (error) => {
         logger.warn('websocket', 'connection error', error);
+        recordWebsocketError('connection error', error);
         set({ connected: false, connecting: false });
       };
       socket.onclose = (event) => {
         socket = null;
         stopHeartbeat();
         set({ connected: false, connecting: false });
+        if (!manualDisconnect && event.reason !== DUPLICATE_CONNECTION_REASON && event.code !== 1000) {
+          recordWebsocketError(`closed with code ${event.code}${event.reason ? `: ${event.reason}` : ''}`);
+        }
         if (!manualDisconnect && event.reason !== DUPLICATE_CONNECTION_REASON) {
           const attempts = get().reconnectAttempts + 1;
           if (attempts <= WS_CONFIG.reconnectMaxAttempts) {
@@ -126,6 +141,7 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
       };
     } catch (error) {
       logger.warn('websocket', 'connect failed', error);
+      recordWebsocketError('connect failed', error);
       set({ connecting: false });
     }
   },
@@ -203,3 +219,13 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
     return Boolean(get().onlineUsers[userId]);
   },
 }));
+
+export const getWebsocketDiagnostics = () => {
+  const state = useWebsocketStore.getState();
+  const status = state.connected ? 'connected' : state.connecting ? 'connecting' : 'disconnected';
+  return {
+    status,
+    reconnectAttempts: state.reconnectAttempts,
+    lastEventAt: lastWebsocketEventAt,
+  };
+};

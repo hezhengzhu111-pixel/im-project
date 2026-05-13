@@ -2,6 +2,8 @@ import type { LocalLogEntry } from '@/types/models';
 
 const SENSITIVE_KEY_PARTS = ['token', 'cookie', 'password', 'apikey', 'api_key', 'authorization', 'secret'];
 const entries: LocalLogEntry[] = [];
+const listeners = new Set<(logs: LocalLogEntry[]) => void>();
+const MAX_RECENT_LOGS = 200;
 
 const shouldRedactKey = (key: string) => {
   const normalized = key.replace(/[-_]/g, '').toLowerCase();
@@ -20,7 +22,12 @@ const redactText = (text: string) =>
       '$1=[REDACTED]',
     );
 
-const redact = (value: unknown): string => {
+const emit = () => {
+  const snapshot = entries.slice();
+  listeners.forEach((listener) => listener(snapshot));
+};
+
+export const redactSensitiveValue = (value: unknown): string => {
   if (value == null) {
     return '';
   }
@@ -38,14 +45,15 @@ const push = (level: LocalLogEntry['level'], scope: string, message: string, det
   entries.unshift({
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     level,
-    scope,
-    message,
-    detail: detail == null ? undefined : redact(detail),
+    scope: redactText(scope),
+    message: redactText(message),
+    detail: detail == null ? undefined : redactSensitiveValue(detail),
     createdAt: Date.now(),
   });
-  if (entries.length > 200) {
-    entries.splice(200);
+  if (entries.length > MAX_RECENT_LOGS) {
+    entries.splice(MAX_RECENT_LOGS);
   }
+  emit();
 };
 
 export const logger = {
@@ -61,7 +69,28 @@ export const logger = {
   list(): LocalLogEntry[] {
     return entries.slice();
   },
+  subscribe(listener: (logs: LocalLogEntry[]) => void): () => void {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  },
+  exportText(limit = MAX_RECENT_LOGS): string {
+    return entries
+      .slice(0, limit)
+      .reverse()
+      .map((entry) => {
+        const timestamp = new Date(entry.createdAt).toISOString();
+        const parts = [`[${timestamp}]`, entry.level.toUpperCase(), `${entry.scope}:`, entry.message];
+        if (entry.detail) {
+          parts.push(`| ${entry.detail}`);
+        }
+        return parts.join(' ');
+      })
+      .join('\n');
+  },
   clear() {
     entries.length = 0;
+    emit();
   },
 };
