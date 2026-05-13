@@ -183,10 +183,60 @@ The Android manifest declares:
 Runtime permission behavior:
 
 - Camera is requested before photo capture.
+- Android 13+ mixed media selection requests both image and video read permissions before opening the picker.
 - Media/file permissions are requested before selecting or reading local files when Android requires it.
 - Microphone is requested before recording voice messages.
 - Android 13+ notification permission is requested before system notifications.
 - Denied permissions show a user-facing message path and can open system settings through the platform service.
+
+## Media Validation Notes
+
+### Android 12 and below
+
+- Gallery / video picker: `READ_EXTERNAL_STORAGE`
+- Camera: `CAMERA`
+- Voice record: `RECORD_AUDIO`
+
+### Android 13
+
+- Images: `READ_MEDIA_IMAGES`
+- Videos: `READ_MEDIA_VIDEO`
+- Audio files: `READ_MEDIA_AUDIO`
+- Chat media picker now requests both image and video permissions when opening the mixed picker
+
+### Android 14+
+
+- Uses the Android 13 media permissions plus `READ_MEDIA_VISUAL_USER_SELECTED`
+- If the user only grants selected photos/videos access, the system picker route still works and the app does not bypass permission prompts
+
+### Media Send Chain
+
+- Photo / video:
+  - `+` opens the mixed media picker
+  - `Cam` opens the camera
+- File:
+  - `File` opens the document picker
+  - `content://` documents are copied into app cache when needed before upload
+- Voice:
+  - `Voice` starts recording
+  - `Stop` stops recording and sends a `VOICE` message
+
+### Media Bubble Behavior
+
+- `IMAGE`: inline preview
+- `VIDEO`: inline `react-native-video` player with native controls
+- `VOICE`: play / stop action
+- `FILE`: open-file action
+
+### Upload Reliability
+
+- Media messages insert a local pending message first
+- Upload success updates:
+  - local message `mediaUrl`
+  - local `thumbnailUrl`
+  - local file name / file size
+  - persisted pending payload
+- Retry reuses the same upload task for the same local message instead of creating duplicates
 
 ## FCM Placeholder and Local Degradation
 

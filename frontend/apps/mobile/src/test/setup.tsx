@@ -160,7 +160,21 @@ jest.mock('react-native-permissions', () => ({
   PERMISSIONS: { ANDROID: {}, IOS: {} },
   RESULTS: { GRANTED: 'granted', LIMITED: 'limited' },
   check: jest.fn(() => Promise.resolve('granted')),
+  checkMultiple: jest.fn((permissions: string[]) =>
+    Promise.resolve(
+      permissions.reduce<Record<string, string>>((accumulator, permission) => {
+        accumulator[permission] = 'granted';
+        return accumulator;
+      }, {}),
+    )),
   request: jest.fn(() => Promise.resolve('granted')),
+  requestMultiple: jest.fn((permissions: string[]) =>
+    Promise.resolve(
+      permissions.reduce<Record<string, string>>((accumulator, permission) => {
+        accumulator[permission] = 'granted';
+        return accumulator;
+      }, {}),
+    )),
   requestNotifications: jest.fn(() => Promise.resolve({ status: 'granted' })),
   openSettings: jest.fn(() => Promise.resolve()),
 }));
@@ -174,10 +188,19 @@ jest.mock('react-native-device-info', () => ({
 }));
 
 jest.mock('react-native-blob-util', () => ({
+  fs: {
+    dirs: { CacheDir: '/tmp' },
+    stat: jest.fn((path: string) => Promise.resolve({ path, size: '128' })),
+  },
   android: { actionViewIntent: jest.fn(() => Promise.resolve()) },
 }));
 
-jest.mock('@react-native-documents/picker', () => ({ pick: jest.fn(() => Promise.resolve([])) }));
+jest.mock('@react-native-documents/picker', () => ({
+  pick: jest.fn(() => Promise.resolve([])),
+  keepLocalCopy: jest.fn(() => Promise.resolve([])),
+  types: { allFiles: '*/*' },
+}));
 jest.mock('react-native-image-picker', () => ({ launchCamera: jest.fn(), launchImageLibrary: jest.fn() }));
 jest.mock('react-native-nitro-sound', () => ({ __esModule: true, default: { startRecorder: jest.fn(), stopRecorder: jest.fn(), startPlayer: jest.fn(), stopPlayer: jest.fn() } }));
 jest.mock('@react-native-clipboard/clipboard', () => ({ __esModule: true, default: { setString: jest.fn() } }));
+jest.mock('react-native-video', () => 'Video');

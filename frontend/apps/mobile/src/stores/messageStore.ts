@@ -23,6 +23,21 @@ interface PendingSendPayload {
 
 const inflightPendingRetries = new Set<string>();
 
+const updateLocalMessage = (
+  state: MessageState,
+  conversationId: string,
+  localId: string,
+  updater: (message: MobileMessage) => MobileMessage,
+) => {
+  const list = state.messagesBySession[conversationId] || [];
+  const nextList = list.map((item) => (item.id === localId ? updater(item) : item));
+  const updated = nextList.find((item) => item.id === localId);
+  if (updated) {
+    messageRepository.upsertMessages(conversationId, [updated]);
+  }
+  return { nextList, updated };
+};
+
 interface MessageState {
   messagesBySession: Record<string, MobileMessage[]>;
   loading: boolean;
@@ -168,6 +183,8 @@ export const useMessageStore = create<MessageState>((set, get) => ({
       mediaName: file.name,
       mediaSize: file.size,
       mediaUrl: file.uri,
+      thumbnailUrl: file.thumbnailUrl,
+      duration: file.duration,
     });
     get().addMessage(message, session.id);
     const uploadTask = uploadService.createTask(file, type, {
@@ -221,22 +238,18 @@ export const useMessageStore = create<MessageState>((set, get) => ({
           payloadJson: JSON.stringify({ ...payload, data }),
           status: 'sending',
         });
-        const list = get().messagesBySession[pending.conversationId] || [];
+        const { nextList } = updateLocalMessage(get(), pending.conversationId, localId, (item) => ({
+          ...item,
+          mediaUrl: uploaded.url,
+          thumbnailUrl: uploaded.thumbnailUrl || item.thumbnailUrl,
+          mediaName: uploaded.fileName || item.mediaName,
+          mediaSize: uploaded.size || item.mediaSize,
+          status: 'SENDING',
+        }));
         set({
           messagesBySession: {
             ...get().messagesBySession,
-            [pending.conversationId]: list.map((item) =>
-              item.id === localId
-                ? {
-                    ...item,
-                    mediaUrl: uploaded.url,
-                    thumbnailUrl: uploaded.thumbnailUrl || item.thumbnailUrl,
-                    mediaName: uploaded.fileName || item.mediaName,
-                    mediaSize: uploaded.size || item.mediaSize,
-                    status: 'SENDING',
-                  }
-                : item,
-            ),
+            [pending.conversationId]: nextList,
           },
         });
       }
@@ -263,13 +276,14 @@ export const useMessageStore = create<MessageState>((set, get) => ({
         lastError: error instanceof Error ? error.message : 'send failed',
         nextRetryAt: nextRetryAt(retryCount),
       });
-      const list = get().messagesBySession[pending.conversationId] || [];
+      const { nextList } = updateLocalMessage(get(), pending.conversationId, localId, (item) => ({
+        ...item,
+        status: 'FAILED',
+      }));
       set({
         messagesBySession: {
           ...get().messagesBySession,
-          [pending.conversationId]: list.map((item) =>
-            item.id === localId ? { ...item, status: 'FAILED' } : item,
-          ),
+          [pending.conversationId]: nextList,
         },
       });
     } finally {
