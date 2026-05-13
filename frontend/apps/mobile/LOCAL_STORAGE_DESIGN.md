@@ -168,3 +168,15 @@ Encrypted pending payloads are blocked. Mobile never retries or sends `encrypted
 ## Upload Queue
 
 Upload tasks persist file URI, metadata, progress, retry count, and remote URL. Failed uploads can be retried without creating duplicate local messages or duplicate upload tasks. Message pending payloads reference upload tasks by `uploadTaskId`; retry first completes or reuses the uploaded remote URL, then sends the message payload.
+
+## Notification Event Log
+
+`mobile_notification_events` stores sanitized notification lifecycle events:
+
+- Displayed local notifications.
+- Suppressed notifications when the user disables notifications.
+- FCM foreground/background messages.
+- Notifee and FCM notification-opened events.
+- Initial notification routes used when launching from a notification.
+
+Payload values with sensitive key names such as token, cookie, password, API key, authorization, and secret are redacted before they are written.
