@@ -21,6 +21,8 @@ interface PendingSendPayload {
   uploadTaskId?: string;
 }
 
+const inflightPendingRetries = new Set<string>();
+
 interface MessageState {
   messagesBySession: Record<string, MobileMessage[]>;
   loading: boolean;
@@ -87,6 +89,18 @@ const enqueuePending = (
   payload: SendMessagePayload,
   uploadTaskId?: string,
 ) => {
+  const existingByClientMessageId = payload.clientMessageId
+    ? pendingMessageRepository.findByClientMessageId(payload.clientMessageId)
+    : undefined;
+  if (existingByClientMessageId && existingByClientMessageId.localId !== message.id) {
+    logger.warn('message', 'duplicate pending enqueue blocked', {
+      localId: message.id,
+      existingLocalId: existingByClientMessageId.localId,
+      clientMessageId: payload.clientMessageId,
+      conversationId: session.id,
+    });
+    return;
+  }
   const now = Date.now();
   const pending: PendingMessage = {
     localId: message.id,
@@ -173,15 +187,28 @@ export const useMessageStore = create<MessageState>((set, get) => ({
 
   async retryMessage(localId) {
     const pending = pendingMessageRepository.get(localId);
-    if (!pending) {
+    if (!pending || inflightPendingRetries.has(localId)) {
       return;
     }
+    inflightPendingRetries.add(localId);
     const payload = JSON.parse(pending.payloadJson) as PendingSendPayload;
-    if (blockEncryptedPendingPayload(payload)) {
-      pendingMessageRepository.update({ ...pending, status: 'blocked', lastError: 'E2EE deferred' });
-      return;
-    }
     try {
+      if (blockEncryptedPendingPayload(payload)) {
+        pendingMessageRepository.update({ ...pending, status: 'blocked', lastError: 'E2EE deferred' });
+        return;
+      }
+      const duplicateByClientMessageId = payload.data.clientMessageId
+        ? pendingMessageRepository.findByClientMessageId(payload.data.clientMessageId)
+        : undefined;
+      if (duplicateByClientMessageId && duplicateByClientMessageId.localId !== localId) {
+        pendingMessageRepository.remove(localId);
+        return;
+      }
+      pendingMessageRepository.update({
+        ...pending,
+        status: 'sending',
+        lastError: undefined,
+      });
       const data = { ...payload.data };
       if (payload.uploadTaskId) {
         const uploaded = await uploadService.uploadExistingTask(payload.uploadTaskId);
@@ -223,6 +250,9 @@ export const useMessageStore = create<MessageState>((set, get) => ({
         status: 'SENT',
       };
       get().addMessage(serverMessage, pending.conversationId);
+      if (data.clientMessageId) {
+        pendingMessageRepository.removeByClientMessageId(data.clientMessageId);
+      }
       pendingMessageRepository.remove(localId);
     } catch (error) {
       const retryCount = pending.retryCount + 1;
@@ -242,6 +272,8 @@ export const useMessageStore = create<MessageState>((set, get) => ({
           ),
         },
       });
+    } finally {
+      inflightPendingRetries.delete(localId);
     }
   },
 
