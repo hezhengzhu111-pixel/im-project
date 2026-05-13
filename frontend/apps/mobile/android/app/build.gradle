@@ -65,6 +65,41 @@ def enableProguardInReleaseBuilds = false
 def propOrEnv = { propName, envName, fallbackValue ->
     project.findProperty(propName) ?: System.getenv(envName) ?: fallbackValue
 }
+def quoteBuildConfig = { value ->
+    "\"${String.valueOf(value).replace("\\", "\\\\").replace("\"", "\\\"")}\""
+}
+def validateUrl = { fieldName, value, schemes ->
+    def normalized = String.valueOf(value ?: "").trim()
+    if (!normalized) {
+        return
+    }
+    try {
+        def parsed = new URI(normalized)
+        if (!(parsed.scheme in schemes)) {
+            throw new GradleException("${fieldName} must use one of ${schemes.join(', ')}: ${normalized}")
+        }
+    } catch (Exception exception) {
+        throw new GradleException("Invalid ${fieldName}: ${normalized}", exception)
+    }
+}
+def defaultAppEnv = "dev-emulator"
+def defaultApiBaseUrl = "http://10.0.2.2:8082/api"
+def defaultWsBaseUrl = "ws://10.0.2.2:8082"
+def defaultFileBaseUrl = "http://10.0.2.2:8082"
+def allowedAppEnvs = ["dev-emulator", "dev-device", "sit", "prod", "internal", "debug"] as Set
+def mobileAppEnv = String.valueOf(propOrEnv("IM_MOBILE_APP_ENV", "IM_MOBILE_APP_ENV", defaultAppEnv)).trim()
+if (!mobileAppEnv) {
+    mobileAppEnv = defaultAppEnv
+}
+if (!allowedAppEnvs.contains(mobileAppEnv)) {
+    throw new GradleException("Unsupported IM_MOBILE_APP_ENV=${mobileAppEnv}. Supported values: ${allowedAppEnvs.join(', ')}")
+}
+def mobileApiBaseUrl = String.valueOf(propOrEnv("IM_MOBILE_API_BASE_URL", "IM_MOBILE_API_BASE_URL", defaultApiBaseUrl)).trim()
+def mobileWsBaseUrl = String.valueOf(propOrEnv("IM_MOBILE_WS_BASE_URL", "IM_MOBILE_WS_BASE_URL", defaultWsBaseUrl)).trim()
+def mobileFileBaseUrl = String.valueOf(propOrEnv("IM_MOBILE_FILE_BASE_URL", "IM_MOBILE_FILE_BASE_URL", defaultFileBaseUrl)).trim()
+validateUrl("IM_MOBILE_API_BASE_URL", mobileApiBaseUrl, ["http", "https"])
+validateUrl("IM_MOBILE_WS_BASE_URL", mobileWsBaseUrl, ["ws", "wss"])
+validateUrl("IM_MOBILE_FILE_BASE_URL", mobileFileBaseUrl, ["http", "https"])
 def mobileVersionCode = propOrEnv("IM_MOBILE_VERSION_CODE", "IM_MOBILE_VERSION_CODE", "1").toInteger()
 def mobileVersionName = propOrEnv("IM_MOBILE_VERSION_NAME", "IM_MOBILE_VERSION_NAME", "0.0.1")
 def enableReleaseMinify = propOrEnv("IM_MOBILE_MINIFY_RELEASE", "IM_MOBILE_MINIFY_RELEASE", "false").toBoolean()
@@ -98,6 +133,11 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode mobileVersionCode
         versionName mobileVersionName
+        buildConfigField "String", "IM_MOBILE_APP_ENV", quoteBuildConfig(mobileAppEnv)
+        buildConfigField "String", "IM_MOBILE_API_BASE_URL", quoteBuildConfig(mobileApiBaseUrl)
+        buildConfigField "String", "IM_MOBILE_WS_BASE_URL", quoteBuildConfig(mobileWsBaseUrl)
+        buildConfigField "String", "IM_MOBILE_FILE_BASE_URL", quoteBuildConfig(mobileFileBaseUrl)
+        buildConfigField "boolean", "IM_MOBILE_RELEASE_BUILD", "false"
         manifestPlaceholders = [
             usesCleartextTraffic: "true"
         ]
@@ -129,11 +169,34 @@ android {
             if (hasReleaseSigning) {
                 signingConfig signingConfigs.release
             }
+            buildConfigField "boolean", "IM_MOBILE_RELEASE_BUILD", "true"
             manifestPlaceholders = [
                 usesCleartextTraffic: "false"
             ]
             minifyEnabled enableProguardInReleaseBuilds || enableReleaseMinify
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+}
+
+afterEvaluate {
+    android.applicationVariants.all { variant ->
+        if (variant.buildType.name != "release") {
+            return
+        }
+        variant.preBuildProvider.configure {
+            doFirst {
+                def usesEmulatorFallback = [mobileApiBaseUrl, mobileWsBaseUrl, mobileFileBaseUrl].any { value ->
+                    String.valueOf(value).contains("10.0.2.2")
+                }
+                def allowInternalReleaseFallback = mobileAppEnv in ["internal", "debug"]
+                if (usesEmulatorFallback && !allowInternalReleaseFallback) {
+                    throw new GradleException(
+                        "Release build cannot use dev-emulator fallback URLs. Set IM_MOBILE_API_BASE_URL / IM_MOBILE_WS_BASE_URL / IM_MOBILE_FILE_BASE_URL and use IM_MOBILE_APP_ENV=sit or prod. " +
+                        "Only IM_MOBILE_APP_ENV=internal/debug may explicitly keep 10.0.2.2 for internal builds."
+                    )
+                }
+            }
         }
     }
 }

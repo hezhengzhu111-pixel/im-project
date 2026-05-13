@@ -29,7 +29,29 @@ Keep `mobile:start` running in its own terminal. `mobile:android` does not start
 
 ## Runtime Config
 
-Copy `apps/mobile/.env.example` for local reference and provide these values through the React Native environment or runtime override:
+Mobile now supports four runtime environments:
+
+- `dev-emulator`: default Android Emulator loopback (`10.0.2.2`)
+- `dev-device`: LAN IP for a physical Android device
+- `sit`: SIT gateway
+- `prod`: production placeholder, injected outside the repo
+
+JS config priority is:
+
+1. Runtime injected config (`globalThis.IM_MOBILE_RUNTIME_CONFIG`)
+2. Environment variables / native Android `BuildConfig` injection
+3. Built-in `dev-emulator` fallback
+
+Preferred injection keys:
+
+```bash
+IM_MOBILE_APP_ENV=dev-emulator
+IM_MOBILE_API_BASE_URL=http://10.0.2.2:8082/api
+IM_MOBILE_WS_BASE_URL=ws://10.0.2.2:8082
+IM_MOBILE_FILE_BASE_URL=http://10.0.2.2:8082
+```
+
+Legacy JS-side keys remain supported for local overrides:
 
 ```bash
 API_BASE_URL=http://10.0.2.2:8082/api
@@ -37,7 +59,28 @@ WS_BASE_URL=ws://10.0.2.2:8082
 FILE_BASE_URL=http://10.0.2.2:8082
 ```
 
-Use `10.0.2.2` for Android Emulator. Use the development machine LAN IP for a physical Android device.
+Validation rules:
+
+- `API_BASE_URL` / `FILE_BASE_URL` must use `http://` or `https://`
+- `WS_BASE_URL` must use `ws://` or `wss://`
+- Invalid values are ignored and fall back to the next lower-priority source with a warning
+- Release builds are not allowed to keep the default `10.0.2.2` URLs unless `IM_MOBILE_APP_ENV=internal` or `debug` is explicitly set for an internal-only release
+
+Typical usage:
+
+```bash
+# Android Emulator
+IM_MOBILE_APP_ENV=dev-emulator
+IM_MOBILE_API_BASE_URL=http://10.0.2.2:8082/api
+IM_MOBILE_WS_BASE_URL=ws://10.0.2.2:8082
+IM_MOBILE_FILE_BASE_URL=http://10.0.2.2:8082
+
+# Physical device on LAN
+IM_MOBILE_APP_ENV=dev-device
+IM_MOBILE_API_BASE_URL=http://192.168.x.x:8082/api
+IM_MOBILE_WS_BASE_URL=ws://192.168.x.x:8082
+IM_MOBILE_FILE_BASE_URL=http://192.168.x.x:8082
+```
 
 ## Implemented Client Areas
 
@@ -61,6 +104,7 @@ Use `10.0.2.2` for Android Emulator. Use the development machine LAN IP for a ph
 - `PUSH_BACKEND_CONTRACT.md` defines missing server push-device endpoints.
 - `ANDROID_RUNBOOK.md` describes Android setup, runtime URLs, permissions, FCM placeholders, and common build issues.
 - `MOBILE_ANDROID_FIX_REPORT.md` records Android core fix scope, verification, and remaining release checklist.
+- `ANDROID_ENV_CONFIG_REPORT.md` records the Android environment layering design, validation strategy, and release safeguards.
 
 ## Firebase / FCM Local Development
 
@@ -71,6 +115,17 @@ Do not commit a real `google-services.json`.
 ## Android Release Notes
 
 Debug builds allow cleartext traffic for emulator and LAN backend testing. Release builds default `usesCleartextTraffic=false`, read `IM_MOBILE_VERSION_CODE` / `IM_MOBILE_VERSION_NAME`, and use release signing only when the `IM_MOBILE_RELEASE_*` keystore variables are provided.
+
+Release address injection must be explicit:
+
+```bash
+IM_MOBILE_APP_ENV=prod
+IM_MOBILE_API_BASE_URL=https://example.invalid/api
+IM_MOBILE_WS_BASE_URL=wss://example.invalid
+IM_MOBILE_FILE_BASE_URL=https://example.invalid
+```
+
+The repo intentionally does not commit real production endpoints or secrets.
 
 ## E2EE Degradation
 
