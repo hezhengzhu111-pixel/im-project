@@ -1,16 +1,16 @@
-- [ ] 已确认 `/message/read/:conversationId` 的真实参数语义，并在结论中明确说明来源
-- [ ] Mobile `markRead` 仅做最小范围修复，未引入新业务功能
-- [ ] 未修改 Web 业务逻辑，除非共享契约命名误导且已做最小同步修正
-- [ ] 未修改后端业务逻辑
-- [ ] 未重写 `messageStore`
-- [ ] 未重写 `sessionStore`
-- [ ] 未修改 WebSocket 连接逻辑
-- [ ] 未使用 `any` 绕过类型检查
-- [ ] private session 的 `markRead` 参数测试已覆盖
-- [ ] group session 的 `markRead` 参数测试已覆盖
-- [ ] `markRead` 成功后本地 session unread 清零测试已覆盖
-- [ ] `markRead` 失败不影响页面显示且记录 warning 的测试已覆盖
-- [ ] Android 修复说明文档已更新并解释最终契约语义
-- [ ] 已执行 `npm run mobile:typecheck`
-- [ ] 已执行 `npm run mobile:test`
-- [ ] 已执行 `npm run mobile:lint`
+- [x] 已确认 `/message/read/:conversationId` 的真实参数语义，并在结论中明确说明来源
+- [x] Mobile `markRead` 仅做最小范围修复，未引入新业务功能
+- [x] 未修改 Web 业务逻辑，除非共享契约命名误导且已做最小同步修正
+- [x] 未修改后端业务逻辑
+- [x] 未重写 `messageStore`
+- [x] 未重写 `sessionStore`
+- [x] 未修改 WebSocket 连接逻辑
+- [x] 未使用 `any` 绕过类型检查
+- [x] private session 的 `markRead` 参数测试已覆盖
+- [x] group session 的 `markRead` 参数测试已覆盖
+- [x] `markRead` 成功后本地 session unread 清零测试已覆盖
+- [x] `markRead` 失败不影响页面显示且记录 warning 的测试已覆盖
+- [x] Android 修复说明文档已更新并解释最终契约语义
+- [x] 已执行 `npm run mobile:typecheck`
+- [x] 已执行 `npm run mobile:test`
+- [x] 已执行 `npm run mobile:lint`
