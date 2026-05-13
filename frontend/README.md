@@ -55,6 +55,7 @@ npm run test             # Run all tests across workspaces
 ```bash
 cd frontend
 npm run mobile:start     # Start Metro
+npm run mobile:reverse   # Configure adb reverse tcp:8081 for Android debug
 npm run mobile:android   # Build/install/run Android app
 npm run mobile:typecheck # Type check @im/mobile
 npm run mobile:test      # Run mobile Jest tests
