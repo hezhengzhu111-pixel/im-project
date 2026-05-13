@@ -92,6 +92,10 @@ export function flushPendingNotificationRoute(): void {
   routeFromNotification(pending);
 }
 
+export function clearPendingNotificationRoute(): void {
+  kvStorage.remove(PENDING_NOTIFICATION_ROUTE_KEY);
+}
+
 export async function handleNotificationOpen(
   data?: Record<string, unknown>,
   eventType = 'notification_opened',
