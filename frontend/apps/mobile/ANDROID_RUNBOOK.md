@@ -22,7 +22,7 @@ cd frontend
 npm run mobile:start
 ```
 
-Keep this terminal open. `mobile:android` wraps `react-native run-android --no-packager`, so it installs and launches the app without starting a second Metro process. The wrapper also prepends the Android SDK `platform-tools` path discovered from `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or `apps/mobile/android/local.properties`, so `adb` does not need to be globally configured.
+Keep this terminal open. `mobile:android` wraps `react-native run-android --no-packager`, so it installs and launches the app without starting a second Metro process. The wrapper checks whether Metro is reachable at `127.0.0.1:8081`, prints a clear warning when it is not running, and attempts `adb reverse tcp:8081 tcp:8081` before and after launch for connected devices. It also prepends the Android SDK `platform-tools` path discovered from `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or `apps/mobile/android/local.properties`, so `adb` does not need to be globally configured.
 
 When Metro is running but the app shows `Unable to load script`, configure Android port forwarding:
 
@@ -42,7 +42,7 @@ cd frontend
 npm run mobile:android
 ```
 
-If you restart the emulator or reconnect a physical device, run `npm run mobile:reverse` again before relaunching the app.
+If you restart the emulator or reconnect a physical device, `npm run mobile:android` attempts to restore `adb reverse` automatically. You can still run `npm run mobile:reverse` manually before tapping Reload on an already-open red error screen.
 
 ## Android Emulator API URLs
 

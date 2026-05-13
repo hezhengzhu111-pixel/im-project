@@ -1,4 +1,5 @@
 const fs = require('fs');
+const http = require('http');
 const path = require('path');
 const {spawnSync} = require('child_process');
 
@@ -39,18 +40,131 @@ if (sdkRoot) {
 env[pathKey] = [...extraPath, env[pathKey]].filter(Boolean).join(path.delimiter);
 
 const reactNativeCli = require.resolve('react-native/cli.js', {paths: [projectRoot]});
-const result = spawnSync(
-  process.execPath,
-  [reactNativeCli, 'run-android', '--no-packager', ...process.argv.slice(2)],
-  {
-    cwd: projectRoot,
+const adbName = process.platform === 'win32' ? 'adb.exe' : 'adb';
+const adb = sdkRoot ? path.resolve(sdkRoot, 'platform-tools', adbName) : adbName;
+
+const checkMetro = () =>
+  new Promise((resolve) => {
+    const request = http.get(
+      {
+        host: '127.0.0.1',
+        path: '/status',
+        port: 8081,
+        timeout: 1500,
+      },
+      (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => {
+          body += chunk;
+        });
+        response.on('end', () => {
+          resolve(response.statusCode === 200 && body.includes('packager-status:running'));
+        });
+      },
+    );
+
+    request.on('error', () => resolve(false));
+    request.on('timeout', () => {
+      request.destroy();
+      resolve(false);
+    });
+  });
+
+const warnMetroUnavailable = () => {
+  console.warn(
+    [
+      '[mobile:android] Metro is not reachable at http://127.0.0.1:8081/status.',
+      'Start Metro in another terminal before launching the debug app:',
+      '  npm run mobile:start -- --reset-cache',
+      'Then run:',
+      '  npm run mobile:reverse',
+      'If the red screen is already open, tap Reload after Metro and adb reverse are ready.',
+    ].join('\n'),
+  );
+};
+
+const getConnectedDevices = () => {
+  const result = spawnSync(adb, ['devices'], {
+    encoding: 'utf8',
+    env,
+  });
+  if (result.error) {
+    console.warn(`[mobile:android] Unable to run adb devices: ${result.error.message}`);
+    return [];
+  }
+  if (result.status !== 0) {
+    console.warn('[mobile:android] adb devices returned a non-zero status; skipping automatic adb reverse.');
+    return [];
+  }
+  return result.stdout
+    .split(/\r?\n/)
+    .slice(1)
+    .map((line) => line.trim())
+    .filter((line) => /\sdevice$/.test(line))
+    .map((line) => line.split(/\s+/)[0]);
+};
+
+const configureAdbReverse = (phase) => {
+  if (sdkRoot && !fs.existsSync(adb)) {
+    console.warn(`[mobile:android] adb not found at ${adb}; skipping automatic adb reverse.`);
+    return;
+  }
+
+  const connectedDevices = getConnectedDevices();
+  if (connectedDevices.length === 0) {
+    console.warn(`[mobile:android] No authorized Android device found ${phase}; skipping automatic adb reverse.`);
+    return;
+  }
+  if (connectedDevices.length > 1 && !env.ANDROID_SERIAL) {
+    console.warn(
+      `[mobile:android] Multiple Android devices are connected ${phase}; set ANDROID_SERIAL or run npm run mobile:reverse manually.`,
+    );
+    return;
+  }
+
+  const reverseArgs = env.ANDROID_SERIAL
+    ? ['-s', env.ANDROID_SERIAL, 'reverse', 'tcp:8081', 'tcp:8081']
+    : ['reverse', 'tcp:8081', 'tcp:8081'];
+  const result = spawnSync(adb, reverseArgs, {
     env,
     stdio: 'inherit',
-  },
-);
+  });
+  if (result.error) {
+    console.warn(`[mobile:android] Failed to configure adb reverse ${phase}: ${result.error.message}`);
+    return;
+  }
+  if (result.status !== 0) {
+    console.warn(`[mobile:android] adb reverse failed ${phase}; run npm run mobile:reverse after the device is ready.`);
+  }
+};
 
-if (result.error) {
-  console.error(`Failed to run React Native Android CLI: ${result.error.message}`);
-  process.exit(1);
-}
-process.exit(result.status || 0);
+(async () => {
+  const metroRunning = await checkMetro();
+  if (!metroRunning) {
+    warnMetroUnavailable();
+  }
+
+  configureAdbReverse('before launch');
+
+  const result = spawnSync(
+    process.execPath,
+    [reactNativeCli, 'run-android', '--no-packager', ...process.argv.slice(2)],
+    {
+      cwd: projectRoot,
+      env,
+      stdio: 'inherit',
+    },
+  );
+
+  if (result.error) {
+    console.error(`Failed to run React Native Android CLI: ${result.error.message}`);
+    process.exit(1);
+  }
+
+  if (result.status === 0) {
+    configureAdbReverse('after launch');
+  }
+
+  process.exit(typeof result.status === 'number' ? result.status : 1);
+})();
