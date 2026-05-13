@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { kvStorage } from '@/services/storage/kvStorage';
+import { pushDeviceService } from '@/services/push/pushDeviceService';
 import { userService } from '@/services/user/userService';
 import { STORAGE_KEYS } from '@/constants/config';
 import type { UserSettings } from '@/types/models';
@@ -26,12 +27,14 @@ const defaults: UserSettings = {
   general: { language: 'zh-CN', theme: 'system' },
 };
 
+const cachedPushSettings = pushDeviceService.getCachedSettings();
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   settings: kvStorage.getJson(STORAGE_KEYS.settings, defaults),
   theme: kvStorage.getString('theme', 'system') as SettingsState['theme'],
   locale: kvStorage.getString('locale', 'zh-CN') as SettingsState['locale'],
-  notificationEnabled: kvStorage.getBoolean('notification.enabled', true),
-  soundEnabled: kvStorage.getBoolean('sound.enabled', true),
+  notificationEnabled: cachedPushSettings.enabled,
+  soundEnabled: cachedPushSettings.soundEnabled,
   readReceiptEnabled: kvStorage.getBoolean('readReceipt.enabled', true),
   loading: false,
 
@@ -40,11 +43,25 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       const response = await userService.getSettings();
       const settings = response.data;
+      let notificationEnabled = settings.message.enableNotification !== false;
+      let soundEnabled = settings.message.enableSound !== false;
+      try {
+        const pushSettings = await pushDeviceService.getSettings();
+        notificationEnabled = pushSettings.enabled;
+        soundEnabled = pushSettings.soundEnabled;
+        settings.message = {
+          ...settings.message,
+          enableNotification: pushSettings.enabled,
+          enableSound: pushSettings.soundEnabled,
+        };
+      } catch (error) {
+        pushDeviceService.logOptionalFailure('load push settings', error);
+      }
       kvStorage.setJson(STORAGE_KEYS.settings, settings);
       set({
         settings,
-        notificationEnabled: settings.message.enableNotification !== false,
-        soundEnabled: settings.message.enableSound !== false,
+        notificationEnabled,
+        soundEnabled,
         readReceiptEnabled: settings.privacy.messageReadReceipt !== false,
       });
     } finally {
@@ -54,6 +71,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   async updateMessageSetting(key, value) {
     await userService.updateSettings('message', { [key]: value });
+    if (key === 'enableNotification' || key === 'enableSound') {
+      const patch = key === 'enableNotification' ? { enabled: value } : { soundEnabled: value };
+      await pushDeviceService.updateSettings(patch).catch((error: unknown) => {
+        pushDeviceService.logOptionalFailure('update push settings', error);
+      });
+    }
     const settings = { ...get().settings, message: { ...get().settings.message, [key]: value } };
     kvStorage.setJson(STORAGE_KEYS.settings, settings);
     if (key === 'enableNotification') {

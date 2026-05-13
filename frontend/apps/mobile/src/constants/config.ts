@@ -23,6 +23,7 @@ export const STORAGE_KEYS = {
   cookieMirror: 'im.mobile.cookie-mirror',
   userSnapshot: 'im.mobile.user-snapshot',
   settings: 'im.mobile.settings',
+  pushSettings: 'im.mobile.push-settings',
   currentSessionId: 'im.mobile.current-session-id',
   drafts: 'im.mobile.drafts',
   wsCache: 'im.mobile.ws-cache',

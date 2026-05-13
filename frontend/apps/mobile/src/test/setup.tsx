@@ -182,6 +182,7 @@ jest.mock('react-native-permissions', () => ({
 jest.mock('react-native-device-info', () => ({
   getBrand: jest.fn(() => Promise.resolve('test')),
   getModel: jest.fn(() => Promise.resolve('test')),
+  getVersion: jest.fn(() => '0.0.1-test'),
   getSystemVersion: jest.fn(() => Promise.resolve('1')),
   getUniqueId: jest.fn(() => Promise.resolve('device')),
   isEmulator: jest.fn(() => Promise.resolve(true)),

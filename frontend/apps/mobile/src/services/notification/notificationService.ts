@@ -1,6 +1,7 @@
 import messaging, { type FirebaseMessagingTypes } from '@react-native-firebase/messaging';
 import notifee, { AndroidImportance, EventType } from '@notifee/react-native';
 import { STORAGE_KEYS } from '@/constants/config';
+import { pushDeviceService } from '@/services/push/pushDeviceService';
 import { kvStorage } from '@/services/storage/kvStorage';
 import { initializeStorage } from '@/services/storage/messageDatabase';
 import { notificationEventRepository } from '@/services/storage/notificationEventRepository';
@@ -125,8 +126,7 @@ export async function initializeNotifications(): Promise<void> {
   });
   const firebaseMessaging = getMessaging();
   firebaseMessaging?.onTokenRefresh((token) => {
-    kvStorage.setString(STORAGE_KEYS.fcmToken, token);
-    notificationEventRepository.record('fcm_token_refresh');
+    void handleFcmTokenRefresh(token);
   });
   firebaseMessaging?.onMessage(async (message) => {
     await displaySystemNotification(
@@ -149,6 +149,20 @@ export async function initializeNotifications(): Promise<void> {
     await handleNotificationOpen(messagingInitial.value.data, 'fcm_initial_notification');
   }
   flushPendingNotificationRoute();
+}
+
+export async function handleFcmTokenRefresh(token: string): Promise<void> {
+  const previousToken = kvStorage.getString(STORAGE_KEYS.fcmToken);
+  kvStorage.setString(STORAGE_KEYS.fcmToken, token);
+  notificationEventRepository.record('fcm_token_refresh');
+  if (!token || token === previousToken) {
+    return;
+  }
+  try {
+    await pushDeviceService.updateDeviceToken(token);
+  } catch (error) {
+    pushDeviceService.logOptionalFailure('update device token', error);
+  }
 }
 
 export function registerNotificationBackgroundHandlers(): void {
