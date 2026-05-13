@@ -8,7 +8,8 @@ Implemented on the client:
 - Local notifications for chat messages, friend events, and system events.
 - Notification click routing to chat and friend-request flows.
 - Notification and sound switches through MMKV-backed settings.
-- Firebase Messaging registration, token fetch, token refresh listener, foreground message listener, and local token cache.
+- SQLite notification event log for displayed, suppressed, opened, foreground, background, and initial-notification events.
+- Firebase Messaging registration, token fetch, token refresh listener, foreground/background message handlers, notification-opened handler, initial-notification handling, and local token cache.
 
 Backend push-device APIs were not found in the current Rust/Java services. Offline FCM delivery is therefore `BACKEND_REQUIRED`; the client does not fake server push support.
 

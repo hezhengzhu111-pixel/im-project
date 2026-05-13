@@ -7,6 +7,7 @@ import { kvStorage } from '@/services/storage/kvStorage';
 import { messageRepository } from '@/services/storage/messageRepository';
 import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
 import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
+import { notificationEventRepository } from '@/services/storage/notificationEventRepository';
 import { maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
 import { displaySystemNotification } from '@/services/notification/notificationService';
 import { authService } from '@/services/auth/authService';
@@ -45,6 +46,9 @@ describe('mobile core', () => {
     messageRepository.clearAllCache();
     pendingMessageRepository.clear();
     uploadTaskRepository.clear();
+    notificationEventRepository.clear();
+    kvStorage.setBoolean('notification.enabled', true);
+    kvStorage.setBoolean('sound.enabled', true);
     useMessageStore.getState().clear();
   });
 
@@ -151,6 +155,20 @@ describe('mobile core', () => {
 
   test('notification routing displays local notification', async () => {
     await expect(displaySystemNotification('Title', 'Body', { route: 'Chat' })).resolves.toBeUndefined();
+    expect(notificationEventRepository.listRecent()[0].routeName).toBe('ChatScreen');
+  });
+
+  test('disabled notifications are logged without displaying sensitive data', async () => {
+    kvStorage.setBoolean('notification.enabled', false);
+    await displaySystemNotification('Title', 'Body', {
+      route: 'Chat',
+      accessToken: 'secret',
+      conversationId: 'c1',
+    });
+    const event = notificationEventRepository.listRecent()[0];
+    expect(event.type).toBe('notification_suppressed');
+    expect(event.payloadJson).toContain('[REDACTED]');
+    expect(event.payloadJson).not.toContain('secret');
   });
 
   test('settingsStore persists notification setting', async () => {

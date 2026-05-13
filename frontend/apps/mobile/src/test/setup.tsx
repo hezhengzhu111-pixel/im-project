@@ -126,7 +126,11 @@ jest.mock('@notifee/react-native', () => ({
   default: {
     createChannel: jest.fn(() => Promise.resolve('im-messages')),
     displayNotification: jest.fn(() => Promise.resolve()),
+    getInitialNotification: jest.fn(() => Promise.resolve(null)),
+    incrementBadgeCount: jest.fn(() => Promise.resolve()),
     onForegroundEvent: jest.fn(),
+    onBackgroundEvent: jest.fn(),
+    setBadgeCount: jest.fn(() => Promise.resolve()),
   },
   AndroidImportance: { HIGH: 4 },
   EventType: { PRESS: 1 },
@@ -137,8 +141,11 @@ jest.mock('@react-native-firebase/messaging', () => ({
   default: () => ({
     registerDeviceForRemoteMessages: jest.fn(() => Promise.resolve()),
     getToken: jest.fn(() => Promise.resolve('fcm-test-token')),
+    getInitialNotification: jest.fn(() => Promise.resolve(null)),
     onTokenRefresh: jest.fn(),
     onMessage: jest.fn(),
+    onNotificationOpenedApp: jest.fn(),
+    setBackgroundMessageHandler: jest.fn(),
   }),
 }));
 

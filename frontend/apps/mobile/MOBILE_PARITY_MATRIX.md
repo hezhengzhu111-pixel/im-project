@@ -92,9 +92,9 @@ Status values: `DONE`, `PARTIAL`, `BACKEND_REQUIRED`, `DEFERRED`, `BLOCKED_BY_SC
 | 86 | WebSocket 好友通过实时刷新 | `stores/websocket.ts` | contact/chat store | `websocketStore.dispatchPayload` | DONE | 是 | 是 | 否 | typecheck | 刷好友和会话 |
 | 87 | WebSocket 在线状态实时刷新 | `stores/websocket.ts` | websocket/contact store | `websocketStore.onlineUsers` | DONE | 是 | 否 | 否 | `mobile:test` | 更新联系人/会话 |
 | 88 | WebSocket 消息去重 | `stores/websocket.ts`, `shared-im-core` | dedupe helpers | `messageStore.addMessage` | DONE | 是 | 是 | 否 | `mobile:test` | serverId/clientMessageId 去重 |
-| 89 | 前台通知 | Web `ElNotification` use sites | notifier | `notificationService`, in-app state | DONE | 是 | 是 | 通知 | `mobile:test` | 当前会话不重复弹系统通知 |
-| 90 | 后台本地通知 | Web notifier | Notifee | `notificationService` | DONE | 是 | 是 | 通知 | typecheck | 进程存活后台本地通知 |
-| 91 | Android FCM token 获取与预留 | 无 Web 等价 | Firebase Messaging | `notificationService.getFcmToken` | PARTIAL | 是 | 是 | 通知 | typecheck | 客户端 token 获取已接入；服务端注册缺契约 |
+| 89 | 前台通知 | Web `ElNotification` use sites | notifier | `notificationService`, notification event repo | DONE | 是 | 是 | 通知 | `mobile:test` | 当前会话不重复弹系统通知；通知展示/抑制事件写 SQLite |
+| 90 | 后台本地通知 | Web notifier | Notifee | `notificationService`, background handlers | DONE | 是 | 是 | 通知 | `mobile:test` | FCM background message 与 Notifee background press 已注册 |
+| 91 | Android FCM token 获取与预留 | 无 Web 等价 | Firebase Messaging | `notificationService.getFcmToken` | PARTIAL | 是 | 是 | 通知 | `mobile:test` | token 获取、refresh、foreground/background/opened/initial handlers 已接入；服务端注册缺契约 |
 | 91.1 | FCM 服务端离线推送 | 无 Web 等价 | 需要后端 push device API | `PUSH_BACKEND_CONTRACT.md` | BACKEND_REQUIRED | 是 | 是 | 通知 | 文档审计 | 未发现 push device 注册/注销接口 |
 | 92 | 本地存储 | `utils/messageRepo.ts`, browser storage | storage ports | `kvStorage`, repositories | DONE | 是 | 否 | 否 | `mobile:test` | MMKV + SQLite |
 | 93 | 敏感存储 | browser cookie/session | `auth-session-adapter.ts` | `secureStorage` | DONE | 是 | 否 | 否 | `mobile:test` | Keychain + Cookie Manager |
