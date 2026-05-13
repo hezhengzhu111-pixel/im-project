@@ -42,6 +42,7 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(config.mysql_max_connections)
         .connect_with(mysql_options)
         .await?;
+    api_server_rs::push::ensure_schema(&db).await?;
     let state = AppState {
         config: config.clone(),
         redis_manager: redis.clone(),

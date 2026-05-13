@@ -408,6 +408,10 @@ pub async fn create_test_app() -> Router {
             std::process::exit(1);
         }
     };
+    if let Err(err) = crate::push::ensure_schema(&db).await {
+        eprintln!("failed to ensure push schema: {err}");
+        std::process::exit(1);
+    }
     let state = AppState {
         config,
         redis_manager: redis_manager.clone(),

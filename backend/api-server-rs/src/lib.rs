@@ -24,6 +24,7 @@ pub mod local_cache;
 pub mod message;
 pub mod moments;
 pub mod observability;
+pub mod push;
 pub mod push_dispatcher;
 pub mod redis_streams;
 pub mod route;

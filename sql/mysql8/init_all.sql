@@ -66,10 +66,33 @@ CREATE TABLE IF NOT EXISTS user_settings (
   privacy_settings JSON NULL COMMENT '隐私设置',
   message_settings JSON NULL COMMENT '消息设置',
   general_settings JSON NULL COMMENT '通用设置',
+  push_settings JSON NULL COMMENT '推送设置',
   created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户设置表';
+
+CREATE TABLE IF NOT EXISTS user_push_devices (
+  user_id BIGINT NOT NULL COMMENT '用户ID',
+  device_id VARCHAR(128) NOT NULL COMMENT '设备ID',
+  platform VARCHAR(16) NOT NULL COMMENT '平台：ANDROID/IOS',
+  fcm_token VARCHAR(2048) NOT NULL COMMENT 'FCM 设备令牌',
+  app_version VARCHAR(64) NULL COMMENT 'App 版本',
+  device_model VARCHAR(128) NULL COMMENT '设备型号',
+  os_version VARCHAR(64) NULL COMMENT '系统版本',
+  locale VARCHAR(32) NULL COMMENT '语言区域',
+  timezone VARCHAR(64) NULL COMMENT '时区',
+  token_version BIGINT NOT NULL DEFAULT 1 COMMENT 'Token 版本',
+  last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最后活跃时间',
+  last_token_refresh_at DATETIME NULL COMMENT '最后 token 刷新时间',
+  disabled_at DATETIME NULL COMMENT '注销时间',
+  unregister_reason VARCHAR(32) NULL COMMENT '注销原因',
+  created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (user_id, device_id),
+  KEY idx_user_push_devices_active (user_id, disabled_at, updated_time),
+  KEY idx_user_push_devices_token (fcm_token(191))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户推送设备表';
 
 CREATE TABLE IF NOT EXISTS user_ai_api_keys (
   id BIGINT NOT NULL COMMENT 'API Key ID',
