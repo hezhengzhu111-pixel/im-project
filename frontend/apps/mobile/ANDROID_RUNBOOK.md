@@ -22,7 +22,9 @@ cd frontend
 npm run mobile:start
 ```
 
-When Metro is already running but the app shows `Unable to load script`, configure Android port forwarding:
+Keep this terminal open. `mobile:android` wraps `react-native run-android --no-packager`, so it installs and launches the app without starting a second Metro process. The wrapper also prepends the Android SDK `platform-tools` path discovered from `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or `apps/mobile/android/local.properties`, so `adb` does not need to be globally configured.
+
+When Metro is running but the app shows `Unable to load script`, configure Android port forwarding:
 
 ```bash
 cd frontend
@@ -39,6 +41,8 @@ In another terminal:
 cd frontend
 npm run mobile:android
 ```
+
+If you restart the emulator or reconnect a physical device, run `npm run mobile:reverse` again before relaunching the app.
 
 ## Android Emulator API URLs
 

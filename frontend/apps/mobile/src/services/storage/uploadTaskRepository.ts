@@ -47,11 +47,36 @@ export const uploadTaskRepository = {
     );
   },
 
+  get(taskId: string): UploadTask | undefined {
+    const rows = messageDatabase.isMemoryFallback()
+      ? messageDatabase.memoryList('mobile_upload_tasks').filter((row) => row.taskId === taskId)
+      : messageDatabase.query('SELECT * FROM mobile_upload_tasks WHERE taskId = ? LIMIT 1', [taskId]);
+    const row = rows[0];
+    return row ? normalize(row) : undefined;
+  },
+
+  findByLocalMessageId(localMessageId: string): UploadTask | undefined {
+    const rows = messageDatabase.isMemoryFallback()
+      ? messageDatabase
+          .memoryList('mobile_upload_tasks')
+          .filter((row) => row.localMessageId === localMessageId)
+      : messageDatabase.query(
+          'SELECT * FROM mobile_upload_tasks WHERE localMessageId = ? ORDER BY updatedAt DESC LIMIT 1',
+          [localMessageId],
+        );
+    const row = rows[0];
+    return row ? normalize(row) : undefined;
+  },
+
   listPending(): UploadTask[] {
     const rows = messageDatabase.isMemoryFallback()
       ? messageDatabase.memoryList('mobile_upload_tasks')
-      : messageDatabase.query("SELECT * FROM mobile_upload_tasks WHERE status IN ('pending', 'failed') ORDER BY createdAt ASC");
-    return rows.map(normalize);
+      : messageDatabase.query(
+          "SELECT * FROM mobile_upload_tasks WHERE status IN ('pending', 'failed', 'uploading') ORDER BY createdAt ASC",
+        );
+    return rows
+      .map(normalize)
+      .filter((task) => task.status === 'pending' || task.status === 'failed' || task.status === 'uploading');
   },
 
   remove(taskId: string): void {

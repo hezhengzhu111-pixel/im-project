@@ -155,13 +155,16 @@ Send flow:
 1. Generate `clientMessageId` and local id.
 2. Insert into `mobile_pending_messages`.
 3. Insert optimistic local message with `SENDING`.
-4. Upload media first when needed.
-5. Send real message API request.
-6. On success, upsert server message and delete pending row.
-7. On failure, mark local message `FAILED`, increment retry count, and set `nextRetryAt` using exponential backoff.
+4. For media messages, create or reuse a stable `mobile_upload_tasks` row and store its `uploadTaskId` in `payloadJson`.
+5. Upload media first when needed, then replace the pending payload media URL with the remote URL.
+6. Send real message API request only after upload succeeds.
+7. On success, upsert server message and delete pending row.
+8. On failure, mark local message `FAILED`, increment retry count, and set `nextRetryAt` using exponential backoff.
+
+Media retry never sends a local `file://` URI to the message API. It reuses the same upload task for the same local message and keeps retry state in SQLite across restarts.
 
 Encrypted pending payloads are blocked. Mobile never retries or sends `encrypted=true` payloads in this phase.
 
 ## Upload Queue
 
-Upload tasks persist file URI, metadata, progress, retry count, and remote URL. Failed uploads can be retried without creating duplicate local messages. The current implementation stores task state and supports retry entry points; background upload workers can build on the same table.
+Upload tasks persist file URI, metadata, progress, retry count, and remote URL. Failed uploads can be retried without creating duplicate local messages or duplicate upload tasks. Message pending payloads reference upload tasks by `uploadTaskId`; retry first completes or reuses the uploaded remote URL, then sends the message payload.

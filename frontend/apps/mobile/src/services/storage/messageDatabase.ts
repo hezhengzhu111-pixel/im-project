@@ -105,7 +105,7 @@ export async function initializeStorage(): Promise<void> {
   try {
     CREATE_SCHEMA_SQL.forEach((sql) => conn.execute(sql));
     conn.execute('INSERT OR REPLACE INTO mobile_meta(key, value) VALUES (?, ?)', [
-      'schemaVersion',
+      'schema_version',
       String(DB_VERSION),
     ]);
   } catch (error) {

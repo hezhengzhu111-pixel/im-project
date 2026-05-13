@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { messageService } from '@/services/chat/messageService';
 import { messageRepository } from '@/services/storage/messageRepository';
+import { uploadService } from '@/services/upload/uploadService';
 import { useAuthStore } from './authStore';
 import { useContactStore } from './contactStore';
 import { useGroupStore } from './groupStore';
@@ -35,7 +36,7 @@ export const useChatStore = create<ChatState>((set) => ({
         useContactStore.getState().loadFriendRequests(),
       ]);
       await useChatStore.getState().refreshSessions();
-      await useMessageStore.getState().retryPending();
+      await useChatStore.getState().retryPending();
     } finally {
       set({ loading: false });
     }
@@ -97,7 +98,10 @@ export const useChatStore = create<ChatState>((set) => ({
     await useMessageStore.getState().sendMedia(session, file, type);
   },
 
-  retryPending: () => useMessageStore.getState().retryPending(),
+  async retryPending() {
+    await uploadService.retryPendingUploads();
+    await useMessageStore.getState().retryPending();
+  },
 
   clearRuntime() {
     useSessionStore.getState().clear();
