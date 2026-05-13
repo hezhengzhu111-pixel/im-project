@@ -6,6 +6,7 @@ import { resolveGroupSessionId, resolveMessageSessionId, resolvePrivateSessionId
 import { apiClient, registerAuthHooks } from '@/services/api/httpClient';
 import { secureStorage } from '@/services/storage/secureStorage';
 import { kvStorage } from '@/services/storage/kvStorage';
+import { messageDatabase } from '@/services/storage/messageDatabase';
 import { messageRepository } from '@/services/storage/messageRepository';
 import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
 import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
@@ -168,6 +169,30 @@ describe('mobile core', () => {
     expect(list[0].content).toBe('updated');
   });
 
+  test('messageRepository dedupes pending and server records by clientMessageId', () => {
+    messageRepository.upsertMessages(session.id, [
+      {
+        ...message('local_only', 'pending'),
+        serverId: undefined,
+        clientMessageId: 'cm_replace',
+        status: 'SENDING',
+      },
+    ]);
+    messageRepository.upsertMessages(session.id, [
+      {
+        ...message('server_replaced', 'server'),
+        clientMessageId: 'cm_replace',
+        status: 'SENT',
+      },
+    ]);
+
+    const list = messageRepository.listMessages(session.id);
+    expect(list).toHaveLength(1);
+    expect(list[0].serverId).toBe('server_replaced');
+    expect(list[0].clientMessageId).toBe('cm_replace');
+    expect(list[0].status).toBe('SENT');
+  });
+
   test('pendingMessageRepository enqueues, lists, updates, and removes', () => {
     const pending: PendingMessage = {
       localId: 'local_1',
@@ -185,6 +210,51 @@ describe('mobile core', () => {
     expect(pendingMessageRepository.listReady()).toHaveLength(0);
   });
 
+  test('pendingMessageRepository recovers sending records after app restart in memory fallback', () => {
+    const pending: PendingMessage = {
+      localId: 'local_restart',
+      conversationId: session.id,
+      sendType: 'private',
+      payloadJson: JSON.stringify({ data: { clientMessageId: 'cm_restart' } }),
+      status: 'sending',
+      retryCount: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    pendingMessageRepository.enqueue(pending);
+
+    expect(messageDatabase.isMemoryFallback()).toBe(true);
+    expect(pendingMessageRepository.listReady(Date.now() + 1_000)).toEqual([
+      expect.objectContaining({ localId: 'local_restart', status: 'sending' }),
+    ]);
+  });
+
+  test('pendingMessageRepository finds and removes duplicate clientMessageId', () => {
+    const first: PendingMessage = {
+      localId: 'local_dup_1',
+      conversationId: session.id,
+      sendType: 'private',
+      payloadJson: JSON.stringify({ data: { clientMessageId: 'cm_dup' } }),
+      status: 'pending',
+      retryCount: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    const second: PendingMessage = {
+      ...first,
+      localId: 'local_dup_2',
+      updatedAt: Date.now() + 1,
+    };
+
+    pendingMessageRepository.enqueue(first);
+    pendingMessageRepository.enqueue(second);
+
+    expect(pendingMessageRepository.findByClientMessageId('cm_dup')?.localId).toBe('local_dup_2');
+    pendingMessageRepository.removeByClientMessageId('cm_dup');
+    expect(pendingMessageRepository.findByClientMessageId('cm_dup')?.localId).toBe('local_dup_1');
+  });
+
   test('uploadTaskRepository updates status', () => {
     const task: UploadTask = {
       taskId: 'u1',
@@ -200,6 +270,40 @@ describe('mobile core', () => {
     uploadTaskRepository.upsert(task);
     uploadTaskRepository.upsert({ ...task, status: 'failed', progress: 40 });
     expect(uploadTaskRepository.listPending()[0].progress).toBe(40);
+  });
+
+  test('messageRepository clearAllCache clears sessions, messages, pending, and uploads', () => {
+    messageRepository.upsertSession(session);
+    messageRepository.upsertMessages(session.id, [message('cache_m1')]);
+    pendingMessageRepository.enqueue({
+      localId: 'cache_pending',
+      conversationId: session.id,
+      sendType: 'private',
+      payloadJson: '{}',
+      status: 'pending',
+      retryCount: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    uploadTaskRepository.upsert({
+      taskId: 'cache_upload',
+      localMessageId: 'cache_pending',
+      fileUri: 'file:///a.png',
+      fileName: 'a.png',
+      uploadType: 'IMAGE',
+      status: 'pending',
+      progress: 0,
+      retryCount: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    messageRepository.clearAllCache();
+
+    expect(messageRepository.listSessions()).toHaveLength(0);
+    expect(messageRepository.listMessages(session.id)).toHaveLength(0);
+    expect(pendingMessageRepository.listReady(Date.now() + 120_000)).toHaveLength(0);
+    expect(uploadTaskRepository.listPending()).toHaveLength(0);
   });
 
   test('websocket URL and reconnect delay use shared core', () => {

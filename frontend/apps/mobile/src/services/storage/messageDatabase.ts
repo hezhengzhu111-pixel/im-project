@@ -1,4 +1,5 @@
 import { DB_VERSION, CREATE_SCHEMA_SQL } from './storageMigrations';
+import { IS_RELEASE_RUNTIME, MOBILE_APP_ENV } from '@/constants/config';
 import { logger } from '@/utils/logger';
 
 type SqlValue = string | number | null | undefined;
@@ -23,6 +24,31 @@ type QuickSqliteModule = {
 let db: DbConnection | null = null;
 let sqliteUnavailable = false;
 const memoryTables = new Map<string, Map<string, Record<string, unknown>>>();
+let storageHealth = {
+  mode: 'unknown' as 'unknown' | 'sqlite' | 'memory',
+  persistenceAvailable: false,
+  lastError: '',
+  releaseVisibilityRequired: false,
+  appEnv: MOBILE_APP_ENV,
+};
+
+const setStorageHealth = (next: Partial<typeof storageHealth>) => {
+  storageHealth = { ...storageHealth, ...next, appEnv: MOBILE_APP_ENV };
+};
+
+const reportFallback = (message: string, error: unknown) => {
+  setStorageHealth({
+    mode: 'memory',
+    persistenceAvailable: false,
+    lastError: error instanceof Error ? error.message : String(error || message),
+    releaseVisibilityRequired: IS_RELEASE_RUNTIME,
+  });
+  if (IS_RELEASE_RUNTIME) {
+    logger.error('message-db', `${message}; release build cannot assume offline persistence is available`, error);
+    return;
+  }
+  logger.warn('message-db', `${message}; memory fallback active`, error);
+};
 
 const table = (name: string) => {
   const existing = memoryTables.get(name);
@@ -44,10 +70,18 @@ const openSqlite = (): DbConnection | null => {
   try {
     const sqlite = require('react-native-quick-sqlite') as QuickSqliteModule;
     db = sqlite.open?.({ name: 'im_mobile.db', location: 'default' }) || null;
+    if (db) {
+      setStorageHealth({
+        mode: 'sqlite',
+        persistenceAvailable: true,
+        lastError: '',
+        releaseVisibilityRequired: false,
+      });
+    }
     return db;
   } catch (error) {
     sqliteUnavailable = true;
-    logger.warn('message-db', 'quick-sqlite unavailable; memory fallback active', error);
+    reportFallback('quick-sqlite unavailable', error);
     return null;
   }
 };
@@ -95,6 +129,16 @@ export const messageDatabase = {
   isMemoryFallback(): boolean {
     return !openSqlite();
   },
+
+  getStorageHealth() {
+    const mode = openSqlite() ? 'sqlite' : 'memory';
+    return {
+      ...storageHealth,
+      mode,
+      persistenceAvailable: mode === 'sqlite',
+      releaseVisibilityRequired: mode === 'memory' && IS_RELEASE_RUNTIME,
+    };
+  },
 };
 
 export async function initializeStorage(): Promise<void> {
@@ -108,8 +152,14 @@ export async function initializeStorage(): Promise<void> {
       'schema_version',
       String(DB_VERSION),
     ]);
+    setStorageHealth({
+      mode: 'sqlite',
+      persistenceAvailable: true,
+      lastError: '',
+      releaseVisibilityRequired: false,
+    });
   } catch (error) {
     sqliteUnavailable = true;
-    logger.error('message-db', 'schema migration failed; memory fallback active', error);
+    reportFallback('schema migration failed', error);
   }
 }

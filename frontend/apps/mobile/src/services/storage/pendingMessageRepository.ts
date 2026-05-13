@@ -1,6 +1,20 @@
 import type { PendingMessage } from '@/types/models';
 import { messageDatabase } from './messageDatabase';
 
+interface PendingPayloadRecord {
+  data?: {
+    clientMessageId?: string;
+  };
+}
+
+const parsePayload = (payloadJson: string): PendingPayloadRecord => {
+  try {
+    return JSON.parse(payloadJson) as PendingPayloadRecord;
+  } catch {
+    return {};
+  }
+};
+
 const normalize = (row: Record<string, unknown>): PendingMessage => ({
   localId: String(row.localId || ''),
   conversationId: String(row.conversationId || ''),
@@ -41,11 +55,13 @@ export const pendingMessageRepository = {
       ? messageDatabase.memoryList('mobile_pending_messages')
       : messageDatabase.query(
           `SELECT * FROM mobile_pending_messages
-           WHERE status = 'pending' AND (nextRetryAt IS NULL OR nextRetryAt <= ?)
+           WHERE status IN ('pending', 'sending') AND (nextRetryAt IS NULL OR nextRetryAt <= ?)
            ORDER BY createdAt ASC`,
           [now],
         );
-    return rows.map(normalize).filter((item) => item.status === 'pending' && (item.nextRetryAt || 0) <= now);
+    return rows
+      .map(normalize)
+      .filter((item) => ['pending', 'sending'].includes(item.status) && (item.nextRetryAt || 0) <= now);
   },
 
   get(localId: string): PendingMessage | undefined {
@@ -59,9 +75,36 @@ export const pendingMessageRepository = {
     this.enqueue({ ...item, updatedAt: Date.now() });
   },
 
+  findByClientMessageId(clientMessageId: string): PendingMessage | undefined {
+    const normalizedId = clientMessageId.trim();
+    if (!normalizedId) {
+      return undefined;
+    }
+    const rows = messageDatabase.isMemoryFallback()
+      ? messageDatabase.memoryList('mobile_pending_messages')
+      : messageDatabase.query(
+          `SELECT * FROM mobile_pending_messages
+           WHERE payloadJson LIKE ?
+           ORDER BY updatedAt DESC LIMIT 20`,
+          [`%${normalizedId}%`],
+        );
+    return rows
+      .map(normalize)
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .find((item) => parsePayload(item.payloadJson).data?.clientMessageId === normalizedId);
+  },
+
   remove(localId: string): void {
     messageDatabase.memoryDelete('mobile_pending_messages', localId);
     messageDatabase.execute('DELETE FROM mobile_pending_messages WHERE localId = ?', [localId]);
+  },
+
+  removeByClientMessageId(clientMessageId: string): void {
+    const existing = this.findByClientMessageId(clientMessageId);
+    if (!existing) {
+      return;
+    }
+    this.remove(existing.localId);
   },
 
   clear(): void {

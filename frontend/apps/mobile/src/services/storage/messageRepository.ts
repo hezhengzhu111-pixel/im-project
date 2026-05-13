@@ -1,6 +1,8 @@
 import { hasSameMobileMessageIdentity } from '@/adapters/messageAdapter';
 import type { ChatSession, MobileMessage } from '@/types/models';
 import { messageDatabase } from './messageDatabase';
+import { pendingMessageRepository } from './pendingMessageRepository';
+import { uploadTaskRepository } from './uploadTaskRepository';
 
 const messageKey = (message: MobileMessage): string =>
   message.serverId || message.clientMessageId || message.id || `${message.conversationId}:${message.sendTime}`;
@@ -19,6 +21,57 @@ const parseMessage = (row: Record<string, unknown>): MobileMessage => {
       content: String(row.content || ''),
     };
   }
+};
+
+const mobileIdentityValues = (message: Pick<MobileMessage, 'id' | 'serverId' | 'clientMessageId'>): string[] =>
+  [message.id, message.serverId, message.clientMessageId].map((item) => String(item || '')).filter(Boolean);
+
+const sqliteDuplicateRows = (conversationId: string, message: MobileMessage): Record<string, unknown>[] => {
+  const conditions: string[] = ['conversationId = ?'];
+  const params: Array<string | null> = [conversationId];
+
+  if (message.id) {
+    conditions.push('id = ?');
+    params.push(message.id);
+  }
+  if (message.serverId) {
+    conditions.push('serverId = ?');
+    params.push(message.serverId);
+  }
+  if (message.clientMessageId) {
+    conditions.push('clientMessageId = ?');
+    params.push(message.clientMessageId);
+  }
+  if (conditions.length === 1) {
+    return [];
+  }
+  return messageDatabase.query(
+    `SELECT * FROM mobile_messages WHERE ${conditions[0]} AND (${conditions.slice(1).join(' OR ')})`,
+    params,
+  );
+};
+
+const removeDuplicateMessages = (conversationId: string, message: MobileMessage): void => {
+  const identities = new Set(mobileIdentityValues(message));
+
+  messageDatabase
+    .memoryList('mobile_messages')
+    .filter((row) => row.conversationId === conversationId)
+    .map(parseMessage)
+    .filter(
+      (existing) =>
+        hasSameMobileMessageIdentity(existing, message) ||
+        mobileIdentityValues(existing).some((identity) => identities.has(identity)),
+    )
+    .forEach((existing) => {
+      messageDatabase.memoryDelete('mobile_messages', `${conversationId}:${messageKey(existing)}`);
+    });
+
+  sqliteDuplicateRows(conversationId, message).forEach((row) => {
+    if (row.id) {
+      messageDatabase.execute('DELETE FROM mobile_messages WHERE id = ?', [String(row.id)]);
+    }
+  });
 };
 
 export const messageRepository = {
@@ -72,19 +125,12 @@ export const messageRepository = {
   upsertMessages(conversationId: string, messages: MobileMessage[]): void {
     const now = Date.now();
     messages.forEach((message) => {
+      removeDuplicateMessages(conversationId, message);
       const record = {
         ...message,
         conversationId,
         rawJson: JSON.stringify({ ...message, conversationId }),
       };
-      messageDatabase
-        .memoryList('mobile_messages')
-        .filter((row) => row.conversationId === conversationId)
-        .map(parseMessage)
-        .filter((existing) => hasSameMobileMessageIdentity(existing, record))
-        .forEach((existing) => {
-          messageDatabase.memoryDelete('mobile_messages', `${conversationId}:${messageKey(existing)}`);
-        });
       messageDatabase.memoryUpsert('mobile_messages', `${conversationId}:${messageKey(message)}`, record);
       messageDatabase.execute(
         `INSERT OR REPLACE INTO mobile_messages
@@ -151,5 +197,7 @@ export const messageRepository = {
     messageDatabase.execute('DELETE FROM mobile_messages');
     messageDatabase.execute('DELETE FROM mobile_media_cache');
     messageDatabase.execute('DELETE FROM mobile_notification_events');
+    pendingMessageRepository.clear();
+    uploadTaskRepository.clear();
   },
 };
