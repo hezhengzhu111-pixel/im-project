@@ -22,6 +22,7 @@ import { useMessageStore } from '@/stores/messageStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useWebsocketStore } from '@/stores/websocketStore';
+import { logger } from '@/utils/logger';
 import { normalizeMessage, normalizeSession } from '@/utils/normalizers';
 import type { ChatSession, MobileMessage, PendingMessage, UploadTask } from '@/types/models';
 
@@ -30,6 +31,14 @@ const session: ChatSession = {
   type: 'private',
   targetId: '2',
   targetName: 'Bob',
+  unreadCount: 0,
+};
+
+const groupSession: ChatSession = {
+  id: resolveGroupSessionId('9'),
+  type: 'group',
+  targetId: '9',
+  targetName: 'Team 9',
   unreadCount: 0,
 };
 
@@ -48,6 +57,7 @@ const message = (id: string, content = 'hello'): MobileMessage => ({
 describe('mobile core', () => {
   beforeEach(() => {
     jest.restoreAllMocks();
+    logger.clear();
     messageRepository.clearAllCache();
     pendingMessageRepository.clear();
     uploadTaskRepository.clear();
@@ -307,6 +317,58 @@ describe('mobile core', () => {
     expect(messages[0].clientMessageId).toBe(payload.data.clientMessageId);
     expect(messages[0].serverId).toBe('server_retry');
     expect(pendingMessageRepository.get(pending.localId)).toBeUndefined();
+  });
+
+  test('markRead sends peerId for private sessions', async () => {
+    const markReadSpy = jest.spyOn(messageService, 'markRead').mockResolvedValue({
+      code: 200,
+      message: 'ok',
+      data: 'ok',
+    });
+
+    await expect(useMessageStore.getState().markRead(session)).resolves.toBeUndefined();
+
+    expect(markReadSpy).toHaveBeenCalledWith('2');
+  });
+
+  test('markRead sends group_{id} for group sessions', async () => {
+    const markReadSpy = jest.spyOn(messageService, 'markRead').mockResolvedValue({
+      code: 200,
+      message: 'ok',
+      data: 'ok',
+    });
+
+    await expect(useMessageStore.getState().markRead(groupSession)).resolves.toBeUndefined();
+
+    expect(markReadSpy).toHaveBeenCalledWith('group_9');
+  });
+
+  test('markRead success clears local unread count', async () => {
+    jest.spyOn(messageService, 'markRead').mockResolvedValue({
+      code: 200,
+      message: 'ok',
+      data: 'ok',
+    });
+    useSessionStore.getState().setSessions([{ ...session, unreadCount: 3 }]);
+
+    await useMessageStore.getState().markRead(session);
+
+    expect(useSessionStore.getState().sessions.find((item) => item.id === session.id)?.unreadCount).toBe(0);
+  });
+
+  test('markRead failure logs warning without breaking page state', async () => {
+    const warnSpy = jest.spyOn(logger, 'warn');
+    jest.spyOn(messageService, 'markRead').mockRejectedValue(new Error('offline'));
+    useSessionStore.getState().setSessions([{ ...session, unreadCount: 4 }]);
+
+    await expect(useMessageStore.getState().markRead(session)).resolves.toBeUndefined();
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      'message',
+      'markRead failed',
+      expect.objectContaining({ sessionId: session.id, readTarget: '2', error: 'offline' }),
+    );
+    expect(useSessionStore.getState().sessions.find((item) => item.id === session.id)?.unreadCount).toBe(4);
   });
 
   test('websocket echo with same clientMessageId merges into pending message', async () => {

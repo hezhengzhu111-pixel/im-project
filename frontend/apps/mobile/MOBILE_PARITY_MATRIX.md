@@ -59,7 +59,7 @@ Status values: `DONE`, `PARTIAL`, `BACKEND_REQUIRED`, `DEFERRED`, `BLOCKED_BY_SC
 | 53 | 离线发送队列 | `message-send-queue.ts` | send queue module | `pendingMessageRepository` | DONE | 是 | 否 | 否 | `mobile:test` | 重启后保留 pending |
 | 54 | 发送失败重试 | `message-retry.ts` | retry module | `messageStore.retryPending` | DONE | 是 | 是 | 否 | `mobile:test` | 最大次数 + 退避；媒体重试复用同一 upload task |
 | 55 | 消息发送状态 | `stores/message.ts` | message store | `MessageBubble` | DONE | 是 | 否 | 否 | `mobile:test` | SENDING/SENT/FAILED |
-| 56 | 已读回执 | `modules/message-read.ts` | `messageService.markRead` | `messageStore.markRead` | PARTIAL | 是 | 是 | 否 | typecheck | 接口和 WS dispatch 接入，真实服务端语义待设备验证 |
+| 56 | 已读回执 | `modules/message-read.ts` | `messageService.markRead` | `messageStore.markRead` | DONE | 是 | 是 | 否 | `mobile:test` | `/message/read` 按 read target 调用：私聊传 `peerId`，群聊传 `group_{id}`；失败仅记 warning，不阻塞页面 |
 | 57 | 群消息已读详情 | `modules/message-read.ts` | `messageService.getGroupReadDetail` | `GroupReadDetailScreen` | PARTIAL | 是 | 否 | 否 | typecheck | 页面/服务接入，后端字段按 Web |
 | 58 | 消息搜索 | `modules/message-search.ts` | `messageService.search` | `ChatSearchScreen` | DONE | 是 | 否 | 否 | typecheck | 服务端搜索 + 本地会话上下文 |
 | 59 | 图片预览 | `pages/Chat.vue` | media renderer | `MessageBubble`, media components | DONE | 是 | 否 | 媒体 | typecheck | 原生图片预览结构 |
@@ -108,8 +108,8 @@ Status values: `DONE`, `PARTIAL`, `BACKEND_REQUIRED`, `DEFERRED`, `BLOCKED_BY_SC
 
 ## Summary
 
-- DONE: 82
-- PARTIAL: 13
+- DONE: 83
+- PARTIAL: 12
 - BACKEND_REQUIRED: 1
 - DEFERRED: 4
 - BLOCKED_BY_SCOPE: 1

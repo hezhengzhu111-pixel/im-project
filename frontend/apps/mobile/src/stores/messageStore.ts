@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import { applyMobileMessageToList, hasSameMobileMessageIdentity } from '@/adapters/messageAdapter';
-import { resolveGroupSessionId, resolveMessageSessionId } from '@/adapters/sessionAdapter';
+import { resolveMessageSessionId } from '@/adapters/sessionAdapter';
 import { RETRY_CONFIG } from '@/constants/config';
 import { assertPlaintextSendAllowed, blockEncryptedPendingPayload, maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
-import { messageService, type SendMessagePayload } from '@/services/chat/messageService';
+import { messageService, resolveMarkReadTarget, type SendMessagePayload } from '@/services/chat/messageService';
 import { messageRepository } from '@/services/storage/messageRepository';
 import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
 import { uploadService } from '@/services/upload/uploadService';
+import { logger } from '@/utils/logger';
 import { createClientMessageId, createLocalMessageId } from '@/utils/ids';
 import { useAuthStore } from './authStore';
 import { useSessionStore } from './sessionStore';
@@ -245,8 +246,17 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   },
 
   async markRead(session) {
-    await messageService.markRead(session.type === 'group' ? resolveGroupSessionId(session.targetId) : session.targetId);
-    useSessionStore.getState().markRead(session.id);
+    const readTarget = resolveMarkReadTarget(session);
+    try {
+      await messageService.markRead(readTarget);
+      useSessionStore.getState().markRead(session.id);
+    } catch (error) {
+      logger.warn('message', 'markRead failed', {
+        sessionId: session.id,
+        readTarget,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   },
 
   searchMessages(keyword, sessionId) {

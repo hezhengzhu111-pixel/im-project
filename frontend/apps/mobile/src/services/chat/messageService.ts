@@ -1,4 +1,5 @@
 import { MESSAGE_ENDPOINTS } from '@im/shared-api-contract';
+import { resolveGroupSessionId } from '@/adapters/sessionAdapter';
 import { http } from '@/services/api/httpClient';
 import { normalizeMessage, normalizeSession } from '@/utils/normalizers';
 import type { ApiResponse, ChatSession, MobileMessage, MessageType } from '@/types/models';
@@ -17,6 +18,9 @@ export interface SendMessagePayload {
   extra?: Record<string, unknown>;
   mentionedUserIds?: string[];
 }
+
+export const resolveMarkReadTarget = (session: Pick<ChatSession, 'type' | 'targetId'>): string =>
+  session.type === 'group' ? resolveGroupSessionId(session.targetId) : session.targetId;
 
 export const messageService = {
   async sendPrivate(data: SendMessagePayload): Promise<ApiResponse<MobileMessage>> {
@@ -47,7 +51,7 @@ export const messageService = {
     return { ...response, data: Array.isArray(response.data) ? response.data.map((item) => normalizeMessage(item)) : [] };
   },
 
-  markRead: (conversationId: string) => http.post(MESSAGE_ENDPOINTS.MARK_READ.replace(':conversationId', conversationId)),
+  markRead: (readTarget: string) => http.post(MESSAGE_ENDPOINTS.MARK_READ.replace(':conversationId', readTarget)),
   recallMessage: (messageId: string) => http.post<MobileMessage>(MESSAGE_ENDPOINTS.RECALL.replace(':messageId', messageId)),
   deleteMessage: (messageId: string) => http.post<MobileMessage>(MESSAGE_ENDPOINTS.DELETE.replace(':messageId', messageId)),
 
