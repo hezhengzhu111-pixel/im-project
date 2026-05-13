@@ -10,12 +10,34 @@ Implemented on the client:
 - Notification and sound switches through MMKV-backed settings.
 - SQLite notification event log for displayed, suppressed, opened, foreground, background, and initial-notification events.
 - Firebase Messaging registration, token fetch, token refresh listener, foreground/background message handlers, notification-opened handler, initial-notification handling, and local token cache.
+- Shared API contract endpoints for push-device registration, token rotation, and push settings.
+- Android mobile client `pushDeviceService` for register, unregister, token update, and push settings read/write.
+- Login flow attempts `getFcmToken()` then calls device register when token is available.
+- Logout flow attempts device unregister but never blocks local session cleanup.
+- Token refresh updates the local token and attempts backend token rotation.
+- Push backend missing, `404`, or unimplemented responses degrade to warning logs and do not block app startup, login, logout, or normal chat flows.
 
-Backend push-device APIs were not found in the current Rust/Java services. Offline FCM delivery is therefore `BACKEND_REQUIRED`; the client does not fake server push support.
+Client delivery status: `CLIENT_DONE`.
+
+Backend delivery status: `BACKEND_REQUIRED`.
+
+Current backend status:
+
+- `shared-api-contract` now exposes the required push endpoints.
+- No user-facing `/api/push/devices/*` or `/api/push/settings` endpoints were found in current Rust/Java services.
+- Existing backend push code is limited to internal dispatcher flow such as `api-server-rs/src/push_dispatcher.rs`; it does not satisfy the mobile client contract below.
+- Offline FCM delivery remains blocked until backend endpoints are implemented.
 
 ## Required Endpoints
 
+Note: mobile `APP_CONFIG.API_BASE_URL` already ends with `/api`, so shared contract constants use `/push/...` while the full HTTP routes below remain `/api/push/...`.
+
 ### `POST /api/push/devices/register`
+
+Status:
+
+- Client: `DONE`
+- Backend: `TODO`
 
 Registers or reactivates a device for the authenticated user.
 
@@ -56,6 +78,11 @@ Multi-device: one user may have multiple active devices; tokens are unique per d
 
 ### `POST /api/push/devices/unregister`
 
+Status:
+
+- Client: `DONE`
+- Backend: `TODO`
+
 Disables push for a device, usually during logout.
 
 Request:
@@ -83,6 +110,11 @@ Idempotency: unregistering an already inactive device returns success.
 Logout behavior: unregister before local session cleanup when possible; failure must not block logout.
 
 ### `PUT /api/push/devices/token`
+
+Status:
+
+- Client: `DONE`
+- Backend: `TODO`
 
 Rotates the FCM token after Firebase token refresh.
 
@@ -113,6 +145,11 @@ Token refresh behavior: update must be accepted even if `oldToken` is missing or
 
 ### `GET /api/push/settings`
 
+Status:
+
+- Client: `DONE`
+- Backend: `TODO`
+
 Returns user-level and session-level notification settings.
 
 Response:
@@ -138,6 +175,11 @@ Response:
 Auth: user access token.
 
 ### `PUT /api/push/settings`
+
+Status:
+
+- Client: `DONE`
+- Backend: `TODO`
 
 Updates notification settings.
 
@@ -165,6 +207,11 @@ Response:
 Idempotency: repeated writes with the same payload return success.
 
 ### `POST /api/push/internal/send`
+
+Status:
+
+- Client: `N/A`
+- Backend: `TODO`
 
 Internal service endpoint used by message fanout or offline dispatcher to send FCM notifications.
 

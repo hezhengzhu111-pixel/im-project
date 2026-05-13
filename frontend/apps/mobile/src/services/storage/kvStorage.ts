@@ -82,6 +82,7 @@ export const kvStorage = {
     const preserveFcmToken = options?.preserveFcmToken !== false;
     [
       STORAGE_KEYS.userSnapshot,
+      STORAGE_KEYS.pushSettings,
       STORAGE_KEYS.currentSessionId,
       STORAGE_KEYS.drafts,
       STORAGE_KEYS.wsCache,

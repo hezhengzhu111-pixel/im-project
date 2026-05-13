@@ -3,6 +3,7 @@ import { registerAuthHooks } from '@/services/api/httpClient';
 import { authService } from '@/services/auth/authService';
 import { refreshCoordinator } from '@/services/api/httpClient';
 import { getFcmToken, clearPendingNotificationRoute } from '@/services/notification/notificationService';
+import { pushDeviceService } from '@/services/push/pushDeviceService';
 import { userService } from '@/services/user/userService';
 import { messageRepository } from '@/services/storage/messageRepository';
 import { notificationEventRepository } from '@/services/storage/notificationEventRepository';
@@ -43,12 +44,27 @@ const buildSessionMeta = (user: User | null, accessToken: string) =>
     savedAt: Date.now(),
   });
 
+const syncPushRegistrationAfterLogin = async () => {
+  const token = await getFcmToken();
+  useNotificationStore.setState({ fcmToken: token || kvStorage.getString(STORAGE_KEYS.fcmToken) });
+  if (!token) {
+    return;
+  }
+  try {
+    await pushDeviceService.registerDevice(token);
+    useNotificationStore.setState({ tokenBound: true });
+  } catch (error) {
+    pushDeviceService.logOptionalFailure('register device', error);
+    useNotificationStore.setState({ tokenBound: false });
+  }
+};
+
 const applySessionSideEffects = async () => {
   await Promise.allSettled([
     useSettingsStore.getState().loadSettings(),
     useChatStore.getState().bootstrap(),
     useWebsocketStore.getState().connect(),
-    getFcmToken(),
+    syncPushRegistrationAfterLogin(),
   ]);
 };
 
@@ -209,6 +225,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   async logout() {
+    await pushDeviceService.unregisterDevice().catch((error: unknown) => {
+      pushDeviceService.logOptionalFailure('unregister device', error);
+    });
     await userService.logout().catch(() => undefined);
     await get().clearSession();
   },

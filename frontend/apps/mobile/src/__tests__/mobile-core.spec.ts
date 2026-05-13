@@ -14,8 +14,9 @@ import { pendingMessageRepository } from '@/services/storage/pendingMessageRepos
 import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
 import { notificationEventRepository } from '@/services/storage/notificationEventRepository';
 import { assertPlaintextSendAllowed, maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
-import { displaySystemNotification, getFcmToken } from '@/services/notification/notificationService';
+import { displaySystemNotification, getFcmToken, handleFcmTokenRefresh } from '@/services/notification/notificationService';
 import * as notificationService from '@/services/notification/notificationService';
+import { pushDeviceService } from '@/services/push/pushDeviceService';
 import { authService } from '@/services/auth/authService';
 import { fileService } from '@/services/file/fileService';
 import { buildVoiceFile, mediaService } from '@/services/media/mediaService';
@@ -49,6 +50,13 @@ const groupSession: ChatSession = {
   unreadCount: 0,
 };
 
+const defaultPushSettings = {
+  enabled: true,
+  soundEnabled: true,
+  showPreview: true,
+  mutedConversationIds: [],
+};
+
 const message = (id: string, content = 'hello'): MobileMessage => ({
   id,
   serverId: id,
@@ -64,6 +72,12 @@ const message = (id: string, content = 'hello'): MobileMessage => ({
 describe('mobile core', () => {
   beforeEach(() => {
     jest.restoreAllMocks();
+    jest.spyOn(pushDeviceService, 'registerDevice').mockResolvedValue({ deviceId: 'device', registered: true });
+    jest.spyOn(pushDeviceService, 'unregisterDevice').mockResolvedValue(true);
+    jest.spyOn(pushDeviceService, 'updateDeviceToken').mockResolvedValue({ updated: true });
+    jest.spyOn(pushDeviceService, 'getSettings').mockResolvedValue(defaultPushSettings);
+    jest.spyOn(pushDeviceService, 'updateSettings').mockImplementation(async (patch) => ({ ...defaultPushSettings, ...patch }));
+    jest.spyOn(pushDeviceService, 'logOptionalFailure').mockImplementation(() => undefined);
     registerAuthHooks({
       getAccessToken: () => useAuthStore.getState().accessToken,
       getSessionGeneration: () => useAuthStore.getState().sessionGeneration,
@@ -521,6 +535,49 @@ describe('mobile core', () => {
     expect(useAuthStore.getState().permissions).toEqual(['chat:read']);
   });
 
+  test('login skips register when FCM token is empty', async () => {
+    const registerSpy = jest.spyOn(pushDeviceService, 'registerDevice');
+    jest.spyOn(userService, 'login').mockResolvedValue({
+      code: 200,
+      message: 'ok',
+      data: {
+        success: true,
+        token: 'login-token',
+        user: { id: '9', username: 'neo' },
+      },
+    });
+    jest.spyOn(useSettingsStore.getState(), 'loadSettings').mockResolvedValue();
+    jest.spyOn(useChatStore.getState(), 'bootstrap').mockResolvedValue();
+    jest.spyOn(useWebsocketStore.getState(), 'connect').mockResolvedValue();
+    jest.spyOn(notificationService, 'getFcmToken').mockResolvedValue('');
+
+    await expect(useAuthStore.getState().login({ username: 'neo', password: 'pass' })).resolves.toBe(true);
+
+    expect(registerSpy).not.toHaveBeenCalled();
+  });
+
+  test('register failure does not block login', async () => {
+    jest.spyOn(userService, 'login').mockResolvedValue({
+      code: 200,
+      message: 'ok',
+      data: {
+        success: true,
+        token: 'login-token',
+        user: { id: '9', username: 'neo' },
+      },
+    });
+    jest.spyOn(useSettingsStore.getState(), 'loadSettings').mockResolvedValue();
+    jest.spyOn(useChatStore.getState(), 'bootstrap').mockResolvedValue();
+    jest.spyOn(useWebsocketStore.getState(), 'connect').mockResolvedValue();
+    jest.spyOn(notificationService, 'getFcmToken').mockResolvedValue('fcm-token');
+    jest.spyOn(pushDeviceService, 'registerDevice').mockRejectedValue(new Error('push backend offline'));
+
+    await expect(useAuthStore.getState().login({ username: 'neo', password: 'pass' })).resolves.toBe(true);
+
+    expect(useAuthStore.getState().currentUser?.id).toBe('9');
+    expect(useNotificationStore.getState().tokenBound).toBe(false);
+  });
+
   test('restoreSession clears stale snapshot when no token or cookie exists', async () => {
     jest.spyOn(secureStorage, 'get').mockResolvedValue('');
     jest.spyOn(secureStorage, 'clearSession').mockResolvedValue();
@@ -600,6 +657,22 @@ describe('mobile core', () => {
     expect(notificationEventRepository.listRecent()).toHaveLength(0);
   });
 
+  test('logout continues when unregister device fails', async () => {
+    jest.spyOn(userService, 'logout').mockResolvedValue({ code: 200, message: 'ok', data: 'ok' });
+    jest.spyOn(pushDeviceService, 'unregisterDevice').mockRejectedValue(new Error('unregister failed'));
+    useAuthStore.setState({
+      currentUser: { id: '1', username: 'alice' },
+      accessToken: 'logout-token',
+      permissions: [],
+      authReady: true,
+      sessionGeneration: 1,
+    });
+
+    await expect(useAuthStore.getState().logout()).resolves.toBeUndefined();
+
+    expect(useAuthStore.getState().currentUser).toBeNull();
+  });
+
   test('encrypted message safe mask hides content and media', () => {
     const masked = maskEncryptedMessage({ ...message('e1', 'ciphertext'), encrypted: true, mediaUrl: 'https://x' });
     expect(masked.content).toContain('端到端加密');
@@ -633,6 +706,16 @@ describe('mobile core', () => {
     jest.spyOn(userService, 'updateSettings').mockResolvedValue({ code: 200, message: 'ok', data: true });
     await useSettingsStore.getState().updateMessageSetting('enableNotification', false);
     expect(useSettingsStore.getState().notificationEnabled).toBe(false);
+  });
+
+  test('token refresh updates push token through backend contract', async () => {
+    const updateSpy = jest.spyOn(pushDeviceService, 'updateDeviceToken').mockResolvedValue({ updated: true, tokenVersion: 2 });
+    kvStorage.setString('im.mobile.fcm-token', 'old-token');
+
+    await expect(handleFcmTokenRefresh('new-token')).resolves.toBeUndefined();
+
+    expect(kvStorage.getString('im.mobile.fcm-token')).toBe('new-token');
+    expect(updateSpy).toHaveBeenCalledWith('new-token');
   });
 
   test('chatStore addMessage dedupes same message', () => {

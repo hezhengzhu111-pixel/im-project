@@ -5,6 +5,7 @@ export const deviceInfo = {
   async getDeviceSummary() {
     return {
       platform: Platform.OS,
+      appVersion: DeviceInfo.getVersion(),
       version: String(Platform.Version),
       brand: await DeviceInfo.getBrand(),
       model: await DeviceInfo.getModel(),

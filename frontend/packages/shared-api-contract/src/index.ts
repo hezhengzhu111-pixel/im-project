@@ -1,5 +1,6 @@
 export { AUTH_ENDPOINTS } from './auth.endpoints.js';
 export { USER_ENDPOINTS } from './user.endpoints.js';
+export { PUSH_ENDPOINTS } from './push.endpoints.js';
 export { MESSAGE_ENDPOINTS } from './message.endpoints.js';
 export { FRIEND_ENDPOINTS } from './friend.endpoints.js';
 export { GROUP_ENDPOINTS } from './group.endpoints.js';
