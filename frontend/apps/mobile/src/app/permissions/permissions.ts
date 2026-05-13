@@ -4,8 +4,10 @@ import {
   RESULTS,
   type Permission,
   check,
+  checkMultiple,
   openSettings,
   request,
+  requestMultiple,
   requestNotifications,
 } from 'react-native-permissions';
 
@@ -34,6 +36,27 @@ const ensurePermission = async (permission: Permission, label: string): Promise<
   return granted;
 };
 
+const ensurePermissions = async (requested: Permission[], label: string): Promise<boolean> => {
+  const unique = Array.from(new Set(requested));
+  const current = await checkMultiple(unique);
+  const missing = unique.filter((permission) => {
+    const status = current[permission];
+    return status !== RESULTS.GRANTED && status !== RESULTS.LIMITED;
+  });
+  if (missing.length === 0) {
+    return true;
+  }
+  const next = await requestMultiple(missing);
+  const granted = unique.every((permission) => {
+    const status = next[permission] || current[permission];
+    return status === RESULTS.GRANTED || status === RESULTS.LIMITED;
+  });
+  if (!granted) {
+    explainDenied(label);
+  }
+  return granted;
+};
+
 export const permissions = {
   camera: () =>
     Platform.OS === 'android'
@@ -45,12 +68,20 @@ export const permissions = {
       ? ensurePermission(PERMISSIONS.ANDROID.RECORD_AUDIO, 'Microphone')
       : ensurePermission(PERMISSIONS.IOS.MICROPHONE, 'Microphone'),
 
-  media: () => {
+  media: (scope: 'images' | 'videos' | 'audio' | 'mixed' = 'images') => {
     if (Platform.OS !== 'android') {
       return ensurePermission(PERMISSIONS.IOS.PHOTO_LIBRARY, 'Photo library');
     }
     if (Platform.Version >= 33) {
-      return ensurePermission(PERMISSIONS.ANDROID.READ_MEDIA_IMAGES, 'Photos and media');
+      const requested =
+        scope === 'videos'
+          ? [PERMISSIONS.ANDROID.READ_MEDIA_VIDEO]
+          : scope === 'audio'
+            ? [PERMISSIONS.ANDROID.READ_MEDIA_AUDIO]
+            : scope === 'mixed'
+              ? [PERMISSIONS.ANDROID.READ_MEDIA_IMAGES, PERMISSIONS.ANDROID.READ_MEDIA_VIDEO]
+              : [PERMISSIONS.ANDROID.READ_MEDIA_IMAGES];
+      return ensurePermissions(requested, scope === 'audio' ? 'Audio files' : 'Photos and media');
     }
     return ensurePermission(PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE, 'File read');
   },

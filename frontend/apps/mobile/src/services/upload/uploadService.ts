@@ -1,4 +1,4 @@
-import { fileService, type FileUploadResponse, type MobileFile } from '@/services/file/fileService';
+import { fileService, normalizeUploadFile, type FileUploadResponse, type MobileFile } from '@/services/file/fileService';
 import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
 import type { MessageType, UploadTask } from '@/types/models';
 
@@ -11,21 +11,31 @@ export const uploadService = {
     uploadType: MessageType,
     context?: { conversationId?: string; localMessageId?: string },
   ): UploadTask {
+    const normalizedFile = normalizeUploadFile(file, uploadType);
     const existing = context?.localMessageId
       ? uploadTaskRepository.findByLocalMessageId(context.localMessageId)
       : undefined;
     if (existing) {
-      return existing;
+      const merged = {
+        ...existing,
+        fileUri: normalizedFile.uri || existing.fileUri,
+        fileName: normalizedFile.name || existing.fileName,
+        mimeType: normalizedFile.type || existing.mimeType,
+        fileSize: normalizedFile.size || existing.fileSize,
+        updatedAt: Date.now(),
+      };
+      uploadTaskRepository.upsert(merged);
+      return merged;
     }
     const now = Date.now();
     const task: UploadTask = {
       taskId: stableTaskId(context?.localMessageId),
       conversationId: context?.conversationId,
       localMessageId: context?.localMessageId,
-      fileUri: file.uri,
-      fileName: file.name,
-      mimeType: file.type,
-      fileSize: file.size,
+      fileUri: normalizedFile.uri,
+      fileName: normalizedFile.name,
+      mimeType: normalizedFile.type,
+      fileSize: normalizedFile.size,
       uploadType,
       status: 'pending',
       progress: 0,
@@ -62,6 +72,9 @@ export const uploadService = {
         ...uploading,
         status: 'uploaded',
         remoteUrl: response.data.url,
+        fileName: response.data.fileName || uploading.fileName,
+        mimeType: response.data.contentType || uploading.mimeType,
+        fileSize: response.data.size || uploading.fileSize,
         progress: 100,
         updatedAt: Date.now(),
       });

@@ -2,6 +2,8 @@ import axios from 'axios';
 import messaging from '@react-native-firebase/messaging';
 import { createReconnectDelay, createTicketedWebSocketUrl } from '@im/shared-ws-core';
 import { createRefreshCoordinator } from '@im/shared-auth-core';
+import { keepLocalCopy, pick } from '@react-native-documents/picker';
+import { launchImageLibrary } from 'react-native-image-picker';
 import { resolveGroupSessionId, resolveMessageSessionId, resolvePrivateSessionId } from '@/adapters/sessionAdapter';
 import { apiClient, registerAuthHooks } from '@/services/api/httpClient';
 import { secureStorage } from '@/services/storage/secureStorage';
@@ -16,6 +18,7 @@ import { displaySystemNotification, getFcmToken } from '@/services/notification/
 import * as notificationService from '@/services/notification/notificationService';
 import { authService } from '@/services/auth/authService';
 import { fileService } from '@/services/file/fileService';
+import { buildVoiceFile, mediaService } from '@/services/media/mediaService';
 import { messageService } from '@/services/chat/messageService';
 import { userService } from '@/services/user/userService';
 import { useAuthStore } from '@/stores/authStore';
@@ -270,6 +273,79 @@ describe('mobile core', () => {
     uploadTaskRepository.upsert(task);
     uploadTaskRepository.upsert({ ...task, status: 'failed', progress: 40 });
     expect(uploadTaskRepository.listPending()[0].progress).toBe(40);
+  });
+
+  test('mediaService pickImage normalizes image payload metadata', async () => {
+    (launchImageLibrary as jest.Mock).mockResolvedValue({
+      assets: [
+        {
+          uri: 'content://media/external/images/media/1',
+          originalPath: '/storage/emulated/0/DCIM/Camera/photo.jpg',
+          fileName: '',
+          type: '',
+          fileSize: undefined,
+        },
+      ],
+    });
+
+    const file = await mediaService.pickImage();
+
+    expect(file).toEqual(
+      expect.objectContaining({
+        uri: 'file:///storage/emulated/0/DCIM/Camera/photo.jpg',
+        originalUri: 'content://media/external/images/media/1',
+        name: 'photo.jpg',
+        type: 'image/jpeg',
+        size: 128,
+      }),
+    );
+  });
+
+  test('mediaService pickDocument normalizes document payload metadata and local copy', async () => {
+    (pick as jest.Mock).mockResolvedValue([
+      {
+        uri: 'content://com.android.providers.downloads.documents/document/8',
+        name: null,
+        type: null,
+        nativeType: 'application/pdf',
+        size: null,
+        isVirtual: false,
+        convertibleToMimeTypes: null,
+      },
+    ]);
+    (keepLocalCopy as jest.Mock).mockResolvedValue([
+      {
+        status: 'success',
+        sourceUri: 'content://com.android.providers.downloads.documents/document/8',
+        localUri: 'file:///tmp/document.pdf',
+      },
+    ]);
+
+    const file = await mediaService.pickDocument();
+
+    expect(file).toEqual(
+      expect.objectContaining({
+        uri: 'file:///tmp/document.pdf',
+        originalUri: 'content://com.android.providers.downloads.documents/document/8',
+        type: 'application/pdf',
+        size: 128,
+      }),
+    );
+    expect(file?.name).toContain('.pdf');
+  });
+
+  test('buildVoiceFile produces a voice payload with duration', async () => {
+    const file = await buildVoiceFile('/tmp/voice-note.m4a', 1800);
+
+    expect(file).toEqual(
+      expect.objectContaining({
+        uri: 'file:///tmp/voice-note.m4a',
+        name: 'voice-note.m4a',
+        type: 'audio/mp4',
+        duration: 1800,
+        size: 128,
+      }),
+    );
   });
 
   test('messageRepository clearAllCache clears sessions, messages, pending, and uploads', () => {
@@ -582,6 +658,70 @@ describe('mobile core', () => {
     expect(messages).toHaveLength(1);
     expect(messages[0].serverId).toBe('server_1');
     expect(pendingMessageRepository.listReady(Date.now() + 120_000)).toHaveLength(0);
+  });
+
+  test('upload task success updates local media message before server send completes', async () => {
+    jest.spyOn(fileService, 'upload').mockResolvedValue({
+      code: 200,
+      message: 'ok',
+      data: {
+        url: 'https://cdn.example/final-image.png',
+        thumbnailUrl: 'https://cdn.example/thumb.png',
+        fileName: 'final-image.png',
+        size: 2048,
+      },
+    });
+    jest.spyOn(messageService, 'sendPrivate').mockImplementation(async (payload) => {
+      const local = useMessageStore
+        .getState()
+        .messagesBySession[session.id]
+        .find((item) => item.messageType === 'IMAGE');
+      expect(local).toEqual(
+        expect.objectContaining({
+          mediaUrl: 'https://cdn.example/final-image.png',
+          thumbnailUrl: 'https://cdn.example/thumb.png',
+          mediaName: 'final-image.png',
+          mediaSize: 2048,
+          status: 'SENDING',
+        }),
+      );
+      return {
+        code: 200,
+        message: 'ok',
+        data: {
+          ...message('server_image'),
+          messageType: 'IMAGE',
+          mediaUrl: payload.mediaUrl,
+          thumbnailUrl: payload.thumbnailUrl,
+          mediaName: payload.mediaName,
+          mediaSize: payload.mediaSize,
+        },
+      };
+    });
+
+    await useMessageStore.getState().sendMedia(
+      session,
+      {
+        uri: 'content://media/external/images/media/9',
+        name: 'picked.png',
+        type: 'image/png',
+        size: 120,
+      },
+      'IMAGE',
+    );
+
+    const finalMessage = useMessageStore
+      .getState()
+      .messagesBySession[session.id]
+      .find((item) => item.serverId === 'server_image');
+    expect(finalMessage).toEqual(
+      expect.objectContaining({
+        mediaUrl: 'https://cdn.example/final-image.png',
+        thumbnailUrl: 'https://cdn.example/thumb.png',
+        mediaName: 'final-image.png',
+        mediaSize: 2048,
+      }),
+    );
   });
 
   test('message retry leaves failed pending on API failure', async () => {

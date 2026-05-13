@@ -22,6 +22,8 @@ export function ChatScreen() {
   const sendText = useChatStore((state) => state.sendText);
   const sendMedia = useChatStore((state) => state.sendMedia);
   const [text, setText] = useState('');
+  const [recording, setRecording] = useState(false);
+  const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
   const messages = useMemo(() => (session ? messagesBySession[session.id] || [] : []), [messagesBySession, session]);
   const encrypted = isEncryptedSession(session);
 
@@ -39,16 +41,55 @@ export function ChatScreen() {
   };
 
   const pickAndSend = async () => {
-    const file = await mediaService.pickImage();
-    if (file) {
-      await sendMedia(file, file.type?.startsWith('video/') ? 'VIDEO' : 'IMAGE');
+    try {
+      const file = await mediaService.pickImage();
+      if (file) {
+        await sendMedia(file, file.type?.startsWith('video/') ? 'VIDEO' : 'IMAGE');
+      }
+    } catch (error) {
+      Alert.alert('Media failed', error instanceof Error ? error.message : 'Please try again');
+    }
+  };
+
+  const takePhoto = async () => {
+    try {
+      const file = await mediaService.takePhoto();
+      if (file) {
+        await sendMedia(file, 'IMAGE');
+      }
+    } catch (error) {
+      Alert.alert('Camera failed', error instanceof Error ? error.message : 'Please try again');
     }
   };
 
   const pickFile = async () => {
-    const file = await mediaService.pickDocument();
-    if (file) {
-      await sendMedia(file, 'FILE');
+    try {
+      const file = await mediaService.pickDocument();
+      if (file) {
+        await sendMedia(file, 'FILE');
+      }
+    } catch (error) {
+      Alert.alert('File failed', error instanceof Error ? error.message : 'Please try again');
+    }
+  };
+
+  const toggleVoiceRecording = async () => {
+    try {
+      if (recording) {
+        const durationMs = recordingStartedAt ? Date.now() - recordingStartedAt : undefined;
+        const file = await mediaService.stopVoiceRecording(durationMs);
+        setRecording(false);
+        setRecordingStartedAt(null);
+        await sendMedia(file, 'VOICE');
+        return;
+      }
+      await mediaService.startVoiceRecording();
+      setRecording(true);
+      setRecordingStartedAt(Date.now());
+    } catch (error) {
+      setRecording(false);
+      setRecordingStartedAt(null);
+      Alert.alert('Voice failed', error instanceof Error ? error.message : 'Please try again');
     }
   };
 
@@ -81,7 +122,11 @@ export function ChatScreen() {
         />
         <View style={styles.composer}>
           <Pressable disabled={encrypted} style={styles.tool} onPress={pickAndSend}><Text>+</Text></Pressable>
+          <Pressable disabled={encrypted} style={styles.tool} onPress={takePhoto}><Text>Cam</Text></Pressable>
           <Pressable disabled={encrypted} style={styles.tool} onPress={pickFile}><Text>File</Text></Pressable>
+          <Pressable disabled={encrypted} style={styles.tool} onPress={() => { void toggleVoiceRecording(); }}>
+            <Text>{recording ? 'Stop' : 'Voice'}</Text>
+          </Pressable>
           <TextInput
             editable={!encrypted}
             placeholder={encrypted ? 'E2EE not supported on mobile' : 'Message'}
