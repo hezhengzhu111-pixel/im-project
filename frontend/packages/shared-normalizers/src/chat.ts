@@ -6,6 +6,26 @@ import type {
 } from "@im/shared-types";
 import { asBoolean, asNumber, asString, isRecord } from "@im/shared-types";
 
+const firstString = (...values: unknown[]): string => {
+  for (const value of values) {
+    const text = asString(value).trim();
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+};
+
+const stripSessionPrefix = (type: ChatSessionType, value: string): string => {
+  if (type === "group" && value.startsWith("group_")) {
+    return value.slice("group_".length);
+  }
+  if (type === "private" && value.startsWith("private_")) {
+    return value.slice("private_".length);
+  }
+  return value;
+};
+
 export const toBigIntId = (value: unknown): bigint | null => {
   if (value == null) return null;
   if (typeof value === "bigint") return value;
@@ -94,17 +114,42 @@ export const normalizeConversation = (
   currentUserId: string,
 ): ChatSession | null => {
   const record = (isRecord(raw) ? raw : {}) as RawConversationDTO;
-  const conversationType = asString(record.conversationType ?? record.type);
+  const looseRecord = (isRecord(raw) ? raw : {}) as Record<string, unknown>;
+  const conversationType = firstString(
+    record.conversationType,
+    looseRecord.conversation_type,
+    record.type,
+  );
   const isGroup =
     conversationType === "2" || conversationType.toUpperCase() === "GROUP";
 
-  const rawTargetId =
-    record.targetId ?? record.partnerId ?? record.friendId ?? record.userId;
-  const conversationId = asString(record.conversationId);
-  let targetId = asString(rawTargetId);
+  const type: ChatSessionType = isGroup ? "group" : "private";
+  const rawTargetId = isGroup
+    ? record.targetId ??
+      looseRecord.target_id ??
+      looseRecord.groupId ??
+      looseRecord.group_id ??
+      record.partnerId ??
+      record.friendId ??
+      record.userId
+    : record.targetId ??
+      looseRecord.target_id ??
+      record.partnerId ??
+      looseRecord.partner_id ??
+      record.friendId ??
+      looseRecord.friend_id ??
+      record.userId ??
+      looseRecord.user_id;
+  const conversationId = firstString(
+    record.conversationId,
+    looseRecord.conversation_id,
+    looseRecord.id,
+  );
+  let targetId = stripSessionPrefix(type, asString(rawTargetId));
 
   if (!isGroup && (!targetId || targetId === currentUserId)) {
-    const parts = conversationId.split("_");
+    const privateConversationId = stripSessionPrefix("private", conversationId);
+    const parts = privateConversationId.split("_");
     const other = parts.find((part) => part && part !== currentUserId);
     if (other) {
       targetId = other;
@@ -112,18 +157,38 @@ export const normalizeConversation = (
   }
 
   if (!targetId) {
-    targetId = conversationId;
+    targetId = stripSessionPrefix(type, conversationId);
   }
   if (!targetId) {
     return null;
   }
 
-  const lastActiveTime = asString(record.lastMessageTime);
-  const type: ChatSessionType = isGroup ? "group" : "private";
-  const targetName = asString(record.conversationName, targetId);
-  const targetAvatar = asString(record.conversationAvatar) || undefined;
-  const isPinned = asBoolean(record.isPinned ?? record.pinned, false);
-  const isMuted = asBoolean(record.isMuted ?? record.muted, false);
+  const lastActiveTime = firstString(
+    record.lastMessageTime,
+    looseRecord.last_message_time,
+    looseRecord.lastActiveTime,
+    looseRecord.last_active_time,
+  );
+  const targetName = firstString(
+    record.conversationName,
+    looseRecord.conversation_name,
+    looseRecord.targetName,
+    looseRecord.target_name,
+    looseRecord.groupName,
+    looseRecord.group_name,
+    looseRecord.name,
+    targetId,
+  );
+  const targetAvatar =
+    firstString(
+      record.conversationAvatar,
+      looseRecord.conversation_avatar,
+      looseRecord.targetAvatar,
+      looseRecord.target_avatar,
+      looseRecord.avatar,
+    ) || undefined;
+  const isPinned = asBoolean(record.isPinned ?? looseRecord.is_pinned ?? record.pinned, false);
+  const isMuted = asBoolean(record.isMuted ?? looseRecord.is_muted ?? record.muted, false);
   return {
     id: buildSessionId(type, currentUserId, targetId),
     conversationId: conversationId || undefined,

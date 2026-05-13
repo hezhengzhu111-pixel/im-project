@@ -9,7 +9,7 @@ export type MessageType =
   | 'SYSTEM'
   | 'AI_REPLY';
 
-export type MessageStatus = 'SENDING' | 'SENT' | 'FAILED' | 'READ' | 'RECALLED' | 'DELETED';
+export type MessageStatus = 'SENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | 'OFFLINE' | 'RECALLED' | 'DELETED';
 
 export interface ApiResponse<T> {
   code: number;
@@ -148,6 +148,10 @@ export interface MobileMessage {
   sendTime: string;
   encrypted?: boolean | number;
   isAiGenerated?: boolean;
+  e2eeHeader?: string;
+  e2eeDeviceId?: string;
+  e2eeSenderIdentityKey?: string;
+  e2eeEphemeralKey?: string;
   extra?: Record<string, unknown>;
   rawJson?: string;
 }

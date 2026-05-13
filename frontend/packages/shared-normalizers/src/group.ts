@@ -9,6 +9,7 @@ import {
   asString,
   isRawGroup,
   isRawGroupMember,
+  isRecord,
 } from "@im/shared-types";
 
 const normalizeMemberRole = (role: unknown): GroupMember["role"] => {
@@ -19,9 +20,10 @@ const normalizeMemberRole = (role: unknown): GroupMember["role"] => {
 
 export const normalizeGroup = (raw: RawGroupDTO | Group | unknown): Group => {
   const record = isRawGroup(raw) ? raw : {};
-  const groupName = asString(record.groupName ?? record.name);
+  const looseRecord = isRecord(raw) ? raw : {};
+  const groupName = asString(record.groupName ?? looseRecord.group_name ?? record.name);
   return {
-    id: asString(record.id),
+    id: asString(record.id ?? looseRecord.groupId ?? looseRecord.group_id),
     name: asString(record.name) || undefined,
     groupName,
     description:
@@ -29,8 +31,8 @@ export const normalizeGroup = (raw: RawGroupDTO | Group | unknown): Group => {
     announcement: asString(record.announcement) || undefined,
     type: record.type,
     avatar: asString(record.avatar) || undefined,
-    ownerId: asString(record.ownerId),
-    memberCount: asNumber(record.memberCount, 0),
+    ownerId: asString(record.ownerId ?? looseRecord.owner_id),
+    memberCount: asNumber(record.memberCount ?? looseRecord.member_count, 0),
     maxMembers: Number.isFinite(asNumber(record.maxMembers, Number.NaN))
       ? asNumber(record.maxMembers)
       : undefined,
@@ -48,10 +50,11 @@ export const normalizeGroupMember = (
   raw: RawGroupMemberDTO | GroupMember | unknown,
 ): GroupMember => {
   const record: RawGroupMemberDTO = isRawGroupMember(raw) ? raw : {};
+  const looseRecord = isRecord(raw) ? raw : {};
   return {
     id: asString(record.id) || undefined,
-    groupId: asString(record.groupId) || undefined,
-    userId: asString(record.userId),
+    groupId: asString(record.groupId ?? looseRecord.group_id) || undefined,
+    userId: asString(record.userId ?? looseRecord.user_id ?? record.id),
     username: asString(record.username) || undefined,
     nickname: asString(record.nickname) || undefined,
     avatar: asString(record.avatar) || undefined,

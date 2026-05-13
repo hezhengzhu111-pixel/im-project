@@ -66,3 +66,19 @@ export const mergeMessagesChronologically = (
 
   return merged.sort(sortMessagesAscending);
 };
+
+export const mergeServerMessageWithPending = (
+  pending: Message,
+  serverMessage: Message,
+): Message => ({
+  ...pending,
+  ...serverMessage,
+  id: safePreferExistingId(serverMessage.id, pending.id),
+  messageId: serverMessage.messageId ?? pending.messageId,
+  clientMessageId: serverMessage.clientMessageId ?? pending.clientMessageId,
+});
+
+export const applyMessageToMessageList = (
+  messages: Message[],
+  incoming: Message,
+): Message[] => mergeMessagesChronologically(messages, [incoming]);

@@ -5,8 +5,10 @@ import {
   createHeartbeatPayload,
   createReconnectDelay,
   createTicketedWebSocketUrl,
+  parseWebSocketPayload,
   shouldProcessSequentially,
 } from '@im/shared-ws-core';
+import { createSessionFromMessage, resolveMessageSessionId } from '@/adapters/sessionAdapter';
 import { APP_CONFIG, WS_CONFIG } from '@/constants/config';
 import { authService } from '@/services/auth/authService';
 import { displayMessageNotification } from '@/services/notification/notificationService';
@@ -92,7 +94,8 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
         startHeartbeat();
       };
       socket.onmessage = (event) => {
-        const payload = JSON.parse(String(event.data)) as Record<string, unknown>;
+        const parsed = parseWebSocketPayload(String(event.data));
+        const payload = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
         const type = String(payload.type || '');
         const data = payload.data as Record<string, unknown> | undefined;
         const innerType = data ? String(data.messageType || data.type || '') : '';
@@ -143,13 +146,31 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
     const type = String(payload.type || '');
     const data = payload.data;
     if (type === WS_MESSAGE_TYPE.MESSAGE || type === WS_MESSAGE_TYPE.MESSAGE_STATUS_CHANGED) {
+      const currentUserId = useAuthStore.getState().currentUser?.id || '';
       const message = normalizeMessage(data);
-      useMessageStore.getState().addMessage(message);
+      const sessionId = resolveMessageSessionId(message, currentUserId);
+      const routedMessage = { ...message, conversationId: sessionId || message.conversationId };
+      useMessageStore.getState().addMessage(routedMessage, routedMessage.conversationId);
       const currentSessionId = useSessionStore.getState().currentSession?.id;
-      const isCurrent = message.conversationId && currentSessionId === message.conversationId;
-      const isSelf = message.senderId === useAuthStore.getState().currentUser?.id;
-      if (!isCurrent && !isSelf) {
-        await displayMessageNotification(message);
+      const isCurrent = Boolean(routedMessage.conversationId && currentSessionId === routedMessage.conversationId);
+      const isSelf = routedMessage.senderId === currentUserId;
+      const sessionStore = useSessionStore.getState();
+      const existingSession = sessionStore.sessions.find((item) => item.id === routedMessage.conversationId);
+      const messageSession = createSessionFromMessage(routedMessage, currentUserId);
+      const nextSession = existingSession || messageSession;
+      if (nextSession) {
+        sessionStore.upsertSession({
+          ...nextSession,
+          lastMessage: routedMessage,
+          lastActiveTime: routedMessage.sendTime,
+          unreadCount:
+            type === WS_MESSAGE_TYPE.MESSAGE && !isCurrent && !isSelf
+              ? (existingSession?.unreadCount || 0) + 1
+              : existingSession?.unreadCount || nextSession.unreadCount,
+        });
+      }
+      if (type === WS_MESSAGE_TYPE.MESSAGE && !isCurrent && !isSelf && !nextSession?.isMuted) {
+        await displayMessageNotification(routedMessage);
       }
       return;
     }

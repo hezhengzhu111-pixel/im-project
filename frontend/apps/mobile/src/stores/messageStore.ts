@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { applyMobileMessageToList, hasSameMobileMessageIdentity } from '@/adapters/messageAdapter';
+import { resolveGroupSessionId, resolveMessageSessionId } from '@/adapters/sessionAdapter';
 import { RETRY_CONFIG } from '@/constants/config';
 import { assertPlaintextSendAllowed, blockEncryptedPendingPayload, maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
 import { messageService, type SendMessagePayload } from '@/services/chat/messageService';
@@ -34,27 +36,8 @@ interface MessageState {
   clear: () => void;
 }
 
-const resolveSessionId = (message: MobileMessage): string => {
-  if (message.conversationId) {
-    return message.conversationId;
-  }
-  if (message.groupId || message.isGroupChat) {
-    return `group_${message.groupId}`;
-  }
-  const currentUserId = useAuthStore.getState().currentUser?.id || '';
-  const targetId = message.senderId === currentUserId ? message.receiverId : message.senderId;
-  return `private_${currentUserId}_${targetId}`;
-};
-
-const hasSameMobileMessageIdentity = (left: MobileMessage, right: MobileMessage): boolean => {
-  if (left.serverId && right.serverId && left.serverId === right.serverId) {
-    return true;
-  }
-  if (left.id && right.id && left.id === right.id) {
-    return true;
-  }
-  return Boolean(left.clientMessageId && right.clientMessageId && left.clientMessageId === right.clientMessageId);
-};
+const sessionIdFor = (message: MobileMessage): string =>
+  resolveMessageSessionId(message, useAuthStore.getState().currentUser?.id || '') || message.conversationId || '';
 
 const nextRetryAt = (retryCount: number) =>
   Date.now() + Math.min(RETRY_CONFIG.maxDelayMs, RETRY_CONFIG.baseDelayMs * 2 ** retryCount);
@@ -141,23 +124,17 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     }
   },
 
-  addMessage(message, sessionId = resolveSessionId(message)) {
+  addMessage(message, sessionId = sessionIdFor(message)) {
     const safeMessage = maskEncryptedMessage(message);
     const existing = get().messagesBySession[sessionId] || [];
-    const next = existing.slice();
-    const index = next.findIndex((item) => hasSameMobileMessageIdentity(item, safeMessage));
-    if (index >= 0) {
-      next[index] = { ...next[index], ...safeMessage };
-    } else {
-      next.push(safeMessage);
-    }
-    next.sort((left, right) => new Date(left.sendTime).getTime() - new Date(right.sendTime).getTime());
-    messageRepository.upsertMessages(sessionId, [safeMessage]);
+    const next = applyMobileMessageToList(existing, safeMessage);
+    const persistedMessage = next.find((item) => hasSameMobileMessageIdentity(item, safeMessage)) || safeMessage;
+    messageRepository.upsertMessages(sessionId, [persistedMessage]);
     set({ messagesBySession: { ...get().messagesBySession, [sessionId]: next } });
     const sessionStore = useSessionStore.getState();
     const session = sessionStore.sessions.find((item) => item.id === sessionId);
     if (session) {
-      sessionStore.upsertSession({ ...session, lastMessage: safeMessage, lastActiveTime: safeMessage.sendTime });
+      sessionStore.upsertSession({ ...session, lastMessage: persistedMessage, lastActiveTime: persistedMessage.sendTime });
     }
   },
 
@@ -194,7 +171,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   },
 
   async retryMessage(localId) {
-    const pending = pendingMessageRepository.listReady().find((item) => item.localId === localId);
+    const pending = pendingMessageRepository.get(localId);
     if (!pending) {
       return;
     }
@@ -238,7 +215,13 @@ export const useMessageStore = create<MessageState>((set, get) => ({
       const response = payload.sendType === 'group'
         ? await messageService.sendGroup(data)
         : await messageService.sendPrivate(data);
-      get().addMessage({ ...response.data, status: 'SENT' }, pending.conversationId);
+      const serverMessage: MobileMessage = {
+        ...response.data,
+        clientMessageId: response.data.clientMessageId || data.clientMessageId,
+        conversationId: pending.conversationId,
+        status: 'SENT',
+      };
+      get().addMessage(serverMessage, pending.conversationId);
       pendingMessageRepository.remove(localId);
     } catch (error) {
       const retryCount = pending.retryCount + 1;
@@ -262,7 +245,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   },
 
   async markRead(session) {
-    await messageService.markRead(session.type === 'group' ? `group_${session.targetId}` : session.targetId);
+    await messageService.markRead(session.type === 'group' ? resolveGroupSessionId(session.targetId) : session.targetId);
     useSessionStore.getState().markRead(session.id);
   },
 

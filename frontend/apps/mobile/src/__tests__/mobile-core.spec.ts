@@ -1,6 +1,8 @@
 import axios from 'axios';
+import messaging from '@react-native-firebase/messaging';
 import { createReconnectDelay, createTicketedWebSocketUrl } from '@im/shared-ws-core';
 import { createRefreshCoordinator } from '@im/shared-auth-core';
+import { resolveGroupSessionId, resolveMessageSessionId, resolvePrivateSessionId } from '@/adapters/sessionAdapter';
 import { apiClient, registerAuthHooks } from '@/services/api/httpClient';
 import { secureStorage } from '@/services/storage/secureStorage';
 import { kvStorage } from '@/services/storage/kvStorage';
@@ -8,20 +10,23 @@ import { messageRepository } from '@/services/storage/messageRepository';
 import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
 import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
 import { notificationEventRepository } from '@/services/storage/notificationEventRepository';
-import { maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
-import { displaySystemNotification } from '@/services/notification/notificationService';
+import { assertPlaintextSendAllowed, maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
+import { displaySystemNotification, getFcmToken } from '@/services/notification/notificationService';
 import { authService } from '@/services/auth/authService';
 import { fileService } from '@/services/file/fileService';
 import { messageService } from '@/services/chat/messageService';
 import { userService } from '@/services/user/userService';
 import { useAuthStore } from '@/stores/authStore';
+import { useChatStore } from '@/stores/chatStore';
 import { useMessageStore } from '@/stores/messageStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useSessionStore } from '@/stores/sessionStore';
 import { useWebsocketStore } from '@/stores/websocketStore';
+import { normalizeMessage, normalizeSession } from '@/utils/normalizers';
 import type { ChatSession, MobileMessage, PendingMessage, UploadTask } from '@/types/models';
 
 const session: ChatSession = {
-  id: 'private_1_2',
+  id: resolvePrivateSessionId('1', '2'),
   type: 'private',
   targetId: '2',
   targetName: 'Bob',
@@ -49,6 +54,15 @@ describe('mobile core', () => {
     notificationEventRepository.clear();
     kvStorage.setBoolean('notification.enabled', true);
     kvStorage.setBoolean('sound.enabled', true);
+    useAuthStore.setState({
+      currentUser: { id: '1', username: 'alice' },
+      accessToken: '',
+      permissions: [],
+      loading: false,
+      authReady: true,
+      sessionGeneration: 0,
+    });
+    useSessionStore.getState().clear();
     useMessageStore.getState().clear();
   });
 
@@ -60,6 +74,62 @@ describe('mobile core', () => {
   test('kvStorage adapter persists settings', () => {
     kvStorage.setBoolean('notification.enabled', false);
     expect(kvStorage.getBoolean('notification.enabled', true)).toBe(false);
+  });
+
+  test('sessionId rules match shared core for private, group, websocket, and history paths', () => {
+    const privateId = resolvePrivateSessionId('2', '1');
+    const privateWsMessage = normalizeMessage({
+      id: '10',
+      sender_id: '2',
+      receiver_id: '1',
+      message_type: 'TEXT',
+      content: 'hi',
+    });
+    const privateHistorySession = normalizeSession({
+      conversation_id: privateId,
+      conversation_type: 'PRIVATE',
+      target_id: '2',
+      conversation_name: 'Bob',
+    }, '1');
+
+    expect(privateId).toBe(session.id);
+    expect(resolveMessageSessionId(privateWsMessage, '1')).toBe(session.id);
+    expect(privateHistorySession.id).toBe(session.id);
+    expect(resolveGroupSessionId('9')).toBe('group_9');
+    expect(normalizeSession({ conversation_type: 'GROUP', group_id: '9' }, '1').id).toBe('group_9');
+  });
+
+  test('message normalizer preserves snake/camel identity, encrypted, and e2ee fields', () => {
+    const snake = normalizeMessage({
+      id: '100',
+      client_message_id: 'cm_1',
+      sender_id: '2',
+      receiver_id: '1',
+      message_type: 'TEXT',
+      content: 'ciphertext',
+      encrypted: 1,
+      e2ee_header: 'header',
+      e2ee_device_id: 'device',
+    });
+    const camel = normalizeMessage({
+      id: '101',
+      clientMessageId: 'cm_2',
+      senderId: '1',
+      receiverId: '2',
+      messageType: 'TEXT',
+      content: 'hello',
+      e2eeSenderIdentityKey: 'identity',
+      e2eeEphemeralKey: 'ephemeral',
+    });
+
+    expect(snake.clientMessageId).toBe('cm_1');
+    expect(snake.encrypted).toBe(1);
+    expect(snake.e2eeHeader).toBe('header');
+    expect(snake.e2eeDeviceId).toBe('device');
+    expect(resolveMessageSessionId(snake, '1')).toBe(session.id);
+    expect(camel.clientMessageId).toBe('cm_2');
+    expect(camel.e2eeSenderIdentityKey).toBe('identity');
+    expect(camel.e2eeEphemeralKey).toBe('ephemeral');
   });
 
   test('messageRepository inserts, queries, and dedupes by server id', () => {
@@ -151,6 +221,11 @@ describe('mobile core', () => {
     const masked = maskEncryptedMessage({ ...message('e1', 'ciphertext'), encrypted: true, mediaUrl: 'https://x' });
     expect(masked.content).toContain('端到端加密');
     expect(masked.mediaUrl).toBeUndefined();
+    expect(masked.content).not.toContain('ciphertext');
+  });
+
+  test('encrypted session blocks mobile plaintext sending', () => {
+    expect(() => assertPlaintextSendAllowed({ ...session, encrypted: true })).toThrow();
   });
 
   test('notification routing displays local notification', async () => {
@@ -185,13 +260,21 @@ describe('mobile core', () => {
   });
 
   test('message send optimistic update writes local pending', async () => {
-    jest.spyOn(messageService, 'sendPrivate').mockResolvedValue({
-      code: 200,
-      message: 'ok',
-      data: message('server_1'),
+    let sawPendingBeforeResponse = false;
+    jest.spyOn(messageService, 'sendPrivate').mockImplementation(async (payload) => {
+      sawPendingBeforeResponse = pendingMessageRepository.listReady().length === 1;
+      return {
+        code: 200,
+        message: 'ok',
+        data: { ...message('server_1'), clientMessageId: payload.clientMessageId },
+      };
     });
     await useMessageStore.getState().sendText(session, 'hello');
-    expect(useMessageStore.getState().messagesBySession[session.id].length).toBeGreaterThan(0);
+    const messages = useMessageStore.getState().messagesBySession[session.id];
+    expect(sawPendingBeforeResponse).toBe(true);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].serverId).toBe('server_1');
+    expect(pendingMessageRepository.listReady(Date.now() + 120_000)).toHaveLength(0);
   });
 
   test('message retry leaves failed pending on API failure', async () => {
@@ -199,6 +282,58 @@ describe('mobile core', () => {
     await useMessageStore.getState().sendText(session, 'hello');
     const failed = useMessageStore.getState().messagesBySession[session.id].some((item) => item.status === 'FAILED');
     expect(failed).toBe(true);
+    expect(pendingMessageRepository.listReady(Date.now() + 120_000)).toHaveLength(1);
+  });
+
+  test('message retry success deletes pending and keeps original clientMessageId', async () => {
+    const sendSpy = jest
+      .spyOn(messageService, 'sendPrivate')
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockImplementationOnce(async (payload) => ({
+        code: 200,
+        message: 'ok',
+        data: { ...message('server_retry'), clientMessageId: payload.clientMessageId },
+      }));
+
+    await useMessageStore.getState().sendText(session, 'hello');
+    const pending = pendingMessageRepository.listReady(Date.now() + 120_000)[0];
+    const payload = JSON.parse(pending.payloadJson) as { data: { clientMessageId: string } };
+    pendingMessageRepository.update({ ...pending, status: 'pending', nextRetryAt: Date.now() - 1 });
+    await useMessageStore.getState().retryPending();
+
+    const messages = useMessageStore.getState().messagesBySession[session.id];
+    expect(sendSpy).toHaveBeenCalledTimes(2);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].clientMessageId).toBe(payload.data.clientMessageId);
+    expect(messages[0].serverId).toBe('server_retry');
+    expect(pendingMessageRepository.get(pending.localId)).toBeUndefined();
+  });
+
+  test('websocket echo with same clientMessageId merges into pending message', async () => {
+    let sentClientMessageId = '';
+    jest.spyOn(messageService, 'sendPrivate').mockImplementation(async (payload) => {
+      sentClientMessageId = payload.clientMessageId;
+      return {
+        code: 200,
+        message: 'ok',
+        data: { ...message('server_2'), clientMessageId: payload.clientMessageId },
+      };
+    });
+    await useMessageStore.getState().sendText(session, 'hello');
+    await useWebsocketStore.getState().dispatchPayload({
+      type: 'MESSAGE',
+      data: {
+        id: 'server_2_ws',
+        clientMessageId: sentClientMessageId,
+        senderId: '1',
+        receiverId: '2',
+        messageType: 'TEXT',
+        content: 'hello',
+        sendTime: new Date().toISOString(),
+      },
+    });
+
+    expect(useMessageStore.getState().messagesBySession[session.id]).toHaveLength(1);
   });
 
   test('media retry uploads once through persisted upload task before sending', async () => {
@@ -246,5 +381,41 @@ describe('mobile core', () => {
   test('websocket message dispatch writes normalized message', async () => {
     await useWebsocketStore.getState().dispatchPayload({ type: 'MESSAGE', data: message('ws1') });
     expect(useMessageStore.getState().messagesBySession[session.id]).toHaveLength(1);
+  });
+
+  test('websocket current session and self messages do not trigger local notification', async () => {
+    useSessionStore.getState().setCurrentSession(session);
+    await useWebsocketStore.getState().dispatchPayload({
+      type: 'MESSAGE',
+      data: { ...message('ws_current'), senderId: '2', receiverId: '1' },
+    });
+    await useWebsocketStore.getState().dispatchPayload({
+      type: 'MESSAGE',
+      data: { ...message('ws_self'), senderId: '1', receiverId: '2' },
+    });
+    expect(notificationEventRepository.listRecent()).toHaveLength(0);
+  });
+
+  test('websocket non-current message from another user triggers local notification and unread', async () => {
+    await useWebsocketStore.getState().dispatchPayload({
+      type: 'MESSAGE',
+      data: { ...message('ws_notify'), senderId: '2', receiverId: '1' },
+    });
+    const events = notificationEventRepository.listRecent();
+    expect(events[0].type).toBe('notification_displayed');
+    expect(useSessionStore.getState().sessions.find((item) => item.id === session.id)?.unreadCount).toBe(1);
+  });
+
+  test('websocket read receipt refreshes sessions', async () => {
+    const refreshSpy = jest.spyOn(useChatStore.getState(), 'refreshSessions').mockResolvedValue();
+    await useWebsocketStore.getState().dispatchPayload({ type: 'READ_RECEIPT', data: { readerId: '2' } });
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('FCM token returns empty when Firebase Messaging is unavailable', async () => {
+    (messaging as unknown as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('missing firebase app');
+    });
+    await expect(getFcmToken()).resolves.toBe('');
   });
 });

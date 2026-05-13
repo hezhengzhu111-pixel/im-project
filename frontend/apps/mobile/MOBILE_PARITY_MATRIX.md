@@ -28,7 +28,7 @@ Status values: `DONE`, `PARTIAL`, `BACKEND_REQUIRED`, `DEFERRED`, `BLOCKED_BY_SC
 | 22 | 同意好友申请 | `pages/Friends.vue` | `friendService.acceptRequest` | `FriendRequestsScreen` | DONE | 是 | 是 | 否 | typecheck | 成功后刷新好友/申请 |
 | 23 | 拒绝好友申请 | `pages/Friends.vue` | `friendService.rejectRequest` | `FriendRequestsScreen` | DONE | 是 | 是 | 否 | typecheck | 成功后刷新申请 |
 | 24 | 删除好友 | `pages/Friends.vue` | `friendService.deleteFriend` | `FriendProfileScreen` | DONE | 是 | 否 | 否 | typecheck | 从资料页操作 |
-| 25 | 修改好友备注 | `pages/Friends.vue` | `friendService.updateRemark` | `FriendProfileScreen` | PARTIAL | 是 | 否 | 否 | typecheck | 接口封装预留，UI 入口按 Web 真实能力保留 |
+| 25 | 修改好友备注 | `pages/Friends.vue` | `friendService.updateRemark` | `FriendProfileScreen` | PARTIAL | 是 | 否 | 否 | typecheck | 接口封装保留；本轮仅做 Android 主链路修复，不扩展资料页操作 |
 | 26 | 好友在线状态 | `services/heartbeat.ts`, `stores/websocket.ts` | `websocketStore`, `friendService` | `websocketStore.onlineUsers`, contact/chat UI | DONE | 是 | 否 | 否 | `mobile:test` | WS online status 更新 |
 | 27 | 群聊列表 | `pages/Groups.vue` | `groupService`, `groupStore` | `GroupsScreen`, `groupStore` | DONE | 是 | 否 | 否 | typecheck | 真实接口 |
 | 28 | 创建群聊 | `pages/Groups.vue` | `groupService.createGroup` | `CreateGroupScreen` | DONE | 是 | 否 | 否 | typecheck | 真实接口 |
@@ -37,8 +37,8 @@ Status values: `DONE`, `PARTIAL`, `BACKEND_REQUIRED`, `DEFERRED`, `BLOCKED_BY_SC
 | 31 | 群成员列表 | `pages/Groups.vue` | `groupService.getMembers` | `GroupMembersScreen` | DONE | 是 | 否 | 否 | typecheck | 真实接口 |
 | 32 | 添加群成员 | `pages/Groups.vue` | `groupService.addMembers` | `AddGroupMembersScreen` | DONE | 是 | 是 | 否 | typecheck | 真实接口 |
 | 33 | 退出群聊 | `pages/Groups.vue` | `groupService.leaveGroup` | `GroupProfileScreen` | DONE | 是 | 否 | 否 | typecheck | 成功后刷新群列表 |
-| 34 | 解散群聊 | `pages/Groups.vue` | `groupService.dismissGroup` | `GroupProfileScreen` | PARTIAL | 是 | 是 | 否 | typecheck | 入口和服务封装存在，权限/后端行为按 Web 对齐 |
-| 35 | 修改群资料 | `pages/Groups.vue` | `groupService.updateGroup` | `GroupProfileScreen` | PARTIAL | 是 | 否 | 否 | typecheck | 字段按 Web 真实接口提交 |
+| 34 | 解散群聊 | `pages/Groups.vue` | `groupService.dismissGroup` | `GroupProfileScreen` | PARTIAL | 是 | 是 | 否 | typecheck | 服务封装保留；本轮不新增资料页解散入口 |
+| 35 | 修改群资料 | `pages/Groups.vue` | `groupService.updateGroup` | `GroupProfileScreen` | PARTIAL | 是 | 否 | 否 | typecheck | 服务封装保留；本轮不新增群资料编辑入口 |
 | 36 | 会话列表 | `pages/Chat.vue`, `stores/chat.ts` | `messageService`, `messageRepo` | `SessionListScreen`, `sessionStore` | DONE | 是 | 是 | 否 | typecheck | SQLite 先恢复，再接口刷新 |
 | 37 | 会话置顶 | `stores/chat.ts` | `messageService` | `SessionInfoScreen`, `sessionStore` | DONE | 是 | 否 | 否 | typecheck | 本地状态和接口结构保留 |
 | 38 | 会话免打扰 | `stores/chat.ts` | settings/session store | `SessionInfoScreen` | DONE | 是 | 是 | 否 | typecheck | 通知层检查 muted |
@@ -113,3 +113,10 @@ Status values: `DONE`, `PARTIAL`, `BACKEND_REQUIRED`, `DEFERRED`, `BLOCKED_BY_SC
 - BACKEND_REQUIRED: 1
 - DEFERRED: 4
 - BLOCKED_BY_SCOPE: 1
+
+## Android Core Fix Notes
+
+- Mobile session IDs now route through `@im/shared-im-core` (`buildSessionId` and message session resolver) for contact-opened private chats, group chats, WebSocket messages, and history/conversation normalization.
+- Mobile normalizers are split into shared normalizer usage plus mobile adapters. Shared packages own base DTO parsing, session IDs, message identity, dedupe, and chronological merge behavior.
+- Firebase/FCM is a safe optional local-development capability. If Firebase Messaging is unavailable because `google-services.json` is absent, `getFcmToken` returns an empty string and Notifee local notifications continue to work.
+- Backend push-device APIs remain `BACKEND_REQUIRED`; E2EE remains `DEFERRED` / `BLOCKED_BY_SCOPE`.

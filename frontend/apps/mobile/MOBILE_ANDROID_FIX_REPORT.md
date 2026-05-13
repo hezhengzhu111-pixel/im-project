@@ -1,0 +1,47 @@
+# Mobile Android Fix Report
+
+## 1. Current Findings
+
+- Mobile was hand-building private and group session IDs in stores and normalizers, while Web/shared uses `@im/shared-im-core` `buildSessionId`.
+- Mobile owned a large copy of core normalizer behavior, which could drift from `@im/shared-normalizers`.
+- WebSocket current-session checks used raw `conversationId`, so private messages without that field could notify or split sessions incorrectly.
+- Pending retry merged server responses only if the backend echoed identity fields exactly; memory fallback could keep local and server rows separately.
+- Firebase Messaging calls could throw when no Firebase Android app is configured.
+- Android Manifest used `usesCleartextTraffic` placeholder but Gradle did not define debug/release values.
+- Release Gradle config used debug signing as the long-term release path and had fixed version values.
+
+## 2. Fix Scope
+
+- Added mobile adapters for session, message, and model conversion.
+- Unified private/group session IDs through `@im/shared-im-core`.
+- Reused shared message identity and merge helpers for Zustand and SQLite memory fallback.
+- Extended shared normalizers for snake_case conversation, group, and friendship fields needed by mobile.
+- Made Firebase Messaging optional at runtime; Notifee local notifications remain active.
+- Added Android debug/release cleartext placeholders, release signing environment placeholders, version properties, and missing permissions.
+- Added mobile unit coverage for session IDs, normalizers, pending merge/retry, WebSocket notification routing, FCM degradation, and E2EE blocking.
+
+## 3. Out of Scope
+
+- E2EE implementation and Web E2EE migration.
+- Backend push-device APIs and server-side offline push.
+- New product features, page rewrites, or Web behavior changes.
+- Android release keystore creation and Play Store hardening.
+
+## 4. Verification Results
+
+- `npm run mobile:typecheck`: PASS.
+- `npm install`: PASS, no dependency changes needed.
+- `npm run mobile:test`: PASS, 2 suites / 28 tests.
+- `npm run mobile:lint`: PASS with 0 errors and existing warnings.
+- `npm run mobile:clean`: PASS.
+- `npm run mobile:android`: the Codex command wrapper timed out during clean native build/install, but the spawned process completed afterward; `app-debug.apk` was produced and `com.immobile` was running on `emulator-5554` with pid `19865`.
+- Recent logcat check found no `FATAL EXCEPTION`, `Unable to load script`, `No Firebase App`, or Firebase startup crash.
+
+## 5. Android Device Checklist
+
+- Keep Metro running with `npm run mobile:start`.
+- Run `npm run mobile:reverse` after connecting an emulator or USB device.
+- Verify login, session list, private chat, group chat, retry after network loss, and notification click routing.
+- For local FCM testing, add a non-production `google-services.json` locally and do not commit it.
+- Configure `API_BASE_URL`, `WS_BASE_URL`, and `FILE_BASE_URL` for emulator `10.0.2.2` or a physical device LAN IP.
+- For release builds, provide `IM_MOBILE_RELEASE_*` signing variables and keep release cleartext disabled.

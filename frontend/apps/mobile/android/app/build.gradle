@@ -62,6 +62,17 @@ react {
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
 def enableProguardInReleaseBuilds = false
+def propOrEnv = { propName, envName, fallbackValue ->
+    project.findProperty(propName) ?: System.getenv(envName) ?: fallbackValue
+}
+def mobileVersionCode = propOrEnv("IM_MOBILE_VERSION_CODE", "IM_MOBILE_VERSION_CODE", "1").toInteger()
+def mobileVersionName = propOrEnv("IM_MOBILE_VERSION_NAME", "IM_MOBILE_VERSION_NAME", "0.0.1")
+def enableReleaseMinify = propOrEnv("IM_MOBILE_MINIFY_RELEASE", "IM_MOBILE_MINIFY_RELEASE", "false").toBoolean()
+def releaseStoreFilePath = propOrEnv("IM_MOBILE_RELEASE_STORE_FILE", "IM_MOBILE_RELEASE_STORE_FILE", "")
+def hasReleaseSigning = releaseStoreFilePath &&
+        propOrEnv("IM_MOBILE_RELEASE_STORE_PASSWORD", "IM_MOBILE_RELEASE_STORE_PASSWORD", "") &&
+        propOrEnv("IM_MOBILE_RELEASE_KEY_ALIAS", "IM_MOBILE_RELEASE_KEY_ALIAS", "") &&
+        propOrEnv("IM_MOBILE_RELEASE_KEY_PASSWORD", "IM_MOBILE_RELEASE_KEY_PASSWORD", "")
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -85,8 +96,11 @@ android {
         applicationId "com.immobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode mobileVersionCode
+        versionName mobileVersionName
+        manifestPlaceholders = [
+            usesCleartextTraffic: "true"
+        ]
     }
     signingConfigs {
         debug {
@@ -95,16 +109,30 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            if (hasReleaseSigning) {
+                storeFile file(releaseStoreFilePath)
+                storePassword propOrEnv("IM_MOBILE_RELEASE_STORE_PASSWORD", "IM_MOBILE_RELEASE_STORE_PASSWORD", "")
+                keyAlias propOrEnv("IM_MOBILE_RELEASE_KEY_ALIAS", "IM_MOBILE_RELEASE_KEY_ALIAS", "")
+                keyPassword propOrEnv("IM_MOBILE_RELEASE_KEY_PASSWORD", "IM_MOBILE_RELEASE_KEY_PASSWORD", "")
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            manifestPlaceholders = [
+                usesCleartextTraffic: "true"
+            ]
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
-            minifyEnabled enableProguardInReleaseBuilds
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+            manifestPlaceholders = [
+                usesCleartextTraffic: "false"
+            ]
+            minifyEnabled enableProguardInReleaseBuilds || enableReleaseMinify
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }

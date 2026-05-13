@@ -1,8 +1,9 @@
+import { hasSameMobileMessageIdentity } from '@/adapters/messageAdapter';
 import type { ChatSession, MobileMessage } from '@/types/models';
 import { messageDatabase } from './messageDatabase';
 
 const messageKey = (message: MobileMessage): string =>
-  message.serverId || message.id || message.clientMessageId || `${message.conversationId}:${message.sendTime}`;
+  message.serverId || message.clientMessageId || message.id || `${message.conversationId}:${message.sendTime}`;
 
 const parseMessage = (row: Record<string, unknown>): MobileMessage => {
   const rawJson = String(row.rawJson || '{}');
@@ -76,6 +77,14 @@ export const messageRepository = {
         conversationId,
         rawJson: JSON.stringify({ ...message, conversationId }),
       };
+      messageDatabase
+        .memoryList('mobile_messages')
+        .filter((row) => row.conversationId === conversationId)
+        .map(parseMessage)
+        .filter((existing) => hasSameMobileMessageIdentity(existing, record))
+        .forEach((existing) => {
+          messageDatabase.memoryDelete('mobile_messages', `${conversationId}:${messageKey(existing)}`);
+        });
       messageDatabase.memoryUpsert('mobile_messages', `${conversationId}:${messageKey(message)}`, record);
       messageDatabase.execute(
         `INSERT OR REPLACE INTO mobile_messages
