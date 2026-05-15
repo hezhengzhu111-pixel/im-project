@@ -4,6 +4,7 @@
 
 - 结论：**NO-GO，不建议当前进入 Android 内测发布阶段**
 - 范围：`frontend/apps/mobile`
+- 平台范围：**仅 Android**。iOS 工程存在但尚未 release-ready，不在本报告评估范围内。
 - 执行日期：2026-05-13
 - 执行环境：
   - Node.js / npm workspace：可用
@@ -201,6 +202,30 @@
   - [release-gate-debug-screen-2.png](file:///d:/project/new-im-project/frontend/apps/mobile/logs/release-gate-debug-screen-2.png)
 - logcat 证据：
   - [android-logcat-20260513-210937.txt](file:///d:/project/new-im-project/frontend/apps/mobile/logs/android-logcat-20260513-210937.txt)
+
+## 首阶段平台范围结论
+
+> **"功能代码存在"不等于"发布验证通过"。**
+
+### Android（优先平台）
+
+当前第一阶段以 Android debug 联调和 Android release 内测准备为主。Android 是唯一进入内测的候选平台。当前阻塞项：
+
+1. **release signing 变量** — 4 个签名变量未提供，release APK/AAB 无法构建
+2. **登录链路真实验证** — 登录页存在 `Network unavailable` 告警，未完成真实登录
+3. **私聊 / 群聊 / 媒体 / pending / WebSocket 端到端验证** — 受登录未打通影响，核心链路无发布级证据
+
+### iOS（不在当前发布范围）
+
+iOS 工程文件存在（`apps/mobile/ios/`），但不应默认视为 release-ready。iOS 需单独完成：
+
+- 权限声明（Info.plist）
+- native runtime config
+- 推送配置（APNs）
+- 真机冒烟
+- archive / TestFlight 验证
+
+详见 `MOBILE_RELEASE_SCOPE.md`。
 
 ## 建议下一步
 
