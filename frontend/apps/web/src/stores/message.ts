@@ -5,7 +5,7 @@ import { messageService } from "@/services/message";
 import { messageRepo } from "@/utils/messageRepo";
 import { appLifecycleService } from "@/services/platform/app-lifecycle.service";
 import { networkStatusService } from "@/services/platform/network-status.service";
-import { buildSessionId, toBigIntId } from "@/normalizers/chat";
+import { buildSessionId } from "@/normalizers/chat";
 import type { Message, MessageConfig, MessageSearchResult } from "@/types";
 import { useGroupStore } from "@/stores/group";
 import { useSessionStore } from "@/stores/session";
@@ -13,10 +13,12 @@ import { useUserStore } from "@/stores/user";
 import { STORAGE_CONFIG } from "@/config";
 import {
   ConversationClearMarker,
+  applyIncomingMessageToList,
   getServerMessages,
   hasSameMessageIdentity,
   limitMessageWindow,
-  sortMessagesAscending,
+  shouldHideClearedMessage as sharedShouldHideClearedMessage,
+  createClearMarkerFromMessages,
 } from "@/stores/modules/message-helpers";
 import { createMessageLoadingModule } from "@/stores/modules/message-loading";
 import { createMessageSendQueueModule } from "@/stores/modules/message-send-queue";
@@ -115,16 +117,7 @@ export const useMessageStore = defineStore("message", () => {
     message: Message,
   ): boolean => {
     const marker = getClearMarker(sessionId);
-    if (!marker) {
-      return false;
-    }
-    const markerId = toBigIntId(marker.lastServerMessageId);
-    const messageId = toBigIntId(message.id);
-    if (markerId != null && messageId != null) {
-      return messageId <= markerId;
-    }
-    const messageTime = new Date(message.sendTime).getTime();
-    return Number.isFinite(messageTime) && messageTime <= marker.clearedAtMs;
+    return sharedShouldHideClearedMessage(message, marker);
   };
 
   const filterClearedMessages = (
@@ -405,33 +398,20 @@ export const useMessageStore = defineStore("message", () => {
     }
 
     const existing = messages.value.get(sessionId) || [];
-    const next = existing.slice();
-    const existingIndex = next.findIndex((item) =>
-      hasSameMessageIdentity(item, message),
-    );
-    let replacedPendingId = "";
 
-    if (existingIndex >= 0) {
-      const previous = next[existingIndex];
-      next[existingIndex] = {
-        ...previous,
-        ...message,
-        id: message.id || previous.id,
-      };
-      if (
-        String(previous.id).startsWith("local_") &&
-        !String(message.id).startsWith("local_")
-      ) {
-        replacedPendingId = previous.id;
+    // Detect pending replacement before merge (S11: pending/server echo identity match)
+    let replacedPendingId = "";
+    if (!String(message.id).startsWith("local_")) {
+      const matchIndex = existing.findIndex((item) =>
+        hasSameMessageIdentity(item, message),
+      );
+      if (matchIndex >= 0 && String(existing[matchIndex].id).startsWith("local_")) {
+        replacedPendingId = existing[matchIndex].id;
       }
-    } else {
-      next.push(message);
     }
 
-    const windowedMessages = limitMessageWindow(
-      next.sort(sortMessagesAscending),
-      "latest",
-    );
+    // S7/S11: shared dedupe + merge + sort + window (applyIncomingMessageToList)
+    const windowedMessages = applyIncomingMessageToList(existing, message);
     messages.value.set(sessionId, windowedMessages);
     loadingModule.syncHistoryState(sessionId, windowedMessages, {
       preserveHasMore: true,
@@ -520,25 +500,8 @@ export const useMessageStore = defineStore("message", () => {
 
   const clearMessages = async (sessionId: string) => {
     const list = messages.value.get(sessionId) || [];
-    const latestServerMessageId = list
-      .map((message) => toBigIntId(message.id))
-      .filter((item): item is bigint => item != null)
-      .reduce<bigint | null>((maxId, currentId) => {
-        if (maxId == null || currentId > maxId) {
-          return currentId;
-        }
-        return maxId;
-      }, null);
-    const latestMessageTimestamp = list
-      .map((message) => new Date(message.sendTime).getTime())
-      .filter((item) => Number.isFinite(item))
-      .reduce((maxTime, currentTime) => Math.max(maxTime, currentTime), 0);
-
-    setClearMarker(sessionId, {
-      clearedAtMs:
-        latestMessageTimestamp > 0 ? latestMessageTimestamp : Date.now(),
-      lastServerMessageId: latestServerMessageId?.toString(),
-    });
+    const marker = createClearMarkerFromMessages(list, Date.now());
+    setClearMarker(sessionId, marker);
     messages.value.set(sessionId, []);
     loadingModule.resetHistoryState(sessionId);
     sessionStore.clearSessionConversationState(sessionId);

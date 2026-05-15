@@ -1,5 +1,10 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
+import {
+  sortSessions,
+  applyMessageToSession as applyMessageToSessionCore,
+  markSessionsRead,
+} from "@im/shared-im-core";
 import { messageService } from "@/services/message";
 import { buildSessionId, normalizeConversation } from "@/normalizers/chat";
 import type { ChatSession, ChatSessionType, Group, Message } from "@/types";
@@ -36,19 +41,7 @@ export const useSessionStore = defineStore("session", () => {
 
   const currentSessionId = computed(() => currentSession.value?.id || "");
 
-  const sortedSessions = computed(() => {
-    return [...sessions.value].sort((left, right) => {
-      if (Boolean(left.isPinned) !== Boolean(right.isPinned)) {
-        return left.isPinned ? -1 : 1;
-      }
-      const leftTime = new Date(left.lastActiveTime || 0).getTime();
-      const rightTime = new Date(right.lastActiveTime || 0).getTime();
-      return (
-        (Number.isFinite(rightTime) ? rightTime : 0) -
-        (Number.isFinite(leftTime) ? leftTime : 0)
-      );
-    });
-  });
+  const sortedSessions = computed(() => sortSessions(sessions.value));
 
   const totalUnreadCount = computed(() => {
     let total = 0;
@@ -143,7 +136,7 @@ export const useSessionStore = defineStore("session", () => {
       id: buildSessionId("group", "", groupId),
       type: "group",
       targetId: groupId,
-      targetName: target.groupName || target.name || groupId,
+      targetName: target.groupName ?? target.name ?? groupId,
       targetAvatar: target.avatar,
       unreadCount: 0,
       lastActiveTime: "",
@@ -178,10 +171,11 @@ export const useSessionStore = defineStore("session", () => {
     if (!session) {
       return;
     }
-    session.lastMessage = message;
-    session.lastMessageTime = message.sendTime;
-    session.lastActiveTime = message.sendTime;
-    if (options?.incrementUnread) {
+    const result = applyMessageToSessionCore(session, message, options);
+    session.lastMessage = result.lastMessage;
+    session.lastMessageTime = result.lastMessageTime;
+    session.lastActiveTime = result.lastActiveTime;
+    if (result.unreadIncrement) {
       session.unreadCount = (session.unreadCount || 0) + 1;
       unreadCounts.value.set(sessionId, session.unreadCount);
     }
@@ -273,7 +267,7 @@ export const useSessionStore = defineStore("session", () => {
       }
       return withLegacySessionAliases({
         ...session,
-        targetName: group.groupName || group.name || session.targetName,
+        targetName: group.groupName ?? group.name ?? session.targetName,
         targetAvatar: group.avatar || session.targetAvatar,
         memberCount:
           group.memberCount != null
@@ -370,10 +364,9 @@ export const useSessionStore = defineStore("session", () => {
       const response = await messageService.getConversations(currentUserId);
       const byId = new Map<string, ChatSession>();
       for (const session of response.data) {
-        const normalized = isChatSession(session)
+        const next = isChatSession(session)
           ? session
           : normalizeConversation(session, currentUserId);
-        const next = normalized || session;
         if (!next) {
           continue;
         }
@@ -386,7 +379,7 @@ export const useSessionStore = defineStore("session", () => {
           byId.set(next.id, next);
         }
       }
-      sessions.value = Array.from(byId.values()).map(withLegacySessionAliases);
+      sessions.value = Array.from(byId.values());
       mergeGroupMetadata(groups);
       syncUnreadCounts();
       if (currentSession.value) {
@@ -404,12 +397,8 @@ export const useSessionStore = defineStore("session", () => {
   };
 
   const markSessionReadLocally = (sessionId: string) => {
-    const session = sessions.value.find((item) => item.id === sessionId);
-    if (!session) {
-      return;
-    }
-    session.unreadCount = 0;
-    unreadCounts.value.set(session.id, 0);
+    sessions.value = markSessionsRead(sessions.value, sessionId);
+    unreadCounts.value.set(sessionId, 0);
   };
 
   const clearSessionConversationState = (sessionId: string) => {

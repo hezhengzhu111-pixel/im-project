@@ -4,3 +4,5 @@ export * from './user.js';
 export * from './group.js';
 export * from './friendRequest.js';
 export * from './moments.js';
+export * from './file.js';
+export * from './ai.js';

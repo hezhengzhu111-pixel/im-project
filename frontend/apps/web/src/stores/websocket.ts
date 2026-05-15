@@ -18,8 +18,30 @@ import type { Message, OnlineStatus, WebSocketMessage } from "@/types";
 import { useChatStore } from "@/stores/chat";
 import { useUserStore } from "@/stores/user";
 import { logger } from "@/utils/logger";
+import type { E2eeNegotiationEvent } from "@/features/e2ee/negotiation-events";
 
 type TimerHandle = ReturnType<typeof setInterval>;
+
+const normalizeE2eeNegotiationEvent = (
+  raw: Record<string, unknown>,
+): E2eeNegotiationEvent | null => {
+  const sessionId = String(raw.sessionId || raw.session_id || "");
+  if (!sessionId) return null;
+  const action = String(raw.action || "");
+  if (!["request", "accepted", "rejected", "disabled"].includes(action)) return null;
+  return {
+    action: action as E2eeNegotiationEvent["action"],
+    sessionId,
+    requesterId: String(raw.requesterId || raw.requester_id || ""),
+    requesterName: String(raw.requesterName || raw.requester_name || ""),
+    targetUserId: String(raw.targetUserId || raw.target_user_id || ""),
+    requestPayloadJson: raw.requestPayloadJson
+      ? String(raw.requestPayloadJson)
+      : raw.request_payload_json
+        ? String(raw.request_payload_json)
+        : undefined,
+  };
+};
 
 const FRIEND_REFRESH_DEBOUNCE_MS = 1500;
 
@@ -432,23 +454,16 @@ export const useWebSocketStore = defineStore("websocket", () => {
         }
 
         // E2EE decrypt intercept
-        const rawMsg = data.data as Record<string, unknown>;
-        const isEncrypted = rawMsg.encrypted === true || rawMsg.encrypted === 1;
+        const isEncrypted = normalizedMessage.encrypted === true || normalizedMessage.encrypted === 1;
 
         if (isEncrypted && normalizedMessage.messageType !== "SYSTEM") {
           const senderId = String(normalizedMessage.senderId || "");
           if (senderId !== currentUserId) {
           const sessionId = buildSessionId("private", currentUserId, senderId);
-          const headerRaw = rawMsg.e2eeHeader || rawMsg.e2ee_header;
+          const headerRaw = normalizedMessage.e2eeHeader;
           const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
-          const senderIdentityKey = (
-            rawMsg.e2eeSenderIdentityKey ||
-            rawMsg.e2ee_sender_identity_key
-          ) as string | undefined;
-          const ephemeralKey = (
-            rawMsg.e2eeEphemeralKey ||
-            rawMsg.e2ee_ephemeral_key
-          ) as string | undefined;
+          const senderIdentityKey = normalizedMessage.e2eeSenderIdentityKey;
+          const ephemeralKey = normalizedMessage.e2eeEphemeralKey;
 
           try {
             const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
@@ -460,7 +475,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
               );
               if (decrypted) {
                 normalizedMessage.content = decrypted;
-                (normalizedMessage as unknown as Record<string, unknown>).encrypted = false;
+                normalizedMessage.encrypted = false;
               }
             }
           } catch (e) {
@@ -605,24 +620,13 @@ export const useWebSocketStore = defineStore("websocket", () => {
       }
       case WS_MESSAGE_TYPE.E2EE_NEGOTIATION: {
         if (!data.data) return;
-        const evt = data.data as Record<string, unknown>;
-        const action = String(evt.action || "");
-        const sessionId = String(evt.sessionId || evt.session_id || "");
-        if (!sessionId) return;
+        const normalized = normalizeE2eeNegotiationEvent(
+          data.data as Record<string, unknown>,
+        );
+        if (!normalized) return;
         try {
           const { emitE2eeNegotiation } = await import("@/features/e2ee/negotiation-events");
-          emitE2eeNegotiation({
-            action: action as "request" | "accepted" | "rejected" | "disabled",
-            sessionId,
-            requesterId: String(evt.requesterId || evt.requester_id || ""),
-            requesterName: String(evt.requesterName || evt.requester_name || ""),
-            targetUserId: String(evt.targetUserId || evt.target_user_id || ""),
-            requestPayloadJson: evt.requestPayloadJson
-              ? String(evt.requestPayloadJson)
-              : evt.request_payload_json
-                ? String(evt.request_payload_json)
-                : undefined,
-          });
+          emitE2eeNegotiation(normalized);
         } catch (e) {
           console.error("[E2EE] Failed to dispatch negotiation event:", e);
         }

@@ -6,4 +6,6 @@ export {
   normalizeMessageStatus,
   normalizeMessageSendTime,
   splitTextByCodePoints,
+  normalizeMediaMetadata,
 } from '@im/shared-normalizers';
+export type { MediaMetadata } from '@im/shared-normalizers';
