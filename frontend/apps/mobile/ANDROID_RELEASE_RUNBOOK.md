@@ -289,6 +289,61 @@ cd frontend/apps/mobile/android
 aapt dump badging app-release.apk
 ```
 
+## 常见失败原因
+
+### 1. 缺少 release signing 变量
+
+**现象**：`assembleRelease` 或 `bundleRelease` 在 Gradle 配置阶段直接失败，报错类似 `Required release signing variable IM_MOBILE_RELEASE_STORE_FILE is not set`。
+
+**原因**：Release 构建要求 4 个签名变量全部存在：
+
+| 变量 | 说明 |
+|------|------|
+| `IM_MOBILE_RELEASE_STORE_FILE` | keystore 文件绝对路径 |
+| `IM_MOBILE_RELEASE_STORE_PASSWORD` | keystore 密码 |
+| `IM_MOBILE_RELEASE_KEY_ALIAS` | key alias |
+| `IM_MOBILE_RELEASE_KEY_PASSWORD` | key 密码 |
+
+**解决**：在当前 shell 中 export（Linux/macOS）或 `$env:`（PowerShell）所有 4 个变量。
+
+### 2. Keystore 文件路径不存在
+
+**现象**：Gradle 报错找不到 keystore 文件，即使签名变量已设置。
+
+**原因**：`IM_MOBILE_RELEASE_STORE_FILE` 指向的文件不存在，常见原因包括：
+- 路径拼写错误
+- 使用了相对路径（应使用绝对路径）
+- keystore 文件未从安全存储复制到本机
+
+**解决**：确认路径为绝对路径，确认文件确实存在于该路径。
+
+### 3. Release 环境仍使用 10.0.2.2
+
+**现象**：Release 构建失败，Gradle 报错 release 不允许使用 `10.0.2.2`。
+
+**原因**：`10.0.2.2` 是 Android Emulator 的宿主机 loopback 地址，仅适用于 debug 构建。Release 构建默认禁止静默使用该地址。
+
+**解决**：
+- 设置 `IM_MOBILE_APP_ENV` 为 `sit`、`prod` 或其他非 emulator 值
+- 提供真实的 `IM_MOBILE_API_BASE_URL`、`IM_MOBILE_WS_BASE_URL`、`IM_MOBILE_FILE_BASE_URL`
+- 如需内部调试 release 包，可显式设置 `IM_MOBILE_APP_ENV=internal` 或 `debug`
+
+### 4. Firebase 配置缺失
+
+**现象**：Gradle 构建警告 `google-services.json` 缺失，或 App 运行时 FCM token 为空。
+
+**原因**：`apps/mobile/android/app/google-services.json` 不存在或不是当前项目的配置文件。
+
+**影响**：
+- **本地 debug**：不阻塞，App 会降级为空 FCM token + Notifee 本地通知
+- **Release 发布前**：如果需要离线推送功能，必须确认 Firebase 配置就绪
+
+**解决**：
+- 在 `apps/mobile/android/app/` 下放置正确的 `google-services.json`
+- 确认 Android 包名与 Firebase 项目注册的包名一致
+- 确认签名证书的 SHA 指纹已在 Firebase 控制台注册
+- 不要将真实的 `google-services.json` 提交到版本控制
+
 ## Pre-Release Manual Items
 
 - confirm `applicationId` is final before publishing; this runbook does not change it automatically
