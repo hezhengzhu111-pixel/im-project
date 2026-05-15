@@ -6,6 +6,7 @@ import { EmptyState, LoadingState } from '@/components/common/StateViews';
 import { useMomentsStore } from '@/stores/momentsStore';
 import { momentsService } from '@/services/moments/momentsService';
 import { colors, spacing, typography } from '@/app/theme';
+import type { MomentNotification } from '@im/shared-types';
 
 function formatRelativeTime(dateStr?: string): string {
   if (!dateStr) return '';
@@ -33,7 +34,7 @@ export function MomentsNotificationsScreen() {
     });
   };
 
-  const handlePressNotification = (notif: { postId?: string }) => {
+  const handlePressNotification = (notif: MomentNotification) => {
     if (notif.postId) {
       navigation.navigate('MomentDetailScreen', { postId: notif.postId });
     }
@@ -55,15 +56,7 @@ export function MomentsNotificationsScreen() {
 
     return (
       <View style={styles.list}>
-        {notifications.map((item, index) => {
-          const notif = item as {
-            id: string;
-            notificationType?: string;
-            actorNickname?: string;
-            postId?: string;
-            isRead?: boolean;
-            createdAt?: string;
-          };
+        {notifications.map((notif, index) => {
           const isLike = notif.notificationType === 'like';
           return (
             <Pressable

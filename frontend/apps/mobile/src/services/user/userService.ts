@@ -1,7 +1,7 @@
 import { USER_ENDPOINTS } from '@im/shared-api-contract';
 import { http } from '@/services/api/httpClient';
 import { normalizeAuthResponse, normalizeSettings, normalizeUser } from '@/utils/normalizers';
-import type { ApiResponse, LoginRequest, RegisterRequest, User, UserAuthResponse, UserSettings } from '@/types/models';
+import type { ApiResponse, LoginRequest, RegisterRequest, User, UserAuthResponse, UserSettings } from '@im/shared-types';
 
 export const userService = {
   async login(data: LoginRequest): Promise<ApiResponse<UserAuthResponse>> {
@@ -9,8 +9,9 @@ export const userService = {
     return { ...response, data: normalizeAuthResponse(response.data) };
   },
 
-  register(data: RegisterRequest): Promise<ApiResponse<User>> {
-    return http.post<User>(USER_ENDPOINTS.REGISTER, data);
+  async register(data: RegisterRequest): Promise<ApiResponse<User>> {
+    const response = await http.post<unknown>(USER_ENDPOINTS.REGISTER, data);
+    return { ...response, data: normalizeUser(response.data) };
   },
 
   async updateProfile(data: Partial<User>): Promise<ApiResponse<User>> {

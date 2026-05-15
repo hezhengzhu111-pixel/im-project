@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
 import { uploadService } from '@/services/upload/uploadService';
-import type { MessageType, UploadTask } from '@/types/models';
+import type { MessageType } from '@im/shared-types';
+import type { UploadTask } from '@/types/models';
 import type { MobileFile } from '@/services/file/fileService';
 
 interface UploadState {

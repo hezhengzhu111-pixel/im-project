@@ -1,7 +1,7 @@
 import { FRIEND_ENDPOINTS } from '@im/shared-api-contract';
 import { http } from '@/services/api/httpClient';
 import { normalizeFriendRequest, normalizeFriendship } from '@/utils/normalizers';
-import type { ApiResponse, FriendRequest, Friendship } from '@/types/models';
+import type { ApiResponse, FriendRequest, Friendship } from '@im/shared-types';
 
 export const friendService = {
   async getList(): Promise<ApiResponse<Friendship[]>> {

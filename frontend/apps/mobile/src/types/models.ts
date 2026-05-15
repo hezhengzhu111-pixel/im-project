@@ -1,29 +1,5 @@
 import type { ChatSessionType, Message, MessageType } from '@im/shared-types';
 
-export type {
-  AiApiKey,
-  AiSettings,
-  ApiResponse,
-  ChatSession,
-  ChatSessionType,
-  Friend,
-  FriendRequest,
-  Friendship,
-  Group,
-  GroupMember,
-  LoginRequest,
-  Message,
-  MessageStatus,
-  MessageType,
-  RawMessageDTO,
-  ReadReceipt,
-  RegisterRequest,
-  User,
-  UserAuthResponse,
-  UserSettings,
-  WebSocketMessage,
-} from '@im/shared-types';
-
 // React Navigation params are mobile-only route payloads.
 export interface ChatRouteParams {
   route?: string;

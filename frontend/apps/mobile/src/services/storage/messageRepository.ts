@@ -1,5 +1,6 @@
-import { hasSameMobileMessageIdentity } from '@/adapters/messageAdapter';
-import type { ChatSession, MobileMessage } from '@/types/models';
+import { hasSameMobileMessageIdentity } from '@/utils/normalizers';
+import type { ChatSession } from '@im/shared-types';
+import type { MobileMessage } from '@/types/models';
 import { messageDatabase } from './messageDatabase';
 import { pendingMessageRepository } from './pendingMessageRepository';
 import { uploadTaskRepository } from './uploadTaskRepository';

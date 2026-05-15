@@ -1,8 +1,9 @@
 import { MESSAGE_ENDPOINTS } from '@im/shared-api-contract';
-import { resolveGroupSessionId } from '@/adapters/sessionAdapter';
+import { resolveGroupSessionId } from '@/utils/normalizers';
 import { http } from '@/services/api/httpClient';
 import { normalizeMessage, normalizeSession } from '@/utils/normalizers';
-import type { ApiResponse, ChatSession, MobileMessage, MessageType } from '@/types/models';
+import type { ApiResponse, ChatSession, MessageType } from '@im/shared-types';
+import type { MobileMessage } from '@/types/models';
 
 export interface SendMessagePayload {
   receiverId?: string;
@@ -52,8 +53,15 @@ export const messageService = {
   },
 
   markRead: (readTarget: string) => http.post(MESSAGE_ENDPOINTS.MARK_READ.replace(':conversationId', readTarget)),
-  recallMessage: (messageId: string) => http.post<MobileMessage>(MESSAGE_ENDPOINTS.RECALL.replace(':messageId', messageId)),
-  deleteMessage: (messageId: string) => http.post<MobileMessage>(MESSAGE_ENDPOINTS.DELETE.replace(':messageId', messageId)),
+  async recallMessage(messageId: string): Promise<ApiResponse<MobileMessage>> {
+    const response = await http.post<unknown>(MESSAGE_ENDPOINTS.RECALL.replace(':messageId', messageId));
+    return { ...response, data: normalizeMessage(response.data) };
+  },
+
+  async deleteMessage(messageId: string): Promise<ApiResponse<MobileMessage>> {
+    const response = await http.post<unknown>(MESSAGE_ENDPOINTS.DELETE.replace(':messageId', messageId));
+    return { ...response, data: normalizeMessage(response.data) };
+  },
 
   async getConversations(currentUserId: string): Promise<ApiResponse<ChatSession[]>> {
     const response = await http.get<unknown[]>(MESSAGE_ENDPOINTS.CONVERSATIONS);

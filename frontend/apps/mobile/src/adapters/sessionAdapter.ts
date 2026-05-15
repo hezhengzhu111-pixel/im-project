@@ -2,7 +2,8 @@ import { buildSessionId, resolveMessageSessionId as resolveSharedMessageSessionI
 import { normalizeConversation } from '@im/shared-normalizers';
 import { asBoolean, asNumber, asString, isRecord, type ChatSession as SharedChatSession } from '@im/shared-types';
 import { normalizeMobileMessage, toSharedMessage } from './messageAdapter';
-import type { ChatSession, MobileMessage } from '@/types/models';
+import type { ChatSession } from '@im/shared-types';
+import type { MobileMessage } from '@/types/models';
 
 export const resolvePrivateSessionId = (currentUserId: string, targetUserId: string): string =>
   buildSessionId('private', String(currentUserId), String(targetUserId));
@@ -18,17 +19,8 @@ export const resolveMessageSessionId = (message: MobileMessage, currentUserId: s
 const toMobileSession = (session: SharedChatSession, raw?: unknown): ChatSession => {
   const record = isRecord(raw) ? raw : {};
   return {
-    id: session.id,
-    type: session.type,
-    targetId: session.targetId,
-    targetName: session.targetName,
-    targetAvatar: session.targetAvatar,
-    unreadCount: session.unreadCount,
-    lastActiveTime: session.lastActiveTime,
+    ...session,
     lastMessage: session.lastMessage ? normalizeMobileMessage(session.lastMessage) : undefined,
-    isPinned: session.isPinned,
-    isMuted: session.isMuted,
-    encrypted: asBoolean(record.encrypted),
     memberCount: Number.isFinite(asNumber(record.memberCount ?? record.member_count, Number.NaN))
       ? asNumber(record.memberCount ?? record.member_count)
       : undefined,
@@ -41,6 +33,8 @@ export const normalizeMobileSession = (raw: unknown, currentUserId: string): Cha
     return toMobileSession(sharedSession, raw);
   }
 
+  // Minimal fallback for platform-local objects that lack standard DTO fields.
+  // All backend conversation DTO compat is handled by normalizeConversation above.
   const record = isRecord(raw) ? raw : {};
   const type = asString(record.type ?? record.conversationType, 'private').toLowerCase().includes('group')
     ? 'group'

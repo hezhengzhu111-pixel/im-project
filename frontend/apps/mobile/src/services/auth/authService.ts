@@ -2,7 +2,7 @@ import axios from 'axios';
 import { AUTH_ENDPOINTS } from '@im/shared-api-contract';
 import { APP_CONFIG } from '@/constants/config';
 import { http } from '@/services/api/httpClient';
-import type { ApiResponse } from '@/types/models';
+import type { ApiResponse } from '@im/shared-types';
 
 export interface TokenParseResult {
   valid: boolean;

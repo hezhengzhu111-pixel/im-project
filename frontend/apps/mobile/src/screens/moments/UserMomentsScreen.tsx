@@ -42,8 +42,7 @@ export function UserMomentsScreen() {
 
       momentsService
         .getUserPosts(userId, { cursor, limit: 20 })
-        .then((res) => {
-          const next = (Array.isArray(res.data) ? res.data : []) as PostWithDetails[];
+        .then((next) => {
           setPosts(refresh ? next : [...posts, ...next]);
           setHasMore(next.length === 20);
         })
@@ -97,7 +96,7 @@ export function UserMomentsScreen() {
         data={posts}
         keyExtractor={(item) => item.post.id}
         renderItem={({ item }) => {
-          const mediaImages = item.media?.filter((m: { type?: number }) => m.type !== 1) ?? [];
+          const mediaImages = item.media?.filter((m) => m.type !== 1) ?? [];
           return (
             <Pressable
               style={styles.card}
@@ -109,7 +108,7 @@ export function UserMomentsScreen() {
               {item.post.content ? <Text style={styles.content}>{item.post.content}</Text> : null}
               {mediaImages.length > 0 ? (
                 <View style={styles.mediaGrid}>
-                  {mediaImages.slice(0, 4).map((m: { url: string }, i: number) => (
+                  {mediaImages.slice(0, 4).map((m, i) => (
                     <View key={i} style={[styles.mediaGridItem, mediaImages.length === 1 && styles.mediaGridItemFull]}>
                       <Image source={{ uri: m.url }} style={styles.mediaGridImage} resizeMode="cover" />
                       {i === 3 && mediaImages.length > 4 ? (

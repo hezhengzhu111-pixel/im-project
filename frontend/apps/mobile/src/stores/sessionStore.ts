@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { messageRepository } from '@/services/storage/messageRepository';
-import type { ChatSession } from '@/types/models';
+import { sortSessions, markSessionsRead } from '@im/shared-im-core';
+import type { ChatSession } from '@im/shared-types';
 
 interface SessionState {
   sessions: ChatSession[];
@@ -20,8 +21,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   currentSession: null,
 
   setSessions(sessions) {
-    sessions.forEach((session) => messageRepository.upsertSession(session));
-    set({ sessions });
+    const sorted = sortSessions(sessions);
+    sorted.forEach((session) => messageRepository.upsertSession(session));
+    set({ sessions: sorted });
   },
 
   setCurrentSession(session) {
@@ -33,12 +35,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   upsertSession(session) {
     const existing = get().sessions.filter((item) => item.id !== session.id);
-    const sessions = [session, ...existing].sort((left, right) => {
-      if (Boolean(left.isPinned) !== Boolean(right.isPinned)) {
-        return left.isPinned ? -1 : 1;
-      }
-      return new Date(right.lastActiveTime || 0).getTime() - new Date(left.lastActiveTime || 0).getTime();
-    });
+    const sessions = sortSessions([session, ...existing]);
     messageRepository.upsertSession(session);
     set({ sessions });
   },
@@ -59,13 +56,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   markRead(sessionId) {
-    set({
-      sessions: get().sessions.map((session) => (session.id === sessionId ? { ...session, unreadCount: 0 } : session)),
-    });
+    set({ sessions: markSessionsRead(get().sessions, sessionId) });
   },
 
   restoreFromDb() {
-    set({ sessions: messageRepository.listSessions() });
+    set({ sessions: sortSessions(messageRepository.listSessions()) });
   },
 
   clear() {

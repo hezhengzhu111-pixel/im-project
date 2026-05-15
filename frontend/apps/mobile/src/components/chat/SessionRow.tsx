@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, spacing, typography } from '@/app/theme';
-import type { ChatSession } from '@/types/models';
+import type { ChatSession } from '@im/shared-types';
 
 export function SessionRow({ session, onPress }: { session: ChatSession; onPress: () => void }) {
   return (
