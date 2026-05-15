@@ -10,7 +10,12 @@
       "Bash(xargs grep -l \"e2ee\\\\|E2EE\\\\|encrypt\\\\|decrypt\")",
       "Bash(xargs grep -l \"E2EE\\\\|e2ee\\\\|端到端加密\")",
       "Bash(npx vue-tsc *)",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "Skill(superpowers:brainstorming)",
+      "Bash(git status *)",
+      "Bash(git restore *)",
+      "Bash(git commit *)",
+      "Bash(git reset *)"
     ]
   }
 }
