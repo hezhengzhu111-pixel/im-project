@@ -1,5 +1,23 @@
 # Android Release Gate Report
 
+## GPT-01 Android Login Smoke Update (2026-05-15)
+
+- Result: Android debug emulator login chain is now PASS for real login, persisted session, restoreSession, and entry into the main tab UI.
+- Current config: `APP_CONFIG.API_BASE_URL=http://10.0.2.2:8082/api`; `APP_CONFIG.WS_BASE_URL=ws://10.0.2.2`; `IM_MOBILE_APP_ENV=dev-emulator`.
+- Root cause: Android native reachability reported offline because system internet probes to Google/gstatic timed out, while the local API on `10.0.2.2:8082` was reachable. NetInfo now checks the configured API origin `/health` instead of relying on native public-internet reachability.
+- Auth fixes: business-code 401 responses now share the same one-shot refresh-and-retry path as HTTP 401; stale Authorization headers are removed before retry; restoreSession restores mirrored cookies before parsing the access token; refreshed sessions no longer rehydrate a stale access token.
+- Evidence:
+  - Backend health: `http://localhost:8082/health` returned `{"service":"api-server-rs","status":"UP"}`.
+  - Android debug build/install/launch: `npm run mobile:android -- --deviceId emulator-5554` exited 0.
+  - Real login request completed and entered the Chats tab; screenshot: `frontend/apps/mobile/logs/gpt-01-after-login.png`.
+  - Force-stop/relaunch restored the session and returned to the Chats tab; screenshot: `frontend/apps/mobile/logs/gpt-01-after-restart-final.png`.
+  - Profile after restore displayed current user `GPT01 Smoke`; screenshot: `frontend/apps/mobile/logs/gpt-01-profile-after-restore-2.png`.
+- Verification:
+  - `npm run mobile:test`: PASS, 6 suites / 59 tests.
+  - `npm run mobile:lint`: PASS.
+  - `npm run mobile:typecheck`: FAIL on pre-existing out-of-scope error `src/screens/moments/MomentDetailScreen.tsx(46,26): Cannot find name 'useCallback'`.
+- Remaining release gate blockers: release signing / release APK or AAB validation and full IM E2E flows remain outside GPT-01 and are still not release-ready evidence.
+
 ## 结论摘要
 
 - 结论：**NO-GO，不建议当前进入 Android 内测发布阶段**

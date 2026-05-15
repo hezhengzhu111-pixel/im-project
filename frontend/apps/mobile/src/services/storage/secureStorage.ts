@@ -1,5 +1,5 @@
 import * as Keychain from 'react-native-keychain';
-import CookieManager from '@preeternal/react-native-cookie-manager';
+import CookieManager, { type Cookie } from '@preeternal/react-native-cookie-manager';
 import { APP_CONFIG, STORAGE_KEYS } from '@/constants/config';
 import { logger } from '@/utils/logger';
 
@@ -18,6 +18,14 @@ const setOptionsFor = (key: SecureKey): Keychain.SetOptions => ({
   ...baseOptionsFor(key),
   accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
 });
+
+const isCookieRecord = (value: unknown): value is Cookie => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const cookie = value as Partial<Cookie>;
+  return typeof cookie.name === 'string' && typeof cookie.value === 'string';
+};
 
 export const secureStorage = {
   async set(key: SecureKey, value: string): Promise<void> {
@@ -67,6 +75,30 @@ export const secureStorage = {
       await this.set(STORAGE_KEYS.cookieMirror, JSON.stringify(cookies));
     } catch (error) {
       logger.warn('secure-storage', 'Cookie mirror failed', error);
+    }
+  },
+
+  async restoreCookiesFromMirror(): Promise<boolean> {
+    const raw = await this.get(STORAGE_KEYS.cookieMirror);
+    if (!raw || typeof CookieManager.set !== 'function') {
+      return false;
+    }
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      const cookies = parsed && typeof parsed === 'object' ? Object.values(parsed) : [];
+      const restored = cookies.filter(isCookieRecord);
+      if (restored.length === 0) {
+        return false;
+      }
+      await Promise.all(restored.map((cookie) => CookieManager.set(APP_CONFIG.API_BASE_URL, cookie, true)));
+      if (typeof CookieManager.flush === 'function') {
+        await CookieManager.flush();
+      }
+      return true;
+    } catch (error) {
+      logger.warn('secure-storage', 'Cookie mirror restore failed', error);
+      await this.remove(STORAGE_KEYS.cookieMirror);
+      return false;
     }
   },
 };

@@ -13,6 +13,7 @@ let accessTokenProvider: () => string = () => '';
 let onAuthInvalid: (generation: number) => void = () => {};
 let sessionGenerationProvider: () => number = () => 0;
 let onSessionRefreshed: () => void = () => {};
+type RetriableRequestConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
 export const registerAuthHooks = (hooks: {
   getAccessToken: () => string;
@@ -72,9 +73,52 @@ const is401 = (response?: AxiosResponse | undefined) => response?.status === 401
 const captureApiError = (input: { message: string; status?: number; url?: string }) => {
   debugTelemetry.recordApiError(input);
 };
+const clearAuthorizationHeader = (config: InternalAxiosRequestConfig) => {
+  if (typeof config.headers.delete === 'function') {
+    config.headers.delete('Authorization');
+    return;
+  }
+  const headers = config.headers as unknown as Record<string, unknown>;
+  delete headers.Authorization;
+  delete headers.authorization;
+};
+
+const rejectApiError = (error: AxiosError): Promise<never> => {
+  const config = error.config as RetriableRequestConfig | undefined;
+  captureApiError({
+    message: error.message || 'Request failed',
+    status: error.response?.status,
+    url: config?.url,
+  });
+  if (error.response?.status && error.response.status >= 500) {
+    logger.error('http', 'server request failed', {
+      status: error.response.status,
+      url: config?.url,
+    });
+  }
+  return Promise.reject(error);
+};
+
+const refreshAndRetry = async (error: AxiosError): Promise<AxiosResponse> => {
+  const config = error.config as RetriableRequestConfig | undefined;
+  if (!config || config._retry || shouldSkipRefreshEndpoint(config.url || '') || !is401(error.response)) {
+    return rejectApiError(error);
+  }
+
+  const generation = sessionGenerationProvider();
+  config._retry = true;
+  const result = await refreshCoordinator.refresh(createTraceId());
+  if (result.status !== 'success') {
+    onAuthInvalid(generation);
+    return Promise.reject(error);
+  }
+  onSessionRefreshed();
+  clearAuthorizationHeader(config);
+  return apiClient.request(config);
+};
 
 apiClient.interceptors.response.use(
-  (response: AxiosResponse): AxiosResponse => {
+  (response: AxiosResponse): AxiosResponse | Promise<AxiosResponse> => {
     const data = response.data;
     if (data && typeof data === 'object' && 'code' in data) {
       const apiData = data as ApiResponse<unknown>;
@@ -88,7 +132,9 @@ apiClient.interceptors.response.use(
           status: 401,
           url: response.config.url,
         });
-        throw new AxiosError(apiData.message, 'ERR_BAD_RESPONSE', response.config, response.request, response);
+        return refreshAndRetry(
+          new AxiosError(apiData.message || 'Unauthorized', 'ERR_BAD_RESPONSE', response.config, response.request, response),
+        );
       }
       captureApiError({
         message: apiData.message || 'Request failed',
@@ -106,32 +152,7 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error: AxiosError) => {
-    const config = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
-    if (!config || config._retry || shouldSkipRefreshEndpoint(config.url || '') || !is401(error.response)) {
-      captureApiError({
-        message: error.message || 'Request failed',
-        status: error.response?.status,
-        url: config?.url,
-      });
-      if (error.response?.status && error.response.status >= 500) {
-        logger.error('http', 'server request failed', {
-          status: error.response.status,
-          url: config?.url,
-        });
-      }
-      return Promise.reject(error);
-    }
-
-    const generation = sessionGenerationProvider();
-    config._retry = true;
-    const result = await refreshCoordinator.refresh(createTraceId());
-    if (result.status !== 'success') {
-      onAuthInvalid(generation);
-      return Promise.reject(error);
-    }
-    onSessionRefreshed();
-    config.headers.delete('Authorization');
-    return apiClient.request(config);
+    return refreshAndRetry(error);
   },
 );
 

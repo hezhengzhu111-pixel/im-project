@@ -186,10 +186,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     try {
+      if (cookieMirror) {
+        await secureStorage.restoreCookiesFromMirror();
+      }
+      let sessionAccessToken = token;
       let response = await authService.parseAccessToken(token || undefined, true);
       if ((!response.data?.valid || !response.data.userId) && (token || cookieMirror)) {
         const refreshed = await tryRestoreFromRefresh().catch(() => false);
         if (refreshed) {
+          sessionAccessToken = '';
           response = await authService.parseAccessToken(undefined, true);
         }
       }
@@ -203,10 +208,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 username: response.data.username || parsedUserId,
               };
         kvStorage.setJson(STORAGE_KEYS.userSnapshot, user);
-        await secureStorage.set(STORAGE_KEYS.sessionMeta, buildSessionMeta(user, token));
+        await secureStorage.set(STORAGE_KEYS.sessionMeta, buildSessionMeta(user, sessionAccessToken));
         set((state) => ({
           currentUser: user,
-          accessToken: token,
+          accessToken: sessionAccessToken,
           permissions: response.data.permissions || [],
           authReady: true,
           sessionGeneration: state.sessionGeneration + 1,
