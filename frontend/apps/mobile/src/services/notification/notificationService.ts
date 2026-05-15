@@ -8,7 +8,7 @@ import { notificationEventRepository } from '@/services/storage/notificationEven
 import { permissions } from '@/app/permissions/permissions';
 import { navigationRef } from '@/app/navigation/navigationRef';
 import { logger } from '@/utils/logger';
-import type { MobileMessage } from '@/types/models';
+import type { ChatRouteParams, MobileMessage } from '@/types/models';
 
 const CHANNEL_ID = 'im-messages';
 const PENDING_NOTIFICATION_ROUTE_KEY = 'im.mobile.pending-notification-route';
@@ -17,6 +17,8 @@ const SENSITIVE_DATA_KEYS = ['token', 'cookie', 'password', 'apikey', 'api_key',
 let initialized = false;
 let backgroundHandlersRegistered = false;
 let fcmUnavailableLogged = false;
+let chatRouteAuthReady = false;
+let lastNavigatedChatRouteKey = '';
 
 const getMessaging = (): ReturnType<typeof messaging> | null => {
   try {
@@ -45,43 +47,118 @@ const sanitizeNotificationData = (data?: Record<string, unknown>): Record<string
   }, {});
 };
 
+const hasValue = (value?: string): value is string => Boolean(value && value.trim());
+
+const isChatRouteData = (data: Record<string, string>): boolean => {
+  const route = data.route || '';
+  if (route && route !== 'Chat' && route !== 'ChatScreen' && route !== 'ChatStack') {
+    return false;
+  }
+  return (
+    route === 'Chat' ||
+    route === 'ChatScreen' ||
+    route === 'ChatStack' ||
+    hasValue(data.conversationId) ||
+    hasValue(data.sessionId) ||
+    hasValue(data.senderId) ||
+    hasValue(data.groupId) ||
+    hasValue(data.targetId)
+  );
+};
+
 const routeNameFromData = (data: Record<string, string>): string | undefined => {
   const route = data.route || '';
-  if (route === 'Chat') {
-    return 'ChatScreen';
-  }
   if (route === 'FriendRequests') {
     return 'FriendRequestsScreen';
+  }
+  if (isChatRouteData(data)) {
+    return 'ChatScreen';
   }
   return route || undefined;
 };
 
-const routeFromNotification = (data?: Record<string, unknown>) => {
+const normalizeChatRouteParams = (data: Record<string, string>): ChatRouteParams => ({
+  route: 'Chat',
+  conversationId: data.conversationId || undefined,
+  sessionId: data.sessionId || undefined,
+  senderId: data.senderId || undefined,
+  receiverId: data.receiverId || undefined,
+  groupId: data.groupId || undefined,
+  targetId: data.targetId || undefined,
+  targetName: data.targetName || undefined,
+  groupName: data.groupName || undefined,
+  senderName: data.senderName || undefined,
+});
+
+const hasChatRouteTarget = (params: ChatRouteParams): boolean =>
+  Boolean(
+    params.conversationId ||
+      params.sessionId ||
+      params.groupId ||
+      params.senderId ||
+      params.receiverId ||
+      params.targetId,
+  );
+
+const chatRouteKey = (params: ChatRouteParams): string =>
+  [
+    params.sessionId,
+    params.conversationId,
+    params.groupId,
+    params.senderId,
+    params.receiverId,
+    params.targetId,
+  ]
+    .filter(Boolean)
+    .join('|');
+
+const storePendingNotificationRoute = (data: Record<string, string>) => {
+  kvStorage.setJson(PENDING_NOTIFICATION_ROUTE_KEY, data);
+};
+
+const currentRouteName = (): string => {
+  const route = navigationRef.getCurrentRoute() as { name?: string } | undefined;
+  return route?.name || '';
+};
+
+const routeFromNotification = (data?: Record<string, unknown>): boolean => {
   const safeData = sanitizeNotificationData(data);
-  const route = safeData.route || '';
-  if (!route) {
-    return;
+  const shouldOpenChat = isChatRouteData(safeData);
+  const shouldOpenFriendRequests = safeData.route === 'FriendRequests';
+  if (!shouldOpenChat && !shouldOpenFriendRequests) {
+    return true;
   }
   if (!navigationRef.isReady()) {
-    kvStorage.setJson(PENDING_NOTIFICATION_ROUTE_KEY, safeData);
-    return;
+    storePendingNotificationRoute(safeData);
+    return false;
   }
-  if (route === 'Chat') {
+  if (shouldOpenChat) {
+    if (!chatRouteAuthReady) {
+      storePendingNotificationRoute(safeData);
+      return false;
+    }
+    const params = normalizeChatRouteParams(safeData);
+    if (!hasChatRouteTarget(params)) {
+      return true;
+    }
+    const key = chatRouteKey(params);
+    if (key && lastNavigatedChatRouteKey === key && currentRouteName() === 'ChatScreen') {
+      return true;
+    }
+    lastNavigatedChatRouteKey = key;
     (navigationRef.navigate as (name: string, params?: object) => void)('ChatStack', {
       screen: 'ChatScreen',
-      params: {
-        sessionId: safeData.conversationId || undefined,
-        senderId: safeData.senderId || undefined,
-        groupId: safeData.groupId || undefined,
-      },
+      params,
     });
-    return;
+    return true;
   }
-  if (route === 'FriendRequests') {
+  if (safeData.route === 'FriendRequests') {
     (navigationRef.navigate as (name: string, params?: object) => void)('ContactsStack', {
       screen: 'FriendRequestsScreen',
     });
+    return true;
   }
+  return true;
 };
 
 export function flushPendingNotificationRoute(): void {
@@ -89,12 +166,20 @@ export function flushPendingNotificationRoute(): void {
   if (!pending) {
     return;
   }
-  kvStorage.remove(PENDING_NOTIFICATION_ROUTE_KEY);
-  routeFromNotification(pending);
+  if (routeFromNotification(pending)) {
+    kvStorage.remove(PENDING_NOTIFICATION_ROUTE_KEY);
+  }
 }
 
 export function clearPendingNotificationRoute(): void {
   kvStorage.remove(PENDING_NOTIFICATION_ROUTE_KEY);
+}
+
+export function setNotificationRouteAuthReady(ready: boolean): void {
+  chatRouteAuthReady = ready;
+  if (ready) {
+    flushPendingNotificationRoute();
+  }
 }
 
 export async function handleNotificationOpen(

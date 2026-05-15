@@ -70,6 +70,13 @@ const message = (id: string, content = 'hello'): MobileMessage => ({
 });
 
 describe('mobile core', () => {
+  const stubOpenSessionSideEffects = () => {
+    const loadMessagesSpy = jest.spyOn(useMessageStore.getState(), 'loadMessages').mockResolvedValue();
+    const markReadSpy = jest.spyOn(useMessageStore.getState(), 'markRead').mockResolvedValue();
+    jest.spyOn(messageService, 'getConversations').mockResolvedValue({ code: 200, message: 'ok', data: [] });
+    return { loadMessagesSpy, markReadSpy };
+  };
+
   beforeEach(() => {
     jest.restoreAllMocks();
     jest.spyOn(pushDeviceService, 'registerDevice').mockResolvedValue({ deviceId: 'device', registered: true });
@@ -700,6 +707,79 @@ describe('mobile core', () => {
     expect(event.type).toBe('notification_suppressed');
     expect(event.payloadJson).toContain('[REDACTED]');
     expect(event.payloadJson).not.toContain('secret');
+  });
+
+  test('chat route params with conversationId open the matching session', async () => {
+    const { loadMessagesSpy, markReadSpy } = stubOpenSessionSideEffects();
+    useSessionStore.getState().setSessions([{ ...session, unreadCount: 3 }]);
+
+    await expect(useChatStore.getState().openSessionFromRoute({ conversationId: session.id })).resolves.toBe(true);
+
+    expect(useSessionStore.getState().currentSession?.id).toBe(session.id);
+    expect(loadMessagesSpy).toHaveBeenCalledTimes(1);
+    expect(loadMessagesSpy).toHaveBeenCalledWith(expect.objectContaining({ id: session.id }));
+    expect(markReadSpy).toHaveBeenCalledWith(expect.objectContaining({ id: session.id }));
+  });
+
+  test('chat route params with groupId create and open a group session', async () => {
+    const { loadMessagesSpy, markReadSpy } = stubOpenSessionSideEffects();
+
+    await expect(
+      useChatStore.getState().openSessionFromRoute({ groupId: '9', groupName: 'Team 9' }),
+    ).resolves.toBe(true);
+
+    expect(useSessionStore.getState().currentSession).toEqual(
+      expect.objectContaining({
+        id: groupSession.id,
+        type: 'group',
+        targetId: '9',
+        targetName: 'Team 9',
+      }),
+    );
+    expect(loadMessagesSpy).toHaveBeenCalledTimes(1);
+    expect(markReadSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('chat route params with senderId create and open a private session', async () => {
+    const { loadMessagesSpy, markReadSpy } = stubOpenSessionSideEffects();
+
+    await expect(
+      useChatStore.getState().openSessionFromRoute({ senderId: '2', senderName: 'Bob' }),
+    ).resolves.toBe(true);
+
+    expect(useSessionStore.getState().currentSession).toEqual(
+      expect.objectContaining({
+        id: session.id,
+        type: 'private',
+        targetId: '2',
+        targetName: 'Bob',
+      }),
+    );
+    expect(loadMessagesSpy).toHaveBeenCalledTimes(1);
+    expect(markReadSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('chat route params do not open before authReady', async () => {
+    const { loadMessagesSpy, markReadSpy } = stubOpenSessionSideEffects();
+    useAuthStore.setState({ authReady: false });
+
+    await expect(useChatStore.getState().openSessionFromRoute({ senderId: '2' })).resolves.toBe(false);
+
+    expect(useSessionStore.getState().currentSession).toBeNull();
+    expect(loadMessagesSpy).not.toHaveBeenCalled();
+    expect(markReadSpy).not.toHaveBeenCalled();
+  });
+
+  test('duplicate chat route params do not load the same session twice', async () => {
+    const { loadMessagesSpy, markReadSpy } = stubOpenSessionSideEffects();
+    const params = { senderId: '2', senderName: 'Bob' };
+
+    await expect(useChatStore.getState().openSessionFromRoute(params)).resolves.toBe(true);
+    await expect(useChatStore.getState().openSessionFromRoute(params)).resolves.toBe(true);
+
+    expect(useSessionStore.getState().currentSession?.id).toBe(session.id);
+    expect(loadMessagesSpy).toHaveBeenCalledTimes(1);
+    expect(markReadSpy).toHaveBeenCalledTimes(1);
   });
 
   test('settingsStore persists notification setting', async () => {

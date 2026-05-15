@@ -5,10 +5,11 @@ import { ChatScreen } from '@/screens/chat/ChatScreen';
 import { ChatSearchScreen } from '@/screens/chat/ChatSearchScreen';
 import { GroupReadDetailScreen } from '@/screens/chat/GroupReadDetailScreen';
 import { SessionInfoScreen } from '@/screens/chat/SessionInfoScreen';
+import type { ChatRouteParams } from '@/types/models';
 
 export type ChatStackParamList = {
   SessionListScreen: undefined;
-  ChatScreen: { sessionId?: string } | undefined;
+  ChatScreen: ChatRouteParams | undefined;
   ChatSearchScreen: undefined;
   GroupReadDetailScreen: undefined;
   SessionInfoScreen: undefined;
