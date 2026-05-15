@@ -5,7 +5,7 @@ import { PrimaryButton } from '@/components/common/PrimaryButton';
 import { TextField } from '@/components/forms/TextField';
 import { aiService } from '@/services/ai/aiService';
 import { colors, spacing, typography } from '@/app/theme';
-import type { AiApiKey, AiSettings } from '@/types/models';
+import type { AiApiKey, AiSettings } from '@im/shared-types';
 
 const PROVIDER_OPTIONS = [
   { value: 'deepseek', label: 'DeepSeek' },

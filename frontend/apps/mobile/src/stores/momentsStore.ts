@@ -1,21 +1,12 @@
 import { create } from 'zustand';
+import type { MomentNotification, PostWithDetails } from '@im/shared-types';
 import { momentsService } from '@/services/moments/momentsService';
 import type { MobileFile } from '@/services/file/fileService';
 import { uploadService } from '@/services/upload/uploadService';
 
-export interface MomentPost {
-  post: { id: string; content?: string; userId?: string; location?: string; linkUrl?: string; linkTitle?: string; createdAt?: string };
-  media?: Array<{ id?: string; url: string; type?: number }>;
-  likeCount?: number;
-  commentCount?: number;
-  isLiked?: boolean;
-  userNickname?: string;
-  userAvatar?: string;
-}
-
 interface MomentsState {
-  feed: MomentPost[];
-  notifications: unknown[];
+  feed: PostWithDetails[];
+  notifications: MomentNotification[];
   loading: boolean;
   hasMore: boolean;
   error: string | null;
@@ -43,8 +34,7 @@ export const useMomentsStore = create<MomentsState>((set, get) => ({
     try {
       const currentFeed = get().feed;
       const cursor = refresh ? undefined : currentFeed.length > 0 ? currentFeed[currentFeed.length - 1].post.id : undefined;
-      const response = await momentsService.getFeed({ cursor, limit: 20 });
-      const next = (Array.isArray(response.data) ? response.data : []) as MomentPost[];
+      const next = await momentsService.getFeed({ cursor, limit: 20 });
       set({
         feed: refresh ? next : [...get().feed, ...next],
         hasMore: next.length === 20,
@@ -58,7 +48,7 @@ export const useMomentsStore = create<MomentsState>((set, get) => ({
 
   async createPost(content, files = []) {
     const created = await momentsService.createPost({ content });
-    const postId = String((created.data as { id?: string })?.id || '');
+    const postId = created.data?.post.id || '';
     if (postId && files.length > 0) {
       const media = [];
       for (let index = 0; index < files.length; index += 1) {
@@ -109,7 +99,7 @@ export const useMomentsStore = create<MomentsState>((set, get) => ({
   },
 
   async loadNotifications() {
-    const response = await momentsService.getNotifications();
-    set({ notifications: response.data });
+    const notifications = await momentsService.getNotifications();
+    set({ notifications });
   },
 }));

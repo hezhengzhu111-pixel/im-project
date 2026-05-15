@@ -3,7 +3,7 @@ import { kvStorage } from '@/services/storage/kvStorage';
 import { pushDeviceService } from '@/services/push/pushDeviceService';
 import { userService } from '@/services/user/userService';
 import { STORAGE_KEYS } from '@/constants/config';
-import type { UserSettings } from '@/types/models';
+import type { UserSettings } from '@im/shared-types';
 
 interface SettingsState {
   settings: UserSettings;

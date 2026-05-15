@@ -1,6 +1,7 @@
 import { fileService, normalizeUploadFile, type FileUploadResponse, type MobileFile } from '@/services/file/fileService';
 import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
-import type { MessageType, UploadTask } from '@/types/models';
+import type { MessageType } from '@im/shared-types';
+import type { UploadTask } from '@/types/models';
 
 const createTaskId = () => `upload_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 const stableTaskId = (localMessageId?: string) => (localMessageId ? `upload_${localMessageId}` : createTaskId());

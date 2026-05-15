@@ -6,6 +6,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/common/StateV
 import { PrimaryButton } from '@/components/common/PrimaryButton';
 import { useMomentsStore } from '@/stores/momentsStore';
 import { colors, spacing, typography } from '@/app/theme';
+import type { PostWithDetails } from '@im/shared-types';
 
 function formatRelativeTime(dateStr?: string): string {
   if (!dateStr) return '';
@@ -51,7 +52,7 @@ function PostCard({
   onToggleLike,
   onPress,
 }: {
-  item: import('@/stores/momentsStore').MomentPost;
+  item: PostWithDetails;
   onToggleLike: () => void;
   onPress: () => void;
 }) {

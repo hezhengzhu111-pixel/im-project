@@ -11,6 +11,7 @@ import {
 import { asBoolean, asString, isRecord } from '@im/shared-types';
 import type {
   AiApiKey,
+  AiSettings,
   FriendRequest,
   Friendship,
   Group,
@@ -18,7 +19,7 @@ import type {
   User,
   UserAuthResponse,
   UserSettings,
-} from '@/types/models';
+} from '@im/shared-types';
 
 const permissionsFrom = (raw: unknown): string[] | undefined => {
   const record = isRecord(raw) ? raw : {};
@@ -82,5 +83,13 @@ export const normalizeAiKey = (raw: unknown): AiApiKey => {
     isActive: asBoolean(record.isActive ?? record.is_active),
     validateStatus: asString(record.validateStatus ?? record.validate_status),
     lastValidatedAt: asString(record.lastValidatedAt ?? record.last_validated_at),
+  };
+};
+
+export const normalizeAiSettings = (raw: unknown): AiSettings => {
+  const record = isRecord(raw) ? raw : {};
+  return {
+    autoReplyEnabled: asBoolean(record.autoReplyEnabled ?? record.auto_reply_enabled),
+    autoReplyPersona: asString(record.autoReplyPersona ?? record.auto_reply_persona),
   };
 };

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { groupService } from '@/services/groups/groupService';
 import { useAuthStore } from './authStore';
-import type { Group, GroupMember } from '@/types/models';
+import type { Group, GroupMember } from '@im/shared-types';
 
 interface GroupState {
   groups: Group[];

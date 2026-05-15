@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { resolveGroupSessionId, resolvePrivateSessionId } from '@/adapters/sessionAdapter';
+import { resolveGroupSessionId, resolvePrivateSessionId } from '@/utils/normalizers';
 import { messageService } from '@/services/chat/messageService';
 import { messageRepository } from '@/services/storage/messageRepository';
 import { uploadService } from '@/services/upload/uploadService';
@@ -8,7 +8,8 @@ import { useContactStore } from './contactStore';
 import { useGroupStore } from './groupStore';
 import { useMessageStore } from './messageStore';
 import { useSessionStore } from './sessionStore';
-import type { ChatRouteParams, ChatSession, Group, MessageType } from '@/types/models';
+import type { ChatSession, Group, MessageType } from '@im/shared-types';
+import type { ChatRouteParams } from '@/types/models';
 import type { MobileFile } from '@/services/file/fileService';
 
 interface ChatState {

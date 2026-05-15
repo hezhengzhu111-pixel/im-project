@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { friendService } from '@/services/contacts/friendService';
 import { userService } from '@/services/user/userService';
-import type { FriendRequest, Friendship, User } from '@/types/models';
+import type { FriendRequest, Friendship, User } from '@im/shared-types';
 
 interface ContactState {
   friends: Friendship[];

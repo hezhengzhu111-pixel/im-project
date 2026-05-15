@@ -7,7 +7,7 @@ import { APP_CONFIG, STORAGE_KEYS } from '@/constants/config';
 import { debugTelemetry } from '@/services/debug/debugTelemetry';
 import { secureStorage } from '@/services/storage/secureStorage';
 import { logger } from '@/utils/logger';
-import type { ApiResponse } from '@/types/models';
+import type { ApiResponse } from '@im/shared-types';
 
 let accessTokenProvider: () => string = () => '';
 let onAuthInvalid: (generation: number) => void = () => {};

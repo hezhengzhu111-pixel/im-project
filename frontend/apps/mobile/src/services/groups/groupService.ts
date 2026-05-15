@@ -1,7 +1,7 @@
 import { GROUP_ENDPOINTS } from '@im/shared-api-contract';
 import { http } from '@/services/api/httpClient';
 import { isRecord, normalizeGroup, normalizeGroupMember } from '@/utils/normalizers';
-import type { ApiResponse, Group, GroupMember } from '@/types/models';
+import type { ApiResponse, Group, GroupMember } from '@im/shared-types';
 
 export const groupService = {
   async create(data: { name: string; description?: string; avatar?: string; memberIds: string[] }): Promise<ApiResponse<Group>> {
@@ -37,10 +37,12 @@ export const groupService = {
 
   quit: (groupId: string) => http.post<void>(GROUP_ENDPOINTS.LEAVE.replace(':groupId', groupId)),
   dismiss: (groupId: string) => http.delete<void>(GROUP_ENDPOINTS.DISMISS.replace(':groupId', groupId)),
-  update: (groupId: string, data: Record<string, unknown>, operatorId?: string) =>
-    http.put<Group>(GROUP_ENDPOINTS.UPDATE.replace(':groupId', groupId), {
+  async update(groupId: string, data: Record<string, unknown>, operatorId?: string): Promise<ApiResponse<Group>> {
+    const response = await http.put<unknown>(GROUP_ENDPOINTS.UPDATE.replace(':groupId', groupId), {
       ...data,
       groupId,
       operatorId: operatorId || '',
-    }),
+    });
+    return { ...response, data: normalizeGroup(response.data) };
+  },
 };

@@ -1,4 +1,5 @@
-import type { ChatSession, MobileMessage } from '@/types/models';
+import type { ChatSession } from '@im/shared-types';
+import type { MobileMessage } from '@/types/models';
 
 export const E2EE_UNSUPPORTED_TEXT =
   '此端到端加密消息暂不能在移动端查看，请在 Web 端查看。';

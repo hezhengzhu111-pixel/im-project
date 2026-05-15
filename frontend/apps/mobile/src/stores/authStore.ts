@@ -14,7 +14,7 @@ import { secureStorage } from '@/services/storage/secureStorage';
 import { kvStorage } from '@/services/storage/kvStorage';
 import { STORAGE_KEYS } from '@/constants/config';
 import { logger } from '@/utils/logger';
-import type { LoginRequest, RegisterRequest, User } from '@/types/models';
+import type { LoginRequest, RegisterRequest, User } from '@im/shared-types';
 import { useSettingsStore } from './settingsStore';
 import { useChatStore } from './chatStore';
 import { useWebsocketStore } from './websocketStore';

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { userService } from '@/services/user/userService';
 import { useAuthStore } from './authStore';
-import type { User } from '@/types/models';
+import type { User } from '@im/shared-types';
 
 interface UserState {
   profile: User | null;

@@ -1,6 +1,9 @@
 import { FILE_ENDPOINTS } from '@im/shared-api-contract';
+import { normalizeFileUploadResponse } from '@im/shared-normalizers';
 import { apiClient } from '@/services/api/httpClient';
-import type { ApiResponse, MessageType } from '@/types/models';
+import type { ApiResponse, FileUploadResponse, MessageType } from '@im/shared-types';
+
+export type { FileUploadResponse } from '@im/shared-types';
 
 export interface MobileFile {
   uri: string;
@@ -10,14 +13,6 @@ export interface MobileFile {
   duration?: number;
   thumbnailUrl?: string;
   originalUri?: string;
-}
-
-export interface FileUploadResponse {
-  url: string;
-  thumbnailUrl?: string;
-  size?: number;
-  fileName?: string;
-  contentType?: string;
 }
 
 const endpointFor = (type: MessageType) => {
@@ -95,6 +90,7 @@ export const fileService = {
         }
       },
     });
-    return response.data as ApiResponse<FileUploadResponse>;
+    const raw = response.data as ApiResponse<unknown>;
+    return { ...raw, data: normalizeFileUploadResponse(raw.data) };
   },
 };

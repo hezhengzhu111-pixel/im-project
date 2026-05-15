@@ -4,7 +4,7 @@ import { createReconnectDelay, createTicketedWebSocketUrl } from '@im/shared-ws-
 import { createRefreshCoordinator } from '@im/shared-auth-core';
 import { keepLocalCopy, pick } from '@react-native-documents/picker';
 import { launchImageLibrary } from 'react-native-image-picker';
-import { resolveGroupSessionId, resolveMessageSessionId, resolvePrivateSessionId } from '@/adapters/sessionAdapter';
+import { resolveGroupSessionId, resolveMessageSessionId, resolvePrivateSessionId } from '@/utils/normalizers';
 import { apiClient, registerAuthHooks } from '@/services/api/httpClient';
 import { secureStorage } from '@/services/storage/secureStorage';
 import { kvStorage } from '@/services/storage/kvStorage';
@@ -32,7 +32,8 @@ import { useUploadStore } from '@/stores/uploadStore';
 import { useWebsocketStore } from '@/stores/websocketStore';
 import { logger } from '@/utils/logger';
 import { normalizeMessage, normalizeSession } from '@/utils/normalizers';
-import type { ChatSession, MobileMessage, PendingMessage, UploadTask } from '@/types/models';
+import type { ChatSession } from '@im/shared-types';
+import type { MobileMessage, PendingMessage, UploadTask } from '@/types/models';
 
 const session: ChatSession = {
   id: resolvePrivateSessionId('1', '2'),

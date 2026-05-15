@@ -1,7 +1,7 @@
 import { AI_ENDPOINTS } from '@im/shared-api-contract';
 import { http } from '@/services/api/httpClient';
-import { normalizeAiKey } from '@/utils/normalizers';
-import type { AiApiKey, AiSettings, ApiResponse } from '@/types/models';
+import { normalizeAiKey, normalizeAiSettings } from '@/utils/normalizers';
+import type { AiApiKey, AiSettings, ApiResponse } from '@im/shared-types';
 
 export const aiService = {
   async listKeys(): Promise<ApiResponse<AiApiKey[]>> {
@@ -18,6 +18,14 @@ export const aiService = {
   },
   deleteKey: (id: string) => http.delete<{ deleted: boolean }>(AI_ENDPOINTS.KEY_BY_ID.replace(':id', id)),
   testKey: (id: string) => http.post<{ validateStatus: string }>(AI_ENDPOINTS.KEY_TEST.replace(':id', id)),
-  getSettings: () => http.get<AiSettings>(AI_ENDPOINTS.SETTINGS),
-  updateSettings: (data: Partial<AiSettings>) => http.put<AiSettings>(AI_ENDPOINTS.SETTINGS, data),
+
+  async getSettings(): Promise<ApiResponse<AiSettings>> {
+    const response = await http.get<unknown>(AI_ENDPOINTS.SETTINGS);
+    return { ...response, data: normalizeAiSettings(response.data) };
+  },
+
+  async updateSettings(data: Partial<AiSettings>): Promise<ApiResponse<AiSettings>> {
+    const response = await http.put<unknown>(AI_ENDPOINTS.SETTINGS, data);
+    return { ...response, data: normalizeAiSettings(response.data) };
+  },
 };

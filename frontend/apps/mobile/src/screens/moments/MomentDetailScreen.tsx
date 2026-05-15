@@ -8,7 +8,7 @@ import { TextField } from '@/components/forms/TextField';
 import { useMomentsStore } from '@/stores/momentsStore';
 import { momentsService } from '@/services/moments/momentsService';
 import { colors, spacing, typography } from '@/app/theme';
-import type { MomentComment } from '@im/shared-types';
+import type { MomentComment, MomentLike } from '@im/shared-types';
 import type { MomentsStackParamList } from '@/app/navigation/MomentsNavigator';
 
 function formatRelativeTime(dateStr?: string): string {
@@ -40,7 +40,7 @@ export function MomentDetailScreen() {
   const [comments, setComments] = useState<MomentComment[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [likes, setLikes] = useState<Array<{ nickname?: string }>>([]);
+  const [likes, setLikes] = useState<MomentLike[]>([]);
   const [loadingLikes, setLoadingLikes] = useState(false);
 
   const reloadComments = useCallback(() => {
@@ -49,7 +49,7 @@ export function MomentDetailScreen() {
     momentsService
       .getComments(post.post.id)
       .then((res) => {
-        setComments((Array.isArray(res.data) ? res.data : []) as MomentComment[]);
+        setComments(res);
       })
       .catch(() => {})
       .finally(() => {
@@ -64,7 +64,7 @@ export function MomentDetailScreen() {
       momentsService
         .getLikes(post.post.id)
         .then((res) => {
-          setLikes((Array.isArray(res.data) ? res.data : []) as Array<{ nickname?: string }>);
+          setLikes(res);
         })
         .catch(() => {})
         .finally(() => {
