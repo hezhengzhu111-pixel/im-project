@@ -2,6 +2,10 @@
 
 Status values: `DONE`, `PARTIAL`, `BACKEND_REQUIRED`, `DEFERRED`, `BLOCKED_BY_SCOPE`.
 
+> **平台范围说明：当前第一阶段以 Android debug 联调和 Android release 内测准备为主。iOS 工程存在但尚未 release-ready。**
+>
+> **"功能代码存在"不等于"发布验证通过"。** 下表中 `DONE` 表示代码已编写并通过 typecheck / 单测，不代表已在真机上完成端到端验证或达到发布级别。Android 进入内测的阻塞项详见 `ANDROID_RELEASE_GATE_REPORT.md` 和 `MOBILE_RELEASE_SCOPE.md`。iOS 需单独完成权限声明、native runtime config、推送配置、真机冒烟、archive/TestFlight 验证后才可进入发布评估。
+
 | 功能编号 | Web 功能名 | Web 源码位置 | Web 依赖的 service / store / shared package | 移动端目标页面 / 模块 | 移动端实现状态 | 是否需要本地存储 | 是否需要推送 / 通知 | 是否需要 Android 原生权限 | 验证方式 | 差异说明 |
 |---:|---|---|---|---|---|---|---|---|---|---|
 | 1 | 登录 | `apps/web/src/pages/Login.vue` | `services/user.ts`, `stores/user.ts`, `shared-auth-core` | `screens/auth/LoginScreen.tsx`, `stores/authStore.ts` | DONE | 是 | 否 | 否 | `mobile:test`, typecheck | Keychain 保存 token，Cookie mirror 兼容 HttpOnly refresh |

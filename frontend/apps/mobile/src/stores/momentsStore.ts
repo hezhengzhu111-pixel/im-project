@@ -3,12 +3,14 @@ import { momentsService } from '@/services/moments/momentsService';
 import type { MobileFile } from '@/services/file/fileService';
 import { uploadService } from '@/services/upload/uploadService';
 
-interface MomentPost {
-  post: { id: string; content?: string; userId?: string };
-  media?: Array<{ url: string; type?: number }>;
+export interface MomentPost {
+  post: { id: string; content?: string; userId?: string; location?: string; linkUrl?: string; linkTitle?: string; createdAt?: string };
+  media?: Array<{ id?: string; url: string; type?: number }>;
   likeCount?: number;
   commentCount?: number;
   isLiked?: boolean;
+  userNickname?: string;
+  userAvatar?: string;
 }
 
 interface MomentsState {
@@ -16,6 +18,7 @@ interface MomentsState {
   notifications: unknown[];
   loading: boolean;
   hasMore: boolean;
+  error: string | null;
   loadFeed: (refresh?: boolean) => Promise<void>;
   createPost: (content: string, files?: MobileFile[]) => Promise<void>;
   deletePost: (postId: string) => Promise<void>;
@@ -30,12 +33,13 @@ export const useMomentsStore = create<MomentsState>((set, get) => ({
   notifications: [],
   loading: false,
   hasMore: true,
+  error: null,
 
   async loadFeed(refresh = false) {
     if (get().loading) {
       return;
     }
-    set({ loading: true });
+    set({ loading: true, error: null });
     try {
       const currentFeed = get().feed;
       const cursor = refresh ? undefined : currentFeed.length > 0 ? currentFeed[currentFeed.length - 1].post.id : undefined;
@@ -45,6 +49,8 @@ export const useMomentsStore = create<MomentsState>((set, get) => ({
         feed: refresh ? next : [...get().feed, ...next],
         hasMore: next.length === 20,
       });
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to load moments' });
     } finally {
       set({ loading: false });
     }
