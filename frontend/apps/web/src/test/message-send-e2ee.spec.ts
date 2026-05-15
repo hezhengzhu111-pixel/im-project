@@ -338,4 +338,195 @@ describe("message-send-queue E2EE", () => {
     expect(result).toBe(false);
     expect(ctx._mocks.addPendingMessage).not.toHaveBeenCalled();
   });
+
+  // E2/E8/E21: negotiating 状态必须阻断发送
+  it("blocks send when session status is negotiating", async () => {
+    const ctx = makeCtx();
+    const { sendMessage } = createMessageSendQueueModule(ctx as never);
+
+    getLocalSessionStatusMock.mockReturnValue("negotiating");
+
+    const session = makeSession();
+    const result = await sendMessage(session, "hello", "TEXT");
+
+    expect(result).toBe(false);
+    expect(ctx._mocks.sendPrivate).not.toHaveBeenCalled();
+    expect(ctx._mocks.sendPrivateEncrypted).not.toHaveBeenCalled();
+    expect(ctx._mocks.notifyWarning).toHaveBeenCalledWith(
+      "端到端加密协商尚未完成，请等待对方确认。",
+    );
+  });
+
+  // E21/E24: sendPrivateEncrypted payload 必须包含 encrypted=true, e2eeHeader, e2eeDeviceId
+  it("sendPrivateEncrypted payload includes encrypted=true, e2eeHeader, e2eeDeviceId", async () => {
+    const ctx = makeCtx();
+    const { sendMessage } = createMessageSendQueueModule(ctx as never);
+
+    getLocalSessionStatusMock.mockReturnValue("encrypted");
+    encryptMessageMock.mockResolvedValue({
+      ciphertext: "encrypted_data",
+      header: { dhPubKey: "test_key", counter: 1, previousCounter: 0 },
+      deviceId: "device_123",
+    });
+
+    const session = makeSession();
+    const result = await sendMessage(session, "hello", "TEXT");
+
+    expect(result).toBe(true);
+    expect(ctx._mocks.sendPrivateEncrypted).toHaveBeenCalledTimes(1);
+
+    const sentPayload = ctx._mocks.sendPrivateEncrypted.mock.calls[0][0];
+    expect(sentPayload.encrypted).toBe(true);
+    expect(sentPayload.e2eeHeader).toBe(
+      JSON.stringify({ dhPubKey: "test_key", counter: 1, previousCounter: 0 }),
+    );
+    expect(sentPayload.e2eeDeviceId).toBe("device_123");
+  });
+
+  // E21: initial handshake 存在时必须携带 e2eeSenderIdentityKey/e2eeEphemeralKey
+  it("includes e2eeSenderIdentityKey and e2eeEphemeralKey when initial handshake exists", async () => {
+    const ctx = makeCtx();
+    const { sendMessage } = createMessageSendQueueModule(ctx as never);
+
+    getLocalSessionStatusMock.mockReturnValue("encrypted");
+    encryptMessageMock.mockResolvedValue({
+      ciphertext: "encrypted_data",
+      header: { dhPubKey: "test_key" },
+      deviceId: "device_123",
+    });
+    getPendingInitialHandshakeMock.mockReturnValue({
+      senderIdentityKey: "sender_identity_key_base64",
+      ephemeralPublicKey: "ephemeral_public_key_base64",
+      deviceId: "device_123",
+    });
+
+    const session = makeSession();
+    const result = await sendMessage(session, "hello", "TEXT");
+
+    expect(result).toBe(true);
+    const sentPayload = ctx._mocks.sendPrivateEncrypted.mock.calls[0][0];
+    expect(sentPayload.e2eeSenderIdentityKey).toBe(
+      "sender_identity_key_base64",
+    );
+    expect(sentPayload.e2eeEphemeralKey).toBe("ephemeral_public_key_base64");
+  });
+
+  // E21/E28: server response 后本地 sender 仍保留 plaintext content 展示
+  it("preserves local plaintext content for sender after server response", async () => {
+    const ctx = makeCtx();
+    const { sendMessage } = createMessageSendQueueModule(ctx as never);
+
+    getLocalSessionStatusMock.mockReturnValue("encrypted");
+    encryptMessageMock.mockResolvedValue({
+      ciphertext: "encrypted_ciphertext",
+      header: { dhPubKey: "key" },
+      deviceId: "dev_1",
+    });
+
+    const session = makeSession();
+    const result = await sendMessage(session, "my secret message", "TEXT");
+
+    expect(result).toBe(true);
+
+    // The addMessage call should have the original plaintext
+    const addMessageCalls = ctx._mocks.addMessage.mock.calls;
+    const originalPending = addMessageCalls[0][0];
+    expect(originalPending.content).toBe("my secret message");
+
+    // replaceLocalMessage should be called with server message that has plaintext content
+    // The server message content should be overridden to show plaintext to sender
+    expect(ctx._mocks.scheduleServerMessagePersist).toHaveBeenCalled();
+    const persistedMessages =
+      ctx._mocks.scheduleServerMessagePersist.mock.calls[0][1];
+    expect(persistedMessages[0].content).toBe("my secret message");
+  });
+
+  // E28: clearPendingInitialHandshake 在首条加密发送成功后执行
+  it("calls clearPendingInitialHandshake after first encrypted send succeeds", async () => {
+    const ctx = makeCtx();
+    const { sendMessage } = createMessageSendQueueModule(ctx as never);
+
+    getLocalSessionStatusMock.mockReturnValue("encrypted");
+    encryptMessageMock.mockResolvedValue({
+      ciphertext: "encrypted_data",
+      header: { dhPubKey: "key" },
+      deviceId: "dev_1",
+    });
+    getPendingInitialHandshakeMock.mockReturnValue({
+      senderIdentityKey: "identity_key",
+      ephemeralPublicKey: "ephemeral_key",
+      deviceId: "dev_1",
+    });
+
+    const session = makeSession();
+    const result = await sendMessage(session, "hello", "TEXT");
+
+    expect(result).toBe(true);
+    expect(clearPendingInitialHandshakeMock).toHaveBeenCalledWith("sess_1");
+  });
+
+  // E8/E28: E2EE module load failed 时不得在已知 encrypted session 静默明文发送
+  it("does not silently send plaintext when E2EE module load fails on encrypted session", async () => {
+    const ctx = makeCtx();
+    const { sendMessage } = createMessageSendQueueModule(ctx as never);
+
+    // Simulate E2EE module load failure by making getLocalSessionStatus throw
+    getLocalSessionStatusMock.mockImplementation(() => {
+      throw new Error("Module not found");
+    });
+
+    const session = makeSession();
+    const result = await sendMessage(session, "hello", "TEXT");
+
+    // Should fail because we cannot determine encryption state
+    // The catch block should not allow plaintext fallback for private sessions
+    expect(result).toBe(false);
+    expect(ctx._mocks.sendPrivate).not.toHaveBeenCalled();
+    expect(ctx._mocks.sendPrivateEncrypted).not.toHaveBeenCalled();
+  });
+
+  // E24: encrypted session 下 encryptMessage 返回 null 时 pending 标记 FAILED
+  it("marks pending as FAILED when encryptMessage returns null on encrypted session", async () => {
+    const ctx = makeCtx();
+    const { sendMessage } = createMessageSendQueueModule(ctx as never);
+
+    getLocalSessionStatusMock.mockReturnValue("encrypted");
+    encryptMessageMock.mockResolvedValue(null);
+
+    const session = makeSession();
+    const result = await sendMessage(session, "hello", "TEXT");
+
+    expect(result).toBe(false);
+
+    // Verify the pending message is marked as FAILED
+    const upsertCalls = ctx._mocks.upsertPendingMessage.mock.calls;
+    const failedCall = upsertCalls.find(
+      (call: unknown[]) =>
+        (call[2] as Message | undefined)?.status === "FAILED",
+    );
+    expect(failedCall).toBeTruthy();
+    expect(ctx._mocks.notifyWarning).toHaveBeenCalledWith(
+      "端到端加密失败，消息未发送",
+    );
+  });
+
+  // E21: encrypted session 下必须调用 sendPrivateEncrypted (不调用 sendPrivate)
+  it("must call sendPrivateEncrypted and not sendPrivate for encrypted session", async () => {
+    const ctx = makeCtx();
+    const { sendMessage } = createMessageSendQueueModule(ctx as never);
+
+    getLocalSessionStatusMock.mockReturnValue("encrypted");
+    encryptMessageMock.mockResolvedValue({
+      ciphertext: "encrypted_content",
+      header: { dhPubKey: "key", counter: 0, previousCounter: 0 },
+      deviceId: "dev_1",
+    });
+
+    const session = makeSession();
+    const result = await sendMessage(session, "hello", "TEXT");
+
+    expect(result).toBe(true);
+    expect(ctx._mocks.sendPrivateEncrypted).toHaveBeenCalledTimes(1);
+    expect(ctx._mocks.sendPrivate).not.toHaveBeenCalled();
+  });
 });
