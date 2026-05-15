@@ -4,8 +4,35 @@ export { createHeartbeatPayload } from "./heartbeat.js";
 export {
   parseWebSocketPayload,
   isMessagePayload,
+  isMessageStatusChangedPayload,
   isOnlineStatusPayload,
   isReadReceiptPayload,
   isSystemPayload,
+  isHeartbeatPayload,
+  isFriendRequestPayload,
+  isFriendAcceptedPayload,
+  isE2eeNegotiationPayload,
 } from "./payload.js";
-export { shouldProcessSequentially, createReconnectDelay } from "./strategy.js";
+export { shouldProcessSequentially } from "./strategy.js";
+export {
+  getIncomingPayloadType,
+  shouldQueueIncomingPayload,
+  createSequentialTail,
+} from "./incoming-queue.js";
+export {
+  createReconnectDelay,
+  shouldScheduleReconnect,
+} from "./reconnect.js";
+export type { ShouldScheduleReconnectOptions } from "./reconnect.js";
+export {
+  normalizePresenceUserId,
+  isOnlineStatusValue,
+  applyPresenceToRecord,
+  applyPresenceToSet,
+} from "./presence.js";
+export {
+  getMessageDedupKey,
+  shouldDropRecentMessage,
+  rememberRecentMessage,
+  cleanupRecentMessages,
+} from "./duplicate-message.js";
