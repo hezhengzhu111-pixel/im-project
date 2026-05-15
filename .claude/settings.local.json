@@ -16,7 +16,12 @@
       "Bash(git restore *)",
       "Bash(git commit *)",
       "Bash(git reset *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(powershell -Command \"Get-Content 'C:\\\\Users\\\\10954\\\\.claude\\\\projects\\\\D--project-new-im-project\\\\400b60bd-816b-4010-ba93-0f50cc17037c\\\\tool-results\\\\bxqgtew5i.txt' | Select-Object -Last 30\")",
+      "Bash(npm test *)",
+      "Skill(superpowers:systematic-debugging)",
+      "Bash(npx tsc *)",
+      "Bash(npx jest *)"
     ]
   }
 }

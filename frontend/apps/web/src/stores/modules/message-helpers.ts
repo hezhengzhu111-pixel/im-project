@@ -8,9 +8,9 @@ export {
   limitMessageWindow,
   getServerMessages,
   findOldestLoadedServerMessageId,
+  applyIncomingMessageToList,
+  shouldHideClearedMessage,
+  createClearMarkerFromMessages,
 } from "@im/shared-im-core";
 
-export type ConversationClearMarker = {
-  clearedAtMs: number;
-  lastServerMessageId?: string;
-};
+export type { ConversationClearMarker } from "@im/shared-im-core";

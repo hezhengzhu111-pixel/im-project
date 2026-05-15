@@ -136,7 +136,3 @@ export default {
   MESSAGE_CONFIG,
   UI_CONFIG,
 };
-
-// 类型定义
-export type MessageType = keyof typeof MESSAGE_CONFIG.TYPES;
-export type MessageStatus = keyof typeof MESSAGE_CONFIG.STATUS;

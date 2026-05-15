@@ -7,5 +7,7 @@ export { GROUP_ENDPOINTS } from './group.endpoints.js';
 export { AI_ENDPOINTS } from './ai.endpoints.js';
 export { FILE_ENDPOINTS } from './file.endpoints.js';
 export { WS_ENDPOINTS } from './websocket.endpoints.js';
+export { MOMENTS_ENDPOINTS } from './moments.endpoints.js';
+export { ADMIN_ENDPOINTS } from './admin.endpoints.js';
 export { WS_MESSAGE_TYPE, API_CODES } from './codes.js';
 export type { WsMessageType } from './codes.js';

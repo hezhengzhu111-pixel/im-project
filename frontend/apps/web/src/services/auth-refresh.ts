@@ -1,4 +1,5 @@
 import axios from "axios";
+import { AUTH_ENDPOINTS } from "@im/shared-api-contract";
 
 export type RefreshAccessTokenStatus =
   | "success"
@@ -23,7 +24,7 @@ let refreshInFlight: Promise<RefreshAccessTokenResult> | null = null;
 
 export const refreshAccessTokenRaw = async (traceId: string) => {
   return axios.post(
-    "/api/auth/refresh",
+    `/api${AUTH_ENDPOINTS.REFRESH}`,
     {},
     {
       headers: {

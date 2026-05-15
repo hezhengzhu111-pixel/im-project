@@ -22,8 +22,7 @@ async function decryptE2eeMessages(
   // Filter to encrypted messages from other users, sorted ascending by time
   const encrypted = messages
     .filter((m) => {
-      const raw = m as unknown as Record<string, unknown>;
-      return (raw.encrypted === true || raw.encrypted === 1) &&
+      return (m.encrypted === true || m.encrypted === 1) &&
         String(m.senderId) !== currentUserId &&
         m.messageType !== "SYSTEM";
     })
@@ -39,12 +38,11 @@ async function decryptE2eeMessages(
     const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
 
     for (const msg of encrypted) {
-      const raw = msg as unknown as Record<string, unknown>;
       try {
         const peerId = String(msg.senderId);
         const sessionId = buildSessionId("private", currentUserId, peerId);
 
-        const headerRaw = raw.e2eeHeader || raw.e2ee_header;
+        const headerRaw = msg.e2eeHeader;
         const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
 
         if (header && msg.content) {
@@ -53,7 +51,7 @@ async function decryptE2eeMessages(
           );
           if (decrypted) {
             msg.content = decrypted;
-            raw.encrypted = false;
+            msg.encrypted = false;
           }
         }
       } catch (e) {
@@ -65,7 +63,7 @@ async function decryptE2eeMessages(
           const { cachePendingMessage } = await import("@/features/e2ee/manager/pending-messages");
           const peerId = String(msg.senderId);
           const sessionId = buildSessionId("private", currentUserId, peerId);
-          const headerRaw = raw.e2eeHeader || raw.e2ee_header;
+          const headerRaw = msg.e2eeHeader;
           const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
 
           cachePendingMessage({

@@ -1,7 +1,14 @@
-import type { MomentMedia, MomentPost, PostWithDetails } from "@im/shared-types";
+import type {
+  MomentComment,
+  MomentLike,
+  MomentMedia,
+  MomentNotification,
+  MomentPost,
+  PostWithDetails,
+} from "@im/shared-types";
 import { asString, isRecord } from "@im/shared-types";
 
-const normalizePost = (raw: unknown): MomentPost | null => {
+export const normalizePost = (raw: unknown): MomentPost | null => {
   if (!isRecord(raw)) return null;
   const id = asString(raw.id);
   if (!id) return null;
@@ -20,7 +27,7 @@ const normalizePost = (raw: unknown): MomentPost | null => {
   };
 };
 
-const normalizeMedia = (raw: unknown): MomentMedia | null => {
+export const normalizeMedia = (raw: unknown): MomentMedia | null => {
   if (!isRecord(raw)) return null;
   const id = asString(raw.id);
   if (!id) return null;
@@ -31,6 +38,76 @@ const normalizeMedia = (raw: unknown): MomentMedia | null => {
     url: asString(raw.url),
     sortOrder: typeof raw.sortOrder === "number" ? raw.sortOrder : 0,
   };
+};
+
+export const normalizeMomentLike = (raw: unknown): MomentLike | null => {
+  if (!isRecord(raw)) return null;
+  const id = asString(raw.id);
+  if (!id) return null;
+  return {
+    id,
+    postId: asString(raw.postId),
+    userId: asString(raw.userId),
+    createdAt: asString(raw.createdAt),
+    nickname: asString(raw.nickname) || undefined,
+    avatar: asString(raw.avatar) || undefined,
+  };
+};
+
+export const normalizeMomentLikeList = (raw: unknown): MomentLike[] => {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(normalizeMomentLike)
+    .filter((item): item is MomentLike => item != null);
+};
+
+export const normalizeMomentComment = (raw: unknown): MomentComment | null => {
+  if (!isRecord(raw)) return null;
+  const id = asString(raw.id);
+  if (!id) return null;
+  return {
+    id,
+    postId: asString(raw.postId),
+    userId: asString(raw.userId),
+    parentId: asString(raw.parentId) || undefined,
+    content: asString(raw.content),
+    createdAt: asString(raw.createdAt),
+    nickname: asString(raw.nickname) || undefined,
+    avatar: asString(raw.avatar) || undefined,
+  };
+};
+
+export const normalizeMomentCommentList = (raw: unknown): MomentComment[] => {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(normalizeMomentComment)
+    .filter((item): item is MomentComment => item != null);
+};
+
+export const normalizeMomentNotification = (raw: unknown): MomentNotification | null => {
+  if (!isRecord(raw)) return null;
+  const id = asString(raw.id);
+  if (!id) return null;
+  const type = asString(raw.notificationType);
+  return {
+    id,
+    userId: asString(raw.userId),
+    actorId: asString(raw.actorId),
+    notificationType: type === "like" || type === "comment" ? type : "like",
+    postId: asString(raw.postId),
+    commentId: asString(raw.commentId) || undefined,
+    isRead: Boolean(raw.isRead),
+    createdAt: asString(raw.createdAt),
+    actorNickname: asString(raw.actorNickname) || undefined,
+    actorAvatar: asString(raw.actorAvatar) || undefined,
+  };
+};
+
+export const normalizeMomentNotificationList = (raw: unknown): MomentNotification[] => {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(normalizeMomentNotification)
+    .filter((item): item is MomentNotification => item != null);
 };
 
 /**

@@ -130,8 +130,11 @@ export const normalizeConversation = (
       looseRecord.groupId ??
       looseRecord.group_id ??
       record.partnerId ??
+      looseRecord.partner_id ??
       record.friendId ??
-      record.userId
+      looseRecord.friend_id ??
+      record.userId ??
+      looseRecord.user_id
     : record.targetId ??
       looseRecord.target_id ??
       record.partnerId ??
@@ -206,7 +209,7 @@ export const normalizeConversation = (
     lastMessageTime: lastActiveTime || undefined,
     lastMessageSenderId: asString(record.lastMessageSenderId) || undefined,
     lastMessageSenderName: asString(record.lastMessageSenderName) || undefined,
-    unreadCount: asNumber(record.unreadCount, 0),
+    unreadCount: asNumber(record.unreadCount ?? looseRecord.unread_count, 0),
     lastActiveTime,
     updateTime: lastActiveTime || undefined,
     isPinned,

@@ -60,6 +60,7 @@ export interface Message {
 export interface RawMessageDTO {
   id?: string | number;
   messageId?: string | number;
+  message_id?: string | number;
   clientMessageId?: string;
   client_message_id?: string;
   senderId?: string | number;

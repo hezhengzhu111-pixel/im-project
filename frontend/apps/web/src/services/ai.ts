@@ -2,41 +2,29 @@ import { http } from "@/utils/request";
 import { AI_ENDPOINTS } from "@im/shared-api-contract";
 import type { ApiResponse } from "@/types/api";
 import type { AiApiKey, AiSettings } from "@im/shared-types";
+import { normalizeAiApiKey } from "@/normalizers/ai";
 
 export type { AiApiKey, AiSettings } from "@im/shared-types";
-
-function normalizeKey(raw: Record<string, unknown>): AiApiKey {
-  return {
-    id: String(raw.id ?? ""),
-    provider: String(raw.provider ?? ""),
-    keyName: String(raw.keyName ?? ""),
-    maskedKey: String(raw.maskedKey ?? ""),
-    isActive: Boolean(raw.isActive),
-    validateStatus: String(raw.validateStatus ?? ""),
-    lastValidatedAt:
-      raw.lastValidatedAt != null ? String(raw.lastValidatedAt) : undefined,
-  };
-}
 
 export const aiService = {
   listKeys: () =>
     http.get<unknown[]>(AI_ENDPOINTS.KEYS).then((r) => ({
       ...r,
       data: (r.data || []).map((item) =>
-        normalizeKey(item as Record<string, unknown>),
+        normalizeAiApiKey(item as Record<string, unknown>),
       ),
     })) as Promise<ApiResponse<AiApiKey[]>>,
 
   createKey: (data: { provider: string; apiKey: string; keyName?: string }) =>
     http.post<Record<string, unknown>>(AI_ENDPOINTS.KEYS, data).then((r) => ({
       ...r,
-      data: normalizeKey(r.data || {}),
+      data: normalizeAiApiKey(r.data || {}),
     })) as Promise<ApiResponse<AiApiKey>>,
 
   updateKey: (id: string, data: { apiKey?: string; keyName?: string }) =>
     http.put<Record<string, unknown>>(AI_ENDPOINTS.KEY_BY_ID.replace(":id", id), data).then((r) => ({
       ...r,
-      data: normalizeKey(r.data || {}),
+      data: normalizeAiApiKey(r.data || {}),
     })) as Promise<ApiResponse<AiApiKey>>,
 
   deleteKey: (id: string) =>

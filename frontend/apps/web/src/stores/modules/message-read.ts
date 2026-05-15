@@ -1,7 +1,8 @@
 import type { Ref } from "vue";
 import type { messageService } from "@/services/message";
-import { buildSessionId, toBigIntId } from "@/normalizers/chat";
-import { normalizeReadReceipt } from "@/utils/messageNormalize";
+import { buildSessionId } from "@/normalizers/chat";
+import { normalizeReadReceipt } from "@/normalizers/message";
+import { applyReadReceiptToMessages } from "@im/shared-im-core";
 import type { ChatSession, Message, ReadReceipt } from "@/types";
 
 type SessionStoreLike = {
@@ -113,49 +114,21 @@ export function createMessageReadModule(ctx: MessageReadModuleContext) {
     if (list.length === 0) {
       return;
     }
-    const lastReadMessageId = receipt.lastReadMessageId
-      ? toBigIntId(receipt.lastReadMessageId)
-      : null;
-    if (lastReadMessageId == null) {
+    if (!receipt.lastReadMessageId) {
       return;
     }
 
-    const readAtMilliseconds = receipt.readAt
-      ? new Date(receipt.readAt).getTime()
-      : Number.NaN;
-    const changedMessages: Message[] = [];
-    const next = list.map((message) => {
-      if (message.senderId === currentUserId) {
-        return message;
-      }
-      const messageId = toBigIntId(message.id);
-      if (messageId == null || messageId > lastReadMessageId) {
-        return message;
-      }
-      const messageMilliseconds = new Date(message.sendTime).getTime();
-      if (
-        Number.isFinite(readAtMilliseconds) &&
-        Number.isFinite(messageMilliseconds) &&
-        messageMilliseconds > readAtMilliseconds
-      ) {
-        return message;
-      }
-
-      const updated: Message = {
-        ...message,
-        status: "READ",
-        readStatus: 1,
-        readAt: receipt.readAt || message.readAt,
-      };
-      changedMessages.push(updated);
-      return updated;
+    const { updated, changed } = applyReadReceiptToMessages(list, receipt, {
+      targetUserId: currentUserId,
+      mode: "sync",
+      isGroupSession: sessionId.startsWith("group_"),
     });
 
-    if (changedMessages.length === 0) {
+    if (changed.length === 0) {
       return;
     }
-    ctx.messages.value.set(sessionId, next);
-    await ctx.scheduleServerMessagePersist(sessionId, changedMessages);
+    ctx.messages.value.set(sessionId, updated);
+    await ctx.scheduleServerMessagePersist(sessionId, changed);
   };
 
   const applyReadReceipt = async (rawReceipt: unknown) => {
@@ -174,63 +147,24 @@ export function createMessageReadModule(ctx: MessageReadModuleContext) {
 
     const sessionId = resolveReadReceiptSessionId(receipt, currentUserId);
     const list = ctx.messages.value.get(sessionId) || [];
-    const lastReadMessageId = receipt.lastReadMessageId
-      ? toBigIntId(receipt.lastReadMessageId)
-      : null;
-    const readAtMilliseconds = receipt.readAt
-      ? new Date(receipt.readAt).getTime()
-      : Number.NaN;
-    const changedMessages: Message[] = [];
-
-    const next = list.map((message) => {
-      if (message.senderId !== currentUserId) {
-        return message;
-      }
-      if (lastReadMessageId != null) {
-        const messageId = toBigIntId(message.id);
-        if (messageId == null || messageId > lastReadMessageId) {
-          return message;
-        }
-      }
-      const messageMilliseconds = new Date(message.sendTime).getTime();
-      if (
-        Number.isFinite(readAtMilliseconds) &&
-        Number.isFinite(messageMilliseconds) &&
-        messageMilliseconds > readAtMilliseconds
-      ) {
-        return message;
-      }
-
-      let updated: Message;
-      if (sessionId.startsWith("group_")) {
-        const readers = message.readBy || [];
-        if (readers.includes(receipt.readerId)) {
-          return message;
-        }
-        updated = {
-          ...message,
-          readBy: [...readers, receipt.readerId],
-          readByCount: readers.length + 1,
-          readStatus: 1,
-        };
-      } else {
-        updated = {
-          ...message,
-          status: "READ",
-          readStatus: 1,
-          readAt: receipt.readAt || message.readAt,
-        };
-      }
-
-      changedMessages.push(updated);
-      return updated;
-    });
-
-    if (changedMessages.length === 0) {
+    if (list.length === 0) {
       return;
     }
-    ctx.messages.value.set(sessionId, next);
-    await ctx.scheduleServerMessagePersist(sessionId, changedMessages);
+    if (!receipt.lastReadMessageId) {
+      return;
+    }
+
+    const { updated, changed } = applyReadReceiptToMessages(list, receipt, {
+      targetUserId: currentUserId,
+      mode: "received",
+      isGroupSession: sessionId.startsWith("group_"),
+    });
+
+    if (changed.length === 0) {
+      return;
+    }
+    ctx.messages.value.set(sessionId, updated);
+    await ctx.scheduleServerMessagePersist(sessionId, changed);
   };
 
   return {

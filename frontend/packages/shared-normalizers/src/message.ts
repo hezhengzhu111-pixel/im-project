@@ -24,8 +24,8 @@ const normalizeFractionalSeconds = (value: unknown): string => {
     return "";
   }
   return raw.replace(
-    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{3})\d+$/,
-    "$1.$2",
+    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{3})\d+(Z?)$/,
+    "$1.$2$3",
   );
 };
 
@@ -142,8 +142,8 @@ export const normalizeMessage = (
   const duration = firstNumber(record.duration, extra?.duration);
 
   return {
-    id: asString(record.id ?? record.messageId),
-    messageId: asString(record.messageId) || undefined,
+    id: asString(record.id ?? record.messageId ?? record.message_id),
+    messageId: asString(record.messageId ?? record.message_id) || undefined,
     clientMessageId:
       asString(record.clientMessageId ?? record.client_message_id) || undefined,
     senderId: asString(
@@ -266,4 +266,33 @@ export const splitTextByCodePoints = (
     chunks.push(chars.slice(index, index + maxLen).join(""));
   }
   return chunks;
+};
+
+export interface MediaMetadata {
+  mediaName?: string;
+  mediaSize?: number;
+  thumbnailUrl?: string;
+  duration?: number;
+}
+
+export const normalizeMediaMetadata = (
+  raw: Record<string, unknown>,
+): MediaMetadata => {
+  const mediaName =
+    firstString(
+      raw.mediaName,
+      raw.media_name,
+      raw.fileName,
+      raw.file_name,
+      raw.originalFilename,
+      raw.original_filename,
+      raw.filename,
+    ) || undefined;
+  return {
+    mediaName,
+    mediaSize: firstNumber(raw.mediaSize, raw.media_size, raw.size),
+    thumbnailUrl:
+      firstString(raw.thumbnailUrl, raw.thumbnail_url) || undefined,
+    duration: firstNumber(raw.duration),
+  };
 };
