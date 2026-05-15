@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { applyMobileMessageToList, hasSameMobileMessageIdentity } from '@/adapters/messageAdapter';
-import { resolveMessageSessionId } from '@/adapters/sessionAdapter';
+import { applyMessageToSession, applyReadReceiptToMessages, buildSessionId, createNextRetryAt, shouldStopRetry } from '@im/shared-im-core';
+import { normalizeReadReceipt } from '@im/shared-normalizers';
+import { applyMobileMessageToList, hasSameMobileMessageIdentity, resolveMessageSessionId } from '@/utils/normalizers';
 import { RETRY_CONFIG } from '@/constants/config';
 import { assertPlaintextSendAllowed, blockEncryptedPendingPayload, maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
 import { messageService, resolveMarkReadTarget, type SendMessagePayload } from '@/services/chat/messageService';
@@ -11,7 +12,8 @@ import { logger } from '@/utils/logger';
 import { createClientMessageId, createLocalMessageId } from '@/utils/ids';
 import { useAuthStore } from './authStore';
 import { useSessionStore } from './sessionStore';
-import type { ChatSession, MessageType, MobileMessage, PendingMessage } from '@/types/models';
+import type { ChatSession, MessageType, ReadReceipt } from '@im/shared-types';
+import type { MobileMessage, PendingMessage } from '@/types/models';
 import type { MobileFile } from '@/services/file/fileService';
 
 interface PendingSendPayload {
@@ -49,6 +51,7 @@ interface MessageState {
   retryPending: () => Promise<void>;
   retryMessage: (localId: string) => Promise<void>;
   markRead: (session: ChatSession) => Promise<void>;
+  applyReadReceipt: (rawReceipt: unknown) => void;
   searchMessages: (keyword: string, sessionId?: string) => void;
   clearMessages: (sessionId: string) => void;
   clear: () => void;
@@ -56,9 +59,6 @@ interface MessageState {
 
 const sessionIdFor = (message: MobileMessage): string =>
   resolveMessageSessionId(message, useAuthStore.getState().currentUser?.id || '') || message.conversationId || '';
-
-const nextRetryAt = (retryCount: number) =>
-  Date.now() + Math.min(RETRY_CONFIG.maxDelayMs, RETRY_CONFIG.baseDelayMs * 2 ** retryCount);
 
 const optimisticMessage = (
   session: ChatSession,
@@ -165,7 +165,13 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     const sessionStore = useSessionStore.getState();
     const session = sessionStore.sessions.find((item) => item.id === sessionId);
     if (session) {
-      sessionStore.upsertSession({ ...session, lastMessage: persistedMessage, lastActiveTime: persistedMessage.sendTime });
+      const applied = applyMessageToSession(session, persistedMessage, { incrementUnread: false });
+      sessionStore.upsertSession({
+        ...session,
+        lastMessage: applied.lastMessage,
+        lastMessageTime: applied.lastMessageTime,
+        lastActiveTime: applied.lastActiveTime,
+      });
     }
   },
 
@@ -259,6 +265,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
         : await messageService.sendPrivate(data);
       const serverMessage: MobileMessage = {
         ...response.data,
+        messageId: response.data.id || response.data.messageId,
         clientMessageId: response.data.clientMessageId || data.clientMessageId,
         conversationId: pending.conversationId,
         status: 'SENT',
@@ -272,10 +279,10 @@ export const useMessageStore = create<MessageState>((set, get) => ({
       const retryCount = pending.retryCount + 1;
       pendingMessageRepository.update({
         ...pending,
-        status: retryCount >= RETRY_CONFIG.maxRetryCount ? 'failed' : 'pending',
+        status: shouldStopRetry(retryCount, RETRY_CONFIG.maxRetryCount) ? 'failed' : 'pending',
         retryCount,
         lastError: error instanceof Error ? error.message : 'send failed',
-        nextRetryAt: nextRetryAt(retryCount),
+        nextRetryAt: createNextRetryAt(retryCount, Date.now(), { baseDelayMs: RETRY_CONFIG.baseDelayMs, maxDelayMs: RETRY_CONFIG.maxDelayMs }),
       });
       const { nextList } = updateLocalMessage(get(), pending.conversationId, localId, (item) => ({
         ...item,
@@ -304,6 +311,53 @@ export const useMessageStore = create<MessageState>((set, get) => ({
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  },
+
+  applyReadReceipt(rawReceipt) {
+    const receipt = normalizeReadReceipt(rawReceipt);
+    if (!receipt || !receipt.lastReadMessageId) {
+      return;
+    }
+    const currentUserId = useAuthStore.getState().currentUser?.id || '';
+    if (!currentUserId) {
+      return;
+    }
+
+    const isSelfRead = receipt.readerId === currentUserId;
+
+    let sessionId: string;
+    if (receipt.conversationId && receipt.conversationId.startsWith('group_')) {
+      sessionId = receipt.conversationId;
+    } else if (isSelfRead) {
+      const targetId =
+        receipt.toUserId && receipt.toUserId !== currentUserId
+          ? receipt.toUserId
+          : '';
+      if (!targetId) {
+        return;
+      }
+      sessionId = buildSessionId('private', currentUserId, targetId);
+    } else {
+      sessionId = buildSessionId('private', currentUserId, receipt.readerId);
+    }
+
+    const list = get().messagesBySession[sessionId];
+    if (!list || list.length === 0) {
+      return;
+    }
+
+    const { updated, changed } = applyReadReceiptToMessages(list, receipt, {
+      targetUserId: currentUserId,
+      mode: isSelfRead ? 'sync' : 'received',
+      isGroupSession: sessionId.startsWith('group_'),
+    });
+
+    if (changed.length === 0) {
+      return;
+    }
+
+    messageRepository.upsertMessages(sessionId, changed);
+    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: updated } });
   },
 
   searchMessages(keyword, sessionId) {

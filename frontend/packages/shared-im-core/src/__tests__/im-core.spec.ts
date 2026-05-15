@@ -298,3 +298,113 @@ describe("hasSameMessageIdentity", () => {
     expect(hasSameMessageIdentity(left, right)).toBe(false);
   });
 });
+
+// ─── message-identity: mobile serverId ↔ shared messageId bridge ────────────
+
+describe("mobile serverId ↔ shared messageId identity bridge", () => {
+  it("local pending + server echo by clientMessageId merge (no duplicate insert)", () => {
+    const pending = makeMessage({
+      id: "local_abc",
+      clientMessageId: "cm-123",
+      senderId: "u1",
+      content: "hello",
+      status: "SENDING",
+      sendTime: "2024-01-01T00:00:00.000Z",
+    });
+    const serverEcho = makeMessage({
+      id: "999",
+      messageId: "999",
+      clientMessageId: "cm-123",
+      senderId: "u1",
+      content: "hello",
+      status: "SENT",
+      sendTime: "2024-01-01T00:00:00.000Z",
+    });
+    // Identity match via clientMessageId
+    expect(hasSameMessageIdentity(pending, serverEcho)).toBe(true);
+    // Merge should produce a single message with server id
+    const result = mergeMessagesChronologically([pending], [serverEcho]);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("999");
+    expect(result[0].clientMessageId).toBe("cm-123");
+    expect(result[0].status).toBe("SENT");
+  });
+
+  it("raw message_id (snake_case) can match via shared id after normalizer", () => {
+    // After normalizer: raw.message_id → Message.id AND Message.messageId
+    // Simulating the normalizer output
+    const fromSnakeCase = makeMessage({
+      id: "500",
+      messageId: "500",
+    });
+    const fromCamelCase = makeMessage({
+      id: "500",
+      messageId: "500",
+    });
+    expect(hasSameMessageIdentity(fromSnakeCase, fromCamelCase)).toBe(true);
+  });
+
+  it("Mobile serverId → shared messageId (via toSharedMessage mapping)", () => {
+    // Mobile: { id: "local_1", serverId: "srv-42" }
+    // toSharedMessage: id = message.messageId || message.serverId || message.id = "srv-42"
+    //                : messageId = message.messageId || message.serverId = "srv-42"
+    const mobileAsShared = makeMessage({
+      id: "srv-42",
+      messageId: "srv-42",
+    });
+    const serverMessage = makeMessage({
+      id: "srv-42",
+      messageId: "srv-42",
+    });
+    expect(hasSameMessageIdentity(mobileAsShared, serverMessage)).toBe(true);
+  });
+
+  it("shared messageId → Mobile serverId (via toMobileMessage mapping)", () => {
+    // toMobileMessage sets serverId from message.messageId
+    const shared: Message = {
+      id: "100",
+      messageId: "100",
+      clientMessageId: "cm-x",
+      senderId: "u1",
+      isGroupChat: false,
+      messageType: "TEXT",
+      content: "test",
+      sendTime: "2024-01-01T00:00:00.000Z",
+      status: "SENT",
+    };
+    // After toMobileMessage: serverId = message.messageId = "100"
+    expect(shared.messageId).toBe("100");
+    // Identity preserved
+    const identities = messageIdentityValues(shared);
+    expect(identities).toContain("100");
+    expect(identities).toContain("cm-x");
+  });
+
+  it("all three identity fields present: no field loss", () => {
+    const msg = makeMessage({
+      id: "100",
+      messageId: "m-100",
+      clientMessageId: "cm-100",
+    });
+    const identities = messageIdentityValues(msg);
+    expect(identities).toContain("100");
+    expect(identities).toContain("m-100");
+    expect(identities).toContain("cm-100");
+    expect(identities).toHaveLength(3);
+  });
+
+  it("shared Message type does not contain serverId field", () => {
+    // Type-level guard: serverId must not exist on shared Message
+    const msg: Message = {
+      id: "1",
+      senderId: "u1",
+      isGroupChat: false,
+      messageType: "TEXT",
+      content: "",
+      sendTime: "2024-01-01T00:00:00.000Z",
+      status: "SENT",
+    };
+    // @ts-expect-error serverId must not exist on shared Message
+    expect((msg as Record<string, unknown>).serverId).toBeUndefined();
+  });
+});

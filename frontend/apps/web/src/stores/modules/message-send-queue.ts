@@ -2,7 +2,9 @@ import type { Ref } from "vue";
 import type { messageService } from "@/services/message";
 import type { messageRepo } from "@/utils/messageRepo";
 import { safePreferExistingId } from "@/normalizers/chat";
-import { splitTextByCodePoints } from "@/utils/messageNormalize";
+import { splitTextByCodePoints, normalizeMediaMetadata } from "@/normalizers/message";
+import { applyIncomingMessageToList } from "@/stores/modules/message-helpers";
+import type { MediaMetadata } from "@/normalizers/message";
 import type { ChatSession, Message, MessageConfig, MessageType } from "@/types";
 
 const DEFAULT_MESSAGE_CONFIG: MessageConfig = {
@@ -45,38 +47,6 @@ type MessageSendQueueModuleContext = {
     messages: Message[],
     options?: { immediate?: boolean },
   ) => Promise<void> | void;
-};
-
-type MediaMetadata = {
-  mediaName?: string;
-  mediaSize?: number;
-  thumbnailUrl?: string;
-  duration?: number;
-};
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
-const firstString = (...values: unknown[]) => {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim()) {
-      return value.trim();
-    }
-    if (typeof value === "number" || typeof value === "bigint") {
-      return String(value);
-    }
-  }
-  return "";
-};
-
-const firstNumber = (...values: unknown[]) => {
-  for (const value of values) {
-    const number = typeof value === "number" ? value : Number(value);
-    if (Number.isFinite(number)) {
-      return number;
-    }
-  }
-  return undefined;
 };
 
 const isNetworkError = (error: unknown): boolean => {
@@ -146,24 +116,13 @@ const resolveMediaMetadata = (
   mediaUrl: string,
   extra?: Record<string, unknown>,
 ): MediaMetadata => {
-  const record = isRecord(extra) ? extra : {};
-  const mediaName =
-    firstString(
-      record.mediaName,
-      record.media_name,
-      record.fileName,
-      record.file_name,
-      record.originalFilename,
-      record.original_filename,
-      record.filename,
-    ) || filenameFromUrl(mediaUrl);
-  return {
-    mediaName: mediaName || undefined,
-    mediaSize: firstNumber(record.mediaSize, record.media_size, record.size),
-    thumbnailUrl:
-      firstString(record.thumbnailUrl, record.thumbnail_url) || undefined,
-    duration: firstNumber(record.duration),
-  };
+  const normalized = normalizeMediaMetadata(
+    (extra && typeof extra === "object" ? extra : {}) as Record<string, unknown>,
+  );
+  if (!normalized.mediaName) {
+    normalized.mediaName = filenameFromUrl(mediaUrl) || undefined;
+  }
+  return normalized;
 };
 
 export function createMessageSendQueueModule(
@@ -197,18 +156,9 @@ export function createMessageSendQueueModule(
     message: Message,
   ) => {
     const existing = ctx.messages.value.get(sessionId) || [];
-    const next = existing.slice();
-    const targetIndex = next.findIndex(
-      (item) =>
-        item.id === localId ||
-        (item.clientMessageId &&
-          item.clientMessageId === message.clientMessageId),
-    );
-    if (targetIndex >= 0) {
-      next[targetIndex] = message;
-      ctx.messages.value.set(sessionId, next);
-      ctx.syncHistoryState(sessionId, next, { preserveHasMore: true });
-    }
+    const next = applyIncomingMessageToList(existing, message);
+    ctx.messages.value.set(sessionId, next);
+    ctx.syncHistoryState(sessionId, next, { preserveHasMore: true });
   };
 
   const markPendingFailed = (sessionId: string, localId: string) => {

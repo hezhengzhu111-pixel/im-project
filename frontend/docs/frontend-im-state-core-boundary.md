@@ -318,7 +318,7 @@ retry backoff 归 shared-im-core 的部分只能是纯计算：输入 `retryCoun
 
 ### 允许修改位置
 
-- 新增 `frontend/packages/shared-im-core/src/retry-backoff.ts`
+- 新增或更新 `frontend/packages/shared-im-core/src/retry-policy.ts`
 - Mobile `messageStore.ts` 中 `nextRetryAt` 的替换调用点
 - Web 后续如增加 delayed retry，只能调用 shared 纯策略
 

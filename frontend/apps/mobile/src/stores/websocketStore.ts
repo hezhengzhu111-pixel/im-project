@@ -8,7 +8,9 @@ import {
   parseWebSocketPayload,
   shouldProcessSequentially,
 } from '@im/shared-ws-core';
-import { createSessionFromMessage, resolveMessageSessionId } from '@/adapters/sessionAdapter';
+import { applyMessageToSession } from '@im/shared-im-core';
+import type { ChatSession } from '@im/shared-types';
+import { createSessionFromMessage, resolveMessageSessionId } from '@/utils/normalizers';
 import { APP_CONFIG, WS_CONFIG } from '@/constants/config';
 import { authService } from '@/services/auth/authService';
 import { debugTelemetry } from '@/services/debug/debugTelemetry';
@@ -173,19 +175,22 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
       const sessionStore = useSessionStore.getState();
       const existingSession = sessionStore.sessions.find((item) => item.id === routedMessage.conversationId);
       const messageSession = createSessionFromMessage(routedMessage, currentUserId);
-      const nextSession = existingSession || messageSession;
-      if (nextSession) {
-        sessionStore.upsertSession({
-          ...nextSession,
-          lastMessage: routedMessage,
-          lastActiveTime: routedMessage.sendTime,
-          unreadCount:
-            type === WS_MESSAGE_TYPE.MESSAGE && !isCurrent && !isSelf
-              ? (existingSession?.unreadCount || 0) + 1
-              : existingSession?.unreadCount || nextSession.unreadCount,
-        });
+      const baseSession: ChatSession | null = existingSession || messageSession;
+      if (baseSession) {
+        const shouldIncrement = type === WS_MESSAGE_TYPE.MESSAGE && !isCurrent && !isSelf;
+        const applied = applyMessageToSession(baseSession, routedMessage, { incrementUnread: shouldIncrement });
+        const merged: ChatSession = {
+          ...baseSession,
+          lastMessage: applied.lastMessage,
+          lastMessageTime: applied.lastMessageTime,
+          lastActiveTime: applied.lastActiveTime,
+          unreadCount: applied.unreadIncrement
+            ? (existingSession?.unreadCount || 0) + 1
+            : existingSession?.unreadCount || baseSession.unreadCount,
+        };
+        sessionStore.upsertSession(merged);
       }
-      if (type === WS_MESSAGE_TYPE.MESSAGE && !isCurrent && !isSelf && !nextSession?.isMuted) {
+      if (type === WS_MESSAGE_TYPE.MESSAGE && !isCurrent && !isSelf && !baseSession?.isMuted) {
         await displayMessageNotification(routedMessage);
       }
       return;
@@ -199,6 +204,7 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
       return;
     }
     if (type === WS_MESSAGE_TYPE.READ_RECEIPT) {
+      useMessageStore.getState().applyReadReceipt(data);
       await useChatStore.getState().refreshSessions().catch(() => undefined);
       return;
     }
