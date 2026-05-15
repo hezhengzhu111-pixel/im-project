@@ -1,3 +1,5 @@
+import { WS_ENDPOINTS } from "@im/shared-api-contract";
+
 /**
  * Build the full WebSocket URL for a given user and optional ticket.
  *
@@ -16,9 +18,10 @@ export const createTicketedWebSocketUrl = (
   userId: string,
   ticket?: string,
 ): string => {
-  const baseUrl = `${wsBaseUrl}/websocket/${userId}`;
+  const path = `${wsBaseUrl}${WS_ENDPOINTS.PATH}/${userId}`;
   if (!ticket) {
-    return baseUrl;
+    return path;
   }
-  return `${baseUrl}?ticket=${encodeURIComponent(ticket)}`;
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}${WS_ENDPOINTS.TICKET_PARAM}=${encodeURIComponent(ticket)}`;
 };

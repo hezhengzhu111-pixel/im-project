@@ -397,5 +397,89 @@ describe('messageAdapter', () => {
       expect(result[0].id).toBe('1');
       expect(result[1].id).toBe('2');
     });
+
+    it('merges pending with server echo by clientMessageId', () => {
+      const pending = baseMobile({
+        id: 'local_1',
+        clientMessageId: 'client_abc',
+        content: 'hello',
+        status: 'SENDING',
+        sendTime: '2024-06-01T10:00:00.000Z',
+      });
+      const serverEcho = baseMobile({
+        id: 'srv_1',
+        serverId: 'srv_1',
+        clientMessageId: 'client_abc',
+        content: 'hello',
+        status: 'SENT',
+        sendTime: '2024-06-01T10:00:01.000Z',
+      });
+
+      const result = applyMobileMessageToList([pending], serverEcho);
+
+      expect(result).toHaveLength(1);
+      // Should keep clientMessageId for pending cleanup
+      expect(result[0].clientMessageId).toBe('client_abc');
+      // Should adopt server status
+      expect(result[0].status).toBe('SENT');
+    });
+
+    it('merges pending with server echo by matching serverId to existing id', () => {
+      const pending = baseMobile({
+        id: 'srv_1', // id matches server's serverId
+        clientMessageId: 'client_xyz',
+        content: 'world',
+        status: 'SENDING',
+        sendTime: '2024-06-01T10:00:00.000Z',
+      });
+      const serverEcho = baseMobile({
+        id: 'srv_1',
+        serverId: 'srv_1',
+        clientMessageId: 'client_xyz',
+        content: 'world',
+        status: 'DELIVERED',
+        sendTime: '2024-06-01T10:00:01.000Z',
+      });
+
+      const result = applyMobileMessageToList([pending], serverEcho);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].clientMessageId).toBe('client_xyz');
+    });
+
+    it('preserves clientMessageId through merge for pending cleanup', () => {
+      const pending = baseMobile({
+        id: 'local_2',
+        clientMessageId: 'client_qwe',
+        content: 'test',
+        status: 'SENDING',
+      });
+      const serverEcho = baseMobile({
+        id: 'srv_2',
+        serverId: 'srv_2',
+        clientMessageId: 'client_qwe',
+        content: 'test',
+        status: 'SENT',
+      });
+
+      const result = applyMobileMessageToList([pending], serverEcho);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].clientMessageId).toBe('client_qwe');
+      expect(result[0].id).toBeDefined();
+    });
+
+    it('sorts multiple messages by sendTime after merge', () => {
+      const msg1 = baseMobile({ id: 'msg_1', messageId: 'msg_1', sendTime: '2024-06-01T10:00:00.000Z' });
+      const msg2 = baseMobile({ id: 'msg_2', messageId: 'msg_2', sendTime: '2024-06-01T10:00:02.000Z' });
+      const incoming = baseMobile({ id: 'msg_3', messageId: 'msg_3', sendTime: '2024-06-01T10:00:01.000Z' });
+
+      const result = applyMobileMessageToList([msg1, msg2], incoming);
+
+      expect(result).toHaveLength(3);
+      expect(result[0].id).toBe('msg_1');
+      expect(result[1].id).toBe('msg_3');
+      expect(result[2].id).toBe('msg_2');
+    });
   });
 });

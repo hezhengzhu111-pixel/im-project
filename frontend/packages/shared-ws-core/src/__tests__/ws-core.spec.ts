@@ -14,24 +14,24 @@ import {
 
 describe("createHeartbeatPayload", () => {
   it("returns a valid JSON string", () => {
-    const result = createHeartbeatPayload();
+    const result = createHeartbeatPayload(1700000000000);
     expect(() => JSON.parse(result)).not.toThrow();
   });
 
   it("has type HEARTBEAT", () => {
-    const result = JSON.parse(createHeartbeatPayload());
+    const result = JSON.parse(createHeartbeatPayload(1700000000000));
     expect(result.type).toBe("HEARTBEAT");
   });
 
   it("contains timestamp in data", () => {
-    const result = JSON.parse(createHeartbeatPayload());
+    const result = JSON.parse(createHeartbeatPayload(1700000000000));
     expect(result.data).toBeDefined();
     expect(typeof result.data.timestamp).toBe("number");
     expect(result.data.timestamp).toBeGreaterThan(0);
   });
 
   it("contains top-level timestamp", () => {
-    const result = JSON.parse(createHeartbeatPayload());
+    const result = JSON.parse(createHeartbeatPayload(1700000000000));
     expect(typeof result.timestamp).toBe("number");
     expect(result.timestamp).toBeGreaterThan(0);
   });
@@ -49,8 +49,15 @@ describe("createReconnectDelay", () => {
     expect(createReconnectDelay(3, 500)).toBe(1500);
   });
 
-  it("returns 0 for attempt 0", () => {
-    expect(createReconnectDelay(0)).toBe(0);
+  it("treats attempt < 1 as 1", () => {
+    expect(createReconnectDelay(0)).toBe(1000);
+    expect(createReconnectDelay(-1)).toBe(1000);
+    expect(createReconnectDelay(0, 500)).toBe(500);
+  });
+
+  it("treats negative baseInterval as 0", () => {
+    expect(createReconnectDelay(1, -100)).toBe(0);
+    expect(createReconnectDelay(3, -500)).toBe(0);
   });
 });
 

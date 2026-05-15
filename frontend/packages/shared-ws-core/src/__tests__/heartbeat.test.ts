@@ -74,23 +74,6 @@ describe("createHeartbeatPayload", () => {
   });
 
   // ── Backward-compatible zero-arg overload ─────────────────────────
-  it("zero-arg overload still works and returns valid JSON", () => {
-    const raw = createHeartbeatPayload();
-    expect(() => JSON.parse(raw)).not.toThrow();
-    const parsed = JSON.parse(raw);
-    expect(parsed.type).toBe("HEARTBEAT");
-    expect(typeof parsed.timestamp).toBe("number");
-    expect(parsed.timestamp).toBeGreaterThan(0);
-  });
-
-  it("zero-arg overload uses Date.now() (non-deterministic but recent)", () => {
-    const before = Date.now();
-    const parsed = JSON.parse(createHeartbeatPayload());
-    const after = Date.now();
-    expect(parsed.timestamp).toBeGreaterThanOrEqual(before);
-    expect(parsed.timestamp).toBeLessThanOrEqual(after);
-  });
-
   // ── Edge cases ────────────────────────────────────────────────────
   it("accepts timestamp 0 (epoch)", () => {
     const parsed = JSON.parse(createHeartbeatPayload(0));

@@ -6,15 +6,30 @@ import { authService, userService } from "@/services";
 import { normalizeMessage } from "@/normalizers/message";
 import { buildSessionId } from "@/normalizers/chat";
 import { resolveMessageSessionId } from "@im/shared-im-core";
-import { WS_MESSAGE_TYPE } from "@im/shared-api-contract";
 import {
   createTicketedWebSocketUrl,
   createHeartbeatPayload,
-  shouldProcessSequentially,
+  parseWebSocketPayload,
+  shouldQueueIncomingPayload,
   createReconnectDelay,
   shouldScheduleReconnect,
   DUPLICATE_CONNECTION_REASON,
+  resolveWebSocketConnectionStatus,
+  normalizePresenceUserId,
+  isOnlineStatusValue,
+  applyPresenceToSet,
+  DEFAULT_DEDUP_TTL_MS,
+  DEFAULT_DEDUP_MAX_SIZE,
+  getMessageDedupKey,
+  shouldDropRecentMessage,
+  rememberRecentMessage,
+  cleanupRecentMessages,
+  classifyContactRefreshFromWsType,
+  classifyContactRefreshFromSystemContent,
+  classifyWsEvent,
+  getIncomingPayloadType,
 } from "@im/shared-ws-core";
+import type { WsEventKind } from "@im/shared-ws-core";
 import type { Message, OnlineStatus, WebSocketMessage } from "@/types";
 import { useChatStore } from "@/stores/chat";
 import { useUserStore } from "@/stores/user";
@@ -110,16 +125,15 @@ export const useWebSocketStore = defineStore("websocket", () => {
     };
   };
 
+  const RECENT_MESSAGE_TTL_MS = DEFAULT_DEDUP_TTL_MS;
+  const RECENT_MESSAGE_MAX_SIZE = DEFAULT_DEDUP_MAX_SIZE;
+
   const cleanupRecentMessageIds = (now: number) => {
-    if (recentMessageIds.value.size <= 2000) {
-      return;
-    }
-    const cutoff = now - 300_000;
-    recentMessageIds.value.forEach((timestamp, id) => {
-      if (timestamp < cutoff) {
-        recentMessageIds.value.delete(id);
-      }
-    });
+    recentMessageIds.value = cleanupRecentMessages(
+      recentMessageIds.value,
+      now,
+      RECENT_MESSAGE_TTL_MS,
+    );
   };
 
   const hasMessageInLocalState = (
@@ -223,27 +237,20 @@ export const useWebSocketStore = defineStore("websocket", () => {
   };
 
   const connectionStatus = computed(() => {
-    if (isConnecting.value) return "connecting";
-    if (isConnected.value) return "connected";
-    return "disconnected";
+    return resolveWebSocketConnectionStatus({
+      connected: isConnected.value,
+      connecting: isConnecting.value,
+    });
   });
-
-  const normalizePresenceUserId = (userId: unknown): string =>
-    String(userId || "").trim();
 
   const setUserOnline = (userId: unknown, isOnline: boolean) => {
     const normalizedUserId = normalizePresenceUserId(userId);
     if (!normalizedUserId) {
       return;
     }
-    const nextOnlineUsers = new Set(onlineUsers.value);
-    const wasOnline = nextOnlineUsers.has(normalizedUserId);
-    if (isOnline) {
-      nextOnlineUsers.add(normalizedUserId);
-    } else {
-      nextOnlineUsers.delete(normalizedUserId);
-    }
-    onlineUsers.value = nextOnlineUsers;
+    const wasOnline = onlineUsers.value.has(normalizedUserId);
+    const next = applyPresenceToSet(onlineUsers.value, normalizedUserId, isOnline);
+    onlineUsers.value = next;
 
     if (wasOnline !== isOnline) {
       window.dispatchEvent(
@@ -334,27 +341,28 @@ export const useWebSocketStore = defineStore("websocket", () => {
       };
 
       socket.value.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data) as WebSocketMessage;
-          const innerType = data.data
-            ? String((data.data as Record<string, unknown>).messageType || (data.data as Record<string, unknown>).type || "")
-            : "";
-          if (shouldProcessSequentially(data.type, innerType)) {
-            // FIX: 普通聊天消息保留串行处理，确保时序敏感消息仍按顺序落库与渲染。
-            incomingProcessing.value = incomingProcessing.value
-              .then(() => handleMessage(data))
-              .catch((error) => {
-                logger.error("failed to handle websocket message", error);
-              });
-            return;
-          }
-          // FIX: 系统消息、心跳和在线状态消息跳过串行队列，避免无关消息被长链路阻塞。
-          void handleMessage(data).catch((error) => {
+        const parsed = parseWebSocketPayload(String(event.data));
+        if (!parsed || typeof parsed !== "object") {
+          logger.warn("failed to parse websocket payload");
+          return;
+        }
+        const data = parsed as WebSocketMessage;
+
+        if (shouldQueueIncomingPayload(parsed as Record<string, unknown>)) {
+          // W12: 普通聊天消息保留串行处理，确保时序敏感消息仍按顺序落库与渲染。
+          incomingProcessing.value = incomingProcessing.value.then(
+            () => handleMessage(data),
+            () => handleMessage(data),
+          );
+          void incomingProcessing.value.catch((error) => {
             logger.error("failed to handle websocket message", error);
           });
-        } catch (error) {
-          logger.warn("failed to parse websocket payload", error);
+          return;
         }
+        // W12: 系统消息、心跳和在线状态消息跳过串行队列，避免无关消息被长链路阻塞。
+        void handleMessage(data).catch((error) => {
+          logger.error("failed to handle websocket message", error);
+        });
       };
 
       socket.value.onclose = (event) => {
@@ -374,6 +382,11 @@ export const useWebSocketStore = defineStore("websocket", () => {
           })
         ) {
           scheduleReconnect(userId);
+        } else if (
+          !manualDisconnect.value &&
+          reconnectAttempts.value >= WS_CONFIG.RECONNECT_ATTEMPTS
+        ) {
+          ElMessage.error("WebSocket reconnect limit reached");
         }
       };
 
@@ -385,7 +398,9 @@ export const useWebSocketStore = defineStore("websocket", () => {
     } catch (error) {
       logger.warn("failed to create websocket connection", error);
       isConnecting.value = false;
-      scheduleReconnect(userId);
+      if (!manualDisconnect.value) {
+        scheduleReconnect(userId);
+      }
       ElMessage.error("WebSocket connection failed");
     }
   };
@@ -407,240 +422,223 @@ export const useWebSocketStore = defineStore("websocket", () => {
 
   const handleMessage = async (data: WebSocketMessage) => {
     const chatStore = useChatStore();
+    const eventKind: WsEventKind = classifyWsEvent(data as unknown as Record<string, unknown>);
 
-    switch (data.type) {
-      case WS_MESSAGE_TYPE.MESSAGE: {
-        if (!data.data) {
-          return;
-        }
-        const rawMessage = data.data as Record<string, unknown>;
-        const isSystemMessage =
-          String(
-            rawMessage.messageType || rawMessage.type || "",
-          ).toUpperCase() === "SYSTEM";
+    if (eventKind === "message") {
+      if (!data.data) {
+        return;
+      }
+      const rawMessage = data.data as Record<string, unknown>;
+      const { innerType } = getIncomingPayloadType(data as unknown as Record<string, unknown>);
+      const isSystemMessage = innerType.toUpperCase() === "SYSTEM";
 
-        if (isSystemMessage) {
-          const content = String(rawMessage.content || "");
-          const shouldRefreshFriendData =
-            content.includes("好友申请") ||
-            content.includes("同意") ||
-            content.toLowerCase().includes("friend request");
+      if (isSystemMessage) {
+        const content = String(rawMessage.content || "");
+        const refreshAction = classifyContactRefreshFromSystemContent(content);
 
-          if (shouldRefreshFriendData) {
-            await queueContactRefresh({
-              loadFriendRequests: true,
-              loadFriends: true,
-              loadSessions: true,
-              notificationTitle: "System notification",
-              notificationMessage: content,
-              notificationType: "info",
-            });
-          }
-          return;
-        }
-
-        const normalizedMessage = normalizeMessage(rawMessage);
-        const currentUserId = String(useUserStore().userId || "");
-        const messageId = String(normalizedMessage.id || "");
-        if (messageId && !messageId.startsWith("local_")) {
-          const now = Date.now();
-          const previous = recentMessageIds.value.get(messageId) || 0;
-          if (now - previous < 60_000) {
-            return;
-          }
-          // FIX: 除内存去重外，再检查本地消息状态，避免服务端重试导致重复渲染和重复提示。
-          if (
-            hasMessageInLocalState(chatStore, normalizedMessage, currentUserId)
-          ) {
-            return;
-          }
-          recentMessageIds.value.set(messageId, now);
-          cleanupRecentMessageIds(now);
-        }
-
-        // E2EE decrypt intercept
-        const isEncrypted = normalizedMessage.encrypted === true || normalizedMessage.encrypted === 1;
-
-        if (isEncrypted && normalizedMessage.messageType !== "SYSTEM") {
-          const senderId = String(normalizedMessage.senderId || "");
-          if (senderId !== currentUserId) {
-          const sessionId = buildSessionId("private", currentUserId, senderId);
-          const headerRaw = normalizedMessage.e2eeHeader;
-          const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
-          const senderIdentityKey = normalizedMessage.e2eeSenderIdentityKey;
-          const ephemeralKey = normalizedMessage.e2eeEphemeralKey;
-
-          try {
-            const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
-
-            if (header && normalizedMessage.content) {
-              const decrypted = await e2eeManager.decryptMessage(
-                sessionId, senderId, header, normalizedMessage.content,
-                senderIdentityKey, ephemeralKey,
-              );
-              if (decrypted) {
-                normalizedMessage.content = decrypted;
-                normalizedMessage.encrypted = false;
-              }
-            }
-          } catch (e) {
-            const errMsg = e instanceof Error ? e.message : String(e);
-            const isNoRatchetState = errMsg.includes("No ratchet state") || errMsg.includes("negotiation has not been accepted");
-
-            if (isNoRatchetState) {
-              const { getLocalSessionStatus, setLocalSessionStatus } = await import("@/features/e2ee/manager/negotiation");
-              const status = getLocalSessionStatus(sessionId);
-
-              if (status === "encrypted") {
-                console.error(`[E2EE] Status is 'encrypted' but no ratchet state for session=${sessionId}. Resetting to plaintext.`);
-                setLocalSessionStatus(sessionId, "plaintext");
-                ElNotification({ title: "加密状态异常", message: "端到端加密状态已重置，请重新发起加密协商。", type: "warning", duration: 8000 });
-              } else if (status === "negotiating") {
-                console.warn(`[E2EE] Negotiation in progress for session=${sessionId}, message will be decrypted after completion.`);
-                ElMessage({ message: "加密协商进行中，消息将在协商完成后解密。", type: "info", duration: 3000 });
-              } else {
-                console.log(`[E2EE] No ratchet state for session=${sessionId} (status=${status}), auto-triggering negotiation.`);
-                try {
-                  const { initiateNegotiation } = await import("@/features/e2ee/manager/negotiation");
-                  const { cachePendingMessage } = await import("@/features/e2ee/manager/pending-messages");
-                  cachePendingMessage({
-                    sessionId,
-                    peerId: senderId,
-                    content: normalizedMessage.content,
-                    header,
-                    senderIdentityKey,
-                    ephemeralPublicKey: ephemeralKey,
-                    messageRef: normalizedMessage as unknown as { content: string; encrypted: boolean | number },
-                  });
-                  initiateNegotiation(sessionId, senderId).then((ok) => {
-                    if (ok) {
-                      ElNotification({ title: "端到端加密请求", message: "收到加密消息但尚未建立加密通道，已自动发起协商请求。", type: "info", duration: 5000 });
-                    }
-                  });
-                } catch {
-                  // Auto-negotiation failed — message stays encrypted
-                }
-              }
-            } else {
-              console.error("[E2EE] Decrypt failed:", e);
-            }
-            (normalizedMessage as unknown as Record<string, unknown>).encrypted = true;
-          }
-          } else {
-            // Own message synced via WebSocket — preserve local plaintext
-            const sessionId = normalizedMessage.receiverId
-              ? buildSessionId("private", currentUserId, normalizedMessage.receiverId)
-              : null;
-            if (sessionId) {
-              const existingList = (chatStore.messages as Map<string, Message[]>).get(sessionId) || [];
-              const existing = existingList.find(
-                (m) => m.clientMessageId && m.clientMessageId === normalizedMessage.clientMessageId,
-              );
-              if (existing && existing.content) {
-                normalizedMessage.content = existing.content;
-              }
-            }
-            (normalizedMessage as unknown as Record<string, unknown>).encrypted = true;
-          }
-        }
-
-        const isSelfMessage =
-          String(normalizedMessage.senderId) === currentUserId;
-        await chatStore.addMessage(normalizedMessage);
-        if (!isSelfMessage) {
-          showMessageNotification(normalizedMessage);
+        if (refreshAction) {
+          await queueContactRefresh(refreshAction);
         }
         return;
       }
-      case WS_MESSAGE_TYPE.MESSAGE_STATUS_CHANGED: {
-        if (!data.data) {
+
+      const normalizedMessage = normalizeMessage(rawMessage);
+      const currentUserId = String(useUserStore().userId || "");
+      const dedupKey = getMessageDedupKey(rawMessage);
+      if (dedupKey && !dedupKey.startsWith("local_")) {
+        const now = Date.now();
+        if (
+          shouldDropRecentMessage(
+            recentMessageIds.value,
+            dedupKey,
+            now,
+            RECENT_MESSAGE_TTL_MS,
+          )
+        ) {
           return;
         }
-        const normalizedMessage = normalizeMessage(
-          data.data as Record<string, unknown>,
+        // W18: 除内存去重外，再检查本地消息状态，避免服务端重试导致重复渲染和重复提示。
+        if (
+          hasMessageInLocalState(chatStore, normalizedMessage, currentUserId)
+        ) {
+          return;
+        }
+        recentMessageIds.value = rememberRecentMessage(
+          recentMessageIds.value,
+          dedupKey,
+          now,
+          RECENT_MESSAGE_MAX_SIZE,
+          RECENT_MESSAGE_TTL_MS,
         );
-        await chatStore.addMessage(normalizedMessage);
-        return;
       }
-      case WS_MESSAGE_TYPE.ONLINE_STATUS:
-        if (data.data) {
-          updateOnlineStatus(data.data as OnlineStatus);
-        }
-        return;
-      case WS_MESSAGE_TYPE.READ_RECEIPT:
-        if (data.data) {
-          await chatStore.applyReadReceipt(data.data);
-        }
-        return;
-      case WS_MESSAGE_TYPE.FRIEND_REQUEST:
-        await queueContactRefresh({
-          loadFriendRequests: true,
-          notificationTitle: "Friend request",
-          notificationMessage: "You have a new friend request",
-          notificationType: "info",
-        });
-        return;
-      case WS_MESSAGE_TYPE.FRIEND_ACCEPTED:
-        await queueContactRefresh({
-          loadFriends: true,
-          loadSessions: true,
-          notificationTitle: "Friend accepted",
-          notificationMessage: "Your friend request was accepted",
-          notificationType: "success",
-        });
-        return;
-      case WS_MESSAGE_TYPE.SYSTEM: {
-        if (!data.data) {
-          return;
-        }
-        const systemMessage = data.data as Record<string, unknown>;
-        const content = String(systemMessage.content || "");
-        const [messageText, command = ""] = content.includes("::CMD:")
-          ? content.split("::CMD:")
-          : [content, ""];
 
-        if (command === "REFRESH_FRIEND_REQUESTS") {
-          await queueContactRefresh({
-            loadFriendRequests: true,
-            notificationTitle: "Friend notification",
-            notificationMessage: messageText || "Received a new friend request",
-            notificationType: "info",
-          });
-          return;
-        }
-        if (command === "REFRESH_FRIEND_LIST") {
-          await queueContactRefresh({
-            loadFriends: true,
-            loadSessions: true,
-            notificationTitle: "Friend notification",
-            notificationMessage: messageText || "Friend list updated",
-            notificationType: "success",
-          });
-          return;
-        }
-        if (systemMessage.message) {
-          ElMessage.info(String(systemMessage.message));
-        }
-        return;
-      }
-      case WS_MESSAGE_TYPE.E2EE_NEGOTIATION: {
-        if (!data.data) return;
-        const normalized = normalizeE2eeNegotiationEvent(
-          data.data as Record<string, unknown>,
-        );
-        if (!normalized) return;
+      // E2EE decrypt intercept
+      const isEncrypted = normalizedMessage.encrypted === true || normalizedMessage.encrypted === 1;
+
+      if (isEncrypted && normalizedMessage.messageType !== "SYSTEM") {
+        const senderId = String(normalizedMessage.senderId || "");
+        if (senderId !== currentUserId) {
+        const sessionId = buildSessionId("private", currentUserId, senderId);
+        const headerRaw = normalizedMessage.e2eeHeader;
+        const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
+        const senderIdentityKey = normalizedMessage.e2eeSenderIdentityKey;
+        const ephemeralKey = normalizedMessage.e2eeEphemeralKey;
+
         try {
-          const { emitE2eeNegotiation } = await import("@/features/e2ee/negotiation-events");
-          emitE2eeNegotiation(normalized);
+          const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
+
+          if (header && normalizedMessage.content) {
+            const decrypted = await e2eeManager.decryptMessage(
+              sessionId, senderId, header, normalizedMessage.content,
+              senderIdentityKey, ephemeralKey,
+            );
+            if (decrypted) {
+              normalizedMessage.content = decrypted;
+              normalizedMessage.encrypted = false;
+            }
+          }
         } catch (e) {
-          console.error("[E2EE] Failed to dispatch negotiation event:", e);
+          const errMsg = e instanceof Error ? e.message : String(e);
+          const isNoRatchetState = errMsg.includes("No ratchet state") || errMsg.includes("negotiation has not been accepted");
+
+          if (isNoRatchetState) {
+            const { getLocalSessionStatus, setLocalSessionStatus } = await import("@/features/e2ee/manager/negotiation");
+            const status = getLocalSessionStatus(sessionId);
+
+            if (status === "encrypted") {
+              console.error(`[E2EE] Status is 'encrypted' but no ratchet state for session=${sessionId}. Resetting to plaintext.`);
+              setLocalSessionStatus(sessionId, "plaintext");
+              ElNotification({ title: "加密状态异常", message: "端到端加密状态已重置，请重新发起加密协商。", type: "warning", duration: 8000 });
+            } else if (status === "negotiating") {
+              console.warn(`[E2EE] Negotiation in progress for session=${sessionId}, message will be decrypted after completion.`);
+              ElMessage({ message: "加密协商进行中，消息将在协商完成后解密。", type: "info", duration: 3000 });
+            } else {
+              console.log(`[E2EE] No ratchet state for session=${sessionId} (status=${status}), auto-triggering negotiation.`);
+              try {
+                const { initiateNegotiation } = await import("@/features/e2ee/manager/negotiation");
+                const { cachePendingMessage } = await import("@/features/e2ee/manager/pending-messages");
+                cachePendingMessage({
+                  sessionId,
+                  peerId: senderId,
+                  content: normalizedMessage.content,
+                  header,
+                  senderIdentityKey,
+                  ephemeralPublicKey: ephemeralKey,
+                  messageRef: normalizedMessage as unknown as { content: string; encrypted: boolean | number },
+                });
+                initiateNegotiation(sessionId, senderId).then((ok) => {
+                  if (ok) {
+                    ElNotification({ title: "端到端加密请求", message: "收到加密消息但尚未建立加密通道，已自动发起协商请求。", type: "info", duration: 5000 });
+                  }
+                });
+              } catch {
+                // Auto-negotiation failed — message stays encrypted
+              }
+            }
+          } else {
+            console.error("[E2EE] Decrypt failed:", e);
+          }
+          (normalizedMessage as unknown as Record<string, unknown>).encrypted = true;
         }
+        } else {
+          // Own message synced via WebSocket — preserve local plaintext
+          const sessionId = normalizedMessage.receiverId
+            ? buildSessionId("private", currentUserId, normalizedMessage.receiverId)
+            : null;
+          if (sessionId) {
+            const existingList = (chatStore.messages as Map<string, Message[]>).get(sessionId) || [];
+            const existing = existingList.find(
+              (m) => m.clientMessageId && m.clientMessageId === normalizedMessage.clientMessageId,
+            );
+            if (existing && existing.content) {
+              normalizedMessage.content = existing.content;
+            }
+          }
+          (normalizedMessage as unknown as Record<string, unknown>).encrypted = true;
+        }
+      }
+
+      const isSelfMessage =
+        String(normalizedMessage.senderId) === currentUserId;
+      await chatStore.addMessage(normalizedMessage);
+      if (!isSelfMessage) {
+        showMessageNotification(normalizedMessage);
+      }
+      return;
+    }
+
+    if (eventKind === "messageStatusChanged") {
+      if (!data.data) {
         return;
       }
-      case WS_MESSAGE_TYPE.HEARTBEAT:
-      default:
-        return;
+      const normalizedMessage = normalizeMessage(
+        data.data as Record<string, unknown>,
+      );
+      await chatStore.addMessage(normalizedMessage);
+      return;
     }
+
+    // W14: presence policy — online status dispatched to platform-side state
+    if (eventKind === "onlineStatus") {
+      if (data.data) {
+        updateOnlineStatus(data.data as OnlineStatus);
+      }
+      return;
+    }
+
+    // W15: read receipt delegated to chatStore
+    if (eventKind === "readReceipt") {
+      if (data.data) {
+        await chatStore.applyReadReceipt(data.data);
+      }
+      return;
+    }
+
+    // W16: friend request / friend accepted → contact refresh
+    if (eventKind === "friendRequest" || eventKind === "friendAccepted") {
+      const refreshAction = classifyContactRefreshFromWsType(data.type);
+      if (refreshAction) {
+        await queueContactRefresh(refreshAction);
+      }
+      return;
+    }
+
+    // W17: system command → contact refresh or fallback info
+    if (eventKind === "system") {
+      if (!data.data) {
+        return;
+      }
+      const systemMessage = data.data as Record<string, unknown>;
+      const content = String(systemMessage.content || "");
+      const refreshAction = classifyContactRefreshFromSystemContent(content);
+
+      if (refreshAction) {
+        await queueContactRefresh(refreshAction);
+        return;
+      }
+      if (systemMessage.message) {
+        ElMessage.info(String(systemMessage.message));
+      }
+      return;
+    }
+
+    // W20: E2EE negotiation — dispatch only, no crypto logic change
+    if (eventKind === "e2eeNegotiation") {
+      if (!data.data) return;
+      const normalized = normalizeE2eeNegotiationEvent(
+        data.data as Record<string, unknown>,
+      );
+      if (!normalized) return;
+      try {
+        const { emitE2eeNegotiation } = await import("@/features/e2ee/negotiation-events");
+        emitE2eeNegotiation(normalized);
+      } catch (e) {
+        console.error("[E2EE] Failed to dispatch negotiation event:", e);
+      }
+      return;
+    }
+
+    // heartbeat / unknown — no-op
   };
 
   const showMessageNotification = (message: Message) => {
@@ -656,7 +654,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
   };
 
   const updateOnlineStatus = (status: OnlineStatus) => {
-    setUserOnline(status.userId, status.status === "ONLINE");
+    setUserOnline(status.userId, isOnlineStatusValue(status.status));
   };
 
   const isUserOnline = (userId: string): boolean => {
@@ -689,10 +687,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
     if (reconnectTimer.value) {
       return;
     }
-    if (reconnectAttempts.value >= WS_CONFIG.RECONNECT_ATTEMPTS) {
-      ElMessage.error("WebSocket reconnect limit reached");
-      return;
-    }
+    // Max-attempts guard is handled by shouldScheduleReconnect in onclose.
     reconnectAttempts.value += 1;
     reconnectTimer.value = setTimeout(() => {
       reconnectTimer.value = null;

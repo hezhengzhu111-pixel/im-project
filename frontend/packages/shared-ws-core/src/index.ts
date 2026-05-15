@@ -17,7 +17,6 @@ export { shouldProcessSequentially } from "./strategy.js";
 export {
   getIncomingPayloadType,
   shouldQueueIncomingPayload,
-  createSequentialTail,
 } from "./incoming-queue.js";
 export {
   createReconnectDelay,
@@ -31,6 +30,8 @@ export {
   applyPresenceToSet,
 } from "./presence.js";
 export {
+  DEFAULT_DEDUP_TTL_MS,
+  DEFAULT_DEDUP_MAX_SIZE,
   getMessageDedupKey,
   shouldDropRecentMessage,
   rememberRecentMessage,
@@ -42,3 +43,22 @@ export {
   mergeContactRefreshActions,
 } from "./contact-refresh.js";
 export type { ContactRefreshAction } from "./contact-refresh.js";
+export {
+  classifyWsEvent,
+  getWsPayloadData,
+  isChatMessageEvent,
+  isContactEvent,
+  isPresenceEvent,
+  isReadEvent,
+} from "./event-classifier.js";
+export type { WsEventKind } from "./event-classifier.js";
+export {
+  resolveWebSocketConnectionStatus,
+  createWebSocketDiagnosticsSnapshot,
+} from "./diagnostics.js";
+export type {
+  WebSocketConnectionStatus,
+  ResolveConnectionStatusInput,
+  DiagnosticsSnapshotInput,
+  WebSocketDiagnosticsSnapshot,
+} from "./diagnostics.js";

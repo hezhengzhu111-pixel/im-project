@@ -45,3 +45,38 @@ export const isReadReceiptPayload = (data: unknown): boolean =>
  */
 export const isSystemPayload = (data: unknown): boolean =>
   isEnvelope(data) && data.type === WS_MESSAGE_TYPE.SYSTEM;
+
+/**
+ * Check whether the parsed payload is a message-status-changed event
+ * (`type === "MESSAGE_STATUS_CHANGED"`).
+ */
+export const isMessageStatusChangedPayload = (data: unknown): boolean =>
+  isEnvelope(data) && data.type === WS_MESSAGE_TYPE.MESSAGE_STATUS_CHANGED;
+
+/**
+ * Check whether the parsed payload is a heartbeat
+ * (`type === "HEARTBEAT"`).
+ */
+export const isHeartbeatPayload = (data: unknown): boolean =>
+  isEnvelope(data) && data.type === WS_MESSAGE_TYPE.HEARTBEAT;
+
+/**
+ * Check whether the parsed payload is a friend-request event
+ * (`type === "FRIEND_REQUEST"`).
+ */
+export const isFriendRequestPayload = (data: unknown): boolean =>
+  isEnvelope(data) && data.type === WS_MESSAGE_TYPE.FRIEND_REQUEST;
+
+/**
+ * Check whether the parsed payload is a friend-accepted event
+ * (`type === "FRIEND_ACCEPTED"`).
+ */
+export const isFriendAcceptedPayload = (data: unknown): boolean =>
+  isEnvelope(data) && data.type === WS_MESSAGE_TYPE.FRIEND_ACCEPTED;
+
+/**
+ * Check whether the parsed payload is an E2EE negotiation event
+ * (`type === "E2EE_NEGOTIATION"`).
+ */
+export const isE2eeNegotiationPayload = (data: unknown): boolean =>
+  isEnvelope(data) && data.type === WS_MESSAGE_TYPE.E2EE_NEGOTIATION;
