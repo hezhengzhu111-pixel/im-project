@@ -3,6 +3,7 @@ import { LoadingState } from '@/components/common/StateViews';
 import { AuthNavigator } from './AuthNavigator';
 import { MainTabs } from './MainTabs';
 import { useAuthStore } from '@/stores/authStore';
+import { setNotificationRouteAuthReady } from '@/services/notification/notificationService';
 
 export function RootNavigator() {
   const authReady = useAuthStore((state) => state.authReady);
@@ -14,6 +15,10 @@ export function RootNavigator() {
       void restoreSession();
     }
   }, [authReady, restoreSession]);
+
+  useEffect(() => {
+    setNotificationRouteAuthReady(authReady && Boolean(currentUser));
+  }, [authReady, currentUser]);
 
   if (!authReady) {
     return <LoadingState label="Restoring session..." />;

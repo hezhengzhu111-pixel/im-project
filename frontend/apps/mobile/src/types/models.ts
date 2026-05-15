@@ -118,6 +118,19 @@ export interface ChatSession {
   memberCount?: number;
 }
 
+export interface ChatRouteParams {
+  route?: string;
+  conversationId?: string;
+  sessionId?: string;
+  senderId?: string;
+  receiverId?: string;
+  groupId?: string;
+  targetId?: string;
+  targetName?: string;
+  groupName?: string;
+  senderName?: string;
+}
+
 export interface MobileMessage {
   id: string;
   serverId?: string;

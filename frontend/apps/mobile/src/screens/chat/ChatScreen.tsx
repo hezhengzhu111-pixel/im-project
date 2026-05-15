@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useNavigation, type NavigationProp, type ParamListBase } from '@react-navigation/native';
+import { useNavigation, useRoute, type NavigationProp, type ParamListBase, type RouteProp } from '@react-navigation/native';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { Screen } from '@/components/common/Screen';
-import { EmptyState } from '@/components/common/StateViews';
+import { EmptyState, LoadingState } from '@/components/common/StateViews';
 import { colors, spacing } from '@/app/theme';
+import type { ChatStackParamList } from '@/app/navigation/ChatNavigator';
 import { E2eeUnsupportedNotice } from '@/e2ee/E2eeUnsupportedNotice';
 import { isEncryptedSession } from '@/e2ee/e2eeDeferred';
 import { mediaService } from '@/services/media/mediaService';
@@ -15,10 +16,13 @@ import { useSessionStore } from '@/stores/sessionStore';
 
 export function ChatScreen() {
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
+  const route = useRoute<RouteProp<ChatStackParamList, 'ChatScreen'>>();
+  const authReady = useAuthStore((state) => state.authReady);
   const currentUser = useAuthStore((state) => state.currentUser);
   const session = useSessionStore((state) => state.currentSession);
   const messagesBySession = useMessageStore((state) => state.messagesBySession);
   const retryMessage = useMessageStore((state) => state.retryMessage);
+  const openSessionFromRoute = useChatStore((state) => state.openSessionFromRoute);
   const sendText = useChatStore((state) => state.sendText);
   const sendMedia = useChatStore((state) => state.sendMedia);
   const [text, setText] = useState('');
@@ -26,6 +30,25 @@ export function ChatScreen() {
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
   const messages = useMemo(() => (session ? messagesBySession[session.id] || [] : []), [messagesBySession, session]);
   const encrypted = isEncryptedSession(session);
+  const routeParams = route.params;
+  const routeKey = useMemo(() => JSON.stringify(routeParams || {}), [routeParams]);
+  const hasTargetRouteParams = Boolean(
+    routeParams?.conversationId ||
+      routeParams?.sessionId ||
+      routeParams?.senderId ||
+      routeParams?.receiverId ||
+      routeParams?.groupId ||
+      routeParams?.targetId,
+  );
+
+  useEffect(() => {
+    if (!routeParams || !hasTargetRouteParams || !authReady || !currentUser?.id) {
+      return;
+    }
+    void openSessionFromRoute(routeParams).catch((error: unknown) => {
+      Alert.alert('Open chat failed', error instanceof Error ? error.message : 'Please try again');
+    });
+  }, [authReady, currentUser?.id, hasTargetRouteParams, openSessionFromRoute, routeKey, routeParams]);
 
   const submit = async () => {
     const content = text.trim();
@@ -94,6 +117,9 @@ export function ChatScreen() {
   };
 
   if (!session) {
+    if (hasTargetRouteParams) {
+      return <Screen title="Chat"><LoadingState label="Opening conversation..." /></Screen>;
+    }
     return <Screen title="Chat"><EmptyState title="No active conversation" /></Screen>;
   }
 
