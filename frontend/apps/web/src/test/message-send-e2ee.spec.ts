@@ -4,7 +4,14 @@ import type { Message, ChatSession } from "@/types";
 
 const encryptMessageMock = vi.fn();
 const getLocalSessionStatusMock = vi.fn();
-const getPendingInitialHandshakeMock = vi.fn((..._args: unknown[]) => null);
+type InitialE2eeHandshake = {
+  senderIdentityKey: string;
+  ephemeralPublicKey: string;
+  deviceId: string;
+};
+const getPendingInitialHandshakeMock = vi.fn(
+  (..._args: unknown[]): InitialE2eeHandshake | null => null,
+);
 const clearPendingInitialHandshakeMock = vi.fn((..._args: unknown[]) => undefined);
 
 vi.mock("@/features/e2ee/manager/e2ee-manager", () => ({
