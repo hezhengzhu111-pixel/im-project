@@ -41,7 +41,7 @@ export function ContactsScreen() {
               }).then(() => navigation.navigate('ChatStack', { screen: 'ChatScreen' }));
             }}
           >
-            <Text>{item.remark || item.nickname || item.username || item.friendId} {item.online ? 'online' : ''}</Text>
+            <Text>{item.remark || item.nickname || item.username || item.friendId} {item.isOnline ? 'online' : ''}</Text>
           </Pressable>
         )}
       />

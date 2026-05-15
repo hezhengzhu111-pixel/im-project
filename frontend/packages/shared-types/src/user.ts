@@ -5,7 +5,7 @@ export type FriendRequestStatus = "PENDING" | "ACCEPTED" | "REJECTED";
 export interface User {
   id: string;
   username: string;
-  nickname: string;
+  nickname?: string;
   avatar?: string;
   email?: string;
   phone?: string;
@@ -14,9 +14,10 @@ export interface User {
   signature?: string;
   location?: string;
   lastSeen?: string;
-  status: UserPresence;
+  status?: UserPresence;
   lastLoginTime?: string;
   createTime?: string;
+  permissions?: string[];
 }
 
 export interface AuthSession {
@@ -65,18 +66,21 @@ export interface RawUserDTO {
   birthday?: string;
   signature?: string;
   location?: string;
+  region?: string;
   status?: string | number;
   lastSeen?: string;
   lastLoginTime?: string;
   createTime?: string;
   updateTime?: string;
+  permissions?: string[];
 }
 
 export interface UserAuthResponse {
   success: boolean;
-  message: string;
-  user: User;
+  message?: string;
+  user?: User;
   token?: string;
+  accessToken?: string;
   expiresInMs?: number;
   refreshExpiresInMs?: number;
   permissions?: string[];
@@ -156,7 +160,7 @@ export interface MessagePreferenceSettings {
 
 export interface GeneralSettings {
   language: "zh-CN" | "en-US";
-  theme: "light" | "dark" | "auto";
+  theme: "light" | "dark" | "auto" | "system";
   fontSize: "small" | "medium" | "large";
   autoLogin: boolean;
   minimizeOnStart: boolean;

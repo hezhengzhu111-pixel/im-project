@@ -81,6 +81,7 @@ const optimisticMessage = (
     sendTime: now,
     status: 'SENDING',
     ...payload,
+    content: payload.content || '',
   };
 };
 

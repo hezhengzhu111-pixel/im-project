@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { UserPresence } from '@im/shared-types';
 import { registerAuthHooks } from '@/services/api/httpClient';
 import { authService } from '@/services/auth/authService';
 import { refreshCoordinator } from '@/services/api/httpClient';
@@ -206,6 +207,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             : {
                 id: parsedUserId,
                 username: response.data.username || parsedUserId,
+                nickname: response.data.username || parsedUserId,
+                status: 'offline' as UserPresence,
               };
         kvStorage.setJson(STORAGE_KEYS.userSnapshot, user);
         await secureStorage.set(STORAGE_KEYS.sessionMeta, buildSessionMeta(user, sessionAccessToken));

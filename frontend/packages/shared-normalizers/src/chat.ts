@@ -189,6 +189,7 @@ export const normalizeConversation = (
     ) || undefined;
   const isPinned = asBoolean(record.isPinned ?? looseRecord.is_pinned ?? record.pinned, false);
   const isMuted = asBoolean(record.isMuted ?? looseRecord.is_muted ?? record.muted, false);
+  const encrypted = asBoolean(record.encrypted ?? looseRecord.encrypted, false);
   return {
     id: buildSessionId(type, currentUserId, targetId),
     conversationId: conversationId || undefined,
@@ -212,5 +213,6 @@ export const normalizeConversation = (
     pinned: isPinned,
     isMuted,
     muted: isMuted,
+    encrypted,
   };
 };

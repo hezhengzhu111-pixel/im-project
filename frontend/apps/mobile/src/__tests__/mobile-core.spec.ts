@@ -63,6 +63,7 @@ const message = (id: string, content = 'hello'): MobileMessage => ({
   conversationId: session.id,
   senderId: '1',
   receiverId: '2',
+  isGroupChat: false,
   messageType: 'TEXT',
   content,
   sendTime: new Date().toISOString(),

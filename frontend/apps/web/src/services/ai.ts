@@ -1,21 +1,9 @@
 import { http } from "@/utils/request";
 import { AI_ENDPOINTS } from "@im/shared-api-contract";
 import type { ApiResponse } from "@/types/api";
+import type { AiApiKey, AiSettings } from "@im/shared-types";
 
-export interface AiApiKey {
-  id: string;
-  provider: string;
-  keyName: string;
-  maskedKey: string;
-  isActive: boolean;
-  validateStatus: string;
-  lastValidatedAt?: string;
-}
-
-export interface AiSettings {
-  autoReplyEnabled: boolean;
-  autoReplyPersona: string;
-}
+export type { AiApiKey, AiSettings } from "@im/shared-types";
 
 function normalizeKey(raw: Record<string, unknown>): AiApiKey {
   return {

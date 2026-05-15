@@ -19,12 +19,13 @@ export interface ChatSession {
   lastMessageSenderId?: string;
   lastMessageSenderName?: string;
   unreadCount: number;
-  lastActiveTime: string;
+  lastActiveTime?: string;
   updateTime?: string;
   memberCount?: number;
-  isPinned: boolean;
+  encrypted?: boolean;
+  isPinned?: boolean;
   pinned?: boolean;
-  isMuted: boolean;
+  isMuted?: boolean;
   muted?: boolean;
 }
 
@@ -48,6 +49,7 @@ export interface RawConversationDTO {
   pinned?: boolean;
   isMuted?: boolean;
   muted?: boolean;
+  encrypted?: boolean | number;
 }
 
 export interface OnlineStatus {

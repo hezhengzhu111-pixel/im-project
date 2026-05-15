@@ -11,8 +11,8 @@ import type { MobileMessage } from '@/types/models';
 const rawRecord = (raw: unknown): Record<string, unknown> => (isRecord(raw) ? raw : {});
 
 export const toSharedMessage = (message: MobileMessage): SharedMessage => ({
-  id: message.serverId || message.id,
-  messageId: message.serverId,
+  id: message.messageId || message.serverId || message.id,
+  messageId: message.messageId || message.serverId,
   clientMessageId: message.clientMessageId,
   senderId: String(message.senderId || ''),
   senderName: message.senderName,
@@ -59,6 +59,7 @@ export const toMobileMessage = (message: SharedMessage, raw?: unknown): MobileMe
   const rawEncrypted = record.encrypted;
   return {
     id: message.id || serverId || message.clientMessageId || '',
+    messageId: message.messageId || serverId,
     serverId,
     clientMessageId: message.clientMessageId,
     conversationId: rawConversationId || undefined,

@@ -16,8 +16,10 @@ const parseMessage = (row: Record<string, unknown>): MobileMessage => {
       id: String(row.id || ''),
       conversationId: String(row.conversationId || ''),
       senderId: String(row.senderId || ''),
+      isGroupChat: Boolean(row.groupId),
       messageType: String(row.messageType || 'TEXT') as MobileMessage['messageType'],
       sendTime: String(row.sendTime || new Date().toISOString()),
+      status: 'SENT',
       content: String(row.content || ''),
     };
   }
@@ -114,7 +116,7 @@ export const messageRepository = {
       targetName: String(row.targetName || ''),
       targetAvatar: row.targetAvatar ? String(row.targetAvatar) : undefined,
       unreadCount: Number(row.unreadCount || 0),
-      lastActiveTime: row.lastActiveTime ? String(row.lastActiveTime) : undefined,
+      lastActiveTime: row.lastActiveTime ? String(row.lastActiveTime) : '',
       lastMessage: row.lastMessageJson ? (JSON.parse(String(row.lastMessageJson)) as MobileMessage) : undefined,
       isPinned: Boolean(row.isPinned),
       isMuted: Boolean(row.isMuted),
