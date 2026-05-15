@@ -12,6 +12,7 @@ import {
   createHeartbeatPayload,
   shouldProcessSequentially,
   createReconnectDelay,
+  shouldScheduleReconnect,
   DUPLICATE_CONNECTION_REASON,
 } from "@im/shared-ws-core";
 import type { Message, OnlineStatus, WebSocketMessage } from "@/types";
@@ -363,8 +364,14 @@ export const useWebSocketStore = defineStore("websocket", () => {
         stopHeartbeat();
         clearConnectionCache();
         if (
-          !manualDisconnect.value &&
-          event.reason !== DUPLICATE_CONNECTION_REASON
+          shouldScheduleReconnect({
+            manualDisconnect: manualDisconnect.value,
+            closeCode: event.code,
+            closeReason: event.reason,
+            duplicateConnectionReason: DUPLICATE_CONNECTION_REASON,
+            reconnectAttempts: reconnectAttempts.value,
+            maxReconnectAttempts: WS_CONFIG.RECONNECT_ATTEMPTS,
+          })
         ) {
           scheduleReconnect(userId);
         }
@@ -378,9 +385,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
     } catch (error) {
       logger.warn("failed to create websocket connection", error);
       isConnecting.value = false;
-      if (!manualDisconnect.value) {
-        scheduleReconnect(userId);
-      }
+      scheduleReconnect(userId);
       ElMessage.error("WebSocket connection failed");
     }
   };
@@ -666,7 +671,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
         return;
       }
       try {
-        socket.value.send(createHeartbeatPayload());
+        socket.value.send(createHeartbeatPayload(Date.now()));
       } catch (error) {
         logger.warn("failed to send heartbeat", error);
       }
@@ -681,7 +686,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
   };
 
   const scheduleReconnect = (userId: string) => {
-    if (manualDisconnect.value || reconnectTimer.value) {
+    if (reconnectTimer.value) {
       return;
     }
     if (reconnectAttempts.value >= WS_CONFIG.RECONNECT_ATTEMPTS) {

@@ -7,6 +7,7 @@ import {
   createTicketedWebSocketUrl,
   parseWebSocketPayload,
   shouldProcessSequentially,
+  shouldScheduleReconnect,
 } from '@im/shared-ws-core';
 import { applyMessageToSession } from '@im/shared-im-core';
 import type { ChatSession } from '@im/shared-types';
@@ -63,7 +64,7 @@ const startHeartbeat = () => {
   stopHeartbeat();
   heartbeatTimer = setInterval(() => {
     if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(createHeartbeatPayload());
+      socket.send(createHeartbeatPayload(Date.now()));
     }
   }, WS_CONFIG.heartbeatIntervalMs);
 };
@@ -127,19 +128,24 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
         socket = null;
         stopHeartbeat();
         set({ connected: false, connecting: false });
-        if (!manualDisconnect && event.reason !== DUPLICATE_CONNECTION_REASON && event.code !== 1000) {
-          recordWebsocketError(`closed with code ${event.code}${event.reason ? `: ${event.reason}` : ''}`);
+        const shouldReconnect = shouldScheduleReconnect({
+          manualDisconnect,
+          closeCode: event.code,
+          closeReason: event.reason,
+          duplicateConnectionReason: DUPLICATE_CONNECTION_REASON,
+          reconnectAttempts: get().reconnectAttempts,
+          maxReconnectAttempts: WS_CONFIG.reconnectMaxAttempts,
+        });
+        if (!shouldReconnect) {
+          return;
         }
-        if (!manualDisconnect && event.reason !== DUPLICATE_CONNECTION_REASON) {
-          const attempts = get().reconnectAttempts + 1;
-          if (attempts <= WS_CONFIG.reconnectMaxAttempts) {
-            set({ reconnectAttempts: attempts });
-            reconnectTimer = setTimeout(() => {
-              reconnectTimer = null;
-              void get().connect();
-            }, createReconnectDelay(attempts, WS_CONFIG.reconnectBaseDelayMs));
-          }
-        }
+        recordWebsocketError(`closed with code ${event.code}${event.reason ? `: ${event.reason}` : ''}`);
+        const attempts = get().reconnectAttempts + 1;
+        set({ reconnectAttempts: attempts });
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          void get().connect();
+        }, createReconnectDelay(attempts, WS_CONFIG.reconnectBaseDelayMs));
       };
     } catch (error) {
       logger.warn('websocket', 'connect failed', error);
