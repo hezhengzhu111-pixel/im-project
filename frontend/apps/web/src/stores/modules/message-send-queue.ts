@@ -273,11 +273,20 @@ export function createMessageSendQueueModule(
           }
         }
       } catch {
-        // E2EE module load failed — check if session is known encrypted via other means
-        // If getLocalSessionStatus is unavailable, we cannot determine encryption state,
-        // so we must not silently fall back to plaintext for private sessions.
-        // However, if the E2EE feature is simply not loaded (e.g. in tests or non-E2EE builds),
-        // we allow plaintext fallback only when the session has no encryption marker.
+        // E2EE module load failed — we cannot determine encryption state.
+        // Per E8/E28: must not silently fall back to plaintext for private sessions
+        // when we cannot verify the session is not encrypted.
+        // If the session was known to be encrypted (privateE2eeStatus was set), block.
+        // If module load failed entirely, we also block to prevent potential plaintext leak.
+        if (session.type === "private") {
+          ctx.notifyWarning("端到端加密模块加载失败，消息未发送");
+          markPendingFailed(session.id, localId);
+          await ctx.messageRepo.upsertPendingMessage(session.id, localId, {
+            ...pendingMessage,
+            status: "FAILED",
+          });
+          return false;
+        }
       }
     }
 
