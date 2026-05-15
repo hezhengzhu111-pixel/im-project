@@ -36,3 +36,9 @@ export {
   rememberRecentMessage,
   cleanupRecentMessages,
 } from "./duplicate-message.js";
+export {
+  classifyContactRefreshFromWsType,
+  classifyContactRefreshFromSystemContent,
+  mergeContactRefreshActions,
+} from "./contact-refresh.js";
+export type { ContactRefreshAction } from "./contact-refresh.js";
