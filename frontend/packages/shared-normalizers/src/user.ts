@@ -55,11 +55,16 @@ export const normalizeUser = (raw: RawUserDTO | User): User => {
     gender: asString(record.gender) || undefined,
     birthday: asString(record.birthday) || undefined,
     signature: asString(record.signature) || undefined,
-    location: asString(record.location) || undefined,
+    location:
+      asString(record.location ?? (record as Record<string, unknown>).region) ||
+      undefined,
     lastSeen: asString(record.lastSeen) || undefined,
     status: normalizePresence(record.status),
     lastLoginTime: asString(record.lastLoginTime) || undefined,
     createTime: asString(record.createTime) || undefined,
+    permissions: Array.isArray(record.permissions)
+      ? record.permissions.map((item) => asString(item)).filter(Boolean)
+      : undefined,
   };
 };
 
@@ -128,6 +133,7 @@ export const normalizeUserAuthResponse = (raw: unknown): UserAuthResponse => {
     message: asString(record.message, "操作失败"),
     user: normalizeUser(record.user as RawUserDTO),
     token: asString(record.token) || undefined,
+    accessToken: asString(record.accessToken ?? record.access_token) || undefined,
     expiresInMs: Number.isFinite(asNumber(record.expiresInMs, Number.NaN))
       ? asNumber(record.expiresInMs, 0)
       : undefined,

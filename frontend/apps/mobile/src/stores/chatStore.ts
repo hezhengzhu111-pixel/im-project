@@ -83,6 +83,9 @@ const sessionFromRoute = (params: ChatRouteParams, currentUserId: string): ChatS
       targetId: groupId,
       targetName: firstValue(params.groupName, params.targetName, groupId),
       unreadCount: 0,
+      lastActiveTime: '',
+      isPinned: false,
+      isMuted: false,
     };
   }
 
@@ -96,6 +99,9 @@ const sessionFromRoute = (params: ChatRouteParams, currentUserId: string): ChatS
     targetId,
     targetName: firstValue(params.targetName, params.senderName, targetId),
     unreadCount: 0,
+    lastActiveTime: '',
+    isPinned: false,
+    isMuted: false,
   };
 };
 
@@ -203,6 +209,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       targetName: target.targetName,
       targetAvatar: target.targetAvatar,
       unreadCount: 0,
+      lastActiveTime: '',
+      isPinned: false,
+      isMuted: false,
     });
   },
 
@@ -214,6 +223,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       targetName: group.groupName || group.name || group.id,
       targetAvatar: group.avatar,
       unreadCount: 0,
+      lastActiveTime: group.lastActivityAt || group.lastMessageTime || group.createTime,
+      isPinned: false,
+      isMuted: false,
       memberCount: group.memberCount,
     });
   },

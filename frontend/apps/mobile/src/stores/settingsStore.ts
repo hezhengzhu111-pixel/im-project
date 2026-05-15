@@ -22,9 +22,31 @@ interface SettingsState {
 }
 
 const defaults: UserSettings = {
-  privacy: { messageReadReceipt: true },
-  message: { enableNotification: true, enableSound: true },
-  general: { language: 'zh-CN', theme: 'system' },
+  general: {
+    language: 'zh-CN',
+    theme: 'system',
+    fontSize: 'medium',
+    autoLogin: true,
+    minimizeOnStart: false,
+  },
+  privacy: {
+    allowStrangerAdd: true,
+    showOnlineStatus: true,
+    allowViewMoments: true,
+    messageReadReceipt: true,
+  },
+  message: {
+    enableNotification: true,
+    enableSound: true,
+    enableVibration: false,
+    muteGroupMessages: false,
+    autoDownloadImages: true,
+  },
+  notifications: {
+    sound: true,
+    desktop: true,
+    preview: true,
+  },
 };
 
 const cachedPushSettings = pushDeviceService.getCachedSettings();

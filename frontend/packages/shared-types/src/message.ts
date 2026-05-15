@@ -50,7 +50,7 @@ export interface Message {
   isAiGenerated?: boolean;
   aiProvider?: string;
   aiModel?: string;
-  encrypted?: boolean;
+  encrypted?: boolean | number;
   e2eeHeader?: string;
   e2eeDeviceId?: string;
   e2eeSenderIdentityKey?: string;

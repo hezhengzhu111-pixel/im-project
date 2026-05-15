@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRoute, useNavigation, type RouteProp, type NavigationProp, type ParamListBase } from '@react-navigation/native';
 import { Screen } from '@/components/common/Screen';

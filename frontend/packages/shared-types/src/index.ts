@@ -7,4 +7,5 @@ export * from './friend.js';
 export * from './group.js';
 export * from './websocket.js';
 export * from './moments.js';
+export * from './ai.js';
 export * from './utils.js';

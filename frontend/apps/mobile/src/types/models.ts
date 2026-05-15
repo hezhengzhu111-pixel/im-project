@@ -1,123 +1,30 @@
-export type SessionType = 'private' | 'group';
+import type { ChatSessionType, Message, MessageType } from '@im/shared-types';
 
-export type MessageType =
-  | 'TEXT'
-  | 'IMAGE'
-  | 'FILE'
-  | 'VIDEO'
-  | 'VOICE'
-  | 'SYSTEM'
-  | 'AI_REPLY';
+export type {
+  AiApiKey,
+  AiSettings,
+  ApiResponse,
+  ChatSession,
+  ChatSessionType,
+  Friend,
+  FriendRequest,
+  Friendship,
+  Group,
+  GroupMember,
+  LoginRequest,
+  Message,
+  MessageStatus,
+  MessageType,
+  RawMessageDTO,
+  ReadReceipt,
+  RegisterRequest,
+  User,
+  UserAuthResponse,
+  UserSettings,
+  WebSocketMessage,
+} from '@im/shared-types';
 
-export type MessageStatus = 'SENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | 'OFFLINE' | 'RECALLED' | 'DELETED';
-
-export interface ApiResponse<T> {
-  code: number;
-  message: string;
-  data: T;
-  timestamp?: number;
-  success?: boolean;
-}
-
-export interface User {
-  id: string;
-  username: string;
-  nickname?: string;
-  avatar?: string;
-  email?: string;
-  phone?: string;
-  gender?: string;
-  birthday?: string;
-  signature?: string;
-  region?: string;
-  status?: string;
-  permissions?: string[];
-}
-
-export interface LoginRequest {
-  username: string;
-  password: string;
-}
-
-export interface RegisterRequest extends LoginRequest {
-  nickname?: string;
-  email?: string;
-  phone?: string;
-}
-
-export interface UserAuthResponse {
-  success: boolean;
-  message?: string;
-  token?: string;
-  accessToken?: string;
-  user?: User;
-  permissions?: string[];
-}
-
-export interface UserSettings {
-  privacy: Record<string, boolean>;
-  message: Record<string, boolean>;
-  general: Record<string, unknown>;
-}
-
-export interface Friendship {
-  friendId: string;
-  username?: string;
-  nickname?: string;
-  remark?: string;
-  avatar?: string;
-  online?: boolean;
-  status?: string;
-}
-
-export interface FriendRequest {
-  requestId: string;
-  fromUserId: string;
-  toUserId?: string;
-  username?: string;
-  nickname?: string;
-  avatar?: string;
-  reason?: string;
-  status: string;
-  createdAt?: string;
-}
-
-export interface Group {
-  id: string;
-  groupName?: string;
-  name?: string;
-  avatar?: string;
-  announcement?: string;
-  ownerId?: string;
-  memberCount?: number;
-  lastMessageTime?: string;
-  lastActivityAt?: string;
-}
-
-export interface GroupMember {
-  userId: string;
-  username?: string;
-  nickname?: string;
-  avatar?: string;
-  role?: string;
-  online?: boolean;
-}
-
-export interface ChatSession {
-  id: string;
-  type: SessionType;
-  targetId: string;
-  targetName: string;
-  targetAvatar?: string;
-  unreadCount: number;
-  lastActiveTime?: string;
-  lastMessage?: MobileMessage;
-  isPinned?: boolean;
-  isMuted?: boolean;
-  encrypted?: boolean;
-  memberCount?: number;
-}
-
+// React Navigation params are mobile-only route payloads.
 export interface ChatRouteParams {
   route?: string;
   conversationId?: string;
@@ -131,48 +38,21 @@ export interface ChatRouteParams {
   senderName?: string;
 }
 
-export interface MobileMessage {
-  id: string;
-  serverId?: string;
-  clientMessageId?: string;
+// Mobile cache/display message. Core IM fields come from shared Message; the
+// extra fields below are React Native storage and routing metadata.
+export type MobileMessage = Message & {
+  // Local legacy alias for Message.messageId used by the mobile SQLite cache.
+  serverId?: Message['messageId'];
+  // Mobile conversation key used for local routing and offline cache buckets.
   conversationId?: string;
-  senderId: string;
-  senderName?: string;
-  senderAvatar?: string;
-  receiverId?: string;
-  receiverName?: string;
-  receiverAvatar?: string;
-  groupId?: string;
-  groupName?: string;
-  groupAvatar?: string;
-  isGroupChat?: boolean;
-  messageType: MessageType;
-  content?: string;
-  mediaUrl?: string;
-  thumbnailUrl?: string;
-  mediaName?: string;
-  mediaSize?: number;
-  duration?: number;
-  status?: MessageStatus;
-  readStatus?: number;
-  readBy?: string[];
-  readByCount?: number;
-  readAt?: string;
-  sendTime: string;
-  encrypted?: boolean | number;
-  isAiGenerated?: boolean;
-  e2eeHeader?: string;
-  e2eeDeviceId?: string;
-  e2eeSenderIdentityKey?: string;
-  e2eeEphemeralKey?: string;
-  extra?: Record<string, unknown>;
   rawJson?: string;
-}
+};
 
+// Local offline-send queue row persisted by the mobile storage layer.
 export interface PendingMessage {
   localId: string;
   conversationId: string;
-  sendType: SessionType;
+  sendType: ChatSessionType;
   payloadJson: string;
   status: 'pending' | 'sending' | 'failed' | 'sent' | 'blocked';
   retryCount: number;
@@ -182,6 +62,7 @@ export interface PendingMessage {
   nextRetryAt?: number;
 }
 
+// Local upload queue row for React Native file/media uploads.
 export interface UploadTask {
   taskId: string;
   conversationId?: string;
@@ -200,21 +81,7 @@ export interface UploadTask {
   updatedAt: number;
 }
 
-export interface AiApiKey {
-  id: string;
-  provider: string;
-  keyName: string;
-  maskedKey: string;
-  isActive: boolean;
-  validateStatus: string;
-  lastValidatedAt?: string;
-}
-
-export interface AiSettings {
-  autoReplyEnabled: boolean;
-  autoReplyPersona: string;
-}
-
+// In-memory diagnostics entry generated only inside the mobile app.
 export interface LocalLogEntry {
   id: string;
   level: 'info' | 'warn' | 'error';

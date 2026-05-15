@@ -7,7 +7,7 @@ export interface ApiResponse<T = unknown> {
   code: number;
   message: string;
   data: T;
-  timestamp: number;
+  timestamp?: number;
   success?: boolean;
 }
 

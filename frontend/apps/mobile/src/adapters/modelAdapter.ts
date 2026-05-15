@@ -33,17 +33,7 @@ const permissionsFrom = (raw: unknown): string[] | undefined => {
 export const normalizeUser = (raw: unknown): User => {
   const sharedUser = normalizeSharedUser(raw as Parameters<typeof normalizeSharedUser>[0]);
   return {
-    id: sharedUser.id,
-    username: sharedUser.username,
-    nickname: sharedUser.nickname,
-    avatar: sharedUser.avatar,
-    email: sharedUser.email,
-    phone: sharedUser.phone,
-    gender: sharedUser.gender,
-    birthday: sharedUser.birthday,
-    signature: sharedUser.signature,
-    region: sharedUser.location,
-    status: sharedUser.status,
+    ...sharedUser,
     permissions: permissionsFrom(raw),
   };
 };
@@ -63,67 +53,23 @@ export const normalizeAuthResponse = (raw: unknown): UserAuthResponse => {
 };
 
 export const normalizeSettings = (raw: unknown): UserSettings => {
-  const settings = isRecord(raw) ? normalizeUserSettings(raw) : defaultUserSettings();
-  return {
-    privacy: { ...settings.privacy },
-    message: { ...settings.message },
-    general: { ...settings.general },
-  };
+  return isRecord(raw) ? normalizeUserSettings(raw) : defaultUserSettings();
 };
 
 export const normalizeFriendship = (raw: unknown): Friendship => {
-  const friend = normalizeSharedFriendship(raw);
-  return {
-    friendId: friend.friendId,
-    username: friend.username,
-    nickname: friend.nickname,
-    remark: friend.remark,
-    avatar: friend.avatar,
-    online: Boolean(friend.isOnline),
-    status: friend.isOnline ? 'online' : undefined,
-  };
+  return normalizeSharedFriendship(raw);
 };
 
 export const normalizeFriendRequest = (raw: unknown): FriendRequest => {
-  const request = normalizeSharedFriendRequest(raw);
-  return {
-    requestId: request.id,
-    fromUserId: request.applicantId,
-    toUserId: request.targetUserId,
-    username: request.applicantUsername,
-    nickname: request.applicantNickname,
-    avatar: request.applicantAvatar,
-    reason: request.reason,
-    status: request.status,
-    createdAt: request.createTime,
-  };
+  return normalizeSharedFriendRequest(raw);
 };
 
 export const normalizeGroup = (raw: unknown): Group => {
-  const group = normalizeSharedGroup(raw);
-  return {
-    id: group.id,
-    groupName: group.groupName,
-    name: group.name,
-    avatar: group.avatar,
-    announcement: group.announcement || group.description,
-    ownerId: group.ownerId,
-    memberCount: group.memberCount,
-    lastMessageTime: group.lastMessageTime,
-    lastActivityAt: group.lastActivityAt,
-  };
+  return normalizeSharedGroup(raw);
 };
 
 export const normalizeGroupMember = (raw: unknown): GroupMember => {
-  const member = normalizeSharedGroupMember(raw);
-  return {
-    userId: member.userId,
-    username: member.username,
-    nickname: member.nickname,
-    avatar: member.avatar,
-    role: member.role,
-    online: member.online,
-  };
+  return normalizeSharedGroupMember(raw);
 };
 
 export const normalizeAiKey = (raw: unknown): AiApiKey => {

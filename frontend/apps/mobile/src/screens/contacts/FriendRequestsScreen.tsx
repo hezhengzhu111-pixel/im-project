@@ -19,21 +19,21 @@ export function FriendRequestsScreen() {
       {requests.length === 0 ? <EmptyState title="No requests" /> : null}
       <FlatList
         data={requests}
-        keyExtractor={(item) => item.requestId}
+        keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <View>
-            <Text>{item.nickname || item.username || item.fromUserId}</Text>
+            <Text>{item.applicantNickname || item.applicantUsername || item.applicantId}</Text>
             <Text>{item.reason}</Text>
             <Pressable
               onPress={() => {
-                void acceptRequest(item.requestId);
+                void acceptRequest(item.id);
               }}
             >
               <Text>Accept</Text>
             </Pressable>
             <Pressable
               onPress={() => {
-                void rejectRequest(item.requestId);
+                void rejectRequest(item.id);
               }}
             >
               <Text>Reject</Text>
