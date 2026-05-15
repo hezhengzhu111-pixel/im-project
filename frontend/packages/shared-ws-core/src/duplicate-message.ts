@@ -9,6 +9,12 @@
  * layer. Message-list merging is handled downstream (shared-im-core).
  */
 
+/** Default TTL for the dedup cache (60 seconds). */
+export const DEFAULT_DEDUP_TTL_MS = 60_000;
+
+/** Default maximum size for the dedup cache. */
+export const DEFAULT_DEDUP_MAX_SIZE = 2_000;
+
 /**
  * Extract the best available dedup key from a raw WS message payload.
  *
@@ -84,25 +90,27 @@ export const rememberRecentMessage = (
   maxSize: number,
   ttlMs: number,
 ): Map<string, number> => {
+  const safeMaxSize = Math.max(0, maxSize);
   if (!key) return new Map(recentMap);
 
   const next = new Map(recentMap);
   next.set(key, nowMs);
 
-  if (next.size <= maxSize) return next;
+  if (next.size <= safeMaxSize) return next;
 
   // Phase 1: remove expired entries.
   const cutoff = nowMs - ttlMs;
   for (const [k, ts] of next) {
     if (ts < cutoff) next.delete(k);
   }
-  if (next.size <= maxSize) return next;
+  if (next.size <= safeMaxSize) return next;
 
   // Phase 2: still over capacity — evict oldest entries.
   const entries = [...next.entries()].sort((a, b) => a[1] - b[1]);
-  while (next.size > maxSize) {
+  while (next.size > safeMaxSize) {
     const oldest = entries.shift();
-    if (oldest) next.delete(oldest[0]);
+    if (!oldest) break;
+    next.delete(oldest[0]);
   }
   return next;
 };

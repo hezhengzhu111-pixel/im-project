@@ -23,18 +23,3 @@ export const shouldProcessSequentially = (
   }
   return innerType.toUpperCase() !== "SYSTEM";
 };
-
-/**
- * Calculate the reconnect delay (in milliseconds) for a given attempt using
- * a simple linear back-off strategy.
- *
- * `delay = baseInterval * attempt`
- *
- * @param attempt       The current reconnect attempt number (1-based).
- * @param baseInterval  The base delay in ms (default: 1 000).
- * @returns The number of milliseconds to wait before the next reconnect.
- */
-export const createReconnectDelay = (
-  attempt: number,
-  baseInterval: number = 1_000,
-): number => baseInterval * attempt;

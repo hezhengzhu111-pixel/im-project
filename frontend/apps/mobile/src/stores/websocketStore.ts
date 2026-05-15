@@ -1,14 +1,26 @@
 import { create } from 'zustand';
-import { WS_MESSAGE_TYPE } from '@im/shared-api-contract';
 import {
   DUPLICATE_CONNECTION_REASON,
+  DEFAULT_DEDUP_TTL_MS,
+  DEFAULT_DEDUP_MAX_SIZE,
+  applyPresenceToRecord,
+  classifyContactRefreshFromSystemContent,
+  classifyContactRefreshFromWsType,
+  classifyWsEvent,
   createHeartbeatPayload,
   createReconnectDelay,
+  createWebSocketDiagnosticsSnapshot,
   createTicketedWebSocketUrl,
+  getMessageDedupKey,
+  normalizePresenceUserId,
   parseWebSocketPayload,
-  shouldProcessSequentially,
+  rememberRecentMessage,
+  shouldDropRecentMessage,
+  shouldQueueIncomingPayload,
   shouldScheduleReconnect,
 } from '@im/shared-ws-core';
+import type { WsEventKind } from '@im/shared-ws-core';
+import { WS_MESSAGE_TYPE } from '@im/shared-api-contract';
 import { applyMessageToSession } from '@im/shared-im-core';
 import type { ChatSession } from '@im/shared-types';
 import { createSessionFromMessage, resolveMessageSessionId } from '@/utils/normalizers';
@@ -44,6 +56,15 @@ let manualDisconnect = false;
 let incomingTail = Promise.resolve();
 let lifecycleBound = false;
 let lastWebsocketEventAt = 0;
+
+// W18: WebSocket-layer duplicate message suppression cache.
+// Runtime-only Map (key → first-seen timestamp). Not persisted.
+let recentMessageIds: Map<string, number> = new Map();
+const DEDUP_TTL_MS = DEFAULT_DEDUP_TTL_MS;
+const DEDUP_MAX_SIZE = DEFAULT_DEDUP_MAX_SIZE;
+
+/** W18: Reset dedup cache. Exposed for testing only. */
+export const resetRecentMessageIds = () => { recentMessageIds = new Map(); };
 
 const recordWebsocketError = (message: string, detail?: unknown) => {
   lastWebsocketEventAt = Date.now();
@@ -110,11 +131,11 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
       socket.onmessage = (event) => {
         const parsed = parseWebSocketPayload(String(event.data));
         const payload = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
-        const type = String(payload.type || '');
-        const data = payload.data as Record<string, unknown> | undefined;
-        const innerType = data ? String(data.messageType || data.type || '') : '';
-        if (shouldProcessSequentially(type, innerType)) {
-          incomingTail = incomingTail.then(() => get().dispatchPayload(payload));
+        if (shouldQueueIncomingPayload(payload)) {
+          incomingTail = incomingTail.then(
+            () => get().dispatchPayload(payload),
+            () => get().dispatchPayload(payload),
+          );
         } else {
           void get().dispatchPayload(payload);
         }
@@ -139,7 +160,9 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
         if (!shouldReconnect) {
           return;
         }
-        recordWebsocketError(`closed with code ${event.code}${event.reason ? `: ${event.reason}` : ''}`);
+        if (event.code !== 1000) {
+          recordWebsocketError(`closed with code ${event.code}${event.reason ? `: ${event.reason}` : ''}`);
+        }
         const attempts = get().reconnectAttempts + 1;
         set({ reconnectAttempts: attempts });
         reconnectTimer = setTimeout(() => {
@@ -167,11 +190,27 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
   },
 
   async dispatchPayload(payload) {
-    const type = String(payload.type || '');
+    // W13/W23/W24: Classify via shared pure function first, then route.
+    const kind = classifyWsEvent(payload);
     const data = payload.data;
-    if (type === WS_MESSAGE_TYPE.MESSAGE || type === WS_MESSAGE_TYPE.MESSAGE_STATUS_CHANGED) {
+
+    if (kind === 'message' || kind === 'messageStatusChanged') {
       const currentUserId = useAuthStore.getState().currentUser?.id || '';
       const message = normalizeMessage(data);
+
+      // W18: Duplicate message suppression for MESSAGE only (not STATUS_CHANGED).
+      // Uses shared-ws-core pure strategy; cache is module-level runtime Map.
+      if (kind === 'message') {
+        const dedupKey = getMessageDedupKey(message as unknown as Record<string, unknown>);
+        const now = Date.now();
+        if (dedupKey && !dedupKey.startsWith('local_')) {
+          if (shouldDropRecentMessage(recentMessageIds, dedupKey, now, DEDUP_TTL_MS)) {
+            return;
+          }
+          recentMessageIds = rememberRecentMessage(recentMessageIds, dedupKey, now, DEDUP_MAX_SIZE, DEDUP_TTL_MS);
+        }
+      }
+
       const sessionId = resolveMessageSessionId(message, currentUserId);
       const routedMessage = { ...message, conversationId: sessionId || message.conversationId };
       useMessageStore.getState().addMessage(routedMessage, routedMessage.conversationId);
@@ -183,7 +222,7 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
       const messageSession = createSessionFromMessage(routedMessage, currentUserId);
       const baseSession: ChatSession | null = existingSession || messageSession;
       if (baseSession) {
-        const shouldIncrement = type === WS_MESSAGE_TYPE.MESSAGE && !isCurrent && !isSelf;
+        const shouldIncrement = kind === 'message' && !isCurrent && !isSelf;
         const applied = applyMessageToSession(baseSession, routedMessage, { incrementUnread: shouldIncrement });
         const merged: ChatSession = {
           ...baseSession,
@@ -196,48 +235,84 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
         };
         sessionStore.upsertSession(merged);
       }
-      if (type === WS_MESSAGE_TYPE.MESSAGE && !isCurrent && !isSelf && !baseSession?.isMuted) {
+      if (kind === 'message' && !isCurrent && !isSelf && !baseSession?.isMuted) {
         await displayMessageNotification(routedMessage);
       }
       return;
     }
-    if (type === WS_MESSAGE_TYPE.ONLINE_STATUS && data && typeof data === 'object') {
+    // W14: Presence policy — apply update to Record.
+    if (kind === 'onlineStatus' && data && typeof data === 'object') {
       const record = data as Record<string, unknown>;
-      const userId = String(record.userId || '');
-      if (userId) {
-        set({ onlineUsers: { ...get().onlineUsers, [userId]: String(record.status) === 'ONLINE' } });
-      }
+      set({ onlineUsers: applyPresenceToRecord(get().onlineUsers, record.userId, record.status) });
       return;
     }
-    if (type === WS_MESSAGE_TYPE.READ_RECEIPT) {
+    // W15: Read receipt — apply + refresh sessions.
+    if (kind === 'readReceipt') {
       useMessageStore.getState().applyReadReceipt(data);
       await useChatStore.getState().refreshSessions().catch(() => undefined);
       return;
     }
-    if (type === WS_MESSAGE_TYPE.FRIEND_REQUEST || type === WS_MESSAGE_TYPE.FRIEND_ACCEPTED) {
-      await Promise.allSettled([
-        useContactStore.getState().loadFriendRequests(),
-        useContactStore.getState().loadFriends(),
-        useChatStore.getState().refreshSessions(),
-      ]);
+    // W16: Contact refresh classifier for friend events.
+    if (kind === 'friendRequest' || kind === 'friendAccepted') {
+      const wsType = kind === 'friendRequest'
+        ? WS_MESSAGE_TYPE.FRIEND_REQUEST
+        : WS_MESSAGE_TYPE.FRIEND_ACCEPTED;
+      const refreshAction = classifyContactRefreshFromWsType(wsType);
+      if (refreshAction) {
+        const tasks: Promise<unknown>[] = [];
+        if (refreshAction.loadFriendRequests) {
+          tasks.push(useContactStore.getState().loadFriendRequests());
+        }
+        if (refreshAction.loadFriends) {
+          tasks.push(useContactStore.getState().loadFriends());
+        }
+        if (refreshAction.loadSessions) {
+          tasks.push(useChatStore.getState().refreshSessions());
+        }
+        await Promise.allSettled(tasks);
+      }
       return;
     }
-    if (type === WS_MESSAGE_TYPE.E2EE_NEGOTIATION) {
+    // W17: SYSTEM command — classify contact refresh via shared parser.
+    if (kind === 'system') {
+      if (data && typeof data === 'object') {
+        const systemData = data as Record<string, unknown>;
+        const content = String(systemData.content || '');
+        const refreshAction = classifyContactRefreshFromSystemContent(content);
+        if (refreshAction) {
+          const tasks: Promise<unknown>[] = [];
+          if (refreshAction.loadFriendRequests) {
+            tasks.push(useContactStore.getState().loadFriendRequests());
+          }
+          if (refreshAction.loadFriends) {
+            tasks.push(useContactStore.getState().loadFriends());
+          }
+          if (refreshAction.loadSessions) {
+            tasks.push(useChatStore.getState().refreshSessions());
+          }
+          await Promise.allSettled(tasks);
+        }
+      }
+      return;
+    }
+    // W20: E2EE negotiation — deferred on mobile.
+    if (kind === 'e2eeNegotiation') {
       logger.info('websocket', 'E2EE negotiation ignored on mobile because E2EE is deferred');
     }
   },
 
   isUserOnline(userId) {
-    return Boolean(get().onlineUsers[userId]);
+    const normalizedId = normalizePresenceUserId(userId);
+    return Boolean(normalizedId && get().onlineUsers[normalizedId]);
   },
 }));
 
 export const getWebsocketDiagnostics = () => {
   const state = useWebsocketStore.getState();
-  const status = state.connected ? 'connected' : state.connecting ? 'connecting' : 'disconnected';
-  return {
-    status,
+  return createWebSocketDiagnosticsSnapshot({
+    connected: state.connected,
+    connecting: state.connecting,
     reconnectAttempts: state.reconnectAttempts,
     lastEventAt: lastWebsocketEventAt,
-  };
+  });
 };
