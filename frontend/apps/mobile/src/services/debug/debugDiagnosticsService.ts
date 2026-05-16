@@ -1,6 +1,7 @@
 import Clipboard from '@react-native-clipboard/clipboard';
 import { APP_CONFIG, IS_RELEASE_RUNTIME, MOBILE_APP_ENV } from '@/constants/config';
 import { debugTelemetry, type DebugErrorRecord } from '@/services/debug/debugTelemetry';
+import type { MigrationStatus } from '@/services/storage/messageDatabase';
 import { getWebsocketDiagnostics, useWebsocketStore } from '@/stores/websocketStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
@@ -25,6 +26,10 @@ export interface DebugDiagnosticsSnapshot {
   reconnectAttempts: number;
   storageMode: 'unknown' | 'sqlite' | 'memory';
   persistenceAvailable: boolean;
+  schemaVersion: number | null;
+  targetSchemaVersion: number;
+  migrationStatus: MigrationStatus;
+  lastMigrationError: string;
   sessionCount: number;
   messageCount: number;
   pendingCount: number;
@@ -110,6 +115,10 @@ export const debugDiagnosticsService = {
       reconnectAttempts: websocketState.reconnectAttempts,
       storageMode: storageHealth.mode as 'unknown' | 'sqlite' | 'memory',
       persistenceAvailable: storageHealth.persistenceAvailable,
+      schemaVersion: storageHealth.schemaVersion,
+      targetSchemaVersion: storageHealth.targetSchemaVersion,
+      migrationStatus: storageHealth.migrationStatus,
+      lastMigrationError: storageHealth.lastMigrationError,
       sessionCount: countTableRows('mobile_sessions'),
       messageCount: countTableRows('mobile_messages'),
       pendingCount: pendingMessageRepository.countAll(),

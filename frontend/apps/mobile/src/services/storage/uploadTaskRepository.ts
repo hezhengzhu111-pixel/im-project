@@ -60,6 +60,7 @@ export const uploadTaskRepository = {
       ? messageDatabase
           .memoryList('mobile_upload_tasks')
           .filter((row) => row.localMessageId === localMessageId)
+          .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
       : messageDatabase.query(
           'SELECT * FROM mobile_upload_tasks WHERE localMessageId = ? ORDER BY updatedAt DESC LIMIT 1',
           [localMessageId],
@@ -70,13 +71,14 @@ export const uploadTaskRepository = {
 
   listPending(): UploadTask[] {
     const rows = messageDatabase.isMemoryFallback()
-      ? messageDatabase.memoryList('mobile_upload_tasks')
+      ? messageDatabase
+          .memoryList('mobile_upload_tasks')
+          .filter((row) => ['pending', 'failed', 'uploading'].includes(String(row.status || '')))
+          .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0))
       : messageDatabase.query(
           "SELECT * FROM mobile_upload_tasks WHERE status IN ('pending', 'failed', 'uploading') ORDER BY createdAt ASC",
         );
-    return rows
-      .map(normalize)
-      .filter((task) => task.status === 'pending' || task.status === 'failed' || task.status === 'uploading');
+    return rows.map(normalize);
   },
 
   remove(taskId: string): void {
