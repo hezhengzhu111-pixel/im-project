@@ -1,7 +1,9 @@
 import { fileService, normalizeUploadFile, type FileUploadResponse, type MobileFile } from '@/services/file/fileService';
 import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
+import { createNextRetryAt, shouldStopRetry } from '@im/shared-im-core';
 import type { MessageType } from '@im/shared-types';
 import type { UploadTask } from '@/types/models';
+import { RETRY_CONFIG } from '@/constants/config';
 
 const createTaskId = () => `upload_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 const stableTaskId = (localMessageId?: string) => (localMessageId ? `upload_${localMessageId}` : createTaskId());
@@ -41,6 +43,7 @@ export const uploadService = {
       status: 'pending',
       progress: 0,
       retryCount: 0,
+      maxRetryCount: RETRY_CONFIG.maxRetryCount,
       createdAt: now,
       updatedAt: now,
     };
@@ -49,6 +52,7 @@ export const uploadService = {
   },
 
   async uploadTask(task: UploadTask): Promise<FileUploadResponse> {
+    // 防止重复上传：如果已经是 uploaded 状态且有 remoteUrl，直接返回
     if (task.status === 'uploaded' && task.remoteUrl) {
       return {
         url: task.remoteUrl,
@@ -63,12 +67,29 @@ export const uploadService = {
       type: task.mimeType,
       size: task.fileSize,
     };
+    const now = Date.now();
     try {
-      const uploading = { ...task, status: 'uploading' as const, updatedAt: Date.now() };
+      // 开始上传：设置 uploading 状态、lastAttemptAt、清空 lastError
+      const uploading: UploadTask = {
+        ...task,
+        status: 'uploading',
+        lastAttemptAt: now,
+        lastError: undefined,
+        updatedAt: now,
+      };
       uploadTaskRepository.upsert(uploading);
       const response = await fileService.upload(file, task.uploadType, (progress) => {
-        uploadTaskRepository.upsert({ ...uploading, progress, updatedAt: Date.now() });
+        // 进度回调：只更新同一个 taskId，保留 lastAttemptAt，progress 单调递增
+        const currentTask = uploadTaskRepository.get(uploading.taskId);
+        if (!currentTask) return;
+        const monotonicProgress = Math.max(currentTask.progress, progress);
+        uploadTaskRepository.upsert({
+          ...currentTask,
+          progress: monotonicProgress,
+          updatedAt: Date.now(),
+        });
       });
+      // 上传成功：设置 uploaded 状态、remoteUrl、progress=100、清空重试相关字段
       uploadTaskRepository.upsert({
         ...uploading,
         status: 'uploaded',
@@ -77,15 +98,28 @@ export const uploadService = {
         mimeType: response.data.contentType || uploading.mimeType,
         fileSize: response.data.size || uploading.fileSize,
         progress: 100,
+        nextRetryAt: undefined,
+        lastError: undefined,
         updatedAt: Date.now(),
       });
       return response.data;
     } catch (error) {
+      const retryCount = task.retryCount + 1;
+      const maxRetryCount = task.maxRetryCount ?? RETRY_CONFIG.maxRetryCount;
+      // 上传失败：更新 retryCount、lastError、nextRetryAt
       uploadTaskRepository.upsert({
         ...task,
         status: 'failed',
-        retryCount: task.retryCount + 1,
+        retryCount,
         lastError: error instanceof Error ? error.message : 'upload failed',
+        // 如果超过最大重试次数，nextRetryAt 为空；否则计算下次重试时间
+        nextRetryAt: shouldStopRetry(retryCount, maxRetryCount)
+          ? undefined
+          : createNextRetryAt(retryCount, Date.now(), {
+              baseDelayMs: RETRY_CONFIG.baseDelayMs,
+              maxDelayMs: RETRY_CONFIG.maxDelayMs,
+            }),
+        lastAttemptAt: now,
         updatedAt: Date.now(),
       });
       throw error;
@@ -112,7 +146,16 @@ export const uploadService = {
   async retryPendingUploads(): Promise<void> {
     const tasks = uploadTaskRepository.listPending();
     for (const task of tasks) {
-      await this.uploadTask(task).catch(() => undefined);
+      try {
+        // 跳过超过最大重试次数的任务
+        const maxRetryCount = task.maxRetryCount ?? RETRY_CONFIG.maxRetryCount;
+        if (shouldStopRetry(task.retryCount, maxRetryCount)) {
+          continue;
+        }
+        await this.uploadTask(task);
+      } catch {
+        // 单个任务失败不中断整个循环
+      }
     }
   },
 };

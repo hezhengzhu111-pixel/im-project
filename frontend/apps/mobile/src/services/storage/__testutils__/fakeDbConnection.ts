@@ -167,13 +167,17 @@ export class FakeDbConnection implements DbConnection {
       return buildDbResult(tableNames.map((name) => ({ name })));
     }
 
-    // Handle COUNT(*)
-    const countMatch = sql.match(/SELECT\s+COUNT\s*\(\s*\*\s*\)\s*(?:AS\s+(\w+)\s+)?FROM\s+(\w+)/i);
+    // Handle COUNT(*) — may include GROUP BY and preceding columns (e.g., SELECT status, COUNT(*) ...)
+    const countMatch = sql.match(/SELECT\s+(?:\w+(?:\s*,\s*\w+)*\s*,\s*)?COUNT\s*\(\s*\*\s*\)\s*(?:AS\s+(\w+)\s+)?FROM\s+(\w+)/i);
     if (countMatch) {
       const alias = countMatch[1] || 'cnt';
       const tableName = countMatch[2];
       let rows = this.tables.get(tableName) || [];
       rows = this.applyWhere(rows, sql, params);
+      const groupCol = this.extractGroupByColumn(sql);
+      if (groupCol) {
+        return buildDbResult(this.groupAndCount(rows, groupCol, alias));
+      }
       return buildDbResult([{ [alias]: rows.length }]);
     }
 
@@ -187,6 +191,12 @@ export class FakeDbConnection implements DbConnection {
 
     // Apply WHERE
     rows = this.applyWhere(rows, sql, params);
+
+    // Apply GROUP BY (before ORDER BY)
+    const groupCol = this.extractGroupByColumn(sql);
+    if (groupCol) {
+      rows = this.groupByColumn(rows, groupCol);
+    }
 
     // Apply ORDER BY
     rows = this.applyOrderBy(rows, sql);
@@ -202,7 +212,7 @@ export class FakeDbConnection implements DbConnection {
     sql: string,
     params: unknown[],
   ): Record<string, unknown>[] {
-    const whereMatch = sql.match(/WHERE\s+([\s\S]+?)(?:\s+ORDER\s+BY|\s+LIMIT|\s*$)/i);
+    const whereMatch = sql.match(/WHERE\s+([\s\S]+?)(?:\s+GROUP\s+BY|\s+ORDER\s+BY|\s+LIMIT|\s*$)/i);
     if (!whereMatch) {
       return rows;
     }
@@ -407,6 +417,41 @@ export class FakeDbConnection implements DbConnection {
       ? Number(params[params.length - 1] ?? rows.length)
       : parseInt(raw, 10);
     return rows.slice(0, limit);
+  }
+
+  private extractGroupByColumn(sql: string): string | null {
+    const match = sql.match(/GROUP\s+BY\s+(\w+)/i);
+    return match ? match[1] : null;
+  }
+
+  private groupAndCount(
+    rows: Record<string, unknown>[],
+    groupCol: string,
+    alias: string,
+  ): Record<string, unknown>[] {
+    const groups = new Map<string, number>();
+    for (const row of rows) {
+      const key = String(row[groupCol] ?? '');
+      groups.set(key, (groups.get(key) ?? 0) + 1);
+    }
+    return Array.from(groups.entries()).map(([value, count]) => ({
+      [groupCol]: value,
+      [alias]: count,
+    }));
+  }
+
+  private groupByColumn(
+    rows: Record<string, unknown>[],
+    groupCol: string,
+  ): Record<string, unknown>[] {
+    const seen = new Map<string, Record<string, unknown>>();
+    for (const row of rows) {
+      const key = String(row[groupCol] ?? '');
+      if (!seen.has(key)) {
+        seen.set(key, row);
+      }
+    }
+    return Array.from(seen.values());
   }
 
   private handleDelete(sql: string, params: unknown[] = []): DbResult {

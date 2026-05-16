@@ -26,7 +26,7 @@ const normalize = (row: Record<string, unknown>): PendingMessage => ({
   lastError: row.lastError ? String(row.lastError) : undefined,
   createdAt: Number(row.createdAt || Date.now()),
   updatedAt: Number(row.updatedAt || Date.now()),
-  nextRetryAt: row.nextRetryAt ? Number(row.nextRetryAt) : undefined,
+  nextRetryAt: row.nextRetryAt != null ? Number(row.nextRetryAt) : undefined,
 });
 
 export const pendingMessageRepository = {
@@ -57,7 +57,59 @@ export const pendingMessageRepository = {
   },
 
   listReady(now = Date.now()): PendingMessage[] {
-    return this.listAll().filter((item) => ['pending', 'sending'].includes(item.status) && (item.nextRetryAt || 0) <= now);
+    return this.listReadyToSend(now);
+  },
+
+  listReadyToSend(now = Date.now()): PendingMessage[] {
+    return this.listAll().filter(
+      (item) => ['pending', 'sending'].includes(item.status) && (item.nextRetryAt ?? 0) <= now,
+    );
+  },
+
+  listByConversation(conversationId: string): PendingMessage[] {
+    if (messageDatabase.isMemoryFallback()) {
+      return messageDatabase
+        .memoryList('mobile_pending_messages')
+        .filter((row) => row.conversationId === conversationId)
+        .map(normalize)
+        .sort((a, b) => a.createdAt - b.createdAt);
+    }
+    return messageDatabase
+      .query('SELECT * FROM mobile_pending_messages WHERE conversationId = ? ORDER BY createdAt ASC', [conversationId])
+      .map(normalize);
+  },
+
+  listFailed(): PendingMessage[] {
+    return this.listAll().filter((item) => item.status === 'failed');
+  },
+
+  listBlocked(): PendingMessage[] {
+    return this.listAll().filter((item) => item.status === 'blocked');
+  },
+
+  countByStatus(): Record<PendingMessage['status'], number> {
+    const counts: Record<string, number> = { pending: 0, sending: 0, failed: 0, sent: 0, blocked: 0 };
+    for (const item of this.listAll()) {
+      counts[item.status] = (counts[item.status] || 0) + 1;
+    }
+    return counts as Record<PendingMessage['status'], number>;
+  },
+
+  updateStatus(
+    localId: string,
+    patch: Partial<Pick<PendingMessage, 'status' | 'retryCount' | 'lastError' | 'nextRetryAt'>>,
+  ): void {
+    const existing = this.get(localId);
+    if (!existing) {
+      return;
+    }
+    const merged: PendingMessage = {
+      ...existing,
+      ...patch,
+      payloadJson: existing.payloadJson,
+      updatedAt: Date.now(),
+    };
+    this.enqueue(merged);
   },
 
   listAll(): PendingMessage[] {

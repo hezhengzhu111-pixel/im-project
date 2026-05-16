@@ -31,7 +31,8 @@
       "Skill(superpowers:test-driven-development)",
       "Skill(superpowers:writing-plans)",
       "Skill(superpowers:subagent-driven-development)",
-      "Bash(git diff *)"
+      "Bash(git diff *)",
+      "Bash(node *)"
     ]
   }
 }
