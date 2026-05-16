@@ -197,4 +197,131 @@ describe('pendingMessageRepository', () => {
       expect(rows[0].clientMessageId).toBeUndefined();
     });
   });
+
+  describe('listReady', () => {
+    it('returns only pending and sending status messages', () => {
+      fake.seedTable('mobile_pending_messages', [
+        { localId: 'local-1', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 0, createdAt: 1000, updatedAt: 1000 },
+        { localId: 'local-2', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'sending', retryCount: 0, createdAt: 2000, updatedAt: 2000 },
+        { localId: 'local-3', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'sent', retryCount: 0, createdAt: 3000, updatedAt: 3000 },
+        { localId: 'local-4', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'failed', retryCount: 0, createdAt: 4000, updatedAt: 4000 },
+      ]);
+
+      const ready = pendingMessageRepository.listReady(5000);
+
+      expect(ready).toHaveLength(2);
+      expect(ready.map((m) => m.localId)).toContain('local-1');
+      expect(ready.map((m) => m.localId)).toContain('local-2');
+    });
+
+    it('excludes messages with nextRetryAt in the future', () => {
+      const now = 5000;
+      fake.seedTable('mobile_pending_messages', [
+        { localId: 'local-1', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 0, createdAt: 1000, updatedAt: 1000, nextRetryAt: null },
+        { localId: 'local-2', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 1, createdAt: 2000, updatedAt: 2000, nextRetryAt: 3000 },
+        { localId: 'local-3', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 2, createdAt: 3000, updatedAt: 3000, nextRetryAt: 6000 },
+      ]);
+
+      const ready = pendingMessageRepository.listReady(now);
+
+      expect(ready).toHaveLength(2);
+      expect(ready.map((m) => m.localId)).toContain('local-1');
+      expect(ready.map((m) => m.localId)).toContain('local-2');
+      expect(ready.map((m) => m.localId)).not.toContain('local-3');
+    });
+
+    it('includes messages with nextRetryAt in the past', () => {
+      const now = 5000;
+      fake.seedTable('mobile_pending_messages', [
+        { localId: 'local-1', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 1, createdAt: 1000, updatedAt: 1000, nextRetryAt: 4000 },
+        { localId: 'local-2', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 2, createdAt: 2000, updatedAt: 2000, nextRetryAt: 5000 },
+      ]);
+
+      const ready = pendingMessageRepository.listReady(now);
+
+      expect(ready).toHaveLength(2);
+    });
+
+    it('includes messages with nextRetryAt equal to now', () => {
+      const now = 5000;
+      fake.seedTable('mobile_pending_messages', [
+        { localId: 'local-1', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 1, createdAt: 1000, updatedAt: 1000, nextRetryAt: 5000 },
+      ]);
+
+      const ready = pendingMessageRepository.listReady(now);
+
+      expect(ready).toHaveLength(1);
+      expect(ready[0].localId).toBe('local-1');
+    });
+
+    it('uses Date.now() when now parameter is not provided', () => {
+      fake.seedTable('mobile_pending_messages', [
+        { localId: 'local-1', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 0, createdAt: 1000, updatedAt: 1000, nextRetryAt: null },
+      ]);
+
+      const ready = pendingMessageRepository.listReady();
+
+      expect(ready).toHaveLength(1);
+    });
+
+    it('returns empty array when no messages are ready', () => {
+      fake.seedTable('mobile_pending_messages', [
+        { localId: 'local-1', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'sent', retryCount: 0, createdAt: 1000, updatedAt: 1000 },
+        { localId: 'local-2', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 1, createdAt: 2000, updatedAt: 2000, nextRetryAt: 999999 },
+      ]);
+
+      const ready = pendingMessageRepository.listReady(1000);
+
+      expect(ready).toHaveLength(0);
+    });
+  });
+
+  describe('listAll', () => {
+    it('returns all messages', () => {
+      fake.seedTable('mobile_pending_messages', [
+        { localId: 'local-3', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 0, createdAt: 3000, updatedAt: 3000 },
+        { localId: 'local-1', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 0, createdAt: 1000, updatedAt: 1000 },
+        { localId: 'local-2', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 0, createdAt: 2000, updatedAt: 2000 },
+      ]);
+
+      const all = pendingMessageRepository.listAll();
+
+      expect(all).toHaveLength(3);
+      // FakeDbConnection doesn't support ORDER BY, so just verify all items are present
+      expect(all.map((m) => m.localId)).toContain('local-1');
+      expect(all.map((m) => m.localId)).toContain('local-2');
+      expect(all.map((m) => m.localId)).toContain('local-3');
+    });
+  });
+
+  describe('countAll', () => {
+    it('returns correct count', () => {
+      fake.seedTable('mobile_pending_messages', [
+        { localId: 'local-1', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 0, createdAt: 1000, updatedAt: 1000 },
+        { localId: 'local-2', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 0, createdAt: 2000, updatedAt: 2000 },
+      ]);
+
+      expect(pendingMessageRepository.countAll()).toBe(2);
+    });
+
+    it('returns 0 for empty table', () => {
+      fake.seedTable('mobile_pending_messages', []);
+
+      expect(pendingMessageRepository.countAll()).toBe(0);
+    });
+  });
+
+  describe('clear', () => {
+    it('removes all messages', () => {
+      fake.seedTable('mobile_pending_messages', [
+        { localId: 'local-1', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 0, createdAt: 1000, updatedAt: 1000 },
+        { localId: 'local-2', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 0, createdAt: 2000, updatedAt: 2000 },
+      ]);
+
+      pendingMessageRepository.clear();
+
+      expect(pendingMessageRepository.countAll()).toBe(0);
+      expect(fake.executedSql.some((s) => s.toUpperCase().includes('DELETE FROM MOBILE_PENDING_MESSAGES'))).toBe(true);
+    });
+  });
 });

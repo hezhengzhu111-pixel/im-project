@@ -52,6 +52,11 @@ export class FakeDbConnection implements DbConnection {
       return this.handleSelect(sql);
     }
 
+    // Handle DELETE
+    if (normalized.startsWith('DELETE')) {
+      return this.handleDelete(sql, params);
+    }
+
     return { rows: { length: 0, item: () => ({}), raw: () => [] } };
   }
 
@@ -116,6 +121,27 @@ export class FakeDbConnection implements DbConnection {
     const tableName = match[1];
     const rows = this.tables.get(tableName) || [];
     return buildDbResult(rows);
+  }
+
+  private handleDelete(sql: string, params: unknown[] = []): DbResult {
+    // Extract table name from DELETE FROM tableName
+    const match = sql.match(/DELETE\s+FROM\s+(\w+)/i);
+    if (match) {
+      const tableName = match[1];
+      const rows = this.tables.get(tableName) || [];
+      // Check if there's a WHERE clause with primary key
+      const whereMatch = sql.match(/WHERE\s+(\w+)\s*=\s*\?/i);
+      if (whereMatch && params.length > 0) {
+        const pkColumn = whereMatch[1];
+        const pkValue = params[0];
+        const filteredRows = rows.filter((r) => r[pkColumn] !== pkValue);
+        this.tables.set(tableName, filteredRows);
+      } else {
+        // DELETE without WHERE - clear all rows
+        this.tables.set(tableName, []);
+      }
+    }
+    return { rows: { length: 0, item: () => ({}), raw: () => [] } };
   }
 
   /** Schedule an error to throw when SQL matches the pattern */

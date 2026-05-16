@@ -27,7 +27,8 @@
       "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\(JSON.stringify\\(Object.keys\\(p.scripts\\), null, 2\\)\\)\")",
       "Skill(superpowers:verification-before-completion)",
       "Bash(node -e ' *)",
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "Skill(superpowers:test-driven-development)"
     ]
   }
 }
