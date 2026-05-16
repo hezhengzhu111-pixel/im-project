@@ -13,7 +13,7 @@ import { createClientMessageId, createLocalMessageId } from '@/utils/ids';
 import { useAuthStore } from './authStore';
 import { useSessionStore } from './sessionStore';
 import type { ChatSession, MessageType } from '@im/shared-types';
-import type { MobileMessage, PendingMessage } from '@/types/models';
+import type { MobileMessage, PendingMessage, MessagePaginationState } from '@/types/models';
 import type { MobileFile } from '@/services/file/fileService';
 
 interface PendingSendPayload {
@@ -42,6 +42,7 @@ const updateLocalMessage = (
 
 interface MessageState {
   messagesBySession: Record<string, MobileMessage[]>;
+  messagesPaginationBySession: Record<string, MessagePaginationState>;
   loading: boolean;
   searchResults: MobileMessage[];
   loadMessages: (session: ChatSession, refresh?: boolean) => Promise<void>;
@@ -134,6 +135,7 @@ const enqueuePending = (
 
 export const useMessageStore = create<MessageState>((set, get) => ({
   messagesBySession: {},
+  messagesPaginationBySession: {},
   loading: false,
   searchResults: [],
 
@@ -390,7 +392,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
    */
   clearRuntime() {
     inflightPendingRetries.clear();
-    set({ messagesBySession: {}, searchResults: [] });
+    set({ messagesBySession: {}, messagesPaginationBySession: {}, searchResults: [] });
   },
 
   /**
@@ -401,6 +403,6 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   clear() {
     pendingMessageRepository.clear();
     inflightPendingRetries.clear();
-    set({ messagesBySession: {}, searchResults: [] });
+    set({ messagesBySession: {}, messagesPaginationBySession: {}, searchResults: [] });
   },
 }));
