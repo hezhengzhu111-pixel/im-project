@@ -1,6 +1,34 @@
 import type { DbConnection, DbResult } from '../messageDatabase';
 
 /**
+ * Compare two values that may be numbers or date strings.
+ * ISO 8601 date strings are lexicographically sortable, so string
+ * comparison works correctly for them. Numbers are compared numerically.
+ * Mixed types fall back to string comparison.
+ */
+function compareValues(a: unknown, b: unknown): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return -1;
+  if (b == null) return 1;
+  const numA = Number(a);
+  const numB = Number(b);
+  if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
+    return numA - numB;
+  }
+  return String(a).localeCompare(String(b));
+}
+
+/**
+ * Count how many ? appear before the first ? in the string.
+ * Used to compute the correct param index within a condition fragment.
+ */
+function countQuestionMarksBefore(s: string): number {
+  const idx = s.indexOf('?');
+  if (idx < 0) return 0;
+  return (s.substring(0, idx).match(/\?/g) || []).length;
+}
+
+/**
  * Test-only fake DbConnection.
  * Records executed SQL in order and supports in-memory table operations with
  * WHERE filtering, ORDER BY, LIMIT, COUNT(*), IN(...) and PRAGMA table_info.
@@ -164,7 +192,7 @@ export class FakeDbConnection implements DbConnection {
     rows = this.applyOrderBy(rows, sql);
 
     // Apply LIMIT
-    rows = this.applyLimit(rows, sql);
+    rows = this.applyLimit(rows, sql, params);
 
     return buildDbResult(rows);
   }
@@ -187,12 +215,15 @@ export class FakeDbConnection implements DbConnection {
     clause: string,
     params: unknown[],
   ): Record<string, unknown>[] {
-    // Split by AND (simple: no nested OR support needed for current tests)
+    // Split by AND (respecting parenthesized groups)
     const conditions = this.splitAndConditions(clause);
 
     let result = rows;
+    let paramPos = 0;
     for (const cond of conditions) {
-      result = this.applyCondition(result, cond.trim(), params);
+      const { result: next, paramsUsed } = this.applyCondition(result, cond.trim(), params, paramPos);
+      result = next;
+      paramPos += paramsUsed;
     }
     return result;
   }
@@ -232,27 +263,28 @@ export class FakeDbConnection implements DbConnection {
     rows: Record<string, unknown>[],
     cond: string,
     params: unknown[],
-  ): Record<string, unknown>[] {
+    paramPos: number,
+  ): { result: Record<string, unknown>[]; paramsUsed: number } {
     const trimmed = cond.trim();
 
     // Handle parenthesized group: (cond1 OR cond2)
     const parenMatch = trimmed.match(/^\((.+)\)$/);
     if (parenMatch) {
-      return this.evaluateOrGroup(rows, parenMatch[1], params);
+      return this.evaluateOrGroup(rows, parenMatch[1], params, paramPos);
     }
 
     // column IS NULL
     const isNullMatch = trimmed.match(/^(\w+)\s+IS\s+NULL$/i);
     if (isNullMatch) {
       const col = isNullMatch[1];
-      return rows.filter((r) => r[col] == null);
+      return { result: rows.filter((r) => r[col] == null), paramsUsed: 0 };
     }
 
     // column IS NOT NULL
     const isNotNullMatch = trimmed.match(/^(\w+)\s+IS\s+NOT\s+NULL$/i);
     if (isNotNullMatch) {
       const col = isNotNullMatch[1];
-      return rows.filter((r) => r[col] != null);
+      return { result: rows.filter((r) => r[col] != null), paramsUsed: 0 };
     }
 
     // column IN ('a', 'b', ...)
@@ -260,25 +292,32 @@ export class FakeDbConnection implements DbConnection {
     if (inMatch) {
       const col = inMatch[1];
       const values = this.parseInValues(inMatch[2]);
-      return rows.filter((r) => values.includes(String(r[col])));
+      return { result: rows.filter((r) => values.includes(String(r[col]))), paramsUsed: 0 };
     }
 
-    // column <= ? or column >= ? or column = ?
-    const opMatch = trimmed.match(/^(\w+)\s*(<=|>=|=|<|>)\s*\?$/);
+    // column != ? or column <= ? or column >= ? or column = ? or column < ? or column > ?
+    const opMatch = trimmed.match(/^(\w+)\s*(!=|<=|>=|=|<|>)\s*\?$/);
     if (opMatch) {
       const col = opMatch[1];
       const op = opMatch[2];
-      const paramIdx = this.countParamPlaceholders(cond, trimmed);
+      const paramIdx = paramPos + countQuestionMarksBefore(trimmed);
+      if (paramIdx >= params.length) {
+        return { result: rows, paramsUsed: 1 };
+      }
       const val = params[paramIdx];
-      return rows.filter((r) => {
-        const rv = r[col];
-        if (op === '=') return rv == val; // eslint-disable-line eqeqeq
-        if (op === '<=') return rv == null || Number(rv) <= Number(val);
-        if (op === '>=') return Number(rv) >= Number(val);
-        if (op === '<') return Number(rv) < Number(val);
-        if (op === '>') return Number(rv) > Number(val);
-        return true;
-      });
+      return {
+        result: rows.filter((r) => {
+          const rv = r[col];
+          if (op === '!=') return !(rv == val); // eslint-disable-line eqeqeq
+          if (op === '=') return rv == val; // eslint-disable-line eqeqeq
+          if (op === '<=') return rv == null || compareValues(rv, val) <= 0;
+          if (op === '>=') return compareValues(rv, val) >= 0;
+          if (op === '<') return compareValues(rv, val) < 0;
+          if (op === '>') return compareValues(rv, val) > 0;
+          return true;
+        }),
+        paramsUsed: 1,
+      };
     }
 
     // column = 'literal'
@@ -286,17 +325,18 @@ export class FakeDbConnection implements DbConnection {
     if (literalMatch) {
       const col = literalMatch[1];
       const val = literalMatch[2];
-      return rows.filter((r) => String(r[col]) === val);
+      return { result: rows.filter((r) => String(r[col]) === val), paramsUsed: 0 };
     }
 
-    return rows;
+    return { result: rows, paramsUsed: 0 };
   }
 
   private evaluateOrGroup(
     rows: Record<string, unknown>[],
     clause: string,
     params: unknown[],
-  ): Record<string, unknown>[] {
+    paramPos: number,
+  ): { result: Record<string, unknown>[]; paramsUsed: number } {
     // Split by OR
     const parts: string[] = [];
     let depth = 0;
@@ -318,22 +358,18 @@ export class FakeDbConnection implements DbConnection {
     if (current.trim()) parts.push(current);
 
     const matchedIndices = new Set<number>();
+    let branchPos = paramPos;
+    let totalUsed = 0;
     for (const part of parts) {
-      const filtered = this.applyCondition(rows, part.trim(), params);
+      const { result: filtered, paramsUsed } = this.applyCondition(rows, part.trim(), params, branchPos);
+      if (totalUsed === 0) totalUsed = paramsUsed;
+      branchPos += paramsUsed;
       for (const row of filtered) {
         const idx = rows.indexOf(row);
         if (idx >= 0) matchedIndices.add(idx);
       }
     }
-    return rows.filter((_, idx) => matchedIndices.has(idx));
-  }
-
-  private countParamPlaceholders(fullCond: string, _upTo: string): number {
-    // Count how many ? appear in the full condition up to the operator's ?
-    const idx = fullCond.indexOf('?');
-    if (idx < 0) return 0;
-    const before = fullCond.substring(0, idx);
-    return (before.match(/\?/g) || []).length;
+    return { result: rows.filter((_, idx) => matchedIndices.has(idx)), paramsUsed: totalUsed };
   }
 
   private parseInValues(valueStr: string): string[] {
@@ -356,22 +392,20 @@ export class FakeDbConnection implements DbConnection {
     const dir = (orderMatch[2] || 'ASC').toUpperCase();
 
     return [...rows].sort((a, b) => {
-      const av = a[col];
-      const bv = b[col];
-      if (av == null && bv == null) return 0;
-      if (av == null) return 1;
-      if (bv == null) return -1;
-      const cmp = Number(av) - Number(bv);
+      const cmp = compareValues(a[col], b[col]);
       return dir === 'DESC' ? -cmp : cmp;
     });
   }
 
-  private applyLimit(rows: Record<string, unknown>[], sql: string): Record<string, unknown>[] {
-    const limitMatch = sql.match(/LIMIT\s+(\d+)/i);
+  private applyLimit(rows: Record<string, unknown>[], sql: string, params: unknown[] = []): Record<string, unknown>[] {
+    const limitMatch = sql.match(/LIMIT\s+(\?|\d+)/i);
     if (!limitMatch) {
       return rows;
     }
-    const limit = parseInt(limitMatch[1], 10);
+    const raw = limitMatch[1];
+    const limit = raw === '?'
+      ? Number(params[params.length - 1] ?? rows.length)
+      : parseInt(raw, 10);
     return rows.slice(0, limit);
   }
 
