@@ -141,7 +141,8 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     try {
       const cached = refresh ? [] : messageRepository.listMessages(session.id, 50);
       if (cached.length > 0) {
-        set({ messagesBySession: { ...get().messagesBySession, [session.id]: cached } });
+        const safeCached = cached.map(maskEncryptedMessage);
+        set({ messagesBySession: { ...get().messagesBySession, [session.id]: safeCached } });
       }
       const response =
         session.type === 'group'

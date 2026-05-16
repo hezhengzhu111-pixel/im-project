@@ -106,7 +106,7 @@ export async function saveRatchetState(sessionId: string, state: RatchetState): 
     const tx = db.transaction(STORE_NAME, 'readwrite');
     tx.objectStore(STORE_NAME).put(serialized, sessionId);
     tx.oncomplete = () => {
-      console.log(`[E2EE] saveRatchetState OK: session=${sessionId}, sendCounter=${state.sendCounter}, receiveCounter=${state.receiveCounter}`);
+      // E20: counter values are diagnostic-only; do not log in production
       resolve();
     };
     tx.onerror = () => {
@@ -134,7 +134,7 @@ export async function getRatchetState(sessionId: string): Promise<RatchetState |
         resolve(null);
         return;
       }
-      console.log(`[E2EE] getRatchetState: found state for session=${sessionId}, sendCounter=${data.sendCounter}, receiveCounter=${data.receiveCounter}`);
+      // E20: counter values are diagnostic-only; do not log in production
       deserializeRatchetState(data).then(resolve).catch((err) => {
         console.error(`[E2EE] getRatchetState: deserialize failed for session=${sessionId}`, err);
         reject(err);

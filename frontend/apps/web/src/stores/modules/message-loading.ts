@@ -10,6 +10,7 @@ import {
   sortMessagesAscending,
 } from "@/stores/modules/message-helpers";
 import { toBigIntId, buildSessionId } from "@/normalizers/chat";
+import { classifyE2eeError } from "@im/shared-e2ee-core";
 
 /**
  * Decrypt E2EE messages in-place for messages from other users.
@@ -55,8 +56,8 @@ async function decryptE2eeMessages(
           }
         }
       } catch (e) {
-        const errMsg = e instanceof Error ? e.message : String(e);
-        const isNoRatchetState = errMsg.includes("No ratchet state") || errMsg.includes("negotiation has not been accepted");
+        const classification = classifyE2eeError(e);
+        const isNoRatchetState = classification.code === "NO_RATCHET_STATE" || classification.code === "NEGOTIATION_NOT_ACCEPTED";
 
         if (isNoRatchetState) {
           // Cache this and remaining messages for deferred decryption
@@ -74,7 +75,7 @@ async function decryptE2eeMessages(
             messageRef: msg as unknown as { content: string; encrypted: boolean | number },
           });
           // Remaining messages will also fail — stop processing
-          console.warn(`[E2EE] No ratchet state for session=${sessionId}, cached ${encrypted.length} messages for deferred decryption.`);
+          console.warn(`[E2EE] ${classification.safeMessage} for session=${sessionId}, cached ${encrypted.length} messages for deferred decryption.`);
           break;
         }
         // Other decrypt errors — leave as ciphertext

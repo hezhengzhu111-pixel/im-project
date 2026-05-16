@@ -86,8 +86,13 @@ export function useFileMessageUpload() {
 
       // E2EE 加密拦截
       let encryptionMeta: FileUploadResult["encryption"] | undefined;
-      const isEncrypted =
-        sessionId && e2eeManager.getSessionStatus(sessionId) === "encrypted";
+      const e2eeStatus = sessionId
+        ? e2eeManager.getSessionStatus(sessionId)
+        : "plaintext";
+      if (e2eeStatus === "negotiating" || e2eeStatus === "failed") {
+        throw new Error("E2EE session is unavailable; media upload was not started.");
+      }
+      const isEncrypted = Boolean(sessionId && e2eeStatus === "encrypted");
 
       if (isEncrypted) {
         notifyInfo(`正在加密${uploadLabel(kind)}...`);

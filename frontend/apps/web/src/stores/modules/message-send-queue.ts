@@ -195,6 +195,10 @@ export function createMessageSendQueueModule(
           "@/features/e2ee/manager/negotiation"
         );
         privateE2eeStatus = getLocalSessionStatus(session.id);
+        if (privateE2eeStatus === "failed") {
+          ctx.notifyWarning("E2EE session is unavailable; message was not sent.");
+          return false;
+        }
         if (privateE2eeStatus === "negotiating") {
           ctx.notifyWarning("端到端加密协商尚未完成，请等待对方确认。");
           return false;

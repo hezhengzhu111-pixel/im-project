@@ -44,6 +44,62 @@ describe("classifyWsEvent", () => {
   });
 });
 
+// ── E2EE_NEGOTIATION payload structure (E10, E11, E31.3) ───────────────
+
+describe("E2EE_NEGOTIATION payload structure", () => {
+  const validActions = ["request", "accepted", "rejected", "disabled"] as const;
+
+  it.each(validActions)(
+    "classifies action=%s payload as e2eeNegotiation",
+    (action) => {
+      const payload = {
+        type: "E2EE_NEGOTIATION",
+        data: {
+          action,
+          sessionId: "s1",
+          requesterId: "u1",
+          requesterName: "Alice",
+          targetUserId: "u2",
+        },
+      };
+      expect(classifyWsEvent(payload)).toBe("e2eeNegotiation");
+    },
+  );
+
+  it("classifies payload with camelCase fields", () => {
+    const payload = {
+      type: "E2EE_NEGOTIATION",
+      data: {
+        action: "request",
+        sessionId: "s1",
+        requesterId: "u1",
+        requesterName: "Alice",
+        targetUserId: "u2",
+        requestPayloadJson: '{"senderIdentityKey":"abc"}',
+      },
+    };
+    expect(classifyWsEvent(payload)).toBe("e2eeNegotiation");
+  });
+
+  it("classifies payload with snake_case fields", () => {
+    const payload = {
+      type: "E2EE_NEGOTIATION",
+      data: {
+        action: "accepted",
+        session_id: "s1",
+        requester_id: "u1",
+        requester_name: "Alice",
+        target_user_id: "u2",
+      },
+    };
+    expect(classifyWsEvent(payload)).toBe("e2eeNegotiation");
+  });
+
+  it("classifies payload without data field", () => {
+    expect(classifyWsEvent({ type: "E2EE_NEGOTIATION" })).toBe("e2eeNegotiation");
+  });
+});
+
 // ── getWsPayloadData ────────────────────────────────────────────────
 
 describe("getWsPayloadData", () => {

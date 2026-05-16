@@ -561,7 +561,7 @@ describe('websocketStore', () => {
       // Mobile defers E2EE — it should log but not crash
       expect(logger.info).toHaveBeenCalledWith(
         'websocket',
-        'E2EE negotiation ignored on mobile because E2EE is deferred',
+        expect.stringContaining('E2EE negotiation deferred on mobile'),
       );
     });
   });

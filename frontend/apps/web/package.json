@@ -25,6 +25,7 @@
   "dependencies": {
     "@im/shared-api-contract": "*",
     "@im/shared-auth-core": "*",
+    "@im/shared-e2ee-core": "*",
     "@im/shared-im-core": "*",
     "@im/shared-normalizers": "*",
     "@im/shared-platform-ports": "*",

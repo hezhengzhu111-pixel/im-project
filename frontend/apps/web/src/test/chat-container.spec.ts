@@ -302,6 +302,7 @@ const mountContainer = () =>
         },
         ChatComposer: {
           name: "ChatComposer",
+          props: ["sessionId"],
           template: "<div class='chat-composer-stub' />",
         },
         EncryptionBadge: {
@@ -449,6 +450,37 @@ describe("ChatContainer", () => {
         .findComponent({ name: "ChatMessageList" })
         .props("openedUnreadCount"),
     ).toBe(3);
+  });
+
+  it("passes private sessionId to the composer for E2EE media upload", () => {
+    const wrapper = mountContainer();
+
+    expect(wrapper.findComponent({ name: "ChatComposer" }).props("sessionId")).toBe(
+      "1_2",
+    );
+  });
+
+  it("does not pass a group sessionId to the composer E2EE upload path", () => {
+    chatStoreState.currentSession = {
+      id: "group_9",
+      type: "group",
+      targetId: "9",
+      targetName: "Project",
+      targetAvatar: "",
+      unreadCount: 0,
+      lastActiveTime: "",
+      memberCount: 3,
+      isPinned: false,
+      pinned: false,
+      isMuted: false,
+      muted: false,
+    };
+
+    const wrapper = mountContainer();
+
+    expect(
+      wrapper.findComponent({ name: "ChatComposer" }).props("sessionId"),
+    ).toBeUndefined();
   });
 
   it("opens the encryption dialog from the security panel action", async () => {

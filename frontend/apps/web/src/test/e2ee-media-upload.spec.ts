@@ -393,25 +393,29 @@ describe("useFileMessageUpload — E2EE media encryption", () => {
   });
 
   // -----------------------------------------------------------------------
-  // Extended: negotiating session does NOT encrypt (not encrypted)
+  // Extended: protected non-ready states block upload before plaintext leaves the client
   // -----------------------------------------------------------------------
-  it("does not encrypt when session status is negotiating", async () => {
+  it("blocks upload when session status is negotiating", async () => {
     getSessionStatusMock.mockReturnValue("negotiating");
     const { upload } = useFileMessageUpload();
     const file = makeImageFile();
-    const result = await upload(file, "IMAGE", "sess_neg");
 
+    await expect(upload(file, "IMAGE", "sess_neg")).rejects.toThrow(
+      "E2EE session is unavailable",
+    );
     expect(encryptMediaMock).not.toHaveBeenCalled();
-    expect(result.encryption).toBeUndefined();
+    expect(uploadImageMock).not.toHaveBeenCalled();
   });
 
-  it("does not encrypt when session status is failed", async () => {
+  it("blocks upload when session status is failed", async () => {
     getSessionStatusMock.mockReturnValue("failed");
     const { upload } = useFileMessageUpload();
     const file = makeImageFile();
-    const result = await upload(file, "IMAGE", "sess_fail");
 
+    await expect(upload(file, "IMAGE", "sess_fail")).rejects.toThrow(
+      "E2EE session is unavailable",
+    );
     expect(encryptMediaMock).not.toHaveBeenCalled();
-    expect(result.encryption).toBeUndefined();
+    expect(uploadImageMock).not.toHaveBeenCalled();
   });
 });
