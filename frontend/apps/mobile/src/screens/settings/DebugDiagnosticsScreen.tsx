@@ -93,9 +93,13 @@ export function DebugDiagnosticsScreen() {
         <Text style={styles.sectionTitle}>Live Status</Text>
         <InfoRow label="WebSocket" value={snapshot.websocketStatus} />
         <InfoRow label="Reconnect attempts" value={snapshot.reconnectAttempts} />
+        <InfoRow label="Storage mode" value={snapshot.storageMode} />
+        <InfoRow label="Persistence available" value={snapshot.persistenceAvailable} />
+        <InfoRow label="Session count" value={snapshot.sessionCount} />
+        <InfoRow label="Message count" value={snapshot.messageCount} />
         <InfoRow label="Pending count" value={snapshot.pendingCount} />
-        <InfoRow label="SQLite mode" value={snapshot.sqliteMode} />
-        <InfoRow label="SQLite persistence" value={snapshot.sqlitePersistenceAvailable} />
+        <InfoRow label="Upload task count" value={snapshot.uploadTaskCount} />
+        <InfoRow label="Notification event count" value={snapshot.notificationEventCount} />
         <InfoRow label="FCM token available" value={snapshot.fcmTokenAvailable} />
       </View>
 

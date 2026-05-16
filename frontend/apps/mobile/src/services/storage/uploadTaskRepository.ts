@@ -84,6 +84,7 @@ export const uploadTaskRepository = {
     messageDatabase.execute('DELETE FROM mobile_upload_tasks WHERE taskId = ?', [taskId]);
   },
 
+  /** 清理 mobile_upload_tasks 表（内存缓存 + SQLite）。 */
   clear(): void {
     messageDatabase.memoryClear('mobile_upload_tasks');
     messageDatabase.execute('DELETE FROM mobile_upload_tasks');

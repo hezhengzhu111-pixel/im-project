@@ -41,11 +41,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   updateSessionFlags(sessionId, flags) {
-    set((state) => ({
-      sessions: state.sessions.map((session) => (session.id === sessionId ? { ...session, ...flags } : session)),
-      currentSession:
-        state.currentSession?.id === sessionId ? { ...state.currentSession, ...flags } : state.currentSession,
-    }));
+    const { sessions, currentSession } = get();
+    const existing = sessions.find((session) => session.id === sessionId);
+    if (!existing) {
+      return;
+    }
+    const updated = { ...existing, ...flags };
+    const nextSessions = sortSessions(sessions.map((session) => (session.id === sessionId ? updated : session)));
+    messageRepository.upsertSession(updated);
+    set({
+      sessions: nextSessions,
+      currentSession: currentSession?.id === sessionId ? updated : currentSession,
+    });
   },
 
   removeSession(sessionId) {
@@ -63,6 +70,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ sessions: sortSessions(messageRepository.listSessions()) });
   },
 
+  /**
+   * 清理会话 store 的内存运行态。
+   * 会清：sessions 列表、currentSession。
+   * 不会清：SQLite 持久层（由 clearAllCache 处理）。
+   */
   clear() {
     set({ sessions: [], currentSession: null });
   },

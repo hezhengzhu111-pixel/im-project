@@ -7,9 +7,6 @@ import { getFcmToken, clearPendingNotificationRoute } from '@/services/notificat
 import { pushDeviceService } from '@/services/push/pushDeviceService';
 import { userService } from '@/services/user/userService';
 import { messageRepository } from '@/services/storage/messageRepository';
-import { notificationEventRepository } from '@/services/storage/notificationEventRepository';
-import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
-import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
 import { secureStorage } from '@/services/storage/secureStorage';
 import { kvStorage } from '@/services/storage/kvStorage';
 import { STORAGE_KEYS } from '@/constants/config';
@@ -60,22 +57,40 @@ const syncPushRegistrationAfterLogin = async () => {
   }
 };
 
+/**
+ * restoreSession/login 成功后的副作用链。
+ *
+ * 顺序保证：
+ * 1. chatStore.bootstrap（restoreFromDb → loadFriends/Groups → refreshSessions → retryPending）
+ * 2. websocketStore.connect（本地 session 已就绪，WS 收到消息可正确路由）
+ * 3. settings + push 并行（无顺序依赖）
+ */
 const applySessionSideEffects = async () => {
+  await useChatStore.getState().bootstrap();
+  await useWebsocketStore.getState().connect();
   await Promise.allSettled([
     useSettingsStore.getState().loadSettings(),
-    useChatStore.getState().bootstrap(),
-    useWebsocketStore.getState().connect(),
     syncPushRegistrationAfterLogin(),
   ]);
 };
 
+/**
+ * 清理当前会话的全部本地产物。
+ *
+ * 会清：WebSocket 连接、所有 store 内存运行态、SQLite 持久层（sessions/messages/
+ * media_cache/notification_events/pending_messages/upload_tasks）、secureStorage
+ * 登录凭据、kvStorage 会话作用域键、通知/上传 store 内存状态。
+ *
+ * 不会清：FCM token（除非 preserveFcmToken=false）、应用设置（settingsStore）、
+ * 数据库 schema 本身。
+ */
 const clearLocalSessionArtifacts = async (options?: { preserveFcmToken?: boolean }) => {
   const preserveFcmToken = options?.preserveFcmToken !== false;
   useWebsocketStore.getState().disconnect();
   useChatStore.getState().clearRuntime();
+  // clearAllCache 已覆盖：mobile_sessions, mobile_messages, mobile_media_cache,
+  // mobile_notification_events, mobile_pending_messages, mobile_upload_tasks
   messageRepository.clearAllCache();
-  uploadTaskRepository.clear();
-  notificationEventRepository.clear();
   clearPendingNotificationRoute();
   await secureStorage.clearSession();
   kvStorage.clearSessionScope({ preserveFcmToken });
@@ -88,12 +103,19 @@ const clearLocalSessionArtifacts = async (options?: { preserveFcmToken?: boolean
   useUploadStore.setState({ tasks: [] });
 };
 
+/**
+ * 清理过期的会话快照（restoreSession 发现 token/cookie 无效时调用）。
+ *
+ * 会清：SQLite 持久层（同 clearAllCache 范围）、secureStorage 登录凭据、
+ * kvStorage 会话作用域键、sessionStore 内存态、通知/上传 store 内存状态。
+ *
+ * 不会清：WebSocket（此时尚未建立）、chatStore 运行态（由 sessionStore.clear
+ * 直接处理即可）、FCM token（除非 preserveFcmToken=false）。
+ */
 const clearStaleRestoreSnapshot = async (options?: { preserveFcmToken?: boolean }) => {
   const preserveFcmToken = options?.preserveFcmToken !== false;
-  pendingMessageRepository.clear();
+  // clearAllCache 已覆盖所有持久层表（含 pending/upload/notification_events）
   messageRepository.clearAllCache();
-  uploadTaskRepository.clear();
-  notificationEventRepository.clear();
   clearPendingNotificationRoute();
   useSessionStore.getState().clear();
   useNotificationStore.setState((state) => ({
@@ -232,6 +254,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  /**
+   * 用户主动退出：先通知服务端解绑设备，再清理本地全部会话产物。
+   * FCM token 默认保留，避免下次登录需要重新获取。
+   */
   async logout() {
     await pushDeviceService.unregisterDevice().catch((error: unknown) => {
       pushDeviceService.logOptionalFailure('unregister device', error);
@@ -240,6 +266,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await get().clearSession();
   },
 
+  /**
+   * 清理会话并重置 auth store 内存态。
+   * 调用 clearLocalSessionArtifacts 清理持久层和其它 store，然后将 currentUser/
+   * accessToken/permissions 置空。FCM token 默认保留。
+   */
   async clearSession() {
     await clearLocalSessionArtifacts({ preserveFcmToken: true });
     set((state) => ({
