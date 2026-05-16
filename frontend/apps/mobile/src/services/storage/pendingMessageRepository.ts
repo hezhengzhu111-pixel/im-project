@@ -56,7 +56,9 @@ export const pendingMessageRepository = {
 
   listAll(): PendingMessage[] {
     const rows = messageDatabase.isMemoryFallback()
-      ? messageDatabase.memoryList('mobile_pending_messages')
+      ? messageDatabase
+          .memoryList('mobile_pending_messages')
+          .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0))
       : messageDatabase.query('SELECT * FROM mobile_pending_messages ORDER BY createdAt ASC');
     return rows.map(normalize);
   },
