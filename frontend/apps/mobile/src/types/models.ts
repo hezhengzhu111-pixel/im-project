@@ -30,6 +30,7 @@ export interface PendingMessage {
   conversationId: string;
   sendType: ChatSessionType;
   payloadJson: string;
+  clientMessageId?: string;
   status: 'pending' | 'sending' | 'failed' | 'sent' | 'blocked';
   retryCount: number;
   lastError?: string;
@@ -55,6 +56,12 @@ export interface UploadTask {
   lastError?: string;
   createdAt: number;
   updatedAt: number;
+  // Retry/reconcile metadata for upload state machine (V3)
+  nextRetryAt?: number;
+  maxRetryCount?: number;
+  checksum?: string;
+  remoteFileId?: string;
+  lastAttemptAt?: number;
 }
 
 // In-memory diagnostics entry generated only inside the mobile app.

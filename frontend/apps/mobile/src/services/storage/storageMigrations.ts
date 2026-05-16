@@ -17,7 +17,7 @@
 export const BASE_SCHEMA_VERSION = 1;
 
 /** The highest version this code can migrate to. Bump when adding MIGRATIONS entries. */
-export const CURRENT_DB_VERSION = 1;
+export const CURRENT_DB_VERSION = 3;
 
 /**
  * Full schema SQL for fresh installs. Creates all tables and indexes.
@@ -76,6 +76,7 @@ export const CREATE_SCHEMA_SQL = [
     conversationId TEXT NOT NULL,
     sendType TEXT NOT NULL,
     payloadJson TEXT NOT NULL,
+    clientMessageId TEXT,
     status TEXT NOT NULL,
     retryCount INTEGER NOT NULL DEFAULT 0,
     lastError TEXT,
@@ -85,6 +86,8 @@ export const CREATE_SCHEMA_SQL = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_mobile_pending_status
     ON mobile_pending_messages(status, nextRetryAt)`,
+  `CREATE INDEX IF NOT EXISTS idx_mobile_pending_client_message_id
+    ON mobile_pending_messages(clientMessageId)`,
   `CREATE TABLE IF NOT EXISTS mobile_upload_tasks (
     taskId TEXT PRIMARY KEY NOT NULL,
     conversationId TEXT,
@@ -100,8 +103,15 @@ export const CREATE_SCHEMA_SQL = [
     remoteUrl TEXT,
     lastError TEXT,
     createdAt INTEGER NOT NULL,
-    updatedAt INTEGER NOT NULL
+    updatedAt INTEGER NOT NULL,
+    nextRetryAt INTEGER,
+    maxRetryCount INTEGER,
+    checksum TEXT,
+    remoteFileId TEXT,
+    lastAttemptAt INTEGER
   )`,
+  `CREATE INDEX IF NOT EXISTS idx_mobile_upload_tasks_status_retry
+    ON mobile_upload_tasks(status, nextRetryAt)`,
   `CREATE TABLE IF NOT EXISTS mobile_media_cache (
     cacheKey TEXT PRIMARY KEY NOT NULL,
     remoteUrl TEXT NOT NULL,
@@ -128,7 +138,20 @@ export const CREATE_SCHEMA_SQL = [
  *
  * Each array is executed inside a single transaction.
  */
-export const MIGRATIONS: Record<number, string[]> = {};
+export const MIGRATIONS: Record<number, string[]> = {
+  2: [
+    'ALTER TABLE mobile_pending_messages ADD COLUMN clientMessageId TEXT',
+    'CREATE INDEX IF NOT EXISTS idx_mobile_pending_client_message_id ON mobile_pending_messages(clientMessageId)',
+  ],
+  3: [
+    'ALTER TABLE mobile_upload_tasks ADD COLUMN nextRetryAt INTEGER',
+    'ALTER TABLE mobile_upload_tasks ADD COLUMN maxRetryCount INTEGER',
+    'ALTER TABLE mobile_upload_tasks ADD COLUMN checksum TEXT',
+    'ALTER TABLE mobile_upload_tasks ADD COLUMN remoteFileId TEXT',
+    'ALTER TABLE mobile_upload_tasks ADD COLUMN lastAttemptAt INTEGER',
+    'CREATE INDEX IF NOT EXISTS idx_mobile_upload_tasks_status_retry ON mobile_upload_tasks(status, nextRetryAt)',
+  ],
+};
 
 /**
  * Returns the ordered list of migration steps needed to go from `fromVersion` to `toVersion`.
