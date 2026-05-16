@@ -59,8 +59,17 @@ export const mergeServerMobileMessageWithPending = (
     ...pending,
     ...serverMessage,
     ...toMobileMessage(merged, { ...pending, ...serverMessage }),
+    // 优先使用server的id
     id: safePreferExistingId(serverMessage.serverId || serverMessage.id, pending.id),
+    // 保留clientMessageId
     clientMessageId: serverMessage.clientMessageId || pending.clientMessageId,
+    // 优先使用server的sendTime
+    sendTime: serverMessage.sendTime || pending.sendTime,
+    // 保留本地媒体资源，除非server已返回
+    mediaUrl: serverMessage.mediaUrl || pending.mediaUrl,
+    thumbnailUrl: serverMessage.thumbnailUrl || pending.thumbnailUrl,
+    mediaName: serverMessage.mediaName || pending.mediaName,
+    mediaSize: serverMessage.mediaSize ?? pending.mediaSize,
   };
 };
 
