@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation, useRoute, type NavigationProp, type ParamListBase, type RouteProp } from '@react-navigation/native';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { Screen } from '@/components/common/Screen';
 import { EmptyState, LoadingState } from '@/components/common/StateViews';
-import { colors, spacing } from '@/app/theme';
+import { colors, spacing, typography } from '@/app/theme';
 import type { ChatStackParamList } from '@/app/navigation/ChatNavigator';
 import { E2eeUnsupportedNotice } from '@/e2ee/E2eeUnsupportedNotice';
 import { isEncryptedSession } from '@/e2ee/e2eeDeferred';
@@ -14,6 +14,9 @@ import { useChatStore } from '@/stores/chatStore';
 import { useMessageStore } from '@/stores/messageStore';
 import { useSessionStore } from '@/stores/sessionStore';
 
+const BOTTOM_THRESHOLD = 120;
+const ON_END_REACHED_THRESHOLD = 3;
+
 export function ChatScreen() {
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
   const route = useRoute<RouteProp<ChatStackParamList, 'ChatScreen'>>();
@@ -21,6 +24,9 @@ export function ChatScreen() {
   const currentUser = useAuthStore((state) => state.currentUser);
   const session = useSessionStore((state) => state.currentSession);
   const messagesBySession = useMessageStore((state) => state.messagesBySession);
+  const messagesPaginationBySession = useMessageStore((state) => state.messagesPaginationBySession);
+  const loadInitialMessages = useMessageStore((state) => state.loadInitialMessages);
+  const loadOlderMessages = useMessageStore((state) => state.loadOlderMessages);
   const retryMessage = useMessageStore((state) => state.retryMessage);
   const openSessionFromRoute = useChatStore((state) => state.openSessionFromRoute);
   const sendText = useChatStore((state) => state.sendText);
@@ -28,7 +34,18 @@ export function ChatScreen() {
   const [text, setText] = useState('');
   const [recording, setRecording] = useState(false);
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
+  const [showNewMessages, setShowNewMessages] = useState(false);
+
+  const flatListRef = useRef<FlatList>(null);
+  const isAtBottomRef = useRef(true);
+  const isLoadingOlderRef = useRef(false);
+  const prevMessageCountRef = useRef(0);
+
   const messages = useMemo(() => (session ? messagesBySession[session.id] || [] : []), [messagesBySession, session]);
+  const pagination = useMemo(
+    () => (session ? messagesPaginationBySession[session.id] : undefined),
+    [messagesPaginationBySession, session],
+  );
   const encrypted = isEncryptedSession(session);
   const routeParams = route.params;
   const routeKey = useMemo(() => JSON.stringify(routeParams || {}), [routeParams]);
@@ -50,6 +67,83 @@ export function ChatScreen() {
     });
   }, [authReady, currentUser?.id, hasTargetRouteParams, openSessionFromRoute, routeKey, routeParams]);
 
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+    void loadInitialMessages(session);
+  }, [session, loadInitialMessages]);
+
+  // Scroll to bottom on initial load
+  useEffect(() => {
+    if (pagination?.initialized && prevMessageCountRef.current === 0 && messages.length > 0) {
+      requestAnimationFrame(() => {
+        try {
+          flatListRef.current?.scrollToEnd({ animated: false });
+        } catch {
+          // FlatList may not be ready in test environments
+        }
+      });
+    }
+    prevMessageCountRef.current = messages.length;
+  }, [pagination?.initialized, messages.length]);
+
+  // Track new messages when user is not at bottom
+  useEffect(() => {
+    if (messages.length > prevMessageCountRef.current && !isAtBottomRef.current && prevMessageCountRef.current > 0) {
+      setShowNewMessages(true);
+    }
+    prevMessageCountRef.current = messages.length;
+  }, [messages.length]);
+
+  const handleScroll = useCallback(
+    (event: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
+      isAtBottomRef.current = distanceFromBottom < BOTTOM_THRESHOLD;
+      if (isAtBottomRef.current) {
+        setShowNewMessages(false);
+      }
+    },
+    [],
+  );
+
+  const loadOlder = useCallback(() => {
+    if (!session || isLoadingOlderRef.current || !pagination?.initialized) {
+      return;
+    }
+    if (pagination && !pagination.hasMoreBefore) {
+      return;
+    }
+    isLoadingOlderRef.current = true;
+    void loadOlderMessages(session).finally(() => {
+      isLoadingOlderRef.current = false;
+    });
+  }, [session, pagination, loadOlderMessages]);
+
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      try {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      } catch {
+        // FlatList may not be ready in test environments
+      }
+    });
+    setShowNewMessages(false);
+  }, []);
+
+  const handleContentSizeChange = useCallback(() => {
+    if (isAtBottomRef.current && !isLoadingOlderRef.current) {
+      requestAnimationFrame(() => {
+        try {
+          flatListRef.current?.scrollToEnd({ animated: false });
+        } catch {
+          // FlatList may not be ready in test environments
+        }
+      });
+    }
+  }, []);
+
   const submit = async () => {
     const content = text.trim();
     if (!content || encrypted) {
@@ -58,6 +152,7 @@ export function ChatScreen() {
     setText('');
     try {
       await sendText(content);
+      scrollToBottom();
     } catch (error) {
       Alert.alert('Send failed', error instanceof Error ? error.message : 'Please try again');
     }
@@ -116,6 +211,24 @@ export function ChatScreen() {
     }
   };
 
+  const renderHeader = () => {
+    if (pagination?.loadingOlder) {
+      return (
+        <View style={styles.headerStatus}>
+          <LoadingState label="Loading history..." />
+        </View>
+      );
+    }
+    if (pagination && !pagination.hasMoreBefore && messages.length > 0) {
+      return (
+        <View style={styles.headerStatus}>
+          <Text style={styles.noMoreText}>No more history</Text>
+        </View>
+      );
+    }
+    return null;
+  };
+
   if (!session) {
     if (hasTargetRouteParams) {
       return <Screen title="Chat"><LoadingState label="Opening conversation..." /></Screen>;
@@ -132,6 +245,7 @@ export function ChatScreen() {
       <E2eeUnsupportedNotice visible={encrypted} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <FlatList
+          ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
@@ -145,7 +259,19 @@ export function ChatScreen() {
               onLongPress={() => Alert.alert('Message', item.content || item.mediaName || item.messageType)}
             />
           )}
+          ListHeaderComponent={renderHeader}
+          onEndReached={loadOlder}
+          onEndReachedThreshold={ON_END_REACHED_THRESHOLD}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          onContentSizeChange={handleContentSizeChange}
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         />
+        {showNewMessages ? (
+          <Pressable style={styles.newMessagesButton} onPress={scrollToBottom}>
+            <Text style={styles.newMessagesText}>New messages</Text>
+          </Pressable>
+        ) : null}
         <View style={styles.composer}>
           <Pressable disabled={encrypted} style={styles.tool} onPress={pickAndSend}><Text>+</Text></Pressable>
           <Pressable disabled={encrypted} style={styles.tool} onPress={takePhoto}><Text>Cam</Text></Pressable>
@@ -196,4 +322,25 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   sendText: { color: '#FFFFFF', fontWeight: '800' },
+  headerStatus: {
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  noMoreText: {
+    color: colors.muted,
+    fontSize: typography.small,
+  },
+  newMessagesButton: {
+    alignSelf: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 16,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  newMessagesText: {
+    color: '#FFFFFF',
+    fontSize: typography.small,
+    fontWeight: '700',
+  },
 });
