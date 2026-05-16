@@ -365,6 +365,178 @@ describe('messageAdapter', () => {
       expect(merged.clientMessageId).toBe('c1');
       expect(merged.status).toBe('DELIVERED');
     });
+
+    it('prefers server sendTime', () => {
+      const pending: MobileMessage = {
+        id: 'local_1',
+        clientMessageId: 'cm_1',
+        senderId: 'u1',
+        isGroupChat: false,
+        messageType: 'TEXT',
+        content: 'hello',
+        sendTime: '2024-06-01T10:00:00Z',
+        status: 'SENDING',
+      };
+      const server: MobileMessage = {
+        id: 'srv_1',
+        serverId: 'srv_1',
+        clientMessageId: 'cm_1',
+        senderId: 'u1',
+        isGroupChat: false,
+        messageType: 'TEXT',
+        content: 'hello',
+        sendTime: '2024-06-01T10:00:01Z',
+        status: 'SENT',
+      };
+      const merged = mergeServerMobileMessageWithPending(pending, server);
+      expect(merged.sendTime).toBe('2024-06-01T10:00:01Z');
+    });
+
+    it('preserves local mediaUrl when server has no mediaUrl', () => {
+      const pending: MobileMessage = {
+        id: 'local_1',
+        clientMessageId: 'cm_1',
+        senderId: 'u1',
+        isGroupChat: false,
+        messageType: 'IMAGE',
+        content: '',
+        mediaUrl: 'file:///local/photo.jpg',
+        sendTime: '2024-06-01T10:00:00Z',
+        status: 'SENDING',
+      };
+      const server: MobileMessage = {
+        id: 'srv_1',
+        serverId: 'srv_1',
+        clientMessageId: 'cm_1',
+        senderId: 'u1',
+        isGroupChat: false,
+        messageType: 'IMAGE',
+        content: '',
+        sendTime: '2024-06-01T10:00:01Z',
+        status: 'SENT',
+      };
+      const merged = mergeServerMobileMessageWithPending(pending, server);
+      expect(merged.mediaUrl).toBe('file:///local/photo.jpg');
+    });
+
+    it('uses server mediaUrl when server has mediaUrl', () => {
+      const pending: MobileMessage = {
+        id: 'local_1',
+        clientMessageId: 'cm_1',
+        senderId: 'u1',
+        isGroupChat: false,
+        messageType: 'IMAGE',
+        content: '',
+        mediaUrl: 'file:///local/photo.jpg',
+        sendTime: '2024-06-01T10:00:00Z',
+        status: 'SENDING',
+      };
+      const server: MobileMessage = {
+        id: 'srv_1',
+        serverId: 'srv_1',
+        clientMessageId: 'cm_1',
+        senderId: 'u1',
+        isGroupChat: false,
+        messageType: 'IMAGE',
+        content: '',
+        mediaUrl: 'https://cdn.example.com/photo.jpg',
+        sendTime: '2024-06-01T10:00:01Z',
+        status: 'SENT',
+      };
+      const merged = mergeServerMobileMessageWithPending(pending, server);
+      expect(merged.mediaUrl).toBe('https://cdn.example.com/photo.jpg');
+    });
+
+    it('preserves local thumbnailUrl when server has no thumbnailUrl', () => {
+      const pending: MobileMessage = {
+        id: 'local_1',
+        clientMessageId: 'cm_1',
+        senderId: 'u1',
+        isGroupChat: false,
+        messageType: 'IMAGE',
+        content: '',
+        mediaUrl: 'file:///local/photo.jpg',
+        thumbnailUrl: 'file:///local/thumb.jpg',
+        sendTime: '2024-06-01T10:00:00Z',
+        status: 'SENDING',
+      };
+      const server: MobileMessage = {
+        id: 'srv_1',
+        serverId: 'srv_1',
+        clientMessageId: 'cm_1',
+        senderId: 'u1',
+        isGroupChat: false,
+        messageType: 'IMAGE',
+        content: '',
+        sendTime: '2024-06-01T10:00:01Z',
+        status: 'SENT',
+      };
+      const merged = mergeServerMobileMessageWithPending(pending, server);
+      expect(merged.thumbnailUrl).toBe('file:///local/thumb.jpg');
+    });
+
+    it('preserves local mediaName and mediaSize when server has none', () => {
+      const pending: MobileMessage = {
+        id: 'local_1',
+        clientMessageId: 'cm_1',
+        senderId: 'u1',
+        isGroupChat: false,
+        messageType: 'FILE',
+        content: '',
+        mediaUrl: 'file:///local/doc.pdf',
+        mediaName: 'doc.pdf',
+        mediaSize: 2048,
+        sendTime: '2024-06-01T10:00:00Z',
+        status: 'SENDING',
+      };
+      const server: MobileMessage = {
+        id: 'srv_1',
+        serverId: 'srv_1',
+        clientMessageId: 'cm_1',
+        senderId: 'u1',
+        isGroupChat: false,
+        messageType: 'FILE',
+        content: '',
+        sendTime: '2024-06-01T10:00:01Z',
+        status: 'SENT',
+      };
+      const merged = mergeServerMobileMessageWithPending(pending, server);
+      expect(merged.mediaName).toBe('doc.pdf');
+      expect(merged.mediaSize).toBe(2048);
+    });
+
+    it('uses server mediaName and mediaSize when server provides them', () => {
+      const pending: MobileMessage = {
+        id: 'local_1',
+        clientMessageId: 'cm_1',
+        senderId: 'u1',
+        isGroupChat: false,
+        messageType: 'FILE',
+        content: '',
+        mediaUrl: 'file:///local/doc.pdf',
+        mediaName: 'doc.pdf',
+        mediaSize: 2048,
+        sendTime: '2024-06-01T10:00:00Z',
+        status: 'SENDING',
+      };
+      const server: MobileMessage = {
+        id: 'srv_1',
+        serverId: 'srv_1',
+        clientMessageId: 'cm_1',
+        senderId: 'u1',
+        isGroupChat: false,
+        messageType: 'FILE',
+        content: '',
+        mediaUrl: 'https://cdn.example.com/doc.pdf',
+        mediaName: 'doc-server.pdf',
+        mediaSize: 4096,
+        sendTime: '2024-06-01T10:00:01Z',
+        status: 'SENT',
+      };
+      const merged = mergeServerMobileMessageWithPending(pending, server);
+      expect(merged.mediaName).toBe('doc-server.pdf');
+      expect(merged.mediaSize).toBe(4096);
+    });
   });
 
   // ─── applyMobileMessageToList ───────────────────────────────────────────
