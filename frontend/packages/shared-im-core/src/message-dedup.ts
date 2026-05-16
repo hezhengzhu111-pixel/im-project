@@ -73,9 +73,21 @@ export const mergeServerMessageWithPending = (
 ): Message => ({
   ...pending,
   ...serverMessage,
+  // 优先使用server的id，但保留pending的id作为fallback
   id: safePreferExistingId(serverMessage.id, pending.id),
+  // 优先使用server的messageId
   messageId: serverMessage.messageId ?? pending.messageId,
+  // 保留clientMessageId
   clientMessageId: serverMessage.clientMessageId ?? pending.clientMessageId,
+  // 优先使用server的sendTime
+  sendTime: serverMessage.sendTime || pending.sendTime,
+  // 保留本地媒体资源，除非server已返回
+  mediaUrl: serverMessage.mediaUrl || pending.mediaUrl,
+  thumbnailUrl: serverMessage.thumbnailUrl || pending.thumbnailUrl,
+  mediaName: serverMessage.mediaName || pending.mediaName,
+  mediaSize: serverMessage.mediaSize ?? pending.mediaSize,
+  // 优先使用server的状态
+  status: serverMessage.status || pending.status,
 });
 
 export const applyMessageToMessageList = (
