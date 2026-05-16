@@ -8,6 +8,7 @@ import { messageService, resolveMarkReadTarget, type SendMessagePayload } from '
 import { messageRepository } from '@/services/storage/messageRepository';
 import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
 import { uploadService } from '@/services/upload/uploadService';
+import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
 import { logger } from '@/utils/logger';
 import { createClientMessageId, createLocalMessageId } from '@/utils/ids';
 import { createInitialPaginationState, getMessageCursor, mergePagedMessages } from '@/utils/messagePagination';
@@ -57,7 +58,7 @@ interface MessageState {
   sendText: (session: ChatSession, content: string) => Promise<void>;
   sendMedia: (session: ChatSession, file: MobileFile, type: MessageType) => Promise<void>;
   retryPending: () => Promise<void>;
-  retryMessage: (localId: string) => Promise<void>;
+  retryMessage: (localId: string, options?: { force?: boolean }) => Promise<void>;
   markRead: (session: ChatSession) => Promise<void>;
   applyReadReceipt: (rawReceipt: unknown) => void;
   searchMessages: (keyword: string, sessionId?: string) => void;
@@ -411,7 +412,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     get().addMessage(message, session.id);
     const payload = payloadFor(session, message);
     enqueuePending(session, message, payload);
-    await get().retryMessage(message.id);
+    await get().retryMessage(message.id, { force: true });
   },
 
   async sendMedia(session, file, type) {
@@ -429,28 +430,52 @@ export const useMessageStore = create<MessageState>((set, get) => ({
       localMessageId: message.id,
     });
     enqueuePending(session, message, payloadFor(session, message), uploadTask.taskId);
-    await get().retryMessage(message.id);
+    await get().retryMessage(message.id, { force: true });
   },
 
   async retryPending() {
-    const pending = pendingMessageRepository.listReady();
+    const pending = pendingMessageRepository.listReadyToSend();
     for (const item of pending) {
-      await get().retryMessage(item.localId);
+      await get().retryMessage(item.localId, { force: false });
     }
   },
 
-  async retryMessage(localId) {
+  async retryMessage(localId, options) {
+    const force = options?.force ?? false;
+
+    // 1. pending 不存在：return
     const pending = pendingMessageRepository.get(localId);
-    if (!pending || inflightPendingRetries.has(localId)) {
+    if (!pending) {
       return;
     }
+
+    // 2. inflight 中：return
+    if (inflightPendingRetries.has(localId)) {
+      return;
+    }
+
     inflightPendingRetries.add(localId);
-    const payload = JSON.parse(pending.payloadJson) as PendingSendPayload;
+
     try {
+      const payload = JSON.parse(pending.payloadJson) as PendingSendPayload;
+
+      // 3. E2EE blocked：pending status=blocked，本地消息 FAILED
       if (blockEncryptedPendingPayload(payload)) {
         pendingMessageRepository.update({ ...pending, status: 'blocked', lastError: 'E2EE deferred' });
+        const { nextList } = updateLocalMessage(get(), pending.conversationId, localId, (item) => ({
+          ...item,
+          status: 'FAILED',
+        }));
+        set({
+          messagesBySession: {
+            ...get().messagesBySession,
+            [pending.conversationId]: nextList,
+          },
+        });
         return;
       }
+
+      // 4. 去重检查：同一 clientMessageId 的其他 pending 已存在则移除当前
       const duplicateByClientMessageId = payload.data.clientMessageId
         ? pendingMessageRepository.findByClientMessageId(payload.data.clientMessageId)
         : undefined;
@@ -458,29 +483,128 @@ export const useMessageStore = create<MessageState>((set, get) => ({
         pendingMessageRepository.remove(localId);
         return;
       }
+
+      // 5. 非 force 模式：尊重 nextRetryAt
+      if (!force && pending.nextRetryAt != null && pending.nextRetryAt > Date.now()) {
+        return;
+      }
+
+      // 更新 pending 为 sending 状态
       pendingMessageRepository.update({
         ...pending,
         status: 'sending',
         lastError: undefined,
       });
+
       const data = { ...payload.data };
+
+      // ─── 阶段 1：上传（仅媒体消息） ───
       if (payload.uploadTaskId) {
-        const uploaded = await uploadService.uploadExistingTask(payload.uploadTaskId);
-        data.mediaUrl = uploaded.url;
-        data.thumbnailUrl = uploaded.thumbnailUrl || data.thumbnailUrl;
-        data.mediaName = uploaded.fileName || data.mediaName;
-        data.mediaSize = uploaded.size || data.mediaSize;
+        const hasRemoteMediaUrl = data.mediaUrl && (data.mediaUrl.startsWith('https://') || data.mediaUrl.startsWith('http://'));
+
+        if (!hasRemoteMediaUrl) {
+          const uploadTask = uploadTaskRepository.get(payload.uploadTaskId);
+
+          if (!uploadTask) {
+            // uploadTask 丢失且 pending 没有 remote mediaUrl → failed
+            pendingMessageRepository.update({
+              ...pending,
+              status: 'failed',
+              lastError: 'Upload task not found',
+            });
+            const { nextList } = updateLocalMessage(get(), pending.conversationId, localId, (item) => ({
+              ...item,
+              status: 'FAILED',
+            }));
+            set({
+              messagesBySession: {
+                ...get().messagesBySession,
+                [pending.conversationId]: nextList,
+              },
+            });
+            return;
+          }
+
+          const maxUploadRetry = uploadTask.maxRetryCount ?? RETRY_CONFIG.maxRetryCount;
+
+          if (uploadTask.status === 'uploaded' && uploadTask.remoteUrl) {
+            // 已上传成功 → 复用 remoteUrl，跳过上传
+            data.mediaUrl = uploadTask.remoteUrl;
+            data.mediaName = uploadTask.fileName || data.mediaName;
+            data.mediaSize = uploadTask.fileSize || data.mediaSize;
+          } else if (uploadTask.status === 'uploading') {
+            // 正在上传中 → 等待
+            pendingMessageRepository.update({
+              ...pending,
+              status: 'pending',
+              lastError: 'upload in progress',
+            });
+            return;
+          } else if (!force && shouldStopRetry(uploadTask.retryCount, maxUploadRetry)) {
+            // 上传重试次数耗尽
+            pendingMessageRepository.update({
+              ...pending,
+              status: 'failed',
+              lastError: `upload exhausted: ${uploadTask.lastError || 'max retries'}`,
+            });
+            const { nextList } = updateLocalMessage(get(), pending.conversationId, localId, (item) => ({
+              ...item,
+              status: 'FAILED',
+            }));
+            set({
+              messagesBySession: {
+                ...get().messagesBySession,
+                [pending.conversationId]: nextList,
+              },
+            });
+            return;
+          } else if (!force && uploadTask.nextRetryAt != null && uploadTask.nextRetryAt > Date.now()) {
+            // 上传退避时间未到（非 force 模式）
+            return;
+          } else {
+            // 需要上传
+            try {
+              const uploaded = await uploadService.uploadExistingTask(payload.uploadTaskId);
+              data.mediaUrl = uploaded.url;
+              data.thumbnailUrl = uploaded.thumbnailUrl || data.thumbnailUrl;
+              data.mediaName = uploaded.fileName || data.mediaName;
+              data.mediaSize = uploaded.size || data.mediaSize;
+            } catch (uploadError) {
+              // 上传失败：不继续发送，不增加 pending.retryCount
+              pendingMessageRepository.update({
+                ...pending,
+                status: 'pending',
+                lastError: `upload failed: ${uploadError instanceof Error ? uploadError.message : 'unknown'}`,
+              });
+              const { nextList } = updateLocalMessage(get(), pending.conversationId, localId, (item) => ({
+                ...item,
+                status: 'FAILED',
+              }));
+              set({
+                messagesBySession: {
+                  ...get().messagesBySession,
+                  [pending.conversationId]: nextList,
+                },
+              });
+              return;
+            }
+          }
+        }
+
+        // 上传阶段完成（已上传或已有 mediaUrl）→ 更新 pending 和本地消息
         pendingMessageRepository.update({
           ...pending,
           payloadJson: JSON.stringify({ ...payload, data }),
           status: 'sending',
         });
+
+        // 更新本地消息中的媒体 URL（file:// → remoteUrl）
         const { nextList } = updateLocalMessage(get(), pending.conversationId, localId, (item) => ({
           ...item,
-          mediaUrl: uploaded.url,
-          thumbnailUrl: uploaded.thumbnailUrl || item.thumbnailUrl,
-          mediaName: uploaded.fileName || item.mediaName,
-          mediaSize: uploaded.size || item.mediaSize,
+          mediaUrl: data.mediaUrl,
+          thumbnailUrl: data.thumbnailUrl || item.thumbnailUrl,
+          mediaName: data.mediaName || item.mediaName,
+          mediaSize: data.mediaSize || item.mediaSize,
           status: 'SENDING',
         }));
         set({
@@ -490,40 +614,49 @@ export const useMessageStore = create<MessageState>((set, get) => ({
           },
         });
       }
-      const response = payload.sendType === 'group'
-        ? await messageService.sendGroup(data)
-        : await messageService.sendPrivate(data);
-      const serverMessage: MobileMessage = {
-        ...response.data,
-        messageId: response.data.id || response.data.messageId,
-        clientMessageId: response.data.clientMessageId || data.clientMessageId,
-        conversationId: pending.conversationId,
-        status: 'SENT',
-      };
-      get().addMessage(serverMessage, pending.conversationId);
-      if (data.clientMessageId) {
-        pendingMessageRepository.removeByClientMessageId(data.clientMessageId);
+
+      // ─── 阶段 2：发送 ───
+      try {
+        const response = payload.sendType === 'group'
+          ? await messageService.sendGroup(data)
+          : await messageService.sendPrivate(data);
+        const serverMessage: MobileMessage = {
+          ...response.data,
+          messageId: response.data.id || response.data.messageId,
+          clientMessageId: response.data.clientMessageId || data.clientMessageId,
+          conversationId: pending.conversationId,
+          status: 'SENT',
+        };
+        get().addMessage(serverMessage, pending.conversationId);
+        if (data.clientMessageId) {
+          pendingMessageRepository.removeByClientMessageId(data.clientMessageId);
+        }
+        pendingMessageRepository.remove(localId);
+      } catch (sendError) {
+        // 发送失败：增加 pending.retryCount，保留已上传的 mediaUrl
+        const retryCount = pending.retryCount + 1;
+        pendingMessageRepository.update({
+          ...pending,
+          payloadJson: JSON.stringify({ ...payload, data }),
+          status: shouldStopRetry(retryCount, RETRY_CONFIG.maxRetryCount) ? 'failed' : 'pending',
+          retryCount,
+          lastError: `send failed: ${sendError instanceof Error ? sendError.message : 'unknown'}`,
+          nextRetryAt: createNextRetryAt(retryCount, Date.now(), {
+            baseDelayMs: RETRY_CONFIG.baseDelayMs,
+            maxDelayMs: RETRY_CONFIG.maxDelayMs,
+          }),
+        });
+        const { nextList } = updateLocalMessage(get(), pending.conversationId, localId, (item) => ({
+          ...item,
+          status: 'FAILED',
+        }));
+        set({
+          messagesBySession: {
+            ...get().messagesBySession,
+            [pending.conversationId]: nextList,
+          },
+        });
       }
-      pendingMessageRepository.remove(localId);
-    } catch (error) {
-      const retryCount = pending.retryCount + 1;
-      pendingMessageRepository.update({
-        ...pending,
-        status: shouldStopRetry(retryCount, RETRY_CONFIG.maxRetryCount) ? 'failed' : 'pending',
-        retryCount,
-        lastError: error instanceof Error ? error.message : 'send failed',
-        nextRetryAt: createNextRetryAt(retryCount, Date.now(), { baseDelayMs: RETRY_CONFIG.baseDelayMs, maxDelayMs: RETRY_CONFIG.maxDelayMs }),
-      });
-      const { nextList } = updateLocalMessage(get(), pending.conversationId, localId, (item) => ({
-        ...item,
-        status: 'FAILED',
-      }));
-      set({
-        messagesBySession: {
-          ...get().messagesBySession,
-          [pending.conversationId]: nextList,
-        },
-      });
     } finally {
       inflightPendingRetries.delete(localId);
     }
