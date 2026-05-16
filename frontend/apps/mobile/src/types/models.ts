@@ -64,6 +64,21 @@ export interface UploadTask {
   lastAttemptAt?: number;
 }
 
+// Per-session pagination state for incremental message loading.
+export interface MessagePaginationState {
+  loadingInitial: boolean;
+  loadingOlder: boolean;
+  refreshingLatest: boolean;
+  hasMoreBefore: boolean;
+  hasMoreAfter: boolean;
+  oldestMessageId?: string;
+  oldestMessageTime?: string;
+  newestMessageId?: string;
+  newestMessageTime?: string;
+  lastError?: string;
+  initialized: boolean;
+}
+
 // In-memory diagnostics entry generated only inside the mobile app.
 export interface LocalLogEntry {
   id: string;
