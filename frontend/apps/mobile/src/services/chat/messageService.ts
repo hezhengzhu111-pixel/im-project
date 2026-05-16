@@ -2,8 +2,10 @@ import { MESSAGE_ENDPOINTS } from '@im/shared-api-contract';
 import { resolveGroupSessionId } from '@/utils/normalizers';
 import { http } from '@/services/api/httpClient';
 import { normalizeMessage, normalizeSession } from '@/utils/normalizers';
+import { buildHistoryParams } from '@/services/chat/messageTypes';
 import type { ApiResponse, ChatSession, MessageType } from '@im/shared-types';
 import type { MobileMessage } from '@/types/models';
+import type { HistoryQueryParams } from '@/services/chat/messageTypes';
 
 export interface SendMessagePayload {
   receiverId?: string;
@@ -38,16 +40,16 @@ export const messageService = {
     return { ...response, data: normalizeMessage(response.data) };
   },
 
-  async getPrivateHistory(friendId: string, params: Record<string, unknown>): Promise<ApiResponse<MobileMessage[]>> {
+  async getPrivateHistory(friendId: string, params: HistoryQueryParams = {}): Promise<ApiResponse<MobileMessage[]>> {
     const response = await http.get<unknown[]>(MESSAGE_ENDPOINTS.PRIVATE_HISTORY.replace(':friendId', friendId), {
-      params,
+      params: buildHistoryParams(params),
     } as never);
     return { ...response, data: Array.isArray(response.data) ? response.data.map((item) => normalizeMessage(item)) : [] };
   },
 
-  async getGroupHistory(groupId: string, params: Record<string, unknown>): Promise<ApiResponse<MobileMessage[]>> {
+  async getGroupHistory(groupId: string, params: HistoryQueryParams = {}): Promise<ApiResponse<MobileMessage[]>> {
     const response = await http.get<unknown[]>(MESSAGE_ENDPOINTS.GROUP_HISTORY.replace(':groupId', groupId), {
-      params,
+      params: buildHistoryParams(params),
     } as never);
     return { ...response, data: Array.isArray(response.data) ? response.data.map((item) => normalizeMessage(item)) : [] };
   },
