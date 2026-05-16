@@ -327,6 +327,63 @@ describe('messagePagination', () => {
     });
   });
 
+  // ─── mergePagedMessages — replace with pending preservation ────────────
+  describe('mergePagedMessages — replace with pending preservation', () => {
+    it('preserves SENDING messages in replace mode', () => {
+      const existing = [
+        msg('local_pending', '2024-06-01T10:00:00.000Z', {
+          status: 'SENDING',
+          clientMessageId: 'cm_pending',
+        }),
+      ];
+      const incoming = [
+        msg('srv_1', '2024-06-01T10:00:01.000Z'),
+        msg('srv_2', '2024-06-01T10:00:02.000Z'),
+      ];
+      const result = mergePagedMessages(existing, incoming, 'replace');
+      expect(result).toHaveLength(3);
+      const pending = result.find((m) => m.id === 'local_pending');
+      expect(pending).toBeDefined();
+      expect(pending?.status).toBe('SENDING');
+    });
+
+    it('preserves FAILED messages in replace mode', () => {
+      const existing = [
+        msg('local_failed', '2024-06-01T10:00:00.000Z', {
+          status: 'FAILED',
+          clientMessageId: 'cm_failed',
+        }),
+      ];
+      const incoming = [
+        msg('srv_1', '2024-06-01T10:00:01.000Z'),
+      ];
+      const result = mergePagedMessages(existing, incoming, 'replace');
+      expect(result).toHaveLength(2);
+      const failed = result.find((m) => m.id === 'local_failed');
+      expect(failed).toBeDefined();
+      expect(failed?.status).toBe('FAILED');
+    });
+
+    it('merges pending with server when same clientMessageId in replace mode', () => {
+      const existing = [
+        msg('local_1', '2024-06-01T10:00:00.000Z', {
+          status: 'SENDING',
+          clientMessageId: 'cm_1',
+        }),
+      ];
+      const incoming = [
+        msg('srv_1', '2024-06-01T10:00:01.000Z', {
+          status: 'SENT',
+          clientMessageId: 'cm_1',
+        }),
+      ];
+      const result = mergePagedMessages(existing, incoming, 'replace');
+      expect(result).toHaveLength(1);
+      expect(result[0].status).toBe('SENT');
+      expect(result[0].clientMessageId).toBe('cm_1');
+    });
+  });
+
   // ─── Stable sort with same sendTime ────────────────────────────────────
   describe('stable sort with same sendTime', () => {
     it('sorts by id when sendTime is identical', () => {
