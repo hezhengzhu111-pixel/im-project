@@ -12,8 +12,8 @@ describe('getMigrationSteps', () => {
   });
 
   it('returns empty when no migrations exist for the range', () => {
-    // Current MIGRATIONS is empty (V1 only), so 1→2 has no steps
-    expect(getMigrationSteps(1, 2)).toEqual([]);
+    // V1→V2 now has migration steps, so test a range with no steps (e.g., 2→3 when 3 doesn't exist)
+    expect(getMigrationSteps(2, 3)).toEqual([]);
   });
 
   it('returns steps for versions that have migration entries', () => {
@@ -126,25 +126,13 @@ describe('runMigrations', () => {
   });
 
   it('runs incremental migration when version < CURRENT_DB_VERSION', () => {
-    const orig = MIGRATIONS[2];
-    try {
-      MIGRATIONS[2] = ['ALTER TABLE mobile_messages ADD COLUMN editedAt INTEGER'];
-      // Temporarily bump CURRENT_DB_VERSION reference by seeding version 1
-      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '1' }]);
+    // Seed version 1 to trigger incremental migration to CURRENT_DB_VERSION (2)
+    fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '1' }]);
 
-      // We need to override the import's CURRENT_DB_VERSION for this test to be meaningful.
-      // Since MIGRATIONS[2] exists but CURRENT_DB_VERSION is still 1, the runner sees
-      // effectiveVersion (1) === CURRENT_DB_VERSION (1) and does nothing.
-      // Instead, we test the migration path by verifying runMigrations calls the right flow.
-      // The real test of incremental migration happens when CURRENT_DB_VERSION is bumped.
-      // For now, verify that version 1 → 1 is a no-op.
-      const result = runMigrations(fake);
-      expect(result.success).toBe(true);
-      expect(result.fromVersion).toBe(1);
-      expect(result.toVersion).toBe(1);
-    } finally {
-      if (orig === undefined) { delete MIGRATIONS[2]; } else { MIGRATIONS[2] = orig; }
-    }
+    const result = runMigrations(fake);
+    expect(result.success).toBe(true);
+    expect(result.fromVersion).toBe(1);
+    expect(result.toVersion).toBe(CURRENT_DB_VERSION);
   });
 
   it('rolls back and returns error when migration SQL throws', () => {
