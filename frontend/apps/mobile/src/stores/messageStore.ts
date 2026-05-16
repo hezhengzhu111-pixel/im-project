@@ -12,7 +12,7 @@ import { logger } from '@/utils/logger';
 import { createClientMessageId, createLocalMessageId } from '@/utils/ids';
 import { useAuthStore } from './authStore';
 import { useSessionStore } from './sessionStore';
-import type { ChatSession, MessageType, ReadReceipt } from '@im/shared-types';
+import type { ChatSession, MessageType } from '@im/shared-types';
 import type { MobileMessage, PendingMessage } from '@/types/models';
 import type { MobileFile } from '@/services/file/fileService';
 
@@ -382,8 +382,14 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     set({ messagesBySession: next });
   },
 
+  /**
+   * 清理消息 store 的内存运行态和 pending 持久层。
+   * 会清：messagesBySession、searchResults、inflightPendingRetries、pending 表。
+   * 不会清：messages/sessions/media_cache 等主表（由 clearAllCache 处理）。
+   */
   clear() {
     pendingMessageRepository.clear();
+    inflightPendingRetries.clear();
     set({ messagesBySession: {}, searchResults: [] });
   },
 }));

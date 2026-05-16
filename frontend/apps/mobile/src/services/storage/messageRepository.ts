@@ -207,6 +207,13 @@ export const messageRepository = {
     messageDatabase.execute('DELETE FROM mobile_messages WHERE conversationId = ?', [conversationId]);
   },
 
+  /**
+   * 清理全部消息相关 SQLite 表和内存缓存。
+   * 会清：mobile_sessions、mobile_messages、mobile_media_cache、
+   * mobile_notification_events、mobile_pending_messages（委托）、
+   * mobile_upload_tasks（委托）。
+   * 不会清：auth 凭据、kvStorage、WebSocket 状态。
+   */
   clearAllCache(): void {
     ['mobile_sessions', 'mobile_messages', 'mobile_media_cache', 'mobile_notification_events'].forEach((name) =>
       messageDatabase.memoryClear(name),

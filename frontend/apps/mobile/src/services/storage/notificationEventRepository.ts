@@ -47,6 +47,7 @@ export const notificationEventRepository = {
     return rows.map(normalize).sort((left, right) => right.createdAt - left.createdAt);
   },
 
+  /** 清理 mobile_notification_events 表（内存缓存 + SQLite）。 */
   clear(): void {
     messageDatabase.memoryClear('mobile_notification_events');
     messageDatabase.execute('DELETE FROM mobile_notification_events');

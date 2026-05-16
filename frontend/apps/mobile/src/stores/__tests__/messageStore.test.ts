@@ -273,4 +273,26 @@ describe('messageStore', () => {
       expect(useMessageStore.getState().messagesBySession['100_300']).toHaveLength(1);
     });
   });
+
+  describe('clear', () => {
+    it('resets messagesBySession and searchResults', () => {
+      useMessageStore.setState({
+        messagesBySession: {
+          '100_200': [baseMobileMessage()],
+          '100_300': [baseMobileMessage({ id: 'msg_2' })],
+        },
+        searchResults: [baseMobileMessage()],
+      });
+
+      useMessageStore.getState().clear();
+
+      expect(useMessageStore.getState().messagesBySession).toEqual({});
+      expect(useMessageStore.getState().searchResults).toEqual([]);
+    });
+
+    it('calls pendingMessageRepository.clear', () => {
+      useMessageStore.getState().clear();
+      expect(pr.clear).toHaveBeenCalledTimes(1);
+    });
+  });
 });

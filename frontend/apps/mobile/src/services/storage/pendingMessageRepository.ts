@@ -108,6 +108,7 @@ export const pendingMessageRepository = {
     this.remove(existing.localId);
   },
 
+  /** 清理 mobile_pending_messages 表（内存缓存 + SQLite）。 */
   clear(): void {
     messageDatabase.memoryClear('mobile_pending_messages');
     messageDatabase.execute('DELETE FROM mobile_pending_messages');

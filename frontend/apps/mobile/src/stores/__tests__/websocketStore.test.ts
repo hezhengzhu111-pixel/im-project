@@ -1,5 +1,4 @@
 import type { ChatSession } from '@im/shared-types';
-import type { MobileMessage } from '@/types/models';
 
 // ─── Auto-mock simple dependencies ──────────────────────────────────────
 jest.mock('@/services/debug/debugTelemetry');
@@ -308,16 +307,11 @@ class FakeWebSocket {
 // ─── Import after mocks ─────────────────────────────────────────────────
 import { useWebsocketStore, resetRecentMessageIds } from '../websocketStore';
 import { useMessageStore } from '@/stores/messageStore';
-import { useContactStore } from '@/stores/contactStore';
-import { useChatStore } from '@/stores/chatStore';
 import { displayMessageNotification } from '@/services/notification/notificationService';
 import { logger } from '@/utils/logger';
 import { shouldScheduleReconnect, shouldQueueIncomingPayload } from '@im/shared-ws-core';
 
 const getMockDisplayNotification = () => displayMessageNotification as jest.Mock;
-
-const makeWsPayload = (type: string, data?: Record<string, unknown>) =>
-  JSON.stringify({ type, data, timestamp: Date.now() });
 
 const makeMessageData = (overrides: Record<string, unknown> = {}) => ({
   id: 'msg_default',
@@ -330,7 +324,6 @@ const makeMessageData = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe('websocketStore', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let originalWebSocket: any;
 
   beforeAll(() => {
@@ -477,7 +470,7 @@ describe('websocketStore', () => {
 
     it('shouldScheduleReconnect returns false for manual disconnect', () => {
       // Verify the shared pure function behavior (W8)
-      const result = (shouldScheduleReconnect as jest.Mock)(
+      (shouldScheduleReconnect as jest.Mock)(
         expect.objectContaining({ manualDisconnect: true }),
       );
       // The mock returns false by default for this test
