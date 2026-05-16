@@ -5,7 +5,7 @@ import {
   __setDbForTests,
   __getInternalStateForTests,
 } from '../messageDatabase';
-import { CURRENT_DB_VERSION, BASE_SCHEMA_VERSION } from '../storageMigrations';
+import { CURRENT_DB_VERSION } from '../storageMigrations';
 import { FakeDbConnection, createFakeDb } from '../__testutils__/fakeDbConnection';
 
 describe('messageDatabase test seam', () => {
@@ -174,10 +174,8 @@ describe('messageDatabase test seam', () => {
 
       const health = messageDatabase.getStorageHealth();
       expect(health.migrationStatus).toBe('success');
-      // FakeDbConnection doesn't support WHERE clauses, so readSchemaVersion
-      // can't read back the written version. The fresh install writes BASE_SCHEMA_VERSION.
-      // In real SQLite, incremental migration would upgrade to CURRENT_DB_VERSION.
-      expect(health.schemaVersion).toBe(BASE_SCHEMA_VERSION);
+      // Fresh install writes CURRENT_DB_VERSION directly (not BASE_SCHEMA_VERSION)
+      expect(health.schemaVersion).toBe(CURRENT_DB_VERSION);
       expect(health.targetSchemaVersion).toBe(CURRENT_DB_VERSION);
       expect(health.lastMigrationError).toBe('');
     });

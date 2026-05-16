@@ -2,7 +2,10 @@
  * SQLite schema migrations for mobile local storage.
  *
  * Version strategy:
- * - BASE_SCHEMA_VERSION (1): the initial CREATE_SCHEMA_SQL that creates all tables from scratch.
+ * - BASE_SCHEMA_VERSION (1): the assumed version for legacy databases that lack a
+ *   schema_version row (pre-migration databases). NOT the version written on fresh install.
+ * - CREATE_SCHEMA_SQL: the full current schema for fresh installs. After executing it,
+ *   schema_version is set to CURRENT_DB_VERSION (not BASE_SCHEMA_VERSION).
  * - MIGRATIONS: incremental SQL statements keyed by target version number.
  * - CURRENT_DB_VERSION: the highest version the code supports.
  *
@@ -13,7 +16,7 @@
  *   4. Never modify existing migration entries — append only.
  */
 
-/** The version that CREATE_SCHEMA_SQL produces (fresh install). */
+/** The assumed version for legacy databases without schema_version tracking. */
 export const BASE_SCHEMA_VERSION = 1;
 
 /** The highest version this code can migrate to. Bump when adding MIGRATIONS entries. */
@@ -21,7 +24,8 @@ export const CURRENT_DB_VERSION = 3;
 
 /**
  * Full schema SQL for fresh installs. Creates all tables and indexes.
- * This is the baseline at version 1.
+ * This represents the CURRENT_DB_VERSION schema — after executing it,
+ * schema_version must be written as CURRENT_DB_VERSION.
  */
 export const CREATE_SCHEMA_SQL = [
   `CREATE TABLE IF NOT EXISTS mobile_meta (

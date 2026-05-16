@@ -8,8 +8,6 @@ import type {
   Message,
   MessageType,
   ChatSessionType,
-  ChatSession,
-  ApiResponse,
 } from '@im/shared-types';
 import type { MobileMessage, PendingMessage, UploadTask } from '@/types/models';
 

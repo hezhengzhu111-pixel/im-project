@@ -171,7 +171,7 @@ describe('uploadTaskRepository with FakeDbConnection', () => {
       expect(result).toBeUndefined();
     });
 
-    it('returns task when multiple exist with same localMessageId', () => {
+    it('returns most recent task when multiple exist with same localMessageId', () => {
       fake.seedTable('mobile_upload_tasks', [
         { taskId: 'task-1', conversationId: 'conv-1', localMessageId: 'msg-1', fileUri: 'file:///test.jpg', fileName: 'test.jpg', mimeType: 'image/jpeg', fileSize: 1024, uploadType: 'IMAGE', status: 'failed', progress: 0, retryCount: 0, createdAt: 1000, updatedAt: 1000, nextRetryAt: null, maxRetryCount: null, checksum: null, remoteFileId: null, lastAttemptAt: null },
         { taskId: 'task-2', conversationId: 'conv-1', localMessageId: 'msg-1', fileUri: 'file:///test.jpg', fileName: 'test.jpg', mimeType: 'image/jpeg', fileSize: 1024, uploadType: 'IMAGE', status: 'pending', progress: 0, retryCount: 0, createdAt: 2000, updatedAt: 2000, nextRetryAt: null, maxRetryCount: null, checksum: null, remoteFileId: null, lastAttemptAt: null },
@@ -180,13 +180,13 @@ describe('uploadTaskRepository with FakeDbConnection', () => {
       const result = uploadTaskRepository.findByLocalMessageId('msg-1');
 
       expect(result).toBeDefined();
-      // FakeDbConnection doesn't support ORDER BY, so we just verify one of them is returned
-      expect(['task-1', 'task-2']).toContain(result!.taskId);
+      // ORDER BY updatedAt DESC → task-2 (updatedAt=2000) should come first
+      expect(result!.taskId).toBe('task-2');
     });
   });
 
   describe('listPending', () => {
-    it('returns tasks with status pending, failed, or uploading', () => {
+    it('returns tasks with status pending, failed, or uploading; excludes uploaded', () => {
       fake.seedTable('mobile_upload_tasks', [
         { taskId: 'task-1', conversationId: 'conv-1', localMessageId: 'msg-1', fileUri: 'file:///test.jpg', fileName: 'test.jpg', mimeType: 'image/jpeg', fileSize: 1024, uploadType: 'IMAGE', status: 'pending', progress: 0, retryCount: 0, createdAt: 1000, updatedAt: 1000, nextRetryAt: null, maxRetryCount: null, checksum: null, remoteFileId: null, lastAttemptAt: null },
         { taskId: 'task-2', conversationId: 'conv-1', localMessageId: 'msg-2', fileUri: 'file:///test.jpg', fileName: 'test.jpg', mimeType: 'image/jpeg', fileSize: 1024, uploadType: 'IMAGE', status: 'failed', progress: 0, retryCount: 1, createdAt: 2000, updatedAt: 2000, nextRetryAt: null, maxRetryCount: null, checksum: null, remoteFileId: null, lastAttemptAt: null },
@@ -196,12 +196,11 @@ describe('uploadTaskRepository with FakeDbConnection', () => {
 
       const pending = uploadTaskRepository.listPending();
 
-      // FakeDbConnection doesn't support WHERE IN clause, so all tasks are returned
-      // The real SQLite would filter by status, but we verify the repository handles the data correctly
-      expect(pending.length).toBeGreaterThanOrEqual(3);
+      expect(pending).toHaveLength(3);
       expect(pending.map((t) => t.taskId)).toContain('task-1');
       expect(pending.map((t) => t.taskId)).toContain('task-2');
       expect(pending.map((t) => t.taskId)).toContain('task-3');
+      expect(pending.map((t) => t.taskId)).not.toContain('task-4');
     });
 
     it('excludes tasks with nextRetryAt in the future', () => {
@@ -213,10 +212,9 @@ describe('uploadTaskRepository with FakeDbConnection', () => {
 
       const pending = uploadTaskRepository.listPending();
 
-      // FakeDbConnection doesn't support WHERE clause filtering
-      // The real SQLite would filter by nextRetryAt, but we verify the data structure is correct
-      expect(pending.length).toBeGreaterThanOrEqual(1);
-      expect(pending.map((t) => t.taskId)).toContain('task-1');
+      expect(pending).toHaveLength(1);
+      expect(pending[0].taskId).toBe('task-1');
+      expect(pending.map((t) => t.taskId)).not.toContain('task-2');
     });
 
     it('includes tasks with nextRetryAt in the past', () => {
@@ -240,11 +238,10 @@ describe('uploadTaskRepository with FakeDbConnection', () => {
 
       const pending = uploadTaskRepository.listPending();
 
-      // FakeDbConnection doesn't support ORDER BY, so we just verify all items are present
       expect(pending).toHaveLength(3);
-      expect(pending.map((t) => t.taskId)).toContain('task-1');
-      expect(pending.map((t) => t.taskId)).toContain('task-2');
-      expect(pending.map((t) => t.taskId)).toContain('task-3');
+      expect(pending[0].taskId).toBe('task-1');
+      expect(pending[1].taskId).toBe('task-2');
+      expect(pending[2].taskId).toBe('task-3');
     });
 
     it('returns empty array when no pending tasks', () => {
@@ -254,9 +251,7 @@ describe('uploadTaskRepository with FakeDbConnection', () => {
 
       const pending = uploadTaskRepository.listPending();
 
-      // FakeDbConnection doesn't support WHERE IN clause, so the task is returned
-      // The real SQLite would filter by status, but we verify the data structure is correct
-      expect(pending.length).toBeGreaterThanOrEqual(0);
+      expect(pending).toHaveLength(0);
     });
   });
 
