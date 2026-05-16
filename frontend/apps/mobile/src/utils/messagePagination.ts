@@ -57,7 +57,20 @@ export const mergePagedMessages = (
   mode: MergeMode,
 ): MobileMessage[] => {
   if (mode === 'replace') {
-    return sortMessages(dedupeList(incoming));
+    // Preserve pending messages (SENDING/FAILED) that exist locally but are
+    // not represented in the incoming server list, so the user never loses
+    // in-flight or failed messages when a full replace refreshes the cache.
+    const pendingMessages = existing.filter(
+      (m) => m.status === 'SENDING' || m.status === 'FAILED',
+    );
+    const dedupedIncoming = dedupeList(incoming);
+    if (pendingMessages.length > 0) {
+      // Use appendNewer merge to dedup pending against incoming (same
+      // clientMessageId will be merged, unmatched pending kept).
+      // pendingMessages as existing so mergePair detects pending→server correctly.
+      return mergePagedMessages(pendingMessages, dedupedIncoming, 'appendNewer');
+    }
+    return sortMessages(dedupedIncoming);
   }
 
   if (incoming.length === 0) {
