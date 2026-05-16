@@ -48,9 +48,9 @@ E4.1 阶段五正式采用 Track A：继续移动端安全降级策略。
 
 E4.2 Track A 的含义是 Mobile 继续 deferred，不做加密发送、不做解密展示、不参与 X3DH/Double Ratchet 协商，但必须持续加固测试、文案、事件处理、pending 阻断和“不明文发送”约束。
 
-E4.3 阶段五不采用 Track B。Mobile 完整 E2EE 需要 crypto polyfill、secure key store、IndexedDB 替代、Ratchet session store 替代和测试门槛，当前仓库尚未具备。
+E4.3 阶段五不允许启动 Track B。基于 `stage-5-mobile-full-e2ee-readiness.md` 与 `stage-5-mobile-track-b-decision.md` 的 2026-05-16 裁决，Mobile 完整 E2EE 的 8 个启动门槛未满足：RN crypto 未验证、私钥安全持久化未设计、Ratchet state 安全持久化未设计、Web/Mobile payload 互通未验证、协商事件语义不完整、Web E2EE 回归风险未被 test vectors 覆盖、测试矩阵不完整、回滚策略缺失。
 
-E4.4 阶段五不采用 Track C 作为当前执行策略。Track C 只作为未来过渡方案定义，不能被 Mimo 擅自启用。
+E4.4 阶段五继续采用 Track A。Track C 只允许作为未来非协议过渡方案定义，不能被 Mimo 擅自启用；任何从 Track A 升级到 Track C 或 Track B 的动作都必须先由 Codex 更新 E4/E6/E7 并出具裁决报告。
 
 ## E5. Track A：继续移动端安全降级策略
 
@@ -70,7 +70,7 @@ E5.5 Track A 下 Mimo 可做的是补测试、补文案、补遮罩、补事件 
 
 ### 规则描述
 
-E6.1 Track B 不是阶段五采用策略，只能由 Codex 在单独安全方案中启动。
+E6.1 Track B 不是阶段五采用策略，当前裁决为“不允许启动”。只有 Codex 在单独安全方案中逐项关闭 E6.2 到 E6.8 的门槛后，才能更新本文档允许 Track B。
 
 E6.2 Track B 必须先确定 React Native crypto 运行时：P-256 ECDH、ECDSA P-256、HKDF、AES-GCM、CSPRNG、constant-time 比较能力和二进制/base64 兼容测试。
 
@@ -80,15 +80,23 @@ E6.4 Track B 必须提供 IndexedDB 替代：Ratchet state、skipped message key
 
 E6.5 Track B 测试门槛至少包括 Web/Mobile X3DH 互通、Double Ratchet 互通、乱序消息、重复消息、counter gap、重启恢复、离线 retry、密钥删除、日志脱敏和真机 Keychain/Keystore 行为。
 
+E6.6 Track B 启动前不得新增 crypto 依赖或 native module。`react-native-quick-crypto`、`react-native-get-random-values`、Buffer polyfill 或自定义 Native Module 只能在 Codex 完成能力验证、真机测试方案和回滚方案后加入。
+
+E6.7 Track B 启动前不得迁移 Web E2EE engine。X3DH、Double Ratchet、media crypto、key-store、session-store 和 manager 继续留在 Web；`@im/shared-e2ee-core` 继续只承载纯 contract/guard。
+
+E6.8 Track B 启动前必须确认后端支持范围，包括 Mobile device bundle 注册、bundle 格式兼容、协商事件 payload 完整性、OPK 生命周期、多设备选择语义和禁用/拒绝/重协商事件的一致性。
+
 ## E7. Track C：混合策略，移动端只支持接收/展示状态，不支持加密发送
 
 ### 规则描述
 
-E7.1 Track C 允许 Mobile 展示 encrypted session 状态、展示协商待处理提示、遮罩 encrypted message，并同步 Web 已建立的会话状态。
+E7.1 Track C 允许 Mobile 展示 encrypted session 状态、展示协商待处理提示、遮罩 encrypted message，并同步 Web 已建立的会话状态。当前阶段未正式切换到 Track C，但 Mimo 可以在 Track A 范围内实现等价的非协议展示和测试任务。
 
 E7.2 Track C 禁止 Mobile 解密消息、加密发送、生成身份密钥、上传 key bundle、接受协商、推进 Ratchet counter 或写入 Ratchet state。
 
 E7.3 Track C 若未来启用，必须先由 Codex 明确事件语义、状态来源、冲突处理和 UX 文案；Mimo 不能把 Track A 的日志忽略行为自行升级为 Track C。
+
+E7.4 在 Track B 未获准前，Mimo 可继续执行的 Mobile E2EE 工作只能是非协议任务：capability/status UI、deferred 文案、encrypted marker normalizer、pending block 测试、WebSocket negotiation deferred 测试、日志脱敏测试和文档补充。
 
 ## E8. 不允许静默降级为明文
 
