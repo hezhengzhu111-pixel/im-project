@@ -12,6 +12,7 @@ import { messageDatabase } from '@/services/storage/messageDatabase';
 import { messageRepository } from '@/services/storage/messageRepository';
 import { notificationEventRepository } from '@/services/storage/notificationEventRepository';
 import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
+import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
 import { logger, redactSensitiveValue } from '@/utils/logger';
 import { getMobileE2eeCapability, type MobileE2eeCapability } from '@/e2ee/e2eeCapability';
 
@@ -22,9 +23,13 @@ export interface DebugDiagnosticsSnapshot {
   currentUserId: string;
   websocketStatus: string;
   reconnectAttempts: number;
+  storageMode: 'unknown' | 'sqlite' | 'memory';
+  persistenceAvailable: boolean;
+  sessionCount: number;
+  messageCount: number;
   pendingCount: number;
-  sqliteMode: 'unknown' | 'sqlite' | 'memory';
-  sqlitePersistenceAvailable: boolean;
+  uploadTaskCount: number;
+  notificationEventCount: number;
   fcmTokenAvailable: boolean;
   e2eeCapability: MobileE2eeCapability;
   lastApiError: DebugErrorRecord | null;
@@ -51,6 +56,15 @@ export const shouldEnableDebugDiagnostics = (options?: {
 };
 
 export const isDebugDiagnosticsEnabled = (): boolean => shouldEnableDebugDiagnostics();
+
+const countTableRows = (tableName: string): number => {
+  if (messageDatabase.isMemoryFallback()) {
+    return messageDatabase.memoryList(tableName).length;
+  }
+  const rows = messageDatabase.query(`SELECT COUNT(*) as cnt FROM ${tableName}`);
+  const first = rows[0];
+  return first ? Number(first.cnt || 0) : 0;
+};
 
 const sanitizeDiagnosticsText = (value: string): string =>
   redactSensitiveValue(value).replace(
@@ -94,9 +108,13 @@ export const debugDiagnosticsService = {
       currentUserId: authState.currentUser?.id || '',
       websocketStatus: websocketState.status,
       reconnectAttempts: websocketState.reconnectAttempts,
+      storageMode: storageHealth.mode as 'unknown' | 'sqlite' | 'memory',
+      persistenceAvailable: storageHealth.persistenceAvailable,
+      sessionCount: countTableRows('mobile_sessions'),
+      messageCount: countTableRows('mobile_messages'),
       pendingCount: pendingMessageRepository.countAll(),
-      sqliteMode: storageHealth.mode as 'unknown' | 'sqlite' | 'memory',
-      sqlitePersistenceAvailable: storageHealth.persistenceAvailable,
+      uploadTaskCount: uploadTaskRepository.listPending().length,
+      notificationEventCount: countTableRows('mobile_notification_events'),
       fcmTokenAvailable: Boolean(notificationState.fcmToken || kvStorage.getString('im.mobile.fcm-token')),
       e2eeCapability: getMobileE2eeCapability(),
       lastApiError: sanitizeError(debugTelemetry.getLastApiError()),

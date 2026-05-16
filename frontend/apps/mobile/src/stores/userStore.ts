@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { userService } from '@/services/user/userService';
+import { kvStorage } from '@/services/storage/kvStorage';
+import { STORAGE_KEYS } from '@/constants/config';
 import { useAuthStore } from './authStore';
 import type { User } from '@im/shared-types';
 
@@ -17,6 +19,7 @@ export const useUserStore = create<UserState>((set) => ({
     try {
       const response = await userService.updateProfile(data);
       useAuthStore.setState({ currentUser: response.data });
+      kvStorage.setJson(STORAGE_KEYS.userSnapshot, response.data);
       set({ profile: response.data });
     } finally {
       set({ loading: false });

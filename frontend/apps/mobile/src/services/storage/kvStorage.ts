@@ -68,6 +68,11 @@ export const kvStorage = {
     storage()?.remove(key);
   },
 
+  /**
+   * 清理易失性缓存键（当前未被任何清理流程调用，仅供手动清理）。
+   * 会清：currentSessionId、drafts、wsCache、fcmToken、lastSyncAt。
+   * 不会清：userSnapshot、pushSettings。
+   */
   clearVolatileCache(): void {
     [
       STORAGE_KEYS.currentSessionId,
@@ -78,6 +83,12 @@ export const kvStorage = {
     ].forEach((key) => this.remove(key));
   },
 
+  /**
+   * 清理会话作用域的 kvStorage 键。
+   * 会清：userSnapshot、pushSettings、currentSessionId、drafts、wsCache、lastSyncAt。
+   * 可选清：fcmToken（默认保留）。
+   * 不会清：accessToken（在 secureStorage 中）、应用设置。
+   */
   clearSessionScope(options?: { preserveFcmToken?: boolean }): void {
     const preserveFcmToken = options?.preserveFcmToken !== false;
     [

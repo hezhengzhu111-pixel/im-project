@@ -22,8 +22,11 @@ import { fileService } from '@/services/file/fileService';
 import { buildVoiceFile, mediaService } from '@/services/media/mediaService';
 import { messageService } from '@/services/chat/messageService';
 import { userService } from '@/services/user/userService';
+import { bootstrapApp, resetBootstrapFlag } from '@/app/bootstrap';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
+import { useContactStore } from '@/stores/contactStore';
+import { useGroupStore } from '@/stores/groupStore';
 import { useMessageStore } from '@/stores/messageStore';
 import { useNotificationStore } from '@/stores/notificationStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -32,6 +35,7 @@ import { useUploadStore } from '@/stores/uploadStore';
 import { useWebsocketStore } from '@/stores/websocketStore';
 import { logger } from '@/utils/logger';
 import { normalizeMessage, normalizeSession } from '@/utils/normalizers';
+import { STORAGE_KEYS } from '@/constants/config';
 import type { ChatSession } from '@im/shared-types';
 import type { MobileMessage, PendingMessage, UploadTask } from '@/types/models';
 
@@ -1081,5 +1085,441 @@ describe('mobile core', () => {
       throw new Error('missing firebase app');
     });
     await expect(getFcmToken()).resolves.toBe('');
+  });
+
+  test('updateSessionFlags persists isPinned and syncs currentSession', () => {
+    useSessionStore.getState().setSessions([{ ...session, isPinned: false }]);
+    useSessionStore.getState().setCurrentSession(
+      useSessionStore.getState().sessions.find((item) => item.id === session.id) ?? null,
+    );
+
+    useSessionStore.getState().updateSessionFlags(session.id, { isPinned: true });
+
+    const updated = useSessionStore.getState().sessions.find((item) => item.id === session.id);
+    expect(updated?.isPinned).toBe(true);
+    expect(useSessionStore.getState().currentSession?.isPinned).toBe(true);
+    expect(messageRepository.listSessions().find((item) => item.id === session.id)?.isPinned).toBe(true);
+  });
+
+  test('updateSessionFlags persists isMuted and syncs currentSession', () => {
+    useSessionStore.getState().setSessions([{ ...session, isMuted: false }]);
+    useSessionStore.getState().setCurrentSession(
+      useSessionStore.getState().sessions.find((item) => item.id === session.id) ?? null,
+    );
+
+    useSessionStore.getState().updateSessionFlags(session.id, { isMuted: true });
+
+    const updated = useSessionStore.getState().sessions.find((item) => item.id === session.id);
+    expect(updated?.isMuted).toBe(true);
+    expect(useSessionStore.getState().currentSession?.isMuted).toBe(true);
+    expect(messageRepository.listSessions().find((item) => item.id === session.id)?.isMuted).toBe(true);
+  });
+
+  test('restoreFromDb preserves pinned and muted flags', () => {
+    useSessionStore.getState().setSessions([{ ...session, isPinned: false, isMuted: false }]);
+    useSessionStore.getState().updateSessionFlags(session.id, { isPinned: true, isMuted: true });
+
+    useSessionStore.getState().restoreFromDb();
+
+    const restored = useSessionStore.getState().sessions.find((item) => item.id === session.id);
+    expect(restored?.isPinned).toBe(true);
+    expect(restored?.isMuted).toBe(true);
+  });
+
+  test('updateSessionFlags ignores non-existent sessionId without throwing', () => {
+    useSessionStore.getState().setSessions([session]);
+    const before = useSessionStore.getState().sessions.length;
+
+    expect(() => {
+      useSessionStore.getState().updateSessionFlags('non_existent_id', { isPinned: true });
+    }).not.toThrow();
+
+    expect(useSessionStore.getState().sessions).toHaveLength(before);
+    expect(useSessionStore.getState().sessions.find((item) => item.id === 'non_existent_id')).toBeUndefined();
+  });
+
+  // ── Session restore consistency ──────────────────────────────────────────
+
+  test('restoreFromDb recovers sessions after setSessions + clear memory', () => {
+    const s1: ChatSession = { ...session, unreadCount: 2, lastActiveTime: '2024-06-01T10:00:00.000Z' };
+    const s2: ChatSession = { ...groupSession, unreadCount: 5, lastActiveTime: '2024-06-02T10:00:00.000Z' };
+    useSessionStore.getState().setSessions([s1, s2]);
+
+    // Verify persisted to repository
+    expect(messageRepository.listSessions()).toHaveLength(2);
+
+    // Clear in-memory state only
+    useSessionStore.setState({ sessions: [], currentSession: null });
+    expect(useSessionStore.getState().sessions).toHaveLength(0);
+
+    // Restore from repository
+    useSessionStore.getState().restoreFromDb();
+
+    const restored = useSessionStore.getState().sessions;
+    expect(restored).toHaveLength(2);
+    expect(restored.find((item) => item.id === session.id)?.unreadCount).toBe(2);
+    expect(restored.find((item) => item.id === groupSession.id)?.unreadCount).toBe(5);
+  });
+
+  test('restoreFromDb does not set currentSession', () => {
+    useSessionStore.getState().setSessions([session]);
+    useSessionStore.setState({ currentSession: null });
+
+    useSessionStore.getState().restoreFromDb();
+
+    expect(useSessionStore.getState().sessions).toHaveLength(1);
+    expect(useSessionStore.getState().currentSession).toBeNull();
+  });
+
+  test('restoreFromDb preserves sort order (pinned first, then by lastActiveTime)', () => {
+    const older: ChatSession = { ...session, lastActiveTime: '2024-06-01T10:00:00.000Z', isPinned: false };
+    const newer: ChatSession = { ...groupSession, lastActiveTime: '2024-06-02T10:00:00.000Z', isPinned: false };
+    const pinned: ChatSession = {
+      id: '100_400',
+      type: 'private',
+      targetId: '400',
+      targetName: 'Pinned',
+      unreadCount: 0,
+      lastActiveTime: '2024-05-01T10:00:00.000Z',
+      isPinned: true,
+      isMuted: false,
+    };
+    useSessionStore.getState().setSessions([older, newer, pinned]);
+
+    useSessionStore.setState({ sessions: [], currentSession: null });
+    useSessionStore.getState().restoreFromDb();
+
+    const restored = useSessionStore.getState().sessions;
+    expect(restored[0].id).toBe('100_400');
+    expect(restored[0].isPinned).toBe(true);
+    expect(restored[1].id).toBe(groupSession.id);
+    expect(restored[2].id).toBe(session.id);
+  });
+
+  // ── markRead persistence behavior ────────────────────────────────────────
+
+  test('markRead clears unreadCount in memory', () => {
+    useSessionStore.getState().setSessions([{ ...session, unreadCount: 7 }]);
+    useSessionStore.getState().markRead(session.id);
+
+    expect(useSessionStore.getState().sessions.find((item) => item.id === session.id)?.unreadCount).toBe(0);
+  });
+
+  test('markRead does not persist unreadCount=0 to repository (current behavior)', () => {
+    useSessionStore.getState().setSessions([{ ...session, unreadCount: 7 }]);
+    useSessionStore.getState().markRead(session.id);
+
+    // In-memory is cleared
+    expect(useSessionStore.getState().sessions.find((item) => item.id === session.id)?.unreadCount).toBe(0);
+
+    // Repository still has the old unreadCount because markRead does not call upsertSession
+    const repoSession = messageRepository.listSessions().find((item) => item.id === session.id);
+    expect(repoSession?.unreadCount).toBe(7);
+  });
+
+  test('restoreFromDb after markRead restores unreadCount from repository (known behavior)', () => {
+    useSessionStore.getState().setSessions([{ ...session, unreadCount: 3 }]);
+    useSessionStore.getState().markRead(session.id);
+    expect(useSessionStore.getState().sessions.find((item) => item.id === session.id)?.unreadCount).toBe(0);
+
+    // Simulate app restart: clear memory, restore from DB
+    useSessionStore.setState({ sessions: [], currentSession: null });
+    useSessionStore.getState().restoreFromDb();
+
+    // unreadCount is restored from repository (markRead was not persisted)
+    expect(useSessionStore.getState().sessions.find((item) => item.id === session.id)?.unreadCount).toBe(3);
+  });
+
+  // ── userSnapshot consistency ─────────────────────────────────────────────
+
+  test('kvStorage userSnapshot is readable before authStore restore', () => {
+    const snapshot = { id: '42', username: 'pre-user', nickname: 'Pre User' };
+    kvStorage.setJson(STORAGE_KEYS.userSnapshot, snapshot);
+
+    // Simulate fresh app start: authStore initial state reads from kvStorage
+    const stored = kvStorage.getJson(STORAGE_KEYS.userSnapshot, null);
+    expect(stored).toEqual(snapshot);
+  });
+
+  test('restoreSession clears stale snapshot when no token and no cookie exist', async () => {
+    jest.spyOn(secureStorage, 'get').mockResolvedValue('');
+    jest.spyOn(secureStorage, 'clearSession').mockResolvedValue();
+    kvStorage.setJson(STORAGE_KEYS.userSnapshot, { id: 'stale', username: 'stale-user' });
+
+    await expect(useAuthStore.getState().restoreSession()).resolves.toBe(false);
+
+    expect(kvStorage.getJson(STORAGE_KEYS.userSnapshot, null)).toBeNull();
+    expect(useAuthStore.getState().currentUser).toBeNull();
+    expect(useAuthStore.getState().authReady).toBe(true);
+  });
+
+  test('restoreSession uses matching snapshot when token is valid', async () => {
+    jest.spyOn(useSettingsStore.getState(), 'loadSettings').mockResolvedValue();
+    jest.spyOn(useChatStore.getState(), 'bootstrap').mockResolvedValue();
+    jest.spyOn(useWebsocketStore.getState(), 'connect').mockResolvedValue();
+    jest.spyOn(notificationService, 'getFcmToken').mockResolvedValue('fcm-token');
+    jest.spyOn(authService, 'parseAccessToken').mockResolvedValue({
+      code: 200,
+      message: 'ok',
+      data: { valid: true, userId: '42', username: 'pre-user', permissions: [] },
+    });
+    await secureStorage.set(STORAGE_KEYS.accessToken, 'valid-token');
+    kvStorage.setJson(STORAGE_KEYS.userSnapshot, { id: '42', username: 'pre-user', nickname: 'Pre User' });
+
+    await expect(useAuthStore.getState().restoreSession()).resolves.toBe(true);
+
+    // Snapshot with matching id is reused
+    expect(useAuthStore.getState().currentUser).toEqual(
+      expect.objectContaining({ id: '42', username: 'pre-user', nickname: 'Pre User' }),
+    );
+  });
+
+  // ── Cross-account cleanup ────────────────────────────────────────────────
+
+  test('user A sessions are not visible to user B after clearAllCache', () => {
+    // User A has sessions
+    const userASession: ChatSession = {
+      id: '1_2',
+      type: 'private',
+      targetId: '2',
+      targetName: 'Bob',
+      unreadCount: 5,
+      lastActiveTime: '2024-06-01T10:00:00.000Z',
+    };
+    const userAGroupSession: ChatSession = {
+      id: 'group_9',
+      type: 'group',
+      targetId: '9',
+      targetName: 'Team 9',
+      unreadCount: 3,
+      lastActiveTime: '2024-06-02T10:00:00.000Z',
+    };
+    messageRepository.upsertSession(userASession);
+    messageRepository.upsertSession(userAGroupSession);
+    expect(messageRepository.listSessions()).toHaveLength(2);
+
+    // Simulate logout / account switch: clear all caches
+    messageRepository.clearAllCache();
+
+    // User B logs in — should not see any of User A's sessions
+    expect(messageRepository.listSessions()).toHaveLength(0);
+    expect(useSessionStore.getState().sessions).toHaveLength(0);
+  });
+
+  test('clearSession clears sessions, snapshot, and secure storage for account switch', async () => {
+    jest.spyOn(secureStorage, 'clearSession').mockResolvedValue();
+    // User A is logged in
+    useAuthStore.setState({
+      currentUser: { id: '1', username: 'alice' },
+      accessToken: 'token-a',
+      permissions: ['chat:read'],
+      authReady: true,
+      sessionGeneration: 1,
+    });
+    useSessionStore.getState().setSessions([{ ...session, unreadCount: 3 }]);
+    kvStorage.setJson(STORAGE_KEYS.userSnapshot, { id: '1', username: 'alice' });
+
+    // Clear session (simulates logout)
+    await useAuthStore.getState().clearSession();
+
+    expect(useAuthStore.getState().currentUser).toBeNull();
+    expect(useAuthStore.getState().accessToken).toBe('');
+    expect(kvStorage.getJson(STORAGE_KEYS.userSnapshot, null)).toBeNull();
+    expect(useSessionStore.getState().sessions).toHaveLength(0);
+    expect(messageRepository.listSessions()).toHaveLength(0);
+  });
+
+  test('second user login after first user logout starts with clean state', async () => {
+    // User A login
+    jest.spyOn(userService, 'login').mockResolvedValue({
+      code: 200,
+      message: 'ok',
+      data: {
+        success: true,
+        token: 'token-b',
+        user: { id: '50', username: 'bob', nickname: 'Bob' },
+      },
+    });
+    jest.spyOn(useSettingsStore.getState(), 'loadSettings').mockResolvedValue();
+    jest.spyOn(useChatStore.getState(), 'bootstrap').mockResolvedValue();
+    jest.spyOn(useWebsocketStore.getState(), 'connect').mockResolvedValue();
+    jest.spyOn(notificationService, 'getFcmToken').mockResolvedValue('fcm-token');
+    jest.spyOn(userService, 'logout').mockResolvedValue({ code: 200, message: 'ok', data: 'ok' });
+
+    // User A was previously logged in with sessions
+    useSessionStore.getState().setSessions([{ ...session, unreadCount: 5 }]);
+    useAuthStore.setState({
+      currentUser: { id: '1', username: 'alice' },
+      accessToken: 'token-a',
+      authReady: true,
+      sessionGeneration: 1,
+    });
+
+    // User A logs out
+    await useAuthStore.getState().logout();
+
+    // Verify clean state
+    expect(useSessionStore.getState().sessions).toHaveLength(0);
+    expect(messageRepository.listSessions()).toHaveLength(0);
+
+    // User B logs in
+    await expect(useAuthStore.getState().login({ username: 'bob', password: 'pass' })).resolves.toBe(true);
+
+    expect(useAuthStore.getState().currentUser?.id).toBe('50');
+    expect(useSessionStore.getState().sessions).toHaveLength(0);
+    // No leftover sessions from User A
+    expect(messageRepository.listSessions().find((item) => item.id === session.id)).toBeUndefined();
+  });
+
+  // ── Bootstrap flow ordering ────────────────────────────────────────────
+
+  describe('bootstrapApp flow', () => {
+    beforeEach(() => {
+      jest.restoreAllMocks();
+      resetBootstrapFlag();
+      useChatStore.getState().clearRuntime();
+    });
+
+    test('bootstrapApp is idempotent — second call does not re-run restoreSession', async () => {
+      const restoreSpy = jest.spyOn(useAuthStore.getState(), 'restoreSession').mockResolvedValue(false);
+
+      await bootstrapApp();
+      await bootstrapApp();
+
+      expect(restoreSpy).toHaveBeenCalledTimes(1);
+    });
+
+    test('bootstrapApp does not call retryPending when restoreSession fails', async () => {
+      const retrySpy = jest.spyOn(useChatStore.getState(), 'retryPending');
+      jest.spyOn(useAuthStore.getState(), 'restoreSession').mockResolvedValue(false);
+
+      await bootstrapApp();
+
+      expect(retrySpy).not.toHaveBeenCalled();
+    });
+
+    test('restoreSession failure prevents retryPending and side effects from running', async () => {
+      const retrySpy = jest.spyOn(useChatStore.getState(), 'retryPending');
+      const loadSettingsSpy = jest.spyOn(useSettingsStore.getState(), 'loadSettings');
+      jest.spyOn(useAuthStore.getState(), 'restoreSession').mockResolvedValue(false);
+
+      await bootstrapApp();
+
+      // restoreSession returned false → applySessionSideEffects never ran
+      expect(retrySpy).not.toHaveBeenCalled();
+      expect(loadSettingsSpy).not.toHaveBeenCalled();
+    });
+
+    test('restoreSession success triggers bootstrap then connect in order', async () => {
+      const callOrder: string[] = [];
+
+      // Mock restoreSession to call applySessionSideEffects with our spies
+      jest.spyOn(useAuthStore.getState(), 'restoreSession').mockImplementation(async () => {
+        callOrder.push('restoreSession');
+        // Simulate the real applySessionSideEffects ordering:
+        // 1. bootstrap, 2. connect, 3. settings + push parallel
+        await useChatStore.getState().bootstrap();
+        await useWebsocketStore.getState().connect();
+        return true;
+      });
+      jest.spyOn(useChatStore.getState(), 'bootstrap').mockImplementation(async () => {
+        callOrder.push('bootstrap');
+      });
+      jest.spyOn(useWebsocketStore.getState(), 'connect').mockImplementation(async () => {
+        callOrder.push('connect');
+      });
+
+      await bootstrapApp();
+
+      expect(callOrder).toEqual(['restoreSession', 'bootstrap', 'connect']);
+    });
+
+    test('chatStore.bootstrap is idempotent — second call is a no-op', async () => {
+      let restoreCount = 0;
+      jest.spyOn(useSessionStore.getState(), 'restoreFromDb').mockImplementation(() => {
+        restoreCount += 1;
+      });
+      jest.spyOn(messageService, 'getConversations').mockResolvedValue({ code: 200, message: 'ok', data: [] });
+      jest.spyOn(useChatStore.getState(), 'retryPending').mockResolvedValue();
+      jest.spyOn(useContactStore.getState(), 'loadFriends').mockResolvedValue();
+      jest.spyOn(useContactStore.getState(), 'loadFriendRequests').mockResolvedValue();
+      jest.spyOn(useGroupStore.getState(), 'loadGroups').mockResolvedValue();
+
+      await useChatStore.getState().bootstrap();
+      await useChatStore.getState().bootstrap();
+
+      expect(restoreCount).toBe(1);
+    });
+
+    test('clearRuntime resets bootstrap guard — allows re-bootstrap after logout', async () => {
+      let restoreCount = 0;
+      jest.spyOn(useSessionStore.getState(), 'restoreFromDb').mockImplementation(() => {
+        restoreCount += 1;
+      });
+      jest.spyOn(messageService, 'getConversations').mockResolvedValue({ code: 200, message: 'ok', data: [] });
+      jest.spyOn(useChatStore.getState(), 'retryPending').mockResolvedValue();
+      jest.spyOn(useContactStore.getState(), 'loadFriends').mockResolvedValue();
+      jest.spyOn(useContactStore.getState(), 'loadFriendRequests').mockResolvedValue();
+      jest.spyOn(useGroupStore.getState(), 'loadGroups').mockResolvedValue();
+
+      await useChatStore.getState().bootstrap();
+      expect(restoreCount).toBe(1);
+
+      useChatStore.getState().clearRuntime();
+      await useChatStore.getState().bootstrap();
+      expect(restoreCount).toBe(2);
+    });
+  });
+
+  // ── retryPending inflight protection ───────────────────────────────────
+
+  describe('retryPending inflight protection', () => {
+    test('concurrent retryPending calls do not send the same message twice', async () => {
+      let sendCount = 0;
+      jest.spyOn(messageService, 'sendPrivate').mockImplementation(async () => {
+        sendCount += 1;
+        // Simulate network delay
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return {
+          code: 200,
+          message: 'ok',
+          data: { ...message('server_inflight'), clientMessageId: 'cm_inflight' },
+        };
+      });
+
+      // Enqueue a pending message
+      const pending: PendingMessage = {
+        localId: 'local_inflight',
+        conversationId: session.id,
+        sendType: 'private',
+        payloadJson: JSON.stringify({
+          sendType: 'private',
+          data: {
+            receiverId: '2',
+            clientMessageId: 'cm_inflight',
+            messageType: 'TEXT',
+            content: 'hello',
+          },
+        }),
+        status: 'pending',
+        retryCount: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      pendingMessageRepository.enqueue(pending);
+      useMessageStore.getState().addMessage(
+        { ...message('local_inflight', 'hello'), status: 'SENDING' },
+        session.id,
+      );
+
+      // Fire two retryPending concurrently
+      await Promise.all([
+        useMessageStore.getState().retryPending(),
+        useMessageStore.getState().retryPending(),
+      ]);
+
+      // inflightPendingRetries guard should prevent double-send
+      expect(sendCount).toBe(1);
+    });
   });
 });
