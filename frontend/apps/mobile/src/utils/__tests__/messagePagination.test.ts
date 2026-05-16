@@ -424,4 +424,107 @@ describe('messagePagination', () => {
       expect(result.map((m) => m.id)).toEqual(['a', 'b', 'c']);
     });
   });
+
+  // ─── message merge integration tests ─────────────────────────────────
+  describe('message merge integration tests', () => {
+    it('local pending + server history same clientMessageId merge into one', () => {
+      const existing = [
+        msg('local_1', '2024-06-01T10:00:00.000Z', {
+          status: 'SENDING',
+          clientMessageId: 'cm_1',
+          content: 'hello',
+        }),
+      ];
+      const incoming = [
+        msg('srv_1', '2024-06-01T10:00:01.000Z', {
+          status: 'SENT',
+          clientMessageId: 'cm_1',
+          content: 'hello',
+          serverId: 'srv_1',
+        }),
+      ];
+      const result = mergePagedMessages(existing, incoming, 'appendNewer');
+      expect(result).toHaveLength(1);
+      expect(result[0].clientMessageId).toBe('cm_1');
+      expect(result[0].status).toBe('SENT');
+    });
+
+    it('loadOlder does not delete current newest messages', () => {
+      const existing = [
+        msg('msg_1', '2024-06-01T10:00:00.000Z'),
+        msg('msg_2', '2024-06-01T10:00:01.000Z'),
+        msg('msg_3', '2024-06-01T10:00:02.000Z'),
+      ];
+      const older = [
+        msg('old_1', '2024-05-31T10:00:00.000Z'),
+        msg('old_2', '2024-05-31T10:00:01.000Z'),
+      ];
+      const result = mergePagedMessages(existing, older, 'prependOlder');
+      expect(result).toHaveLength(5);
+      expect(result[3].id).toBe('msg_2');
+      expect(result[4].id).toBe('msg_3');
+    });
+
+    it('refreshLatest does not delete history messages', () => {
+      const existing = [
+        msg('msg_1', '2024-06-01T10:00:00.000Z'),
+        msg('msg_2', '2024-06-01T10:00:01.000Z'),
+      ];
+      const newer = [msg('new_1', '2024-06-01T10:00:02.000Z')];
+      const result = mergePagedMessages(existing, newer, 'appendNewer');
+      expect(result).toHaveLength(3);
+      expect(result[0].id).toBe('msg_1');
+      expect(result[1].id).toBe('msg_2');
+      expect(result[2].id).toBe('new_1');
+    });
+
+    it('failed local message not deleted by unrelated history', () => {
+      const existing = [
+        msg('local_failed', '2024-06-01T10:00:00.000Z', {
+          status: 'FAILED',
+          clientMessageId: 'cm_failed',
+        }),
+      ];
+      const incoming = [
+        msg('srv_other', '2024-06-01T10:00:01.000Z', {
+          status: 'SENT',
+          clientMessageId: 'cm_other',
+        }),
+      ];
+      const result = mergePagedMessages(existing, incoming, 'appendNewer');
+      expect(result).toHaveLength(2);
+      const failed = result.find((m) => m.id === 'local_failed');
+      expect(failed).toBeDefined();
+      expect(failed?.status).toBe('FAILED');
+    });
+
+    it('merge result sorted by sendTime ASC', () => {
+      const existing = [
+        msg('msg_3', '2024-06-01T10:00:02.000Z'),
+        msg('msg_1', '2024-06-01T10:00:00.000Z'),
+      ];
+      const incoming = [msg('msg_2', '2024-06-01T10:00:01.000Z')];
+      const result = mergePagedMessages(existing, incoming, 'appendNewer');
+      expect(result).toHaveLength(3);
+      expect(result[0].id).toBe('msg_1');
+      expect(result[1].id).toBe('msg_2');
+      expect(result[2].id).toBe('msg_3');
+    });
+
+    it('no duplicate clientMessageId in repository', () => {
+      const messages = [
+        msg('local_1', '2024-06-01T10:00:00.000Z', {
+          clientMessageId: 'cm_1',
+          status: 'SENDING',
+        }),
+        msg('srv_1', '2024-06-01T10:00:01.000Z', {
+          clientMessageId: 'cm_1',
+          status: 'SENT',
+        }),
+      ];
+      const result = mergePagedMessages([], messages, 'replace');
+      const cm1Messages = result.filter((m) => m.clientMessageId === 'cm_1');
+      expect(cm1Messages).toHaveLength(1);
+    });
+  });
 });
