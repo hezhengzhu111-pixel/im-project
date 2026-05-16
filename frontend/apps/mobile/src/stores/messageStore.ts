@@ -10,6 +10,7 @@ import { pendingMessageRepository } from '@/services/storage/pendingMessageRepos
 import { uploadService } from '@/services/upload/uploadService';
 import { logger } from '@/utils/logger';
 import { createClientMessageId, createLocalMessageId } from '@/utils/ids';
+import { createInitialPaginationState, getMessageCursor, mergePagedMessages } from '@/utils/messagePagination';
 import { useAuthStore } from './authStore';
 import { useSessionStore } from './sessionStore';
 import type { ChatSession, MessageType } from '@im/shared-types';
@@ -40,12 +41,18 @@ const updateLocalMessage = (
   return { nextList, updated };
 };
 
+const PAGE_SIZE = 50;
+
 interface MessageState {
   messagesBySession: Record<string, MobileMessage[]>;
   messagesPaginationBySession: Record<string, MessagePaginationState>;
   loading: boolean;
   searchResults: MobileMessage[];
   loadMessages: (session: ChatSession, refresh?: boolean) => Promise<void>;
+  loadInitialMessages: (session: ChatSession) => Promise<void>;
+  loadOlderMessages: (session: ChatSession) => Promise<void>;
+  refreshLatestMessages: (session: ChatSession) => Promise<void>;
+  resetMessagePagination: (sessionId?: string) => void;
   addMessage: (message: MobileMessage, sessionId?: string) => void;
   sendText: (session: ChatSession, content: string) => Promise<void>;
   sendMedia: (session: ChatSession, file: MobileFile, type: MessageType) => Promise<void>;
@@ -140,22 +147,229 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   searchResults: [],
 
   async loadMessages(session, refresh = false) {
-    set({ loading: true });
-    try {
-      const cached = refresh ? [] : messageRepository.listMessages(session.id, 50);
-      if (cached.length > 0) {
-        const safeCached = cached.map(maskEncryptedMessage);
-        set({ messagesBySession: { ...get().messagesBySession, [session.id]: safeCached } });
+    if (refresh) {
+      const pagination = get().messagesPaginationBySession[session.id];
+      if (pagination?.initialized) {
+        return get().refreshLatestMessages(session);
       }
+    }
+    return get().loadInitialMessages(session);
+  },
+
+  async loadInitialMessages(session) {
+    const sid = session.id;
+    set((s) => ({
+      loading: true,
+      messagesPaginationBySession: {
+        ...s.messagesPaginationBySession,
+        [sid]: { ...createInitialPaginationState(), loadingInitial: true },
+      },
+    }));
+
+    let localMessages: MobileMessage[] = [];
+    try {
+      const localPage = messageRepository.listMessagesPage(sid, { limit: PAGE_SIZE });
+      localMessages = localPage.messages.map(maskEncryptedMessage);
+      if (localMessages.length > 0) {
+        set((s) => ({
+          messagesBySession: { ...s.messagesBySession, [sid]: localMessages },
+        }));
+      }
+    } catch {
+      // local read failure is non-fatal, continue to remote
+    }
+
+    try {
       const response =
         session.type === 'group'
-          ? await messageService.getGroupHistory(session.targetId, { size: 50 })
-          : await messageService.getPrivateHistory(session.targetId, { size: 50 });
-      const safeMessages = response.data.map(maskEncryptedMessage);
-      messageRepository.upsertMessages(session.id, safeMessages);
-      set({ messagesBySession: { ...get().messagesBySession, [session.id]: safeMessages } });
+          ? await messageService.getGroupHistory(session.targetId, { size: PAGE_SIZE })
+          : await messageService.getPrivateHistory(session.targetId, { size: PAGE_SIZE });
+      const remoteMessages = response.data.map(maskEncryptedMessage);
+      const merged = mergePagedMessages(localMessages, remoteMessages, 'replace');
+      messageRepository.upsertMessages(sid, merged);
+      const cursor = getMessageCursor(merged);
+      set((s) => ({
+        messagesBySession: { ...s.messagesBySession, [sid]: merged },
+        messagesPaginationBySession: {
+          ...s.messagesPaginationBySession,
+          [sid]: {
+            loadingInitial: false,
+            loadingOlder: false,
+            refreshingLatest: false,
+            hasMoreBefore: merged.length >= PAGE_SIZE,
+            hasMoreAfter: false,
+            initialized: true,
+            ...cursor,
+          },
+        },
+      }));
+    } catch (error) {
+      set((s) => ({
+        messagesPaginationBySession: {
+          ...s.messagesPaginationBySession,
+          [sid]: {
+            ...(s.messagesPaginationBySession[sid] || createInitialPaginationState()),
+            loadingInitial: false,
+            lastError: error instanceof Error ? error.message : 'load failed',
+            initialized: localMessages.length > 0,
+          },
+        },
+      }));
     } finally {
       set({ loading: false });
+    }
+  },
+
+  async loadOlderMessages(session) {
+    const sid = session.id;
+    const pagination = get().messagesPaginationBySession[sid];
+    if (pagination?.loadingOlder) return;
+    if (pagination && !pagination.hasMoreBefore) return;
+
+    const currentMessages = get().messagesBySession[sid] || [];
+    if (currentMessages.length === 0) return;
+
+    const oldest = currentMessages[0];
+    const beforeTime = oldest.sendTime;
+    const beforeId = oldest.id || oldest.serverId || oldest.messageId;
+
+    set((s) => ({
+      messagesPaginationBySession: {
+        ...s.messagesPaginationBySession,
+        [sid]: { ...(s.messagesPaginationBySession[sid] || createInitialPaginationState()), loadingOlder: true },
+      },
+    }));
+
+    let localOlder: MobileMessage[] = [];
+    try {
+      const localPage = messageRepository.listMessagesPage(sid, {
+        limit: PAGE_SIZE,
+        beforeTime,
+        beforeId,
+      });
+      localOlder = localPage.messages.map(maskEncryptedMessage);
+      if (localOlder.length > 0) {
+        const merged = mergePagedMessages(currentMessages, localOlder, 'prependOlder');
+        set((s) => ({ messagesBySession: { ...s.messagesBySession, [sid]: merged } }));
+      }
+    } catch {
+      // non-fatal
+    }
+
+    try {
+      const response =
+        session.type === 'group'
+          ? await messageService.getGroupHistory(session.targetId, {
+              size: PAGE_SIZE,
+              beforeTime,
+              beforeId,
+              direction: 'older',
+            })
+          : await messageService.getPrivateHistory(session.targetId, {
+              size: PAGE_SIZE,
+              beforeTime,
+              beforeId,
+              direction: 'older',
+            });
+      const remoteOlder = response.data.map(maskEncryptedMessage);
+      const baseForMerge = get().messagesBySession[sid] || currentMessages;
+      const merged = mergePagedMessages(baseForMerge, remoteOlder, 'prependOlder');
+      messageRepository.upsertMessages(sid, merged);
+      const cursor = getMessageCursor(merged);
+      set((s) => ({
+        messagesBySession: { ...s.messagesBySession, [sid]: merged },
+        messagesPaginationBySession: {
+          ...s.messagesPaginationBySession,
+          [sid]: {
+            ...(s.messagesPaginationBySession[sid] || createInitialPaginationState()),
+            loadingOlder: false,
+            hasMoreBefore: remoteOlder.length >= PAGE_SIZE,
+            ...cursor,
+          },
+        },
+      }));
+    } catch (error) {
+      set((s) => ({
+        messagesPaginationBySession: {
+          ...s.messagesPaginationBySession,
+          [sid]: {
+            ...(s.messagesPaginationBySession[sid] || createInitialPaginationState()),
+            loadingOlder: false,
+            lastError: error instanceof Error ? error.message : 'load older failed',
+          },
+        },
+      }));
+    }
+  },
+
+  async refreshLatestMessages(session) {
+    const sid = session.id;
+    const currentMessages = get().messagesBySession[sid] || [];
+    const newest = currentMessages[currentMessages.length - 1];
+    const afterTime = newest?.sendTime;
+    const afterId = newest?.id || newest?.serverId || newest?.messageId;
+
+    set((s) => ({
+      messagesPaginationBySession: {
+        ...s.messagesPaginationBySession,
+        [sid]: { ...(s.messagesPaginationBySession[sid] || createInitialPaginationState()), refreshingLatest: true },
+      },
+    }));
+
+    try {
+      const response =
+        session.type === 'group'
+          ? await messageService.getGroupHistory(session.targetId, {
+              size: PAGE_SIZE,
+              afterTime,
+              afterId,
+              direction: 'newer',
+            })
+          : await messageService.getPrivateHistory(session.targetId, {
+              size: PAGE_SIZE,
+              afterTime,
+              afterId,
+              direction: 'newer',
+            });
+      const remoteNewer = response.data.map(maskEncryptedMessage);
+      const merged = mergePagedMessages(currentMessages, remoteNewer, 'appendNewer');
+      messageRepository.upsertMessages(sid, merged);
+      const cursor = getMessageCursor(merged);
+      set((s) => ({
+        messagesBySession: { ...s.messagesBySession, [sid]: merged },
+        messagesPaginationBySession: {
+          ...s.messagesPaginationBySession,
+          [sid]: {
+            ...(s.messagesPaginationBySession[sid] || createInitialPaginationState()),
+            refreshingLatest: false,
+            initialized: true,
+            ...cursor,
+          },
+        },
+      }));
+    } catch (error) {
+      set((s) => ({
+        messagesPaginationBySession: {
+          ...s.messagesPaginationBySession,
+          [sid]: {
+            ...(s.messagesPaginationBySession[sid] || createInitialPaginationState()),
+            refreshingLatest: false,
+            lastError: error instanceof Error ? error.message : 'refresh failed',
+          },
+        },
+      }));
+    }
+  },
+
+  resetMessagePagination(sessionId) {
+    if (sessionId) {
+      set((s) => {
+        const next = { ...s.messagesPaginationBySession };
+        delete next[sessionId];
+        return { messagesPaginationBySession: next };
+      });
+    } else {
+      set({ messagesPaginationBySession: {} });
     }
   },
 
@@ -165,7 +379,19 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     const next = applyMobileMessageToList(existing, safeMessage);
     const persistedMessage = next.find((item) => hasSameMobileMessageIdentity(item, safeMessage)) || safeMessage;
     messageRepository.upsertMessages(sessionId, [persistedMessage]);
-    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: next } });
+    const pagination = get().messagesPaginationBySession[sessionId];
+    if (pagination?.initialized) {
+      const cursor = getMessageCursor(next);
+      set((s) => ({
+        messagesBySession: { ...s.messagesBySession, [sessionId]: next },
+        messagesPaginationBySession: {
+          ...s.messagesPaginationBySession,
+          [sessionId]: { ...pagination, ...cursor },
+        },
+      }));
+    } else {
+      set({ messagesBySession: { ...get().messagesBySession, [sessionId]: next } });
+    }
     const sessionStore = useSessionStore.getState();
     const session = sessionStore.sessions.find((item) => item.id === sessionId);
     if (session) {
@@ -380,9 +606,11 @@ export const useMessageStore = create<MessageState>((set, get) => ({
 
   clearMessages(sessionId) {
     messageRepository.clearConversation(sessionId);
-    const next = { ...get().messagesBySession };
-    delete next[sessionId];
-    set({ messagesBySession: next });
+    const nextMessages = { ...get().messagesBySession };
+    delete nextMessages[sessionId];
+    const nextPagination = { ...get().messagesPaginationBySession };
+    delete nextPagination[sessionId];
+    set({ messagesBySession: nextMessages, messagesPaginationBySession: nextPagination });
   },
 
   /**

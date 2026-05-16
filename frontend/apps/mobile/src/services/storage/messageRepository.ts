@@ -89,6 +89,22 @@ const removeDuplicateMessages = (conversationId: string, message: MobileMessage)
   });
 };
 
+export interface MessagePageResult {
+  messages: MobileMessage[];
+  hasMore: boolean;
+  oldestMessage?: MobileMessage;
+  newestMessage?: MobileMessage;
+}
+
+export interface MessagePageOptions {
+  limit?: number;
+  beforeTime?: string;
+  afterTime?: string;
+  beforeId?: string;
+  afterId?: string;
+  direction?: 'older' | 'newer';
+}
+
 export const messageRepository = {
   upsertSession(session: ChatSession): void {
     const safeSession = sanitizeSession(session);
@@ -200,6 +216,111 @@ export const messageRepository = {
     return rows
       .map((row) => maskEncryptedMessage(parseMessage(row)))
       .sort((left, right) => new Date(left.sendTime).getTime() - new Date(right.sendTime).getTime());
+  },
+
+  /**
+   * 分页查询本地消息。
+   *
+   * 支持三种模式：
+   * - 初始加载（无 cursor）：返回最近 limit 条，按 sendTime ASC
+   * - 加载更旧消息（beforeTime）：返回 sendTime < beforeTime 的消息
+   * - 加载更新消息（afterTime）：返回 sendTime > afterTime 的消息
+   *
+   * 查询 limit+1 条以判断 hasMore，最终按 sendTime ASC 返回给调用方。
+   */
+  listMessagesPage(conversationId: string, options: MessagePageOptions = {}): MessagePageResult {
+    const limit = options.limit ?? 50;
+    const fetchLimit = limit + 1;
+    const isNewer = Boolean(options.afterTime || options.afterId);
+    const isOlder = Boolean(options.beforeTime || options.beforeId);
+
+    const messageCompare = (a: MobileMessage, b: MobileMessage): number => {
+      const timeDiff = new Date(a.sendTime).getTime() - new Date(b.sendTime).getTime();
+      if (timeDiff !== 0) return timeDiff;
+      return (a.serverId || a.clientMessageId || a.id || '').localeCompare(
+        b.serverId || b.clientMessageId || b.id || '',
+      );
+    };
+
+    const toPageResult = (fetched: MobileMessage[]): MessagePageResult => {
+      const hasMore = fetched.length > limit;
+      let sliced = fetched;
+      if (hasMore) {
+        // initial/older: DESC query → extra item is the oldest (position 0 after ASC sort) → drop head
+        // newer: ASC query → extra item is the newest (position last after ASC sort) → drop tail
+        sliced = isNewer ? fetched.slice(0, limit) : fetched.slice(1);
+      }
+      return {
+        messages: sliced,
+        hasMore,
+        oldestMessage: sliced[0],
+        newestMessage: sliced[sliced.length - 1],
+      };
+    };
+
+    const memoryTiebreaker = (row: Record<string, unknown>): string =>
+      String(row.serverId || row.clientMessageId || row.id || '');
+
+    const memoryCompare = (a: Record<string, unknown>, b: Record<string, unknown>, dir: 'asc' | 'desc'): number => {
+      const aTime = String(a.sendTime || '');
+      const bTime = String(b.sendTime || '');
+      const timeDiff = new Date(aTime).getTime() - new Date(bTime).getTime();
+      if (timeDiff !== 0) return dir === 'desc' ? -timeDiff : timeDiff;
+      const aKey = memoryTiebreaker(a);
+      const bKey = memoryTiebreaker(b);
+      const keyDiff = aKey.localeCompare(bKey);
+      return dir === 'desc' ? -keyDiff : keyDiff;
+    };
+
+    if (messageDatabase.isMemoryFallback()) {
+      const allRows = messageDatabase
+        .memoryList('mobile_messages')
+        .filter((row) => row.conversationId === conversationId);
+
+      let filtered = allRows;
+      if (isOlder) {
+        const cutoffTime = options.beforeTime || '';
+        filtered = allRows.filter((row) => String(row.sendTime || '') < cutoffTime);
+      } else if (isNewer) {
+        const cutoffTime = options.afterTime || '';
+        filtered = allRows.filter((row) => String(row.sendTime || '') > cutoffTime);
+      }
+
+      const direction: 'asc' | 'desc' = isNewer ? 'asc' : 'desc';
+      const sorted = filtered.sort((a, b) => memoryCompare(a, b, direction));
+      const sliced = sorted.slice(0, fetchLimit);
+
+      const messages = sliced.map((row) => maskEncryptedMessage(parseMessage(row)));
+      messages.sort(messageCompare);
+
+      return toPageResult(messages);
+    }
+
+    // SQLite path
+    let where = 'conversationId = ?';
+    const params: Array<string | number> = [conversationId];
+
+    if (isOlder) {
+      where += ' AND sendTime < ?';
+      params.push(options.beforeTime || '');
+    } else if (isNewer) {
+      where += ' AND sendTime > ?';
+      params.push(options.afterTime || '');
+    }
+
+    const orderBy = isNewer
+      ? 'ORDER BY sendTime ASC, COALESCE(serverId, clientMessageId, id) DESC'
+      : 'ORDER BY sendTime DESC, COALESCE(serverId, clientMessageId, id) ASC';
+
+    const rows = messageDatabase.query(
+      `SELECT * FROM mobile_messages WHERE ${where} ${orderBy} LIMIT ?`,
+      [...params, fetchLimit],
+    );
+
+    const messages = rows.map((row) => maskEncryptedMessage(parseMessage(row)));
+    messages.sort(messageCompare);
+
+    return toPageResult(messages);
   },
 
   clearConversation(conversationId: string): void {

@@ -111,10 +111,11 @@ const pendingWithPayload = (
 
 describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
   beforeEach(() => {
-    useMessageStore.setState({ messagesBySession: {}, loading: false, searchResults: [] });
+    useMessageStore.setState({ messagesBySession: {}, messagesPaginationBySession: {}, loading: false, searchResults: [] });
     jest.clearAllMocks();
     mockSessions.length = 0;
     mr.listMessages.mockReturnValue([]);
+    mr.listMessagesPage.mockReturnValue({ messages: [], hasMore: false });
     mr.listSessions.mockReturnValue([]);
     pr.listReady.mockReturnValue([]);
     pr.findByClientMessageId.mockReturnValue(undefined);
@@ -175,7 +176,7 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
         status: 'SENT',
         encrypted: true,
       } as MobileMessage;
-      mr.listMessages.mockReturnValue([encryptedMessage]);
+      mr.listMessagesPage.mockReturnValue({ messages: [encryptedMessage], hasMore: false });
       ms.getPrivateHistory.mockResolvedValueOnce({
         code: 0,
         message: 'ok',
