@@ -95,6 +95,12 @@ export function DebugDiagnosticsScreen() {
         <InfoRow label="Reconnect attempts" value={snapshot.reconnectAttempts} />
         <InfoRow label="Storage mode" value={snapshot.storageMode} />
         <InfoRow label="Persistence available" value={snapshot.persistenceAvailable} />
+        <InfoRow label="Schema version" value={snapshot.schemaVersion ?? 'N/A'} />
+        <InfoRow label="Target schema" value={snapshot.targetSchemaVersion} />
+        <InfoRow label="Migration status" value={snapshot.migrationStatus} />
+        {snapshot.lastMigrationError ? (
+          <InfoRow label="Migration error" value={snapshot.lastMigrationError} />
+        ) : null}
         <InfoRow label="Session count" value={snapshot.sessionCount} />
         <InfoRow label="Message count" value={snapshot.messageCount} />
         <InfoRow label="Pending count" value={snapshot.pendingCount} />

@@ -67,6 +67,15 @@ describe('debugDiagnosticsService', () => {
     expect(typeof snapshot.notificationEventCount).toBe('number');
   });
 
+  test('snapshot includes migration status fields', () => {
+    const snapshot = debugDiagnosticsService.getSnapshot();
+
+    expect(snapshot.schemaVersion !== undefined).toBe(true);
+    expect(typeof snapshot.targetSchemaVersion).toBe('number');
+    expect(['unknown', 'not_started', 'running', 'success', 'failed']).toContain(snapshot.migrationStatus);
+    expect(typeof snapshot.lastMigrationError).toBe('string');
+  });
+
   test('snapshot counts reflect inserted data', () => {
     const base = debugDiagnosticsService.getSnapshot();
     expect(base.sessionCount).toBe(0);

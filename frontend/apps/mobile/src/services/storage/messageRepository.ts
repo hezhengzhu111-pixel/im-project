@@ -121,7 +121,11 @@ export const messageRepository = {
 
   listSessions(): ChatSession[] {
     const rows = messageDatabase.isMemoryFallback()
-      ? messageDatabase.memoryList('mobile_sessions')
+      ? messageDatabase.memoryList('mobile_sessions').sort((a, b) => {
+          const pinDelta = Number(b.isPinned || 0) - Number(a.isPinned || 0);
+          if (pinDelta !== 0) return pinDelta;
+          return Number(b.updatedAt || 0) - Number(a.updatedAt || 0);
+        })
       : messageDatabase.query('SELECT * FROM mobile_sessions ORDER BY isPinned DESC, updatedAt DESC');
     return rows.map((row) =>
       sanitizeSession({
@@ -187,6 +191,8 @@ export const messageRepository = {
       ? messageDatabase
           .memoryList('mobile_messages')
           .filter((row) => row.conversationId === conversationId)
+          .sort((a, b) => new Date(String(b.sendTime || '')).getTime() - new Date(String(a.sendTime || '')).getTime())
+          .slice(0, limit)
       : messageDatabase.query(
           'SELECT * FROM mobile_messages WHERE conversationId = ? ORDER BY sendTime DESC LIMIT ?',
           [conversationId, limit],
