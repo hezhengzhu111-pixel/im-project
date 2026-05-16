@@ -1,7 +1,7 @@
 import type { Message } from "@im/shared-types";
 
 export const messageIdentityValues = (message: Message): string[] =>
-  [message.id, message.messageId, message.clientMessageId]
+  [message.messageId, message.clientMessageId, message.id]
     .map((item) => String(item || ""))
     .filter(Boolean);
 
