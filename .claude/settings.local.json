@@ -28,7 +28,10 @@
       "Skill(superpowers:verification-before-completion)",
       "Bash(node -e ' *)",
       "Bash(git check-ignore *)",
-      "Skill(superpowers:test-driven-development)"
+      "Skill(superpowers:test-driven-development)",
+      "Skill(superpowers:writing-plans)",
+      "Skill(superpowers:subagent-driven-development)",
+      "Bash(git diff *)"
     ]
   }
 }
