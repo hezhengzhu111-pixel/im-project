@@ -63,7 +63,17 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   markRead(sessionId) {
-    set({ sessions: markSessionsRead(get().sessions, sessionId) });
+    const { sessions, currentSession } = get();
+    const nextSessions = markSessionsRead(sessions, sessionId);
+    const updated = nextSessions.find((session) => session.id === sessionId);
+    if (!updated) {
+      return;
+    }
+    messageRepository.upsertSession(updated);
+    set({
+      sessions: nextSessions,
+      currentSession: currentSession?.id === sessionId ? updated : currentSession,
+    });
   },
 
   restoreFromDb() {

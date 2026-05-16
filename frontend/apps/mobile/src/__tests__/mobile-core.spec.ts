@@ -1205,29 +1205,111 @@ describe('mobile core', () => {
     expect(useSessionStore.getState().sessions.find((item) => item.id === session.id)?.unreadCount).toBe(0);
   });
 
-  test('markRead does not persist unreadCount=0 to repository (current behavior)', () => {
+  test('markRead persists unreadCount=0 to repository', () => {
     useSessionStore.getState().setSessions([{ ...session, unreadCount: 7 }]);
     useSessionStore.getState().markRead(session.id);
 
-    // In-memory is cleared
     expect(useSessionStore.getState().sessions.find((item) => item.id === session.id)?.unreadCount).toBe(0);
-
-    // Repository still has the old unreadCount because markRead does not call upsertSession
     const repoSession = messageRepository.listSessions().find((item) => item.id === session.id);
-    expect(repoSession?.unreadCount).toBe(7);
+    expect(repoSession?.unreadCount).toBe(0);
   });
 
-  test('restoreFromDb after markRead restores unreadCount from repository (known behavior)', () => {
+  test('restoreFromDb after markRead preserves unreadCount=0', () => {
     useSessionStore.getState().setSessions([{ ...session, unreadCount: 3 }]);
     useSessionStore.getState().markRead(session.id);
     expect(useSessionStore.getState().sessions.find((item) => item.id === session.id)?.unreadCount).toBe(0);
 
-    // Simulate app restart: clear memory, restore from DB
     useSessionStore.setState({ sessions: [], currentSession: null });
     useSessionStore.getState().restoreFromDb();
 
-    // unreadCount is restored from repository (markRead was not persisted)
-    expect(useSessionStore.getState().sessions.find((item) => item.id === session.id)?.unreadCount).toBe(3);
+    expect(useSessionStore.getState().sessions.find((item) => item.id === session.id)?.unreadCount).toBe(0);
+  });
+
+  test('markRead syncs currentSession unreadCount to 0', () => {
+    const unreadSession = { ...session, unreadCount: 5 };
+    useSessionStore.getState().setSessions([unreadSession]);
+    // Use setState directly to avoid setCurrentSession triggering markRead
+    useSessionStore.setState({ currentSession: unreadSession });
+
+    expect(useSessionStore.getState().currentSession?.unreadCount).toBe(5);
+
+    useSessionStore.getState().markRead(session.id);
+
+    expect(useSessionStore.getState().currentSession?.unreadCount).toBe(0);
+    expect(useSessionStore.getState().sessions.find((item) => item.id === session.id)?.unreadCount).toBe(0);
+  });
+
+  test('markRead on non-existent sessionId does not throw or add sessions', () => {
+    useSessionStore.getState().setSessions([session]);
+    const before = useSessionStore.getState().sessions.length;
+
+    expect(() => {
+      useSessionStore.getState().markRead('not_exists');
+    }).not.toThrow();
+
+    expect(useSessionStore.getState().sessions).toHaveLength(before);
+  });
+
+  // ── clearRuntime vs clear pending isolation ───────────────────────────────
+
+  test('chatStore.clearRuntime does not clear pending persistent table', () => {
+    pendingMessageRepository.enqueue({
+      localId: 'runtime_pending',
+      conversationId: session.id,
+      sendType: 'private',
+      payloadJson: '{}',
+      status: 'pending',
+      retryCount: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    useMessageStore.getState().addMessage(message('runtime_m1'), session.id);
+    expect(useMessageStore.getState().messagesBySession[session.id]).toHaveLength(1);
+
+    useChatStore.getState().clearRuntime();
+
+    expect(useMessageStore.getState().messagesBySession).toEqual({});
+    expect(useMessageStore.getState().searchResults).toEqual([]);
+    expect(pendingMessageRepository.listReady(Date.now() + 10_000)).toHaveLength(1);
+  });
+
+  test('messageStore.clear still clears pending persistent table', () => {
+    pendingMessageRepository.enqueue({
+      localId: 'clear_pending',
+      conversationId: session.id,
+      sendType: 'private',
+      payloadJson: '{}',
+      status: 'pending',
+      retryCount: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    useMessageStore.getState().addMessage(message('clear_m1'), session.id);
+
+    useMessageStore.getState().clear();
+
+    expect(useMessageStore.getState().messagesBySession).toEqual({});
+    expect(pendingMessageRepository.listReady(Date.now() + 10_000)).toHaveLength(0);
+  });
+
+  test('logout / clearSession still clears pending via clearAllCache', async () => {
+    jest.spyOn(userService, 'logout').mockResolvedValue({ code: 200, message: 'ok', data: 'ok' });
+    pendingMessageRepository.enqueue({
+      localId: 'logout_clear_pending',
+      conversationId: session.id,
+      sendType: 'private',
+      payloadJson: '{}',
+      status: 'pending',
+      retryCount: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    await useAuthStore.getState().logout();
+
+    expect(pendingMessageRepository.listReady(Date.now() + 10_000)).toHaveLength(0);
+    expect(useAuthStore.getState().currentUser).toBeNull();
+    expect(useAuthStore.getState().accessToken).toBe('');
   });
 
   // ── userSnapshot consistency ─────────────────────────────────────────────
