@@ -22,7 +22,8 @@
       "Skill(superpowers:systematic-debugging)",
       "Bash(npx tsc *)",
       "Bash(npx jest *)",
-      "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts, null, 2\\)\\)\")"
+      "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts, null, 2\\)\\)\")",
+      "Bash(npm install *)"
     ]
   }
 }
