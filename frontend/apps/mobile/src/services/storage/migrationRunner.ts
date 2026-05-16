@@ -56,6 +56,8 @@ function writeSchemaVersion(conn: DbConnection, version: number): void {
 /**
  * Run a full fresh-install schema (CREATE_SCHEMA_SQL) and set schema_version.
  * Called when readSchemaVersion returns 0 and the database has no tables yet.
+ * CREATE_SCHEMA_SQL represents the current full schema, so schema_version
+ * is written as CURRENT_DB_VERSION (not BASE_SCHEMA_VERSION).
  */
 function runFreshInstall(conn: DbConnection): void {
   conn.execute('BEGIN TRANSACTION');
@@ -63,7 +65,7 @@ function runFreshInstall(conn: DbConnection): void {
     for (const sql of CREATE_SCHEMA_SQL) {
       conn.execute(sql);
     }
-    writeSchemaVersion(conn, BASE_SCHEMA_VERSION);
+    writeSchemaVersion(conn, CURRENT_DB_VERSION);
     conn.execute('COMMIT');
   } catch (error) {
     conn.execute('ROLLBACK');
@@ -74,6 +76,10 @@ function runFreshInstall(conn: DbConnection): void {
 /**
  * Run incremental migration steps from `fromVersion` to `toVersion`.
  * Each step runs inside its own transaction.
+ *
+ * For ALTER TABLE ... ADD COLUMN statements, checks if the column already exists
+ * via PRAGMA table_info before executing. This handles databases that were created
+ * with a newer schema but have an older schema_version (e.g., V3 schema + schema_version=1).
  */
 function runIncrementalMigrations(
   conn: DbConnection,
@@ -85,6 +91,10 @@ function runIncrementalMigrations(
     conn.execute('BEGIN TRANSACTION');
     try {
       for (const sql of step.statements) {
+        if (shouldSkipStatement(conn, sql)) {
+          logger.info(TAG, `skipping already-applied: ${sql.substring(0, 80)}`);
+          continue;
+        }
         conn.execute(sql);
       }
       writeSchemaVersion(conn, step.version);
@@ -96,6 +106,45 @@ function runIncrementalMigrations(
         `Migration to version ${step.version} failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+}
+
+/**
+ * Check if a migration statement should be skipped because it was already applied.
+ * Currently handles: ALTER TABLE ... ADD COLUMN ...
+ */
+function shouldSkipStatement(conn: DbConnection, sql: string): boolean {
+  const addColMatch = sql.match(
+    /^ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(\w+)/i,
+  );
+  if (!addColMatch) {
+    return false;
+  }
+  const tableName = addColMatch[1];
+  const columnName = addColMatch[2];
+  return columnExists(conn, tableName, columnName);
+}
+
+/**
+ * Check if a column exists in a table using PRAGMA table_info.
+ */
+function columnExists(conn: DbConnection, tableName: string, columnName: string): boolean {
+  try {
+    const result = conn.execute(`PRAGMA table_info(${tableName})`);
+    const rows = result.rows;
+    if (!rows || rows.length === 0) {
+      return false;
+    }
+    const lowerCol = columnName.toLowerCase();
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows.item(i);
+      if (String(row.name || '').toLowerCase() === lowerCol) {
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
   }
 }
 
@@ -135,8 +184,8 @@ export function runMigrations(conn: DbConnection): MigrationResult {
     if (!hasExistingTables) {
       try {
         runFreshInstall(conn);
-        logger.info(TAG, `fresh install completed at version ${BASE_SCHEMA_VERSION}`);
-        return { success: true, fromVersion: 0, toVersion: BASE_SCHEMA_VERSION };
+        logger.info(TAG, `fresh install completed at version ${CURRENT_DB_VERSION}`);
+        return { success: true, fromVersion: 0, toVersion: CURRENT_DB_VERSION };
       } catch (error) {
         const msg = `Fresh install failed: ${error instanceof Error ? error.message : String(error)}`;
         logger.error(TAG, msg);

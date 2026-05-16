@@ -1,4 +1,4 @@
-import { getMigrationSteps, CURRENT_DB_VERSION, BASE_SCHEMA_VERSION, MIGRATIONS } from '../storageMigrations';
+import { getMigrationSteps, CURRENT_DB_VERSION, MIGRATIONS } from '../storageMigrations';
 import { runMigrations } from '../migrationRunner';
 import { createFakeDb, FakeDbConnection } from '../__testutils__/fakeDbConnection';
 
@@ -74,7 +74,7 @@ describe('runMigrations', () => {
 
     expect(result.success).toBe(true);
     expect(result.fromVersion).toBe(0);
-    expect(result.toVersion).toBe(BASE_SCHEMA_VERSION);
+    expect(result.toVersion).toBe(CURRENT_DB_VERSION);
 
     // Should have created all tables
     const createStatements = fake.executedSql.filter(
@@ -383,6 +383,138 @@ describe('runMigrations', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Downgrade not supported');
+    });
+  });
+
+  describe('fresh install schema_version correctness', () => {
+    it('writes CURRENT_DB_VERSION on fresh install, not BASE_SCHEMA_VERSION', () => {
+      const result = runMigrations(fake);
+
+      expect(result.success).toBe(true);
+      expect(result.toVersion).toBe(CURRENT_DB_VERSION);
+
+      // The schema_version INSERT should write CURRENT_DB_VERSION
+      const metaInsert = fake.executedSql.find(
+        (s) => s.toUpperCase().includes('INSERT OR REPLACE INTO MOBILE_META'),
+      );
+      expect(metaInsert).toBeDefined();
+      // The param should be CURRENT_DB_VERSION
+      const insertIdx = fake.executedSql.indexOf(metaInsert!);
+      const params = fake.executedParams[insertIdx];
+      expect(params[1]).toBe(String(CURRENT_DB_VERSION));
+    });
+
+    it('fresh install followed by runMigrations is a no-op', () => {
+      // First run: fresh install
+      const result1 = runMigrations(fake);
+      expect(result1.success).toBe(true);
+      expect(result1.toVersion).toBe(CURRENT_DB_VERSION);
+
+      // Second run: should be no-op
+      const sqlBefore = fake.executedSql.length;
+      const result2 = runMigrations(fake);
+      expect(result2.success).toBe(true);
+      expect(result2.fromVersion).toBe(CURRENT_DB_VERSION);
+      expect(result2.toVersion).toBe(CURRENT_DB_VERSION);
+
+      // Only the ensureMetaTable CREATE + SELECT should have been added
+      const newSql = fake.executedSql.slice(sqlBefore);
+      const alterStatements = newSql.filter(
+        (s) => s.toUpperCase().startsWith('ALTER TABLE'),
+      );
+      expect(alterStatements).toHaveLength(0);
+    });
+  });
+
+  describe('P0-2: skip ADD COLUMN when column already exists', () => {
+    it('schema_version=1 with V3 columns already present: succeeds without ALTER', () => {
+      // Simulate a database that was created with V3 schema but has schema_version=1
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '1' }]);
+      // Seed pending_messages with clientMessageId column (V2 column)
+      fake.seedTable('mobile_pending_messages', [
+        { localId: 'l1', conversationId: 'c1', sendType: 'private', payloadJson: '{}', clientMessageId: 'x', status: 'pending', retryCount: 0, createdAt: 1, updatedAt: 1, nextRetryAt: null },
+      ]);
+      // Seed upload_tasks with V3 columns
+      fake.seedTable('mobile_upload_tasks', [
+        { taskId: 't1', conversationId: 'c1', localMessageId: 'm1', fileUri: 'f', fileName: 'n', mimeType: 'm', fileSize: 1, uploadType: 'IMAGE', status: 'pending', progress: 0, retryCount: 0, createdAt: 1, updatedAt: 1, remoteUrl: null, lastError: null, nextRetryAt: null, maxRetryCount: null, checksum: null, remoteFileId: null, lastAttemptAt: null },
+      ]);
+
+      const result = runMigrations(fake);
+
+      expect(result.success).toBe(true);
+      expect(result.fromVersion).toBe(1);
+      expect(result.toVersion).toBe(CURRENT_DB_VERSION);
+
+      // ALTER TABLE ADD COLUMN statements should have been SKIPPED (not executed)
+      const alterStatements = fake.executedSql.filter(
+        (s) => s.toUpperCase().startsWith('ALTER TABLE') && s.toUpperCase().includes('ADD COLUMN'),
+      );
+      expect(alterStatements).toHaveLength(0);
+    });
+
+    it('schema_version=2 with V3 upload columns already present: succeeds without V3 ALTER', () => {
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '2' }]);
+      // Seed upload_tasks with V3 columns already present
+      fake.seedTable('mobile_upload_tasks', [
+        { taskId: 't1', conversationId: 'c1', localMessageId: 'm1', fileUri: 'f', fileName: 'n', mimeType: 'm', fileSize: 1, uploadType: 'IMAGE', status: 'pending', progress: 0, retryCount: 0, createdAt: 1, updatedAt: 1, remoteUrl: null, lastError: null, nextRetryAt: null, maxRetryCount: null, checksum: null, remoteFileId: null, lastAttemptAt: null },
+      ]);
+
+      const result = runMigrations(fake);
+
+      expect(result.success).toBe(true);
+      expect(result.fromVersion).toBe(2);
+      expect(result.toVersion).toBe(CURRENT_DB_VERSION);
+
+      // V3 ALTER TABLE ADD COLUMN should have been SKIPPED
+      const alterStatements = fake.executedSql.filter(
+        (s) => s.toUpperCase().startsWith('ALTER TABLE') && s.toUpperCase().includes('ADD COLUMN'),
+      );
+      expect(alterStatements).toHaveLength(0);
+    });
+
+    it('column does NOT exist: ALTER is still executed', () => {
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '1' }]);
+      // Seed pending_messages WITHOUT clientMessageId column
+      fake.seedTable('mobile_pending_messages', [
+        { localId: 'l1', conversationId: 'c1', sendType: 'private', payloadJson: '{}', status: 'pending', retryCount: 0, createdAt: 1, updatedAt: 1 },
+      ]);
+      // Seed upload_tasks WITHOUT V3 columns
+      fake.seedTable('mobile_upload_tasks', [
+        { taskId: 't1', conversationId: 'c1', localMessageId: 'm1', fileUri: 'f', fileName: 'n', mimeType: 'm', fileSize: 1, uploadType: 'IMAGE', status: 'pending', progress: 0, retryCount: 0, createdAt: 1, updatedAt: 1, remoteUrl: null, lastError: null },
+      ]);
+
+      const result = runMigrations(fake);
+
+      expect(result.success).toBe(true);
+      expect(result.toVersion).toBe(CURRENT_DB_VERSION);
+
+      // ALTER TABLE ADD COLUMN should have been EXECUTED
+      const alterStatements = fake.executedSql.filter(
+        (s) => s.toUpperCase().startsWith('ALTER TABLE') && s.toUpperCase().includes('ADD COLUMN'),
+      );
+      expect(alterStatements.length).toBeGreaterThan(0);
+    });
+
+    it('writes correct schema_version after skipping existing columns', () => {
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '1' }]);
+      fake.seedTable('mobile_pending_messages', [
+        { localId: 'l1', conversationId: 'c1', sendType: 'private', payloadJson: '{}', clientMessageId: 'x', status: 'pending', retryCount: 0, createdAt: 1, updatedAt: 1, nextRetryAt: null },
+      ]);
+      fake.seedTable('mobile_upload_tasks', [
+        { taskId: 't1', conversationId: 'c1', localMessageId: 'm1', fileUri: 'f', fileName: 'n', mimeType: 'm', fileSize: 1, uploadType: 'IMAGE', status: 'pending', progress: 0, retryCount: 0, createdAt: 1, updatedAt: 1, remoteUrl: null, lastError: null, nextRetryAt: null, maxRetryCount: null, checksum: null, remoteFileId: null, lastAttemptAt: null },
+      ]);
+
+      const result = runMigrations(fake);
+
+      expect(result.success).toBe(true);
+      expect(result.toVersion).toBe(CURRENT_DB_VERSION);
+
+      // The result itself confirms the final version is CURRENT_DB_VERSION
+      // Also verify the mobile_meta table was updated
+      const metaRows = fake.getTableRows('mobile_meta');
+      const schemaRow = metaRows.find((r) => r.key === 'schema_version');
+      expect(schemaRow).toBeDefined();
+      expect(schemaRow!.value).toBe(String(CURRENT_DB_VERSION));
     });
   });
 });

@@ -277,7 +277,7 @@ describe('pendingMessageRepository', () => {
   });
 
   describe('listAll', () => {
-    it('returns all messages', () => {
+    it('returns all messages sorted by createdAt ascending', () => {
       fake.seedTable('mobile_pending_messages', [
         { localId: 'local-3', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 0, createdAt: 3000, updatedAt: 3000 },
         { localId: 'local-1', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 0, createdAt: 1000, updatedAt: 1000 },
@@ -287,10 +287,10 @@ describe('pendingMessageRepository', () => {
       const all = pendingMessageRepository.listAll();
 
       expect(all).toHaveLength(3);
-      // FakeDbConnection doesn't support ORDER BY, so just verify all items are present
-      expect(all.map((m) => m.localId)).toContain('local-1');
-      expect(all.map((m) => m.localId)).toContain('local-2');
-      expect(all.map((m) => m.localId)).toContain('local-3');
+      // ORDER BY createdAt ASC
+      expect(all[0].localId).toBe('local-1');
+      expect(all[1].localId).toBe('local-2');
+      expect(all[2].localId).toBe('local-3');
     });
   });
 
