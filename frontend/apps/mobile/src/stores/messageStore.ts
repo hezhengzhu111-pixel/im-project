@@ -54,6 +54,7 @@ interface MessageState {
   applyReadReceipt: (rawReceipt: unknown) => void;
   searchMessages: (keyword: string, sessionId?: string) => void;
   clearMessages: (sessionId: string) => void;
+  clearRuntime: () => void;
   clear: () => void;
 }
 
@@ -380,6 +381,16 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     const next = { ...get().messagesBySession };
     delete next[sessionId];
     set({ messagesBySession: next });
+  },
+
+  /**
+   * 只清理消息 store 的内存运行态。
+   * 会清：messagesBySession、searchResults、inflightPendingRetries。
+   * 不会清：pending 持久表、messages/sessions/media_cache 等主表。
+   */
+  clearRuntime() {
+    inflightPendingRetries.clear();
+    set({ messagesBySession: {}, searchResults: [] });
   },
 
   /**

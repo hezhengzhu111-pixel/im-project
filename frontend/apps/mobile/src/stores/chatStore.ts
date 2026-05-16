@@ -258,16 +258,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
   /**
    * 清理所有 chat 相关 store 的内存运行态。
    * 会清：sessionStore（sessions/currentSession）、messageStore（messagesBySession/
-   * searchResults/pending 表/inflightPendingRetries）、contactStore、groupStore、
+   * searchResults/inflightPendingRetries）、contactStore、groupStore、
    * lastOpenedRouteKey。
-   * 不会清：messages/sessions/media_cache 等 SQLite 主表（由 clearAllCache 处理）、
-   * auth 状态、WebSocket、secureStorage。
+   * 不会清：pending 持久表、messages/sessions/media_cache 等 SQLite 主表
+   * （由 clearAllCache 处理）、auth 状态、WebSocket、secureStorage。
    */
   clearRuntime() {
     bootstrapDone = false;
     lastOpenedRouteKey = '';
     useSessionStore.getState().clear();
-    useMessageStore.getState().clear();
+    useMessageStore.getState().clearRuntime();
     useContactStore.getState().clear();
     useGroupStore.getState().clear();
   },
