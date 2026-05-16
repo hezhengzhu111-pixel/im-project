@@ -20,6 +20,7 @@ const normalize = (row: Record<string, unknown>): PendingMessage => ({
   conversationId: String(row.conversationId || ''),
   sendType: String(row.sendType || 'private') as PendingMessage['sendType'],
   payloadJson: String(row.payloadJson || '{}'),
+  clientMessageId: row.clientMessageId ? String(row.clientMessageId) : undefined,
   status: String(row.status || 'pending') as PendingMessage['status'],
   retryCount: Number(row.retryCount || 0),
   lastError: row.lastError ? String(row.lastError) : undefined,
@@ -30,16 +31,21 @@ const normalize = (row: Record<string, unknown>): PendingMessage => ({
 
 export const pendingMessageRepository = {
   enqueue(item: PendingMessage): void {
-    messageDatabase.memoryUpsert('mobile_pending_messages', item.localId, { ...item });
+    // 优先使用独立的 clientMessageId 字段，否则从 payloadJson 解析
+    const clientMessageId = item.clientMessageId || parsePayload(item.payloadJson).data?.clientMessageId;
+    const enriched = clientMessageId ? { ...item, clientMessageId } : { ...item };
+
+    messageDatabase.memoryUpsert('mobile_pending_messages', item.localId, enriched);
     messageDatabase.execute(
       `INSERT OR REPLACE INTO mobile_pending_messages
-      (localId, conversationId, sendType, payloadJson, status, retryCount, lastError, createdAt, updatedAt, nextRetryAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (localId, conversationId, sendType, payloadJson, clientMessageId, status, retryCount, lastError, createdAt, updatedAt, nextRetryAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         item.localId,
         item.conversationId,
         item.sendType,
         item.payloadJson,
+        clientMessageId || null,
         item.status,
         item.retryCount,
         item.lastError,
@@ -83,17 +89,34 @@ export const pendingMessageRepository = {
     if (!normalizedId) {
       return undefined;
     }
-    const rows = messageDatabase.isMemoryFallback()
-      ? messageDatabase.memoryList('mobile_pending_messages')
-      : messageDatabase.query(
-          `SELECT * FROM mobile_pending_messages
-           WHERE payloadJson LIKE ?
-           ORDER BY updatedAt DESC LIMIT 20`,
-          [`%${normalizedId}%`],
-        );
-    return rows
+
+    if (messageDatabase.isMemoryFallback()) {
+      return messageDatabase
+        .memoryList('mobile_pending_messages')
+        .map(normalize)
+        .sort((left, right) => right.updatedAt - left.updatedAt)
+        .find((item) => item.clientMessageId === normalizedId || parsePayload(item.payloadJson).data?.clientMessageId === normalizedId);
+    }
+
+    // 优先通过独立列查询
+    const directRows = messageDatabase.query(
+      `SELECT * FROM mobile_pending_messages
+       WHERE clientMessageId = ?
+       ORDER BY updatedAt DESC LIMIT 1`,
+      [normalizedId],
+    );
+    if (directRows.length > 0) {
+      return normalize(directRows[0]);
+    }
+
+    // 兼容旧数据：fallback 解析 payloadJson（不使用 LIKE）
+    const allRows = messageDatabase.query(
+      `SELECT * FROM mobile_pending_messages
+       WHERE clientMessageId IS NULL
+       ORDER BY updatedAt DESC`,
+    );
+    return allRows
       .map(normalize)
-      .sort((left, right) => right.updatedAt - left.updatedAt)
       .find((item) => parsePayload(item.payloadJson).data?.clientMessageId === normalizedId);
   },
 
