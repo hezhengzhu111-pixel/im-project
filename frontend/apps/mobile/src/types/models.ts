@@ -39,6 +39,28 @@ export interface PendingMessage {
   nextRetryAt?: number;
 }
 
+// Unified send pipeline stage — derived from PendingMessage + UploadTask + MobileMessage.
+// Not persisted directly; computed by deriveSendStage().
+export type SendPipelineStage =
+  | 'LOCAL_CREATED'    // local message exists, no pending row yet
+  | 'UPLOAD_PENDING'   // upload task queued but not started
+  | 'UPLOADING'        // upload in progress
+  | 'UPLOAD_FAILED'    // upload failed (may be retried)
+  | 'UPLOAD_DONE'      // upload completed, ready for message send
+  | 'SEND_PENDING'     // message queued in pending, waiting for nextRetryAt or slot
+  | 'SENDING'          // message send in progress
+  | 'SEND_FAILED'      // message send failed (may be retried)
+  | 'SENT'             // message confirmed by server
+  | 'BLOCKED';         // blocked by E2EE or policy
+
+// Configuration for send pipeline retry behavior.
+export interface SendPipelineRetryConfig {
+  maxRetryCount: number;
+  uploadMaxRetryCount: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+}
+
 // Local upload queue row for React Native file/media uploads.
 export interface UploadTask {
   taskId: string;
