@@ -15,6 +15,7 @@
     "clean": "cd android && gradlew clean"
   },
   "dependencies": {
+    "@im/shared-e2ee-core": "*",
     "@im/shared-api-contract": "*",
     "@im/shared-auth-core": "*",
     "@im/shared-im-core": "*",

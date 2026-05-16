@@ -176,6 +176,7 @@ const props = defineProps<{
   disabled?: boolean;
   members?: MentionMember[];
   isOtherTyping?: boolean;
+  sessionId?: string;
 }>();
 
 const emit = defineEmits<{
@@ -410,7 +411,7 @@ const emitUploadedMedia = async (
   extra?: Record<string, unknown>,
 ) => {
   try {
-    const result = await upload(file, kind);
+    const result = await upload(file, kind, props.sessionId);
     const mediaName =
       result.fileName ||
       result.originalFilename ||

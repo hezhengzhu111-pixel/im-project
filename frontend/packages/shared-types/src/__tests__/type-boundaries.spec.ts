@@ -17,6 +17,7 @@ import type {
   UserAuthResponse,
   ApiResponse,
   WebSocketMessage,
+  E2eeNegotiationPayload,
 } from '../index.js';
 
 // ── 1. MessageType must include AI_REPLY ─────────────────────────────
@@ -128,6 +129,70 @@ const _encryptedUndef: Message['encrypted'] = undefined;
 // 21. ChatSession.encrypted is boolean (E9.5, E29.2)
 const _sessionEncrypted: NonNullable<ChatSession['encrypted']> = true;
 
+// ── E2eeNegotiationPayload type boundaries (E10, E11, E16, E29, E31, E32) ─
+
+// 22. E2eeNegotiationPayload must have action field (E10.1)
+type _NegHasAction = 'action' extends keyof E2eeNegotiationPayload ? true : never;
+const _assertNegHasAction: _NegHasAction = true;
+
+// 23. action must be exactly request|accepted|rejected|disabled (E10.1-E10.4)
+type _NegActionType = E2eeNegotiationPayload['action'];
+const _negActionReq: _NegActionType = 'request';
+const _negActionAcc: _NegActionType = 'accepted';
+const _negActionRej: _NegActionType = 'rejected';
+const _negActionDis: _NegActionType = 'disabled';
+void _negActionReq;
+void _negActionAcc;
+void _negActionRej;
+void _negActionDis;
+
+// 24. E2eeNegotiationPayload must have sessionId (E11.1)
+type _NegHasSessionId = 'sessionId' extends keyof E2eeNegotiationPayload ? true : never;
+const _assertNegHasSessionId: _NegHasSessionId = true;
+
+// 25. E2eeNegotiationPayload must have requesterId (E11.1)
+type _NegHasRequesterId = 'requesterId' extends keyof E2eeNegotiationPayload ? true : never;
+const _assertNegHasRequesterId: _NegHasRequesterId = true;
+
+// 26. E2eeNegotiationPayload must have requesterName (E11.1)
+type _NegHasRequesterName = 'requesterName' extends keyof E2eeNegotiationPayload ? true : never;
+const _assertNegHasRequesterName: _NegHasRequesterName = true;
+
+// 27. E2eeNegotiationPayload must have targetUserId (E11.1)
+type _NegHasTargetUserId = 'targetUserId' extends keyof E2eeNegotiationPayload ? true : never;
+const _assertNegHasTargetUserId: _NegHasTargetUserId = true;
+
+// 28. requestPayloadJson is optional string (E10.1, E20.1)
+const _negPayloadUndef: E2eeNegotiationPayload['requestPayloadJson'] = undefined;
+const _negPayloadStr: E2eeNegotiationPayload['requestPayloadJson'] = '{}';
+void _negPayloadUndef;
+void _negPayloadStr;
+
+// 29. snake_case compat fields are optional (cross-platform)
+type _NegHasSnakeSessionId = 'session_id' extends keyof E2eeNegotiationPayload ? true : never;
+const _assertNegHasSnakeSessionId: _NegHasSnakeSessionId = true;
+type _NegHasSnakeRequesterId = 'requester_id' extends keyof E2eeNegotiationPayload ? true : never;
+const _assertNegHasSnakeRequesterId: _NegHasSnakeRequesterId = true;
+type _NegHasSnakeTargetUserId = 'target_user_id' extends keyof E2eeNegotiationPayload ? true : never;
+const _assertNegHasSnakeTargetUserId: _NegHasSnakeTargetUserId = true;
+
+// 30. E2eeNegotiationPayload must NOT have private key fields (E29.4, E32.5)
+type _NegNoIdentityPrivateKey = 'identityPrivateKey' extends keyof E2eeNegotiationPayload ? never : true;
+const _assertNegNoIdentityPrivateKey: _NegNoIdentityPrivateKey = true;
+type _NegNoRootKey = 'rootKey' extends keyof E2eeNegotiationPayload ? never : true;
+const _assertNegNoRootKey: _NegNoRootKey = true;
+type _NegNoChainKey = 'chainKey' extends keyof E2eeNegotiationPayload ? never : true;
+const _assertNegNoChainKey: _NegNoChainKey = true;
+type _NegNoRatchetState = 'ratchetState' extends keyof E2eeNegotiationPayload ? never : true;
+const _assertNegNoRatchetState: _NegNoRatchetState = true;
+type _NegNoMediaKey = 'mediaKey' extends keyof E2eeNegotiationPayload ? never : true;
+const _assertNegNoMediaKey: _NegNoMediaKey = true;
+
+// 31. E2eeNegotiationPayload is exported from websocket.ts (E29.3)
+import type { E2eeNegotiationPayload as _WsNegPayload } from '../websocket.js';
+type _WsNegReexport = _WsNegPayload extends E2eeNegotiationPayload ? true : never;
+const _assertWsNegReexport: _WsNegReexport = true;
+
 // Silence unused variable warnings
 void _assertAiReply;
 void _assertRecalled;
@@ -159,3 +224,17 @@ void _encryptedBool;
 void _encryptedNum;
 void _encryptedUndef;
 void _sessionEncrypted;
+void _assertNegHasAction;
+void _assertNegHasSessionId;
+void _assertNegHasRequesterId;
+void _assertNegHasRequesterName;
+void _assertNegHasTargetUserId;
+void _assertNegHasSnakeSessionId;
+void _assertNegHasSnakeRequesterId;
+void _assertNegHasSnakeTargetUserId;
+void _assertNegNoIdentityPrivateKey;
+void _assertNegNoRootKey;
+void _assertNegNoChainKey;
+void _assertNegNoRatchetState;
+void _assertNegNoMediaKey;
+void _assertWsNegReexport;

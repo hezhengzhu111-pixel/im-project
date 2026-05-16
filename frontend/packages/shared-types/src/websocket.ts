@@ -1,1 +1,1 @@
-export type { WebSocketMessage } from './session.js';
+export type { WebSocketMessage, E2eeNegotiationPayload } from './session.js';

@@ -3,7 +3,10 @@ import { Alert, StyleSheet, Switch, Text, View } from 'react-native';
 import { Screen } from '@/components/common/Screen';
 import { ErrorState } from '@/components/common/StateViews';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { getMobileE2eeCapability } from '@/e2ee/e2eeCapability';
 import { colors, spacing, typography } from '@/app/theme';
+
+const e2eeCapability = getMobileE2eeCapability();
 
 export function PrivacySettingsScreen() {
   const readReceiptEnabled = useSettingsStore((state) => state.readReceiptEnabled);
@@ -53,6 +56,14 @@ export function PrivacySettingsScreen() {
             disabled={loading}
             onValueChange={(v) => { handleToggleReadReceipt(v); }}
           />
+        </View>
+      </View>
+      <View style={styles.section}>
+        <View style={styles.row}>
+          <View style={styles.labelWrap}>
+            <Text style={styles.label}>端到端加密</Text>
+            <Text style={styles.description}>{e2eeCapability.reason}</Text>
+          </View>
         </View>
       </View>
     </Screen>

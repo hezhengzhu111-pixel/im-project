@@ -1,4 +1,5 @@
 import { hasSameMobileMessageIdentity } from '@/utils/normalizers';
+import { isEncryptedMessage, maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
 import type { ChatSession } from '@im/shared-types';
 import type { MobileMessage } from '@/types/models';
 import { messageDatabase } from './messageDatabase';
@@ -28,6 +29,17 @@ const parseMessage = (row: Record<string, unknown>): MobileMessage => {
 
 const mobileIdentityValues = (message: Pick<MobileMessage, 'id' | 'serverId' | 'clientMessageId'>): string[] =>
   [message.id, message.serverId, message.clientMessageId].map((item) => String(item || '')).filter(Boolean);
+
+const sanitizeSession = (session: ChatSession): ChatSession => {
+  const lastMessage = session.lastMessage
+    ? maskEncryptedMessage(session.lastMessage as MobileMessage)
+    : undefined;
+  return {
+    ...session,
+    lastMessage,
+    encrypted: Boolean(session.encrypted) || Boolean(lastMessage && isEncryptedMessage(lastMessage)),
+  };
+};
 
 const sqliteDuplicateRows = (conversationId: string, message: MobileMessage): Record<string, unknown>[] => {
   const conditions: string[] = ['conversationId = ?'];
@@ -79,28 +91,29 @@ const removeDuplicateMessages = (conversationId: string, message: MobileMessage)
 
 export const messageRepository = {
   upsertSession(session: ChatSession): void {
+    const safeSession = sanitizeSession(session);
     const now = Date.now();
-    messageDatabase.memoryUpsert('mobile_sessions', session.id, {
-      ...session,
+    messageDatabase.memoryUpsert('mobile_sessions', safeSession.id, {
+      ...safeSession,
       updatedAt: now,
-      lastMessageJson: session.lastMessage ? JSON.stringify(session.lastMessage) : '',
+      lastMessageJson: safeSession.lastMessage ? JSON.stringify(safeSession.lastMessage) : '',
     });
     messageDatabase.execute(
       `INSERT OR REPLACE INTO mobile_sessions
       (id, type, targetId, targetName, targetAvatar, unreadCount, lastActiveTime, lastMessageJson, isPinned, isMuted, encrypted, updatedAt)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        session.id,
-        session.type,
-        session.targetId,
-        session.targetName,
-        session.targetAvatar,
-        session.unreadCount,
-        session.lastActiveTime,
-        session.lastMessage ? JSON.stringify(session.lastMessage) : '',
-        session.isPinned ? 1 : 0,
-        session.isMuted ? 1 : 0,
-        session.encrypted ? 1 : 0,
+        safeSession.id,
+        safeSession.type,
+        safeSession.targetId,
+        safeSession.targetName,
+        safeSession.targetAvatar,
+        safeSession.unreadCount,
+        safeSession.lastActiveTime,
+        safeSession.lastMessage ? JSON.stringify(safeSession.lastMessage) : '',
+        safeSession.isPinned ? 1 : 0,
+        safeSession.isMuted ? 1 : 0,
+        safeSession.encrypted ? 1 : 0,
         now,
       ],
     );
@@ -110,19 +123,21 @@ export const messageRepository = {
     const rows = messageDatabase.isMemoryFallback()
       ? messageDatabase.memoryList('mobile_sessions')
       : messageDatabase.query('SELECT * FROM mobile_sessions ORDER BY isPinned DESC, updatedAt DESC');
-    return rows.map((row) => ({
-      id: String(row.id || ''),
-      type: String(row.type || 'private') as ChatSession['type'],
-      targetId: String(row.targetId || ''),
-      targetName: String(row.targetName || ''),
-      targetAvatar: row.targetAvatar ? String(row.targetAvatar) : undefined,
-      unreadCount: Number(row.unreadCount || 0),
-      lastActiveTime: row.lastActiveTime ? String(row.lastActiveTime) : '',
-      lastMessage: row.lastMessageJson ? (JSON.parse(String(row.lastMessageJson)) as MobileMessage) : undefined,
-      isPinned: Boolean(row.isPinned),
-      isMuted: Boolean(row.isMuted),
-      encrypted: Boolean(row.encrypted),
-    }));
+    return rows.map((row) =>
+      sanitizeSession({
+        id: String(row.id || ''),
+        type: String(row.type || 'private') as ChatSession['type'],
+        targetId: String(row.targetId || ''),
+        targetName: String(row.targetName || ''),
+        targetAvatar: row.targetAvatar ? String(row.targetAvatar) : undefined,
+        unreadCount: Number(row.unreadCount || 0),
+        lastActiveTime: row.lastActiveTime ? String(row.lastActiveTime) : '',
+        lastMessage: row.lastMessageJson ? (JSON.parse(String(row.lastMessageJson)) as MobileMessage) : undefined,
+        isPinned: Boolean(row.isPinned),
+        isMuted: Boolean(row.isMuted),
+        encrypted: Boolean(row.encrypted),
+      }),
+    );
   },
 
   upsertMessages(conversationId: string, messages: MobileMessage[]): void {
@@ -177,7 +192,7 @@ export const messageRepository = {
           [conversationId, limit],
         );
     return rows
-      .map(parseMessage)
+      .map((row) => maskEncryptedMessage(parseMessage(row)))
       .sort((left, right) => new Date(left.sendTime).getTime() - new Date(right.sendTime).getTime());
   },
 

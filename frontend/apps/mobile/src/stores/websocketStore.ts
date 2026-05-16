@@ -32,6 +32,7 @@ import { appLifecycle } from '@/services/platform/appLifecycle';
 import { networkStatus } from '@/services/platform/networkStatus';
 import { normalizeMessage } from '@/utils/normalizers';
 import { logger } from '@/utils/logger';
+import { maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
 import { useAuthStore } from './authStore';
 import { useChatStore } from './chatStore';
 import { useContactStore } from './contactStore';
@@ -213,17 +214,18 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
 
       const sessionId = resolveMessageSessionId(message, currentUserId);
       const routedMessage = { ...message, conversationId: sessionId || message.conversationId };
-      useMessageStore.getState().addMessage(routedMessage, routedMessage.conversationId);
+      const safeRoutedMessage = maskEncryptedMessage(routedMessage);
+      useMessageStore.getState().addMessage(safeRoutedMessage, safeRoutedMessage.conversationId);
       const currentSessionId = useSessionStore.getState().currentSession?.id;
-      const isCurrent = Boolean(routedMessage.conversationId && currentSessionId === routedMessage.conversationId);
-      const isSelf = routedMessage.senderId === currentUserId;
+      const isCurrent = Boolean(safeRoutedMessage.conversationId && currentSessionId === safeRoutedMessage.conversationId);
+      const isSelf = safeRoutedMessage.senderId === currentUserId;
       const sessionStore = useSessionStore.getState();
-      const existingSession = sessionStore.sessions.find((item) => item.id === routedMessage.conversationId);
-      const messageSession = createSessionFromMessage(routedMessage, currentUserId);
+      const existingSession = sessionStore.sessions.find((item) => item.id === safeRoutedMessage.conversationId);
+      const messageSession = createSessionFromMessage(safeRoutedMessage, currentUserId);
       const baseSession: ChatSession | null = existingSession || messageSession;
       if (baseSession) {
         const shouldIncrement = kind === 'message' && !isCurrent && !isSelf;
-        const applied = applyMessageToSession(baseSession, routedMessage, { incrementUnread: shouldIncrement });
+        const applied = applyMessageToSession(baseSession, safeRoutedMessage, { incrementUnread: shouldIncrement });
         const merged: ChatSession = {
           ...baseSession,
           lastMessage: applied.lastMessage,
@@ -236,7 +238,7 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
         sessionStore.upsertSession(merged);
       }
       if (kind === 'message' && !isCurrent && !isSelf && !baseSession?.isMuted) {
-        await displayMessageNotification(routedMessage);
+        await displayMessageNotification(safeRoutedMessage);
       }
       return;
     }
@@ -296,8 +298,12 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
       return;
     }
     // W20: E2EE negotiation — deferred on mobile.
+    // E3.3 / E5.3 / E11.3: only log action category, never requestPayloadJson or key material.
+    // E20.1 / E32.5: no identityKey, ephemeralKey, or payload原文 in logs.
     if (kind === 'e2eeNegotiation') {
-      logger.info('websocket', 'E2EE negotiation ignored on mobile because E2EE is deferred');
+      const negotiationData = data && typeof data === 'object' ? data as Record<string, unknown> : {};
+      const action = typeof negotiationData.action === 'string' ? negotiationData.action : 'unknown';
+      logger.info('websocket', `E2EE negotiation deferred on mobile (action=${action})`);
     }
   },
 

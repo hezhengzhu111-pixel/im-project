@@ -35,6 +35,7 @@ import { useChatStore } from "@/stores/chat";
 import { useUserStore } from "@/stores/user";
 import { logger } from "@/utils/logger";
 import type { E2eeNegotiationEvent } from "@/features/e2ee/negotiation-events";
+import { classifyE2eeError } from "@im/shared-e2ee-core";
 
 type TimerHandle = ReturnType<typeof setInterval>;
 
@@ -498,17 +499,17 @@ export const useWebSocketStore = defineStore("websocket", () => {
             }
           }
         } catch (e) {
-          const errMsg = e instanceof Error ? e.message : String(e);
-          const isNoRatchetState = errMsg.includes("No ratchet state") || errMsg.includes("negotiation has not been accepted");
+          const classification = classifyE2eeError(e);
+          const isNoRatchetState = classification.code === "NO_RATCHET_STATE" || classification.code === "NEGOTIATION_NOT_ACCEPTED";
 
           if (isNoRatchetState) {
             const { getLocalSessionStatus, setLocalSessionStatus } = await import("@/features/e2ee/manager/negotiation");
             const status = getLocalSessionStatus(sessionId);
 
             if (status === "encrypted") {
-              console.error(`[E2EE] Status is 'encrypted' but no ratchet state for session=${sessionId}. Resetting to plaintext.`);
-              setLocalSessionStatus(sessionId, "plaintext");
-              ElNotification({ title: "加密状态异常", message: "端到端加密状态已重置，请重新发起加密协商。", type: "warning", duration: 8000 });
+              console.error(`[E2EE] Status is 'encrypted' but no ratchet state for session=${sessionId}. Marking session failed.`);
+              setLocalSessionStatus(sessionId, "failed");
+              ElNotification({ title: "E2EE unavailable", message: "Encrypted session state is unavailable. Re-negotiate E2EE before sending more messages.", type: "warning", duration: 8000 });
             } else if (status === "negotiating") {
               console.warn(`[E2EE] Negotiation in progress for session=${sessionId}, message will be decrypted after completion.`);
               ElMessage({ message: "加密协商进行中，消息将在协商完成后解密。", type: "info", duration: 3000 });
@@ -536,7 +537,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
               }
             }
           } else {
-            console.error("[E2EE] Decrypt failed:", e);
+            console.error("[E2EE] Decrypt failed:", classification.safeMessage);
           }
           (normalizedMessage as unknown as Record<string, unknown>).encrypted = true;
         }
@@ -633,7 +634,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
         const { emitE2eeNegotiation } = await import("@/features/e2ee/negotiation-events");
         emitE2eeNegotiation(normalized);
       } catch (e) {
-        console.error("[E2EE] Failed to dispatch negotiation event:", e);
+        console.error("[E2EE] Failed to dispatch negotiation event:", e instanceof Error ? e.message : "unknown error");
       }
       return;
     }
@@ -645,9 +646,10 @@ export const useWebSocketStore = defineStore("websocket", () => {
     if (!document.hidden) {
       return;
     }
+    const isEncrypted = message.encrypted === true || message.encrypted === 1;
     ElNotification({
       title: message.senderName || "New message",
-      message: message.content,
+      message: isEncrypted ? "加密消息暂无法解密" : message.content,
       type: "info",
       duration: 3000,
     });

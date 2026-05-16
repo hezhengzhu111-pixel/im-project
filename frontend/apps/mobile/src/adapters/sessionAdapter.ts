@@ -2,6 +2,7 @@ import { buildSessionId, resolveMessageSessionId as resolveSharedMessageSessionI
 import { normalizeConversation } from '@im/shared-normalizers';
 import { asBoolean, asNumber, asString, isRecord, type ChatSession as SharedChatSession } from '@im/shared-types';
 import { normalizeMobileMessage, toSharedMessage } from './messageAdapter';
+import { isEncryptedMessage, maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
 import type { ChatSession } from '@im/shared-types';
 import type { MobileMessage } from '@/types/models';
 
@@ -16,11 +17,28 @@ export const resolveMessageSessionId = (message: MobileMessage, currentUserId: s
   return resolved || message.conversationId || '';
 };
 
+const safeLastMessage = (message?: unknown): MobileMessage | undefined => {
+  if (!message) {
+    return undefined;
+  }
+  return maskEncryptedMessage(normalizeMobileMessage(message));
+};
+
 const toMobileSession = (session: SharedChatSession, raw?: unknown): ChatSession => {
   const record = isRecord(raw) ? raw : {};
+  const explicitRawLastMessage = isRecord(record.lastMessage)
+    ? record.lastMessage
+    : isRecord(record.last_message)
+      ? record.last_message
+      : undefined;
+  const rawLastMessage = explicitRawLastMessage ?? session.lastMessage ?? record.lastMessage ?? record.last_message;
+  const lastMessage = safeLastMessage(rawLastMessage);
+  const encrypted = asBoolean(record.encrypted, session.encrypted ?? false) ||
+    Boolean(lastMessage && isEncryptedMessage(lastMessage));
   return {
     ...session,
-    lastMessage: session.lastMessage ? normalizeMobileMessage(session.lastMessage) : undefined,
+    encrypted,
+    lastMessage,
     memberCount: Number.isFinite(asNumber(record.memberCount ?? record.member_count, Number.NaN))
       ? asNumber(record.memberCount ?? record.member_count)
       : undefined,
@@ -51,10 +69,11 @@ export const normalizeMobileSession = (raw: unknown, currentUserId: string): Cha
     targetAvatar: asString(record.targetAvatar ?? record.target_avatar ?? record.avatar) || undefined,
     unreadCount: asNumber(record.unreadCount ?? record.unread_count, 0),
     lastActiveTime: asString(record.lastActiveTime ?? record.last_active_time ?? record.lastMessageTime ?? record.last_message_time),
-    lastMessage: record.lastMessage ? normalizeMobileMessage(record.lastMessage) : undefined,
+    lastMessage: safeLastMessage(record.lastMessage),
     isPinned: asBoolean(record.isPinned ?? record.pinned),
     isMuted: asBoolean(record.isMuted ?? record.muted),
-    encrypted: asBoolean(record.encrypted),
+    encrypted: asBoolean(record.encrypted) ||
+      Boolean(record.lastMessage && isEncryptedMessage(normalizeMobileMessage(record.lastMessage))),
     memberCount: Number.isFinite(asNumber(record.memberCount ?? record.member_count, Number.NaN))
       ? asNumber(record.memberCount ?? record.member_count)
       : undefined,
@@ -96,8 +115,9 @@ export const createSessionFromMessage = (
           : message.senderAvatar,
     unreadCount: 0,
     lastActiveTime: message.sendTime,
-    lastMessage: message,
+    lastMessage: maskEncryptedMessage(message),
     isPinned: false,
     isMuted: false,
+    encrypted: isEncryptedMessage(message),
   };
 };

@@ -79,4 +79,28 @@ export interface GroupReadUser {
   displayName: string;
 }
 
+/**
+ * E2EE negotiation control-plane payload (E10, E11, E29).
+ *
+ * Carries negotiation lifecycle events (request/accepted/rejected/disabled).
+ * This is a control-plane type — it must NOT contain private keys, root key,
+ * chain key, message key, Ratchet state, media key, or ciphertext payload.
+ *
+ * Fields support both camelCase and snake_case for cross-platform compat.
+ * requestPayloadJson is opaque to shared-types; its semantics are E10.1.
+ */
+export interface E2eeNegotiationPayload {
+  action: 'request' | 'accepted' | 'rejected' | 'disabled';
+  sessionId: string;
+  session_id?: string;
+  requesterId: string;
+  requester_id?: string;
+  requesterName: string;
+  requester_name?: string;
+  targetUserId: string;
+  target_user_id?: string;
+  requestPayloadJson?: string;
+  request_payload_json?: string;
+}
+
 export type Conversation = ChatSession;

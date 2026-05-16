@@ -242,6 +242,10 @@ describe("WebSocket E2EE receive decrypt path", () => {
     refreshSessionSkeletons.mockResolvedValue(undefined);
     applyReadReceipt.mockResolvedValue(undefined);
     vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
     localStorage.clear();
 
     consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -374,10 +378,11 @@ describe("WebSocket E2EE receive decrypt path", () => {
       await vi.advanceTimersByTimeAsync(0);
       await Promise.resolve();
 
-      expect(setLocalSessionStatusMock).toHaveBeenCalledWith("21_42", "plaintext");
+      expect(setLocalSessionStatusMock).toHaveBeenCalledWith("21_42", "failed");
+      expect(setLocalSessionStatusMock).not.toHaveBeenCalledWith("21_42", "plaintext");
       expect(notification).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: "加密状态异常",
+          title: "E2EE unavailable",
           type: "warning",
         }),
       );
@@ -970,6 +975,41 @@ describe("WebSocket E2EE receive decrypt path", () => {
       const errorOutput = consoleErrorSpy.mock.calls.flat().join(" ");
       expect(errorOutput).toContain("Decrypt failed");
     });
+
+    it("masks notification body when an encrypted message cannot be decrypted", async () => {
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        value: true,
+      });
+      decryptMessageMock.mockRejectedValue(new Error("AES-GCM decryption failed: OperationError"));
+      getLocalSessionStatusMock.mockReturnValue("encrypted");
+
+      const { ws } = await connectStore();
+      ws.onopen?.();
+      await Promise.resolve();
+
+      ws.onmessage?.({
+        data: JSON.stringify(
+          makeEncryptedMessagePayload({
+            id: "401",
+            senderName: "Alice",
+            content: "ciphertext-notification-body",
+          }),
+        ),
+      });
+      await flushE2eePath();
+
+      expect(notification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Alice",
+          message: "加密消息暂无法解密",
+          type: "info",
+        }),
+      );
+      expect(notification.mock.calls.flat().join(" ")).not.toContain(
+        "ciphertext-notification-body",
+      );
+    });
   });
 
   // =========================================================================
@@ -1003,6 +1043,10 @@ describe("WebSocket E2EE receive decrypt path", () => {
   // =========================================================================
 
   afterEach(() => {
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
     consoleErrorSpy.mockRestore();
     consoleWarnSpy.mockRestore();
     consoleLogSpy.mockRestore();

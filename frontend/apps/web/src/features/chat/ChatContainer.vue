@@ -309,6 +309,7 @@
           <ChatComposer
             :disabled="!currentSession"
             :members="composerMembers"
+            :session-id="currentSession.type === 'private' ? currentSession.id : undefined"
             @send-text="sendTextMessage"
             @send-media="sendMediaMessage"
             @request-members="handleRequestMembers"

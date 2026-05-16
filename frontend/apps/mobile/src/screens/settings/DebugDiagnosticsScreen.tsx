@@ -100,6 +100,15 @@ export function DebugDiagnosticsScreen() {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>E2EE Capability</Text>
+        <InfoRow label="Supported" value={snapshot.e2eeCapability.supported} />
+        <InfoRow label="Mode" value={snapshot.e2eeCapability.mode} />
+        <InfoRow label="Can send encrypted" value={snapshot.e2eeCapability.canSendEncrypted} />
+        <InfoRow label="Can decrypt" value={snapshot.e2eeCapability.canDecryptEncrypted} />
+        <InfoRow label="Reason" value={snapshot.e2eeCapability.reason} />
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Recent Errors</Text>
         <Text style={styles.errorLabel}>Last API error</Text>
         <Text style={styles.errorText}>

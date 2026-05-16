@@ -1,6 +1,6 @@
 import type { LocalLogEntry } from '@/types/models';
 
-const SENSITIVE_KEY_PARTS = ['token', 'cookie', 'password', 'apikey', 'api_key', 'authorization', 'secret'];
+const SENSITIVE_KEY_PARTS = ['token', 'cookie', 'password', 'apikey', 'api_key', 'authorization', 'secret', 'privatekey', 'identitykey', 'rootkey', 'chainkey', 'messagekey', 'ratchetstate', 'mediakey', 'ephemeralkey'];
 const entries: LocalLogEntry[] = [];
 const listeners = new Set<(logs: LocalLogEntry[]) => void>();
 const MAX_RECENT_LOGS = 200;

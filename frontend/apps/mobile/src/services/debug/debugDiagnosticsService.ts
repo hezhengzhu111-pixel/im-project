@@ -13,6 +13,7 @@ import { messageRepository } from '@/services/storage/messageRepository';
 import { notificationEventRepository } from '@/services/storage/notificationEventRepository';
 import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
 import { logger, redactSensitiveValue } from '@/utils/logger';
+import { getMobileE2eeCapability, type MobileE2eeCapability } from '@/e2ee/e2eeCapability';
 
 export interface DebugDiagnosticsSnapshot {
   appEnv: string;
@@ -25,6 +26,7 @@ export interface DebugDiagnosticsSnapshot {
   sqliteMode: 'unknown' | 'sqlite' | 'memory';
   sqlitePersistenceAvailable: boolean;
   fcmTokenAvailable: boolean;
+  e2eeCapability: MobileE2eeCapability;
   lastApiError: DebugErrorRecord | null;
   lastWsError: DebugErrorRecord | null;
   recentErrors: Array<{
@@ -96,6 +98,7 @@ export const debugDiagnosticsService = {
       sqliteMode: storageHealth.mode as 'unknown' | 'sqlite' | 'memory',
       sqlitePersistenceAvailable: storageHealth.persistenceAvailable,
       fcmTokenAvailable: Boolean(notificationState.fcmToken || kvStorage.getString('im.mobile.fcm-token')),
+      e2eeCapability: getMobileE2eeCapability(),
       lastApiError: sanitizeError(debugTelemetry.getLastApiError()),
       lastWsError: sanitizeError(debugTelemetry.getLastWsError()),
       recentErrors: recentErrorLogs(),

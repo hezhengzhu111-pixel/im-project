@@ -167,7 +167,7 @@ export async function initiateNegotiation(
 
     return true;
   } catch (error) {
-    console.error('[E2EE] Negotiation initiation failed:', error);
+    console.error('[E2EE] Negotiation initiation failed:', error instanceof Error ? error.message : "unknown error");
     clearPendingInitialHandshake(sessionId);
     setLocalSessionStatus(sessionId, 'failed');
     return false;
@@ -223,7 +223,7 @@ export async function respondToNegotiation(
 
     return true;
   } catch (error) {
-    console.error('[E2EE] Negotiation response failed:', error);
+    console.error('[E2EE] Negotiation response failed:', error instanceof Error ? error.message : "unknown error");
     setLocalSessionStatus(sessionId, 'failed');
     return false;
   }
