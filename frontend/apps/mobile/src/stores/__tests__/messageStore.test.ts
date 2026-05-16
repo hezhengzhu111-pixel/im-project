@@ -678,7 +678,7 @@ describe('messageStore', () => {
       } as MobileMessage;
       const maskedMsg = { ...encryptedMsg, content: '[encrypted]', mediaUrl: undefined, mediaName: undefined, mediaSize: undefined };
       mockMaskEncryptedMessage.mockImplementation((msg: MobileMessage) =>
-        (msg as Record<string, unknown>).encrypted ? maskedMsg : msg,
+        (msg as unknown as Record<string, unknown>).encrypted ? maskedMsg : msg,
       );
       mr.listMessagesPage.mockReturnValueOnce({ messages: [encryptedMsg], hasMore: false });
       ms.getPrivateHistory.mockResolvedValueOnce({ code: 0, message: 'ok', data: [encryptedMsg] });
