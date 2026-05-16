@@ -3,5 +3,6 @@ export const messageRepository = {
   listSessions: jest.fn(() => []),
   upsertMessages: jest.fn(),
   listMessages: jest.fn(() => []),
+  listMessagesPage: jest.fn(() => ({ messages: [], hasMore: false })),
   clearConversation: jest.fn(),
 };
