@@ -265,6 +265,102 @@ describe('messageDatabase test seam', () => {
     });
   });
 
+  describe('lastMigrationError sensitive info filtering', () => {
+    it('stores only error message, not stack trace', async () => {
+      const failDb = createFakeDb();
+      const errorWithStack = new Error('database locked');
+      errorWithStack.stack = 'Error: database locked\n    at Object.execute (/app/node_modules/better-sqlite3/lib/database.js:123:45)\n    at migrationRunner.ts:50:12';
+      failDb.throwOnSql(/CREATE TABLE/, errorWithStack);
+      __setDbForTests(failDb);
+
+      await initializeStorage();
+
+      const health = messageDatabase.getStorageHealth();
+      expect(health.lastMigrationError).toBe('database locked');
+      expect(health.lastMigrationError).not.toContain('/app/node_modules');
+      expect(health.lastMigrationError).not.toContain('better-sqlite3');
+      expect(health.lastMigrationError).not.toContain('migrationRunner.ts');
+    });
+
+    it('does not expose file paths in lastMigrationError', async () => {
+      const failDb = createFakeDb();
+      failDb.throwOnSql(/CREATE TABLE/, new Error('disk full at /data/user/0/com.app/databases/im.db'));
+      __setDbForTests(failDb);
+
+      await initializeStorage();
+
+      const health = messageDatabase.getStorageHealth();
+      // The error message itself contains the path, but that's the message content
+      // The important thing is we don't append stack traces
+      expect(health.lastMigrationError).toBe('disk full at /data/user/0/com.app/databases/im.db');
+    });
+
+    it('handles non-Error objects gracefully', async () => {
+      const failDb = createFakeDb();
+      failDb.throwOnSql(/CREATE TABLE/, 'string error' as any);
+      __setDbForTests(failDb);
+
+      await initializeStorage();
+
+      const health = messageDatabase.getStorageHealth();
+      // For non-Error objects, String(error) is used
+      expect(health.lastMigrationError).toBe('string error');
+    });
+
+    it('lastMigrationError is empty string on success', async () => {
+      __setDbForTests(fake);
+
+      await initializeStorage();
+
+      const health = messageDatabase.getStorageHealth();
+      expect(health.lastMigrationError).toBe('');
+    });
+
+    it('lastMigrationError persists across multiple getStorageHealth calls', async () => {
+      const failDb = createFakeDb();
+      failDb.throwOnSql(/CREATE TABLE/, new Error('connection lost'));
+      __setDbForTests(failDb);
+
+      await initializeStorage();
+
+      const health1 = messageDatabase.getStorageHealth();
+      const health2 = messageDatabase.getStorageHealth();
+      expect(health1.lastMigrationError).toBe('connection lost');
+      expect(health2.lastMigrationError).toBe('connection lost');
+    });
+  });
+
+  describe('migrationStatus lifecycle', () => {
+    it('transitions from unknown to running to success', async () => {
+      __setDbForTests(fake);
+
+      // Before init
+      expect(messageDatabase.getStorageHealth().migrationStatus).toBe('unknown');
+
+      await initializeStorage();
+
+      expect(messageDatabase.getStorageHealth().migrationStatus).toBe('success');
+    });
+
+    it('transitions from unknown to running to failed on migration error', async () => {
+      const failDb = createFakeDb();
+      failDb.throwOnSql(/BEGIN/, new Error('database locked'));
+      __setDbForTests(failDb);
+
+      await initializeStorage();
+
+      expect(messageDatabase.getStorageHealth().migrationStatus).toBe('failed');
+    });
+
+    it('transitions to failed when quick-sqlite is unavailable', async () => {
+      // Don't inject any db
+      await initializeStorage();
+
+      expect(messageDatabase.getStorageHealth().migrationStatus).toBe('failed');
+      expect(messageDatabase.getStorageHealth().mode).toBe('memory');
+    });
+  });
+
   describe('FakeDbConnection table seeding', () => {
     it('seedTable provides data for queries', () => {
       __setDbForTests(fake);

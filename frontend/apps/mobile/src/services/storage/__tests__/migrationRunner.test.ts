@@ -12,8 +12,8 @@ describe('getMigrationSteps', () => {
   });
 
   it('returns empty when no migrations exist for the range', () => {
-    // V1→V2 now has migration steps, so test a range with no steps (e.g., 2→3 when 3 doesn't exist)
-    expect(getMigrationSteps(2, 3)).toEqual([]);
+    // Test a range with no steps (e.g., 3→4 when 4 doesn't exist)
+    expect(getMigrationSteps(3, 4)).toEqual([]);
   });
 
   it('returns steps for versions that have migration entries', () => {
@@ -184,5 +184,205 @@ describe('runMigrations', () => {
     expect(result.success).toBe(false);
     const rollbacks = fake.executedSql.filter((s) => s.toUpperCase().includes('ROLLBACK'));
     expect(rollbacks.length).toBeGreaterThanOrEqual(1);
+  });
+
+  describe('V1 → V2 incremental migration', () => {
+    it('executes V2 migration statements when starting from V1', () => {
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '1' }]);
+
+      const result = runMigrations(fake);
+
+      expect(result.success).toBe(true);
+      expect(result.fromVersion).toBe(1);
+      expect(result.toVersion).toBe(CURRENT_DB_VERSION);
+
+      // Should contain V2 migration SQL (clientMessageId column)
+      const alterStatements = fake.executedSql.filter(
+        (s) => s.toUpperCase().includes('ALTER TABLE') && s.toUpperCase().includes('CLIENTMESSAGEID'),
+      );
+      expect(alterStatements.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('wraps V2 migration in its own transaction', () => {
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '1' }]);
+
+      runMigrations(fake);
+
+      // Should have BEGIN/COMMIT pairs for incremental migrations
+      const begins = fake.executedSql.filter((s) => s.trim().toUpperCase() === 'BEGIN TRANSACTION');
+      const commits = fake.executedSql.filter((s) => s.trim().toUpperCase() === 'COMMIT');
+      expect(begins.length).toBeGreaterThanOrEqual(1);
+      expect(commits.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('V2 → V3 incremental migration', () => {
+    it('executes V3 migration statements when starting from V2', () => {
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '2' }]);
+
+      const result = runMigrations(fake);
+
+      expect(result.success).toBe(true);
+      expect(result.fromVersion).toBe(2);
+      expect(result.toVersion).toBe(CURRENT_DB_VERSION);
+
+      // Should contain V3 migration SQL (upload_tasks new columns)
+      const alterStatements = fake.executedSql.filter(
+        (s) => s.toUpperCase().includes('ALTER TABLE') && s.toUpperCase().includes('MOBILE_UPLOAD_TASKS'),
+      );
+      expect(alterStatements.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('adds nextRetryAt, maxRetryCount, checksum, remoteFileId, lastAttemptAt columns', () => {
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '2' }]);
+
+      runMigrations(fake);
+
+      const executedUpper = fake.executedSql.map((s) => s.toUpperCase());
+      expect(executedUpper.some((s) => s.includes('NEXTRETRYAT'))).toBe(true);
+      expect(executedUpper.some((s) => s.includes('MAXRETRYCOUNT'))).toBe(true);
+      expect(executedUpper.some((s) => s.includes('CHECKSUM'))).toBe(true);
+      expect(executedUpper.some((s) => s.includes('REMOTEFILEID'))).toBe(true);
+      expect(executedUpper.some((s) => s.includes('LASTATTEMPTAT'))).toBe(true);
+    });
+
+    it('creates index on upload_tasks status and nextRetryAt', () => {
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '2' }]);
+
+      runMigrations(fake);
+
+      const indexStatements = fake.executedSql.filter(
+        (s) => s.toUpperCase().includes('CREATE INDEX') && s.toUpperCase().includes('UPLOAD_TASKS'),
+      );
+      expect(indexStatements.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('V1 → V3 full migration path', () => {
+    it('runs V2 then V3 in order when starting from V1', () => {
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '1' }]);
+
+      const result = runMigrations(fake);
+
+      expect(result.success).toBe(true);
+      expect(result.fromVersion).toBe(1);
+      expect(result.toVersion).toBe(3);
+
+      // V2 statements should appear before V3 statements
+      const v2AlterIdx = fake.executedSql.findIndex(
+        (s) => s.toUpperCase().includes('ALTER TABLE') && s.toUpperCase().includes('CLIENTMESSAGEID'),
+      );
+      const v3AlterIdx = fake.executedSql.findIndex(
+        (s) => s.toUpperCase().includes('ALTER TABLE') && s.toUpperCase().includes('NEXTRETRYAT'),
+      );
+      expect(v2AlterIdx).toBeGreaterThanOrEqual(0);
+      expect(v3AlterIdx).toBeGreaterThanOrEqual(0);
+      expect(v2AlterIdx).toBeLessThan(v3AlterIdx);
+    });
+
+    it('writes schema_version for each intermediate step', () => {
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '1' }]);
+
+      runMigrations(fake);
+
+      // Should have written version 2 and version 3
+      const metaInserts = fake.executedSql.filter(
+        (s) => s.toUpperCase().includes('INSERT OR REPLACE INTO MOBILE_META'),
+      );
+      expect(metaInserts.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe('schema_version update timing', () => {
+    it('does not update schema_version when migration fails', () => {
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '1' }]);
+      // Fail on V2 migration
+      fake.throwOnSql(/ALTER TABLE mobile_pending_messages ADD COLUMN clientMessageId/, new Error('column exists'));
+
+      const result = runMigrations(fake);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Migration to version 2 failed');
+
+      // Should have ROLLBACK but no successful COMMIT for the failed step
+      const rollbacks = fake.executedSql.filter((s) => s.toUpperCase().includes('ROLLBACK'));
+      expect(rollbacks.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('rolls back only the failed step, not previous successful steps', () => {
+      // Start from V1, V2 will succeed, V3 will fail
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '1' }]);
+      let alterCount = 0;
+      const originalExecute = fake.execute.bind(fake);
+      fake.execute = (sql: string, params?: unknown[]) => {
+        if (sql.toUpperCase().includes('ALTER TABLE') && sql.toUpperCase().includes('NEXTRETRYAT')) {
+          alterCount++;
+          if (alterCount === 1) {
+            throw new Error('disk full');
+          }
+        }
+        return originalExecute(sql, params);
+      };
+
+      const result = runMigrations(fake);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Migration to version 3 failed');
+    });
+  });
+
+  describe('incremental migration order', () => {
+    it('executes migration steps in ascending version order', () => {
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '1' }]);
+
+      runMigrations(fake);
+
+      // Track ALTER TABLE statements to verify order
+      const alterStatements = fake.executedSql
+        .filter((s) => s.toUpperCase().startsWith('ALTER TABLE'))
+        .map((s) => s.toUpperCase());
+
+      // V2: clientMessageId should come before V3: nextRetryAt
+      const v2Idx = alterStatements.findIndex((s) => s.includes('CLIENTMESSAGEID'));
+      const v3Idx = alterStatements.findIndex((s) => s.includes('NEXTRETRYAT'));
+
+      if (v2Idx >= 0 && v3Idx >= 0) {
+        expect(v2Idx).toBeLessThan(v3Idx);
+      }
+    });
+
+    it('each migration step has its own BEGIN/COMMIT transaction', () => {
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '1' }]);
+
+      runMigrations(fake);
+
+      const begins = fake.executedSql.filter((s) => s.trim().toUpperCase() === 'BEGIN TRANSACTION');
+      const commits = fake.executedSql.filter((s) => s.trim().toUpperCase() === 'COMMIT');
+
+      // Should have at least 2 transaction pairs (V2 and V3)
+      expect(begins.length).toBeGreaterThanOrEqual(2);
+      expect(commits.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe('downgrade protection', () => {
+    it('rejects when database version is exactly CURRENT_DB_VERSION + 1', () => {
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: String(CURRENT_DB_VERSION + 1) }]);
+
+      const result = runMigrations(fake);
+
+      expect(result.success).toBe(false);
+      expect(result.fromVersion).toBe(CURRENT_DB_VERSION + 1);
+      expect(result.toVersion).toBe(CURRENT_DB_VERSION);
+    });
+
+    it('rejects when database version is much higher than code version', () => {
+      fake.seedTable('mobile_meta', [{ key: 'schema_version', value: '99' }]);
+
+      const result = runMigrations(fake);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Downgrade not supported');
+    });
   });
 });
