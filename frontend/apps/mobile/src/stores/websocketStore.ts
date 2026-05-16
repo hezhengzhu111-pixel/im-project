@@ -19,7 +19,6 @@ import {
   shouldQueueIncomingPayload,
   shouldScheduleReconnect,
 } from '@im/shared-ws-core';
-import type { WsEventKind } from '@im/shared-ws-core';
 import { WS_MESSAGE_TYPE } from '@im/shared-api-contract';
 import { applyMessageToSession } from '@im/shared-im-core';
 import type { ChatSession } from '@im/shared-types';
@@ -178,6 +177,11 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
     }
   },
 
+  /**
+   * 断开 WebSocket 并重置连接相关内存状态。
+   * 会清：socket 实例、心跳/重连定时器、连接状态标志、onlineUsers、recentMessageIds。
+   * 不会清：持久层数据、auth 状态、消息缓存。
+   */
   disconnect() {
     manualDisconnect = true;
     stopHeartbeat();
@@ -187,7 +191,8 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
     }
     socket?.close(1000, 'manual_disconnect');
     socket = null;
-    set({ connected: false, connecting: false, reconnectAttempts: 0 });
+    recentMessageIds = new Map();
+    set({ connected: false, connecting: false, reconnectAttempts: 0, onlineUsers: {} });
   },
 
   async dispatchPayload(payload) {

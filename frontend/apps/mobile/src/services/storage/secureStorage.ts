@@ -58,6 +58,11 @@ export const secureStorage = {
     }
   },
 
+  /**
+   * 清理 secureStorage 中的登录凭据和 cookies。
+   * 会清：accessToken、sessionMeta、cookieMirror、所有 cookies。
+   * 不会清：FCM token、kvStorage、SQLite 数据。
+   */
   async clearSession(): Promise<void> {
     await Promise.all([
       this.remove(STORAGE_KEYS.accessToken),

@@ -149,4 +149,16 @@ describe('sessionStore', () => {
       expect(sessions[0].isPinned).toBe(true);
     });
   });
+
+  describe('clear', () => {
+    it('resets sessions and currentSession to empty', () => {
+      const sessions = [baseSession(), baseSession({ id: '100_300' })];
+      useSessionStore.setState({ sessions, currentSession: sessions[0] });
+
+      useSessionStore.getState().clear();
+
+      expect(useSessionStore.getState().sessions).toEqual([]);
+      expect(useSessionStore.getState().currentSession).toBeNull();
+    });
+  });
 });

@@ -25,7 +25,9 @@
       "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts, null, 2\\)\\)\")",
       "Bash(npm install *)",
       "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\(JSON.stringify\\(Object.keys\\(p.scripts\\), null, 2\\)\\)\")",
-      "Skill(superpowers:verification-before-completion)"
+      "Skill(superpowers:verification-before-completion)",
+      "Bash(node -e ' *)",
+      "Bash(git check-ignore *)"
     ]
   }
 }
