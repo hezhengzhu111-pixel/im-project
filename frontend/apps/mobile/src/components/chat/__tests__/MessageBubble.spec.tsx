@@ -148,7 +148,6 @@ describe('MessageBubble', () => {
     });
   });
 
-  // ── 2. SENDING / SEND_PENDING message shows "Sending..." ─────────
 
   describe('sending state', () => {
     it('shows Sending... when message is SENDING and no pending row', () => {
@@ -484,6 +483,169 @@ describe('MessageBubble', () => {
       });
 
       expect(findTextContent(testRenderer!.root, 'Me')).toBe(false);
+    });
+  });
+
+  // ── 8. RECALLED message ───────────────────────────────────────────
+
+  describe('recalled message', () => {
+    it('shows recalled text for RECALLED status', () => {
+      const message = msg({ status: 'RECALLED', content: '消息已撤回' });
+
+      let testRenderer: renderer.ReactTestRenderer;
+      renderer.act(() => {
+        testRenderer = renderer.create(
+          <MessageBubble message={message} mine={false} />,
+        );
+      });
+
+      expect(findTextContent(testRenderer!.root, '消息已撤回')).toBe(true);
+    });
+
+    it('falls back to default recalled text when content is empty', () => {
+      const message = msg({ status: 'RECALLED', content: '' });
+
+      let testRenderer: renderer.ReactTestRenderer;
+      renderer.act(() => {
+        testRenderer = renderer.create(
+          <MessageBubble message={message} mine={true} />,
+        );
+      });
+
+      expect(findTextContent(testRenderer!.root, '消息已撤回')).toBe(true);
+    });
+
+    it('shows time for recalled message', () => {
+      const message = msg({ status: 'RECALLED', content: '消息已撤回' });
+
+      let testRenderer: renderer.ReactTestRenderer;
+      renderer.act(() => {
+        testRenderer = renderer.create(
+          <MessageBubble message={message} mine={false} />,
+        );
+      });
+
+      // Time text should be present
+      expect(findTextContent(testRenderer!.root, ':')).toBe(true);
+    });
+  });
+
+  // ── 9. DELETED message ────────────────────────────────────────────
+
+  describe('deleted message', () => {
+    it('renders nothing for DELETED status', () => {
+      const message = msg({ status: 'DELETED' });
+
+      let testRenderer: renderer.ReactTestRenderer;
+      renderer.act(() => {
+        testRenderer = renderer.create(
+          <MessageBubble message={message} mine={true} />,
+        );
+      });
+
+      // Should render null — root has no meaningful children
+      expect(testRenderer!.root.children.filter(Boolean)).toHaveLength(0);
+    });
+  });
+
+  // ── 10. Sent/Read/Delivered status ────────────────────────────────
+
+  describe('sent status display', () => {
+    it('shows Sent for own SENT message', () => {
+      const message = msg({ status: 'SENT' });
+
+      let testRenderer: renderer.ReactTestRenderer;
+      renderer.act(() => {
+        testRenderer = renderer.create(
+          <MessageBubble message={message} mine={true} />,
+        );
+      });
+
+      expect(findTextContent(testRenderer!.root, 'Sent')).toBe(true);
+    });
+
+    it('shows Read for own READ message', () => {
+      const message = msg({ status: 'READ' });
+
+      let testRenderer: renderer.ReactTestRenderer;
+      renderer.act(() => {
+        testRenderer = renderer.create(
+          <MessageBubble message={message} mine={true} />,
+        );
+      });
+
+      expect(findTextContent(testRenderer!.root, 'Read')).toBe(true);
+    });
+
+    it('shows Delivered for own DELIVERED message', () => {
+      const message = msg({ status: 'DELIVERED' });
+
+      let testRenderer: renderer.ReactTestRenderer;
+      renderer.act(() => {
+        testRenderer = renderer.create(
+          <MessageBubble message={message} mine={true} />,
+        );
+      });
+
+      expect(findTextContent(testRenderer!.root, 'Delivered')).toBe(true);
+    });
+
+    it('does not show Sent/Read/Delivered for other messages', () => {
+      const message = msg({ status: 'SENT', senderId: 'user-2' });
+
+      let testRenderer: renderer.ReactTestRenderer;
+      renderer.act(() => {
+        testRenderer = renderer.create(
+          <MessageBubble message={message} mine={false} />,
+        );
+      });
+
+      expect(findTextContent(testRenderer!.root, 'Sent')).toBe(false);
+      expect(findTextContent(testRenderer!.root, 'Read')).toBe(false);
+      expect(findTextContent(testRenderer!.root, 'Delivered')).toBe(false);
+    });
+  });
+
+  // ── 11. Time display ──────────────────────────────────────────────
+
+  describe('time display', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-05-17T14:30:00.000Z'));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('shows formatted time for messages', () => {
+      const message = msg({ sendTime: '2026-05-17T10:00:00.000Z', status: 'SENT' });
+
+      let testRenderer: renderer.ReactTestRenderer;
+      renderer.act(() => {
+        testRenderer = renderer.create(
+          <MessageBubble message={message} mine={true} />,
+        );
+      });
+
+      expect(findTextContent(testRenderer!.root, '10:00')).toBe(true);
+    });
+
+    it('shows time for other messages', () => {
+      const message = msg({
+        sendTime: '2026-05-17T10:00:00.000Z',
+        status: 'SENT',
+        senderId: 'user-2',
+      });
+
+      let testRenderer: renderer.ReactTestRenderer;
+      renderer.act(() => {
+        testRenderer = renderer.create(
+          <MessageBubble message={message} mine={false} />,
+        );
+      });
+
+      expect(findTextContent(testRenderer!.root, '10:00')).toBe(true);
     });
   });
 });

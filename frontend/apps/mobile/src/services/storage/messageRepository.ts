@@ -323,6 +323,30 @@ export const messageRepository = {
     return toPageResult(messages);
   },
 
+  /**
+   * 按 identity 删除单条消息。
+   *
+   * 匹配规则：id = messageId 或 serverId = messageId 或 clientMessageId = messageId。
+   * 同时清理内存缓存和 SQLite。
+   */
+  deleteMessage(conversationId: string, messageId: string): void {
+    messageDatabase
+      .memoryList('mobile_messages')
+      .filter(
+        (row) =>
+          row.conversationId === conversationId &&
+          (row.id === messageId || row.serverId === messageId || row.clientMessageId === messageId),
+      )
+      .forEach((row) => {
+        const key = `${conversationId}:${messageKey(parseMessage(row))}`;
+        messageDatabase.memoryDelete('mobile_messages', key);
+      });
+    messageDatabase.execute(
+      'DELETE FROM mobile_messages WHERE conversationId = ? AND (id = ? OR serverId = ? OR clientMessageId = ?)',
+      [conversationId, messageId, messageId, messageId],
+    );
+  },
+
   clearConversation(conversationId: string): void {
     messageDatabase
       .memoryList('mobile_messages')
