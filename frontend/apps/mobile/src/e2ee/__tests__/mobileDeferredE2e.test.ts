@@ -1,4 +1,4 @@
-import { E2EE_SEND_DISABLED_TEXT, E2EE_UNSUPPORTED_TEXT, blockEncryptedPendingPayload, maskEncryptedMessage } from '../e2eeDeferred';
+import { E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT, E2EE_SEND_DISABLED_TEXT, E2EE_UNSUPPORTED_TEXT, blockEncryptedPendingPayload, maskEncryptedMessage } from '../e2eeDeferred';
 import { getMobileE2eeCapability } from '../e2eeCapability';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -69,6 +69,10 @@ describe('mobile E2EE full-mode safety', () => {
   });
 
   it('keeps no-plaintext-downgrade copy explicit', () => {
-    expect(E2EE_SEND_DISABLED_TEXT).toContain('不会自动改为明文发送');
+    expect(E2EE_SEND_DISABLED_TEXT).toContain('不会自动降级为明文');
+  });
+
+  it('keeps encrypted media explicitly out of mobile full-mode scope', () => {
+    expect(E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT).toContain('仅支持文字消息');
   });
 });
