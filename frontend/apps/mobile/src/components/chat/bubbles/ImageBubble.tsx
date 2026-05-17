@@ -2,6 +2,7 @@ import React from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, typography } from '@/app/theme';
 import type { MobileMessage } from '@/types/models';
+import { mediaCache } from '@/services/media/mediaCache';
 import { resolveMediaUri } from '@/services/media/mediaUri';
 import { MediaPreviewModal } from './MediaPreviewModal';
 
@@ -13,17 +14,43 @@ interface ImageBubbleProps {
 export function ImageBubble({ message, mine }: ImageBubbleProps) {
   const [previewVisible, setPreviewVisible] = React.useState(false);
   const [loadFailed, setLoadFailed] = React.useState(false);
+  const [imageUri, setImageUri] = React.useState('');
+  const [previewUri, setPreviewUri] = React.useState('');
 
   const rawUri = message.thumbnailUrl || message.mediaUrl || message.content || '';
-  const imageUri = resolveMediaUri(rawUri, 'IMAGE');
-  const previewUri = resolveMediaUri(message.mediaUrl || rawUri, 'IMAGE');
+  const resolvedImageUri = resolveMediaUri(rawUri, 'IMAGE');
+  const resolvedPreviewUri = resolveMediaUri(message.mediaUrl || rawUri, 'IMAGE');
   const label = message.mediaName || String(rawUri).split('/').filter(Boolean).pop() || '图片';
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoadFailed(false);
+    setImageUri('');
+    setPreviewUri(resolvedPreviewUri);
+
+    if (!resolvedImageUri) return () => { cancelled = true; };
+
+    void mediaCache.imageUri(resolvedImageUri).then(
+      (localUri) => {
+        if (!cancelled) {
+          setImageUri(localUri || resolvedImageUri);
+        }
+      },
+      () => {
+        if (!cancelled) {
+          setLoadFailed(true);
+        }
+      },
+    );
+
+    return () => { cancelled = true; };
+  }, [resolvedImageUri, resolvedPreviewUri]);
 
   if (!imageUri || loadFailed) {
     return (
       <View style={[styles.placeholder, mine ? styles.placeholderMine : null]}>
         <Text numberOfLines={1} style={[styles.placeholderTitle, mine ? styles.mineText : null]}>图片</Text>
-        <Text numberOfLines={2} style={[styles.placeholderSubtitle, mine ? styles.mineTextSecondary : null]}>{label}</Text>
+        <Text numberOfLines={2} style={[styles.placeholderSubtitle, mine ? styles.mineTextSecondary : null]}>{loadFailed ? '图片加载失败' : label}</Text>
       </View>
     );
   }
@@ -33,7 +60,7 @@ export function ImageBubble({ message, mine }: ImageBubbleProps) {
       <Pressable onPress={() => setPreviewVisible(true)} accessibilityLabel="查看大图">
         <Image resizeMode="cover" source={{ uri: imageUri }} style={styles.image} onError={() => setLoadFailed(true)} />
       </Pressable>
-      <MediaPreviewModal visible={previewVisible} onClose={() => setPreviewVisible(false)} mediaUrl={previewUri} mediaType="IMAGE" />
+      <MediaPreviewModal visible={previewVisible} onClose={() => setPreviewVisible(false)} mediaUrl={previewUri || imageUri} mediaType="IMAGE" />
     </>
   );
 }
