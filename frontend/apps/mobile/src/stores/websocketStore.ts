@@ -31,7 +31,14 @@ import { appLifecycle } from '@/services/platform/appLifecycle';
 import { networkStatus } from '@/services/platform/networkStatus';
 import { normalizeMessage } from '@/utils/normalizers';
 import { logger } from '@/utils/logger';
-import { maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
+import { processE2eeMessage } from '@/e2ee/messageProcessor';
+import {
+  handleNegotiationAccepted,
+  handleNegotiationDisabled,
+  handleNegotiationRejected,
+  normalizeNegotiationEvent,
+  recordPendingNegotiationRequest,
+} from '@/e2ee/manager/negotiation';
 import { useAuthStore } from './authStore';
 import { useChatStore } from './chatStore';
 import { useContactStore } from './contactStore';
@@ -219,7 +226,14 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
 
       const sessionId = resolveMessageSessionId(message, currentUserId);
       const routedMessage = { ...message, conversationId: sessionId || message.conversationId };
-      const safeRoutedMessage = maskEncryptedMessage(routedMessage);
+      const processed = await processE2eeMessage(routedMessage, {
+        sessionId: routedMessage.conversationId,
+        currentUserId,
+        findOptimisticMessage: (clientMessageId) =>
+          (useMessageStore.getState().messagesBySession[routedMessage.conversationId || ''] || [])
+            .find((item) => item.clientMessageId === clientMessageId),
+      });
+      const safeRoutedMessage = processed.displayMessage;
       useMessageStore.getState().addMessage(safeRoutedMessage, safeRoutedMessage.conversationId);
       const currentSessionId = useSessionStore.getState().currentSession?.id;
       const isCurrent = Boolean(safeRoutedMessage.conversationId && currentSessionId === safeRoutedMessage.conversationId);
@@ -307,8 +321,24 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
     // E20.1 / E32.5: no identityKey, ephemeralKey, or payload原文 in logs.
     if (kind === 'e2eeNegotiation') {
       const negotiationData = data && typeof data === 'object' ? data as Record<string, unknown> : {};
-      const action = typeof negotiationData.action === 'string' ? negotiationData.action : 'unknown';
-      logger.info('websocket', `E2EE negotiation deferred on mobile (action=${action})`);
+      const event = normalizeNegotiationEvent(negotiationData);
+      const action = (typeof negotiationData.action === 'string' ? negotiationData.action : 'unknown').toLowerCase();
+      if (!event) {
+        return;
+      }
+      if (action === 'request') {
+        await recordPendingNegotiationRequest({ ...event, action });
+      } else if (action === 'accepted') {
+        await handleNegotiationAccepted(event.sessionId);
+      } else if (action === 'rejected') {
+        await handleNegotiationRejected(event.sessionId);
+      } else if (action === 'disabled') {
+        await handleNegotiationDisabled(event.sessionId);
+      }
+      logger.info('websocket', `E2EE negotiation event handled (action=${action})`, {
+        sessionId: event.sessionId,
+        action,
+      });
     }
   },
 

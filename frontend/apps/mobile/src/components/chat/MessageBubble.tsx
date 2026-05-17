@@ -25,6 +25,13 @@ interface DerivedStatus {
 const getAvatarLetter = (message: MobileMessage, mine: boolean) =>
   (mine ? message.senderName || message.senderId : message.senderName || message.senderId || '?').slice(0, 1).toUpperCase();
 
+const messageTypeFallback: Record<string, string> = {
+  IMAGE: '图片',
+  VIDEO: '视频',
+  VOICE: '语音',
+  FILE: '文件',
+};
+
 function BubbleAvatar({ message, mine }: { message: MobileMessage; mine: boolean }) {
   const avatar = message.senderAvatar;
   return (
@@ -73,7 +80,7 @@ export function MessageBubble({
 
   const showBlocked = derived.stage === 'BLOCKED';
   const showFailed = !showBlocked && (derived.stage === 'UPLOAD_FAILED' || derived.stage === 'SEND_FAILED' || message.status === 'FAILED');
-  const mediaUri = message.mediaUrl || message.thumbnailUrl || message.content;
+  const mediaUri = message.mediaUrl || message.thumbnailUrl;
 
   const renderBubbleContent = () => {
     if (isEncryptedMessage(message)) return <E2eeUnsupportedMessage />;
@@ -88,7 +95,20 @@ export function MessageBubble({
       : message.messageType === 'FILE' && mediaUri ? <FileBubble message={message} mine={mine} />
       : null;
 
-    return mediaElement || <TextBubble message={message} mine={mine} />;
+    if (mediaElement) {
+      return mediaElement;
+    }
+    if (message.messageType === 'TEXT') {
+      return <TextBubble message={message} mine={mine} />;
+    }
+    const fallbackContent =
+      message.content ||
+      message.mediaName ||
+      message.mediaUrl ||
+      messageTypeFallback[message.messageType] ||
+      message.messageType ||
+      '消息';
+    return <Text style={[styles.fallbackText, mine ? styles.mineFallbackText : null]}>{fallbackContent}</Text>;
   };
 
   if (message.status === 'DELETED') return null;
@@ -171,7 +191,7 @@ const styles = StyleSheet.create({
   },
   bubble: {
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    borderRadius: radius?.lg ?? 12,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
@@ -199,5 +219,13 @@ const styles = StyleSheet.create({
   recalledText: {
     color: colors.muted,
     fontSize: typography.small,
+  },
+  fallbackText: {
+    color: colors.text,
+    fontSize: typography.body,
+    lineHeight: 21,
+  },
+  mineFallbackText: {
+    color: '#FFFFFF',
   },
 });

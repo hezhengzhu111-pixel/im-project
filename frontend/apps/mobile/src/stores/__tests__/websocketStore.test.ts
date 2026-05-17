@@ -551,10 +551,11 @@ describe('websocketStore', () => {
         },
       });
 
-      // Mobile defers E2EE — it should log but not crash
+      // Mobile handles negotiation events without logging sensitive payloads.
       expect(logger.info).toHaveBeenCalledWith(
         'websocket',
-        expect.stringContaining('E2EE negotiation deferred on mobile'),
+        expect.stringContaining('E2EE negotiation event handled'),
+        expect.objectContaining({ action: 'request' }),
       );
     });
   });

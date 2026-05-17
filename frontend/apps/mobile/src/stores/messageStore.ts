@@ -3,7 +3,10 @@ import { applyMessageToSession, applyReadReceiptToMessages, buildSessionId, crea
 import { normalizeReadReceipt } from '@im/shared-normalizers';
 import { applyMobileMessageToList, hasSameMobileMessageIdentity, resolveMessageSessionId } from '@/utils/normalizers';
 import { RETRY_CONFIG } from '@/constants/config';
-import { assertPlaintextSendAllowed, blockEncryptedPendingPayload, maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
+import { E2EE_SEND_DISABLED_TEXT, blockEncryptedPendingPayload, getSessionE2eeStatus, maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
+import { processE2eeMessage, processE2eeMessages } from '@/e2ee/messageProcessor';
+import { e2eeManager } from '@/e2ee/manager/e2eeManager';
+import { getPendingInitialHandshake, loadLocalSessionStatus } from '@/e2ee/manager/negotiation';
 import { messageService, resolveMarkReadTarget, type SendMessagePayload } from '@/services/chat/messageService';
 import { messageRepository } from '@/services/storage/messageRepository';
 import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
@@ -12,6 +15,7 @@ import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
 import { logger } from '@/utils/logger';
 import { createClientMessageId, createLocalMessageId } from '@/utils/ids';
 import { createInitialPaginationState, getMessageCursor, mergePagedMessages } from '@/utils/messagePagination';
+import { isEncryptedValue } from '@im/shared-e2ee-core';
 import { useAuthStore } from './authStore';
 import { useSessionStore } from './sessionStore';
 import type { ChatSession, MessageType } from '@im/shared-types';
@@ -72,6 +76,55 @@ interface MessageState {
 
 const sessionIdFor = (message: MobileMessage): string =>
   resolveMessageSessionId(message, useAuthStore.getState().currentUser?.id || '') || message.conversationId || '';
+
+const findOptimisticMessage = (state: MessageState, sessionId: string, clientMessageId: string): MobileMessage | undefined =>
+  (state.messagesBySession[sessionId] || []).find((item) => item.clientMessageId === clientMessageId);
+
+const processMessagesForSession = async (
+  state: MessageState,
+  sessionId: string,
+  messages: MobileMessage[],
+): Promise<MobileMessage[]> => {
+  const currentUserId = useAuthStore.getState().currentUser?.id || '';
+  if (!currentUserId) {
+    return messages.map(maskEncryptedMessage);
+  }
+  const processed = await processE2eeMessages(messages, {
+    sessionId,
+    currentUserId,
+    findOptimisticMessage: (clientMessageId) => findOptimisticMessage(state, sessionId, clientMessageId),
+    concurrency: 4,
+  });
+  return processed.map((item) => item.displayMessage);
+};
+
+const processMessageForSession = async (
+  state: MessageState,
+  sessionId: string,
+  message: MobileMessage,
+): Promise<MobileMessage> => {
+  const currentUserId = useAuthStore.getState().currentUser?.id || '';
+  if (!currentUserId) {
+    return maskEncryptedMessage(message);
+  }
+  const processed = await processE2eeMessage(message, {
+    sessionId,
+    currentUserId,
+    findOptimisticMessage: (clientMessageId) => findOptimisticMessage(state, sessionId, clientMessageId),
+  });
+  return processed.displayMessage;
+};
+
+const resolveEffectiveE2eeStatus = async (session: ChatSession) => {
+  if (session.type !== 'private') {
+    return getSessionE2eeStatus(session);
+  }
+  const loaded = await loadLocalSessionStatus(session.id).catch(() => getSessionE2eeStatus(session));
+  if (loaded !== 'plaintext') {
+    return loaded;
+  }
+  return getSessionE2eeStatus(session);
+};
 
 const optimisticMessage = (
   session: ChatSession,
@@ -135,7 +188,7 @@ const enqueuePending = (
     localId: message.id,
     conversationId: session.id,
     sendType: session.type,
-    payloadJson: JSON.stringify({ sendType: session.type, data: payload, uploadTaskId }),
+    payloadJson: JSON.stringify({ sendType: session.type, data: payload, encrypted: payload.encrypted, uploadTaskId }),
     status: 'pending',
     retryCount: 0,
     createdAt: now,
@@ -173,7 +226,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     let localMessages: MobileMessage[] = [];
     try {
       const localPage = messageRepository.listMessagesPage(sid, { limit: PAGE_SIZE });
-      localMessages = localPage.messages.map(maskEncryptedMessage);
+      localMessages = await processMessagesForSession(get(), sid, localPage.messages);
       if (localMessages.length > 0) {
         set((s) => ({
           messagesBySession: { ...s.messagesBySession, [sid]: localMessages },
@@ -188,7 +241,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
         session.type === 'group'
           ? await messageService.getGroupHistory(session.targetId, { size: PAGE_SIZE })
           : await messageService.getPrivateHistory(session.targetId, { size: PAGE_SIZE });
-      const remoteMessages = response.data.map(maskEncryptedMessage);
+      const remoteMessages = await processMessagesForSession(get(), sid, response.data);
       const merged = mergePagedMessages(localMessages, remoteMessages, 'replace');
       messageRepository.upsertMessages(sid, merged);
       const cursor = getMessageCursor(merged);
@@ -251,7 +304,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
         beforeTime,
         beforeId,
       });
-      localOlder = localPage.messages.map(maskEncryptedMessage);
+      localOlder = await processMessagesForSession(get(), sid, localPage.messages);
       if (localOlder.length > 0) {
         const merged = mergePagedMessages(currentMessages, localOlder, 'prependOlder');
         set((s) => ({ messagesBySession: { ...s.messagesBySession, [sid]: merged } }));
@@ -275,7 +328,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
               beforeId,
               direction: 'older',
             });
-      const remoteOlder = response.data.map(maskEncryptedMessage);
+      const remoteOlder = await processMessagesForSession(get(), sid, response.data);
       const baseForMerge = get().messagesBySession[sid] || currentMessages;
       const merged = mergePagedMessages(baseForMerge, remoteOlder, 'prependOlder');
       messageRepository.upsertMessages(sid, merged);
@@ -335,7 +388,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
               afterId,
               direction: 'newer',
             });
-      const remoteNewer = response.data.map(maskEncryptedMessage);
+      const remoteNewer = await processMessagesForSession(get(), sid, response.data);
       const merged = mergePagedMessages(currentMessages, remoteNewer, 'appendNewer');
       messageRepository.upsertMessages(sid, merged);
       const cursor = getMessageCursor(merged);
@@ -378,7 +431,22 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   },
 
   addMessage(message, sessionId = sessionIdFor(message)) {
-    const safeMessage = maskEncryptedMessage(message);
+    const safeMessage = (() => {
+      if (!isEncryptedValue(message.encrypted)) {
+        return message;
+      }
+      if (message.rawJson) {
+        try {
+          const raw = JSON.parse(message.rawJson) as Partial<MobileMessage>;
+          if (raw.content && raw.content !== message.content) {
+            return message;
+          }
+        } catch {
+          // fall through to placeholder
+        }
+      }
+      return maskEncryptedMessage({ ...message, rawJson: message.rawJson || JSON.stringify(message) });
+    })();
     const existing = get().messagesBySession[sessionId] || [];
     const next = applyMobileMessageToList(existing, safeMessage);
     const persistedMessage = next.find((item) => hasSameMobileMessageIdentity(item, safeMessage)) || safeMessage;
@@ -410,16 +478,69 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   },
 
   async sendText(session, content) {
-    assertPlaintextSendAllowed(session);
-    const message = optimisticMessage(session, 'TEXT', { content });
+    const e2eeStatus = await resolveEffectiveE2eeStatus(session);
+    if (session.type === 'private' && e2eeStatus === 'negotiating') {
+      throw new Error('等待对方确认端到端加密请求');
+    }
+    if (session.type === 'private' && e2eeStatus === 'failed') {
+      throw new Error(E2EE_SEND_DISABLED_TEXT);
+    }
+    if (session.type === 'group' && e2eeStatus !== 'plaintext') {
+      throw new Error(E2EE_SEND_DISABLED_TEXT);
+    }
+    const message = optimisticMessage(session, 'TEXT', {
+      content,
+      encrypted: session.type === 'private' && e2eeStatus === 'encrypted',
+    });
+    if (message.encrypted) {
+      message.rawJson = JSON.stringify({ ...message, content: '', encrypted: true });
+    }
     get().addMessage(message, session.id);
-    const payload = payloadFor(session, message);
+    let payload = payloadFor(session, message);
+    if (session.type === 'private' && e2eeStatus === 'encrypted') {
+      try {
+        const encrypted = await e2eeManager.encryptMessage(session.id, content);
+        const handshake = await getPendingInitialHandshake(session.id);
+        payload = {
+          receiverId: session.targetId,
+          clientMessageId: message.clientMessageId || createClientMessageId(),
+          messageType: 'TEXT',
+          content: encrypted.ciphertext,
+          encrypted: true,
+          e2eeHeader: JSON.stringify(encrypted.header),
+          e2eeDeviceId: encrypted.deviceId,
+          ...(handshake
+            ? {
+                e2eeSenderIdentityKey: handshake.senderIdentityKey,
+                e2eeEphemeralKey: handshake.ephemeralPublicKey,
+              }
+            : {}),
+        };
+      } catch (error) {
+        const { nextList } = updateLocalMessage(get(), session.id, message.id, (item) => ({
+          ...item,
+          status: 'FAILED',
+        }));
+        set({ messagesBySession: { ...get().messagesBySession, [session.id]: nextList } });
+        logger.warn('e2ee', 'encrypted send preparation failed', error);
+        throw error;
+      }
+    }
     enqueuePending(session, message, payload);
     await get().retryMessage(message.id, { force: true });
   },
 
   async sendMedia(session, file, type) {
-    assertPlaintextSendAllowed(session);
+    const e2eeStatus = await resolveEffectiveE2eeStatus(session);
+    if (session.type === 'private' && e2eeStatus === 'encrypted') {
+      throw new Error('当前移动端加密会话暂不支持发送媒体');
+    }
+    if (e2eeStatus === 'negotiating') {
+      throw new Error('等待对方确认端到端加密请求');
+    }
+    if (e2eeStatus === 'failed') {
+      throw new Error(E2EE_SEND_DISABLED_TEXT);
+    }
     const message = optimisticMessage(session, type, {
       mediaName: file.name,
       mediaSize: file.size,
@@ -464,7 +585,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
 
       // 3. E2EE blocked：pending status=blocked，本地消息 FAILED
       if (blockEncryptedPendingPayload(payload)) {
-        pendingMessageRepository.update({ ...pending, status: 'blocked', lastError: 'E2EE deferred' });
+        pendingMessageRepository.update({ ...pending, status: 'blocked', lastError: 'Encrypted payload incomplete' });
         const { nextList } = updateLocalMessage(get(), pending.conversationId, localId, (item) => ({
           ...item,
           status: 'FAILED',
@@ -616,9 +737,15 @@ export const useMessageStore = create<MessageState>((set, get) => ({
       pendingMessageRepository.updateStatus(localId, { status: 'sending', lastError: undefined });
 
       try {
+        const encryptedPayload = isEncryptedValue(payload.encrypted) || isEncryptedValue(data.encrypted);
+        if (encryptedPayload && payload.sendType !== 'private') {
+          throw new Error('Encrypted group sending is not supported on mobile');
+        }
         const response = payload.sendType === 'group'
           ? await messageService.sendGroup(data)
-          : await messageService.sendPrivate(data);
+          : encryptedPayload
+            ? await messageService.sendPrivateEncrypted(data)
+            : await messageService.sendPrivate(data);
         const serverMessage: MobileMessage = {
           ...response.data,
           messageId: response.data.id || response.data.messageId,
@@ -626,7 +753,8 @@ export const useMessageStore = create<MessageState>((set, get) => ({
           conversationId: pending.conversationId,
           status: 'SENT',
         };
-        get().addMessage(serverMessage, pending.conversationId);
+        const displayMessage = await processMessageForSession(get(), pending.conversationId, serverMessage);
+        get().addMessage(displayMessage, pending.conversationId);
         if (data.clientMessageId) {
           pendingMessageRepository.removeByClientMessageId(data.clientMessageId);
         }

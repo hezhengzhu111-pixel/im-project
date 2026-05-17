@@ -351,7 +351,7 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
         expect.objectContaining({
           localId: 'local_e2ee_1',
           status: 'blocked',
-          lastError: 'E2EE deferred',
+          lastError: 'Encrypted payload incomplete',
         }),
       );
     });

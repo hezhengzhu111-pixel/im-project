@@ -20,6 +20,11 @@ export interface SendMessagePayload {
   duration?: number;
   extra?: Record<string, unknown>;
   mentionedUserIds?: string[];
+  encrypted?: boolean;
+  e2eeHeader?: string;
+  e2eeDeviceId?: string;
+  e2eeSenderIdentityKey?: string;
+  e2eeEphemeralKey?: string;
 }
 
 export const resolveMarkReadTarget = (session: Pick<ChatSession, 'type' | 'targetId'>): string =>
@@ -31,8 +36,12 @@ export const messageService = {
     return { ...response, data: normalizeMessage(response.data) };
   },
 
-  sendPrivateEncrypted(): Promise<ApiResponse<MobileMessage>> {
-    return Promise.reject(new Error('E2EE encrypted sending is deferred on mobile'));
+  async sendPrivateEncrypted(data: SendMessagePayload): Promise<ApiResponse<MobileMessage>> {
+    if (!data.encrypted || !data.e2eeHeader || !data.e2eeDeviceId || !data.content) {
+      throw new Error('Encrypted private message payload incomplete');
+    }
+    const response = await http.post<unknown>(MESSAGE_ENDPOINTS.SEND_PRIVATE, data);
+    return { ...response, data: normalizeMessage(response.data) };
   },
 
   async sendGroup(data: SendMessagePayload): Promise<ApiResponse<MobileMessage>> {

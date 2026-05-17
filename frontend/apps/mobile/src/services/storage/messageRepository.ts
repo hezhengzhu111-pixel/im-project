@@ -9,10 +9,27 @@ import { uploadTaskRepository } from './uploadTaskRepository';
 const messageKey = (message: MobileMessage): string =>
   message.serverId || message.clientMessageId || message.id || `${message.conversationId}:${message.sendTime}`;
 
+const rawJsonFor = (message: MobileMessage, conversationId: string): string => {
+  if (message.rawJson) {
+    try {
+      const parsed = JSON.parse(message.rawJson) as Record<string, unknown>;
+      return JSON.stringify({ ...parsed, conversationId });
+    } catch {
+      // fall through to the display message snapshot
+    }
+  }
+  return JSON.stringify({ ...message, conversationId });
+};
+
 const parseMessage = (row: Record<string, unknown>): MobileMessage => {
   const rawJson = String(row.rawJson || '{}');
   try {
-    return JSON.parse(rawJson) as MobileMessage;
+    const parsed = JSON.parse(rawJson) as MobileMessage;
+    return {
+      ...parsed,
+      content: row.content != null ? String(row.content) : parsed.content,
+      rawJson,
+    };
   } catch {
     return {
       id: String(row.id || ''),
@@ -167,7 +184,7 @@ export const messageRepository = {
       const record = {
         ...message,
         conversationId,
-        rawJson: JSON.stringify({ ...message, conversationId }),
+        rawJson: rawJsonFor(message, conversationId),
       };
       messageDatabase.memoryUpsert('mobile_messages', `${conversationId}:${messageKey(message)}`, record);
       messageDatabase.execute(
@@ -214,7 +231,7 @@ export const messageRepository = {
           [conversationId, limit],
         );
     return rows
-      .map((row) => maskEncryptedMessage(parseMessage(row)))
+      .map((row) => parseMessage(row))
       .sort((left, right) => new Date(left.sendTime).getTime() - new Date(right.sendTime).getTime());
   },
 
@@ -290,7 +307,7 @@ export const messageRepository = {
       const sorted = filtered.sort((a, b) => memoryCompare(a, b, direction));
       const sliced = sorted.slice(0, fetchLimit);
 
-      const messages = sliced.map((row) => maskEncryptedMessage(parseMessage(row)));
+      const messages = sliced.map((row) => parseMessage(row));
       messages.sort(messageCompare);
 
       return toPageResult(messages);
@@ -317,7 +334,7 @@ export const messageRepository = {
       [...params, fetchLimit],
     );
 
-    const messages = rows.map((row) => maskEncryptedMessage(parseMessage(row)));
+    const messages = rows.map((row) => parseMessage(row));
     messages.sort(messageCompare);
 
     return toPageResult(messages);

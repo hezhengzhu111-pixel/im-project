@@ -8,7 +8,9 @@ import { EmptyState, LoadingState } from '@/components/common/StateViews';
 import { colors, spacing, typography } from '@/app/theme';
 import type { ChatStackParamList } from '@/app/navigation/ChatNavigator';
 import { E2eeUnsupportedNotice } from '@/e2ee/E2eeUnsupportedNotice';
-import { isEncryptedSession } from '@/e2ee/e2eeDeferred';
+import { getSessionE2eeStatus } from '@/e2ee/e2eeDeferred';
+import { acceptPendingNegotiation, initiateNegotiation, rejectPendingNegotiation, resetNegotiation } from '@/e2ee/manager/negotiation';
+import { subscribeE2eeStatusChanges, subscribePendingE2eeRequests } from '@/e2ee/statusEvents';
 import { mediaService } from '@/services/media/mediaService';
 import { mediaSaveService } from '@/services/media/mediaSaveService';
 import { platformClipboard } from '@/services/platform/clipboard';
@@ -43,6 +45,7 @@ export function ChatScreen() {
   const [recording, setRecording] = useState(false);
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
   const [showNewMessages, setShowNewMessages] = useState(false);
+  const [e2eeVersion, setE2eeVersion] = useState(0);
 
   const flatListRef = useRef<FlatList>(null);
   const isAtBottomRef = useRef(true);
@@ -54,7 +57,9 @@ export function ChatScreen() {
     () => (session ? messagesPaginationBySession[session.id] : undefined),
     [messagesPaginationBySession, session],
   );
-  const encrypted = isEncryptedSession(session);
+  const e2eeStatus = useMemo(() => getSessionE2eeStatus(session), [session, e2eeVersion]);
+  const encrypted = e2eeStatus === 'encrypted';
+  const inputBlocked = e2eeStatus === 'negotiating' || e2eeStatus === 'failed';
   const routeParams = route.params;
   const routeKey = useMemo(() => JSON.stringify(routeParams || {}), [routeParams]);
   const hasTargetRouteParams = Boolean(
@@ -81,6 +86,22 @@ export function ChatScreen() {
     }
     void loadInitialMessages(session);
   }, [session, loadInitialMessages]);
+
+  useEffect(() => subscribeE2eeStatusChanges((sessionId) => {
+    if (session?.id === sessionId) {
+      setE2eeVersion((value) => value + 1);
+    }
+  }), [session?.id]);
+
+  useEffect(() => subscribePendingE2eeRequests((sessionId) => {
+    if (session?.id !== sessionId) {
+      return;
+    }
+    Alert.alert('端到端加密请求', '对方请求建立端到端加密通道。', [
+      { text: '拒绝', style: 'cancel', onPress: () => { void rejectPendingNegotiation(sessionId); } },
+      { text: '接受', onPress: () => { void acceptPendingNegotiation(sessionId); } },
+    ]);
+  }), [session?.id]);
 
   // Scroll to bottom on initial load
   useEffect(() => {
@@ -162,7 +183,7 @@ export function ChatScreen() {
 
   const submit = async () => {
     const content = text.trim();
-    if (!content || encrypted) {
+    if (!content || inputBlocked) {
       return;
     }
     setText('');
@@ -175,6 +196,10 @@ export function ChatScreen() {
   };
 
   const pickAndSend = async () => {
+    if (session?.type === 'private' && encrypted) {
+      Alert.alert('暂不支持', '当前移动端加密会话暂不支持发送媒体');
+      return;
+    }
     try {
       const file = await mediaService.pickImage();
       if (file) {
@@ -186,6 +211,10 @@ export function ChatScreen() {
   };
 
   const takePhoto = async () => {
+    if (session?.type === 'private' && encrypted) {
+      Alert.alert('暂不支持', '当前移动端加密会话暂不支持发送媒体');
+      return;
+    }
     try {
       const file = await mediaService.takePhoto();
       if (file) {
@@ -197,6 +226,10 @@ export function ChatScreen() {
   };
 
   const pickFile = async () => {
+    if (session?.type === 'private' && encrypted) {
+      Alert.alert('暂不支持', '当前移动端加密会话暂不支持发送媒体');
+      return;
+    }
     try {
       const file = await mediaService.pickDocument();
       if (file) {
@@ -208,6 +241,10 @@ export function ChatScreen() {
   };
 
   const toggleVoiceRecording = async () => {
+    if (session?.type === 'private' && encrypted) {
+      Alert.alert('暂不支持', '当前移动端加密会话暂不支持发送媒体');
+      return;
+    }
     try {
       if (recording) {
         const durationMs = recordingStartedAt ? Date.now() - recordingStartedAt : undefined;
@@ -321,6 +358,50 @@ export function ChatScreen() {
     return null;
   };
 
+  const handleE2eeAction = async () => {
+    if (!session || session.type !== 'private') {
+      return;
+    }
+    try {
+      if (e2eeStatus === 'failed') {
+        await resetNegotiation(session.id, 'plaintext');
+      }
+      await initiateNegotiation(session.id, session.targetId);
+    } catch (error) {
+      Alert.alert('端到端加密失败', error instanceof Error ? error.message : '请稍后重试');
+    }
+  };
+
+  const renderE2eeStatus = () => {
+    if (!session || session.type !== 'private') {
+      return null;
+    }
+    const label =
+      e2eeStatus === 'encrypted'
+        ? '端到端加密已开启'
+        : e2eeStatus === 'negotiating'
+          ? '等待对方确认端到端加密请求'
+          : e2eeStatus === 'failed'
+            ? '加密通道异常'
+            : '未开启端到端加密';
+    const action =
+      e2eeStatus === 'plaintext'
+        ? '开启'
+        : e2eeStatus === 'failed'
+          ? '重新建立'
+          : '';
+    return (
+      <View style={styles.e2eeBar}>
+        <Text style={styles.e2eeText}>{label}</Text>
+        {action ? (
+          <Pressable style={styles.e2eeAction} onPress={handleE2eeAction}>
+            <Text style={styles.e2eeActionText}>{action}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  };
+
   if (!session) {
     if (hasTargetRouteParams) {
       return <Screen title="聊天"><LoadingState label="正在打开会话..." /></Screen>;
@@ -338,8 +419,9 @@ export function ChatScreen() {
         </Pressable>
       }
     >
-      <E2eeUnsupportedNotice visible={encrypted} />
+      <E2eeUnsupportedNotice visible={e2eeStatus === 'failed'} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {renderE2eeStatus()}
         <FlatList
           ref={flatListRef}
           data={messages}
@@ -369,21 +451,21 @@ export function ChatScreen() {
           </Pressable>
         ) : null}
         <View style={styles.composer}>
-          <Pressable disabled={encrypted} style={styles.tool} onPress={pickAndSend}><Text style={styles.toolText}>相册</Text></Pressable>
-          <Pressable disabled={encrypted} style={styles.tool} onPress={takePhoto}><Text style={styles.toolText}>拍摄</Text></Pressable>
-          <Pressable disabled={encrypted} style={styles.tool} onPress={pickFile}><Text style={styles.toolText}>文件</Text></Pressable>
-          <Pressable disabled={encrypted} style={styles.tool} onPress={() => { void toggleVoiceRecording(); }}>
+          <Pressable disabled={false} style={styles.tool} onPress={pickAndSend}><Text style={styles.toolText}>相册</Text></Pressable>
+          <Pressable disabled={false} style={styles.tool} onPress={takePhoto}><Text style={styles.toolText}>拍摄</Text></Pressable>
+          <Pressable disabled={false} style={styles.tool} onPress={pickFile}><Text style={styles.toolText}>文件</Text></Pressable>
+          <Pressable disabled={false} style={styles.tool} onPress={() => { void toggleVoiceRecording(); }}>
             <Text style={styles.toolText}>{recording ? '停止' : '语音'}</Text>
           </Pressable>
           <TextInput
-            editable={!encrypted}
-            placeholder={encrypted ? '移动端暂不支持加密会话发送' : '输入消息'}
+            editable={!inputBlocked}
+            placeholder={inputBlocked ? (e2eeStatus === 'negotiating' ? '等待对方确认端到端加密请求' : '请重新建立加密通道') : '输入消息'}
             placeholderTextColor={colors.muted}
             style={styles.input}
             value={text}
             onChangeText={setText}
           />
-          <Pressable disabled={encrypted || !text.trim()} style={styles.send} onPress={submit}>
+          <Pressable disabled={inputBlocked || !text.trim()} style={styles.send} onPress={submit}>
             <Text style={styles.sendText}>发送</Text>
           </Pressable>
         </View>
@@ -407,6 +489,32 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: typography.small,
     fontWeight: '700',
+  },
+  e2eeBar: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceAlt,
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  e2eeText: {
+    color: colors.text,
+    flex: 1,
+    fontSize: typography.small,
+    fontWeight: '700',
+  },
+  e2eeAction: {
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  e2eeActionText: {
+    color: colors.primary,
+    fontSize: typography.small,
+    fontWeight: '800',
   },
   composer: {
     alignItems: 'center',

@@ -15,9 +15,9 @@
     "clean": "cd android && gradlew clean"
   },
   "dependencies": {
-    "@im/shared-e2ee-core": "*",
     "@im/shared-api-contract": "*",
     "@im/shared-auth-core": "*",
+    "@im/shared-e2ee-core": "*",
     "@im/shared-im-core": "*",
     "@im/shared-normalizers": "*",
     "@im/shared-platform-ports": "*",
@@ -41,6 +41,7 @@
     "react-native-blob-util": "^0.24.7",
     "react-native-device-info": "^14.1.1",
     "react-native-gesture-handler": "^2.29.1",
+    "react-native-get-random-values": "^2.0.0",
     "react-native-image-picker": "^8.2.1",
     "react-native-keychain": "^10.0.0",
     "react-native-mmkv": "^4.0.0",

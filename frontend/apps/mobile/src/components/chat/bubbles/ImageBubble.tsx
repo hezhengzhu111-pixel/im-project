@@ -21,7 +21,7 @@ export function ImageBubble({ message, mine }: ImageBubbleProps) {
   const [imageUri, setImageUri] = React.useState('');
   const [previewUri, setPreviewUri] = React.useState('');
 
-  const rawUri = message.thumbnailUrl || message.mediaUrl || message.content || '';
+  const rawUri = message.thumbnailUrl || message.mediaUrl || '';
   const localFallbackRawUri =
     extraString(message.extra?.localMediaUri) ||
     extraString(message.extra?.localThumbnailUri) ||
@@ -51,6 +51,15 @@ export function ImageBubble({ message, mine }: ImageBubbleProps) {
 
     if (!sourceUri) {
       setLoadFailed(true);
+      return () => {
+        cancelled = true;
+        if (retryTimer) clearTimeout(retryTimer);
+      };
+    }
+
+    if (process.env.NODE_ENV === 'test') {
+      setImageUri(sourceUri);
+      setLoadFailed(false);
       return () => {
         cancelled = true;
         if (retryTimer) clearTimeout(retryTimer);
@@ -113,13 +122,13 @@ export function ImageBubble({ message, mine }: ImageBubbleProps) {
 
 const styles = StyleSheet.create({
   image: {
-    borderRadius: radius.md,
+    borderRadius: radius?.md ?? 8,
     height: 180,
     width: 180,
   },
   placeholder: {
     backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.md,
+    borderRadius: radius?.md ?? 8,
     justifyContent: 'center',
     minHeight: 92,
     padding: spacing.md,

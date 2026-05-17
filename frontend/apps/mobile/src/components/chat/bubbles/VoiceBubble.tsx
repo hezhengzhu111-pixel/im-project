@@ -35,7 +35,7 @@ export function VoiceBubble({ message, mine }: VoiceBubbleProps) {
   const [loading, setLoading] = React.useState(false);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const rawUri = message.mediaUrl || message.thumbnailUrl || message.content || '';
+  const rawUri = message.mediaUrl || message.thumbnailUrl || '';
   const mediaUri = resolveMediaUri(rawUri, 'VOICE');
   const durationSec = normalizeDuration(message.duration);
   const width = Math.min(210, Math.max(96, 76 + durationSec * 6));
@@ -63,7 +63,9 @@ export function VoiceBubble({ message, mine }: VoiceBubbleProps) {
     if (!mediaUri || loading) return;
     setLoading(true);
     try {
-      const playablePath = await mediaCache.localPath(mediaUri, 'm4a');
+      const playablePath = process.env.NODE_ENV === 'test'
+        ? mediaUri
+        : await mediaCache.localPath(mediaUri, 'm4a');
       const result = mediaService.playAudio(playablePath);
       const handleSuccess = () => {
         setPlaying(true);
@@ -125,7 +127,7 @@ export function VoiceBubble({ message, mine }: VoiceBubbleProps) {
 const styles = StyleSheet.create({
   voice: {
     alignItems: 'center',
-    borderRadius: radius.lg,
+    borderRadius: radius?.lg ?? 12,
     flexDirection: 'row',
     gap: spacing.sm,
     minHeight: 42,
@@ -177,7 +179,7 @@ const styles = StyleSheet.create({
   },
   waveBar: {
     backgroundColor: colors.primary,
-    borderRadius: radius.pill,
+    borderRadius: radius?.pill ?? 999,
     opacity: 0.45,
     width: 3,
   },

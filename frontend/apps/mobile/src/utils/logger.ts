@@ -1,6 +1,7 @@
 import type { LocalLogEntry } from '@/types/models';
+import { sanitizeE2eeLogValue } from '@im/shared-e2ee-core';
 
-const SENSITIVE_KEY_PARTS = ['token', 'cookie', 'password', 'apikey', 'api_key', 'authorization', 'secret', 'privatekey', 'identitykey', 'rootkey', 'chainkey', 'messagekey', 'ratchetstate', 'mediakey', 'ephemeralkey'];
+const SENSITIVE_KEY_PARTS = ['token', 'cookie', 'password', 'apikey', 'api_key', 'authorization', 'secret', 'plaintext', 'ciphertext', 'content', 'mediakey', 'rootkey', 'chainkey', 'messagekey', 'privatekey', 'identitykey', 'signingidentitykey', 'signedprekey', 'onetimeprekey', 'e2eeheader', 'ratchetpublickey', 'ephemeralkey', 'requestpayloadjson', 'ratchetstate', 'iv'];
 const entries: LocalLogEntry[] = [];
 const listeners = new Set<(logs: LocalLogEntry[]) => void>();
 const MAX_RECENT_LOGS = 200;
@@ -35,7 +36,7 @@ export const redactSensitiveValue = (value: unknown): string => {
     return redactText(value);
   }
   try {
-    return redactText(JSON.stringify(value, (key, next: unknown) => (shouldRedactKey(key) ? '[REDACTED]' : next)));
+    return redactText(JSON.stringify(sanitizeE2eeLogValue(value), (key, next: unknown) => (shouldRedactKey(key) ? '[REDACTED]' : next)));
   } catch {
     return redactText(String(value));
   }

@@ -18,6 +18,7 @@ import { useWebsocketStore } from './websocketStore';
 import { useNotificationStore } from './notificationStore';
 import { useUploadStore } from './uploadStore';
 import { useSessionStore } from './sessionStore';
+import { clearCurrentE2eeAccountState } from '@/e2ee/clearE2eeState';
 
 interface AuthState {
   currentUser: User | null;
@@ -86,11 +87,13 @@ const applySessionSideEffects = async () => {
  */
 const clearLocalSessionArtifacts = async (options?: { preserveFcmToken?: boolean }) => {
   const preserveFcmToken = options?.preserveFcmToken !== false;
+  const currentUserId = useAuthStore.getState().currentUser?.id;
   useWebsocketStore.getState().disconnect();
   useChatStore.getState().clearRuntime();
   // clearAllCache 已覆盖：mobile_sessions, mobile_messages, mobile_media_cache,
   // mobile_notification_events, mobile_pending_messages, mobile_upload_tasks
   messageRepository.clearAllCache();
+  await clearCurrentE2eeAccountState(currentUserId);
   clearPendingNotificationRoute();
   await secureStorage.clearSession();
   kvStorage.clearSessionScope({ preserveFcmToken });
@@ -114,8 +117,10 @@ const clearLocalSessionArtifacts = async (options?: { preserveFcmToken?: boolean
  */
 const clearStaleRestoreSnapshot = async (options?: { preserveFcmToken?: boolean }) => {
   const preserveFcmToken = options?.preserveFcmToken !== false;
+  const currentUserId = useAuthStore.getState().currentUser?.id;
   // clearAllCache 已覆盖所有持久层表（含 pending/upload/notification_events）
   messageRepository.clearAllCache();
+  await clearCurrentE2eeAccountState(currentUserId);
   clearPendingNotificationRoute();
   useSessionStore.getState().clear();
   useNotificationStore.setState((state) => ({
