@@ -220,7 +220,7 @@ export function RegisterScreen() {
 
       <InfoModal visible={showAgreement} title="用户协议" onClose={() => setShowAgreement(false)}>
         <Text style={styles.modalHeading}>1. 服务条款</Text>
-        <Text style={styles.modalParagraph}>欢迎使用IM聊天应用。在使用本服务前，请仔细阅读并理解本协议的所有条款。</Text>
+        <Text style={styles.modalParagraph}>欢迎使用 IM 聊天应用。在使用本服务前，请仔细阅读并理解本协议的所有条款。</Text>
         <Text style={styles.modalHeading}>2. 用户责任</Text>
         <Text style={styles.modalParagraph}>用户应当遵守相关法律法规，不得利用本服务从事违法违规活动。</Text>
         <Text style={styles.modalHeading}>3. 隐私保护</Text>
@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
   },
   formCard: {
     backgroundColor: CARD,
-    borderRadius: 16,
+    borderRadius: radius.lg,
     overflow: 'hidden',
   },
   input: {

@@ -11,11 +11,11 @@ import type { PostWithDetails } from '@im/shared-types';
 function formatRelativeTime(dateStr?: string): string {
   if (!dateStr) return '';
   const diff = Date.now() - new Date(dateStr).getTime();
-  if (diff < 60_000) return 'Just now';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return new Date(dateStr).toLocaleDateString();
+  if (diff < 60_000) return '刚刚';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}小时前`;
+  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}天前`;
+  return new Date(dateStr).toLocaleDateString('zh-CN');
 }
 
 function MediaGrid({ media }: { media: Array<{ url: string; type?: number }> }) {
@@ -66,7 +66,7 @@ function PostCard({
           <Text style={styles.avatarText}>{avatarLetter}</Text>
         </View>
         <View style={styles.userInfo}>
-          <Text style={styles.nickname}>{item.userNickname || 'Unknown'}</Text>
+          <Text style={styles.nickname}>{item.userNickname || '未知用户'}</Text>
           <View style={styles.metaRow}>
             {item.post.createdAt ? (
               <Text style={styles.timeText}>{formatRelativeTime(item.post.createdAt)}</Text>
@@ -93,7 +93,7 @@ function PostCard({
       {item.likeCount && item.likeCount > 0 ? (
         <View style={styles.likeBar}>
           <Text style={styles.likeBarText}>
-            {item.likeCount} {item.likeCount === 1 ? 'like' : 'likes'}
+            {item.likeCount} 人点赞
           </Text>
         </View>
       ) : null}
@@ -101,12 +101,12 @@ function PostCard({
       <View style={styles.actions}>
         <Pressable style={[styles.actionBtn, item.isLiked && styles.actionBtnLiked]} onPress={onToggleLike}>
           <Text style={[styles.actionText, item.isLiked && styles.actionTextLiked]}>
-            {item.isLiked ? 'Liked' : 'Like'} {item.likeCount ? `(${item.likeCount})` : ''}
+            {item.isLiked ? '已点赞' : '点赞'} {item.likeCount ? `(${item.likeCount})` : ''}
           </Text>
         </Pressable>
         <View style={styles.actionBtn}>
           <Text style={styles.actionText}>
-            Comments {item.commentCount ? `(${item.commentCount})` : ''}
+            评论 {item.commentCount ? `(${item.commentCount})` : ''}
           </Text>
         </View>
       </View>
@@ -135,33 +135,33 @@ export function MomentsFeedScreen() {
 
   const renderFooter = () => {
     if (loading && feed.length > 0) {
-      return <LoadingState label="Loading more..." />;
+      return <LoadingState label="正在加载更多..." />;
     }
     if (!hasMore && feed.length > 0) {
-      return <Text style={styles.footerText}>No more moments</Text>;
+      return <Text style={styles.footerText}>没有更多动态</Text>;
     }
     return null;
   };
 
   const renderEmpty = () => {
     if (loading) {
-      return <LoadingState label="Loading moments..." />;
+      return <LoadingState label="正在加载动态..." />;
     }
     if (error) {
       return (
         <ErrorState
-          title="Failed to load"
+          title="加载失败"
           message={error}
-          retryLabel="Retry"
+          retryLabel="重试"
           onRetry={() => { loadFeed(true); }}
         />
       );
     }
     return (
       <EmptyState
-        title="No moments"
-        subtitle="Be the first to share a moment!"
-        actionLabel="Post"
+        title="暂无动态"
+        subtitle="发布第一条动态，记录这一刻"
+        actionLabel="发布动态"
         onAction={() => navigation.navigate('CreateMomentScreen')}
       />
     );
@@ -169,7 +169,7 @@ export function MomentsFeedScreen() {
 
   return (
     <Screen
-      title="Moments"
+      title="动态"
       scroll={false}
       refreshing={loading && feed.length > 0}
       onRefresh={() => {
@@ -181,9 +181,9 @@ export function MomentsFeedScreen() {
             style={styles.headerBtn}
             onPress={() => navigation.navigate('MomentsNotificationsScreen')}
           >
-            <Text style={styles.headerBtnText}>Notifications</Text>
+            <Text style={styles.headerBtnText}>通知</Text>
           </Pressable>
-          <PrimaryButton label="Post" onPress={() => navigation.navigate('CreateMomentScreen')} />
+          <PrimaryButton label="发布" onPress={() => navigation.navigate('CreateMomentScreen')} />
         </View>
       }
     >
@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
-    borderRadius: 12,
+    borderRadius: 8,
     padding: spacing.lg,
   },
   cardHeader: {

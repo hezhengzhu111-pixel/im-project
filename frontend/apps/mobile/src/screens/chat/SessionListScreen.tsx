@@ -60,7 +60,7 @@ export function SessionListScreen() {
     navigation.navigate('GroupsStack', { screen: 'CreateGroupScreen' });
   }, [navigation]);
 
-  const userName = currentUser?.nickname || currentUser?.username || 'Me';
+  const userName = currentUser?.nickname || currentUser?.username || '我';
   const userAvatarText = userName.slice(0, 1).toUpperCase();
 
   return (
@@ -76,9 +76,9 @@ export function SessionListScreen() {
               )}
             </View>
             <View>
-              <Text style={styles.headerTitle}>Messages</Text>
+              <Text style={styles.headerTitle}>消息</Text>
               <Text style={styles.headerSubtitle}>
-                {sessions.length} active · {totalUnreadCount} unread
+                {sessions.length} 个会话 · {totalUnreadCount} 条未读
               </Text>
             </View>
           </View>
@@ -86,7 +86,7 @@ export function SessionListScreen() {
           <View style={styles.headerActions}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Search conversations"
+              accessibilityLabel="搜索会话"
               style={({ pressed }) => [styles.iconButton, pressed ? styles.iconButtonPressed : null]}
               onPress={() => setSearchOpen((value) => !value)}
             >
@@ -94,7 +94,7 @@ export function SessionListScreen() {
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Create group"
+              accessibilityLabel="创建群组"
               style={({ pressed }) => [styles.iconButton, pressed ? styles.iconButtonPressed : null]}
               onPress={handleOpenCreateGroup}
             >
@@ -112,7 +112,7 @@ export function SessionListScreen() {
               autoCorrect={false}
               autoFocus
               clearButtonMode="while-editing"
-              placeholder="Search conversations"
+              placeholder="搜索会话"
               placeholderTextColor={colors.muted}
               style={styles.searchInput}
               value={searchKeyword}
@@ -122,7 +122,7 @@ export function SessionListScreen() {
         ) : null}
 
         {loading && sessions.length === 0 ? (
-          <LoadingState label="Loading conversations..." />
+          <LoadingState label="正在加载会话..." />
         ) : (
           <FlatList
             data={filteredSessions}
@@ -146,12 +146,12 @@ export function SessionListScreen() {
             )}
             ListEmptyComponent={
               normalizedSearchKeyword ? (
-                <EmptyState title="No matching conversations" subtitle="Try another keyword." />
+                <EmptyState title="没有匹配的会话" subtitle="换个关键词试试" />
               ) : (
                 <EmptyState
-                  title="No conversations"
-                  subtitle="Start from Contacts or create a group."
-                  actionLabel="Create group"
+                  title="暂无会话"
+                  subtitle="从通讯录发起聊天，或创建一个群组"
+                  actionLabel="创建群组"
                   onAction={handleOpenCreateGroup}
                 />
               )

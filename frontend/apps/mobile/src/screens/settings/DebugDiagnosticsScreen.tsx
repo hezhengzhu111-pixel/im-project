@@ -11,15 +11,45 @@ import { colors, spacing, typography } from '@/app/theme';
 
 const formatTime = (value?: number) => {
   if (!value) {
-    return 'N/A';
+    return '未记录';
   }
-  return new Date(value).toLocaleString();
+  return new Date(value).toLocaleString('zh-CN');
+};
+
+const formatValue = (value: string | number | boolean) => {
+  if (typeof value === 'boolean') {
+    return value ? '是' : '否';
+  }
+  const textMap: Record<string, string> = {
+    dev: '开发',
+    development: '开发',
+    sit: '测试',
+    production: '生产',
+    connected: '已连接',
+    connecting: '连接中',
+    disconnected: '未连接',
+    reconnecting: '重连中',
+    deferred: '暂缓支持',
+    full: '完整支持',
+    'receive-only': '仅接收',
+    memory: '内存',
+    sqlite: '本地数据库',
+    idle: '空闲',
+    running: '运行中',
+    success: '成功',
+    failed: '失败',
+    unknown: '未知',
+  };
+  if (typeof value === 'string' && textMap[value.toLowerCase()]) {
+    return textMap[value.toLowerCase()];
+  }
+  return String(value);
 };
 
 const InfoRow = ({ label, value }: { label: string; value: string | number | boolean }) => (
   <View style={styles.row}>
     <Text style={styles.label}>{label}</Text>
-    <Text style={styles.value}>{String(value)}</Text>
+    <Text style={styles.value}>{formatValue(value)}</Text>
   </View>
 );
 
@@ -44,28 +74,28 @@ export function DebugDiagnosticsScreen() {
   const recentErrorText = useMemo(
     () =>
       snapshot.recentErrors.length === 0
-        ? 'No recent warnings or errors'
+        ? '暂无警告或错误'
         : snapshot.recentErrors
-            .map((entry) => `${new Date(entry.createdAt).toLocaleTimeString()} ${entry.level.toUpperCase()} ${entry.scope}: ${entry.message}`)
+            .map((entry) => `${new Date(entry.createdAt).toLocaleTimeString('zh-CN')} ${entry.level.toUpperCase()} ${entry.scope}: ${entry.message}`)
             .join('\n'),
     [snapshot.recentErrors],
   );
 
   const confirmClearLocalCache = () => {
-    Alert.alert('Clear local cache?', 'This keeps your login session but removes local cache, pending data, upload tasks, and recent diagnostics.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert('清理本地缓存？', '将保留登录状态，但会移除本地缓存、待发送数据、上传任务和最近诊断记录。', [
+      { text: '取消', style: 'cancel' },
       {
-        text: 'Continue',
+        text: '继续',
         onPress: () => {
-          Alert.alert('Confirm cache clear', 'This cannot be undone. Clear local cache now?', [
-            { text: 'Cancel', style: 'cancel' },
+          Alert.alert('确认清理', '此操作无法撤销。现在清理本地缓存吗？', [
+            { text: '取消', style: 'cancel' },
             {
-              text: 'Clear',
+              text: '清理',
               style: 'destructive',
               onPress: () => {
                 debugDiagnosticsService.clearLocalCache();
                 setSnapshot(debugDiagnosticsService.getSnapshot());
-                Alert.alert('Local cache cleared');
+                Alert.alert('本地缓存已清理');
               },
             },
           ]);
@@ -76,97 +106,97 @@ export function DebugDiagnosticsScreen() {
 
   return (
     <Screen
-      title="Debug Diagnostics"
+      title="调试诊断"
       onRefresh={() => {
         setSnapshot(debugDiagnosticsService.getSnapshot());
       }}
     >
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Runtime</Text>
-        <InfoRow label="App env" value={snapshot.appEnv} />
-        <InfoRow label="API base" value={snapshot.apiBaseUrl} />
-        <InfoRow label="WS base" value={snapshot.wsBaseUrl} />
-        <InfoRow label="Current user id" value={snapshot.currentUserId || 'Not logged in'} />
+        <Text style={styles.sectionTitle}>运行环境</Text>
+        <InfoRow label="应用环境" value={snapshot.appEnv} />
+        <InfoRow label="接口地址" value={snapshot.apiBaseUrl} />
+        <InfoRow label="长连接地址" value={snapshot.wsBaseUrl} />
+        <InfoRow label="当前用户标识" value={snapshot.currentUserId || '未登录'} />
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Live Status</Text>
-        <InfoRow label="WebSocket" value={snapshot.websocketStatus} />
-        <InfoRow label="Reconnect attempts" value={snapshot.reconnectAttempts} />
-        <InfoRow label="Storage mode" value={snapshot.storageMode} />
-        <InfoRow label="Persistence available" value={snapshot.persistenceAvailable} />
-        <InfoRow label="Schema version" value={snapshot.schemaVersion ?? 'N/A'} />
-        <InfoRow label="Target schema" value={snapshot.targetSchemaVersion} />
-        <InfoRow label="Migration status" value={snapshot.migrationStatus} />
+        <Text style={styles.sectionTitle}>实时状态</Text>
+        <InfoRow label="长连接状态" value={snapshot.websocketStatus} />
+        <InfoRow label="重连次数" value={snapshot.reconnectAttempts} />
+        <InfoRow label="存储模式" value={snapshot.storageMode} />
+        <InfoRow label="持久化可用" value={snapshot.persistenceAvailable} />
+        <InfoRow label="当前结构版本" value={snapshot.schemaVersion ?? '未记录'} />
+        <InfoRow label="目标结构版本" value={snapshot.targetSchemaVersion} />
+        <InfoRow label="迁移状态" value={snapshot.migrationStatus} />
         {snapshot.lastMigrationError ? (
-          <InfoRow label="Migration error" value={snapshot.lastMigrationError} />
+          <InfoRow label="迁移错误" value={snapshot.lastMigrationError} />
         ) : null}
-        <InfoRow label="Session count" value={snapshot.sessionCount} />
-        <InfoRow label="Message count" value={snapshot.messageCount} />
-        <InfoRow label="Pending count" value={snapshot.pendingCount} />
-        <InfoRow label="Upload task count" value={snapshot.uploadTaskCount} />
-        <InfoRow label="Notification event count" value={snapshot.notificationEventCount} />
-        <InfoRow label="FCM token available" value={snapshot.fcmTokenAvailable} />
+        <InfoRow label="会话数量" value={snapshot.sessionCount} />
+        <InfoRow label="消息数量" value={snapshot.messageCount} />
+        <InfoRow label="待发送数量" value={snapshot.pendingCount} />
+        <InfoRow label="上传任务数量" value={snapshot.uploadTaskCount} />
+        <InfoRow label="通知事件数量" value={snapshot.notificationEventCount} />
+        <InfoRow label="推送令牌可用" value={snapshot.fcmTokenAvailable} />
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>E2EE Capability</Text>
-        <InfoRow label="Supported" value={snapshot.e2eeCapability.supported} />
-        <InfoRow label="Mode" value={snapshot.e2eeCapability.mode} />
-        <InfoRow label="Can send encrypted" value={snapshot.e2eeCapability.canSendEncrypted} />
-        <InfoRow label="Can decrypt" value={snapshot.e2eeCapability.canDecryptEncrypted} />
-        <InfoRow label="Reason" value={snapshot.e2eeCapability.reason} />
+        <Text style={styles.sectionTitle}>端到端加密能力</Text>
+        <InfoRow label="是否支持" value={snapshot.e2eeCapability.supported} />
+        <InfoRow label="当前模式" value={snapshot.e2eeCapability.mode} />
+        <InfoRow label="可发送加密消息" value={snapshot.e2eeCapability.canSendEncrypted} />
+        <InfoRow label="可解密消息" value={snapshot.e2eeCapability.canDecryptEncrypted} />
+        <InfoRow label="原因" value={snapshot.e2eeCapability.reason} />
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Recent Errors</Text>
-        <Text style={styles.errorLabel}>Last API error</Text>
+        <Text style={styles.sectionTitle}>最近错误</Text>
+        <Text style={styles.errorLabel}>最近接口错误</Text>
         <Text style={styles.errorText}>
           {snapshot.lastApiError
-            ? `${snapshot.lastApiError.message} | ${snapshot.lastApiError.status || 'N/A'} | ${snapshot.lastApiError.url || 'N/A'} | ${formatTime(snapshot.lastApiError.createdAt)}`
-            : 'N/A'}
+            ? `${snapshot.lastApiError.message} | ${snapshot.lastApiError.status || '未记录'} | ${snapshot.lastApiError.url || '未记录'} | ${formatTime(snapshot.lastApiError.createdAt)}`
+            : '未记录'}
         </Text>
-        <Text style={styles.errorLabel}>Last WS error</Text>
+        <Text style={styles.errorLabel}>最近长连接错误</Text>
         <Text style={styles.errorText}>
           {snapshot.lastWsError
-            ? `${snapshot.lastWsError.message} | ${snapshot.lastWsError.url || 'N/A'} | ${formatTime(snapshot.lastWsError.createdAt)}`
-            : 'N/A'}
+            ? `${snapshot.lastWsError.message} | ${snapshot.lastWsError.url || '未记录'} | ${formatTime(snapshot.lastWsError.createdAt)}`
+            : '未记录'}
         </Text>
-        <Text style={styles.errorLabel}>Recent warn/error logs</Text>
+        <Text style={styles.errorLabel}>最近警告和错误日志</Text>
         <Text style={styles.errorText}>{recentErrorText}</Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Actions</Text>
+        <Text style={styles.sectionTitle}>操作</Text>
         <PrimaryButton
-          label="Copy redacted logs"
+          label="复制脱敏日志"
           onPress={() => {
             debugDiagnosticsService.copyLogs();
-            Alert.alert('Logs copied');
+            Alert.alert('日志已复制');
           }}
         />
         <View style={styles.gap} />
         <PrimaryButton
-          label="Reconnect WebSocket"
+          label="重连长连接"
           onPress={() => {
             void debugDiagnosticsService.reconnectWebsocket().then(() => {
               setSnapshot(debugDiagnosticsService.getSnapshot());
-              Alert.alert('Reconnect triggered');
+              Alert.alert('已触发重连');
             });
           }}
         />
         <View style={styles.gap} />
         <PrimaryButton
-          label="Retry pending"
+          label="重试待发送"
           onPress={() => {
             void debugDiagnosticsService.retryPending().then(() => {
               setSnapshot(debugDiagnosticsService.getSnapshot());
-              Alert.alert('Pending retry triggered');
+              Alert.alert('已触发重试');
             });
           }}
         />
         <View style={styles.gap} />
-        <PrimaryButton label="Clear local cache" onPress={confirmClearLocalCache} />
+        <PrimaryButton label="清理本地缓存" variant="danger" onPress={confirmClearLocalCache} />
       </View>
     </Screen>
   );
@@ -176,7 +206,7 @@ const styles = StyleSheet.create({
   section: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing.sm,
     margin: spacing.lg,

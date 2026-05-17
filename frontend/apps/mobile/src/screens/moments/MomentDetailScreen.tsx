@@ -14,11 +14,11 @@ import type { MomentsStackParamList } from '@/app/navigation/MomentsNavigator';
 function formatRelativeTime(dateStr?: string): string {
   if (!dateStr) return '';
   const diff = Date.now() - new Date(dateStr).getTime();
-  if (diff < 60_000) return 'Just now';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return new Date(dateStr).toLocaleDateString();
+  if (diff < 60_000) return '刚刚';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}小时前`;
+  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}天前`;
+  return new Date(dateStr).toLocaleDateString('zh-CN');
 }
 
 type DetailRouteProp = RouteProp<MomentsStackParamList, 'MomentDetailScreen'>;
@@ -75,14 +75,14 @@ export function MomentDetailScreen() {
 
   const handleDelete = () => {
     if (!post) return;
-    Alert.alert('Delete Moment', 'Are you sure you want to delete this moment?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert('删除动态', '确定要删除这条动态吗？', [
+      { text: '取消', style: 'cancel' },
       {
-        text: 'Delete',
+        text: '删除',
         style: 'destructive',
         onPress: () => {
           void deletePost(post.post.id).then(() => {
-            Alert.alert('Deleted');
+            Alert.alert('已删除');
             navigation.goBack();
           });
         },
@@ -91,10 +91,10 @@ export function MomentDetailScreen() {
   };
 
   const handleDeleteComment = (commentId: string) => {
-    Alert.alert('Delete Comment', 'Delete this comment?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert('删除评论', '确定要删除这条评论吗？', [
+      { text: '取消', style: 'cancel' },
       {
-        text: 'Delete',
+        text: '删除',
         style: 'destructive',
         onPress: () => {
           void deleteComment(commentId).then(() => reloadComments());
@@ -113,7 +113,7 @@ export function MomentDetailScreen() {
         reloadComments();
       })
       .catch(() => {
-        Alert.alert('Error', 'Failed to post comment');
+        Alert.alert('评论失败', '请稍后重试');
       })
       .finally(() => {
         setSubmitting(false);
@@ -122,11 +122,11 @@ export function MomentDetailScreen() {
 
   if (!post) {
     return (
-      <Screen title="Moment">
+      <Screen title="动态详情">
         <EmptyState
-          title="No moment selected"
-          subtitle="Go back and select a moment to view"
-          actionLabel="Go Back"
+          title="未选择动态"
+          subtitle="请返回后选择要查看的动态"
+          actionLabel="返回"
           onAction={() => navigation.goBack()}
         />
       </Screen>
@@ -137,7 +137,7 @@ export function MomentDetailScreen() {
   const mediaImages = post.media?.filter((m) => m.type !== 1) ?? [];
 
   return (
-    <Screen title="Moment">
+    <Screen title="动态详情">
       {/* Post content */}
       <View style={styles.postSection}>
         <View style={styles.cardHeader}>
@@ -145,7 +145,7 @@ export function MomentDetailScreen() {
             <Text style={styles.avatarText}>{avatarLetter}</Text>
           </View>
           <View style={styles.userInfo}>
-            <Text style={styles.nickname}>{post.userNickname || 'Unknown'}</Text>
+            <Text style={styles.nickname}>{post.userNickname || '未知用户'}</Text>
             <View style={styles.metaRow}>
               {post.post.createdAt ? (
                 <Text style={styles.timeText}>{formatRelativeTime(post.post.createdAt)}</Text>
@@ -169,21 +169,21 @@ export function MomentDetailScreen() {
 
         {likes.length > 0 ? (
           <View style={styles.likeBar}>
-            <Text style={styles.likeBarLabel}>Likes: </Text>
+            <Text style={styles.likeBarLabel}>点赞：</Text>
             <Text style={styles.likeBarText} numberOfLines={2}>
-              {likes.map((l) => l.nickname || 'Unknown').join(', ')}
+              {likes.map((l) => l.nickname || '未知用户').join('、')}
             </Text>
           </View>
         ) : loadingLikes ? (
-          <Text style={styles.loadingLikesText}>Loading likes...</Text>
+          <Text style={styles.loadingLikesText}>正在加载点赞...</Text>
         ) : null}
 
         <View style={styles.statsRow}>
-          <Text style={styles.statText}>{post.likeCount ?? 0} likes</Text>
-          <Text style={styles.statText}>{post.commentCount ?? 0} comments</Text>
+          <Text style={styles.statText}>{post.likeCount ?? 0} 点赞</Text>
+          <Text style={styles.statText}>{post.commentCount ?? 0} 评论</Text>
         </View>
 
-        <PrimaryButton label="Delete moment" onPress={handleDelete} />
+        <PrimaryButton label="删除动态" variant="danger" onPress={handleDelete} />
       </View>
 
       {/* Comment input */}
@@ -191,24 +191,24 @@ export function MomentDetailScreen() {
         {replyTo ? (
           <View style={styles.replyBanner}>
             <Text style={styles.replyBannerText}>
-              Replying to {replyTo.nickname || 'Unknown'}
+              正在回复 {replyTo.nickname || '未知用户'}
             </Text>
             <Pressable onPress={() => setReplyTo(null)}>
-              <Text style={styles.replyBannerCancel}>Cancel</Text>
+              <Text style={styles.replyBannerCancel}>取消</Text>
             </Pressable>
           </View>
         ) : null}
-        <TextField label={replyTo ? `Reply to ${replyTo.nickname || 'Unknown'}...` : 'Write a comment'} value={comment} onChangeText={setComment} />
-        <PrimaryButton label={submitting ? 'Sending...' : 'Send comment'} onPress={handleSubmitComment} />
+        <TextField label={replyTo ? `回复 ${replyTo.nickname || '未知用户'}` : '写评论'} value={comment} placeholder="说点什么..." onChangeText={setComment} />
+        <PrimaryButton label={submitting ? '发送中...' : '发送评论'} onPress={handleSubmitComment} />
       </View>
 
       {/* Comments list */}
       <View style={styles.commentsSection}>
-        <Text style={styles.commentsTitle}>Comments</Text>
+        <Text style={styles.commentsTitle}>评论</Text>
         {loadingComments ? (
-          <LoadingState label="Loading comments..." />
+          <LoadingState label="正在加载评论..." />
         ) : comments.length === 0 ? (
-          <Text style={styles.noComments}>No comments yet</Text>
+          <Text style={styles.noComments}>暂无评论</Text>
         ) : (
           comments.map((c) => (
             <View key={c.id} style={styles.commentItem}>
@@ -219,21 +219,21 @@ export function MomentDetailScreen() {
               </View>
               <View style={styles.commentBody}>
                 <View style={styles.commentHeader}>
-                  <Text style={styles.commentNickname}>{c.nickname || 'Unknown'}</Text>
+                  <Text style={styles.commentNickname}>{c.nickname || '未知用户'}</Text>
                   {c.createdAt ? (
                     <Text style={styles.commentTime}>{formatRelativeTime(c.createdAt)}</Text>
                   ) : null}
                 </View>
                 {c.parentId ? (
-                  <Text style={styles.commentReplyTag}>Reply</Text>
+                  <Text style={styles.commentReplyTag}>回复</Text>
                 ) : null}
                 <Text style={styles.commentContent}>{c.content}</Text>
                 <View style={styles.commentActions}>
                   <Pressable onPress={() => setReplyTo(c)} style={styles.commentActionBtn}>
-                    <Text style={styles.commentActionText}>Reply</Text>
+                    <Text style={styles.commentActionText}>回复</Text>
                   </Pressable>
                   <Pressable onPress={() => handleDeleteComment(c.id)} style={styles.commentActionBtn}>
-                    <Text style={[styles.commentActionText, styles.commentActionDelete]}>Delete</Text>
+                    <Text style={[styles.commentActionText, styles.commentActionDelete]}>删除</Text>
                   </Pressable>
                 </View>
               </View>
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
   postSection: {
     backgroundColor: colors.surface,
     margin: spacing.lg,
-    borderRadius: 12,
+    borderRadius: 8,
     padding: spacing.lg,
   },
   cardHeader: {

@@ -131,11 +131,11 @@ export function MessageBubble({
       {showFailed ? (
         <Pressable onPress={onRetry}>
           <Text style={styles.failed}>
-            {derived.localError || 'Failed. Tap to retry.'}
+            {derived.localError || '发送失败，点按重试'}
           </Text>
         </Pressable>
       ) : showBlocked ? (
-        <Text style={styles.failed}>Blocked</Text>
+        <Text style={styles.failed}>已阻止发送</Text>
       ) : (
         <MessageStatusLine
           sendTime={message.sendTime}

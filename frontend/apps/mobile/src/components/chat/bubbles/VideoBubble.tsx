@@ -30,7 +30,7 @@ export function VideoBubble({ message }: VideoBubbleProps) {
             />
           ) : (
             <View style={[styles.thumbnail, styles.placeholder]}>
-              <Text style={styles.placeholderText}>VIDEO</Text>
+              <Text style={styles.placeholderText}>视频</Text>
             </View>
           )}
           <View style={styles.playOverlay}>

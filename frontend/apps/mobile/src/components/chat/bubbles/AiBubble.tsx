@@ -12,7 +12,7 @@ export function AiBubble({ message, mine }: AiBubbleProps) {
   const displayContent = message.content || '';
   return (
     <View>
-      <Text style={styles.aiBadge}>AI</Text>
+        <Text style={styles.aiBadge}>智能</Text>
       <Text style={[styles.text, mine && styles.mineText]}>
         {displayContent}
       </Text>

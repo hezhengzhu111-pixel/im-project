@@ -12,10 +12,10 @@ import {
 } from 'react-native-permissions';
 
 const explainDenied = (label: string) => {
-  Alert.alert(`${label} permission required`, `Please enable ${label} permission in system settings.`, [
-    { text: 'Cancel', style: 'cancel' },
+  Alert.alert(`需要${label}权限`, `请在系统设置中开启${label}权限。`, [
+    { text: '取消', style: 'cancel' },
     {
-      text: 'Open settings',
+      text: '去设置',
       onPress: () => {
         void openSettings().catch(() => Linking.openSettings());
       },
@@ -60,17 +60,17 @@ const ensurePermissions = async (requested: Permission[], label: string): Promis
 export const permissions = {
   camera: () =>
     Platform.OS === 'android'
-      ? ensurePermission(PERMISSIONS.ANDROID.CAMERA, 'Camera')
-      : ensurePermission(PERMISSIONS.IOS.CAMERA, 'Camera'),
+      ? ensurePermission(PERMISSIONS.ANDROID.CAMERA, '相机')
+      : ensurePermission(PERMISSIONS.IOS.CAMERA, '相机'),
 
   microphone: () =>
     Platform.OS === 'android'
-      ? ensurePermission(PERMISSIONS.ANDROID.RECORD_AUDIO, 'Microphone')
-      : ensurePermission(PERMISSIONS.IOS.MICROPHONE, 'Microphone'),
+      ? ensurePermission(PERMISSIONS.ANDROID.RECORD_AUDIO, '麦克风')
+      : ensurePermission(PERMISSIONS.IOS.MICROPHONE, '麦克风'),
 
   media: (scope: 'images' | 'videos' | 'audio' | 'mixed' = 'images') => {
     if (Platform.OS !== 'android') {
-      return ensurePermission(PERMISSIONS.IOS.PHOTO_LIBRARY, 'Photo library');
+      return ensurePermission(PERMISSIONS.IOS.PHOTO_LIBRARY, '相册');
     }
     if (Platform.Version >= 33) {
       const requested =
@@ -81,14 +81,14 @@ export const permissions = {
             : scope === 'mixed'
               ? [PERMISSIONS.ANDROID.READ_MEDIA_IMAGES, PERMISSIONS.ANDROID.READ_MEDIA_VIDEO]
               : [PERMISSIONS.ANDROID.READ_MEDIA_IMAGES];
-      return ensurePermissions(requested, scope === 'audio' ? 'Audio files' : 'Photos and media');
+      return ensurePermissions(requested, scope === 'audio' ? '音频文件' : '照片和媒体');
     }
-    return ensurePermission(PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE, 'File read');
+    return ensurePermission(PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE, '文件读取');
   },
 
   notifications: async () => {
     if (Platform.OS === 'android' && Platform.Version >= 33) {
-      return ensurePermission('android.permission.POST_NOTIFICATIONS' as Permission, 'Notifications');
+      return ensurePermission('android.permission.POST_NOTIFICATIONS' as Permission, '通知');
     }
     const result = await requestNotifications(['alert', 'badge', 'sound']);
     return result.status === RESULTS.GRANTED || result.status === RESULTS.LIMITED;

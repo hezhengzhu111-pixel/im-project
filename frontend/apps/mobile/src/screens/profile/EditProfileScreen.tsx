@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
+import { spacing } from '@/app/theme';
 import { Screen } from '@/components/common/Screen';
 import { PrimaryButton } from '@/components/common/PrimaryButton';
 import { TextField } from '@/components/forms/TextField';
@@ -26,23 +27,44 @@ export function EditProfileScreen() {
   };
 
   return (
-    <Screen title="Edit Profile">
-      <TextField label="Nickname" value={nickname} onChangeText={setNickname} />
-      <TextField label="Email" value={email} onChangeText={setEmail} />
-      <TextField label="Phone" value={phone} onChangeText={setPhone} />
-      <TextField label="Signature" value={signature} onChangeText={setSignature} />
-      <PrimaryButton
-        label="Upload avatar"
-        onPress={() => {
-          void pickAvatar();
-        }}
-      />
-      <PrimaryButton
-        label="Save"
-        onPress={() => {
-          void updateProfile({ nickname, email, phone, signature, avatar }).then(() => Alert.alert('Saved'));
-        }}
-      />
+    <Screen title="编辑资料">
+      <View style={styles.container}>
+        <View style={styles.form}>
+          <TextField label="昵称" value={nickname} placeholder="请输入昵称" onChangeText={setNickname} />
+          <TextField label="邮箱" value={email} placeholder="请输入邮箱" onChangeText={setEmail} />
+          <TextField label="手机号" value={phone} placeholder="请输入手机号" onChangeText={setPhone} />
+          <TextField label="个性签名" value={signature} placeholder="写点什么介绍自己" onChangeText={setSignature} />
+        </View>
+        <View style={styles.actions}>
+          <PrimaryButton
+            label="上传头像"
+            variant="secondary"
+            onPress={() => {
+              void pickAvatar();
+            }}
+          />
+          <PrimaryButton
+            label="保存"
+            onPress={() => {
+              void updateProfile({ nickname, email, phone, signature, avatar }).then(() => Alert.alert('保存成功'));
+            }}
+          />
+        </View>
+      </View>
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+  },
+  form: {
+    gap: spacing.md,
+  },
+  actions: {
+    gap: spacing.md,
+    paddingTop: spacing.xl,
+  },
+});

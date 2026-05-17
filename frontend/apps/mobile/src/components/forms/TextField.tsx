@@ -46,11 +46,14 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.lg,
     color: colors.text,
     fontSize: typography.body,
     minHeight: 50,
     paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
   },
   multiline: {
     minHeight: 110,

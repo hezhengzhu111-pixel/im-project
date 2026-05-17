@@ -97,14 +97,14 @@ describe('MessageStatusLine', () => {
 
   describe('own message status', () => {
     const ownCases: Case[] = [
-      { stage: 'SENDING', expectedStatus: 'Sending' },
-      { stage: 'SEND_PENDING', expectedStatus: 'Sending' },
-      { stage: 'UPLOAD_PENDING', expectedStatus: 'Preparing upload...' },
-      { stage: 'UPLOADING', uploadProgress: 45, expectedStatus: 'Uploading 45%' },
-      { stage: 'UPLOADING', uploadProgress: 0, expectedStatus: 'Uploading 0%' },
-      { stage: 'SENT', expectedStatus: 'Sent' },
-      { stage: 'SENT', messageStatus: 'DELIVERED', expectedStatus: 'Delivered' },
-      { stage: 'SENT', messageStatus: 'READ', expectedStatus: 'Read' },
+      { stage: 'SENDING', expectedStatus: '发送中' },
+      { stage: 'SEND_PENDING', expectedStatus: '发送中' },
+      { stage: 'UPLOAD_PENDING', expectedStatus: '准备上传' },
+      { stage: 'UPLOADING', uploadProgress: 45, expectedStatus: '上传中 45%' },
+      { stage: 'UPLOADING', uploadProgress: 0, expectedStatus: '上传中 0%' },
+      { stage: 'SENT', expectedStatus: '已发送' },
+      { stage: 'SENT', messageStatus: 'DELIVERED', expectedStatus: '已送达' },
+      { stage: 'SENT', messageStatus: 'READ', expectedStatus: '已读' },
     ];
 
     ownCases.forEach(({ stage, messageStatus, uploadProgress, expectedStatus }) => {
@@ -132,8 +132,8 @@ describe('MessageStatusLine', () => {
           <MessageStatusLine sendTime="2026-05-17T10:00:00.000Z" mine={true} stage="BLOCKED" />,
         );
       });
-      expect(findTextContent(testRenderer!.root, 'Sending')).toBe(false);
-      expect(findTextContent(testRenderer!.root, 'Sent')).toBe(false);
+      expect(findTextContent(testRenderer!.root, '发送中')).toBe(false);
+      expect(findTextContent(testRenderer!.root, '已发送')).toBe(false);
       // Still shows time
       expect(findTextContent(testRenderer!.root, '10:00')).toBe(true);
     });
@@ -150,10 +150,10 @@ describe('MessageStatusLine', () => {
             <MessageStatusLine sendTime="2026-05-17T10:00:00.000Z" mine={false} stage={stage} />,
           );
         });
-        expect(findTextContent(testRenderer!.root, 'Sent')).toBe(false);
-        expect(findTextContent(testRenderer!.root, 'Sending')).toBe(false);
-        expect(findTextContent(testRenderer!.root, 'Read')).toBe(false);
-        expect(findTextContent(testRenderer!.root, 'Delivered')).toBe(false);
+        expect(findTextContent(testRenderer!.root, '已发送')).toBe(false);
+        expect(findTextContent(testRenderer!.root, '发送中')).toBe(false);
+        expect(findTextContent(testRenderer!.root, '已读')).toBe(false);
+        expect(findTextContent(testRenderer!.root, '已送达')).toBe(false);
       });
     });
 
