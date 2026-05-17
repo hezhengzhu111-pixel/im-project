@@ -2,10 +2,10 @@ import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, typography } from '@/app/theme';
 
-export function LoadingState({ label = 'Loading...' }: { label?: string }) {
+export function LoadingState({ label = '加载中...' }: { label?: string }) {
   return (
     <View style={styles.center}>
-      <ActivityIndicator color={colors.primary} size="large" />
+      <ActivityIndicator color={colors.primary} size="small" />
       <Text style={styles.muted}>{label}</Text>
     </View>
   );
@@ -24,11 +24,7 @@ export function EmptyState({
 }) {
   return (
     <View style={styles.center}>
-      <View style={styles.emptyIcon}>
-        <View style={styles.emptyIconBody} />
-        <View style={styles.emptyIconFlag} />
-        <View style={styles.emptyIconDot} />
-      </View>
+      <View style={styles.emptyDot} />
       <Text style={styles.title}>{title}</Text>
       {subtitle ? <Text style={styles.muted}>{subtitle}</Text> : null}
       {actionLabel && onAction ? (
@@ -53,14 +49,12 @@ export function ErrorState({
 }) {
   return (
     <View style={styles.center}>
-      <View style={styles.errorIcon}>
-        <Text style={styles.errorIconText}>!</Text>
-      </View>
+      <View style={styles.errorDot} />
       {title ? <Text style={styles.errorTitle}>{title}</Text> : null}
       {message ? <Text style={styles.error}>{message}</Text> : null}
       {onRetry ? (
         <Pressable accessibilityRole="button" style={styles.button} onPress={onRetry}>
-          <Text style={styles.buttonText}>{retryLabel ?? 'Retry'}</Text>
+          <Text style={styles.buttonText}>{retryLabel ?? '重试'}</Text>
         </Pressable>
       ) : null}
     </View>
@@ -68,12 +62,10 @@ export function ErrorState({
 }
 
 export function OfflineBanner({ visible }: { visible: boolean }) {
-  if (!visible) {
-    return null;
-  }
+  if (!visible) return null;
   return (
     <View style={styles.banner}>
-      <Text style={styles.bannerText}>Network unavailable. Changes will retry when online.</Text>
+      <Text style={styles.bannerText}>网络不可用，恢复后将自动重试</Text>
     </View>
   );
 }
@@ -83,103 +75,66 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     justifyContent: 'center',
-    minHeight: 160,
+    minHeight: 180,
     padding: spacing.xl,
   },
   title: {
     color: colors.text,
-    fontSize: typography.subtitle,
+    fontSize: typography.body,
     fontWeight: '800',
     textAlign: 'center',
   },
   muted: {
     color: colors.muted,
-    fontSize: typography.body,
-    lineHeight: 21,
+    fontSize: typography.small,
+    lineHeight: 20,
     textAlign: 'center',
   },
   errorTitle: {
     color: colors.danger,
-    fontSize: typography.subtitle,
+    fontSize: typography.body,
     fontWeight: '800',
     textAlign: 'center',
   },
   error: {
     color: colors.danger,
-    fontSize: typography.body,
-    lineHeight: 21,
+    fontSize: typography.small,
+    lineHeight: 20,
     textAlign: 'center',
   },
   button: {
     backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    minHeight: 42,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm,
   },
   buttonText: {
     color: '#FFFFFF',
     fontWeight: '800',
   },
   banner: {
-    backgroundColor: colors.warning,
+    backgroundColor: '#FFF7E6',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
   bannerText: {
-    color: '#FFFFFF',
+    color: '#AD6800',
     fontSize: typography.small,
     fontWeight: '600',
     textAlign: 'center',
   },
-  emptyIcon: {
-    alignItems: 'center',
-    height: 48,
-    justifyContent: 'center',
-    marginBottom: spacing.xs,
-    position: 'relative',
-    width: 58,
-  },
-  emptyIconBody: {
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primary,
-    borderRadius: radius.md,
-    borderWidth: 2,
-    height: 28,
-    width: 44,
-  },
-  emptyIconFlag: {
-    backgroundColor: colors.primary,
-    borderBottomLeftRadius: radius.sm,
-    borderTopLeftRadius: radius.sm,
-    height: 12,
-    left: 6,
-    position: 'absolute',
-    top: 24,
-    width: 6,
-  },
-  emptyIconDot: {
-    backgroundColor: colors.danger,
-    borderColor: colors.surface,
+  emptyDot: {
+    backgroundColor: colors.border,
     borderRadius: radius.pill,
-    borderWidth: 2,
-    height: 10,
-    position: 'absolute',
-    right: 10,
-    top: 14,
-    width: 10,
-  },
-  errorIcon: {
-    alignItems: 'center',
-    backgroundColor: '#FDECEC',
-    borderRadius: radius.lg,
     height: 48,
-    justifyContent: 'center',
-    marginBottom: spacing.xs,
     width: 48,
   },
-  errorIconText: {
-    color: colors.danger,
-    fontSize: typography.title,
-    fontWeight: '900',
+  errorDot: {
+    backgroundColor: '#FFECEC',
+    borderRadius: radius.pill,
+    height: 48,
+    width: 48,
   },
 });
