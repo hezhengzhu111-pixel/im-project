@@ -91,16 +91,16 @@ export function getAvailableMessageActions(
   // deleteLocal — always available
   add('deleteLocal', { destructive: true });
 
-  // saveMedia — IMAGE / VIDEO with local media URI
+  // saveMedia — IMAGE / VIDEO with local or remote media URI
   if (
     (message.messageType === 'IMAGE' || message.messageType === 'VIDEO') &&
-    ctx.hasMediaUri
+    (ctx.hasMediaUri || ctx.hasRemoteMediaUri)
   ) {
     add('saveMedia');
   }
 
-  // openFile — FILE with local media URI
-  if (message.messageType === 'FILE' && ctx.hasMediaUri) {
+  // openFile — FILE with local or remote media URI
+  if (message.messageType === 'FILE' && (ctx.hasMediaUri || ctx.hasRemoteMediaUri)) {
     add('openFile');
   }
 

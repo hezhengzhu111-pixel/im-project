@@ -121,6 +121,25 @@ export const uploadTaskRepository = {
     messageDatabase.execute('DELETE FROM mobile_upload_tasks WHERE taskId = ?', [taskId]);
   },
 
+  removeByLocalMessageId(localMessageId: string): void {
+    // 先找 taskId（SQLite + memory fallback），再通过 taskId 删除
+    const existing = this.findByLocalMessageId(localMessageId);
+    if (existing) {
+      this.remove(existing.taskId);
+    }
+    // 兜底：若 findByLocalMessageId 因 schema 差异未命中，直接通过 localMessageId 删除
+    messageDatabase.execute('DELETE FROM mobile_upload_tasks WHERE localMessageId = ?', [localMessageId]);
+    // memory 兜底
+    const memoryRows = messageDatabase.isMemoryFallback()
+      ? messageDatabase.memoryList('mobile_upload_tasks')
+      : [];
+    for (const row of memoryRows) {
+      if (String(row.localMessageId || '') === localMessageId) {
+        messageDatabase.memoryDelete('mobile_upload_tasks', String(row.taskId || ''));
+      }
+    }
+  },
+
   /** 清理 mobile_upload_tasks 表（内存缓存 + SQLite）。 */
   clear(): void {
     messageDatabase.memoryClear('mobile_upload_tasks');

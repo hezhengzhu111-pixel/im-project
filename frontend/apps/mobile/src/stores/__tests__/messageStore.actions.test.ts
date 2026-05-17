@@ -14,6 +14,7 @@ import type { MobileMessage } from '@/types/models';
 
 jest.mock('@/services/storage/messageRepository');
 jest.mock('@/services/storage/pendingMessageRepository');
+jest.mock('@/services/storage/uploadTaskRepository');
 jest.mock('@/services/chat/messageService');
 jest.mock('@/services/upload/uploadService');
 jest.mock('@/utils/logger');
@@ -51,10 +52,12 @@ jest.mock('@/stores/sessionStore', () => ({
 import { useMessageStore } from '../messageStore';
 import { messageRepository } from '@/services/storage/messageRepository';
 import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
+import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
 import { messageService } from '@/services/chat/messageService';
 
 const mr = jest.mocked(messageRepository);
 const pr = jest.mocked(pendingMessageRepository);
+const ur = jest.mocked(uploadTaskRepository);
 const ms = jest.mocked(messageService);
 
 const baseMobileMessage = (overrides: Partial<MobileMessage> = {}): MobileMessage => ({
@@ -158,6 +161,158 @@ describe('messageStore actions — delete/recall edge cases', () => {
 
       expect(useMessageStore.getState().messagesBySession['100_200']).toHaveLength(0);
       expect(useMessageStore.getState().messagesBySession['100_300']).toHaveLength(1);
+    });
+
+    // ── Phase 5 closeout: pending / upload task cleanup ────────
+
+    it('removes pending by localId when deleting a pending message', () => {
+      const msg = baseMobileMessage({ id: 'local-pend', status: 'SENDING' });
+      pr.get.mockReturnValue({
+        localId: 'local-pend',
+        conversationId: '100_200',
+        sendType: 'private',
+        payloadJson: '{"sendType":"private","data":{}}',
+        status: 'pending',
+        retryCount: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      useMessageStore.setState({ messagesBySession: { '100_200': [msg] } });
+
+      useMessageStore.getState().deleteLocalMessage('100_200', 'local-pend');
+
+      expect(pr.remove).toHaveBeenCalledWith('local-pend');
+    });
+
+    it('removes pending by clientMessageId when message has one', () => {
+      const msg = baseMobileMessage({ id: 'local-cli', clientMessageId: 'cli-abc', status: 'SENDING' });
+      pr.get.mockReturnValue({
+        localId: 'local-cli',
+        conversationId: '100_200',
+        sendType: 'private',
+        payloadJson: JSON.stringify({
+          sendType: 'private',
+          data: { clientMessageId: 'cli-abc' },
+        }),
+        status: 'pending',
+        retryCount: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      useMessageStore.setState({ messagesBySession: { '100_200': [msg] } });
+
+      useMessageStore.getState().deleteLocalMessage('100_200', 'local-cli');
+
+      expect(pr.removeByClientMessageId).toHaveBeenCalledWith('cli-abc');
+    });
+
+    it('cleans upload task by taskId from pending payloadJson', () => {
+      const msg = baseMobileMessage({ id: 'media-pend', status: 'SENDING' });
+      pr.get.mockReturnValue({
+        localId: 'media-pend',
+        conversationId: '100_200',
+        sendType: 'private',
+        payloadJson: JSON.stringify({
+          sendType: 'private',
+          data: {},
+          uploadTaskId: 'upload-task-1',
+        }),
+        status: 'pending',
+        retryCount: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      useMessageStore.setState({ messagesBySession: { '100_200': [msg] } });
+
+      useMessageStore.getState().deleteLocalMessage('100_200', 'media-pend');
+
+      expect(ur.remove).toHaveBeenCalledWith('upload-task-1');
+    });
+
+    it('cleans upload task by localMessageId', () => {
+      const msg = baseMobileMessage({ id: 'media-pend-2', status: 'SENDING' });
+      // No pending, but upload task is linked via localMessageId
+      pr.get.mockReturnValue(undefined);
+
+      useMessageStore.setState({ messagesBySession: { '100_200': [msg] } });
+
+      useMessageStore.getState().deleteLocalMessage('100_200', 'media-pend-2');
+
+      expect(ur.removeByLocalMessageId).toHaveBeenCalledWith('media-pend-2');
+    });
+
+    it('does not throw when pending payloadJson is malformed', () => {
+      const msg = baseMobileMessage({ id: 'bad-json-pend', status: 'SENDING' });
+      pr.get.mockReturnValue({
+        localId: 'bad-json-pend',
+        conversationId: '100_200',
+        sendType: 'private',
+        payloadJson: '{not valid json!!!',
+        status: 'pending',
+        retryCount: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      useMessageStore.setState({ messagesBySession: { '100_200': [msg] } });
+
+      expect(() => {
+        useMessageStore.getState().deleteLocalMessage('100_200', 'bad-json-pend');
+      }).not.toThrow();
+
+      // Still removed from UI and messageRepository
+      expect(pr.remove).toHaveBeenCalledWith('bad-json-pend');
+      expect(mr.deleteMessage).toHaveBeenCalledWith('100_200', 'bad-json-pend');
+    });
+
+    it('deleting one message does not affect other messages in same session', () => {
+      const msg1 = baseMobileMessage({ id: 'keep-me', status: 'SENT' });
+      const msg2 = baseMobileMessage({ id: 'delete-me', status: 'SENDING' });
+      pr.get.mockReturnValue(undefined);
+
+      useMessageStore.setState({ messagesBySession: { '100_200': [msg1, msg2] } });
+
+      useMessageStore.getState().deleteLocalMessage('100_200', 'delete-me');
+
+      const messages = useMessageStore.getState().messagesBySession['100_200'];
+      expect(messages.map((m) => m.id)).toEqual(['keep-me']);
+      // msg1's pending NOT affected
+      expect(pr.get).not.toHaveBeenCalledWith('keep-me');
+    });
+
+    it('deleting one pending does not remove other pending in same session', () => {
+      const msg1 = baseMobileMessage({ id: 'pend-a', status: 'SENDING' });
+      const msg2 = baseMobileMessage({ id: 'pend-b', status: 'SENDING' });
+      jest.clearAllMocks(); // Reset previous calls
+
+      // Only pend-a has a pending record
+      pr.get.mockImplementation((id: string) => {
+        if (id === 'pend-a') {
+          return {
+            localId: 'pend-a',
+            conversationId: '100_200',
+            sendType: 'private' as const,
+            payloadJson: '{}',
+            status: 'pending' as const,
+            retryCount: 0,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+        }
+        return undefined;
+      });
+
+      useMessageStore.setState({ messagesBySession: { '100_200': [msg1, msg2] } });
+
+      useMessageStore.getState().deleteLocalMessage('100_200', 'pend-a');
+
+      // pend-a is removed
+      expect(pr.remove).toHaveBeenCalledWith('pend-a');
+      // pend-b is NOT removed
+      expect(pr.remove).not.toHaveBeenCalledWith('pend-b');
     });
   });
 

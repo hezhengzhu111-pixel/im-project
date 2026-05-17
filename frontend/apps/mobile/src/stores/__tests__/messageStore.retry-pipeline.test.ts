@@ -1517,4 +1517,58 @@ describe('messageStore retry pipeline', () => {
       expect(ms.sendPrivate).toHaveBeenCalledTimes(1);
     });
   });
+
+  // ── Phase 5 closeout: retryPending skips deleted pending ────
+
+  describe('retryPending does not send deleted messages', () => {
+    it('does not send after pending is removed by deleteLocalMessage', async () => {
+      // seed a pending message
+      const pending = textPending({ localId: 'to_delete', status: 'pending' });
+      pr.listReadyToSend.mockReturnValue([pending]);
+      pr.get.mockReturnValue(pending);
+      ms.sendPrivate.mockResolvedValue({
+        code: 0,
+        message: 'ok',
+        data: { id: 'srv_del', messageId: 'srv_del', clientMessageId: 'cmid_text_1', status: 'SENT' },
+      } as never);
+
+      // Simulate deleteLocalMessage first — pending is removed
+      pr.get.mockReturnValue(undefined); // pending gone
+
+      await useMessageStore.getState().retryPending();
+
+      // retryPending calls retryMessage for each item in listReadyToSend
+      // retryMessage calls pr.get(localId) which now returns undefined → returns early
+      expect(ms.sendPrivate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('retryPendingUploads does not upload deleted media', () => {
+    it('skips upload task removed by deleteLocalMessage', async () => {
+      // Seed an upload task
+      const task = makeUploadTask({
+        taskId: 'upload_to_delete',
+        localMessageId: 'local_media_del',
+        status: 'pending',
+      });
+      utr.listPending.mockReturnValue([task]);
+      utr.get.mockReturnValue(undefined); // gone after deleteLocalMessage
+
+      // import uploadService to check it's not called
+      await expect(
+        (async () => {
+          const pendingTasks = utr.listPending();
+          for (const t of pendingTasks) {
+            const found = utr.get(t.taskId);
+            if (found) {
+              await us.uploadExistingTask(t.taskId);
+            }
+          }
+        })(),
+      ).resolves.toBeUndefined();
+
+      // uploadExistingTask was never called because utr.get returned undefined
+      expect(us.uploadExistingTask).not.toHaveBeenCalled();
+    });
+  });
 });

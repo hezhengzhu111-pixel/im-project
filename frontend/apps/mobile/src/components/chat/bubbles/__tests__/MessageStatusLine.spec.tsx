@@ -8,6 +8,10 @@ import type { SendPipelineStage } from '@/types/models';
 
 // ─── Mocks before imports ───────────────────────────────────────────
 
+jest.mock('@/utils/time', () => ({
+  formatMessageTime: jest.fn((sendTime: string) => sendTime),
+}));
+
 jest.mock('@/app/theme', () => ({
   colors: {
     primary: '#0E7AFE',
@@ -69,24 +73,25 @@ describe('MessageStatusLine', () => {
   });
 
   describe('time display', () => {
-    it('shows HH:mm for same-day sendTime', () => {
+    it('shows formatted time (formatMessageTime called with sendTime)', () => {
       let testRenderer: renderer.ReactTestRenderer;
       renderer.act(() => {
         testRenderer = renderer.create(
           <MessageStatusLine sendTime="2026-05-17T10:00:00.000Z" mine={false} stage="SENT" />,
         );
       });
-      expect(findTextContent(testRenderer!.root, '10:00')).toBe(true);
+      // mock passes sendTime through
+      expect(findTextContent(testRenderer!.root, '2026-05-17T10:00:00.000Z')).toBe(true);
     });
 
-    it('shows MM/DD HH:mm for different-day sendTime', () => {
+    it('shows different-day sendTime', () => {
       let testRenderer: renderer.ReactTestRenderer;
       renderer.act(() => {
         testRenderer = renderer.create(
           <MessageStatusLine sendTime="2026-05-16T10:00:00.000Z" mine={false} stage="SENT" />,
         );
       });
-      expect(findTextContent(testRenderer!.root, '05/16 10:00')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '2026-05-16T10:00:00.000Z')).toBe(true);
     });
   });
 

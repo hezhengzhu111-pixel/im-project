@@ -747,14 +747,70 @@ export const useMessageStore = create<MessageState>((set, get) => ({
 
   /**
    * 从本地删除单条消息（软删除语义：移除展示，不调后端）。
+   * 同时清理关联的 pending 和 upload task，防止被 retryPending/retryPendingUploads 自动重新发送。
    */
   deleteLocalMessage(sessionId, messageId) {
     const list = get().messagesBySession[sessionId];
     if (!list) return;
 
-    const nextList = list.filter((msg) => msg.id !== messageId);
+    // 按多种身份字段匹配消息
+    const message = list.find(
+      (msg) =>
+        msg.id === messageId ||
+        msg.serverId === messageId ||
+        msg.messageId === messageId ||
+        msg.clientMessageId === messageId,
+    );
+
+    // 收集备选 ID 用于 pending/upload 清理（不做跨消息 UI 过滤）
+    const candidateIds: string[] = [messageId];
+    if (message) {
+      candidateIds.push(message.id);
+      if (message.serverId) candidateIds.push(message.serverId);
+      if (message.messageId) candidateIds.push(message.messageId);
+      if (message.clientMessageId) candidateIds.push(message.clientMessageId);
+    }
+    const idSet = new Set(candidateIds.filter(Boolean));
+
+    // 1. 移除 UI 列表中的消息（仅按消息自身的 id 过滤，避免 messageId/serverId 冲突误删其他消息）
+    const targetId = message?.id || messageId;
+    const nextList = list.filter((msg) => msg.id !== targetId);
     set({ messagesBySession: { ...get().messagesBySession, [sessionId]: nextList } });
-    messageRepository.deleteMessage(sessionId, messageId);
+
+    // 2. 清理 messageRepository（按 idSet 中的所有 identity）
+    for (const cid of idSet) {
+      messageRepository.deleteMessage(sessionId, cid);
+    }
+
+    // 3. 清理 pending（按 localId + clientMessageId）
+    for (const cid of idSet) {
+      const pending = pendingMessageRepository.get(cid);
+      if (pending) {
+        // 解析 payload 获取 uploadTaskId（失败不抛异常）
+        let uploadTaskId: string | undefined;
+        try {
+          const parsed = JSON.parse(pending.payloadJson) as Record<string, unknown>;
+          uploadTaskId = typeof parsed.uploadTaskId === 'string' ? parsed.uploadTaskId : undefined;
+        } catch {
+          // payload 解析失败不中断删除流程
+        }
+
+        // 清理关联的 upload task
+        if (uploadTaskId) {
+          uploadTaskRepository.remove(uploadTaskId);
+        }
+
+        pendingMessageRepository.remove(cid);
+      }
+
+      // 清理按 localMessageId 关联的 upload task
+      uploadTaskRepository.removeByLocalMessageId(cid);
+    }
+
+    // 4. 清理按 clientMessageId 关联的 pending
+    if (message?.clientMessageId) {
+      pendingMessageRepository.removeByClientMessageId(message.clientMessageId);
+    }
   },
 
   /**

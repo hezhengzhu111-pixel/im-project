@@ -47,6 +47,14 @@ const msg = (overrides: Partial<MobileMessage> = {}): MobileMessage => ({
   ...overrides,
 });
 
+const findPressable = (tree: renderer.ReactTestRenderer) =>
+  tree.root.find((node) => typeName(node) === 'Pressable');
+
+const findLabel = (tree: renderer.ReactTestRenderer, label: string) =>
+  tree.root.find(
+    (node) => typeName(node) === 'Text' && String(node.children?.join('') ?? '').includes(label),
+  );
+
 // ─── Tests ──────────────────────────────────────────────────────────
 
 describe('VoiceBubble', () => {
@@ -59,47 +67,52 @@ describe('VoiceBubble', () => {
   it('calls playAudio on press when not playing', () => {
     const message = msg();
 
-    let testRenderer: renderer.ReactTestRenderer;
+    let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      testRenderer = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
     });
 
-    const pressable = testRenderer!.root.find(
-      (node) => typeName(node) === 'Pressable',
-    );
-
     renderer.act(() => {
-      pressable.props.onPress();
+      findPressable(tree!).props.onPress();
     });
 
     expect(mockPlayAudio).toHaveBeenCalledWith('https://files.example.com/audio/msg.m4a');
     expect(mockStopAudio).not.toHaveBeenCalled();
   });
 
+  it('shows stop label after successful play', () => {
+    const message = msg();
+
+    let tree: renderer.ReactTestRenderer;
+    renderer.act(() => {
+      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+    });
+
+    expect(findLabel(tree!, '播放语音')).toBeDefined();
+
+    renderer.act(() => {
+      findPressable(tree!).props.onPress();
+    });
+
+    expect(findLabel(tree!, '停止')).toBeDefined();
+  });
+
   it('calls stopAudio on press when currently playing', () => {
     const message = msg();
 
-    let testRenderer: renderer.ReactTestRenderer;
+    let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      testRenderer = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
     });
 
     // First press: play
-    const pressable = testRenderer!.root.find(
-      (node) => typeName(node) === 'Pressable',
-    );
     renderer.act(() => {
-      pressable.props.onPress();
+      findPressable(tree!).props.onPress();
     });
-
-    // Re-find Pressable after state update to get the updated onPress
-    const pressableAfterPlay = testRenderer!.root.find(
-      (node) => typeName(node) === 'Pressable',
-    );
 
     // Second press: stop
     renderer.act(() => {
-      pressableAfterPlay.props.onPress();
+      findPressable(tree!).props.onPress();
     });
 
     expect(mockStopAudio).toHaveBeenCalled();
@@ -114,78 +127,179 @@ describe('VoiceBubble', () => {
 
     const message = msg();
 
-    let testRenderer: renderer.ReactTestRenderer;
+    let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      testRenderer = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
     });
 
-    const pressable = testRenderer!.root.find(
-      (node) => typeName(node) === 'Pressable',
-    );
-
     renderer.act(() => {
-      pressable.props.onPress();
+      findPressable(tree!).props.onPress();
     });
 
     expect(alertSpy).toHaveBeenCalledWith('播放失败', 'audio codec error');
     alertSpy.mockRestore();
   });
 
+  it('playing=false after play failure', () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    mockPlayAudio.mockImplementation(() => {
+      throw new Error('codec error');
+    });
+
+    const message = msg();
+
+    let tree: renderer.ReactTestRenderer;
+    renderer.act(() => {
+      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+    });
+
+    renderer.act(() => {
+      findPressable(tree!).props.onPress();
+    });
+
+    // 失败后应该显示 播放语音（不是 停止）
+    expect(() => findLabel(tree!, '播放语音')).not.toThrow();
+    alertSpy.mockRestore();
+  });
+
   it('displays duration in seconds when available', () => {
     const message = msg({ duration: 12 });
 
-    let testRenderer: renderer.ReactTestRenderer;
+    let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      testRenderer = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
     });
 
-    const textNode = testRenderer!.root.find(
+    const durationNode = tree!.root.find(
       (node) => typeName(node) === 'Text' && String(node.children?.join('') ?? '').includes('12″'),
     );
-    expect(textNode).toBeDefined();
+    expect(durationNode).toBeDefined();
   });
 
   it('does not display duration when zero', () => {
     const message = msg({ duration: 0 });
 
-    let testRenderer: renderer.ReactTestRenderer;
+    let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      testRenderer = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
     });
 
-    const allText = testRenderer!.root.findAll((node) => typeName(node) === 'Text');
+    const allText = tree!.root.findAll((node) => typeName(node) === 'Text');
     const hasDuration = allText.some(
       (node) => String(node.children?.join('') ?? '').includes('″'),
     );
     expect(hasDuration).toBe(false);
   });
 
-  it('shows stop label when playing', () => {
-    const message = msg();
+  it('restores play label after duration-based timer elapses', () => {
+    let capturedTimer: (() => void) | null = null;
+    const setTimeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation(((fn: () => void) => {
+      capturedTimer = fn;
+      return 1 as unknown as ReturnType<typeof setTimeout>;
+    }) as typeof setTimeout);
 
-    let testRenderer: renderer.ReactTestRenderer;
+    const message = msg({ duration: 3 });
+
+    let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      testRenderer = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
     });
 
-    // Initially shows 播放语音
-    const playText = testRenderer!.root.find(
-      (node) => typeName(node) === 'Text' && String(node.children?.join('') ?? '').includes('播放语音'),
-    );
-    expect(playText).toBeDefined();
-
-    const pressable = testRenderer!.root.find(
-      (node) => typeName(node) === 'Pressable',
-    );
-
     renderer.act(() => {
-      pressable.props.onPress();
+      findPressable(tree!).props.onPress();
     });
 
-    // Re-find texts after state update
-    const stopText = testRenderer!.root.find(
-      (node) => typeName(node) === 'Text' && String(node.children?.join('') ?? '').includes('停止'),
-    );
-    expect(stopText).toBeDefined();
+    expect(findLabel(tree!, '停止')).toBeDefined();
+
+    // Fire the duration timer callback manually
+    renderer.act(() => {
+      capturedTimer?.();
+    });
+
+    expect(() => findLabel(tree!, '播放语音')).not.toThrow();
+
+    setTimeoutSpy.mockRestore();
+  });
+
+  it('cleans up timer on Stop press', () => {
+    let capturedTimer: (() => void) | null = null;
+    const setTimeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation(((fn: () => void) => {
+      capturedTimer = fn;
+      return 1 as unknown as ReturnType<typeof setTimeout>;
+    }) as typeof setTimeout);
+    const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+
+    const message = msg({ duration: 5 });
+
+    let tree: renderer.ReactTestRenderer;
+    renderer.act(() => {
+      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+    });
+
+    renderer.act(() => {
+      findPressable(tree!).props.onPress();
+    });
+
+    expect(mockStopAudio).not.toHaveBeenCalled();
+
+    // Stop before timer fires
+    renderer.act(() => {
+      findPressable(tree!).props.onPress();
+    });
+
+    expect(mockStopAudio).toHaveBeenCalledTimes(1);
+    expect(clearTimeoutSpy).toHaveBeenCalled(); // timer was cleared
+
+    // If the captured timer somehow fires, it should not cause a crash
+    // (the component already shows "play" so no state change needed)
+    capturedTimer = null;
+
+    setTimeoutSpy.mockRestore();
+    clearTimeoutSpy.mockRestore();
+  });
+
+  it('cleans up timer on unmount', () => {
+    let capturedTimer: (() => void) | null = null;
+    const setTimeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation(((fn: () => void) => {
+      capturedTimer = fn;
+      return 1 as unknown as ReturnType<typeof setTimeout>;
+    }) as typeof setTimeout);
+    const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+
+    const message = msg({ duration: 5 });
+
+    let tree: renderer.ReactTestRenderer;
+    renderer.act(() => {
+      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+    });
+
+    renderer.act(() => {
+      findPressable(tree!).props.onPress();
+    });
+
+    // Unmount before timer fires
+    renderer.act(() => {
+      tree!.unmount();
+    });
+
+    expect(clearTimeoutSpy).toHaveBeenCalled(); // timer was cleaned up on unmount
+
+    setTimeoutSpy.mockRestore();
+    clearTimeoutSpy.mockRestore();
+  });
+
+  it('does not call playAudio when mediaUri is missing', () => {
+    const message = msg({ mediaUrl: undefined, thumbnailUrl: undefined });
+
+    let tree: renderer.ReactTestRenderer;
+    renderer.act(() => {
+      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+    });
+
+    renderer.act(() => {
+      findPressable(tree!).props.onPress();
+    });
+
+    expect(mockPlayAudio).not.toHaveBeenCalled();
   });
 });
