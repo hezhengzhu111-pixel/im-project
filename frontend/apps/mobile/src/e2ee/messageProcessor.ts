@@ -29,22 +29,47 @@ const safePlaceholder = (message: MobileMessage): MobileMessage => ({
   duration: undefined,
 });
 
+const readStringField = (message: MobileMessage, camelKey: keyof MobileMessage, snakeKey: string): string => {
+  const camelValue = message[camelKey];
+  if (typeof camelValue === 'string' && camelValue) {
+    return camelValue;
+  }
+  const record = message as Record<string, unknown>;
+  const snakeValue = record[snakeKey];
+  return typeof snakeValue === 'string' ? snakeValue : '';
+};
+
 const parseRawMessage = (message: MobileMessage): MobileMessage => {
   if (!message.rawJson) {
     return message;
   }
   try {
-    return { ...message, ...(JSON.parse(message.rawJson) as MobileMessage), rawJson: message.rawJson };
+    const raw = JSON.parse(message.rawJson) as Record<string, unknown>;
+    return {
+      ...message,
+      ...raw,
+      encrypted: raw.encrypted ?? message.encrypted,
+      e2eeHeader: readStringField(raw as MobileMessage, 'e2eeHeader', 'e2ee_header') || message.e2eeHeader,
+      e2eeDeviceId: readStringField(raw as MobileMessage, 'e2eeDeviceId', 'e2ee_device_id') || message.e2eeDeviceId,
+      e2eeSenderIdentityKey:
+        readStringField(raw as MobileMessage, 'e2eeSenderIdentityKey', 'e2ee_sender_identity_key') ||
+        message.e2eeSenderIdentityKey,
+      e2eeEphemeralKey:
+        readStringField(raw as MobileMessage, 'e2eeEphemeralKey', 'e2ee_ephemeral_key') ||
+        message.e2eeEphemeralKey,
+      rawJson: message.rawJson,
+    } as MobileMessage;
   } catch {
     return message;
   }
 };
 
 const parseHeader = (message: MobileMessage): RatchetHeader => {
-  if (!message.e2eeHeader || typeof message.e2eeHeader !== 'string') {
+  const headerJson = readStringField(message, 'e2eeHeader', 'e2ee_header');
+  if (!headerJson) {
     throw new Error('E2EE message header unavailable');
   }
-  const parsed = JSON.parse(message.e2eeHeader) as Partial<RatchetHeader>;
+  const parsed = JSON.parse(headerJson) as Partial<RatchetHeader>;
   if (
     typeof parsed.ratchetPublicKey !== 'string' ||
     typeof parsed.counter !== 'number' ||
@@ -69,11 +94,11 @@ export const processE2eeMessage = async (
     ...parseRawMessage(message),
     rawJson: message.rawJson || JSON.stringify(message),
   };
-  if (!isEncryptedValue(message.encrypted)) {
+  if (!isEncryptedValue(message.encrypted) && !isEncryptedValue(rawMessage.encrypted)) {
     return { rawMessage, displayMessage: message, decryptStatus: 'plaintext' };
   }
 
-  const sessionId = options.sessionId || resolveMessageSessionId(message, options.currentUserId) || message.conversationId || '';
+  const sessionId = options.sessionId || resolveMessageSessionId(rawMessage, options.currentUserId) || rawMessage.conversationId || message.conversationId || '';
   const baseDisplay = { ...message, conversationId: sessionId || message.conversationId, rawJson: rawMessage.rawJson };
   if (
     message.rawJson &&
@@ -85,13 +110,13 @@ export const processE2eeMessage = async (
     return { rawMessage, displayMessage: baseDisplay, decryptStatus: 'decrypted' };
   }
 
-  if (message.isGroupChat || message.groupId) {
+  if (rawMessage.isGroupChat || rawMessage.groupId || message.isGroupChat || message.groupId) {
     return { rawMessage, displayMessage: safePlaceholder(baseDisplay), decryptStatus: 'failed' };
   }
 
-  const isOwnEcho = Boolean(options.currentUserId && message.senderId === options.currentUserId);
+  const isOwnEcho = Boolean(options.currentUserId && rawMessage.senderId === options.currentUserId);
   if (isOwnEcho) {
-    const optimistic = message.clientMessageId ? options.findOptimisticMessage?.(message.clientMessageId) : undefined;
+    const optimistic = rawMessage.clientMessageId ? options.findOptimisticMessage?.(rawMessage.clientMessageId) : undefined;
     if (optimistic?.content) {
       return {
         rawMessage,
@@ -107,8 +132,12 @@ export const processE2eeMessage = async (
   }
 
   try {
-    const header = parseHeader(message);
-    const plaintext = await e2eeManager.decryptMessage(sessionId, message.senderId || '', header, rawMessage.content || message.content || '');
+    const header = parseHeader(rawMessage);
+    const ciphertext = rawMessage.content || message.content || '';
+    if (!ciphertext || ciphertext === E2EE_UNSUPPORTED_TEXT) {
+      throw new Error('E2EE ciphertext unavailable');
+    }
+    const plaintext = await e2eeManager.decryptMessage(sessionId, rawMessage.senderId || message.senderId || '', header, ciphertext);
     return {
       rawMessage,
       displayMessage: {
@@ -123,6 +152,8 @@ export const processE2eeMessage = async (
       sessionId,
       code: classification.code,
       category: classification.category,
+      hasHeader: Boolean(readStringField(rawMessage, 'e2eeHeader', 'e2ee_header')),
+      hasCiphertext: Boolean(rawMessage.content && rawMessage.content !== E2EE_UNSUPPORTED_TEXT),
     }));
     return {
       rawMessage,
