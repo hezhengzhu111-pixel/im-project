@@ -1,6 +1,7 @@
 import React from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, typography } from '@/app/theme';
+import { mediaCache } from '@/services/media/mediaCache';
 import { mediaService } from '@/services/media/mediaService';
 import { resolveMediaUri } from '@/services/media/mediaUri';
 import type { MobileMessage } from '@/types/models';
@@ -17,8 +18,21 @@ const normalizeDuration = (duration?: number) => {
 
 const waveBars = [8, 13, 18, 13, 8];
 
+const readablePlayError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error || '');
+  if (!message) return '语音文件暂时无法播放';
+  if (message.includes('status=0x1') || message.includes('prepare failed')) {
+    return '语音文件格式或下载内容异常，请重新发送后再试';
+  }
+  if (message.includes('ENOENT') || message.includes('No such file')) {
+    return '语音文件不存在或已被清理，请重新发送后再试';
+  }
+  return '语音文件暂时无法播放';
+};
+
 export function VoiceBubble({ message, mine }: VoiceBubbleProps) {
   const [playing, setPlaying] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const rawUri = message.mediaUrl || message.thumbnailUrl || message.content || '';
@@ -45,16 +59,12 @@ export function VoiceBubble({ message, mine }: VoiceBubbleProps) {
 
   React.useEffect(() => () => clearTimer(), [clearTimer]);
 
-  const handleToggle = React.useCallback(() => {
-    if (playing) {
-      stopPlayback();
-      return;
-    }
-
-    if (!mediaUri) return;
-
+  const startPlayback = React.useCallback(async () => {
+    if (!mediaUri || loading) return;
+    setLoading(true);
     try {
-      const result = mediaService.playAudio(mediaUri);
+      const playablePath = await mediaCache.localPath(mediaUri, 'm4a');
+      const result = mediaService.playAudio(playablePath);
       const handleSuccess = () => {
         setPlaying(true);
         if (durationSec > 0) {
@@ -65,29 +75,34 @@ export function VoiceBubble({ message, mine }: VoiceBubbleProps) {
         }
       };
       if (result && typeof (result as unknown as Record<string, unknown>).then === 'function') {
-        (result as unknown as Promise<void>).then(
-          handleSuccess,
-          (e: unknown) => {
-            Alert.alert('播放失败', e instanceof Error ? e.message : '语音文件暂时无法播放');
-          },
-        );
-      } else {
-        handleSuccess();
+        await (result as unknown as Promise<void>);
       }
-    } catch (e) {
-      Alert.alert('播放失败', e instanceof Error ? e.message : '语音文件暂时无法播放');
+      handleSuccess();
+    } catch (error) {
+      Alert.alert('播放失败', readablePlayError(error));
+    } finally {
+      setLoading(false);
     }
-  }, [durationSec, mediaUri, playing, stopPlayback]);
+  }, [durationSec, loading, mediaUri]);
+
+  const handleToggle = React.useCallback(() => {
+    if (playing) {
+      stopPlayback();
+      return;
+    }
+    void startPlayback();
+  }, [playing, startPlayback, stopPlayback]);
 
   return (
     <Pressable
       accessibilityLabel={playing ? '停止语音' : '播放语音'}
-      style={[styles.voice, mine ? styles.voiceMine : styles.voiceOther, { width }]}
+      disabled={loading}
+      style={[styles.voice, mine ? styles.voiceMine : styles.voiceOther, loading ? styles.voiceLoading : null, { width }]}
       onPress={handleToggle}
     >
       {!mine ? <View style={styles.tailLeft} /> : <View style={styles.tailRight} />}
       <View style={styles.iconWrap}>
-        <Text style={[styles.playIcon, mine ? styles.mineText : null]}>{playing ? '■' : '▶'}</Text>
+        <Text style={[styles.playIcon, mine ? styles.mineText : null]}>{loading ? '…' : playing ? '■' : '▶'}</Text>
       </View>
       <View style={styles.wave}>
         {waveBars.map((height, index) => (
@@ -122,6 +137,9 @@ const styles = StyleSheet.create({
   },
   voiceMine: {
     backgroundColor: colors.primary,
+  },
+  voiceLoading: {
+    opacity: 0.72,
   },
   tailLeft: {
     backgroundColor: colors.surface,
