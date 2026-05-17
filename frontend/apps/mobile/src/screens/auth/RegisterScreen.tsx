@@ -13,10 +13,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, type NavigationProp, type ParamListBase } from '@react-navigation/native';
+import { BrandLockup } from '@/components/brand/BrandIdentity';
 import { radius, spacing, typography } from '@/app/theme';
 import { useAuthStore } from '@/stores/authStore';
 
-const BG = '#F7F8FA';
+const BG = '#F7FAF8';
 const CARD = '#FFFFFF';
 const TEXT = '#111827';
 const MUTED = '#8A94A6';
@@ -162,8 +163,7 @@ export function RegisterScreen() {
         >
           <View style={styles.main}>
             <View style={styles.header}>
-              <Text style={styles.title}>注册账号</Text>
-              <Text style={styles.subtitle}>填写信息后即可开始聊天</Text>
+              <BrandLockup compact align="left" tagline="用端到端加密守住每一句话" />
             </View>
 
             <View style={styles.formCard}>
@@ -205,7 +205,7 @@ export function RegisterScreen() {
               ]}
               onPress={submit}
             >
-              <Text style={styles.primaryButtonText}>{loading ? '注册中...' : '注册'}</Text>
+              <Text style={styles.primaryButtonText}>{loading ? '注册中...' : '创建密笺账号'}</Text>
             </Pressable>
           </View>
 
@@ -220,11 +220,11 @@ export function RegisterScreen() {
 
       <InfoModal visible={showAgreement} title="用户协议" onClose={() => setShowAgreement(false)}>
         <Text style={styles.modalHeading}>1. 服务条款</Text>
-        <Text style={styles.modalParagraph}>欢迎使用 IM 聊天应用。在使用本服务前，请仔细阅读并理解本协议的所有条款。</Text>
+        <Text style={styles.modalParagraph}>欢迎使用密笺。在使用本服务前，请仔细阅读并理解本协议的所有条款。</Text>
         <Text style={styles.modalHeading}>2. 用户责任</Text>
         <Text style={styles.modalParagraph}>用户应当遵守相关法律法规，不得利用本服务从事违法违规活动。</Text>
         <Text style={styles.modalHeading}>3. 隐私保护</Text>
-        <Text style={styles.modalParagraph}>我们重视用户隐私，将按照隐私政策保护用户个人信息。</Text>
+        <Text style={styles.modalParagraph}>密笺重视用户隐私，并通过端到端加密能力保护聊天内容。</Text>
         <Text style={styles.modalHeading}>4. 服务变更</Text>
         <Text style={styles.modalParagraph}>我们保留随时修改或终止服务的权利，恕不另行通知。</Text>
       </InfoModal>
@@ -235,7 +235,7 @@ export function RegisterScreen() {
         <Text style={styles.modalHeading}>2. 信息使用</Text>
         <Text style={styles.modalParagraph}>收集的信息仅用于提供和改善服务，不会用于其他目的。</Text>
         <Text style={styles.modalHeading}>3. 信息保护</Text>
-        <Text style={styles.modalParagraph}>我们采用行业标准的安全措施保护用户信息安全。</Text>
+        <Text style={styles.modalParagraph}>聊天内容优先通过端到端加密保护，服务端不应读取加密会话明文。</Text>
         <Text style={styles.modalHeading}>4. 信息共享</Text>
         <Text style={styles.modalParagraph}>除法律要求外，我们不会与第三方共享用户个人信息。</Text>
       </InfoModal>
@@ -256,27 +256,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: spacing.xxl,
     paddingHorizontal: spacing.xl,
-    paddingTop: 64,
+    paddingTop: 58,
   },
   main: {
     width: '100%',
   },
   header: {
-    marginBottom: 36,
-  },
-  title: {
-    color: TEXT,
-    fontSize: 28,
-    fontWeight: '800',
-    marginBottom: spacing.sm,
-  },
-  subtitle: {
-    color: MUTED,
-    fontSize: typography.body,
+    marginBottom: 34,
   },
   formCard: {
     backgroundColor: CARD,
+    borderColor: 'rgba(87, 107, 149, 0.08)',
     borderRadius: radius.lg,
+    borderWidth: 1,
     overflow: 'hidden',
   },
   input: {
