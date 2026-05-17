@@ -193,7 +193,7 @@ describe('VoiceBubble', () => {
 
   it('restores play label after duration-based timer elapses', () => {
     let capturedTimer: (() => void) | null = null;
-    const setTimeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation(((fn: () => void) => {
+    const setTimeoutSpy = jest.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void) => {
       capturedTimer = fn;
       return 1 as unknown as ReturnType<typeof setTimeout>;
     }) as typeof setTimeout);
@@ -223,11 +223,11 @@ describe('VoiceBubble', () => {
 
   it('cleans up timer on Stop press', () => {
     let capturedTimer: (() => void) | null = null;
-    const setTimeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation(((fn: () => void) => {
+    const setTimeoutSpy = jest.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void) => {
       capturedTimer = fn;
       return 1 as unknown as ReturnType<typeof setTimeout>;
     }) as typeof setTimeout);
-    const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+    const clearTimeoutSpy = jest.spyOn(globalThis, 'clearTimeout');
 
     const message = msg({ duration: 5 });
 
@@ -260,11 +260,11 @@ describe('VoiceBubble', () => {
 
   it('cleans up timer on unmount', () => {
     let capturedTimer: (() => void) | null = null;
-    const setTimeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation(((fn: () => void) => {
+    const setTimeoutSpy = jest.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void) => {
       capturedTimer = fn;
       return 1 as unknown as ReturnType<typeof setTimeout>;
     }) as typeof setTimeout);
-    const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+    const clearTimeoutSpy = jest.spyOn(globalThis, 'clearTimeout');
 
     const message = msg({ duration: 5 });
 
