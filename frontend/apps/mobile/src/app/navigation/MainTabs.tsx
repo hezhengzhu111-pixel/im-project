@@ -20,10 +20,18 @@ export type MainTabsParamList = {
 
 const Tab = createBottomTabNavigator<MainTabsParamList>();
 
+const tabIcon = {
+  ChatStack: '●',
+  ContactsStack: '◐',
+  GroupsStack: '◍',
+  Moments: '○',
+  ProfileStack: '◌',
+} as const;
+
 function TabGlyph({ label, focused, badge }: { label: string; focused: boolean; badge?: number }) {
   return (
-    <View style={[styles.glyph, focused ? styles.glyphActive : null]}>
-      <Text style={[styles.glyphText, focused ? styles.glyphTextActive : null]}>{label}</Text>
+    <View style={styles.iconWrap}>
+      <Text style={[styles.iconText, focused ? styles.iconTextActive : null]}>{label}</Text>
       {badge && badge > 0 ? (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
@@ -55,8 +63,8 @@ export function MainTabs() {
         name="ChatStack"
         component={ChatNavigator}
         options={{
-          title: 'Chats',
-          tabBarIcon: ({ focused }) => <TabGlyph label="C" focused={focused} badge={totalUnreadCount} />,
+          title: '聊天',
+          tabBarIcon: ({ focused }) => <TabGlyph label={tabIcon.ChatStack} focused={focused} badge={totalUnreadCount} />,
           tabBarBadge: undefined,
         }}
       />
@@ -64,8 +72,8 @@ export function MainTabs() {
         name="ContactsStack"
         component={ContactsNavigator}
         options={{
-          title: 'Contacts',
-          tabBarIcon: ({ focused }) => <TabGlyph label="P" focused={focused} badge={pendingRequestsCount} />,
+          title: '通讯录',
+          tabBarIcon: ({ focused }) => <TabGlyph label={tabIcon.ContactsStack} focused={focused} badge={pendingRequestsCount} />,
           tabBarBadge: undefined,
         }}
       />
@@ -73,24 +81,24 @@ export function MainTabs() {
         name="GroupsStack"
         component={GroupsNavigator}
         options={{
-          title: 'Groups',
-          tabBarIcon: ({ focused }) => <TabGlyph label="G" focused={focused} />,
+          title: '群组',
+          tabBarIcon: ({ focused }) => <TabGlyph label={tabIcon.GroupsStack} focused={focused} />,
         }}
       />
       <Tab.Screen
         name="Moments"
         component={MomentsNavigator}
         options={{
-          title: 'Moments',
-          tabBarIcon: ({ focused }) => <TabGlyph label="M" focused={focused} />,
+          title: '动态',
+          tabBarIcon: ({ focused }) => <TabGlyph label={tabIcon.Moments} focused={focused} />,
         }}
       />
       <Tab.Screen
         name="ProfileStack"
         component={ProfileNavigator}
         options={{
-          title: 'Profile',
-          tabBarIcon: ({ focused }) => <TabGlyph label="Me" focused={focused} />,
+          title: '我',
+          tabBarIcon: ({ focused }) => <TabGlyph label={tabIcon.ProfileStack} focused={focused} />,
         }}
       />
     </Tab.Navigator>
@@ -102,7 +110,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
-    height: 64,
+    height: 62,
     paddingBottom: spacing.sm,
     paddingTop: spacing.xs,
   },
@@ -114,24 +122,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: spacing.xxs,
   },
-  glyph: {
+  iconWrap: {
     alignItems: 'center',
-    borderRadius: radius.md,
     height: 24,
     justifyContent: 'center',
-    minWidth: 26,
-    paddingHorizontal: spacing.xs,
+    minWidth: 28,
     position: 'relative',
   },
-  glyphActive: {
-    backgroundColor: colors.primarySoft,
-  },
-  glyphText: {
+  iconText: {
     color: colors.muted,
-    fontSize: typography.tiny,
+    fontSize: 19,
     fontWeight: '900',
+    lineHeight: 21,
   },
-  glyphTextActive: {
+  iconTextActive: {
     color: colors.primary,
   },
   badge: {
@@ -143,8 +147,8 @@ const styles = StyleSheet.create({
     minWidth: 16,
     paddingHorizontal: 4,
     position: 'absolute',
-    right: -8,
-    top: -6,
+    right: -9,
+    top: -5,
   },
   badgeText: {
     color: '#FFFFFF',
