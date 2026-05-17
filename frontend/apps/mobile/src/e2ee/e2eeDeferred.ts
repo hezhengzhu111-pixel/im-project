@@ -3,9 +3,13 @@ import { isEncryptedValue } from '@im/shared-e2ee-core';
 import { e2eeSessionStore } from '@/e2ee/store/sessionStore';
 import type { MobileMessage } from '@/types/models';
 
-export const E2EE_UNSUPPORTED_TEXT = '端到端加密消息暂无法解密 / 等待加密通道确认。移动端不会显示密文，可在 Web 端或重新协商后查看。';
+export const E2EE_UNSUPPORTED_TEXT = '端到端加密消息暂无法显示。正在等待加密通道或本机密钥恢复；移动端不会显示密文。';
 
-export const E2EE_SEND_DISABLED_TEXT = '当前移动端会话受端到端加密保护，不会自动改为明文发送；请在 Web 端处理，或重新建立/关闭加密通道后再发送。';
+export const E2EE_SEND_DISABLED_TEXT = '当前会话受端到端加密保护，不会自动降级为明文；请等待协商完成或重新建立加密通道。';
+
+export const E2EE_WAITING_TEXT = '等待对方确认端到端加密请求';
+
+export const E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT = '当前移动端加密会话仅支持文字消息，暂不支持加密媒体。';
 
 type EncryptedMarker = {
   encrypted?: unknown;
