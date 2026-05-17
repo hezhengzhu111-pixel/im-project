@@ -1,6 +1,6 @@
 import {
   DEFAULT_MAX_COUNTER_GAP,
-  ratchetDecrypt,
+  ratchetDecryptSafely,
   ratchetEncrypt,
   sanitizeE2eeLogValue,
   type RatchetHeader,
@@ -72,11 +72,22 @@ class MobileE2eeManager {
         throw new Error('No ratchet state for session');
       }
       try {
-        const plaintext = ratchetDecrypt(state, header, ciphertext, { maxCounterGap: DEFAULT_MAX_COUNTER_GAP });
+        const result = ratchetDecryptSafely(state, header, ciphertext, { maxCounterGap: DEFAULT_MAX_COUNTER_GAP });
         await e2eeSessionStore.saveRatchetState(userId, sessionId, state);
-        return plaintext;
+        if (result.repaired) {
+          logger.info('e2ee', 'ratchet inbound chain recovered', sanitizeE2eeLogValue({
+            sessionId,
+            repairChainInfo: result.repairChainInfo,
+          }));
+        }
+        return result.plaintext;
       } catch (error) {
-        logger.warn('e2ee', 'message decrypt failed', sanitizeE2eeLogValue(error));
+        logger.warn('e2ee', 'message decrypt failed', sanitizeE2eeLogValue({
+          sessionId,
+          headerCounter: header.counter,
+          hasCiphertext: Boolean(ciphertext),
+          error,
+        }));
         throw error;
       }
     });
@@ -89,4 +100,3 @@ class MobileE2eeManager {
 }
 
 export const e2eeManager = new MobileE2eeManager();
-
