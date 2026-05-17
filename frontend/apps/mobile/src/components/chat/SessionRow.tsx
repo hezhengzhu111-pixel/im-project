@@ -14,7 +14,6 @@ const formatTime = (time?: string) => {
   const date = new Date(time);
   const timestamp = date.getTime();
   if (Number.isNaN(timestamp)) return '';
-
   const diff = Date.now() - timestamp;
   if (diff < 60_000) return '刚刚';
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}分钟前`;
@@ -50,7 +49,7 @@ const getSessionPreview = (session: ChatSession, online?: boolean) => {
   const messagePreview = previewMessage(session.lastMessage);
   if (messagePreview) return messagePreview;
   if (session.type === 'group' && session.memberCount) return `${session.memberCount} 位成员`;
-  if (session.type === 'private' && online) return '当前在线';
+  if (session.type === 'private' && online) return '在线';
   return '暂无消息';
 };
 
@@ -65,58 +64,33 @@ export function SessionRow({ session, onPress, online = false }: SessionRowProps
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`打开与 ${name} 的会话`}
-      style={({ pressed }) => [
-        styles.row,
-        session.isPinned ? styles.rowPinned : null,
-        unread ? styles.rowUnread : null,
-        pressed ? styles.rowPressed : null,
-      ]}
+      style={({ pressed }) => [styles.row, pressed ? styles.rowPressed : null]}
       onPress={onPress}
     >
-      <View style={styles.accent} />
       <View style={styles.avatarWrap}>
-        <View style={styles.avatar}>
+        <View style={[styles.avatar, session.type === 'group' ? styles.groupAvatar : null]}>
           {avatarUri ? (
             <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
           ) : (
             <Text style={styles.avatarText}>{getAvatarText(session)}</Text>
           )}
         </View>
-        {session.type === 'private' ? (
-          <View style={[styles.presenceDot, online ? styles.presenceDotOnline : null]} />
-        ) : null}
+        {session.type === 'private' ? <View style={[styles.presenceDot, online ? styles.presenceDotOnline : null]} /> : null}
       </View>
 
       <View style={styles.body}>
         <View style={styles.topLine}>
-          <View style={styles.nameWrap}>
-            <Text numberOfLines={1} style={[styles.name, unread ? styles.nameUnread : null]}>
-              {name}
-            </Text>
-            <View style={styles.flags}>
-              {session.isPinned ? <Text style={styles.flag}>置顶</Text> : null}
-              {session.isMuted ? <Text style={styles.flagMuted}>免打扰</Text> : null}
-              {isAi ? <Text style={styles.aiTag}>智能</Text> : null}
-            </View>
-          </View>
+          <Text numberOfLines={1} style={[styles.name, unread ? styles.nameUnread : null]}>{name}</Text>
           {time ? <Text style={styles.time}>{time}</Text> : null}
         </View>
-
-        <View style={styles.metaLine}>
-          <Text style={[styles.presenceText, online ? styles.presenceTextOnline : null]}>
-            {session.type === 'group'
-              ? `${session.memberCount || 0} 位成员`
-              : online
-                ? '在线'
-                : '离线'}
-          </Text>
-          {session.encrypted ? <Text style={styles.secureText}>加密</Text> : null}
-        </View>
-
-        <View style={styles.previewLine}>
-          <Text numberOfLines={1} style={[styles.preview, unread ? styles.previewUnread : null]}>
-            {getSessionPreview(session, online)}
-          </Text>
+        <View style={styles.bottomLine}>
+          <Text numberOfLines={1} style={[styles.preview, unread ? styles.previewUnread : null]}>{getSessionPreview(session, online)}</Text>
+          <View style={styles.tags}>
+            {session.isPinned ? <Text style={styles.tag}>置顶</Text> : null}
+            {session.isMuted ? <Text style={styles.tag}>免打扰</Text> : null}
+            {isAi ? <Text style={styles.tag}>AI</Text> : null}
+            {session.encrypted ? <Text style={styles.tag}>加密</Text> : null}
+          </View>
           {unread ? (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{session.unreadCount > 99 ? '99+' : session.unreadCount}</Text>
@@ -130,37 +104,15 @@ export function SessionRow({ session, onPress, online = false }: SessionRowProps
 
 const styles = StyleSheet.create({
   row: {
-    alignItems: 'flex-start',
+    alignItems: 'center',
     backgroundColor: colors.surface,
-    borderColor: 'transparent',
-    borderRadius: radius.lg,
-    borderWidth: 1,
     flexDirection: 'row',
     gap: spacing.md,
-    marginBottom: spacing.sm,
-    padding: spacing.md,
-    position: 'relative',
+    minHeight: 72,
+    paddingHorizontal: spacing.lg,
   },
   rowPressed: {
-    backgroundColor: colors.surfaceAlt,
-    transform: [{ scale: 0.995 }],
-  },
-  rowPinned: {
-    backgroundColor: colors.surfaceAlt,
-  },
-  rowUnread: {
-    backgroundColor: colors.primarySoft,
-    borderColor: '#D6E8FF',
-  },
-  accent: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.pill,
-    bottom: spacing.md,
-    left: 0,
-    opacity: 0,
-    position: 'absolute',
-    top: spacing.md,
-    width: 3,
+    opacity: 0.65,
   },
   avatarWrap: {
     flexShrink: 0,
@@ -169,116 +121,70 @@ const styles = StyleSheet.create({
   avatar: {
     alignItems: 'center',
     backgroundColor: colors.primarySoft,
-    borderRadius: 22,
-    height: 44,
+    borderRadius: 12,
+    height: 48,
     justifyContent: 'center',
     overflow: 'hidden',
-    width: 44,
+    width: 48,
+  },
+  groupAvatar: {
+    borderRadius: 14,
   },
   avatarImage: {
-    height: 44,
-    width: 44,
+    height: 48,
+    width: 48,
   },
   avatarText: {
     color: colors.primary,
     fontSize: typography.body,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   presenceDot: {
     backgroundColor: '#CBD5E1',
     borderColor: colors.surface,
     borderRadius: 6,
     borderWidth: 2,
-    bottom: 1,
+    bottom: 0,
     height: 12,
     position: 'absolute',
-    right: 1,
+    right: 0,
     width: 12,
   },
   presenceDotOnline: {
     backgroundColor: colors.success,
   },
   body: {
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flex: 1,
+    gap: spacing.xs,
+    justifyContent: 'center',
+    minHeight: 72,
     minWidth: 0,
   },
   topLine: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.sm,
-    justifyContent: 'space-between',
-  },
-  nameWrap: {
-    alignItems: 'center',
-    flex: 1,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    minWidth: 0,
   },
   name: {
     color: colors.text,
-    flexShrink: 1,
+    flex: 1,
     fontSize: typography.body,
     fontWeight: '700',
   },
   nameUnread: {
-    fontWeight: '800',
-  },
-  flags: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  flag: {
-    color: colors.primary,
-    fontSize: typography.tiny,
-    fontWeight: '800',
-  },
-  flagMuted: {
-    color: colors.muted,
-    fontSize: typography.tiny,
-    fontWeight: '700',
-  },
-  aiTag: {
-    backgroundColor: colors.primarySoft,
-    borderRadius: radius.sm,
-    color: colors.primary,
-    fontSize: typography.tiny,
     fontWeight: '900',
-    overflow: 'hidden',
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.xxs,
   },
   time: {
     color: colors.muted,
-    flexShrink: 0,
     fontSize: typography.tiny,
     fontWeight: '600',
   },
-  metaLine: {
+  bottomLine: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  presenceText: {
-    color: colors.muted,
-    fontSize: typography.tiny,
-    fontWeight: '600',
-  },
-  presenceTextOnline: {
-    color: colors.success,
-  },
-  secureText: {
-    color: colors.encrypted,
-    fontSize: typography.tiny,
-    fontWeight: '700',
-  },
-  previewLine: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
   },
   preview: {
     color: colors.muted,
@@ -290,17 +196,27 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: '600',
   },
+  tags: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  tag: {
+    color: colors.muted,
+    fontSize: typography.tiny,
+    fontWeight: '700',
+  },
   badge: {
     alignItems: 'center',
     backgroundColor: colors.danger,
     borderRadius: radius.pill,
-    minWidth: 20,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 2,
+    minWidth: 19,
+    paddingHorizontal: 5,
   },
   badgeText: {
     color: '#FFFFFF',
-    fontSize: typography.tiny,
+    fontSize: 10,
     fontWeight: '900',
+    lineHeight: 16,
   },
 });
