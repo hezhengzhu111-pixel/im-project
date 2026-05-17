@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,7 +19,7 @@ import { useAuthStore } from '@/stores/authStore';
 const AUTH_PRIMARY = '#635BFF';
 const AUTH_PRIMARY_2 = '#7C3AED';
 const AUTH_BG = '#F4F6FF';
-const AUTH_SURFACE = 'rgba(255,255,255,0.9)';
+const AUTH_SURFACE = 'rgba(255,255,255,0.92)';
 const AUTH_BORDER = '#E5E7F0';
 const AUTH_TEXT = '#111827';
 const AUTH_MUTED = '#8A94A6';
@@ -68,8 +69,8 @@ function FeatureItem({ icon, title, description }: { icon: string; title: string
         <Text style={styles.featureIconText}>{icon}</Text>
       </View>
       <View style={styles.featureTextWrap}>
-        <Text style={styles.featureLabel}>{title}</Text>
-        <Text style={styles.featureDescription}>{description}</Text>
+        <Text numberOfLines={1} style={styles.featureLabel}>{title}</Text>
+        <Text numberOfLines={1} style={styles.featureDescription}>{description}</Text>
       </View>
     </View>
   );
@@ -90,6 +91,9 @@ export function LoginScreen() {
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
   const login = useAuthStore((state) => state.login);
   const loading = useAuthStore((state) => state.loading);
+  const { height } = useWindowDimensions();
+  const compact = height < 760;
+  const tiny = height < 690;
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -126,29 +130,46 @@ export function LoginScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboard}>
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          <View style={styles.decorCircleOne} />
-          <View style={styles.decorCircleTwo} />
-          <View style={styles.decorCircleThree} />
-
-          <View style={styles.brandArea}>
-            <View style={styles.brandBadge}>
-              <Text style={styles.brandBadgeIcon}>▢</Text>
-              <Text style={styles.brandBadgeText}>End-to-End Encrypted</Text>
-            </View>
-            <Text style={styles.brandTitle}>{'Secure.\nPrivate.\nInstant.'}</Text>
-            <Text style={styles.brandSubtitle}>端对端加密即时通信系统，您的消息仅在设备上解密。</Text>
-
-            <View style={styles.featuresGrid}>
-              <FeatureItem icon="L" title="E2EE Enabled" description="端对端加密" />
-              <FeatureItem icon="~" title="Realtime Delivery" description="实时消息同步" />
-              <FeatureItem icon="◇" title="Device Trust" description="多设备安全登录" />
-              <FeatureItem icon="AI" title="AI Assistant Online" description="AI 助手接入" />
-            </View>
+        <ScrollView
+          bounces={false}
+          contentContainerStyle={[styles.scrollContent, compact ? styles.scrollContentCompact : null]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View pointerEvents="none" style={styles.backgroundLayer}>
+            <View style={styles.decorCircleOne} />
+            <View style={styles.decorCircleTwo} />
+            <View style={styles.decorCircleThree} />
           </View>
 
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
+          <View style={[styles.hero, compact ? styles.heroCompact : null]}>
+            <View style={styles.brandBadge}>
+              <Text style={styles.brandBadgeIcon}>□</Text>
+              <Text style={styles.brandBadgeText}>End-to-End Encrypted</Text>
+            </View>
+            <Text style={[styles.brandTitle, compact ? styles.brandTitleCompact : null]}>
+              {'Secure.\nPrivate.\nInstant.'}
+            </Text>
+            <Text style={[styles.brandSubtitle, compact ? styles.brandSubtitleCompact : null]}>
+              端对端加密即时通信系统，您的消息仅在设备上解密。
+            </Text>
+
+            {tiny ? (
+              <View style={styles.trustStrip}>
+                <Text style={styles.trustStripText}>E2EE · Realtime · Device Trust · AI</Text>
+              </View>
+            ) : (
+              <View style={styles.featuresGrid}>
+                <FeatureItem icon="L" title="E2EE Enabled" description="端对端加密" />
+                <FeatureItem icon="~" title="Realtime Delivery" description="实时消息同步" />
+                <FeatureItem icon="◇" title="Device Trust" description="多设备安全登录" />
+                <FeatureItem icon="AI" title="AI Assistant Online" description="AI 助手接入" />
+              </View>
+            )}
+          </View>
+
+          <View style={[styles.card, compact ? styles.cardCompact : null]}>
+            <View style={[styles.cardHeader, compact ? styles.cardHeaderCompact : null]}>
               <Text style={styles.cardTitle}>欢迎回来</Text>
               <Text style={styles.cardSubtitle}>请登录您的加密通信账户</Text>
             </View>
@@ -203,39 +224,57 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: spacing.xl,
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xxl,
+    paddingTop: spacing.lg,
+  },
+  scrollContentCompact: {
+    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
+  backgroundLayer: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
   decorCircleOne: {
     backgroundColor: 'rgba(99,102,241,0.08)',
-    borderRadius: 160,
-    height: 320,
+    borderRadius: 150,
+    height: 300,
     position: 'absolute',
-    right: -120,
-    top: -100,
-    width: 320,
+    right: -118,
+    top: -82,
+    width: 300,
   },
   decorCircleTwo: {
     backgroundColor: 'rgba(139,92,246,0.06)',
-    borderRadius: 130,
-    bottom: -90,
-    height: 260,
+    borderRadius: 120,
+    bottom: -78,
+    height: 240,
     left: -110,
     position: 'absolute',
-    width: 260,
+    width: 240,
   },
   decorCircleThree: {
     backgroundColor: 'rgba(34,197,94,0.05)',
-    borderRadius: 90,
-    height: 180,
+    borderRadius: 86,
+    height: 172,
     position: 'absolute',
-    right: 32,
-    top: 260,
-    width: 180,
+    right: 26,
+    top: 244,
+    width: 172,
   },
-  brandArea: {
+  hero: {
+    gap: spacing.md,
     marginBottom: spacing.xl,
+  },
+  heroCompact: {
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
   },
   brandBadge: {
     alignItems: 'center',
@@ -246,8 +285,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     gap: spacing.sm,
-    marginBottom: spacing.lg,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
   brandBadgeIcon: {
@@ -262,20 +300,29 @@ const styles = StyleSheet.create({
   },
   brandTitle: {
     color: AUTH_TEXT,
-    fontSize: 40,
+    fontSize: 34,
     fontWeight: '900',
-    letterSpacing: -1,
-    lineHeight: 46,
-    marginBottom: spacing.lg,
+    letterSpacing: -0.8,
+    lineHeight: 39,
+  },
+  brandTitleCompact: {
+    fontSize: 30,
+    lineHeight: 34,
   },
   brandSubtitle: {
     color: '#667085',
     fontSize: typography.body,
-    lineHeight: 22,
-    marginBottom: spacing.xl,
+    lineHeight: 21,
+  },
+  brandSubtitleCompact: {
+    fontSize: typography.small,
+    lineHeight: 18,
   },
   featuresGrid: {
-    gap: spacing.md,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    justifyContent: 'space-between',
   },
   featureItem: {
     alignItems: 'center',
@@ -284,52 +331,77 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    gap: spacing.sm,
+    minHeight: 58,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    width: '48.5%',
   },
   featureIcon: {
     alignItems: 'center',
     backgroundColor: '#EEF0FF',
     borderRadius: radius.md,
-    height: 40,
+    height: 34,
     justifyContent: 'center',
-    width: 40,
+    width: 34,
   },
   featureIconText: {
     color: AUTH_PRIMARY,
-    fontSize: typography.small,
+    fontSize: typography.tiny,
     fontWeight: '900',
   },
   featureTextWrap: {
     flex: 1,
     gap: spacing.xxs,
+    minWidth: 0,
   },
   featureLabel: {
     color: AUTH_TEXT,
-    fontSize: typography.small,
-    fontWeight: '800',
+    fontSize: typography.tiny,
+    fontWeight: '900',
   },
   featureDescription: {
     color: AUTH_MUTED,
-    fontSize: typography.tiny,
+    fontSize: 10,
     fontWeight: '600',
+  },
+  trustStrip: {
+    backgroundColor: AUTH_SURFACE,
+    borderColor: AUTH_BORDER,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  trustStripText: {
+    color: AUTH_PRIMARY,
+    fontSize: typography.tiny,
+    fontWeight: '900',
+    textAlign: 'center',
   },
   card: {
     backgroundColor: AUTH_SURFACE,
     borderColor: AUTH_BORDER,
-    borderRadius: 22,
+    borderRadius: 28,
     borderWidth: 1,
-    elevation: 8,
+    elevation: 10,
     padding: spacing.xxl,
     shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.08,
-    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.1,
+    shadowRadius: 30,
+    width: '100%',
+  },
+  cardCompact: {
+    borderRadius: 24,
+    padding: spacing.xl,
   },
   cardHeader: {
     alignItems: 'center',
     marginBottom: spacing.xxl,
+  },
+  cardHeaderCompact: {
+    marginBottom: spacing.xl,
   },
   cardTitle: {
     color: AUTH_TEXT,
