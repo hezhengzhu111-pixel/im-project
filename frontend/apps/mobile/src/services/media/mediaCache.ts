@@ -15,7 +15,7 @@ const sanitizeName = (value: string) =>
 const cachePathFor = (uri: string, fallbackExtension: string) => {
   const extension = mediaExtensionFromUri(uri) || fallbackExtension;
   const key = sanitizeName(uri) || `media_${Date.now()}`;
-  return `${ReactNativeBlobUtil.fs.dirs.CacheDir}/im_media_v3_${key}.${extension}`;
+  return `${ReactNativeBlobUtil.fs.dirs.CacheDir}/im_media_v4_${key}.${extension}`;
 };
 
 const fileExists = async (path: string) => {
@@ -26,9 +26,30 @@ const fileExists = async (path: string) => {
   }
 };
 
+const removeFile = async (path: string) => {
+  try {
+    if (await ReactNativeBlobUtil.fs.exists(path)) {
+      await ReactNativeBlobUtil.fs.unlink(path);
+    }
+  } catch {
+    // cache cleanup is best-effort
+  }
+};
+
 const authHeaders = async (): Promise<Record<string, string>> => {
   const token = await secureStorage.get(STORAGE_KEYS.accessToken);
   return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+const downloadToCache = async (uri: string, path: string) => {
+  await removeFile(path);
+  const response = await ReactNativeBlobUtil.config({ path, fileCache: true }).fetch('GET', uri, await authHeaders());
+  const status = Number(response.info().status || 0);
+  if (status < 200 || status >= 300) {
+    await removeFile(path);
+    throw new Error(`media download failed: HTTP ${status}`);
+  }
+  return path;
 };
 
 export const mediaCache = {
@@ -41,7 +62,7 @@ export const mediaCache = {
 
     const path = cachePathFor(uri, fallbackExtension);
     if (!(await fileExists(path))) {
-      await ReactNativeBlobUtil.config({ path, fileCache: true }).fetch('GET', uri, await authHeaders());
+      await downloadToCache(uri, path);
     }
     return path;
   },
