@@ -7,10 +7,13 @@ import { pendingMessageRepository } from '@/services/storage/pendingMessageRepos
 import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
 import { deriveSendStage } from '@/utils/sendStateMachine';
 import type { MobileMessage, SendPipelineStage } from '@/types/models';
+import { TextBubble } from './bubbles/TextBubble';
 import { ImageBubble } from './bubbles/ImageBubble';
 import { VideoBubble } from './bubbles/VideoBubble';
 import { VoiceBubble } from './bubbles/VoiceBubble';
 import { FileBubble } from './bubbles/FileBubble';
+import { SystemBubble } from './bubbles/SystemBubble';
+import { AiBubble } from './bubbles/AiBubble';
 import { MessageStatusLine } from './bubbles/MessageStatusLine';
 
 interface DerivedStatus {
@@ -91,28 +94,39 @@ export function MessageBubble({
     (derived.stage === 'UPLOAD_FAILED' || derived.stage === 'SEND_FAILED' || message.status === 'FAILED');
 
   const mediaUri = message.mediaUrl || message.thumbnailUrl;
-  const bubbleContent = message.content || message.mediaName || message.mediaUrl || message.messageType;
+
+  const renderBubbleContent = () => {
+    if (message.messageType === 'SYSTEM') {
+      return <SystemBubble message={message} mine={mine} />;
+    }
+    if (message.messageType === 'AI_REPLY') {
+      return <AiBubble message={message} mine={mine} />;
+    }
+
+    const mediaElement =
+      message.messageType === 'IMAGE' && mediaUri ? <ImageBubble message={message} mine={mine} />
+      : message.messageType === 'VIDEO' && mediaUri ? <VideoBubble message={message} mine={mine} />
+      : message.messageType === 'VOICE' && mediaUri ? <VoiceBubble message={message} mine={mine} />
+      : message.messageType === 'FILE' && mediaUri ? <FileBubble message={message} mine={mine} />
+      : null;
+
+    if (mediaElement) {
+      return (
+        <>
+          {mediaElement}
+          <TextBubble message={message} mine={mine} />
+        </>
+      );
+    }
+
+    return <TextBubble message={message} mine={mine} />;
+  };
 
   return (
     <Pressable style={[styles.wrap, mine && styles.mineWrap]} onLongPress={onLongPress}>
       {!mine && message.groupId ? <Text style={styles.sender}>{message.senderName || message.senderId}</Text> : null}
       <View style={[styles.bubble, mine && styles.mineBubble]}>
-        {message.messageType === 'AI_REPLY' ? <Text style={styles.ai}>AI</Text> : null}
-        {message.messageType === 'IMAGE' && mediaUri ? (
-          <ImageBubble message={message} mine={mine} />
-        ) : null}
-        {message.messageType === 'VIDEO' && mediaUri ? (
-          <VideoBubble message={message} mine={mine} />
-        ) : null}
-        {message.messageType === 'VOICE' && mediaUri ? (
-          <VoiceBubble message={message} mine={mine} />
-        ) : null}
-        {message.messageType === 'FILE' && mediaUri ? (
-          <FileBubble message={message} mine={mine} />
-        ) : null}
-        <Text style={[styles.text, mine && styles.mineText]}>
-          {bubbleContent}
-        </Text>
+        {renderBubbleContent()}
       </View>
       {showFailed ? (
         <Pressable onPress={onRetry}>
@@ -156,25 +170,6 @@ const styles = StyleSheet.create({
   },
   mineBubble: {
     backgroundColor: colors.primary,
-  },
-  text: {
-    color: colors.text,
-    fontSize: typography.body,
-  },
-  mineText: {
-    color: '#FFFFFF',
-  },
-  ai: {
-    color: colors.ai,
-    fontSize: typography.tiny,
-    fontWeight: '900',
-    marginBottom: spacing.xs,
-  },
-  status: {
-    color: colors.muted,
-    fontSize: typography.tiny,
-    marginTop: spacing.xs,
-    textAlign: 'right',
   },
   failed: {
     color: colors.danger,
