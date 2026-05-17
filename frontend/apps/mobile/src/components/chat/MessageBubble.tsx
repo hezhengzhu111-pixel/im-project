@@ -1,6 +1,6 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography } from '@/app/theme';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { colors, radius, spacing, typography } from '@/app/theme';
 import { E2eeUnsupportedMessage } from '@/e2ee/E2eeUnsupportedMessage';
 import { isEncryptedMessage } from '@/e2ee/e2eeDeferred';
 import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
@@ -20,6 +20,18 @@ interface DerivedStatus {
   stage: SendPipelineStage;
   uploadProgress: number;
   localError?: string;
+}
+
+const getAvatarLetter = (message: MobileMessage, mine: boolean) =>
+  (mine ? message.senderName || message.senderId : message.senderName || message.senderId || '?').slice(0, 1).toUpperCase();
+
+function BubbleAvatar({ message, mine }: { message: MobileMessage; mine: boolean }) {
+  const avatar = message.senderAvatar;
+  return (
+    <View style={[styles.avatar, mine ? styles.mineAvatar : null]}>
+      {avatar ? <Image source={{ uri: avatar }} style={styles.avatarImage} /> : <Text style={[styles.avatarText, mine ? styles.mineAvatarText : null]}>{getAvatarLetter(message, mine)}</Text>}
+    </View>
+  );
 }
 
 export function MessageBubble({
@@ -52,7 +64,6 @@ export function MessageBubble({
     setDerived(computeDerived(message));
   }, [message, tick, computeDerived]);
 
-  // Poll while in any non-terminal send stage to refresh derived status
   React.useEffect(() => {
     const terminalStages: SendPipelineStage[] = ['SENT', 'SEND_FAILED', 'UPLOAD_FAILED', 'BLOCKED', 'LOCAL_CREATED', 'UPLOAD_DONE'];
     if (terminalStages.includes(derived.stage)) return;
@@ -60,48 +71,15 @@ export function MessageBubble({
     return () => clearInterval(timer);
   }, [derived.stage]);
 
-  if (isEncryptedMessage(message)) {
-    return (
-      <View style={[styles.wrap, mine && styles.mineWrap]}>
-        <E2eeUnsupportedMessage />
-      </View>
-    );
-  }
-
-  if (message.status === 'RECALLED') {
-    return (
-      <View style={[styles.wrap, mine && styles.mineWrap]}>
-        <View style={[styles.bubble, styles.recalledBubble]}>
-          <Text style={styles.recalledText}>{message.content || '消息已撤回'}</Text>
-        </View>
-        <MessageStatusLine
-          sendTime={message.sendTime}
-          mine={mine}
-          stage={derived.stage}
-          messageStatus={message.status}
-        />
-      </View>
-    );
-  }
-
-  if (message.status === 'DELETED') {
-    return null;
-  }
-
   const showBlocked = derived.stage === 'BLOCKED';
-  const showFailed =
-    !showBlocked &&
-    (derived.stage === 'UPLOAD_FAILED' || derived.stage === 'SEND_FAILED' || message.status === 'FAILED');
-
-  const mediaUri = message.mediaUrl || message.thumbnailUrl;
+  const showFailed = !showBlocked && (derived.stage === 'UPLOAD_FAILED' || derived.stage === 'SEND_FAILED' || message.status === 'FAILED');
+  const mediaUri = message.mediaUrl || message.thumbnailUrl || message.content;
 
   const renderBubbleContent = () => {
-    if (message.messageType === 'SYSTEM') {
-      return <SystemBubble message={message} mine={mine} />;
-    }
-    if (message.messageType === 'AI_REPLY') {
-      return <AiBubble message={message} mine={mine} />;
-    }
+    if (isEncryptedMessage(message)) return <E2eeUnsupportedMessage />;
+    if (message.status === 'RECALLED') return <Text style={styles.recalledText}>{message.content || '消息已撤回'}</Text>;
+    if (message.messageType === 'SYSTEM') return <SystemBubble message={message} mine={mine} />;
+    if (message.messageType === 'AI_REPLY') return <AiBubble message={message} mine={mine} />;
 
     const mediaElement =
       message.messageType === 'IMAGE' && mediaUri ? <ImageBubble message={message} mine={mine} />
@@ -110,53 +88,81 @@ export function MessageBubble({
       : message.messageType === 'FILE' && mediaUri ? <FileBubble message={message} mine={mine} />
       : null;
 
-    if (mediaElement) {
-      return (
-        <>
-          {mediaElement}
-          <TextBubble message={message} mine={mine} />
-        </>
-      );
-    }
-
-    return <TextBubble message={message} mine={mine} />;
+    return mediaElement || <TextBubble message={message} mine={mine} />;
   };
 
+  if (message.status === 'DELETED') return null;
+
+  const compactMedia = message.messageType === 'IMAGE' || message.messageType === 'VIDEO';
+  const recalled = message.status === 'RECALLED';
+  const encrypted = isEncryptedMessage(message);
+
   return (
-    <Pressable style={[styles.wrap, mine && styles.mineWrap]} onLongPress={onLongPress}>
-      {!mine && message.groupId ? <Text style={styles.sender}>{message.senderName || message.senderId}</Text> : null}
-      <View style={[styles.bubble, mine && styles.mineBubble]}>
-        {renderBubbleContent()}
-      </View>
-      {showFailed ? (
-        <Pressable onPress={onRetry}>
-          <Text style={styles.failed}>
-            {derived.localError || '发送失败，点按重试'}
-          </Text>
-        </Pressable>
-      ) : showBlocked ? (
-        <Text style={styles.failed}>已阻止发送</Text>
-      ) : (
-        <MessageStatusLine
-          sendTime={message.sendTime}
-          mine={mine}
-          stage={derived.stage}
-          messageStatus={message.status}
-          uploadProgress={derived.uploadProgress}
-        />
-      )}
-    </Pressable>
+    <View style={[styles.messageRow, mine ? styles.mineRow : null]}>
+      {!mine ? <BubbleAvatar message={message} mine={mine} /> : null}
+      <Pressable style={[styles.contentWrap, mine ? styles.mineContentWrap : null, compactMedia ? styles.mediaContentWrap : null]} onLongPress={onLongPress}>
+        {!mine && message.groupId ? <Text style={styles.sender}>{message.senderName || message.senderId}</Text> : null}
+        <View style={[styles.bubble, mine ? styles.mineBubble : null, compactMedia ? styles.mediaBubble : null, recalled || encrypted ? styles.neutralBubble : null]}>
+          {renderBubbleContent()}
+        </View>
+        {showFailed ? (
+          <Pressable onPress={onRetry}>
+            <Text style={[styles.failed, mine ? styles.mineStatusText : null]}>{derived.localError || '发送失败，点按重试'}</Text>
+          </Pressable>
+        ) : showBlocked ? (
+          <Text style={[styles.failed, mine ? styles.mineStatusText : null]}>已阻止发送</Text>
+        ) : (
+          <MessageStatusLine sendTime={message.sendTime} mine={mine} stage={derived.stage} messageStatus={message.status} uploadProgress={derived.uploadProgress} />
+        )}
+      </Pressable>
+      {mine ? <BubbleAvatar message={message} mine={mine} /> : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    alignSelf: 'flex-start',
+  messageRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.sm,
     marginVertical: spacing.xs,
-    maxWidth: '82%',
   },
-  mineWrap: {
-    alignSelf: 'flex-end',
+  mineRow: {
+    justifyContent: 'flex-end',
+  },
+  avatar: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 8,
+    height: 34,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: 34,
+  },
+  mineAvatar: {
+    backgroundColor: colors.primary,
+  },
+  avatarImage: {
+    height: 34,
+    width: 34,
+  },
+  avatarText: {
+    color: colors.primary,
+    fontSize: typography.small,
+    fontWeight: '900',
+  },
+  mineAvatarText: {
+    color: '#FFFFFF',
+  },
+  contentWrap: {
+    alignItems: 'flex-start',
+    maxWidth: '76%',
+  },
+  mineContentWrap: {
+    alignItems: 'flex-end',
+  },
+  mediaContentWrap: {
+    maxWidth: '78%',
   },
   sender: {
     color: colors.muted,
@@ -165,23 +171,33 @@ const styles = StyleSheet.create({
   },
   bubble: {
     backgroundColor: colors.surface,
-    borderRadius: 8,
-    padding: spacing.md,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   mineBubble: {
     backgroundColor: colors.primary,
+  },
+  mediaBubble: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  neutralBubble: {
+    backgroundColor: colors.surfaceAlt,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   failed: {
     color: colors.danger,
     fontSize: typography.tiny,
     marginTop: spacing.xs,
   },
-  recalledBubble: {
-    backgroundColor: colors.surfaceAlt,
+  mineStatusText: {
+    textAlign: 'right',
   },
   recalledText: {
     color: colors.muted,
     fontSize: typography.small,
-    fontStyle: 'italic',
   },
 });
