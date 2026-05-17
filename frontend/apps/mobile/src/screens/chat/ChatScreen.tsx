@@ -8,7 +8,7 @@ import { EmptyState, LoadingState } from '@/components/common/StateViews';
 import { colors, spacing, typography } from '@/app/theme';
 import type { ChatStackParamList } from '@/app/navigation/ChatNavigator';
 import { E2eeUnsupportedNotice } from '@/e2ee/E2eeUnsupportedNotice';
-import { getSessionE2eeStatus } from '@/e2ee/e2eeDeferred';
+import { E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT, getSessionE2eeStatus } from '@/e2ee/e2eeDeferred';
 import { acceptPendingNegotiation, initiateNegotiation, rejectPendingNegotiation, resetNegotiation } from '@/e2ee/manager/negotiation';
 import { subscribeE2eeStatusChanges, subscribePendingE2eeRequests } from '@/e2ee/statusEvents';
 import { mediaService } from '@/services/media/mediaService';
@@ -60,6 +60,7 @@ export function ChatScreen() {
   const e2eeStatus = useMemo(() => getSessionE2eeStatus(session), [session, e2eeVersion]);
   const encrypted = e2eeStatus === 'encrypted';
   const inputBlocked = e2eeStatus === 'negotiating' || e2eeStatus === 'failed';
+  const mediaBlocked = Boolean(session?.type === 'private' && encrypted);
   const routeParams = route.params;
   const routeKey = useMemo(() => JSON.stringify(routeParams || {}), [routeParams]);
   const hasTargetRouteParams = Boolean(
@@ -195,9 +196,16 @@ export function ChatScreen() {
     }
   };
 
+  const guardEncryptedMedia = (): boolean => {
+    if (mediaBlocked) {
+      Alert.alert('暂不支持', E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT);
+      return true;
+    }
+    return false;
+  };
+
   const pickAndSend = async () => {
-    if (session?.type === 'private' && encrypted) {
-      Alert.alert('暂不支持', '当前移动端加密会话暂不支持发送媒体');
+    if (guardEncryptedMedia()) {
       return;
     }
     try {
@@ -211,8 +219,7 @@ export function ChatScreen() {
   };
 
   const takePhoto = async () => {
-    if (session?.type === 'private' && encrypted) {
-      Alert.alert('暂不支持', '当前移动端加密会话暂不支持发送媒体');
+    if (guardEncryptedMedia()) {
       return;
     }
     try {
@@ -226,8 +233,7 @@ export function ChatScreen() {
   };
 
   const pickFile = async () => {
-    if (session?.type === 'private' && encrypted) {
-      Alert.alert('暂不支持', '当前移动端加密会话暂不支持发送媒体');
+    if (guardEncryptedMedia()) {
       return;
     }
     try {
@@ -241,8 +247,7 @@ export function ChatScreen() {
   };
 
   const toggleVoiceRecording = async () => {
-    if (session?.type === 'private' && encrypted) {
-      Alert.alert('暂不支持', '当前移动端加密会话暂不支持发送媒体');
+    if (guardEncryptedMedia()) {
       return;
     }
     try {
@@ -378,7 +383,7 @@ export function ChatScreen() {
     }
     const label =
       e2eeStatus === 'encrypted'
-        ? '端到端加密已开启'
+        ? '端到端加密已开启（文字）'
         : e2eeStatus === 'negotiating'
           ? '等待对方确认端到端加密请求'
           : e2eeStatus === 'failed'
@@ -451,11 +456,11 @@ export function ChatScreen() {
           </Pressable>
         ) : null}
         <View style={styles.composer}>
-          <Pressable disabled={false} style={styles.tool} onPress={pickAndSend}><Text style={styles.toolText}>相册</Text></Pressable>
-          <Pressable disabled={false} style={styles.tool} onPress={takePhoto}><Text style={styles.toolText}>拍摄</Text></Pressable>
-          <Pressable disabled={false} style={styles.tool} onPress={pickFile}><Text style={styles.toolText}>文件</Text></Pressable>
-          <Pressable disabled={false} style={styles.tool} onPress={() => { void toggleVoiceRecording(); }}>
-            <Text style={styles.toolText}>{recording ? '停止' : '语音'}</Text>
+          <Pressable disabled={mediaBlocked} style={[styles.tool, mediaBlocked ? styles.toolDisabled : null]} onPress={pickAndSend}><Text style={[styles.toolText, mediaBlocked ? styles.toolTextDisabled : null]}>相册</Text></Pressable>
+          <Pressable disabled={mediaBlocked} style={[styles.tool, mediaBlocked ? styles.toolDisabled : null]} onPress={takePhoto}><Text style={[styles.toolText, mediaBlocked ? styles.toolTextDisabled : null]}>拍摄</Text></Pressable>
+          <Pressable disabled={mediaBlocked} style={[styles.tool, mediaBlocked ? styles.toolDisabled : null]} onPress={pickFile}><Text style={[styles.toolText, mediaBlocked ? styles.toolTextDisabled : null]}>文件</Text></Pressable>
+          <Pressable disabled={mediaBlocked} style={[styles.tool, mediaBlocked ? styles.toolDisabled : null]} onPress={() => { void toggleVoiceRecording(); }}>
+            <Text style={[styles.toolText, mediaBlocked ? styles.toolTextDisabled : null]}>{recording ? '停止' : '语音'}</Text>
           </Pressable>
           <TextInput
             editable={!inputBlocked}
@@ -533,10 +538,16 @@ const styles = StyleSheet.create({
     minWidth: 42,
     paddingHorizontal: spacing.xs,
   },
+  toolDisabled: {
+    opacity: 0.45,
+  },
   toolText: {
     color: colors.text,
     fontSize: typography.tiny,
     fontWeight: '700',
+  },
+  toolTextDisabled: {
+    color: colors.muted,
   },
   input: {
     backgroundColor: colors.surfaceAlt,
