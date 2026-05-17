@@ -12,10 +12,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, type NavigationProp, type ParamListBase } from '@react-navigation/native';
+import { BrandLockup } from '@/components/brand/BrandIdentity';
 import { radius, spacing, typography } from '@/app/theme';
 import { useAuthStore } from '@/stores/authStore';
 
-const BG = '#F7F8FA';
+const BG = '#F7FAF8';
 const CARD = '#FFFFFF';
 const TEXT = '#111827';
 const MUTED = '#8A94A6';
@@ -102,11 +103,8 @@ export function LoginScreen() {
         >
           <View style={styles.main}>
             <View style={styles.brand}>
-              <View style={styles.logo}>
-                <Text style={styles.logoText}>IM</Text>
-              </View>
-              <Text style={styles.title}>IM 聊天</Text>
-              <Text style={styles.subtitle}>安全、简洁、即时</Text>
+              <BrandLockup compact animated />
+              <Text style={styles.brandProof}>端到端加密 · 安全私密 · 只为抵达的人可见</Text>
             </View>
 
             <View style={styles.formCard}>
@@ -132,7 +130,7 @@ export function LoginScreen() {
               ]}
               onPress={submit}
             >
-              <Text style={styles.primaryButtonText}>{loading ? '登录中...' : '登录'}</Text>
+              <Text style={styles.primaryButtonText}>{loading ? '登录中...' : '进入密笺'}</Text>
             </Pressable>
           </View>
 
@@ -161,42 +159,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: spacing.xxl,
     paddingHorizontal: spacing.xl,
-    paddingTop: 72,
+    paddingTop: 68,
   },
   main: {
     width: '100%',
   },
   brand: {
     alignItems: 'center',
-    marginBottom: 44,
+    marginBottom: 42,
   },
-  logo: {
-    alignItems: 'center',
-    backgroundColor: PRIMARY,
-    borderRadius: 18,
-    height: 64,
-    justifyContent: 'center',
-    marginBottom: spacing.lg,
-    width: 64,
-  },
-  logoText: {
-    color: '#FFFFFF',
-    fontSize: typography.subtitle,
-    fontWeight: '900',
-  },
-  title: {
-    color: TEXT,
-    fontSize: 24,
-    fontWeight: '800',
-    marginBottom: spacing.sm,
-  },
-  subtitle: {
+  brandProof: {
     color: MUTED,
-    fontSize: typography.body,
+    fontSize: typography.small,
+    marginTop: spacing.md,
+    textAlign: 'center',
   },
   formCard: {
     backgroundColor: CARD,
+    borderColor: 'rgba(87, 107, 149, 0.08)',
     borderRadius: radius.lg,
+    borderWidth: 1,
     overflow: 'hidden',
   },
   input: {
