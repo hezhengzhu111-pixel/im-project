@@ -45,14 +45,33 @@ const locatorFromFilesPath = (path: string): FileLocator | null => {
   };
 };
 
+const locatorFromDownloadSearch = (search: string): FileLocator | null => {
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  const category = params.get('category') || '';
+  const date = params.get('date') || '';
+  const filename = params.get('filename') || '';
+  if (!category || !date || !filename) return null;
+  return { category, date, filename };
+};
+
 const locatorFromUri = (value: string): FileLocator | null => {
   if (!value) return null;
   if (/^https?:\/\//i.test(value)) {
     try {
-      return locatorFromFilesPath(new URL(value).pathname);
+      const parsed = new URL(value);
+      const fromPath = locatorFromFilesPath(parsed.pathname);
+      if (fromPath) return fromPath;
+      if (parsed.pathname.endsWith('/file/download') || parsed.pathname.endsWith('/api/file/download')) {
+        return locatorFromDownloadSearch(parsed.search);
+      }
+      return null;
     } catch {
       return null;
     }
+  }
+  if (value.includes('/file/download')) {
+    const search = value.split('?')[1] || '';
+    return locatorFromDownloadSearch(search);
   }
   return locatorFromFilesPath(value);
 };
@@ -98,4 +117,9 @@ export const isLikelyMediaFilename = (value?: string | null): boolean => {
   return AUDIO_EXTENSIONS.has(ext) || IMAGE_EXTENSIONS.has(ext) || VIDEO_EXTENSIONS.has(ext);
 };
 
-export const mediaExtensionFromUri = (value?: string | null): string => extensionFrom(String(value || '')) || 'bin';
+export const mediaExtensionFromUri = (value?: string | null): string => {
+  const raw = String(value || '');
+  const locator = locatorFromUri(raw);
+  if (locator) return extensionFrom(locator.filename) || 'bin';
+  return extensionFrom(raw) || 'bin';
+};
