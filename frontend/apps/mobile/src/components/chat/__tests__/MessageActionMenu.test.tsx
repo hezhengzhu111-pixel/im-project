@@ -276,7 +276,7 @@ describe('ChatScreen long-press menu integration', () => {
 
       const input = testRenderer!.root.find((node) => typeName(node) === 'TextInput');
       expect(input.props.editable).toBe(false);
-      expect(input.props.placeholder).toContain('移动端暂不支持加密会话发送');
+      expect(input.props.placeholder).toContain('请重新建立加密通道');
     });
   });
 

@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
   badge: {
     alignItems: 'center',
     backgroundColor: colors.danger,
-    borderRadius: radius.pill,
+    borderRadius: radius?.pill ?? 999,
     minWidth: 19,
     paddingHorizontal: 5,
   },

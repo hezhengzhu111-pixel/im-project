@@ -27,7 +27,7 @@ export function Screen({
 }) {
   const online = useOnlineStatus();
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
-  const canGoBack = showBack ?? navigation.canGoBack();
+  const canGoBack = showBack ?? (typeof navigation.canGoBack === 'function' ? navigation.canGoBack() : false);
   const handleBack = onBack ?? (() => navigation.goBack());
 
   const content = (

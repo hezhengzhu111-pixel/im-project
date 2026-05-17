@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   launchCover: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 999,
   },
 });

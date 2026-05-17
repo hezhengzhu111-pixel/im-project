@@ -9,6 +9,7 @@
       "@/*": ["src/*"],
       "@im/shared-api-contract": ["../../packages/shared-api-contract/src/index.ts"],
       "@im/shared-auth-core": ["../../packages/shared-auth-core/src/index.ts"],
+      "@im/shared-e2ee-core": ["../../packages/shared-e2ee-core/src/index.ts"],
       "@im/shared-im-core": ["../../packages/shared-im-core/src/index.ts"],
       "@im/shared-normalizers": ["../../packages/shared-normalizers/src/index.ts"],
       "@im/shared-platform-ports": ["../../packages/shared-platform-ports/src/index.ts"],
