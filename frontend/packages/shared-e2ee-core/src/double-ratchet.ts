@@ -13,12 +13,42 @@ const EMPTY_SALT = new Uint8Array(0);
 const INFO_ROOT_KEY = "RootKey";
 const INFO_SENDING_CHAIN = "SendingChainKey";
 const INFO_RECEIVING_CHAIN = "ReceivingChainKey";
+export const INITIAL_CHAIN_INFOS = [INFO_SENDING_CHAIN, INFO_RECEIVING_CHAIN] as const;
 const INFO_MESSAGE_KEYS = "MessageKeys";
 const INFO_CHAIN_KEYS = "ChainKeys";
 export const DEFAULT_MAX_COUNTER_GAP = 2000;
 export const DEFAULT_MAX_SKIPPED_MESSAGE_KEYS = 2000;
 
 const normalizeSkipped = (state: RatchetState): Record<string, string> => state.skippedMessageKeys || {};
+
+const cloneRatchetState = (state: RatchetState): RatchetState => ({
+  ...state,
+  dhKeyPair: { ...state.dhKeyPair },
+  skippedMessageKeys: { ...normalizeSkipped(state) },
+});
+
+const commitRatchetState = (target: RatchetState, source: RatchetState): void => {
+  target.rootKey = source.rootKey;
+  target.sendingChainKey = source.sendingChainKey;
+  target.receivingChainKey = source.receivingChainKey;
+  target.sendCounter = source.sendCounter;
+  target.receiveCounter = source.receiveCounter;
+  target.previousCounter = source.previousCounter;
+  target.dhKeyPair = { ...source.dhKeyPair };
+  target.remotePublicKey = source.remotePublicKey;
+  target.skippedMessageKeys = { ...normalizeSkipped(source) };
+};
+
+const shouldAttemptInitialInboundRepair = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error || '').toLowerCase();
+  if (message.includes('counter gap')) {
+    return false;
+  }
+  if (message.includes('invalid counter')) {
+    return false;
+  }
+  return true;
+};
 
 export const buildRatchetAad = (header: Pick<RatchetHeader, "ratchetPublicKey" | "counter" | "previousCounter">): Uint8Array =>
   utf8ToBytes(JSON.stringify({
@@ -203,3 +233,49 @@ export const ratchetDecrypt = (
   return plaintext;
 };
 
+export interface RatchetDecryptSafeResult {
+  plaintext: string;
+  repaired: boolean;
+  repairChainInfo?: (typeof INITIAL_CHAIN_INFOS)[number];
+}
+
+export const ratchetDecryptSafely = (
+  state: RatchetState,
+  header: RatchetHeader,
+  ciphertextBase64: string,
+  options?: RatchetDecryptOptions,
+): RatchetDecryptSafeResult => {
+  const original = cloneRatchetState(state);
+  const normal = cloneRatchetState(original);
+  try {
+    const plaintext = ratchetDecrypt(normal, header, ciphertextBase64, options);
+    commitRatchetState(state, normal);
+    return { plaintext, repaired: false };
+  } catch (error) {
+    if (!shouldAttemptInitialInboundRepair(error)) {
+      throw error;
+    }
+    const rootRaw = base64ToBytes(importRootKey(original.rootKey));
+    const attempted = new Set<string>();
+    for (const chainInfo of INITIAL_CHAIN_INFOS) {
+      const chainKey = deriveBase64Key(rootRaw, EMPTY_SALT, chainInfo);
+      if (attempted.has(chainKey)) {
+        continue;
+      }
+      attempted.add(chainKey);
+      const repaired = cloneRatchetState(original);
+      repaired.receivingChainKey = chainKey;
+      repaired.receiveCounter = 0;
+      repaired.remotePublicKey = null;
+      repaired.skippedMessageKeys = {};
+      try {
+        const plaintext = ratchetDecrypt(repaired, header, ciphertextBase64, options);
+        commitRatchetState(state, repaired);
+        return { plaintext, repaired: true, repairChainInfo: chainInfo };
+      } catch {
+        // try the next initial chain direction
+      }
+    }
+    throw error;
+  }
+};
