@@ -148,7 +148,6 @@ describe('MessageBubble', () => {
     });
   });
 
-  // ── 2. SENDING / SEND_PENDING message shows "Sending..." ─────────
 
   describe('sending state', () => {
     it('shows Sending... when message is SENDING and no pending row', () => {
