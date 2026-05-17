@@ -1,5 +1,6 @@
 const fs = require('fs');
 const http = require('http');
+const os = require('os');
 const path = require('path');
 const {spawnSync} = require('child_process');
 
@@ -105,13 +106,72 @@ const getConnectedDevices = () => {
     .map((line) => line.split(/\s+/)[0]);
 };
 
-const configureAdbReverse = (phase) => {
+const isEmulatorDevice = (serial) =>
+  serial.startsWith('emulator-') || serial.startsWith('localhost:') || serial.startsWith('127.0.0.1:');
+
+const getLanIpv4 = () => {
+  const candidates = [];
+  const interfaces = os.networkInterfaces();
+  for (const items of Object.values(interfaces)) {
+    for (const item of items || []) {
+      if (item.family !== 'IPv4' || item.internal) {
+        continue;
+      }
+      const address = item.address;
+      if (!address || address.startsWith('169.254.')) {
+        continue;
+      }
+      candidates.push(address);
+    }
+  }
+  return (
+    candidates.find((address) => /^192\.168\./.test(address)) ||
+    candidates.find((address) => /^10\./.test(address)) ||
+    candidates.find((address) => /^172\.(1[6-9]|2\d|3[01])\./.test(address)) ||
+    candidates[0] ||
+    ''
+  );
+};
+
+const hasExplicitRuntimeUrl = () =>
+  Boolean(
+    env.IM_MOBILE_API_BASE_URL ||
+      env.IM_MOBILE_WS_BASE_URL ||
+      env.IM_MOBILE_FILE_BASE_URL ||
+      env.API_BASE_URL ||
+      env.WS_BASE_URL ||
+      env.FILE_BASE_URL,
+  );
+
+const applyPhysicalDeviceRuntimeConfig = (connectedDevices) => {
+  const physicalDevices = connectedDevices.filter((serial) => !isEmulatorDevice(serial));
+  if (physicalDevices.length === 0 || hasExplicitRuntimeUrl()) {
+    return;
+  }
+  const host = getLanIpv4();
+  if (!host) {
+    console.warn('[mobile:android] Physical Android device detected, but no LAN IPv4 was found. Keep explicit IM_MOBILE_* URL env vars for device testing.');
+    return;
+  }
+  env.IM_MOBILE_APP_ENV = env.IM_MOBILE_APP_ENV || 'dev-device';
+  env.IM_MOBILE_API_BASE_URL = `http://${host}:8082/api`;
+  env.IM_MOBILE_WS_BASE_URL = `ws://${host}:8082`;
+  env.IM_MOBILE_FILE_BASE_URL = `http://${host}:8082`;
+  console.log(
+    [
+      `[mobile:android] Physical device detected: ${physicalDevices.join(', ')}`,
+      `[mobile:android] Using LAN backend: ${env.IM_MOBILE_API_BASE_URL}`,
+      '[mobile:android] Ensure the backend listens on 0.0.0.0:8082 and the phone is on the same network.',
+    ].join('\n'),
+  );
+};
+
+const configureAdbReverse = (phase, connectedDevices = getConnectedDevices()) => {
   if (sdkRoot && !fs.existsSync(adb)) {
     console.warn(`[mobile:android] adb not found at ${adb}; skipping automatic adb reverse.`);
     return;
   }
 
-  const connectedDevices = getConnectedDevices();
   if (connectedDevices.length === 0) {
     console.warn(`[mobile:android] No authorized Android device found ${phase}; skipping automatic adb reverse.`);
     return;
@@ -145,7 +205,9 @@ const configureAdbReverse = (phase) => {
     warnMetroUnavailable();
   }
 
-  configureAdbReverse('before launch');
+  const connectedDevices = getConnectedDevices();
+  applyPhysicalDeviceRuntimeConfig(connectedDevices);
+  configureAdbReverse('before launch', connectedDevices);
 
   const result = spawnSync(
     process.execPath,
