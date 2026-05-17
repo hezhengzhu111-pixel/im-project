@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography } from '@/app/theme';
+import { colors, radius, spacing, typography } from '@/app/theme';
 
 export function LoadingState({ label = 'Loading...' }: { label?: string }) {
   return (
@@ -24,7 +24,11 @@ export function EmptyState({
 }) {
   return (
     <View style={styles.center}>
-      <Text style={styles.emptyIcon}>📭</Text>
+      <View style={styles.emptyIcon}>
+        <View style={styles.emptyIconBody} />
+        <View style={styles.emptyIconFlag} />
+        <View style={styles.emptyIconDot} />
+      </View>
       <Text style={styles.title}>{title}</Text>
       {subtitle ? <Text style={styles.muted}>{subtitle}</Text> : null}
       {actionLabel && onAction ? (
@@ -49,7 +53,9 @@ export function ErrorState({
 }) {
   return (
     <View style={styles.center}>
-      <Text style={styles.errorIcon}>⚠️</Text>
+      <View style={styles.errorIcon}>
+        <Text style={styles.errorIconText}>!</Text>
+      </View>
       {title ? <Text style={styles.errorTitle}>{title}</Text> : null}
       {message ? <Text style={styles.error}>{message}</Text> : null}
       {onRetry ? (
@@ -67,7 +73,7 @@ export function OfflineBanner({ visible }: { visible: boolean }) {
   }
   return (
     <View style={styles.banner}>
-      <Text style={styles.bannerText}>📡 Network unavailable. Changes will retry when online.</Text>
+      <Text style={styles.bannerText}>Network unavailable. Changes will retry when online.</Text>
     </View>
   );
 }
@@ -83,32 +89,36 @@ const styles = StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: typography.subtitle,
-    fontWeight: '700',
+    fontWeight: '800',
+    textAlign: 'center',
   },
   muted: {
     color: colors.muted,
     fontSize: typography.body,
+    lineHeight: 21,
     textAlign: 'center',
   },
   errorTitle: {
     color: colors.danger,
     fontSize: typography.subtitle,
-    fontWeight: '700',
+    fontWeight: '800',
+    textAlign: 'center',
   },
   error: {
     color: colors.danger,
     fontSize: typography.body,
+    lineHeight: 21,
     textAlign: 'center',
   },
   button: {
     backgroundColor: colors.primary,
-    borderRadius: 8,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
   buttonText: {
     color: '#FFFFFF',
-    fontWeight: '700',
+    fontWeight: '800',
   },
   banner: {
     backgroundColor: colors.warning,
@@ -118,14 +128,58 @@ const styles = StyleSheet.create({
   bannerText: {
     color: '#FFFFFF',
     fontSize: typography.small,
+    fontWeight: '600',
     textAlign: 'center',
   },
   emptyIcon: {
-    fontSize: 48,
-    marginBottom: spacing.sm,
+    alignItems: 'center',
+    height: 48,
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+    position: 'relative',
+    width: 58,
+  },
+  emptyIconBody: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    height: 28,
+    width: 44,
+  },
+  emptyIconFlag: {
+    backgroundColor: colors.primary,
+    borderBottomLeftRadius: radius.sm,
+    borderTopLeftRadius: radius.sm,
+    height: 12,
+    left: 6,
+    position: 'absolute',
+    top: 24,
+    width: 6,
+  },
+  emptyIconDot: {
+    backgroundColor: colors.danger,
+    borderColor: colors.surface,
+    borderRadius: radius.pill,
+    borderWidth: 2,
+    height: 10,
+    position: 'absolute',
+    right: 10,
+    top: 14,
+    width: 10,
   },
   errorIcon: {
-    fontSize: 48,
-    marginBottom: spacing.sm,
+    alignItems: 'center',
+    backgroundColor: '#FDECEC',
+    borderRadius: radius.lg,
+    height: 48,
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+    width: 48,
+  },
+  errorIconText: {
+    color: colors.danger,
+    fontSize: typography.title,
+    fontWeight: '900',
   },
 });
