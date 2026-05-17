@@ -9,11 +9,12 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, type NavigationProp, type ParamListBase } from '@react-navigation/native';
-import { colors, radius, spacing, typography } from '@/app/theme';
+import { radius, spacing, typography } from '@/app/theme';
 import { useAuthStore } from '@/stores/authStore';
 
 const REGISTER_BG = '#F5F5F5';
@@ -102,6 +103,8 @@ export function RegisterScreen() {
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
   const register = useAuthStore((state) => state.register);
   const loading = useAuthStore((state) => state.loading);
+  const { height } = useWindowDimensions();
+  const compact = height < 740;
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -154,11 +157,29 @@ export function RegisterScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboard}>
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-          <View style={styles.card}>
-            <View style={styles.header}>
-              <Text style={styles.title}>IM聊天应用</Text>
-              <Text style={styles.subtitle}>创建您的账户，开始聊天之旅</Text>
+        <ScrollView
+          bounces={false}
+          contentContainerStyle={[styles.container, compact ? styles.containerCompact : null]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View pointerEvents="none" style={styles.backgroundLayer}>
+            <View style={styles.greenGlow} />
+            <View style={styles.blueGlow} />
+          </View>
+
+          <View style={[styles.hero, compact ? styles.heroCompact : null]}>
+            <View style={styles.logoMark}>
+              <Text style={styles.logoText}>IM</Text>
+            </View>
+            <Text style={styles.heroTitle}>IM聊天应用</Text>
+            <Text style={styles.heroSubtitle}>创建您的账户，开始聊天之旅</Text>
+          </View>
+
+          <View style={[styles.card, compact ? styles.cardCompact : null]}>
+            <View style={[styles.header, compact ? styles.headerCompact : null]}>
+              <Text style={styles.title}>创建账户</Text>
+              <Text style={styles.subtitle}>使用邮箱完成注册，开启加密通信</Text>
             </View>
 
             <View style={styles.form}>
@@ -245,36 +266,112 @@ const styles = StyleSheet.create({
   },
   container: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: spacing.xl,
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xxl,
+    paddingTop: spacing.xl,
+  },
+  containerCompact: {
+    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  backgroundLayer: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  greenGlow: {
+    backgroundColor: 'rgba(7, 193, 96, 0.08)',
+    borderRadius: 150,
+    height: 300,
+    position: 'absolute',
+    right: -120,
+    top: -96,
+    width: 300,
+  },
+  blueGlow: {
+    backgroundColor: 'rgba(87, 107, 149, 0.08)',
+    borderRadius: 120,
+    bottom: -92,
+    height: 240,
+    left: -104,
+    position: 'absolute',
+    width: 240,
+  },
+  hero: {
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  heroCompact: {
+    marginBottom: spacing.lg,
+  },
+  logoMark: {
+    alignItems: 'center',
+    backgroundColor: REGISTER_GREEN,
+    borderRadius: 18,
+    height: 56,
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+    shadowColor: REGISTER_GREEN,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    width: 56,
+  },
+  logoText: {
+    color: '#FFFFFF',
+    fontSize: typography.subtitle,
+    fontWeight: '900',
+  },
+  heroTitle: {
+    color: REGISTER_TEXT,
+    fontSize: 26,
+    fontWeight: '700',
+    marginBottom: spacing.sm,
+  },
+  heroSubtitle: {
+    color: REGISTER_MUTED,
+    fontSize: typography.body,
+    textAlign: 'center',
   },
   card: {
     alignSelf: 'center',
     backgroundColor: REGISTER_CARD,
-    borderRadius: radius.sm,
-    elevation: 3,
+    borderColor: REGISTER_BORDER,
+    borderRadius: 26,
+    borderWidth: 1,
+    elevation: 8,
     maxWidth: 420,
-    padding: 40,
+    padding: spacing.xxl,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.09,
+    shadowRadius: 24,
     width: '100%',
+  },
+  cardCompact: {
+    borderRadius: 22,
+    padding: spacing.xl,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: spacing.xxl,
+  },
+  headerCompact: {
+    marginBottom: spacing.xl,
   },
   title: {
     color: REGISTER_TEXT,
-    fontSize: 24,
-    fontWeight: '600',
+    fontSize: 22,
+    fontWeight: '700',
     marginBottom: spacing.sm,
   },
   subtitle: {
     color: REGISTER_MUTED,
-    fontSize: typography.body,
+    fontSize: typography.small,
     textAlign: 'center',
   },
   form: {
@@ -283,11 +380,11 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: '#FFFFFF',
     borderColor: REGISTER_BORDER,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 1,
     color: REGISTER_TEXT,
     fontSize: typography.body,
-    height: 44,
+    height: 46,
     paddingHorizontal: spacing.lg,
   },
   agreementRow: {
@@ -325,13 +422,18 @@ const styles = StyleSheet.create({
   registerButton: {
     alignItems: 'center',
     backgroundColor: REGISTER_GREEN,
-    borderRadius: radius.sm,
-    height: 40,
+    borderRadius: radius.lg,
+    height: 46,
     justifyContent: 'center',
     marginTop: spacing.sm,
+    shadowColor: REGISTER_GREEN,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
   },
   registerButtonPressed: {
     backgroundColor: REGISTER_GREEN_ACTIVE,
+    transform: [{ translateY: 1 }],
   },
   registerButtonDisabled: {
     opacity: 0.7,
@@ -339,7 +441,7 @@ const styles = StyleSheet.create({
   registerButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   footer: {
     alignItems: 'center',
@@ -355,7 +457,7 @@ const styles = StyleSheet.create({
   footerLink: {
     color: REGISTER_LINK,
     fontSize: typography.body,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   modalBackdrop: {
     alignItems: 'center',
