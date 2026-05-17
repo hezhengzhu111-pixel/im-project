@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation, type NavigationProp, type ParamListBase } from '@react-navigation/native';
 import { colors, radius, spacing, typography } from '@/app/theme';
 import { OfflineBanner } from './StateViews';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -13,6 +14,7 @@ export function Screen({
   onRefresh,
   right,
   onBack,
+  showBack,
 }: {
   title: string;
   children: React.ReactNode;
@@ -21,14 +23,19 @@ export function Screen({
   onRefresh?: () => void;
   right?: React.ReactNode;
   onBack?: () => void;
+  showBack?: boolean;
 }) {
   const online = useOnlineStatus();
+  const navigation = useNavigation<NavigationProp<ParamListBase>>();
+  const canGoBack = showBack ?? navigation.canGoBack();
+  const handleBack = onBack ?? (() => navigation.goBack());
+
   const content = (
     <>
       <View style={styles.header}>
         <View style={styles.headerSide}>
-          {onBack ? (
-            <Pressable accessibilityRole="button" style={({ pressed }) => [styles.navButton, pressed ? styles.navButtonPressed : null]} onPress={onBack}>
+          {canGoBack ? (
+            <Pressable accessibilityRole="button" style={({ pressed }) => [styles.navButton, pressed ? styles.navButtonPressed : null]} onPress={handleBack}>
               <Text style={styles.navButtonText}>‹</Text>
             </Pressable>
           ) : null}
