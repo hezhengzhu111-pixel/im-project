@@ -17,24 +17,36 @@ export const resolveMessageSessionId = (message: MobileMessage, currentUserId: s
   return resolved || message.conversationId || '';
 };
 
-const safeLastMessage = (message?: unknown): MobileMessage | undefined => {
+const encryptedFromRecord = (record: Record<string, unknown>, fallback?: unknown): boolean =>
+  asBoolean(
+    record.encrypted ??
+      record.isEncrypted ??
+      record.is_encrypted ??
+      record.e2eeEnabled ??
+      record.e2ee_enabled,
+    fallback,
+  );
+
+const safeLastMessage = (message: unknown, encryptedFallback = false): MobileMessage | undefined => {
   if (!message) {
     return undefined;
   }
-  return maskEncryptedMessage(normalizeMobileMessage(message));
+  const normalized = normalizeMobileMessage(message);
+  const encrypted = encryptedFallback || isEncryptedMessage(normalized);
+  return encrypted ? maskEncryptedMessage({ ...normalized, encrypted: true }) : normalized;
 };
 
 const toMobileSession = (session: SharedChatSession, raw?: unknown): ChatSession => {
   const record = isRecord(raw) ? raw : {};
+  const sessionEncrypted = encryptedFromRecord(record, session.encrypted ?? false);
   const explicitRawLastMessage = isRecord(record.lastMessage)
     ? record.lastMessage
     : isRecord(record.last_message)
       ? record.last_message
       : undefined;
   const rawLastMessage = explicitRawLastMessage ?? session.lastMessage ?? record.lastMessage ?? record.last_message;
-  const lastMessage = safeLastMessage(rawLastMessage);
-  const encrypted = asBoolean(record.encrypted, session.encrypted ?? false) ||
-    Boolean(lastMessage && isEncryptedMessage(lastMessage));
+  const lastMessage = safeLastMessage(rawLastMessage, sessionEncrypted);
+  const encrypted = sessionEncrypted || Boolean(lastMessage && isEncryptedMessage(lastMessage));
   return {
     ...session,
     encrypted,
@@ -54,6 +66,7 @@ export const normalizeMobileSession = (raw: unknown, currentUserId: string): Cha
   // Minimal fallback for platform-local objects that lack standard DTO fields.
   // All backend conversation DTO compat is handled by normalizeConversation above.
   const record = isRecord(raw) ? raw : {};
+  const sessionEncrypted = encryptedFromRecord(record);
   const type = asString(record.type ?? record.conversationType, 'private').toLowerCase().includes('group')
     ? 'group'
     : 'private';
@@ -61,6 +74,7 @@ export const normalizeMobileSession = (raw: unknown, currentUserId: string): Cha
   const id = type === 'group'
     ? resolveGroupSessionId(targetId)
     : resolvePrivateSessionId(String(currentUserId), targetId);
+  const lastMessage = safeLastMessage(record.lastMessage ?? record.last_message, sessionEncrypted);
   return {
     id,
     type,
@@ -69,11 +83,10 @@ export const normalizeMobileSession = (raw: unknown, currentUserId: string): Cha
     targetAvatar: asString(record.targetAvatar ?? record.target_avatar ?? record.avatar) || undefined,
     unreadCount: asNumber(record.unreadCount ?? record.unread_count, 0),
     lastActiveTime: asString(record.lastActiveTime ?? record.last_active_time ?? record.lastMessageTime ?? record.last_message_time),
-    lastMessage: safeLastMessage(record.lastMessage),
+    lastMessage,
     isPinned: asBoolean(record.isPinned ?? record.pinned),
     isMuted: asBoolean(record.isMuted ?? record.muted),
-    encrypted: asBoolean(record.encrypted) ||
-      Boolean(record.lastMessage && isEncryptedMessage(normalizeMobileMessage(record.lastMessage))),
+    encrypted: sessionEncrypted || Boolean(lastMessage && isEncryptedMessage(lastMessage)),
     memberCount: Number.isFinite(asNumber(record.memberCount ?? record.member_count, Number.NaN))
       ? asNumber(record.memberCount ?? record.member_count)
       : undefined,
