@@ -2,8 +2,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, typography } from '@/app/theme';
 
-export function PageContent({ children }: { children: React.ReactNode }) {
-  return <View style={styles.page}>{children}</View>;
+export function PageContent({ children, compact = false }: { children: React.ReactNode; compact?: boolean }) {
+  return <View style={[styles.page, compact ? styles.pageCompact : null]}>{children}</View>;
 }
 
 export function SectionCard({
@@ -16,10 +16,14 @@ export function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <View style={styles.section}>
-      {title ? <Text style={styles.sectionTitle}>{title}</Text> : null}
-      {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
-      {children}
+    <View style={styles.sectionWrap}>
+      {title || subtitle ? (
+        <View style={styles.sectionHeader}>
+          {title ? <Text style={styles.sectionTitle}>{title}</Text> : null}
+          {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
+        </View>
+      ) : null}
+      <View style={styles.section}>{children}</View>
     </View>
   );
 }
@@ -63,9 +67,7 @@ export function ListRow({
     </>
   );
 
-  if (!onPress) {
-    return <View style={styles.row}>{content}</View>;
-  }
+  if (!onPress) return <View style={styles.row}>{content}</View>;
 
   return (
     <Pressable accessibilityRole="button" style={({ pressed }) => [styles.row, pressed ? styles.pressed : null]} onPress={onPress}>
@@ -74,9 +76,9 @@ export function ListRow({
   );
 }
 
-export function AvatarText({ label, square = false }: { label: string; square?: boolean }) {
+export function AvatarText({ label, square = false, size = 42 }: { label: string; square?: boolean; size?: number }) {
   return (
-    <View style={[styles.avatar, square ? styles.avatarSquare : null]}>
+    <View style={[styles.avatar, square ? styles.avatarSquare : null, { height: size, width: size, borderRadius: square ? radius.md : size / 2 }]}>
       <Text style={styles.avatarText}>{label.slice(0, 1).toUpperCase()}</Text>
     </View>
   );
@@ -84,20 +86,29 @@ export function AvatarText({ label, square = false }: { label: string; square?: 
 
 const styles = StyleSheet.create({
   page: {
-    gap: spacing.lg,
-    padding: spacing.lg,
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  pageCompact: {
+    paddingHorizontal: 0,
+    paddingTop: spacing.md,
+  },
+  sectionWrap: {
+    gap: spacing.sm,
+  },
+  sectionHeader: {
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
   },
   section: {
     backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing.md,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
     padding: spacing.lg,
   },
   sectionTitle: {
     color: colors.text,
-    fontSize: typography.subtitle,
+    fontSize: typography.body,
     fontWeight: '800',
   },
   sectionSubtitle: {
@@ -107,6 +118,8 @@ const styles = StyleSheet.create({
   },
   infoRow: {
     gap: spacing.xs,
+    minHeight: 48,
+    justifyContent: 'center',
   },
   infoLabel: {
     color: colors.muted,
@@ -122,7 +135,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.md,
-    minHeight: 56,
+    minHeight: 54,
   },
   pressed: {
     opacity: 0.65,
@@ -159,10 +172,7 @@ const styles = StyleSheet.create({
   avatar: {
     alignItems: 'center',
     backgroundColor: colors.primarySoft,
-    borderRadius: radius.pill,
-    height: 42,
     justifyContent: 'center',
-    width: 42,
   },
   avatarSquare: {
     borderRadius: radius.md,
