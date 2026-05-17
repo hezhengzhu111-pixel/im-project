@@ -63,6 +63,9 @@ interface MessageState {
   applyReadReceipt: (rawReceipt: unknown) => void;
   searchMessages: (keyword: string, sessionId?: string) => void;
   clearMessages: (sessionId: string) => void;
+  deleteLocalMessage: (sessionId: string, messageId: string) => void;
+  recallMessage: (sessionId: string, message: MobileMessage) => Promise<void>;
+  applyRecalledMessage: (sessionId: string, recalledMessage: MobileMessage) => void;
   clearRuntime: () => void;
   clear: () => void;
 }
@@ -740,6 +743,64 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     const nextPagination = { ...get().messagesPaginationBySession };
     delete nextPagination[sessionId];
     set({ messagesBySession: nextMessages, messagesPaginationBySession: nextPagination });
+  },
+
+  /**
+   * 从本地删除单条消息（软删除语义：移除展示，不调后端）。
+   */
+  deleteLocalMessage(sessionId, messageId) {
+    const list = get().messagesBySession[sessionId];
+    if (!list) return;
+
+    const nextList = list.filter((msg) => msg.id !== messageId);
+    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: nextList } });
+    messageRepository.deleteMessage(sessionId, messageId);
+  },
+
+  /**
+   * 撤回消息：调用后端 API，成功后替换本地消息为撤回版本。
+   * 失败时抛出错误，由 UI 捕获。
+   */
+  async recallMessage(sessionId, message) {
+    const serverId = message.serverId || message.messageId;
+    if (!serverId) {
+      throw new Error('无法撤回：缺少服务器消息 ID');
+    }
+
+    const response = await messageService.recallMessage(serverId);
+    const recalled = { ...response.data, conversationId: sessionId, status: 'RECALLED' as const };
+
+    const list = get().messagesBySession[sessionId] || [];
+    const nextList = list.map((msg) =>
+      msg.id === message.id ||
+      msg.serverId === recalled.serverId ||
+      msg.messageId === recalled.messageId
+        ? recalled
+        : msg,
+    );
+    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: nextList } });
+    messageRepository.upsertMessages(sessionId, [recalled]);
+  },
+
+  /**
+   * 应用撤回消息到本地状态（供 WS 推送等被动场景使用）。
+   */
+  applyRecalledMessage(sessionId, recalledMessage) {
+    const updated: MobileMessage = {
+      ...recalledMessage,
+      conversationId: sessionId,
+      status: 'RECALLED',
+    };
+    const list = get().messagesBySession[sessionId] || [];
+    const nextList = list.map((msg) =>
+      msg.id === updated.id ||
+      msg.serverId === updated.serverId ||
+      msg.messageId === updated.messageId
+        ? updated
+        : msg,
+    );
+    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: nextList } });
+    messageRepository.upsertMessages(sessionId, [updated]);
   },
 
   /**

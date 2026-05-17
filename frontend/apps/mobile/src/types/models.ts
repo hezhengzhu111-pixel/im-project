@@ -101,6 +101,40 @@ export interface MessagePaginationState {
   initialized: boolean;
 }
 
+// ─── Message Action Model ────────────────────────────────────────────────
+
+export type MessageActionId =
+  | 'copy'
+  | 'retry'
+  | 'deleteLocal'
+  | 'recall'
+  | 'saveMedia'
+  | 'openFile'
+  | 'readDetail'
+  | 'forward';
+
+export interface MessageActionItem {
+  id: MessageActionId;
+  label: string;
+  destructive?: boolean;
+  disabled?: boolean;
+  reason?: string;
+}
+
+export interface MessageActionContext {
+  currentUserId: string;
+  isGroupSession: boolean;
+  now: number;
+  recallWindowMs: number;
+  sendStage?: SendPipelineStage;
+  /** Raw message status (fallback when sendStage is not available). */
+  messageStatus?: import('@im/shared-types').MessageStatus;
+  hasMediaUri: boolean;
+  hasRemoteMediaUri: boolean;
+}
+
+// ─── Diagnostics ──────────────────────────────────────────────────────────
+
 // In-memory diagnostics entry generated only inside the mobile app.
 export interface LocalLogEntry {
   id: string;

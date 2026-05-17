@@ -4,5 +4,7 @@ export const messageRepository = {
   upsertMessages: jest.fn(),
   listMessages: jest.fn(() => []),
   listMessagesPage: jest.fn(() => ({ messages: [], hasMore: false })),
+  deleteMessage: jest.fn(),
   clearConversation: jest.fn(),
+  clearAllCache: jest.fn(),
 };

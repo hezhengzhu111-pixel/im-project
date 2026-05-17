@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation, useRoute, type NavigationProp, type ParamListBase, type RouteProp } from '@react-navigation/native';
 import { MessageBubble } from '@/components/chat/MessageBubble';
+import { showMessageActionSheet, type MessageActionCallbacks } from '@/components/chat/MessageActionSheet';
 import { Screen } from '@/components/common/Screen';
 import { EmptyState, LoadingState } from '@/components/common/StateViews';
 import { colors, spacing, typography } from '@/app/theme';
@@ -9,10 +10,17 @@ import type { ChatStackParamList } from '@/app/navigation/ChatNavigator';
 import { E2eeUnsupportedNotice } from '@/e2ee/E2eeUnsupportedNotice';
 import { isEncryptedSession } from '@/e2ee/e2eeDeferred';
 import { mediaService } from '@/services/media/mediaService';
+import { mediaSaveService } from '@/services/media/mediaSaveService';
+import { platformClipboard } from '@/services/platform/clipboard';
+import { platformLinking } from '@/services/platform/linking';
+import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
+import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
 import { useMessageStore } from '@/stores/messageStore';
 import { useSessionStore } from '@/stores/sessionStore';
+import { deriveSendStage } from '@/utils/sendStateMachine';
+import type { MessageActionContext, MobileMessage } from '@/types/models';
 
 const BOTTOM_THRESHOLD = 120;
 const ON_END_REACHED_THRESHOLD = 3;
@@ -211,6 +219,82 @@ export function ChatScreen() {
     }
   };
 
+  const buildActionContext = useCallback(
+    (message: MobileMessage): MessageActionContext => {
+      const p = pendingMessageRepository.get(message.id);
+      const u = uploadTaskRepository.findByLocalMessageId(message.id);
+      const stage = deriveSendStage(p, u, message);
+      const mediaUri = message.mediaUrl || message.thumbnailUrl || '';
+      const hasMediaUri = mediaUri.length > 0 && !mediaUri.startsWith('http://') && !mediaUri.startsWith('https://');
+      const hasRemoteMediaUri = mediaUri.length > 0 && (mediaUri.startsWith('http://') || mediaUri.startsWith('https://'));
+      return {
+        currentUserId: currentUser?.id || '',
+        isGroupSession: session?.type === 'group',
+        now: Date.now(),
+        recallWindowMs: 120_000,
+        sendStage: stage,
+        messageStatus: message.status,
+        hasMediaUri,
+        hasRemoteMediaUri,
+      };
+    },
+    [currentUser?.id, session?.type],
+  );
+
+  const actionCallbacks = useMemo<MessageActionCallbacks>(() => ({
+    onCopy: (message: MobileMessage) => {
+      platformClipboard.copyText(message.content || '');
+    },
+    onRetry: (message: MobileMessage) => {
+      void retryMessage(message.id, { force: true });
+    },
+    onDeleteLocal: (message: MobileMessage) => {
+      const sid = session?.id;
+      if (sid) {
+        useMessageStore.getState().deleteLocalMessage(sid, message.id);
+      }
+    },
+    onRecall: (message: MobileMessage) => {
+      const sid = session?.id;
+      if (sid) {
+        useMessageStore.getState().recallMessage(sid, message).catch((error: unknown) => {
+          Alert.alert('撤回失败', error instanceof Error ? error.message : '请稍后重试');
+        });
+      }
+    },
+    onSaveMedia: (message: MobileMessage) => {
+      const uri = message.mediaUrl || message.thumbnailUrl || '';
+      const promise =
+        message.messageType === 'VIDEO'
+          ? mediaSaveService.saveVideo(uri)
+          : mediaSaveService.saveImage(uri);
+      promise.catch((error: unknown) => {
+        Alert.alert('保存失败', error instanceof Error ? error.message : '暂不支持保存到相册');
+      });
+    },
+    onOpenFile: (message: MobileMessage) => {
+      const uri = message.mediaUrl || '';
+      const openPromise =
+        uri.startsWith('http://') || uri.startsWith('https://')
+          ? platformLinking.openUrl(uri)
+          : platformLinking.openFile(uri.replace('file://', ''), message.extra?.mimeType as string | undefined);
+      openPromise.catch((error: unknown) => {
+        Alert.alert('打开失败', error instanceof Error ? error.message : '无法打开文件');
+      });
+    },
+    onReadDetail: (_message: MobileMessage) => {
+      Alert.alert('消息详情', 'Read detail not implemented');
+    },
+  }), [retryMessage, session?.id]);
+
+  const handleMessageLongPress = useCallback(
+    (message: MobileMessage) => {
+      const ctx = buildActionContext(message);
+      showMessageActionSheet(message, ctx, actionCallbacks);
+    },
+    [buildActionContext, actionCallbacks],
+  );
+
   const renderHeader = () => {
     if (pagination?.loadingOlder) {
       return (
@@ -256,7 +340,7 @@ export function ChatScreen() {
               onRetry={() => {
                 void retryMessage(item.id, { force: true });
               }}
-              onLongPress={() => Alert.alert('Message', item.content || item.mediaName || item.messageType)}
+              onLongPress={() => handleMessageLongPress(item)}
             />
           )}
           ListHeaderComponent={renderHeader}

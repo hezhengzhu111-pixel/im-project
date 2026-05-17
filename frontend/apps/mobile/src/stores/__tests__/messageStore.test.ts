@@ -763,6 +763,205 @@ describe('messageStore', () => {
     });
   });
 
+  // ─── deleteLocalMessage ─────────────────────────────────────────────
+
+  describe('deleteLocalMessage', () => {
+    it('removes message from messagesBySession', () => {
+      const msg1 = baseMobileMessage({ id: 'msg_1' });
+      const msg2 = baseMobileMessage({ id: 'msg_2' });
+      useMessageStore.setState({
+        messagesBySession: { '100_200': [msg1, msg2] },
+      });
+
+      useMessageStore.getState().deleteLocalMessage('100_200', 'msg_1');
+
+      const messages = useMessageStore.getState().messagesBySession['100_200'];
+      expect(messages).toHaveLength(1);
+      expect(messages[0].id).toBe('msg_2');
+    });
+
+    it('no-ops when session does not exist', () => {
+      expect(() => useMessageStore.getState().deleteLocalMessage('nonexistent', 'msg_1')).not.toThrow();
+    });
+
+    it('calls messageRepository.deleteMessage to sync storage', () => {
+      const msg = baseMobileMessage({ id: 'msg_1' });
+      useMessageStore.setState({
+        messagesBySession: { '100_200': [msg] },
+      });
+
+      useMessageStore.getState().deleteLocalMessage('100_200', 'msg_1');
+
+      expect(mr.deleteMessage).toHaveBeenCalledWith('100_200', 'msg_1');
+    });
+
+    it('preserves other messages in the same session', () => {
+      const msg1 = baseMobileMessage({ id: 'msg_1' });
+      const msg2 = baseMobileMessage({ id: 'msg_2' });
+      const msg3 = baseMobileMessage({ id: 'msg_3' });
+      useMessageStore.setState({
+        messagesBySession: { '100_200': [msg1, msg2, msg3] },
+      });
+
+      useMessageStore.getState().deleteLocalMessage('100_200', 'msg_2');
+
+      const messages = useMessageStore.getState().messagesBySession['100_200'];
+      expect(messages).toHaveLength(2);
+      expect(messages.map((m) => m.id)).toEqual(['msg_1', 'msg_3']);
+    });
+  });
+
+  // ─── recallMessage ──────────────────────────────────────────────────
+
+  describe('recallMessage', () => {
+    const baseMsg = (overrides: Partial<MobileMessage> = {}): MobileMessage =>
+      baseMobileMessage({
+        id: 'msg_1',
+        messageId: 'msg_1',
+        serverId: 'srv_1',
+        senderId: '100',
+        status: 'SENT',
+        ...overrides,
+      });
+
+    it('calls messageService.recallMessage with server message id', async () => {
+      const msg = baseMsg();
+      const recalled: MobileMessage = { ...msg, status: 'RECALLED', content: '消息已撤回' };
+      ms.recallMessage.mockResolvedValueOnce({ code: 0, message: 'ok', data: recalled });
+
+      useMessageStore.setState({
+        messagesBySession: { '100_200': [msg] },
+      });
+
+      await useMessageStore.getState().recallMessage('100_200', msg);
+
+      expect(ms.recallMessage).toHaveBeenCalledWith('srv_1');
+    });
+
+    it('replaces local message with recalled version on success', async () => {
+      const msg = baseMsg();
+      const recalled: MobileMessage = { ...msg, id: 'srv_1', status: 'RECALLED', content: '消息已撤回' };
+      ms.recallMessage.mockResolvedValueOnce({ code: 0, message: 'ok', data: recalled });
+
+      useMessageStore.setState({
+        messagesBySession: { '100_200': [msg] },
+      });
+
+      await useMessageStore.getState().recallMessage('100_200', msg);
+
+      const messages = useMessageStore.getState().messagesBySession['100_200'];
+      expect(messages).toHaveLength(1);
+      expect(messages[0].status).toBe('RECALLED');
+    });
+
+    it('updates messageRepository after successful recall', async () => {
+      const msg = baseMsg();
+      const recalled: MobileMessage = { ...msg, status: 'RECALLED', content: '消息已撤回' };
+      ms.recallMessage.mockResolvedValueOnce({ code: 0, message: 'ok', data: recalled });
+
+      useMessageStore.setState({
+        messagesBySession: { '100_200': [msg] },
+      });
+
+      await useMessageStore.getState().recallMessage('100_200', msg);
+
+      expect(mr.upsertMessages).toHaveBeenCalledWith('100_200', expect.arrayContaining([
+        expect.objectContaining({ status: 'RECALLED' }),
+      ]));
+    });
+
+    it('preserves original message on recall failure', async () => {
+      const msg = baseMsg();
+      ms.recallMessage.mockRejectedValueOnce(new Error('not allowed'));
+
+      useMessageStore.setState({
+        messagesBySession: { '100_200': [msg] },
+      });
+
+      await expect(
+        useMessageStore.getState().recallMessage('100_200', msg),
+      ).rejects.toThrow('not allowed');
+
+      const messages = useMessageStore.getState().messagesBySession['100_200'];
+      expect(messages).toHaveLength(1);
+      expect(messages[0].status).toBe('SENT');
+    });
+
+    it('throws when message has no server id', async () => {
+      const msg = baseMsg({ messageId: undefined, serverId: undefined });
+      useMessageStore.setState({
+        messagesBySession: { '100_200': [msg] },
+      });
+
+      await expect(
+        useMessageStore.getState().recallMessage('100_200', msg),
+      ).rejects.toThrow('缺少服务器消息 ID');
+
+      expect(ms.recallMessage).not.toHaveBeenCalled();
+    });
+
+    it('matches by messageId when server returns different id', async () => {
+      const msg = baseMsg({ id: 'local_1', messageId: 'srv_1', serverId: 'srv_1' });
+      // Server returns message with id=srv_1 but our local store has id=local_1
+      const recalled: MobileMessage = { ...msg, id: 'srv_1', messageId: 'srv_1', content: '消息已撤回', status: 'RECALLED' };
+      ms.recallMessage.mockResolvedValueOnce({ code: 0, message: 'ok', data: recalled });
+
+      useMessageStore.setState({
+        messagesBySession: { '100_200': [msg] },
+      });
+
+      await useMessageStore.getState().recallMessage('100_200', msg);
+
+      const messages = useMessageStore.getState().messagesBySession['100_200'];
+      expect(messages).toHaveLength(1);
+      expect(messages[0].status).toBe('RECALLED');
+    });
+  });
+
+  // ─── applyRecalledMessage ───────────────────────────────────────────
+
+  describe('applyRecalledMessage', () => {
+    it('replaces message by id match', () => {
+      const msg = baseMobileMessage({ id: 'msg_1', status: 'SENT' });
+      const recalled = { ...msg, id: 'msg_1', status: 'RECALLED' as const, content: '消息已撤回' };
+      useMessageStore.setState({
+        messagesBySession: { '100_200': [msg] },
+      });
+
+      useMessageStore.getState().applyRecalledMessage('100_200', recalled);
+
+      const messages = useMessageStore.getState().messagesBySession['100_200'];
+      expect(messages[0].status).toBe('RECALLED');
+    });
+
+    it('replaces message by serverId match', () => {
+      const msg = baseMobileMessage({ id: 'local_1', serverId: 'srv_1', status: 'SENT' });
+      const recalled = { ...msg, id: 'srv_1', serverId: 'srv_1', status: 'RECALLED' as const };
+      useMessageStore.setState({
+        messagesBySession: { '100_200': [msg] },
+      });
+
+      useMessageStore.getState().applyRecalledMessage('100_200', recalled);
+
+      const messages = useMessageStore.getState().messagesBySession['100_200'];
+      expect(messages[0].status).toBe('RECALLED');
+    });
+
+    it('syncs to messageRepository', () => {
+      const msg = baseMobileMessage({ id: 'msg_1', status: 'SENT' });
+      const recalled = { ...msg, status: 'RECALLED' as const };
+      useMessageStore.setState({
+        messagesBySession: { '100_200': [msg] },
+      });
+
+      useMessageStore.getState().applyRecalledMessage('100_200', recalled);
+
+      expect(mr.upsertMessages).toHaveBeenCalledWith('100_200', expect.arrayContaining([
+        expect.objectContaining({ status: 'RECALLED' }),
+      ]));
+    });
+  });
+
   describe('clear', () => {
     it('resets messagesBySession and searchResults', () => {
       useMessageStore.setState({

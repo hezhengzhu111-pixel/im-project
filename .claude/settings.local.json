@@ -32,7 +32,9 @@
       "Skill(superpowers:writing-plans)",
       "Skill(superpowers:subagent-driven-development)",
       "Bash(git diff *)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(echo \"Tests exit: $?\")"
     ]
   }
 }
