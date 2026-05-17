@@ -11,6 +11,10 @@ interface ImageBubbleProps {
   mine: boolean;
 }
 
+const IMAGE_CACHE_RETRY_DELAYS_MS = [0, 500, 1500, 3000];
+
+const extraString = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+
 export function ImageBubble({ message, mine }: ImageBubbleProps) {
   const [previewVisible, setPreviewVisible] = React.useState(false);
   const [loadFailed, setLoadFailed] = React.useState(false);
@@ -18,33 +22,75 @@ export function ImageBubble({ message, mine }: ImageBubbleProps) {
   const [previewUri, setPreviewUri] = React.useState('');
 
   const rawUri = message.thumbnailUrl || message.mediaUrl || message.content || '';
+  const localFallbackRawUri =
+    extraString(message.extra?.localMediaUri) ||
+    extraString(message.extra?.localThumbnailUri) ||
+    extraString(message.extra?.originalUri);
+  const localFallbackUri = resolveMediaUri(localFallbackRawUri, 'IMAGE');
   const resolvedImageUri = resolveMediaUri(rawUri, 'IMAGE');
-  const resolvedPreviewUri = resolveMediaUri(message.mediaUrl || rawUri, 'IMAGE');
-  const label = message.mediaName || String(rawUri).split('/').filter(Boolean).pop() || '图片';
+  const resolvedPreviewUri = resolveMediaUri(message.mediaUrl || rawUri, 'IMAGE') || localFallbackUri;
+  const label = message.mediaName || String(rawUri || localFallbackRawUri).split('/').filter(Boolean).pop() || '图片';
 
   React.useEffect(() => {
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const wait = (delayMs: number) =>
+      new Promise<void>((resolve) => {
+        if (delayMs <= 0) {
+          resolve();
+          return;
+        }
+        retryTimer = setTimeout(resolve, delayMs);
+      });
+
+    const sourceUri = resolvedImageUri || localFallbackUri;
     setLoadFailed(false);
-    setImageUri('');
     setPreviewUri(resolvedPreviewUri);
+    setImageUri(localFallbackUri || '');
 
-    if (!resolvedImageUri) return () => { cancelled = true; };
+    if (!sourceUri) {
+      setLoadFailed(true);
+      return () => {
+        cancelled = true;
+        if (retryTimer) clearTimeout(retryTimer);
+      };
+    }
 
-    void mediaCache.imageUri(resolvedImageUri).then(
-      (localUri) => {
+    const loadImage = async (attemptIndex: number): Promise<void> => {
+      await wait(IMAGE_CACHE_RETRY_DELAYS_MS[attemptIndex] ?? 0);
+      if (cancelled) return;
+
+      try {
+        const localUri = await mediaCache.imageUri(sourceUri);
         if (!cancelled) {
-          setImageUri(localUri || resolvedImageUri);
+          setImageUri(localUri || sourceUri);
+          setLoadFailed(false);
         }
-      },
-      () => {
-        if (!cancelled) {
-          setLoadFailed(true);
+      } catch {
+        if (cancelled) return;
+        const nextAttempt = attemptIndex + 1;
+        if (nextAttempt < IMAGE_CACHE_RETRY_DELAYS_MS.length) {
+          await loadImage(nextAttempt);
+          return;
         }
-      },
-    );
+        if (localFallbackUri && sourceUri !== localFallbackUri) {
+          setImageUri(localFallbackUri);
+          setLoadFailed(false);
+          return;
+        }
+        setImageUri('');
+        setLoadFailed(true);
+      }
+    };
 
-    return () => { cancelled = true; };
-  }, [resolvedImageUri, resolvedPreviewUri]);
+    void loadImage(0);
+
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [resolvedImageUri, resolvedPreviewUri, localFallbackUri]);
 
   if (!imageUri || loadFailed) {
     return (
@@ -58,7 +104,7 @@ export function ImageBubble({ message, mine }: ImageBubbleProps) {
   return (
     <>
       <Pressable onPress={() => setPreviewVisible(true)} accessibilityLabel="查看大图">
-        <Image resizeMode="cover" source={{ uri: imageUri }} style={styles.image} onError={() => setLoadFailed(true)} />
+        <Image resizeMode="cover" source={{ uri: imageUri }} style={styles.image} onError={() => { setImageUri(''); setLoadFailed(true); }} />
       </Pressable>
       <MediaPreviewModal visible={previewVisible} onClose={() => setPreviewVisible(false)} mediaUrl={previewUri || imageUri} mediaType="IMAGE" />
     </>
