@@ -88,11 +88,14 @@ export function ChatScreen() {
     void loadInitialMessages(session);
   }, [session, loadInitialMessages]);
 
-  useEffect(() => subscribeE2eeStatusChanges((sessionId) => {
+  useEffect(() => subscribeE2eeStatusChanges((sessionId, status) => {
     if (session?.id === sessionId) {
       setE2eeVersion((value) => value + 1);
+      if (status === 'encrypted') {
+        void loadInitialMessages(session);
+      }
     }
-  }), [session?.id]);
+  }), [loadInitialMessages, session]);
 
   useEffect(() => subscribePendingE2eeRequests((sessionId) => {
     if (session?.id !== sessionId) {
