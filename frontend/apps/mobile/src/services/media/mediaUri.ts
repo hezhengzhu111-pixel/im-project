@@ -5,6 +5,12 @@ const AUDIO_EXTENSIONS = new Set(['m4a', 'mp3', 'aac', 'wav', 'ogg', 'amr']);
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif']);
 const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'm4v', 'webm', 'avi']);
 
+type FileLocator = {
+  category: string;
+  date: string;
+  filename: string;
+};
+
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
 const trimLeadingSlash = (value: string) => value.replace(/^\/+/, '');
 
@@ -25,11 +31,48 @@ const mediaFolderFor = (value: string, type?: MessageType) => {
   return 'files';
 };
 
+const apiBase = () => trimTrailingSlash(APP_CONFIG.API_BASE_URL);
 const fileBase = () => trimTrailingSlash(APP_CONFIG.FILE_BASE_URL || APP_CONFIG.API_BASE_URL.replace(/\/api\/?$/, ''));
+
+const locatorFromFilesPath = (path: string): FileLocator | null => {
+  const cleanPath = `/${trimLeadingSlash(path.split('?')[0].split('#')[0])}`;
+  const match = cleanPath.match(/^\/files\/([^/]+)\/([^/]+)\/(.+)$/);
+  if (!match) return null;
+  return {
+    category: decodeURIComponent(match[1]),
+    date: decodeURIComponent(match[2]),
+    filename: decodeURIComponent(match[3]),
+  };
+};
+
+const locatorFromUri = (value: string): FileLocator | null => {
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      return locatorFromFilesPath(new URL(value).pathname);
+    } catch {
+      return null;
+    }
+  }
+  return locatorFromFilesPath(value);
+};
+
+export const buildMediaDownloadUri = (locator: FileLocator): string => {
+  const params = new URLSearchParams({
+    category: locator.category,
+    date: locator.date,
+    filename: locator.filename,
+  });
+  return `${apiBase()}/file/download?${params.toString()}`;
+};
 
 export const resolveMediaUri = (uri?: string | null, type?: MessageType): string => {
   const value = String(uri || '').trim();
   if (!value) return '';
+
+  const locator = locatorFromUri(value);
+  if (locator) return buildMediaDownloadUri(locator);
+
   if (isAbsoluteUri(value)) return value;
 
   const base = fileBase();
@@ -54,3 +97,5 @@ export const isLikelyMediaFilename = (value?: string | null): boolean => {
   const ext = extensionFrom(text);
   return AUDIO_EXTENSIONS.has(ext) || IMAGE_EXTENSIONS.has(ext) || VIDEO_EXTENSIONS.has(ext);
 };
+
+export const mediaExtensionFromUri = (value?: string | null): string => extensionFrom(String(value || '')) || 'bin';
