@@ -3,6 +3,8 @@ import { resolveGroupSessionId, resolvePrivateSessionId } from '@/utils/normaliz
 import { messageService } from '@/services/chat/messageService';
 import { messageRepository } from '@/services/storage/messageRepository';
 import { uploadService } from '@/services/upload/uploadService';
+import { reconcilePendingState } from '@/services/storage/reconcilePendingState';
+import { appLifecycle, bindLifecycleHandlers } from '@/services/platform/appLifecycle';
 import { useAuthStore } from './authStore';
 import { useContactStore } from './contactStore';
 import { useGroupStore } from './groupStore';
@@ -29,6 +31,20 @@ interface ChatState {
 const routeOpenRequests = new Map<string, Promise<boolean>>();
 let lastOpenedRouteKey = '';
 let bootstrapDone = false;
+let reconcileInFlight = false;
+let foregroundListenerUnsub: (() => void) | null = null;
+
+const foregroundReconcile = async () => {
+  if (reconcileInFlight) return;
+  reconcileInFlight = true;
+  try {
+    reconcilePendingState();
+    await uploadService.retryPendingUploads();
+    await useMessageStore.getState().retryPending();
+  } finally {
+    reconcileInFlight = false;
+  }
+};
 
 const clean = (value?: string): string => value?.trim() || '';
 
@@ -122,6 +138,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   async bootstrap() {
     if (bootstrapDone) return;
     bootstrapDone = true;
+
+    // 注册 App 生命周期监听（仅一次）
+    bindLifecycleHandlers();
+    if (!foregroundListenerUnsub) {
+      foregroundListenerUnsub = appLifecycle.onForeground(() => {
+        void foregroundReconcile();
+      });
+    }
+
     set({ loading: true });
     try {
       useSessionStore.getState().restoreFromDb();
@@ -131,6 +156,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         useContactStore.getState().loadFriendRequests(),
       ]);
       await useChatStore.getState().refreshSessions();
+      reconcilePendingState();
       await useChatStore.getState().retryPending();
     } finally {
       set({ loading: false });
@@ -265,6 +291,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
    */
   clearRuntime() {
     bootstrapDone = false;
+    reconcileInFlight = false;
     lastOpenedRouteKey = '';
     useSessionStore.getState().clear();
     useMessageStore.getState().clearRuntime();

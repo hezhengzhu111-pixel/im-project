@@ -134,12 +134,38 @@ describe('deriveSendStage', () => {
     expect(deriveSendStage(pending({ status: 'pending' }), null, message())).toBe('SEND_PENDING');
   });
 
-  test('no pending, no upload, local message SENDING → LOCAL_CREATED', () => {
-    expect(deriveSendStage(null, null, message({ status: 'SENDING' }))).toBe('LOCAL_CREATED');
+  test('no pending, no upload, local message SENDING → SENDING (fallback)', () => {
+    expect(deriveSendStage(null, null, message({ status: 'SENDING' }))).toBe('SENDING');
+  });
+
+  test('no pending, no upload, local message FAILED → SEND_FAILED (fallback)', () => {
+    expect(deriveSendStage(null, null, message({ status: 'FAILED' }))).toBe('SEND_FAILED');
   });
 
   test('nothing at all → LOCAL_CREATED', () => {
     expect(deriveSendStage(null, null, null)).toBe('LOCAL_CREATED');
+  });
+
+  test('pending failed overrides message SENDING → SEND_FAILED', () => {
+    expect(
+      deriveSendStage(pending({ status: 'failed' }), null, message({ status: 'SENDING' })),
+    ).toBe('SEND_FAILED');
+  });
+
+  test('uploadTask uploading overrides pending sending → UPLOADING', () => {
+    expect(
+      deriveSendStage(
+        pending({ status: 'sending' }),
+        upload({ status: 'uploading' }),
+        message({ status: 'SENDING' }),
+      ),
+    ).toBe('UPLOADING');
+  });
+
+  test('blocked pending overrides message FAILED → BLOCKED', () => {
+    expect(
+      deriveSendStage(pending({ status: 'blocked' }), null, message({ status: 'FAILED' })),
+    ).toBe('BLOCKED');
   });
 });
 

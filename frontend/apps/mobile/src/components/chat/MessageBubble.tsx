@@ -6,7 +6,16 @@ import { E2eeUnsupportedMessage } from '@/e2ee/E2eeUnsupportedMessage';
 import { isEncryptedMessage } from '@/e2ee/e2eeDeferred';
 import { mediaService } from '@/services/media/mediaService';
 import { platformLinking } from '@/services/platform/linking';
-import type { MobileMessage } from '@/types/models';
+import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
+import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
+import { deriveSendStage } from '@/utils/sendStateMachine';
+import type { MobileMessage, SendPipelineStage } from '@/types/models';
+
+interface DerivedStatus {
+  stage: SendPipelineStage;
+  uploadProgress: number;
+  localError?: string;
+}
 
 export function MessageBubble({
   message,
@@ -20,6 +29,32 @@ export function MessageBubble({
   onLongPress?: () => void;
 }) {
   const [playing, setPlaying] = React.useState(false);
+  const [tick, setTick] = React.useState(0);
+
+  const computeDerived = React.useCallback((msg: MobileMessage): DerivedStatus => {
+    const p = pendingMessageRepository.get(msg.id);
+    const u = uploadTaskRepository.findByLocalMessageId(msg.id);
+    const stage = deriveSendStage(p, u, msg);
+    return {
+      stage,
+      uploadProgress: u?.progress ?? 0,
+      localError: u?.lastError || p?.lastError || undefined,
+    };
+  }, []);
+
+  const [derived, setDerived] = React.useState<DerivedStatus>(() => computeDerived(message));
+
+  React.useEffect(() => {
+    setDerived(computeDerived(message));
+  }, [message, tick, computeDerived]);
+
+  // Poll while uploading to refresh progress
+  React.useEffect(() => {
+    if (derived.stage !== 'UPLOADING') return;
+    const timer = setInterval(() => setTick((t) => t + 1), 500);
+    return () => clearInterval(timer);
+  }, [derived.stage]);
+
   if (isEncryptedMessage(message)) {
     return (
       <View style={[styles.wrap, mine && styles.mineWrap]}>
@@ -27,6 +62,14 @@ export function MessageBubble({
       </View>
     );
   }
+
+  const showBlocked = derived.stage === 'BLOCKED';
+  const showFailed =
+    !showBlocked &&
+    (derived.stage === 'UPLOAD_FAILED' || derived.stage === 'SEND_FAILED' || message.status === 'FAILED');
+  const showUploading = !showBlocked && !showFailed && (derived.stage === 'UPLOADING' || derived.stage === 'UPLOAD_PENDING');
+  const showSending = !showBlocked && !showFailed && !showUploading && (derived.stage === 'SENDING' || derived.stage === 'SEND_PENDING');
+
   const mediaUri = message.mediaUrl || message.thumbnailUrl;
   return (
     <Pressable style={[styles.wrap, mine && styles.mineWrap]} onLongPress={onLongPress}>
@@ -75,10 +118,20 @@ export function MessageBubble({
           {message.content || message.mediaName || message.mediaUrl || message.messageType}
         </Text>
       </View>
-      {message.status === 'FAILED' ? (
+      {showFailed ? (
         <Pressable onPress={onRetry}>
-          <Text style={styles.failed}>Failed. Tap to retry.</Text>
+          <Text style={styles.failed}>
+            {derived.localError || 'Failed. Tap to retry.'}
+          </Text>
         </Pressable>
+      ) : showUploading ? (
+        <Text style={styles.status}>
+          {derived.stage === 'UPLOAD_PENDING' ? 'Preparing upload...' : `Uploading ${derived.uploadProgress}%`}
+        </Text>
+      ) : showSending ? (
+        <Text style={styles.status}>Sending...</Text>
+      ) : showBlocked ? (
+        <Text style={styles.failed}>Blocked</Text>
       ) : (
         <Text style={styles.status}>{message.status || ''}</Text>
       )}
