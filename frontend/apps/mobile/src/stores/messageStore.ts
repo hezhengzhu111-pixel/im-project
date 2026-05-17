@@ -489,13 +489,6 @@ export const useMessageStore = create<MessageState>((set, get) => ({
         return;
       }
 
-      // 更新 pending 为 sending 状态
-      pendingMessageRepository.update({
-        ...pending,
-        status: 'sending',
-        lastError: undefined,
-      });
-
       const data = { ...payload.data };
 
       // ─── 阶段 1：上传（仅媒体消息） ───
@@ -616,6 +609,9 @@ export const useMessageStore = create<MessageState>((set, get) => ({
       }
 
       // ─── 阶段 2：发送 ───
+      // 只有真正准备发送时才将 pending 标记为 sending
+      pendingMessageRepository.updateStatus(localId, { status: 'sending', lastError: undefined });
+
       try {
         const response = payload.sendType === 'group'
           ? await messageService.sendGroup(data)

@@ -32,7 +32,10 @@ export function isMediaMessageType(type: MessageType): boolean {
  *  2. PendingMessage.blocked    → BLOCKED
  *  3. UploadTask lifecycle      → UPLOAD_*
  *  4. PendingMessage lifecycle  → SEND_*
- *  5. Local message only        → LOCAL_CREATED
+ *  5. Upload done, no pending   → UPLOAD_DONE
+ *  6. Message FAILED fallback   → SEND_FAILED
+ *  7. Message SENDING fallback  → SENDING
+ *  8. Local message only        → LOCAL_CREATED
  */
 export function deriveSendStage(
   pending?: PendingMessage | null,
@@ -75,7 +78,8 @@ export function deriveSendStage(
         return 'SEND_FAILED';
       case 'sent':
         return 'SENT';
-      case 'blocked':
+      default:
+        // 'blocked' or future statuses
         return 'BLOCKED';
     }
   }
@@ -85,7 +89,17 @@ export function deriveSendStage(
     return 'UPLOAD_DONE';
   }
 
-  // 6. Local message exists with no pending/upload state
+  // 6. Fallback: message has local FAILED status but pending record missing
+  if (message?.status === 'FAILED') {
+    return 'SEND_FAILED';
+  }
+
+  // 7. Fallback: message has local SENDING status but pending not yet persisted
+  if (message?.status === 'SENDING') {
+    return 'SENDING';
+  }
+
+  // 8. Local message exists with no pending/upload state
   if (message) {
     return 'LOCAL_CREATED';
   }

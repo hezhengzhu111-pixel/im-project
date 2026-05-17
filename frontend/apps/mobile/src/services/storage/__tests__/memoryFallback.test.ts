@@ -168,7 +168,7 @@ describe('memory fallback: pendingMessageRepository', () => {
     expect(all[2].localId).toBe('p3');
   });
 
-  test('listReady filters by status and nextRetryAt', () => {
+  test('listReady filters by status (only pending) and nextRetryAt', () => {
     const now = Date.now();
     pendingMessageRepository.enqueue(makePending('ready_1', 1000, 'pending'));
     pendingMessageRepository.enqueue(makePending('ready_2', 2000, 'sending'));
@@ -179,7 +179,7 @@ describe('memory fallback: pendingMessageRepository', () => {
     });
 
     const ready = pendingMessageRepository.listReady(now);
-    expect(ready.map((r) => r.localId)).toEqual(['ready_1', 'ready_2']);
+    expect(ready.map((r) => r.localId)).toEqual(['ready_1']);
   });
 
   test('get retrieves item by localId', () => {
@@ -221,17 +221,16 @@ describe('memory fallback: uploadTaskRepository', () => {
     uploadTaskRepository.clear();
   });
 
-  test('listPending returns only pending/failed/uploading tasks sorted by createdAt ASC', () => {
+  test('listPending returns only pending/failed tasks (excludes uploading), sorted by createdAt ASC', () => {
     uploadTaskRepository.upsert(makeUploadTask('up3', 3000, 'pending'));
     uploadTaskRepository.upsert(makeUploadTask('up1', 1000, 'failed'));
     uploadTaskRepository.upsert(makeUploadTask('up2', 2000, 'uploading'));
     uploadTaskRepository.upsert(makeUploadTask('up4', 400, 'uploaded'));
 
     const pending = uploadTaskRepository.listPending();
-    expect(pending).toHaveLength(3);
+    expect(pending).toHaveLength(2);
     expect(pending[0].taskId).toBe('up1');
-    expect(pending[1].taskId).toBe('up2');
-    expect(pending[2].taskId).toBe('up3');
+    expect(pending[1].taskId).toBe('up3');
   });
 
   test('get retrieves task by taskId', () => {

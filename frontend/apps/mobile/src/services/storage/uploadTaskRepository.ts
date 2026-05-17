@@ -86,7 +86,7 @@ export const uploadTaskRepository = {
       ? messageDatabase
           .memoryList('mobile_upload_tasks')
           .filter((row) => {
-            if (!['pending', 'failed', 'uploading'].includes(String(row.status || ''))) {
+            if (!['pending', 'failed'].includes(String(row.status || ''))) {
               return false;
             }
             // Skip tasks with nextRetryAt in the future
@@ -99,11 +99,20 @@ export const uploadTaskRepository = {
           .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0))
       : messageDatabase.query(
           `SELECT * FROM mobile_upload_tasks
-           WHERE status IN ('pending', 'failed', 'uploading')
+           WHERE status IN ('pending', 'failed')
              AND (nextRetryAt IS NULL OR nextRetryAt <= ?)
            ORDER BY createdAt ASC`,
           [now],
         );
+    return rows.map(normalize);
+  },
+
+  listAll(): UploadTask[] {
+    const rows = messageDatabase.isMemoryFallback()
+      ? messageDatabase
+          .memoryList('mobile_upload_tasks')
+          .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0))
+      : messageDatabase.query('SELECT * FROM mobile_upload_tasks ORDER BY createdAt ASC');
     return rows.map(normalize);
   },
 

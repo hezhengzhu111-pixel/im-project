@@ -210,12 +210,13 @@ describe('seedHelpers', () => {
     expect(a.clientMessageId).not.toBe(b.clientMessageId);
   });
 
-  it('seedPendingMessage with listReady should respect status filter', () => {
+  it('seedPendingMessage with listReady should respect status filter (only pending)', () => {
     seedPendingMessage({ status: 'pending' });
     seedPendingMessage({ status: 'failed' });
     seedPendingMessage({ status: 'sending' });
     const ready = pendingMessageRepository.listReady();
-    expect(ready).toHaveLength(2);
+    // listReady now only returns 'pending' (excludes 'sending')
+    expect(ready).toHaveLength(1);
   });
 
   it('seedUploadTask should be readable by repository', () => {

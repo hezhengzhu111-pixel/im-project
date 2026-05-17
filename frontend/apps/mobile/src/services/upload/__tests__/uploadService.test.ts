@@ -313,6 +313,33 @@ describe('uploadService', () => {
       expect(mockFileService.upload).toHaveBeenCalledTimes(2);
     });
 
+    it('should not upload uploading tasks (excluded by listPending)', async () => {
+      // listPending now excludes 'uploading', so uploading tasks never reach retryPendingUploads
+      mockRepository.listPending.mockReturnValue([
+        {
+          taskId: 'pending-task',
+          fileUri: 'file://test.jpg',
+          fileName: 'test.jpg',
+          uploadType: 'IMAGE',
+          status: 'pending',
+          progress: 0,
+          retryCount: 0,
+          maxRetryCount: 5,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ]);
+
+      mockFileService.upload.mockResolvedValue({
+        data: { url: 'https://cdn.test/uploaded.jpg' },
+      });
+
+      await uploadService.retryPendingUploads();
+
+      // Only the pending task should be processed
+      expect(mockFileService.upload).toHaveBeenCalledTimes(1);
+    });
+
     it('should skip tasks with nextRetryAt in the future', async () => {
       const futureTime = Date.now() + 100000;
       mockRepository.listPending.mockReturnValue([

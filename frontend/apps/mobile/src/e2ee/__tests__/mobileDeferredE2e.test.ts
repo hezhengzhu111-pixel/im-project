@@ -417,6 +417,9 @@ describe('Mobile E2EE Deferred Full-Chain (E4/E5/E7/E8/E24–E27/E31–E33)', ()
     pr.listReady.mockReturnValue([]);
     pr.get.mockReturnValue(undefined);
     pr.findByClientMessageId.mockReturnValue(undefined);
+    if (!pr.updateStatus) {
+      (pr as Record<string, unknown>).updateStatus = jest.fn();
+    }
     ms.sendPrivate.mockReset();
     ms.sendGroup.mockReset();
     ms.getPrivateHistory.mockReset();
@@ -1015,7 +1018,7 @@ describe('Mobile E2EE Deferred Full-Chain (E4/E5/E7/E8/E24–E27/E31–E33)', ()
         { localId: 'local_plain_fg' },
       );
 
-      pr.listReady.mockReturnValue([encrypted, plaintext]);
+      pr.listReadyToSend.mockReturnValue([encrypted, plaintext]);
       pr.get.mockImplementation((id: string) => {
         if (id === 'local_e2e_deferred') return encrypted;
         if (id === 'local_plain_fg') return plaintext;

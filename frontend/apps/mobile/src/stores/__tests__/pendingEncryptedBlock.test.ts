@@ -79,6 +79,9 @@ describe('pendingEncryptedBlock — E24.3 / E25.3 / E5.4', () => {
     jest.clearAllMocks();
     pr.listReady.mockReturnValue([]);
     pr.findByClientMessageId.mockReturnValue(undefined);
+    if (!pr.updateStatus) {
+      (pr as Record<string, unknown>).updateStatus = jest.fn();
+    }
   });
 
   // ── 1. Top-level encrypted payload is blocked ──────────────────────────
@@ -195,7 +198,7 @@ describe('pendingEncryptedBlock — E24.3 / E25.3 / E5.4', () => {
     const plaintext = makePending(plaintextPayload, { localId: 'plain_1' });
     const encrypted = makePending(encryptedTopLevelPayload, { localId: 'enc_1' });
 
-    pr.listReady.mockReturnValue([plaintext, encrypted]);
+    pr.listReadyToSend.mockReturnValue([plaintext, encrypted]);
     pr.get.mockImplementation((id: string) => {
       if (id === 'plain_1') return plaintext;
       if (id === 'enc_1') return encrypted;
