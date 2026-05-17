@@ -1,7 +1,7 @@
 import React from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, typography } from '@/app/theme';
+import { colors, radius, spacing, typography } from '@/app/theme';
 import { OfflineBanner } from './StateViews';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
@@ -12,6 +12,7 @@ export function Screen({
   refreshing = false,
   onRefresh,
   right,
+  onBack,
 }: {
   title: string;
   children: React.ReactNode;
@@ -19,13 +20,21 @@ export function Screen({
   refreshing?: boolean;
   onRefresh?: () => void;
   right?: React.ReactNode;
+  onBack?: () => void;
 }) {
   const online = useOnlineStatus();
   const content = (
     <>
       <View style={styles.header}>
-        <Text style={styles.title}>{title}</Text>
-        {right}
+        <View style={styles.headerSide}>
+          {onBack ? (
+            <Pressable accessibilityRole="button" style={({ pressed }) => [styles.navButton, pressed ? styles.navButtonPressed : null]} onPress={onBack}>
+              <Text style={styles.navButtonText}>‹</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        <Text numberOfLines={1} style={styles.title}>{title}</Text>
+        <View style={[styles.headerSide, styles.headerRight]}>{right}</View>
       </View>
       <OfflineBanner visible={!online} />
       {children}
@@ -33,12 +42,13 @@ export function Screen({
   );
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       {scroll ? (
         <ScrollView
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
-          refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined}
+          refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} /> : undefined}
+          showsVerticalScrollIndicator={false}
         >
           {content}
         </ScrollView>
@@ -59,6 +69,7 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flexGrow: 1,
+    paddingBottom: spacing.xl,
   },
   header: {
     alignItems: 'center',
@@ -66,13 +77,39 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
+    height: 52,
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  headerSide: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    minWidth: 56,
+  },
+  headerRight: {
+    justifyContent: 'flex-end',
   },
   title: {
     color: colors.text,
+    flex: 1,
     fontSize: typography.subtitle,
     fontWeight: '800',
+    textAlign: 'center',
+  },
+  navButton: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  navButtonPressed: {
+    backgroundColor: colors.surfaceAlt,
+  },
+  navButtonText: {
+    color: colors.text,
+    fontSize: 32,
+    fontWeight: '400',
+    lineHeight: 34,
   },
 });
