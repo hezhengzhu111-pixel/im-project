@@ -1,7 +1,8 @@
 import React from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography } from '@/app/theme';
+import { colors, radius, spacing, typography } from '@/app/theme';
 import { mediaService } from '@/services/media/mediaService';
+import { resolveMediaUri } from '@/services/media/mediaUri';
 import type { MobileMessage } from '@/types/models';
 
 interface VoiceBubbleProps {
@@ -9,20 +10,21 @@ interface VoiceBubbleProps {
   mine: boolean;
 }
 
-/**
- * Voice message bubble with play/stop toggle.
- *
- * Playback-completion strategy: NitroSound.startPlayer returns void (no completion callback),
- * so we use a duration-based timer as fallback. duration is assumed to be in seconds.
- */
+const normalizeDuration = (duration?: number) => {
+  if (duration == null || duration <= 0) return 0;
+  return duration > 300 ? Math.max(1, Math.round(duration / 1000)) : Math.round(duration);
+};
+
+const waveBars = [8, 13, 18, 13, 8];
+
 export function VoiceBubble({ message, mine }: VoiceBubbleProps) {
   const [playing, setPlaying] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const mediaUri = message.mediaUrl || message.thumbnailUrl;
-  // duration 约定为秒
-  const durationSec = message.duration;
+  const rawUri = message.mediaUrl || message.thumbnailUrl || message.content || '';
+  const mediaUri = resolveMediaUri(rawUri, 'VOICE');
+  const durationSec = normalizeDuration(message.duration);
+  const width = Math.min(210, Math.max(96, 76 + durationSec * 6));
 
   const clearTimer = React.useCallback(() => {
     if (timerRef.current != null) {
@@ -36,17 +38,12 @@ export function VoiceBubble({ message, mine }: VoiceBubbleProps) {
     try {
       mediaService.stopAudio();
     } catch {
-      /* ignore stop errors */
+      // ignore stop errors
     }
     setPlaying(false);
   }, [clearTimer]);
 
-  // unmount 时清理 timer
-  React.useEffect(() => {
-    return () => {
-      clearTimer();
-    };
-  }, [clearTimer]);
+  React.useEffect(() => () => clearTimer(), [clearTimer]);
 
   const handleToggle = React.useCallback(() => {
     if (playing) {
@@ -54,99 +51,130 @@ export function VoiceBubble({ message, mine }: VoiceBubbleProps) {
       return;
     }
 
-    if (!mediaUri) {
-      return;
-    }
+    if (!mediaUri) return;
 
-    setError(null);
     try {
       const result = mediaService.playAudio(mediaUri);
       const handleSuccess = () => {
         setPlaying(true);
-        // duration-based fallback：播放自然结束后恢复为 Play
-        if (durationSec != null && durationSec > 0) {
-          // 如果 duration 是毫秒级（> 300 视为毫秒），兼容两种情况
-          const timeoutMs = durationSec > 300 ? durationSec : durationSec * 1000;
+        if (durationSec > 0) {
           timerRef.current = setTimeout(() => {
             setPlaying(false);
             timerRef.current = null;
-          }, timeoutMs);
+          }, durationSec * 1000);
         }
       };
       if (result && typeof (result as unknown as Record<string, unknown>).then === 'function') {
         (result as unknown as Promise<void>).then(
-          () => handleSuccess(),
+          handleSuccess,
           (e: unknown) => {
-            const msg = e instanceof Error ? e.message : '播放失败';
-            setError(msg);
-            Alert.alert('播放失败', msg);
+            Alert.alert('播放失败', e instanceof Error ? e.message : '语音文件暂时无法播放');
           },
         );
       } else {
         handleSuccess();
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : '播放失败';
-      setError(msg);
-      Alert.alert('播放失败', msg);
+      Alert.alert('播放失败', e instanceof Error ? e.message : '语音文件暂时无法播放');
     }
-  }, [playing, mediaUri, durationSec, stopPlayback]);
+  }, [durationSec, mediaUri, playing, stopPlayback]);
 
   return (
     <Pressable
-      onPress={handleToggle}
-      style={styles.container}
       accessibilityLabel={playing ? '停止语音' : '播放语音'}
+      style={[styles.voice, mine ? styles.voiceMine : styles.voiceOther, { width }]}
+      onPress={handleToggle}
     >
-      <View style={styles.row}>
-        <Text style={[styles.icon, mine && styles.mineText]}>
-          {playing ? '⏹' : '🔊'}
-        </Text>
-        <Text style={[styles.label, mine && styles.mineText]}>
-          {playing ? '停止' : '播放语音'}
-        </Text>
-        {durationSec != null && durationSec > 0 ? (
-          <Text style={[styles.duration, mine && styles.mineText]}>
-            {Math.round(durationSec)}″
-          </Text>
-        ) : null}
+      {!mine ? <View style={styles.tailLeft} /> : <View style={styles.tailRight} />}
+      <View style={styles.iconWrap}>
+        <Text style={[styles.playIcon, mine ? styles.mineText : null]}>{playing ? '■' : '▶'}</Text>
       </View>
-      {error ? (
-        <Text style={[styles.errorText, mine && styles.mineText]}>
-          {error}
-        </Text>
-      ) : null}
+      <View style={styles.wave}>
+        {waveBars.map((height, index) => (
+          <View
+            key={`${height}-${index}`}
+            style={[
+              styles.waveBar,
+              { height },
+              mine ? styles.waveBarMine : null,
+              playing && index % 2 === 0 ? styles.waveBarActive : null,
+            ]}
+          />
+        ))}
+      </View>
+      <Text style={[styles.duration, mine ? styles.mineText : null]}>{durationSec > 0 ? `${durationSec}″` : ''}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    marginBottom: spacing.sm,
-  },
-  row: {
-    flexDirection: 'row',
+  voice: {
     alignItems: 'center',
+    borderRadius: radius.lg,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minHeight: 42,
+    paddingHorizontal: spacing.md,
+    position: 'relative',
   },
-  icon: {
-    fontSize: 16,
-    marginRight: spacing.xs,
+  voiceOther: {
+    backgroundColor: colors.surface,
   },
-  label: {
+  voiceMine: {
+    backgroundColor: colors.primary,
+  },
+  tailLeft: {
+    backgroundColor: colors.surface,
+    height: 10,
+    left: -3,
+    position: 'absolute',
+    top: 14,
+    transform: [{ rotate: '45deg' }],
+    width: 10,
+  },
+  tailRight: {
+    backgroundColor: colors.primary,
+    height: 10,
+    position: 'absolute',
+    right: -3,
+    top: 14,
+    transform: [{ rotate: '45deg' }],
+    width: 10,
+  },
+  iconWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 16,
+  },
+  playIcon: {
     color: colors.primary,
-    fontSize: typography.body,
-    fontWeight: '700',
+    fontSize: typography.small,
+    fontWeight: '900',
+  },
+  wave: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: 3,
+  },
+  waveBar: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.pill,
+    opacity: 0.45,
+    width: 3,
+  },
+  waveBarMine: {
+    backgroundColor: '#FFFFFF',
+  },
+  waveBarActive: {
+    opacity: 1,
   },
   duration: {
-    color: colors.primary,
-    fontSize: typography.tiny,
-    marginLeft: spacing.sm,
-    opacity: 0.7,
-  },
-  errorText: {
-    color: colors.danger,
-    fontSize: typography.tiny,
-    marginTop: spacing.xs,
+    color: colors.muted,
+    fontSize: typography.small,
+    fontWeight: '700',
+    minWidth: 24,
+    textAlign: 'right',
   },
   mineText: {
     color: '#FFFFFF',
