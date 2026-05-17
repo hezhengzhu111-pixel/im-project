@@ -15,7 +15,7 @@ const sanitizeName = (value: string) =>
 const cachePathFor = (uri: string, fallbackExtension: string) => {
   const extension = mediaExtensionFromUri(uri) || fallbackExtension;
   const key = sanitizeName(uri) || `media_${Date.now()}`;
-  return `${ReactNativeBlobUtil.fs.dirs.CacheDir}/im_media_${key}.${extension}`;
+  return `${ReactNativeBlobUtil.fs.dirs.CacheDir}/im_media_v3_${key}.${extension}`;
 };
 
 const fileExists = async (path: string) => {
