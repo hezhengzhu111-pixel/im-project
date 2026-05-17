@@ -254,7 +254,7 @@ export function ChatScreen() {
               message={item}
               mine={item.senderId === currentUser?.id}
               onRetry={() => {
-                void retryMessage(item.id);
+                void retryMessage(item.id, { force: true });
               }}
               onLongPress={() => Alert.alert('Message', item.content || item.mediaName || item.messageType)}
             />

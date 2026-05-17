@@ -199,7 +199,7 @@ describe('pendingMessageRepository', () => {
   });
 
   describe('listReady', () => {
-    it('returns only pending and sending status messages', () => {
+    it('returns only pending status messages, excludes sending/sent/failed', () => {
       fake.seedTable('mobile_pending_messages', [
         { localId: 'local-1', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 0, createdAt: 1000, updatedAt: 1000 },
         { localId: 'local-2', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'sending', retryCount: 0, createdAt: 2000, updatedAt: 2000 },
@@ -209,9 +209,11 @@ describe('pendingMessageRepository', () => {
 
       const ready = pendingMessageRepository.listReady(5000);
 
-      expect(ready).toHaveLength(2);
+      expect(ready).toHaveLength(1);
       expect(ready.map((m) => m.localId)).toContain('local-1');
-      expect(ready.map((m) => m.localId)).toContain('local-2');
+      expect(ready.map((m) => m.localId)).not.toContain('local-2');
+      expect(ready.map((m) => m.localId)).not.toContain('local-3');
+      expect(ready.map((m) => m.localId)).not.toContain('local-4');
     });
 
     it('excludes messages with nextRetryAt in the future', () => {
@@ -369,6 +371,45 @@ describe('pendingMessageRepository', () => {
   });
 
   describe('listReadyToSend', () => {
+    it('does NOT return sending status', () => {
+      fake.seedTable('mobile_pending_messages', [
+        { localId: 'local-1', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 0, createdAt: 1000, updatedAt: 1000, nextRetryAt: null },
+        { localId: 'local-2', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'sending', retryCount: 0, createdAt: 2000, updatedAt: 2000, nextRetryAt: null },
+      ]);
+
+      const ready = pendingMessageRepository.listReadyToSend(5000);
+
+      expect(ready).toHaveLength(1);
+      expect(ready[0].localId).toBe('local-1');
+      expect(ready.map((m) => m.localId)).not.toContain('local-2');
+    });
+
+    it('returns pending with nextRetryAt expired', () => {
+      fake.seedTable('mobile_pending_messages', [
+        { localId: 'local-1', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 1, createdAt: 1000, updatedAt: 1000, nextRetryAt: 4000 },
+        { localId: 'local-2', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 2, createdAt: 2000, updatedAt: 2000, nextRetryAt: 5000 },
+      ]);
+
+      const ready = pendingMessageRepository.listReadyToSend(5000);
+
+      expect(ready).toHaveLength(2);
+      expect(ready.map((m) => m.localId)).toContain('local-1');
+      expect(ready.map((m) => m.localId)).toContain('local-2');
+    });
+
+    it('does NOT return pending with future nextRetryAt', () => {
+      fake.seedTable('mobile_pending_messages', [
+        { localId: 'local-1', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 1, createdAt: 1000, updatedAt: 1000, nextRetryAt: 4000 },
+        { localId: 'local-2', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 2, createdAt: 2000, updatedAt: 2000, nextRetryAt: 9999 },
+      ]);
+
+      const ready = pendingMessageRepository.listReadyToSend(5000);
+
+      expect(ready).toHaveLength(1);
+      expect(ready[0].localId).toBe('local-1');
+      expect(ready.map((m) => m.localId)).not.toContain('local-2');
+    });
+
     it('excludes messages with nextRetryAt in the future', () => {
       fake.seedTable('mobile_pending_messages', [
         { localId: 'local-1', conversationId: 'conv-1', sendType: 'private', payloadJson: '{}', clientMessageId: null, status: 'pending', retryCount: 0, createdAt: 1000, updatedAt: 1000, nextRetryAt: null },
@@ -486,7 +527,7 @@ describe('pendingMessageRepository', () => {
   });
 
   describe('memory fallback consistency', () => {
-    it('listReadyToSend works identically with memory fallback', () => {
+    it('listReadyToSend excludes sending in memory fallback mode', () => {
       __resetForTests();
       __setDbForTests(null);
 
@@ -496,9 +537,10 @@ describe('pendingMessageRepository', () => {
 
       const ready = pendingMessageRepository.listReadyToSend(5000);
 
-      expect(ready).toHaveLength(2);
+      expect(ready).toHaveLength(1);
       expect(ready.map((m) => m.localId)).toContain('mem-1');
-      expect(ready.map((m) => m.localId)).toContain('mem-2');
+      expect(ready.map((m) => m.localId)).not.toContain('mem-2');
+      expect(ready.map((m) => m.localId)).not.toContain('mem-3');
     });
 
     it('nextRetryAt=0 is preserved through normalize in memory mode', () => {

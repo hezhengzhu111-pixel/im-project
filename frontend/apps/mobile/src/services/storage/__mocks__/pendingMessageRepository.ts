@@ -6,5 +6,7 @@ export const pendingMessageRepository = {
   removeByClientMessageId: jest.fn(),
   findByClientMessageId: jest.fn(),
   listReady: jest.fn(() => []),
+  listReadyToSend: jest.fn(() => []),
+  listAll: jest.fn(() => []),
   clear: jest.fn(),
 };

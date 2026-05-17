@@ -62,7 +62,7 @@ export const pendingMessageRepository = {
 
   listReadyToSend(now = Date.now()): PendingMessage[] {
     return this.listAll().filter(
-      (item) => ['pending', 'sending'].includes(item.status) && (item.nextRetryAt ?? 0) <= now,
+      (item) => item.status === 'pending' && (item.nextRetryAt ?? 0) <= now,
     );
   },
 

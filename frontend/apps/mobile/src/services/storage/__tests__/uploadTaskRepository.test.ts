@@ -186,7 +186,7 @@ describe('uploadTaskRepository with FakeDbConnection', () => {
   });
 
   describe('listPending', () => {
-    it('returns tasks with status pending, failed, or uploading; excludes uploaded', () => {
+    it('returns tasks with status pending and failed; excludes uploading and uploaded', () => {
       fake.seedTable('mobile_upload_tasks', [
         { taskId: 'task-1', conversationId: 'conv-1', localMessageId: 'msg-1', fileUri: 'file:///test.jpg', fileName: 'test.jpg', mimeType: 'image/jpeg', fileSize: 1024, uploadType: 'IMAGE', status: 'pending', progress: 0, retryCount: 0, createdAt: 1000, updatedAt: 1000, nextRetryAt: null, maxRetryCount: null, checksum: null, remoteFileId: null, lastAttemptAt: null },
         { taskId: 'task-2', conversationId: 'conv-1', localMessageId: 'msg-2', fileUri: 'file:///test.jpg', fileName: 'test.jpg', mimeType: 'image/jpeg', fileSize: 1024, uploadType: 'IMAGE', status: 'failed', progress: 0, retryCount: 1, createdAt: 2000, updatedAt: 2000, nextRetryAt: null, maxRetryCount: null, checksum: null, remoteFileId: null, lastAttemptAt: null },
@@ -196,10 +196,10 @@ describe('uploadTaskRepository with FakeDbConnection', () => {
 
       const pending = uploadTaskRepository.listPending();
 
-      expect(pending).toHaveLength(3);
+      expect(pending).toHaveLength(2);
       expect(pending.map((t) => t.taskId)).toContain('task-1');
       expect(pending.map((t) => t.taskId)).toContain('task-2');
-      expect(pending.map((t) => t.taskId)).toContain('task-3');
+      expect(pending.map((t) => t.taskId)).not.toContain('task-3');
       expect(pending.map((t) => t.taskId)).not.toContain('task-4');
     });
 
@@ -242,6 +242,52 @@ describe('uploadTaskRepository with FakeDbConnection', () => {
       expect(pending[0].taskId).toBe('task-1');
       expect(pending[1].taskId).toBe('task-2');
       expect(pending[2].taskId).toBe('task-3');
+    });
+
+    it('does NOT return uploading tasks', () => {
+      fake.seedTable('mobile_upload_tasks', [
+        { taskId: 'task-uploading', conversationId: 'conv-1', localMessageId: 'msg-1', fileUri: 'file:///test.jpg', fileName: 'test.jpg', mimeType: 'image/jpeg', fileSize: 1024, uploadType: 'IMAGE', status: 'uploading', progress: 50, retryCount: 0, createdAt: 1000, updatedAt: Date.now(), nextRetryAt: null, maxRetryCount: null, checksum: null, remoteFileId: null, lastAttemptAt: null },
+      ]);
+
+      const pending = uploadTaskRepository.listPending();
+
+      expect(pending).toHaveLength(0);
+    });
+
+    it('returns pending tasks', () => {
+      fake.seedTable('mobile_upload_tasks', [
+        { taskId: 'task-pending', conversationId: 'conv-1', localMessageId: 'msg-1', fileUri: 'file:///test.jpg', fileName: 'test.jpg', mimeType: 'image/jpeg', fileSize: 1024, uploadType: 'IMAGE', status: 'pending', progress: 0, retryCount: 0, createdAt: 1000, updatedAt: Date.now(), nextRetryAt: null, maxRetryCount: null, checksum: null, remoteFileId: null, lastAttemptAt: null },
+      ]);
+
+      const pending = uploadTaskRepository.listPending();
+
+      expect(pending).toHaveLength(1);
+      expect(pending[0].taskId).toBe('task-pending');
+      expect(pending[0].status).toBe('pending');
+    });
+
+    it('returns failed tasks with nextRetryAt expired', () => {
+      const pastTime = Date.now() - 1000;
+      fake.seedTable('mobile_upload_tasks', [
+        { taskId: 'task-failed', conversationId: 'conv-1', localMessageId: 'msg-1', fileUri: 'file:///test.jpg', fileName: 'test.jpg', mimeType: 'image/jpeg', fileSize: 1024, uploadType: 'IMAGE', status: 'failed', progress: 0, retryCount: 1, createdAt: 1000, updatedAt: Date.now(), nextRetryAt: pastTime, maxRetryCount: null, checksum: null, remoteFileId: null, lastAttemptAt: null },
+      ]);
+
+      const pending = uploadTaskRepository.listPending();
+
+      expect(pending).toHaveLength(1);
+      expect(pending[0].taskId).toBe('task-failed');
+      expect(pending[0].status).toBe('failed');
+    });
+
+    it('does NOT return failed tasks with future nextRetryAt', () => {
+      const futureTime = Date.now() + 60000;
+      fake.seedTable('mobile_upload_tasks', [
+        { taskId: 'task-future', conversationId: 'conv-1', localMessageId: 'msg-1', fileUri: 'file:///test.jpg', fileName: 'test.jpg', mimeType: 'image/jpeg', fileSize: 1024, uploadType: 'IMAGE', status: 'failed', progress: 0, retryCount: 1, createdAt: 1000, updatedAt: Date.now(), nextRetryAt: futureTime, maxRetryCount: null, checksum: null, remoteFileId: null, lastAttemptAt: null },
+      ]);
+
+      const pending = uploadTaskRepository.listPending();
+
+      expect(pending).toHaveLength(0);
     });
 
     it('returns empty array when no pending tasks', () => {

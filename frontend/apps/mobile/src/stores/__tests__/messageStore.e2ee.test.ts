@@ -118,7 +118,12 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
     mr.listMessagesPage.mockReturnValue({ messages: [], hasMore: false });
     mr.listSessions.mockReturnValue([]);
     pr.listReady.mockReturnValue([]);
+    pr.listReadyToSend.mockReturnValue([]);
     pr.findByClientMessageId.mockReturnValue(undefined);
+    // Ensure updateStatus is available (auto-mock may not discover all methods)
+    if (!pr.updateStatus) {
+      (pr as Record<string, unknown>).updateStatus = jest.fn();
+    }
   });
 
   // ── 1. sendText on encrypted session must throw, not call sendPrivate ──
@@ -415,7 +420,7 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
         { localId: 'local_enc' },
       );
 
-      pr.listReady.mockReturnValue([plainPending, encPending]);
+      pr.listReadyToSend.mockReturnValue([plainPending, encPending]);
       pr.get.mockImplementation((id: string) => {
         if (id === 'local_plain') return plainPending;
         if (id === 'local_enc') return encPending;

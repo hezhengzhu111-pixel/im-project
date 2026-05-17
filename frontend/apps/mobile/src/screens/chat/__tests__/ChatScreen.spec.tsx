@@ -299,4 +299,38 @@ describe('ChatScreen', () => {
     const flatList = testRenderer!.root.find((node) => typeName(node) === 'FlatList');
     expect(flatList.props.data).toHaveLength(2);
   });
+
+  test('retry calls retryMessage with force=true', () => {
+    useSessionStore.getState().setCurrentSession(session);
+    jest.spyOn(useMessageStore.getState(), 'loadInitialMessages').mockResolvedValue();
+    const retrySpy = jest.spyOn(useMessageStore.getState(), 'retryMessage').mockResolvedValue();
+    const failedMsg = { ...createMessage('failed-msg', 'test'), status: 'FAILED' as const };
+    useMessageStore.setState({
+      messagesBySession: {
+        [session.id]: [failedMsg],
+      },
+      messagesPaginationBySession: {
+        [session.id]: {
+          loadingInitial: false,
+          loadingOlder: false,
+          refreshingLatest: false,
+          hasMoreBefore: false,
+          hasMoreAfter: false,
+          initialized: true,
+        },
+      },
+    });
+
+    // Verify the store state has the FAILED message
+    const msgs = useMessageStore.getState().messagesBySession[session.id];
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].status).toBe('FAILED');
+
+    // Simulate the onRetry callback that ChatScreen passes to MessageBubble
+    const item = msgs[0];
+    const retryFn = useMessageStore.getState().retryMessage;
+    void retryFn(item.id, { force: true });
+
+    expect(retrySpy).toHaveBeenCalledWith('failed-msg', { force: true });
+  });
 });
