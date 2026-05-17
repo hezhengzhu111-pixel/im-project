@@ -63,6 +63,14 @@ const findTextContent = (root: renderer.ReactTestInstance, text: string): render
   }
 };
 
+let mountedTrees: renderer.ReactTestRenderer[] = [];
+
+const renderChatScreen = (): renderer.ReactTestRenderer => {
+  const tree = renderer.create(<ChatScreen />);
+  mountedTrees.push(tree);
+  return tree;
+};
+
 let mockRouteParams: Record<string, string> = {};
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: jest.fn(), goBack: jest.fn(), setOptions: jest.fn() }),
@@ -76,6 +84,11 @@ jest.mock('@react-navigation/native', () => ({
 describe('ChatScreen', () => {
   beforeEach(() => {
     jest.restoreAllMocks();
+    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
+      callback(Date.now());
+      return 0;
+    });
+    jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => undefined);
     jest.spyOn(pushDeviceService, 'registerDevice').mockResolvedValue({ deviceId: 'device', registered: true });
     jest.spyOn(pushDeviceService, 'unregisterDevice').mockResolvedValue(true);
     jest.spyOn(pushDeviceService, 'updateDeviceToken').mockResolvedValue({ updated: true });
@@ -116,37 +129,46 @@ describe('ChatScreen', () => {
     mockRouteParams = {};
   });
 
+  afterEach(() => {
+    renderer.act(() => {
+      mountedTrees.forEach((tree) => {
+        tree.unmount();
+      });
+      mountedTrees = [];
+    });
+  });
+
   test('calls loadInitialMessages when session is present', () => {
     useSessionStore.getState().setCurrentSession(session);
     const loadSpy = jest.spyOn(useMessageStore.getState(), 'loadInitialMessages').mockResolvedValue();
 
     renderer.act(() => {
-      renderer.create(<ChatScreen />);
+      renderChatScreen();
     });
 
     expect(loadSpy).toHaveBeenCalledWith(expect.objectContaining({ id: session.id }));
   });
 
-  test('shows Opening conversation when no session but has route params', () => {
+  test('shows opening conversation state when no session but has route params', () => {
     mockRouteParams = { senderId: '2', senderName: 'Bob' };
     jest.spyOn(useChatStore.getState(), 'openSessionFromRoute').mockResolvedValue(true);
 
     let testRenderer: renderer.ReactTestRenderer;
     renderer.act(() => {
-      testRenderer = renderer.create(<ChatScreen />);
+      testRenderer = renderChatScreen();
     });
 
-    const openingText = findTextContent(testRenderer!.root, 'Opening conversation');
+    const openingText = findTextContent(testRenderer!.root, '正在打开会话');
     expect(openingText).not.toBeNull();
   });
 
-  test('shows No active conversation when no session and no route params', () => {
+  test('shows empty conversation state when no session and no route params', () => {
     let testRenderer: renderer.ReactTestRenderer;
     renderer.act(() => {
-      testRenderer = renderer.create(<ChatScreen />);
+      testRenderer = renderChatScreen();
     });
 
-    const noActiveText = findTextContent(testRenderer!.root, 'No active conversation');
+    const noActiveText = findTextContent(testRenderer!.root, '暂无会话');
     expect(noActiveText).not.toBeNull();
   });
 
@@ -169,10 +191,10 @@ describe('ChatScreen', () => {
 
     let testRenderer: renderer.ReactTestRenderer;
     renderer.act(() => {
-      testRenderer = renderer.create(<ChatScreen />);
+      testRenderer = renderChatScreen();
     });
 
-    const loadingText = findTextContent(testRenderer!.root, 'Loading history');
+    const loadingText = findTextContent(testRenderer!.root, '正在加载历史消息');
     expect(loadingText).not.toBeNull();
   });
 
@@ -195,10 +217,10 @@ describe('ChatScreen', () => {
 
     let testRenderer: renderer.ReactTestRenderer;
     renderer.act(() => {
-      testRenderer = renderer.create(<ChatScreen />);
+      testRenderer = renderChatScreen();
     });
 
-    const noMoreText = findTextContent(testRenderer!.root, 'No more history');
+    const noMoreText = findTextContent(testRenderer!.root, '没有更多历史消息');
     expect(noMoreText).not.toBeNull();
   });
 
@@ -222,7 +244,7 @@ describe('ChatScreen', () => {
 
     let testRenderer: renderer.ReactTestRenderer;
     renderer.act(() => {
-      testRenderer = renderer.create(<ChatScreen />);
+      testRenderer = renderChatScreen();
     });
 
     const input = testRenderer!.root.find(
@@ -233,13 +255,13 @@ describe('ChatScreen', () => {
       input.props.onChangeText('test message');
     });
 
-    // The send button has style.send — find Pressable with backgroundColor primary
-    const sendButton = testRenderer!.root.find(
-      (node) => typeName(node) === 'Pressable' && node.props.style?.backgroundColor === '#0E7AFE',
+    const sendButton = testRenderer!.root.findAll((node) => typeName(node) === 'Pressable').find((node) =>
+      node.findAll((child) => typeName(child) === 'Text' && String(child.children?.join('') ?? '') === '发送').length > 0,
     );
+    expect(sendButton).toBeDefined();
 
     await renderer.act(async () => {
-      sendButton.props.onPress();
+      sendButton!.props.onPress();
     });
 
     expect(sendTextSpy).toHaveBeenCalledWith('test message');
@@ -266,12 +288,12 @@ describe('ChatScreen', () => {
 
     let testRenderer: renderer.ReactTestRenderer;
     renderer.act(() => {
-      testRenderer = renderer.create(<ChatScreen />);
+      testRenderer = renderChatScreen();
     });
 
     const input = testRenderer!.root.find((node) => typeName(node) === 'TextInput');
     expect(input.props.editable).toBe(false);
-    expect(input.props.placeholder).toContain('E2EE');
+    expect(input.props.placeholder).toContain('移动端暂不支持加密会话发送');
   });
 
   test('renders messages from store when session is active', () => {
@@ -293,7 +315,7 @@ describe('ChatScreen', () => {
 
     let testRenderer: renderer.ReactTestRenderer;
     renderer.act(() => {
-      testRenderer = renderer.create(<ChatScreen />);
+      testRenderer = renderChatScreen();
     });
 
     const flatList = testRenderer!.root.find((node) => typeName(node) === 'FlatList');

@@ -16,25 +16,25 @@ const formatTime = (time?: string) => {
   if (Number.isNaN(timestamp)) return '';
 
   const diff = Date.now() - timestamp;
-  if (diff < 60_000) return 'Just now';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return date.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' });
+  if (diff < 60_000) return '刚刚';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}小时前`;
+  return date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
 };
 
 const previewMessage = (message?: Message) => {
   if (!message) return '';
   switch (message.messageType) {
     case 'IMAGE':
-      return '[Image]';
+      return '[图片]';
     case 'FILE':
-      return message.mediaName ? `[File] ${message.mediaName}` : '[File]';
+      return message.mediaName ? `[文件] ${message.mediaName}` : '[文件]';
     case 'VOICE':
-      return '[Voice]';
+      return '[语音]';
     case 'VIDEO':
-      return '[Video]';
+      return '[视频]';
     case 'SYSTEM':
-      return message.content || '[System]';
+      return message.content || '[系统消息]';
     default:
       return message.content || '';
   }
@@ -44,14 +44,14 @@ const getAvatarText = (session: ChatSession) =>
   (session.targetName || session.conversationName || session.targetId || '?').slice(0, 1).toUpperCase();
 
 const getSessionName = (session: ChatSession) =>
-  session.targetName || session.conversationName || session.name || session.targetId || 'Unknown';
+  session.targetName || session.conversationName || session.name || session.targetId || '未知会话';
 
 const getSessionPreview = (session: ChatSession, online?: boolean) => {
   const messagePreview = previewMessage(session.lastMessage);
   if (messagePreview) return messagePreview;
-  if (session.type === 'group' && session.memberCount) return `${session.memberCount} members`;
-  if (session.type === 'private' && online) return 'Available now';
-  return 'No recent messages';
+  if (session.type === 'group' && session.memberCount) return `${session.memberCount} 位成员`;
+  if (session.type === 'private' && online) return '当前在线';
+  return '暂无消息';
 };
 
 export function SessionRow({ session, onPress, online = false }: SessionRowProps) {
@@ -64,7 +64,7 @@ export function SessionRow({ session, onPress, online = false }: SessionRowProps
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open conversation with ${name}`}
+      accessibilityLabel={`打开与 ${name} 的会话`}
       style={({ pressed }) => [
         styles.row,
         session.isPinned ? styles.rowPinned : null,
@@ -94,9 +94,9 @@ export function SessionRow({ session, onPress, online = false }: SessionRowProps
               {name}
             </Text>
             <View style={styles.flags}>
-              {session.isPinned ? <Text style={styles.flag}>Pin</Text> : null}
-              {session.isMuted ? <Text style={styles.flagMuted}>Muted</Text> : null}
-              {isAi ? <Text style={styles.aiTag}>AI</Text> : null}
+              {session.isPinned ? <Text style={styles.flag}>置顶</Text> : null}
+              {session.isMuted ? <Text style={styles.flagMuted}>免打扰</Text> : null}
+              {isAi ? <Text style={styles.aiTag}>智能</Text> : null}
             </View>
           </View>
           {time ? <Text style={styles.time}>{time}</Text> : null}
@@ -105,12 +105,12 @@ export function SessionRow({ session, onPress, online = false }: SessionRowProps
         <View style={styles.metaLine}>
           <Text style={[styles.presenceText, online ? styles.presenceTextOnline : null]}>
             {session.type === 'group'
-              ? `${session.memberCount || 0} members`
+              ? `${session.memberCount || 0} 位成员`
               : online
-                ? 'Online'
-                : 'Offline'}
+                ? '在线'
+                : '离线'}
           </Text>
-          {session.encrypted ? <Text style={styles.secureText}>E2EE</Text> : null}
+          {session.encrypted ? <Text style={styles.secureText}>加密</Text> : null}
         </View>
 
         <View style={styles.previewLine}>

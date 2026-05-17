@@ -11,11 +11,11 @@ import type { MomentNotification } from '@im/shared-types';
 function formatRelativeTime(dateStr?: string): string {
   if (!dateStr) return '';
   const diff = Date.now() - new Date(dateStr).getTime();
-  if (diff < 60_000) return 'Just now';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return new Date(dateStr).toLocaleDateString();
+  if (diff < 60_000) return '刚刚';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}小时前`;
+  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}天前`;
+  return new Date(dateStr).toLocaleDateString('zh-CN');
 }
 
 export function MomentsNotificationsScreen() {
@@ -42,14 +42,14 @@ export function MomentsNotificationsScreen() {
 
   const renderContent = () => {
     if (loading) {
-      return <LoadingState label="Loading notifications..." />;
+      return <LoadingState label="正在加载通知..." />;
     }
 
     if (notifications.length === 0) {
       return (
         <EmptyState
-          title="No notifications"
-          subtitle="When someone likes or comments on your moments, you'll see it here"
+          title="暂无通知"
+          subtitle="有人点赞或评论你的动态时，会显示在这里"
         />
       );
     }
@@ -71,8 +71,8 @@ export function MomentsNotificationsScreen() {
               </View>
               <View style={styles.itemBody}>
                 <Text style={styles.itemText}>
-                  <Text style={styles.actorName}>{notif.actorNickname || 'Unknown'}</Text>
-                  {isLike ? ' liked your moment' : ' commented on your moment'}
+                  <Text style={styles.actorName}>{notif.actorNickname || '未知用户'}</Text>
+                  {isLike ? ' 点赞了你的动态' : ' 评论了你的动态'}
                 </Text>
                 {notif.createdAt ? (
                   <Text style={styles.itemTime}>{formatRelativeTime(notif.createdAt)}</Text>
@@ -87,11 +87,11 @@ export function MomentsNotificationsScreen() {
   };
 
   return (
-    <Screen title="Notifications">
+    <Screen title="动态通知">
       {notifications.length > 0 ? (
         <View style={styles.headerActions}>
           <Pressable style={styles.markReadBtn} onPress={handleMarkAllRead}>
-            <Text style={styles.markReadText}>Mark all read</Text>
+            <Text style={styles.markReadText}>全部标为已读</Text>
           </Pressable>
         </View>
       ) : null}

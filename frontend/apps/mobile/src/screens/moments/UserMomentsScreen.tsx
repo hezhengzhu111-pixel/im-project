@@ -11,11 +11,11 @@ import type { MomentsStackParamList } from '@/app/navigation/MomentsNavigator';
 function formatRelativeTime(dateStr?: string): string {
   if (!dateStr) return '';
   const diff = Date.now() - new Date(dateStr).getTime();
-  if (diff < 60_000) return 'Just now';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return new Date(dateStr).toLocaleDateString();
+  if (diff < 60_000) return '刚刚';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}小时前`;
+  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}天前`;
+  return new Date(dateStr).toLocaleDateString('zh-CN');
 }
 
 type UserRouteProp = RouteProp<MomentsStackParamList, 'UserMomentsScreen'>;
@@ -47,7 +47,7 @@ export function UserMomentsScreen() {
           setHasMore(next.length === 20);
         })
         .catch(() => {
-          setError('Failed to load posts');
+          setError('动态加载失败');
         })
         .finally(() => {
           setLoading(false);
@@ -60,7 +60,7 @@ export function UserMomentsScreen() {
     void loadPosts(true);
   }, [userId, loadPosts]);
 
-  const userNickname = posts[0]?.userNickname || userId || 'Unknown';
+  const userNickname = posts[0]?.userNickname || userId || '未知用户';
   const avatarLetter = userNickname.charAt(0).toUpperCase();
 
   const renderHeader = () => (
@@ -70,23 +70,23 @@ export function UserMomentsScreen() {
       </View>
       <View style={styles.profileInfo}>
         <Text style={styles.nickname}>{userNickname}</Text>
-        <Text style={styles.postCount}>{posts.length} moment{posts.length !== 1 ? 's' : ''}</Text>
+        <Text style={styles.postCount}>{posts.length} 条动态</Text>
       </View>
       <View style={styles.comingSoonBadge}>
-        <Text style={styles.comingSoonText}>Profile coming soon</Text>
+        <Text style={styles.comingSoonText}>资料待完善</Text>
       </View>
     </View>
   );
 
   const renderEmpty = () => {
-    if (loading) return <LoadingState label="Loading moments..." />;
-    if (error) return <ErrorState title="Failed to load" message={error} retryLabel="Retry" onRetry={() => { loadPosts(true); }} />;
-    return <EmptyState title="No moments" subtitle="This user hasn't posted anything yet" />;
+    if (loading) return <LoadingState label="正在加载动态..." />;
+    if (error) return <ErrorState title="加载失败" message={error} retryLabel="重试" onRetry={() => { loadPosts(true); }} />;
+    return <EmptyState title="暂无动态" subtitle="这个用户还没有发布内容" />;
   };
 
   const renderFooter = () => {
-    if (loading && posts.length > 0) return <LoadingState label="Loading more..." />;
-    if (!hasMore && posts.length > 0) return <Text style={styles.footerText}>No more moments</Text>;
+    if (loading && posts.length > 0) return <LoadingState label="正在加载更多..." />;
+    if (!hasMore && posts.length > 0) return <Text style={styles.footerText}>没有更多动态</Text>;
     return null;
   };
 
@@ -121,8 +121,8 @@ export function UserMomentsScreen() {
                 </View>
               ) : null}
               <View style={styles.statsRow}>
-                <Text style={styles.statText}>{item.likeCount ?? 0} likes</Text>
-                <Text style={styles.statText}>{item.commentCount ?? 0} comments</Text>
+                <Text style={styles.statText}>{item.likeCount ?? 0} 点赞</Text>
+                <Text style={styles.statText}>{item.commentCount ?? 0} 评论</Text>
               </View>
             </Pressable>
           );
@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
-    borderRadius: 12,
+    borderRadius: 8,
   },
   avatar: {
     width: 56,
@@ -195,7 +195,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
-    borderRadius: 12,
+    borderRadius: 8,
     padding: spacing.lg,
   },
   timeText: {

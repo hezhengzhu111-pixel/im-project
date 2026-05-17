@@ -4,9 +4,9 @@
  * Focused on the UI behaviour when pagination state changes:
  *   - onEndReached triggers loadOlderMessages
  *   - loadingOlder guard prevents duplicate calls
- *   - "New messages" button appears when user is not at bottom
- *   - Loading history indicator
- *   - No more history indicator
+ *   - New-message button appears when user is not at bottom
+ *   - Loading-history indicator
+ *   - No-more-history indicator
  *
  * Uses react-test-renderer, matching the existing ChatScreen.spec.tsx pattern.
  */
@@ -153,7 +153,7 @@ describe('ChatScreen — Phase 3 pagination', () => {
   });
 
   // ── 加载历史指示器 ──────────────────────────────────────────────────────
-  test('shows "Loading history" when loadingOlder is true', () => {
+  test('shows loading history when loadingOlder is true', () => {
     useSessionStore.getState().setCurrentSession(session);
     jest.spyOn(useMessageStore.getState(), 'loadInitialMessages').mockResolvedValue();
     useMessageStore.setState({
@@ -168,12 +168,12 @@ describe('ChatScreen — Phase 3 pagination', () => {
       testRenderer = renderer.create(<ChatScreen />);
     });
 
-    const loadingText = findTextContent(testRenderer!.root, 'Loading history');
+    const loadingText = findTextContent(testRenderer!.root, '正在加载历史消息');
     expect(loadingText).not.toBeNull();
   });
 
   // ── 没有更多历史指示器 ──────────────────────────────────────────────────
-  test('shows "No more history" when hasMoreBefore is false', () => {
+  test('shows no more history when hasMoreBefore is false', () => {
     useSessionStore.getState().setCurrentSession(session);
     jest.spyOn(useMessageStore.getState(), 'loadInitialMessages').mockResolvedValue();
     useMessageStore.setState({
@@ -188,7 +188,7 @@ describe('ChatScreen — Phase 3 pagination', () => {
       testRenderer = renderer.create(<ChatScreen />);
     });
 
-    const noMoreText = findTextContent(testRenderer!.root, 'No more history');
+    const noMoreText = findTextContent(testRenderer!.root, '没有更多历史消息');
     expect(noMoreText).not.toBeNull();
   });
 
@@ -232,7 +232,7 @@ describe('ChatScreen — Phase 3 pagination', () => {
   });
 
   // ── 初始加载时 new messages 按钮不显示 ─────────────────────────────────
-  test('does not show "New messages" button on initial load', () => {
+  test('does not show new-message button on initial load', () => {
     useSessionStore.getState().setCurrentSession(session);
     jest.spyOn(useMessageStore.getState(), 'loadInitialMessages').mockResolvedValue();
     useMessageStore.setState({
@@ -245,12 +245,12 @@ describe('ChatScreen — Phase 3 pagination', () => {
       testRenderer = renderer.create(<ChatScreen />);
     });
 
-    const newMsgButton = findTextContent(testRenderer!.root, 'New messages');
+    const newMsgButton = findTextContent(testRenderer!.root, '新消息');
     expect(newMsgButton).toBeNull();
   });
 
-  // ── hasMoreBefore=true 时不显示 No more history ────────────────────────
-  test('does not show "No more history" when hasMoreBefore is true', () => {
+  // ── hasMoreBefore=true 时不显示没有更多历史消息 ────────────────────────
+  test('does not show no-more-history text when hasMoreBefore is true', () => {
     useSessionStore.getState().setCurrentSession(session);
     jest.spyOn(useMessageStore.getState(), 'loadInitialMessages').mockResolvedValue();
     useMessageStore.setState({
@@ -265,12 +265,12 @@ describe('ChatScreen — Phase 3 pagination', () => {
       testRenderer = renderer.create(<ChatScreen />);
     });
 
-    const noMoreText = findTextContent(testRenderer!.root, 'No more history');
+    const noMoreText = findTextContent(testRenderer!.root, '没有更多历史消息');
     expect(noMoreText).toBeNull();
   });
 
-  // ── loadingOlder=false 时不显示 Loading history ────────────────────────
-  test('does not show "Loading history" when loadingOlder is false', () => {
+  // ── loadingOlder=false 时不显示加载历史消息 ────────────────────────
+  test('does not show loading-history text when loadingOlder is false', () => {
     useSessionStore.getState().setCurrentSession(session);
     jest.spyOn(useMessageStore.getState(), 'loadInitialMessages').mockResolvedValue();
     useMessageStore.setState({
@@ -285,7 +285,7 @@ describe('ChatScreen — Phase 3 pagination', () => {
       testRenderer = renderer.create(<ChatScreen />);
     });
 
-    const loadingText = findTextContent(testRenderer!.root, 'Loading history');
+    const loadingText = findTextContent(testRenderer!.root, '正在加载历史消息');
     expect(loadingText).toBeNull();
   });
 
@@ -296,12 +296,12 @@ describe('ChatScreen — Phase 3 pagination', () => {
       testRenderer = renderer.create(<ChatScreen />);
     });
 
-    const emptyText = findTextContent(testRenderer!.root, 'No active conversation');
+    const emptyText = findTextContent(testRenderer!.root, '暂无会话');
     expect(emptyText).not.toBeNull();
   });
 
-  // ── 有路由参数但无 session 时显示 Opening ──────────────────────────────
-  test('shows "Opening conversation" when route params present but no session', () => {
+  // ── 有路由参数但无 session 时显示打开中 ──────────────────────────────
+  test('shows opening conversation when route params present but no session', () => {
     mockRouteParams = { senderId: '2', senderName: 'Bob' };
     jest.spyOn(useChatStore.getState(), 'openSessionFromRoute').mockResolvedValue(true);
 
@@ -310,7 +310,7 @@ describe('ChatScreen — Phase 3 pagination', () => {
       testRenderer = renderer.create(<ChatScreen />);
     });
 
-    const openingText = findTextContent(testRenderer!.root, 'Opening conversation');
+    const openingText = findTextContent(testRenderer!.root, '正在打开会话');
     expect(openingText).not.toBeNull();
   });
 });

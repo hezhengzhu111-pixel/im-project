@@ -147,8 +147,8 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Failed')).toBe(false);
-      expect(findTextContent(testRenderer!.root, 'Sending')).toBe(false);
+      expect(findTextContent(testRenderer!.root, '发送失败')).toBe(false);
+      expect(findTextContent(testRenderer!.root, '发送中')).toBe(false);
     });
   });
 
@@ -164,7 +164,11 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Sending')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '发送中')).toBe(true);
+
+      renderer.act(() => {
+        testRenderer!.unmount();
+      });
     });
 
     it('shows Sending... when pending.status is sending', () => {
@@ -178,7 +182,11 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Sending')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '发送中')).toBe(true);
+
+      renderer.act(() => {
+        testRenderer!.unmount();
+      });
     });
 
     it('shows Sending... when pending.status is pending (SEND_PENDING stage)', () => {
@@ -192,7 +200,11 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Sending')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '发送中')).toBe(true);
+
+      renderer.act(() => {
+        testRenderer!.unmount();
+      });
     });
 
     it('continues polling to refresh SEND_PENDING → SENT', () => {
@@ -207,7 +219,7 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Sending')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '发送中')).toBe(true);
 
       // Simulate send completion: pending removed, message status becomes SENT
       mockGetPending.mockReturnValue(undefined);
@@ -220,8 +232,8 @@ describe('MessageBubble', () => {
         jest.advanceTimersByTime(600);
       });
 
-      // Should no longer show Sending
-      expect(findTextContent(testRenderer!.root, 'Sending')).toBe(false);
+      // Should no longer show sending state
+      expect(findTextContent(testRenderer!.root, '发送中')).toBe(false);
 
       renderer.act(() => {
         testRenderer!.unmount();
@@ -253,7 +265,7 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Uploading 45%')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '上传中 45%')).toBe(true);
 
       // Cleanup: unmount to stop polling interval
       renderer.act(() => {
@@ -273,7 +285,7 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Preparing upload')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '准备上传')).toBe(true);
 
       renderer.act(() => {
         testRenderer!.unmount();
@@ -293,7 +305,7 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Preparing upload')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '准备上传')).toBe(true);
 
       // Transition to UPLOADING after polling
       mockFindUploadByMsgId.mockReturnValue(upload({ status: 'uploading', progress: 25 }));
@@ -302,7 +314,7 @@ describe('MessageBubble', () => {
         jest.advanceTimersByTime(600);
       });
 
-      expect(findTextContent(testRenderer!.root, 'Uploading 25%')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '上传中 25%')).toBe(true);
 
       renderer.act(() => {
         testRenderer!.unmount();
@@ -321,7 +333,7 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Uploading 30%')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '上传中 30%')).toBe(true);
 
       // Update progress
       mockFindUploadByMsgId.mockReturnValue(upload({ status: 'uploading', progress: 80 }));
@@ -331,7 +343,7 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Uploading 80%')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '上传中 80%')).toBe(true);
 
       renderer.act(() => {
         testRenderer!.unmount();
@@ -367,7 +379,7 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Failed. Tap to retry.')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '发送失败，点按重试')).toBe(true);
     });
 
     it('shows upload error when UPLOAD_FAILED', () => {
@@ -398,12 +410,12 @@ describe('MessageBubble', () => {
         );
       });
 
-      // Find the retry Pressable (the one whose children contain "Failed")
+      // Find the retry Pressable (the one whose children contain the retry text)
       const retryButton = testRenderer!.root.find(
         (node) =>
           node.props.onPress != null &&
           typeName(node) === 'Pressable' &&
-          findTextContent(node, 'Failed'),
+          findTextContent(node, '发送失败'),
       );
 
       renderer.act(() => {
@@ -428,7 +440,7 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Blocked')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '已阻止发送')).toBe(true);
     });
   });
 
@@ -565,7 +577,7 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Sent')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '已发送')).toBe(true);
     });
 
     it('shows Read for own READ message', () => {
@@ -578,7 +590,7 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Read')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '已读')).toBe(true);
     });
 
     it('shows Delivered for own DELIVERED message', () => {
@@ -591,7 +603,7 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Delivered')).toBe(true);
+      expect(findTextContent(testRenderer!.root, '已送达')).toBe(true);
     });
 
     it('does not show Sent/Read/Delivered for other messages', () => {
@@ -604,9 +616,9 @@ describe('MessageBubble', () => {
         );
       });
 
-      expect(findTextContent(testRenderer!.root, 'Sent')).toBe(false);
-      expect(findTextContent(testRenderer!.root, 'Read')).toBe(false);
-      expect(findTextContent(testRenderer!.root, 'Delivered')).toBe(false);
+      expect(findTextContent(testRenderer!.root, '已发送')).toBe(false);
+      expect(findTextContent(testRenderer!.root, '已读')).toBe(false);
+      expect(findTextContent(testRenderer!.root, '已送达')).toBe(false);
     });
   });
 

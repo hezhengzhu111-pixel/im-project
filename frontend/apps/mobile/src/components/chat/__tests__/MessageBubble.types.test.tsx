@@ -137,9 +137,9 @@ describe('MessageBubble message type rendering', () => {
         testRenderer = renderer.create(<MessageBubble message={message} mine={false} />);
       });
 
-      // The AI badge is a <Text>AI</Text> node
+      // The intelligent-reply badge is a <Text>智能</Text> node
       const aiBadgeNodes = testRenderer!.root.findAll(
-        (node) => typeName(node) === 'Text' && (node.children as string[])?.[0] === 'AI',
+        (node) => typeName(node) === 'Text' && (node.children as string[])?.[0] === '智能',
       );
       expect(aiBadgeNodes.length).toBeGreaterThanOrEqual(1);
 
@@ -312,7 +312,7 @@ describe('MessageBubble message type rendering', () => {
         testRenderer = renderer.create(<MessageBubble message={message} mine={false} />);
       });
 
-      expect(findText(testRenderer!.root, 'IMAGE')).toBe(true);
+      expect(findText(testRenderer!.root, '图片')).toBe(true);
     });
   });
 
@@ -373,7 +373,7 @@ describe('MessageBubble message type rendering', () => {
         testRenderer = renderer.create(<MessageBubble message={message} mine={true} />);
       });
 
-      expect(findText(testRenderer!.root, 'Failed. Tap to retry.')).toBe(true);
+      expect(findText(testRenderer!.root, '发送失败，点按重试')).toBe(true);
     });
 
     it('calls onRetry when retry prompt is pressed', () => {
@@ -389,7 +389,7 @@ describe('MessageBubble message type rendering', () => {
         (node) =>
           node.props.onPress != null &&
           typeName(node) === 'Pressable' &&
-          findText(node, 'Failed'),
+          findText(node, '发送失败'),
       );
       renderer.act(() => { retryPressable.props.onPress(); });
 

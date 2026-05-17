@@ -71,7 +71,7 @@ export function ChatScreen() {
       return;
     }
     void openSessionFromRoute(routeParams).catch((error: unknown) => {
-      Alert.alert('Open chat failed', error instanceof Error ? error.message : 'Please try again');
+      Alert.alert('打开会话失败', error instanceof Error ? error.message : '请稍后重试');
     });
   }, [authReady, currentUser?.id, hasTargetRouteParams, openSessionFromRoute, routeKey, routeParams]);
 
@@ -84,8 +84,10 @@ export function ChatScreen() {
 
   // Scroll to bottom on initial load
   useEffect(() => {
+    let frameId: number | null = null;
+
     if (pagination?.initialized && prevMessageCountRef.current === 0 && messages.length > 0) {
-      requestAnimationFrame(() => {
+      frameId = requestAnimationFrame(() => {
         try {
           flatListRef.current?.scrollToEnd({ animated: false });
         } catch {
@@ -94,6 +96,12 @@ export function ChatScreen() {
       });
     }
     prevMessageCountRef.current = messages.length;
+
+    return () => {
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+    };
   }, [pagination?.initialized, messages.length]);
 
   // Track new messages when user is not at bottom
@@ -162,7 +170,7 @@ export function ChatScreen() {
       await sendText(content);
       scrollToBottom();
     } catch (error) {
-      Alert.alert('Send failed', error instanceof Error ? error.message : 'Please try again');
+      Alert.alert('发送失败', error instanceof Error ? error.message : '请稍后重试');
     }
   };
 
@@ -173,7 +181,7 @@ export function ChatScreen() {
         await sendMedia(file, file.type?.startsWith('video/') ? 'VIDEO' : 'IMAGE');
       }
     } catch (error) {
-      Alert.alert('Media failed', error instanceof Error ? error.message : 'Please try again');
+      Alert.alert('发送媒体失败', error instanceof Error ? error.message : '请稍后重试');
     }
   };
 
@@ -184,7 +192,7 @@ export function ChatScreen() {
         await sendMedia(file, 'IMAGE');
       }
     } catch (error) {
-      Alert.alert('Camera failed', error instanceof Error ? error.message : 'Please try again');
+      Alert.alert('拍摄失败', error instanceof Error ? error.message : '请稍后重试');
     }
   };
 
@@ -195,7 +203,7 @@ export function ChatScreen() {
         await sendMedia(file, 'FILE');
       }
     } catch (error) {
-      Alert.alert('File failed', error instanceof Error ? error.message : 'Please try again');
+      Alert.alert('发送文件失败', error instanceof Error ? error.message : '请稍后重试');
     }
   };
 
@@ -215,7 +223,7 @@ export function ChatScreen() {
     } catch (error) {
       setRecording(false);
       setRecordingStartedAt(null);
-      Alert.alert('Voice failed', error instanceof Error ? error.message : 'Please try again');
+      Alert.alert('语音失败', error instanceof Error ? error.message : '请稍后重试');
     }
   };
 
@@ -283,7 +291,7 @@ export function ChatScreen() {
       });
     },
     onReadDetail: (_message: MobileMessage) => {
-      Alert.alert('消息详情', 'Read detail not implemented');
+      Alert.alert('消息详情', '移动端暂未开放已读详情');
     },
   }), [retryMessage, session?.id]);
 
@@ -299,14 +307,14 @@ export function ChatScreen() {
     if (pagination?.loadingOlder) {
       return (
         <View style={styles.headerStatus}>
-          <LoadingState label="Loading history..." />
+          <LoadingState label="正在加载历史消息..." />
         </View>
       );
     }
     if (pagination && !pagination.hasMoreBefore && messages.length > 0) {
       return (
         <View style={styles.headerStatus}>
-          <Text style={styles.noMoreText}>No more history</Text>
+          <Text style={styles.noMoreText}>没有更多历史消息</Text>
         </View>
       );
     }
@@ -315,16 +323,20 @@ export function ChatScreen() {
 
   if (!session) {
     if (hasTargetRouteParams) {
-      return <Screen title="Chat"><LoadingState label="Opening conversation..." /></Screen>;
+      return <Screen title="聊天"><LoadingState label="正在打开会话..." /></Screen>;
     }
-    return <Screen title="Chat"><EmptyState title="No active conversation" /></Screen>;
+    return <Screen title="聊天"><EmptyState title="暂无会话" subtitle="请选择一个联系人或群组开始聊天" /></Screen>;
   }
 
   return (
     <Screen
       title={session.targetName}
       scroll={false}
-      right={<Pressable onPress={() => navigation.navigate('SessionInfoScreen')}><Text>Info</Text></Pressable>}
+      right={
+        <Pressable style={({ pressed }) => [styles.infoButton, pressed ? styles.infoButtonPressed : null]} onPress={() => navigation.navigate('SessionInfoScreen')}>
+          <Text style={styles.infoButtonText}>详情</Text>
+        </Pressable>
+      }
     >
       <E2eeUnsupportedNotice visible={encrypted} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -353,25 +365,26 @@ export function ChatScreen() {
         />
         {showNewMessages ? (
           <Pressable style={styles.newMessagesButton} onPress={scrollToBottom}>
-            <Text style={styles.newMessagesText}>New messages</Text>
+            <Text style={styles.newMessagesText}>新消息</Text>
           </Pressable>
         ) : null}
         <View style={styles.composer}>
-          <Pressable disabled={encrypted} style={styles.tool} onPress={pickAndSend}><Text>+</Text></Pressable>
-          <Pressable disabled={encrypted} style={styles.tool} onPress={takePhoto}><Text>Cam</Text></Pressable>
-          <Pressable disabled={encrypted} style={styles.tool} onPress={pickFile}><Text>File</Text></Pressable>
+          <Pressable disabled={encrypted} style={styles.tool} onPress={pickAndSend}><Text style={styles.toolText}>相册</Text></Pressable>
+          <Pressable disabled={encrypted} style={styles.tool} onPress={takePhoto}><Text style={styles.toolText}>拍摄</Text></Pressable>
+          <Pressable disabled={encrypted} style={styles.tool} onPress={pickFile}><Text style={styles.toolText}>文件</Text></Pressable>
           <Pressable disabled={encrypted} style={styles.tool} onPress={() => { void toggleVoiceRecording(); }}>
-            <Text>{recording ? 'Stop' : 'Voice'}</Text>
+            <Text style={styles.toolText}>{recording ? '停止' : '语音'}</Text>
           </Pressable>
           <TextInput
             editable={!encrypted}
-            placeholder={encrypted ? 'E2EE not supported on mobile' : 'Message'}
+            placeholder={encrypted ? '移动端暂不支持加密会话发送' : '输入消息'}
+            placeholderTextColor={colors.muted}
             style={styles.input}
             value={text}
             onChangeText={setText}
           />
           <Pressable disabled={encrypted || !text.trim()} style={styles.send} onPress={submit}>
-            <Text style={styles.sendText}>Send</Text>
+            <Text style={styles.sendText}>发送</Text>
           </Pressable>
         </View>
       </KeyboardAvoidingView>
@@ -382,6 +395,19 @@ export function ChatScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   list: { padding: spacing.lg },
+  infoButton: {
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  infoButtonPressed: {
+    backgroundColor: colors.surfaceAlt,
+  },
+  infoButtonText: {
+    color: colors.primary,
+    fontSize: typography.small,
+    fontWeight: '700',
+  },
   composer: {
     alignItems: 'center',
     backgroundColor: colors.surface,
@@ -391,13 +417,26 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.md,
   },
-  tool: { padding: spacing.sm },
+  tool: {
+    alignItems: 'center',
+    borderRadius: 8,
+    justifyContent: 'center',
+    minHeight: 36,
+    minWidth: 42,
+    paddingHorizontal: spacing.xs,
+  },
+  toolText: {
+    color: colors.text,
+    fontSize: typography.tiny,
+    fontWeight: '700',
+  },
   input: {
     backgroundColor: colors.surfaceAlt,
     borderRadius: 8,
     flex: 1,
     minHeight: 40,
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   send: {
     backgroundColor: colors.primary,

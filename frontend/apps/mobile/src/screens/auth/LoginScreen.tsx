@@ -105,7 +105,7 @@ export function LoginScreen() {
               <View style={styles.logo}>
                 <Text style={styles.logoText}>IM</Text>
               </View>
-              <Text style={styles.title}>IM聊天</Text>
+              <Text style={styles.title}>IM 聊天</Text>
               <Text style={styles.subtitle}>安全、简洁、即时</Text>
             </View>
 
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
   },
   formCard: {
     backgroundColor: CARD,
-    borderRadius: 16,
+    borderRadius: radius.lg,
     overflow: 'hidden',
   },
   input: {

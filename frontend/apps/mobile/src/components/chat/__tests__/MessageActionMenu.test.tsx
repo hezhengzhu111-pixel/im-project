@@ -72,6 +72,14 @@ const findText = (root: renderer.ReactTestInstance, text: string): boolean => {
   } catch { return false; }
 };
 
+let mountedTrees: renderer.ReactTestRenderer[] = [];
+
+const renderChatScreen = (): renderer.ReactTestRenderer => {
+  const tree = renderer.create(<ChatScreen />);
+  mountedTrees.push(tree);
+  return tree;
+};
+
 let mockRouteParams: Record<string, string> = {};
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: jest.fn(), goBack: jest.fn(), setOptions: jest.fn() }),
@@ -82,6 +90,11 @@ jest.mock('@react-navigation/native', () => ({
 describe('ChatScreen long-press menu integration', () => {
   beforeEach(() => {
     jest.restoreAllMocks();
+    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
+      callback(Date.now());
+      return 0;
+    });
+    jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => undefined);
     jest.spyOn(pushDeviceService, 'registerDevice').mockResolvedValue({ deviceId: 'device', registered: true });
     jest.spyOn(pushDeviceService, 'unregisterDevice').mockResolvedValue(true);
     jest.spyOn(pushDeviceService, 'updateDeviceToken').mockResolvedValue({ updated: true });
@@ -120,6 +133,15 @@ describe('ChatScreen long-press menu integration', () => {
     mockRouteParams = {};
   });
 
+  afterEach(() => {
+    renderer.act(() => {
+      mountedTrees.forEach((tree) => {
+        tree.unmount();
+      });
+      mountedTrees = [];
+    });
+  });
+
   // ── 1. Long-press handler on MessageBubble ─────────────────────
 
   describe('long-press triggers action sheet', () => {
@@ -140,7 +162,7 @@ describe('ChatScreen long-press menu integration', () => {
 
       let testRenderer: renderer.ReactTestRenderer | undefined;
       renderer.act(() => {
-        testRenderer = renderer.create(<ChatScreen />);
+        testRenderer = renderChatScreen();
       });
 
       const messageBubbles = testRenderer!.root.findAll(
@@ -180,7 +202,7 @@ describe('ChatScreen long-press menu integration', () => {
 
       let testRenderer: renderer.ReactTestRenderer | undefined;
       renderer.act(() => {
-        testRenderer = renderer.create(<ChatScreen />);
+        testRenderer = renderChatScreen();
       });
 
       const bubbles = testRenderer!.root.findAll(
@@ -249,12 +271,12 @@ describe('ChatScreen long-press menu integration', () => {
 
       let testRenderer: renderer.ReactTestRenderer | undefined;
       renderer.act(() => {
-        testRenderer = renderer.create(<ChatScreen />);
+        testRenderer = renderChatScreen();
       });
 
       const input = testRenderer!.root.find((node) => typeName(node) === 'TextInput');
       expect(input.props.editable).toBe(false);
-      expect(input.props.placeholder).toContain('E2EE');
+      expect(input.props.placeholder).toContain('移动端暂不支持加密会话发送');
     });
   });
 
@@ -264,9 +286,9 @@ describe('ChatScreen long-press menu integration', () => {
     it('shows no active conversation when no session', () => {
       let testRenderer: renderer.ReactTestRenderer | undefined;
       renderer.act(() => {
-        testRenderer = renderer.create(<ChatScreen />);
+        testRenderer = renderChatScreen();
       });
-      expect(findText(testRenderer!.root, 'No active conversation')).toBe(true);
+      expect(findText(testRenderer!.root, '暂无会话')).toBe(true);
     });
   });
 
@@ -296,7 +318,7 @@ describe('ChatScreen long-press menu integration', () => {
 
       let testRenderer: renderer.ReactTestRenderer | undefined;
       renderer.act(() => {
-        testRenderer = renderer.create(<ChatScreen />);
+        testRenderer = renderChatScreen();
       });
 
       const flatList = testRenderer!.root.find((node) => typeName(node) === 'FlatList');

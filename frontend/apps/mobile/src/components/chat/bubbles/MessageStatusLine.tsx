@@ -23,15 +23,15 @@ function statusLabel(
   switch (stage) {
     case 'SEND_PENDING':
     case 'SENDING':
-      return 'Sending';
+      return '发送中';
     case 'UPLOAD_PENDING':
-      return 'Preparing upload...';
+      return '准备上传';
     case 'UPLOADING':
-      return `Uploading ${uploadProgress ?? 0}%`;
+      return `上传中 ${uploadProgress ?? 0}%`;
     case 'SENT': {
-      if (messageStatus === 'READ') return 'Read';
-      if (messageStatus === 'DELIVERED') return 'Delivered';
-      return 'Sent';
+      if (messageStatus === 'READ') return '已读';
+      if (messageStatus === 'DELIVERED') return '已送达';
+      return '已发送';
     }
     default:
       return '';

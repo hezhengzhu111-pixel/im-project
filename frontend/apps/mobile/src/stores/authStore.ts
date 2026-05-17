@@ -155,7 +155,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         password: data.password,
       });
       if (!response.data.success || !response.data.user) {
-        throw new Error(response.data.message || response.message || 'Login failed');
+        throw new Error(response.data.message || response.message || '登录失败');
       }
       const token = response.data.token || response.data.accessToken || '';
       if (token) {

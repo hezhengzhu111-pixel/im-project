@@ -2,7 +2,7 @@ import React from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, type NavigationProp, type ParamListBase } from '@react-navigation/native';
 import { Screen } from '@/components/common/Screen';
-import { colors, radius, spacing, typography } from '@/app/theme';
+import { colors, spacing, typography } from '@/app/theme';
 import { useAuthStore } from '@/stores/authStore';
 
 function MenuRow({ label, value, danger, onPress }: { label: string; value?: string; danger?: boolean; onPress: () => void }) {

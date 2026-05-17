@@ -55,6 +55,14 @@ const findLabel = (tree: renderer.ReactTestRenderer, label: string) =>
     (node) => typeName(node) === 'Text' && String(node.children?.join('') ?? '').includes(label),
   );
 
+let mountedTrees: renderer.ReactTestRenderer[] = [];
+
+const renderVoiceBubble = (message: MobileMessage, mine = false): renderer.ReactTestRenderer => {
+  const tree = renderer.create(<VoiceBubble message={message} mine={mine} />);
+  mountedTrees.push(tree);
+  return tree;
+};
+
 // ─── Tests ──────────────────────────────────────────────────────────
 
 describe('VoiceBubble', () => {
@@ -64,12 +72,21 @@ describe('VoiceBubble', () => {
     mockStopAudio.mockReturnValue(undefined);
   });
 
+  afterEach(() => {
+    renderer.act(() => {
+      mountedTrees.forEach((tree) => {
+        tree.unmount();
+      });
+      mountedTrees = [];
+    });
+  });
+
   it('calls playAudio on press when not playing', () => {
     const message = msg();
 
     let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderVoiceBubble(message);
     });
 
     renderer.act(() => {
@@ -85,7 +102,7 @@ describe('VoiceBubble', () => {
 
     let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderVoiceBubble(message);
     });
 
     expect(findLabel(tree!, '播放语音')).toBeDefined();
@@ -102,7 +119,7 @@ describe('VoiceBubble', () => {
 
     let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderVoiceBubble(message);
     });
 
     // First press: play
@@ -129,7 +146,7 @@ describe('VoiceBubble', () => {
 
     let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderVoiceBubble(message);
     });
 
     renderer.act(() => {
@@ -150,7 +167,7 @@ describe('VoiceBubble', () => {
 
     let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderVoiceBubble(message);
     });
 
     renderer.act(() => {
@@ -167,7 +184,7 @@ describe('VoiceBubble', () => {
 
     let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderVoiceBubble(message);
     });
 
     const durationNode = tree!.root.find(
@@ -181,7 +198,7 @@ describe('VoiceBubble', () => {
 
     let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderVoiceBubble(message);
     });
 
     const allText = tree!.root.findAll((node) => typeName(node) === 'Text');
@@ -202,7 +219,7 @@ describe('VoiceBubble', () => {
 
     let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderVoiceBubble(message);
     });
 
     renderer.act(() => {
@@ -222,9 +239,7 @@ describe('VoiceBubble', () => {
   });
 
   it('cleans up timer on Stop press', () => {
-    let capturedTimer: (() => void) | null = null;
-    const setTimeoutSpy = jest.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void) => {
-      capturedTimer = fn;
+    const setTimeoutSpy = jest.spyOn(globalThis, 'setTimeout').mockImplementation((() => {
       return 1 as unknown as ReturnType<typeof setTimeout>;
     }) as typeof setTimeout);
     const clearTimeoutSpy = jest.spyOn(globalThis, 'clearTimeout');
@@ -233,7 +248,7 @@ describe('VoiceBubble', () => {
 
     let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderVoiceBubble(message);
     });
 
     renderer.act(() => {
@@ -250,18 +265,12 @@ describe('VoiceBubble', () => {
     expect(mockStopAudio).toHaveBeenCalledTimes(1);
     expect(clearTimeoutSpy).toHaveBeenCalled(); // timer was cleared
 
-    // If the captured timer somehow fires, it should not cause a crash
-    // (the component already shows "play" so no state change needed)
-    capturedTimer = null;
-
     setTimeoutSpy.mockRestore();
     clearTimeoutSpy.mockRestore();
   });
 
   it('cleans up timer on unmount', () => {
-    let capturedTimer: (() => void) | null = null;
-    const setTimeoutSpy = jest.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void) => {
-      capturedTimer = fn;
+    const setTimeoutSpy = jest.spyOn(globalThis, 'setTimeout').mockImplementation((() => {
       return 1 as unknown as ReturnType<typeof setTimeout>;
     }) as typeof setTimeout);
     const clearTimeoutSpy = jest.spyOn(globalThis, 'clearTimeout');
@@ -270,7 +279,7 @@ describe('VoiceBubble', () => {
 
     let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderVoiceBubble(message);
     });
 
     renderer.act(() => {
@@ -293,7 +302,7 @@ describe('VoiceBubble', () => {
 
     let tree: renderer.ReactTestRenderer;
     renderer.act(() => {
-      tree = renderer.create(<VoiceBubble message={message} mine={false} />);
+      tree = renderVoiceBubble(message);
     });
 
     renderer.act(() => {

@@ -14,7 +14,7 @@ function ComingSoonBadge({ label }: { label: string }) {
     <View style={styles.badgeRow}>
       <Text style={styles.badgeLabel}>{label}</Text>
       <View style={styles.badge}>
-        <Text style={styles.badgeText}>Coming soon</Text>
+        <Text style={styles.badgeText}>即将支持</Text>
       </View>
     </View>
   );
@@ -29,7 +29,7 @@ export function CreateMomentScreen() {
 
   const handlePickPhoto = () => {
     if (files.length >= 9) {
-      Alert.alert('Limit reached', 'Maximum 9 photos per post.');
+      Alert.alert('已达上限', '每条动态最多添加 9 张图片。');
       return;
     }
     void mediaService.pickImage().then((file) => {
@@ -43,17 +43,17 @@ export function CreateMomentScreen() {
 
   const handlePublish = () => {
     if (!content.trim() && files.length === 0) {
-      Alert.alert('Empty post', 'Please write something or add a photo.');
+      Alert.alert('内容为空', '请写点内容或添加图片。');
       return;
     }
     setPublishing(true);
     void createPost(content.trim(), files)
       .then(() => {
-        Alert.alert('Published', 'Your moment has been shared!');
+        Alert.alert('发布成功', '动态已发布。');
         navigation.goBack();
       })
       .catch(() => {
-        Alert.alert('Error', 'Failed to publish. Please try again.');
+        Alert.alert('发布失败', '请稍后重试。');
       })
       .finally(() => {
         setPublishing(false);
@@ -61,13 +61,13 @@ export function CreateMomentScreen() {
   };
 
   return (
-    <Screen title="Create Moment">
+    <Screen title="发布动态">
       <View style={styles.container}>
-        <TextField label="What's on your mind?" value={content} multiline onChangeText={setContent} />
+        <TextField label="这一刻的想法" value={content} placeholder="分享新鲜事..." multiline onChangeText={setContent} />
 
         <View style={styles.section}>
           <PrimaryButton
-            label={files.length >= 9 ? 'Max 9 photos' : 'Add photos'}
+            label={files.length >= 9 ? '已添加 9 张图片' : '添加图片'}
             onPress={handlePickPhoto}
           />
         </View>
@@ -86,15 +86,15 @@ export function CreateMomentScreen() {
         ) : null}
 
         <View style={styles.comingSoonSection}>
-          <ComingSoonBadge label="Video upload" />
-          <ComingSoonBadge label="Visibility settings" />
-          <ComingSoonBadge label="Add location" />
+          <ComingSoonBadge label="视频上传" />
+          <ComingSoonBadge label="可见范围" />
+          <ComingSoonBadge label="所在位置" />
         </View>
 
         <View style={styles.actions}>
-          <PrimaryButton label={publishing ? 'Publishing...' : 'Publish'} onPress={handlePublish} />
+          <PrimaryButton label={publishing ? '发布中...' : '发布'} onPress={handlePublish} />
           <Pressable style={styles.cancelBtn} onPress={() => navigation.goBack()}>
-            <Text style={styles.cancelText}>Cancel</Text>
+            <Text style={styles.cancelText}>取消</Text>
           </Pressable>
         </View>
       </View>

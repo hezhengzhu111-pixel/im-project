@@ -11,7 +11,7 @@ const baseItems = [
   ['语言', 'LanguageSettingsScreen'],
   ['外观', 'ThemeSettingsScreen'],
   ['存储空间', 'StorageSettingsScreen'],
-  ['AI 助手', 'AiSettingsScreen'],
+  ['智能助手', 'AiSettingsScreen'],
   ['关于', 'AboutScreen'],
 ] as const;
 

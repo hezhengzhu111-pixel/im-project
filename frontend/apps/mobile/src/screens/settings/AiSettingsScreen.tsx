@@ -52,7 +52,7 @@ export function AiSettingsScreen() {
       setLoading(true);
       const response = await aiService.updateSettings(settings);
       setSettings(response.data);
-      Alert.alert('成功', 'AI 人设已保存');
+      Alert.alert('成功', '助手人设已保存');
     } catch {
       Alert.alert('错误', '保存人设失败');
     } finally {
@@ -62,7 +62,7 @@ export function AiSettingsScreen() {
 
   const handleCreateKey = useCallback(async () => {
     if (!apiKey.trim()) {
-      Alert.alert('提示', '请输入 API Key');
+      Alert.alert('提示', '请输入接口密钥');
       return;
     }
     try {
@@ -71,9 +71,9 @@ export function AiSettingsScreen() {
       setApiKey('');
       setKeyName('');
       await load();
-      Alert.alert('成功', 'API Key 已添加');
+      Alert.alert('成功', '接口密钥已添加');
     } catch {
-      Alert.alert('错误', '添加 API Key 失败');
+      Alert.alert('错误', '添加接口密钥失败');
     } finally {
       setLoading(false);
     }
@@ -84,13 +84,13 @@ export function AiSettingsScreen() {
       const response = await aiService.testKey(id);
       Alert.alert('测试结果', `状态: ${response.data.validateStatus}`);
     } catch {
-      Alert.alert('错误', '测试 API Key 失败');
+      Alert.alert('错误', '测试接口密钥失败');
     }
   }, []);
 
   const handleDeleteKey = useCallback(
     async (id: string) => {
-      Alert.alert('确认删除', '确定要删除这个 API Key 吗？', [
+      Alert.alert('确认删除', '确定要删除这个接口密钥吗？', [
         { text: '取消', style: 'cancel' },
         {
           text: '删除',
@@ -100,7 +100,7 @@ export function AiSettingsScreen() {
               await aiService.deleteKey(id);
               await load();
             } catch {
-              Alert.alert('错误', '删除 API Key 失败');
+              Alert.alert('错误', '删除接口密钥失败');
             }
           },
         },
@@ -133,14 +133,14 @@ export function AiSettingsScreen() {
   );
 
   return (
-    <Screen title="AI 设置">
+    <Screen title="智能助手">
       <View style={styles.container}>
         {/* 安全提示 */}
         <View style={styles.noticeCard}>
-          <Text style={styles.noticeTitle}>⚠️ 安全说明</Text>
+          <Text style={styles.noticeTitle}>安全说明</Text>
           <Text style={styles.noticeText}>
-            • API Key 通过加密传输存储于服务端，不会保存在本地{'\n'}
-            • 当前功能为初版，完整安全策略待后续确认{'\n'}• 如有安全顾虑，请勿添加敏感 Key
+            • 接口密钥通过加密传输存储于服务端，不会保存在本地{'\n'}
+            • 当前功能为初版，完整安全策略待后续确认{'\n'}• 如有安全顾虑，请勿添加敏感密钥
           </Text>
         </View>
 
@@ -149,8 +149,8 @@ export function AiSettingsScreen() {
           <Text style={styles.sectionTitle}>自动回复</Text>
           <View style={styles.switchRow}>
             <View style={styles.switchLabel}>
-              <Text style={styles.switchText}>启用 AI 自动回复</Text>
-              <Text style={styles.switchHint}>收到消息时自动生成 AI 回复</Text>
+          <Text style={styles.switchText}>启用智能自动回复</Text>
+          <Text style={styles.switchHint}>收到消息时自动生成回复内容</Text>
             </View>
             <Switch
               value={settings.autoReplyEnabled}
@@ -160,7 +160,7 @@ export function AiSettingsScreen() {
           </View>
 
           <TextField
-            label="AI 人设"
+            label="助手人设"
             value={settings.autoReplyPersona}
             onChangeText={(value) => setSettings({ ...settings, autoReplyPersona: value })}
             placeholder="例如：你是一个友好的助手"
@@ -171,9 +171,9 @@ export function AiSettingsScreen() {
 
         {/* API Key 管理 */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>API Key 管理</Text>
+          <Text style={styles.sectionTitle}>接口密钥管理</Text>
           <Text style={styles.sectionHint}>
-            添加 AI 服务提供商的 API Key，用于自动回复功能。当前支持 DeepSeek、OpenAI、MiniMax。
+            添加服务提供商的接口密钥，用于自动回复功能。当前支持 DeepSeek、OpenAI、MiniMax。
           </Text>
 
           <View style={styles.formGroup}>
@@ -193,24 +193,24 @@ export function AiSettingsScreen() {
             </View>
           </View>
 
-          <TextField label="Key 名称（可选）" value={keyName} onChangeText={setKeyName} placeholder="例如：我的 OpenAI Key" />
+          <TextField label="密钥名称（可选）" value={keyName} onChangeText={setKeyName} placeholder="例如：我的 OpenAI 密钥" />
           <TextField
-            label="API Key"
+            label="接口密钥"
             value={apiKey}
             onChangeText={setApiKey}
             placeholder="sk-..."
             secureTextEntry
           />
-          <PrimaryButton label="添加 API Key" onPress={() => { handleCreateKey(); }} disabled={loading || !apiKey.trim()} />
+          <PrimaryButton label="添加接口密钥" onPress={() => { handleCreateKey(); }} disabled={loading || !apiKey.trim()} />
         </View>
 
         {/* 已添加的 Key 列表 */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>已添加的 API Key</Text>
+          <Text style={styles.sectionTitle}>已添加的接口密钥</Text>
           {keys.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>暂无 API Key</Text>
-              <Text style={styles.emptyHint}>添加 API Key 后即可使用 AI 功能</Text>
+              <Text style={styles.emptyText}>暂无接口密钥</Text>
+              <Text style={styles.emptyHint}>添加接口密钥后即可使用智能助手功能</Text>
             </View>
           ) : (
             <FlatList
@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
   },
   noticeCard: {
     backgroundColor: colors.warning + '20',
-    borderRadius: 12,
+    borderRadius: 8,
     padding: spacing.md,
     borderLeftWidth: 4,
     borderLeftColor: colors.warning,
@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
   },
   section: {
     backgroundColor: colors.surface,
-    borderRadius: 12,
+    borderRadius: 8,
     padding: spacing.md,
     gap: spacing.md,
   },
@@ -340,7 +340,6 @@ const styles = StyleSheet.create({
   keyMasked: {
     color: colors.muted,
     fontSize: typography.small,
-    fontFamily: 'monospace',
   },
   keyStatus: {
     fontSize: typography.small,
