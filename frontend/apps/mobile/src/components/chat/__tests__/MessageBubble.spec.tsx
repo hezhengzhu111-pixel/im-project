@@ -45,6 +45,10 @@ jest.mock('@/app/theme', () => ({
   typography: { body: 14, tiny: 11, small: 12 },
 }));
 
+jest.mock('@/utils/time', () => ({
+  formatMessageTime: jest.fn((sendTime: string) => sendTime),
+}));
+
 const mockGetPending = jest.fn();
 const mockFindUploadByMsgId = jest.fn();
 

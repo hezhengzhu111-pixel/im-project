@@ -190,10 +190,10 @@ describe('saveMedia', () => {
     expect(ids(result)).toContain('saveMedia');
   });
 
-  it('is absent when hasMediaUri is false', () => {
+  it('is absent when both hasMediaUri and hasRemoteMediaUri are false', () => {
     const result = getAvailableMessageActions(
       baseMsg({ messageType: 'IMAGE', content: '' }),
-      baseCtx({ hasMediaUri: false }),
+      baseCtx({ hasMediaUri: false, hasRemoteMediaUri: false }),
     );
     expect(ids(result)).not.toContain('saveMedia');
   });
@@ -204,6 +204,30 @@ describe('saveMedia', () => {
       baseCtx({ hasMediaUri: true }),
     );
     expect(ids(result)).not.toContain('saveMedia');
+  });
+
+  it('is available for remote IMAGE with hasRemoteMediaUri=true', () => {
+    const result = getAvailableMessageActions(
+      baseMsg({ messageType: 'IMAGE', content: '' }),
+      baseCtx({ hasMediaUri: false, hasRemoteMediaUri: true }),
+    );
+    expect(ids(result)).toContain('saveMedia');
+  });
+
+  it('is available for remote VIDEO with hasRemoteMediaUri=true', () => {
+    const result = getAvailableMessageActions(
+      baseMsg({ messageType: 'VIDEO', content: '' }),
+      baseCtx({ hasMediaUri: false, hasRemoteMediaUri: true }),
+    );
+    expect(ids(result)).toContain('saveMedia');
+  });
+
+  it('local IMAGE/VIDEO still shows Save', () => {
+    const result = getAvailableMessageActions(
+      baseMsg({ messageType: 'IMAGE', content: '' }),
+      baseCtx({ hasMediaUri: true, hasRemoteMediaUri: true }),
+    );
+    expect(ids(result)).toContain('saveMedia');
   });
 });
 
@@ -218,12 +242,28 @@ describe('openFile', () => {
     expect(ids(result)).toContain('openFile');
   });
 
-  it('is absent when hasMediaUri is false', () => {
+  it('is available for remote FILE with hasRemoteMediaUri=true', () => {
     const result = getAvailableMessageActions(
       baseMsg({ messageType: 'FILE', content: '' }),
-      baseCtx({ hasMediaUri: false }),
+      baseCtx({ hasMediaUri: false, hasRemoteMediaUri: true }),
+    );
+    expect(ids(result)).toContain('openFile');
+  });
+
+  it('is absent when both hasMediaUri and hasRemoteMediaUri are false', () => {
+    const result = getAvailableMessageActions(
+      baseMsg({ messageType: 'FILE', content: '' }),
+      baseCtx({ hasMediaUri: false, hasRemoteMediaUri: false }),
     );
     expect(ids(result)).not.toContain('openFile');
+  });
+
+  it('local FILE still shows Open file', () => {
+    const result = getAvailableMessageActions(
+      baseMsg({ messageType: 'FILE', content: '' }),
+      baseCtx({ hasMediaUri: true, hasRemoteMediaUri: true }),
+    );
+    expect(ids(result)).toContain('openFile');
   });
 });
 
@@ -331,6 +371,21 @@ describe('E2EE encrypted messages', () => {
     expect(ids(result)).toContain('readDetail');
     expect(result.find((a) => a.id === 'recall')!.disabled).toBe(true);
     expect(result.find((a) => a.id === 'readDetail')!.disabled).toBe(true);
+  });
+
+  it('encrypted remote image still cannot copy but retains deleteLocal/forward', () => {
+    const result = getAvailableMessageActions(
+      baseMsg({ encrypted: true, messageType: 'IMAGE', content: 'alt', senderId: 'u2' }),
+      baseCtx({ hasRemoteMediaUri: true }),
+    );
+    // 不能 copy（encrypted）
+    expect(ids(result)).not.toContain('copy');
+    // 可以 save（remote media）
+    expect(ids(result)).toContain('saveMedia');
+    // deleteLocal 始终可用
+    expect(ids(result)).toContain('deleteLocal');
+    // forward 始终可用（disabled）
+    expect(ids(result)).toContain('forward');
   });
 });
 

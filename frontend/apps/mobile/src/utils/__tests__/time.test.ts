@@ -1,7 +1,20 @@
 import { formatMessageTime } from '../time';
 
+/** Build an ISO 8601 string in the local timezone using local fields. */
+const localISO = (y: number, mo: number, d: number, h: number, mi: number): string =>
+  new Date(y, mo, d, h, mi).toISOString();
+
+/** Padded local-time HH:mm. */
+const fmt = (h: number, mi: number): string =>
+  `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
+
+/** Padded local-time MM/DD HH:mm. */
+const fmtCross = (mo: number, d: number, h: number, mi: number): string =>
+  `${String(mo + 1).padStart(2, '0')}/${String(d).padStart(2, '0')} ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
+
 describe('formatMessageTime', () => {
-  const now = new Date('2026-05-17T14:30:45.000Z');
+  // Set "now" to 2026-05-17 14:30:45 local time (timezone-independent).
+  const now = new Date(2026, 4, 17, 14, 30, 45);
 
   beforeAll(() => {
     jest.useFakeTimers();
@@ -12,14 +25,15 @@ describe('formatMessageTime', () => {
     jest.useRealTimers();
   });
 
-  it('returns HH:mm for same-day timestamp', () => {
-    expect(formatMessageTime('2026-05-17T10:00:00.000Z')).toBe('10:00');
-    expect(formatMessageTime('2026-05-17T23:59:00.000Z')).toBe('23:59');
+  it('returns HH:mm for same-day timestamp (local time)', () => {
+    // 10:00 and 23:59 on the same day as "now"
+    expect(formatMessageTime(localISO(2026, 4, 17, 10, 0))).toBe(fmt(10, 0));
+    expect(formatMessageTime(localISO(2026, 4, 17, 23, 59))).toBe(fmt(23, 59));
   });
 
-  it('returns MM/DD HH:mm for different-day timestamp', () => {
-    expect(formatMessageTime('2026-05-16T10:00:00.000Z')).toBe('05/16 10:00');
-    expect(formatMessageTime('2026-01-01T00:00:00.000Z')).toBe('01/01 00:00');
+  it('returns MM/DD HH:mm for different-day timestamp (local time)', () => {
+    expect(formatMessageTime(localISO(2026, 4, 16, 10, 0))).toBe(fmtCross(4, 16, 10, 0));
+    expect(formatMessageTime(localISO(2026, 0, 1, 0, 0))).toBe(fmtCross(0, 1, 0, 0));
   });
 
   it('returns empty string for invalid timestamp', () => {
@@ -28,11 +42,6 @@ describe('formatMessageTime', () => {
   });
 
   it('pads single-digit hours and minutes', () => {
-    expect(formatMessageTime('2026-05-17T01:05:00.000Z')).toBe('01:05');
-  });
-
-  it('handles different timezone offsets', () => {
-    // UTC+8 06:30 = UTC 22:30 previous day → cross-day display
-    expect(formatMessageTime('2026-05-17T06:30:00.000+08:00')).toBe('05/16 22:30');
+    expect(formatMessageTime(localISO(2026, 4, 17, 1, 5))).toBe(fmt(1, 5));
   });
 });

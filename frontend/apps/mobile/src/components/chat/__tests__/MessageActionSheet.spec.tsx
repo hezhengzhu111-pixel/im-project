@@ -220,14 +220,34 @@ describe('MessageActionSheet', () => {
       expect(cbs.onSaveMedia).toHaveBeenCalledWith(msg);
     });
 
-    it('does not include Save for IMAGE with remote-only URI when hasMediaUri=false', () => {
+    it('does not include Save for IMAGE when hasMediaUri and hasRemoteMediaUri are both false', () => {
       const msg = imageMessage({
         senderId: 'current-user',
         mediaUrl: 'https://files.example.com/photo.jpg',
       });
-      showMessageActionSheet(msg, baseCtx({ hasMediaUri: false }), emptyCallbacks());
+      showMessageActionSheet(msg, baseCtx({ hasMediaUri: false, hasRemoteMediaUri: false }), emptyCallbacks());
 
       expect(buttonLabels()).not.toContain('保存');
+    });
+
+    it('includes Save for remote IMAGE with hasRemoteMediaUri=true', () => {
+      const msg = imageMessage({
+        senderId: 'current-user',
+        mediaUrl: 'https://files.example.com/photo.jpg',
+      });
+      showMessageActionSheet(msg, baseCtx({ hasMediaUri: false, hasRemoteMediaUri: true }), emptyCallbacks());
+
+      expect(buttonLabels()).toContain('保存');
+    });
+
+    it('includes Open file for remote FILE with hasRemoteMediaUri=true', () => {
+      const msg = fileMessage({
+        senderId: 'current-user',
+        mediaUrl: 'https://files.example.com/report.pdf',
+      });
+      showMessageActionSheet(msg, baseCtx({ hasMediaUri: false, hasRemoteMediaUri: true }), emptyCallbacks());
+
+      expect(buttonLabels()).toContain('打开文件');
     });
   });
 
