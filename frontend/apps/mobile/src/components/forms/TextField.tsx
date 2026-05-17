@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors, spacing, typography } from '@/app/theme';
+import { colors, radius, spacing, typography } from '@/app/theme';
 
 export function TextField({
   label,
@@ -22,8 +22,10 @@ export function TextField({
       <Text style={styles.label}>{label}</Text>
       <TextInput
         autoCapitalize="none"
+        autoCorrect={false}
         multiline={multiline}
-        placeholder={placeholder}
+        placeholder={placeholder || label}
+        placeholderTextColor={colors.muted}
         secureTextEntry={secureTextEntry}
         style={[styles.input, multiline && styles.multiline]}
         value={value}
@@ -35,24 +37,23 @@ export function TextField({
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   label: {
-    color: colors.muted,
+    color: colors.text,
     fontSize: typography.small,
     fontWeight: '700',
   },
   input: {
     backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.lg,
     color: colors.text,
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
+    fontSize: typography.body,
+    minHeight: 50,
+    paddingHorizontal: spacing.lg,
   },
   multiline: {
-    minHeight: 96,
+    minHeight: 110,
     paddingTop: spacing.md,
     textAlignVertical: 'top',
   },
