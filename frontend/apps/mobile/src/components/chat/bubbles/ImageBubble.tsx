@@ -1,7 +1,8 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet } from 'react-native';
-import { spacing } from '@/app/theme';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { colors, radius, spacing, typography } from '@/app/theme';
 import type { MobileMessage } from '@/types/models';
+import { resolveMediaUri } from '@/services/media/mediaUri';
 import { MediaPreviewModal } from './MediaPreviewModal';
 
 interface ImageBubbleProps {
@@ -9,39 +10,66 @@ interface ImageBubbleProps {
   mine: boolean;
 }
 
-export function ImageBubble({ message }: ImageBubbleProps) {
+export function ImageBubble({ message, mine }: ImageBubbleProps) {
   const [previewVisible, setPreviewVisible] = React.useState(false);
+  const [loadFailed, setLoadFailed] = React.useState(false);
 
-  const mediaUri = message.mediaUrl || message.thumbnailUrl;
-  const previewUri = message.mediaUrl || message.thumbnailUrl || '';
+  const rawUri = message.thumbnailUrl || message.mediaUrl || message.content || '';
+  const imageUri = resolveMediaUri(rawUri, 'IMAGE');
+  const previewUri = resolveMediaUri(message.mediaUrl || rawUri, 'IMAGE');
+  const label = message.mediaName || String(rawUri).split('/').filter(Boolean).pop() || '图片';
+
+  if (!imageUri || loadFailed) {
+    return (
+      <View style={[styles.placeholder, mine ? styles.placeholderMine : null]}>
+        <Text numberOfLines={1} style={[styles.placeholderTitle, mine ? styles.mineText : null]}>图片</Text>
+        <Text numberOfLines={2} style={[styles.placeholderSubtitle, mine ? styles.mineTextSecondary : null]}>{label}</Text>
+      </View>
+    );
+  }
 
   return (
     <>
-      <Pressable
-        onPress={() => setPreviewVisible(true)}
-        accessibilityLabel="查看大图"
-      >
-        <Image
-          resizeMode="cover"
-          source={{ uri: mediaUri }}
-          style={styles.image}
-        />
+      <Pressable onPress={() => setPreviewVisible(true)} accessibilityLabel="查看大图">
+        <Image resizeMode="cover" source={{ uri: imageUri }} style={styles.image} onError={() => setLoadFailed(true)} />
       </Pressable>
-      <MediaPreviewModal
-        visible={previewVisible}
-        onClose={() => setPreviewVisible(false)}
-        mediaUrl={previewUri}
-        mediaType="IMAGE"
-      />
+      <MediaPreviewModal visible={previewVisible} onClose={() => setPreviewVisible(false)} mediaUrl={previewUri} mediaType="IMAGE" />
     </>
   );
 }
 
 const styles = StyleSheet.create({
   image: {
-    borderRadius: 8,
+    borderRadius: radius.md,
     height: 180,
-    marginBottom: spacing.sm,
     width: 180,
+  },
+  placeholder: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    justifyContent: 'center',
+    minHeight: 92,
+    padding: spacing.md,
+    width: 180,
+  },
+  placeholderMine: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  placeholderTitle: {
+    color: colors.text,
+    fontSize: typography.body,
+    fontWeight: '800',
+    marginBottom: spacing.xs,
+  },
+  placeholderSubtitle: {
+    color: colors.muted,
+    fontSize: typography.small,
+    lineHeight: 18,
+  },
+  mineText: {
+    color: '#FFFFFF',
+  },
+  mineTextSecondary: {
+    color: 'rgba(255,255,255,0.78)',
   },
 });
