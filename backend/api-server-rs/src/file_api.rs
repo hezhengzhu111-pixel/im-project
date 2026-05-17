@@ -11,6 +11,7 @@ use chrono::Local;
 use im_rs_common::api::ApiResponse;
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -436,9 +437,75 @@ async fn stream_file(state: AppState, headers: HeaderMap, request: FileLocator) 
 }
 
 async fn can_read(state: &AppState, user_id: i64, request: &FileLocator) -> bool {
-    match get_metadata(state, request).await {
-        Some(metadata) => metadata.uploader_id == Some(user_id),
-        None => false,
+    if let Some(metadata) = get_metadata(state, request).await {
+        if metadata.uploader_id == Some(user_id) {
+            return true;
+        }
+    }
+    can_read_message_media(state, user_id, request).await
+}
+
+async fn can_read_message_media(state: &AppState, user_id: i64, request: &FileLocator) -> bool {
+    let media_url = static_file_url(&request.category, &request.date, &request.filename);
+    let media_url_no_slash = media_url.trim_start_matches('/').to_string();
+    let rows = match sqlx::query(
+        "SELECT sender_id, receiver_id, group_id, is_group_chat \
+         FROM service_message_service_db.messages \
+         WHERE status <> 5 \
+           AND (media_url = ? OR thumbnail_url = ? OR media_url = ? OR thumbnail_url = ?) \
+         LIMIT 20",
+    )
+    .bind(&media_url)
+    .bind(&media_url)
+    .bind(&media_url_no_slash)
+    .bind(&media_url_no_slash)
+    .fetch_all(&state.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to check chat media access");
+            return false;
+        }
+    };
+
+    for row in rows {
+        let sender_id = row.try_get::<i64, _>("sender_id").ok();
+        let receiver_id = row.try_get::<Option<i64>, _>("receiver_id").ok().flatten();
+        let group_id = row.try_get::<Option<i64>, _>("group_id").ok().flatten();
+        let is_group_chat = row.try_get::<i8, _>("is_group_chat").ok().unwrap_or(0) != 0;
+
+        if sender_id == Some(user_id) || receiver_id == Some(user_id) {
+            return true;
+        }
+        if is_group_chat {
+            if let Some(group_id) = group_id {
+                if is_active_group_member(state, user_id, group_id).await {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+async fn is_active_group_member(state: &AppState, user_id: i64, group_id: i64) -> bool {
+    let result = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(1) \
+         FROM service_group_service_db.im_group_member \
+         WHERE group_id = ? AND user_id = ? AND status = 1",
+    )
+    .bind(group_id)
+    .bind(user_id)
+    .fetch_one(&state.db)
+    .await;
+
+    match result {
+        Ok(count) => count > 0,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to check group media access");
+            false
+        }
     }
 }
 
