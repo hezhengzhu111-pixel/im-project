@@ -19,6 +19,12 @@ interface ContactState {
   clear: () => void;
 }
 
+const pendingRequestsOnly = (requests: FriendRequest[]) =>
+  requests.filter((request) => request.status === 'PENDING');
+
+const removeRequestById = (requests: FriendRequest[], requestId: string) =>
+  requests.filter((request) => request.id !== requestId);
+
 export const useContactStore = create<ContactState>((set, get) => ({
   friends: [],
   friendRequests: [],
@@ -37,7 +43,7 @@ export const useContactStore = create<ContactState>((set, get) => ({
 
   async loadFriendRequests() {
     const response = await friendService.getRequests();
-    set({ friendRequests: response.data });
+    set({ friendRequests: pendingRequestsOnly(response.data) });
   },
 
   async searchUsers(keyword, type = 'username') {
@@ -50,13 +56,28 @@ export const useContactStore = create<ContactState>((set, get) => ({
   },
 
   async acceptRequest(requestId) {
-    await friendService.handleRequest({ requestId, action: 'ACCEPT' });
-    await Promise.all([get().loadFriends(), get().loadFriendRequests()]);
+    const previousRequests = get().friendRequests;
+    set({ friendRequests: removeRequestById(previousRequests, requestId) });
+    try {
+      await friendService.handleRequest({ requestId, action: 'ACCEPT' });
+      await get().loadFriends();
+      await get().loadFriendRequests();
+    } catch (error) {
+      set({ friendRequests: previousRequests });
+      throw error;
+    }
   },
 
   async rejectRequest(requestId) {
-    await friendService.handleRequest({ requestId, action: 'REJECT' });
-    await get().loadFriendRequests();
+    const previousRequests = get().friendRequests;
+    set({ friendRequests: removeRequestById(previousRequests, requestId) });
+    try {
+      await friendService.handleRequest({ requestId, action: 'REJECT' });
+      await get().loadFriendRequests();
+    } catch (error) {
+      set({ friendRequests: previousRequests });
+      throw error;
+    }
   },
 
   async deleteFriend(friendId) {
