@@ -9,7 +9,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,14 +16,14 @@ import { useNavigation, type NavigationProp, type ParamListBase } from '@react-n
 import { radius, spacing, typography } from '@/app/theme';
 import { useAuthStore } from '@/stores/authStore';
 
-const REGISTER_BG = '#F5F5F5';
-const REGISTER_CARD = '#FFFFFF';
-const REGISTER_TEXT = '#333333';
-const REGISTER_MUTED = '#999999';
-const REGISTER_BORDER = '#E5E7EB';
-const REGISTER_GREEN = '#07C160';
-const REGISTER_GREEN_ACTIVE = '#06AD56';
-const REGISTER_LINK = '#576B95';
+const BG = '#F7F8FA';
+const CARD = '#FFFFFF';
+const TEXT = '#111827';
+const MUTED = '#8A94A6';
+const BORDER = '#EEF0F4';
+const PRIMARY = '#07C160';
+const PRIMARY_ACTIVE = '#06AD56';
+const LINK = '#576B95';
 const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
 const PASSWORD_PATTERN = /^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]+$/;
 
@@ -54,7 +53,7 @@ function RegisterInput({
       clearButtonMode="while-editing"
       keyboardType={keyboardType}
       placeholder={placeholder}
-      placeholderTextColor={REGISTER_MUTED}
+      placeholderTextColor={MUTED}
       returnKeyType={returnKeyType}
       secureTextEntry={secureTextEntry}
       style={styles.input}
@@ -103,8 +102,6 @@ export function RegisterScreen() {
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
   const register = useAuthStore((state) => state.register);
   const loading = useAuthStore((state) => state.loading);
-  const { height } = useWindowDimensions();
-  const compact = height < 740;
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -145,8 +142,8 @@ export function RegisterScreen() {
         password,
       });
       if (ok) {
-        Alert.alert('注册成功', '请登录您的加密通信账户', [
-          { text: '立即登录', onPress: () => navigation.navigate('LoginScreen') },
+        Alert.alert('注册成功', '请登录您的账号', [
+          { text: '去登录', onPress: () => navigation.navigate('LoginScreen') },
         ]);
       }
     } catch (error) {
@@ -159,33 +156,23 @@ export function RegisterScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboard}>
         <ScrollView
           bounces={false}
-          contentContainerStyle={[styles.container, compact ? styles.containerCompact : null]}
+          contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View pointerEvents="none" style={styles.backgroundLayer}>
-            <View style={styles.greenGlow} />
-            <View style={styles.blueGlow} />
-          </View>
-
-          <View style={[styles.hero, compact ? styles.heroCompact : null]}>
-            <View style={styles.logoMark}>
-              <Text style={styles.logoText}>IM</Text>
-            </View>
-            <Text style={styles.heroTitle}>IM聊天应用</Text>
-            <Text style={styles.heroSubtitle}>创建您的账户，开始聊天之旅</Text>
-          </View>
-
-          <View style={[styles.card, compact ? styles.cardCompact : null]}>
-            <View style={[styles.header, compact ? styles.headerCompact : null]}>
-              <Text style={styles.title}>创建账户</Text>
-              <Text style={styles.subtitle}>使用邮箱完成注册，开启加密通信</Text>
+          <View style={styles.main}>
+            <View style={styles.header}>
+              <Text style={styles.title}>注册账号</Text>
+              <Text style={styles.subtitle}>填写信息后即可开始聊天</Text>
             </View>
 
-            <View style={styles.form}>
+            <View style={styles.formCard}>
               <RegisterInput value={username} onChangeText={setUsername} placeholder="请输入用户名" />
+              <View style={styles.separator} />
               <RegisterInput value={email} onChangeText={setEmail} placeholder="请输入邮箱" keyboardType="email-address" />
+              <View style={styles.separator} />
               <RegisterInput value={password} onChangeText={setPassword} placeholder="请输入密码" secureTextEntry />
+              <View style={styles.separator} />
               <RegisterInput
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
@@ -194,39 +181,39 @@ export function RegisterScreen() {
                 returnKeyType="done"
                 onSubmitEditing={submit}
               />
+            </View>
 
-              <View style={styles.agreementRow}>
-                <CheckBox checked={agreement} onPress={() => setAgreement((value) => !value)} />
-                <Text style={styles.agreementText}>我已阅读并同意</Text>
-                <Pressable accessibilityRole="button" onPress={() => setShowAgreement(true)}>
-                  <Text style={styles.agreementLink}>用户协议</Text>
-                </Pressable>
-                <Text style={styles.agreementText}>和</Text>
-                <Pressable accessibilityRole="button" onPress={() => setShowPrivacy(true)}>
-                  <Text style={styles.agreementLink}>隐私政策</Text>
-                </Pressable>
-              </View>
-
-              <Pressable
-                accessibilityRole="button"
-                disabled={loading}
-                style={({ pressed }) => [
-                  styles.registerButton,
-                  pressed && !loading ? styles.registerButtonPressed : null,
-                  loading ? styles.registerButtonDisabled : null,
-                ]}
-                onPress={submit}
-              >
-                <Text style={styles.registerButtonText}>{loading ? '注册中...' : '注册'}</Text>
+            <View style={styles.agreementRow}>
+              <CheckBox checked={agreement} onPress={() => setAgreement((value) => !value)} />
+              <Text style={styles.agreementText}>已阅读并同意</Text>
+              <Pressable accessibilityRole="button" onPress={() => setShowAgreement(true)}>
+                <Text style={styles.agreementLink}>用户协议</Text>
+              </Pressable>
+              <Text style={styles.agreementText}>和</Text>
+              <Pressable accessibilityRole="button" onPress={() => setShowPrivacy(true)}>
+                <Text style={styles.agreementLink}>隐私政策</Text>
               </Pressable>
             </View>
 
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>已有账户？</Text>
-              <Pressable accessibilityRole="button" onPress={() => navigation.navigate('LoginScreen')}>
-                <Text style={styles.footerLink}>立即登录</Text>
-              </Pressable>
-            </View>
+            <Pressable
+              accessibilityRole="button"
+              disabled={loading}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && !loading ? styles.primaryButtonPressed : null,
+                loading ? styles.primaryButtonDisabled : null,
+              ]}
+              onPress={submit}
+            >
+              <Text style={styles.primaryButtonText}>{loading ? '注册中...' : '注册'}</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>已有账号？</Text>
+            <Pressable accessibilityRole="button" onPress={() => navigation.navigate('LoginScreen')}>
+              <Text style={styles.footerLink}>登录</Text>
+            </Pressable>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -258,7 +245,7 @@ export function RegisterScreen() {
 
 const styles = StyleSheet.create({
   safe: {
-    backgroundColor: REGISTER_BG,
+    backgroundColor: BG,
     flex: 1,
   },
   keyboard: {
@@ -267,197 +254,110 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     justifyContent: 'space-between',
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.xxl,
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
+    paddingTop: 64,
   },
-  containerCompact: {
-    paddingBottom: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-  },
-  backgroundLayer: {
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-  },
-  greenGlow: {
-    backgroundColor: 'rgba(7, 193, 96, 0.08)',
-    borderRadius: 150,
-    height: 300,
-    position: 'absolute',
-    right: -120,
-    top: -96,
-    width: 300,
-  },
-  blueGlow: {
-    backgroundColor: 'rgba(87, 107, 149, 0.08)',
-    borderRadius: 120,
-    bottom: -92,
-    height: 240,
-    left: -104,
-    position: 'absolute',
-    width: 240,
-  },
-  hero: {
-    alignItems: 'center',
-    marginBottom: spacing.xl,
-  },
-  heroCompact: {
-    marginBottom: spacing.lg,
-  },
-  logoMark: {
-    alignItems: 'center',
-    backgroundColor: REGISTER_GREEN,
-    borderRadius: 18,
-    height: 56,
-    justifyContent: 'center',
-    marginBottom: spacing.lg,
-    shadowColor: REGISTER_GREEN,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    width: 56,
-  },
-  logoText: {
-    color: '#FFFFFF',
-    fontSize: typography.subtitle,
-    fontWeight: '900',
-  },
-  heroTitle: {
-    color: REGISTER_TEXT,
-    fontSize: 26,
-    fontWeight: '700',
-    marginBottom: spacing.sm,
-  },
-  heroSubtitle: {
-    color: REGISTER_MUTED,
-    fontSize: typography.body,
-    textAlign: 'center',
-  },
-  card: {
-    alignSelf: 'center',
-    backgroundColor: REGISTER_CARD,
-    borderColor: REGISTER_BORDER,
-    borderRadius: 26,
-    borderWidth: 1,
-    elevation: 8,
-    maxWidth: 420,
-    padding: spacing.xxl,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.09,
-    shadowRadius: 24,
+  main: {
     width: '100%',
   },
-  cardCompact: {
-    borderRadius: 22,
-    padding: spacing.xl,
-  },
   header: {
-    alignItems: 'center',
-    marginBottom: spacing.xxl,
-  },
-  headerCompact: {
-    marginBottom: spacing.xl,
+    marginBottom: 36,
   },
   title: {
-    color: REGISTER_TEXT,
-    fontSize: 22,
-    fontWeight: '700',
+    color: TEXT,
+    fontSize: 28,
+    fontWeight: '800',
     marginBottom: spacing.sm,
   },
   subtitle: {
-    color: REGISTER_MUTED,
-    fontSize: typography.small,
-    textAlign: 'center',
+    color: MUTED,
+    fontSize: typography.body,
   },
-  form: {
-    gap: spacing.lg,
+  formCard: {
+    backgroundColor: CARD,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   input: {
-    backgroundColor: '#FFFFFF',
-    borderColor: REGISTER_BORDER,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    color: REGISTER_TEXT,
+    backgroundColor: CARD,
+    color: TEXT,
     fontSize: typography.body,
-    height: 46,
+    height: 54,
     paddingHorizontal: spacing.lg,
+  },
+  separator: {
+    backgroundColor: BORDER,
+    height: StyleSheet.hairlineWidth,
+    marginLeft: spacing.lg,
   },
   agreementRow: {
     alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
-    marginTop: spacing.xs,
+    marginTop: spacing.lg,
   },
   checkbox: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#DCDCDC',
-    borderRadius: 2,
+    backgroundColor: CARD,
+    borderColor: '#D8DDE8',
+    borderRadius: 3,
     borderWidth: 1,
-    height: 14,
+    height: 15,
     justifyContent: 'center',
-    width: 14,
+    width: 15,
   },
   checkboxMark: {
-    color: REGISTER_GREEN,
+    color: PRIMARY,
     fontSize: 10,
     fontWeight: '900',
     lineHeight: 12,
   },
   agreementText: {
-    color: '#666666',
+    color: MUTED,
     fontSize: typography.small,
   },
   agreementLink: {
-    color: '#409EFF',
+    color: LINK,
     fontSize: typography.small,
-    fontWeight: '600',
-  },
-  registerButton: {
-    alignItems: 'center',
-    backgroundColor: REGISTER_GREEN,
-    borderRadius: radius.lg,
-    height: 46,
-    justifyContent: 'center',
-    marginTop: spacing.sm,
-    shadowColor: REGISTER_GREEN,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
-  },
-  registerButtonPressed: {
-    backgroundColor: REGISTER_GREEN_ACTIVE,
-    transform: [{ translateY: 1 }],
-  },
-  registerButtonDisabled: {
-    opacity: 0.7,
-  },
-  registerButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
     fontWeight: '700',
+  },
+  primaryButton: {
+    alignItems: 'center',
+    backgroundColor: PRIMARY,
+    borderRadius: radius.lg,
+    height: 50,
+    justifyContent: 'center',
+    marginTop: spacing.xl,
+  },
+  primaryButtonPressed: {
+    backgroundColor: PRIMARY_ACTIVE,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.65,
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: typography.body,
+    fontWeight: '800',
   },
   footer: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing.sm,
     justifyContent: 'center',
-    marginTop: spacing.xl,
+    marginTop: spacing.xxl,
   },
   footerText: {
-    color: REGISTER_MUTED,
-    fontSize: typography.body,
+    color: MUTED,
+    fontSize: typography.small,
   },
   footerLink: {
-    color: REGISTER_LINK,
-    fontSize: typography.body,
+    color: LINK,
+    fontSize: typography.small,
     fontWeight: '700',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.sm,
   },
   modalBackdrop: {
     alignItems: 'center',
@@ -467,15 +367,14 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   modalCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: CARD,
     borderRadius: radius.lg,
     maxHeight: '78%',
-    maxWidth: 600,
     padding: spacing.xl,
     width: '100%',
   },
   modalTitle: {
-    color: REGISTER_TEXT,
+    color: TEXT,
     fontSize: typography.subtitle,
     fontWeight: '800',
     marginBottom: spacing.lg,
@@ -484,7 +383,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   modalHeading: {
-    color: REGISTER_TEXT,
+    color: TEXT,
     fontSize: typography.body,
     fontWeight: '800',
     marginBottom: spacing.sm,
@@ -499,14 +398,14 @@ const styles = StyleSheet.create({
   modalButton: {
     alignItems: 'center',
     alignSelf: 'flex-end',
-    borderColor: REGISTER_BORDER,
+    borderColor: BORDER,
     borderRadius: radius.sm,
     borderWidth: 1,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
   modalButtonText: {
-    color: REGISTER_TEXT,
+    color: TEXT,
     fontSize: typography.body,
     fontWeight: '600',
   },
