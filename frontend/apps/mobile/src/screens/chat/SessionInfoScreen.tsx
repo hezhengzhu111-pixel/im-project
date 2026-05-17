@@ -1,16 +1,14 @@
 import React from 'react';
-import { Alert, StyleSheet, Switch, Text, View } from 'react-native';
+import { StyleSheet, Switch, Text, View } from 'react-native';
 import { Screen } from '@/components/common/Screen';
 import { PageContent, SectionCard, InfoRow } from '@/components/common/PageElements';
 import { PrimaryButton } from '@/components/common/PrimaryButton';
 import { colors, spacing, typography } from '@/app/theme';
-import { useMessageStore } from '@/stores/messageStore';
 import { useSessionStore } from '@/stores/sessionStore';
 
 export function SessionInfoScreen() {
   const session = useSessionStore((state) => state.currentSession);
   const updateSessionFlags = useSessionStore((state) => state.updateSessionFlags);
-  const clearMessages = useMessageStore((state) => state.clearMessages);
 
   if (!session) {
     return <Screen title="会话详情"><PageContent><SectionCard><Text style={styles.emptyText}>暂无会话</Text></SectionCard></PageContent></Screen>;
@@ -38,13 +36,12 @@ export function SessionInfoScreen() {
         </SectionCard>
         <SectionCard>
           <PrimaryButton
-            label="清空聊天记录"
+            label="清空聊天记录（暂不可用）"
             variant="danger"
-            onPress={() => {
-              clearMessages(session.id);
-              Alert.alert('已清空聊天记录');
-            }}
+            disabled
+            onPress={() => undefined}
           />
+          <Text style={styles.disabledHint}>该功能暂时关闭。</Text>
         </SectionCard>
       </PageContent>
     </Screen>
@@ -76,5 +73,11 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: typography.small,
     lineHeight: 20,
+  },
+  disabledHint: {
+    color: colors.muted,
+    fontSize: typography.small,
+    lineHeight: 20,
+    marginTop: spacing.sm,
   },
 });
