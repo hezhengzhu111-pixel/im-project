@@ -42,3 +42,10 @@ export const RETRY_CONFIG = {
   baseDelayMs: 1_000,
   maxDelayMs: 60_000,
 } as const;
+
+export const RECONCILE_CONFIG = {
+  /** pending.status='sending' 超过此时间视为卡死，恢复到 pending */
+  staleSendingMs: 120_000,
+  /** uploadTask.status='uploading' 超过此时间视为卡死，恢复到 failed 或 pending */
+  staleUploadingMs: 120_000,
+} as const;

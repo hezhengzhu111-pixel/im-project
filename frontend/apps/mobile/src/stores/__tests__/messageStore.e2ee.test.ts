@@ -118,6 +118,7 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
     mr.listMessagesPage.mockReturnValue({ messages: [], hasMore: false });
     mr.listSessions.mockReturnValue([]);
     pr.listReady.mockReturnValue([]);
+    pr.listReadyToSend.mockReturnValue([]);
     pr.findByClientMessageId.mockReturnValue(undefined);
   });
 
@@ -415,7 +416,7 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
         { localId: 'local_enc' },
       );
 
-      pr.listReady.mockReturnValue([plainPending, encPending]);
+      pr.listReadyToSend.mockReturnValue([plainPending, encPending]);
       pr.get.mockImplementation((id: string) => {
         if (id === 'local_plain') return plainPending;
         if (id === 'local_enc') return encPending;

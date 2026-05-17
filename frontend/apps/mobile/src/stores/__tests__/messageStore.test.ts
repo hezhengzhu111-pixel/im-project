@@ -103,6 +103,7 @@ describe('messageStore', () => {
     mr.listMessagesPage.mockReturnValue({ messages: [], hasMore: false });
     mr.listSessions.mockReturnValue([]);
     pr.listReady.mockReturnValue([]);
+    pr.listReadyToSend.mockReturnValue([]);
     (createClientMessageId as jest.Mock).mockReturnValue(`client_${Date.now()}_${Math.random().toString(36).slice(2)}`);
     (createLocalMessageId as jest.Mock).mockReturnValue(`local_${Date.now()}_${Math.random().toString(36).slice(2)}`);
   });
@@ -186,6 +187,7 @@ describe('messageStore', () => {
           localId: 'local_1',
           retryCount: 1,
           status: 'pending',
+          lastError: expect.stringContaining('send failed'),
         }),
       );
     });
@@ -215,6 +217,7 @@ describe('messageStore', () => {
           localId: 'local_2',
           retryCount: 5,
           status: 'failed',
+          lastError: expect.stringContaining('send failed'),
         }),
       );
     });
@@ -250,6 +253,7 @@ describe('messageStore', () => {
       expect(catchUpdate!.nextRetryAt).toBeDefined();
       expect(typeof catchUpdate!.nextRetryAt).toBe('number');
       expect(catchUpdate!.nextRetryAt!).toBeGreaterThan(Date.now() - 1000);
+      expect(catchUpdate!.lastError).toContain('send failed');
     });
 
     it('skips when pending not found', async () => {

@@ -107,6 +107,15 @@ export const uploadTaskRepository = {
     return rows.map(normalize);
   },
 
+  listAll(): UploadTask[] {
+    const rows = messageDatabase.isMemoryFallback()
+      ? messageDatabase
+          .memoryList('mobile_upload_tasks')
+          .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0))
+      : messageDatabase.query('SELECT * FROM mobile_upload_tasks ORDER BY createdAt ASC');
+    return rows.map(normalize);
+  },
+
   remove(taskId: string): void {
     messageDatabase.memoryDelete('mobile_upload_tasks', taskId);
     messageDatabase.execute('DELETE FROM mobile_upload_tasks WHERE taskId = ?', [taskId]);

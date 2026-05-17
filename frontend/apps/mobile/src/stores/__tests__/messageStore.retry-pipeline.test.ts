@@ -65,9 +65,10 @@ import { pendingMessageRepository } from '@/services/storage/pendingMessageRepos
 import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
 import { messageService } from '@/services/chat/messageService';
 import { uploadService } from '@/services/upload/uploadService';
+import { reconcilePendingState } from '@/services/storage/reconcilePendingState';
 import { blockEncryptedPendingPayload } from '@/e2ee/e2eeDeferred';
 import { freezeTime, restoreTime } from '@/test/timeHelpers';
-import { RETRY_CONFIG } from '@/constants/config';
+import { RETRY_CONFIG, RECONCILE_CONFIG } from '@/constants/config';
 
 const pr = jest.mocked(pendingMessageRepository);
 const utr = jest.mocked(uploadTaskRepository);
@@ -168,7 +169,9 @@ describe('messageStore retry pipeline', () => {
     mockSessions.length = 0;
     pr.listReady.mockReturnValue([]);
     pr.listReadyToSend.mockReturnValue([]);
+    pr.listAll.mockReturnValue([]);
     pr.findByClientMessageId.mockReturnValue(undefined);
+    utr.listAll.mockReturnValue([]);
     (blockEncryptedPendingPayload as jest.Mock).mockReturnValue(false);
   });
 
@@ -1114,6 +1117,277 @@ describe('messageStore retry pipeline', () => {
 
       expect(us.uploadExistingTask).not.toHaveBeenCalled();
       expect(ms.sendGroup).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── reconcilePendingState ──
+
+  describe('reconcilePendingState - stuck sending recovery', () => {
+    it('recovers stale sending → pending when under maxRetryCount', () => {
+      const staleTime = Date.now() - RECONCILE_CONFIG.staleSendingMs - 10_000;
+      const pending = textPending({
+        localId: 'stale_sending',
+        status: 'sending',
+        retryCount: 1,
+        updatedAt: staleTime,
+      });
+      pr.listAll.mockReturnValue([pending]);
+
+      reconcilePendingState();
+
+      expect(pr.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          localId: 'stale_sending',
+          status: 'pending',
+          lastError: expect.stringContaining('stale sending recovered'),
+        }),
+      );
+    });
+
+    it('recovers stale sending → failed when retryCount >= maxRetryCount', () => {
+      const staleTime = Date.now() - RECONCILE_CONFIG.staleSendingMs - 10_000;
+      const pending = textPending({
+        localId: 'stale_exhausted',
+        status: 'sending',
+        retryCount: RETRY_CONFIG.maxRetryCount,
+        updatedAt: staleTime,
+      });
+      pr.listAll.mockReturnValue([pending]);
+
+      reconcilePendingState();
+
+      expect(pr.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          localId: 'stale_exhausted',
+          status: 'failed',
+          lastError: expect.stringContaining('stale sending recovered'),
+        }),
+      );
+    });
+
+    it('does NOT recover recent sending (within threshold)', () => {
+      const recent = textPending({
+        localId: 'recent_sending',
+        status: 'sending',
+        retryCount: 1,
+        updatedAt: Date.now() - 30_000, // 30s ago, well within 120s
+      });
+      pr.listAll.mockReturnValue([recent]);
+
+      reconcilePendingState();
+
+      // Should NOT update the recent sending item
+      const updateCalls = (pr.update as jest.Mock).mock.calls.map((c: unknown[]) => c[0] as PendingMessage);
+      const sendingUpdate = updateCalls.find((p) => p.localId === 'recent_sending');
+      expect(sendingUpdate).toBeUndefined();
+    });
+  });
+
+  describe('reconcilePendingState - stuck uploading recovery', () => {
+    it('recovers stale uploading → pending with lastError when under maxRetryCount', () => {
+      const staleTime = Date.now() - RECONCILE_CONFIG.staleUploadingMs - 10_000;
+      const task = makeUploadTask({
+        taskId: 'stale_uploading',
+        status: 'uploading',
+        retryCount: 2,
+        updatedAt: staleTime,
+      });
+      pr.listAll.mockReturnValue([]);
+      utr.listAll.mockReturnValue([task]);
+
+      reconcilePendingState();
+
+      expect(utr.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'stale_uploading',
+          status: 'pending',
+          lastError: expect.stringContaining('stale uploading recovered'),
+        }),
+      );
+    });
+
+    it('recovers stale uploading → failed when retryCount >= maxRetryCount', () => {
+      const staleTime = Date.now() - RECONCILE_CONFIG.staleUploadingMs - 10_000;
+      const task = makeUploadTask({
+        taskId: 'stale_upload_exhausted',
+        status: 'uploading',
+        retryCount: 5,
+        maxRetryCount: 5,
+        updatedAt: staleTime,
+      });
+      pr.listAll.mockReturnValue([]);
+      utr.listAll.mockReturnValue([task]);
+
+      reconcilePendingState();
+
+      expect(utr.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'stale_upload_exhausted',
+          status: 'failed',
+          lastError: expect.stringContaining('stale uploading recovered'),
+        }),
+      );
+    });
+
+    it('does NOT recover recent uploading (within threshold)', () => {
+      const task = makeUploadTask({
+        taskId: 'recent_uploading',
+        status: 'uploading',
+        retryCount: 1,
+        updatedAt: Date.now() - 30_000,
+      });
+      pr.listAll.mockReturnValue([]);
+      utr.listAll.mockReturnValue([task]);
+
+      reconcilePendingState();
+
+      const upsertCalls = (utr.upsert as jest.Mock).mock.calls.map((c: unknown[]) => c[0] as UploadTask);
+      const uploadingUpdate = upsertCalls.find((t) => t.taskId === 'recent_uploading');
+      expect(uploadingUpdate).toBeUndefined();
+    });
+  });
+
+  describe('reconcilePendingState - mediaUrl repair', () => {
+    it('fills missing mediaUrl in pending from uploaded uploadTask', () => {
+      const pending = mediaPending({
+        localId: 'local_no_url',
+        payloadJson: JSON.stringify({
+          sendType: 'private',
+          data: {
+            clientMessageId: 'cmid_no_url',
+            messageType: 'IMAGE',
+          },
+          uploadTaskId: 'upload_done',
+        }),
+      });
+      const uploadedTask = makeUploadTask({
+        taskId: 'upload_done',
+        status: 'uploaded',
+        remoteUrl: 'https://cdn.test/repaired.jpg',
+        fileName: 'repaired.jpg',
+        fileSize: 4096,
+        progress: 100,
+      });
+      pr.listAll.mockReturnValue([pending]);
+      utr.get.mockReturnValue(uploadedTask);
+
+      reconcilePendingState();
+
+      expect(pr.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          localId: 'local_no_url',
+        }),
+      );
+      const updateCall = (pr.update as jest.Mock).mock.calls.find(
+        (c: unknown[]) => (c[0] as PendingMessage).localId === 'local_no_url',
+      );
+      expect(updateCall).toBeDefined();
+      const updatedPayload = JSON.parse((updateCall![0] as PendingMessage).payloadJson);
+      expect(updatedPayload.data.mediaUrl).toBe('https://cdn.test/repaired.jpg');
+      expect(updatedPayload.data.mediaName).toBe('repaired.jpg');
+      expect(updatedPayload.data.mediaSize).toBe(4096);
+    });
+
+    it('does NOT overwrite existing remote mediaUrl', () => {
+      const pending = mediaPending({
+        localId: 'local_has_url',
+        payloadJson: JSON.stringify({
+          sendType: 'private',
+          data: {
+            clientMessageId: 'cmid_has_url',
+            messageType: 'IMAGE',
+            mediaUrl: 'https://cdn.test/existing.jpg',
+          },
+          uploadTaskId: 'upload_has_url',
+        }),
+      });
+      const uploadedTask = makeUploadTask({
+        taskId: 'upload_has_url',
+        status: 'uploaded',
+        remoteUrl: 'https://cdn.test/other.jpg',
+        fileName: 'other.jpg',
+        fileSize: 100,
+        progress: 100,
+      });
+      pr.listAll.mockReturnValue([pending]);
+      utr.get.mockReturnValue(uploadedTask);
+
+      reconcilePendingState();
+
+      const updateCall = (pr.update as jest.Mock).mock.calls.find(
+        (c: unknown[]) => (c[0] as PendingMessage).localId === 'local_has_url',
+      );
+      expect(updateCall).toBeUndefined();
+    });
+
+    it('skips when uploadTask not found', () => {
+      const pending = mediaPending({
+        localId: 'local_no_task',
+        payloadJson: JSON.stringify({
+          sendType: 'private',
+          data: { clientMessageId: 'cmid_no_task', messageType: 'IMAGE' },
+          uploadTaskId: 'upload_missing',
+        }),
+      });
+      pr.listAll.mockReturnValue([pending]);
+      utr.get.mockReturnValue(undefined);
+
+      expect(() => reconcilePendingState()).not.toThrow();
+    });
+  });
+
+  describe('reconcilePendingState - future nextRetryAt not forced', () => {
+    it('does not change status for pending with future nextRetryAt', () => {
+      const pending = textPending({
+        localId: 'future_retry',
+        status: 'pending',
+        updatedAt: Date.now() - RECONCILE_CONFIG.staleSendingMs - 10_000,
+        nextRetryAt: Date.now() + 600_000,
+      });
+      pr.listAll.mockReturnValue([pending]);
+
+      reconcilePendingState();
+
+      // Only 'sending' status items are recovered; 'pending' items are left alone
+      const updateCalls = (pr.update as jest.Mock).mock.calls.map((c: unknown[]) => c[0] as PendingMessage);
+      const futureUpdate = updateCalls.find((p) => p.localId === 'future_retry');
+      expect(futureUpdate).toBeUndefined();
+    });
+  });
+
+  describe('reconcilePendingState + retryPending integration', () => {
+    it('recovered pending can be sent by retryPending', async () => {
+      const staleTime = Date.now() - RECONCILE_CONFIG.staleSendingMs - 10_000;
+      const pending = textPending({
+        localId: 'recovered_then_send',
+        status: 'sending',
+        retryCount: 1,
+        updatedAt: staleTime,
+      });
+      pr.listAll.mockReturnValue([pending]);
+      pr.listReadyToSend.mockReturnValue([]);
+      pr.get.mockReturnValue(pending);
+      ms.sendPrivate.mockResolvedValueOnce({
+        code: 0,
+        message: 'ok',
+        data: { id: 'srv_recovered', messageId: 'srv_recovered', clientMessageId: 'cmid_text_1', status: 'SENT' },
+      } as never);
+
+      // Step 1: reconcile recovers it to pending
+      reconcilePendingState();
+      expect(pr.update).toHaveBeenCalledWith(
+        expect.objectContaining({ localId: 'recovered_then_send', status: 'pending' }),
+      );
+
+      // Step 2: simulate retryPending picking it up
+      // listReadyToSend now returns the recovered pending
+      const recovered = { ...pending, status: 'pending' as const, lastError: 'stale sending recovered' };
+      pr.listReadyToSend.mockReturnValue([recovered]);
+      pr.get.mockReturnValue(recovered);
+
+      await useMessageStore.getState().retryPending();
+
+      expect(ms.sendPrivate).toHaveBeenCalledTimes(1);
     });
   });
 });
