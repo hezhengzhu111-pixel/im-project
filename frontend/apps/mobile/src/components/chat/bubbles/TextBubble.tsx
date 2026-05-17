@@ -10,28 +10,25 @@ interface TextBubbleProps {
 
 const messageTypeFallback: Record<string, string> = {
   TEXT: '消息',
-  IMAGE: '图片',
-  VIDEO: '视频',
-  VOICE: '语音',
-  FILE: '文件',
   SYSTEM: '系统消息',
   AI_REPLY: '智能回复',
 };
 
 export function TextBubble({ message, mine }: TextBubbleProps) {
-  const displayContent =
-    message.content || message.mediaName || message.mediaUrl || messageTypeFallback[message.messageType] || '消息';
-  return (
-    <Text style={[styles.text, mine && styles.mineText]}>
-      {displayContent}
-    </Text>
-  );
+  if (message.messageType !== 'TEXT' && message.messageType !== 'SYSTEM' && message.messageType !== 'AI_REPLY') {
+    return null;
+  }
+
+  const displayContent = message.content || messageTypeFallback[message.messageType] || '消息';
+
+  return <Text style={[styles.text, mine && styles.mineText]}>{displayContent}</Text>;
 }
 
 const styles = StyleSheet.create({
   text: {
     color: colors.text,
     fontSize: typography.body,
+    lineHeight: 21,
   },
   mineText: {
     color: '#FFFFFF',
