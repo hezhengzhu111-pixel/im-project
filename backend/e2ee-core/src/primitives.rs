@@ -63,7 +63,7 @@ pub struct X25519KeyPair {
 /// Ed25519 digital signature public key (32 bytes).
 ///
 /// Safe to share. Implements `Clone` and `Copy` for ergonomic use.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ed25519PublicKey(pub [u8; 32]);
 
 /// Ed25519 digital signature private key (32 bytes).
@@ -96,6 +96,29 @@ pub struct AesNonce(pub [u8; 12]);
 /// Does NOT implement `Zeroize` since signatures are not secret.
 #[derive(Clone, Copy)]
 pub struct Ed25519Signature(pub [u8; 64]);
+
+// Serde support for Ed25519Signature.
+// Manual impl required because serde does not support [u8; 64] directly (max is [u8; 32]).
+impl Serialize for Ed25519Signature {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.as_slice().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Ed25519Signature {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let bytes: Vec<u8> = Vec::deserialize(deserializer)?;
+        if bytes.len() != 64 {
+            return Err(serde::de::Error::invalid_length(
+                bytes.len(),
+                &"expected 64 bytes",
+            ));
+        }
+        let mut arr = [0u8; 64];
+        arr.copy_from_slice(&bytes);
+        Ok(Ed25519Signature(arr))
+    }
+}
 
 // ============================================================================
 // Key Generation  (Task 5)

@@ -1,0 +1,44 @@
+namespace e2ee_ffi {};
+
+[Error]
+enum SessionError {
+    "SessionNotFound",
+    "SessionAlreadyExists",
+    "InvalidStateData",
+    "Crypto",
+};
+
+interface SessionManager {
+    constructor();
+
+    [Throws=SessionError]
+    sequence<u8> create_outbound_session(
+        string session_id,
+        sequence<u8> identity_key_pair_bincode,
+        string remote_bundle_json
+    );
+
+    [Throws=SessionError]
+    void create_inbound_session(
+        string session_id,
+        sequence<u8> identity_key_pair_bincode,
+        sequence<u8> signed_pre_key_pair_bincode,
+        sequence<u8>? one_time_pre_key_pair_bincode,
+        sequence<u8> remote_identity_key_bytes,
+        sequence<u8> remote_ephemeral_key_bytes
+    );
+
+    [Throws=SessionError]
+    sequence<u8> encrypt(string session_id, sequence<u8> plaintext);
+
+    [Throws=SessionError]
+    sequence<u8> decrypt(string session_id, sequence<u8> encrypted);
+
+    [Throws=SessionError]
+    sequence<u8> export_session(string session_id);
+
+    [Throws=SessionError]
+    void restore_session(string session_id, sequence<u8> state_bincode);
+
+    void remove_session(string session_id);
+};

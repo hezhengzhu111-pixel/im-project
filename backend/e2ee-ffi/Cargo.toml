@@ -2,3 +2,22 @@
 name = "e2ee-ffi"
 version.workspace = true
 edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[dependencies]
+e2ee-core = { path = "../e2ee-core" }
+thiserror.workspace = true
+uniffi.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+bincode.workspace = true
+
+[build-dependencies]
+uniffi = { workspace = true, features = ["build"] }
+
+[dev-dependencies]
+e2ee-core = { path = "../e2ee-core" }
+serde_json.workspace = true
+bincode.workspace = true

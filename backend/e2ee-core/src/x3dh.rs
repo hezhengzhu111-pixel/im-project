@@ -21,6 +21,7 @@
 //!
 //! SK = HKDF-SHA256(DH1 || DH2 || DH3 || DH4, salt=0x00..00, "X3DH-RootKey-v1")
 
+use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
 use crate::errors::E2eeError;
@@ -52,6 +53,7 @@ const MAX_DH_COUNT: usize = 4;
 // ============================================================================
 
 /// A pre-key with its identifier.
+#[derive(Serialize, Deserialize)]
 pub struct PreKey {
     pub id: u32,
     pub key: X25519PublicKey,
@@ -68,6 +70,7 @@ pub struct PreKeyBundle {
 
 /// A pre-key bundle that Alice receives, including IDs for the signed
 /// pre-key and one-time pre-key (to tell Bob which OTK was used).
+#[derive(Serialize, Deserialize)]
 pub struct PreKeyBundleFetch {
     pub identity_key: X25519PublicKey,
     pub signing_key: Ed25519PublicKey,
