@@ -1,0 +1,6 @@
+[bindings.kotlin]
+package_name = "com.im.e2ee"
+cdylib_name = "e2ee_ffi"
+
+[bindings.swift]
+cdylib_name = "e2ee_ffi"
