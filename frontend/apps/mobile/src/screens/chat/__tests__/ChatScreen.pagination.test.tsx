@@ -2,7 +2,7 @@
  * Phase 3 — ChatScreen pagination interaction tests.
  *
  * Focused on the UI behaviour when pagination state changes:
- *   - onEndReached triggers loadOlderMessages
+ *   - scrolling near the top triggers loadOlderMessages
  *   - loadingOlder guard prevents duplicate calls
  *   - New-message button appears when user is not at bottom
  *   - Loading-history indicator
@@ -212,10 +212,11 @@ describe('ChatScreen — Phase 3 pagination', () => {
     expect(flatList.props.data).toHaveLength(2);
   });
 
-  // ── FlatList onEndReached 回调存在 ─────────────────────────────────────
-  test('FlatList has onEndReached callback for loading older messages', () => {
+  // ── 滚动到顶部附近才加载历史 ─────────────────────────────────────
+  test('loads older messages when scrolling near the top', () => {
     useSessionStore.getState().setCurrentSession(session);
     jest.spyOn(useMessageStore.getState(), 'loadInitialMessages').mockResolvedValue();
+    const loadOlderSpy = jest.spyOn(useMessageStore.getState(), 'loadOlderMessages').mockResolvedValue();
     useMessageStore.setState({
       messagesBySession: { [session.id]: [createMessage('m1')] },
       messagesPaginationBySession: { [session.id]: initializedPagination },
@@ -227,8 +228,20 @@ describe('ChatScreen — Phase 3 pagination', () => {
     });
 
     const flatList = testRenderer!.root.find((node) => typeName(node) === 'FlatList');
-    expect(typeof flatList.props.onEndReached).toBe('function');
-    expect(flatList.props.onEndReachedThreshold).toBe(3);
+    expect(flatList.props.onEndReached).toBeUndefined();
+    expect(flatList.props.onEndReachedThreshold).toBeUndefined();
+
+    renderer.act(() => {
+      flatList.props.onScroll({
+        nativeEvent: {
+          contentOffset: { y: 20 },
+          contentSize: { height: 1000 },
+          layoutMeasurement: { height: 500 },
+        },
+      });
+    });
+
+    expect(loadOlderSpy).toHaveBeenCalledWith(expect.objectContaining({ id: session.id }));
   });
 
   // ── 初始加载时 new messages 按钮不显示 ─────────────────────────────────
