@@ -363,6 +363,42 @@ mod tests {
         assert_eq!(store.len(), 2000);
     }
 
+    /// Verify that inserting beyond MAX capacity triggers LRU eviction of the
+    /// oldest entry.
+    ///
+    /// Fills the store to 2000 entries with a single ratchet public key and
+    /// sequential counters, then inserts the 2001st entry.  The oldest entry
+    /// (counter=0) must be evicted, while the newest (counter=2000) must be
+    /// retrievable.
+    #[test]
+    fn skipped_key_store_lru_eviction_evicts_oldest() -> Result<(), crate::errors::E2eeError> {
+        let mut store = SkippedKeyStore::new();
+        let pk = generate_x25519_keypair().public_key;
+
+        // Fill to exactly MAX capacity (2000)
+        for counter in 0..2000u32 {
+            store.insert(pk, counter, MessageKey([0x42u8; 32]))?;
+        }
+        assert_eq!(store.len(), 2000);
+
+        // Insert one more — triggers LRU eviction of the oldest (counter=0)
+        store.insert(pk, 2000u32, MessageKey([0xFFu8; 32]))?;
+
+        // Store must stay at MAX (2000)
+        assert_eq!(store.len(), 2000);
+
+        // The oldest entry (counter=0) must have been evicted
+        assert!(store.remove(&pk, 0).is_none());
+
+        // The newest entry (counter=2000) must be present
+        match store.remove(&pk, 2000u32) {
+            Some(key) => assert_eq!(key.0, [0xFFu8; 32]),
+            None => return Err(crate::errors::E2eeError::StateDeserializationFailed),
+        }
+
+        Ok(())
+    }
+
     // --- RatchetHeader encode / decode ---
 
     fn make_test_header() -> RatchetHeader {
