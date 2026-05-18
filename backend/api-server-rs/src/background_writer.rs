@@ -12,7 +12,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const MYSQL_BIND_LIMIT: usize = 60_000;
-const MESSAGE_INSERT_BINDS: usize = 24;
+const MESSAGE_INSERT_BINDS: usize = 25;
 const PRIVATE_READ_CURSOR_INSERT_BINDS: usize = 6;
 const GROUP_READ_CURSOR_INSERT_BINDS: usize = 8;
 
@@ -357,6 +357,7 @@ struct DbMessage {
     e2ee_device_id: Option<String>,
     e2ee_sender_identity_key: Option<String>,
     e2ee_ephemeral_key: Option<String>,
+    e2ee_envelope_json: Option<String>,
     status: i32,
     is_group_chat: i8,
     reply_to_message_id: Option<i64>,
@@ -405,6 +406,10 @@ impl DbMessage {
             e2ee_device_id: message.e2ee_device_id.clone(),
             e2ee_sender_identity_key: message.e2ee_sender_identity_key.clone(),
             e2ee_ephemeral_key: message.e2ee_ephemeral_key.clone(),
+            e2ee_envelope_json: message
+                .e2ee_envelope
+                .as_ref()
+                .and_then(|envelope| serde_json::to_string(envelope).ok()),
             status: MessageStatus::from_text(&message.status).db_code(),
             is_group_chat: if message.is_group_chat { 1_i8 } else { 0_i8 },
             reply_to_message_id: message.reply_to_message_id.as_deref().and_then(parse_i64),
@@ -450,7 +455,7 @@ async fn insert_messages(
             "INSERT INTO service_message_service_db.messages \
              (id, sender_id, receiver_id, group_id, conversation_seq, client_message_id, message_type, content, \
               media_url, media_size, media_name, thumbnail_url, duration, location_info, encrypted, e2ee_header, \
-              e2ee_device_id, e2ee_sender_identity_key, e2ee_ephemeral_key, status, \
+              e2ee_device_id, e2ee_sender_identity_key, e2ee_ephemeral_key, e2ee_envelope_json, status, \
               is_group_chat, reply_to_message_id, created_time, updated_time) ",
         );
         query.push_values(chunk.iter(), |mut row, message| {
@@ -473,6 +478,7 @@ async fn insert_messages(
                 .push_bind(message.e2ee_device_id.clone())
                 .push_bind(message.e2ee_sender_identity_key.clone())
                 .push_bind(message.e2ee_ephemeral_key.clone())
+                .push_bind(message.e2ee_envelope_json.clone())
                 .push_bind(message.status)
                 .push_bind(message.is_group_chat)
                 .push_bind(message.reply_to_message_id)

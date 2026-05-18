@@ -1,38 +1,18 @@
 /**
  * E2EE 会话状态持久化存储
  *
- * 将 Double Ratchet 状态序列化到 IndexedDB，支持会话恢复。
- * 使用 JWK 格式存储 CryptoKey 对象（需 extractable: true）。
- *
- * 注意: Identity Key (extractable: false) 不能导出为 JWK，
- * 但 RatchetState 中的密钥（rootKey, chainKey, DH key）都是 extractable 的。
+ * 将 Double Ratchet 状态保存到 IndexedDB，支持会话恢复。
+ * CryptoKey 通过 structured clone 直接保存，私钥和会话密钥不可导出。
  */
 
 import type { RatchetState } from '../engine/double-ratchet';
-import { cryptoKeyToJwk, jwkToCryptoKey } from '../engine/codec';
 
 // ---------------------------------------------------------------------------
-// 序列化类型
+// Stored state type
 // ---------------------------------------------------------------------------
 
-/** 序列化后的单个跳过消息密钥条目 */
-interface SerializedSkippedKey {
-  key: string;
-  messageKey: JsonWebKey;
-}
-
-/** 序列化后的 RatchetState（所有 CryptoKey 转为 JWK） */
-interface SerializedRatchetState {
-  rootKey: JsonWebKey;
-  sendingChainKey: JsonWebKey | null;
-  receivingChainKey: JsonWebKey | null;
-  sendCounter: number;
-  receiveCounter: number;
-  previousCounter: number;
-  dhPrivateKey: JsonWebKey;
-  dhPublicKey: JsonWebKey;
-  remotePublicKey: JsonWebKey | null;
-  skippedMessageKeys: SerializedSkippedKey[];
+interface StoredRatchetState extends RatchetState {
+  version: 3;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,29 +62,19 @@ function openDB(): Promise<IDBDatabase> {
  * @param state - 当前棘轮状态
  */
 export async function saveRatchetState(sessionId: string, state: RatchetState): Promise<void> {
-  // 序列化跳过消息密钥
-  const skippedEntries: SerializedSkippedKey[] = [];
-  for (const [key, messageKey] of state.skippedMessageKeys) {
-    skippedEntries.push({ key, messageKey: await cryptoKeyToJwk(messageKey) });
+  if (state.dhKeyPair.privateKey.extractable) {
+    throw new Error('unsupported_browser_crypto');
   }
-
-  const serialized: SerializedRatchetState = {
-    rootKey: await cryptoKeyToJwk(state.rootKey),
-    sendingChainKey: state.sendingChainKey ? await cryptoKeyToJwk(state.sendingChainKey) : null,
-    receivingChainKey: state.receivingChainKey ? await cryptoKeyToJwk(state.receivingChainKey) : null,
-    sendCounter: state.sendCounter,
-    receiveCounter: state.receiveCounter,
-    previousCounter: state.previousCounter,
-    dhPrivateKey: await cryptoKeyToJwk(state.dhKeyPair.privateKey),
-    dhPublicKey: await cryptoKeyToJwk(state.dhKeyPair.publicKey),
-    remotePublicKey: state.remotePublicKey ? await cryptoKeyToJwk(state.remotePublicKey) : null,
-    skippedMessageKeys: skippedEntries,
+  const stored: StoredRatchetState = {
+    ...state,
+    skippedMessageKeys: new Map(state.skippedMessageKeys),
+    version: 3,
   };
 
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).put(serialized, sessionId);
+    tx.objectStore(STORE_NAME).put(stored, sessionId);
     tx.oncomplete = () => {
       // E20: counter values are diagnostic-only; do not log in production
       resolve();
@@ -128,7 +98,7 @@ export async function getRatchetState(sessionId: string): Promise<RatchetState |
     const tx = db.transaction(STORE_NAME, 'readonly');
     const req = tx.objectStore(STORE_NAME).get(sessionId);
     req.onsuccess = () => {
-      const data = req.result as SerializedRatchetState | undefined;
+      const data = req.result as StoredRatchetState | undefined;
       if (!data) {
         console.warn(`[E2EE] getRatchetState: no data for session=${sessionId}`);
         resolve(null);
@@ -180,47 +150,24 @@ export async function listSessionIds(): Promise<string[]> {
 // ---------------------------------------------------------------------------
 
 /**
- * 将 JWK 格式还原为 RatchetState
+ * Validate and return stored RatchetState. Legacy JWK records are not used because
+ * they contain exportable key material; callers must renegotiate the session.
  */
-async function deserializeRatchetState(data: SerializedRatchetState): Promise<RatchetState> {
-  const ecdhParams: EcKeyImportParams = { name: 'ECDH', namedCurve: 'P-256' };
-  const aesParams: AesKeyAlgorithm = { name: 'AES-GCM', length: 256 };
-
-  const rootKey = await jwkToCryptoKey(data.rootKey, aesParams, ['encrypt', 'decrypt']);
-
-  const sendingChainKey = data.sendingChainKey
-    ? await jwkToCryptoKey(data.sendingChainKey, aesParams, ['encrypt', 'decrypt'])
-    : null;
-
-  const receivingChainKey = data.receivingChainKey
-    ? await jwkToCryptoKey(data.receivingChainKey, aesParams, ['encrypt', 'decrypt'])
-    : null;
-
-  const dhPrivateKey = await jwkToCryptoKey(data.dhPrivateKey, ecdhParams, ['deriveKey', 'deriveBits']);
-  const dhPublicKey = await jwkToCryptoKey(data.dhPublicKey, ecdhParams, []);
-
-  const remotePublicKey = data.remotePublicKey
-    ? await jwkToCryptoKey(data.remotePublicKey, ecdhParams, [])
-    : null;
-
-  // 反序列化跳过消息密钥
-  const skippedMessageKeys = new Map<string, CryptoKey>();
-  if (data.skippedMessageKeys) {
-    for (const entry of data.skippedMessageKeys) {
-      const mk = await jwkToCryptoKey(entry.messageKey, aesParams, ['encrypt', 'decrypt']);
-      skippedMessageKeys.set(entry.key, mk);
-    }
+async function deserializeRatchetState(data: StoredRatchetState): Promise<RatchetState> {
+  if (data.version !== 3 || data.dhKeyPair.privateKey.extractable) {
+    throw new Error('missing_local_private_key');
   }
-
   return {
-    rootKey,
-    sendingChainKey,
-    receivingChainKey,
+    rootKey: data.rootKey,
+    sendingChainKey: data.sendingChainKey,
+    receivingChainKey: data.receivingChainKey,
     sendCounter: data.sendCounter,
     receiveCounter: data.receiveCounter,
     previousCounter: data.previousCounter,
-    dhKeyPair: { privateKey: dhPrivateKey, publicKey: dhPublicKey },
-    remotePublicKey,
-    skippedMessageKeys,
+    dhKeyPair: data.dhKeyPair,
+    remotePublicKey: data.remotePublicKey,
+    skippedMessageKeys: data.skippedMessageKeys instanceof Map
+      ? data.skippedMessageKeys
+      : new Map(),
   };
 }

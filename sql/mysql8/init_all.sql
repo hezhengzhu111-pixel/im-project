@@ -144,6 +144,11 @@ CREATE TABLE IF NOT EXISTS e2ee_devices (
   signing_identity_key  TEXT NOT NULL COMMENT 'E2EE signing identity public key(Base64)',
   signed_pre_key        TEXT NOT NULL COMMENT '签名预公钥(Base64)',
   signed_pre_key_signature TEXT NOT NULL COMMENT '签名预公钥签名(Base64)',
+  identity_public_key   TEXT NULL COMMENT 'E2EE identity public key',
+  fingerprint           VARCHAR(64) NULL COMMENT 'public key fingerprint',
+  key_version           INT NOT NULL DEFAULT 1 COMMENT 'device key version',
+  revoked_at            DATETIME NULL COMMENT 'device revoke time',
+  last_seen_at          DATETIME NULL COMMENT 'last seen time',
   last_active_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最后活跃时间',
   created_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -155,8 +160,13 @@ CREATE TABLE IF NOT EXISTS e2ee_one_time_pre_keys (
   id           BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增ID',
   user_id      BIGINT NOT NULL COMMENT '用户ID',
   device_id    VARCHAR(64) NOT NULL COMMENT '设备ID',
+  pre_key_id   BIGINT NULL COMMENT 'client pre-key id',
   pre_key      TEXT NOT NULL COMMENT '一次性预公钥(Base64)',
+  public_key   TEXT NULL COMMENT 'one-time public key',
   consumed     TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已消费: 0-否 1-是',
+  claimed_at   DATETIME NULL COMMENT 'claim time',
+  claimed_by_user_id BIGINT NULL COMMENT 'claimant user',
+  claimed_by_device_id VARCHAR(64) NULL COMMENT 'claimant device',
   created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   consumed_time DATETIME NULL COMMENT '消费时间',
   PRIMARY KEY (id),
@@ -174,6 +184,50 @@ CREATE TABLE IF NOT EXISTS e2ee_sessions (
   updated_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (session_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE私聊加密会话协商表';
+
+
+
+CREATE TABLE IF NOT EXISTS e2ee_conversation_sessions (
+  conversation_id VARCHAR(128) NOT NULL,
+  session_id VARCHAR(64) NOT NULL,
+  key_id VARCHAR(64) NOT NULL,
+  key_version INT NOT NULL DEFAULT 1,
+  epoch INT NOT NULL DEFAULT 1,
+  created_by_user_id BIGINT NOT NULL,
+  sender_device_id VARCHAR(64) NOT NULL,
+  recipient_device_ids_json TEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'active',
+  needs_rotation TINYINT(1) NOT NULL DEFAULT 0,
+  rotate_reason VARCHAR(32) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (conversation_id),
+  UNIQUE KEY uk_e2ee_conversation_session_id (session_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE active conversation session metadata';
+
+CREATE TABLE IF NOT EXISTS e2ee_conversation_session_members (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  conversation_id VARCHAR(128) NOT NULL,
+  user_id BIGINT NOT NULL,
+  device_id VARCHAR(64) NOT NULL,
+  key_version INT NOT NULL,
+  epoch INT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_e2ee_session_member (conversation_id, user_id, device_id, epoch)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE session recipient metadata';
+
+CREATE TABLE IF NOT EXISTS e2ee_group_epochs (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  group_id BIGINT NOT NULL,
+  epoch INT NOT NULL,
+  key_version INT NOT NULL,
+  rotate_reason VARCHAR(32) NOT NULL,
+  created_by_user_id BIGINT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_e2ee_group_epoch (group_id, epoch)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE group epoch history';
 
 -- E2EE 密钥备份表
 CREATE TABLE IF NOT EXISTS e2ee_key_backups (
@@ -319,6 +373,7 @@ CREATE TABLE IF NOT EXISTS messages (
   e2ee_device_id VARCHAR(64) NULL COMMENT 'E2EE sender device ID',
   e2ee_sender_identity_key TEXT NULL COMMENT 'E2EE sender identity public key',
   e2ee_ephemeral_key TEXT NULL COMMENT 'E2EE sender ephemeral public key',
+  e2ee_envelope_json JSON NULL COMMENT 'Unified E2EE envelope JSON',
   status INT NOT NULL COMMENT '消息状态：1-已发送，2-已送达，3-已读，4-撤回，5-删除',
   is_group_chat TINYINT NOT NULL DEFAULT 0 COMMENT '是否群聊：1-是，0-否',
   reply_to_message_id BIGINT NULL COMMENT '回复的消息ID',

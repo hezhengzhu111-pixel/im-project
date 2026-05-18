@@ -142,13 +142,14 @@ const makeCtx = () => {
 describe("message-send-queue E2EE", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   it("marks message FAILED and does not send when encrypted session and encryptMessage throws", async () => {
     const ctx = makeCtx();
     const { sendMessage } = createMessageSendQueueModule(ctx as never);
 
-    getLocalSessionStatusMock.mockReturnValue("encrypted");
+    localStorage.setItem("e2ee:status:sess_1", "encrypted");
     encryptMessageMock.mockRejectedValue(new Error("ratchet state corrupted"));
 
     const session = makeSession();
@@ -161,20 +162,14 @@ describe("message-send-queue E2EE", () => {
       "端到端加密失败，消息未发送",
     );
 
-    // pending message should be marked FAILED
-    const upsertCalls = ctx._mocks.upsertPendingMessage.mock.calls;
-    const failedCall = upsertCalls.find(
-      (call: unknown[]) =>
-        (call[2] as Message | undefined)?.status === "FAILED",
-    );
-    expect(failedCall).toBeTruthy();
+    expect(ctx._mocks.upsertPendingMessage).not.toHaveBeenCalled();
   });
 
   it("marks message FAILED when encryptMessage returns null payload", async () => {
     const ctx = makeCtx();
     const { sendMessage } = createMessageSendQueueModule(ctx as never);
 
-    getLocalSessionStatusMock.mockReturnValue("encrypted");
+    localStorage.setItem("e2ee:status:sess_1", "encrypted");
     encryptMessageMock.mockResolvedValue(null);
 
     const session = makeSession();
@@ -192,7 +187,7 @@ describe("message-send-queue E2EE", () => {
     const ctx = makeCtx();
     const { sendMessage } = createMessageSendQueueModule(ctx as never);
 
-    getLocalSessionStatusMock.mockReturnValue("encrypted");
+    localStorage.setItem("e2ee:status:sess_1", "encrypted");
     encryptMessageMock.mockResolvedValue({
       ciphertext: "",
       header: { dhPubKey: "abc" },
@@ -211,7 +206,7 @@ describe("message-send-queue E2EE", () => {
     const ctx = makeCtx();
     const { sendMessage } = createMessageSendQueueModule(ctx as never);
 
-    getLocalSessionStatusMock.mockReturnValue("plaintext");
+    localStorage.setItem("e2ee:status:sess_1", "plaintext");
 
     const session = makeSession();
     const result = await sendMessage(session, "hello", "TEXT");
@@ -225,7 +220,7 @@ describe("message-send-queue E2EE", () => {
     const ctx = makeCtx();
     const { sendMessage } = createMessageSendQueueModule(ctx as never);
 
-    getLocalSessionStatusMock.mockReturnValue("encrypted");
+    localStorage.setItem("e2ee:status:sess_1", "encrypted");
     encryptMessageMock.mockResolvedValue({
       ciphertext: "encrypted_data",
       header: { dhPubKey: "abc" },
@@ -259,7 +254,7 @@ describe("message-send-queue E2EE", () => {
     const ctx = makeCtx();
     const { sendMessage } = createMessageSendQueueModule(ctx as never);
 
-    getLocalSessionStatusMock.mockReturnValue("encrypted");
+    localStorage.setItem("e2ee:status:sess_1", "encrypted");
     encryptMessageMock.mockResolvedValue({
       ciphertext: "encrypted_data_only",
       header: { dhPubKey: "abc" },
@@ -285,7 +280,8 @@ describe("message-send-queue E2EE", () => {
     expect(payload.data.encrypted).toBe(true);
 
     // Content must be ciphertext, not plaintext
-    expect(payload.data.content).toBe("encrypted_data_only");
+    expect(payload.data.e2eeEnvelope.ciphertext).toBe("encrypted_data_only");
+    expect(payload.data).not.toHaveProperty("content");
     expect(payload.data.content).not.toBe("secret plaintext message");
 
     // Must contain E2EE fields
@@ -305,7 +301,7 @@ describe("message-send-queue E2EE", () => {
     const ctx = makeCtx();
     const { sendMessage } = createMessageSendQueueModule(ctx as never);
 
-    getLocalSessionStatusMock.mockReturnValue("plaintext");
+    localStorage.setItem("e2ee:status:sess_1", "plaintext");
 
     ctx._mocks.sendPrivate.mockRejectedValue(
       Object.assign(new Error("Network Error"), { code: "ERR_NETWORK" }),
@@ -329,7 +325,7 @@ describe("message-send-queue E2EE", () => {
     const ctx = makeCtx();
     const { sendMessage } = createMessageSendQueueModule(ctx as never);
 
-    getLocalSessionStatusMock.mockReturnValue("encrypted");
+    localStorage.setItem("e2ee:status:sess_1", "encrypted");
     encryptMessageMock.mockRejectedValue(new Error("ratchet corrupted"));
 
     const session = makeSession();

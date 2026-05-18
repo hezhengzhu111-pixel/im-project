@@ -8,8 +8,22 @@
 import { ratchetEncrypt, ratchetDecrypt } from '../engine/double-ratchet';
 import { getRatchetState, saveRatchetState } from '../store/session-store';
 import { initiateNegotiation, getLocalSessionStatus } from './negotiation';
-import type { RatchetHeader, E2eeSessionStatus } from '../types';
+import type { E2eeEnvelope, RatchetHeader, E2eeSessionStatus } from '../types';
 import { resolveDeviceId } from './device-identity';
+
+
+function base64ToBase64Url(value: string): string {
+  return value.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function encodeBase64Url(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return base64ToBase64Url(btoa(binary));
+}
 
 const MAX_COUNTER_GAP = 2000;
 
@@ -50,6 +64,55 @@ class E2eeManager {
     await saveRatchetState(sessionId, state);
 
     return { ciphertext, header, deviceId: await this.resolveCurrentDeviceId() };
+  }
+
+
+  async encryptToEnvelope(params: {
+    conversationId: string;
+    clientMsgId: string;
+    senderUserId: string;
+    recipientUserId?: string;
+    recipientDeviceIds?: string[];
+    plaintext: string;
+  }): Promise<E2eeEnvelope> {
+    const sessionId = params.conversationId;
+    const payload = await this.encryptMessage(sessionId, params.plaintext);
+    if (!payload?.ciphertext) {
+      throw new Error('session_not_ready');
+    }
+
+    const keyVersion = 1;
+    const keyId = `${sessionId}:${payload.header.counter}`;
+    const aadFields = {
+      conversationId: params.conversationId,
+      clientMsgId: params.clientMsgId,
+      senderUserId: params.senderUserId,
+      senderDeviceId: payload.deviceId,
+      recipientDeviceIds: params.recipientDeviceIds?.length ? params.recipientDeviceIds : [params.recipientUserId ?? 'unknown'],
+      sessionId,
+      keyId,
+      keyVersion,
+      version: 1,
+      alg: 'AES-256-GCM',
+    } as const;
+
+    return {
+      version: 1,
+      alg: 'AES-256-GCM',
+      conversationId: params.conversationId,
+      clientMsgId: params.clientMsgId,
+      senderUserId: params.senderUserId,
+      senderDeviceId: payload.deviceId,
+      recipientUserId: params.recipientUserId,
+      recipientDeviceIds: aadFields.recipientDeviceIds,
+      sessionId,
+      keyId,
+      keyVersion,
+      iv: base64ToBase64Url(payload.header.iv),
+      aad: encodeBase64Url(JSON.stringify(aadFields)),
+      ciphertext: base64ToBase64Url(payload.ciphertext),
+      createdAt: Date.now(),
+    };
   }
 
   /**
