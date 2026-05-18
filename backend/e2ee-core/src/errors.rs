@@ -21,6 +21,8 @@ pub enum E2eeError {
     // === X3DH ===
     #[error("X3DH: signed pre-key signature verification rejected")]
     SpkSignatureRejected,
+    #[error("invalid pre-key id: {0}")]
+    InvalidPreKeyId(String),
 
     // === Ratchet ===
     #[error("sending chain not initialized")]

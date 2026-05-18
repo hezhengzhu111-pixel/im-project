@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
 use e2ee_core::{
-    export_state, init_receiving_chain, init_sending_chain, ratchet_decrypt, ratchet_encrypt,
-    restore_state, PreKeyBundleFetch, RatchetState, X25519KeyPair, X25519PrivateKey,
+    init_receiving_chain, init_sending_chain, ratchet_decrypt, ratchet_encrypt, restore_state,
+    try_export_state, PreKeyBundleFetch, RatchetState, X25519KeyPair, X25519PrivateKey,
     X25519PublicKey,
 };
 
@@ -93,9 +93,14 @@ impl WasmSessionManager {
         let remote_ik = decode_public_key(&remote_identity_key_bytes)?;
         let remote_ek = decode_public_key(&remote_ephemeral_key_bytes)?;
 
-        let result =
-            e2ee_core::x3dh_respond(&ikp, &spkp, otk_pair.as_ref(), &remote_ik, &remote_ek)
-                .map_err(to_js_error)?;
+        let result = e2ee_core::x3dh_respond_with_raw_otk(
+            &ikp,
+            &spkp,
+            otk_pair.as_ref(),
+            &remote_ik,
+            &remote_ek,
+        )
+        .map_err(to_js_error)?;
 
         let state = init_receiving_chain(&result.root_key, ikp.public_key, remote_ik)
             .map_err(to_js_error)?;
@@ -111,7 +116,8 @@ impl WasmSessionManager {
             .get_mut(&session_id)
             .ok_or_else(|| JsValue::from_str("session not found"))?;
         let (header, ciphertext) = ratchet_encrypt(state, &plaintext).map_err(to_js_error)?;
-        let header_bytes = bincode::serialize(&header).unwrap_or_default();
+        let header_bytes = bincode::serialize(&header)
+            .map_err(|e| JsValue::from_str(&format!("invalid header: {}", e)))?;
         let mut wire = Vec::with_capacity(4 + header_bytes.len() + ciphertext.len());
         wire.extend_from_slice(&(header_bytes.len() as u32).to_be_bytes());
         wire.extend_from_slice(&header_bytes);
@@ -147,7 +153,7 @@ impl WasmSessionManager {
             .sessions
             .get(&session_id)
             .ok_or_else(|| JsValue::from_str("session not found"))?;
-        Ok(export_state(state))
+        try_export_state(state).map_err(to_js_error)
     }
 
     /// Restore session from bincode bytes

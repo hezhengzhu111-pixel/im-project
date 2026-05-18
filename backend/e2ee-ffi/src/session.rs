@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::{Mutex, RwLock};
 
 use e2ee_core::{
-    export_state, init_receiving_chain, init_sending_chain, ratchet_decrypt, ratchet_encrypt,
-    restore_state, PreKeyBundleFetch, RatchetState, X25519KeyPair, X25519PrivateKey,
+    init_receiving_chain, init_sending_chain, ratchet_decrypt, ratchet_encrypt, restore_state,
+    try_export_state, PreKeyBundleFetch, RatchetState, X25519KeyPair, X25519PrivateKey,
     X25519PublicKey,
 };
 
@@ -144,8 +144,13 @@ impl SessionManager {
         let remote_ik = decode_public_key(&remote_identity_key_bytes)?;
         let remote_ek = decode_public_key(&remote_ephemeral_key_bytes)?;
 
-        let result =
-            e2ee_core::x3dh_respond(&ikp, &spkp, otk_pair.as_ref(), &remote_ik, &remote_ek)?;
+        let result = e2ee_core::x3dh_respond_with_raw_otk(
+            &ikp,
+            &spkp,
+            otk_pair.as_ref(),
+            &remote_ik,
+            &remote_ek,
+        )?;
 
         let state = init_receiving_chain(&result.root_key, ikp.public_key, remote_ik)?;
 
@@ -168,7 +173,7 @@ impl SessionManager {
 
         let (header, ciphertext) = ratchet_encrypt(&mut state, &plaintext)?;
 
-        let header_bytes = bincode::serialize(&header).unwrap_or_default();
+        let header_bytes = bincode::serialize(&header).map_err(|_| SessionError::Crypto)?;
         let mut wire = Vec::with_capacity(4 + header_bytes.len() + ciphertext.len());
         wire.extend_from_slice(&(header_bytes.len() as u32).to_be_bytes());
         wire.extend_from_slice(&header_bytes);
@@ -207,7 +212,7 @@ impl SessionManager {
             .get(&session_id)
             .ok_or(SessionError::SessionNotFound)?;
         let state = mutex.lock().map_err(|_| SessionError::Crypto)?;
-        Ok(export_state(&state))
+        try_export_state(&state).map_err(SessionError::from)
     }
 
     /// Restore a previously exported session state.

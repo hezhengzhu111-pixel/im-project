@@ -26,10 +26,11 @@ pub use ratchet::{
     init_receiving_chain, init_sending_chain, ratchet_decrypt, ratchet_encrypt, MAX_SKIP,
 };
 pub use state::{
-    export_state, restore_state, ChainKey, MessageKey, RatchetHeader, RatchetRootKey, RatchetState,
-    SkippedKeyStore,
+    export_state, restore_state, try_export_state, ChainKey, MessageKey, RatchetHeader,
+    RatchetRootKey, RatchetState, SkippedKeyStore,
 };
 pub use x3dh::{
-    generate_key_bundle, x3dh_initiate, x3dh_respond, KeyBundle, PreKey, PreKeyBundle,
+    generate_key_bundle, generate_key_bundle_with_count, x3dh_initiate, x3dh_respond,
+    x3dh_respond_with_raw_otk, KeyBundle, OneTimePreKeyPair, PreKey, PreKeyBundle,
     PreKeyBundleFetch, X3dhInitiateResult, X3dhRespondResult,
 };
