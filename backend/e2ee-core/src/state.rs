@@ -201,8 +201,7 @@ pub fn export_state(state: &RatchetState) -> Vec<u8> {
 /// Returns `StateDeserializationFailed` if the bytes are corrupted or
 /// do not represent a valid `RatchetState`.
 pub fn restore_state(bytes: &[u8]) -> Result<RatchetState, crate::errors::E2eeError> {
-    bincode::deserialize(bytes)
-        .map_err(|_| crate::errors::E2eeError::StateDeserializationFailed)
+    bincode::deserialize(bytes).map_err(|_| crate::errors::E2eeError::StateDeserializationFailed)
 }
 
 // ============================================================================

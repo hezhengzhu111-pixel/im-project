@@ -282,11 +282,16 @@ pub fn aes_gcm_encrypt(
     plaintext: &[u8],
     aad: &[u8],
 ) -> Result<Vec<u8>, E2eeError> {
-    let cipher =
-        Aes256Gcm::new_from_slice(&key.0).map_err(|_| E2eeError::EncryptionFailed)?;
+    let cipher = Aes256Gcm::new_from_slice(&key.0).map_err(|_| E2eeError::EncryptionFailed)?;
     let nonce = Nonce::from_slice(&nonce.0);
     cipher
-        .encrypt(nonce, Payload { msg: plaintext, aad })
+        .encrypt(
+            nonce,
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
         .map_err(|_| E2eeError::EncryptionFailed)
 }
 
@@ -308,11 +313,16 @@ pub fn aes_gcm_decrypt(
     ciphertext: &[u8],
     aad: &[u8],
 ) -> Result<Vec<u8>, E2eeError> {
-    let cipher =
-        Aes256Gcm::new_from_slice(&key.0).map_err(|_| E2eeError::DecryptionFailed)?;
+    let cipher = Aes256Gcm::new_from_slice(&key.0).map_err(|_| E2eeError::DecryptionFailed)?;
     let nonce = Nonce::from_slice(&nonce.0);
     cipher
-        .decrypt(nonce, Payload { msg: ciphertext, aad })
+        .decrypt(
+            nonce,
+            Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
         .map_err(|_| E2eeError::DecryptionFailed)
 }
 
@@ -488,8 +498,7 @@ mod tests {
     }
 
     #[test]
-    fn ed25519_sign_different_messages_produce_different_signatures(
-    ) -> Result<(), E2eeError> {
+    fn ed25519_sign_different_messages_produce_different_signatures() -> Result<(), E2eeError> {
         let kp = generate_ed25519_keypair()?;
         let sig1 = ed25519_sign(&kp.private_key, b"message one")?;
         let sig2 = ed25519_sign(&kp.private_key, b"message two")?;

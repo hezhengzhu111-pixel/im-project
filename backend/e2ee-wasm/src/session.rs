@@ -2,11 +2,9 @@ use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
 use e2ee_core::{
-    init_receiving_chain, init_sending_chain,
-    ratchet_encrypt, ratchet_decrypt,
-    export_state, restore_state,
-    RatchetState, PreKeyBundleFetch, PreKey,
-    X25519KeyPair, X25519PublicKey, X25519PrivateKey,
+    export_state, init_receiving_chain, init_sending_chain, ratchet_decrypt, ratchet_encrypt,
+    restore_state, PreKeyBundleFetch, RatchetState, X25519KeyPair, X25519PrivateKey,
+    X25519PublicKey,
 };
 
 fn decode_keypair(bincode: &[u8]) -> Result<X25519KeyPair, JsValue> {
@@ -36,6 +34,12 @@ pub struct WasmSessionManager {
     sessions: HashMap<String, RatchetState>,
 }
 
+impl Default for WasmSessionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[wasm_bindgen]
 impl WasmSessionManager {
     #[wasm_bindgen(constructor)]
@@ -59,11 +63,8 @@ impl WasmSessionManager {
 
         let result = e2ee_core::x3dh_initiate(&ikp, &fetch).map_err(to_js_error)?;
 
-        let state = init_sending_chain(
-            &result.root_key,
-            ikp.public_key,
-            fetch.identity_key,
-        ).map_err(to_js_error)?;
+        let state = init_sending_chain(&result.root_key, ikp.public_key, fetch.identity_key)
+            .map_err(to_js_error)?;
 
         self.sessions.insert(session_id, state);
 
@@ -92,14 +93,12 @@ impl WasmSessionManager {
         let remote_ik = decode_public_key(&remote_identity_key_bytes)?;
         let remote_ek = decode_public_key(&remote_ephemeral_key_bytes)?;
 
-        let result = e2ee_core::x3dh_respond(
-            &ikp, &spkp, otk_pair.as_ref(),
-            &remote_ik, &remote_ek,
-        ).map_err(to_js_error)?;
+        let result =
+            e2ee_core::x3dh_respond(&ikp, &spkp, otk_pair.as_ref(), &remote_ik, &remote_ek)
+                .map_err(to_js_error)?;
 
-        let state = init_receiving_chain(
-            &result.root_key, ikp.public_key, remote_ik,
-        ).map_err(to_js_error)?;
+        let state = init_receiving_chain(&result.root_key, ikp.public_key, remote_ik)
+            .map_err(to_js_error)?;
 
         self.sessions.insert(session_id, state);
         Ok(())
@@ -107,7 +106,9 @@ impl WasmSessionManager {
 
     /// Encrypt plaintext, returns wire format: header_len(4 BE) || bincode(header) || ciphertext
     pub fn encrypt(&mut self, session_id: String, plaintext: Vec<u8>) -> Result<Vec<u8>, JsValue> {
-        let state = self.sessions.get_mut(&session_id)
+        let state = self
+            .sessions
+            .get_mut(&session_id)
             .ok_or_else(|| JsValue::from_str("session not found"))?;
         let (header, ciphertext) = ratchet_encrypt(state, &plaintext).map_err(to_js_error)?;
         let header_bytes = bincode::serialize(&header).unwrap_or_default();
@@ -123,7 +124,8 @@ impl WasmSessionManager {
         if encrypted.len() < 4 {
             return Err(JsValue::from_str("encrypted data too short"));
         }
-        let header_len = u32::from_be_bytes([encrypted[0], encrypted[1], encrypted[2], encrypted[3]]) as usize;
+        let header_len =
+            u32::from_be_bytes([encrypted[0], encrypted[1], encrypted[2], encrypted[3]]) as usize;
         if encrypted.len() < 4 + header_len {
             return Err(JsValue::from_str("encrypted data truncated"));
         }
@@ -132,20 +134,28 @@ impl WasmSessionManager {
             .map_err(|e| JsValue::from_str(&format!("invalid header: {}", e)))?;
         let ciphertext = &encrypted[4 + header_len..];
 
-        let state = self.sessions.get_mut(&session_id)
+        let state = self
+            .sessions
+            .get_mut(&session_id)
             .ok_or_else(|| JsValue::from_str("session not found"))?;
         ratchet_decrypt(state, &header, ciphertext).map_err(to_js_error)
     }
 
     /// Export session state as bincode bytes
     pub fn export_session(&self, session_id: String) -> Result<Vec<u8>, JsValue> {
-        let state = self.sessions.get(&session_id)
+        let state = self
+            .sessions
+            .get(&session_id)
             .ok_or_else(|| JsValue::from_str("session not found"))?;
         Ok(export_state(state))
     }
 
     /// Restore session from bincode bytes
-    pub fn restore_session(&mut self, session_id: String, state_bincode: Vec<u8>) -> Result<(), JsValue> {
+    pub fn restore_session(
+        &mut self,
+        session_id: String,
+        state_bincode: Vec<u8>,
+    ) -> Result<(), JsValue> {
         let state = restore_state(&state_bincode).map_err(to_js_error)?;
         self.sessions.insert(session_id, state);
         Ok(())

@@ -95,8 +95,8 @@ impl SessionManager {
         }
 
         let ikp = decode_keypair(&identity_key_pair_bincode)?;
-        let fetch: PreKeyBundleFetch = serde_json::from_str(&remote_bundle_json)
-            .map_err(|_| SessionError::Crypto)?;
+        let fetch: PreKeyBundleFetch =
+            serde_json::from_str(&remote_bundle_json).map_err(|_| SessionError::Crypto)?;
 
         let result = e2ee_core::x3dh_initiate(&ikp, &fetch)?;
 
@@ -144,7 +144,8 @@ impl SessionManager {
         let remote_ik = decode_public_key(&remote_identity_key_bytes)?;
         let remote_ek = decode_public_key(&remote_ephemeral_key_bytes)?;
 
-        let result = e2ee_core::x3dh_respond(&ikp, &spkp, otk_pair.as_ref(), &remote_ik, &remote_ek)?;
+        let result =
+            e2ee_core::x3dh_respond(&ikp, &spkp, otk_pair.as_ref(), &remote_ik, &remote_ek)?;
 
         let state = init_receiving_chain(&result.root_key, ikp.public_key, remote_ik)?;
 
@@ -176,17 +177,12 @@ impl SessionManager {
     }
 
     /// Decrypt a wire-format message for a session.
-    pub fn decrypt(
-        &self,
-        session_id: String,
-        encrypted: Vec<u8>,
-    ) -> Result<Vec<u8>, SessionError> {
+    pub fn decrypt(&self, session_id: String, encrypted: Vec<u8>) -> Result<Vec<u8>, SessionError> {
         if encrypted.len() < 4 {
             return Err(SessionError::Crypto);
         }
         let header_len =
-            u32::from_be_bytes([encrypted[0], encrypted[1], encrypted[2], encrypted[3]])
-                as usize;
+            u32::from_be_bytes([encrypted[0], encrypted[1], encrypted[2], encrypted[3]]) as usize;
         if encrypted.len() < 4 + header_len {
             return Err(SessionError::Crypto);
         }

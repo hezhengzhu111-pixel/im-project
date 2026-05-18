@@ -560,8 +560,7 @@ mod tests {
         let _bob = init_receiving_chain(&root, ik_b.public_key, ik_a.public_key)?;
         let (header, ciphertext) = ratchet_encrypt(&mut alice, b"for bob")?;
         // Carol tries to replay into session A-C
-        let mut carol =
-            init_receiving_chain(&root, ik_c.public_key, ik_a.public_key)?;
+        let mut carol = init_receiving_chain(&root, ik_c.public_key, ik_a.public_key)?;
         let result = ratchet_decrypt(&mut carol, &header, &ciphertext);
         assert!(result.is_err());
         Ok(())
@@ -600,9 +599,6 @@ mod tests {
             remote_identity_key: remote_ik,
         };
         let result = ratchet_encrypt(&mut state, b"test");
-        assert!(matches!(
-            result,
-            Err(E2eeError::SendingChainNotInitialized)
-        ));
+        assert!(matches!(result, Err(E2eeError::SendingChainNotInitialized)));
     }
 }
