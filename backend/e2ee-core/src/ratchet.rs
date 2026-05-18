@@ -67,6 +67,36 @@ fn kdf_root_key(
     Ok((RatchetRootKey(root_bytes), ChainKey(chain_bytes)))
 }
 
+/// Pick a stable domain label for a sender -> receiver message direction.
+///
+/// Both peers can compute this from public identity keys, so a DH-derived
+/// sending chain on one side matches the receiving chain on the other side
+/// without storing an extra local role flag in `RatchetState`.
+fn chain_info_for_sender(
+    sender_id_key: &X25519PublicKey,
+    receiver_id_key: &X25519PublicKey,
+) -> &'static [u8] {
+    if sender_id_key.0 < receiver_id_key.0 {
+        INFO_SENDING_CHAIN
+    } else {
+        INFO_RECEIVING_CHAIN
+    }
+}
+
+fn local_sending_chain_info(state: &RatchetState) -> &'static [u8] {
+    chain_info_for_sender(&state.local_identity_key, &state.remote_identity_key)
+}
+
+fn local_receiving_chain_info(state: &RatchetState) -> &'static [u8] {
+    chain_info_for_sender(&state.remote_identity_key, &state.local_identity_key)
+}
+
+fn next_counter(counter: u32) -> Result<u32, E2eeError> {
+    counter
+        .checked_add(1)
+        .ok_or_else(|| E2eeError::InvalidCounter("counter overflow".to_string()))
+}
+
 /// Build the 104-byte Additional Authenticated Data for ratchet messages.
 ///
 /// Layout: smaller_IK(32) || larger_IK(32) || ratchet_pk(32) || counter(4) || prev_counter(4)
@@ -181,6 +211,91 @@ pub fn init_receiving_chain(
 // DH Ratchet Step (internal)
 // ============================================================================
 
+/// Advance the current receiving chain up to `until_counter`, storing the
+/// skipped one-time message keys under `ratchet_public_key`.
+fn skip_message_keys(
+    state: &mut RatchetState,
+    ratchet_public_key: X25519PublicKey,
+    until_counter: u32,
+) -> Result<(), E2eeError> {
+    if until_counter <= state.receive_counter {
+        return Ok(());
+    }
+
+    let gap = until_counter.saturating_sub(state.receive_counter);
+    if gap > MAX_SKIP {
+        return Err(E2eeError::CounterGapExceeded(gap, MAX_SKIP));
+    }
+
+    let mut chain = state
+        .receiving_chain_key
+        .take()
+        .ok_or(E2eeError::ReceivingChainNotInitialized)?;
+
+    for counter in state.receive_counter..until_counter {
+        let (skipped_key, next) = split_chain_key(chain)?;
+        state
+            .skipped_message_keys
+            .insert(ratchet_public_key, counter, skipped_key)?;
+        chain = next;
+    }
+
+    state.receiving_chain_key = Some(chain);
+    state.receive_counter = until_counter;
+    Ok(())
+}
+
+fn decrypt_with_current_chain(
+    state: &mut RatchetState,
+    header: &RatchetHeader,
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, E2eeError> {
+    if header.counter < state.receive_counter {
+        return Err(E2eeError::DuplicateOrExpiredMessage);
+    }
+
+    skip_message_keys(state, header.ratchet_public_key, header.counter)?;
+
+    let chain = state
+        .receiving_chain_key
+        .take()
+        .ok_or(E2eeError::ReceivingChainNotInitialized)?;
+
+    let (msg_key, next_chain) = split_chain_key(chain)?;
+    state.receiving_chain_key = Some(next_chain);
+    state.receive_counter = next_counter(header.counter)?;
+
+    let aad = build_ratchet_aad(
+        &state.local_identity_key,
+        &state.remote_identity_key,
+        header,
+    );
+    let aes_key: Aes256Key = msg_key.into();
+    aes_gcm_decrypt(&aes_key, &header.nonce, ciphertext, &aad)
+}
+
+/// Prepare the passive side's first DH-ratchet reply after decrypting the
+/// peer's first message with the symmetric chain seeded by X3DH.
+fn prepare_initial_response_ratchet(
+    state: &mut RatchetState,
+    remote_key: &X25519PublicKey,
+) -> Result<(), E2eeError> {
+    state.remote_public_key = Some(*remote_key);
+    state.previous_counter = state.send_counter;
+    state.send_counter = 0;
+
+    let new_dh = generate_x25519_keypair();
+    state.dh_key_pair = new_dh;
+
+    let dh = x25519_dh(&state.dh_key_pair.private_key, remote_key)?;
+    let chain_info = local_sending_chain_info(state);
+    let (root, sending_chain) = kdf_root_key(&state.root_key, &dh, chain_info)?;
+
+    state.root_key = root;
+    state.sending_chain_key = Some(sending_chain);
+    Ok(())
+}
+
 /// Perform a DH ratchet step: rotate keys and derive new chains.
 ///
 /// 1. Derive receiving chain from old DH key + new remote key
@@ -189,7 +304,12 @@ pub fn init_receiving_chain(
 fn perform_dh_ratchet(
     state: &mut RatchetState,
     new_remote_key: &X25519PublicKey,
+    previous_counter: u32,
 ) -> Result<(), E2eeError> {
+    if let Some(old_remote_key) = state.remote_public_key {
+        skip_message_keys(state, old_remote_key, previous_counter)?;
+    }
+
     state.previous_counter = state.send_counter;
     state.send_counter = 0;
     state.receive_counter = 0;
@@ -198,7 +318,8 @@ fn perform_dh_ratchet(
 
     // Derive receiving chain — DH1 produces the key material for the
     // receiving chain because the remote party initiated this step.
-    let (root, receiving_chain) = kdf_root_key(&state.root_key, &dh1, INFO_RECEIVING_CHAIN)?;
+    let receiving_info = local_receiving_chain_info(state);
+    let (root, receiving_chain) = kdf_root_key(&state.root_key, &dh1, receiving_info)?;
 
     // Rotate DH key pair (old keypair Drop -> Zeroize)
     let new_dh = generate_x25519_keypair();
@@ -208,7 +329,8 @@ fn perform_dh_ratchet(
 
     // Derive sending chain — DH2 uses the fresh key pair so only the
     // local party can derive this chain (forward secrecy).
-    let (root, sending_chain) = kdf_root_key(&root, &dh2, INFO_SENDING_CHAIN)?;
+    let sending_info = local_sending_chain_info(state);
+    let (root, sending_chain) = kdf_root_key(&root, &dh2, sending_info)?;
 
     state.root_key = root;
     state.receiving_chain_key = Some(receiving_chain);
@@ -234,6 +356,11 @@ pub fn ratchet_encrypt(
     state: &mut RatchetState,
     plaintext: &[u8],
 ) -> Result<(RatchetHeader, Vec<u8>), E2eeError> {
+    let next_send_counter = state
+        .send_counter
+        .checked_add(1)
+        .ok_or_else(|| E2eeError::InvalidCounter(String::from("send counter overflow")))?;
+
     let chain = state
         .sending_chain_key
         .take()
@@ -260,7 +387,7 @@ pub fn ratchet_encrypt(
     let ciphertext = aes_gcm_encrypt(&aes_key, &header.nonce, plaintext, &aad)?;
 
     state.sending_chain_key = Some(next_chain);
-    state.send_counter += 1;
+    state.send_counter = next_send_counter;
 
     // aes_key goes out of scope -> Drop -> ZeroizeOnDrop
     Ok((header, ciphertext))
@@ -288,14 +415,10 @@ pub fn ratchet_decrypt(
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, E2eeError> {
     let target_counter = header.counter;
+    let _ = next_counter(target_counter)?;
 
-    // 1. DoS protection: counter gap check
-    let gap = target_counter.abs_diff(state.receive_counter);
-    if gap > MAX_SKIP {
-        return Err(E2eeError::CounterGapExceeded(gap, MAX_SKIP));
-    }
-
-    // 2. Check skipped message key cache
+    // 1. Check skipped message key cache before counter-gap checks so cached
+    // out-of-order old-chain messages remain decryptable after the DH step.
     if let Some(msg_key) = state
         .skipped_message_keys
         .remove(&header.ratchet_public_key, target_counter)
@@ -309,55 +432,29 @@ pub fn ratchet_decrypt(
         return aes_gcm_decrypt(&aes_key, &header.nonce, ciphertext, &aad);
     }
 
-    // 3. Check if DH ratchet step is needed.
-    //    Only ratchet when the remote key CHANGES from a previously known
-    //    value.  The first message uses the initial chain keys derived
-    //    during `init_sending_chain` / `init_receiving_chain`.
-    let needs_ratchet = matches!(
-        state.remote_public_key,
-        Some(ref pk) if pk.0 != header.ratchet_public_key.0
-    );
+    let first_remote_key = state.remote_public_key.is_none();
+    let has_sent_before_first_remote_key = state.send_counter > 0;
+    let needs_ratchet = match state.remote_public_key {
+        Some(ref pk) => pk.0 != header.ratchet_public_key.0,
+        None => has_sent_before_first_remote_key,
+    };
+
+    if needs_ratchet && target_counter > MAX_SKIP {
+        return Err(E2eeError::CounterGapExceeded(target_counter, MAX_SKIP));
+    }
 
     if needs_ratchet {
-        perform_dh_ratchet(state, &header.ratchet_public_key)?;
+        perform_dh_ratchet(state, &header.ratchet_public_key, header.previous_counter)?;
+        return decrypt_with_current_chain(state, header, ciphertext);
     }
 
-    // 4. Set remote key on first message
-    if state.remote_public_key.is_none() {
-        state.remote_public_key = Some(header.ratchet_public_key);
+    let plaintext = decrypt_with_current_chain(state, header, ciphertext)?;
+
+    if first_remote_key {
+        prepare_initial_response_ratchet(state, &header.ratchet_public_key)?;
     }
 
-    // 5. Replay protection
-    if target_counter < state.receive_counter {
-        return Err(E2eeError::DuplicateOrExpiredMessage);
-    }
-
-    // 6. Advance receiving chain, skipping intermediate messages
-    let mut chain = state
-        .receiving_chain_key
-        .take()
-        .ok_or(E2eeError::ReceivingChainNotInitialized)?;
-
-    for c in state.receive_counter..target_counter {
-        let (skipped_key, next) = split_chain_key(chain)?;
-        state
-            .skipped_message_keys
-            .insert(header.ratchet_public_key, c, skipped_key)?;
-        chain = next;
-    }
-
-    // 7. Decrypt current message
-    let (msg_key, next_chain) = split_chain_key(chain)?;
-    state.receiving_chain_key = Some(next_chain);
-    state.receive_counter = target_counter + 1;
-
-    let aad = build_ratchet_aad(
-        &state.local_identity_key,
-        &state.remote_identity_key,
-        header,
-    );
-    let aes_key: Aes256Key = msg_key.into();
-    aes_gcm_decrypt(&aes_key, &header.nonce, ciphertext, &aad)
+    Ok(plaintext)
 }
 
 // ============================================================================
@@ -377,6 +474,14 @@ mod tests {
         let a = generate_x25519_keypair();
         let b = generate_x25519_keypair();
         (a.public_key, b.public_key)
+    }
+
+    fn make_alice_bob_states() -> Result<(RatchetState, RatchetState), E2eeError> {
+        let (alice_ik, bob_ik) = make_identity_keys();
+        let root = make_root_key();
+        let alice = init_sending_chain(&root, alice_ik, bob_ik)?;
+        let bob = init_receiving_chain(&root, bob_ik, alice_ik)?;
+        Ok((alice, bob))
     }
 
     // --- Chain Init Tests ---
@@ -407,10 +512,15 @@ mod tests {
         let (local_ik, remote_ik) = make_identity_keys();
         let s = init_sending_chain(&make_root_key(), local_ik, remote_ik)?;
         let r = init_receiving_chain(&make_root_key(), local_ik, remote_ik)?;
-        assert_ne!(
-            s.sending_chain_key.as_ref().unwrap().0,
-            r.sending_chain_key.as_ref().unwrap().0
-        );
+        let s_key = s
+            .sending_chain_key
+            .as_ref()
+            .ok_or(E2eeError::SendingChainNotInitialized)?;
+        let r_key = r
+            .sending_chain_key
+            .as_ref()
+            .ok_or(E2eeError::SendingChainNotInitialized)?;
+        assert_ne!(s_key.0, r_key.0);
         Ok(())
     }
 
@@ -475,6 +585,156 @@ mod tests {
     }
 
     #[test]
+    fn ratchet_alice_first_message_decrypts() -> Result<(), E2eeError> {
+        let (mut alice, mut bob) = make_alice_bob_states()?;
+
+        let (header, ciphertext) = ratchet_encrypt(&mut alice, b"hello bob")?;
+        assert_eq!(
+            ratchet_decrypt(&mut bob, &header, &ciphertext)?,
+            b"hello bob"
+        );
+
+        assert!(matches!(
+            bob.remote_public_key,
+            Some(pk) if pk.0 == header.ratchet_public_key.0
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn ratchet_bob_reply_rotates_public_key_and_decrypts() -> Result<(), E2eeError> {
+        let (mut alice, mut bob) = make_alice_bob_states()?;
+
+        let (alice_header, alice_ciphertext) = ratchet_encrypt(&mut alice, b"hello bob")?;
+        assert_eq!(
+            ratchet_decrypt(&mut bob, &alice_header, &alice_ciphertext)?,
+            b"hello bob"
+        );
+
+        let (bob_header, bob_ciphertext) = ratchet_encrypt(&mut bob, b"hello alice")?;
+        assert_ne!(
+            alice_header.ratchet_public_key.0,
+            bob_header.ratchet_public_key.0
+        );
+        assert_eq!(
+            ratchet_decrypt(&mut alice, &bob_header, &bob_ciphertext)?,
+            b"hello alice"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn ratchet_alternating_messages_continue_after_dh_steps() -> Result<(), E2eeError> {
+        let (mut alice, mut bob) = make_alice_bob_states()?;
+
+        let (alice_first_header, alice_first_ciphertext) = ratchet_encrypt(&mut alice, b"a0")?;
+        assert_eq!(
+            ratchet_decrypt(&mut bob, &alice_first_header, &alice_first_ciphertext)?,
+            b"a0"
+        );
+
+        let (bob_first_header, bob_first_ciphertext) = ratchet_encrypt(&mut bob, b"b0")?;
+        assert_eq!(
+            ratchet_decrypt(&mut alice, &bob_first_header, &bob_first_ciphertext)?,
+            b"b0"
+        );
+
+        let (alice_second_header, alice_second_ciphertext) = ratchet_encrypt(&mut alice, b"a1")?;
+        assert_ne!(
+            alice_first_header.ratchet_public_key.0,
+            alice_second_header.ratchet_public_key.0
+        );
+        assert_eq!(
+            ratchet_decrypt(&mut bob, &alice_second_header, &alice_second_ciphertext)?,
+            b"a1"
+        );
+
+        let (bob_second_header, bob_second_ciphertext) = ratchet_encrypt(&mut bob, b"b1")?;
+        assert_ne!(
+            bob_first_header.ratchet_public_key.0,
+            bob_second_header.ratchet_public_key.0
+        );
+        assert_eq!(
+            ratchet_decrypt(&mut alice, &bob_second_header, &bob_second_ciphertext)?,
+            b"b1"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn ratchet_public_key_changes_at_least_once() -> Result<(), E2eeError> {
+        let (mut alice, mut bob) = make_alice_bob_states()?;
+
+        let (alice_header, alice_ciphertext) = ratchet_encrypt(&mut alice, b"hello")?;
+        assert_eq!(
+            ratchet_decrypt(&mut bob, &alice_header, &alice_ciphertext)?,
+            b"hello"
+        );
+
+        let (bob_header, bob_ciphertext) = ratchet_encrypt(&mut bob, b"reply")?;
+        assert_ne!(
+            alice_header.ratchet_public_key.0,
+            bob_header.ratchet_public_key.0
+        );
+        assert_eq!(
+            ratchet_decrypt(&mut alice, &bob_header, &bob_ciphertext)?,
+            b"reply"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn ratchet_out_of_order_after_dh_step() -> Result<(), E2eeError> {
+        let (mut alice, mut bob) = make_alice_bob_states()?;
+
+        let (alice_first_header, alice_first_ciphertext) = ratchet_encrypt(&mut alice, b"initial")?;
+        assert_eq!(
+            ratchet_decrypt(&mut bob, &alice_first_header, &alice_first_ciphertext)?,
+            b"initial"
+        );
+
+        let (bob_header, bob_ciphertext) = ratchet_encrypt(&mut bob, b"reply")?;
+        assert_eq!(
+            ratchet_decrypt(&mut alice, &bob_header, &bob_ciphertext)?,
+            b"reply"
+        );
+
+        let (alice_new_0_header, alice_new_0_ciphertext) = ratchet_encrypt(&mut alice, b"new-0")?;
+        let (alice_new_1_header, alice_new_1_ciphertext) = ratchet_encrypt(&mut alice, b"new-1")?;
+        let (alice_new_2_header, alice_new_2_ciphertext) = ratchet_encrypt(&mut alice, b"new-2")?;
+
+        assert_eq!(
+            ratchet_decrypt(&mut bob, &alice_new_2_header, &alice_new_2_ciphertext)?,
+            b"new-2"
+        );
+        assert_eq!(
+            ratchet_decrypt(&mut bob, &alice_new_0_header, &alice_new_0_ciphertext)?,
+            b"new-0"
+        );
+        assert_eq!(
+            ratchet_decrypt(&mut bob, &alice_new_1_header, &alice_new_1_ciphertext)?,
+            b"new-1"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn ratchet_duplicate_old_message_rejected() -> Result<(), E2eeError> {
+        let (mut alice, mut bob) = make_alice_bob_states()?;
+
+        let (header, ciphertext) = ratchet_encrypt(&mut alice, b"once")?;
+        assert_eq!(ratchet_decrypt(&mut bob, &header, &ciphertext)?, b"once");
+
+        let result = ratchet_decrypt(&mut bob, &header, &ciphertext);
+        assert!(matches!(result, Err(E2eeError::DuplicateOrExpiredMessage)));
+        Ok(())
+    }
+
+    #[test]
     fn ratchet_out_of_order_messages() -> Result<(), E2eeError> {
         let (local_ik, remote_ik) = make_identity_keys();
         let root = make_root_key();
@@ -521,11 +781,29 @@ mod tests {
     }
 
     #[test]
-    fn ratchet_counter_gap_exceeds_max_skip() -> Result<(), E2eeError> {
-        let (local_ik, remote_ik) = make_identity_keys();
-        let root = make_root_key();
-        let mut alice = init_sending_chain(&root, local_ik, remote_ik)?;
-        let mut bob = init_receiving_chain(&root, remote_ik, local_ik)?;
+    fn ratchet_counter_gap_equal_max_skip_succeeds() -> Result<(), E2eeError> {
+        let (mut alice, mut bob) = make_alice_bob_states()?;
+        let mut target = None;
+
+        for counter in 0..=MAX_SKIP {
+            let (header, ciphertext) = ratchet_encrypt(&mut alice, b"gap-boundary")?;
+            if counter == MAX_SKIP {
+                target = Some((header, ciphertext));
+            }
+        }
+
+        let (header, ciphertext) = target.ok_or(E2eeError::EncryptionFailed)?;
+        assert_eq!(header.counter, MAX_SKIP);
+        assert_eq!(
+            ratchet_decrypt(&mut bob, &header, &ciphertext)?,
+            b"gap-boundary"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ratchet_counter_gap_above_max_skip_rejected() -> Result<(), E2eeError> {
+        let (mut alice, mut bob) = make_alice_bob_states()?;
         let (header, ciphertext) = ratchet_encrypt(&mut alice, b"gap")?;
         let bad_header = RatchetHeader {
             counter: MAX_SKIP + 1,
@@ -538,15 +816,23 @@ mod tests {
 
     #[test]
     fn ratchet_dh_step_heals_connection() -> Result<(), E2eeError> {
-        let (local_ik, remote_ik) = make_identity_keys();
-        let root = make_root_key();
-        let mut alice = init_sending_chain(&root, local_ik, remote_ik)?;
-        let mut bob = init_receiving_chain(&root, remote_ik, local_ik)?;
-        let (h0, c0) = ratchet_encrypt(&mut alice, b"m0")?;
-        assert_eq!(ratchet_decrypt(&mut bob, &h0, &c0)?, b"m0");
-        // Second message: DH step should have occurred
-        let (h1, c1) = ratchet_encrypt(&mut alice, b"m1")?;
-        assert_eq!(ratchet_decrypt(&mut bob, &h1, &c1)?, b"m1");
+        let (mut alice, mut bob) = make_alice_bob_states()?;
+
+        let (alice_header, alice_ciphertext) = ratchet_encrypt(&mut alice, b"m0")?;
+        assert_eq!(
+            ratchet_decrypt(&mut bob, &alice_header, &alice_ciphertext)?,
+            b"m0"
+        );
+
+        let (bob_header, bob_ciphertext) = ratchet_encrypt(&mut bob, b"m1")?;
+        assert_ne!(
+            alice_header.ratchet_public_key.0,
+            bob_header.ratchet_public_key.0
+        );
+        assert_eq!(
+            ratchet_decrypt(&mut alice, &bob_header, &bob_ciphertext)?,
+            b"m1"
+        );
         Ok(())
     }
 
@@ -600,5 +886,32 @@ mod tests {
         };
         let result = ratchet_encrypt(&mut state, b"test");
         assert!(matches!(result, Err(E2eeError::SendingChainNotInitialized)));
+    }
+
+    #[test]
+    fn ratchet_encrypt_rejects_send_counter_overflow() -> Result<(), E2eeError> {
+        let (local_ik, remote_ik) = make_identity_keys();
+        let mut state = init_sending_chain(&make_root_key(), local_ik, remote_ik)?;
+        state.send_counter = u32::MAX;
+
+        let result = ratchet_encrypt(&mut state, b"overflow");
+        assert!(matches!(result, Err(E2eeError::InvalidCounter(_))));
+        assert!(state.sending_chain_key.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn ratchet_decrypt_rejects_receive_counter_overflow() -> Result<(), E2eeError> {
+        let (local_ik, remote_ik) = make_identity_keys();
+        let root = make_root_key();
+        let mut alice = init_sending_chain(&root, local_ik, remote_ik)?;
+        let mut bob = init_receiving_chain(&root, remote_ik, local_ik)?;
+        let (mut header, ciphertext) = ratchet_encrypt(&mut alice, b"overflow")?;
+        bob.receive_counter = u32::MAX;
+        header.counter = u32::MAX;
+
+        let result = ratchet_decrypt(&mut bob, &header, &ciphertext);
+        assert!(matches!(result, Err(E2eeError::InvalidCounter(_))));
+        Ok(())
     }
 }
