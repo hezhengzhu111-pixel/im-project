@@ -386,7 +386,7 @@ mod tests {
             .encrypt("test".to_string(), b"hello".to_vec())?;
 
         // Verify header_len is 52 (0x00000034 in big-endian)
-        assert_eq!(wire.get(0), Some(&0x00));
+        assert_eq!(wire.first(), Some(&0x00));
         assert_eq!(wire.get(1), Some(&0x00));
         assert_eq!(wire.get(2), Some(&0x00));
         assert_eq!(wire.get(3), Some(&0x34));
