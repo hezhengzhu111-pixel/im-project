@@ -1,0 +1,4 @@
+[package]
+name = "e2ee-wasm"
+version.workspace = true
+edition.workspace = true
