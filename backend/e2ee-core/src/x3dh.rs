@@ -26,9 +26,8 @@ use zeroize::Zeroize;
 
 use crate::errors::E2eeError;
 use crate::primitives::{
-    ed25519_sign, ed25519_verify, generate_ed25519_keypair, generate_x25519_keypair,
-    hkdf_sha256, x25519_dh, Ed25519KeyPair, Ed25519PublicKey, Ed25519Signature,
-    X25519KeyPair, X25519PublicKey,
+    ed25519_sign, ed25519_verify, generate_ed25519_keypair, generate_x25519_keypair, hkdf_sha256,
+    x25519_dh, Ed25519KeyPair, Ed25519PublicKey, Ed25519Signature, X25519KeyPair, X25519PublicKey,
 };
 use crate::state::RatchetRootKey;
 
@@ -160,8 +159,7 @@ pub fn generate_key_bundle(
         &signed_pre_key_pair.public_key.0,
     )?;
 
-    let count =
-        usize::try_from(one_time_pre_key_count).map_err(|_| E2eeError::EncryptionFailed)?;
+    let count = usize::try_from(one_time_pre_key_count).map_err(|_| E2eeError::EncryptionFailed)?;
     let mut one_time_pre_key_pairs = Vec::with_capacity(count);
     let mut one_time_pre_key_publics = Vec::with_capacity(count);
 
@@ -221,9 +219,15 @@ pub fn x3dh_initiate(
     let ephemeral_key_pair = generate_x25519_keypair();
 
     // 3. Compute DH1–DH4 on stack (128 bytes, zero heap alloc)
-    let dh1 = x25519_dh(&identity_key_pair.private_key, &remote_bundle.signed_pre_key.key)?;
+    let dh1 = x25519_dh(
+        &identity_key_pair.private_key,
+        &remote_bundle.signed_pre_key.key,
+    )?;
     let dh2 = x25519_dh(&ephemeral_key_pair.private_key, &remote_bundle.identity_key)?;
-    let dh3 = x25519_dh(&ephemeral_key_pair.private_key, &remote_bundle.signed_pre_key.key)?;
+    let dh3 = x25519_dh(
+        &ephemeral_key_pair.private_key,
+        &remote_bundle.signed_pre_key.key,
+    )?;
 
     let mut dh_buffer = [0u8; DH_OUTPUT_LEN * MAX_DH_COUNT]; // [0u8; 128]
     let mut offset: usize = 0;
@@ -242,9 +246,7 @@ pub fn x3dh_initiate(
     };
 
     // 4. HKDF derive Root Key from concatenated DH outputs
-    let dh_input = dh_buffer
-        .get(..offset)
-        .ok_or(E2eeError::EncryptionFailed)?;
+    let dh_input = dh_buffer.get(..offset).ok_or(E2eeError::EncryptionFailed)?;
     let root_key_bytes: [u8; 32] = hkdf_sha256::<32>(dh_input, &X3DH_SALT, X3DH_INFO)?;
 
     // 5. Zeroize DH intermediates on stack
@@ -300,9 +302,7 @@ pub fn x3dh_respond(
     }
 
     // Derive Root Key
-    let dh_input = dh_buffer
-        .get(..offset)
-        .ok_or(E2eeError::EncryptionFailed)?;
+    let dh_input = dh_buffer.get(..offset).ok_or(E2eeError::EncryptionFailed)?;
     let root_key_bytes: [u8; 32] = hkdf_sha256::<32>(dh_input, &X3DH_SALT, X3DH_INFO)?;
 
     dh_buffer.zeroize();

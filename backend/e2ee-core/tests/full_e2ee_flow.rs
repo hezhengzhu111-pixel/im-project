@@ -62,12 +62,7 @@ fn full_e2ee_alice_sends_bob_receives() {
     )
     .unwrap();
 
-    let messages = vec![
-        "Hello Bob!",
-        "How are you?",
-        "This is secure.",
-        "Goodbye!",
-    ];
+    let messages = vec!["Hello Bob!", "How are you?", "This is secure.", "Goodbye!"];
     let mut encrypted: Vec<(RatchetHeader, Vec<u8>)> = Vec::new();
     for msg in &messages {
         encrypted.push(ratchet_encrypt(&mut alice_state, msg.as_bytes()).unwrap());
@@ -131,8 +126,7 @@ fn full_e2ee_with_state_persistence() {
     )
     .unwrap();
 
-    let (header, ciphertext) =
-        ratchet_encrypt(&mut alice_state, b"persistent test").unwrap();
+    let (header, ciphertext) = ratchet_encrypt(&mut alice_state, b"persistent test").unwrap();
 
     // Bob exports state (simulating app restart)
     let bob_bytes = export_state(&bob_state);
@@ -185,8 +179,7 @@ fn full_e2ee_multiple_messages_with_dh_ratchet() {
 
     for i in 0..20 {
         let msg = format!("message {}", i);
-        let (header, ciphertext) =
-            ratchet_encrypt(&mut alice_state, msg.as_bytes()).unwrap();
+        let (header, ciphertext) = ratchet_encrypt(&mut alice_state, msg.as_bytes()).unwrap();
         let plaintext = ratchet_decrypt(&mut bob_state, &header, &ciphertext).unwrap();
         assert_eq!(plaintext, msg.as_bytes());
     }
