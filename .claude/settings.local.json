@@ -60,7 +60,13 @@
       "Bash(CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --target wasm32-unknown-unknown -p e2ee-wasm)",
       "Bash(cargo clippy *)",
       "Bash(cargo run *)",
-      "Bash(cargo search *)"
+      "Bash(cargo search *)",
+      "Bash(cargo build *)",
+      "Bash(cargo uniffi-bindgen *)",
+      "Bash(cargo doc *)",
+      "Bash(cargo clean *)",
+      "Bash(cargo check *)",
+      "Bash(cargo fmt *)"
     ]
   }
 }

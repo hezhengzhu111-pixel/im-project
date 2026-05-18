@@ -914,4 +914,106 @@ mod tests {
         assert!(matches!(result, Err(E2eeError::InvalidCounter(_))));
         Ok(())
     }
+
+    // --- DH Ratchet Public Key Rotation Tests ---
+
+    /// Verify that each party's DH public key actually changes at every DH
+    /// ratchet step (both initial-response and full DH ratchet).
+    ///
+    /// This is a focused step-by-step test: it records the DH public key
+    /// before and after each ratchet event so the assertions prove the key
+    /// bytes rotated, not merely that two different parties have different
+    /// keys.
+    #[test]
+    fn ratchet_dh_public_key_rotates_on_each_dh_step() -> Result<(), E2eeError> {
+        let (mut alice, mut bob) = make_alice_bob_states()?;
+
+        // Record initial DH public keys
+        let alice_initial_pk = alice.dh_key_pair.public_key;
+        let bob_initial_pk = bob.dh_key_pair.public_key;
+
+        // Step 1: Alice encrypts — DH key must NOT change (encrypt only
+        // consumes chain keys).
+        let (a0_header, a0_ct) = ratchet_encrypt(&mut alice, b"a0")?;
+        assert_eq!(alice.dh_key_pair.public_key.0, alice_initial_pk.0);
+
+        // Step 2: Bob decrypts Alice's first message — triggers
+        // prepare_initial_response_ratchet which generates a fresh DH keypair.
+        assert_eq!(ratchet_decrypt(&mut bob, &a0_header, &a0_ct)?, b"a0");
+        assert_ne!(bob.dh_key_pair.public_key.0, bob_initial_pk.0);
+        let bob_after_first_ratchet_pk = bob.dh_key_pair.public_key;
+
+        // Step 3: Bob encrypts a reply — header carries his new DH key.
+        let (b0_header, b0_ct) = ratchet_encrypt(&mut bob, b"b0")?;
+        assert_eq!(b0_header.ratchet_public_key.0, bob_after_first_ratchet_pk.0);
+
+        // Step 4: Alice decrypts Bob's reply — Bob's ratchet key differs from
+        // Alice's initial key, so perform_dh_ratchet fires and rotates Alice's
+        // DH keypair. (Alice has sent before, so she takes the
+        // perform_dh_ratchet path, not prepare_initial_response_ratchet.)
+        assert_ne!(a0_header.ratchet_public_key.0, b0_header.ratchet_public_key.0);
+        assert_eq!(ratchet_decrypt(&mut alice, &b0_header, &b0_ct)?, b"b0");
+        assert_ne!(alice.dh_key_pair.public_key.0, alice_initial_pk.0);
+        let alice_after_dh_pk = alice.dh_key_pair.public_key;
+
+        // Step 5: Alice sends a second message with her new DH key.
+        let (a1_header, a1_ct) = ratchet_encrypt(&mut alice, b"a1")?;
+        assert_eq!(a1_header.ratchet_public_key.0, alice_after_dh_pk.0);
+        assert_ne!(a1_header.ratchet_public_key.0, a0_header.ratchet_public_key.0);
+
+        // Step 6: Bob decrypts Alice's second message — Alice's new key
+        // differs from Bob's stored remote key, triggering perform_dh_ratchet
+        // on Bob's side. Bob's DH key must change again.
+        assert_eq!(ratchet_decrypt(&mut bob, &a1_header, &a1_ct)?, b"a1");
+        assert_ne!(bob.dh_key_pair.public_key.0, bob_after_first_ratchet_pk.0);
+
+        Ok(())
+    }
+
+    // --- Stress Tests ---
+
+    /// Send 1000 messages, deliver in reverse order.
+    ///
+    /// The first message to arrive (counter 999) causes 999 message keys to
+    /// be stored in the skipped-key store via `skip_message_keys`.  Each
+    /// subsequent earlier message is found and removed from the store.
+    /// After all 1000 messages, the store must be empty and a fresh
+    /// in-order message must still decrypt correctly.
+    #[test]
+    fn ratchet_stress_out_of_order_1000() -> Result<(), E2eeError> {
+        let (local_ik, remote_ik) = make_identity_keys();
+        let root = make_root_key();
+        let mut alice = init_sending_chain(&root, local_ik, remote_ik)?;
+        let mut bob = init_receiving_chain(&root, remote_ik, local_ik)?;
+
+        let n: usize = 1000;
+        let mut encrypted: Vec<(RatchetHeader, Vec<u8>)> = Vec::with_capacity(n);
+        for i in 0..n {
+            let msg = format!("stress-msg-{}", i);
+            let (header, ct) = ratchet_encrypt(&mut alice, msg.as_bytes())?;
+            encrypted.push((header, ct));
+        }
+
+        // Deliver in reverse order — worst case for skipped-key store
+        for i in (0..n).rev() {
+            let (ref header, ref ct) = encrypted.get(i).ok_or(E2eeError::EncryptionFailed)?;
+            let expected = format!("stress-msg-{}", i);
+            assert_eq!(
+                ratchet_decrypt(&mut bob, header, ct)?,
+                expected.as_bytes()
+            );
+        }
+
+        // Verify all skipped keys were consumed
+        assert!(bob.skipped_message_keys.is_empty());
+
+        // Bob must still be able to receive a new in-order message
+        let (new_header, new_ct) = ratchet_encrypt(&mut alice, b"after-stress")?;
+        assert_eq!(
+            ratchet_decrypt(&mut bob, &new_header, &new_ct)?,
+            b"after-stress"
+        );
+
+        Ok(())
+    }
 }
