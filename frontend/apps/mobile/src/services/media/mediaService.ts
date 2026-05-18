@@ -131,7 +131,7 @@ export const buildVoiceFile = async (uri: string, durationMs?: number): Promise<
     'audio/mp4',
   );
 
-export const createVoiceRecordingPath = (): string =>
+const createVoiceRecordingPath = (): string =>
   `${ReactNativeBlobUtil.fs.dirs.CacheDir}/voice_${Date.now()}.m4a`;
 
 export const mediaService = {

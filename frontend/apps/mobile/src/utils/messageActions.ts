@@ -5,7 +5,7 @@ import type {
   MessageActionItem,
 } from '../types/models';
 
-export const ACTION_LABELS: Record<MessageActionId, string> = {
+const ACTION_LABELS: Record<MessageActionId, string> = {
   copy: '复制',
   retry: '重试发送',
   deleteLocal: '删除',

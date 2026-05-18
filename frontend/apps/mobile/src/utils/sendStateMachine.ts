@@ -1,27 +1,9 @@
-import {
-  createNextRetryAt,
-  shouldStopRetry,
-} from '@im/shared-im-core';
-import type { MessageType } from '@im/shared-types';
 import type {
   MobileMessage,
   PendingMessage,
-  SendPipelineRetryConfig,
   SendPipelineStage,
   UploadTask,
 } from '../types/models';
-
-/** Message types that require a file upload step before sending. */
-const MEDIA_MESSAGE_TYPES: ReadonlySet<MessageType> = new Set([
-  'IMAGE',
-  'FILE',
-  'VIDEO',
-  'VOICE',
-]);
-
-export function isMediaMessageType(type: MessageType): boolean {
-  return MEDIA_MESSAGE_TYPES.has(type);
-}
 
 /**
  * Derive the unified send pipeline stage from the three data sources.
@@ -105,73 +87,4 @@ export function deriveSendStage(
   }
 
   return 'LOCAL_CREATED';
-}
-
-/**
- * Whether an upload task is eligible for retry right now.
- * Returns false if: already uploaded, currently uploading, retry limit reached,
- * or backoff window has not elapsed.
- */
-export function shouldRetryUpload(
-  task: UploadTask,
-  now: number,
-  config: SendPipelineRetryConfig,
-): boolean {
-  if (task.status !== 'failed') {
-    return false;
-  }
-  const maxRetry = task.maxRetryCount ?? config.uploadMaxRetryCount;
-  if (shouldStopRetry(task.retryCount, maxRetry)) {
-    return false;
-  }
-  if (task.nextRetryAt != null && task.nextRetryAt > now) {
-    return false;
-  }
-  return true;
-}
-
-/**
- * Whether a pending message is eligible for retry right now.
- * Returns false if: already sent/blocked/sending, retry limit reached,
- * or backoff window has not elapsed.
- */
-export function shouldRetryPendingMessage(
-  pending: PendingMessage,
-  now: number,
-  config: SendPipelineRetryConfig,
-): boolean {
-  if (pending.status !== 'failed' && pending.status !== 'pending') {
-    return false;
-  }
-  if (shouldStopRetry(pending.retryCount, config.maxRetryCount)) {
-    return false;
-  }
-  if (pending.nextRetryAt != null && pending.nextRetryAt > now) {
-    return false;
-  }
-  return true;
-}
-
-/** Compute next retry timestamp for an upload task. */
-export function createUploadNextRetryAt(
-  retryCount: number,
-  now: number,
-  config: SendPipelineRetryConfig,
-): number {
-  return createNextRetryAt(retryCount, now, {
-    baseDelayMs: config.baseDelayMs,
-    maxDelayMs: config.maxDelayMs,
-  });
-}
-
-/** Compute next retry timestamp for a pending message send. */
-export function createSendNextRetryAt(
-  retryCount: number,
-  now: number,
-  config: SendPipelineRetryConfig,
-): number {
-  return createNextRetryAt(retryCount, now, {
-    baseDelayMs: config.baseDelayMs,
-    maxDelayMs: config.maxDelayMs,
-  });
 }

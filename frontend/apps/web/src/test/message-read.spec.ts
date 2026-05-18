@@ -176,3 +176,248 @@ describe("message-read: markAsRead dirty flush", () => {
     expect(readSessionDirty.value.has("sess_1")).toBe(false);
   });
 });
+
+describe("message-read: conversation id resolution & read receipt", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("resolves private session conversation id to targetId", async () => {
+    const { ctx, markRead } = makeContext();
+    const mod = createMessageReadModule(ctx);
+
+    await mod.markAsRead("sess_1");
+    expect(markRead).toHaveBeenCalledWith("conv_1");
+  });
+
+  it("resolves group session with group_ prefix", async () => {
+    const { ctx, markRead } = makeContext();
+    // Override the context with a group session
+    ctx.sessionStore.sessions = [
+      {
+        id: "group_9",
+        type: "group",
+        targetId: "9",
+        conversationId: undefined,
+      } as ChatSession,
+    ];
+    const mod = createMessageReadModule(ctx);
+
+    await mod.markAsRead("group_9");
+    expect(markRead).toHaveBeenCalledWith("group_9");
+  });
+
+  it("falls back to sessionId when session not found", async () => {
+    const { ctx, markRead } = makeContext();
+    const mod = createMessageReadModule(ctx);
+
+    await mod.markAsRead("unknown_1");
+    expect(markRead).toHaveBeenCalledWith("unknown_1");
+  });
+
+  it("marks session read locally after successful markRead", async () => {
+    const { ctx, markRead, markSessionReadLocally } = makeContext();
+    const mod = createMessageReadModule(ctx);
+
+    await mod.markAsRead("sess_1");
+    expect(markRead).toHaveBeenCalled();
+    expect(markSessionReadLocally).toHaveBeenCalledWith("sess_1");
+  });
+
+  it("applyReadReceipt marks own messages as READ in private session", async () => {
+    const { ctx, markRead } = makeContext();
+    const mod = createMessageReadModule(ctx);
+
+    const message: Message = {
+      id: "100",
+      senderId: "user_1",
+      content: "hello",
+      sendTime: "2026-05-18T10:00:00.000Z",
+      messageType: "TEXT",
+      status: "SENT",
+    };
+    ctx.messages.value.set("sess_1", [message]);
+
+    await mod.applyReadReceipt({
+      readerId: "user_2",
+      lastReadMessageId: "100",
+      readAt: "2026-05-18T10:00:02.000Z",
+    });
+
+    const updatedMessages = ctx.messages.value.get("sess_1") || [];
+    expect(updatedMessages[0].status).toBe("READ");
+  });
+
+  it("applyReadReceipt does not mark messages past lastReadMessageId", async () => {
+    const { ctx, markRead } = makeContext();
+    const mod = createMessageReadModule(ctx);
+
+    ctx.messages.value.set("sess_1", [
+      {
+        id: "100", senderId: "user_1", content: "a",
+        sendTime: "2026-05-18T10:00:00.000Z", messageType: "TEXT", status: "SENT",
+      } as Message,
+      {
+        id: "101", senderId: "user_1", content: "b",
+        sendTime: "2026-05-18T10:00:01.000Z", messageType: "TEXT", status: "SENT",
+      } as Message,
+    ]);
+
+    await mod.applyReadReceipt({
+      readerId: "user_2",
+      lastReadMessageId: "100",
+      readAt: "2026-05-18T10:00:02.000Z",
+    });
+
+    const updatedMessages = ctx.messages.value.get("sess_1") || [];
+    expect(updatedMessages.find((m) => m.id === "100")?.status).toBe("READ");
+    expect(updatedMessages.find((m) => m.id === "101")?.status).toBe("SENT");
+  });
+
+  it("applyReadReceipt handles group sessions with readBy", async () => {
+    const { ctx, markRead } = makeContext();
+    ctx.sessionStore.sessions = [
+      { id: "group_9", type: "group", targetId: "9" } as ChatSession,
+    ];
+    const mod = createMessageReadModule(ctx);
+
+    ctx.messages.value.set("group_9", [
+      {
+        id: "g100", senderId: "user_3", content: "hello",
+        sendTime: "2026-05-18T10:00:00.000Z", messageType: "TEXT", status: "SENT",
+      } as Message,
+    ]);
+
+    await mod.applyReadReceipt({
+      readerId: "user_2",
+      conversationId: "group_9",
+      lastReadMessageId: "g100",
+      readAt: "2026-05-18T10:00:02.000Z",
+    });
+
+    const updatedMessages = ctx.messages.value.get("group_9") || [];
+    expect(updatedMessages[0].readBy).toContain("user_2");
+    expect(updatedMessages[0].readByCount).toBe(1);
+    expect(updatedMessages[0].readStatus).toBe(1);
+  });
+
+  it("applyReadReceipt calls applyReadSync when reader is current user", async () => {
+    const { ctx, markSessionReadLocally } = makeContext();
+    const mod = createMessageReadModule(ctx);
+
+    ctx.messages.value.set("sess_1", [
+      {
+        id: "100", senderId: "user_2", content: "hi",
+        sendTime: "2026-05-18T10:00:00.000Z", messageType: "TEXT", status: "SENT",
+      } as Message,
+    ]);
+
+    // readerId === getCurrentUserId() → applyReadSync path
+    // toUserId = "user_2" → buildSessionId("private", "user_1", "user_2") = "user_1_user_2"
+    // This doesn't match "sess_1", so markSessionReadLocally is still called
+    // but the actual message list update uses the resolved session
+    await mod.applyReadReceipt({
+      readerId: "user_1",
+      toUserId: "user_2",
+      lastReadMessageId: "100",
+      readAt: "2026-05-18T10:00:02.000Z",
+    });
+
+    // resolveReadSyncSessionId: toUserId !== currentUserId ("user_2" !== "user_1")
+    // → targetId = "user_2"
+    // → buildSessionId("private", "user_1", "user_2") = "user_1_user_2"
+    // → this does not match "sess_1", so messages won't be updated
+    // But markSessionReadLocally is always called
+    expect(markSessionReadLocally).toHaveBeenCalledWith("user_1_user_2");
+  });
+
+  it("returns early when receipt is null/empty", async () => {
+    const { ctx, markRead } = makeContext();
+    const mod = createMessageReadModule(ctx);
+
+    await expect(mod.applyReadReceipt(null)).resolves.toBeUndefined();
+    await expect(mod.applyReadReceipt(undefined)).resolves.toBeUndefined();
+    await expect(mod.applyReadReceipt({})).resolves.toBeUndefined();
+  });
+
+  it("returns early when no current user", async () => {
+    const { ctx, markRead } = makeContext();
+    ctx.getCurrentUserId = () => "";
+    const mod = createMessageReadModule(ctx);
+
+    await mod.applyReadReceipt({
+      readerId: "user_2",
+      lastReadMessageId: "100",
+    });
+
+    expect(markRead).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when no messages in the session list for receipt", async () => {
+    const { ctx, markRead, scheduleServerMessagePersist } = makeContext();
+    const mod = createMessageReadModule(ctx);
+
+    await mod.applyReadReceipt({
+      readerId: "user_2",
+      lastReadMessageId: "100",
+      readAt: "2026-05-18T10:00:02.000Z",
+    });
+
+    expect(scheduleServerMessagePersist).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when lastReadMessageId is missing", async () => {
+    const { ctx, scheduleServerMessagePersist } = makeContext();
+    ctx.messages.value.set("sess_1", [
+      {
+        id: "100", senderId: "user_1", content: "hi",
+        sendTime: "2026-05-18T10:00:00.000Z", messageType: "TEXT", status: "SENT",
+      } as Message,
+    ]);
+    const mod = createMessageReadModule(ctx);
+
+    await mod.applyReadReceipt({
+      readerId: "user_2",
+      lastReadMessageId: "",
+    });
+
+    expect(scheduleServerMessagePersist).not.toHaveBeenCalled();
+  });
+
+  it("persists changed messages after receipt application", async () => {
+    const { ctx, scheduleServerMessagePersist } = makeContext();
+    const mod = createMessageReadModule(ctx);
+
+    ctx.messages.value.set("sess_1", [
+      {
+        id: "100", senderId: "user_1", content: "hello",
+        sendTime: "2026-05-18T10:00:00.000Z", messageType: "TEXT", status: "SENT",
+      } as Message,
+    ]);
+
+    await mod.applyReadReceipt({
+      readerId: "user_2",
+      lastReadMessageId: "100",
+      readAt: "2026-05-18T10:00:02.000Z",
+    });
+
+    expect(scheduleServerMessagePersist).toHaveBeenCalledWith(
+      "sess_1",
+      expect.arrayContaining([expect.objectContaining({ id: "100", status: "READ" })])
+    );
+  });
+
+  it("marks session read locally in applyReadSync path", async () => {
+    const { ctx, markSessionReadLocally } = makeContext();
+    const mod = createMessageReadModule(ctx);
+
+    // applyReadReceipt with readerId === "user_1" → applyReadSync
+    await mod.applyReadReceipt({
+      readerId: "user_1",
+      toUserId: "user_2",
+      lastReadMessageId: "100",
+    });
+
+    expect(markSessionReadLocally).toHaveBeenCalled();
+  });
+});

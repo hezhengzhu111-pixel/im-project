@@ -1,6 +1,4 @@
-import { getRuntimeConfig, type RuntimeConfigSource, type RuntimeConfigUrls } from './runtimeConfig';
-
-export interface RuntimeConfig extends RuntimeConfigUrls {}
+import { getRuntimeConfig, type RuntimeConfigSource } from './runtimeConfig';
 
 declare global {
   var IM_MOBILE_RUNTIME_CONFIG: RuntimeConfigSource | undefined;
@@ -8,7 +6,7 @@ declare global {
 
 const runtimeConfig = getRuntimeConfig();
 
-export const APP_CONFIG: RuntimeConfig = {
+export const APP_CONFIG = {
   API_BASE_URL: runtimeConfig.API_BASE_URL,
   WS_BASE_URL: runtimeConfig.WS_BASE_URL,
   FILE_BASE_URL: runtimeConfig.FILE_BASE_URL,
