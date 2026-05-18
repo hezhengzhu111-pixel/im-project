@@ -736,6 +736,13 @@ dependencies = [
 [[package]]
 name = "e2ee-wasm"
 version = "0.1.0"
+dependencies = [
+ "bincode",
+ "e2ee-core",
+ "getrandom 0.2.17",
+ "serde_json",
+ "wasm-bindgen",
+]
 
 [[package]]
 name = "ed25519"

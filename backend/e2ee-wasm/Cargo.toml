@@ -2,3 +2,13 @@
 name = "e2ee-wasm"
 version.workspace = true
 edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+e2ee-core = { path = "../e2ee-core" }
+wasm-bindgen.workspace = true
+bincode.workspace = true
+serde_json.workspace = true
+getrandom = { workspace = true, features = ["js"] }
