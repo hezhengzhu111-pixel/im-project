@@ -52,7 +52,13 @@
       "Bash(cp -r /tmp/andrej-karpathy-skills/.claude-plugin __TRACKED_VAR__/.claude/plugins/cache/andrej-karpathy-skills/andrej-karpathy-skills/1.0.0/)",
       "Bash(rm -rf __TRACKED_VAR__/.claude/plugins/cache/andrej-karpathy-skills)",
       "Bash(mkdir -p __TRACKED_VAR__/.claude/plugins/cache/andrej-karpathy-skills)",
-      "Bash(echo \"EXIT_CODE: $?\")"
+      "Bash(echo \"EXIT_CODE: $?\")",
+      "Bash(cargo test *)",
+      "Bash(wasm-pack --version)",
+      "Bash(rustup target *)",
+      "Bash(cargo install *)",
+      "Bash(CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --target wasm32-unknown-unknown -p e2ee-wasm)",
+      "Bash(cargo clippy *)"
     ]
   }
 }

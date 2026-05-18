@@ -12,3 +12,7 @@ wasm-bindgen.workspace = true
 bincode.workspace = true
 serde_json.workspace = true
 getrandom = { workspace = true, features = ["js"] }
+x25519-dalek.workspace = true
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"

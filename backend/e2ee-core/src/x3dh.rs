@@ -22,7 +22,7 @@
 //! SK = HKDF-SHA256(DH1 || DH2 || DH3 || DH4, salt=0x00..00, "X3DH-RootKey-v1")
 
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::errors::E2eeError;
 use crate::primitives::{
@@ -52,19 +52,20 @@ const MAX_DH_COUNT: usize = 4;
 // ============================================================================
 
 /// A pre-key with its identifier.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct PreKey {
     pub id: u32,
     pub key: X25519PublicKey,
 }
 
 /// Bob's published pre-key bundle (public keys only, fetched via server).
+#[derive(Serialize, Deserialize)]
 pub struct PreKeyBundle {
     pub identity_key: X25519PublicKey,
     pub signing_key: Ed25519PublicKey,
     pub signed_pre_key: X25519PublicKey,
     pub signed_pre_key_signature: Ed25519Signature,
-    pub one_time_pre_keys: Vec<X25519PublicKey>,
+    pub one_time_pre_keys: Vec<PreKey>,
 }
 
 /// A pre-key bundle that Alice receives, including IDs for the signed
@@ -83,13 +84,46 @@ pub struct PreKeyBundleFetch {
 /// The host is responsible for persisting the key pairs and managing
 /// OTK ID assignment. This struct contains everything needed to
 /// respond to an X3DH initiation.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct OneTimePreKeyPair {
+    #[zeroize(skip)]
+    pub id: u32,
+    pub key_pair: X25519KeyPair,
+}
+
+impl OneTimePreKeyPair {
+    #[must_use]
+    pub fn pre_key(&self) -> PreKey {
+        PreKey {
+            id: self.id,
+            key: self.key_pair.public_key,
+        }
+    }
+}
+
+/// A complete key bundle (public + private) for Bob.
+///
+/// The one-time pre-key vector preserves the host-assigned OTK id next to
+/// the corresponding private key, so Bob can report the exact consumed id.
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct KeyBundle {
+    #[zeroize(skip)]
     pub spk_id: u32,
     pub identity_key_pair: X25519KeyPair,
     pub signing_key_pair: Ed25519KeyPair,
     pub signed_pre_key_pair: X25519KeyPair,
-    pub one_time_pre_key_pairs: Vec<X25519KeyPair>,
+    pub one_time_pre_key_pairs: Vec<OneTimePreKeyPair>,
+    #[zeroize(skip)]
     pub bundle: PreKeyBundle,
+}
+
+impl KeyBundle {
+    #[must_use]
+    pub fn one_time_pre_key_pair(&self, otk_id: u32) -> Option<&OneTimePreKeyPair> {
+        self.one_time_pre_key_pairs
+            .iter()
+            .find(|pair| pair.id == otk_id)
+    }
 }
 
 /// Result of Alice initiating an X3DH key exchange.
@@ -145,10 +179,10 @@ fn dh_copy_to_stack(
 /// # Arguments
 ///
 /// * `spk_id` — Identifier for the signed pre-key (assigned by the host).
-/// * `one_time_pre_key_count` — How many one-time pre-keys to generate.
+/// * `one_time_pre_keys` — OTK id batches as `(start_id, count)`.
 pub fn generate_key_bundle(
     spk_id: u32,
-    one_time_pre_key_count: u32,
+    one_time_pre_keys: &[(u32, u32)],
 ) -> Result<KeyBundle, E2eeError> {
     let identity_key_pair = generate_x25519_keypair();
     let signing_key_pair = generate_ed25519_keypair()?;
@@ -159,14 +193,31 @@ pub fn generate_key_bundle(
         &signed_pre_key_pair.public_key.0,
     )?;
 
-    let count = usize::try_from(one_time_pre_key_count).map_err(|_| E2eeError::EncryptionFailed)?;
-    let mut one_time_pre_key_pairs = Vec::with_capacity(count);
-    let mut one_time_pre_key_publics = Vec::with_capacity(count);
+    let mut total_otk_count = 0u32;
+    for (_, count) in one_time_pre_keys {
+        total_otk_count = total_otk_count.checked_add(*count).ok_or_else(|| {
+            E2eeError::InvalidPreKeyId(String::from("one-time pre-key count overflow"))
+        })?;
+    }
 
-    for _ in 0..count {
-        let kp = generate_x25519_keypair();
-        one_time_pre_key_publics.push(kp.public_key);
-        one_time_pre_key_pairs.push(kp);
+    let count = usize::try_from(total_otk_count).map_err(|_| {
+        E2eeError::InvalidPreKeyId(String::from("one-time pre-key count does not fit usize"))
+    })?;
+    let mut one_time_pre_key_pairs = Vec::with_capacity(count);
+    let mut one_time_pre_keys_public = Vec::with_capacity(count);
+
+    for (start_id, batch_count) in one_time_pre_keys {
+        for offset in 0..*batch_count {
+            let id = start_id.checked_add(offset).ok_or_else(|| {
+                E2eeError::InvalidPreKeyId(String::from("one-time pre-key id overflow"))
+            })?;
+            let key_pair = generate_x25519_keypair();
+            one_time_pre_keys_public.push(PreKey {
+                id,
+                key: key_pair.public_key,
+            });
+            one_time_pre_key_pairs.push(OneTimePreKeyPair { id, key_pair });
+        }
     }
 
     let bundle = PreKeyBundle {
@@ -174,7 +225,7 @@ pub fn generate_key_bundle(
         signing_key: signing_key_pair.public_key,
         signed_pre_key: signed_pre_key_pair.public_key,
         signed_pre_key_signature: spk_signature,
-        one_time_pre_keys: one_time_pre_key_publics,
+        one_time_pre_keys: one_time_pre_keys_public,
     };
 
     Ok(KeyBundle {
@@ -185,6 +236,17 @@ pub fn generate_key_bundle(
         one_time_pre_key_pairs,
         bundle,
     })
+}
+
+/// Compatibility helper for callers that only need a count.
+///
+/// OTK ids are assigned contiguously starting at `1`, matching the old
+/// count-only behavior without losing id information inside `KeyBundle`.
+pub fn generate_key_bundle_with_count(
+    spk_id: u32,
+    one_time_pre_key_count: u32,
+) -> Result<KeyBundle, E2eeError> {
+    generate_key_bundle(spk_id, &[(1, one_time_pre_key_count)])
 }
 
 // ============================================================================
@@ -276,10 +338,10 @@ pub fn x3dh_initiate(
 /// * `one_time_pre_key_pair` — Bob's one-time pre-key (if Alice used one).
 /// * `remote_identity_key` — Alice's X25519 identity public key.
 /// * `remote_ephemeral_key` — Alice's ephemeral X25519 public key.
-pub fn x3dh_respond(
+fn x3dh_respond_inner(
     identity_key_pair: &X25519KeyPair,
     signed_pre_key_pair: &X25519KeyPair,
-    one_time_pre_key_pair: Option<&X25519KeyPair>,
+    one_time_pre_key_pair: Option<(&X25519KeyPair, Option<u32>)>,
     remote_identity_key: &X25519PublicKey,
     remote_ephemeral_key: &X25519PublicKey,
 ) -> Result<X3dhRespondResult, E2eeError> {
@@ -295,10 +357,11 @@ pub fn x3dh_respond(
     dh_copy_to_stack(&mut dh_buffer, &mut offset, &dh2)?;
     dh_copy_to_stack(&mut dh_buffer, &mut offset, &dh3)?;
 
-    let has_otk = one_time_pre_key_pair.is_some();
-    if let Some(otk_pair) = one_time_pre_key_pair {
+    let mut otk_id = None;
+    if let Some((otk_pair, id)) = one_time_pre_key_pair {
         let dh4 = x25519_dh(&otk_pair.private_key, remote_ephemeral_key)?;
         dh_copy_to_stack(&mut dh_buffer, &mut offset, &dh4)?;
+        otk_id = id;
     }
 
     // Derive Root Key
@@ -309,8 +372,52 @@ pub fn x3dh_respond(
 
     Ok(X3dhRespondResult {
         root_key: RatchetRootKey(root_key_bytes),
-        otk_id: if has_otk { Some(0) } else { None },
+        otk_id,
     })
+}
+
+/// Perform Bob's side of the X3DH key agreement.
+///
+/// Bob recomputes the same shared secret using his private keys and
+/// Alice's public keys (identity key + ephemeral key). When an OTK is used,
+/// pass the `OneTimePreKeyPair` so the returned result preserves the exact
+/// host-assigned OTK id.
+pub fn x3dh_respond(
+    identity_key_pair: &X25519KeyPair,
+    signed_pre_key_pair: &X25519KeyPair,
+    one_time_pre_key_pair: Option<&OneTimePreKeyPair>,
+    remote_identity_key: &X25519PublicKey,
+    remote_ephemeral_key: &X25519PublicKey,
+) -> Result<X3dhRespondResult, E2eeError> {
+    let otk = one_time_pre_key_pair.map(|pair| (&pair.key_pair, Some(pair.id)));
+    x3dh_respond_inner(
+        identity_key_pair,
+        signed_pre_key_pair,
+        otk,
+        remote_identity_key,
+        remote_ephemeral_key,
+    )
+}
+
+/// Compatibility helper for callers that still hold a raw OTK keypair.
+///
+/// This computes the same X3DH secret but returns `otk_id: None` because a
+/// raw `X25519KeyPair` does not carry the server-consumed OTK id.
+pub fn x3dh_respond_with_raw_otk(
+    identity_key_pair: &X25519KeyPair,
+    signed_pre_key_pair: &X25519KeyPair,
+    one_time_pre_key_pair: Option<&X25519KeyPair>,
+    remote_identity_key: &X25519PublicKey,
+    remote_ephemeral_key: &X25519PublicKey,
+) -> Result<X3dhRespondResult, E2eeError> {
+    let otk = one_time_pre_key_pair.map(|pair| (pair, None));
+    x3dh_respond_inner(
+        identity_key_pair,
+        signed_pre_key_pair,
+        otk,
+        remote_identity_key,
+        remote_ephemeral_key,
+    )
 }
 
 // ============================================================================
@@ -325,7 +432,7 @@ mod tests {
     // --- Test helpers ---
 
     fn make_bob_bundle() -> Result<(KeyBundle, PreKeyBundleFetch), E2eeError> {
-        let kb = generate_key_bundle(1, 1)?;
+        let kb = generate_key_bundle(1, &[(1, 1)])?;
         let fetch = PreKeyBundleFetch {
             identity_key: kb.bundle.identity_key,
             signing_key: kb.bundle.signing_key,
@@ -334,12 +441,7 @@ mod tests {
                 key: kb.bundle.signed_pre_key,
             },
             signed_pre_key_signature: kb.bundle.signed_pre_key_signature,
-            one_time_pre_key: kb
-                .bundle
-                .one_time_pre_keys
-                .first()
-                .copied()
-                .map(|k| PreKey { id: 1, key: k }),
+            one_time_pre_key: kb.bundle.one_time_pre_keys.first().copied(),
         };
         Ok((kb, fetch))
     }
@@ -348,23 +450,34 @@ mod tests {
 
     #[test]
     fn generate_key_bundle_zero_otk() -> Result<(), E2eeError> {
-        let kb = generate_key_bundle(1, 0)?;
+        let kb = generate_key_bundle(1, &[])?;
         assert!(kb.bundle.one_time_pre_keys.is_empty());
         assert_eq!(kb.one_time_pre_key_pairs.len(), 0);
         Ok(())
     }
 
     #[test]
-    fn generate_key_bundle_with_otks() -> Result<(), E2eeError> {
-        let kb = generate_key_bundle(1, 5)?;
-        assert_eq!(kb.bundle.one_time_pre_keys.len(), 5);
-        assert_eq!(kb.one_time_pre_key_pairs.len(), 5);
+    fn generate_key_bundle_with_one_otk() -> Result<(), E2eeError> {
+        let kb = generate_key_bundle(1, &[(100, 1)])?;
+        assert_eq!(kb.bundle.one_time_pre_keys.len(), 1);
+        assert_eq!(kb.one_time_pre_key_pairs.len(), 1);
+        assert!(kb.one_time_pre_key_pair(100).is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn generate_key_bundle_with_one_hundred_otks() -> Result<(), E2eeError> {
+        let kb = generate_key_bundle(1, &[(100, 100)])?;
+        assert_eq!(kb.bundle.one_time_pre_keys.len(), 100);
+        assert_eq!(kb.one_time_pre_key_pairs.len(), 100);
+        assert!(kb.one_time_pre_key_pair(100).is_some());
+        assert!(kb.one_time_pre_key_pair(199).is_some());
         Ok(())
     }
 
     #[test]
     fn generate_key_bundle_spk_signature_valid() -> Result<(), E2eeError> {
-        let kb = generate_key_bundle(42, 0)?;
+        let kb = generate_key_bundle(42, &[])?;
         let result = ed25519_verify(
             &kb.signing_key_pair.public_key,
             &kb.signed_pre_key_pair.public_key.0,
@@ -389,7 +502,7 @@ mod tests {
     #[test]
     fn x3dh_initiate_spk_only_succeeds() -> Result<(), E2eeError> {
         let alice_ik = generate_x25519_keypair();
-        let kb = generate_key_bundle(7, 0)?;
+        let kb = generate_key_bundle(7, &[])?;
         let fetch = PreKeyBundleFetch {
             identity_key: kb.bundle.identity_key,
             signing_key: kb.bundle.signing_key,
@@ -409,7 +522,7 @@ mod tests {
     #[test]
     fn x3dh_initiate_rejects_bad_spk_signature() -> Result<(), E2eeError> {
         let alice_ik = generate_x25519_keypair();
-        let kb = generate_key_bundle(1, 0)?;
+        let kb = generate_key_bundle(1, &[])?;
         let mut bad_sig = kb.bundle.signed_pre_key_signature;
         if let Some(byte) = bad_sig.0.get_mut(0) {
             *byte ^= 1;
@@ -434,11 +547,10 @@ mod tests {
     #[test]
     fn x3dh_full_handshake_with_otk() -> Result<(), E2eeError> {
         let alice_ik = generate_x25519_keypair();
-        let bob_bundle = generate_key_bundle(1, 1)?;
+        let bob_bundle = generate_key_bundle(1, &[(100, 1)])?;
         let bob_otk = bob_bundle
-            .one_time_pre_key_pairs
-            .first()
-            .ok_or(E2eeError::EncryptionFailed)?;
+            .one_time_pre_key_pair(100)
+            .ok_or_else(|| E2eeError::InvalidPreKeyId(String::from("missing OTK 100")))?;
 
         let fetch = PreKeyBundleFetch {
             identity_key: bob_bundle.bundle.identity_key,
@@ -448,10 +560,7 @@ mod tests {
                 key: bob_bundle.bundle.signed_pre_key,
             },
             signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
-            one_time_pre_key: Some(PreKey {
-                id: 100,
-                key: bob_otk.public_key,
-            }),
+            one_time_pre_key: Some(bob_otk.pre_key()),
         };
 
         let alice_result = x3dh_initiate(&alice_ik, &fetch)?;
@@ -465,13 +574,49 @@ mod tests {
 
         assert_eq!(alice_result.root_key.0, bob_result.root_key.0);
         assert_eq!(alice_result.otk_id, Some(100));
+        assert_eq!(bob_result.otk_id, Some(100));
+        Ok(())
+    }
+
+    #[test]
+    fn x3dh_otk_ids_100_and_101_roundtrip() -> Result<(), E2eeError> {
+        let bob_bundle = generate_key_bundle(1, &[(100, 2)])?;
+        for otk_id in [100u32, 101u32] {
+            let alice_ik = generate_x25519_keypair();
+            let bob_otk = bob_bundle
+                .one_time_pre_key_pair(otk_id)
+                .ok_or_else(|| E2eeError::InvalidPreKeyId(String::from("missing test OTK")))?;
+            let fetch = PreKeyBundleFetch {
+                identity_key: bob_bundle.bundle.identity_key,
+                signing_key: bob_bundle.bundle.signing_key,
+                signed_pre_key: PreKey {
+                    id: 1,
+                    key: bob_bundle.bundle.signed_pre_key,
+                },
+                signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+                one_time_pre_key: Some(bob_otk.pre_key()),
+            };
+
+            let alice_result = x3dh_initiate(&alice_ik, &fetch)?;
+            let bob_result = x3dh_respond(
+                &bob_bundle.identity_key_pair,
+                &bob_bundle.signed_pre_key_pair,
+                Some(bob_otk),
+                &alice_ik.public_key,
+                &alice_result.ephemeral_public_key,
+            )?;
+
+            assert_eq!(alice_result.root_key.0, bob_result.root_key.0);
+            assert_eq!(alice_result.otk_id, Some(otk_id));
+            assert_eq!(bob_result.otk_id, Some(otk_id));
+        }
         Ok(())
     }
 
     #[test]
     fn x3dh_full_handshake_spk_only() -> Result<(), E2eeError> {
         let alice_ik = generate_x25519_keypair();
-        let bob_bundle = generate_key_bundle(42, 0)?;
+        let bob_bundle = generate_key_bundle(42, &[])?;
 
         let fetch = PreKeyBundleFetch {
             identity_key: bob_bundle.bundle.identity_key,
@@ -494,6 +639,8 @@ mod tests {
         )?;
 
         assert_eq!(alice_result.root_key.0, bob_result.root_key.0);
+        assert_eq!(alice_result.otk_id, None);
+        assert_eq!(bob_result.otk_id, None);
         Ok(())
     }
 
@@ -501,7 +648,7 @@ mod tests {
     fn x3dh_different_identity_keys_produce_different_roots() -> Result<(), E2eeError> {
         let alice1 = generate_x25519_keypair();
         let alice2 = generate_x25519_keypair();
-        let bob_bundle = generate_key_bundle(1, 0)?;
+        let bob_bundle = generate_key_bundle(1, &[])?;
 
         let fetch = PreKeyBundleFetch {
             identity_key: bob_bundle.bundle.identity_key,

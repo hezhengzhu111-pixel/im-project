@@ -21,6 +21,8 @@ pub enum E2eeError {
     // === X3DH ===
     #[error("X3DH: signed pre-key signature verification rejected")]
     SpkSignatureRejected,
+    #[error("invalid pre-key id: {0}")]
+    InvalidPreKeyId(String),
 
     // === Ratchet ===
     #[error("sending chain not initialized")]
@@ -41,6 +43,10 @@ pub enum E2eeError {
     StateSerializationFailed,
     #[error("ratchet state deserialization failed: corrupted data")]
     StateDeserializationFailed,
+
+    // === Wire Format ===
+    #[error("invalid header format: {0}")]
+    InvalidHeader(String),
 }
 
 #[cfg(test)]

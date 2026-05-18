@@ -6,10 +6,12 @@
 //! - `SkippedKeyStore` for out-of-order message key caching with LRU eviction
 //! - `RatchetState` as the full ratchet state machine
 //! - `export_state` / `restore_state` for bincode persistence
+//! - `encode_ratchet_header` / `decode_ratchet_header` for explicit wire format
 
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+use crate::errors::E2eeError;
 use crate::primitives::{AesNonce, X25519KeyPair, X25519PublicKey};
 
 // ============================================================================
@@ -51,12 +53,77 @@ impl From<MessageKey> for crate::primitives::Aes256Key {
 /// Header sent alongside each ciphertext message.
 ///
 /// Contains the DH public key, counters, and nonce needed for decryption.
-#[derive(Serialize, Deserialize)]
+///
+/// Wire format (52 bytes, explicit Big-Endian):
+///   ratchet_public_key(32) || counter(4 BE) || previous_counter(4 BE) || nonce(12)
 pub struct RatchetHeader {
     pub ratchet_public_key: X25519PublicKey,
     pub counter: u32,
     pub previous_counter: u32,
     pub nonce: AesNonce,
+}
+
+// ============================================================================
+// RatchetHeader — explicit wire format encode / decode
+// ============================================================================
+
+/// Encode a [`RatchetHeader`] into the explicit 52-byte wire format.
+///
+/// Layout: ratchet_public_key(32) || counter(4 BE) || previous_counter(4 BE) || nonce(12)
+#[must_use]
+pub fn encode_ratchet_header(header: &RatchetHeader) -> [u8; 52] {
+    let mut buf = [0u8; 52];
+    let (pk_slot, rest) = buf.split_at_mut(32);
+    let (counter_slot, rest) = rest.split_at_mut(4);
+    let (prev_counter_slot, nonce_slot) = rest.split_at_mut(4);
+
+    pk_slot.copy_from_slice(&header.ratchet_public_key.0);
+    counter_slot.copy_from_slice(&header.counter.to_be_bytes());
+    prev_counter_slot.copy_from_slice(&header.previous_counter.to_be_bytes());
+    nonce_slot.copy_from_slice(&header.nonce.0);
+
+    buf
+}
+
+/// Decode a [`RatchetHeader`] from explicit wire format bytes.
+///
+/// Expected layout: ratchet_public_key(32) || counter(4 BE) || previous_counter(4 BE) || nonce(12)
+///
+/// # Errors
+///
+/// Returns `InvalidHeader` if the byte slice length does not equal 52.
+pub fn decode_ratchet_header(bytes: &[u8]) -> Result<RatchetHeader, E2eeError> {
+    if bytes.len() != 52 {
+        return Err(E2eeError::InvalidHeader(format!(
+            "expected 52 bytes, got {}",
+            bytes.len()
+        )));
+    }
+    let (pk_bytes, rest) = bytes.split_at(32);
+    let (counter_bytes, rest) = rest.split_at(4);
+    let (prev_counter_bytes, nonce_bytes) = rest.split_at(4);
+    // nonce_bytes is 12 bytes
+
+    let mut ratchet_public_key = [0u8; 32];
+    ratchet_public_key.copy_from_slice(pk_bytes);
+
+    let mut counter_arr = [0u8; 4];
+    counter_arr.copy_from_slice(counter_bytes);
+    let counter = u32::from_be_bytes(counter_arr);
+
+    let mut prev_counter_arr = [0u8; 4];
+    prev_counter_arr.copy_from_slice(prev_counter_bytes);
+    let previous_counter = u32::from_be_bytes(prev_counter_arr);
+
+    let mut nonce = [0u8; 12];
+    nonce.copy_from_slice(nonce_bytes);
+
+    Ok(RatchetHeader {
+        ratchet_public_key: X25519PublicKey(ratchet_public_key),
+        counter,
+        previous_counter,
+        nonce: AesNonce(nonce),
+    })
 }
 
 // ============================================================================
@@ -188,10 +255,23 @@ pub struct RatchetState {
 
 /// Serialize ratchet state to a byte vector via bincode.
 ///
-/// On serialization failure returns an empty `Vec<u8>` — the caller
-/// should treat an empty result as a persistence error.
+/// Returns `StateSerializationFailed` instead of hiding serialization errors.
+pub fn try_export_state(state: &RatchetState) -> Result<Vec<u8>, crate::errors::E2eeError> {
+    bincode::serialize(state).map_err(|_| crate::errors::E2eeError::StateSerializationFailed)
+}
+
+/// Compatibility serializer that preserves the original documented signature.
+///
+/// On serialization failure this returns an empty `Vec<u8>`; new call sites
+/// should use `try_export_state`.
+#[must_use]
+#[allow(clippy::manual_unwrap_or_default)]
 pub fn export_state(state: &RatchetState) -> Vec<u8> {
-    bincode::serialize(state).unwrap_or_default()
+    if let Ok(bytes) = try_export_state(state) {
+        bytes
+    } else {
+        Vec::new()
+    }
 }
 
 /// Deserialize ratchet state from bincode-encoded bytes.
@@ -279,5 +359,95 @@ mod tests {
             let _ = store.insert(kp.public_key, i as u32, MessageKey([i as u8; 32]));
         }
         assert_eq!(store.len(), 2000);
+    }
+
+    // --- RatchetHeader encode / decode ---
+
+    fn make_test_header() -> RatchetHeader {
+        let kp = generate_x25519_keypair();
+        RatchetHeader {
+            ratchet_public_key: kp.public_key,
+            counter: 0x01020304,
+            previous_counter: 0x05060708,
+            nonce: AesNonce([0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B]),
+        }
+    }
+
+    #[test]
+    fn encode_header_length_is_52() {
+        let header = make_test_header();
+        let encoded = encode_ratchet_header(&header);
+        assert_eq!(encoded.len(), 52);
+    }
+
+    #[test]
+    fn encode_header_counter_big_endian() {
+        let header = make_test_header();
+        let encoded = encode_ratchet_header(&header);
+        // counter bytes at offset 32..36
+        assert_eq!(encoded[32], 0x01);
+        assert_eq!(encoded[33], 0x02);
+        assert_eq!(encoded[34], 0x03);
+        assert_eq!(encoded[35], 0x04);
+        // previous_counter bytes at offset 36..40
+        assert_eq!(encoded[36], 0x05);
+        assert_eq!(encoded[37], 0x06);
+        assert_eq!(encoded[38], 0x07);
+        assert_eq!(encoded[39], 0x08);
+    }
+
+    #[test]
+    fn decode_header_length_52_rejects_51() {
+        let short = [0u8; 51];
+        let result = decode_ratchet_header(&short);
+        assert!(matches!(
+            result,
+            Err(crate::errors::E2eeError::InvalidHeader(_))
+        ));
+    }
+
+    #[test]
+    fn decode_header_length_52_rejects_53() {
+        let long = [0u8; 53];
+        let result = decode_ratchet_header(&long);
+        assert!(matches!(
+            result,
+            Err(crate::errors::E2eeError::InvalidHeader(_))
+        ));
+    }
+
+    #[test]
+    fn decode_header_length_52_rejects_empty() {
+        let result = decode_ratchet_header(&[]);
+        assert!(matches!(
+            result,
+            Err(crate::errors::E2eeError::InvalidHeader(_))
+        ));
+    }
+
+    #[test]
+    fn encode_decode_roundtrip() -> Result<(), crate::errors::E2eeError> {
+        let header = make_test_header();
+        let encoded = encode_ratchet_header(&header);
+        let decoded = decode_ratchet_header(&encoded)?;
+        assert_eq!(decoded.ratchet_public_key.0, header.ratchet_public_key.0);
+        assert_eq!(decoded.counter, header.counter);
+        assert_eq!(decoded.previous_counter, header.previous_counter);
+        assert_eq!(decoded.nonce.0, header.nonce.0);
+        Ok(())
+    }
+
+    #[test]
+    fn encode_header_public_key_at_offset_zero() {
+        let header = make_test_header();
+        let encoded = encode_ratchet_header(&header);
+        assert_eq!(encoded[0..32], header.ratchet_public_key.0);
+    }
+
+    #[test]
+    fn encode_header_nonce_at_offset_40() {
+        let header = make_test_header();
+        let encoded = encode_ratchet_header(&header);
+        assert_eq!(encoded[40..52], header.nonce.0);
     }
 }

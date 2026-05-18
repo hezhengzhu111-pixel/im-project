@@ -15,7 +15,7 @@ use e2ee_core::*;
 
 #[test]
 fn full_e2ee_alice_sends_bob_receives() {
-    let bob_bundle = generate_key_bundle(1, 3).unwrap();
+    let bob_bundle = generate_key_bundle(1, &[(100, 3)]).unwrap();
     let alice_ik = generate_x25519_keypair();
 
     let fetch = PreKeyBundleFetch {
@@ -26,12 +26,7 @@ fn full_e2ee_alice_sends_bob_receives() {
             key: bob_bundle.bundle.signed_pre_key,
         },
         signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
-        one_time_pre_key: bob_bundle
-            .bundle
-            .one_time_pre_keys
-            .first()
-            .copied()
-            .map(|k| PreKey { id: 100, key: k }),
+        one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
     };
 
     let alice_x3dh = x3dh_initiate(&alice_ik, &fetch).unwrap();
@@ -47,6 +42,8 @@ fn full_e2ee_alice_sends_bob_receives() {
     .unwrap();
 
     assert_eq!(alice_x3dh.root_key.0, bob_x3dh.root_key.0);
+    assert_eq!(alice_x3dh.otk_id, Some(100));
+    assert_eq!(bob_x3dh.otk_id, Some(100));
 
     let mut alice_state = init_sending_chain(
         &alice_x3dh.root_key,
@@ -89,7 +86,7 @@ fn full_e2ee_alice_sends_bob_receives() {
 
 #[test]
 fn full_e2ee_with_state_persistence() {
-    let bob_bundle = generate_key_bundle(1, 0).unwrap();
+    let bob_bundle = generate_key_bundle(1, &[]).unwrap();
     let alice_ik = generate_x25519_keypair();
 
     let fetch = PreKeyBundleFetch {
@@ -140,7 +137,7 @@ fn full_e2ee_with_state_persistence() {
 
 #[test]
 fn full_e2ee_multiple_messages_with_dh_ratchet() {
-    let bob_bundle = generate_key_bundle(1, 0).unwrap();
+    let bob_bundle = generate_key_bundle(1, &[]).unwrap();
     let alice_ik = generate_x25519_keypair();
 
     let fetch = PreKeyBundleFetch {
