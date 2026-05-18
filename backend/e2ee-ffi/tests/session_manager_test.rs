@@ -37,8 +37,7 @@ fn session_manager_full_flow() -> Result<(), Box<dyn std::error::Error>> {
 
     // Alice creates outbound session
     let alice_ik = e2ee_core::generate_x25519_keypair();
-    let alice_ik_bincode =
-        bincode::serialize(&(alice_ik.private_key.0, alice_ik.public_key.0))?;
+    let alice_ik_bincode = bincode::serialize(&(alice_ik.private_key.0, alice_ik.public_key.0))?;
 
     let handshake = mgr.create_outbound_session(
         "test_session".to_string(),
@@ -53,10 +52,8 @@ fn session_manager_full_flow() -> Result<(), Box<dyn std::error::Error>> {
 
     // Bob creates inbound session
     let bob_ik_bincode = bincode::serialize(&(bob_ik.private_key.0, bob_ik.public_key.0))?;
-    let bob_spk_bincode =
-        bincode::serialize(&(bob_spk.private_key.0, bob_spk.public_key.0))?;
-    let bob_otk_bincode =
-        bincode::serialize(&(bob_otk.private_key.0, bob_otk.public_key.0))?;
+    let bob_spk_bincode = bincode::serialize(&(bob_spk.private_key.0, bob_spk.public_key.0))?;
+    let bob_otk_bincode = bincode::serialize(&(bob_otk.private_key.0, bob_otk.public_key.0))?;
 
     mgr.create_inbound_session(
         "test_session_bob".to_string(),

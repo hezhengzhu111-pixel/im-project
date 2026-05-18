@@ -8,7 +8,11 @@ use e2ee_core::{
 };
 
 // ============================================================================
-// SessionError — flat FFI-safe error enum (matches UDL)
+// SessionError — UniFFI flat_error, message transmitted via Display (thiserror)
+//
+// UniFFI 0.28 flat_error serialization: variant_index(i32) + to_string(error)
+// Kotlin:  exception.message → "session not found: <session_id>"
+// Swift:   error.localizedDescription → "session not found: <session_id>"
 // ============================================================================
 
 #[derive(Debug, thiserror::Error)]
@@ -63,9 +67,7 @@ fn decode_keypair(data: &[u8]) -> Result<X25519KeyPair, SessionError> {
     }
 
     // 2) Legacy format: (private_bytes, public_bytes) tuple — priv(32) || pub(32)
-    if let Ok((priv_bytes, pub_bytes)) =
-        bincode::deserialize::<([u8; 32], [u8; 32])>(data)
-    {
+    if let Ok((priv_bytes, pub_bytes)) = bincode::deserialize::<([u8; 32], [u8; 32])>(data) {
         let kp = X25519KeyPair {
             public_key: X25519PublicKey(pub_bytes),
             private_key: X25519PrivateKey(priv_bytes),
@@ -422,11 +424,9 @@ mod tests {
         let manager = SessionManager::new();
         let alice_ik_bincode = bincode::serialize(&alice_ik)?;
 
-        manager
-            .create_outbound_session("test".to_string(), alice_ik_bincode, fetch_json)?;
+        manager.create_outbound_session("test".to_string(), alice_ik_bincode, fetch_json)?;
 
-        let wire = manager
-            .encrypt("test".to_string(), b"hello".to_vec())?;
+        let wire = manager.encrypt("test".to_string(), b"hello".to_vec())?;
 
         // Verify header_len is 52 (0x00000034 in big-endian)
         assert_eq!(wire.first(), Some(&0x00));
@@ -439,7 +439,10 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt_roundtrip_ffi() -> Result<(), Box<dyn std::error::Error>> {
-        use e2ee_core::{generate_key_bundle, init_receiving_chain, x3dh_respond, PreKey, PreKeyBundleFetch, X25519PublicKey};
+        use e2ee_core::{
+            generate_key_bundle, init_receiving_chain, x3dh_respond, PreKey, PreKeyBundleFetch,
+            X25519PublicKey,
+        };
 
         let bob_bundle = generate_key_bundle(1, &[(100, 3)])?;
         let alice_ik = generate_x25519_keypair();
@@ -459,8 +462,8 @@ mod tests {
         let alice_mgr = SessionManager::new();
         let alice_ik_bincode = bincode::serialize(&alice_ik)?;
 
-        let handshake = alice_mgr
-            .create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)?;
+        let handshake =
+            alice_mgr.create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)?;
 
         // Parse handshake for Bob: ek(32) || spk_id(4) || otk_id(4)
         let ek_bytes = handshake
@@ -492,16 +495,13 @@ mod tests {
         // Insert Bob's session via export/restore
         let bob_mgr = SessionManager::new();
         let bob_state_bytes = e2ee_core::try_export_state(&bob_state)?;
-        bob_mgr
-            .restore_session("bob".to_string(), bob_state_bytes)?;
+        bob_mgr.restore_session("bob".to_string(), bob_state_bytes)?;
 
         // Alice encrypts
-        let wire = alice_mgr
-            .encrypt("alice".to_string(), b"hello bob".to_vec())?;
+        let wire = alice_mgr.encrypt("alice".to_string(), b"hello bob".to_vec())?;
 
         // Bob decrypts
-        let plaintext = bob_mgr
-            .decrypt("bob".to_string(), wire)?;
+        let plaintext = bob_mgr.decrypt("bob".to_string(), wire)?;
         assert_eq!(plaintext, b"hello bob");
         Ok(())
     }
