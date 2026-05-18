@@ -1,4 +1,22 @@
-import type { E2eeEnvelope } from "@/features/e2ee/types";
+export interface E2eeEnvelope {
+  version: number;
+  alg: string;
+  conversationId: string;
+  clientMsgId: string;
+  serverMessageId?: string;
+  senderUserId: string;
+  senderDeviceId: string;
+  recipientUserId?: string;
+  recipientDeviceIds: string[];
+  sessionId: string;
+  keyId: string;
+  keyVersion: number;
+  iv: string;
+  aad: string;
+  ciphertext: string;
+  createdAt: number;
+}
+
 export type MessageType =
   | "TEXT"
   | "IMAGE"

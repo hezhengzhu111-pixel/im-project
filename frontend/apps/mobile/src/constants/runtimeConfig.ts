@@ -6,7 +6,7 @@ export interface RuntimeConfigUrls {
   FILE_BASE_URL: string;
 }
 
-export type MobileAppEnv =
+type MobileAppEnv =
   | 'dev-emulator'
   | 'dev-device'
   | 'sit'
@@ -14,7 +14,7 @@ export type MobileAppEnv =
   | 'internal'
   | 'debug';
 
-export interface NativeRuntimeConfig extends Partial<RuntimeConfigUrls> {
+interface NativeRuntimeConfig extends Partial<RuntimeConfigUrls> {
   IM_MOBILE_APP_ENV?: string;
   IM_MOBILE_RELEASE_BUILD?: boolean | string;
 }
@@ -23,7 +23,7 @@ export interface RuntimeConfigSource extends Partial<RuntimeConfigUrls> {
   IM_MOBILE_APP_ENV?: string;
 }
 
-export interface ResolvedRuntimeConfig extends RuntimeConfigUrls {
+interface ResolvedRuntimeConfig extends RuntimeConfigUrls {
   APP_ENV: MobileAppEnv;
   IS_RELEASE_BUILD: boolean;
   warnings: string[];
@@ -209,9 +209,3 @@ export const getRuntimeConfig = (): ResolvedRuntimeConfig => {
 
 export const getDefaultRuntimeConfig = (): RuntimeConfigUrls => ({ ...DEFAULT_CONFIG });
 
-export const getProcessEnvConfig = (): RuntimeConfigSource => ({
-  API_BASE_URL: readProcessEnvValue('API_BASE_URL'),
-  WS_BASE_URL: readProcessEnvValue('WS_BASE_URL'),
-  FILE_BASE_URL: readProcessEnvValue('FILE_BASE_URL'),
-  IM_MOBILE_APP_ENV: readProcessAppEnv(),
-});

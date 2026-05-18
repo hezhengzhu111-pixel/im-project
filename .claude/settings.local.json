@@ -51,7 +51,8 @@
       "Bash(cp -r /tmp/andrej-karpathy-skills/skills __TRACKED_VAR__/.claude/plugins/cache/andrej-karpathy-skills/andrej-karpathy-skills/1.0.0/)",
       "Bash(cp -r /tmp/andrej-karpathy-skills/.claude-plugin __TRACKED_VAR__/.claude/plugins/cache/andrej-karpathy-skills/andrej-karpathy-skills/1.0.0/)",
       "Bash(rm -rf __TRACKED_VAR__/.claude/plugins/cache/andrej-karpathy-skills)",
-      "Bash(mkdir -p __TRACKED_VAR__/.claude/plugins/cache/andrej-karpathy-skills)"
+      "Bash(mkdir -p __TRACKED_VAR__/.claude/plugins/cache/andrej-karpathy-skills)",
+      "Bash(echo \"EXIT_CODE: $?\")"
     ]
   }
 }

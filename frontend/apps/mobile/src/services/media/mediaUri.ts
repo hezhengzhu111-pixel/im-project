@@ -76,7 +76,7 @@ const locatorFromUri = (value: string): FileLocator | null => {
   return locatorFromFilesPath(value);
 };
 
-export const buildMediaDownloadUri = (locator: FileLocator): string => {
+const buildMediaDownloadUri = (locator: FileLocator): string => {
   const params = new URLSearchParams({
     category: locator.category,
     date: locator.date,
@@ -106,16 +106,7 @@ export const resolveMediaUri = (uri?: string | null, type?: MessageType): string
   return `${base}/files/${mediaFolderFor(value, type)}/${value}`;
 };
 
-export const isRemoteUri = (uri?: string | null): boolean => /^https?:\/\//i.test(String(uri || '').trim());
-
 export const isLocalUri = (uri?: string | null): boolean => /^(file:|content:)/i.test(String(uri || '').trim());
-
-export const isLikelyMediaFilename = (value?: string | null): boolean => {
-  const text = String(value || '').trim();
-  if (!text) return false;
-  const ext = extensionFrom(text);
-  return AUDIO_EXTENSIONS.has(ext) || IMAGE_EXTENSIONS.has(ext) || VIDEO_EXTENSIONS.has(ext);
-};
 
 export const mediaExtensionFromUri = (value?: string | null): string => {
   const raw = String(value || '');

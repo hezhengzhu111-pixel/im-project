@@ -182,7 +182,7 @@ export function setNotificationRouteAuthReady(ready: boolean): void {
   }
 }
 
-export async function handleNotificationOpen(
+async function handleNotificationOpen(
   data?: Record<string, unknown>,
   eventType = 'notification_opened',
 ): Promise<void> {
@@ -250,7 +250,7 @@ export async function handleFcmTokenRefresh(token: string): Promise<void> {
   }
 }
 
-export function registerNotificationBackgroundHandlers(): void {
+function registerNotificationBackgroundHandlers(): void {
   if (backgroundHandlersRegistered) {
     return;
   }
