@@ -83,25 +83,7 @@ export interface E2eeGroupState {
   enabledBy?: string;
 }
 
-/** Unified E2EE envelope transported over network/storage. */
-export interface E2eeEnvelope {
-  version: 1;
-  alg: 'AES-256-GCM';
-  conversationId: string;
-  clientMsgId: string;
-  serverMessageId?: string;
-  senderUserId: string;
-  senderDeviceId: string;
-  recipientUserId?: string;
-  recipientDeviceIds: string[];
-  sessionId: string;
-  keyId: string;
-  keyVersion: number;
-  iv: string;
-  aad: string;
-  ciphertext: string;
-  createdAt: number;
-}
+export type { E2eeEnvelope } from '@im/shared-types';
 
 export type E2eeEncryptionFailureReason =
   | 'missing_recipient_key'

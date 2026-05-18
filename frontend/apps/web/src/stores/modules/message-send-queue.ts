@@ -264,10 +264,11 @@ export function createMessageSendQueueModule(
     if (session.type === "private") {
       try {
         const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
-        const { getPendingInitialHandshake } = await import(
+        const { getPendingInitialHandshake, getLocalSessionStatus } = await import(
           "@/features/e2ee/manager/negotiation"
         );
-        e2eeRequired = privateE2eeStatus === "encrypted";
+        e2eeRequired = privateE2eeStatus === "encrypted"
+          || getLocalSessionStatus(session.id) === "encrypted";
 
         if (e2eeRequired) {
           if (typeof e2eeManager.encryptToEnvelope === "function") {
@@ -324,6 +325,12 @@ export function createMessageSendQueueModule(
         if (privateE2eeStatus === "encrypted" || e2eeRequired) {
           void resolveEncryptionFailureReason(error);
           ctx.notifyWarning("端到端加密失败，消息未发送");
+          return false;
+        }
+        // Per E8/E28: must not silently fall back to plaintext when
+        // we cannot verify the session is not encrypted.
+        if (session.type === "private") {
+          ctx.notifyWarning("端到端加密模块加载失败，消息未发送");
           return false;
         }
       }
@@ -394,55 +401,6 @@ export function createMessageSendQueueModule(
       localId,
       pendingMessage,
     );
-
-    // E2EE encryption intercept
-    let encryptedPayload: { ciphertext: string; header: import('@/features/e2ee/types').RatchetHeader; deviceId: string } | null = null;
-    let initialHandshake: {
-      senderIdentityKey: string;
-      ephemeralPublicKey: string;
-      deviceId: string;
-    } | null = null;
-
-    if (session.type === "private") {
-      try {
-        const { e2eeManager } = await import('@/features/e2ee/manager/e2ee-manager');
-        const { getLocalSessionStatus, getPendingInitialHandshake } = await import('@/features/e2ee/manager/negotiation');
-
-        if ((privateE2eeStatus || getLocalSessionStatus(session.id)) === 'encrypted') {
-          try {
-            encryptedPayload = await e2eeManager.encryptMessage(session.id, content);
-            initialHandshake = getPendingInitialHandshake(session.id);
-          } catch {
-            // fall through to empty-payload check below
-          }
-
-          if (!encryptedPayload || !encryptedPayload.ciphertext) {
-            markPendingFailed(session.id, localId);
-            await ctx.messageRepo.upsertPendingMessage(session.id, localId, {
-              ...pendingMessage,
-              status: "FAILED",
-            });
-            ctx.notifyWarning("端到端加密失败，消息未发送");
-            return false;
-          }
-        }
-      } catch {
-        // E2EE module load failed — we cannot determine encryption state.
-        // Per E8/E28: must not silently fall back to plaintext for private sessions
-        // when we cannot verify the session is not encrypted.
-        // If the session was known to be encrypted (privateE2eeStatus was set), block.
-        // If module load failed entirely, we also block to prevent potential plaintext leak.
-        if (session.type === "private") {
-          ctx.notifyWarning("端到端加密模块加载失败，消息未发送");
-          markPendingFailed(session.id, localId);
-          await ctx.messageRepo.upsertPendingMessage(session.id, localId, {
-            ...pendingMessage,
-            status: "FAILED",
-          });
-          return false;
-        }
-      }
-    }
 
     const commonSendFields = {
       clientMessageId,

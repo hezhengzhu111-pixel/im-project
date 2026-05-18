@@ -25,7 +25,7 @@ const ERROR_MESSAGES: Record<number, string> = {
   504: "error.gatewayTimeout",
 };
 
-export const notifyHttpError = (err: any): void => {
+const notifyHttpError = (err: any): void => {
   if (!err?.response) {
     return;
   }
@@ -44,7 +44,7 @@ export const notifyHttpError = (err: any): void => {
   }
 };
 
-export const notifyBusinessError = (
+const notifyBusinessError = (
   messageText: string,
   fallbackKey: string,
 ): void => {
@@ -52,7 +52,7 @@ export const notifyBusinessError = (
   ElMessage.error(messageText || t(fallbackKey as any));
 };
 
-export const notifyNetworkError = (): void => {
+const notifyNetworkError = (): void => {
   const t = getI18nT();
   ElMessage.error(t("error.networkFailed"));
 };

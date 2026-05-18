@@ -60,14 +60,6 @@ export type SendPipelineStage =
   | 'SENT'             // message confirmed by server
   | 'BLOCKED';         // blocked by E2EE or policy
 
-// Configuration for send pipeline retry behavior.
-export interface SendPipelineRetryConfig {
-  maxRetryCount: number;
-  uploadMaxRetryCount: number;
-  baseDelayMs: number;
-  maxDelayMs: number;
-}
-
 // Local upload queue row for React Native file/media uploads.
 export interface UploadTask {
   taskId: string;
