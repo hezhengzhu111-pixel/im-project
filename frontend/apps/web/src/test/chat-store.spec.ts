@@ -1028,7 +1028,7 @@ describe("chat store", () => {
     const secondSend = store.sendMessage("second", "TEXT");
     await waitForSendPrivateCalls(1);
 
-    expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(1));
     expect(messageServiceMock.sendPrivate.mock.calls[0][0].content).toBe(
       "first",
     );
@@ -1050,7 +1050,7 @@ describe("chat store", () => {
     await firstSend;
     await secondSend;
 
-    expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(2));
     expect(messageServiceMock.sendPrivate.mock.calls[1][0].content).toBe(
       "second",
     );
@@ -1092,7 +1092,7 @@ describe("chat store", () => {
     );
     await waitForSendPrivateCalls(2);
 
-    expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(messageServiceMock.sendPrivate).toHaveBeenCalledTimes(2));
 
     resolveFirst?.({
       code: 200,

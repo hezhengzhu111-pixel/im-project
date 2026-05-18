@@ -1,3 +1,4 @@
+import type { E2eeEnvelope } from "@/features/e2ee/types";
 export type MessageType =
   | "TEXT"
   | "IMAGE"
@@ -55,6 +56,7 @@ export interface Message {
   e2eeDeviceId?: string;
   e2eeSenderIdentityKey?: string;
   e2eeEphemeralKey?: string;
+  e2eeEnvelope?: E2eeEnvelope;
 }
 
 export interface RawMessageDTO {
@@ -136,6 +138,8 @@ export interface RawMessageDTO {
   e2ee_sender_identity_key?: string;
   e2eeEphemeralKey?: string;
   e2ee_ephemeral_key?: string;
+  e2eeEnvelope?: E2eeEnvelope;
+  e2ee_envelope?: E2eeEnvelope;
 }
 
 export interface MessageConfig {
@@ -154,6 +158,7 @@ export interface SendPrivateMessageRequest {
   thumbnailUrl?: string;
   duration?: number;
   extra?: Record<string, unknown>;
+  e2eeEnvelope?: E2eeEnvelope;
 }
 
 export interface SendGroupMessageRequest {
@@ -168,6 +173,7 @@ export interface SendGroupMessageRequest {
   duration?: number;
   extra?: Record<string, unknown>;
   mentionedUserIds?: string[];
+  e2eeEnvelope?: E2eeEnvelope;
 }
 
 export interface MessageSearchResult {

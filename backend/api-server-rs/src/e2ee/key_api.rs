@@ -11,6 +11,7 @@ use im_rs_common::api::ApiResponse;
 use im_rs_common::auth::Identity;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use sqlx::Row;
 use std::collections::HashMap;
 
@@ -652,4 +653,296 @@ pub async fn delete_device(
     tx.commit().await?;
 
     Ok(Json(ApiResponse::success("ok".to_string())))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterDeviceRequest {
+    pub device_id: String,
+    pub identity_public_key: String,
+    pub signed_pre_key: String,
+    pub signed_pre_key_signature: String,
+    #[serde(default)]
+    pub one_time_pre_keys: Vec<String>,
+    pub key_version: i32,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterDeviceResponse {
+    pub device_id: String,
+    pub fingerprint: String,
+    pub key_version: i32,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicDeviceDto {
+    pub user_id: String,
+    pub device_id: String,
+    pub identity_public_key: String,
+    pub signed_pre_key: String,
+    pub fingerprint: String,
+    pub key_version: i32,
+    pub revoked_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaimPreKeyRequest {
+    pub user_id: String,
+    pub device_id: String,
+    pub claimant_device_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaimPreKeyResponse {
+    pub user_id: String,
+    pub device_id: String,
+    pub pre_key_id: i64,
+    pub public_key: String,
+}
+
+fn fingerprint_for_key(key: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(key.as_bytes());
+    let digest = hasher.finalize();
+    digest
+        .iter()
+        .take(16)
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn validate_public_material(value: &str, field: &str) -> Result<(), AppError> {
+    if value.trim().is_empty() || value.len() > MAX_KEY_FIELD_LEN {
+        return Err(AppError::BadRequest(format!("invalid {field}")));
+    }
+    Ok(())
+}
+
+pub async fn register_device(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<RegisterDeviceRequest>,
+) -> Result<Json<ApiResponse<RegisterDeviceResponse>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    if request.device_id.trim().is_empty() || request.device_id.len() > MAX_DEVICE_ID_LEN {
+        return Err(AppError::BadRequest("invalid deviceId".to_string()));
+    }
+    validate_public_material(&request.identity_public_key, "identityPublicKey")?;
+    validate_public_material(&request.signed_pre_key, "signedPreKey")?;
+    validate_public_material(&request.signed_pre_key_signature, "signedPreKeySignature")?;
+    if request.one_time_pre_keys.len() > MAX_ONE_TIME_KEYS {
+        return Err(AppError::BadRequest("too many oneTimePreKeys".to_string()));
+    }
+    for key in &request.one_time_pre_keys {
+        validate_public_material(key, "oneTimePreKeys")?;
+    }
+
+    let fingerprint = fingerprint_for_key(&request.identity_public_key);
+    let key_version = request.key_version.max(1);
+    let mut tx = state.db.begin().await?;
+    let existing: Option<i32> = sqlx::query_scalar(
+        "SELECT key_version FROM service_user_service_db.e2ee_devices WHERE user_id = ? AND device_id = ?",
+    )
+    .bind(identity.user_id)
+    .bind(&request.device_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let next_version = existing.map_or(key_version, |current| current.saturating_add(1));
+
+    sqlx::query(
+        r#"INSERT INTO service_user_service_db.e2ee_devices
+           (user_id, device_id, status, identity_key, identity_public_key, fingerprint,
+            key_version, signing_identity_key, signed_pre_key, signed_pre_key_signature,
+            revoked_at, last_active_at)
+           VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, NULL, NOW())
+           ON DUPLICATE KEY UPDATE status='active', identity_key=VALUES(identity_key),
+             identity_public_key=VALUES(identity_public_key), fingerprint=VALUES(fingerprint),
+             key_version=VALUES(key_version), signed_pre_key=VALUES(signed_pre_key),
+             signed_pre_key_signature=VALUES(signed_pre_key_signature), revoked_at=NULL,
+             last_active_at=NOW()"#,
+    )
+    .bind(identity.user_id)
+    .bind(&request.device_id)
+    .bind(&request.identity_public_key)
+    .bind(&request.identity_public_key)
+    .bind(&fingerprint)
+    .bind(next_version)
+    .bind(&request.identity_public_key)
+    .bind(&request.signed_pre_key)
+    .bind(&request.signed_pre_key_signature)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query("DELETE FROM service_user_service_db.e2ee_one_time_pre_keys WHERE user_id = ? AND device_id = ?")
+        .bind(identity.user_id)
+        .bind(&request.device_id)
+        .execute(&mut *tx)
+        .await?;
+    for (idx, key) in request.one_time_pre_keys.iter().enumerate() {
+        let pre_key_id = i64::try_from(idx.saturating_add(1))
+            .map_err(|_| AppError::BadRequest("invalid preKeyId".to_string()))?;
+        sqlx::query(
+            r#"INSERT INTO service_user_service_db.e2ee_one_time_pre_keys
+               (user_id, device_id, pre_key_id, pre_key, public_key, consumed)
+               VALUES (?, ?, ?, ?, ?, 0)"#,
+        )
+        .bind(identity.user_id)
+        .bind(&request.device_id)
+        .bind(pre_key_id)
+        .bind(key)
+        .bind(key)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+
+    Ok(Json(ApiResponse::success(RegisterDeviceResponse {
+        device_id: request.device_id,
+        fingerprint,
+        key_version: next_version,
+    })))
+}
+
+pub async fn get_user_devices(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<i64>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<ApiResponse<Vec<PublicDeviceDto>>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let include_revoked = params
+        .get("includeRevoked")
+        .is_some_and(|value| value == "true");
+    if include_revoked && identity.user_id != user_id {
+        return Err(AppError::Forbidden(
+            "includeRevoked is restricted".to_string(),
+        ));
+    }
+    let rows = sqlx::query(
+        r#"SELECT user_id, device_id, COALESCE(identity_public_key, identity_key) AS identity_public_key,
+                  signed_pre_key, fingerprint, key_version, revoked_at
+           FROM service_user_service_db.e2ee_devices
+           WHERE user_id = ? AND (? OR revoked_at IS NULL) AND status = 'active'
+           ORDER BY device_id ASC"#,
+    )
+    .bind(user_id)
+    .bind(include_revoked)
+    .fetch_all(&state.db)
+    .await?;
+    let devices = rows
+        .into_iter()
+        .map(|row| PublicDeviceDto {
+            user_id: row.get::<i64, _>("user_id").to_string(),
+            device_id: row.get("device_id"),
+            identity_public_key: row.get("identity_public_key"),
+            signed_pre_key: row.get("signed_pre_key"),
+            fingerprint: row.get("fingerprint"),
+            key_version: row.get("key_version"),
+            revoked_at: row
+                .try_get::<Option<chrono::NaiveDateTime>, _>("revoked_at")
+                .ok()
+                .flatten()
+                .map(format_datetime),
+        })
+        .collect();
+    Ok(Json(ApiResponse::success(devices)))
+}
+
+pub async fn revoke_device(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(device_id): Path<String>,
+) -> Result<Json<ApiResponse<PublicDeviceDto>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    if device_id.trim().is_empty() || device_id.len() > MAX_DEVICE_ID_LEN {
+        return Err(AppError::BadRequest("invalid deviceId".to_string()));
+    }
+    let affected = sqlx::query(
+        "UPDATE service_user_service_db.e2ee_devices SET revoked_at = NOW(), status = 'active' WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL",
+    )
+    .bind(identity.user_id)
+    .bind(&device_id)
+    .execute(&state.db)
+    .await?
+    .rows_affected();
+    if affected == 0 {
+        return Err(AppError::NotFound("device not found".to_string()));
+    }
+    sqlx::query("UPDATE service_user_service_db.e2ee_conversation_sessions SET needs_rotation = 1 WHERE status = 'active' AND JSON_CONTAINS(recipient_device_ids_json, JSON_QUOTE(?))")
+        .bind(&device_id)
+        .execute(&state.db)
+        .await?;
+    let devices = get_user_devices(
+        State(state),
+        headers,
+        Path(identity.user_id),
+        Query(HashMap::from([(
+            "includeRevoked".to_string(),
+            "true".to_string(),
+        )])),
+    )
+    .await?
+    .0
+    .data;
+    let device = devices
+        .into_iter()
+        .find(|item| item.device_id == device_id)
+        .ok_or_else(|| AppError::NotFound("device not found".to_string()))?;
+    Ok(Json(ApiResponse::success(device)))
+}
+
+pub async fn claim_prekey(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ClaimPreKeyRequest>,
+) -> Result<Json<ApiResponse<ClaimPreKeyResponse>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let target_user_id = parse_user_id(&request.user_id)?;
+    let mut tx = state.db.begin().await?;
+    let row = sqlx::query(
+        r#"SELECT id, COALESCE(pre_key_id, id) AS pre_key_id, COALESCE(public_key, pre_key) AS public_key
+           FROM service_user_service_db.e2ee_one_time_pre_keys
+           WHERE user_id = ? AND device_id = ? AND claimed_at IS NULL AND consumed = 0
+           ORDER BY id ASC LIMIT 1 FOR UPDATE"#,
+    )
+    .bind(target_user_id)
+    .bind(&request.device_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(row) = row else {
+        tx.rollback().await.ok();
+        return Err(AppError::NotFound("one-time prekey not found".to_string()));
+    };
+    let id: i64 = row.get("id");
+    let pre_key_id: i64 = row.get("pre_key_id");
+    let public_key: String = row.get("public_key");
+    let affected = sqlx::query(
+        r#"UPDATE service_user_service_db.e2ee_one_time_pre_keys
+           SET consumed = 1, consumed_time = NOW(), claimed_at = NOW(),
+               claimed_by_user_id = ?, claimed_by_device_id = ?
+           WHERE id = ? AND claimed_at IS NULL AND consumed = 0"#,
+    )
+    .bind(identity.user_id)
+    .bind(&request.claimant_device_id)
+    .bind(id)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    if affected != 1 {
+        tx.rollback().await.ok();
+        return Err(AppError::Conflict(
+            "one-time prekey already claimed".to_string(),
+        ));
+    }
+    tx.commit().await?;
+    Ok(Json(ApiResponse::success(ClaimPreKeyResponse {
+        user_id: request.user_id,
+        device_id: request.device_id,
+        pre_key_id,
+        public_key,
+    })))
 }

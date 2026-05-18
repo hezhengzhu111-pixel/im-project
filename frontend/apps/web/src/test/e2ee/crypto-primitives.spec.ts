@@ -43,27 +43,27 @@ describe('e2ee crypto-primitives', () => {
     expect(kp.privateKey.extractable).toBe(false);
   });
 
-  it('Ratchet Key is extractable', async () => {
+  it('Ratchet Key private material is not extractable', async () => {
     const kp = await generateRatchetKeyPair();
-    expect(kp.privateKey.extractable).toBe(true);
+    expect(kp.privateKey.extractable).toBe(false);
     expect(kp.publicKey.extractable).toBe(true);
   });
 
-  it('Signed Pre Key is extractable', async () => {
+  it('Signed Pre Key private material is not extractable', async () => {
     const kp = await generateSignedPreKeyPair();
-    expect(kp.privateKey.extractable).toBe(true);
+    expect(kp.privateKey.extractable).toBe(false);
     expect(kp.publicKey.extractable).toBe(true);
   });
 
-  it('One-Time Pre Key is extractable', async () => {
+  it('One-Time Pre Key remains exportable for upload', async () => {
     const kp = await generateOneTimePreKeyPair();
     expect(kp.privateKey.extractable).toBe(true);
     expect(kp.publicKey.extractable).toBe(true);
   });
 
-  it('Signing Key is extractable', async () => {
+  it('Signing Key private material is not extractable', async () => {
     const kp = await generateSigningKeyPair();
-    expect(kp.privateKey.extractable).toBe(true);
+    expect(kp.privateKey.extractable).toBe(false);
     expect(kp.publicKey.extractable).toBe(true);
   });
 

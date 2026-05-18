@@ -3,7 +3,7 @@ use crate::auth_api;
 use crate::error::AppError;
 use crate::route::parse_user_routes;
 use crate::web::AppState;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::Json;
 use im_rs_common::api::ApiResponse;
@@ -573,4 +573,232 @@ mod tests {
         }
         Ok(())
     }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateE2eeSessionRequest {
+    pub conversation_id: String,
+    #[serde(default)]
+    pub recipient_user_ids: Vec<String>,
+    #[serde(default)]
+    pub recipient_device_ids: Vec<String>,
+    pub sender_device_id: String,
+    #[serde(default)]
+    pub initial_envelope_metadata: Value,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RotateReason {
+    MemberAdded,
+    MemberRemoved,
+    DeviceRevoked,
+    Manual,
+    KeyCompromised,
+}
+
+impl RotateReason {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::MemberAdded => "member_added",
+            Self::MemberRemoved => "member_removed",
+            Self::DeviceRevoked => "device_revoked",
+            Self::Manual => "manual",
+            Self::KeyCompromised => "key_compromised",
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RotateE2eeSessionRequest {
+    pub reason: RotateReason,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct E2eeSessionMetadataDto {
+    pub conversation_id: String,
+    pub session_id: String,
+    pub key_id: String,
+    pub key_version: i32,
+    pub epoch: i32,
+    pub sender_device_id: String,
+    pub recipient_device_ids: Vec<String>,
+    pub status: String,
+    pub needs_rotation: bool,
+}
+
+fn validate_conversation_id(value: &str) -> Result<(), AppError> {
+    if value.trim().is_empty() || value.len() > 128 {
+        return Err(AppError::BadRequest("invalid conversationId".to_string()));
+    }
+    Ok(())
+}
+
+fn parse_private_conversation_members(conversation_id: &str) -> Option<(i64, i64)> {
+    let raw = conversation_id
+        .strip_prefix("p_")
+        .unwrap_or(conversation_id);
+    let mut parts = raw.split('_');
+    let left = parts.next()?.parse::<i64>().ok()?;
+    let right = parts.next()?.parse::<i64>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((left, right))
+}
+
+async fn ensure_conversation_member(
+    db: &sqlx::MySqlPool,
+    user_id: i64,
+    conversation_id: &str,
+) -> Result<(), AppError> {
+    if let Some((left, right)) = parse_private_conversation_members(conversation_id) {
+        if user_id == left || user_id == right {
+            return Ok(());
+        }
+        return Err(AppError::Forbidden("not a conversation member".to_string()));
+    }
+    if let Some(group_id_raw) = conversation_id.strip_prefix("g_") {
+        let group_id = group_id_raw
+            .parse::<i64>()
+            .map_err(|_| AppError::BadRequest("invalid conversationId".to_string()))?;
+        let count: Option<i64> = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM service_group_service_db.group_members WHERE group_id = ? AND user_id = ? AND status = 1",
+        )
+        .bind(group_id)
+        .bind(user_id)
+        .fetch_optional(db)
+        .await?;
+        if count.unwrap_or(0) > 0 {
+            return Ok(());
+        }
+    }
+    Err(AppError::Forbidden("not a conversation member".to_string()))
+}
+
+async fn active_devices(db: &sqlx::MySqlPool, device_ids: &[String]) -> Result<(), AppError> {
+    if device_ids.is_empty() {
+        return Err(AppError::BadRequest(
+            "recipientDeviceIds required".to_string(),
+        ));
+    }
+    for device_id in device_ids {
+        let count: Option<i64> = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM service_user_service_db.e2ee_devices WHERE device_id = ? AND status = 'active' AND revoked_at IS NULL",
+        )
+        .bind(device_id)
+        .fetch_optional(db)
+        .await?;
+        if count.unwrap_or(0) == 0 {
+            return Err(AppError::BadRequest(
+                "revoked device cannot be recipient".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn row_to_metadata(row: sqlx::mysql::MySqlRow) -> E2eeSessionMetadataDto {
+    let recipient_json: String = row.get("recipient_device_ids_json");
+    let recipient_device_ids = serde_json::from_str(&recipient_json).unwrap_or_else(|_| Vec::new());
+    E2eeSessionMetadataDto {
+        conversation_id: row.get("conversation_id"),
+        session_id: row.get("session_id"),
+        key_id: row.get("key_id"),
+        key_version: row.get("key_version"),
+        epoch: row.get("epoch"),
+        sender_device_id: row.get("sender_device_id"),
+        recipient_device_ids,
+        status: row.get("status"),
+        needs_rotation: row.get::<i8, _>("needs_rotation") != 0,
+    }
+}
+
+pub async fn create_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateE2eeSessionRequest>,
+) -> Result<Json<ApiResponse<E2eeSessionMetadataDto>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    validate_conversation_id(&request.conversation_id)?;
+    if request.sender_device_id.trim().is_empty() || request.sender_device_id.len() > 64 {
+        return Err(AppError::BadRequest("invalid senderDeviceId".to_string()));
+    }
+    ensure_conversation_member(&state.db, identity.user_id, &request.conversation_id).await?;
+    active_devices(&state.db, &request.recipient_device_ids).await?;
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let key_id = uuid::Uuid::new_v4().to_string();
+    let recipient_json = serde_json::to_string(&request.recipient_device_ids)?;
+    sqlx::query(
+        r#"INSERT INTO service_user_service_db.e2ee_conversation_sessions
+           (conversation_id, session_id, key_id, key_version, epoch, created_by_user_id,
+            sender_device_id, recipient_device_ids_json, status, needs_rotation)
+           VALUES (?, ?, ?, 1, 1, ?, ?, ?, 'active', 0)
+           ON DUPLICATE KEY UPDATE session_id=VALUES(session_id), key_id=VALUES(key_id),
+             key_version=key_version + 1, epoch=epoch + 1, sender_device_id=VALUES(sender_device_id),
+             recipient_device_ids_json=VALUES(recipient_device_ids_json), status='active', needs_rotation=0"#,
+    )
+    .bind(&request.conversation_id)
+    .bind(&session_id)
+    .bind(&key_id)
+    .bind(identity.user_id)
+    .bind(&request.sender_device_id)
+    .bind(&recipient_json)
+    .execute(&state.db)
+    .await?;
+    get_conversation_session(State(state), headers, Path(request.conversation_id)).await
+}
+
+pub async fn get_conversation_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(conversation_id): Path<String>,
+) -> Result<Json<ApiResponse<E2eeSessionMetadataDto>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    validate_conversation_id(&conversation_id)?;
+    ensure_conversation_member(&state.db, identity.user_id, &conversation_id).await?;
+    let row = sqlx::query(
+        r#"SELECT conversation_id, session_id, key_id, key_version, epoch, sender_device_id,
+                  recipient_device_ids_json, status, needs_rotation
+           FROM service_user_service_db.e2ee_conversation_sessions
+           WHERE conversation_id = ? AND status = 'active'"#,
+    )
+    .bind(&conversation_id)
+    .fetch_optional(&state.db)
+    .await?;
+    let Some(row) = row else {
+        return Err(AppError::NotFound("e2ee session not found".to_string()));
+    };
+    Ok(Json(ApiResponse::success(row_to_metadata(row))))
+}
+
+pub async fn rotate_conversation_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(conversation_id): Path<String>,
+    Json(request): Json<RotateE2eeSessionRequest>,
+) -> Result<Json<ApiResponse<E2eeSessionMetadataDto>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    validate_conversation_id(&conversation_id)?;
+    ensure_conversation_member(&state.db, identity.user_id, &conversation_id).await?;
+    let key_id = uuid::Uuid::new_v4().to_string();
+    let affected = sqlx::query(
+        r#"UPDATE service_user_service_db.e2ee_conversation_sessions
+           SET key_id = ?, key_version = key_version + 1, epoch = epoch + 1,
+               rotate_reason = ?, needs_rotation = 0, updated_at = NOW()
+           WHERE conversation_id = ? AND status = 'active'"#,
+    )
+    .bind(&key_id)
+    .bind(request.reason.as_str())
+    .bind(&conversation_id)
+    .execute(&state.db)
+    .await?
+    .rows_affected();
+    if affected == 0 {
+        return Err(AppError::NotFound("e2ee session not found".to_string()));
+    }
+    get_conversation_session(State(state), headers, Path(conversation_id)).await
 }

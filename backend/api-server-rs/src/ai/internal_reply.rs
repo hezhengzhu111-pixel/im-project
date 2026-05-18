@@ -88,6 +88,7 @@ pub async fn handle(
         e2ee_device_id: None,
         e2ee_sender_identity_key: None,
         e2ee_ephemeral_key: None,
+        e2ee_envelope: None,
     };
 
     let mut event = im_rs_common::event::ImEvent::new(

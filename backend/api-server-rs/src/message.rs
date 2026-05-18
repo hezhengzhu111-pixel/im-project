@@ -8,7 +8,7 @@ use crate::observability;
 use chrono::{DateTime, Utc};
 use im_rs_common::auth::Identity;
 use im_rs_common::event::{
-    ImEvent, ImEventType, MessageDto, MessageStatus, MessageType, ReadReceipt,
+    E2eeEnvelopeDto, ImEvent, ImEventType, MessageDto, MessageStatus, MessageType, ReadReceipt,
 };
 use im_rs_common::{ids, keys, time};
 use redis::aio::ConnectionManager;
@@ -47,6 +47,7 @@ pub struct SendPrivateRequest {
     pub e2ee_device_id: Option<String>,
     pub e2ee_sender_identity_key: Option<String>,
     pub e2ee_ephemeral_key: Option<String>,
+    pub e2ee_envelope: Option<E2eeEnvelopeDto>,
 }
 
 /// 群聊消息发送请求体。
@@ -67,6 +68,8 @@ pub struct SendGroupRequest {
     pub thumbnail_url: Option<String>,
     pub duration: Option<i32>,
     pub mentioned_user_ids: Option<Vec<String>>,
+    pub encrypted: Option<bool>,
+    pub e2ee_envelope: Option<E2eeEnvelopeDto>,
 }
 
 /// 历史消息查询参数，支持游标分页和数量限制。
@@ -177,6 +180,24 @@ pub async fn send_private(
     }
     validate_friend(cache_redis, db, identity.user_id, receiver_id).await?;
     let conversation_id = keys::private_conversation_id(identity.user_id, receiver_id);
+    let e2ee_enabled = private_e2ee_enabled(db, &conversation_id).await?;
+    if e2ee_enabled || request.encrypted.unwrap_or(false) || request.e2ee_envelope.is_some() {
+        let envelope = request
+            .e2ee_envelope
+            .as_ref()
+            .ok_or_else(|| AppError::BadRequest("e2ee envelope required".to_string()))?;
+        if request
+            .content
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        {
+            return Err(AppError::BadRequest(
+                "plaintext content forbidden in e2ee session".to_string(),
+            ));
+        }
+        validate_e2ee_envelope(envelope, &conversation_id)?;
+        validate_recipient_devices_not_revoked(db, &envelope.recipient_device_ids).await?;
+    }
     let message = build_message(
         config,
         identity,
@@ -196,6 +217,7 @@ pub async fn send_private(
             e2ee_device_id: request.e2ee_device_id,
             e2ee_sender_identity_key: request.e2ee_sender_identity_key,
             e2ee_ephemeral_key: request.e2ee_ephemeral_key,
+            e2ee_envelope: request.e2ee_envelope,
         },
     );
     let event = build_message_created_event(&conversation_id, &message);
@@ -284,7 +306,7 @@ pub async fn send_group(
         request.message_type.as_deref(),
         request.content.as_deref(),
         request.media_url.as_deref(),
-        None,
+        request.encrypted,
     )?;
     let group_id = cached_resolve_active_group_id(
         cache_redis,
@@ -304,6 +326,24 @@ pub async fn send_group(
     )
     .await?;
     let conversation_id = keys::group_conversation_id(group_id);
+    let e2ee_enabled = group_e2ee_enabled(db, group_id).await?;
+    if e2ee_enabled || request.encrypted.unwrap_or(false) || request.e2ee_envelope.is_some() {
+        let envelope = request
+            .e2ee_envelope
+            .as_ref()
+            .ok_or_else(|| AppError::BadRequest("e2ee envelope required".to_string()))?;
+        if request
+            .content
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        {
+            return Err(AppError::BadRequest(
+                "plaintext content forbidden in e2ee session".to_string(),
+            ));
+        }
+        validate_e2ee_envelope(envelope, &conversation_id)?;
+        validate_recipient_devices_not_revoked(db, &envelope.recipient_device_ids).await?;
+    }
     let message = build_message(
         config,
         identity,
@@ -318,11 +358,15 @@ pub async fn send_group(
             media_name: request.media_name,
             thumbnail_url: request.thumbnail_url,
             duration: request.duration,
-            encrypted: None,
+            encrypted: request.encrypted,
             e2ee_header: None,
-            e2ee_device_id: None,
+            e2ee_device_id: request
+                .e2ee_envelope
+                .as_ref()
+                .map(|envelope| envelope.sender_device_id.clone()),
             e2ee_sender_identity_key: None,
             e2ee_ephemeral_key: None,
+            e2ee_envelope: request.e2ee_envelope,
         },
     );
     let mut event = build_message_created_event(&conversation_id, &message);
@@ -1200,13 +1244,11 @@ fn validate_send_input(
 ) -> Result<(), AppError> {
     let ty = MessageType::from_text(message_type.unwrap_or("TEXT"));
     if matches!(ty, MessageType::Text | MessageType::System) {
-        if content.is_none_or(|value| value.trim().is_empty()) {
+        if !encrypted.unwrap_or(false) && content.is_none_or(|value| value.trim().is_empty()) {
             return Err(AppError::BadRequest(
                 "message content cannot be blank".to_string(),
             ));
         }
-        // Encrypted messages contain ciphertext which can be much longer than plaintext;
-        // skip the 2000-char limit for E2EE messages.
         if !encrypted.unwrap_or(false) && content.unwrap_or_default().chars().count() > 2000 {
             return Err(AppError::BadRequest(
                 "message content cannot exceed 2000 characters".to_string(),
@@ -1214,6 +1256,93 @@ fn validate_send_input(
         }
     } else if media_url.is_none_or(|value| value.trim().is_empty()) {
         return Err(AppError::BadRequest("mediaUrl cannot be blank".to_string()));
+    }
+    Ok(())
+}
+
+fn decode_base64url_len(value: &str) -> Result<usize, AppError> {
+    let normalized = value.replace('-', "+").replace('_', "/");
+    let padded = match normalized.len() % 4 {
+        0 => normalized,
+        2 => format!("{normalized}=="),
+        3 => format!("{normalized}="),
+        _ => {
+            return Err(AppError::BadRequest(
+                "invalid e2ee envelope encoding".to_string(),
+            ))
+        }
+    };
+    base64::Engine::decode(&base64::engine::general_purpose::STANDARD, padded)
+        .map(|bytes| bytes.len())
+        .map_err(|_| AppError::BadRequest("invalid e2ee envelope encoding".to_string()))
+}
+
+fn validate_e2ee_envelope(
+    envelope: &E2eeEnvelopeDto,
+    conversation_id: &str,
+) -> Result<(), AppError> {
+    if envelope.version != 1 || envelope.alg != "AES-256-GCM" {
+        return Err(AppError::BadRequest(
+            "unsupported e2ee envelope".to_string(),
+        ));
+    }
+    if envelope.conversation_id != conversation_id
+        || envelope.client_msg_id.trim().is_empty()
+        || envelope.sender_user_id.trim().is_empty()
+        || envelope.sender_device_id.trim().is_empty()
+        || envelope.session_id.trim().is_empty()
+        || envelope.key_id.trim().is_empty()
+        || envelope.key_version <= 0
+        || envelope.aad.trim().is_empty()
+        || envelope.ciphertext.trim().is_empty()
+        || envelope.recipient_device_ids.is_empty()
+    {
+        return Err(AppError::BadRequest("invalid e2ee envelope".to_string()));
+    }
+    if decode_base64url_len(&envelope.iv)? != 12 {
+        return Err(AppError::BadRequest("invalid e2ee iv".to_string()));
+    }
+    let _ = decode_base64url_len(&envelope.aad)?;
+    let _ = decode_base64url_len(&envelope.ciphertext)?;
+    Ok(())
+}
+
+async fn private_e2ee_enabled(db: &MySqlPool, conversation_id: &str) -> Result<bool, AppError> {
+    let enabled: Option<i64> = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM service_user_service_db.e2ee_conversation_sessions WHERE conversation_id = ? AND status = 'active'",
+    )
+    .bind(conversation_id)
+    .fetch_optional(db)
+    .await?;
+    Ok(enabled.unwrap_or(0) > 0)
+}
+
+async fn group_e2ee_enabled(db: &MySqlPool, group_id: i64) -> Result<bool, AppError> {
+    let enabled: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM service_user_service_db.e2ee_groups WHERE group_id = ?",
+    )
+    .bind(group_id)
+    .fetch_optional(db)
+    .await?;
+    Ok(enabled.as_deref() == Some("encrypted"))
+}
+
+async fn validate_recipient_devices_not_revoked(
+    db: &MySqlPool,
+    device_ids: &[String],
+) -> Result<(), AppError> {
+    for device_id in device_ids {
+        let active: Option<i64> = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM service_user_service_db.e2ee_devices WHERE device_id = ? AND status = 'active' AND revoked_at IS NULL",
+        )
+        .bind(device_id)
+        .fetch_optional(db)
+        .await?;
+        if active.unwrap_or(0) == 0 {
+            return Err(AppError::BadRequest(
+                "revoked e2ee recipient device".to_string(),
+            ));
+        }
     }
     Ok(())
 }
@@ -1234,6 +1363,7 @@ struct BuildMessageInput {
     e2ee_device_id: Option<String>,
     e2ee_sender_identity_key: Option<String>,
     e2ee_ephemeral_key: Option<String>,
+    e2ee_envelope: Option<E2eeEnvelopeDto>,
 }
 
 fn build_message(config: &AppConfig, identity: &Identity, input: BuildMessageInput) -> MessageDto {
@@ -1280,6 +1410,7 @@ fn build_message(config: &AppConfig, identity: &Identity, input: BuildMessageInp
         e2ee_device_id: input.e2ee_device_id,
         e2ee_sender_identity_key: input.e2ee_sender_identity_key,
         e2ee_ephemeral_key: input.e2ee_ephemeral_key,
+        e2ee_envelope: input.e2ee_envelope,
     }
 }
 
@@ -1532,7 +1663,7 @@ async fn load_message_from_db(db: &MySqlPool, message_id: i64) -> Result<Message
         sqlx::query(
         r#"SELECT id, sender_id, receiver_id, group_id, conversation_seq, client_message_id, message_type, content,
                   media_url, media_size, media_name, thumbnail_url, duration, location_info,
-                  encrypted, e2ee_header, e2ee_device_id, e2ee_sender_identity_key, e2ee_ephemeral_key,
+                  encrypted, e2ee_header, e2ee_device_id, e2ee_sender_identity_key, e2ee_ephemeral_key, e2ee_envelope_json,
                   status, is_group_chat, reply_to_message_id, created_time, updated_time
            FROM service_message_service_db.messages WHERE id = ?"#,
         )
@@ -1632,7 +1763,7 @@ async fn load_history_from_db(
     let mut sql = String::from(
         "SELECT id, sender_id, receiver_id, group_id, conversation_seq, client_message_id, message_type, content, \
          media_url, media_size, media_name, thumbnail_url, duration, location_info, encrypted, e2ee_header, \
-         e2ee_device_id, e2ee_sender_identity_key, e2ee_ephemeral_key, status, \
+         e2ee_device_id, e2ee_sender_identity_key, e2ee_ephemeral_key, e2ee_envelope_json, status, \
          is_group_chat, reply_to_message_id, created_time, updated_time \
          FROM service_message_service_db.messages WHERE status <> 5 AND ",
     );
@@ -2219,6 +2350,11 @@ fn message_from_row(row: &sqlx::mysql::MySqlRow) -> MessageDto {
             .try_get::<Option<String>, _>("e2ee_ephemeral_key")
             .ok()
             .flatten(),
+        e2ee_envelope: row
+            .try_get::<Option<String>, _>("e2ee_envelope_json")
+            .ok()
+            .flatten()
+            .and_then(|value| serde_json::from_str(&value).ok()),
     }
 }
 
@@ -2447,6 +2583,7 @@ mod tests {
             e2ee_device_id: None,
             e2ee_sender_identity_key: None,
             e2ee_ephemeral_key: None,
+            e2ee_envelope: None,
         };
         let event = build_message_created_event("g_20", &message);
         let message_json = serde_json::to_string(&message)?;

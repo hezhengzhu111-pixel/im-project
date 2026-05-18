@@ -111,6 +111,29 @@ impl MessageStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct E2eeEnvelopeDto {
+    pub version: i32,
+    pub alg: String,
+    pub conversation_id: String,
+    pub client_msg_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_message_id: Option<String>,
+    pub sender_user_id: String,
+    pub sender_device_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recipient_user_id: Option<String>,
+    pub recipient_device_ids: Vec<String>,
+    pub session_id: String,
+    pub key_id: String,
+    pub key_version: i32,
+    pub iv: String,
+    pub aad: String,
+    pub ciphertext: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MessageDto {
     pub id: String,
     pub message_id: String,
@@ -156,6 +179,8 @@ pub struct MessageDto {
     pub e2ee_sender_identity_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub e2ee_ephemeral_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub e2ee_envelope: Option<E2eeEnvelopeDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
