@@ -81,6 +81,12 @@ struct SkippedEntry {
 #[derive(Serialize, Deserialize)]
 pub struct SkippedKeyStore(Vec<SkippedEntry>);
 
+impl Default for SkippedKeyStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Zeroize for SkippedKeyStore {
     fn zeroize(&mut self) {
         for entry in &mut self.0 {
@@ -142,6 +148,11 @@ impl SkippedKeyStore {
     /// Number of currently stored skipped keys.
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    /// Returns `true` if no skipped keys are stored.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 
