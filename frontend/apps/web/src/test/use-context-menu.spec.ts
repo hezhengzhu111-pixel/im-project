@@ -140,10 +140,8 @@ describe("useContextMenu", () => {
   });
 
   it("open() with closeOnOutsideClick: true binds document and window event handlers", async () => {
-    const addEventListenerSpy = vi.spyOn(
-      EventTarget.prototype,
-      "addEventListener"
-    );
+    const docSpy = vi.spyOn(document, "addEventListener");
+    const winSpy = vi.spyOn(window, "addEventListener");
     const { useContextMenu } = await import("@/composables/useContextMenu");
     const menu = useContextMenu();
 
@@ -152,24 +150,14 @@ describe("useContextMenu", () => {
     // bindOutsideHandlers binds 4 events:
     // document: click, contextmenu
     // window: resize, blur
-    expect(addEventListenerSpy).toHaveBeenCalledWith(
-      "click",
-      expect.any(Function),
-      true
-    );
-    expect(addEventListenerSpy).toHaveBeenCalledWith(
+    expect(docSpy).toHaveBeenCalledWith("click", expect.any(Function), true);
+    expect(docSpy).toHaveBeenCalledWith(
       "contextmenu",
       expect.any(Function),
       true
     );
-    expect(addEventListenerSpy).toHaveBeenCalledWith(
-      "resize",
-      expect.any(Function)
-    );
-    expect(addEventListenerSpy).toHaveBeenCalledWith(
-      "blur",
-      expect.any(Function)
-    );
+    expect(winSpy).toHaveBeenCalledWith("resize", expect.any(Function));
+    expect(winSpy).toHaveBeenCalledWith("blur", expect.any(Function));
   });
 
   it("open() with closeOnOutsideClick: false does not bind handlers", async () => {
@@ -211,22 +199,22 @@ describe("useContextMenu", () => {
   });
 
   it("close() does not bind outside handlers again", async () => {
-    const addEventListenerSpy = vi.spyOn(
-      EventTarget.prototype,
-      "addEventListener"
-    );
+    const docSpy = vi.spyOn(document, "addEventListener");
+    const winSpy = vi.spyOn(window, "addEventListener");
     const { useContextMenu } = await import("@/composables/useContextMenu");
     const menu = useContextMenu();
 
-    // First open binds handlers
+    // First open binds handlers (2 on document + 2 on window)
     menu.open({ clientX: 100, clientY: 200 } as MouseEvent);
-    expect(addEventListenerSpy).toHaveBeenCalledTimes(4);
+    expect(docSpy).toHaveBeenCalledTimes(2);
+    expect(winSpy).toHaveBeenCalledTimes(2);
 
     // Close then open again — should not re-bind
     menu.close();
     menu.open({ clientX: 100, clientY: 200 } as MouseEvent);
-    // Still 4 calls since the handlers are already bound
-    expect(addEventListenerSpy).toHaveBeenCalledTimes(4);
+    // Still the same number since bindOutsideHandlers is guarded
+    expect(docSpy).toHaveBeenCalledTimes(2);
+    expect(winSpy).toHaveBeenCalledTimes(2);
   });
 
   it("outside contextmenu handler closes the menu", async () => {

@@ -74,12 +74,12 @@ describe("appLifecycleService", () => {
 
       // First go to background (hidden: true) to change state
       (documentStub as any).hidden = true;
-      handler(new Event("visibilitychange"));
+      handler!(new Event("visibilitychange"));
 
       // Now go to foreground (hidden: false) — state changes, callback fires
       cb.mockClear();
       (documentStub as any).hidden = false;
-      handler(new Event("visibilitychange"));
+      handler!(new Event("visibilitychange"));
 
       expect(cb).toHaveBeenCalledTimes(1);
       expect(appLifecycleService.isForeground).toBe(true);
@@ -99,16 +99,16 @@ describe("appLifecycleService", () => {
 
       // Go to background first
       (documentStub as any).hidden = true;
-      handler(new Event("visibilitychange"));
+      handler!(new Event("visibilitychange"));
       cb.mockClear();
 
       // Go to foreground
       (documentStub as any).hidden = false;
-      handler(new Event("visibilitychange"));
+      handler!(new Event("visibilitychange"));
       expect(cb).toHaveBeenCalledTimes(1);
 
       // Same state again — should NOT trigger
-      handler(new Event("visibilitychange"));
+      handler!(new Event("visibilitychange"));
       expect(cb).toHaveBeenCalledTimes(1);
     });
 
@@ -125,7 +125,7 @@ describe("appLifecycleService", () => {
 
       const handler = visibilityListeners.values().next().value;
       (documentStub as any).hidden = true;
-      handler(new Event("visibilitychange"));
+      handler!(new Event("visibilitychange"));
 
       expect(cb).not.toHaveBeenCalled();
     });
@@ -145,7 +145,7 @@ describe("appLifecycleService", () => {
       // Simulate becoming hidden
       (documentStub as any).hidden = true;
       const handler = visibilityListeners.values().next().value;
-      handler(new Event("visibilitychange"));
+      handler!(new Event("visibilitychange"));
 
       expect(cb).toHaveBeenCalledTimes(1);
       expect(appLifecycleService.isForeground).toBe(false);
@@ -165,11 +165,11 @@ describe("appLifecycleService", () => {
 
       // First trigger: become hidden
       (documentStub as any).hidden = true;
-      handler(new Event("visibilitychange"));
+      handler!(new Event("visibilitychange"));
       expect(cb).toHaveBeenCalledTimes(1);
 
       // Second same-state: no trigger
-      handler(new Event("visibilitychange"));
+      handler!(new Event("visibilitychange"));
       expect(cb).toHaveBeenCalledTimes(1);
     });
   });
@@ -272,7 +272,7 @@ describe("appLifecycleService", () => {
       const handler = visibilityListeners.values().next().value;
       if (handler) {
         (documentStub as any).hidden = true;
-        handler(new Event("visibilitychange"));
+        handler!(new Event("visibilitychange"));
       }
 
       expect(fgCb).not.toHaveBeenCalled();
@@ -313,13 +313,13 @@ describe("appLifecycleService", () => {
 
       // First go to background
       (documentStub as any).hidden = true;
-      handler(new Event("visibilitychange"));
+      handler!(new Event("visibilitychange"));
 
       // Then go to foreground — both callbacks should fire
       cb1.mockClear();
       cb2.mockClear();
       (documentStub as any).hidden = false;
-      handler(new Event("visibilitychange"));
+      handler!(new Event("visibilitychange"));
 
       expect(cb1).toHaveBeenCalledTimes(1);
       expect(cb2).toHaveBeenCalledTimes(1);

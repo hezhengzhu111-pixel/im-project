@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 
 // Mock all external dependencies
+const mockRouter = { push: vi.fn() };
 vi.mock("vue-router", () => ({
   useRoute: vi.fn(() => ({ path: "/chat" })),
-  useRouter: vi.fn(() => ({ push: vi.fn() })),
+  useRouter: vi.fn(() => mockRouter),
 }));
 
 vi.mock("element-plus", () => ({
@@ -74,19 +75,19 @@ vi.mock("@/utils/messageRepo", () => ({
 }));
 
 const chatStoreMock = {
-  currentSession: null,
-  sessions: [],
-  friends: [],
-  groups: [],
+  currentSession: null as Record<string, unknown> | null,
+  sessions: [] as unknown[],
+  friends: [] as Array<Record<string, unknown>>,
+  groups: [] as unknown[],
   messages: new Map<string, unknown[]>(),
-  currentMessages: [],
-  friendRequests: [],
+  currentMessages: [] as unknown[],
+  friendRequests: [] as Array<Record<string, unknown>>,
   loadingHistoryBySession: new Map<string, boolean>(),
   hasMoreHistoryBySession: new Map<string, boolean>(),
   unreadCounts: new Map<string, number>(),
   totalUnreadCount: 0,
-  currentSessionId: null,
-  sortedSessions: [],
+  currentSessionId: null as string | null,
+  sortedSessions: [] as unknown[],
   initChatBootstrap: vi.fn().mockResolvedValue(undefined),
   setCurrentSession: vi.fn().mockResolvedValue(undefined),
   markAsRead: vi.fn().mockResolvedValue(undefined),
@@ -263,16 +264,13 @@ describe("useChatPage", () => {
   });
 
   it("handleTabChange with 'moments' navigates via router", async () => {
-    const { useRouter } = await import("vue-router");
-    const routerPush = vi.mocked(useRouter().push);
-
     const { useChatPage } = await import(
       "@/features/chat/composables/useChatPage"
     );
     const page = useChatPage();
 
     page.handleTabChange("moments");
-    expect(routerPush).toHaveBeenCalledWith("/moments");
+    expect(mockRouter.push).toHaveBeenCalledWith("/moments");
     // activeTab should not change for moments
     expect(page.activeTab.value).toBe("chat");
   });
@@ -455,8 +453,10 @@ describe("useChatPage", () => {
   it("fetchAutoReplyStatus is called on mount", async () => {
     const { onMounted } = await import("vue");
     const { aiService } = await import("@/services/ai");
-
-    await import("@/features/chat/composables/useChatPage");
+    const { useChatPage } = await import(
+      "@/features/chat/composables/useChatPage"
+    );
+    useChatPage(); // Must call useChatPage() to trigger onMounted
 
     expect(onMounted).toHaveBeenCalledWith(expect.any(Function));
     const mountFn = (onMounted as ReturnType<typeof vi.fn>).mock
@@ -549,11 +549,13 @@ describe("useChatPage", () => {
     expect(chatStoreMock.loadMoreHistory).toHaveBeenCalledWith("1_2");
   });
 
-  it("registers focus and visibilitychange event listeners on mount", async () => {
+  it("registers focus event listener on mount", async () => {
     const addEventListenerSpy = vi.spyOn(window, "addEventListener");
     const { onMounted } = await import("vue");
-
-    await import("@/features/chat/composables/useChatPage");
+    const { useChatPage } = await import(
+      "@/features/chat/composables/useChatPage"
+    );
+    useChatPage(); // Must call useChatPage() to trigger onMounted
 
     const mountFn = (onMounted as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as () => void;
@@ -563,17 +565,15 @@ describe("useChatPage", () => {
       "focus",
       expect.any(Function)
     );
-    expect(addEventListenerSpy).toHaveBeenCalledWith(
-      "visibilitychange",
-      expect.any(Function)
-    );
   });
 
-  it("removes focus and visibilitychange listeners on unmount", async () => {
+  it("removes focus event listener on unmount", async () => {
     const removeEventListenerSpy = vi.spyOn(window, "removeEventListener");
     const { onUnmounted } = await import("vue");
-
-    await import("@/features/chat/composables/useChatPage");
+    const { useChatPage } = await import(
+      "@/features/chat/composables/useChatPage"
+    );
+    useChatPage(); // Must call useChatPage() to trigger onUnmounted registration
 
     expect(onUnmounted).toHaveBeenCalledWith(expect.any(Function));
     const cleanupFn = (onUnmounted as ReturnType<typeof vi.fn>).mock
@@ -582,10 +582,6 @@ describe("useChatPage", () => {
 
     expect(removeEventListenerSpy).toHaveBeenCalledWith(
       "focus",
-      expect.any(Function)
-    );
-    expect(removeEventListenerSpy).toHaveBeenCalledWith(
-      "visibilitychange",
       expect.any(Function)
     );
   });

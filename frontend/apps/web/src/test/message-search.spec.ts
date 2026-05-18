@@ -245,15 +245,14 @@ describe("createMessageSearchModule", () => {
       await mod.searchMessages("world");
       expect(ctx.searchResults.value).toHaveLength(2);
 
-      // Modify a message to verify caching (if not cached, would re-search)
+      // Add a new matching message to the SAME list array
       const msgs = ctx.messages.value.get("1_2")!;
-      msgs[0].content = "modified";
+      msgs.push(makeMsg("3", "Yet another world"));
 
-      // Second search should return cached results (same object identity)
+      // Second search for same keyword — if cached, still returns 2 (not 3)
       await mod.searchMessages("world");
-      // If cached, the first result would still show "Hello world" not "modified"
-      // This verifies cache behavior
-      expect(ctx.searchResults.value[0].message.content).toBe("Hello world");
+      // WeakMap cache keyed by same array object + same keyword → cached results
+      expect(ctx.searchResults.value).toHaveLength(2);
     });
   });
 });

@@ -27,6 +27,7 @@ const {
 // Mock userStore
 const userStoreMock = vi.hoisted(() =>
   vi.fn(() => ({
+    accessToken: "",
     getAccessToken: vi.fn().mockReturnValue("test-access-token"),
     setAccessToken: vi.fn(),
     restoreSession: vi.fn().mockResolvedValue(true),
@@ -391,7 +392,12 @@ describe("auth-session-adapter", () => {
     it("returns empty string when getAccessToken is not a function and accessToken is missing", async () => {
       userStoreMock.mockReturnValue({
         accessToken: "",
-        getAccessToken: undefined,
+        getAccessToken: undefined as unknown as ReturnType<typeof vi.fn>,
+        setAccessToken: vi.fn(),
+        clearSession: vi.fn(),
+        logout: vi.fn(),
+        restoreSession: vi.fn().mockResolvedValue(true),
+        getSessionGeneration: vi.fn().mockReturnValue(0),
       });
 
       vi.resetModules();
@@ -408,7 +414,12 @@ describe("auth-session-adapter", () => {
     it("returns accessToken property directly when getAccessToken is not a function", async () => {
       userStoreMock.mockReturnValue({
         accessToken: "direct-token",
-        getAccessToken: undefined,
+        getAccessToken: undefined as unknown as ReturnType<typeof vi.fn>,
+        setAccessToken: vi.fn(),
+        clearSession: vi.fn(),
+        logout: vi.fn(),
+        restoreSession: vi.fn().mockResolvedValue(true),
+        getSessionGeneration: vi.fn().mockReturnValue(0),
       });
 
       vi.resetModules();
@@ -427,8 +438,12 @@ describe("auth-session-adapter", () => {
     it("calls restoreSession on the user store after successful refresh", async () => {
       const restoreSession = vi.fn().mockResolvedValue(true);
       userStoreMock.mockReturnValue({
+        accessToken: "",
         getAccessToken: vi.fn().mockReturnValue("token"),
         restoreSession,
+        setAccessToken: vi.fn(),
+        clearSession: vi.fn(),
+        logout: vi.fn(),
         getSessionGeneration: vi.fn().mockReturnValue(0),
       });
       refreshMock.mockResolvedValue({ status: "success" });
@@ -456,8 +471,12 @@ describe("auth-session-adapter", () => {
     it("does not retry if restoreSession returns false", async () => {
       const restoreSession = vi.fn().mockResolvedValue(false);
       userStoreMock.mockReturnValue({
+        accessToken: "",
         getAccessToken: vi.fn().mockReturnValue("token"),
         restoreSession,
+        setAccessToken: vi.fn(),
+        clearSession: vi.fn(),
+        logout: vi.fn(),
         getSessionGeneration: vi.fn().mockReturnValue(0),
       });
       refreshMock.mockResolvedValue({ status: "success" });

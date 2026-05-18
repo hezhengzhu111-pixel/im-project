@@ -86,7 +86,7 @@ describe("networkStatusService", () => {
 
       const handler = windowListeners["online"]?.values().next().value;
       expect(handler).toBeDefined();
-      handler(new Event("online"));
+      handler!(new Event("online"));
 
       expect(onlineCb).toHaveBeenCalledTimes(1);
     });
@@ -103,7 +103,7 @@ describe("networkStatusService", () => {
 
       const handler = windowListeners["offline"]?.values().next().value;
       expect(handler).toBeDefined();
-      handler(new Event("offline"));
+      handler!(new Event("offline"));
 
       expect(offlineCb).toHaveBeenCalledTimes(1);
     });
@@ -120,7 +120,7 @@ describe("networkStatusService", () => {
       unsubscribe();
 
       const handler = windowListeners["online"]?.values().next().value;
-      if (handler) handler(new Event("online"));
+      if (handler) handler!(new Event("online"));
 
       expect(cb).not.toHaveBeenCalled();
     });

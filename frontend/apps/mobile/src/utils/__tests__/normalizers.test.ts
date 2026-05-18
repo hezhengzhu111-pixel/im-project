@@ -160,21 +160,21 @@ describe('normalizers (re-exports)', () => {
     });
 
     it('hasSameMobileMessageIdentity delegates to messageAdapter', () => {
-      const a = { id: '1' };
-      const b = { id: '1' };
+      const a = { id: '1', senderId: 'u1', isGroupChat: false, messageType: 'TEXT' as const, content: '', sendTime: '2026-01-01T00:00:00Z', status: 'SENT' as const };
+      const b = { id: '1', senderId: 'u1', isGroupChat: false, messageType: 'TEXT' as const, content: '', sendTime: '2026-01-01T00:00:00Z', status: 'SENT' as const };
       normalizers.hasSameMobileMessageIdentity(a, b);
       expect(messageAdapter.hasSameMobileMessageIdentity).toHaveBeenCalledWith(a, b);
     });
 
     it('applyMobileMessageToList delegates to messageAdapter', () => {
-      const list = [{ id: '1' }];
-      const msg = { id: '2' };
-      normalizers.applyMobileMessageToList(list, msg, 'append');
-      expect(messageAdapter.applyMobileMessageToList).toHaveBeenCalledWith(list, msg, 'append');
+      const list = [{ id: '1', senderId: 'u1', isGroupChat: false, messageType: 'TEXT' as const, content: '', sendTime: '2026-01-01T00:00:00Z', status: 'SENT' as const }];
+      const msg = { id: '2', senderId: 'u1', isGroupChat: false, messageType: 'TEXT' as const, content: '', sendTime: '2026-01-01T00:00:00Z', status: 'SENT' as const };
+      normalizers.applyMobileMessageToList(list, msg);
+      expect(messageAdapter.applyMobileMessageToList).toHaveBeenCalledWith(list, msg);
     });
 
     it('toSharedMessage delegates to messageAdapter', () => {
-      const input = { id: '1', senderId: 'u1' };
+      const input = { id: '1', senderId: 'u1', isGroupChat: false, messageType: 'TEXT' as const, content: '', sendTime: '2026-01-01T00:00:00Z', status: 'SENT' as const };
       const result = normalizers.toSharedMessage(input);
       expect(messageAdapter.toSharedMessage).toHaveBeenCalledWith(input);
       expect(result).toHaveProperty('_shared', true);
@@ -204,13 +204,13 @@ describe('normalizers (re-exports)', () => {
     });
 
     it('resolveMessageSessionId delegates to sessionAdapter', () => {
-      const msg = { id: '1', senderId: 'u1', isGroupChat: false };
+      const msg = { id: '1', senderId: 'u1', isGroupChat: false, messageType: 'TEXT' as const, content: '', sendTime: '2026-01-01T00:00:00Z', status: 'SENT' as const };
       normalizers.resolveMessageSessionId(msg, 'u1');
       expect(sessionAdapter.resolveMessageSessionId).toHaveBeenCalledWith(msg, 'u1');
     });
 
     it('createSessionFromMessage delegates to sessionAdapter', () => {
-      const msg = { id: '1' };
+      const msg = { id: '1', senderId: 'u1', isGroupChat: false, messageType: 'TEXT' as const, content: '', sendTime: '2026-01-01T00:00:00Z', status: 'SENT' as const };
       const result = normalizers.createSessionFromMessage(msg, 'u1');
       expect(sessionAdapter.createSessionFromMessage).toHaveBeenCalledWith(msg, 'u1');
       expect(result).toHaveProperty('_created', true);
