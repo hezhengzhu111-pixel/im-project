@@ -732,11 +732,13 @@ name = "e2ee-ffi"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "camino",
  "e2ee-core",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "uniffi",
+ "uniffi_bindgen",
  "x25519-dalek",
 ]
 

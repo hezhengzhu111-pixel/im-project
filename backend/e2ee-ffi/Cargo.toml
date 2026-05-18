@@ -22,3 +22,5 @@ uniffi = { workspace = true, features = ["build"] }
 e2ee-core = { path = "../e2ee-core" }
 serde_json.workspace = true
 bincode.workspace = true
+uniffi_bindgen = "0.28"
+camino = "1"
