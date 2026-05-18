@@ -125,7 +125,6 @@ fn build_ratchet_aad(
 /// root key via HKDF domain separation. The sending party uses
 /// `INFO_SENDING_CHAIN` for the sending chain and `INFO_RECEIVING_CHAIN`
 /// for the receiving chain.
-#[must_use]
 pub fn init_sending_chain(
     root_key: &RatchetRootKey,
     local_identity_key: X25519PublicKey,
@@ -154,7 +153,6 @@ pub fn init_sending_chain(
 /// The sending and receiving chain keys are swapped relative to
 /// `init_sending_chain`: what the sender calls "sending", the receiver
 /// calls "receiving", and vice versa.
-#[must_use]
 pub fn init_receiving_chain(
     root_key: &RatchetRootKey,
     local_identity_key: X25519PublicKey,
@@ -232,7 +230,6 @@ fn perform_dh_ratchet(
 ///
 /// - `SendingChainNotInitialized` if no sending chain key is set
 /// - `EncryptionFailed` if AES-GCM encryption fails
-#[must_use]
 pub fn ratchet_encrypt(
     state: &mut RatchetState,
     plaintext: &[u8],
@@ -285,7 +282,6 @@ pub fn ratchet_encrypt(
 /// - `DuplicateOrExpiredMessage` if the counter is below the receive counter
 /// - `ReceivingChainNotInitialized` if no receiving chain key is available
 /// - `DecryptionFailed` if AES-GCM authentication fails
-#[must_use]
 pub fn ratchet_decrypt(
     state: &mut RatchetState,
     header: &RatchetHeader,

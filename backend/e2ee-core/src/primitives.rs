@@ -94,6 +94,7 @@ pub struct AesNonce(pub [u8; 12]);
 /// Ed25519 signature (64 bytes).
 ///
 /// Does NOT implement `Zeroize` since signatures are not secret.
+#[derive(Clone, Copy)]
 pub struct Ed25519Signature(pub [u8; 64]);
 
 // ============================================================================
