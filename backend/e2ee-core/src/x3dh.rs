@@ -666,4 +666,339 @@ mod tests {
         assert_ne!(r1.root_key.0, r2.root_key.0);
         Ok(())
     }
+
+    // --- T6: KeyBundle → PreKeyBundle (server-publishable) → PreKeyBundleFetch ---
+
+    #[test]
+    fn x3dh_key_bundle_to_fetch_roundtrip() -> Result<(), E2eeError> {
+        let bob_bundle = generate_key_bundle(42, &[(1001, 3)])?;
+
+        // Step 1: KeyBundle.bundle is already a PreKeyBundle (server-publishable form)
+        let server_bundle: &PreKeyBundle = &bob_bundle.bundle;
+        assert_eq!(server_bundle.one_time_pre_keys.len(), 3);
+        assert_eq!(server_bundle.one_time_pre_keys[0].id, 1001);
+
+        // Step 2: Server picks an OTK and constructs PreKeyBundleFetch for Alice
+        let picked_otk = server_bundle.one_time_pre_keys.first().copied();
+        let fetch = PreKeyBundleFetch {
+            identity_key: server_bundle.identity_key,
+            signing_key: server_bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: bob_bundle.spk_id,
+                key: server_bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: server_bundle.signed_pre_key_signature,
+            one_time_pre_key: picked_otk,
+        };
+
+        // Step 3: Full handshake with the constructed fetch
+        let alice_ik = generate_x25519_keypair();
+        let alice_result = x3dh_initiate(&alice_ik, &fetch)?;
+
+        let bob_otk = bob_bundle
+            .one_time_pre_key_pair(1001)
+            .ok_or_else(|| E2eeError::InvalidPreKeyId(String::from("missing OTK 1001")))?;
+        let bob_result = x3dh_respond(
+            &bob_bundle.identity_key_pair,
+            &bob_bundle.signed_pre_key_pair,
+            Some(bob_otk),
+            &alice_ik.public_key,
+            &alice_result.ephemeral_public_key,
+        )?;
+
+        assert_eq!(alice_result.root_key.0, bob_result.root_key.0);
+        assert_eq!(alice_result.spk_id, 42);
+        assert_eq!(alice_result.otk_id, Some(1001));
+        Ok(())
+    }
+
+    // --- T7: OTK count = 1 full handshake ---
+
+    #[test]
+    fn x3dh_otk_count_one_full_handshake() -> Result<(), E2eeError> {
+        let alice_ik = generate_x25519_keypair();
+        let bob_bundle = generate_key_bundle(1, &[(200, 1)])?;
+        let bob_otk = bob_bundle
+            .one_time_pre_key_pair(200)
+            .ok_or_else(|| E2eeError::InvalidPreKeyId(String::from("missing OTK 200")))?;
+
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: Some(bob_otk.pre_key()),
+        };
+
+        let alice_result = x3dh_initiate(&alice_ik, &fetch)?;
+        let bob_result = x3dh_respond(
+            &bob_bundle.identity_key_pair,
+            &bob_bundle.signed_pre_key_pair,
+            Some(bob_otk),
+            &alice_ik.public_key,
+            &alice_result.ephemeral_public_key,
+        )?;
+
+        assert_eq!(alice_result.root_key.0, bob_result.root_key.0);
+        assert_eq!(alice_result.otk_id, Some(200));
+        Ok(())
+    }
+
+    // --- T7: OTK count = 100 full handshake (pick middle OTK) ---
+
+    #[test]
+    fn x3dh_otk_count_hundred_full_handshake() -> Result<(), E2eeError> {
+        let alice_ik = generate_x25519_keypair();
+        let bob_bundle = generate_key_bundle(1, &[(500, 100)])?;
+
+        // Pick the 51st OTK (id=550)
+        let bob_otk = bob_bundle
+            .one_time_pre_key_pair(550)
+            .ok_or_else(|| E2eeError::InvalidPreKeyId(String::from("missing OTK 550")))?;
+
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: Some(bob_otk.pre_key()),
+        };
+
+        let alice_result = x3dh_initiate(&alice_ik, &fetch)?;
+        let bob_result = x3dh_respond(
+            &bob_bundle.identity_key_pair,
+            &bob_bundle.signed_pre_key_pair,
+            Some(bob_otk),
+            &alice_ik.public_key,
+            &alice_result.ephemeral_public_key,
+        )?;
+
+        assert_eq!(alice_result.root_key.0, bob_result.root_key.0);
+        assert_eq!(bob_bundle.bundle.one_time_pre_keys.len(), 100);
+        assert_eq!(bob_bundle.one_time_pre_key_pairs.len(), 100);
+        Ok(())
+    }
+
+    // --- T8: OTK id not array index (id=1001) ---
+
+    #[test]
+    fn x3dh_otk_id_1001_not_array_index() -> Result<(), E2eeError> {
+        let alice_ik = generate_x25519_keypair();
+        // Single OTK with id=1001 — clearly not an array index
+        let bob_bundle = generate_key_bundle(7, &[(1001, 1)])?;
+
+        let bob_otk = bob_bundle
+            .one_time_pre_key_pair(1001)
+            .ok_or_else(|| E2eeError::InvalidPreKeyId(String::from("missing OTK 1001")))?;
+
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 7,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: Some(bob_otk.pre_key()),
+        };
+
+        let alice_result = x3dh_initiate(&alice_ik, &fetch)?;
+        let bob_result = x3dh_respond(
+            &bob_bundle.identity_key_pair,
+            &bob_bundle.signed_pre_key_pair,
+            Some(bob_otk),
+            &alice_ik.public_key,
+            &alice_result.ephemeral_public_key,
+        )?;
+
+        assert_eq!(alice_result.root_key.0, bob_result.root_key.0);
+        assert_eq!(alice_result.otk_id, Some(1001));
+        assert_eq!(bob_result.otk_id, Some(1001));
+        Ok(())
+    }
+
+    // --- T9: Wrong OTK private key produces different root key ---
+
+    #[test]
+    fn x3dh_wrong_otk_private_key_produces_different_root() -> Result<(), E2eeError> {
+        let alice_ik = generate_x25519_keypair();
+        let bob_bundle = generate_key_bundle(1, &[(300, 2)])?;
+
+        // Alice uses OTK 300's public key
+        let bob_otk_300 = bob_bundle
+            .one_time_pre_key_pair(300)
+            .ok_or_else(|| E2eeError::InvalidPreKeyId(String::from("missing OTK 300")))?;
+
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: Some(bob_otk_300.pre_key()),
+        };
+
+        let alice_result = x3dh_initiate(&alice_ik, &fetch)?;
+
+        // Bob uses OTK 301 (wrong private key) instead of 300
+        let bob_wrong_otk = bob_bundle
+            .one_time_pre_key_pair(301)
+            .ok_or_else(|| E2eeError::InvalidPreKeyId(String::from("missing OTK 301")))?;
+
+        let bob_result = x3dh_respond(
+            &bob_bundle.identity_key_pair,
+            &bob_bundle.signed_pre_key_pair,
+            Some(bob_wrong_otk),
+            &alice_ik.public_key,
+            &alice_result.ephemeral_public_key,
+        )?;
+
+        // Root keys must differ because DH4 used different private keys
+        assert_ne!(alice_result.root_key.0, bob_result.root_key.0);
+        Ok(())
+    }
+
+    // --- T10: root_key not all zero ---
+
+    #[test]
+    fn x3dh_root_key_not_all_zero() -> Result<(), E2eeError> {
+        let alice_ik = generate_x25519_keypair();
+
+        // With OTK
+        let bob_with_otk = generate_key_bundle(1, &[(1, 1)])?;
+        let otk = bob_with_otk.bundle.one_time_pre_keys.first().copied();
+        let fetch_with_otk = PreKeyBundleFetch {
+            identity_key: bob_with_otk.bundle.identity_key,
+            signing_key: bob_with_otk.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_with_otk.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_with_otk.bundle.signed_pre_key_signature,
+            one_time_pre_key: otk,
+        };
+        let result_with_otk = x3dh_initiate(&alice_ik, &fetch_with_otk)?;
+        assert!(result_with_otk.root_key.0.iter().any(|&b| b != 0));
+
+        // SPK-only (without OTK)
+        let bob_spk_only = generate_key_bundle(1, &[])?;
+        let fetch_spk_only = PreKeyBundleFetch {
+            identity_key: bob_spk_only.bundle.identity_key,
+            signing_key: bob_spk_only.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_spk_only.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_spk_only.bundle.signed_pre_key_signature,
+            one_time_pre_key: None,
+        };
+        let result_spk_only = x3dh_initiate(&alice_ik, &fetch_spk_only)?;
+        assert!(result_spk_only.root_key.0.iter().any(|&b| b != 0));
+
+        Ok(())
+    }
+
+    // --- Legacy helper: generate_key_bundle_with_count ---
+
+    #[test]
+    fn x3dh_generate_key_bundle_with_count_legacy_handshake() -> Result<(), E2eeError> {
+        let alice_ik = generate_x25519_keypair();
+
+        // Legacy API: single count, OTK ids start from 1
+        let bob_bundle = generate_key_bundle_with_count(5, 3)?;
+
+        assert_eq!(bob_bundle.spk_id, 5);
+        assert_eq!(bob_bundle.bundle.one_time_pre_keys.len(), 3);
+        assert_eq!(bob_bundle.one_time_pre_key_pairs.len(), 3);
+
+        // OTK ids should be 1, 2, 3 (contiguous starting at 1)
+        assert!(bob_bundle.one_time_pre_key_pair(1).is_some());
+        assert!(bob_bundle.one_time_pre_key_pair(2).is_some());
+        assert!(bob_bundle.one_time_pre_key_pair(3).is_some());
+        assert!(bob_bundle.one_time_pre_key_pair(4).is_none());
+
+        // SPK signature is valid
+        ed25519_verify(
+            &bob_bundle.signing_key_pair.public_key,
+            &bob_bundle.signed_pre_key_pair.public_key.0,
+            &bob_bundle.bundle.signed_pre_key_signature,
+        )?;
+
+        // Full handshake using legacy bundle
+        let bob_otk = bob_bundle
+            .one_time_pre_key_pair(2)
+            .ok_or_else(|| E2eeError::InvalidPreKeyId(String::from("missing OTK 2")))?;
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 5,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: Some(bob_otk.pre_key()),
+        };
+
+        let alice_result = x3dh_initiate(&alice_ik, &fetch)?;
+        let bob_result = x3dh_respond(
+            &bob_bundle.identity_key_pair,
+            &bob_bundle.signed_pre_key_pair,
+            Some(bob_otk),
+            &alice_ik.public_key,
+            &alice_result.ephemeral_public_key,
+        )?;
+
+        assert_eq!(alice_result.root_key.0, bob_result.root_key.0);
+        assert_eq!(alice_result.spk_id, 5);
+        assert_eq!(alice_result.otk_id, Some(2));
+        Ok(())
+    }
+
+    // --- Legacy helper: x3dh_respond_with_raw_otk ---
+
+    #[test]
+    fn x3dh_respond_with_raw_otk_legacy_handshake() -> Result<(), E2eeError> {
+        let alice_ik = generate_x25519_keypair();
+        let bob_bundle = generate_key_bundle(1, &[(500, 1)])?;
+        let bob_otk = bob_bundle
+            .one_time_pre_key_pair(500)
+            .ok_or_else(|| E2eeError::InvalidPreKeyId(String::from("missing OTK 500")))?;
+
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: Some(bob_otk.pre_key()),
+        };
+
+        let alice_result = x3dh_initiate(&alice_ik, &fetch)?;
+
+        // Use legacy raw OTK API — provides the same X25519 key pair
+        // but otk_id will be None since raw keypair doesn't carry the id
+        let bob_result = x3dh_respond_with_raw_otk(
+            &bob_bundle.identity_key_pair,
+            &bob_bundle.signed_pre_key_pair,
+            Some(&bob_otk.key_pair),
+            &alice_ik.public_key,
+            &alice_result.ephemeral_public_key,
+        )?;
+
+        // Root keys match — legacy API computes the same DH
+        assert_eq!(alice_result.root_key.0, bob_result.root_key.0);
+        // Legacy API does not preserve otk_id
+        assert_eq!(bob_result.otk_id, None);
+        Ok(())
+    }
 }
