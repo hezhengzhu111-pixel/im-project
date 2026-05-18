@@ -3,10 +3,23 @@ import { applyMessageToSession, applyReadReceiptToMessages, buildSessionId, crea
 import { normalizeReadReceipt } from '@im/shared-normalizers';
 import { applyMobileMessageToList, hasSameMobileMessageIdentity, resolveMessageSessionId } from '@/utils/normalizers';
 import { RETRY_CONFIG } from '@/constants/config';
-import { E2EE_SEND_DISABLED_TEXT, blockEncryptedPendingPayload, getSessionE2eeStatus, maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
-import { processE2eeMessage, processE2eeMessages } from '@/e2ee/messageProcessor';
+import {
+  E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT,
+  E2EE_SEND_DISABLED_TEXT,
+  blockEncryptedPendingPayload,
+  getSessionE2eeStatus,
+  maskEncryptedMessage,
+} from '@/e2ee/e2eeDeferred';
+import { compareE2eeDecryptOrder, processE2eeMessage, processE2eeMessages } from '@/e2ee/messageProcessor';
 import { e2eeManager } from '@/e2ee/manager/e2eeManager';
 import { getPendingInitialHandshake, loadLocalSessionStatus } from '@/e2ee/manager/negotiation';
+import {
+  cachePendingEncryptedMessage,
+  clearPendingEncryptedMessages as clearPendingDecryptCache,
+  configurePendingDecryptQueue,
+  getPendingEncryptedMessages,
+  replacePendingEncryptedMessages,
+} from '@/e2ee/store/pendingDecryptStore';
 import { messageService, resolveMarkReadTarget, type SendMessagePayload } from '@/services/chat/messageService';
 import { messageRepository } from '@/services/storage/messageRepository';
 import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
@@ -15,7 +28,7 @@ import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
 import { logger } from '@/utils/logger';
 import { createClientMessageId, createLocalMessageId } from '@/utils/ids';
 import { createInitialPaginationState, getMessageCursor, mergePagedMessages } from '@/utils/messagePagination';
-import { isEncryptedValue } from '@im/shared-e2ee-core';
+import { isEncryptedValue, sanitizeE2eeLogValue } from '@im/shared-e2ee-core';
 import { useAuthStore } from './authStore';
 import { useSessionStore } from './sessionStore';
 import type { ChatSession, MessageType } from '@im/shared-types';
@@ -63,6 +76,9 @@ interface MessageState {
   sendMedia: (session: ChatSession, file: MobileFile, type: MessageType) => Promise<void>;
   retryPending: () => Promise<void>;
   retryMessage: (localId: string, options?: { force?: boolean }) => Promise<void>;
+  retryDecryptPendingMessages: (sessionId: string, cachedMessages?: MobileMessage[]) => Promise<number>;
+  retryDecryptVisibleEncryptedMessages: (sessionId: string) => Promise<number>;
+  clearPendingEncryptedMessages: (sessionId: string) => void;
   markRead: (session: ChatSession) => Promise<void>;
   applyReadReceipt: (rawReceipt: unknown) => void;
   searchMessages: (keyword: string, sessionId?: string) => void;
@@ -93,7 +109,11 @@ const processMessagesForSession = async (
     sessionId,
     currentUserId,
     findOptimisticMessage: (clientMessageId) => findOptimisticMessage(state, sessionId, clientMessageId),
-    concurrency: 4,
+  });
+  processed.forEach((item) => {
+    if (item.decryptStatus === 'pending') {
+      cachePendingEncryptedMessage(sessionId, item.rawMessage);
+    }
   });
   return processed.map((item) => item.displayMessage);
 };
@@ -112,6 +132,9 @@ const processMessageForSession = async (
     currentUserId,
     findOptimisticMessage: (clientMessageId) => findOptimisticMessage(state, sessionId, clientMessageId),
   });
+  if (processed.decryptStatus === 'pending') {
+    cachePendingEncryptedMessage(sessionId, processed.rawMessage);
+  }
   return processed.displayMessage;
 };
 
@@ -431,22 +454,9 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   },
 
   addMessage(message, sessionId = sessionIdFor(message)) {
-    const safeMessage = (() => {
-      if (!isEncryptedValue(message.encrypted)) {
-        return message;
-      }
-      if (message.rawJson) {
-        try {
-          const raw = JSON.parse(message.rawJson) as Partial<MobileMessage>;
-          if (raw.content && raw.content !== message.content) {
-            return message;
-          }
-        } catch {
-          // fall through to placeholder
-        }
-      }
-      return maskEncryptedMessage({ ...message, rawJson: message.rawJson || JSON.stringify(message) });
-    })();
+    const safeMessage = isEncryptedValue(message.encrypted)
+      ? maskEncryptedMessage({ ...message, rawJson: message.rawJson || JSON.stringify(message) })
+      : message;
     const existing = get().messagesBySession[sessionId] || [];
     const next = applyMobileMessageToList(existing, safeMessage);
     const persistedMessage = next.find((item) => hasSameMobileMessageIdentity(item, safeMessage)) || safeMessage;
@@ -494,6 +504,8 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     });
     if (message.encrypted) {
       message.rawJson = JSON.stringify({ ...message, content: '', encrypted: true });
+      message.isE2eeDisplayDecrypted = true;
+      message.decryptStatus = 'own-echo-preserved';
     }
     get().addMessage(message, session.id);
     let payload = payloadFor(session, message);
@@ -522,7 +534,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
           status: 'FAILED',
         }));
         set({ messagesBySession: { ...get().messagesBySession, [session.id]: nextList } });
-        logger.warn('e2ee', 'encrypted send preparation failed', error);
+        logger.warn('e2ee', 'encrypted send preparation failed', sanitizeE2eeLogValue(error));
         throw error;
       }
     }
@@ -533,7 +545,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   async sendMedia(session, file, type) {
     const e2eeStatus = await resolveEffectiveE2eeStatus(session);
     if (session.type === 'private' && e2eeStatus === 'encrypted') {
-      throw new Error('当前移动端加密会话暂不支持发送媒体');
+      throw new Error(E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT);
     }
     if (e2eeStatus === 'negotiating') {
       throw new Error('等待对方确认端到端加密请求');
@@ -789,6 +801,77 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     }
   },
 
+  async retryDecryptPendingMessages(sessionId, cachedMessages) {
+    const currentUserId = useAuthStore.getState().currentUser?.id || '';
+    if (!currentUserId) {
+      return 0;
+    }
+    const source = (cachedMessages || getPendingEncryptedMessages(sessionId)).slice();
+    if (source.length === 0) {
+      return 0;
+    }
+
+    const remaining: MobileMessage[] = [];
+    let decryptedCount = 0;
+    source.sort(compareE2eeDecryptOrder);
+    for (const pending of source) {
+      const processed = await processE2eeMessage(pending, {
+        sessionId,
+        currentUserId,
+        findOptimisticMessage: (clientMessageId) => findOptimisticMessage(get(), sessionId, clientMessageId),
+      });
+      if (processed.decryptStatus === 'pending') {
+        remaining.push(processed.rawMessage);
+        continue;
+      }
+      if (processed.decryptStatus === 'decrypted' || processed.decryptStatus === 'own-echo-preserved') {
+        decryptedCount += 1;
+        get().addMessage(processed.displayMessage, sessionId);
+        messageRepository.upsertMessages(sessionId, [processed.displayMessage]);
+      }
+    }
+    replacePendingEncryptedMessages(sessionId, remaining);
+    return decryptedCount;
+  },
+
+  async retryDecryptVisibleEncryptedMessages(sessionId) {
+    const currentUserId = useAuthStore.getState().currentUser?.id || '';
+    if (!currentUserId) {
+      return 0;
+    }
+    const visible = (get().messagesBySession[sessionId] || []).filter((message) =>
+      isEncryptedValue(message.encrypted) &&
+      !message.isE2eeDisplayDecrypted &&
+      message.decryptStatus !== 'decrypted' &&
+      message.decryptStatus !== 'own-echo-preserved',
+    );
+    if (visible.length === 0) {
+      return 0;
+    }
+    const processed = await processE2eeMessages(visible, {
+      sessionId,
+      currentUserId,
+      findOptimisticMessage: (clientMessageId) => findOptimisticMessage(get(), sessionId, clientMessageId),
+    });
+    let decryptedCount = 0;
+    processed.forEach((item) => {
+      if (item.decryptStatus === 'pending') {
+        cachePendingEncryptedMessage(sessionId, item.rawMessage);
+        return;
+      }
+      if (item.decryptStatus === 'decrypted' || item.decryptStatus === 'own-echo-preserved') {
+        decryptedCount += 1;
+        get().addMessage(item.displayMessage, sessionId);
+        messageRepository.upsertMessages(sessionId, [item.displayMessage]);
+      }
+    });
+    return decryptedCount;
+  },
+
+  clearPendingEncryptedMessages(sessionId) {
+    clearPendingDecryptCache(sessionId);
+  },
+
   async markRead(session) {
     const readTarget = resolveMarkReadTarget(session);
     try {
@@ -1008,3 +1091,10 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     set({ messagesBySession: {}, messagesPaginationBySession: {}, searchResults: [] });
   },
 }));
+
+configurePendingDecryptQueue({
+  retryPendingMessages: (sessionId, messages) =>
+    useMessageStore.getState().retryDecryptPendingMessages(sessionId, messages),
+  retryVisibleMessages: (sessionId) =>
+    useMessageStore.getState().retryDecryptVisibleEncryptedMessages(sessionId),
+});

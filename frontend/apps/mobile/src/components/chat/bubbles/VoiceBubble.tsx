@@ -17,6 +17,7 @@ const normalizeDuration = (duration?: number) => {
 };
 
 const waveBars = [8, 13, 18, 13, 8];
+const isTestRuntime = (): boolean => typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
 
 const readablePlayError = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error || '');
@@ -63,7 +64,7 @@ export function VoiceBubble({ message, mine }: VoiceBubbleProps) {
     if (!mediaUri || loading) return;
     setLoading(true);
     try {
-      const playablePath = process.env.NODE_ENV === 'test'
+      const playablePath = isTestRuntime()
         ? mediaUri
         : await mediaCache.localPath(mediaUri, 'm4a');
       const result = mediaService.playAudio(playablePath);

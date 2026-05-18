@@ -1,5 +1,10 @@
 import { classifyE2eeError, isEncryptedValue, sanitizeE2eeLogValue, type RatchetHeader } from '@im/shared-e2ee-core';
-import { E2EE_UNSUPPORTED_TEXT } from '@/e2ee/e2eeDeferred';
+import {
+  E2EE_OWN_PLAINTEXT_UNAVAILABLE_TEXT,
+  E2EE_UNSUPPORTED_TEXT,
+  hasKnownE2eeDisplayPlaintext,
+  markE2eeDisplayDecrypted,
+} from '@/e2ee/e2eeDeferred';
 import { e2eeManager } from '@/e2ee/manager/e2eeManager';
 import { logger } from '@/utils/logger';
 import { resolveMessageSessionId } from '@/utils/normalizers';
@@ -19,9 +24,15 @@ export interface ProcessMessageOptions {
   findOptimisticMessage?: (clientMessageId: string) => MobileMessage | undefined;
 }
 
-const safePlaceholder = (message: MobileMessage): MobileMessage => ({
+const safePlaceholder = (
+  message: MobileMessage,
+  decryptStatus: Extract<E2eeDecryptStatus, 'pending' | 'failed'> = 'pending',
+  content = E2EE_UNSUPPORTED_TEXT,
+): MobileMessage => ({
   ...message,
-  content: E2EE_UNSUPPORTED_TEXT,
+  content,
+  isE2eeDisplayDecrypted: false,
+  decryptStatus,
   mediaUrl: undefined,
   thumbnailUrl: undefined,
   mediaName: undefined,
@@ -34,9 +45,30 @@ const readStringField = (message: MobileMessage, camelKey: keyof MobileMessage, 
   if (typeof camelValue === 'string' && camelValue) {
     return camelValue;
   }
-  const record = message as Record<string, unknown>;
+  const record = message as unknown as Record<string, unknown>;
   const snakeValue = record[snakeKey];
   return typeof snakeValue === 'string' ? snakeValue : '';
+};
+
+const readNumberField = (message: MobileMessage, camelKey: keyof MobileMessage, snakeKey: string): number | undefined => {
+  const camelValue = message[camelKey];
+  if (typeof camelValue === 'number' && Number.isFinite(camelValue)) {
+    return camelValue;
+  }
+  if (typeof camelValue === 'string' && camelValue.trim()) {
+    const parsed = Number(camelValue);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  const record = message as unknown as Record<string, unknown>;
+  const snakeValue = record[snakeKey];
+  if (typeof snakeValue === 'number' && Number.isFinite(snakeValue)) {
+    return snakeValue;
+  }
+  if (typeof snakeValue === 'string' && snakeValue.trim()) {
+    const parsed = Number(snakeValue);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
 };
 
 const parseRawMessage = (message: MobileMessage): MobileMessage => {
@@ -49,13 +81,13 @@ const parseRawMessage = (message: MobileMessage): MobileMessage => {
       ...message,
       ...raw,
       encrypted: raw.encrypted ?? message.encrypted,
-      e2eeHeader: readStringField(raw as MobileMessage, 'e2eeHeader', 'e2ee_header') || message.e2eeHeader,
-      e2eeDeviceId: readStringField(raw as MobileMessage, 'e2eeDeviceId', 'e2ee_device_id') || message.e2eeDeviceId,
+      e2eeHeader: readStringField(raw as unknown as MobileMessage, 'e2eeHeader', 'e2ee_header') || message.e2eeHeader,
+      e2eeDeviceId: readStringField(raw as unknown as MobileMessage, 'e2eeDeviceId', 'e2ee_device_id') || message.e2eeDeviceId,
       e2eeSenderIdentityKey:
-        readStringField(raw as MobileMessage, 'e2eeSenderIdentityKey', 'e2ee_sender_identity_key') ||
+        readStringField(raw as unknown as MobileMessage, 'e2eeSenderIdentityKey', 'e2ee_sender_identity_key') ||
         message.e2eeSenderIdentityKey,
       e2eeEphemeralKey:
-        readStringField(raw as MobileMessage, 'e2eeEphemeralKey', 'e2ee_ephemeral_key') ||
+        readStringField(raw as unknown as MobileMessage, 'e2eeEphemeralKey', 'e2ee_ephemeral_key') ||
         message.e2eeEphemeralKey,
       rawJson: message.rawJson,
     } as MobileMessage;
@@ -86,6 +118,48 @@ const parseHeader = (message: MobileMessage): RatchetHeader => {
   };
 };
 
+const tryReadHeaderCounter = (message: MobileMessage): number | undefined => {
+  try {
+    return parseHeader(message).counter;
+  } catch {
+    return undefined;
+  }
+};
+
+export const compareE2eeDecryptOrder = (left: MobileMessage, right: MobileMessage): number => {
+  const leftTime = new Date(left.sendTime || 0).getTime();
+  const rightTime = new Date(right.sendTime || 0).getTime();
+  if (leftTime !== rightTime) {
+    return leftTime - rightTime;
+  }
+  const leftSeq = readNumberField(left, 'conversationSeq', 'conversation_seq');
+  const rightSeq = readNumberField(right, 'conversationSeq', 'conversation_seq');
+  if (leftSeq != null && rightSeq != null && leftSeq !== rightSeq) {
+    return leftSeq - rightSeq;
+  }
+  const leftCounter = tryReadHeaderCounter(left);
+  const rightCounter = tryReadHeaderCounter(right);
+  if (leftCounter != null && rightCounter != null && leftCounter !== rightCounter) {
+    return leftCounter - rightCounter;
+  }
+  return (left.messageId || left.serverId || left.id || left.clientMessageId || '').localeCompare(
+    right.messageId || right.serverId || right.id || right.clientMessageId || '',
+  );
+};
+
+const isRemotePrivateEncryptedText = (message: MobileMessage, currentUserId: string): boolean => {
+  const raw = parseRawMessage(message);
+  return (
+    (isEncryptedValue(message.encrypted) || isEncryptedValue(raw.encrypted)) &&
+    !raw.isGroupChat &&
+    !raw.groupId &&
+    !message.isGroupChat &&
+    !message.groupId &&
+    (raw.messageType || message.messageType) === 'TEXT' &&
+    raw.senderId !== currentUserId
+  );
+};
+
 export const processE2eeMessage = async (
   message: MobileMessage,
   options: ProcessMessageOptions,
@@ -100,18 +174,16 @@ export const processE2eeMessage = async (
 
   const sessionId = options.sessionId || resolveMessageSessionId(rawMessage, options.currentUserId) || rawMessage.conversationId || message.conversationId || '';
   const baseDisplay = { ...message, conversationId: sessionId || message.conversationId, rawJson: rawMessage.rawJson };
-  if (
-    message.rawJson &&
-    message.content &&
-    rawMessage.content &&
-    message.content !== rawMessage.content &&
-    message.content !== E2EE_UNSUPPORTED_TEXT
-  ) {
-    return { rawMessage, displayMessage: baseDisplay, decryptStatus: 'decrypted' };
+  if (hasKnownE2eeDisplayPlaintext(message)) {
+    return {
+      rawMessage,
+      displayMessage: markE2eeDisplayDecrypted(baseDisplay, 'decrypted'),
+      decryptStatus: 'decrypted',
+    };
   }
 
   if (rawMessage.isGroupChat || rawMessage.groupId || message.isGroupChat || message.groupId) {
-    return { rawMessage, displayMessage: safePlaceholder(baseDisplay), decryptStatus: 'failed' };
+    return { rawMessage, displayMessage: safePlaceholder(baseDisplay, 'failed'), decryptStatus: 'failed' };
   }
 
   const isOwnEcho = Boolean(options.currentUserId && rawMessage.senderId === options.currentUserId);
@@ -120,15 +192,19 @@ export const processE2eeMessage = async (
     if (optimistic?.content) {
       return {
         rawMessage,
-        displayMessage: {
+        displayMessage: markE2eeDisplayDecrypted({
           ...baseDisplay,
           content: optimistic.content,
           status: message.status || optimistic.status,
-        },
+        }, 'own-echo-preserved'),
         decryptStatus: 'own-echo-preserved',
       };
     }
-    return { rawMessage, displayMessage: safePlaceholder(baseDisplay), decryptStatus: 'pending' };
+    return {
+      rawMessage,
+      displayMessage: safePlaceholder(baseDisplay, 'pending', E2EE_OWN_PLAINTEXT_UNAVAILABLE_TEXT),
+      decryptStatus: 'pending',
+    };
   }
 
   try {
@@ -140,10 +216,10 @@ export const processE2eeMessage = async (
     const plaintext = await e2eeManager.decryptMessage(sessionId, rawMessage.senderId || message.senderId || '', header, ciphertext);
     return {
       rawMessage,
-      displayMessage: {
+      displayMessage: markE2eeDisplayDecrypted({
         ...baseDisplay,
         content: plaintext,
-      },
+      }, 'decrypted'),
       decryptStatus: 'decrypted',
     };
   } catch (error) {
@@ -155,12 +231,11 @@ export const processE2eeMessage = async (
       hasHeader: Boolean(readStringField(rawMessage, 'e2eeHeader', 'e2ee_header')),
       hasCiphertext: Boolean(rawMessage.content && rawMessage.content !== E2EE_UNSUPPORTED_TEXT),
     }));
+    const pending = classification.code === 'NO_RATCHET_STATE' || classification.code === 'NEGOTIATION_NOT_ACCEPTED';
     return {
       rawMessage,
-      displayMessage: safePlaceholder(baseDisplay),
-      decryptStatus: classification.code === 'NO_RATCHET_STATE' || classification.code === 'NEGOTIATION_NOT_ACCEPTED'
-        ? 'pending'
-        : 'failed',
+      displayMessage: safePlaceholder(baseDisplay, pending ? 'pending' : 'failed'),
+      decryptStatus: pending ? 'pending' : 'failed',
     };
   }
 };
@@ -169,16 +244,28 @@ export const processE2eeMessages = async (
   messages: MobileMessage[],
   options: ProcessMessageOptions & { concurrency?: number },
 ): Promise<ProcessedE2eeMessage[]> => {
-  const concurrency = Math.max(1, Math.min(options.concurrency ?? 4, 8));
   const results: ProcessedE2eeMessage[] = new Array(messages.length);
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(concurrency, messages.length) }, async () => {
-    while (cursor < messages.length) {
-      const index = cursor;
-      cursor += 1;
-      results[index] = await processE2eeMessage(messages[index], options);
+  const ratchetWork: Array<{ index: number; message: MobileMessage }> = [];
+  const independentWork: Array<Promise<void>> = [];
+
+  messages.forEach((message, index) => {
+    if (isRemotePrivateEncryptedText(message, options.currentUserId)) {
+      ratchetWork.push({ index, message });
+      return;
     }
+    independentWork.push(
+      processE2eeMessage(message, options).then((processed) => {
+        results[index] = processed;
+      }),
+    );
   });
-  await Promise.all(workers);
+
+  await Promise.all(independentWork);
+
+  ratchetWork.sort((left, right) => compareE2eeDecryptOrder(left.message, right.message));
+  for (const item of ratchetWork) {
+    results[item.index] = await processE2eeMessage(item.message, options);
+  }
+
   return results;
 };

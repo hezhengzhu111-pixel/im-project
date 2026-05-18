@@ -17,7 +17,7 @@ export const resolveMessageSessionId = (message: MobileMessage, currentUserId: s
   return resolved || message.conversationId || '';
 };
 
-const encryptedFromRecord = (record: Record<string, unknown>, fallback?: unknown): boolean =>
+const encryptedFromRecord = (record: Record<string, unknown>, fallback?: boolean): boolean =>
   asBoolean(
     record.encrypted ??
       record.isEncrypted ??

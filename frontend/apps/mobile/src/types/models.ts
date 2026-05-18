@@ -21,7 +21,14 @@ export type MobileMessage = Message & {
   serverId?: Message['messageId'];
   // Mobile conversation key used for local routing and offline cache buckets.
   conversationId?: string;
+  // Server/raw encrypted payload snapshot. UI content may intentionally be
+  // local plaintext while rawJson keeps the original ciphertext and metadata.
   rawJson?: string;
+  // Local-only E2EE display metadata. These fields are never required by the
+  // server contract and are used to keep decrypted/known plaintext from being
+  // masked again while retaining the encrypted marker for audit/history.
+  isE2eeDisplayDecrypted?: boolean;
+  decryptStatus?: 'decrypted' | 'pending' | 'failed' | 'own-echo-preserved' | 'plaintext';
 };
 
 // Local offline-send queue row persisted by the mobile storage layer.

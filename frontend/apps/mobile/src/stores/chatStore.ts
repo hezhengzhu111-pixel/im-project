@@ -5,6 +5,9 @@ import { messageRepository } from '@/services/storage/messageRepository';
 import { uploadService } from '@/services/upload/uploadService';
 import { reconcilePendingState } from '@/services/storage/reconcilePendingState';
 import { appLifecycle, bindLifecycleHandlers } from '@/services/platform/appLifecycle';
+import { ensureLocalE2eeDeviceRegistered, heartbeatLocalE2eeDevice } from '@/e2ee/manager/localDevice';
+import { syncPendingNegotiations } from '@/e2ee/manager/negotiation';
+import { retryDecryptPendingMessages, retryDecryptVisibleEncryptedMessages } from '@/e2ee/store/pendingDecryptStore';
 import { useAuthStore } from './authStore';
 import { useContactStore } from './contactStore';
 import { useGroupStore } from './groupStore';
@@ -38,9 +41,16 @@ const foregroundReconcile = async () => {
   if (reconcileInFlight) return;
   reconcileInFlight = true;
   try {
+    await heartbeatLocalE2eeDevice().catch(() => undefined);
+    await syncPendingNegotiations(useSessionStore.getState().currentSession?.id).catch(() => undefined);
     reconcilePendingState();
     await uploadService.retryPendingUploads();
     await useMessageStore.getState().retryPending();
+    const currentSessionId = useSessionStore.getState().currentSession?.id;
+    if (currentSessionId) {
+      await retryDecryptPendingMessages(currentSessionId).catch(() => 0);
+      await retryDecryptVisibleEncryptedMessages(currentSessionId).catch(() => 0);
+    }
   } finally {
     reconcileInFlight = false;
   }
@@ -150,6 +160,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ loading: true });
     try {
       useSessionStore.getState().restoreFromDb();
+      void ensureLocalE2eeDeviceRegistered().catch(() => undefined);
+      void syncPendingNegotiations().catch(() => undefined);
       await Promise.allSettled([
         useContactStore.getState().loadFriends(),
         useGroupStore.getState().loadGroups(),
@@ -175,7 +187,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   async openSession(session) {
     useSessionStore.getState().setCurrentSession(session);
+    if (session.type === 'private') {
+      void syncPendingNegotiations(session.id).catch(() => undefined);
+    }
     await useMessageStore.getState().loadMessages(session);
+    if (session.type === 'private') {
+      await retryDecryptPendingMessages(session.id).catch(() => 0);
+      await retryDecryptVisibleEncryptedMessages(session.id).catch(() => 0);
+    }
     await useMessageStore.getState().markRead(session).catch(() => undefined);
   },
 

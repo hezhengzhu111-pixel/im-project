@@ -95,7 +95,7 @@ describe('pendingEncryptedBlock — E24.3 / E25.3 / E5.4', () => {
       expect.objectContaining({
         localId: 'local_1',
         status: 'blocked',
-        lastError: 'E2EE deferred',
+        lastError: 'Encrypted payload incomplete',
       }),
     );
   });
@@ -111,7 +111,7 @@ describe('pendingEncryptedBlock — E24.3 / E25.3 / E5.4', () => {
       expect.objectContaining({
         localId: 'local_1',
         status: 'blocked',
-        lastError: 'E2EE deferred',
+        lastError: 'Encrypted payload incomplete',
       }),
     );
   });
@@ -184,7 +184,7 @@ describe('pendingEncryptedBlock — E24.3 / E25.3 / E5.4', () => {
 
     const updateCall = (pr.update as jest.Mock).mock.calls[0][0] as PendingMessage;
     expect(updateCall.status).toBe('blocked');
-    expect(updateCall.lastError).toBe('E2EE deferred');
+    expect(updateCall.lastError).toBe('Encrypted payload incomplete');
   });
 
   it('blocked status is in the PendingMessage status union type', () => {

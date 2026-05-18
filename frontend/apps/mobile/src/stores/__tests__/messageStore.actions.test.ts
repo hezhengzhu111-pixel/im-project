@@ -24,7 +24,19 @@ jest.mock('@/utils/ids', () => ({
 }));
 
 jest.mock('@/e2ee/e2eeDeferred', () => ({
+  E2EE_UNSUPPORTED_TEXT: '[encrypted]',
+  E2EE_SEND_DISABLED_TEXT: 'E2EE disabled',
+  E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT: 'encrypted media unsupported',
+  getSessionE2eeStatus: jest.fn(() => 'plaintext'),
   maskEncryptedMessage: (msg: MobileMessage) => msg,
+  hasKnownE2eeDisplayPlaintext: jest.fn((msg: MobileMessage) =>
+    Boolean(msg.isE2eeDisplayDecrypted || msg.decryptStatus === 'decrypted' || msg.decryptStatus === 'own-echo-preserved'),
+  ),
+  markE2eeDisplayDecrypted: jest.fn((msg: MobileMessage, decryptStatus = 'decrypted') => ({
+    ...msg,
+    isE2eeDisplayDecrypted: true,
+    decryptStatus,
+  })),
   assertPlaintextSendAllowed: jest.fn(),
   blockEncryptedPendingPayload: jest.fn(() => false),
 }));

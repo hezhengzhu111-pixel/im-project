@@ -5,8 +5,10 @@ import {
   mergeServerMessageWithPending,
   safePreferExistingId,
 } from '@im/shared-im-core';
+import { isEncryptedValue } from '@im/shared-e2ee-core';
 import { normalizeMessage as normalizeSharedMessage } from '@im/shared-normalizers';
 import { asString, isRecord, type Message as SharedMessage } from '@im/shared-types';
+import { E2EE_UNSUPPORTED_TEXT, hasKnownE2eeDisplayPlaintext, markE2eeDisplayDecrypted } from '@/e2ee/e2eeDeferred';
 import type { MobileMessage } from '@/types/models';
 
 const rawRecord = (raw: unknown): Record<string, unknown> => (isRecord(raw) ? raw : {});
@@ -55,7 +57,19 @@ export const mergeServerMobileMessageWithPending = (
   serverMessage: MobileMessage,
 ): MobileMessage => {
   const merged = mergeServerMessageWithPending(toSharedMessage(pending), toSharedMessage(serverMessage));
-  return {
+  const serverRawJson = serverMessage.rawJson || JSON.stringify(serverMessage);
+  const encryptedEcho = isEncryptedValue(serverMessage.encrypted) || isEncryptedValue(pending.encrypted);
+  const sameClientMessage = Boolean(
+    pending.clientMessageId &&
+      serverMessage.clientMessageId &&
+      pending.clientMessageId === serverMessage.clientMessageId,
+  );
+  const pendingHasDisplayPlaintext = Boolean(
+    pending.content &&
+      pending.content !== E2EE_UNSUPPORTED_TEXT &&
+      (hasKnownE2eeDisplayPlaintext(pending) || sameClientMessage),
+  );
+  const result: MobileMessage = {
     ...pending,
     ...serverMessage,
     ...toMobileMessage(merged, { ...pending, ...serverMessage }),
@@ -70,7 +84,17 @@ export const mergeServerMobileMessageWithPending = (
     thumbnailUrl: serverMessage.thumbnailUrl || pending.thumbnailUrl,
     mediaName: serverMessage.mediaName || pending.mediaName,
     mediaSize: serverMessage.mediaSize ?? pending.mediaSize,
+    rawJson: serverRawJson,
   };
+  if (encryptedEcho && sameClientMessage && pendingHasDisplayPlaintext) {
+    return markE2eeDisplayDecrypted({
+      ...result,
+      content: pending.content,
+      encrypted: serverMessage.encrypted ?? pending.encrypted,
+      rawJson: serverRawJson,
+    }, 'own-echo-preserved');
+  }
+  return result;
 };
 
 export const applyMobileMessageToList = (
