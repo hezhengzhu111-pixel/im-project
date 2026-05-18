@@ -1,0 +1,4 @@
+[package]
+name = "e2ee-ffi"
+version.workspace = true
+edition.workspace = true
