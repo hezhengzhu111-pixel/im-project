@@ -398,4 +398,525 @@ mod tests {
             .expect("bob decrypt");
         assert_eq!(plaintext, b"hello bob from wasm");
     }
+
+    // --- Error-path contract tests (run only with wasm-bindgen-test runner) ---
+
+    /// restore_session with corrupted bincode returns an error.
+    #[wasm_bindgen_test]
+    fn restore_corrupted_state_fails() {
+        let mut mgr = WasmSessionManager::new();
+
+        let corrupted = vec![0xAAu8; 128];
+        let result = mgr.restore_session("test".to_string(), corrupted);
+        match result {
+            Err(e) => {
+                let msg = e
+                    .as_string()
+                    .unwrap_or_else(|| "unknown error".to_string());
+                assert!(!msg.is_empty(), "error message should not be empty");
+                assert!(
+                    msg.contains("deserialization") || msg.contains("corrupted"),
+                    "expected deserialization failure message, got: {msg}"
+                );
+            }
+            Ok(()) => panic!("expected error for corrupted state, got Ok"),
+        }
+    }
+
+    /// Decrypting a ciphertext with the wrong session must fail.
+    #[wasm_bindgen_test]
+    fn wrong_session_decrypt_fails() {
+        use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+        fn setup(
+            mgr: &mut WasmSessionManager,
+            alice_id: &str,
+            bob_id: &str,
+        ) {
+            let bob_bundle = generate_key_bundle(1, &[(100, 1)]).expect("generate bundle");
+            let fetch = PreKeyBundleFetch {
+                identity_key: bob_bundle.bundle.identity_key,
+                signing_key: bob_bundle.bundle.signing_key,
+                signed_pre_key: PreKey {
+                    id: 1,
+                    key: bob_bundle.bundle.signed_pre_key,
+                },
+                signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+                one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+            };
+            let fetch_json = serde_json::to_string(&fetch).expect("serialize fetch");
+            let alice_ik = generate_x25519_keypair();
+            let alice_ik_bincode = bincode::serialize(&alice_ik).expect("serialize ik");
+            let handshake = mgr
+                .create_outbound_session(
+                    alice_id.to_string(),
+                    alice_ik_bincode,
+                    fetch_json,
+                )
+                .expect("create outbound");
+            let ek_bytes = &handshake[0..32];
+
+            let bob_ik_bincode =
+                bincode::serialize(&bob_bundle.identity_key_pair).expect("serialize ik");
+            let bob_spk_bincode =
+                bincode::serialize(&bob_bundle.signed_pre_key_pair).expect("serialize spk");
+            let bob_otk = bob_bundle.one_time_pre_key_pairs.first().expect("otk");
+            let bob_otk_bincode =
+                bincode::serialize(&bob_otk.key_pair).expect("serialize otk");
+
+            mgr.create_inbound_session(
+                bob_id.to_string(),
+                bob_ik_bincode,
+                bob_spk_bincode,
+                Some(bob_otk_bincode),
+                alice_ik.public_key.0.to_vec(),
+                ek_bytes.to_vec(),
+            )
+            .expect("create inbound");
+        }
+
+        let mut mgr = WasmSessionManager::new();
+
+        setup(&mut mgr, "alice1", "bob1");
+        setup(&mut mgr, "alice2", "bob2");
+
+        // Encrypt with session 1
+        let wire1 = mgr
+            .encrypt("alice1".to_string(), b"secret for bob1".to_vec())
+            .expect("encrypt alice1");
+
+        // Try to decrypt with session 2's receiver — must fail
+        let result = mgr.decrypt("bob2".to_string(), wire1);
+        assert!(
+            result.is_err(),
+            "wrong session decryption MUST fail, but succeeded"
+        );
+    }
+}
+
+// ============================================================================
+// Host tests — regular #[test] (not #[wasm_bindgen_test]) for cargo test
+//
+// These cover happy-path cross-layer session manager contracts through the
+// WasmSessionManager API. They run on the host without a WASM runtime.
+//
+// Limitation: error-path tests (restore_corrupted_state, wrong_session_decrypt)
+// cannot run as host tests because JsValue::from_str panics on non-wasm32
+// targets. Those contracts are covered by the #[wasm_bindgen_test] tests below.
+// ============================================================================
+
+#[cfg(test)]
+mod host_tests {
+    use super::*;
+    use e2ee_core::generate_x25519_keypair;
+
+    fn js_err(e: JsValue) -> String {
+        match e.as_string() {
+            Some(s) => s,
+            None => "unknown JS error".to_string(),
+        }
+    }
+
+    /// Full X3DH handshake through both WASM APIs:
+    /// create_outbound_session -> create_inbound_session -> encrypt -> decrypt
+    #[test]
+    fn create_inbound_session_via_api() -> Result<(), String> {
+        use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+        let bob_bundle =
+            generate_key_bundle(1, &[(100, 1)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+        };
+        let fetch_json =
+            serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+        let alice_ik = generate_x25519_keypair();
+        let alice_ik_bincode =
+            bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+        let mut mgr = WasmSessionManager::new();
+
+        let handshake = mgr
+            .create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+            .map_err(js_err)?;
+
+        if handshake.len() < 40 {
+            return Err(format!("handshake too short: {} bytes", handshake.len()));
+        }
+        let ek_bytes = &handshake[0..32];
+        let alice_ek = ek_bytes.to_vec();
+
+        let bob_ik_bincode = bincode::serialize(&bob_bundle.identity_key_pair)
+            .map_err(|e| format!("serialize bob_ik: {e}"))?;
+        let bob_spk_bincode = bincode::serialize(&bob_bundle.signed_pre_key_pair)
+            .map_err(|e| format!("serialize bob_spk: {e}"))?;
+        let bob_otk = bob_bundle
+            .one_time_pre_key_pairs
+            .first()
+            .ok_or("missing OTK".to_string())?;
+        let bob_otk_bincode = bincode::serialize(&bob_otk.key_pair)
+            .map_err(|e| format!("serialize bob_otk: {e}"))?;
+
+        mgr.create_inbound_session(
+            "bob".to_string(),
+            bob_ik_bincode,
+            bob_spk_bincode,
+            Some(bob_otk_bincode),
+            alice_ik.public_key.0.to_vec(),
+            alice_ek,
+        )
+        .map_err(js_err)?;
+
+        let wire = mgr
+            .encrypt("alice".to_string(), b"hello via WASM API".to_vec())
+            .map_err(js_err)?;
+
+        let plaintext = mgr.decrypt("bob".to_string(), wire).map_err(js_err)?;
+
+        if plaintext != b"hello via WASM API" {
+            return Err("plaintext mismatch".to_string());
+        }
+
+        Ok(())
+    }
+
+    /// Alice/Bob bidirectional: each sends at least one message that the other decrypts.
+    #[test]
+    fn alice_bob_bidirectional() -> Result<(), String> {
+        use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+        let bob_bundle =
+            generate_key_bundle(1, &[(100, 1)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+        };
+        let fetch_json =
+            serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+        let alice_ik = generate_x25519_keypair();
+        let alice_ik_bincode =
+            bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+        let mut mgr = WasmSessionManager::new();
+
+        let handshake = mgr
+            .create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+            .map_err(js_err)?;
+
+        if handshake.len() < 40 {
+            return Err(format!("handshake too short: {} bytes", handshake.len()));
+        }
+        let ek_bytes = &handshake[0..32];
+
+        let bob_ik_bincode = bincode::serialize(&bob_bundle.identity_key_pair)
+            .map_err(|e| format!("serialize bob_ik: {e}"))?;
+        let bob_spk_bincode = bincode::serialize(&bob_bundle.signed_pre_key_pair)
+            .map_err(|e| format!("serialize bob_spk: {e}"))?;
+        let bob_otk = bob_bundle
+            .one_time_pre_key_pairs
+            .first()
+            .ok_or("missing OTK".to_string())?;
+        let bob_otk_bincode = bincode::serialize(&bob_otk.key_pair)
+            .map_err(|e| format!("serialize bob_otk: {e}"))?;
+
+        mgr.create_inbound_session(
+            "bob".to_string(),
+            bob_ik_bincode,
+            bob_spk_bincode,
+            Some(bob_otk_bincode),
+            alice_ik.public_key.0.to_vec(),
+            ek_bytes.to_vec(),
+        )
+        .map_err(js_err)?;
+
+        // Alice -> Bob
+        let wire_a1 = mgr
+            .encrypt("alice".to_string(), b"hello bob".to_vec())
+            .map_err(js_err)?;
+        let pt_a1 = mgr.decrypt("bob".to_string(), wire_a1).map_err(js_err)?;
+        if pt_a1 != b"hello bob" {
+            return Err("alice->bob plaintext mismatch".to_string());
+        }
+
+        // Bob -> Alice (reply)
+        let wire_b1 = mgr
+            .encrypt("bob".to_string(), b"hello alice".to_vec())
+            .map_err(js_err)?;
+        let pt_b1 = mgr.decrypt("alice".to_string(), wire_b1).map_err(js_err)?;
+        if pt_b1 != b"hello alice" {
+            return Err("bob->alice plaintext mismatch".to_string());
+        }
+
+        Ok(())
+    }
+
+    /// export_session -> remove_session -> restore_session -> continue encrypt/decrypt.
+    ///
+    /// Note: the intermediate "verify session is gone after remove" step is
+    /// omitted here because JsValue::from_str panics on non-wasm32 targets.
+    /// Full error-path coverage is in the wasm_bindgen_test module.
+    #[test]
+    fn export_restore_then_continue() -> Result<(), String> {
+        use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+        let bob_bundle =
+            generate_key_bundle(1, &[(100, 1)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+        };
+        let fetch_json =
+            serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+        let alice_ik = generate_x25519_keypair();
+        let alice_ik_bincode =
+            bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+        let mut mgr = WasmSessionManager::new();
+
+        let handshake = mgr
+            .create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+            .map_err(js_err)?;
+
+        if handshake.len() < 40 {
+            return Err(format!("handshake too short: {} bytes", handshake.len()));
+        }
+        let ek_bytes = &handshake[0..32];
+
+        let bob_ik_bincode = bincode::serialize(&bob_bundle.identity_key_pair)
+            .map_err(|e| format!("serialize bob_ik: {e}"))?;
+        let bob_spk_bincode = bincode::serialize(&bob_bundle.signed_pre_key_pair)
+            .map_err(|e| format!("serialize bob_spk: {e}"))?;
+        let bob_otk = bob_bundle
+            .one_time_pre_key_pairs
+            .first()
+            .ok_or("missing OTK".to_string())?;
+        let bob_otk_bincode = bincode::serialize(&bob_otk.key_pair)
+            .map_err(|e| format!("serialize bob_otk: {e}"))?;
+
+        mgr.create_inbound_session(
+            "bob".to_string(),
+            bob_ik_bincode,
+            bob_spk_bincode,
+            Some(bob_otk_bincode),
+            alice_ik.public_key.0.to_vec(),
+            ek_bytes.to_vec(),
+        )
+        .map_err(js_err)?;
+
+        // Alice encrypts
+        let wire1 = mgr
+            .encrypt("alice".to_string(), b"before export".to_vec())
+            .map_err(js_err)?;
+
+        // Export Alice's state
+        let alice_state = mgr.export_session("alice".to_string()).map_err(js_err)?;
+        if alice_state.is_empty() {
+            return Err("exported state is empty".to_string());
+        }
+
+        // Remove and restore Alice's session
+        mgr.remove_session("alice".to_string());
+        mgr.restore_session("alice".to_string(), alice_state)
+            .map_err(js_err)?;
+
+        // Alice encrypts again after restore
+        let wire2 = mgr
+            .encrypt("alice".to_string(), b"after restore".to_vec())
+            .map_err(js_err)?;
+
+        // Bob decrypts both messages
+        let pt1 = mgr.decrypt("bob".to_string(), wire1).map_err(js_err)?;
+        if pt1 != b"before export" {
+            return Err("plaintext1 mismatch".to_string());
+        }
+        let pt2 = mgr.decrypt("bob".to_string(), wire2).map_err(js_err)?;
+        if pt2 != b"after restore" {
+            return Err("plaintext2 mismatch".to_string());
+        }
+
+        Ok(())
+    }
+
+    /// Encrypted wire format: first 4 bytes = header_len BE == 52, ciphertext non-empty.
+    #[test]
+    fn encrypted_wire_format_header_and_ciphertext() -> Result<(), String> {
+        use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+        let bob_bundle =
+            generate_key_bundle(1, &[(100, 1)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+        };
+        let fetch_json =
+            serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+        let alice_ik = generate_x25519_keypair();
+        let alice_ik_bincode =
+            bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+        let mut mgr = WasmSessionManager::new();
+        mgr.create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+            .map_err(js_err)?;
+
+        let wire = mgr
+            .encrypt("alice".to_string(), b"wire format test".to_vec())
+            .map_err(js_err)?;
+
+        if wire.len() < 4 {
+            return Err("wire too short: missing header_len prefix".to_string());
+        }
+        let header_len = u32::from_be_bytes([wire[0], wire[1], wire[2], wire[3]]) as usize;
+        if header_len != 52 {
+            return Err(format!("expected header_len=52, got {header_len}"));
+        }
+
+        if wire.len() <= 4 + 52 {
+            return Err(
+                "ciphertext is empty (wire too short for header + tag)".to_string(),
+            );
+        }
+        let ciphertext_len = wire.len() - 4 - 52;
+        if ciphertext_len < 16 {
+            return Err(format!(
+                "ciphertext too short: {ciphertext_len} bytes",
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Multiple sessions in a single HashMap, no cross-contamination.
+    #[test]
+    fn multi_session_no_cross_pollution() -> Result<(), String> {
+        use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+        fn setup_session(
+            mgr: &mut WasmSessionManager,
+            alice_id: &str,
+            bob_id: &str,
+        ) -> Result<(), String> {
+            let bob_bundle = generate_key_bundle(1, &[(100, 1)])
+                .map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+            let fetch = PreKeyBundleFetch {
+                identity_key: bob_bundle.bundle.identity_key,
+                signing_key: bob_bundle.bundle.signing_key,
+                signed_pre_key: PreKey {
+                    id: 1,
+                    key: bob_bundle.bundle.signed_pre_key,
+                },
+                signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+                one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+            };
+            let fetch_json =
+                serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+            let alice_ik = generate_x25519_keypair();
+            let alice_ik_bincode =
+                bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+            let handshake = mgr
+                .create_outbound_session(
+                    alice_id.to_string(),
+                    alice_ik_bincode,
+                    fetch_json,
+                )
+                .map_err(js_err)?;
+
+            if handshake.len() < 40 {
+                return Err(format!("handshake too short: {} bytes", handshake.len()));
+            }
+            let ek_bytes = &handshake[0..32];
+
+            let bob_ik_bincode = bincode::serialize(&bob_bundle.identity_key_pair)
+                .map_err(|e| format!("serialize bob_ik: {e}"))?;
+            let bob_spk_bincode = bincode::serialize(&bob_bundle.signed_pre_key_pair)
+                .map_err(|e| format!("serialize bob_spk: {e}"))?;
+            let bob_otk = bob_bundle
+                .one_time_pre_key_pairs
+                .first()
+                .ok_or("missing OTK".to_string())?;
+            let bob_otk_bincode = bincode::serialize(&bob_otk.key_pair)
+                .map_err(|e| format!("serialize bob_otk: {e}"))?;
+
+            mgr.create_inbound_session(
+                bob_id.to_string(),
+                bob_ik_bincode,
+                bob_spk_bincode,
+                Some(bob_otk_bincode),
+                alice_ik.public_key.0.to_vec(),
+                ek_bytes.to_vec(),
+            )
+            .map_err(js_err)?;
+
+            Ok(())
+        }
+
+        let mut mgr = WasmSessionManager::new();
+
+        setup_session(&mut mgr, "alice1", "bob1")?;
+        setup_session(&mut mgr, "alice2", "bob2")?;
+
+        // Interleaved encrypt
+        let a1 = mgr
+            .encrypt("alice1".to_string(), b"A1 msg".to_vec())
+            .map_err(js_err)?;
+        let a2 = mgr
+            .encrypt("alice2".to_string(), b"A2 msg".to_vec())
+            .map_err(js_err)?;
+        let a1b = mgr
+            .encrypt("alice1".to_string(), b"A1 msg2".to_vec())
+            .map_err(js_err)?;
+
+        // Decrypt each with correct receiver
+        let p1 = mgr.decrypt("bob1".to_string(), a1).map_err(js_err)?;
+        if p1 != b"A1 msg" {
+            return Err("bob1 a1 plaintext mismatch".to_string());
+        }
+
+        let p2 = mgr.decrypt("bob2".to_string(), a2).map_err(js_err)?;
+        if p2 != b"A2 msg" {
+            return Err("bob2 a2 plaintext mismatch".to_string());
+        }
+
+        let p1b = mgr.decrypt("bob1".to_string(), a1b).map_err(js_err)?;
+        if p1b != b"A1 msg2" {
+            return Err("bob1 a1b plaintext mismatch".to_string());
+        }
+
+        Ok(())
+    }
 }
