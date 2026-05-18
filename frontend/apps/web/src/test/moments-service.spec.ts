@@ -82,10 +82,10 @@ describe("momentsService", () => {
       getMock.mockResolvedValue(makeResponse([samplePostWithDetails]));
 
       const { momentsService } = await import("@/services/moments");
-      await momentsService.getFeed({ page: 1, pageSize: 20 });
+      await momentsService.getFeed({ cursor: "1", limit: 20 });
 
       expect(getMock).toHaveBeenCalledWith("/moments/feed", {
-        params: { page: 1, pageSize: 20 },
+        params: { cursor: "1", limit: 20 },
       });
     });
 
@@ -163,10 +163,10 @@ describe("momentsService", () => {
       getMock.mockResolvedValue(makeResponse([samplePostWithDetails]));
 
       const { momentsService } = await import("@/services/moments");
-      await momentsService.getUserPosts("user-1", { page: 1, pageSize: 10 });
+      await momentsService.getUserPosts("user-1", { cursor: "1", limit: 10 });
 
       expect(getMock).toHaveBeenCalledWith("/moments/user/user-1", {
-        params: { page: 1, pageSize: 10 },
+        params: { cursor: "1", limit: 10 },
       });
     });
   });
@@ -274,7 +274,7 @@ describe("momentsService", () => {
       const { momentsService } = await import("@/services/moments");
       await momentsService.createComment("post-1", {
         content: "Standalone",
-        parentId: null,
+        parentId: undefined,
       });
 
       expect(postMock).toHaveBeenCalledWith("/moments/post-1/comments", {

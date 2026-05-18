@@ -43,7 +43,7 @@ const makeContext = () => {
     scheduleServerMessagePersist: vi.fn(),
   } as unknown as MessageReadModuleContext;
 
-  return { ctx, markRead, markSessionReadLocally, readSessionDirty };
+  return { ctx, markRead, markSessionReadLocally, readSessionDirty, scheduleServerMessagePersist: ctx.scheduleServerMessagePersist };
 };
 
 describe("message-read: markAsRead dirty flush", () => {
@@ -236,7 +236,8 @@ describe("message-read: conversation id resolution & read receipt", () => {
       messageType: "TEXT",
       status: "SENT",
     };
-    ctx.messages.value.set("sess_1", [message]);
+    // resolveReadReceiptSessionId returns buildSessionId("private", "user_1", "user_2") = "user_1_user_2"
+    ctx.messages.value.set("user_1_user_2", [message]);
 
     await mod.applyReadReceipt({
       readerId: "user_2",
@@ -244,7 +245,7 @@ describe("message-read: conversation id resolution & read receipt", () => {
       readAt: "2026-05-18T10:00:02.000Z",
     });
 
-    const updatedMessages = ctx.messages.value.get("sess_1") || [];
+    const updatedMessages = ctx.messages.value.get("user_1_user_2") || [];
     expect(updatedMessages[0].status).toBe("READ");
   });
 
@@ -252,7 +253,7 @@ describe("message-read: conversation id resolution & read receipt", () => {
     const { ctx, markRead } = makeContext();
     const mod = createMessageReadModule(ctx);
 
-    ctx.messages.value.set("sess_1", [
+    ctx.messages.value.set("user_1_user_2", [
       {
         id: "100", senderId: "user_1", content: "a",
         sendTime: "2026-05-18T10:00:00.000Z", messageType: "TEXT", status: "SENT",
@@ -269,7 +270,7 @@ describe("message-read: conversation id resolution & read receipt", () => {
       readAt: "2026-05-18T10:00:02.000Z",
     });
 
-    const updatedMessages = ctx.messages.value.get("sess_1") || [];
+    const updatedMessages = ctx.messages.value.get("user_1_user_2") || [];
     expect(updatedMessages.find((m) => m.id === "100")?.status).toBe("READ");
     expect(updatedMessages.find((m) => m.id === "101")?.status).toBe("SENT");
   });
@@ -283,7 +284,7 @@ describe("message-read: conversation id resolution & read receipt", () => {
 
     ctx.messages.value.set("group_9", [
       {
-        id: "g100", senderId: "user_3", content: "hello",
+        id: "g100", senderId: "user_1", content: "hello",
         sendTime: "2026-05-18T10:00:00.000Z", messageType: "TEXT", status: "SENT",
       } as Message,
     ]);
@@ -368,7 +369,7 @@ describe("message-read: conversation id resolution & read receipt", () => {
 
   it("does nothing when lastReadMessageId is missing", async () => {
     const { ctx, scheduleServerMessagePersist } = makeContext();
-    ctx.messages.value.set("sess_1", [
+    ctx.messages.value.set("user_1_user_2", [
       {
         id: "100", senderId: "user_1", content: "hi",
         sendTime: "2026-05-18T10:00:00.000Z", messageType: "TEXT", status: "SENT",
@@ -388,7 +389,7 @@ describe("message-read: conversation id resolution & read receipt", () => {
     const { ctx, scheduleServerMessagePersist } = makeContext();
     const mod = createMessageReadModule(ctx);
 
-    ctx.messages.value.set("sess_1", [
+    ctx.messages.value.set("user_1_user_2", [
       {
         id: "100", senderId: "user_1", content: "hello",
         sendTime: "2026-05-18T10:00:00.000Z", messageType: "TEXT", status: "SENT",
@@ -402,7 +403,7 @@ describe("message-read: conversation id resolution & read receipt", () => {
     });
 
     expect(scheduleServerMessagePersist).toHaveBeenCalledWith(
-      "sess_1",
+      "user_1_user_2",
       expect.arrayContaining([expect.objectContaining({ id: "100", status: "READ" })])
     );
   });

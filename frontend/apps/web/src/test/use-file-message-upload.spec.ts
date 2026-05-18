@@ -45,18 +45,22 @@ describe("useFileMessageUpload", () => {
     // Default mock: successful upload
     vi.mocked(fileService.uploadImage).mockResolvedValue({
       code: 200,
+      message: "",
       data: { url: "https://example.com/uploads/image.jpg", size: 1024 },
     });
     vi.mocked(fileService.upload).mockResolvedValue({
       code: 200,
+      message: "",
       data: { url: "https://example.com/uploads/file.pdf", size: 2048 },
     });
     vi.mocked(fileService.uploadVideo).mockResolvedValue({
       code: 200,
+      message: "",
       data: { url: "https://example.com/uploads/video.mp4", size: 1024000 },
     });
     vi.mocked(fileService.uploadAudio).mockResolvedValue({
       code: 200,
+      message: "",
       data: { url: "https://example.com/uploads/audio.webm", size: 512000 },
     });
   });
@@ -331,7 +335,7 @@ describe("useFileMessageUpload", () => {
       code: 500,
       message: "服务器错误",
       data: null,
-    });
+    } as any);
 
     const { useFileMessageUpload } = await import(
       "@/features/chat/composables/useFileMessageUpload"
@@ -394,13 +398,14 @@ describe("useFileMessageUpload", () => {
   it("merges additional response data into result", async () => {
     vi.mocked(fileService.uploadImage).mockResolvedValue({
       code: 200,
+      message: "",
       data: {
         url: "https://example.com/uploads/image.jpg",
         size: 1024,
         width: 800,
         height: 600,
       },
-    });
+    } as any);
 
     const { useFileMessageUpload } = await import(
       "@/features/chat/composables/useFileMessageUpload"

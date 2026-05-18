@@ -15,11 +15,11 @@ vi.mock("@capacitor/core", () => ({
   },
 }));
 
-// Mock user settings store
+// Use a shared mutable object so individual tests can adjust settings
+const mockUserSettings = { allowInsecureVoiceRecording: false };
+
 vi.mock("@/stores/user-settings", () => ({
-  useUserSettingsStore: () => ({
-    allowInsecureVoiceRecording: false,
-  }),
+  useUserSettingsStore: () => mockUserSettings,
 }));
 
 describe("useVoiceRecorder", () => {
@@ -41,6 +41,8 @@ describe("useVoiceRecorder", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    // Reset default setting
+    mockUserSettings.allowInsecureVoiceRecording = false;
 
     // Reset secure context
     Object.defineProperty(window, "isSecureContext", {
@@ -195,8 +197,8 @@ describe("useVoiceRecorder", () => {
 
     await recorder.startRecording();
 
-    // Simulate some time passing
-    vi.setSystemTime(new Date("2026-05-18T12:00:05.500Z"));
+    // Advance time by exactly 5 seconds for deterministic duration calculation
+    vi.advanceTimersByTime(5000);
 
     // Simulate data available
     if (mockRecorder.ondataavailable) {
@@ -438,13 +440,11 @@ describe("useVoiceRecorder", () => {
       configurable: true,
     });
 
-    // Override the mock to allow insecure recording
-    const userSettingsMock = await import("@/stores/user-settings");
-    vi.mocked(userSettingsMock.useUserSettingsStore).mockReturnValue({
-      allowInsecureVoiceRecording: true,
-    });
+    // Override the mock to allow insecure recording via shared mutable object
 
-    // Re-import with the new mock
+    mockUserSettings.allowInsecureVoiceRecording = true;
+
+    // Re-import with the updated settings
     const { useVoiceRecorder } = await import(
       "@/features/chat/composables/useVoiceRecorder"
     );

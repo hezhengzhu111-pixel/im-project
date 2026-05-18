@@ -320,7 +320,7 @@ describe("useAudioPlayer", () => {
     // Collect bound handlers from addEventListener spy calls
     const handlers = new Map<string, () => void>();
     for (const call of addEventListenerSpy.mock.calls) {
-      handlers.set(call[0], call[1]);
+      handlers.set(call[0], call[1] as () => void);
     }
 
     expect(handlers.has("ended")).toBe(true);

@@ -147,7 +147,7 @@ describe('mediaService', () => {
       ]);
       // Mock ReactNativeBlobUtil.fs.stat for size
       const mockedFs = ReactNativeBlobUtil.fs as jest.Mocked<typeof ReactNativeBlobUtil.fs>;
-      mockedFs.stat.mockResolvedValue({ path: '/cache/document.pdf', size: '500000' });
+      mockedFs.stat.mockResolvedValue({ path: '/cache/document.pdf', size: 500000, lastModified: 0, type: 'file' as const, filename: 'document.pdf' });
 
       const result = await mediaService.pickDocument();
 
@@ -174,7 +174,7 @@ describe('mediaService', () => {
         },
       ]);
       const mockedFs = ReactNativeBlobUtil.fs as jest.Mocked<typeof ReactNativeBlobUtil.fs>;
-      mockedFs.stat.mockResolvedValue({ path: '/documents/report.txt', size: '1000' });
+      mockedFs.stat.mockResolvedValue({ path: '/documents/report.txt', size: 1000, lastModified: 0, type: 'file' as const, filename: 'report.txt' });
 
       const result = await mediaService.pickDocument();
 
