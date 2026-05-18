@@ -25,7 +25,7 @@ import { deriveSendStage } from '@/utils/sendStateMachine';
 import type { MessageActionContext, MobileMessage } from '@/types/models';
 
 const BOTTOM_THRESHOLD = 120;
-const ON_END_REACHED_THRESHOLD = 3;
+const LOAD_OLDER_TOP_THRESHOLD = 80;
 
 export function ChatScreen() {
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
@@ -50,6 +50,7 @@ export function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const isAtBottomRef = useRef(true);
   const isLoadingOlderRef = useRef(false);
+  const initialScrollDoneRef = useRef(false);
   const prevMessageCountRef = useRef(0);
 
   const messages = useMemo(() => (session ? messagesBySession[session.id] || [] : []), [messagesBySession, session]);
@@ -82,6 +83,14 @@ export function ChatScreen() {
   }, [authReady, currentUser?.id, hasTargetRouteParams, openSessionFromRoute, routeKey, routeParams]);
 
   useEffect(() => {
+    initialScrollDoneRef.current = false;
+    prevMessageCountRef.current = 0;
+    isAtBottomRef.current = true;
+    isLoadingOlderRef.current = false;
+    setShowNewMessages(false);
+  }, [session?.id]);
+
+  useEffect(() => {
     if (!session) {
       return;
     }
@@ -107,11 +116,12 @@ export function ChatScreen() {
     ]);
   }), [session?.id]);
 
-  // Scroll to bottom on initial load
+  // Scroll to bottom once after the initial page is laid out.
   useEffect(() => {
     let frameId: number | null = null;
 
-    if (pagination?.initialized && prevMessageCountRef.current === 0 && messages.length > 0) {
+    if (pagination?.initialized && !initialScrollDoneRef.current && messages.length > 0) {
+      initialScrollDoneRef.current = true;
       frameId = requestAnimationFrame(() => {
         try {
           flatListRef.current?.scrollToEnd({ animated: false });
@@ -120,7 +130,6 @@ export function ChatScreen() {
         }
       });
     }
-    prevMessageCountRef.current = messages.length;
 
     return () => {
       if (frameId !== null) {
@@ -129,25 +138,14 @@ export function ChatScreen() {
     };
   }, [pagination?.initialized, messages.length]);
 
-  // Track new messages when user is not at bottom
+  // Track new messages when user is not at bottom.
   useEffect(() => {
-    if (messages.length > prevMessageCountRef.current && !isAtBottomRef.current && prevMessageCountRef.current > 0) {
+    const previousCount = prevMessageCountRef.current;
+    if (messages.length > previousCount && !isAtBottomRef.current && previousCount > 0 && !isLoadingOlderRef.current) {
       setShowNewMessages(true);
     }
     prevMessageCountRef.current = messages.length;
   }, [messages.length]);
-
-  const handleScroll = useCallback(
-    (event: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) => {
-      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-      const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
-      isAtBottomRef.current = distanceFromBottom < BOTTOM_THRESHOLD;
-      if (isAtBottomRef.current) {
-        setShowNewMessages(false);
-      }
-    },
-    [],
-  );
 
   const loadOlder = useCallback(() => {
     if (!session || isLoadingOlderRef.current || !pagination?.initialized) {
@@ -161,6 +159,22 @@ export function ChatScreen() {
       isLoadingOlderRef.current = false;
     });
   }, [session, pagination, loadOlderMessages]);
+
+  const handleScroll = useCallback(
+    (event: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      const distanceFromTop = contentOffset.y;
+      const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
+      isAtBottomRef.current = distanceFromBottom < BOTTOM_THRESHOLD;
+      if (isAtBottomRef.current) {
+        setShowNewMessages(false);
+      }
+      if (distanceFromTop < LOAD_OLDER_TOP_THRESHOLD) {
+        loadOlder();
+      }
+    },
+    [loadOlder],
+  );
 
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
@@ -446,8 +460,6 @@ export function ChatScreen() {
             />
           )}
           ListHeaderComponent={renderHeader}
-          onEndReached={loadOlder}
-          onEndReachedThreshold={ON_END_REACHED_THRESHOLD}
           onScroll={handleScroll}
           scrollEventThrottle={16}
           onContentSizeChange={handleContentSizeChange}
