@@ -58,7 +58,9 @@
       "Bash(rustup target *)",
       "Bash(cargo install *)",
       "Bash(CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --target wasm32-unknown-unknown -p e2ee-wasm)",
-      "Bash(cargo clippy *)"
+      "Bash(cargo clippy *)",
+      "Bash(cargo run *)",
+      "Bash(cargo search *)"
     ]
   }
 }

@@ -671,4 +671,34 @@ mod tests {
         );
         Ok(())
     }
+
+    /// Verify that `SessionError::to_string()` preserves payload details.
+    ///
+    /// UniFFI flat-error serialization writes `variant_index(i32) + to_string(error)`
+    /// (see uniffi_macros error.rs:56-57, 102-103).  This test confirms that our
+    /// Display implementation faithfully carries the session_id / crypto detail
+    /// that the Kotlin/Swift `exception.message` will expose.
+    #[test]
+    fn display_includes_payload_for_ffi_transmission() {
+        // SessionNotFound carries session_id
+        let msg = SessionError::SessionNotFound("sess-42".into()).to_string();
+        assert!(msg.contains("session not found"));
+        assert!(msg.contains("sess-42"));
+
+        // SessionAlreadyExists carries session_id
+        let msg = SessionError::SessionAlreadyExists("dup-1".into()).to_string();
+        assert!(msg.contains("session already exists"));
+        assert!(msg.contains("dup-1"));
+
+        // InvalidStateData carries detail
+        let msg = SessionError::InvalidStateData("keypair validation failed".into()).to_string();
+        assert!(msg.contains("invalid session state data"));
+        assert!(msg.contains("keypair validation failed"));
+
+        // Crypto from E2eeError preserves original error detail
+        let msg =
+            SessionError::from(e2ee_core::E2eeError::CounterGapExceeded(2500, 2000)).to_string();
+        assert!(msg.contains("crypto error"));
+        assert!(msg.contains("counter gap"));
+    }
 }
