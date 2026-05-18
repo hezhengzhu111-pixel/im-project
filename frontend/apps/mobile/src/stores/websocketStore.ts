@@ -32,13 +32,20 @@ import { networkStatus } from '@/services/platform/networkStatus';
 import { normalizeMessage } from '@/utils/normalizers';
 import { logger } from '@/utils/logger';
 import { processE2eeMessage } from '@/e2ee/messageProcessor';
+import { ensureLocalE2eeDeviceRegistered } from '@/e2ee/manager/localDevice';
 import {
   handleNegotiationAccepted,
   handleNegotiationDisabled,
   handleNegotiationRejected,
   normalizeNegotiationEvent,
   recordPendingNegotiationRequest,
+  syncPendingNegotiations,
 } from '@/e2ee/manager/negotiation';
+import {
+  cachePendingEncryptedMessage,
+  retryDecryptPendingMessages,
+  retryDecryptVisibleEncryptedMessages,
+} from '@/e2ee/store/pendingDecryptStore';
 import { useAuthStore } from './authStore';
 import { useChatStore } from './chatStore';
 import { useContactStore } from './contactStore';
@@ -134,6 +141,13 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
         lastWebsocketEventAt = Date.now();
         set({ connected: true, connecting: false, reconnectAttempts: 0 });
         startHeartbeat();
+        void ensureLocalE2eeDeviceRegistered().catch(() => undefined);
+        void syncPendingNegotiations(useSessionStore.getState().currentSession?.id).catch(() => undefined);
+        const currentSessionId = useSessionStore.getState().currentSession?.id;
+        if (currentSessionId) {
+          void retryDecryptPendingMessages(currentSessionId).catch(() => 0);
+          void retryDecryptVisibleEncryptedMessages(currentSessionId).catch(() => 0);
+        }
       };
       socket.onmessage = (event) => {
         const parsed = parseWebSocketPayload(String(event.data));
@@ -233,6 +247,9 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
           (useMessageStore.getState().messagesBySession[routedMessage.conversationId || ''] || [])
             .find((item) => item.clientMessageId === clientMessageId),
       });
+      if (processed.decryptStatus === 'pending') {
+        cachePendingEncryptedMessage(routedMessage.conversationId || '', processed.rawMessage);
+      }
       const safeRoutedMessage = processed.displayMessage;
       useMessageStore.getState().addMessage(safeRoutedMessage, safeRoutedMessage.conversationId);
       const currentSessionId = useSessionStore.getState().currentSession?.id;
@@ -330,6 +347,8 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
         await recordPendingNegotiationRequest({ ...event, action });
       } else if (action === 'accepted') {
         await handleNegotiationAccepted(event.sessionId);
+        await retryDecryptPendingMessages(event.sessionId).catch(() => 0);
+        await retryDecryptVisibleEncryptedMessages(event.sessionId).catch(() => 0);
       } else if (action === 'rejected') {
         await handleNegotiationRejected(event.sessionId);
       } else if (action === 'disabled') {

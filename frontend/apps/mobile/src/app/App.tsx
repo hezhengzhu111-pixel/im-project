@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Animated, StatusBar, StyleSheet, useColorScheme, View } from 'react-native';
+import { Animated, StatusBar, StyleSheet, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { bootstrapApp } from './bootstrap';
