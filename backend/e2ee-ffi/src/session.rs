@@ -701,4 +701,578 @@ mod tests {
         assert!(msg.contains("crypto error"));
         assert!(msg.contains("counter gap"));
     }
+
+    // ============================================================================
+    // Cross-layer session manager contract tests
+    // ============================================================================
+
+    /// Full X3DH handshake through both FFI APIs:
+    /// create_outbound_session -> create_inbound_session -> encrypt -> decrypt
+    #[test]
+    fn create_inbound_session_via_api() -> Result<(), String> {
+        use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+        let bob_bundle =
+            generate_key_bundle(1, &[(100, 1)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+        };
+        let fetch_json =
+            serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+        let alice_ik = generate_x25519_keypair();
+        let alice_ik_bincode =
+            bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+        let mgr = SessionManager::new();
+
+        // Alice creates outbound session
+        let handshake = mgr
+            .create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+            .map_err(|e| format!("create_outbound_session: {e}"))?;
+
+        if handshake.len() < 40 {
+            return Err(format!("handshake too short: {} bytes", handshake.len()));
+        }
+
+        // Parse handshake: ek(32) || spk_id(4) || otk_id(4)
+        let ek_bytes = &handshake[0..32];
+        let alice_ek = ek_bytes.to_vec();
+
+        // Bob creates inbound session via the FFI API
+        let bob_ik_bincode = bincode::serialize(&bob_bundle.identity_key_pair)
+            .map_err(|e| format!("serialize bob_ik: {e}"))?;
+        let bob_spk_bincode = bincode::serialize(&bob_bundle.signed_pre_key_pair)
+            .map_err(|e| format!("serialize bob_spk: {e}"))?;
+        let bob_otk = bob_bundle
+            .one_time_pre_key_pairs
+            .first()
+            .ok_or("missing OTK".to_string())?;
+        let bob_otk_bincode = bincode::serialize(&bob_otk.key_pair)
+            .map_err(|e| format!("serialize bob_otk: {e}"))?;
+
+        mgr.create_inbound_session(
+            "bob".to_string(),
+            bob_ik_bincode,
+            bob_spk_bincode,
+            Some(bob_otk_bincode),
+            alice_ik.public_key.0.to_vec(),
+            alice_ek,
+        )
+        .map_err(|e| format!("create_inbound_session: {e}"))?;
+
+        // Alice encrypts
+        let wire = mgr
+            .encrypt("alice".to_string(), b"hello via FFI API".to_vec())
+            .map_err(|e| format!("encrypt: {e}"))?;
+
+        // Bob decrypts
+        let plaintext = mgr
+            .decrypt("bob".to_string(), wire)
+            .map_err(|e| format!("decrypt: {e}"))?;
+
+        if plaintext != b"hello via FFI API" {
+            return Err("plaintext mismatch".to_string());
+        }
+
+        Ok(())
+    }
+
+    /// Alice/Bob bidirectional: each sends at least one message that the other decrypts.
+    #[test]
+    fn alice_bob_bidirectional() -> Result<(), String> {
+        use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+        let bob_bundle =
+            generate_key_bundle(1, &[(100, 1)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+        };
+        let fetch_json =
+            serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+        let alice_ik = generate_x25519_keypair();
+        let alice_ik_bincode =
+            bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+        let mgr = SessionManager::new();
+
+        let handshake = mgr
+            .create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+            .map_err(|e| format!("create_outbound_session: {e}"))?;
+
+        if handshake.len() < 40 {
+            return Err(format!("handshake too short: {} bytes", handshake.len()));
+        }
+        let ek_bytes = &handshake[0..32];
+
+        let bob_ik_bincode = bincode::serialize(&bob_bundle.identity_key_pair)
+            .map_err(|e| format!("serialize bob_ik: {e}"))?;
+        let bob_spk_bincode = bincode::serialize(&bob_bundle.signed_pre_key_pair)
+            .map_err(|e| format!("serialize bob_spk: {e}"))?;
+        let bob_otk = bob_bundle
+            .one_time_pre_key_pairs
+            .first()
+            .ok_or("missing OTK".to_string())?;
+        let bob_otk_bincode = bincode::serialize(&bob_otk.key_pair)
+            .map_err(|e| format!("serialize bob_otk: {e}"))?;
+
+        mgr.create_inbound_session(
+            "bob".to_string(),
+            bob_ik_bincode,
+            bob_spk_bincode,
+            Some(bob_otk_bincode),
+            alice_ik.public_key.0.to_vec(),
+            ek_bytes.to_vec(),
+        )
+        .map_err(|e| format!("create_inbound_session: {e}"))?;
+
+        // Alice -> Bob
+        let wire_a1 = mgr
+            .encrypt("alice".to_string(), b"hello bob".to_vec())
+            .map_err(|e| format!("alice encrypt: {e}"))?;
+        let pt_a1 = mgr
+            .decrypt("bob".to_string(), wire_a1)
+            .map_err(|e| format!("bob decrypt: {e}"))?;
+        if pt_a1 != b"hello bob" {
+            return Err("alice->bob plaintext mismatch".to_string());
+        }
+
+        // Bob -> Alice (reply)
+        let wire_b1 = mgr
+            .encrypt("bob".to_string(), b"hello alice".to_vec())
+            .map_err(|e| format!("bob encrypt: {e}"))?;
+        let pt_b1 = mgr
+            .decrypt("alice".to_string(), wire_b1)
+            .map_err(|e| format!("alice decrypt: {e}"))?;
+        if pt_b1 != b"hello alice" {
+            return Err("bob->alice plaintext mismatch".to_string());
+        }
+
+        Ok(())
+    }
+
+    /// export_session -> remove_session -> restore_session -> continue encrypt/decrypt
+    #[test]
+    fn export_restore_then_continue() -> Result<(), String> {
+        use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+        let bob_bundle =
+            generate_key_bundle(1, &[(100, 1)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+        };
+        let fetch_json =
+            serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+        let alice_ik = generate_x25519_keypair();
+        let alice_ik_bincode =
+            bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+        let mgr = SessionManager::new();
+
+        let handshake = mgr
+            .create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+            .map_err(|e| format!("create_outbound_session: {e}"))?;
+
+        if handshake.len() < 40 {
+            return Err(format!("handshake too short: {} bytes", handshake.len()));
+        }
+        let ek_bytes = &handshake[0..32];
+
+        let bob_ik_bincode = bincode::serialize(&bob_bundle.identity_key_pair)
+            .map_err(|e| format!("serialize bob_ik: {e}"))?;
+        let bob_spk_bincode = bincode::serialize(&bob_bundle.signed_pre_key_pair)
+            .map_err(|e| format!("serialize bob_spk: {e}"))?;
+        let bob_otk = bob_bundle
+            .one_time_pre_key_pairs
+            .first()
+            .ok_or("missing OTK".to_string())?;
+        let bob_otk_bincode = bincode::serialize(&bob_otk.key_pair)
+            .map_err(|e| format!("serialize bob_otk: {e}"))?;
+
+        mgr.create_inbound_session(
+            "bob".to_string(),
+            bob_ik_bincode,
+            bob_spk_bincode,
+            Some(bob_otk_bincode),
+            alice_ik.public_key.0.to_vec(),
+            ek_bytes.to_vec(),
+        )
+        .map_err(|e| format!("create_inbound_session: {e}"))?;
+
+        // Alice encrypts one message
+        let wire1 = mgr
+            .encrypt("alice".to_string(), b"before export".to_vec())
+            .map_err(|e| format!("encrypt before export: {e}"))?;
+
+        // Export Alice's state
+        let alice_state = mgr
+            .export_session("alice".to_string())
+            .map_err(|e| format!("export_session: {e}"))?;
+        if alice_state.is_empty() {
+            return Err("exported state is empty".to_string());
+        }
+
+        // Remove Alice's session
+        mgr.remove_session("alice".to_string());
+
+        // Verify session is gone
+        match mgr.encrypt("alice".to_string(), b"test".to_vec()) {
+            Err(SessionError::SessionNotFound(_)) => {}
+            other => {
+                return Err(format!(
+                    "expected SessionNotFound after remove, got {:?}",
+                    other
+                ));
+            }
+        }
+
+        // Restore Alice's session
+        mgr.restore_session("alice".to_string(), alice_state)
+            .map_err(|e| format!("restore_session: {e}"))?;
+
+        // Alice encrypts again after restore
+        let wire2 = mgr
+            .encrypt("alice".to_string(), b"after restore".to_vec())
+            .map_err(|e| format!("encrypt after restore: {e}"))?;
+
+        // Bob decrypts both messages
+        let pt1 = mgr
+            .decrypt("bob".to_string(), wire1)
+            .map_err(|e| format!("decrypt wire1: {e}"))?;
+        if pt1 != b"before export" {
+            return Err("plaintext1 mismatch".to_string());
+        }
+
+        let pt2 = mgr
+            .decrypt("bob".to_string(), wire2)
+            .map_err(|e| format!("decrypt wire2: {e}"))?;
+        if pt2 != b"after restore" {
+            return Err("plaintext2 mismatch".to_string());
+        }
+
+        Ok(())
+    }
+
+    /// restore_session with corrupted bincode returns an error.
+    #[test]
+    fn restore_corrupted_state_fails() -> Result<(), String> {
+        let mgr = SessionManager::new();
+
+        let corrupted = vec![0xAAu8; 128];
+        let result = mgr.restore_session("test".to_string(), corrupted);
+        match result {
+            Err(SessionError::Crypto(msg)) => {
+                if msg.is_empty() {
+                    return Err("Crypto error message is empty".to_string());
+                }
+                if !msg.contains("deserialization") && !msg.contains("corrupted") {
+                    return Err(format!(
+                        "expected message about deserialization failure, got: {msg}"
+                    ));
+                }
+                Ok(())
+            }
+            Err(other) => Err(format!(
+                "expected Crypto error for corrupted state, got {other:?}"
+            )),
+            Ok(()) => Err("expected error for corrupted state, got Ok".to_string()),
+        }
+    }
+
+    /// Encrypted wire format: first 4 bytes = header_len BE == 52, ciphertext non-empty.
+    #[test]
+    fn encrypted_wire_format_header_and_ciphertext() -> Result<(), String> {
+        use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+        let bob_bundle =
+            generate_key_bundle(1, &[(100, 1)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+        };
+        let fetch_json =
+            serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+        let alice_ik = generate_x25519_keypair();
+        let alice_ik_bincode =
+            bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+        let mgr = SessionManager::new();
+        mgr.create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+            .map_err(|e| format!("create_outbound_session: {e}"))?;
+
+        let wire = mgr
+            .encrypt("alice".to_string(), b"wire format test".to_vec())
+            .map_err(|e| format!("encrypt: {e}"))?;
+
+        // wire[0..4] = header_len as big-endian u32
+        if wire.len() < 4 {
+            return Err("wire too short: missing header_len prefix".to_string());
+        }
+        let header_len = u32::from_be_bytes([wire[0], wire[1], wire[2], wire[3]]) as usize;
+        if header_len != 52 {
+            return Err(format!("expected header_len=52, got {header_len}"));
+        }
+
+        // Verify ciphertext is non-empty (at minimum 16 bytes for GCM tag)
+        if wire.len() <= 4 + 52 {
+            return Err(
+                "ciphertext is empty (wire too short for header + tag)".to_string(),
+            );
+        }
+        let ciphertext_len = wire.len() - 4 - 52;
+        if ciphertext_len < 16 {
+            return Err(format!(
+                "ciphertext too short: {ciphertext_len} bytes (GCM tag alone is 16)",
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Two independent sessions, interleaved encrypt/decrypt, no cross-contamination.
+    #[test]
+    fn two_sessions_independent() -> Result<(), String> {
+        use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+        fn setup_session(
+            mgr: &SessionManager,
+            alice_id: &str,
+            bob_id: &str,
+        ) -> Result<(), String> {
+            let bob_bundle = generate_key_bundle(1, &[(100, 1)])
+                .map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+            let fetch = PreKeyBundleFetch {
+                identity_key: bob_bundle.bundle.identity_key,
+                signing_key: bob_bundle.bundle.signing_key,
+                signed_pre_key: PreKey {
+                    id: 1,
+                    key: bob_bundle.bundle.signed_pre_key,
+                },
+                signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+                one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+            };
+            let fetch_json =
+                serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+            let alice_ik = generate_x25519_keypair();
+            let alice_ik_bincode =
+                bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+            let handshake = mgr
+                .create_outbound_session(
+                    alice_id.to_string(),
+                    alice_ik_bincode,
+                    fetch_json,
+                )
+                .map_err(|e| format!("create_outbound_session: {e}"))?;
+
+            if handshake.len() < 40 {
+                return Err(format!("handshake too short: {} bytes", handshake.len()));
+            }
+            let ek_bytes = &handshake[0..32];
+
+            let bob_ik_bincode = bincode::serialize(&bob_bundle.identity_key_pair)
+                .map_err(|e| format!("serialize bob_ik: {e}"))?;
+            let bob_spk_bincode = bincode::serialize(&bob_bundle.signed_pre_key_pair)
+                .map_err(|e| format!("serialize bob_spk: {e}"))?;
+            let bob_otk = bob_bundle
+                .one_time_pre_key_pairs
+                .first()
+                .ok_or("missing OTK".to_string())?;
+            let bob_otk_bincode = bincode::serialize(&bob_otk.key_pair)
+                .map_err(|e| format!("serialize bob_otk: {e}"))?;
+
+            mgr.create_inbound_session(
+                bob_id.to_string(),
+                bob_ik_bincode,
+                bob_spk_bincode,
+                Some(bob_otk_bincode),
+                alice_ik.public_key.0.to_vec(),
+                ek_bytes.to_vec(),
+            )
+            .map_err(|e| format!("create_inbound_session: {e}"))?;
+
+            Ok(())
+        }
+
+        let mgr = SessionManager::new();
+
+        // Create two independent session pairs
+        setup_session(&mgr, "alice1", "bob1")?;
+        setup_session(&mgr, "alice2", "bob2")?;
+
+        // Interleaved encrypt
+        let a1 = mgr
+            .encrypt("alice1".to_string(), b"A1 msg".to_vec())
+            .map_err(|e| format!("encrypt alice1: {e}"))?;
+        let a2 = mgr
+            .encrypt("alice2".to_string(), b"A2 msg".to_vec())
+            .map_err(|e| format!("encrypt alice2: {e}"))?;
+        let a1b = mgr
+            .encrypt("alice1".to_string(), b"A1 msg2".to_vec())
+            .map_err(|e| format!("encrypt alice1 msg2: {e}"))?;
+
+        // Decrypt each with correct receiver
+        let p1 = mgr
+            .decrypt("bob1".to_string(), a1)
+            .map_err(|e| format!("decrypt bob1 a1: {e}"))?;
+        if p1 != b"A1 msg" {
+            return Err("bob1 a1 plaintext mismatch".to_string());
+        }
+
+        let p2 = mgr
+            .decrypt("bob2".to_string(), a2)
+            .map_err(|e| format!("decrypt bob2 a2: {e}"))?;
+        if p2 != b"A2 msg" {
+            return Err("bob2 a2 plaintext mismatch".to_string());
+        }
+
+        let p1b = mgr
+            .decrypt("bob1".to_string(), a1b)
+            .map_err(|e| format!("decrypt bob1 a1b: {e}"))?;
+        if p1b != b"A1 msg2" {
+            return Err("bob1 a1b plaintext mismatch".to_string());
+        }
+
+        Ok(())
+    }
+
+    /// Decrypting a ciphertext with the wrong session must fail, not return plaintext.
+    #[test]
+    fn wrong_session_decrypt_fails() -> Result<(), String> {
+        use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+        fn setup_session(
+            mgr: &SessionManager,
+            alice_id: &str,
+            bob_id: &str,
+        ) -> Result<(), String> {
+            let bob_bundle = generate_key_bundle(1, &[(100, 1)])
+                .map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+            let fetch = PreKeyBundleFetch {
+                identity_key: bob_bundle.bundle.identity_key,
+                signing_key: bob_bundle.bundle.signing_key,
+                signed_pre_key: PreKey {
+                    id: 1,
+                    key: bob_bundle.bundle.signed_pre_key,
+                },
+                signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+                one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+            };
+            let fetch_json =
+                serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+            let alice_ik = generate_x25519_keypair();
+            let alice_ik_bincode =
+                bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+            let handshake = mgr
+                .create_outbound_session(
+                    alice_id.to_string(),
+                    alice_ik_bincode,
+                    fetch_json,
+                )
+                .map_err(|e| format!("create_outbound_session: {e}"))?;
+
+            if handshake.len() < 40 {
+                return Err(format!("handshake too short: {} bytes", handshake.len()));
+            }
+            let ek_bytes = &handshake[0..32];
+
+            let bob_ik_bincode = bincode::serialize(&bob_bundle.identity_key_pair)
+                .map_err(|e| format!("serialize bob_ik: {e}"))?;
+            let bob_spk_bincode = bincode::serialize(&bob_bundle.signed_pre_key_pair)
+                .map_err(|e| format!("serialize bob_spk: {e}"))?;
+            let bob_otk = bob_bundle
+                .one_time_pre_key_pairs
+                .first()
+                .ok_or("missing OTK".to_string())?;
+            let bob_otk_bincode = bincode::serialize(&bob_otk.key_pair)
+                .map_err(|e| format!("serialize bob_otk: {e}"))?;
+
+            mgr.create_inbound_session(
+                bob_id.to_string(),
+                bob_ik_bincode,
+                bob_spk_bincode,
+                Some(bob_otk_bincode),
+                alice_ik.public_key.0.to_vec(),
+                ek_bytes.to_vec(),
+            )
+            .map_err(|e| format!("create_inbound_session: {e}"))?;
+
+            Ok(())
+        }
+
+        let mgr = SessionManager::new();
+
+        // Two independent session pairs
+        setup_session(&mgr, "alice1", "bob1")?;
+        setup_session(&mgr, "alice2", "bob2")?;
+
+        // Encrypt with session 1
+        let wire1 = mgr
+            .encrypt("alice1".to_string(), b"secret for bob1".to_vec())
+            .map_err(|e| format!("encrypt alice1: {e}"))?;
+
+        // Try to decrypt with session 2's receiver — must fail
+        let result = mgr.decrypt("bob2".to_string(), wire1);
+        match result {
+            Err(_) => {} // expected: decryption fails with wrong session
+            Ok(plaintext) => {
+                return Err(format!(
+                    "wrong session decryption MUST fail, but returned {} bytes",
+                    plaintext.len()
+                ));
+            }
+        }
+
+        // Verify correct session still works
+        let wire_correct = mgr
+            .encrypt("alice1".to_string(), b"correct receiver".to_vec())
+            .map_err(|e| format!("encrypt correct: {e}"))?;
+        let pt = mgr
+            .decrypt("bob1".to_string(), wire_correct)
+            .map_err(|e| format!("decrypt bob1: {e}"))?;
+        if pt != b"correct receiver" {
+            return Err("correct session plaintext mismatch".to_string());
+        }
+
+        Ok(())
+    }
 }

@@ -676,7 +676,11 @@ mod tests {
         // Step 1: KeyBundle.bundle is already a PreKeyBundle (server-publishable form)
         let server_bundle: &PreKeyBundle = &bob_bundle.bundle;
         assert_eq!(server_bundle.one_time_pre_keys.len(), 3);
-        assert_eq!(server_bundle.one_time_pre_keys[0].id, 1001);
+        let first_otk = server_bundle
+            .one_time_pre_keys
+            .first()
+            .ok_or_else(|| E2eeError::InvalidPreKeyId(String::from("missing first OTK")))?;
+        assert_eq!(first_otk.id, 1001);
 
         // Step 2: Server picks an OTK and constructs PreKeyBundleFetch for Alice
         let picked_otk = server_bundle.one_time_pre_keys.first().copied();
