@@ -7,16 +7,18 @@ use e2ee_ffi::*;
 
 /// Full X3DH handshake + encrypt/decrypt + state persistence round-trip.
 #[test]
-fn session_manager_full_flow() {
+fn session_manager_full_flow() -> Result<(), Box<dyn std::error::Error>> {
     let mgr = SessionManager::new();
 
     // Bob generates key bundle
     let bob_ik = e2ee_core::generate_x25519_keypair();
     let bob_spk = e2ee_core::generate_x25519_keypair();
-    let bob_signing = e2ee_core::generate_ed25519_keypair().unwrap();
+    let bob_signing = e2ee_core::generate_ed25519_keypair()
+        .map_err(|e| format!("generate_ed25519_keypair: {e}"))?;
     let bob_otk = e2ee_core::generate_x25519_keypair();
 
-    let spk_sig = e2ee_core::ed25519_sign(&bob_signing.private_key, &bob_spk.public_key.0).unwrap();
+    let spk_sig = e2ee_core::ed25519_sign(&bob_signing.private_key, &bob_spk.public_key.0)
+        .map_err(|e| format!("ed25519_sign: {e}"))?;
 
     let bob_bundle_json = serde_json::json!({
         "identity_key": bob_ik.public_key.0.to_vec(),
@@ -36,15 +38,13 @@ fn session_manager_full_flow() {
     // Alice creates outbound session
     let alice_ik = e2ee_core::generate_x25519_keypair();
     let alice_ik_bincode =
-        bincode::serialize(&(alice_ik.private_key.0, alice_ik.public_key.0)).unwrap();
+        bincode::serialize(&(alice_ik.private_key.0, alice_ik.public_key.0))?;
 
-    let handshake = mgr
-        .create_outbound_session(
-            "test_session".to_string(),
-            alice_ik_bincode,
-            bob_bundle_json,
-        )
-        .unwrap();
+    let handshake = mgr.create_outbound_session(
+        "test_session".to_string(),
+        alice_ik_bincode,
+        bob_bundle_json,
+    )?;
 
     assert_eq!(handshake.len(), 40);
     let ek = &handshake[..32];
@@ -52,11 +52,11 @@ fn session_manager_full_flow() {
     assert_eq!(spk_id, 1);
 
     // Bob creates inbound session
-    let bob_ik_bincode = bincode::serialize(&(bob_ik.private_key.0, bob_ik.public_key.0)).unwrap();
+    let bob_ik_bincode = bincode::serialize(&(bob_ik.private_key.0, bob_ik.public_key.0))?;
     let bob_spk_bincode =
-        bincode::serialize(&(bob_spk.private_key.0, bob_spk.public_key.0)).unwrap();
+        bincode::serialize(&(bob_spk.private_key.0, bob_spk.public_key.0))?;
     let bob_otk_bincode =
-        bincode::serialize(&(bob_otk.private_key.0, bob_otk.public_key.0)).unwrap();
+        bincode::serialize(&(bob_otk.private_key.0, bob_otk.public_key.0))?;
 
     mgr.create_inbound_session(
         "test_session_bob".to_string(),
@@ -65,54 +65,55 @@ fn session_manager_full_flow() {
         Some(bob_otk_bincode),
         alice_ik.public_key.0.to_vec(),
         ek.to_vec(),
-    )
-    .unwrap();
+    )?;
 
     // Alice encrypts
-    let wire = mgr
-        .encrypt("test_session".to_string(), b"hello mobile".to_vec())
-        .unwrap();
+    let wire = mgr.encrypt("test_session".to_string(), b"hello mobile".to_vec())?;
     assert!(wire.len() > 56);
 
     // Bob decrypts
-    let plaintext = mgr.decrypt("test_session_bob".to_string(), wire).unwrap();
+    let plaintext = mgr.decrypt("test_session_bob".to_string(), wire)?;
     assert_eq!(plaintext, b"hello mobile");
 
     // State persistence
-    let state = mgr.export_session("test_session_bob".to_string()).unwrap();
+    let state = mgr.export_session("test_session_bob".to_string())?;
     mgr.remove_session("test_session_bob".to_string());
 
     // Bob restores
-    mgr.restore_session("test_session_bob".to_string(), state)
-        .unwrap();
+    mgr.restore_session("test_session_bob".to_string(), state)?;
 
     // Cleanup
     mgr.remove_session("test_session".to_string());
     mgr.remove_session("test_session_bob".to_string());
+
+    Ok(())
 }
 
 /// Encrypt/decrypt on a non-existent session returns an error with session_id.
 #[test]
-fn session_not_found_errors() {
+fn session_not_found_errors() -> Result<(), String> {
     let mgr = SessionManager::new();
-    let result = mgr.encrypt("nonexistent".to_string(), b"data".to_vec());
-    match result {
-        Err(SessionError::SessionNotFound(ref msg)) => {
-            assert!(
-                msg.contains("nonexistent"),
-                "SessionNotFound should include session_id, got: {msg}"
-            );
-        }
-        other => panic!("expected SessionNotFound, got {other:?}"),
-    }
+    let err = match mgr.encrypt("nonexistent".to_string(), b"data".to_vec()) {
+        Err(e) => e,
+        Ok(_) => return Err("expected SessionNotFound, got Ok".to_string()),
+    };
+    let msg = match err {
+        SessionError::SessionNotFound(m) => m,
+        other => return Err(format!("expected SessionNotFound, got {other:?}")),
+    };
+    assert!(
+        msg.contains("nonexistent"),
+        "SessionNotFound should include session_id, got: {msg}"
+    );
+    Ok(())
 }
 
 /// Creating a session with a duplicate ID fails.
 #[test]
-fn session_already_exists_error() {
+fn session_already_exists_error() -> Result<(), Box<dyn std::error::Error>> {
     let mgr = SessionManager::new();
     let ik = e2ee_core::generate_x25519_keypair();
-    let ik_bincode = bincode::serialize(&(ik.private_key.0, ik.public_key.0)).unwrap();
+    let ik_bincode = bincode::serialize(&(ik.private_key.0, ik.public_key.0))?;
     let bundle_json = r#"{"identity_key":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"signing_key":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"signed_pre_key":{"id":1,"key":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"signed_pre_key_signature":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"one_time_pre_key":null}"#;
 
     let result = mgr.create_outbound_session(
@@ -132,4 +133,5 @@ fn session_already_exists_error() {
             // Expected: all-zero keys are invalid for X25519
         }
     }
+    Ok(())
 }

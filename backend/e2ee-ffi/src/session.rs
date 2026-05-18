@@ -509,24 +509,27 @@ mod tests {
     // --- Error content tests ---
 
     #[test]
-    fn session_not_found_includes_session_id() {
+    fn session_not_found_includes_session_id() -> Result<(), String> {
         let mgr = SessionManager::new();
-        let result = mgr.encrypt("my-session-123".to_string(), b"data".to_vec());
-        match result {
-            Err(SessionError::SessionNotFound(ref msg)) => {
-                assert!(
-                    msg.contains("my-session-123"),
-                    "SessionNotFound message should contain the session id, got: {msg}"
-                );
-            }
-            other => panic!("expected SessionNotFound, got {other:?}"),
-        }
+        let err = match mgr.encrypt("my-session-123".to_string(), b"data".to_vec()) {
+            Err(e) => e,
+            Ok(_) => return Err("expected SessionNotFound, got Ok".to_string()),
+        };
+        let msg = match err {
+            SessionError::SessionNotFound(m) => m,
+            other => return Err(format!("expected SessionNotFound, got {other:?}")),
+        };
+        assert!(
+            msg.contains("my-session-123"),
+            "SessionNotFound message should contain the session id, got: {msg}"
+        );
+        Ok(())
     }
 
     #[test]
-    fn session_already_exists_includes_session_id() {
+    fn session_already_exists_includes_session_id() -> Result<(), Box<dyn std::error::Error>> {
         let alice_ik = e2ee_core::generate_x25519_keypair();
-        let bob_bundle = e2ee_core::generate_key_bundle(1, &[(100, 3)]).unwrap();
+        let bob_bundle = e2ee_core::generate_key_bundle(1, &[(100, 3)])?;
 
         let fetch = e2ee_core::PreKeyBundleFetch {
             identity_key: bob_bundle.bundle.identity_key,
@@ -538,81 +541,86 @@ mod tests {
             signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
             one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
         };
-        let fetch_json = serde_json::to_string(&fetch).unwrap();
-        let alice_ik_bincode = bincode::serialize(&alice_ik).unwrap();
+        let fetch_json = serde_json::to_string(&fetch)?;
+        let alice_ik_bincode = bincode::serialize(&alice_ik)?;
 
         let mgr = SessionManager::new();
         mgr.create_outbound_session(
             "dup-session".to_string(),
             alice_ik_bincode.clone(),
             fetch_json.clone(),
-        )
-        .unwrap();
+        )?;
 
-        let result = mgr.create_outbound_session(
+        let err = match mgr.create_outbound_session(
             "dup-session".to_string(),
             alice_ik_bincode,
             fetch_json,
+        ) {
+            Err(e) => e,
+            Ok(_) => return Err("expected SessionAlreadyExists, got Ok".into()),
+        };
+        let msg = match err {
+            SessionError::SessionAlreadyExists(m) => m,
+            other => return Err(format!("expected SessionAlreadyExists, got {other:?}").into()),
+        };
+        assert!(
+            msg.contains("dup-session"),
+            "SessionAlreadyExists message should contain the session id, got: {msg}"
         );
-        match result {
-            Err(SessionError::SessionAlreadyExists(ref msg)) => {
-                assert!(
-                    msg.contains("dup-session"),
-                    "SessionAlreadyExists message should contain the session id, got: {msg}"
-                );
-            }
-            other => panic!("expected SessionAlreadyExists, got {other:?}"),
-        }
+        Ok(())
     }
 
     #[test]
-    fn corrupted_state_returns_invalid_state_with_message() {
+    fn corrupted_state_returns_invalid_state_with_message() -> Result<(), String> {
         let corrupted = [0xAAu8; 64];
-        let result = decode_keypair(&corrupted);
-        match result {
-            Err(SessionError::InvalidStateData(ref msg)) => {
-                assert!(
-                    !msg.is_empty(),
-                    "InvalidStateData message should not be empty"
-                );
-            }
-            _other => panic!("expected InvalidStateData"),
-        }
+        let err = match decode_keypair(&corrupted) {
+            Err(e) => e,
+            Ok(_) => return Err("expected InvalidStateData, got Ok".to_string()),
+        };
+        let msg = match err {
+            SessionError::InvalidStateData(m) => m,
+            other => return Err(format!("expected InvalidStateData, got {other:?}")),
+        };
+        assert!(
+            !msg.is_empty(),
+            "InvalidStateData message should not be empty"
+        );
+        Ok(())
     }
 
     #[test]
-    fn crypto_error_preserves_e2ee_error_text() {
+    fn crypto_error_preserves_e2ee_error_text() -> Result<(), String> {
         // E2eeError::CounterGapExceeded should produce a Crypto error
         // whose message contains the counter gap details, not a fixed "crypto error" string.
         let e = e2ee_core::E2eeError::CounterGapExceeded(2500, 2000);
         let session_err = SessionError::from(e);
-        match session_err {
-            SessionError::Crypto(ref msg) => {
-                assert!(
-                    msg.contains("counter gap"),
-                    "Crypto message should preserve E2eeError details, got: {msg}"
-                );
-                assert!(
-                    msg.contains("2500"),
-                    "Crypto message should include counter value, got: {msg}"
-                );
-                assert!(
-                    msg != "crypto error",
-                    "Crypto message should not be the old fixed string"
-                );
-            }
-            other => panic!("expected Crypto, got {other:?}"),
-        }
+        let msg = match session_err {
+            SessionError::Crypto(m) => m,
+            other => return Err(format!("expected Crypto, got {other:?}")),
+        };
+        assert!(
+            msg.contains("counter gap"),
+            "Crypto message should preserve E2eeError details, got: {msg}"
+        );
+        assert!(
+            msg.contains("2500"),
+            "Crypto message should include counter value, got: {msg}"
+        );
+        assert!(
+            msg != "crypto error",
+            "Crypto message should not be the old fixed string"
+        );
+        Ok(())
     }
 
     #[test]
-    fn decrypt_crypto_error_is_not_fixed_string() {
-        // decrypt with a non-existent session AND malformed wire format
+    fn decrypt_crypto_error_is_not_fixed_string() -> Result<(), Box<dyn std::error::Error>> {
+        // decrypt with a valid session but malformed wire format
         // should return Crypto with a descriptive message, not a fixed string.
         let mgr = SessionManager::new();
         // First create a valid session so we can test the Crypto path specifically
         let alice_ik = e2ee_core::generate_x25519_keypair();
-        let bob_bundle = e2ee_core::generate_key_bundle(1, &[(100, 3)]).unwrap();
+        let bob_bundle = e2ee_core::generate_key_bundle(1, &[(100, 3)])?;
         let fetch = e2ee_core::PreKeyBundleFetch {
             identity_key: bob_bundle.bundle.identity_key,
             signing_key: bob_bundle.bundle.signing_key,
@@ -623,39 +631,44 @@ mod tests {
             signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
             one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
         };
-        let fetch_json = serde_json::to_string(&fetch).unwrap();
-        let alice_ik_bincode = bincode::serialize(&alice_ik).unwrap();
-        mgr.create_outbound_session("test-crypto".to_string(), alice_ik_bincode, fetch_json)
-            .unwrap();
+        let fetch_json = serde_json::to_string(&fetch)?;
+        let alice_ik_bincode = bincode::serialize(&alice_ik)?;
+        mgr.create_outbound_session("test-crypto".to_string(), alice_ik_bincode, fetch_json)?;
 
         // Send malformed data (only 2 bytes — no valid header length prefix)
-        let result = mgr.decrypt("test-crypto".to_string(), vec![0x00, 0x01]);
-        match result {
-            Err(SessionError::Crypto(ref msg)) => {
-                assert!(
-                    msg.contains("too short") || msg.contains("header"),
-                    "Crypto error for malformed wire format should describe the issue, got: {msg}"
-                );
-                assert!(
-                    msg != "crypto error",
-                    "Crypto message should not be the old fixed string"
-                );
-            }
-            other => panic!("expected Crypto, got {other:?}"),
-        }
+        let err = match mgr.decrypt("test-crypto".to_string(), vec![0x00, 0x01]) {
+            Err(e) => e,
+            Ok(_) => return Err("expected Crypto, got Ok".into()),
+        };
+        let msg = match err {
+            SessionError::Crypto(m) => m,
+            other => return Err(format!("expected Crypto, got {other:?}").into()),
+        };
+        assert!(
+            msg.contains("too short") || msg.contains("header"),
+            "Crypto error for malformed wire format should describe the issue, got: {msg}"
+        );
+        assert!(
+            msg != "crypto error",
+            "Crypto message should not be the old fixed string"
+        );
+        Ok(())
     }
 
     #[test]
-    fn public_key_wrong_length_includes_actual_length() {
-        let result = decode_public_key(&[0u8; 16]);
-        match result {
-            Err(SessionError::InvalidStateData(ref msg)) => {
-                assert!(
-                    msg.contains("16"),
-                    "InvalidStateData for wrong key length should mention actual length, got: {msg}"
-                );
-            }
-            _other => panic!("expected InvalidStateData"),
-        }
+    fn public_key_wrong_length_includes_actual_length() -> Result<(), String> {
+        let err = match decode_public_key(&[0u8; 16]) {
+            Err(e) => e,
+            Ok(_) => return Err("expected InvalidStateData, got Ok".to_string()),
+        };
+        let msg = match err {
+            SessionError::InvalidStateData(m) => m,
+            other => return Err(format!("expected InvalidStateData, got {other:?}")),
+        };
+        assert!(
+            msg.contains("16"),
+            "InvalidStateData for wrong key length should mention actual length, got: {msg}"
+        );
+        Ok(())
     }
 }
