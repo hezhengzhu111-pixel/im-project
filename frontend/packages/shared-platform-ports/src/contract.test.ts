@@ -544,8 +544,10 @@ describe('Package exports', () => {
     // Verify that mock objects can be created with proper interface typing
     const clock: ClockPort = { now: () => new Date(), nowMs: () => 0 };
     const http: HttpClientPort = {
-      get: async () => ({}), post: async () => ({}),
-      put: async () => ({}), delete: async () => ({}),
+      get: async <T>(_url?: string, _config?: RequestConfig): Promise<T> => ({} as unknown as T),
+      post: async <T>(_url?: string, _data?: unknown, _config?: RequestConfig): Promise<T> => ({} as unknown as T),
+      put: async <T>(_url?: string, _data?: unknown, _config?: RequestConfig): Promise<T> => ({} as unknown as T),
+      delete: async <T>(_url?: string, _config?: RequestConfig): Promise<T> => ({} as unknown as T),
     };
     const logger: LoggerPort = {
       info: () => {}, warn: () => {}, error: () => {}, debug: () => {},
@@ -596,8 +598,10 @@ describe('Interface contracts have no extra methods', () => {
 
   it('HttpClientPort has exactly 4 methods', () => {
     const mock: HttpClientPort = {
-      get: async () => ({}), post: async () => ({}),
-      put: async () => ({}), delete: async () => ({}),
+      get: async <T>(_url?: string, _config?: RequestConfig): Promise<T> => ({} as unknown as T),
+      post: async <T>(_url?: string, _data?: unknown, _config?: RequestConfig): Promise<T> => ({} as unknown as T),
+      put: async <T>(_url?: string, _data?: unknown, _config?: RequestConfig): Promise<T> => ({} as unknown as T),
+      delete: async <T>(_url?: string, _config?: RequestConfig): Promise<T> => ({} as unknown as T),
     };
     expect(Object.keys(mock).sort()).toEqual(['delete', 'get', 'post', 'put']);
   });

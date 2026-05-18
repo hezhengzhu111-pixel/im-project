@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ref } from "vue";
+import type { ChatSession, Message } from "@/types";
 import {
   createMessageReadModule,
   type MessageReadModuleContext,
@@ -235,6 +236,7 @@ describe("message-read: conversation id resolution & read receipt", () => {
       sendTime: "2026-05-18T10:00:00.000Z",
       messageType: "TEXT",
       status: "SENT",
+      isGroupChat: false,
     };
     // resolveReadReceiptSessionId returns buildSessionId("private", "user_1", "user_2") = "user_1_user_2"
     ctx.messages.value.set("user_1_user_2", [message]);
