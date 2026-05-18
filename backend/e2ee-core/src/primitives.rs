@@ -19,6 +19,7 @@ use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use getrandom::getrandom;
 use hkdf::Hkdf;
 use rand_core::OsRng;
+use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use x25519_dalek::{PublicKey, StaticSecret};
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -37,14 +38,14 @@ pub struct Aes256Key(pub [u8; 32]);
 /// X25519 Diffie-Hellman public key (32 bytes).
 ///
 /// Safe to share. Implements `Clone` and `Copy` for ergonomic use.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct X25519PublicKey(pub [u8; 32]);
 
 /// X25519 Diffie-Hellman private key (32 bytes).
 ///
 /// Must be kept secret. Zeroized on drop.
 /// Does NOT implement `Clone` or `Copy` to prevent accidental duplication.
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Zeroize, ZeroizeOnDrop, Serialize, Deserialize)]
 pub struct X25519PrivateKey(pub [u8; 32]);
 
 /// X25519 key pair consisting of a public and private key.
@@ -52,7 +53,7 @@ pub struct X25519PrivateKey(pub [u8; 32]);
 /// The private key is zeroized on drop. The public key is skipped during
 /// zeroization since it is not secret.
 /// Does NOT implement `Clone` or `Copy`.
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Zeroize, ZeroizeOnDrop, Serialize, Deserialize)]
 pub struct X25519KeyPair {
     #[zeroize(skip)]
     pub public_key: X25519PublicKey,
@@ -87,6 +88,7 @@ pub struct Ed25519KeyPair {
 /// AES-GCM nonce (12 bytes / 96 bits).
 ///
 /// Does NOT implement `Zeroize` since nonces are not secret.
+#[derive(Serialize, Deserialize)]
 pub struct AesNonce(pub [u8; 12]);
 
 /// Ed25519 signature (64 bytes).
