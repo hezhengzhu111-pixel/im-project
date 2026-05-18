@@ -198,7 +198,11 @@ pub fn x25519_dh(
     let secret = StaticSecret::from(private_key.0);
     let public = PublicKey::from(public_key.0);
     let shared = secret.diffie_hellman(&public);
-    Ok(shared.to_bytes())
+    let shared_bytes = shared.to_bytes();
+    if shared_bytes.iter().all(|byte| *byte == 0) {
+        return Err(E2eeError::InvalidPublicKey);
+    }
+    Ok(shared_bytes)
 }
 
 // ============================================================================
@@ -454,6 +458,26 @@ mod tests {
         let shared = x25519_dh(&a.private_key, &b.public_key)?;
         assert!(shared.iter().any(|&b| b != 0));
         Ok(())
+    }
+
+    #[test]
+    fn x25519_dh_rejects_all_zero_public_key() {
+        let private_key = generate_x25519_keypair();
+        let low_order_public_key = X25519PublicKey([0u8; 32]);
+        let result = x25519_dh(&private_key.private_key, &low_order_public_key);
+        assert!(matches!(result, Err(E2eeError::InvalidPublicKey)));
+    }
+
+    #[test]
+    fn x25519_dh_rejects_low_order_public_key() {
+        let private_key = generate_x25519_keypair();
+        let mut public_key_bytes = [0u8; 32];
+        if let Some(first_byte) = public_key_bytes.first_mut() {
+            *first_byte = 1;
+        }
+        let low_order_public_key = X25519PublicKey(public_key_bytes);
+        let result = x25519_dh(&private_key.private_key, &low_order_public_key);
+        assert!(matches!(result, Err(E2eeError::InvalidPublicKey)));
     }
 
     #[test]

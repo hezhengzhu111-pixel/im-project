@@ -188,10 +188,23 @@ pub struct RatchetState {
 
 /// Serialize ratchet state to a byte vector via bincode.
 ///
-/// On serialization failure returns an empty `Vec<u8>` — the caller
-/// should treat an empty result as a persistence error.
+/// Returns `StateSerializationFailed` instead of hiding serialization errors.
+pub fn try_export_state(state: &RatchetState) -> Result<Vec<u8>, crate::errors::E2eeError> {
+    bincode::serialize(state).map_err(|_| crate::errors::E2eeError::StateSerializationFailed)
+}
+
+/// Compatibility serializer that preserves the original documented signature.
+///
+/// On serialization failure this returns an empty `Vec<u8>`; new call sites
+/// should use `try_export_state`.
+#[must_use]
+#[allow(clippy::manual_unwrap_or_default)]
 pub fn export_state(state: &RatchetState) -> Vec<u8> {
-    bincode::serialize(state).unwrap_or_default()
+    if let Ok(bytes) = try_export_state(state) {
+        bytes
+    } else {
+        Vec::new()
+    }
 }
 
 /// Deserialize ratchet state from bincode-encoded bytes.
