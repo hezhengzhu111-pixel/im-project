@@ -326,10 +326,10 @@ mod tests {
             .expect("encrypt");
 
         // Verify header_len is 52 (0x00000034 in big-endian)
-        assert_eq!(wire[0], 0x00);
-        assert_eq!(wire[1], 0x00);
-        assert_eq!(wire[2], 0x00);
-        assert_eq!(wire[3], 0x34);
+        assert_eq!(wire.get(0), Some(&0x00));
+        assert_eq!(wire.get(1), Some(&0x00));
+        assert_eq!(wire.get(2), Some(&0x00));
+        assert_eq!(wire.get(3), Some(&0x34));
         assert_eq!(wire.len(), 4 + 52 + b"hello".len() + 16);
     }
 
@@ -359,8 +359,11 @@ mod tests {
             .create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
             .expect("create alice");
 
+        let ek_bytes = handshake
+            .get(0..32)
+            .expect("handshake too short: cannot extract ephemeral key");
         let mut ek_arr = [0u8; 32];
-        ek_arr.copy_from_slice(&handshake[0..32]);
+        ek_arr.copy_from_slice(ek_bytes);
         let alice_ek = X25519PublicKey(ek_arr);
 
         let bob_otk = bob_bundle.one_time_pre_key_pairs.first().expect("otk");

@@ -358,7 +358,7 @@ mod tests {
     #[test]
     fn x25519_public_key_is_clone() {
         let a = X25519PublicKey([1u8; 32]);
-        let _b = a.clone();
+        let _b = a;
         let _ = _b;
     }
 

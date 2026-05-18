@@ -358,10 +358,10 @@ mod tests {
     // --- Wire format: header_len == 52 ---
 
     #[test]
-    fn encrypt_produces_header_len_52() {
+    fn encrypt_produces_header_len_52() -> Result<(), Box<dyn std::error::Error>> {
         use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
 
-        let bob_bundle = generate_key_bundle(1, &[(100, 3)]).expect("generate bundle");
+        let bob_bundle = generate_key_bundle(1, &[(100, 3)])?;
         let alice_ik = generate_x25519_keypair();
 
         let fetch = PreKeyBundleFetch {
@@ -374,32 +374,31 @@ mod tests {
             signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
             one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
         };
-        let fetch_json = serde_json::to_string(&fetch).expect("serialize fetch");
+        let fetch_json = serde_json::to_string(&fetch)?;
 
         let manager = SessionManager::new();
-        let alice_ik_bincode = bincode::serialize(&alice_ik).expect("serialize ik");
+        let alice_ik_bincode = bincode::serialize(&alice_ik)?;
 
         manager
-            .create_outbound_session("test".to_string(), alice_ik_bincode, fetch_json)
-            .expect("create session");
+            .create_outbound_session("test".to_string(), alice_ik_bincode, fetch_json)?;
 
         let wire = manager
-            .encrypt("test".to_string(), b"hello".to_vec())
-            .expect("encrypt");
+            .encrypt("test".to_string(), b"hello".to_vec())?;
 
         // Verify header_len is 52 (0x00000034 in big-endian)
-        assert_eq!(wire[0], 0x00);
-        assert_eq!(wire[1], 0x00);
-        assert_eq!(wire[2], 0x00);
-        assert_eq!(wire[3], 0x34);
+        assert_eq!(wire.get(0), Some(&0x00));
+        assert_eq!(wire.get(1), Some(&0x00));
+        assert_eq!(wire.get(2), Some(&0x00));
+        assert_eq!(wire.get(3), Some(&0x34));
         assert_eq!(wire.len(), 4 + 52 + b"hello".len() + 16); // 4 + 52 header + plaintext + GCM tag
+        Ok(())
     }
 
     #[test]
-    fn encrypt_decrypt_roundtrip_ffi() {
+    fn encrypt_decrypt_roundtrip_ffi() -> Result<(), Box<dyn std::error::Error>> {
         use e2ee_core::{generate_key_bundle, init_receiving_chain, x3dh_respond, PreKey, PreKeyBundleFetch, X25519PublicKey};
 
-        let bob_bundle = generate_key_bundle(1, &[(100, 3)]).expect("generate bundle");
+        let bob_bundle = generate_key_bundle(1, &[(100, 3)])?;
         let alice_ik = generate_x25519_keypair();
 
         let fetch = PreKeyBundleFetch {
@@ -412,54 +411,55 @@ mod tests {
             signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
             one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
         };
-        let fetch_json = serde_json::to_string(&fetch).expect("serialize fetch");
+        let fetch_json = serde_json::to_string(&fetch)?;
 
         let alice_mgr = SessionManager::new();
-        let alice_ik_bincode = bincode::serialize(&alice_ik).expect("serialize ik");
+        let alice_ik_bincode = bincode::serialize(&alice_ik)?;
 
         let handshake = alice_mgr
-            .create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
-            .expect("create session");
+            .create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)?;
 
         // Parse handshake for Bob: ek(32) || spk_id(4) || otk_id(4)
+        let ek_bytes = handshake
+            .get(0..32)
+            .ok_or("handshake too short: cannot extract ephemeral key")?;
         let mut alice_ek_arr = [0u8; 32];
-        alice_ek_arr.copy_from_slice(&handshake[0..32]);
+        alice_ek_arr.copy_from_slice(ek_bytes);
         let alice_ek = X25519PublicKey(alice_ek_arr);
 
         // Bob responds via X3DH
-        let bob_otk = bob_bundle.one_time_pre_key_pairs.first().expect("otk");
+        let bob_otk = bob_bundle
+            .one_time_pre_key_pairs
+            .first()
+            .ok_or("missing OTK")?;
         let bob_x3dh = x3dh_respond(
             &bob_bundle.identity_key_pair,
             &bob_bundle.signed_pre_key_pair,
             Some(bob_otk),
             &alice_ik.public_key,
             &alice_ek,
-        )
-        .expect("bob x3dh respond");
+        )?;
 
         let bob_state = init_receiving_chain(
             &bob_x3dh.root_key,
             bob_bundle.identity_key_pair.public_key,
             alice_ik.public_key,
-        )
-        .expect("bob init receiving");
+        )?;
 
         // Insert Bob's session via export/restore
         let bob_mgr = SessionManager::new();
-        let bob_state_bytes = e2ee_core::try_export_state(&bob_state).expect("export bob state");
+        let bob_state_bytes = e2ee_core::try_export_state(&bob_state)?;
         bob_mgr
-            .restore_session("bob".to_string(), bob_state_bytes)
-            .expect("restore bob");
+            .restore_session("bob".to_string(), bob_state_bytes)?;
 
         // Alice encrypts
         let wire = alice_mgr
-            .encrypt("alice".to_string(), b"hello bob".to_vec())
-            .expect("alice encrypt");
+            .encrypt("alice".to_string(), b"hello bob".to_vec())?;
 
         // Bob decrypts
         let plaintext = bob_mgr
-            .decrypt("bob".to_string(), wire)
-            .expect("bob decrypt");
+            .decrypt("bob".to_string(), wire)?;
         assert_eq!(plaintext, b"hello bob");
+        Ok(())
     }
 }
