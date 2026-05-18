@@ -356,7 +356,9 @@ mod tests {
         let mut store = SkippedKeyStore::new();
         for i in 0..2000 {
             let kp = generate_x25519_keypair();
-            let _ = store.insert(kp.public_key, i as u32, MessageKey([i as u8; 32]));
+            let counter: u32 = i.try_into().ok().unwrap_or(0);
+            let key_byte: u8 = (i % 256).try_into().ok().unwrap_or(0);
+            let _ = store.insert(kp.public_key, counter, MessageKey([key_byte; 32]));
         }
         assert_eq!(store.len(), 2000);
     }
@@ -385,15 +387,15 @@ mod tests {
         let header = make_test_header();
         let encoded = encode_ratchet_header(&header);
         // counter bytes at offset 32..36
-        assert_eq!(encoded[32], 0x01);
-        assert_eq!(encoded[33], 0x02);
-        assert_eq!(encoded[34], 0x03);
-        assert_eq!(encoded[35], 0x04);
+        assert_eq!(encoded.get(32), Some(&0x01));
+        assert_eq!(encoded.get(33), Some(&0x02));
+        assert_eq!(encoded.get(34), Some(&0x03));
+        assert_eq!(encoded.get(35), Some(&0x04));
         // previous_counter bytes at offset 36..40
-        assert_eq!(encoded[36], 0x05);
-        assert_eq!(encoded[37], 0x06);
-        assert_eq!(encoded[38], 0x07);
-        assert_eq!(encoded[39], 0x08);
+        assert_eq!(encoded.get(36), Some(&0x05));
+        assert_eq!(encoded.get(37), Some(&0x06));
+        assert_eq!(encoded.get(38), Some(&0x07));
+        assert_eq!(encoded.get(39), Some(&0x08));
     }
 
     #[test]
@@ -441,13 +443,13 @@ mod tests {
     fn encode_header_public_key_at_offset_zero() {
         let header = make_test_header();
         let encoded = encode_ratchet_header(&header);
-        assert_eq!(encoded[0..32], header.ratchet_public_key.0);
+        assert_eq!(encoded.get(0..32), Some(&header.ratchet_public_key.0[..]));
     }
 
     #[test]
     fn encode_header_nonce_at_offset_40() {
         let header = make_test_header();
         let encoded = encode_ratchet_header(&header);
-        assert_eq!(encoded[40..52], header.nonce.0);
+        assert_eq!(encoded.get(40..52), Some(&header.nonce.0[..]));
     }
 }
