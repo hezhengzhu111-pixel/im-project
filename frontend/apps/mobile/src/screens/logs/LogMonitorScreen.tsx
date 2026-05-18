@@ -3,19 +3,18 @@ import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { Screen } from '@/components/common/Screen';
 import { EmptyState } from '@/components/common/StateViews';
 import { colors, spacing, typography } from '@/app/theme';
-import { logService } from '@/services/logs/logService';
 import { useAuthStore } from '@/stores/authStore';
+import { logger } from '@/utils/logger';
 import type { LocalLogEntry } from '@/types/models';
+
+const getLocalLogs = (): LocalLogEntry[] => logger.list();
 
 export function LogMonitorScreen() {
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const [localLogs, setLocalLogs] = useState<LocalLogEntry[]>([]);
 
   useEffect(() => {
-    setLocalLogs(logService.getLocalLogs());
-    if (hasPermission('log:read')) {
-      void logService.getAdminLogs().catch(() => undefined);
-    }
+    setLocalLogs(getLocalLogs());
   }, [hasPermission]);
 
   return (
