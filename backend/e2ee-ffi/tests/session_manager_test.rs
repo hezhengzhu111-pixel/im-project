@@ -91,12 +91,20 @@ fn session_manager_full_flow() {
     mgr.remove_session("test_session_bob".to_string());
 }
 
-/// Encrypt/decrypt on a non-existent session returns an error.
+/// Encrypt/decrypt on a non-existent session returns an error with session_id.
 #[test]
 fn session_not_found_errors() {
     let mgr = SessionManager::new();
     let result = mgr.encrypt("nonexistent".to_string(), b"data".to_vec());
-    assert!(result.is_err());
+    match result {
+        Err(SessionError::SessionNotFound(ref msg)) => {
+            assert!(
+                msg.contains("nonexistent"),
+                "SessionNotFound should include session_id, got: {msg}"
+            );
+        }
+        other => panic!("expected SessionNotFound, got {other:?}"),
+    }
 }
 
 /// Creating a session with a duplicate ID fails.

@@ -13,19 +13,19 @@ use e2ee_core::{
 
 #[derive(Debug, thiserror::Error)]
 pub enum SessionError {
-    #[error("session not found")]
-    SessionNotFound,
-    #[error("session already exists")]
-    SessionAlreadyExists,
-    #[error("invalid session state data")]
-    InvalidStateData,
-    #[error("crypto error")]
-    Crypto,
+    #[error("session not found: {0}")]
+    SessionNotFound(String),
+    #[error("session already exists: {0}")]
+    SessionAlreadyExists(String),
+    #[error("invalid session state data: {0}")]
+    InvalidStateData(String),
+    #[error("crypto error: {0}")]
+    Crypto(String),
 }
 
 impl From<e2ee_core::E2eeError> for SessionError {
-    fn from(_e: e2ee_core::E2eeError) -> Self {
-        SessionError::Crypto
+    fn from(e: e2ee_core::E2eeError) -> Self {
+        SessionError::Crypto(e.to_string())
     }
 }
 
@@ -75,13 +75,18 @@ fn decode_keypair(data: &[u8]) -> Result<X25519KeyPair, SessionError> {
         }
     }
 
-    Err(SessionError::InvalidStateData)
+    Err(SessionError::InvalidStateData(
+        "keypair validation failed".to_string(),
+    ))
 }
 
 /// Decode an X25519PublicKey from raw 32 bytes.
 fn decode_public_key(bytes: &[u8]) -> Result<X25519PublicKey, SessionError> {
     if bytes.len() != 32 {
-        return Err(SessionError::InvalidStateData);
+        return Err(SessionError::InvalidStateData(format!(
+            "public key has wrong length: expected 32, got {}",
+            bytes.len()
+        )));
     }
     let mut key = [0u8; 32];
     key.copy_from_slice(bytes);
@@ -123,15 +128,18 @@ impl SessionManager {
     ) -> Result<Vec<u8>, SessionError> {
         // Check for duplicate session (read lock first)
         {
-            let sessions = self.sessions.read().map_err(|_| SessionError::Crypto)?;
+            let sessions = self
+                .sessions
+                .read()
+                .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
             if sessions.contains_key(&session_id) {
-                return Err(SessionError::SessionAlreadyExists);
+                return Err(SessionError::SessionAlreadyExists(session_id));
             }
         }
 
         let ikp = decode_keypair(&identity_key_pair_bincode)?;
-        let fetch: PreKeyBundleFetch =
-            serde_json::from_str(&remote_bundle_json).map_err(|_| SessionError::Crypto)?;
+        let fetch: PreKeyBundleFetch = serde_json::from_str(&remote_bundle_json)
+            .map_err(|_| SessionError::Crypto("failed to parse remote bundle JSON".to_string()))?;
 
         let result = e2ee_core::x3dh_initiate(&ikp, &fetch)?;
 
@@ -139,7 +147,10 @@ impl SessionManager {
 
         // Insert session (write lock)
         {
-            let mut sessions = self.sessions.write().map_err(|_| SessionError::Crypto)?;
+            let mut sessions = self
+                .sessions
+                .write()
+                .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
             sessions.insert(session_id, Mutex::new(state));
         }
 
@@ -163,9 +174,12 @@ impl SessionManager {
     ) -> Result<(), SessionError> {
         // Check for duplicate session
         {
-            let sessions = self.sessions.read().map_err(|_| SessionError::Crypto)?;
+            let sessions = self
+                .sessions
+                .read()
+                .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
             if sessions.contains_key(&session_id) {
-                return Err(SessionError::SessionAlreadyExists);
+                return Err(SessionError::SessionAlreadyExists(session_id));
             }
         }
 
@@ -190,7 +204,10 @@ impl SessionManager {
         let state = init_receiving_chain(&result.root_key, ikp.public_key, remote_ik)?;
 
         {
-            let mut sessions = self.sessions.write().map_err(|_| SessionError::Crypto)?;
+            let mut sessions = self
+                .sessions
+                .write()
+                .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
             sessions.insert(session_id, Mutex::new(state));
         }
         Ok(())
@@ -200,11 +217,16 @@ impl SessionManager {
     ///
     /// Returns wire-format: header_len(4 BE) || RatchetHeader(52 bytes) || ciphertext
     pub fn encrypt(&self, session_id: String, plaintext: Vec<u8>) -> Result<Vec<u8>, SessionError> {
-        let sessions = self.sessions.read().map_err(|_| SessionError::Crypto)?;
+        let sessions = self
+            .sessions
+            .read()
+            .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
         let mutex = sessions
             .get(&session_id)
-            .ok_or(SessionError::SessionNotFound)?;
-        let mut state = mutex.lock().map_err(|_| SessionError::Crypto)?;
+            .ok_or_else(|| SessionError::SessionNotFound(session_id.clone()))?;
+        let mut state = mutex
+            .lock()
+            .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
 
         let (header, ciphertext) = ratchet_encrypt(&mut state, &plaintext)?;
 
@@ -219,36 +241,54 @@ impl SessionManager {
     /// Decrypt a wire-format message for a session.
     pub fn decrypt(&self, session_id: String, encrypted: Vec<u8>) -> Result<Vec<u8>, SessionError> {
         if encrypted.len() < 4 {
-            return Err(SessionError::Crypto);
+            return Err(SessionError::Crypto(
+                "encrypted message too short: missing header length prefix".to_string(),
+            ));
         }
         let header_len =
             u32::from_be_bytes([encrypted[0], encrypted[1], encrypted[2], encrypted[3]]) as usize;
         if header_len != 52 {
-            return Err(SessionError::Crypto);
+            return Err(SessionError::Crypto(format!(
+                "invalid header length: expected 52, got {}",
+                header_len
+            )));
         }
         if encrypted.len() < 4 + header_len {
-            return Err(SessionError::Crypto);
+            return Err(SessionError::Crypto(
+                "encrypted message truncated: incomplete header".to_string(),
+            ));
         }
         let header_bytes = &encrypted[4..4 + header_len];
-        let header = decode_ratchet_header(header_bytes).map_err(|_| SessionError::Crypto)?;
+        let header = decode_ratchet_header(header_bytes)
+            .map_err(|e| SessionError::Crypto(format!("failed to decode ratchet header: {e}")))?;
         let ciphertext = &encrypted[4 + header_len..];
 
-        let sessions = self.sessions.read().map_err(|_| SessionError::Crypto)?;
+        let sessions = self
+            .sessions
+            .read()
+            .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
         let mutex = sessions
             .get(&session_id)
-            .ok_or(SessionError::SessionNotFound)?;
-        let mut state = mutex.lock().map_err(|_| SessionError::Crypto)?;
+            .ok_or_else(|| SessionError::SessionNotFound(session_id.clone()))?;
+        let mut state = mutex
+            .lock()
+            .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
 
         ratchet_decrypt(&mut state, &header, ciphertext).map_err(SessionError::from)
     }
 
     /// Export a session's state as bincode bytes for persistence.
     pub fn export_session(&self, session_id: String) -> Result<Vec<u8>, SessionError> {
-        let sessions = self.sessions.read().map_err(|_| SessionError::Crypto)?;
+        let sessions = self
+            .sessions
+            .read()
+            .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
         let mutex = sessions
             .get(&session_id)
-            .ok_or(SessionError::SessionNotFound)?;
-        let state = mutex.lock().map_err(|_| SessionError::Crypto)?;
+            .ok_or_else(|| SessionError::SessionNotFound(session_id.clone()))?;
+        let state = mutex
+            .lock()
+            .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
         try_export_state(&state).map_err(SessionError::from)
     }
 
@@ -259,7 +299,10 @@ impl SessionManager {
         state_bincode: Vec<u8>,
     ) -> Result<(), SessionError> {
         let state = restore_state(&state_bincode)?;
-        let mut sessions = self.sessions.write().map_err(|_| SessionError::Crypto)?;
+        let mut sessions = self
+            .sessions
+            .write()
+            .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
         sessions.insert(session_id, Mutex::new(state));
         Ok(())
     }
@@ -329,19 +372,19 @@ mod tests {
         // Random 64 bytes that don't form a valid X25519 keypair
         let corrupted = [0xAAu8; 64];
         let result = decode_keypair(&corrupted);
-        assert!(matches!(result, Err(SessionError::InvalidStateData)));
+        assert!(matches!(result, Err(SessionError::InvalidStateData(_))));
     }
 
     #[test]
     fn decode_wrong_length_returns_invalid_state() {
         let result = decode_keypair(&[1u8, 2, 3]);
-        assert!(matches!(result, Err(SessionError::InvalidStateData)));
+        assert!(matches!(result, Err(SessionError::InvalidStateData(_))));
     }
 
     #[test]
     fn decode_empty_returns_invalid_state() {
         let result = decode_keypair(&[]);
-        assert!(matches!(result, Err(SessionError::InvalidStateData)));
+        assert!(matches!(result, Err(SessionError::InvalidStateData(_))));
     }
 
     #[test]
@@ -461,5 +504,158 @@ mod tests {
             .decrypt("bob".to_string(), wire)?;
         assert_eq!(plaintext, b"hello bob");
         Ok(())
+    }
+
+    // --- Error content tests ---
+
+    #[test]
+    fn session_not_found_includes_session_id() {
+        let mgr = SessionManager::new();
+        let result = mgr.encrypt("my-session-123".to_string(), b"data".to_vec());
+        match result {
+            Err(SessionError::SessionNotFound(ref msg)) => {
+                assert!(
+                    msg.contains("my-session-123"),
+                    "SessionNotFound message should contain the session id, got: {msg}"
+                );
+            }
+            other => panic!("expected SessionNotFound, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn session_already_exists_includes_session_id() {
+        let alice_ik = e2ee_core::generate_x25519_keypair();
+        let bob_bundle = e2ee_core::generate_key_bundle(1, &[(100, 3)]).unwrap();
+
+        let fetch = e2ee_core::PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: e2ee_core::PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+        };
+        let fetch_json = serde_json::to_string(&fetch).unwrap();
+        let alice_ik_bincode = bincode::serialize(&alice_ik).unwrap();
+
+        let mgr = SessionManager::new();
+        mgr.create_outbound_session(
+            "dup-session".to_string(),
+            alice_ik_bincode.clone(),
+            fetch_json.clone(),
+        )
+        .unwrap();
+
+        let result = mgr.create_outbound_session(
+            "dup-session".to_string(),
+            alice_ik_bincode,
+            fetch_json,
+        );
+        match result {
+            Err(SessionError::SessionAlreadyExists(ref msg)) => {
+                assert!(
+                    msg.contains("dup-session"),
+                    "SessionAlreadyExists message should contain the session id, got: {msg}"
+                );
+            }
+            other => panic!("expected SessionAlreadyExists, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn corrupted_state_returns_invalid_state_with_message() {
+        let corrupted = [0xAAu8; 64];
+        let result = decode_keypair(&corrupted);
+        match result {
+            Err(SessionError::InvalidStateData(ref msg)) => {
+                assert!(
+                    !msg.is_empty(),
+                    "InvalidStateData message should not be empty"
+                );
+            }
+            _other => panic!("expected InvalidStateData"),
+        }
+    }
+
+    #[test]
+    fn crypto_error_preserves_e2ee_error_text() {
+        // E2eeError::CounterGapExceeded should produce a Crypto error
+        // whose message contains the counter gap details, not a fixed "crypto error" string.
+        let e = e2ee_core::E2eeError::CounterGapExceeded(2500, 2000);
+        let session_err = SessionError::from(e);
+        match session_err {
+            SessionError::Crypto(ref msg) => {
+                assert!(
+                    msg.contains("counter gap"),
+                    "Crypto message should preserve E2eeError details, got: {msg}"
+                );
+                assert!(
+                    msg.contains("2500"),
+                    "Crypto message should include counter value, got: {msg}"
+                );
+                assert!(
+                    msg != "crypto error",
+                    "Crypto message should not be the old fixed string"
+                );
+            }
+            other => panic!("expected Crypto, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decrypt_crypto_error_is_not_fixed_string() {
+        // decrypt with a non-existent session AND malformed wire format
+        // should return Crypto with a descriptive message, not a fixed string.
+        let mgr = SessionManager::new();
+        // First create a valid session so we can test the Crypto path specifically
+        let alice_ik = e2ee_core::generate_x25519_keypair();
+        let bob_bundle = e2ee_core::generate_key_bundle(1, &[(100, 3)]).unwrap();
+        let fetch = e2ee_core::PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: e2ee_core::PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+        };
+        let fetch_json = serde_json::to_string(&fetch).unwrap();
+        let alice_ik_bincode = bincode::serialize(&alice_ik).unwrap();
+        mgr.create_outbound_session("test-crypto".to_string(), alice_ik_bincode, fetch_json)
+            .unwrap();
+
+        // Send malformed data (only 2 bytes — no valid header length prefix)
+        let result = mgr.decrypt("test-crypto".to_string(), vec![0x00, 0x01]);
+        match result {
+            Err(SessionError::Crypto(ref msg)) => {
+                assert!(
+                    msg.contains("too short") || msg.contains("header"),
+                    "Crypto error for malformed wire format should describe the issue, got: {msg}"
+                );
+                assert!(
+                    msg != "crypto error",
+                    "Crypto message should not be the old fixed string"
+                );
+            }
+            other => panic!("expected Crypto, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn public_key_wrong_length_includes_actual_length() {
+        let result = decode_public_key(&[0u8; 16]);
+        match result {
+            Err(SessionError::InvalidStateData(ref msg)) => {
+                assert!(
+                    msg.contains("16"),
+                    "InvalidStateData for wrong key length should mention actual length, got: {msg}"
+                );
+            }
+            _other => panic!("expected InvalidStateData"),
+        }
     }
 }
