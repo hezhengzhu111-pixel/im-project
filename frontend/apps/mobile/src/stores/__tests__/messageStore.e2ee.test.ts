@@ -67,7 +67,13 @@ import { useMessageStore } from '../messageStore';
 import { messageRepository } from '@/services/storage/messageRepository';
 import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
 import { messageService } from '@/services/chat/messageService';
-import { E2EE_SEND_DISABLED_TEXT, E2EE_UNSUPPORTED_TEXT } from '@/e2ee/e2eeDeferred';
+import {
+  E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT,
+  E2EE_SEND_DISABLED_TEXT,
+  E2EE_UNSUPPORTED_TEXT,
+} from '@/e2ee/e2eeDeferred';
+import { e2eeManager } from '@/e2ee/manager/e2eeManager';
+import { e2eeSessionStore } from '@/e2ee/store/sessionStore';
 
 const mr = jest.mocked(messageRepository);
 const pr = jest.mocked(pendingMessageRepository);
@@ -107,11 +113,20 @@ const pendingWithPayload = (
   ...overrides,
 });
 
+const ratchetHeader = {
+  ratchetPublicKey: 'ratchet-public-key',
+  counter: 0,
+  previousCounter: 0,
+  iv: 'iv',
+};
+
 // ─── Tests ────────────────────────────────────────────────────────────
 
 describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
   beforeEach(() => {
+    jest.restoreAllMocks();
     useMessageStore.setState({ messagesBySession: {}, messagesPaginationBySession: {}, loading: false, searchResults: [] });
+    e2eeSessionStore.clearRuntime();
     jest.clearAllMocks();
     mockSessions.length = 0;
     mr.listMessages.mockReturnValue([]);
@@ -160,6 +175,82 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
 
       const messages = useMessageStore.getState().messagesBySession[session.id];
       expect(messages).toBeUndefined();
+    });
+  });
+
+  describe('sendText with accepted encrypted private session', () => {
+    it('keeps optimistic plaintext display, stores ciphertext pending payload, and sends encrypted only', async () => {
+      const session = encryptedSession();
+      let enqueued: PendingMessage | undefined;
+      await e2eeSessionStore.setStatus('100', session.id, 'encrypted');
+      jest.spyOn(e2eeManager, 'encryptMessage').mockResolvedValueOnce({
+        ciphertext: 'ciphertext-hello',
+        header: ratchetHeader,
+        deviceId: 'device-100',
+      });
+      pr.enqueue.mockImplementation((item: PendingMessage) => {
+        enqueued = item;
+      });
+      pr.get.mockImplementation((localId: string) => (enqueued?.localId === localId ? enqueued : undefined));
+      ms.sendPrivateEncrypted.mockImplementation(async (data) => ({
+        code: 0,
+        message: 'ok',
+        data: {
+          ...data,
+          id: 'srv_enc_1',
+          messageId: 'srv_enc_1',
+          senderId: '100',
+          receiverId: '200',
+          isGroupChat: false,
+          sendTime: '2024-06-01T10:00:00.000Z',
+          status: 'SENT',
+        },
+      }) as never);
+
+      await useMessageStore.getState().sendText(session, 'hello');
+
+      expect(ms.sendPrivate).not.toHaveBeenCalled();
+      expect(ms.sendPrivateEncrypted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          receiverId: '200',
+          messageType: 'TEXT',
+          content: 'ciphertext-hello',
+          encrypted: true,
+          e2eeDeviceId: 'device-100',
+        }),
+      );
+      expect(enqueued).toBeDefined();
+      const pendingPayload = JSON.parse(enqueued!.payloadJson) as { data: Record<string, unknown>; encrypted?: unknown };
+      expect(pendingPayload.encrypted).toBe(true);
+      expect(pendingPayload.data.content).toBe('ciphertext-hello');
+      expect(pendingPayload.data.content).not.toBe('hello');
+
+      const display = useMessageStore.getState().messagesBySession[session.id]?.[0];
+      expect(display?.content).toBe('hello');
+      expect(display?.encrypted).toBe(true);
+      expect(display?.isE2eeDisplayDecrypted).toBe(true);
+      expect(display?.decryptStatus).toBe('own-echo-preserved');
+      expect(display?.rawJson).toContain('ciphertext-hello');
+      expect(display?.rawJson).not.toContain('"content":"hello"');
+    });
+
+    it('marks local message failed and does not enqueue plaintext when encrypted preparation fails', async () => {
+      const session = encryptedSession();
+      await e2eeSessionStore.setStatus('100', session.id, 'encrypted');
+      jest.spyOn(e2eeManager, 'encryptMessage').mockImplementationOnce(async () => {
+        await e2eeSessionStore.setStatus('100', session.id, 'failed');
+        throw new Error('No ratchet state for session');
+      });
+
+      await expect(useMessageStore.getState().sendText(session, 'hello')).rejects.toThrow('No ratchet state');
+
+      expect(ms.sendPrivate).not.toHaveBeenCalled();
+      expect(ms.sendPrivateEncrypted).not.toHaveBeenCalled();
+      expect(pr.enqueue).not.toHaveBeenCalled();
+      await expect(e2eeSessionStore.loadStatus('100', session.id)).resolves.toBe('failed');
+      const display = useMessageStore.getState().messagesBySession[session.id]?.[0];
+      expect(display?.content).toBe('hello');
+      expect(display?.status).toBe('FAILED');
     });
   });
 
@@ -217,17 +308,19 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
   // ── 3. sendMedia on encrypted session must throw, not upload or send ──
 
   describe('sendMedia with encrypted=true session (E5.2/E8.1/E21.4/E27.1)', () => {
-    it('throws E2EE_SEND_DISABLED_TEXT for encrypted session', async () => {
+    it('throws E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT for encrypted session', async () => {
       const session = encryptedSession();
+      await e2eeSessionStore.setStatus('100', session.id, 'encrypted');
       const file = { uri: 'file:///img.jpg', name: 'img.jpg', size: 1024 };
 
       await expect(
         useMessageStore.getState().sendMedia(session, file as never, 'IMAGE'),
-      ).rejects.toThrow(E2EE_SEND_DISABLED_TEXT);
+      ).rejects.toThrow(E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT);
     });
 
     it('does NOT call messageService.sendPrivate or uploadService for encrypted session', async () => {
       const session = encryptedSession();
+      await e2eeSessionStore.setStatus('100', session.id, 'encrypted');
       const file = { uri: 'file:///img.jpg', name: 'img.jpg', size: 1024 };
 
       try {
@@ -242,6 +335,7 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
 
     it('does NOT enqueue plaintext pending for encrypted media send', async () => {
       const session = encryptedSession();
+      await e2eeSessionStore.setStatus('100', session.id, 'encrypted');
       const file = { uri: 'file:///img.jpg', name: 'img.jpg', size: 1024 };
 
       try {
@@ -397,6 +491,55 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
       await useMessageStore.getState().retryMessage('local_e2ee_1');
 
       expect(ms.sendGroup).not.toHaveBeenCalled();
+    });
+
+    it('retries a complete encrypted private payload without re-encrypting or downgrading', async () => {
+      const pending = pendingWithPayload({
+        sendType: 'private',
+        encrypted: true,
+        data: {
+          receiverId: '200',
+          clientMessageId: 'c_enc_ready',
+          messageType: 'TEXT',
+          content: 'ciphertext-ready',
+          encrypted: true,
+          e2eeHeader: JSON.stringify(ratchetHeader),
+          e2eeDeviceId: 'device-100',
+        },
+      });
+      const encryptSpy = jest.spyOn(e2eeManager, 'encryptMessage').mockResolvedValue({
+        ciphertext: 'ciphertext-new',
+        header: ratchetHeader,
+        deviceId: 'device-100',
+      });
+      pr.get.mockReturnValue(pending);
+      ms.sendPrivateEncrypted.mockResolvedValueOnce({
+        code: 0,
+        message: 'ok',
+        data: {
+          id: 'srv_retry',
+          messageId: 'srv_retry',
+          clientMessageId: 'c_enc_ready',
+          content: 'ciphertext-ready',
+          encrypted: true,
+          e2eeHeader: JSON.stringify(ratchetHeader),
+          e2eeDeviceId: 'device-100',
+          status: 'SENT',
+        },
+      } as never);
+
+      await useMessageStore.getState().retryMessage('local_e2ee_1');
+
+      expect(encryptSpy).not.toHaveBeenCalled();
+      expect(ms.sendPrivate).not.toHaveBeenCalled();
+      expect(ms.sendPrivateEncrypted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: 'ciphertext-ready',
+          encrypted: true,
+          e2eeHeader: JSON.stringify(ratchetHeader),
+          e2eeDeviceId: 'device-100',
+        }),
+      );
     });
   });
 

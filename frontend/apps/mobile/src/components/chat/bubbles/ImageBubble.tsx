@@ -14,6 +14,7 @@ interface ImageBubbleProps {
 const IMAGE_CACHE_RETRY_DELAYS_MS = [0, 500, 1500, 3000];
 
 const extraString = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+const isTestRuntime = (): boolean => typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
 
 export function ImageBubble({ message, mine }: ImageBubbleProps) {
   const [previewVisible, setPreviewVisible] = React.useState(false);
@@ -57,7 +58,7 @@ export function ImageBubble({ message, mine }: ImageBubbleProps) {
       };
     }
 
-    if (process.env.NODE_ENV === 'test') {
+    if (isTestRuntime()) {
       setImageUri(sourceUri);
       setLoadFailed(false);
       return () => {

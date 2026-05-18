@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation, useRoute, type NavigationProp, type ParamListBase, type RouteProp } from '@react-navigation/native';
+import type { E2eeSessionStatus } from '@im/shared-e2ee-core';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { showMessageActionSheet, type MessageActionCallbacks } from '@/components/chat/MessageActionSheet';
 import { Screen } from '@/components/common/Screen';
@@ -9,7 +10,16 @@ import { colors, spacing, typography } from '@/app/theme';
 import type { ChatStackParamList } from '@/app/navigation/ChatNavigator';
 import { E2eeUnsupportedNotice } from '@/e2ee/E2eeUnsupportedNotice';
 import { E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT, getSessionE2eeStatus } from '@/e2ee/e2eeDeferred';
-import { acceptPendingNegotiation, initiateNegotiation, rejectPendingNegotiation, resetNegotiation } from '@/e2ee/manager/negotiation';
+import {
+  acceptPendingNegotiation,
+  getStoredPendingNegotiationRequest,
+  initiateNegotiation,
+  loadLocalSessionStatus,
+  rejectPendingNegotiation,
+  resetNegotiation,
+  syncPendingNegotiations,
+} from '@/e2ee/manager/negotiation';
+import { retryDecryptPendingMessages, retryDecryptVisibleEncryptedMessages } from '@/e2ee/store/pendingDecryptStore';
 import { subscribeE2eeStatusChanges, subscribePendingE2eeRequests } from '@/e2ee/statusEvents';
 import { mediaService } from '@/services/media/mediaService';
 import { mediaSaveService } from '@/services/media/mediaSaveService';
@@ -45,20 +55,20 @@ export function ChatScreen() {
   const [recording, setRecording] = useState(false);
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
   const [showNewMessages, setShowNewMessages] = useState(false);
-  const [e2eeVersion, setE2eeVersion] = useState(0);
+  const [e2eeStatus, setE2eeStatus] = useState<E2eeSessionStatus>('plaintext');
 
   const flatListRef = useRef<FlatList>(null);
   const isAtBottomRef = useRef(true);
   const isLoadingOlderRef = useRef(false);
   const initialScrollDoneRef = useRef(false);
   const prevMessageCountRef = useRef(0);
+  const shownPendingRequestRef = useRef<Set<string>>(new Set());
 
   const messages = useMemo(() => (session ? messagesBySession[session.id] || [] : []), [messagesBySession, session]);
   const pagination = useMemo(
     () => (session ? messagesPaginationBySession[session.id] : undefined),
     [messagesPaginationBySession, session],
   );
-  const e2eeStatus = useMemo(() => getSessionE2eeStatus(session), [session, e2eeVersion]);
   const encrypted = e2eeStatus === 'encrypted';
   const inputBlocked = e2eeStatus === 'negotiating' || e2eeStatus === 'failed';
   const mediaBlocked = Boolean(session?.type === 'private' && encrypted);
@@ -72,6 +82,30 @@ export function ChatScreen() {
       routeParams?.groupId ||
       routeParams?.targetId,
   );
+
+  const showPendingNegotiationAlert = useCallback((sessionId: string) => {
+    if (shownPendingRequestRef.current.has(sessionId)) {
+      return;
+    }
+    shownPendingRequestRef.current.add(sessionId);
+    Alert.alert('端到端加密请求', '对方请求建立端到端加密通道。', [
+      {
+        text: '拒绝',
+        style: 'cancel',
+        onPress: () => {
+          shownPendingRequestRef.current.delete(sessionId);
+          void rejectPendingNegotiation(sessionId);
+        },
+      },
+      {
+        text: '接受',
+        onPress: () => {
+          shownPendingRequestRef.current.delete(sessionId);
+          void acceptPendingNegotiation(sessionId);
+        },
+      },
+    ]);
+  }, []);
 
   useEffect(() => {
     if (!routeParams || !hasTargetRouteParams || !authReady || !currentUser?.id) {
@@ -88,7 +122,44 @@ export function ChatScreen() {
     isAtBottomRef.current = true;
     isLoadingOlderRef.current = false;
     setShowNewMessages(false);
+    shownPendingRequestRef.current.clear();
   }, [session?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!session || session.type !== 'private') {
+      setE2eeStatus('plaintext');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setE2eeStatus(getSessionE2eeStatus(session));
+    void loadLocalSessionStatus(session.id)
+      .then((status) => {
+        if (!cancelled) {
+          setE2eeStatus(status === 'plaintext' ? getSessionE2eeStatus(session) : status);
+        }
+      })
+      .catch(() => undefined);
+    void syncPendingNegotiations(session.id)
+      .then(async () => {
+        if (cancelled) {
+          return;
+        }
+        const pending = await getStoredPendingNegotiationRequest(session.id).catch(() => null);
+        if (pending) {
+          showPendingNegotiationAlert(session.id);
+        }
+      })
+      .catch(() => undefined);
+    void retryDecryptPendingMessages(session.id).catch(() => 0);
+    void retryDecryptVisibleEncryptedMessages(session.id).catch(() => 0);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session, showPendingNegotiationAlert]);
 
   useEffect(() => {
     if (!session) {
@@ -99,9 +170,11 @@ export function ChatScreen() {
 
   useEffect(() => subscribeE2eeStatusChanges((sessionId, status) => {
     if (session?.id === sessionId) {
-      setE2eeVersion((value) => value + 1);
+      setE2eeStatus(status);
       if (status === 'encrypted') {
         void loadInitialMessages(session);
+        void retryDecryptPendingMessages(session.id).catch(() => 0);
+        void retryDecryptVisibleEncryptedMessages(session.id).catch(() => 0);
       }
     }
   }), [loadInitialMessages, session]);

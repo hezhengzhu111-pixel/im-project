@@ -34,7 +34,24 @@
       "Bash(git diff *)",
       "Bash(node *)",
       "Bash(echo \"EXIT: $?\")",
-      "Bash(echo \"Tests exit: $?\")"
+      "Bash(echo \"Tests exit: $?\")",
+      "WebSearch",
+      "Bash(claude *)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git clone *)",
+      "Bash(mkdir -p __TRACKED_VAR__/.claude/plugins/data/andrej-karpathy-skills)",
+      "Bash(cp -r /tmp/andrej-karpathy-skills/skills __TRACKED_VAR__/.claude/plugins/data/andrej-karpathy-skills/)",
+      "Bash(cp -r /tmp/andrej-karpathy-skills/.claude-plugin __TRACKED_VAR__/.claude/plugins/data/andrej-karpathy-skills/)",
+      "Bash(cp /tmp/andrej-karpathy-skills/CLAUDE.md __TRACKED_VAR__/.claude/plugins/data/andrej-karpathy-skills/)",
+      "Bash(mkdir -p __TRACKED_VAR__/.claude/plugins/marketplaces/andrej-karpathy-skills)",
+      "Bash(cp -r /tmp/andrej-karpathy-skills/* __TRACKED_VAR__/.claude/plugins/marketplaces/andrej-karpathy-skills/)",
+      "Bash(cp -r /tmp/andrej-karpathy-skills/.claude-plugin __TRACKED_VAR__/.claude/plugins/marketplaces/andrej-karpathy-skills/)",
+      "Bash(mkdir -p __TRACKED_VAR__/.claude/plugins/cache/andrej-karpathy-skills/andrej-karpathy-skills/1.0.0)",
+      "Bash(cp -r /tmp/andrej-karpathy-skills/skills __TRACKED_VAR__/.claude/plugins/cache/andrej-karpathy-skills/andrej-karpathy-skills/1.0.0/)",
+      "Bash(cp -r /tmp/andrej-karpathy-skills/.claude-plugin __TRACKED_VAR__/.claude/plugins/cache/andrej-karpathy-skills/andrej-karpathy-skills/1.0.0/)",
+      "Bash(rm -rf __TRACKED_VAR__/.claude/plugins/cache/andrej-karpathy-skills)",
+      "Bash(mkdir -p __TRACKED_VAR__/.claude/plugins/cache/andrej-karpathy-skills)"
     ]
   }
 }

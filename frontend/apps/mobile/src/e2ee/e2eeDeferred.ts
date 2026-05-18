@@ -11,12 +11,40 @@ export const E2EE_WAITING_TEXT = '等待对方确认端到端加密请求';
 
 export const E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT = '当前移动端加密会话仅支持文字消息，暂不支持加密媒体。';
 
+export const E2EE_OWN_PLAINTEXT_UNAVAILABLE_TEXT = '此设备未保存该端到端加密消息的明文，移动端不会显示密文。';
+
 type EncryptedMarker = {
   encrypted?: unknown;
 };
 
 export const isEncryptedMessage = (message: EncryptedMarker): boolean =>
   isEncryptedValue(message.encrypted);
+
+const safeEncryptedDisplayStatuses = new Set(['decrypted', 'own-echo-preserved']);
+
+export const hasKnownE2eeDisplayPlaintext = (message: MobileMessage): boolean => {
+  if (!isEncryptedMessage(message)) {
+    return false;
+  }
+  if (message.isE2eeDisplayDecrypted || safeEncryptedDisplayStatuses.has(String(message.decryptStatus || ''))) {
+    return Boolean(message.content && message.content !== E2EE_UNSUPPORTED_TEXT);
+  }
+  return false;
+};
+
+export const markE2eeDisplayDecrypted = (
+  message: MobileMessage,
+  decryptStatus: MobileMessage['decryptStatus'] = 'decrypted',
+): MobileMessage => ({
+  ...message,
+  isE2eeDisplayDecrypted: true,
+  decryptStatus,
+  mediaUrl: undefined,
+  thumbnailUrl: undefined,
+  mediaName: undefined,
+  mediaSize: undefined,
+  duration: undefined,
+});
 
 export const isEncryptedSession = (
   session?: Pick<ChatSession, 'encrypted' | 'lastMessage'> | null,
@@ -40,9 +68,19 @@ export const maskEncryptedMessage = (message: MobileMessage): MobileMessage => {
   if (!isEncryptedMessage(message)) {
     return message;
   }
+  if (hasKnownE2eeDisplayPlaintext(message)) {
+    return markE2eeDisplayDecrypted(
+      message,
+      safeEncryptedDisplayStatuses.has(String(message.decryptStatus || ''))
+        ? message.decryptStatus
+        : 'decrypted',
+    );
+  }
   return {
     ...message,
     content: E2EE_UNSUPPORTED_TEXT,
+    isE2eeDisplayDecrypted: false,
+    decryptStatus: message.decryptStatus === 'plaintext' ? 'pending' : message.decryptStatus || 'pending',
     mediaUrl: undefined,
     thumbnailUrl: undefined,
     mediaName: undefined,

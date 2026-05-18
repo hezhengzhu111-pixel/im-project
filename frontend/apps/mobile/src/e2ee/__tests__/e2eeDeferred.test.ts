@@ -316,16 +316,18 @@ describe('maskEncryptedMessage — input immutability', () => {
 });
 
 describe('E2EE copy text (E26 compliance)', () => {
-  test('E2EE_UNSUPPORTED_TEXT indicates mobile cannot view and directs to Web', () => {
-    expect(E2EE_UNSUPPORTED_TEXT).toContain('Web');
+  test('E2EE_UNSUPPORTED_TEXT indicates mobile is waiting for decrypt state and hides ciphertext', () => {
+    expect(E2EE_UNSUPPORTED_TEXT).toContain('移动端');
+    expect(E2EE_UNSUPPORTED_TEXT).toContain('密文');
+    expect(E2EE_UNSUPPORTED_TEXT).toContain('等待加密通道');
     expect(E2EE_UNSUPPORTED_TEXT).toContain('移动端');
   });
 
   test('E2EE_SEND_DISABLED_TEXT indicates no automatic plaintext fallback', () => {
-    expect(E2EE_SEND_DISABLED_TEXT).toContain('不会自动改为明文发送');
+    expect(E2EE_SEND_DISABLED_TEXT).toContain('不会自动降级为明文');
   });
 
-  test('E2EE_SEND_DISABLED_TEXT directs to Web or closing encryption', () => {
-    expect(E2EE_SEND_DISABLED_TEXT).toContain('Web');
+  test('E2EE_SEND_DISABLED_TEXT directs to negotiation recovery', () => {
+    expect(E2EE_SEND_DISABLED_TEXT).toContain('重新建立加密通道');
   });
 });
