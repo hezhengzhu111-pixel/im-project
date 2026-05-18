@@ -1,7 +1,67 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Ref } from "vue";
 import { ref } from "vue";
-import type { ChatSession, Message } from "@im/shared-types";
+import type { ChatSession, Message } from "@/types";
+
+// Mock-friendly context type matching the shape of source MessageLoadingModuleContext
+interface MessageLoadingModuleContext {
+  messages: Ref<Map<string, Message[]>>;
+  loading: Ref<boolean>;
+  loadingHistoryBySession: Ref<Map<string, boolean>>;
+  hasMoreHistoryBySession: Ref<Map<string, boolean>>;
+  oldestLoadedServerMessageIdBySession: Ref<Map<string, string>>;
+  fallbackHistoryPageBySession: Ref<Map<string, number>>;
+  messageService: {
+    getPrivateHistoryCursor: ReturnType<typeof vi.fn>;
+    getGroupHistoryCursor: ReturnType<typeof vi.fn>;
+    getPrivateHistory: ReturnType<typeof vi.fn>;
+    getGroupHistory: ReturnType<typeof vi.fn>;
+  };
+  messageRepo: {
+    listConversation: ReturnType<typeof vi.fn>;
+    upsertServerMessages: ReturnType<typeof vi.fn>;
+  };
+  sessionStore: {
+    sessions: ChatSession[];
+  };
+  filterClearedMessages: (sessionId: string, list: Message[]) => Message[];
+  scheduleServerMessagePersist: ReturnType<typeof vi.fn>;
+  notifyWarning: ReturnType<typeof vi.fn>;
+  getCurrentUser?: () => { id: string } | null;
+}
+
+const createMockContext = (
+  overrides?: Partial<MessageLoadingModuleContext>
+): MessageLoadingModuleContext => ({
+  messages: ref(new Map<string, Message[]>()),
+  loading: ref(false),
+  loadingHistoryBySession: ref(new Map<string, boolean>()),
+  hasMoreHistoryBySession: ref(new Map<string, boolean>()),
+  oldestLoadedServerMessageIdBySession: ref(new Map<string, string>()),
+  fallbackHistoryPageBySession: ref(new Map<string, number>()),
+  messageService: {
+    getPrivateHistoryCursor: vi
+      .fn()
+      .mockResolvedValue({ code: 200, data: [] }),
+    getGroupHistoryCursor: vi
+      .fn()
+      .mockResolvedValue({ code: 200, data: [] }),
+    getPrivateHistory: vi.fn().mockResolvedValue({ code: 200, data: [] }),
+    getGroupHistory: vi.fn().mockResolvedValue({ code: 200, data: [] }),
+  },
+  messageRepo: {
+    listConversation: vi.fn().mockResolvedValue([]),
+    upsertServerMessages: vi.fn().mockResolvedValue(undefined),
+  },
+  sessionStore: {
+    sessions: [],
+  },
+  filterClearedMessages: vi.fn((_sessionId: string, list: Message[]) => list),
+  scheduleServerMessagePersist: vi.fn().mockResolvedValue(undefined),
+  notifyWarning: vi.fn(),
+  getCurrentUser: () => ({ id: "1" }),
+  ...overrides,
+});
 
 const makeSession = (
   id: string,
@@ -31,65 +91,6 @@ const makeMsg = (
     ...opts,
   }) as Message;
 
-// Create the mock context types
-interface MessageLoadingContext {
-  messages: Ref<Map<string, Message[]>>;
-  loading: Ref<boolean>;
-  loadingHistoryBySession: Ref<Map<string, boolean>>;
-  hasMoreHistoryBySession: Ref<Map<string, boolean>>;
-  oldestLoadedServerMessageIdBySession: Ref<Map<string, string>>;
-  fallbackHistoryPageBySession: Ref<Map<string, number>>;
-  messageService: {
-    getPrivateHistoryCursor: ReturnType<typeof vi.fn>;
-    getGroupHistoryCursor: ReturnType<typeof vi.fn>;
-    getPrivateHistory: ReturnType<typeof vi.fn>;
-    getGroupHistory: ReturnType<typeof vi.fn>;
-  };
-  messageRepo: {
-    listConversation: ReturnType<typeof vi.fn>;
-    upsertServerMessages: ReturnType<typeof vi.fn>;
-  };
-  sessionStore: {
-    sessions: ChatSession[];
-  };
-  filterClearedMessages: (sessionId: string, list: Message[]) => Message[];
-  scheduleServerMessagePersist: ReturnType<typeof vi.fn>;
-  notifyWarning: ReturnType<typeof vi.fn>;
-  getCurrentUser?: () => { id: string } | null;
-}
-
-const createMockContext = (
-  overrides?: Partial<MessageLoadingContext>
-): MessageLoadingContext => ({
-  messages: ref(new Map<string, Message[]>()),
-  loading: ref(false),
-  loadingHistoryBySession: ref(new Map<string, boolean>()),
-  hasMoreHistoryBySession: ref(new Map<string, boolean>()),
-  oldestLoadedServerMessageIdBySession: ref(new Map<string, string>()),
-  fallbackHistoryPageBySession: ref(new Map<string, number>()),
-  messageService: {
-    getPrivateHistoryCursor: vi
-      .fn()
-      .mockResolvedValue({ code: 200, data: [] }),
-    getGroupHistoryCursor: vi
-      .fn()
-      .mockResolvedValue({ code: 200, data: [] }),
-    getPrivateHistory: vi.fn().mockResolvedValue({ code: 200, data: [] }),
-    getGroupHistory: vi.fn().mockResolvedValue({ code: 200, data: [] }),
-  },
-  messageRepo: {
-    listConversation: vi.fn().mockResolvedValue([]),
-    upsertServerMessages: vi.fn().mockResolvedValue(undefined),
-  },
-  sessionStore: {
-    sessions: [],
-  },
-  filterClearedMessages: vi.fn((_sessionId, list) => list),
-  scheduleServerMessagePersist: vi.fn().mockResolvedValue(undefined),
-  notifyWarning: vi.fn(),
-  getCurrentUser: () => ({ id: "1" }),
-  ...overrides,
-});
 
 describe("createMessageLoadingModule", () => {
   beforeEach(() => {
@@ -110,7 +111,7 @@ describe("createMessageLoadingModule", () => {
         },
       });
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       const session = mod.resolveSession("1_2");
 
       expect(session).toBeDefined();
@@ -123,7 +124,7 @@ describe("createMessageLoadingModule", () => {
       );
       const ctx = createMockContext();
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       const session = mod.resolveSession("unknown");
 
       expect(session).toBeUndefined();
@@ -136,7 +137,7 @@ describe("createMessageLoadingModule", () => {
         "@/stores/modules/message-loading"
       );
       const ctx = createMockContext();
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
 
       const list = [
         makeMsg("100", "2026-05-18T10:00:00.000Z"),
@@ -158,7 +159,7 @@ describe("createMessageLoadingModule", () => {
       const ctx = createMockContext();
       ctx.oldestLoadedServerMessageIdBySession.value.set("session-1", "50");
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       mod.syncHistoryState("session-1", []);
 
       expect(
@@ -171,7 +172,7 @@ describe("createMessageLoadingModule", () => {
         "@/stores/modules/message-loading"
       );
       const ctx = createMockContext();
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
 
       mod.syncHistoryState("session-1", [], { hasMoreHistory: false });
 
@@ -185,7 +186,7 @@ describe("createMessageLoadingModule", () => {
       const ctx = createMockContext();
       ctx.hasMoreHistoryBySession.value.set("session-1", true);
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       mod.syncHistoryState("session-1", [], { preserveHasMore: true });
 
       // Should NOT overwrite since preserveHasMore is true
@@ -204,7 +205,7 @@ describe("createMessageLoadingModule", () => {
       ctx.oldestLoadedServerMessageIdBySession.value.set("session-1", "50");
       ctx.fallbackHistoryPageBySession.value.set("session-1", 2);
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       mod.resetHistoryState("session-1");
 
       expect(ctx.loadingHistoryBySession.value.has("session-1")).toBe(false);
@@ -234,7 +235,7 @@ describe("createMessageLoadingModule", () => {
         ],
       });
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMessages("1_2", 20);
 
       const messages = ctx.messages.value.get("1_2") || [];
@@ -261,7 +262,7 @@ describe("createMessageLoadingModule", () => {
         data: [],
       });
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMessages("1_2", 20);
 
       const messages = ctx.messages.value.get("1_2") || [];
@@ -288,7 +289,7 @@ describe("createMessageLoadingModule", () => {
         data: [],
       });
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMessages("1_2", 20);
 
       const messages = ctx.messages.value.get("1_2") || [];
@@ -312,7 +313,7 @@ describe("createMessageLoadingModule", () => {
         }),
       ]);
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMessages("1_2", 20);
 
       // Should not have revived from repo since messages already exist
@@ -345,7 +346,7 @@ describe("createMessageLoadingModule", () => {
         ],
       });
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMessages("1_2", 20);
 
       const messages = ctx.messages.value.get("1_2") || [];
@@ -373,7 +374,7 @@ describe("createMessageLoadingModule", () => {
         ],
       });
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMessages("1_2", 20);
 
       const messages = ctx.messages.value.get("1_2") || [];
@@ -387,7 +388,7 @@ describe("createMessageLoadingModule", () => {
       const session = makeSession("1_2", "private", "2", "u2");
       const ctx = createMockContext({
         sessionStore: { sessions: [session] },
-        filterClearedMessages: vi.fn((_id, list) =>
+        filterClearedMessages: vi.fn((_id: string, list: Message[]) =>
           list.filter((m) => m.id !== "99")
         ),
       });
@@ -400,7 +401,7 @@ describe("createMessageLoadingModule", () => {
         ],
       });
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMessages("1_2", 20);
 
       const messages = ctx.messages.value.get("1_2") || [];
@@ -418,7 +419,7 @@ describe("createMessageLoadingModule", () => {
         sessionStore: { sessions: [session] },
       });
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       const loadPromise = mod.loadMessages("1_2", 20);
 
       expect(ctx.loading.value).toBe(true);
@@ -439,7 +440,7 @@ describe("createMessageLoadingModule", () => {
         data: [makeMsg("1", "2026-05-18T10:00:00.000Z")],
       });
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMessages("1_2", 20);
 
       expect(ctx.messageService.getPrivateHistoryCursor).toHaveBeenCalledWith(
@@ -461,7 +462,7 @@ describe("createMessageLoadingModule", () => {
         data: [makeMsg("1", "2026-05-18T10:00:00.000Z")],
       });
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMessages("group_9", 20);
 
       expect(ctx.messageService.getGroupHistoryCursor).toHaveBeenCalledWith(
@@ -493,7 +494,7 @@ describe("createMessageLoadingModule", () => {
         ],
       });
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMoreHistory("1_2", 20);
 
       expect(ctx.messageService.getPrivateHistoryCursor).toHaveBeenCalledWith(
@@ -516,7 +517,7 @@ describe("createMessageLoadingModule", () => {
       });
       ctx.loadingHistoryBySession.value.set("1_2", true);
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMoreHistory("1_2", 20);
 
       expect(ctx.messageService.getPrivateHistoryCursor).not.toHaveBeenCalled();
@@ -537,7 +538,7 @@ describe("createMessageLoadingModule", () => {
         ],
       });
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMoreHistory("1_2", 50);
 
       // Should have called loadMessages first (which calls getPrivateHistoryCursor)
@@ -557,7 +558,7 @@ describe("createMessageLoadingModule", () => {
       });
       ctx.messages.value.set("1_2", [makeMsg("local_1", "2026-05-18T10:00:00.000Z")]);
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMoreHistory("1_2", 20);
 
       expect(ctx.hasMoreHistoryBySession.value.get("1_2")).toBe(false);
@@ -586,7 +587,7 @@ describe("createMessageLoadingModule", () => {
         ],
       });
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMoreHistory("1_2", 20);
 
       expect(ctx.messageService.getPrivateHistory).toHaveBeenCalledWith(
@@ -614,7 +615,7 @@ describe("createMessageLoadingModule", () => {
         new Error("cursor unavailable")
       );
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
 
       // First fallback
       ctx.messageService.getPrivateHistory.mockResolvedValueOnce({
@@ -642,7 +643,7 @@ describe("createMessageLoadingModule", () => {
         sessionStore: { sessions: [session] },
       });
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMoreHistory("1_2", 20);
 
       expect(ctx.loadingHistoryBySession.value.has("1_2")).toBe(false);
@@ -657,7 +658,7 @@ describe("createMessageLoadingModule", () => {
         sessionStore: { sessions: [session] },
       });
 
-      const mod = createMessageLoadingModule(ctx);
+      const mod = createMessageLoadingModule(ctx as any);
       await mod.loadMessages("1_2", 20);
 
       expect(ctx.scheduleServerMessagePersist).toHaveBeenCalledWith(
