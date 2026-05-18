@@ -29,3 +29,7 @@ pub use state::{
 pub use ratchet::{
     init_sending_chain, init_receiving_chain, ratchet_encrypt, ratchet_decrypt, MAX_SKIP,
 };
+pub use x3dh::{
+    generate_key_bundle, x3dh_initiate, x3dh_respond, KeyBundle, PreKey, PreKeyBundle,
+    PreKeyBundleFetch, X3dhInitiateResult, X3dhRespondResult,
+};
