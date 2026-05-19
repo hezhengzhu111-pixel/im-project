@@ -80,7 +80,7 @@ export interface UploadBundleRequest {
   signingIdentityKey: string;
   signedPreKey: string;
   signedPreKeySignature: string;
-  oneTimePreKeys: string[];
+  oneTimePreKeys: RustPreKey[];
 }
 
 export type PreKeyBundle = RustPublicPreKeyBundle;

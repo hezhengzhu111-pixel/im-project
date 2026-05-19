@@ -195,7 +195,7 @@ class E2eeManager {
     const signingIdKey = ((raw.signingIdentityKey ?? raw.signingKey) as string) ?? identityKey;
     const spkString = (raw.signedPreKey as string) ?? "";
     const maybeOtk = typeof raw.oneTimePreKey === "string" && raw.oneTimePreKey.length > 0
-      ? { id: 1, key: raw.oneTimePreKey as string }
+      ? { id: (raw.oneTimePreKeyId as number) ?? 0, key: raw.oneTimePreKey as string }
       : null;
 
     return {

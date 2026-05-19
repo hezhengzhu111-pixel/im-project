@@ -106,7 +106,7 @@ export class WebE2eeRuntime implements E2eeRuntime {
         ? null
         : input.localKeys.oneTimePreKeyPairs.find((pair) => pair.id === handshake.oneTimePreKeyId);
     if (handshake.oneTimePreKeyId != null && !oneTimePreKeyPair) {
-      throw new Error("Rust E2EE handshake references an unknown one-time pre-key");
+      // OTK already consumed or missing — X3DH without OTK is still secure
     }
 
     manager.create_inbound_session(

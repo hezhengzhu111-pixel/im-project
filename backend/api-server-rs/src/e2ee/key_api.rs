@@ -32,6 +32,14 @@ const MAX_SALT_LEN: usize = 64;
 /// 上传 PreKey Bundle 的请求体。
 ///
 /// 包含设备公钥材料（identity key、signed pre-key、one-time pre-keys），
+/// 客户端上传的一次性预密钥条目（含 ID）。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreKeyEntry {
+    pub id: i32,
+    pub key: String,
+}
+
 /// 服务端仅保存公钥/密文材料，不保存任何私钥。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,7 +49,7 @@ pub struct UploadBundleRequest {
     pub signing_identity_key: String,
     pub signed_pre_key: String,
     pub signed_pre_key_signature: String,
-    pub one_time_pre_keys: Vec<String>,
+    pub one_time_pre_keys: Vec<PreKeyEntry>,
 }
 
 /// PreKey Bundle 响应 DTO。
@@ -57,7 +65,10 @@ pub struct PreKeyBundleDto {
     pub signing_identity_key: String,
     pub signed_pre_key: String,
     pub signed_pre_key_signature: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub one_time_pre_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub one_time_pre_key_id: Option<i32>,
 }
 
 /// 设备公开信息 DTO。
@@ -105,10 +116,10 @@ fn validate_bundle(req: &UploadBundleRequest) -> Result<(), AppError> {
             "too many one_time_pre_keys".to_string(),
         ));
     }
-    for (i, key) in req.one_time_pre_keys.iter().enumerate() {
-        if key.is_empty() || key.len() > MAX_KEY_FIELD_LEN {
+    for entry in req.one_time_pre_keys.iter() {
+        if entry.key.is_empty() || entry.key.len() > MAX_KEY_FIELD_LEN {
             return Err(AppError::BadRequest(format!(
-                "invalid one_time_pre_keys[{i}]"
+                "invalid one_time_pre_key id={}", entry.id
             )));
         }
     }
@@ -233,15 +244,16 @@ pub async fn upload_bundle(
     .await?;
 
     // 批量插入新的一次性预密钥
-    for key in &request.one_time_pre_keys {
+    for entry in &request.one_time_pre_keys {
         sqlx::query(
             r#"INSERT INTO service_user_service_db.e2ee_one_time_pre_keys
-               (user_id, device_id, pre_key, consumed)
-               VALUES (?, ?, ?, 0)"#,
+               (user_id, device_id, pre_key, pre_key_id, consumed)
+               VALUES (?, ?, ?, ?, 0)"#,
         )
         .bind(user_id)
         .bind(device_id)
-        .bind(key)
+        .bind(&entry.key)
+        .bind(entry.id)
         .execute(&mut *tx)
         .await?;
     }
@@ -307,7 +319,8 @@ pub async fn get_bundle(
     let mut tx = state.db.begin().await?;
 
     let otp_row = sqlx::query(
-        r#"SELECT id, pre_key FROM service_user_service_db.e2ee_one_time_pre_keys
+        r#"SELECT id, pre_key, COALESCE(pre_key_id, 0) AS pre_key_id
+           FROM service_user_service_db.e2ee_one_time_pre_keys
            WHERE user_id = ? AND device_id = ? AND consumed = 0
            LIMIT 1
            FOR UPDATE"#,
@@ -317,9 +330,10 @@ pub async fn get_bundle(
     .fetch_optional(&mut *tx)
     .await?;
 
-    let one_time_pre_key = if let Some(ref row) = otp_row {
+    let (one_time_pre_key, one_time_pre_key_id) = if let Some(ref row) = otp_row {
         let otp_id: i64 = row.get("id");
         let pre_key: String = row.get("pre_key");
+        let pre_key_id: Option<i32> = row.try_get::<i32, _>("pre_key_id").ok();
         sqlx::query(
             "UPDATE service_user_service_db.e2ee_one_time_pre_keys \
              SET consumed = 1, consumed_time = NOW() WHERE id = ?",
@@ -327,9 +341,9 @@ pub async fn get_bundle(
         .bind(otp_id)
         .execute(&mut *tx)
         .await?;
-        Some(pre_key)
+        (Some(pre_key), pre_key_id)
     } else {
-        None
+        (None, None)
     };
 
     tx.commit().await?;
@@ -342,6 +356,7 @@ pub async fn get_bundle(
         signed_pre_key,
         signed_pre_key_signature,
         one_time_pre_key,
+        one_time_pre_key_id,
     })))
 }
 
