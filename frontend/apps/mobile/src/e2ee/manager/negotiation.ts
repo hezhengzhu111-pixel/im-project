@@ -15,7 +15,7 @@ import {
 import { logger } from '@/utils/logger';
 import { emitE2eeStatusChange, emitPendingE2eeRequest } from '@/e2ee/statusEvents';
 import { requireCurrentE2eeUserId } from './context';
-import { ensureLocalE2eeDeviceRegistered, getLocalRustKeyMaterial } from './localDevice';
+import { ensureLocalE2eeDeviceRegistered } from './localDevice';
 
 export interface StoredPendingRequest extends PendingEncryptionRequest {
   action?: string;
@@ -118,40 +118,6 @@ export const initiateNegotiation = (
   return next;
 };
 
-export const respondToNegotiation = async (
-  sessionId: string,
-  remoteIdentityKeyBase64: string,
-  handshakeBase64: string,
-  expectedDeviceId?: string,
-): Promise<boolean> => {
-  await persistStatus(sessionId, 'negotiating');
-  try {
-    const local = await ensureLocalE2eeDeviceRegistered();
-    if (expectedDeviceId && local.deviceId !== expectedDeviceId) {
-      throw new Error('E2EE negotiation request targets a different device');
-    }
-    const runtime = getMobileE2eeRuntime();
-    await e2eeSessionStore.deleteSessionState(local.userId, sessionId).catch(() => undefined);
-    await runtime.removeSession(sessionId).catch(() => undefined);
-    await runtime.createInboundSession({
-      sessionId,
-      localKeys: local,
-      remoteIdentityKey: remoteIdentityKeyBase64,
-      handshake: handshakeBase64,
-    });
-    await e2eeSessionStore.saveSessionState(local.userId, sessionId, await runtime.exportSession(sessionId));
-    await mobileE2eeKeyService.acceptEncryption(sessionId, local.publicBundle.identityKey, local.publicBundle.signedPreKey.key);
-    await e2eeSessionStore.clearPendingRequest(local.userId, sessionId);
-    await e2eeSessionStore.saveRemoteDeviceId(local.userId, sessionId, expectedDeviceId || '');
-    await persistStatus(sessionId, 'encrypted');
-    return true;
-  } catch (error) {
-    await persistStatus(sessionId, 'failed').catch(() => undefined);
-    logger.warn('e2ee', 'negotiation response failed', sanitizeE2eeLogValue(error));
-    return false;
-  }
-};
-
 export const acceptPendingNegotiation = async (sessionId: string): Promise<boolean> => {
   const userId = requireCurrentE2eeUserId();
   const pending = await e2eeSessionStore.getPendingRequest<StoredPendingRequest>(userId, sessionId);
@@ -170,10 +136,9 @@ export const acceptPendingNegotiation = async (sessionId: string): Promise<boole
       }
     }
 
-    const handshake = parseInitialHandshake(pending.requestPayloadJson);
-    const accepted = handshake
-      ? await respondToNegotiation(sessionId, handshake.senderIdentityKey, handshake.handshake, handshake.deviceId)
-      : await acceptStatusOnlyNegotiation(sessionId);
+    // Rust v2: handshake is carried in the first message's e2eeEnvelope.handshake field,
+    // NOT in the negotiation request. Always use status-only acceptance.
+    const accepted = await acceptStatusOnlyNegotiation(sessionId);
     if (accepted) {
       await retryDecryptPendingMessages(sessionId).catch(() => 0);
       await retryDecryptVisibleEncryptedMessages(sessionId).catch(() => 0);
@@ -210,10 +175,8 @@ export const recordPendingNegotiationRequest = async (
   if (!request.sessionId) {
     return;
   }
-  const handshake = parseInitialHandshake(request.requestPayloadJson);
-  if (handshake) {
-    await savePendingInitialHandshake(request.sessionId, handshake);
-  }
+  // Rust v2: negotiation request carries no handshake data; the initial
+  // handshake arrives in the first message's e2eeEnvelope.handshake.
   await e2eeSessionStore.savePendingRequest(userId, request.sessionId, request);
   await persistStatus(request.sessionId, 'negotiating');
   emitPendingE2eeRequest(request.sessionId);
@@ -222,7 +185,6 @@ export const recordPendingNegotiationRequest = async (
 export const handleNegotiationAccepted = async (sessionId: string): Promise<void> => {
   const status = await loadLocalSessionStatus(sessionId);
   if (status === 'negotiating') {
-    await clearPendingInitialHandshake(sessionId);
     await persistStatus(sessionId, 'encrypted');
     await retryDecryptPendingMessages(sessionId).catch(() => 0);
     await retryDecryptVisibleEncryptedMessages(sessionId).catch(() => 0);
@@ -231,7 +193,6 @@ export const handleNegotiationAccepted = async (sessionId: string): Promise<void
 
 export const handleNegotiationRejected = async (sessionId: string): Promise<void> => {
   const userId = requireCurrentE2eeUserId();
-  await clearPendingInitialHandshake(sessionId).catch(() => undefined);
   await e2eeSessionStore.clearPendingRequest(userId, sessionId).catch(() => undefined);
   await e2eeSessionStore.deleteSessionState(userId, sessionId).catch(() => undefined);
   await removeRuntimeSession(sessionId);
@@ -241,7 +202,6 @@ export const handleNegotiationRejected = async (sessionId: string): Promise<void
 
 export const handleNegotiationDisabled = async (sessionId: string): Promise<void> => {
   const userId = requireCurrentE2eeUserId();
-  await clearPendingInitialHandshake(sessionId).catch(() => undefined);
   await e2eeSessionStore.clearPendingRequest(userId, sessionId).catch(() => undefined);
   await e2eeSessionStore.deleteSessionState(userId, sessionId).catch(() => undefined);
   await removeRuntimeSession(sessionId);
@@ -254,7 +214,6 @@ export const resetNegotiation = async (
   status: E2eeSessionStatus = 'plaintext',
 ): Promise<void> => {
   const userId = requireCurrentE2eeUserId();
-  await clearPendingInitialHandshake(sessionId).catch(() => undefined);
   await e2eeSessionStore.clearPendingRequest(userId, sessionId).catch(() => undefined);
   await e2eeSessionStore.deleteSessionState(userId, sessionId).catch(() => undefined);
   await removeRuntimeSession(sessionId);
