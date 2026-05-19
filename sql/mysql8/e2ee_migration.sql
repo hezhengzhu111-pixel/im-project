@@ -276,8 +276,7 @@ UPDATE e2ee_one_time_pre_keys SET pre_key_id = id WHERE pre_key_id IS NULL;
 UPDATE e2ee_one_time_pre_keys SET public_key = pre_key WHERE public_key IS NULL;
 UPDATE e2ee_one_time_pre_keys SET claimed_at = consumed_time WHERE consumed = 1 AND claimed_at IS NULL;
 
-USE service_message_service_db;
-
+-- e2ee_conversation_sessions and related tables belong to service_user_service_db
 CREATE TABLE IF NOT EXISTS e2ee_conversation_sessions (
   conversation_id VARCHAR(128) NOT NULL,
   session_id VARCHAR(64) NOT NULL,
@@ -320,6 +319,8 @@ CREATE TABLE IF NOT EXISTS e2ee_group_epochs (
   PRIMARY KEY (id),
   UNIQUE KEY uk_e2ee_group_epoch (group_id, epoch)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE group epoch history';
+
+USE service_message_service_db;
 
 DROP PROCEDURE IF EXISTS add_column_if_missing;
 DELIMITER //
