@@ -143,8 +143,10 @@ class E2eeManager {
     const existingState = await getSessionStateBytes(input.sessionId);
     if (existingState) {
       await webE2eeRuntime.restoreSession(input.sessionId, existingState);
+      // Restore previously stored remote device ID
+      const storedDeviceId = localStorage.getItem(`e2ee:remote_device:${input.sessionId}`) ?? "";
       return {
-        recipientDeviceId: input.recipientDeviceId ?? "unknown",
+        recipientDeviceId: input.recipientDeviceId ?? storedDeviceId,
       };
     }
 
@@ -162,8 +164,14 @@ class E2eeManager {
     });
     await saveSessionStateBytes(input.sessionId, await webE2eeRuntime.exportSession(input.sessionId));
 
+    // Store remote device ID for subsequent message encryption
+    const resolvedDeviceId = remoteBundle.deviceId ?? input.recipientDeviceId ?? "";
+    if (resolvedDeviceId) {
+      localStorage.setItem(`e2ee:remote_device:${input.sessionId}`, resolvedDeviceId);
+    }
+
     return {
-      recipientDeviceId: remoteBundle.deviceId ?? input.recipientDeviceId ?? "unknown",
+      recipientDeviceId: resolvedDeviceId,
       handshake: bytesToBase64(handshakeBytes),
     };
   }
