@@ -9,9 +9,11 @@ type StoredMessage = Message & {
 };
 
 /**
- * IndexedDB 结构化克隆不支持复杂对象（Proxy、getter、循环引用等）。
- * - 自己发的加密消息：保留 content（本地明文），e2eeEnvelope JSON-roundtrip
- * - 别人发的加密消息：剥离 content（解密结果临时），e2eeEnvelope JSON-roundtrip
+ * IndexedDB 结构化克隆兼容处理。
+ * - 解密成功 / 自己的消息：保留 content + e2eeEnvelope（JSON-roundtrip）
+ * - 解密失败：content 为空，保留 e2eeEnvelope（刷新后重试）
+ *
+ * Double Ratchet 防重放：已解密的旧消息不可再次 decrypt，成功解密后必须持久化 content。
  */
 const sanitizeForIDB = (message: Message): Message => {
   if (!message.encrypted || !message.e2eeEnvelope) {
@@ -19,8 +21,8 @@ const sanitizeForIDB = (message: Message): Message => {
   }
   const cleaned = { ...message };
   let changed = false;
-  // incoming 加密消息不持久化 content
-  if (message.decryptStatus !== "skipped_own" && cleaned.content) {
+  // 仅解密失败的消息不存 content
+  if (message.decryptStatus === "failed" && cleaned.content) {
     cleaned.content = "";
     changed = true;
   }

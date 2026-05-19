@@ -243,9 +243,12 @@ export const useMessageStore = defineStore("message", () => {
 
   /**
    * E2EE 持久化前清理：
-   * - 自己发的消息：保留 content（自己的输入，安全），保留 e2eeEnvelope（密文）
-   * - 别人发的消息：剥离 content（解密结果是临时的），保留 e2eeEnvelope（刷新后重解密）
+   * - 解密成功 / 自己的消息：保留 content，保留 e2eeEnvelope
+   * - 解密失败 / 未解密：content 为空，保留 e2eeEnvelope（刷新后重试）
    * - e2eeEnvelope 做 JSON-roundtrip 确保 IndexedDB 可结构化克隆
+   *
+   * Double Ratchet 有防重放机制，已解密的旧消息不能再次 decrypt。
+   * 因此成功解密后必须持久化 content，否则刷新后不可恢复。
    */
   const sanitizeForPersist = (message: Message): Message => {
     if (!message.encrypted) {
@@ -253,8 +256,8 @@ export const useMessageStore = defineStore("message", () => {
     }
     const cleaned: Message = { ...message };
     let changed = false;
-    // incoming 加密消息不持久化 content（刷新后从 e2eeEnvelope 重解密）
-    if (message.decryptStatus !== "skipped_own" && cleaned.content) {
+    // 仅解密失败的消息不存 content（刷新后可重试）
+    if (message.decryptStatus === "failed" && cleaned.content) {
       cleaned.content = "";
       changed = true;
     }
