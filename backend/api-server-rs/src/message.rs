@@ -1352,10 +1352,14 @@ async fn validate_recipient_devices_not_revoked(
     device_ids: &[String],
 ) -> Result<(), AppError> {
     for device_id in device_ids {
+        let trimmed = device_id.trim();
+        if trimmed.is_empty() || trimmed == "unknown" {
+            continue;
+        }
         let active: Option<i64> = sqlx::query_scalar(
             "SELECT COUNT(*) FROM service_user_service_db.e2ee_devices WHERE device_id = ? AND status = 'active' AND revoked_at IS NULL",
         )
-        .bind(device_id)
+        .bind(trimmed)
         .fetch_optional(db)
         .await?;
         if active.unwrap_or(0) == 0 {
