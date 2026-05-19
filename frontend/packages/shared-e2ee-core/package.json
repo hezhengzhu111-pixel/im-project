@@ -13,9 +13,5 @@
   "devDependencies": {
     "typescript": "^5.8.0"
   },
-  "dependencies": {
-    "@noble/ciphers": "^2.2.0",
-    "@noble/curves": "^2.2.0",
-    "@noble/hashes": "^2.2.0"
-  }
+  "dependencies": {}
 }

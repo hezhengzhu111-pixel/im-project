@@ -1,4 +1,90 @@
+export const RUST_E2EE_ENVELOPE_VERSION = 2 as const;
+export const RUST_E2EE_ALGORITHM = "rust-x25519-x3dh-dr-v1" as const;
+
 export type E2eeSessionStatus = "plaintext" | "negotiating" | "encrypted" | "failed";
+
+export interface RustPreKey {
+  id: number;
+  key: string;
+}
+
+export interface RustPublicPreKeyBundle {
+  userId?: string;
+  deviceId?: string;
+  identityKey: string;
+  signingKey: string;
+  signedPreKey: RustPreKey;
+  signedPreKeySignature: string;
+  oneTimePreKey?: RustPreKey | null;
+  oneTimePreKeys?: RustPreKey[];
+}
+
+export interface RustOneTimePreKeyPair {
+  id: number;
+  keyPairBincode: string;
+  publicKey: string;
+}
+
+export interface RustLocalE2eeKeyMaterial {
+  version: typeof RUST_E2EE_ENVELOPE_VERSION;
+  identityKeyPairBincode: string;
+  signedPreKeyPairBincode: string;
+  oneTimePreKeyPairs: RustOneTimePreKeyPair[];
+  publicBundle: RustPublicPreKeyBundle;
+}
+
+export interface GeneratePreKeyBundleOptions {
+  signedPreKeyId?: number;
+  oneTimePreKeyStartId?: number;
+  oneTimePreKeyCount?: number;
+}
+
+export interface RustE2eeEnvelope {
+  version: typeof RUST_E2EE_ENVELOPE_VERSION;
+  algorithm: typeof RUST_E2EE_ALGORITHM;
+  senderDeviceId: string;
+  recipientDeviceId: string;
+  sessionId: string;
+  handshake?: string;
+  wire: string;
+}
+
+export interface E2eeDevice {
+  userId?: string;
+  deviceId: string;
+  identityKey?: string;
+  signingKey?: string;
+  signedPreKey?: RustPreKey | string;
+  lastActiveAt?: string;
+  last_active_at?: string;
+  status?: string;
+}
+
+export interface PendingEncryptionRequest {
+  sessionId: string;
+  requesterId?: string;
+  requesterName?: string;
+  targetUserId?: string;
+  requestPayloadJson?: string;
+}
+
+export interface InitialE2eeHandshake {
+  senderIdentityKey: string;
+  handshake: string;
+  deviceId: string;
+}
+
+export interface UploadBundleRequest {
+  deviceId: string;
+  identityKey: string;
+  signingKey: string;
+  signedPreKey: RustPreKey;
+  signedPreKeySignature: string;
+  oneTimePreKeys: RustPreKey[];
+}
+
+export type PreKeyBundle = RustPublicPreKeyBundle;
+export type E2eeEnvelope = RustE2eeEnvelope;
 
 export interface EncodedKeyPair {
   privateKey: string;
@@ -10,50 +96,13 @@ export type EncodedEcdsaKeyPair = EncodedKeyPair;
 
 export interface EncodedBundle {
   identityKey: string;
-  signingIdentityKey: string;
-  signedPreKey: string;
+  signingKey?: string;
+  signedPreKey: RustPreKey | string;
   signedPreKeySignature: string;
-  oneTimePreKeys: string[];
+  oneTimePreKeys?: Array<RustPreKey | string>;
 }
 
-export interface UploadBundleRequest extends EncodedBundle {
-  deviceId: string;
-}
-
-export interface KeyBundle {
-  identityKeyPair: EncodedEcdhKeyPair;
-  signingIdentityKeyPair: EncodedEcdsaKeyPair;
-  signedPreKeyPair: EncodedEcdhKeyPair;
-  oneTimePreKeyPairs: EncodedEcdhKeyPair[];
-  bundle: EncodedBundle;
-}
-
-export interface PreKeyBundle {
-  userId?: string;
-  deviceId?: string;
-  identityKey: string;
-  signingIdentityKey: string;
-  signedPreKey: string;
-  signedPreKeySignature: string;
-  oneTimePreKey?: string;
-  oneTimePreKeys?: string[];
-}
-
-export interface E2eeDevice {
-  userId?: string;
-  deviceId: string;
-  identityKey?: string;
-  signedPreKey?: string;
-  lastActiveAt?: string;
-  last_active_at?: string;
-  status?: string;
-}
-
-export interface X3dhResult {
-  rootKey: string;
-  ephemeralPublicKey: string;
-  ephemeralKeyPair: EncodedEcdhKeyPair;
-}
+export type KeyBundle = RustLocalE2eeKeyMaterial;
 
 export interface RatchetHeader {
   ratchetPublicKey: string;
@@ -62,34 +111,4 @@ export interface RatchetHeader {
   iv: string;
 }
 
-export interface SerializedSkippedMessageKey {
-  key: string;
-  messageKey: string;
-}
-
-export interface RatchetState {
-  rootKey: string;
-  sendingChainKey: string | null;
-  receivingChainKey: string | null;
-  sendCounter: number;
-  receiveCounter: number;
-  previousCounter: number;
-  dhKeyPair: EncodedEcdhKeyPair;
-  remotePublicKey: string | null;
-  skippedMessageKeys: Record<string, string>;
-}
-
-export interface InitialE2eeHandshake {
-  senderIdentityKey: string;
-  ephemeralPublicKey: string;
-  deviceId: string;
-}
-
-export interface PendingEncryptionRequest {
-  sessionId: string;
-  requesterId?: string;
-  requesterName?: string;
-  targetUserId?: string;
-  requestPayloadJson?: string;
-}
-
+export type RatchetState = Uint8Array | string;
