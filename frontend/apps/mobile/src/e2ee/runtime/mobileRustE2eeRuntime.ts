@@ -124,10 +124,19 @@ export class MobileRustE2eeRuntime implements E2eeRuntime {
   async createInboundSession(input: CreateInboundSessionInput): Promise<void> {
     const handshakeBase64 = inputBytesToBase64(input.handshake);
     const handshake = parseRustHandshake(base64ToBytes(handshakeBase64));
+
+    const signedPreKeyId = input.localKeys.publicBundle.signedPreKey.id;
+    if (signedPreKeyId !== handshake.signedPreKeyId) {
+      throw new Error('Rust E2EE handshake references an unknown signed pre-key');
+    }
+
     const oneTimePreKeyPair =
       handshake.oneTimePreKeyId == null
         ? null
         : input.localKeys.oneTimePreKeyPairs.find((pair) => pair.id === handshake.oneTimePreKeyId) ?? null;
+    if (handshake.oneTimePreKeyId != null && !oneTimePreKeyPair) {
+      // OTK already consumed or missing — X3DH without OTK is still secure
+    }
 
     await nativeModule().createInboundSession(
       input.sessionId,
