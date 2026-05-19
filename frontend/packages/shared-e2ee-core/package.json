@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./runtime/web": "./src/runtime/web.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -13,5 +14,7 @@
   "devDependencies": {
     "typescript": "^5.8.0"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@im/rust-e2ee-wasm": "*"
+  }
 }

@@ -731,6 +731,7 @@ dependencies = [
 name = "e2ee-ffi"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "bincode",
  "camino",
  "e2ee-core",
@@ -746,6 +747,7 @@ dependencies = [
 name = "e2ee-wasm"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "bincode",
  "e2ee-core",
  "getrandom 0.2.17",

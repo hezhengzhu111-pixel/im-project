@@ -1,117 +1,91 @@
 import { logger } from "@/utils/logger";
+import type { RustLocalE2eeKeyMaterial, RustPublicPreKeyBundle } from "@im/shared-e2ee-core";
+
 import { keyService } from "../api/key-service";
-import { bufferToBase64 } from "../engine/codec";
-import { exportPublicKey } from "../engine/crypto-primitives";
-import { generateKeyBundle } from "../engine/x3dh";
+import { webE2eeRuntime } from "../runtime";
 import {
-  getIdentityKeyPair,
-  getLocalPublicBundle,
-  getSignedPreKey,
-  hasIdentityKey,
-  saveIdentityKeyPair,
-  saveLocalPublicBundle,
-  saveSignedPreKey,
-  type LocalPublicBundle,
+  clearLegacyE2eeState,
+  getLocalKeyMaterial,
+  saveLocalKeyMaterial,
 } from "../store/key-store";
 import { resolveDeviceId } from "./device-identity";
 
 const SIGNED_PRE_KEY_ID = 1;
+const ONE_TIME_PRE_KEY_START_ID = 1;
+const ONE_TIME_PRE_KEY_COUNT = 100;
 
 let registrationInFlight: Promise<string> | null = null;
+let legacyCleanupDone = false;
 
 export async function ensureLocalE2eeDeviceRegistered(): Promise<string> {
   if (registrationInFlight) {
     return registrationInFlight;
   }
 
-  registrationInFlight = ensureLocalE2eeDeviceRegisteredInternal().finally(
-    () => {
-      registrationInFlight = null;
-    },
-  );
+  registrationInFlight = ensureLocalE2eeDeviceRegisteredInternal().finally(() => {
+    registrationInFlight = null;
+  });
   return registrationInFlight;
+}
+
+export async function getLocalRustKeyMaterial(): Promise<RustLocalE2eeKeyMaterial> {
+  const keys = await getLocalKeyMaterial();
+  if (!keys) {
+    await ensureLocalE2eeDeviceRegistered();
+  }
+  const resolved = await getLocalKeyMaterial();
+  if (!resolved) {
+    throw new Error("local Rust E2EE key material not found");
+  }
+  return resolved;
 }
 
 async function ensureLocalE2eeDeviceRegisteredInternal(): Promise<string> {
   const deviceId = await resolveDeviceId();
-  const hasKey = await hasIdentityKey();
-  const localBundle = await getLocalPublicBundle();
-
-  if (!hasKey || !localBundle) {
-    await generateAndUploadBundle(deviceId);
-    return deviceId;
+  if (!legacyCleanupDone) {
+    await clearLegacyE2eeState();
+    legacyCleanupDone = true;
   }
 
-  const isConsistent = await isLocalBundleConsistent(localBundle);
-  if (!isConsistent) {
-    logger.warn("[E2EE] local key bundle is inconsistent; regenerating", {
-      deviceId,
+  const keys = await getLocalKeyMaterial();
+  if (!keys || !isLocalBundleConsistent(keys)) {
+    const generated = await webE2eeRuntime.generatePreKeyBundle({
+      signedPreKeyId: SIGNED_PRE_KEY_ID,
+      oneTimePreKeyStartId: ONE_TIME_PRE_KEY_START_ID,
+      oneTimePreKeyCount: ONE_TIME_PRE_KEY_COUNT,
     });
-    await generateAndUploadBundle(deviceId);
+    await saveLocalKeyMaterial(generated);
+    await uploadPublicBundle(deviceId, generated.publicBundle);
+    logger.info("[E2EE] Rust key bundle generated and uploaded", { deviceId });
     return deviceId;
   }
 
-  await uploadPublicBundle(deviceId, localBundle);
-  logger.info("[E2EE] key bundle uploaded for current account", { deviceId });
+  await uploadPublicBundle(deviceId, keys.publicBundle);
+  logger.info("[E2EE] Rust key bundle uploaded for current account", { deviceId });
   return deviceId;
 }
 
-async function isLocalBundleConsistent(
-  localBundle: LocalPublicBundle,
-): Promise<boolean> {
-  try {
-    const identityKeyPair = await getIdentityKeyPair();
-    const signedPreKeyPair = await getSignedPreKey(SIGNED_PRE_KEY_ID);
-
-    if (!identityKeyPair || !signedPreKeyPair) {
-      return false;
-    }
-
-    const [identityKeyRaw, signedPreKeyRaw] = await Promise.all([
-      exportPublicKey(identityKeyPair.publicKey),
-      exportPublicKey(signedPreKeyPair.publicKey),
-    ]);
-
-    return (
-      bufferToBase64(identityKeyRaw) === localBundle.identityKey &&
-      bufferToBase64(signedPreKeyRaw) === localBundle.signedPreKey
-    );
-  } catch (error) {
-    logger.warn("[E2EE] failed to verify local key bundle", error);
-    return false;
-  }
+function isLocalBundleConsistent(keys: RustLocalE2eeKeyMaterial): boolean {
+  const bundle = keys.publicBundle;
+  return (
+    keys.version === 2 &&
+    typeof keys.identityKeyPairBincode === "string" &&
+    typeof keys.signedPreKeyPairBincode === "string" &&
+    bundle.identityKey.length > 0 &&
+    bundle.signingKey.length > 0 &&
+    bundle.signedPreKey.id === SIGNED_PRE_KEY_ID &&
+    bundle.signedPreKey.key.length > 0 &&
+    bundle.signedPreKeySignature.length > 0
+  );
 }
 
-async function generateAndUploadBundle(deviceId: string): Promise<void> {
-  const bundle = await generateKeyBundle();
-
-  await saveIdentityKeyPair(bundle.identityKeyPair);
-  await saveSignedPreKey(SIGNED_PRE_KEY_ID, bundle.signedPreKeyPair);
-
-  const localBundle: LocalPublicBundle = {
-    version: 2,
-    identityKey: bundle.bundle.identityKey,
-    signingIdentityKey: bundle.bundle.signingIdentityKey,
-    signedPreKey: bundle.bundle.signedPreKey,
-    signedPreKeySignature: bundle.bundle.signedPreKeySignature,
-  };
-
-  await uploadPublicBundle(deviceId, localBundle);
-  await saveLocalPublicBundle(localBundle);
-
-  logger.info("[E2EE] key bundle generated and uploaded", { deviceId });
-}
-
-async function uploadPublicBundle(
-  deviceId: string,
-  bundle: LocalPublicBundle,
-): Promise<void> {
+async function uploadPublicBundle(deviceId: string, bundle: RustPublicPreKeyBundle): Promise<void> {
   await keyService.uploadBundle({
     deviceId,
     identityKey: bundle.identityKey,
-    signingIdentityKey: bundle.signingIdentityKey,
+    signingKey: bundle.signingKey,
     signedPreKey: bundle.signedPreKey,
     signedPreKeySignature: bundle.signedPreKeySignature,
-    oneTimePreKeys: [],
+    oneTimePreKeys: bundle.oneTimePreKeys ?? [],
   });
 }

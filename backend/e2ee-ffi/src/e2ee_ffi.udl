@@ -12,6 +12,13 @@ interface SessionManager {
     constructor();
 
     [Throws=SessionError]
+    string generate_pre_key_bundle(
+        u32 signed_pre_key_id,
+        u32 one_time_pre_key_start_id,
+        u32 one_time_pre_key_count
+    );
+
+    [Throws=SessionError]
     sequence<u8> create_outbound_session(
         string session_id,
         sequence<u8> identity_key_pair_bincode,

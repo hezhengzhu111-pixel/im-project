@@ -43,6 +43,7 @@
 | ADR-5 | 完整 X3DH with OTK | 提供前向安全性 (Forward Secrecy) |
 | ADR-6 | 无自动修复机制 | 依赖 DH 棘轮步进自愈，不破坏协议形式化验证 |
 | ADR-7 | AAD 混入 Identity Keys | 防跨会话重放攻击 |
+| ADR-8 | AAD 使用 canonical IK ordering (lexicographic) | 无需角色协商即可跨端一致派生 AAD |
 
 ---
 
@@ -107,18 +108,23 @@ backend/
 pub struct Aes256Key(pub [u8; 32]);
 
 // ===== X25519 密钥对 =====
+// public key: Serializable + Copy + Eq for ergonomic use
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct X25519PublicKey(pub [u8; 32]);
 
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Zeroize, ZeroizeOnDrop, Serialize, Deserialize)]
 pub struct X25519PrivateKey(pub [u8; 32]);
 
-#[derive(Zeroize, ZeroizeOnDrop)]
+// bincode 序列化顺序：public_key(32) || private_key(32)（字段声明顺序）
+#[derive(Zeroize, ZeroizeOnDrop, Serialize, Deserialize)]
 pub struct X25519KeyPair {
+    #[zeroize(skip)]
     pub public_key: X25519PublicKey,
     pub private_key: X25519PrivateKey,
 }
 
 // ===== Ed25519 密钥对 =====
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ed25519PublicKey(pub [u8; 32]);
 
 #[derive(Zeroize, ZeroizeOnDrop)]
@@ -126,12 +132,16 @@ pub struct Ed25519PrivateKey(pub [u8; 32]);
 
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct Ed25519KeyPair {
+    #[zeroize(skip)]
     pub public_key: Ed25519PublicKey,
     pub private_key: Ed25519PrivateKey,
 }
 
 // ===== Nonce 和签名（无敏感信息，不需 Zeroize） =====
 pub struct AesNonce(pub [u8; 12]);
+
+// Ed25519Signature: 手动 Serialize/Deserialize（serde 不支持 [u8; 64]）
+#[derive(Clone, Copy)]
 pub struct Ed25519Signature(pub [u8; 64]);
 ```
 
@@ -149,10 +159,13 @@ pub struct Ed25519Signature(pub [u8; 64]);
 
 ```rust
 // === 密钥生成（纯函数，栈返回） ===
+// generate_x25519_keypair: OsRng 在主流平台上不会失败，返回非 Result
 pub fn generate_x25519_keypair() -> X25519KeyPair;
-pub fn generate_ed25519_keypair() -> Ed25519KeyPair;
-pub fn generate_aes_256_key() -> Aes256Key;
-pub fn generate_nonce() -> AesNonce;
+// generate_ed25519_keypair / generate_aes_256_key / generate_nonce:
+// getrandom 在极端无 OS 环境可能失败，返回 Result
+pub fn generate_ed25519_keypair() -> Result<Ed25519KeyPair, E2eeError>;
+pub fn generate_aes_256_key() -> Result<Aes256Key, E2eeError>;
+pub fn generate_nonce() -> Result<AesNonce, E2eeError>;
 
 // === X25519 ECDH ===
 #[must_use]
@@ -212,21 +225,34 @@ pub fn aes_gcm_decrypt(
 
 ```rust
 // ===== 带 ID 的预密钥 =====
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct PreKey {
     pub id: u32,
     pub key: X25519PublicKey,
 }
 
+// ===== 一次性预密钥对（含 host 分配的 OTK id） =====
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct OneTimePreKeyPair {
+    #[zeroize(skip)]
+    pub id: u32,
+    pub key_pair: X25519KeyPair,
+}
+
 // ===== 公钥包（本地生成 → 上传到服务端） =====
+// 注意：one_time_pre_keys 包含 PreKey (id + key)，而非裸 X25519PublicKey，
+// 因此服务端可以知道每个 OTK 的宿主分配 ID
+#[derive(Serialize, Deserialize)]
 pub struct PreKeyBundle {
     pub identity_key: X25519PublicKey,
     pub signing_key: Ed25519PublicKey,
     pub signed_pre_key: X25519PublicKey,
     pub signed_pre_key_signature: Ed25519Signature,
-    pub one_time_pre_keys: Vec<X25519PublicKey>,
+    pub one_time_pre_keys: Vec<PreKey>,
 }
 
 // ===== 从服务端拉取的 Bundle（SPK 和 OTK 带 ID） =====
+#[derive(Serialize, Deserialize)]
 pub struct PreKeyBundleFetch {
     pub identity_key: X25519PublicKey,
     pub signing_key: Ed25519PublicKey,
@@ -235,20 +261,20 @@ pub struct PreKeyBundleFetch {
     pub one_time_pre_key: Option<PreKey>,
 }
 
-// ===== 完整密钥包（本地持有，含所有私钥） =====
+// ===== 完整密钥包（本地持有，含所有私钥 + OTK id） =====
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct KeyBundle {
+    #[zeroize(skip)]
+    pub spk_id: u32,
     pub identity_key_pair: X25519KeyPair,
     pub signing_key_pair: Ed25519KeyPair,
     pub signed_pre_key_pair: X25519KeyPair,
-    pub one_time_pre_key_pairs: Vec<X25519KeyPair>,
+    pub one_time_pre_key_pairs: Vec<OneTimePreKeyPair>,
+    #[zeroize(skip)]
     pub bundle: PreKeyBundle,
 }
 
 // ===== X3DH 输出 =====
-#[derive(Zeroize, ZeroizeOnDrop)]
-pub struct RatchetRootKey(pub [u8; 32]);
-
 pub struct X3dhInitiateResult {
     pub root_key: RatchetRootKey,
     pub ephemeral_public_key: X25519PublicKey,
@@ -265,10 +291,20 @@ pub struct X3dhRespondResult {
 ### 4.2 函数签名
 
 ```rust
+// 主 API：batch-based OTK id 分配
+// one_time_pre_keys: &[(start_id, count)] — 每个批次指定起始 ID 和数量
+// OTK id 是 host 分配的 u32 值，非数组索引
 #[must_use]
 pub fn generate_key_bundle(
     spk_id: u32,
     one_time_pre_keys: &[(u32, u32)],
+) -> Result<KeyBundle, E2eeError>;
+
+// 兼容包装：OTK count only，id 从 1 起连续分配
+#[must_use]
+pub fn generate_key_bundle_with_count(
+    spk_id: u32,
+    one_time_pre_key_count: u32,
 ) -> Result<KeyBundle, E2eeError>;
 
 #[must_use]
@@ -277,8 +313,21 @@ pub fn x3dh_initiate(
     remote_bundle: &PreKeyBundleFetch,
 ) -> Result<X3dhInitiateResult, E2eeError>;
 
+// x3dh_respond 使用 OneTimePreKeyPair（含 host 分配的 OTK id）
+// 返回的 X3dhRespondResult.otk_id 直接从 OneTimePreKeyPair.id 传递
 #[must_use]
 pub fn x3dh_respond(
+    identity_key_pair: &X25519KeyPair,
+    signed_pre_key_pair: &X25519KeyPair,
+    one_time_pre_key_pair: Option<&OneTimePreKeyPair>,
+    remote_identity_key: &X25519PublicKey,
+    remote_ephemeral_key: &X25519PublicKey,
+) -> Result<X3dhRespondResult, E2eeError>;
+
+// 兼容包装：接受裸 X25519KeyPair 作为 OTK
+// 功能与 x3dh_respond 相同，但 otk_id 始终为 None
+#[must_use]
+pub fn x3dh_respond_with_raw_otk(
     identity_key_pair: &X25519KeyPair,
     signed_pre_key_pair: &X25519KeyPair,
     one_time_pre_key_pair: Option<&X25519KeyPair>,
@@ -305,7 +354,7 @@ x3dh_respond (Bob):
      DH4 = x25519_dh(OTK_B_priv, EK_A)        ┘
 ```
 
-### 4.4 栈上 DH 拼接 (零堆分配)
+### 4.4 栈上 DH 拼接 (零堆分配，零索引访问)
 
 ```rust
 const DH_OUTPUT_LEN: usize = 32;
@@ -313,18 +362,15 @@ const MAX_DH_COUNT: usize = 4;
 let mut dh_buffer = [0u8; DH_OUTPUT_LEN * MAX_DH_COUNT]; // 128 bytes 栈分配
 let mut offset: usize = 0;
 
-dh_buffer[offset..offset + DH_OUTPUT_LEN].copy_from_slice(&dh1);
-offset += DH_OUTPUT_LEN;
-dh_buffer[offset..offset + DH_OUTPUT_LEN].copy_from_slice(&dh2);
-offset += DH_OUTPUT_LEN;
-dh_buffer[offset..offset + DH_OUTPUT_LEN].copy_from_slice(&dh3);
-offset += DH_OUTPUT_LEN;
+// 使用 dh_copy_to_stack 辅助函数，通过 .get_mut() 避免索引 panic
+dh_copy_to_stack(&mut dh_buffer, &mut offset, &dh1)?;
+dh_copy_to_stack(&mut dh_buffer, &mut offset, &dh2)?;
+dh_copy_to_stack(&mut dh_buffer, &mut offset, &dh3)?;
 if let Some(ref dh4) = dh4_opt {
-    dh_buffer[offset..offset + DH_OUTPUT_LEN].copy_from_slice(&dh4);
-    offset += DH_OUTPUT_LEN;
+    dh_copy_to_stack(&mut dh_buffer, &mut offset, dh4)?;
 }
 
-let root_key: [u8; 32] = hkdf_sha256::<32>(&dh_buffer[..offset], &X3DH_SALT, X3DH_INFO)?;
+let root_key: [u8; 32] = hkdf_sha256::<32>(dh_buffer.get(..offset).ok_or(...)?, &X3DH_SALT, X3DH_INFO)?;
 dh_buffer.zeroize();
 ```
 
@@ -362,7 +408,11 @@ pub struct RatchetState {
     pub remote_public_key: Option<X25519PublicKey>,
     pub skipped_message_keys: SkippedKeyStore,
     // === 混入 AAD 防跨会话重放 ===
+    // identity keys 在 AAD 中按 canonical ordering (lexicographic) 排列，
+    // 而非 local || remote。原因参见 §5.4.5 AAD 构建。
+    #[zeroize(skip)]
     pub local_identity_key: X25519PublicKey,
+    #[zeroize(skip)]
     pub remote_identity_key: X25519PublicKey,
 }
 // 绝不导出 Clone。快照通过 export_state/restore_state (bincode)
@@ -437,19 +487,22 @@ ratchet_encrypt(&mut state, plaintext) → Result<(RatchetHeader, Vec<u8>)>
 ratchet_decrypt(&mut state, header, ciphertext) → Result<Vec<u8>>
   1. counter = header.counter
   2. if counter.abs_diff(state.receive_counter) > MAX_SKIP → Err(CounterGapExceeded)
-  3. cached = state.skipped.remove(&header.ratchet_public_key, counter)
-     → Some(msg_key): return aes_gcm_decrypt(&msg_key.into(), &nonce, ciphertext, &aad)
-  4. needs_ratchet = remote_public_key != header.ratchet_public_key
-  5. if needs_ratchet → perform_dh_ratchet(state, header.ratchet_public_key)
-  6. if counter < state.receive_counter && !needs_ratchet → Err(DuplicateOrExpired)
-  7. chain = state.receiving_chain_key.take()?
-  8. for c in state.receive_counter..counter:
-       (skipped_key, chain) = split_chain_key(chain)?
-       state.skipped.insert(header.ratchet_public_key, c, skipped_key)?
-  9. (msg_key, next_chain) = split_chain_key(chain)?
-  10. state.receiving_chain_key = Some(next_chain)
-  11. state.receive_counter = counter + 1
-  12. return aes_gcm_decrypt(&msg_key.into(), &nonce, ciphertext, &aad)
+  2. 检查 skipped_message_keys 缓存 → 命中则直接解密返回
+  3. first_remote_key = state.remote_public_key.is_none(); has_sent = send_counter > 0
+  4. needs_ratchet: remote_pk.is_none() && has_sent → true (initial response);
+     remote_pk != header.ratchet_public_key → true (DH step); else → false
+  5. if needs_ratchet && counter > MAX_SKIP → Err(CounterGapExceeded)
+
+  # 分支 A: DH ratchet
+  6a. perform_dh_ratchet(state, header.ratchet_public_key, header.previous_counter)
+      → 跳过旧远程密钥消息键 → DH1→receiving chain, DH2→sending chain
+      → decrypt_with_current_chain(state, header, ciphertext)
+
+  # 分支 B: 当前链
+  6b. skip_message_keys(state, header.ratchet_public_key, counter)
+      → 消费 chain key → split → decrypt
+      → if first_remote_key: prepare_initial_response_ratchet
+        (设置 remote_public_key, 重新生成 DH keypair, 派发新 sending chain)
 ```
 
 #### 5.4.4 DH 棘轮步进
@@ -473,8 +526,18 @@ perform_dh_ratchet(state, remote_key) → Result<()>
 #### 5.4.5 AAD 构建
 
 ```rust
-// AAD = local_IK(32) || remote_IK(32) || ratchet_pub_key(32) || counter(4 BE) || previous_counter(4 BE)
-// = 104 bytes，零堆分配
+// AAD = smaller_IK(32) || larger_IK(32) || ratchet_pub_key(32) || counter(4 BE) || previous_counter(4 BE)
+// = 104 bytes，零堆分配，零索引访问
+//
+// 使用词法序 (lexicographic ordering) 而非 local || remote 顺序：
+//   - 发送方和接收方对同一消息必须推导出相同的 AAD
+//   - local/remote 角色天然互换——加密时我方是 local，解密时我方也是 local
+//   - 若 AAD 使用 local||remote，双方 AAD 里的前 64 bytes 将互换，
+//     解密方 AEAD 认证失败（AAD 不匹配）
+//   - 改用 canonical ordering（min IK first）后，双方无需协商角色，
+//     仅凭公开的 identity key 即可确定一致的 AAD
+//   - 兼容影响：此约定是跨端互操作的必要条件，所有平台的实现
+//     （Rust core、前端 TypeScript、移动端 FFI）必须遵守同一排序规则
 fn build_ratchet_aad(
     local_id_key: &X25519PublicKey,
     remote_id_key: &X25519PublicKey,
@@ -482,7 +545,7 @@ fn build_ratchet_aad(
 ) -> [u8; 104];
 ```
 
-### 5.5 RatchetHeader
+### 5.5 RatchetHeader 与线格式编解码
 
 ```rust
 pub struct RatchetHeader {
@@ -491,6 +554,10 @@ pub struct RatchetHeader {
     pub previous_counter: u32,
     pub nonce: AesNonce,
 }
+
+// 显式 52-byte 线格式编解码（非 bincode，跨语言无歧义）
+pub fn encode_ratchet_header(header: &RatchetHeader) -> [u8; 52];
+pub fn decode_ratchet_header(bytes: &[u8]) -> Result<RatchetHeader, E2eeError>;
 ```
 
 ### 5.6 核心函数签名
@@ -519,6 +586,8 @@ pub fn ratchet_decrypt(
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, E2eeError>;
 
+pub fn try_export_state(state: &RatchetState) -> Result<Vec<u8>, E2eeError>;
+// 兼容包装：序列化失败返回空 Vec（新代码应使用 try_export_state）
 pub fn export_state(state: &RatchetState) -> Vec<u8>;
 pub fn restore_state(bytes: &[u8]) -> Result<RatchetState, E2eeError>;
 ```
@@ -532,7 +601,7 @@ pub fn restore_state(bytes: &[u8]) -> Result<RatchetState, E2eeError>;
 | 跳过密钥持有上限 | `SkippedKeyStore::MAX = 2000`, LRU 淘汰 |
 | 恶意超大 counter 拒绝 | `counter - receive_counter > MAX_SKIP` → Err |
 | Snapshot 不泄漏 | export_state 返回 bincode → 宿主加密后存入 MMKV/IndexedDB |
-| AAD 防篡改 + 防跨会话 | binary encoding 绑定 Identity Keys |
+| AAD 防篡改 + 防跨会话 | 显式 104 bytes 编码绑定 Identity Keys (canonical ordering) |
 | **无自动修复机制** | 解密失败即返回 Err，等待 DH 棘轮自愈 |
 
 ---
@@ -547,35 +616,65 @@ pub fn restore_state(bytes: &[u8]) -> Result<RatchetState, E2eeError>;
 └──────────────────────────────────────────────────────────┘
 ```
 
-RatchetHeader bincode:
-- `ratchet_public_key`: `[u8; 32]`
-- `counter`: `u32` (4 bytes Big-Endian)
-- `previous_counter`: `u32` (4 bytes Big-Endian)
-- `nonce`: `[u8; 12]`
-- **总计**: 52 bytes
+**RatchetHeader 显式编码** (52 bytes，固定格式，非 bincode)：
 
-header_len 字段保留用于协议版本、padding、消息扩展等向前兼容。
+通过 `encode_ratchet_header` / `decode_ratchet_header` 编解码：
+
+| 偏移 | 长度 | 字段 | 编码 |
+|------|------|------|------|
+| 0 | 32 | `ratchet_public_key` | X25519 公钥，原始 32 bytes |
+| 32 | 4 | `counter` | u32, Big-Endian |
+| 36 | 4 | `previous_counter` | u32, Big-Endian |
+| 40 | 12 | `nonce` | AES-GCM nonce, 原始 12 bytes |
+
+**总计**：52 bytes。
+
+`header_len` 前缀固定为 `0x00000034` (52 in BE)，保留用于向前兼容
+（未来协议版本可改变 header 长度）。当前实现严格验证 `header_len == 52`，
+不匹配则拒绝解密。
 
 ### 6.2 e2ee-ffi (UniFFI → Kotlin/Swift)
+
+#### X25519 KeyPair Bincode 契约 (跨端互操作关键)
+
+Host 端（Kotlin/Swift/JS）向 FFI 传入密钥对时使用 bincode 编码：
+
+**Core format** (首选)：`bincode::serialize(&X25519KeyPair{..})` → `public_key(32) || private_key(32)`
+与结构体字段声明顺序一致。
+
+**Legacy format** (兼容回退)：`bincode::serialize(&(priv, pub))` → `private_key(32) || public_key(32)`
+仅当 core format 解密失败后尝试。
+
+**验证方式**：两种格式都通过 `x25519_dalek` 从私钥派生出公钥并比对，
+因此损坏数据永远不会被接受。
+
+**Ed25519 KeyPair** (用于签名密钥)：同样使用 bincode 序列化 `Ed25519KeyPair` 结构体，
+字段顺序 `public_key(32) || private_key(32)`。
 
 #### 错误类型
 
 ```rust
 #[derive(Debug, thiserror::Error)]
 pub enum SessionError {
-    #[error("session {0} not found")]
+    #[error("session not found: {0}")]
     SessionNotFound(String),
-    #[error("session {0} already exists")]
+    #[error("session already exists: {0}")]
     SessionAlreadyExists(String),
-    #[error("invalid session state data")]
-    InvalidStateData,
-    #[error("{0}")]
+    #[error("invalid session state data: {0}")]
+    InvalidStateData(String),
+    #[error("crypto error: {0}")]
     Crypto(String),
 }
 
 impl From<E2eeError> for SessionError {
     fn from(e: E2eeError) -> Self {
-        SessionError::Crypto(e.to_string())
+        match e {
+            E2eeError::StateSerializationFailed
+            | E2eeError::StateDeserializationFailed => {
+                SessionError::InvalidStateData(e.to_string())
+            }
+            other => SessionError::Crypto(other.to_string()),
+        }
     }
 }
 ```
@@ -797,12 +896,36 @@ await indexedDB.put("sessions", state, "private_1_2");
 - **restore_state**: 随机二进制数据 → 确保只返回 Err 而不 panic
 - **aes_gcm_decrypt**: 随机 key/nonce/ciphertext → 确保不 panic
 
-### 8.4 CI 防线
+### 8.4 覆盖状态与待补充测试
+
+**已实现测试 (~85 tests across 5 core modules + 2 FFI/WASM layers + integration):**
+
+| 模块 | 测试数 | 状态 |
+|------|--------|------|
+| `errors.rs` | 3 (Display/format/equality) | ✅ |
+| `primitives.rs` | 30+ (newtype, keygen, DH, sign/verify, HKDF, AES-GCM) | ✅ |
+| `state.rs` | 13 (roundtrip, corrupted, skipped keys, LRU eviction, header encode/decode) | ✅ |
+| `ratchet.rs` | 25+ (chain init, encrypt, decrypt, out-of-order, DH rotation, MAX_SKIP, stress 1000) | ✅ |
+| `x3dh.rs` | 18+ (key bundle, OTK ids, SPK sig reject, SPK-only, full handshake, OTK mismatch, legacy compat) | ✅ |
+| `tests/full_e2ee_flow.rs` | 3 (full flow, state persistence, multi-message DH) | ✅ |
+| `e2ee-ffi` + `e2ee-wasm` | 35+ (SessionManager, wire format, error routing, bidirectional, multi-session) | ✅ |
+
+**待补充测试：**
+
+| 缺失项 | 优先级 | 说明 |
+|--------|--------|------|
+| Fuzzing: `ratchet_decrypt` 随机输入 | 高 | 确保 DecryptionFailed，无 panic/OOM |
+| Fuzzing: `restore_state` 随机 bytes | 高 | 确保 StateDeserializationFailed，无 panic |
+| trybuild/compile_fail: Newtype 不可互换 | 低 | 验证类型隔离在编译期生效 |
+| WebCrypto 互操作 | 中 | Rust ↔ TypeScript engine 加解密互认 |
+| Bench: 10000 消息加密吞吐 | 低 | 性能回归基线 |
+
+### 8.5 CI 防线
 
 ```bash
-cargo test -p e2ee-core
-cargo clippy -p e2ee-core -- -D warnings
-cargo fmt --check -p e2ee-core
+cd backend && cargo test -p e2ee-core
+cd backend && cargo clippy -p e2ee-core -- -D warnings
+cd backend && cargo fmt --check
 # AST 扫描: grep -rn "unsafe" backend/e2ee-core/src/ → 必须零结果
 # grep -rn "unreachable!\|panic!\|unwrap()\|expect(" backend/e2ee-core/src/ → 必须零结果
 ```
@@ -839,12 +962,12 @@ cargo fmt --check -p e2ee-core
 ## 附录: E2eeError 完整枚举
 
 ```rust
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum E2eeError {
     // === 加密 ===
     #[error("AES-GCM encryption failed")]
     EncryptionFailed,
-    #[error("AES-GCM decryption failed")]
+    #[error("AES-GCM decryption failed: authentication tag mismatch or corrupted data")]
     DecryptionFailed,
 
     // === 密钥 ===
@@ -852,14 +975,16 @@ pub enum E2eeError {
     HkdfExpandFailed,
     #[error("invalid X25519 public key")]
     InvalidPublicKey,
-    #[error("invalid Ed25519 signature format")]
+    #[error("invalid Ed25519 signature")]
     InvalidSignature,
     #[error("Ed25519 signature mismatch")]
     SignatureMismatch,
 
     // === X3DH ===
-    #[error("SPK signature verification rejected")]
+    #[error("X3DH: signed pre-key signature verification rejected")]
     SpkSignatureRejected,
+    #[error("invalid pre-key id: {0}")]
+    InvalidPreKeyId(String),
 
     // === Ratchet ===
     #[error("sending chain not initialized")]
@@ -870,21 +995,25 @@ pub enum E2eeError {
     CounterGapExceeded(u32, u32),
     #[error("duplicate or expired message")]
     DuplicateOrExpiredMessage,
-    #[error("invalid counter")]
-    InvalidCounter,
+    #[error("invalid counter: {0}")]
+    InvalidCounter(String),
     #[error("max skipped message keys limit reached")]
     MaxSkippedKeysExceeded,
 
     // === 序列化 ===
     #[error("ratchet state serialization failed")]
     StateSerializationFailed,
-    #[error("ratchet state deserialization failed")]
+    #[error("ratchet state deserialization failed: corrupted data")]
     StateDeserializationFailed,
+
+    // === 线格式 ===
+    #[error("invalid header format: {0}")]
+    InvalidHeader(String),
 }
 ```
 
 ---
 
-**文档版本**: 1.0
-**最后更新**: 2026-05-18
-**审核状态**: 全票通过
+**文档版本**: 1.1
+**最后更新**: 2026-05-19
+**变更**: 同步实现期修复 (canonical AAD, OTK id, wire format, keypair bincode contract)

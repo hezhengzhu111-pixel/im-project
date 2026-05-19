@@ -1,21 +1,11 @@
-/**
- * E2EE 密钥持久化存储
- *
- * Web 端使用 IndexedDB，通过 structured clone 存储 CryptoKey 对象。
- * Identity Key (extractable: false) 直接以 CryptoKey 形式存储，不可导出。
- * Signed Pre Key 直接以不可导出 CryptoKey 形式存储，只导出公钥。
- */
+import type { RustLocalE2eeKeyMaterial, RustPublicPreKeyBundle } from "@im/shared-e2ee-core";
 
-import { exportPublicKey } from '../engine/crypto-primitives';
+const DB_NAME = "e2ee_keys";
+const DB_VERSION = 3;
+const STORES = ["identity", "prekeys", "sessions", "sender_keys", "meta"] as const;
+const LOCAL_KEY_MATERIAL_KEY = "rustLocalKeyMaterial";
 
-const DB_NAME = 'e2ee_keys';
-const DB_VERSION = 2;
-
-const STORES = ['identity', 'prekeys', 'sessions', 'sender_keys', 'meta'] as const;
-
-// ---------------------------------------------------------------------------
-// IndexedDB 底层操作
-// ---------------------------------------------------------------------------
+export type LocalPublicBundle = RustPublicPreKeyBundle;
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -38,7 +28,7 @@ function openDB(): Promise<IDBDatabase> {
 async function idbGet(storeName: string, key: string): Promise<unknown | undefined> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readonly');
+    const tx = db.transaction(storeName, "readonly");
     const store = tx.objectStore(storeName);
     const req = store.get(key);
     req.onsuccess = () => resolve(req.result);
@@ -49,7 +39,7 @@ async function idbGet(storeName: string, key: string): Promise<unknown | undefin
 async function idbPut(storeName: string, key: string, value: unknown): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
+    const tx = db.transaction(storeName, "readwrite");
     const store = tx.objectStore(storeName);
     const req = store.put(value, key);
     req.onsuccess = () => resolve();
@@ -57,147 +47,94 @@ async function idbPut(storeName: string, key: string, value: unknown): Promise<v
   });
 }
 
-async function idbDelete(storeName: string, key: string): Promise<void> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
-    const store = tx.objectStore(storeName);
-    const req = store.delete(key);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
+const isRustLocalKeyMaterial = (value: unknown): value is RustLocalE2eeKeyMaterial => {
+  const record = value as Partial<RustLocalE2eeKeyMaterial> | undefined;
+  return (
+    record?.version === 2 &&
+    typeof record.identityKeyPairBincode === "string" &&
+    typeof record.signedPreKeyPairBincode === "string" &&
+    Array.isArray(record.oneTimePreKeyPairs) &&
+    typeof record.publicBundle?.identityKey === "string"
+  );
+};
+
+export async function saveLocalKeyMaterial(keys: RustLocalE2eeKeyMaterial): Promise<void> {
+  await idbPut("identity", LOCAL_KEY_MATERIAL_KEY, keys);
+  await idbPut("meta", "localPublicBundle", keys.publicBundle);
 }
 
-// ---------------------------------------------------------------------------
-// Identity Key Pair — extractable: false，直接存储 CryptoKey
-// ---------------------------------------------------------------------------
-
-/**
- * 保存 Identity Key Pair（ECDH P-256，extractable: false）
- * 使用 IndexedDB structured clone 直接存储 CryptoKey 对象，无需 JWK 导出。
- */
-export async function saveIdentityKeyPair(keyPair: CryptoKeyPair): Promise<void> {
-  await idbPut('identity', 'identityKeyPair', keyPair);
+export async function getLocalKeyMaterial(): Promise<RustLocalE2eeKeyMaterial | null> {
+  const result = await idbGet("identity", LOCAL_KEY_MATERIAL_KEY);
+  return isRustLocalKeyMaterial(result) ? result : null;
 }
 
-/**
- * 读取 Identity Key Pair
- */
-export async function getIdentityKeyPair(): Promise<CryptoKeyPair | null> {
-  const result = await idbGet('identity', 'identityKeyPair');
-  return (result as CryptoKeyPair) ?? null;
-}
-
-/**
- * 是否已存在 Identity Key
- */
 export async function hasIdentityKey(): Promise<boolean> {
-  const kp = await getIdentityKeyPair();
-  return kp !== null && kp !== undefined;
+  return (await getLocalKeyMaterial()) !== null;
 }
 
-// ---------------------------------------------------------------------------
-// Signed Pre Key — private key stored as non-extractable CryptoKey
-// ---------------------------------------------------------------------------
-
-interface StoredSignedPreKey {
-  keyPair: CryptoKeyPair;
-  publicKeyRaw: ArrayBuffer;
-}
-
-function assertNonExtractablePrivateKey(key: CryptoKey): void {
-  if (key.extractable) {
-    throw new Error('unsupported_browser_crypto');
-  }
-}
-
-export async function saveSignedPreKey(id: number, keyPair: CryptoKeyPair): Promise<void> {
-  assertNonExtractablePrivateKey(keyPair.privateKey);
-  const publicKeyRaw = await exportPublicKey(keyPair.publicKey);
-
-  await idbPut('prekeys', `signedPreKey_${id}`, {
-    keyPair,
-    publicKeyRaw,
-  } satisfies StoredSignedPreKey);
-}
-
-export async function getSignedPreKey(id: number): Promise<CryptoKeyPair | null> {
-  const stored = (await idbGet('prekeys', `signedPreKey_${id}`)) as
-    | StoredSignedPreKey
-    | undefined;
-  if (!stored?.keyPair) return null;
-  assertNonExtractablePrivateKey(stored.keyPair.privateKey);
-  return stored.keyPair;
-}
-
-// ---------------------------------------------------------------------------
-// Device ID
-// ---------------------------------------------------------------------------
-
-/**
- * 保存设备标识
- */
 export async function saveDeviceId(deviceId: string): Promise<void> {
-  await idbPut('meta', 'deviceId', deviceId);
+  await idbPut("meta", "deviceId", deviceId);
 }
 
-/**
- * 读取设备标识
- */
 export async function getDeviceId(): Promise<string | undefined> {
-  const result = await idbGet('meta', 'deviceId');
-  return (result as string) ?? undefined;
-}
-
-// ---------------------------------------------------------------------------
-// Uploaded public bundle metadata
-// ---------------------------------------------------------------------------
-
-export interface LocalPublicBundle {
-  version: 2;
-  identityKey: string;
-  signingIdentityKey: string;
-  signedPreKey: string;
-  signedPreKeySignature: string;
+  const result = await idbGet("meta", "deviceId");
+  return typeof result === "string" ? result : undefined;
 }
 
 export async function saveLocalPublicBundle(bundle: LocalPublicBundle): Promise<void> {
-  await idbPut('meta', 'localPublicBundle', bundle);
+  await idbPut("meta", "localPublicBundle", bundle);
 }
 
 export async function getLocalPublicBundle(): Promise<LocalPublicBundle | null> {
-  const result = (await idbGet('meta', 'localPublicBundle')) as
-    | LocalPublicBundle
-    | undefined;
-  return result?.version === 2 ? result : null;
+  const keys = await getLocalKeyMaterial();
+  if (keys?.publicBundle) {
+    return keys.publicBundle;
+  }
+  const result = await idbGet("meta", "localPublicBundle");
+  const bundle = result as Partial<LocalPublicBundle> | undefined;
+  return typeof bundle?.identityKey === "string" && typeof bundle.signedPreKeySignature === "string"
+    ? (bundle as LocalPublicBundle)
+    : null;
 }
 
-// ---------------------------------------------------------------------------
-// Pre-Key Bundle 元数据
-// ---------------------------------------------------------------------------
+export async function markOneTimePreKeyConsumed(oneTimePreKeyId: number): Promise<void> {
+  const keys = await getLocalKeyMaterial();
+  if (!keys) {
+    return;
+  }
+  await saveLocalKeyMaterial({
+    ...keys,
+    oneTimePreKeyPairs: keys.oneTimePreKeyPairs.filter((pair) => pair.id !== oneTimePreKeyId),
+    publicBundle: {
+      ...keys.publicBundle,
+      oneTimePreKeys: keys.publicBundle.oneTimePreKeys?.filter((preKey) => preKey.id !== oneTimePreKeyId),
+    },
+  });
+}
 
-/**
- * 保存 Pre-Key Bundle 元数据
- */
 export async function savePreKeyBundle(bundle: unknown): Promise<unknown> {
   const id = (bundle as Record<string, unknown>)?.id ?? Date.now();
-  const key = `preKeyBundle_${id}`;
-  await idbPut('prekeys', key, bundle);
+  await idbPut("prekeys", `preKeyBundle_${String(id)}`, bundle);
   return id;
 }
 
-// ---------------------------------------------------------------------------
-// 清除所有密钥
-// ---------------------------------------------------------------------------
+export async function clearLegacyE2eeState(): Promise<void> {
+  try {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith("e2ee:initial-handshake:")) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // localStorage can be unavailable in tests or private browsing.
+  }
+}
 
-/**
- * 清除所有存储的密钥（退出登录时调用）
- */
 export async function clearAllKeys(): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const storeNames = Array.from(db.objectStoreNames);
-    const tx = db.transaction(storeNames, 'readwrite');
+    const tx = db.transaction(storeNames, "readwrite");
 
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
@@ -206,4 +143,22 @@ export async function clearAllKeys(): Promise<void> {
       tx.objectStore(storeName).clear();
     }
   });
+}
+
+const rustOnlyError = (): Error => new Error("rust_e2ee_only");
+
+export async function saveIdentityKeyPair(): Promise<void> {
+  throw rustOnlyError();
+}
+
+export async function getIdentityKeyPair(): Promise<null> {
+  return null;
+}
+
+export async function saveSignedPreKey(): Promise<void> {
+  throw rustOnlyError();
+}
+
+export async function getSignedPreKey(): Promise<null> {
+  return null;
 }
