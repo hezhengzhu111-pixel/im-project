@@ -2,8 +2,10 @@ FROM docker.m.daocloud.io/library/node:20-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json ./apps/web/package.json
+COPY packages/rust-e2ee-wasm/package.json ./packages/rust-e2ee-wasm/package.json
 COPY packages/shared-api-contract/package.json ./packages/shared-api-contract/package.json
 COPY packages/shared-auth-core/package.json ./packages/shared-auth-core/package.json
+COPY packages/shared-e2ee-core/package.json ./packages/shared-e2ee-core/package.json
 COPY packages/shared-im-core/package.json ./packages/shared-im-core/package.json
 COPY packages/shared-normalizers/package.json ./packages/shared-normalizers/package.json
 COPY packages/shared-platform-ports/package.json ./packages/shared-platform-ports/package.json
@@ -26,6 +28,7 @@ RUN npm config set registry https://registry.npmmirror.com/ \
     done
 COPY . .
 ARG FRONTEND_BUILD_MODE=sit
+ENV E2EE_WASM_BUILD_SKIP=1
 RUN if [ "${FRONTEND_BUILD_MODE}" = "dev" ]; then npm run web:build:dev; \
     elif [ "${FRONTEND_BUILD_MODE}" = "sit" ]; then npm run web:build:sit; \
     else npm run web:build; \
