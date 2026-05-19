@@ -49,7 +49,7 @@ backend/
 **Files:**
 - Modify: `backend/Cargo.toml`
 
-- [ ] **Step 1: 添加新 crate 依赖到 workspace**
+- [x] **Step 1: 添加新 crate 依赖到 workspace**
 
 将以下内容追加到 `backend/Cargo.toml` 的 `[workspace.dependencies]` 部分：
 
@@ -80,14 +80,14 @@ members = [
 resolver = "2"
 ```
 
-- [ ] **Step 2: 验证 workspace 解析**
+- [x] **Step 2: 验证 workspace 解析**
 
 ```bash
 cd backend && cargo metadata --no-deps --format-version 1 2>&1 | head -5
 ```
 Expected: 无错误，列出所有 members。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add backend/Cargo.toml
@@ -104,7 +104,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `backend/e2ee-core/Cargo.toml`
 - Create: `backend/e2ee-core/src/lib.rs`
 
-- [ ] **Step 1: 创建 Cargo.toml**
+- [x] **Step 1: 创建 Cargo.toml**
 
 ```toml
 [package]
@@ -127,7 +127,7 @@ x25519-dalek.workspace = true
 zeroize.workspace = true
 ```
 
-- [ ] **Step 2: 创建 lib.rs 骨架**
+- [x] **Step 2: 创建 lib.rs 骨架**
 
 ```rust
 #![forbid(unsafe_code)]
@@ -150,14 +150,14 @@ pub mod x3dh;
 pub use errors::E2eeError;
 ```
 
-- [ ] **Step 3: 编译验证**
+- [x] **Step 3: 编译验证**
 
 ```bash
 cd backend && cargo check -p e2ee-core 2>&1
 ```
 Expected: 编译失败（模块文件尚不存在），但 Cargo.toml 正确。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/e2ee-core/
@@ -175,7 +175,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Create: `backend/e2ee-core/src/errors.rs`
 
-- [ ] **Step 1: 编写错误的测试（编译期检查）**
+- [x] **Step 1: 编写错误的测试（编译期检查）**
 
 创建文件 `backend/e2ee-core/src/errors.rs`：
 
@@ -226,14 +226,14 @@ pub enum E2eeError {
 }
 ```
 
-- [ ] **Step 2: 编译确认**
+- [x] **Step 2: 编译确认**
 
 ```bash
 cd backend && cargo check -p e2ee-core 2>&1
 ```
 Expected: `errors.rs` 编译通过，其他模块文件缺失报错。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add backend/e2ee-core/src/errors.rs
@@ -249,7 +249,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Create: `backend/e2ee-core/src/primitives.rs`
 
-- [ ] **Step 1: 编写 newtype 结构体**
+- [x] **Step 1: 编写 newtype 结构体**
 
 ```rust
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -290,7 +290,7 @@ pub struct AesNonce(pub [u8; 12]);
 pub struct Ed25519Signature(pub [u8; 64]);
 ```
 
-- [ ] **Step 2: 添加 compile_fail 测试确保 newtype 不互换**
+- [x] **Step 2: 添加 compile_fail 测试确保 newtype 不互换**
 
 在 primitives.rs 底部添加：
 
@@ -314,14 +314,14 @@ mod tests {
 }
 ```
 
-- [ ] **Step 3: 编译并测试**
+- [x] **Step 3: 编译并测试**
 
 ```bash
 cd backend && cargo test -p e2ee-core -- primitives::tests 2>&1
 ```
 Expected: 1 test passed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/e2ee-core/src/primitives.rs
@@ -337,7 +337,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Modify: `backend/e2ee-core/src/primitives.rs`
 
-- [ ] **Step 1: 添加密钥生成函数**
+- [x] **Step 1: 添加密钥生成函数**
 
 在 primitives.rs 的 `use` 块后追加：
 
@@ -379,7 +379,7 @@ pub fn generate_nonce() -> AesNonce {
 
 **注意**: `generate_aes_256_key` 和 `generate_nonce` 中使用了 `expect`。`getrandom` 仅在极端环境（嵌入式无 OS）返回错误。在移动端/Web/服务端，`getrandom` 不会失败。本函数不暴露 FFI（仅内部使用），`expect` 可接受。若需严格零 panic，可改为 `unwrap_or_else` 回退到固定 seed。
 
-- [ ] **Step 2: 编写测试**
+- [x] **Step 2: 编写测试**
 
 在 `#[cfg(test)] mod tests` 块中添加：
 
@@ -419,14 +419,14 @@ fn key_generation_is_random() {
 }
 ```
 
-- [ ] **Step 3: 运行测试**
+- [x] **Step 3: 运行测试**
 
 ```bash
 cd backend && cargo test -p e2ee-core 2>&1
 ```
 Expected: 所有测试通过（5+1=6 tests）。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/e2ee-core/src/primitives.rs
@@ -442,7 +442,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Modify: `backend/e2ee-core/src/primitives.rs`
 
-- [ ] **Step 1: 添加 X25519 DH 函数**
+- [x] **Step 1: 添加 X25519 DH 函数**
 
 ```rust
 use crate::errors::E2eeError;
@@ -460,7 +460,7 @@ pub fn x25519_dh(
 }
 ```
 
-- [ ] **Step 2: 编写测试**
+- [x] **Step 2: 编写测试**
 
 ```rust
 #[test]
@@ -491,14 +491,14 @@ fn x25519_dh_output_is_non_zero() {
 }
 ```
 
-- [ ] **Step 3: 运行测试**
+- [x] **Step 3: 运行测试**
 
 ```bash
 cd backend && cargo test -p e2ee-core 2>&1
 ```
 Expected: 9 tests passed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/e2ee-core/src/primitives.rs
@@ -514,7 +514,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Modify: `backend/e2ee-core/src/primitives.rs`
 
-- [ ] **Step 1: 添加 Ed25519 函数**
+- [x] **Step 1: 添加 Ed25519 函数**
 
 ```rust
 use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey, Signature};
@@ -544,7 +544,7 @@ pub fn ed25519_verify(
 }
 ```
 
-- [ ] **Step 2: 编写测试**
+- [x] **Step 2: 编写测试**
 
 ```rust
 #[test]
@@ -575,14 +575,14 @@ fn ed25519_verify_wrong_key_fails() {
 }
 ```
 
-- [ ] **Step 3: 运行测试**
+- [x] **Step 3: 运行测试**
 
 ```bash
 cd backend && cargo test -p e2ee-core 2>&1
 ```
 Expected: 12 tests passed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/e2ee-core/src/primitives.rs
@@ -598,7 +598,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Modify: `backend/e2ee-core/src/primitives.rs`
 
-- [ ] **Step 1: 添加 HKDF 函数**
+- [x] **Step 1: 添加 HKDF 函数**
 
 ```rust
 use hkdf::Hkdf;
@@ -618,7 +618,7 @@ pub fn hkdf_sha256<const N: usize>(
 }
 ```
 
-- [ ] **Step 2: 编写测试**
+- [x] **Step 2: 编写测试**
 
 ```rust
 #[test]
@@ -660,14 +660,14 @@ fn hkdf_sha256_empty_salt_works() {
 }
 ```
 
-- [ ] **Step 3: 运行测试**
+- [x] **Step 3: 运行测试**
 
 ```bash
 cd backend && cargo test -p e2ee-core 2>&1
 ```
 Expected: 16 tests passed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/e2ee-core/src/primitives.rs
@@ -683,7 +683,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Modify: `backend/e2ee-core/src/primitives.rs`
 
-- [ ] **Step 1: 添加 AES-GCM 函数**
+- [x] **Step 1: 添加 AES-GCM 函数**
 
 ```rust
 use aes_gcm::{
@@ -728,7 +728,7 @@ pub fn aes_gcm_decrypt(
 use aes_gcm::aead;
 ```
 
-- [ ] **Step 2: 编写测试**
+- [x] **Step 2: 编写测试**
 
 ```rust
 #[test]
@@ -798,14 +798,14 @@ fn aes_gcm_large_plaintext() {
 }
 ```
 
-- [ ] **Step 3: 运行测试**
+- [x] **Step 3: 运行测试**
 
 ```bash
 cd backend && cargo test -p e2ee-core 2>&1
 ```
 Expected: 22 tests passed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/e2ee-core/src/primitives.rs
@@ -823,7 +823,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Create: `backend/e2ee-core/src/state.rs`
 
-- [ ] **Step 1: 编写 state.rs**
+- [x] **Step 1: 编写 state.rs**
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -948,7 +948,7 @@ pub fn restore_state(bytes: &[u8]) -> Result<RatchetState, crate::errors::E2eeEr
 }
 ```
 
-- [ ] **Step 2: 编写测试**
+- [x] **Step 2: 编写测试**
 
 在 state.rs 底部：
 
@@ -1034,14 +1034,14 @@ mod tests {
 }
 ```
 
-- [ ] **Step 3: 运行测试**
+- [x] **Step 3: 运行测试**
 
 ```bash
 cd backend && cargo test -p e2ee-core -- state 2>&1
 ```
 Expected: 6 tests passed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/e2ee-core/src/state.rs
@@ -1057,7 +1057,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Create: `backend/e2ee-core/src/ratchet.rs`
 
-- [ ] **Step 1: 编写 KDF 内部函数 + build_ratchet_aad**
+- [x] **Step 1: 编写 KDF 内部函数 + build_ratchet_aad**
 
 ```rust
 use crate::errors::E2eeError;
@@ -1119,14 +1119,14 @@ fn build_ratchet_aad(
 }
 ```
 
-- [ ] **Step 2: 编译验证**
+- [x] **Step 2: 编译验证**
 
 ```bash
 cd backend && cargo check -p e2ee-core 2>&1
 ```
 Expected: 编译成功。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add backend/e2ee-core/src/ratchet.rs
@@ -1142,7 +1142,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Modify: `backend/e2ee-core/src/ratchet.rs`
 
-- [ ] **Step 1: 添加链初始化函数**
+- [x] **Step 1: 添加链初始化函数**
 
 在 ratchet.rs 中追加：
 
@@ -1197,7 +1197,7 @@ pub fn init_receiving_chain(
 }
 ```
 
-- [ ] **Step 2: 添加 DH 棘轮步进**
+- [x] **Step 2: 添加 DH 棘轮步进**
 
 ```rust
 fn perform_dh_ratchet(
@@ -1230,7 +1230,7 @@ fn perform_dh_ratchet(
 }
 ```
 
-- [ ] **Step 3: 编写测试**
+- [x] **Step 3: 编写测试**
 
 在 ratchet.rs 底部添加测试模块：
 
@@ -1281,14 +1281,14 @@ mod tests {
 }
 ```
 
-- [ ] **Step 4: 运行测试**
+- [x] **Step 4: 运行测试**
 
 ```bash
 cd backend && cargo test -p e2ee-core 2>&1
 ```
 Expected: 全部测试通过。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/e2ee-core/src/ratchet.rs
@@ -1304,7 +1304,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Modify: `backend/e2ee-core/src/ratchet.rs`
 
-- [ ] **Step 1: 添加加密函数**
+- [x] **Step 1: 添加加密函数**
 
 ```rust
 #[must_use]
@@ -1360,7 +1360,7 @@ use crate::state::RatchetHeader;
 use crate::primitives::AesNonce;
 ```
 
-- [ ] **Step 2: 编写加密测试**
+- [x] **Step 2: 编写加密测试**
 
 ```rust
 #[test]
@@ -1405,13 +1405,13 @@ fn ratchet_encrypt_empty_plaintext() {
 }
 ```
 
-- [ ] **Step 3: 运行测试**
+- [x] **Step 3: 运行测试**
 
 ```bash
 cd backend && cargo test -p e2ee-core -- ratchet::tests 2>&1
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/e2ee-core/src/ratchet.rs
@@ -1427,7 +1427,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Modify: `backend/e2ee-core/src/ratchet.rs`
 
-- [ ] **Step 1: 添加解密函数**
+- [x] **Step 1: 添加解密函数**
 
 ```rust
 #[must_use]
@@ -1517,7 +1517,7 @@ pub fn ratchet_decrypt(
 }
 ```
 
-- [ ] **Step 2: 编写解密测试**
+- [x] **Step 2: 编写解密测试**
 
 ```rust
 #[test]
@@ -1649,14 +1649,14 @@ fn ratchet_export_restore_preserves_state() {
 
 需要添加 `ratchet_encrypt` 测试中已有的 import。
 
-- [ ] **Step 3: 运行测试**
+- [x] **Step 3: 运行测试**
 
 ```bash
 cd backend && cargo test -p e2ee-core 2>&1
 ```
 Expected: 全部 ~36 个测试通过。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/e2ee-core/src/ratchet.rs
@@ -1674,7 +1674,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Create: `backend/e2ee-core/src/x3dh.rs`
 
-- [ ] **Step 1: 编写 x3dh.rs**
+- [x] **Step 1: 编写 x3dh.rs**
 
 ```rust
 use crate::errors::E2eeError;
@@ -1789,7 +1789,7 @@ pub fn generate_key_bundle(
 }
 ```
 
-- [ ] **Step 2: 编写测试**
+- [x] **Step 2: 编写测试**
 
 ```rust
 #[cfg(test)]
@@ -1829,14 +1829,14 @@ mod tests {
 }
 ```
 
-- [ ] **Step 3: 运行测试**
+- [x] **Step 3: 运行测试**
 
 ```bash
 cd backend && cargo test -p e2ee-core -- x3dh 2>&1
 ```
 Expected: 4 tests passed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/e2ee-core/src/x3dh.rs
@@ -1852,7 +1852,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Modify: `backend/e2ee-core/src/x3dh.rs`
 
-- [ ] **Step 1: 添加 x3dh_initiate**
+- [x] **Step 1: 添加 x3dh_initiate**
 
 ```rust
 #[must_use]
@@ -1913,7 +1913,7 @@ pub fn x3dh_initiate(
 }
 ```
 
-- [ ] **Step 2: 编写测试**
+- [x] **Step 2: 编写测试**
 
 在 x3dh test 模块中添加：
 
@@ -1979,13 +1979,13 @@ fn x3dh_initiate_rejects_bad_spk_signature() {
 }
 ```
 
-- [ ] **Step 3: 运行测试**
+- [x] **Step 3: 运行测试**
 
 ```bash
 cd backend && cargo test -p e2ee-core -- x3dh 2>&1
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/e2ee-core/src/x3dh.rs
@@ -2001,7 +2001,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Modify: `backend/e2ee-core/src/x3dh.rs`
 
-- [ ] **Step 1: 添加 x3dh_respond**
+- [x] **Step 1: 添加 x3dh_respond**
 
 ```rust
 #[must_use]
@@ -2049,7 +2049,7 @@ pub fn x3dh_respond(
 }
 ```
 
-- [ ] **Step 2: 编写 X3DH 端到端测试**
+- [x] **Step 2: 编写 X3DH 端到端测试**
 
 ```rust
 #[test]
@@ -2126,14 +2126,14 @@ fn x3dh_different_identity_keys_produce_different_roots() {
 }
 ```
 
-- [ ] **Step 3: 运行测试**
+- [x] **Step 3: 运行测试**
 
 ```bash
 cd backend && cargo test -p e2ee-core 2>&1
 ```
 Expected: 全部 ~45 个测试通过。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/e2ee-core/src/x3dh.rs
@@ -2151,7 +2151,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Modify: `backend/e2ee-core/src/lib.rs`
 
-- [ ] **Step 1: 更新 lib.rs**
+- [x] **Step 1: 更新 lib.rs**
 
 ```rust
 #![forbid(unsafe_code)]
@@ -2191,14 +2191,14 @@ pub use x3dh::{
 };
 ```
 
-- [ ] **Step 2: 编译并运行所有测试**
+- [x] **Step 2: 编译并运行所有测试**
 
 ```bash
 cd backend && cargo test -p e2ee-core 2>&1
 ```
 Expected: 全部测试通过。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add backend/e2ee-core/src/lib.rs
@@ -2214,7 +2214,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Create: `backend/e2ee-core/tests/full_e2ee_flow.rs`
 
-- [ ] **Step 1: 创建集成测试文件**
+- [x] **Step 1: 创建集成测试文件**
 
 创建 `backend/e2ee-core/tests/full_e2ee_flow.rs`:
 
@@ -2414,14 +2414,14 @@ fn full_e2ee_dh_ratchet_healing() {
 }
 ```
 
-- [ ] **Step 2: 运行集成测试**
+- [x] **Step 2: 运行集成测试**
 
 ```bash
 cd backend && cargo test -p e2ee-core --test full_e2ee_flow 2>&1
 ```
 Expected: 3 tests passed.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add backend/e2ee-core/tests/
@@ -2441,7 +2441,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `backend/e2ee-ffi/build.rs`
 - Create: `backend/e2ee-ffi/uniffi.toml`
 
-- [ ] **Step 1: 创建 Cargo.toml**
+- [x] **Step 1: 创建 Cargo.toml**
 
 ```toml
 [package]
@@ -2461,7 +2461,7 @@ uniffi.workspace = true
 uniffi = { workspace = true, features = ["build"] }
 ```
 
-- [ ] **Step 2: 创建 build.rs**
+- [x] **Step 2: 创建 build.rs**
 
 ```rust
 fn main() {
@@ -2469,7 +2469,7 @@ fn main() {
 }
 ```
 
-- [ ] **Step 3: 创建 uniffi.toml**
+- [x] **Step 3: 创建 uniffi.toml**
 
 ```toml
 [bindings.kotlin]
@@ -2480,14 +2480,14 @@ cdylib_name = "e2ee_ffi"
 cdylib_name = "e2ee_ffi"
 ```
 
-- [ ] **Step 4: 编译骨架**
+- [x] **Step 4: 编译骨架**
 
 ```bash
 cd backend && cargo check -p e2ee-ffi 2>&1
 ```
 Expected: 可能会失败（需要 UDL 文件）。我们先跳过编译，Task 21 中会完善。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/e2ee-ffi/
@@ -2507,7 +2507,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `backend/e2ee-ffi/src/lib.rs`
 - Create: `backend/e2ee-ffi/src/session.rs`
 
-- [ ] **Step 1: 创建 UDL 文件**
+- [x] **Step 1: 创建 UDL 文件**
 
 创建 `backend/e2ee-ffi/src/e2ee_ffi.udl`:
 
@@ -2558,7 +2558,7 @@ interface SessionManager {
 };
 ```
 
-- [ ] **Step 2: 创建 lib.rs**
+- [x] **Step 2: 创建 lib.rs**
 
 ```rust
 uniffi::setup_scaffolding!();
@@ -2567,7 +2567,7 @@ mod session;
 pub use session::*;
 ```
 
-- [ ] **Step 3: 创建 session.rs**
+- [x] **Step 3: 创建 session.rs**
 
 ```rust
 use std::collections::HashMap;
@@ -2747,7 +2747,7 @@ impl SessionManager {
 
 > **注意:** `create_inbound_session` 和 `decrypt` 仍包含 `todo!()` — 这违反了"零 Panic"铁律。实际实现时需要在 Task 22-23 中补齐。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/e2ee-ffi/src/
@@ -2763,7 +2763,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Modify: `backend/e2ee-ffi/src/session.rs`
 
-- [ ] **Step 1: 替换 create_inbound_session 的 `todo!()`**
+- [x] **Step 1: 替换 create_inbound_session 的 `todo!()`**
 
 将 `create_inbound_session` 方法体替换为：
 
@@ -2844,13 +2844,13 @@ pub fn create_inbound_session(
 }
 ```
 
-- [ ] **Step 2: 编译验证**
+- [x] **Step 2: 编译验证**
 
 ```bash
 cd backend && cargo check -p e2ee-ffi 2>&1
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add backend/e2ee-ffi/src/session.rs
@@ -2866,7 +2866,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Modify: `backend/e2ee-ffi/src/session.rs`
 
-- [ ] **Step 1: 替换 decrypt 的 `todo!()`**
+- [x] **Step 1: 替换 decrypt 的 `todo!()`**
 
 ```rust
 pub fn decrypt(
@@ -2902,13 +2902,13 @@ pub fn decrypt(
 }
 ```
 
-- [ ] **Step 2: 编译验证**
+- [x] **Step 2: 编译验证**
 
 ```bash
 cd backend && cargo check -p e2ee-ffi 2>&1
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add backend/e2ee-ffi/src/session.rs
@@ -2927,7 +2927,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `backend/e2ee-wasm/Cargo.toml`
 - Create: `backend/e2ee-wasm/src/lib.rs`
 
-- [ ] **Step 1: 创建 Cargo.toml**
+- [x] **Step 1: 创建 Cargo.toml**
 
 ```toml
 [package]
@@ -2945,7 +2945,7 @@ bincode.workspace = true
 serde_json.workspace = true
 ```
 
-- [ ] **Step 2: 创建 lib.rs**
+- [x] **Step 2: 创建 lib.rs**
 
 ```rust
 mod session;
@@ -2953,7 +2953,7 @@ mod session;
 pub use session::WasmSessionManager;
 ```
 
-- [ ] **Step 3: 创建 session.rs**
+- [x] **Step 3: 创建 session.rs**
 
 ```rust
 use std::collections::HashMap;
@@ -3064,7 +3064,7 @@ impl WasmSessionManager {
 }
 ```
 
-- [ ] **Step 4: 编译验证 (需要 wasm32 target)**
+- [x] **Step 4: 编译验证 (需要 wasm32 target)**
 
 ```bash
 # 安装 wasm32 target（如未安装）
@@ -3072,7 +3072,7 @@ rustup target add wasm32-unknown-unknown
 cd backend && cargo check -p e2ee-wasm --target wasm32-unknown-unknown 2>&1
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/e2ee-wasm/
@@ -3088,7 +3088,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - Modify: `backend/e2ee-wasm/src/session.rs`
 
-- [ ] **Step 1: 替换 `create_inbound_session`**
+- [x] **Step 1: 替换 `create_inbound_session`**
 
 ```rust
 pub fn create_inbound_session(
@@ -3144,7 +3144,7 @@ pub fn create_inbound_session(
 }
 ```
 
-- [ ] **Step 2: 替换 `decrypt`**
+- [x] **Step 2: 替换 `decrypt`**
 
 ```rust
 pub fn decrypt(&mut self, session_id: String, encrypted: Vec<u8>) -> Result<Vec<u8>, JsValue> {
@@ -3167,13 +3167,13 @@ pub fn decrypt(&mut self, session_id: String, encrypted: Vec<u8>) -> Result<Vec<
 }
 ```
 
-- [ ] **Step 3: 编译验证**
+- [x] **Step 3: 编译验证**
 
 ```bash
 cd backend && cargo check -p e2ee-wasm --target wasm32-unknown-unknown 2>&1
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/e2ee-wasm/src/session.rs
@@ -3191,41 +3191,41 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 **Files:**
 - No new files; 验证现有 CI 或手动执行
 
-- [ ] **Step 1: 零 unsafe 检查**
+- [x] **Step 1: 零 unsafe 检查**
 
 ```bash
 cd backend && grep -rn "unsafe" e2ee-core/src/ e2ee-ffi/src/ e2ee-wasm/src/ 2>&1
 ```
 Expected: 零结果（仅 `#![forbid(unsafe_code)]` 出现 "unsafe" 字样）。
 
-- [ ] **Step 2: 零 panic 宏检查**
+- [x] **Step 2: 零 panic 宏检查**
 
 ```bash
 cd backend && grep -rnE "unreachable!|panic!|\.unwrap\(\)|\.expect\(" e2ee-core/src/ 2>&1
 ```
 Expected: 仅测试模块中出现 `unwrap()`（测试中可以 panic）。
 
-- [ ] **Step 3: Clippy 零警告**
+- [x] **Step 3: Clippy 零警告**
 
 ```bash
 cd backend && cargo clippy -p e2ee-core -- -D warnings 2>&1
 ```
 Expected: 零警告。
 
-- [ ] **Step 4: cargo fmt**
+- [x] **Step 4: cargo fmt**
 
 ```bash
 cd backend && cargo fmt --check -p e2ee-core -p e2ee-ffi -p e2ee-wasm 2>&1
 ```
 
-- [ ] **Step 5: 完整测试套件**
+- [x] **Step 5: 完整测试套件**
 
 ```bash
 cd backend && cargo test -p e2ee-core -- --nocapture 2>&1
 ```
 Expected: 全部测试通过（~48 tests: ~22 primitives + ~6 state + ~16 ratchet + ~4 x3dh + 3 integration）。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/
@@ -3262,3 +3262,92 @@ cargo fmt --check -p e2ee-core -p e2ee-ffi -p e2ee-wasm
 ---
 
 **预计总工作量**: ~26 tasks × ~5 min = ~130 min（约 2 小时纯实现时间）
+
+---
+
+## Implementation Notes — 实现期修复与增量
+
+以下项在实现过程中发现设计文档与最终代码存在差异，已作为 follow-up 修复：
+
+### Follow-up F1: AAD canonical ordering
+
+**问题**：设计文档 AAD 使用 `local_IK || remote_IK` 顺序，导致接收方 AAD 与发送方不一致（角色互换时前 64 bytes 顺序反转，AEAD 认证失败）。
+
+**修复**：`build_ratchet_aad` 改用 lexicographic ordering（`smaller_IK || larger_IK`）。添加 `chain_info_for_sender` 函数基于 canonical key comparison 确定 Sending/Receiving 链方向。设计文档已同步更新（ADR-8）。
+
+- [x] 代码实现: `ratchet.rs:build_ratchet_aad`, `chain_info_for_sender`, `local_sending_chain_info`, `local_receiving_chain_info`
+- [x] 文档更新: `2026-05-18-e2ee-rust-core-design.md` §5.4.5, ADR-8
+
+### Follow-up F2: OTK ID 管理
+
+**问题**：设计文档中 `KeyBundle.one_time_pre_key_pairs: Vec<X25519KeyPair>` 不含 OTK id，`x3dh_respond` 返回的 `otk_id` 无法可靠传递。
+
+**修复**：
+- 新增 `OneTimePreKeyPair { id: u32, key_pair: X25519KeyPair }` 替代裸 `X25519KeyPair`
+- `KeyBundle.one_time_pre_key_pairs` → `Vec<OneTimePreKeyPair>`
+- `generate_key_bundle` 接受 `&[(u32, u32)]` batch-based OTK 分配
+- 添加 `generate_key_bundle_with_count` 兼容包装
+- `x3dh_respond` 接受 `Option<&OneTimePreKeyPair>`（主 API）
+- 添加 `x3dh_respond_with_raw_otk` 兼容包装（接受裸 `X25519KeyPair`，otk_id=None）
+
+- [x] 代码实现: `x3dh.rs:OneTimePreKeyPair`, `generate_key_bundle`, `generate_key_bundle_with_count`, `x3dh_respond`, `x3dh_respond_with_raw_otk`
+- [x] 文档更新: `2026-05-18-e2ee-rust-core-design.md` §4.1, §4.2
+
+### Follow-up F3: RatchetHeader 线格式（显式编码，非 bincode）
+
+**问题**：设计文档中 RatchetHeader 使用 bincode 序列化，但 bincode 是 Rust-specific 的序列化格式，前端 TypeScript 和移动端无法可靠解析。
+
+**修复**：使用显式固定布局 52 bytes（32 + 4 + 4 + 12 BE），通过 `encode_ratchet_header` / `decode_ratchet_header` 编解码，零索引访问。设计文档已更新。
+
+- [x] 代码实现: `state.rs:encode_ratchet_header`, `decode_ratchet_header`
+- [x] 文档更新: `2026-05-18-e2ee-rust-core-design.md` §6.1
+
+### Follow-up F4: FFI/WASM X25519 KeyPair 双格式 bincode 契约
+
+**问题**：设计文档未规定 keypair bincode 格式，需明确跨端契约。
+
+**修复**：e2ee-ffi 和 e2ee-wasm 均实现 `decode_keypair`：
+- Core format: `bincode(X25519KeyPair)` → pub(32) || priv(32) (首选)
+- Legacy format: `bincode((priv, pub))` → priv(32) || pub(32) (兼容回退)
+- 两种格式均通过 `is_valid_x25519_keypair` 密码学验证
+
+- [x] 代码实现: `e2ee-ffi/src/session.rs:decode_keypair`, `is_valid_x25519_keypair`; `e2ee-wasm/src/session.rs` 同
+- [x] 文档更新: `2026-05-18-e2ee-rust-core-design.md` §6.2
+
+### Follow-up F5: 错误枚举扩展
+
+**问题**：设计文档中的错误枚举缺少 `InvalidHeader`, `InvalidPreKeyId`, `InvalidCounter(String)` 等实现期需要的变体。
+
+**修复**：新增 3 个变体，`InvalidCounter` 改为携带 contextual 信息。
+
+- [x] 代码实现: `errors.rs`
+- [x] 文档更新: `2026-05-18-e2ee-rust-core-design.md` 附录
+
+### Follow-up F6: RatchetState 非敏感字段 zeroize(skip)
+
+**问题**：`local_identity_key`, `remote_identity_key`, `remote_public_key` 是公钥，无需 zeroize。
+
+**修复**：添加 `#[zeroize(skip)]` 注解。
+
+- [x] 代码实现: `state.rs`
+- [x] 文档更新: `2026-05-18-e2ee-rust-core-design.md` §5.2
+
+### Follow-up F7: 解密控制流重构
+
+**问题**：原始设计文档中的解密控制流未区分 `prepare_initial_response_ratchet` 和 `perform_dh_ratchet` 两种场景。
+
+**修复**：实现中 `ratchet_decrypt` 显式处理三种场景：
+1. 跳过密钥缓存命中 → 直接解密
+2. `remote_public_key.is_none() && send_counter > 0` → 首次响应，先 `prepare_initial_response_ratchet`
+3. `remote_public_key != header.ratchet_public_key` → 完整 DH ratchet 步进
+
+- [x] 代码实现: `ratchet.rs:ratchet_decrypt`, `prepare_initial_response_ratchet`
+- [x] 测试覆盖: `ratchet_dh_public_key_rotates_on_each_dh_step`
+
+### 仍待确定/未实现项
+
+- [ ] **Sender Key 群组加密**: 未在 e2ee-core 中实现，属于后续阶段
+- [ ] **Fuzzing 测试**: 已标注为待补充 (§8.4)
+- [ ] **WebCrypto 互操作测试**: 已标注为待补充
+- [ ] **trybuild compile_fail 测试**: 已标注为待补充
+- [ ] **Frontend TypeScript engine 迁移到 e2ee-wasm**: 属于后续阶段

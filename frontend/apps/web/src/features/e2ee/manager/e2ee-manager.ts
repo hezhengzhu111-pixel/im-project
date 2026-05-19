@@ -1,40 +1,32 @@
-/**
- * E2EE 管理器 — 单例
- *
- * 封装加密/解密操作，管理会话状态和消息缓冲。
- * 对上层（消息发送队列、WebSocket 处理器）提供透明的加密/解密接口。
- */
+import {
+  bytesToBase64,
+  bytesToUtf8,
+  OLD_E2EE_UNREADABLE_TEXT,
+  RUST_E2EE_ALGORITHM,
+  RUST_E2EE_ENVELOPE_VERSION,
+  type RustE2eeEnvelope,
+  type RustPublicPreKeyBundle,
+} from "@im/shared-e2ee-core";
 
-import { ratchetEncrypt, ratchetDecrypt } from '../engine/double-ratchet';
-import { getRatchetState, saveRatchetState } from '../store/session-store';
-import { initiateNegotiation, getLocalSessionStatus } from './negotiation';
-import type { E2eeEnvelope, RatchetHeader, E2eeSessionStatus } from '../types';
-import { resolveDeviceId } from './device-identity';
-
-
-function base64ToBase64Url(value: string): string {
-  return value.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
-
-function encodeBase64Url(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = '';
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return base64ToBase64Url(btoa(binary));
-}
-
-const MAX_COUNTER_GAP = 2000;
+import { keyService } from "../api/key-service";
+import { webE2eeRuntime } from "../runtime";
+import {
+  deleteSessionState,
+  getSessionStateBytes,
+  saveSessionStateBytes,
+} from "../store/session-store";
+import type { E2eeSessionStatus } from "../types";
+import { resolveDeviceId } from "./device-identity";
+import { ensureLocalE2eeDeviceRegistered, getLocalRustKeyMaterial } from "./local-device";
+import { getLocalSessionStatus, setLocalSessionStatus } from "./negotiation";
 
 export interface EncryptedPayload {
   ciphertext: string;
-  header: RatchetHeader;
   deviceId: string;
 }
 
 class E2eeManager {
-  private deviceId: string = '';
+  private deviceId = "";
 
   async init(deviceId: string): Promise<void> {
     this.deviceId = deviceId;
@@ -51,21 +43,19 @@ class E2eeManager {
     return getLocalSessionStatus(sessionId);
   }
 
-  /**
-   * 加密一条消息
-   *
-   * @returns 加密后的载荷，如果没有 ratchet state 则返回 null
-   */
   async encryptMessage(sessionId: string, plaintext: string): Promise<EncryptedPayload | null> {
-    const state = await getRatchetState(sessionId);
+    const state = await getSessionStateBytes(sessionId);
     if (!state) return null;
 
-    const { header, ciphertext } = await ratchetEncrypt(state, plaintext);
-    await saveRatchetState(sessionId, state);
+    await webE2eeRuntime.restoreSession(sessionId, state);
+    const wire = await webE2eeRuntime.encrypt(sessionId, plaintext);
+    await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId));
 
-    return { ciphertext, header, deviceId: await this.resolveCurrentDeviceId() };
+    return {
+      ciphertext: bytesToBase64(wire),
+      deviceId: await this.resolveCurrentDeviceId(),
+    };
   }
-
 
   async encryptToEnvelope(params: {
     conversationId: string;
@@ -74,91 +64,147 @@ class E2eeManager {
     recipientUserId?: string;
     recipientDeviceIds?: string[];
     plaintext: string;
-  }): Promise<E2eeEnvelope> {
+  }): Promise<RustE2eeEnvelope> {
     const sessionId = params.conversationId;
-    const payload = await this.encryptMessage(sessionId, params.plaintext);
-    if (!payload?.ciphertext) {
-      throw new Error('session_not_ready');
-    }
+    const senderDeviceId = await this.resolveCurrentDeviceId();
+    await ensureLocalE2eeDeviceRegistered();
 
-    const keyVersion = 1;
-    const keyId = `${sessionId}:${payload.header.counter}`;
-    const aadFields = {
-      conversationId: params.conversationId,
-      clientMsgId: params.clientMsgId,
-      senderUserId: params.senderUserId,
-      senderDeviceId: payload.deviceId,
-      recipientDeviceIds: params.recipientDeviceIds?.length ? params.recipientDeviceIds : [params.recipientUserId ?? 'unknown'],
+    const { recipientDeviceId, handshake } = await this.ensureOutboundSession({
       sessionId,
-      keyId,
-      keyVersion,
-      version: 1,
-      alg: 'AES-256-GCM',
-    } as const;
+      recipientUserId: params.recipientUserId,
+      recipientDeviceId: params.recipientDeviceIds?.[0],
+    });
+
+    const wire = await webE2eeRuntime.encrypt(sessionId, params.plaintext);
+    await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId));
+    setLocalSessionStatus(sessionId, "encrypted");
 
     return {
-      version: 1,
-      alg: 'AES-256-GCM',
-      conversationId: params.conversationId,
-      clientMsgId: params.clientMsgId,
-      senderUserId: params.senderUserId,
-      senderDeviceId: payload.deviceId,
-      recipientUserId: params.recipientUserId,
-      recipientDeviceIds: aadFields.recipientDeviceIds,
+      version: RUST_E2EE_ENVELOPE_VERSION,
+      algorithm: RUST_E2EE_ALGORITHM,
+      senderDeviceId,
+      recipientDeviceId,
       sessionId,
-      keyId,
-      keyVersion,
-      iv: base64ToBase64Url(payload.header.iv),
-      aad: encodeBase64Url(JSON.stringify(aadFields)),
-      ciphertext: base64ToBase64Url(payload.ciphertext),
-      createdAt: Date.now(),
+      handshake,
+      wire: bytesToBase64(wire),
     };
   }
 
-  /**
-   * 解密一条消息
-   *
-   * 如果没有会话状态且提供了对方的 identityKey 和 ephemeralKey，
-   * 会自动作为响应方进行协商。
-   *
-   * @returns 解密后的明文；如果消息被缓冲则返回空字符串
-   */
+  async decryptEnvelope(envelope: RustE2eeEnvelope, senderUserId: string): Promise<string> {
+    const state = await getSessionStateBytes(envelope.sessionId);
+    if (state) {
+      await webE2eeRuntime.restoreSession(envelope.sessionId, state);
+    } else if (envelope.handshake) {
+      const localKeys = await getLocalRustKeyMaterial();
+      const remoteIdentityKey = await this.resolveSenderIdentityKey(senderUserId, envelope.senderDeviceId);
+      await webE2eeRuntime.createInboundSession({
+        sessionId: envelope.sessionId,
+        localKeys,
+        remoteIdentityKey,
+        handshake: envelope.handshake,
+      });
+    } else {
+      throw new Error("Rust E2EE session not found and envelope has no handshake");
+    }
+
+    const plaintext = await webE2eeRuntime.decrypt(envelope.sessionId, envelope);
+    await saveSessionStateBytes(envelope.sessionId, await webE2eeRuntime.exportSession(envelope.sessionId));
+    setLocalSessionStatus(envelope.sessionId, "encrypted");
+    return bytesToUtf8(plaintext);
+  }
+
   async decryptMessage(
     sessionId: string,
-    senderId: string,
-    header: RatchetHeader,
+    _senderId: string,
+    _header: unknown,
     ciphertext: string,
-    senderIdentityKey?: string,
-    ephemeralPublicKey?: string,
   ): Promise<string> {
-    let state = await getRatchetState(sessionId);
-
-    // 接收方必须先在协商弹窗中显式确认，不能在收到首条密文时静默建链。
-    if (!state && senderIdentityKey && ephemeralPublicKey) {
-      throw new Error('E2EE negotiation has not been accepted');
+    const state = await getSessionStateBytes(sessionId);
+    if (!state) {
+      throw new Error(OLD_E2EE_UNREADABLE_TEXT);
     }
-
-    if (!state) throw new Error(`No ratchet state for session ${sessionId}`);
-
-    if (header.counter > state.receiveCounter + MAX_COUNTER_GAP) {
-      await initiateNegotiation(sessionId, senderId);
-      throw new Error('Session renegotiation required');
-    }
-
-    const plaintext = await ratchetDecrypt(state, header, ciphertext);
-    await saveRatchetState(sessionId, state);
-
-    return plaintext;
+    await webE2eeRuntime.restoreSession(sessionId, state);
+    const plaintext = await webE2eeRuntime.decrypt(sessionId, ciphertext);
+    await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId));
+    return bytesToUtf8(plaintext);
   }
 
   async clearSession(sessionId: string): Promise<void> {
-    localStorage.removeItem('e2ee:status:' + sessionId);
-    try {
-      const { deleteRatchetState } = await import('../store/session-store');
-      await deleteRatchetState(sessionId);
-    } catch {
-      // Ignore — IndexedDB cleanup is best-effort
+    localStorage.removeItem("e2ee:status:" + sessionId);
+    await deleteSessionState(sessionId);
+    await webE2eeRuntime.removeSession(sessionId);
+  }
+
+  private async ensureOutboundSession(input: {
+    sessionId: string;
+    recipientUserId?: string;
+    recipientDeviceId?: string;
+  }): Promise<{ recipientDeviceId: string; handshake?: string }> {
+    const existingState = await getSessionStateBytes(input.sessionId);
+    if (existingState) {
+      await webE2eeRuntime.restoreSession(input.sessionId, existingState);
+      return {
+        recipientDeviceId: input.recipientDeviceId ?? "unknown",
+      };
     }
+
+    if (!input.recipientUserId) {
+      throw new Error("missing recipient user id for Rust E2EE session");
+    }
+
+    const localKeys = await getLocalRustKeyMaterial();
+    const remoteBundle = await this.fetchRemoteBundle(input.recipientUserId, input.recipientDeviceId);
+    await webE2eeRuntime.removeSession(input.sessionId);
+    const handshakeBytes = await webE2eeRuntime.createOutboundSession({
+      sessionId: input.sessionId,
+      localKeys,
+      remoteBundle,
+    });
+    await saveSessionStateBytes(input.sessionId, await webE2eeRuntime.exportSession(input.sessionId));
+
+    return {
+      recipientDeviceId: remoteBundle.deviceId ?? input.recipientDeviceId ?? "unknown",
+      handshake: bytesToBase64(handshakeBytes),
+    };
+  }
+
+  private async fetchRemoteBundle(userId: string, deviceId?: string): Promise<RustPublicPreKeyBundle> {
+    const devicesResp = await keyService.getDevices(userId);
+    const targetDevice =
+      deviceId != null
+        ? (devicesResp.data || []).find((device) => device.deviceId === deviceId)
+        : [...(devicesResp.data || [])].sort((a, b) => {
+            const left = new Date(a.lastActiveAt || a.last_active_at || 0).getTime();
+            const right = new Date(b.lastActiveAt || b.last_active_at || 0).getTime();
+            return right - left;
+          })[0];
+
+    if (!targetDevice?.deviceId) {
+      throw new Error("remote user has no active Rust E2EE device");
+    }
+
+    const bundleResp = await keyService.getBundle(userId, targetDevice.deviceId);
+    if (!bundleResp.data) {
+      throw new Error("remote user has no Rust E2EE bundle");
+    }
+    return {
+      ...bundleResp.data,
+      userId,
+      deviceId: bundleResp.data.deviceId ?? targetDevice.deviceId,
+    };
+  }
+
+  private async resolveSenderIdentityKey(senderUserId: string, senderDeviceId: string): Promise<string> {
+    const devicesResp = await keyService.getDevices(senderUserId);
+    const device = (devicesResp.data || []).find((item) => item.deviceId === senderDeviceId);
+    if (device?.identityKey) {
+      return device.identityKey;
+    }
+    const bundleResp = await keyService.getBundle(senderUserId, senderDeviceId);
+    if (bundleResp.data?.identityKey) {
+      return bundleResp.data.identityKey;
+    }
+    throw new Error("sender Rust identity key not found");
   }
 }
 

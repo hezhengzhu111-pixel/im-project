@@ -42,10 +42,7 @@ export const messageService = {
     content?: string;
     encrypted: boolean;
     e2eeEnvelope: E2eeEnvelope;
-    e2eeHeader: string;
     e2eeDeviceId: string;
-    e2eeSenderIdentityKey?: string;
-    e2eeEphemeralKey?: string;
   }): Promise<ApiResponse<Message>> {
     const response = await http.post<unknown>(MESSAGE_ENDPOINTS.SEND_PRIVATE, data);
     return {

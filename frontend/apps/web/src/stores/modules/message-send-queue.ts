@@ -125,20 +125,6 @@ const resolveMediaMetadata = (
   return normalized;
 };
 
-
-
-const base64ToBase64Url = (value: string): string =>
-  value.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-
-const encodeBase64Url = (value: string): string => {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return base64ToBase64Url(btoa(binary));
-};
-
 const E2EE_FAILURE_REASONS = new Set([
   "missing_recipient_key",
   "missing_local_private_key",
@@ -254,72 +240,25 @@ export function createMessageSendQueueModule(
       : resolveMediaMetadata(content, extra);
 
     let encryptedEnvelope: import("@/features/e2ee/types").E2eeEnvelope | null = null;
-    let initialHandshake: {
-      senderIdentityKey: string;
-      ephemeralPublicKey: string;
-      deviceId: string;
-    } | null = null;
     let e2eeRequired = false;
 
     if (session.type === "private") {
       try {
         const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
-        const { getPendingInitialHandshake, getLocalSessionStatus } = await import(
+        const { getLocalSessionStatus } = await import(
           "@/features/e2ee/manager/negotiation"
         );
         e2eeRequired = privateE2eeStatus === "encrypted"
           || getLocalSessionStatus(session.id) === "encrypted";
 
         if (e2eeRequired) {
-          if (typeof e2eeManager.encryptToEnvelope === "function") {
-            encryptedEnvelope = await e2eeManager.encryptToEnvelope({
-              conversationId: session.id,
-              clientMsgId: clientMessageId,
-              senderUserId: currentUser.id,
-              recipientUserId: session.targetId,
-              recipientDeviceIds: [session.targetId],
-              plaintext: content,
-            });
-          } else {
-            const payload = await e2eeManager.encryptMessage(session.id, content);
-            if (!payload?.ciphertext) {
-              throw new Error("crypto_failed");
-            }
-            const keyVersion = 1;
-            const headerCounter = typeof payload.header.counter === "number" ? payload.header.counter : 0;
-            const headerIv = typeof payload.header.iv === "string" ? payload.header.iv : "AAAAAAAAAAAAAAAA";
-            const keyId = `${session.id}:${headerCounter}`;
-            const aadFields = {
-              conversationId: session.id,
-              clientMsgId: clientMessageId,
-              senderUserId: currentUser.id,
-              senderDeviceId: payload.deviceId,
-              recipientDeviceIds: [session.targetId],
-              sessionId: session.id,
-              keyId,
-              keyVersion,
-              version: 1,
-              alg: "AES-256-GCM",
-            } as const;
-            encryptedEnvelope = {
-              version: 1,
-              alg: "AES-256-GCM",
-              conversationId: session.id,
-              clientMsgId: clientMessageId,
-              senderUserId: currentUser.id,
-              senderDeviceId: payload.deviceId,
-              recipientUserId: session.targetId,
-              recipientDeviceIds: [session.targetId],
-              sessionId: session.id,
-              keyId,
-              keyVersion,
-              iv: base64ToBase64Url(headerIv),
-              aad: encodeBase64Url(JSON.stringify(aadFields)),
-              ciphertext: base64ToBase64Url(payload.ciphertext),
-              createdAt: Date.now(),
-            };
-          }
-          initialHandshake = getPendingInitialHandshake(session.id);
+          encryptedEnvelope = await e2eeManager.encryptToEnvelope({
+            conversationId: session.id,
+            clientMsgId: clientMessageId,
+            senderUserId: currentUser.id,
+            recipientUserId: session.targetId,
+            plaintext: content,
+          });
         }
       } catch (error) {
         if (privateE2eeStatus === "encrypted" || e2eeRequired) {
@@ -365,10 +304,7 @@ export function createMessageSendQueueModule(
           status: "SENDING",
           encrypted: true,
           e2eeEnvelope: encryptedEnvelope,
-          e2eeHeader: JSON.stringify(encryptedEnvelope),
           e2eeDeviceId: encryptedEnvelope.senderDeviceId,
-          e2eeSenderIdentityKey: initialHandshake?.senderIdentityKey,
-          e2eeEphemeralKey: initialHandshake?.ephemeralPublicKey,
           extra: { ...(extra ?? {}), e2eeEnvelope: encryptedEnvelope },
         }
       : {
@@ -429,10 +365,7 @@ export function createMessageSendQueueModule(
           messageType: String(type),
           encrypted: true,
           e2eeEnvelope: encryptedEnvelope,
-          e2eeHeader: JSON.stringify(encryptedEnvelope),
           e2eeDeviceId: encryptedEnvelope.senderDeviceId,
-          e2eeSenderIdentityKey: initialHandshake?.senderIdentityKey,
-          e2eeEphemeralKey: initialHandshake?.ephemeralPublicKey,
         });
       } else {
         response = await ctx.messageService.sendPrivate({
@@ -463,7 +396,7 @@ export function createMessageSendQueueModule(
         (serverMessage as unknown as Record<string, unknown>).encrypted = true;
       }
       replaceLocalMessage(session.id, localId, serverMessage);
-      if (encryptedEnvelope && initialHandshake) {
+      if (encryptedEnvelope?.handshake) {
         const { clearPendingInitialHandshake } = await import('@/features/e2ee/manager/negotiation');
         clearPendingInitialHandshake(session.id);
       }
@@ -498,10 +431,7 @@ export function createMessageSendQueueModule(
                     messageType: type,
                     encrypted: true,
                     e2eeEnvelope: encryptedEnvelope,
-                    e2eeHeader: JSON.stringify(encryptedEnvelope),
                     e2eeDeviceId: encryptedEnvelope.senderDeviceId,
-                    e2eeSenderIdentityKey: initialHandshake?.senderIdentityKey,
-                    e2eeEphemeralKey: initialHandshake?.ephemeralPublicKey,
                   },
                 }
               : {

@@ -4,11 +4,12 @@ version.workspace = true
 edition.workspace = true
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 e2ee-core = { path = "../e2ee-core" }
 wasm-bindgen.workspace = true
+base64.workspace = true
 bincode.workspace = true
 serde_json.workspace = true
 getrandom = { workspace = true, features = ["js"] }

@@ -3,7 +3,6 @@ import { fileService } from "@/services/file";
 import type { MessageType } from "@/types";
 import { useErrorHandler } from "@/hooks/useErrorHandler";
 import { compressImage, blobToFile } from "@/utils/image-compression";
-import { encryptMedia } from "@/features/e2ee/engine/media-crypto";
 import { e2eeManager } from "@/features/e2ee/manager/e2ee-manager";
 
 type UploadKind = Extract<MessageType, "IMAGE" | "FILE" | "VIDEO" | "VOICE">;
@@ -95,6 +94,8 @@ export function useFileMessageUpload() {
       const isEncrypted = Boolean(sessionId && e2eeStatus === "encrypted");
 
       if (isEncrypted) {
+        throw new Error("Rust E2EE media encryption is not implemented yet; media upload was not started.");
+        /*
         notifyInfo(`正在加密${uploadLabel(kind)}...`);
         const { encryptedChunks, mediaKey, chunkIvs } = await encryptMedia(
           uploadFile instanceof File ? uploadFile : new File([uploadFile], file.name, { type: file.type }),
@@ -110,6 +111,7 @@ export function useFileMessageUpload() {
           chunkIvs,
           mimeType: file.type,
         };
+        */
       }
 
       notifyInfo(`正在上传${uploadLabel(kind)}...`);
