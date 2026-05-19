@@ -12,7 +12,7 @@ interface SmokeResult {
   error?: string;
 }
 
-const assert = (condition: unknown, message: string): asserts condition => {
+const assert = (condition: boolean, message: string): void => {
   if (!condition) {
     throw new Error(message);
   }
