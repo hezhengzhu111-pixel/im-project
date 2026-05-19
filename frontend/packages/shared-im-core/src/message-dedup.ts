@@ -46,13 +46,24 @@ export const mergeMessagesChronologically = (
         // E2EE: avoid empty fields from server overwriting non-empty local fields.
         // server ack / self echo may have empty content for encrypted messages.
         const isIncomingEmptyContent = !message.content && previous.content;
+        // 当 incoming 解密成功时，清除旧的失败 displayContent，优先使用 content 明文
+        const incomingDecryptSuccess = message.decryptStatus === "success";
+        const resolvedContent = incomingDecryptSuccess
+          ? (message.content || previous.content)
+          : isIncomingEmptyContent
+            ? previous.content
+            : (message.content || previous.content);
+        const resolvedDisplayContent = incomingDecryptSuccess
+          ? undefined // 清除旧的失败占位，让 content 明文显示
+          : (message.displayContent || previous.displayContent || undefined);
+        const resolvedDecryptStatus = message.decryptStatus || previous.decryptStatus || undefined;
         const nextMessage = {
           ...previous,
           ...message,
           id: safePreferExistingId(message.id, previous.id),
-          content: isIncomingEmptyContent ? previous.content : (message.content || previous.content),
-          displayContent: message.displayContent || previous.displayContent || undefined,
-          decryptStatus: message.decryptStatus || previous.decryptStatus || undefined,
+          content: resolvedContent,
+          displayContent: resolvedDisplayContent,
+          decryptStatus: resolvedDecryptStatus,
         };
         merged[index] = nextMessage;
         indexMessage(nextMessage, index);

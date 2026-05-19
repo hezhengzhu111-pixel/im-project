@@ -1327,12 +1327,9 @@ async fn validate_e2ee_envelope(
     }
 
     // 校验 envelope.session_id 与 conversation_id 一致
-    if !envelope.session_id.is_empty() && envelope.session_id != conversation_id {
-        return Err(AppError::BadRequest(format!(
-            "e2ee envelope session_id '{}' does not match conversation_id '{}'",
-            envelope.session_id, conversation_id
-        )));
-    }
+    // 前端 sessionId 格式为 {idA}_{idB}，后端 conversation_id 格式为 p_{idA}_{idB}
+    // 两种情况都应接受
+    e2ee_session_id_matches(&envelope.session_id, conversation_id)?;
 
     // 校验 sender_device_id 属于发送方
     validate_device_ownership(db, &envelope.sender_device_id, sender_user_id)
@@ -1364,6 +1361,27 @@ async fn validate_e2ee_envelope(
         }
     }
 
+    Ok(())
+}
+
+/// 校验 envelope.session_id 与 conversation_id 匹配。
+///
+/// 前后端统一使用 `{idA}_{idB}` 格式作为 session 标识。
+/// 后端 conversation_id 带有 `p_` 前缀（由 keys::private_conversation_id 生成），
+/// 比较时去掉前缀后必须与前端 session_id 一致。
+fn e2ee_session_id_matches(session_id: &str, conversation_id: &str) -> Result<(), AppError> {
+    if session_id.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "e2ee envelope session_id required".to_string(),
+        ));
+    }
+    let normalized_conv = conversation_id.strip_prefix("p_").unwrap_or(conversation_id);
+    if session_id != normalized_conv {
+        return Err(AppError::BadRequest(format!(
+            "e2ee envelope session_id '{}' does not match conversation_id '{}'",
+            session_id, conversation_id
+        )));
+    }
     Ok(())
 }
 
@@ -2795,5 +2813,38 @@ mod tests {
         let result = validate_mentioned_user_ids(&input, 50)?;
         assert!(result.is_empty());
         Ok(())
+    }
+
+    // ---------- e2ee_session_id_matches ----------
+
+    #[test]
+    fn e2ee_session_id_without_prefix_matches() -> Result<(), &'static str> {
+        e2ee_session_id_matches("1_2", "p_1_2").map_err(|_| "should match")?;
+        Ok(())
+    }
+
+    #[test]
+    fn e2ee_session_id_with_p_prefix_when_conv_has_p() -> Result<(), &'static str> {
+        // conversation_id 本就不带 p_ 时也应匹配
+        e2ee_session_id_matches("1_2", "1_2").map_err(|_| "should match")?;
+        Ok(())
+    }
+
+    #[test]
+    fn e2ee_session_id_mismatch_rejected() {
+        let result = e2ee_session_id_matches("1_3", "p_1_2");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn e2ee_session_id_empty_rejected() {
+        let result = e2ee_session_id_matches("", "p_1_2");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn e2ee_session_id_whitespace_only_rejected() {
+        let result = e2ee_session_id_matches("  ", "p_1_2");
+        assert!(result.is_err());
     }
 }

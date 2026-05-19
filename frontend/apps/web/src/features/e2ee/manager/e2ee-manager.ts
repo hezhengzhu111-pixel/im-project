@@ -43,6 +43,7 @@ class E2eeManager {
     return getLocalSessionStatus(sessionId);
   }
 
+  /** @deprecated 旧 header/ciphertext 入口，仅测试 mock 保留。生产使用 encryptToEnvelope。 */
   async encryptMessage(sessionId: string, plaintext: string): Promise<EncryptedPayload | null> {
     const state = await getSessionStateBytes(sessionId);
     if (!state) return null;
@@ -113,6 +114,7 @@ class E2eeManager {
     return bytesToUtf8(plaintext);
   }
 
+  /** @deprecated 旧 header/ciphertext 入口，仅测试 mock 保留。生产使用 decryptEnvelope。 */
   async decryptMessage(
     sessionId: string,
     _senderId: string,

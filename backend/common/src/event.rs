@@ -117,7 +117,7 @@ impl MessageStatus {
 #[serde(rename_all = "camelCase")]
 pub struct E2eeEnvelopeDto {
     pub version: i32,
-    #[serde(alias = "algorithm")]
+    #[serde(rename = "algorithm", alias = "alg")]
     pub alg: String,
     #[serde(default)]
     pub conversation_id: String,
@@ -287,6 +287,59 @@ mod tests {
         let encoded = serde_json::to_string(&receipt)?;
         if !encoded.contains("\"lastReadSeq\":9") {
             return Err("last_read_seq should serialize as lastReadSeq".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn e2ee_envelope_serializes_as_algorithm_not_alg() -> Result<(), Box<dyn Error>> {
+        let env = E2eeEnvelopeDto {
+            version: 2,
+            alg: "rust-x25519-x3dh-dr-v1".to_string(),
+            conversation_id: String::new(),
+            client_msg_id: String::new(),
+            server_message_id: None,
+            sender_user_id: String::new(),
+            sender_device_id: "dev1".to_string(),
+            recipient_user_id: None,
+            recipient_device_ids: vec![],
+            session_id: "1_2".to_string(),
+            key_id: String::new(),
+            key_version: 0,
+            iv: String::new(),
+            aad: String::new(),
+            ciphertext: String::new(),
+            created_at: 0,
+            wire: Some("AAAA".to_string()),
+            handshake: None,
+            recipient_device_id: Some("dev2".to_string()),
+        };
+        let json = serde_json::to_string(&env)?;
+        if !json.contains("\"algorithm\":\"rust-x25519-x3dh-dr-v1\"") {
+            return Err("should serialize as 'algorithm', not 'alg'".into());
+        }
+        if json.contains("\"alg\":") {
+            return Err("should not contain 'alg' key on serialize".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn e2ee_envelope_deserializes_algorithm_field() -> Result<(), Box<dyn Error>> {
+        let json = r#"{"version":2,"algorithm":"rust-x25519-x3dh-dr-v1","senderDeviceId":"dev1","sessionId":"1_2","wire":"AAAA"}"#;
+        let env: E2eeEnvelopeDto = serde_json::from_str(json)?;
+        if env.alg != "rust-x25519-x3dh-dr-v1" {
+            return Err("should deserialize 'algorithm' field into 'alg'".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn e2ee_envelope_deserializes_alg_field() -> Result<(), Box<dyn Error>> {
+        let json = r#"{"version":2,"alg":"rust-x25519-x3dh-dr-v1","senderDeviceId":"dev1","sessionId":"1_2","wire":"AAAA"}"#;
+        let env: E2eeEnvelopeDto = serde_json::from_str(json)?;
+        if env.alg != "rust-x25519-x3dh-dr-v1" {
+            return Err("should deserialize legacy 'alg' field".into());
         }
         Ok(())
     }

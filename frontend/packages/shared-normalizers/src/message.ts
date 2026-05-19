@@ -7,6 +7,7 @@ import type {
   ReadReceipt,
 } from "@im/shared-types";
 import { asNumber, asString, isRawMessage, isRecord } from "@im/shared-types";
+import { normalizeEnvelope } from "@im/shared-e2ee-core";
 
 const MESSAGE_TYPES: MessageType[] = [
   "TEXT",
@@ -97,6 +98,16 @@ const VALID_DECRYPT_STATUSES = new Set([
   "session_missing",
   "skipped_own",
 ]);
+
+/**
+ * 归一化 E2EE envelope：接受含 `alg` 的历史字段，输出统一含 `algorithm` 的格式。
+ */
+const normalizeE2eeEnvelope = (raw: unknown): Message["e2eeEnvelope"] => {
+  if (!raw || typeof raw !== "object") return undefined;
+  // normalizeEnvelope 返回 null 表示非法，此时返回 undefined
+  const normalized = normalizeEnvelope(raw);
+  return normalized ?? undefined;
+};
 
 const validateDecryptStatus = (
   value: string,
@@ -236,7 +247,7 @@ export const normalizeMessage = (
     e2eeEphemeralKey:
       asString(record.e2eeEphemeralKey ?? record.e2ee_ephemeral_key) ||
       undefined,
-    e2eeEnvelope: record.e2eeEnvelope ?? record.e2ee_envelope,
+    e2eeEnvelope: normalizeE2eeEnvelope(record.e2eeEnvelope ?? record.e2ee_envelope),
     decryptStatus: validateDecryptStatus(asString(record.decryptStatus)),
     displayContent: asString(record.displayContent) || undefined,
   };

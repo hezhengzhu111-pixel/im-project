@@ -462,7 +462,11 @@ const buildMessageView = (message: Message): MessageListItemView => {
     isRecalled,
     isDeleted,
     messageType: message.messageType,
-    content: message.displayContent || message.content || "",
+    // 解密成功时优先用 content 明文，否则用 displayContent（含失败占位/own plaintext）
+    content:
+      message.decryptStatus === "success"
+        ? message.content || ""
+        : message.displayContent || message.content || "",
     senderName:
       message.senderName || message.groupName || t("message.unknownUser"),
     senderAvatar: message.senderAvatar,
