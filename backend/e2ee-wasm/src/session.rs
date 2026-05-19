@@ -428,11 +428,7 @@ mod tests {
     fn wrong_session_decrypt_fails() {
         use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
 
-        fn setup(
-            mgr: &mut WasmSessionManager,
-            alice_id: &str,
-            bob_id: &str,
-        ) {
+        fn setup(mgr: &mut WasmSessionManager, alice_id: &str, bob_id: &str) {
             let bob_bundle = generate_key_bundle(1, &[(100, 1)]).expect("generate bundle");
             let fetch = PreKeyBundleFetch {
                 identity_key: bob_bundle.bundle.identity_key,
@@ -448,11 +444,7 @@ mod tests {
             let alice_ik = generate_x25519_keypair();
             let alice_ik_bincode = bincode::serialize(&alice_ik).expect("serialize ik");
             let handshake = mgr
-                .create_outbound_session(
-                    alice_id.to_string(),
-                    alice_ik_bincode,
-                    fetch_json,
-                )
+                .create_outbound_session(alice_id.to_string(), alice_ik_bincode, fetch_json)
                 .expect("create outbound");
             let ek_bytes = &handshake[0..32];
 
@@ -490,6 +482,43 @@ mod tests {
         assert!(
             result.is_err(),
             "wrong session decryption MUST fail, but succeeded"
+        );
+    }
+
+    /// Verify that calling encrypt / export_session on a non-existent session
+    /// returns an Err whose message contains "session not found".
+    #[wasm_bindgen_test]
+    fn session_not_found_error_propagation() {
+        let mut mgr = WasmSessionManager::new();
+
+        // encrypt on non-existent session
+        let enc_result = mgr.encrypt("nonexistent".to_string(), b"hello".to_vec());
+        assert!(
+            enc_result.is_err(),
+            "encrypt on missing session should fail"
+        );
+        let enc_msg = enc_result
+            .err()
+            .and_then(|v| v.as_string())
+            .unwrap_or_default();
+        assert!(
+            enc_msg.contains("session not found") || enc_msg.contains("not found"),
+            "encrypt error should contain 'session not found', got: {enc_msg}"
+        );
+
+        // export_session on non-existent session
+        let exp_result = mgr.export_session("nonexistent".to_string());
+        assert!(
+            exp_result.is_err(),
+            "export_session on missing session should fail"
+        );
+        let exp_msg = exp_result
+            .err()
+            .and_then(|v| v.as_string())
+            .unwrap_or_default();
+        assert!(
+            exp_msg.contains("session not found") || exp_msg.contains("not found"),
+            "export error should contain 'session not found', got: {exp_msg}"
         );
     }
 }
@@ -798,7 +827,11 @@ mod host_tests {
         if wire.len() < 4 {
             return Err("wire too short: missing header_len prefix".to_string());
         }
-        let header_len = u32::from_be_bytes([wire[0], wire[1], wire[2], wire[3]]) as usize;
+        let h0 = *wire.first().ok_or("wire is empty")?;
+        let h1 = *wire.get(1).ok_or("wire byte 1 missing")?;
+        let h2 = *wire.get(2).ok_or("wire byte 2 missing")?;
+        let h3 = *wire.get(3).ok_or("wire byte 3 missing")?;
+        let header_len = u32::from_be_bytes([h0, h1, h2, h3]) as usize;
         if header_len != 52 {
             return Err(format!("expected header_len=52, got {header_len}"));
         }
