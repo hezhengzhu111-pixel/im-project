@@ -1,4 +1,11 @@
-import { classifyE2eeError, isEncryptedValue, sanitizeE2eeLogValue, type RatchetHeader } from '@im/shared-e2ee-core';
+import {
+  classifyE2eeError,
+  isEncryptedValue,
+  isRustE2eeEnvelope,
+  normalizeEnvelope,
+  sanitizeE2eeLogValue,
+  type RustE2eeEnvelope,
+} from '@im/shared-e2ee-core';
 import {
   E2EE_OWN_PLAINTEXT_UNAVAILABLE_TEXT,
   E2EE_UNSUPPORTED_TEXT,
@@ -24,6 +31,15 @@ export interface ProcessMessageOptions {
   findOptimisticMessage?: (clientMessageId: string) => MobileMessage | undefined;
 }
 
+const legacyE2eeFieldNames = [
+  'e2eeHeader',
+  'e2ee_header',
+  'e2eeSenderIdentityKey',
+  'e2ee_sender_identity_key',
+  'e2eeEphemeralKey',
+  'e2ee_ephemeral_key',
+];
+
 const safePlaceholder = (
   message: MobileMessage,
   decryptStatus: Extract<E2eeDecryptStatus, 'pending' | 'failed'> = 'pending',
@@ -39,16 +55,6 @@ const safePlaceholder = (
   mediaSize: undefined,
   duration: undefined,
 });
-
-const readStringField = (message: MobileMessage, camelKey: keyof MobileMessage, snakeKey: string): string => {
-  const camelValue = message[camelKey];
-  if (typeof camelValue === 'string' && camelValue) {
-    return camelValue;
-  }
-  const record = message as unknown as Record<string, unknown>;
-  const snakeValue = record[snakeKey];
-  return typeof snakeValue === 'string' ? snakeValue : '';
-};
 
 const readNumberField = (message: MobileMessage, camelKey: keyof MobileMessage, snakeKey: string): number | undefined => {
   const camelValue = message[camelKey];
@@ -71,6 +77,11 @@ const readNumberField = (message: MobileMessage, camelKey: keyof MobileMessage, 
   return undefined;
 };
 
+const readEnvelope = (value: unknown): RustE2eeEnvelope | undefined => {
+  const normalized = normalizeEnvelope(value);
+  return normalized ?? undefined;
+};
+
 const parseRawMessage = (message: MobileMessage): MobileMessage => {
   if (!message.rawJson) {
     return message;
@@ -81,48 +92,17 @@ const parseRawMessage = (message: MobileMessage): MobileMessage => {
       ...message,
       ...raw,
       encrypted: raw.encrypted ?? message.encrypted,
-      e2eeHeader: readStringField(raw as unknown as MobileMessage, 'e2eeHeader', 'e2ee_header') || message.e2eeHeader,
-      e2eeDeviceId: readStringField(raw as unknown as MobileMessage, 'e2eeDeviceId', 'e2ee_device_id') || message.e2eeDeviceId,
-      e2eeSenderIdentityKey:
-        readStringField(raw as unknown as MobileMessage, 'e2eeSenderIdentityKey', 'e2ee_sender_identity_key') ||
-        message.e2eeSenderIdentityKey,
-      e2eeEphemeralKey:
-        readStringField(raw as unknown as MobileMessage, 'e2eeEphemeralKey', 'e2ee_ephemeral_key') ||
-        message.e2eeEphemeralKey,
+      e2eeDeviceId:
+        typeof raw.e2eeDeviceId === 'string'
+          ? raw.e2eeDeviceId
+          : typeof raw.e2ee_device_id === 'string'
+            ? raw.e2ee_device_id
+            : message.e2eeDeviceId,
+      e2eeEnvelope: readEnvelope(raw.e2eeEnvelope ?? raw.e2ee_envelope) ?? message.e2eeEnvelope,
       rawJson: message.rawJson,
     } as MobileMessage;
   } catch {
     return message;
-  }
-};
-
-const parseHeader = (message: MobileMessage): RatchetHeader => {
-  const headerJson = readStringField(message, 'e2eeHeader', 'e2ee_header');
-  if (!headerJson) {
-    throw new Error('E2EE message header unavailable');
-  }
-  const parsed = JSON.parse(headerJson) as Partial<RatchetHeader>;
-  if (
-    typeof parsed.ratchetPublicKey !== 'string' ||
-    typeof parsed.counter !== 'number' ||
-    typeof parsed.previousCounter !== 'number' ||
-    typeof parsed.iv !== 'string'
-  ) {
-    throw new Error('E2EE message header invalid');
-  }
-  return {
-    ratchetPublicKey: parsed.ratchetPublicKey,
-    counter: parsed.counter,
-    previousCounter: parsed.previousCounter,
-    iv: parsed.iv,
-  };
-};
-
-const tryReadHeaderCounter = (message: MobileMessage): number | undefined => {
-  try {
-    return parseHeader(message).counter;
-  } catch {
-    return undefined;
   }
 };
 
@@ -137,14 +117,14 @@ export const compareE2eeDecryptOrder = (left: MobileMessage, right: MobileMessag
   if (leftSeq != null && rightSeq != null && leftSeq !== rightSeq) {
     return leftSeq - rightSeq;
   }
-  const leftCounter = tryReadHeaderCounter(left);
-  const rightCounter = tryReadHeaderCounter(right);
-  if (leftCounter != null && rightCounter != null && leftCounter !== rightCounter) {
-    return leftCounter - rightCounter;
-  }
   return (left.messageId || left.serverId || left.id || left.clientMessageId || '').localeCompare(
     right.messageId || right.serverId || right.id || right.clientMessageId || '',
   );
+};
+
+const hasLegacyEncryptedPayload = (message: MobileMessage): boolean => {
+  const record = message as unknown as Record<string, unknown>;
+  return legacyE2eeFieldNames.some((field) => typeof record[field] === 'string' && String(record[field]).length > 0);
 };
 
 const isRemotePrivateEncryptedText = (message: MobileMessage, currentUserId: string): boolean => {
@@ -157,6 +137,15 @@ const isRemotePrivateEncryptedText = (message: MobileMessage, currentUserId: str
     !message.groupId &&
     (raw.messageType || message.messageType) === 'TEXT' &&
     raw.senderId !== currentUserId
+  );
+};
+
+const shouldKeepPending = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error || '').toLowerCase();
+  return (
+    message.includes('session state unavailable') ||
+    message.includes('no handshake') ||
+    message.includes('not been accepted')
   );
 };
 
@@ -207,17 +196,22 @@ export const processE2eeMessage = async (
     };
   }
 
+  const envelope = readEnvelope(rawMessage.e2eeEnvelope);
+  if (!envelope || !isRustE2eeEnvelope(envelope)) {
+    return {
+      rawMessage,
+      displayMessage: safePlaceholder(baseDisplay, 'failed', E2EE_UNSUPPORTED_TEXT),
+      decryptStatus: hasLegacyEncryptedPayload(rawMessage) ? 'failed' : 'failed',
+    };
+  }
+
   try {
-    const header = parseHeader(rawMessage);
-    const ciphertext = rawMessage.content || message.content || '';
-    if (!ciphertext || ciphertext === E2EE_UNSUPPORTED_TEXT) {
-      throw new Error('E2EE ciphertext unavailable');
-    }
-    const plaintext = await e2eeManager.decryptMessage(sessionId, rawMessage.senderId || message.senderId || '', header, ciphertext);
+    const plaintext = await e2eeManager.decryptEnvelope(envelope, rawMessage.senderId || message.senderId || '');
     return {
       rawMessage,
       displayMessage: markE2eeDisplayDecrypted({
         ...baseDisplay,
+        e2eeEnvelope: envelope,
         content: plaintext,
       }, 'decrypted'),
       decryptStatus: 'decrypted',
@@ -228,10 +222,11 @@ export const processE2eeMessage = async (
       sessionId,
       code: classification.code,
       category: classification.category,
-      hasHeader: Boolean(readStringField(rawMessage, 'e2eeHeader', 'e2ee_header')),
-      hasCiphertext: Boolean(rawMessage.content && rawMessage.content !== E2EE_UNSUPPORTED_TEXT),
+      senderDeviceId: envelope.senderDeviceId,
+      recipientDeviceId: envelope.recipientDeviceId,
+      hasHandshake: Boolean(envelope.handshake),
     }));
-    const pending = classification.code === 'NO_RATCHET_STATE' || classification.code === 'NEGOTIATION_NOT_ACCEPTED';
+    const pending = shouldKeepPending(error) || classification.retryable;
     return {
       rawMessage,
       displayMessage: safePlaceholder(baseDisplay, pending ? 'pending' : 'failed'),
@@ -245,12 +240,16 @@ export const processE2eeMessages = async (
   options: ProcessMessageOptions & { concurrency?: number },
 ): Promise<ProcessedE2eeMessage[]> => {
   const results: ProcessedE2eeMessage[] = new Array(messages.length);
-  const ratchetWork: Array<{ index: number; message: MobileMessage }> = [];
+  const remoteBySession = new Map<string, Array<{ index: number; message: MobileMessage }>>();
   const independentWork: Array<Promise<void>> = [];
 
   messages.forEach((message, index) => {
     if (isRemotePrivateEncryptedText(message, options.currentUserId)) {
-      ratchetWork.push({ index, message });
+      const parsed = parseRawMessage(message);
+      const sessionId = options.sessionId || resolveMessageSessionId(parsed, options.currentUserId) || parsed.conversationId || message.conversationId || '';
+      const bucket = remoteBySession.get(sessionId) || [];
+      bucket.push({ index, message });
+      remoteBySession.set(sessionId, bucket);
       return;
     }
     independentWork.push(
@@ -261,11 +260,12 @@ export const processE2eeMessages = async (
   });
 
   await Promise.all(independentWork);
-
-  ratchetWork.sort((left, right) => compareE2eeDecryptOrder(left.message, right.message));
-  for (const item of ratchetWork) {
-    results[item.index] = await processE2eeMessage(item.message, options);
-  }
+  await Promise.all([...remoteBySession.entries()].map(async ([sessionId, items]) => {
+    items.sort((left, right) => compareE2eeDecryptOrder(left.message, right.message));
+    for (const item of items) {
+      results[item.index] = await processE2eeMessage(item.message, { ...options, sessionId });
+    }
+  }));
 
   return results;
 };

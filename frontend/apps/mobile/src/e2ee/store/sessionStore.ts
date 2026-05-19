@@ -1,13 +1,16 @@
-import type { E2eeSessionStatus, InitialE2eeHandshake, RatchetState } from '@im/shared-e2ee-core';
+import { bytesToBase64, type E2eeSessionStatus, type InitialE2eeHandshake } from '@im/shared-e2ee-core';
 import { e2eeSecureStorage } from '@/e2ee/storage/secureE2eeStorage';
 import { e2eeKeyStore } from './keyStore';
+
+export type RustSessionState = string;
 
 const statusMemory = new Map<string, E2eeSessionStatus>();
 const pendingRequestMemory = new Map<string, unknown>();
 const STATUS_KIND = 'status';
-const RATCHET_KIND = 'ratchet';
+const SESSION_KIND = 'session';
 const HANDSHAKE_KIND = 'handshake';
 const PENDING_REQUEST_KIND = 'pending-request';
+const REMOTE_DEVICE_KIND = 'remote-device';
 
 const validStatus = (value: unknown): value is E2eeSessionStatus =>
   value === 'plaintext' || value === 'negotiating' || value === 'encrypted' || value === 'failed';
@@ -19,6 +22,9 @@ const namespace = async (userId: string): Promise<{ userId: string; deviceId: st
 
 const keyFor = (userId: string, deviceId: string, kind: string, sessionId: string): string =>
   e2eeSecureStorage.namespaceKey(userId, deviceId, kind, sessionId);
+
+const encodeSessionState = (state: Uint8Array | string): RustSessionState =>
+  typeof state === 'string' ? state : bytesToBase64(state);
 
 export const e2eeSessionStore = {
   getCachedStatus(sessionId: string): E2eeSessionStatus {
@@ -53,7 +59,7 @@ export const e2eeSessionStore = {
     }
   },
 
-  async saveRatchetState(userId: string, sessionId: string, state: RatchetState): Promise<void> {
+  async saveSessionState(userId: string, sessionId: string, state: Uint8Array | string): Promise<void> {
     const ns = await namespace(userId);
     if (!ns) {
       throw new Error('E2EE namespace unavailable');
@@ -61,28 +67,58 @@ export const e2eeSessionStore = {
     await e2eeSecureStorage.setEncryptedJson(
       ns.userId,
       ns.deviceId,
-      keyFor(ns.userId, ns.deviceId, RATCHET_KIND, sessionId),
-      state,
+      keyFor(ns.userId, ns.deviceId, SESSION_KIND, sessionId),
+      { version: 2, state: encodeSessionState(state) },
     );
   },
 
-  async getRatchetState(userId: string, sessionId: string): Promise<RatchetState | null> {
+  async getSessionState(userId: string, sessionId: string): Promise<RustSessionState | null> {
     const ns = await namespace(userId);
     if (!ns) {
       return null;
     }
-    return e2eeSecureStorage.getEncryptedJson<RatchetState>(
+    const stored = await e2eeSecureStorage.getEncryptedJson<{ version?: number; state?: string }>(
       ns.userId,
       ns.deviceId,
-      keyFor(ns.userId, ns.deviceId, RATCHET_KIND, sessionId),
+      keyFor(ns.userId, ns.deviceId, SESSION_KIND, sessionId),
+    );
+    return stored?.version === 2 && typeof stored.state === 'string' && stored.state.length > 0
+      ? stored.state
+      : null;
+  },
+
+  async deleteSessionState(userId: string, sessionId: string): Promise<void> {
+    const ns = await namespace(userId);
+    if (ns) {
+      e2eeSecureStorage.removeEncrypted(ns.userId, ns.deviceId, keyFor(ns.userId, ns.deviceId, SESSION_KIND, sessionId));
+      e2eeSecureStorage.removeEncrypted(ns.userId, ns.deviceId, keyFor(ns.userId, ns.deviceId, REMOTE_DEVICE_KIND, sessionId));
+    }
+  },
+
+  async saveRemoteDeviceId(userId: string, sessionId: string, deviceId: string): Promise<void> {
+    const ns = await namespace(userId);
+    if (!ns || !deviceId) {
+      return;
+    }
+    await e2eeSecureStorage.setEncryptedJson(
+      ns.userId,
+      ns.deviceId,
+      keyFor(ns.userId, ns.deviceId, REMOTE_DEVICE_KIND, sessionId),
+      { deviceId },
     );
   },
 
-  async deleteRatchetState(userId: string, sessionId: string): Promise<void> {
+  async getRemoteDeviceId(userId: string, sessionId: string): Promise<string> {
     const ns = await namespace(userId);
-    if (ns) {
-      e2eeSecureStorage.removeEncrypted(ns.userId, ns.deviceId, keyFor(ns.userId, ns.deviceId, RATCHET_KIND, sessionId));
+    if (!ns) {
+      return '';
     }
+    const stored = await e2eeSecureStorage.getEncryptedJson<{ deviceId?: string }>(
+      ns.userId,
+      ns.deviceId,
+      keyFor(ns.userId, ns.deviceId, REMOTE_DEVICE_KIND, sessionId),
+    );
+    return typeof stored?.deviceId === 'string' ? stored.deviceId : '';
   },
 
   async saveInitialHandshake(userId: string, sessionId: string, handshake: InitialE2eeHandshake): Promise<void> {

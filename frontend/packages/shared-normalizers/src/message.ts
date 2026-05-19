@@ -97,6 +97,10 @@ const VALID_DECRYPT_STATUSES = new Set([
   "failed",
   "session_missing",
   "skipped_own",
+  "decrypted",
+  "pending",
+  "own-echo-preserved",
+  "plaintext",
 ]);
 
 /**
@@ -237,16 +241,8 @@ export const normalizeMessage = (
           (record as Record<string, unknown>).ai_model,
       ) || undefined,
     encrypted: Boolean(record.encrypted),
-    e2eeHeader: asString(record.e2eeHeader ?? record.e2ee_header) || undefined,
     e2eeDeviceId:
       asString(record.e2eeDeviceId ?? record.e2ee_device_id) || undefined,
-    e2eeSenderIdentityKey:
-      asString(
-        record.e2eeSenderIdentityKey ?? record.e2ee_sender_identity_key,
-      ) || undefined,
-    e2eeEphemeralKey:
-      asString(record.e2eeEphemeralKey ?? record.e2ee_ephemeral_key) ||
-      undefined,
     e2eeEnvelope: normalizeE2eeEnvelope(record.e2eeEnvelope ?? record.e2ee_envelope),
     decryptStatus: validateDecryptStatus(asString(record.decryptStatus)),
   };

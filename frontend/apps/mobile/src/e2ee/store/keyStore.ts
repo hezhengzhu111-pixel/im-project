@@ -1,15 +1,34 @@
-import type { EncodedBundle, EncodedEcdhKeyPair, EncodedEcdsaKeyPair, KeyBundle } from '@im/shared-e2ee-core';
+import type { RustLocalE2eeKeyMaterial } from '@im/shared-e2ee-core';
 import { e2eeSecureStorage } from '@/e2ee/storage/secureE2eeStorage';
 
-export interface LocalE2eeKeyMaterial {
+export type LocalE2eeKeyMaterial = RustLocalE2eeKeyMaterial & {
   userId: string;
   deviceId: string;
-  identityKeyPair: EncodedEcdhKeyPair;
-  signingIdentityKeyPair: EncodedEcdsaKeyPair;
-  signedPreKeyPair: EncodedEcdhKeyPair;
-  oneTimePreKeyPairs: EncodedEcdhKeyPair[];
-  bundle: EncodedBundle;
-}
+};
+
+const isRustKeyMaterial = (value: unknown): value is LocalE2eeKeyMaterial => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const material = value as Partial<LocalE2eeKeyMaterial>;
+  return (
+    material.version === 2 &&
+    typeof material.userId === 'string' &&
+    typeof material.deviceId === 'string' &&
+    typeof material.identityKeyPairBincode === 'string' &&
+    material.identityKeyPairBincode.length > 0 &&
+    typeof material.signedPreKeyPairBincode === 'string' &&
+    material.signedPreKeyPairBincode.length > 0 &&
+    typeof material.publicBundle?.identityKey === 'string' &&
+    material.publicBundle.identityKey.length > 0 &&
+    typeof material.publicBundle.signingKey === 'string' &&
+    material.publicBundle.signingKey.length > 0 &&
+    typeof material.publicBundle.signedPreKey?.key === 'string' &&
+    material.publicBundle.signedPreKey.key.length > 0 &&
+    typeof material.publicBundle.signedPreKeySignature === 'string' &&
+    material.publicBundle.signedPreKeySignature.length > 0
+  );
+};
 
 export const e2eeKeyStore = {
   async getDeviceId(userId: string): Promise<string> {
@@ -20,15 +39,20 @@ export const e2eeKeyStore = {
     return e2eeSecureStorage.getOrCreateDeviceId(userId);
   },
 
-  async saveKeyMaterial(userId: string, deviceId: string, bundle: KeyBundle): Promise<LocalE2eeKeyMaterial> {
+  async saveKeyMaterial(
+    userId: string,
+    deviceId: string,
+    generated: RustLocalE2eeKeyMaterial,
+  ): Promise<LocalE2eeKeyMaterial> {
     const material: LocalE2eeKeyMaterial = {
+      ...generated,
       userId,
       deviceId,
-      identityKeyPair: bundle.identityKeyPair,
-      signingIdentityKeyPair: bundle.signingIdentityKeyPair,
-      signedPreKeyPair: bundle.signedPreKeyPair,
-      oneTimePreKeyPairs: bundle.oneTimePreKeyPairs,
-      bundle: bundle.bundle,
+      publicBundle: {
+        ...generated.publicBundle,
+        userId,
+        deviceId,
+      },
     };
     await e2eeSecureStorage.setKeyMaterial(userId, deviceId, JSON.stringify(material));
     return material;
@@ -40,18 +64,18 @@ export const e2eeKeyStore = {
       return null;
     }
     try {
-      const parsed = JSON.parse(raw) as LocalE2eeKeyMaterial;
-      if (!parsed.identityKeyPair?.privateKey || !parsed.signedPreKeyPair?.privateKey || !parsed.bundle?.identityKey) {
-        return null;
+      const parsed = JSON.parse(raw) as unknown;
+      if (isRustKeyMaterial(parsed)) {
+        return parsed;
       }
-      return parsed;
     } catch {
-      return null;
+      // Invalid or legacy material is discarded below.
     }
+    await e2eeSecureStorage.removeKeyMaterial(userId, deviceId).catch(() => undefined);
+    return null;
   },
 
   async clearAccount(userId: string): Promise<void> {
     await e2eeSecureStorage.clearAccount(userId);
   },
 };
-

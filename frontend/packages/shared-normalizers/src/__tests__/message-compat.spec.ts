@@ -651,16 +651,13 @@ describe("E2EE fields", () => {
     expect(msg.encrypted).toBe(false);
   });
 
-  it("camelCase e2eeHeader maps correctly", () => {
-    const msg = normalizeMessage(base({ e2eeHeader: "header-data" }));
-    expect(msg.e2eeHeader).toBe("header-data");
-  });
-
-  it("snake_case e2ee_header maps correctly", () => {
+  it("legacy E2EE header fields are ignored", () => {
     const msg = normalizeMessage(
-      base({ e2eeHeader: undefined, e2ee_header: "header-snake" }),
+      base({ e2eeHeader: "header-data", e2ee_header: "header-snake" }),
     );
-    expect(msg.e2eeHeader).toBe("header-snake");
+    const raw = msg as Record<string, unknown>;
+    expect(raw.e2eeHeader).toBeUndefined();
+    expect(raw.e2ee_header).toBeUndefined();
   });
 
   it("camelCase e2eeDeviceId maps correctly", () => {
@@ -675,39 +672,68 @@ describe("E2EE fields", () => {
     expect(msg.e2eeDeviceId).toBe("dev-2");
   });
 
-  it("camelCase e2eeSenderIdentityKey maps correctly", () => {
-    const msg = normalizeMessage(base({ e2eeSenderIdentityKey: "ik-1" }));
-    expect(msg.e2eeSenderIdentityKey).toBe("ik-1");
-  });
-
-  it("snake_case e2ee_sender_identity_key maps correctly", () => {
+  it("legacy identity and ephemeral fields are ignored", () => {
     const msg = normalizeMessage(
       base({
-        e2eeSenderIdentityKey: undefined,
+        e2eeSenderIdentityKey: "ik-1",
         e2ee_sender_identity_key: "ik-2",
+        e2eeEphemeralKey: "ek-1",
+        e2ee_ephemeral_key: "ek-2",
       }),
     );
-    expect(msg.e2eeSenderIdentityKey).toBe("ik-2");
+    const raw = msg as Record<string, unknown>;
+    expect(raw.e2eeSenderIdentityKey).toBeUndefined();
+    expect(raw.e2ee_sender_identity_key).toBeUndefined();
+    expect(raw.e2eeEphemeralKey).toBeUndefined();
+    expect(raw.e2ee_ephemeral_key).toBeUndefined();
   });
 
-  it("camelCase e2eeEphemeralKey maps correctly", () => {
-    const msg = normalizeMessage(base({ e2eeEphemeralKey: "ek-1" }));
-    expect(msg.e2eeEphemeralKey).toBe("ek-1");
+  it("Rust v2 e2eeEnvelope maps correctly", () => {
+    const envelope = {
+      version: 2,
+      algorithm: "rust-x25519-x3dh-dr-v1",
+      senderDeviceId: "mobile-sender",
+      recipientDeviceId: "web-recipient",
+      sessionId: "1_2",
+      handshake: "aGFuZHNoYWtl",
+      wire: "d2lyZQ==",
+    };
+    const msg = normalizeMessage(base({ e2eeEnvelope: envelope }));
+    expect(msg.e2eeEnvelope).toEqual(envelope);
   });
 
-  it("snake_case e2ee_ephemeral_key maps correctly", () => {
+  it("snake_case e2ee_envelope with alg normalizes to algorithm", () => {
     const msg = normalizeMessage(
-      base({ e2eeEphemeralKey: undefined, e2ee_ephemeral_key: "ek-2" }),
+      base({
+        e2ee_envelope: {
+          version: 2,
+          alg: "rust-x25519-x3dh-dr-v1",
+          senderDeviceId: "mobile-sender",
+          recipientDeviceId: "web-recipient",
+          sessionId: "1_2",
+          wire: "d2lyZQ==",
+        } as unknown as RawMessageDTO["e2ee_envelope"],
+      }),
     );
-    expect(msg.e2eeEphemeralKey).toBe("ek-2");
+    expect(msg.e2eeEnvelope).toEqual({
+      version: 2,
+      algorithm: "rust-x25519-x3dh-dr-v1",
+      senderDeviceId: "mobile-sender",
+      recipientDeviceId: "web-recipient",
+      sessionId: "1_2",
+      handshake: undefined,
+      wire: "d2lyZQ==",
+    });
   });
 
   it("all E2EE fields undefined when not provided", () => {
     const msg = normalizeMessage(base());
-    expect(msg.e2eeHeader).toBeUndefined();
+    const raw = msg as Record<string, unknown>;
+    expect(raw.e2eeHeader).toBeUndefined();
     expect(msg.e2eeDeviceId).toBeUndefined();
-    expect(msg.e2eeSenderIdentityKey).toBeUndefined();
-    expect(msg.e2eeEphemeralKey).toBeUndefined();
+    expect(msg.e2eeEnvelope).toBeUndefined();
+    expect(raw.e2eeSenderIdentityKey).toBeUndefined();
+    expect(raw.e2eeEphemeralKey).toBeUndefined();
   });
 });
 
@@ -922,6 +948,14 @@ describe("extra field", () => {
 
 describe("full snake_case DTO integration", () => {
   it("normalizes a complete snake_case backend DTO", () => {
+    const envelope = {
+      version: 2,
+      alg: "rust-x25519-x3dh-dr-v1",
+      senderDeviceId: "ed",
+      recipientDeviceId: "rd",
+      sessionId: "sender-1_receiver-1",
+      wire: "d2lyZQ==",
+    };
     const raw: RawMessageDTO = {
       id: "999",
       message_id: "999",
@@ -948,10 +982,8 @@ describe("full snake_case DTO integration", () => {
       read_at: "2024-12-25T09:00:00.000Z",
       is_ai_generated: false,
       encrypted: 1,
-      e2ee_header: "eh",
       e2ee_device_id: "ed",
-      e2ee_sender_identity_key: "esik",
-      e2ee_ephemeral_key: "eek",
+      e2ee_envelope: envelope as unknown as RawMessageDTO["e2ee_envelope"],
     };
     const msg = normalizeMessage(raw);
 
@@ -980,10 +1012,17 @@ describe("full snake_case DTO integration", () => {
     expect(msg.readAt).toBe("2024-12-25T09:00:00.000Z");
     expect(msg.isAiGenerated).toBe(false);
     expect(msg.encrypted).toBe(true);
-    expect(msg.e2eeHeader).toBe("eh");
     expect(msg.e2eeDeviceId).toBe("ed");
-    expect(msg.e2eeSenderIdentityKey).toBe("esik");
-    expect(msg.e2eeEphemeralKey).toBe("eek");
+    expect(msg.e2eeEnvelope).toEqual({
+      version: 2,
+      algorithm: "rust-x25519-x3dh-dr-v1",
+      senderDeviceId: "ed",
+      recipientDeviceId: "rd",
+      sessionId: "sender-1_receiver-1",
+      handshake: undefined,
+      wire: "d2lyZQ==",
+    });
+    expect((msg as Record<string, unknown>).e2eeHeader).toBeUndefined();
   });
 });
 

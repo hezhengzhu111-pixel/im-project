@@ -1,4 +1,5 @@
 import type { MobileMessage } from '@/types/models';
+import { E2EE_UNSUPPORTED_TEXT } from '@/e2ee/e2eeDeferred';
 import { messageDatabase, __setDbForTests, __resetForTests } from '../messageDatabase';
 import { messageRepository } from '../messageRepository';
 import { FakeDbConnection } from '../__testutils__/fakeDbConnection';
@@ -26,6 +27,84 @@ const SEED_MESSAGES = [
   makeMessage('m7', '2024-06-07T10:00:00Z', 'conv_A'),
   makeMessage('b1', '2024-06-01T10:00:00Z', 'conv_B'),
 ];
+
+const RUST_E2EE_ENVELOPE: NonNullable<MobileMessage['e2eeEnvelope']> = {
+  version: 2,
+  algorithm: 'rust-x25519-x3dh-dr-v1',
+  senderDeviceId: 'mobile-sender',
+  recipientDeviceId: 'web-recipient',
+  sessionId: 'sender_1:receiver_2',
+  wire: 'd2lyZQ==',
+};
+
+const makeEncryptedDisplayMessage = (id = 'enc_store_1'): MobileMessage => ({
+  id,
+  serverId: id,
+  clientMessageId: `cm_${id}`,
+  conversationId: 'conv_store',
+  senderId: 'sender_1',
+  receiverId: 'receiver_2',
+  isGroupChat: false,
+  messageType: 'TEXT',
+  content: 'e2ee display plaintext secret',
+  sendTime: '2024-10-01T10:00:00Z',
+  status: 'SENT',
+  encrypted: true,
+  e2eeEnvelope: RUST_E2EE_ENVELOPE,
+  isE2eeDisplayDecrypted: true,
+  decryptStatus: 'decrypted',
+  mediaUrl: 'https://files.example/plain.txt',
+  thumbnailUrl: 'https://files.example/thumb.jpg',
+  mediaName: 'plain.txt',
+  mediaSize: 123,
+  rawJson: JSON.stringify({
+    id,
+    conversationId: 'conv_store',
+    content: 'e2ee display plaintext secret',
+    encrypted: true,
+    e2eeEnvelope: RUST_E2EE_ENVELOPE,
+  }),
+});
+
+const configureFakeMessageTables = (fakeDb: FakeDbConnection): void => {
+  fakeDb.setTableColumns('mobile_messages', [
+    { name: 'id', type: 'TEXT' },
+    { name: 'serverId', type: 'TEXT' },
+    { name: 'clientMessageId', type: 'TEXT' },
+    { name: 'conversationId', type: 'TEXT' },
+    { name: 'senderId', type: 'TEXT' },
+    { name: 'receiverId', type: 'TEXT' },
+    { name: 'groupId', type: 'TEXT' },
+    { name: 'messageType', type: 'TEXT' },
+    { name: 'content', type: 'TEXT' },
+    { name: 'mediaUrl', type: 'TEXT' },
+    { name: 'thumbnailUrl', type: 'TEXT' },
+    { name: 'mediaName', type: 'TEXT' },
+    { name: 'mediaSize', type: 'TEXT' },
+    { name: 'duration', type: 'TEXT' },
+    { name: 'status', type: 'TEXT' },
+    { name: 'readStatus', type: 'TEXT' },
+    { name: 'readByCount', type: 'TEXT' },
+    { name: 'sendTime', type: 'TEXT' },
+    { name: 'createdAt', type: 'TEXT' },
+    { name: 'updatedAt', type: 'TEXT' },
+    { name: 'rawJson', type: 'TEXT' },
+  ]);
+  fakeDb.setTableColumns('mobile_sessions', [
+    { name: 'id', type: 'TEXT' },
+    { name: 'type', type: 'TEXT' },
+    { name: 'targetId', type: 'TEXT' },
+    { name: 'targetName', type: 'TEXT' },
+    { name: 'targetAvatar', type: 'TEXT' },
+    { name: 'unreadCount', type: 'INTEGER' },
+    { name: 'lastActiveTime', type: 'TEXT' },
+    { name: 'lastMessageJson', type: 'TEXT' },
+    { name: 'isPinned', type: 'INTEGER' },
+    { name: 'isMuted', type: 'INTEGER' },
+    { name: 'encrypted', type: 'INTEGER' },
+    { name: 'updatedAt', type: 'INTEGER' },
+  ]);
+};
 
 /**
  * Shared pagination tests that run against both SQLite (FakeDb) and memory fallback paths.
@@ -384,5 +463,85 @@ describe('listMessagesPage: encrypted message masking', () => {
     // maskEncryptedMessage should have been applied (exact behavior depends on implementation)
     // At minimum, the message should be present and not throw
     expect(result.messages[0].id).toBe('enc_1');
+  });
+});
+
+describe('E2EE persistence sanitization', () => {
+  afterEach(() => {
+    __resetForTests();
+  });
+
+  test('memory fallback strips E2EE display plaintext from message rows and session lastMessageJson', () => {
+    __resetForTests();
+    messageRepository.clearAllCache();
+    expect(messageDatabase.isMemoryFallback()).toBe(true);
+
+    const encryptedMsg = makeEncryptedDisplayMessage();
+    messageRepository.upsertMessages('conv_store', [encryptedMsg]);
+    messageRepository.upsertSession({
+      id: 'conv_store',
+      type: 'private',
+      targetId: 'receiver_2',
+      targetName: 'Receiver',
+      unreadCount: 0,
+      lastActiveTime: encryptedMsg.sendTime,
+      lastMessage: encryptedMsg,
+      encrypted: true,
+    });
+
+    const [row] = messageDatabase.memoryList('mobile_messages');
+    expect(row.content).toBe(E2EE_UNSUPPORTED_TEXT);
+    expect(row.mediaUrl).toBeUndefined();
+    expect(row.thumbnailUrl).toBeUndefined();
+    expect(row.mediaName).toBeUndefined();
+    expect(String(row.rawJson)).not.toContain('e2ee display plaintext secret');
+    expect(String(row.rawJson)).toContain('e2eeEnvelope');
+
+    const [sessionRow] = messageDatabase.memoryList('mobile_sessions');
+    expect(String(sessionRow.lastMessageJson)).not.toContain('e2ee display plaintext secret');
+    expect(String(sessionRow.lastMessageJson)).toContain('e2eeEnvelope');
+  });
+
+  test('SQLite path strips E2EE display plaintext from content, rawJson, and lastMessageJson', () => {
+    __resetForTests();
+    const fakeDb = new FakeDbConnection();
+    configureFakeMessageTables(fakeDb);
+    __setDbForTests(fakeDb);
+
+    const encryptedMsg = makeEncryptedDisplayMessage('enc_sql_1');
+    messageRepository.upsertMessages('conv_store', [encryptedMsg]);
+    messageRepository.upsertSession({
+      id: 'conv_store',
+      type: 'private',
+      targetId: 'receiver_2',
+      targetName: 'Receiver',
+      unreadCount: 0,
+      lastActiveTime: encryptedMsg.sendTime,
+      lastMessage: encryptedMsg,
+      encrypted: true,
+    });
+
+    const [messageRow] = messageDatabase.query('SELECT * FROM mobile_messages WHERE conversationId = ?', ['conv_store']);
+    expect(messageRow.content).toBe(E2EE_UNSUPPORTED_TEXT);
+    expect(messageRow.mediaUrl).toBeNull();
+    expect(messageRow.thumbnailUrl).toBeNull();
+    expect(messageRow.mediaName).toBeNull();
+    expect(String(messageRow.rawJson)).not.toContain('e2ee display plaintext secret');
+    expect(String(messageRow.rawJson)).toContain('e2eeEnvelope');
+
+    const [sessionRow] = messageDatabase.query('SELECT * FROM mobile_sessions WHERE id = ?', ['conv_store']);
+    expect(String(sessionRow.lastMessageJson)).not.toContain('e2ee display plaintext secret');
+    expect(String(sessionRow.lastMessageJson)).toContain('e2eeEnvelope');
+  });
+
+  test('plaintext messages still persist real content', () => {
+    __resetForTests();
+    messageRepository.clearAllCache();
+    const plaintext = makeMessage('plain_store_1', '2024-10-01T11:00:00Z', 'conv_plain');
+    messageRepository.upsertMessages('conv_plain', [plaintext]);
+
+    const [row] = messageDatabase.memoryList('mobile_messages');
+    expect(row.content).toBe('content of plain_store_1');
+    expect(String(row.rawJson)).toContain('content of plain_store_1');
   });
 });

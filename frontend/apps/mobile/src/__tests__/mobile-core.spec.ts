@@ -160,17 +160,25 @@ describe('mobile core', () => {
     expect(normalizeSession({ conversation_type: 'GROUP', group_id: '9' }, '1').id).toBe('group_9');
   });
 
-  test('message normalizer preserves snake/camel identity, encrypted, and e2ee fields', () => {
+  test('message normalizer preserves identity, encrypted, and Rust e2ee envelope fields', () => {
+    const e2eeEnvelope = {
+      version: 2 as const,
+      algorithm: 'rust-x25519-x3dh-dr-v1' as const,
+      senderDeviceId: 'device-a',
+      recipientDeviceId: 'device-b',
+      sessionId: session.id,
+      wire: 'AAAAAA==',
+    };
     const snake = normalizeMessage({
       id: '100',
       client_message_id: 'cm_1',
       sender_id: '2',
       receiver_id: '1',
       message_type: 'TEXT',
-      content: 'ciphertext',
+      content: '',
       encrypted: 1,
-      e2ee_header: 'header',
       e2ee_device_id: 'device',
+      e2ee_envelope: e2eeEnvelope,
     });
     const camel = normalizeMessage({
       id: '101',
@@ -179,18 +187,14 @@ describe('mobile core', () => {
       receiverId: '2',
       messageType: 'TEXT',
       content: 'hello',
-      e2eeSenderIdentityKey: 'identity',
-      e2eeEphemeralKey: 'ephemeral',
     });
 
     expect(snake.clientMessageId).toBe('cm_1');
     expect(snake.encrypted).toBe(1);
-    expect(snake.e2eeHeader).toBe('header');
     expect(snake.e2eeDeviceId).toBe('device');
+    expect(snake.e2eeEnvelope).toEqual(e2eeEnvelope);
     expect(resolveMessageSessionId(snake, '1')).toBe(session.id);
     expect(camel.clientMessageId).toBe('cm_2');
-    expect(camel.e2eeSenderIdentityKey).toBe('identity');
-    expect(camel.e2eeEphemeralKey).toBe('ephemeral');
   });
 
   test('messageRepository inserts, queries, and dedupes by server id', () => {

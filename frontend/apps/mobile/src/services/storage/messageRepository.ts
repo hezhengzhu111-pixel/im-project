@@ -1,5 +1,6 @@
 import { hasSameMobileMessageIdentity } from '@/utils/normalizers';
-import { isEncryptedMessage, maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
+import { E2EE_UNSUPPORTED_TEXT, isEncryptedMessage, maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
+import { isEncryptedValue } from '@im/shared-e2ee-core';
 import type { ChatSession } from '@im/shared-types';
 import type { MobileMessage } from '@/types/models';
 import { messageDatabase } from './messageDatabase';
@@ -21,17 +22,69 @@ const rawJsonFor = (message: MobileMessage, conversationId: string): string => {
   return JSON.stringify({ ...message, conversationId });
 };
 
+export const sanitizeE2eeMessageForPersist = (message: MobileMessage): MobileMessage => {
+  if (!isEncryptedValue(message.encrypted)) {
+    return message;
+  }
+  const baseRaw = (() => {
+    if (!message.rawJson) {
+      return { ...message };
+    }
+    try {
+      return JSON.parse(message.rawJson) as Record<string, unknown>;
+    } catch {
+      return { ...message };
+    }
+  })();
+  const rawJson = JSON.stringify({
+    ...baseRaw,
+    content: E2EE_UNSUPPORTED_TEXT,
+    mediaUrl: undefined,
+    media_url: undefined,
+    thumbnailUrl: undefined,
+    thumbnail_url: undefined,
+    mediaName: undefined,
+    media_name: undefined,
+    mediaSize: undefined,
+    media_size: undefined,
+    duration: undefined,
+    isE2eeDisplayDecrypted: false,
+    decryptStatus: message.decryptStatus === 'failed' ? 'failed' : 'pending',
+    e2eeEnvelope: message.e2eeEnvelope ?? (baseRaw as Record<string, unknown>).e2eeEnvelope ?? (baseRaw as Record<string, unknown>).e2ee_envelope,
+    encrypted: true,
+  });
+  return {
+    ...message,
+    content: E2EE_UNSUPPORTED_TEXT,
+    rawJson,
+    isE2eeDisplayDecrypted: false,
+    decryptStatus: message.decryptStatus === 'failed' ? 'failed' : 'pending',
+    mediaUrl: undefined,
+    thumbnailUrl: undefined,
+    mediaName: undefined,
+    mediaSize: undefined,
+    duration: undefined,
+  };
+};
+
 const parseMessage = (row: Record<string, unknown>): MobileMessage => {
   const rawJson = String(row.rawJson || '{}');
   try {
     const parsed = JSON.parse(rawJson) as MobileMessage;
-    return {
+    const parsedMessage = {
       ...parsed,
       content: row.content != null ? String(row.content) : parsed.content,
       rawJson,
     };
+    return isEncryptedMessage(parsedMessage)
+      ? maskEncryptedMessage({
+          ...parsedMessage,
+          content: E2EE_UNSUPPORTED_TEXT,
+          isE2eeDisplayDecrypted: false,
+        })
+      : parsedMessage;
   } catch {
-    return {
+    const fallback: MobileMessage = {
       id: String(row.id || ''),
       conversationId: String(row.conversationId || ''),
       senderId: String(row.senderId || ''),
@@ -41,6 +94,9 @@ const parseMessage = (row: Record<string, unknown>): MobileMessage => {
       status: 'SENT',
       content: String(row.content || ''),
     };
+    return isEncryptedValue(row.encrypted)
+      ? maskEncryptedMessage({ ...fallback, encrypted: true, content: E2EE_UNSUPPORTED_TEXT })
+      : fallback;
   }
 };
 
@@ -49,7 +105,7 @@ const mobileIdentityValues = (message: Pick<MobileMessage, 'id' | 'serverId' | '
 
 const sanitizeSession = (session: ChatSession): ChatSession => {
   const lastMessage = session.lastMessage
-    ? maskEncryptedMessage(session.lastMessage as MobileMessage)
+    ? sanitizeE2eeMessageForPersist(maskEncryptedMessage(session.lastMessage as MobileMessage))
     : undefined;
   return {
     ...session,
@@ -180,37 +236,38 @@ export const messageRepository = {
   upsertMessages(conversationId: string, messages: MobileMessage[]): void {
     const now = Date.now();
     messages.forEach((message) => {
-      removeDuplicateMessages(conversationId, message);
+      const safeMessage = sanitizeE2eeMessageForPersist(message);
+      removeDuplicateMessages(conversationId, safeMessage);
       const record = {
-        ...message,
+        ...safeMessage,
         conversationId,
-        rawJson: rawJsonFor(message, conversationId),
+        rawJson: rawJsonFor(safeMessage, conversationId),
       };
-      messageDatabase.memoryUpsert('mobile_messages', `${conversationId}:${messageKey(message)}`, record);
+      messageDatabase.memoryUpsert('mobile_messages', `${conversationId}:${messageKey(safeMessage)}`, record);
       messageDatabase.execute(
         `INSERT OR REPLACE INTO mobile_messages
         (id, serverId, clientMessageId, conversationId, senderId, receiverId, groupId, messageType, content, mediaUrl,
          thumbnailUrl, mediaName, mediaSize, duration, status, readStatus, readByCount, sendTime, createdAt, updatedAt, rawJson)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          message.id,
-          message.serverId,
-          message.clientMessageId,
+          safeMessage.id,
+          safeMessage.serverId,
+          safeMessage.clientMessageId,
           conversationId,
-          message.senderId,
-          message.receiverId,
-          message.groupId,
-          message.messageType,
-          message.content,
-          message.mediaUrl,
-          message.thumbnailUrl,
-          message.mediaName,
-          message.mediaSize,
-          message.duration,
-          message.status,
-          message.readStatus,
-          message.readByCount,
-          message.sendTime,
+          safeMessage.senderId,
+          safeMessage.receiverId,
+          safeMessage.groupId,
+          safeMessage.messageType,
+          safeMessage.content,
+          safeMessage.mediaUrl,
+          safeMessage.thumbnailUrl,
+          safeMessage.mediaName,
+          safeMessage.mediaSize,
+          safeMessage.duration,
+          safeMessage.status,
+          safeMessage.readStatus,
+          safeMessage.readByCount,
+          safeMessage.sendTime,
           now,
           now,
           record.rawJson,

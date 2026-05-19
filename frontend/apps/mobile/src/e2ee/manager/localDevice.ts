@@ -1,30 +1,24 @@
-import { generateKeyBundle, sanitizeE2eeLogValue } from '@im/shared-e2ee-core';
+import { sanitizeE2eeLogValue } from '@im/shared-e2ee-core';
 import { mobileE2eeKeyService } from '@/e2ee/api/keyService';
+import { getMobileE2eeRuntime } from '@/e2ee/runtime/mobileRustE2eeRuntime';
 import { e2eeKeyStore, type LocalE2eeKeyMaterial } from '@/e2ee/store/keyStore';
 import { logger } from '@/utils/logger';
 import { requireCurrentE2eeUserId } from './context';
 
-let ensureInFlight: Promise<LocalE2eeKeyMaterial> | null = null;
+const SIGNED_PRE_KEY_ID = 1;
+const ONE_TIME_PRE_KEY_START_ID = 1;
+const ONE_TIME_PRE_KEY_COUNT = 100;
 
-const isUsableMaterial = (material: LocalE2eeKeyMaterial | null): material is LocalE2eeKeyMaterial =>
-  Boolean(
-    material?.identityKeyPair?.privateKey &&
-    material.signingIdentityKeyPair?.privateKey &&
-    material.signedPreKeyPair?.privateKey &&
-    material.bundle?.identityKey &&
-    material.bundle?.signingIdentityKey &&
-    material.bundle?.signedPreKey &&
-    material.bundle?.signedPreKeySignature,
-  );
+let ensureInFlight: Promise<LocalE2eeKeyMaterial> | null = null;
 
 const uploadPublicBundle = async (material: LocalE2eeKeyMaterial): Promise<void> => {
   await mobileE2eeKeyService.uploadBundle({
     deviceId: material.deviceId,
-    identityKey: material.bundle.identityKey,
-    signingIdentityKey: material.bundle.signingIdentityKey,
-    signedPreKey: material.bundle.signedPreKey,
-    signedPreKeySignature: material.bundle.signedPreKeySignature,
-    oneTimePreKeys: [],
+    identityKey: material.publicBundle.identityKey,
+    signingIdentityKey: material.publicBundle.signingKey,
+    signedPreKey: material.publicBundle.signedPreKey.key,
+    signedPreKeySignature: material.publicBundle.signedPreKeySignature,
+    oneTimePreKeys: material.publicBundle.oneTimePreKeys ?? [],
   });
 };
 
@@ -33,12 +27,13 @@ const ensureInternal = async (): Promise<LocalE2eeKeyMaterial> => {
   const deviceId = await e2eeKeyStore.getOrCreateDeviceId(userId);
   let material = await e2eeKeyStore.getKeyMaterial(userId, deviceId);
 
-  if (!isUsableMaterial(material)) {
-    material = await e2eeKeyStore.saveKeyMaterial(
-      userId,
-      deviceId,
-      generateKeyBundle({ oneTimePreKeyCount: 0 }),
-    );
+  if (!material) {
+    const generated = await getMobileE2eeRuntime().generatePreKeyBundle({
+      signedPreKeyId: SIGNED_PRE_KEY_ID,
+      oneTimePreKeyStartId: ONE_TIME_PRE_KEY_START_ID,
+      oneTimePreKeyCount: ONE_TIME_PRE_KEY_COUNT,
+    });
+    material = await e2eeKeyStore.saveKeyMaterial(userId, deviceId, generated);
   }
 
   await uploadPublicBundle(material);
@@ -57,6 +52,16 @@ export const ensureLocalE2eeDeviceRegistered = async (): Promise<LocalE2eeKeyMat
   return ensureInFlight;
 };
 
+export const getLocalRustKeyMaterial = async (): Promise<LocalE2eeKeyMaterial> => {
+  const userId = requireCurrentE2eeUserId();
+  const deviceId = await e2eeKeyStore.getOrCreateDeviceId(userId);
+  const existing = await e2eeKeyStore.getKeyMaterial(userId, deviceId);
+  if (existing) {
+    return existing;
+  }
+  return ensureLocalE2eeDeviceRegistered();
+};
+
 export const heartbeatLocalE2eeDevice = async (): Promise<void> => {
   const userId = requireCurrentE2eeUserId();
   const deviceId = await e2eeKeyStore.getDeviceId(userId);
@@ -64,4 +69,3 @@ export const heartbeatLocalE2eeDevice = async (): Promise<void> => {
     await mobileE2eeKeyService.heartbeat(deviceId);
   }
 };
-

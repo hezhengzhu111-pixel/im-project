@@ -1,4 +1,5 @@
 import type { ChatSessionType, Message, MessageType } from '@im/shared-types';
+import type { RustE2eeEnvelope } from '@im/shared-e2ee-core';
 
 // React Navigation params are mobile-only route payloads.
 export interface ChatRouteParams {
@@ -21,14 +22,15 @@ export type MobileMessage = Message & {
   serverId?: Message['messageId'];
   // Mobile conversation key used for local routing and offline cache buckets.
   conversationId?: string;
-  // Server/raw encrypted payload snapshot. UI content may intentionally be
-  // local plaintext while rawJson keeps the original ciphertext and metadata.
+  // Server/raw encrypted payload snapshot. For E2EE messages this must never
+  // persist display plaintext; only Rust v2 envelope metadata is retained.
   rawJson?: string;
+  e2eeEnvelope?: RustE2eeEnvelope;
   // Local-only E2EE display metadata. These fields are never required by the
   // server contract and are used to keep decrypted/known plaintext from being
   // masked again while retaining the encrypted marker for audit/history.
   isE2eeDisplayDecrypted?: boolean;
-  decryptStatus?: 'decrypted' | 'pending' | 'failed' | 'own-echo-preserved' | 'plaintext';
+  decryptStatus?: Message['decryptStatus'];
 };
 
 // Local offline-send queue row persisted by the mobile storage layer.

@@ -61,16 +61,21 @@ export interface Message {
   aiProvider?: string;
   aiModel?: string;
   encrypted?: boolean | number;
-  e2eeHeader?: string;
   e2eeDeviceId?: string;
-  e2eeSenderIdentityKey?: string;
-  e2eeEphemeralKey?: string;
   e2eeEnvelope?: E2eeEnvelope;
   /**
    * 解密状态：success=已解密, failed=解密失败, session_missing=缺少会话, skipped_own=自己的加密消息。
    * 仅内存态，不持久化。content 为展示明文（解密后写入或 own message 本地明文）。
    */
-  decryptStatus?: "success" | "failed" | "session_missing" | "skipped_own";
+  decryptStatus?:
+    | "success"
+    | "failed"
+    | "session_missing"
+    | "skipped_own"
+    | "decrypted"
+    | "pending"
+    | "own-echo-preserved"
+    | "plaintext";
 }
 
 export interface RawMessageDTO {

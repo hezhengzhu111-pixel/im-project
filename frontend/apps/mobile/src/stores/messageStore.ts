@@ -12,7 +12,7 @@ import {
 } from '@/e2ee/e2eeDeferred';
 import { compareE2eeDecryptOrder, processE2eeMessage, processE2eeMessages } from '@/e2ee/messageProcessor';
 import { e2eeManager } from '@/e2ee/manager/e2eeManager';
-import { getPendingInitialHandshake, loadLocalSessionStatus } from '@/e2ee/manager/negotiation';
+import { loadLocalSessionStatus } from '@/e2ee/manager/negotiation';
 import {
   cachePendingEncryptedMessage,
   clearPendingEncryptedMessages as clearPendingDecryptCache,
@@ -511,22 +511,32 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     let payload = payloadFor(session, message);
     if (session.type === 'private' && e2eeStatus === 'encrypted') {
       try {
-        const encrypted = await e2eeManager.encryptMessage(session.id, content);
-        const handshake = await getPendingInitialHandshake(session.id);
+        const e2eeEnvelope = await e2eeManager.encryptToEnvelope({
+          sessionId: session.id,
+          plaintext: content,
+          recipientUserId: session.targetId,
+        });
+        const { nextList } = updateLocalMessage(get(), session.id, message.id, (item) => ({
+          ...item,
+          encrypted: true,
+          e2eeEnvelope,
+          e2eeDeviceId: e2eeEnvelope.senderDeviceId,
+          rawJson: JSON.stringify({
+            ...item,
+            content: '',
+            encrypted: true,
+            e2eeEnvelope,
+            e2eeDeviceId: e2eeEnvelope.senderDeviceId,
+          }),
+        }));
+        set({ messagesBySession: { ...get().messagesBySession, [session.id]: nextList } });
         payload = {
           receiverId: session.targetId,
           clientMessageId: message.clientMessageId || createClientMessageId(),
           messageType: 'TEXT',
-          content: encrypted.ciphertext,
           encrypted: true,
-          e2eeHeader: JSON.stringify(encrypted.header),
-          e2eeDeviceId: encrypted.deviceId,
-          ...(handshake
-            ? {
-                e2eeSenderIdentityKey: handshake.senderIdentityKey,
-                e2eeEphemeralKey: handshake.ephemeralPublicKey,
-              }
-            : {}),
+          e2eeEnvelope,
+          e2eeDeviceId: e2eeEnvelope.senderDeviceId,
         };
       } catch (error) {
         const { nextList } = updateLocalMessage(get(), session.id, message.id, (item) => ({
@@ -929,8 +939,8 @@ export const useMessageStore = create<MessageState>((set, get) => ({
       return;
     }
 
-    messageRepository.upsertMessages(sessionId, changed);
-    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: updated } });
+    messageRepository.upsertMessages(sessionId, changed as MobileMessage[]);
+    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: updated as MobileMessage[] } });
   },
 
   searchMessages(keyword, sessionId) {

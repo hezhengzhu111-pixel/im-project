@@ -1,17 +1,11 @@
 import {
-  initReceivingChain,
-  initSendingChain,
   sanitizeE2eeLogValue,
-  validateP256PublicKeyBase64,
-  x3dhInitiate,
-  x3dhRespond,
   type E2eeDevice,
   type E2eeSessionStatus,
-  type InitialE2eeHandshake,
   type PendingEncryptionRequest,
-  type PreKeyBundle,
 } from '@im/shared-e2ee-core';
 import { mobileE2eeKeyService } from '@/e2ee/api/keyService';
+import { getMobileE2eeRuntime } from '@/e2ee/runtime/mobileRustE2eeRuntime';
 import { e2eeSessionStore } from '@/e2ee/store/sessionStore';
 import {
   clearPendingEncryptedMessages,
@@ -21,7 +15,7 @@ import {
 import { logger } from '@/utils/logger';
 import { emitE2eeStatusChange, emitPendingE2eeRequest } from '@/e2ee/statusEvents';
 import { requireCurrentE2eeUserId } from './context';
-import { ensureLocalE2eeDeviceRegistered } from './localDevice';
+import { ensureLocalE2eeDeviceRegistered, getLocalRustKeyMaterial } from './localDevice';
 
 export interface StoredPendingRequest extends PendingEncryptionRequest {
   action?: string;
@@ -35,31 +29,6 @@ const newestDevice = (devices: E2eeDevice[]): E2eeDevice | undefined =>
     const rightTime = new Date(right.lastActiveAt || right.last_active_at || 0).getTime();
     return rightTime - leftTime;
   })[0];
-
-const isInitialHandshake = (value: unknown): value is InitialE2eeHandshake => {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-  const record = value as Partial<InitialE2eeHandshake>;
-  return (
-    typeof record.senderIdentityKey === 'string' &&
-    typeof record.ephemeralPublicKey === 'string' &&
-    typeof record.deviceId === 'string'
-  );
-};
-
-const parseInitialHandshake = (requestPayloadJson?: string): InitialE2eeHandshake => {
-  if (!requestPayloadJson) {
-    throw new Error('E2EE negotiation request payload missing');
-  }
-  const parsed = JSON.parse(requestPayloadJson) as unknown;
-  if (!isInitialHandshake(parsed)) {
-    throw new Error('E2EE negotiation request payload invalid');
-  }
-  validateP256PublicKeyBase64(parsed.senderIdentityKey, 'sender identity key');
-  validateP256PublicKeyBase64(parsed.ephemeralPublicKey, 'sender ephemeral key');
-  return parsed;
-};
 
 export const getLocalSessionStatus = (sessionId: string): E2eeSessionStatus =>
   e2eeSessionStore.getCachedStatus(sessionId);
@@ -91,74 +60,42 @@ export const setLocalSessionStatus = async (
   emitE2eeStatusChange(sessionId, status);
 };
 
-export const getPendingInitialHandshake = async (sessionId: string): Promise<InitialE2eeHandshake | null> =>
-  e2eeSessionStore.getInitialHandshake(requireCurrentE2eeUserId(), sessionId);
-
-export const clearPendingInitialHandshake = async (sessionId: string): Promise<void> =>
-  e2eeSessionStore.clearInitialHandshake(requireCurrentE2eeUserId(), sessionId);
-
 export const getStoredPendingNegotiationRequest = async (
   sessionId: string,
 ): Promise<StoredPendingRequest | null> =>
   e2eeSessionStore.getPendingRequest<StoredPendingRequest>(requireCurrentE2eeUserId(), sessionId);
 
-const savePendingInitialHandshake = async (
-  sessionId: string,
-  handshake: InitialE2eeHandshake,
-): Promise<void> => {
-  await e2eeSessionStore.saveInitialHandshake(requireCurrentE2eeUserId(), sessionId, handshake);
-};
-
 const persistStatus = async (sessionId: string, status: E2eeSessionStatus): Promise<void> => {
   await setLocalSessionStatus(sessionId, status);
 };
 
+const removeRuntimeSession = async (sessionId: string): Promise<void> => {
+  try {
+    await getMobileE2eeRuntime().removeSession(sessionId);
+  } catch {
+    // Clearing local negotiation metadata must not depend on native runtime availability.
+  }
+};
+
+const uploadRequestMetadata = async (sessionId: string): Promise<void> => {
+  await ensureLocalE2eeDeviceRegistered();
+  await mobileE2eeKeyService.requestEncryption(sessionId);
+};
+
 const initiateInternal = async (
   sessionId: string,
-  remoteUserId: string,
-  remoteDeviceId?: string,
+  _remoteUserId: string,
+  _remoteDeviceId?: string,
 ): Promise<boolean> => {
   await persistStatus(sessionId, 'negotiating');
   try {
-    const local = await ensureLocalE2eeDeviceRegistered();
-    const devicesResp = await mobileE2eeKeyService.getDevices(remoteUserId);
-    const selectedDevice = remoteDeviceId
-      ? devicesResp.data?.find((device) => device.deviceId === remoteDeviceId)
-      : newestDevice(devicesResp.data || []);
-    if (!selectedDevice?.deviceId) {
-      throw new Error('Remote user has no active E2EE device');
-    }
-
-    const bundleResp = await mobileE2eeKeyService.getBundle(remoteUserId, selectedDevice.deviceId);
-    const remoteBundle = bundleResp.data;
-    if (!remoteBundle?.identityKey || !remoteBundle.signingIdentityKey || !remoteBundle.signedPreKey || !remoteBundle.signedPreKeySignature) {
-      throw new Error('Remote user has no E2EE key bundle');
-    }
-    const normalizedBundle: PreKeyBundle = {
-      ...remoteBundle,
-      deviceId: remoteBundle.deviceId || selectedDevice.deviceId,
-    };
-    const x3dh = x3dhInitiate(local.identityKeyPair, normalizedBundle);
-    const ratchetState = initSendingChain(x3dh.rootKey, local.identityKeyPair);
-    await e2eeSessionStore.saveRatchetState(local.userId, sessionId, ratchetState);
-
-    const handshake: InitialE2eeHandshake = {
-      senderIdentityKey: local.bundle.identityKey,
-      ephemeralPublicKey: x3dh.ephemeralPublicKey,
-      deviceId: normalizedBundle.deviceId || selectedDevice.deviceId,
-    };
-    await savePendingInitialHandshake(sessionId, handshake);
-    await mobileE2eeKeyService.requestEncryption(
-      sessionId,
-      local.bundle.identityKey,
-      local.bundle.signedPreKey,
-      JSON.stringify(handshake),
-    );
+    const userId = requireCurrentE2eeUserId();
+    await e2eeSessionStore.deleteSessionState(userId, sessionId).catch(() => undefined);
+    await removeRuntimeSession(sessionId);
+    await uploadRequestMetadata(sessionId);
     await persistStatus(sessionId, 'negotiating');
     return true;
   } catch (error) {
-    await clearPendingInitialHandshake(sessionId).catch(() => undefined);
-    await e2eeSessionStore.deleteRatchetState(requireCurrentE2eeUserId(), sessionId).catch(() => undefined);
     await persistStatus(sessionId, 'failed').catch(() => undefined);
     logger.warn('e2ee', 'negotiation initiation failed', sanitizeE2eeLogValue(error));
     return false;
@@ -184,7 +121,7 @@ export const initiateNegotiation = (
 export const respondToNegotiation = async (
   sessionId: string,
   remoteIdentityKeyBase64: string,
-  ephemeralPublicKeyBase64: string,
+  handshakeBase64: string,
   expectedDeviceId?: string,
 ): Promise<boolean> => {
   await persistStatus(sessionId, 'negotiating');
@@ -193,20 +130,19 @@ export const respondToNegotiation = async (
     if (expectedDeviceId && local.deviceId !== expectedDeviceId) {
       throw new Error('E2EE negotiation request targets a different device');
     }
-    validateP256PublicKeyBase64(remoteIdentityKeyBase64, 'sender identity key');
-    validateP256PublicKeyBase64(ephemeralPublicKeyBase64, 'sender ephemeral key');
-
-    const rootKey = x3dhRespond(
-      local.identityKeyPair,
-      local.signedPreKeyPair,
-      null,
-      remoteIdentityKeyBase64,
-      ephemeralPublicKeyBase64,
-    );
-    const ratchetState = initReceivingChain(rootKey, local.identityKeyPair);
-    await e2eeSessionStore.saveRatchetState(local.userId, sessionId, ratchetState);
-    await mobileE2eeKeyService.acceptEncryption(sessionId, local.bundle.identityKey, local.bundle.signedPreKey);
+    const runtime = getMobileE2eeRuntime();
+    await e2eeSessionStore.deleteSessionState(local.userId, sessionId).catch(() => undefined);
+    await runtime.removeSession(sessionId).catch(() => undefined);
+    await runtime.createInboundSession({
+      sessionId,
+      localKeys: local,
+      remoteIdentityKey: remoteIdentityKeyBase64,
+      handshake: handshakeBase64,
+    });
+    await e2eeSessionStore.saveSessionState(local.userId, sessionId, await runtime.exportSession(sessionId));
+    await mobileE2eeKeyService.acceptEncryption(sessionId, local.publicBundle.identityKey, local.publicBundle.signedPreKey.key);
     await e2eeSessionStore.clearPendingRequest(local.userId, sessionId);
+    await e2eeSessionStore.saveRemoteDeviceId(local.userId, sessionId, expectedDeviceId || '');
     await persistStatus(sessionId, 'encrypted');
     return true;
   } catch (error) {
@@ -233,13 +169,11 @@ export const acceptPendingNegotiation = async (sessionId: string): Promise<boole
         throw new Error('E2EE negotiation session does not match requester');
       }
     }
-    const handshake = parseInitialHandshake(pending?.requestPayloadJson);
-    const accepted = await respondToNegotiation(
-      sessionId,
-      handshake.senderIdentityKey,
-      handshake.ephemeralPublicKey,
-      handshake.deviceId,
-    );
+
+    const handshake = parseInitialHandshake(pending.requestPayloadJson);
+    const accepted = handshake
+      ? await respondToNegotiation(sessionId, handshake.senderIdentityKey, handshake.handshake, handshake.deviceId)
+      : await acceptStatusOnlyNegotiation(sessionId);
     if (accepted) {
       await retryDecryptPendingMessages(sessionId).catch(() => 0);
       await retryDecryptVisibleEncryptedMessages(sessionId).catch(() => 0);
@@ -252,6 +186,14 @@ export const acceptPendingNegotiation = async (sessionId: string): Promise<boole
     logger.warn('e2ee', 'pending negotiation accept failed', sanitizeE2eeLogValue(error));
     return false;
   }
+};
+
+const acceptStatusOnlyNegotiation = async (sessionId: string): Promise<boolean> => {
+  const local = await ensureLocalE2eeDeviceRegistered();
+  await mobileE2eeKeyService.acceptEncryption(sessionId, local.publicBundle.identityKey, local.publicBundle.signedPreKey.key);
+  await e2eeSessionStore.clearPendingRequest(local.userId, sessionId);
+  await persistStatus(sessionId, 'encrypted');
+  return true;
 };
 
 export const rejectPendingNegotiation = async (sessionId: string): Promise<void> => {
@@ -268,6 +210,10 @@ export const recordPendingNegotiationRequest = async (
   if (!request.sessionId) {
     return;
   }
+  const handshake = parseInitialHandshake(request.requestPayloadJson);
+  if (handshake) {
+    await savePendingInitialHandshake(request.sessionId, handshake);
+  }
   await e2eeSessionStore.savePendingRequest(userId, request.sessionId, request);
   await persistStatus(request.sessionId, 'negotiating');
   emitPendingE2eeRequest(request.sessionId);
@@ -276,12 +222,6 @@ export const recordPendingNegotiationRequest = async (
 export const handleNegotiationAccepted = async (sessionId: string): Promise<void> => {
   const status = await loadLocalSessionStatus(sessionId);
   if (status === 'negotiating') {
-    const userId = requireCurrentE2eeUserId();
-    const ratchetState = await e2eeSessionStore.getRatchetState(userId, sessionId);
-    if (!ratchetState) {
-      await persistStatus(sessionId, 'failed');
-      return;
-    }
     await clearPendingInitialHandshake(sessionId);
     await persistStatus(sessionId, 'encrypted');
     await retryDecryptPendingMessages(sessionId).catch(() => 0);
@@ -293,7 +233,8 @@ export const handleNegotiationRejected = async (sessionId: string): Promise<void
   const userId = requireCurrentE2eeUserId();
   await clearPendingInitialHandshake(sessionId).catch(() => undefined);
   await e2eeSessionStore.clearPendingRequest(userId, sessionId).catch(() => undefined);
-  await e2eeSessionStore.deleteRatchetState(userId, sessionId).catch(() => undefined);
+  await e2eeSessionStore.deleteSessionState(userId, sessionId).catch(() => undefined);
+  await removeRuntimeSession(sessionId);
   clearPendingEncryptedMessages(sessionId);
   await persistStatus(sessionId, 'plaintext');
 };
@@ -302,7 +243,8 @@ export const handleNegotiationDisabled = async (sessionId: string): Promise<void
   const userId = requireCurrentE2eeUserId();
   await clearPendingInitialHandshake(sessionId).catch(() => undefined);
   await e2eeSessionStore.clearPendingRequest(userId, sessionId).catch(() => undefined);
-  await e2eeSessionStore.deleteRatchetState(userId, sessionId).catch(() => undefined);
+  await e2eeSessionStore.deleteSessionState(userId, sessionId).catch(() => undefined);
+  await removeRuntimeSession(sessionId);
   clearPendingEncryptedMessages(sessionId);
   await persistStatus(sessionId, 'plaintext');
 };
@@ -314,7 +256,8 @@ export const resetNegotiation = async (
   const userId = requireCurrentE2eeUserId();
   await clearPendingInitialHandshake(sessionId).catch(() => undefined);
   await e2eeSessionStore.clearPendingRequest(userId, sessionId).catch(() => undefined);
-  await e2eeSessionStore.deleteRatchetState(userId, sessionId).catch(() => undefined);
+  await e2eeSessionStore.deleteSessionState(userId, sessionId).catch(() => undefined);
+  await removeRuntimeSession(sessionId);
   clearPendingEncryptedMessages(sessionId);
   await persistStatus(sessionId, status);
 };
@@ -340,4 +283,12 @@ export const normalizeNegotiationEvent = (raw: Record<string, unknown>): StoredP
         : undefined,
     action: typeof raw.action === 'string' ? raw.action : undefined,
   };
+};
+
+export const getNegotiationTargetDevice = async (remoteUserId: string, remoteDeviceId?: string): Promise<string> => {
+  const devicesResp = await mobileE2eeKeyService.getDevices(remoteUserId);
+  const device = remoteDeviceId
+    ? (devicesResp.data || []).find((item) => item.deviceId === remoteDeviceId)
+    : newestDevice(devicesResp.data || []);
+  return device?.deviceId || '';
 };

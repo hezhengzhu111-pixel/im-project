@@ -1,5 +1,5 @@
 import type { ChatSession } from '@im/shared-types';
-import { isEncryptedValue } from '@im/shared-e2ee-core';
+import { isEncryptedValue, isRustE2eeEnvelope } from '@im/shared-e2ee-core';
 import { e2eeSessionStore } from '@/e2ee/store/sessionStore';
 import type { MobileMessage } from '@/types/models';
 
@@ -122,9 +122,9 @@ export const blockEncryptedPendingPayload = (payload: unknown): boolean => {
   return !(
     typeof data.clientMessageId === 'string' &&
     typeof data.receiverId === 'string' &&
-    typeof data.content === 'string' &&
     isEncryptedValue(data.encrypted) &&
-    typeof data.e2eeHeader === 'string' &&
-    typeof data.e2eeDeviceId === 'string'
+    isRustE2eeEnvelope(data.e2eeEnvelope) &&
+    typeof data.e2eeDeviceId === 'string' &&
+    (data.content == null || data.content === '')
   );
 };
