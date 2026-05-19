@@ -98,7 +98,7 @@ async function fetchRemoteBundle(remoteUserId: string, remoteDeviceId?: string):
   const spkString = (raw.signedPreKey as string) ?? "";
 
   const maybeOtk = typeof raw.oneTimePreKey === "string" && raw.oneTimePreKey.length > 0
-    ? { id: 1, key: raw.oneTimePreKey as string }
+    ? { id: (raw.oneTimePreKeyId as number) ?? 0, key: raw.oneTimePreKey as string }
     : null;
 
   return {
