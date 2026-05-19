@@ -1,58 +1,38 @@
-/** E2EE 会话加密状态 */
-export type E2eeSessionStatus = 'plaintext' | 'negotiating' | 'encrypted' | 'failed';
+import type {
+  E2eeDevice,
+  E2eeEnvelope,
+  E2eeSessionStatus,
+  PreKeyBundle,
+  UploadBundleRequest,
+} from "@im/shared-e2ee-core";
 
-/** 设备信息 */
-export interface E2eeDevice {
-  userId?: string;
-  deviceId: string;
-  identityKey: string;       // Base64
-  signedPreKey: string;      // Base64
-  lastActiveAt: string;
-}
+export type {
+  E2eeDevice,
+  E2eeEnvelope,
+  E2eeSessionStatus,
+  PreKeyBundle,
+  UploadBundleRequest,
+};
 
-/** 公钥 Bundle（从服务端获取） */
-export interface PreKeyBundle {
-  userId: string;
-  deviceId: string;
-  identityKey: string;           // Base64
-  signingIdentityKey: string;    // Base64
-  signedPreKey: string;          // Base64
-  signedPreKeySignature: string; // Base64
-  oneTimePreKey?: string;        // Base64, 可选
-}
-
-/** 上传公钥 Bundle 请求 */
-export interface UploadBundleRequest {
-  deviceId: string;
-  identityKey: string;              // Base64
-  signingIdentityKey: string;       // Base64
-  signedPreKey: string;             // Base64
-  signedPreKeySignature: string;    // Base64
-  oneTimePreKeys: string[];         // Vec<Base64>
-}
-
-/** Double Ratchet 消息头 */
 export interface RatchetHeader {
-  ratchetPublicKey: string;  // Base64
+  ratchetPublicKey: string;
   counter: number;
   previousCounter: number;
-  iv: string;                // Base64
+  iv: string;
 }
 
-/** Sender Key 消息头（群聊） */
 export interface SenderKeyHeader {
-  signingPubkey: string;  // Base64
+  signingPubkey: string;
   counter: number;
-  signature: string;      // Base64
-  iv: string;             // Base64
+  signature: string;
+  iv: string;
 }
 
-/** E2EE 消息（扩展 MessageDto） */
 export interface E2eeMessage {
   id: string;
   sessionId: string;
   senderId: string;
-  content: string;           // Base64 密文 或 明文
+  content: string;
   encrypted: boolean;
   isGroup: boolean;
   deviceId?: string;
@@ -62,33 +42,28 @@ export interface E2eeMessage {
   createdTime: string;
 }
 
-/** 加密协商请求 */
 export interface E2eeNegotiationRequest {
   sessionId: string;
   identityKey?: string;
   signedPreKey?: string;
 }
 
-/** 私聊加密会话状态（本地） */
 export interface E2eeSessionState {
   sessionId: string;
   status: E2eeSessionStatus;
   requesterId?: string;
 }
 
-/** 群聊加密状态 */
 export interface E2eeGroupState {
   groupId: string;
   status: E2eeSessionStatus;
   enabledBy?: string;
 }
 
-export type { E2eeEnvelope } from '@im/shared-types';
-
 export type E2eeEncryptionFailureReason =
-  | 'missing_recipient_key'
-  | 'missing_local_private_key'
-  | 'crypto_failed'
-  | 'session_not_ready'
-  | 'device_revoked'
-  | 'unsupported_browser_crypto';
+  | "missing_recipient_key"
+  | "missing_local_private_key"
+  | "crypto_failed"
+  | "session_not_ready"
+  | "device_revoked"
+  | "unsupported_browser_crypto";

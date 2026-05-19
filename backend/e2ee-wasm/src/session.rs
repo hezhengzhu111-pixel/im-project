@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use e2ee_core::{
-    decode_ratchet_header, encode_ratchet_header, init_receiving_chain, init_sending_chain,
-    ratchet_decrypt, ratchet_encrypt, restore_state, try_export_state, PreKeyBundleFetch,
-    RatchetState, X25519KeyPair, X25519PrivateKey, X25519PublicKey,
+    decode_ratchet_header, encode_ratchet_header, generate_key_bundle, init_receiving_chain,
+    init_sending_chain, ratchet_decrypt, ratchet_encrypt, restore_state, try_export_state,
+    PreKeyBundleFetch, RatchetState, X25519KeyPair, X25519PrivateKey, X25519PublicKey,
 };
 
 /// Validate that a private key derives to the claimed public key.
@@ -65,6 +66,74 @@ fn to_js_error(e: e2ee_core::E2eeError) -> JsValue {
     JsValue::from_str(&e.to_string())
 }
 
+fn encode_base64(bytes: &[u8]) -> String {
+    STANDARD.encode(bytes)
+}
+
+fn serialize_keypair_base64(kp: &X25519KeyPair) -> Result<String, JsValue> {
+    let bytes = bincode::serialize(kp)
+        .map_err(|e| JsValue::from_str(&format!("failed to serialize key pair: {}", e)))?;
+    Ok(encode_base64(&bytes))
+}
+
+fn generate_pre_key_bundle_json(
+    signed_pre_key_id: u32,
+    one_time_pre_key_start_id: u32,
+    one_time_pre_key_count: u32,
+) -> Result<String, JsValue> {
+    let otk_batches = if one_time_pre_key_count == 0 {
+        Vec::new()
+    } else {
+        vec![(one_time_pre_key_start_id, one_time_pre_key_count)]
+    };
+    let key_bundle = generate_key_bundle(signed_pre_key_id, &otk_batches).map_err(to_js_error)?;
+
+    let one_time_pre_key_pairs = key_bundle
+        .one_time_pre_key_pairs
+        .iter()
+        .map(|pair| {
+            let key_pair_bincode = serialize_keypair_base64(&pair.key_pair)?;
+            Ok(serde_json::json!({
+                "id": pair.id,
+                "keyPairBincode": key_pair_bincode,
+                "publicKey": encode_base64(&pair.key_pair.public_key.0),
+            }))
+        })
+        .collect::<Result<Vec<_>, JsValue>>()?;
+
+    let one_time_pre_keys = key_bundle
+        .bundle
+        .one_time_pre_keys
+        .iter()
+        .map(|pre_key| {
+            serde_json::json!({
+                "id": pre_key.id,
+                "key": encode_base64(&pre_key.key.0),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let payload = serde_json::json!({
+        "version": 2,
+        "identityKeyPairBincode": serialize_keypair_base64(&key_bundle.identity_key_pair)?,
+        "signedPreKeyPairBincode": serialize_keypair_base64(&key_bundle.signed_pre_key_pair)?,
+        "oneTimePreKeyPairs": one_time_pre_key_pairs,
+        "publicBundle": {
+            "identityKey": encode_base64(&key_bundle.bundle.identity_key.0),
+            "signingKey": encode_base64(&key_bundle.bundle.signing_key.0),
+            "signedPreKey": {
+                "id": key_bundle.spk_id,
+                "key": encode_base64(&key_bundle.bundle.signed_pre_key.0),
+            },
+            "signedPreKeySignature": encode_base64(&key_bundle.bundle.signed_pre_key_signature.0),
+            "oneTimePreKeys": one_time_pre_keys,
+        },
+    });
+
+    serde_json::to_string(&payload)
+        .map_err(|e| JsValue::from_str(&format!("failed to serialize key bundle JSON: {}", e)))
+}
+
 #[wasm_bindgen]
 pub struct WasmSessionManager {
     sessions: HashMap<String, RatchetState>,
@@ -83,6 +152,20 @@ impl WasmSessionManager {
         Self {
             sessions: HashMap::new(),
         }
+    }
+
+    /// Generate Rust E2EE key material and public pre-key bundle JSON.
+    pub fn generate_pre_key_bundle(
+        &self,
+        signed_pre_key_id: u32,
+        one_time_pre_key_start_id: u32,
+        one_time_pre_key_count: u32,
+    ) -> Result<String, JsValue> {
+        generate_pre_key_bundle_json(
+            signed_pre_key_id,
+            one_time_pre_key_start_id,
+            one_time_pre_key_count,
+        )
     }
 
     /// Create an outbound session (Alice side).
@@ -544,6 +627,54 @@ mod host_tests {
             Some(s) => s,
             None => "unknown JS error".to_string(),
         }
+    }
+
+    #[test]
+    fn generate_pre_key_bundle_json_contains_rust_material() -> Result<(), String> {
+        let mgr = WasmSessionManager::new();
+        let json = mgr.generate_pre_key_bundle(7, 100, 2).map_err(js_err)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|e| format!("parse JSON: {e}"))?;
+
+        if value.get("version").and_then(|v| v.as_u64()) != Some(2) {
+            return Err("expected version 2 key material".to_string());
+        }
+        if value
+            .get("publicBundle")
+            .and_then(|v| v.get("signedPreKey"))
+            .and_then(|v| v.get("id"))
+            .and_then(|v| v.as_u64())
+            != Some(7)
+        {
+            return Err("expected signed pre-key id 7".to_string());
+        }
+
+        let otks = value
+            .get("publicBundle")
+            .and_then(|v| v.get("oneTimePreKeys"))
+            .and_then(|v| v.as_array())
+            .ok_or("missing public one-time pre-key list")?;
+        if otks.len() != 2 {
+            return Err(format!("expected 2 public OTKs, got {}", otks.len()));
+        }
+        if otks
+            .first()
+            .and_then(|v| v.get("id"))
+            .and_then(|v| v.as_u64())
+            != Some(100)
+        {
+            return Err("expected first OTK id 100".to_string());
+        }
+
+        let identity_bincode = value
+            .get("identityKeyPairBincode")
+            .and_then(|v| v.as_str())
+            .ok_or("missing identity key pair bincode")?;
+        if identity_bincode.is_empty() {
+            return Err("identity key pair bincode must not be empty".to_string());
+        }
+
+        Ok(())
     }
 
     /// Full X3DH handshake through both WASM APIs:

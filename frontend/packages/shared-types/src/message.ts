@@ -1,20 +1,11 @@
 export interface E2eeEnvelope {
-  version: number;
-  alg: string;
-  conversationId: string;
-  clientMsgId: string;
-  serverMessageId?: string;
-  senderUserId: string;
+  version: 2;
+  algorithm: "rust-x25519-x3dh-dr-v1";
   senderDeviceId: string;
-  recipientUserId?: string;
-  recipientDeviceIds: string[];
+  recipientDeviceId: string;
   sessionId: string;
-  keyId: string;
-  keyVersion: number;
-  iv: string;
-  aad: string;
-  ciphertext: string;
-  createdAt: number;
+  handshake?: string;
+  wire: string;
 }
 
 export type MessageType =
