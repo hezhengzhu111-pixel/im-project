@@ -109,27 +109,53 @@ impl MessageStatus {
     }
 }
 
+/// E2EE 信封 DTO — 支持 legacy v1 (JS) 和 Rust WASM v2 两种格式。
+///
+/// v1: `version=1`, `alg="AES-256-GCM"`, 明文字段（iv/aad/ciphertext 等）。
+/// v2: `version=2`, `alg="rust-x25519-x3dh-dr-v1"`, 使用 `wire`/`handshake` 字段。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct E2eeEnvelopeDto {
     pub version: i32,
+    #[serde(alias = "algorithm")]
     pub alg: String,
+    #[serde(default)]
     pub conversation_id: String,
+    #[serde(default)]
     pub client_msg_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_message_id: Option<String>,
+    #[serde(default)]
     pub sender_user_id: String,
+    #[serde(default)]
     pub sender_device_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recipient_user_id: Option<String>,
+    #[serde(default)]
     pub recipient_device_ids: Vec<String>,
+    #[serde(default)]
     pub session_id: String,
+    #[serde(default)]
     pub key_id: String,
+    #[serde(default)]
     pub key_version: i32,
+    #[serde(default)]
     pub iv: String,
+    #[serde(default)]
     pub aad: String,
+    #[serde(default)]
     pub ciphertext: String,
+    #[serde(default)]
     pub created_at: i64,
+    /// Rust E2EE (v2) — Base64 编码的 `header_len(4BE) || RatchetHeader(52) || ciphertext`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wire: Option<String>,
+    /// Rust E2EE (v2) — X3DH 握手数据（首次消息携带）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub handshake: Option<String>,
+    /// Rust E2EE (v2) — 单接收方设备 ID（与 recipient_device_ids 二选一）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recipient_device_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
