@@ -35,7 +35,7 @@ import { useChatStore } from "@/stores/chat";
 import { useUserStore } from "@/stores/user";
 import { logger } from "@/utils/logger";
 import type { E2eeNegotiationEvent } from "@/features/e2ee/negotiation-events";
-import { isRustE2eeEnvelope, OLD_E2EE_UNREADABLE_TEXT } from "@im/shared-e2ee-core";
+// E2EE decrypt now delegates to message-decryptor.ts
 
 type TimerHandle = ReturnType<typeof setInterval>;
 
@@ -473,82 +473,60 @@ export const useWebSocketStore = defineStore("websocket", () => {
         );
       }
 
-      // E2EE decrypt intercept
+      // E2EE decrypt intercept — use unified decryptor
       const isEncrypted = normalizedMessage.encrypted === true || normalizedMessage.encrypted === 1;
 
       if (isEncrypted && normalizedMessage.messageType !== "SYSTEM") {
         const senderId = String(normalizedMessage.senderId || "");
+
         if (senderId !== currentUserId) {
-          const envelope = normalizedMessage.e2eeEnvelope;
-          if (isRustE2eeEnvelope(envelope)) {
-            try {
-              const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
-              normalizedMessage.content = await e2eeManager.decryptEnvelope(envelope, senderId);
-              normalizedMessage.encrypted = false;
-            } catch (error) {
-              logger.warn("[E2EE] Rust decrypt failed", {
-                messageId: normalizedMessage.id,
-                reason: error instanceof Error ? error.message : "unknown",
-              });
-              normalizedMessage.content = OLD_E2EE_UNREADABLE_TEXT;
-              normalizedMessage.encrypted = false;
-            }
-          } else {
-            normalizedMessage.content = OLD_E2EE_UNREADABLE_TEXT;
-            normalizedMessage.encrypted = false;
+          // Incoming encrypted message — decrypt via unified scheduler
+          try {
+            const { decryptSingleMessage } = await import(
+              "@/features/e2ee/manager/message-decryptor"
+            );
+            await decryptSingleMessage(normalizedMessage, {
+              currentUserId,
+            });
+          } catch (error) {
+            logger.warn("[E2EE] WS decrypt failed", {
+              messageId: normalizedMessage.id,
+              reason: error instanceof Error ? error.message : "unknown",
+            });
+            // decryptSingleMessage 内部已设置 displayContent 和 decryptStatus
           }
-        } else {
-          /*
-              console.error(`[E2EE] Status is 'encrypted' but no ratchet state for session=${sessionId}. Marking session failed.`);
-              setLocalSessionStatus(sessionId, "failed");
-              ElNotification({ title: "E2EE unavailable", message: "Encrypted session state is unavailable. Re-negotiate E2EE before sending more messages.", type: "warning", duration: 8000 });
-            } else if (status === "negotiating") {
-              console.warn(`[E2EE] Negotiation in progress for session=${sessionId}, message will be decrypted after completion.`);
-              ElMessage({ message: "加密协商进行中，消息将在协商完成后解密。", type: "info", duration: 3000 });
-            } else {
-              console.log(`[E2EE] No ratchet state for session=${sessionId} (status=${status}), auto-triggering negotiation.`);
-              try {
-                const { initiateNegotiation } = await import("@/features/e2ee/manager/negotiation");
-                const { cachePendingMessage } = await import("@/features/e2ee/manager/pending-messages");
-                cachePendingMessage({
-                  sessionId,
-                  peerId: senderId,
-                  content: normalizedMessage.content,
-                  header,
-                  senderIdentityKey,
-                  ephemeralPublicKey: ephemeralKey,
-                  messageRef: normalizedMessage as unknown as { content: string; encrypted: boolean | number },
-                });
-                initiateNegotiation(sessionId, senderId).then((ok) => {
-                  if (ok) {
-                    ElNotification({ title: "端到端加密请求", message: "收到加密消息但尚未建立加密通道，已自动发起协商请求。", type: "info", duration: 5000 });
-                  }
-                });
-              } catch {
-                // Auto-negotiation failed — message stays encrypted
-              }
-            }
-          } else {
-            console.error("[E2EE] Decrypt failed:", classification.safeMessage);
-          }
-          (normalizedMessage as unknown as Record<string, unknown>).encrypted = true;
-        }
         } else {
           // Own message synced via WebSocket — preserve local plaintext
-          */
+          normalizedMessage.decryptStatus = "skipped_own";
           const sessionId = normalizedMessage.receiverId
             ? buildSessionId("private", currentUserId, normalizedMessage.receiverId)
             : null;
           if (sessionId) {
             const existingList = (chatStore.messages as Map<string, Message[]>).get(sessionId) || [];
             const existing = existingList.find(
-              (m) => m.clientMessageId && m.clientMessageId === normalizedMessage.clientMessageId,
+              (m) =>
+                (m.clientMessageId && m.clientMessageId === normalizedMessage.clientMessageId) ||
+                (m.id && m.id === normalizedMessage.id),
             );
-            if (existing && existing.content) {
-              normalizedMessage.content = existing.content;
+            if (existing) {
+              // 保留已有的 displayContent（发送方的本地明文）
+              if (existing.displayContent && !normalizedMessage.displayContent) {
+                normalizedMessage.displayContent = existing.displayContent;
+              }
+              // 保留已有的 content（非空时）
+              if (existing.content && !normalizedMessage.content) {
+                normalizedMessage.content = existing.content;
+              }
+              // 继承 decryptStatus
+              if (existing.decryptStatus && !normalizedMessage.decryptStatus) {
+                normalizedMessage.decryptStatus = existing.decryptStatus;
+              }
             }
           }
-          (normalizedMessage as unknown as Record<string, unknown>).encrypted = true;
+          // 如果还是没有可显示内容，给占位文案
+          if (!normalizedMessage.displayContent && !normalizedMessage.content) {
+            normalizedMessage.displayContent = "本机明文缓存不可用";
+          }
         }
       }
 
@@ -640,9 +618,12 @@ export const useWebSocketStore = defineStore("websocket", () => {
       return;
     }
     const isEncrypted = message.encrypted === true || message.encrypted === 1;
+    const displayText = isEncrypted
+      ? (message.displayContent || message.content || "加密消息暂无法解密")
+      : message.content;
     ElNotification({
       title: message.senderName || "New message",
-      message: isEncrypted ? "加密消息暂无法解密" : message.content,
+      message: displayText,
       type: "info",
       duration: 3000,
     });

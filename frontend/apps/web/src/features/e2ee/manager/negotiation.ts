@@ -132,6 +132,11 @@ export async function initiateNegotiation(
     });
     await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId));
 
+    // Store remote device ID for subsequent message encryption
+    if (remoteBundle.deviceId) {
+      localStorage.setItem(`e2ee:remote_device:${sessionId}`, remoteBundle.deviceId);
+    }
+
     const handshake: InitialE2eeHandshake = {
       senderIdentityKey: localKeys.publicBundle.identityKey,
       handshake: bytesToBase64(handshakeBytes),
@@ -184,6 +189,10 @@ export async function respondToNegotiation(
     }
 
     await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId));
+    // Store initiator's device ID for subsequent message encryption
+    if (expectedDeviceId) {
+      localStorage.setItem(`e2ee:remote_device:${sessionId}`, expectedDeviceId);
+    }
     setLocalSessionStatus(sessionId, "encrypted");
     return true;
   } catch (error) {

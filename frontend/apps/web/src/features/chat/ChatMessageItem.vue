@@ -276,6 +276,7 @@ interface Props {
   showAvatar?: boolean;
   compact?: boolean;
   encrypted?: boolean;
+  decryptStatus?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -314,7 +315,14 @@ const senderAvatarText = computed(() =>
 );
 const mediaSource = computed(() => props.mediaUrl || props.content);
 const messageTokens = computed(() => parseMessageTokens(props.content || ""));
-const shouldMaskEncryptedContent = computed(() => props.encrypted && !props.isMine);
+const shouldMaskEncryptedContent = computed(() => {
+  // 自己的加密消息：不遮罩，应显示 displayContent
+  if (props.isMine) return false;
+  // 已成功解密的消息：不遮罩
+  if (props.decryptStatus === "success") return false;
+  // 其他加密消息：遮罩显示占位文案
+  return !!props.encrypted;
+});
 const bubbleClass = computed(() => ({
   "is-own": props.isMine,
   "is-muted": props.isRecalled || props.isDeleted,

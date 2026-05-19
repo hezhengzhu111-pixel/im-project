@@ -195,7 +195,14 @@ pub async fn send_private(
                 "plaintext content forbidden in e2ee session".to_string(),
             ));
         }
-        validate_e2ee_envelope(envelope, &conversation_id)?;
+        validate_e2ee_envelope(
+            envelope,
+            &conversation_id,
+            identity.user_id,
+            Some(receiver_id),
+            db,
+        )
+        .await?;
         let device_ids = resolve_recipient_device_ids(envelope);
         validate_recipient_devices_not_revoked(db, &device_ids).await?;
     }
@@ -342,7 +349,8 @@ pub async fn send_group(
                 "plaintext content forbidden in e2ee session".to_string(),
             ));
         }
-        validate_e2ee_envelope(envelope, &conversation_id)?;
+        validate_e2ee_envelope(envelope, &conversation_id, identity.user_id, None, db)
+            .await?;
         let device_ids = resolve_recipient_device_ids(envelope);
         validate_recipient_devices_not_revoked(db, &device_ids).await?;
     }
@@ -1278,13 +1286,18 @@ fn decode_base64url(value: &str) -> Result<Vec<u8>, AppError> {
         .map_err(|_| AppError::BadRequest("invalid e2ee envelope encoding".to_string()))
 }
 
-fn decode_base64url_len(value: &str) -> Result<usize, AppError> {
-    decode_base64url(value).map(|bytes| bytes.len())
-}
-
-fn validate_e2ee_envelope(
+/// 校验 E2EE envelope 的结构完整性、会话归属和设备归属。
+///
+/// 强制要求：
+/// - envelope.session_id 必须等于当前会话的 conversation_id
+/// - sender_device_id 必须属于发送方用户且处于 active 状态
+/// - 私聊时 recipient device 必须属于接收方用户且处于 active 状态
+async fn validate_e2ee_envelope(
     envelope: &E2eeEnvelopeDto,
-    _conversation_id: &str,
+    conversation_id: &str,
+    sender_user_id: i64,
+    receiver_user_id: Option<i64>,
+    db: &MySqlPool,
 ) -> Result<(), AppError> {
     // Rust WASM E2EE: alg = "rust-x25519-x3dh-dr-v1", 加密数据在 wire 字段中
     if envelope.version != 2 || envelope.alg != "rust-x25519-x3dh-dr-v1" {
@@ -1312,6 +1325,72 @@ fn validate_e2ee_envelope(
             "rust e2ee sender_device_id required".to_string(),
         ));
     }
+
+    // 校验 envelope.session_id 与 conversation_id 一致
+    if !envelope.session_id.is_empty() && envelope.session_id != conversation_id {
+        return Err(AppError::BadRequest(format!(
+            "e2ee envelope session_id '{}' does not match conversation_id '{}'",
+            envelope.session_id, conversation_id
+        )));
+    }
+
+    // 校验 sender_device_id 属于发送方
+    validate_device_ownership(db, &envelope.sender_device_id, sender_user_id)
+        .await
+        .map_err(|_| {
+            AppError::BadRequest(format!(
+                "e2ee sender device '{}' does not belong to user {} or is not active",
+                envelope.sender_device_id, sender_user_id
+            ))
+        })?;
+
+    // 私聊时校验 recipient device 属于接收方
+    if let Some(rid) = receiver_user_id {
+        let recipient_ids = resolve_recipient_device_ids(envelope);
+        if recipient_ids.is_empty() {
+            return Err(AppError::BadRequest(
+                "e2ee recipient device id required for private chat".to_string(),
+            ));
+        }
+        for device_id in &recipient_ids {
+            validate_device_ownership(db, device_id, rid)
+                .await
+                .map_err(|_| {
+                    AppError::BadRequest(format!(
+                        "e2ee recipient device '{}' does not belong to user {} or is not active",
+                        device_id, rid
+                    ))
+                })?;
+        }
+    }
+
+    Ok(())
+}
+
+/// 校验 device_id 属于指定 user_id 且设备处于 active 状态。
+async fn validate_device_ownership(
+    db: &MySqlPool,
+    device_id: &str,
+    user_id: i64,
+) -> Result<(), AppError> {
+    let trimmed = device_id.trim();
+    if trimmed.is_empty() || trimmed == "unknown" {
+        return Err(AppError::BadRequest("invalid device id".to_string()));
+    }
+    let count: Option<i64> = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM service_user_service_db.e2ee_devices \
+         WHERE user_id = ? AND device_id = ? AND status = 'active'",
+    )
+    .bind(user_id)
+    .bind(trimmed)
+    .fetch_optional(db)
+    .await?;
+    if count.unwrap_or(0) == 0 {
+        return Err(AppError::BadRequest(format!(
+            "device '{}' not found or not active for user {}",
+            trimmed, user_id
+        )));
+    }
     Ok(())
 }
 
@@ -1327,14 +1406,40 @@ fn resolve_recipient_device_ids(envelope: &E2eeEnvelopeDto) -> Vec<String> {
     ids
 }
 
+/// 查询私聊是否已启用端到端加密。
+///
+/// 双读 e2ee_sessions（协商状态表）和 e2ee_conversation_sessions（会话元数据表），
+/// 确保协商流程和消息发送使用一致的状态来源。
+///
+/// conversation_id 格式为 `p_{idA}_{idB}`（由 keys::private_conversation_id 生成）。
+/// e2ee_sessions.session_id 可能为前端格式 `{idA}_{idB}` 或后端格式 `p_{idA}_{idB}`，
+/// 因此需要双格式查询。
 async fn private_e2ee_enabled(db: &MySqlPool, conversation_id: &str) -> Result<bool, AppError> {
-    let enabled: Option<i64> = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM service_user_service_db.e2ee_conversation_sessions WHERE conversation_id = ? AND status = 'active'",
+    // 去掉 "p_" 前缀得到前端格式的 session_id
+    let short_id = conversation_id.strip_prefix("p_").unwrap_or(conversation_id);
+
+    // 主查询：协商表（session_api.rs 的 accept_encryption 写入的状态）
+    let negotiated: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM service_user_service_db.e2ee_sessions \
+         WHERE (session_id = ? OR session_id = ?) AND status = 'encrypted' \
+         LIMIT 1",
+    )
+    .bind(conversation_id)
+    .bind(short_id)
+    .fetch_optional(db)
+    .await?;
+    if negotiated.is_some() {
+        return Ok(true);
+    }
+    // 次查询：会话元数据表（create_session 等 API 写入）
+    let active: Option<i64> = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM service_user_service_db.e2ee_conversation_sessions \
+         WHERE conversation_id = ? AND status = 'active'",
     )
     .bind(conversation_id)
     .fetch_optional(db)
     .await?;
-    Ok(enabled.unwrap_or(0) > 0)
+    Ok(active.unwrap_or(0) > 0)
 }
 
 async fn group_e2ee_enabled(db: &MySqlPool, group_id: i64) -> Result<bool, AppError> {
@@ -1352,10 +1457,15 @@ async fn validate_recipient_devices_not_revoked(
     device_ids: &[String],
 ) -> Result<(), AppError> {
     for device_id in device_ids {
+        let trimmed = device_id.trim();
+        if trimmed.is_empty() || trimmed == "unknown" {
+            continue;
+        }
         let active: Option<i64> = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM service_user_service_db.e2ee_devices WHERE device_id = ? AND status = 'active' AND revoked_at IS NULL",
+            "SELECT COUNT(*) FROM service_user_service_db.e2ee_devices \
+             WHERE device_id = ? AND status = 'active'",
         )
-        .bind(device_id)
+        .bind(trimmed)
         .fetch_optional(db)
         .await?;
         if active.unwrap_or(0) == 0 {

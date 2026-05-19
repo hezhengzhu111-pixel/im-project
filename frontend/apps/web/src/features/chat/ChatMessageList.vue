@@ -190,6 +190,8 @@ type MessageListItemView = {
   aiProvider?: string;
   showAvatar: boolean;
   compact: boolean;
+  encrypted?: boolean;
+  decryptStatus?: string;
 };
 
 type MessageRenderItem = {
@@ -422,7 +424,7 @@ const buildRenderDigest = (message: Message) => {
     message.status,
     message.readStatus ?? "",
     readCount,
-    message.content || "",
+    message.displayContent || message.content || "",
     message.mediaUrl || "",
     message.mediaName || "",
     message.mediaSize || "",
@@ -460,7 +462,7 @@ const buildMessageView = (message: Message): MessageListItemView => {
     isRecalled,
     isDeleted,
     messageType: message.messageType,
-    content: message.content || "",
+    content: message.displayContent || message.content || "",
     senderName:
       message.senderName || message.groupName || t("message.unknownUser"),
     senderAvatar: message.senderAvatar,
@@ -482,6 +484,8 @@ const buildMessageView = (message: Message): MessageListItemView => {
     aiProvider: message.aiProvider,
     showAvatar: true,
     compact: false,
+    encrypted: message.encrypted === true || message.encrypted === 1 || undefined,
+    decryptStatus: message.decryptStatus,
   };
 
   messageViewCache.set(key, view);
