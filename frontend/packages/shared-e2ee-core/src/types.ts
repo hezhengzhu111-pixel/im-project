@@ -77,10 +77,10 @@ export interface InitialE2eeHandshake {
 export interface UploadBundleRequest {
   deviceId: string;
   identityKey: string;
-  signingKey: string;
-  signedPreKey: RustPreKey;
+  signingIdentityKey: string;
+  signedPreKey: string;
   signedPreKeySignature: string;
-  oneTimePreKeys: RustPreKey[];
+  oneTimePreKeys: string[];
 }
 
 export type PreKeyBundle = RustPublicPreKeyBundle;
