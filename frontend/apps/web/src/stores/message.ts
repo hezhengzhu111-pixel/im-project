@@ -242,14 +242,32 @@ export const useMessageStore = defineStore("message", () => {
   };
 
   /**
-   * E2EE: 持久化前剥离 displayContent，不将本地明文写入 IndexedDB。
-   * 刷新后自己的加密消息将显示「本机明文缓存不可用」。
+   * E2EE 持久化前清理：
+   * - 自己发的消息：保留 content（自己的输入，安全），保留 e2eeEnvelope（密文）
+   * - 别人发的消息：剥离 content（解密结果是临时的），保留 e2eeEnvelope（刷新后重解密）
+   * - e2eeEnvelope 做 JSON-roundtrip 确保 IndexedDB 可结构化克隆
    */
   const sanitizeForPersist = (message: Message): Message => {
-    if (message.encrypted && message.displayContent) {
-      return { ...message, displayContent: undefined };
+    if (!message.encrypted) {
+      return message;
     }
-    return message;
+    const cleaned: Message = { ...message };
+    let changed = false;
+    // incoming 加密消息不持久化 content（刷新后从 e2eeEnvelope 重解密）
+    if (message.decryptStatus !== "skipped_own" && cleaned.content) {
+      cleaned.content = "";
+      changed = true;
+    }
+    // e2eeEnvelope JSON-roundtrip 确保 IndexedDB 兼容
+    if (cleaned.e2eeEnvelope) {
+      cleaned.e2eeEnvelope = JSON.parse(JSON.stringify(cleaned.e2eeEnvelope));
+      changed = true;
+    }
+    if (cleaned.extra?.e2eeEnvelope) {
+      cleaned.extra = { ...cleaned.extra, e2eeEnvelope: JSON.parse(JSON.stringify(cleaned.extra.e2eeEnvelope)) };
+      changed = true;
+    }
+    return changed ? cleaned : message;
   };
 
   const scheduleServerMessagePersist = async (

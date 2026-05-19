@@ -8,6 +8,34 @@ type StoredMessage = Message & {
   _createdAtMs?: number;
 };
 
+/**
+ * IndexedDB 结构化克隆不支持复杂对象（Proxy、getter、循环引用等）。
+ * - 自己发的加密消息：保留 content（本地明文），e2eeEnvelope JSON-roundtrip
+ * - 别人发的加密消息：剥离 content（解密结果临时），e2eeEnvelope JSON-roundtrip
+ */
+const sanitizeForIDB = (message: Message): Message => {
+  if (!message.encrypted || !message.e2eeEnvelope) {
+    return message;
+  }
+  const cleaned = { ...message };
+  let changed = false;
+  // incoming 加密消息不持久化 content
+  if (message.decryptStatus !== "skipped_own" && cleaned.content) {
+    cleaned.content = "";
+    changed = true;
+  }
+  // JSON-roundtrip 确保 e2eeEnvelope 是纯 JSON 对象
+  if (cleaned.e2eeEnvelope !== undefined) {
+    cleaned.e2eeEnvelope = JSON.parse(JSON.stringify(cleaned.e2eeEnvelope));
+    changed = true;
+  }
+  if (cleaned.extra?.e2eeEnvelope !== undefined) {
+    cleaned.extra = { ...cleaned.extra, e2eeEnvelope: JSON.parse(JSON.stringify(cleaned.extra.e2eeEnvelope)) };
+    changed = true;
+  }
+  return changed ? cleaned : message;
+};
+
 const DB_NAME = "im_message_repo";
 const DB_VERSION = 2;
 const STORE_MESSAGES = "messages";
@@ -115,7 +143,7 @@ export const messageRepo = {
       for (const message of messages) {
         const serverId = String(message.id);
         byServerId.set(serverId, {
-          ...message,
+          ...sanitizeForIDB(message),
           conversationId,
           _cachedAt: now,
           _serverId: serverId,
@@ -138,7 +166,7 @@ export const messageRepo = {
           _cachedAt: now,
           _serverId: serverId,
           _createdAtMs: toCreatedAtMs(message),
-          ...message,
+          ...sanitizeForIDB(message),
         } as StoredMessage & { key: string });
       }
       tx.oncomplete = () => resolve();
@@ -155,7 +183,7 @@ export const messageRepo = {
   ): Promise<void> {
     const now = Date.now();
     const record: StoredMessage = {
-      ...message,
+      ...sanitizeForIDB(message),
       conversationId,
       _localId: localId,
       _cachedAt: now,

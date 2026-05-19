@@ -66,10 +66,11 @@ export interface Message {
   e2eeSenderIdentityKey?: string;
   e2eeEphemeralKey?: string;
   e2eeEnvelope?: E2eeEnvelope;
-  /** 解密状态：success=已解密, failed=解密失败, session_missing=缺少会话, skipped_own=自己的加密消息 */
+  /**
+   * 解密状态：success=已解密, failed=解密失败, session_missing=缺少会话, skipped_own=自己的加密消息。
+   * 仅内存态，不持久化。content 为展示明文（解密后写入或 own message 本地明文）。
+   */
   decryptStatus?: "success" | "failed" | "session_missing" | "skipped_own";
-  /** 展示用明文：E2EE 消息发送方本地明文或解密失败占位文案，不为空时 UI 优先使用此字段 */
-  displayContent?: string;
 }
 
 export interface RawMessageDTO {
@@ -154,7 +155,6 @@ export interface RawMessageDTO {
   e2eeEnvelope?: E2eeEnvelope;
   e2ee_envelope?: E2eeEnvelope;
   decryptStatus?: string;
-  displayContent?: string;
 }
 
 export interface MessageConfig {

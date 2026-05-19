@@ -316,12 +316,12 @@ const senderAvatarText = computed(() =>
 const mediaSource = computed(() => props.mediaUrl || props.content);
 const messageTokens = computed(() => parseMessageTokens(props.content || ""));
 const shouldMaskEncryptedContent = computed(() => {
-  // 自己的加密消息：不遮罩，应显示 displayContent
+  // 自己的加密消息：content 是本地明文，不遮罩
   if (props.isMine) return false;
-  // 已成功解密的消息：不遮罩
+  // 已成功解密：content 是解密结果
   if (props.decryptStatus === "success") return false;
-  // 其他加密消息：遮罩显示占位文案
-  return !!props.encrypted;
+  // 解密失败或未解密：遮罩，content 为空时 UI 显示占位文案
+  return !props.content && !!props.encrypted;
 });
 const bubbleClass = computed(() => ({
   "is-own": props.isMine,

@@ -294,9 +294,8 @@ export function createMessageSendQueueModule(
           groupId: session.type === "group" ? session.targetId : undefined,
           isGroupChat: session.type === "group",
           messageType: type,
-          // E2EE: content 置空（HTTP 请求体不传明文），displayContent 保留用户输入供本地 UI 展示
-          content: "",
-          displayContent: isTextLike ? content : undefined,
+          // E2EE: content 存用户明文（仅内存+本地持久化，HTTP 请求体不传 content）
+          content: isTextLike ? content : "",
           mediaUrl: undefined,
           mediaSize: mediaMetadata.mediaSize,
           mediaName: mediaMetadata.mediaName,
@@ -394,15 +393,12 @@ export function createMessageSendQueueModule(
         status: "SENT",
       };
       if (encryptedEnvelope) {
-        // E2EE: server ack 的 content 为空，保留 pending 的 displayContent 和 decryptStatus
+        // E2EE own: server ack content 为空，保留 pending 的用户明文
         serverMessage.encrypted = true;
         serverMessage.decryptStatus = "skipped_own";
-        serverMessage.displayContent =
-          pendingMessage.displayContent || serverMessage.displayContent;
         serverMessage.e2eeEnvelope = encryptedEnvelope;
         serverMessage.e2eeDeviceId = encryptedEnvelope.senderDeviceId;
-        // 不覆盖 pending 已有的非空 content（尽管 E2EE 下 content 应为空）
-        if (!serverMessage.content && pendingMessage.content) {
+        if (!serverMessage.content) {
           serverMessage.content = pendingMessage.content;
         }
       }
@@ -412,11 +408,7 @@ export function createMessageSendQueueModule(
         clearPendingInitialHandshake(session.id);
       }
       await ctx.messageRepo.removePendingMessage(session.id, localId);
-      // E2EE: 持久化时剥离 displayContent，不将本地明文写入 IndexedDB
-      const persistMessage = encryptedEnvelope
-        ? { ...serverMessage, displayContent: undefined }
-        : serverMessage;
-      await ctx.scheduleServerMessagePersist(session.id, [persistMessage]);
+      await ctx.scheduleServerMessagePersist(session.id, [serverMessage]);
       ctx.sessionStore.applyMessageToSession(session.id, serverMessage);
       return true;
     } catch (error) {
