@@ -90,10 +90,25 @@ async function fetchRemoteBundle(remoteUserId: string, remoteDeviceId?: string):
     throw new Error("remote user has no Rust E2EE key bundle");
   }
 
+  // Backend returns signingIdentityKey / signedPreKey(string) / oneTimePreKey(string|null),
+  // but RustPublicPreKeyBundle needs signingKey / signedPreKey({id,key}) / oneTimePreKey({id,key}|null).
+  const raw = bundleResp.data as Record<string, unknown>;
+  const identityKey = (raw.identityKey as string) ?? "";
+  const signingIdKey = ((raw.signingIdentityKey ?? raw.signingKey) as string) ?? identityKey;
+  const spkString = (raw.signedPreKey as string) ?? "";
+
+  const maybeOtk = typeof raw.oneTimePreKey === "string" && raw.oneTimePreKey.length > 0
+    ? { id: 1, key: raw.oneTimePreKey as string }
+    : null;
+
   return {
-    ...bundleResp.data,
+    identityKey,
+    signingKey: signingIdKey,
+    signedPreKey: { id: 1, key: spkString },
+    signedPreKeySignature: (raw.signedPreKeySignature as string) ?? "",
+    oneTimePreKey: maybeOtk,
     userId: remoteUserId,
-    deviceId: bundleResp.data.deviceId ?? targetDevice.deviceId,
+    deviceId: (raw.deviceId as string) ?? targetDevice.deviceId,
   };
 }
 
