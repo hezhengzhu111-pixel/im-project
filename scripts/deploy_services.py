@@ -85,6 +85,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip MySQL and Redis readiness checks before service deployment.",
     )
     parser.add_argument(
+        "--skip-e2ee-wasm-build",
+        action="store_true",
+        help="Skip the host-side Rust E2EE WASM build before building the frontend image.",
+    )
+    parser.add_argument(
         "--no-wait",
         action="store_true",
         help="Do not wait for application services to become ready after startup.",
@@ -147,6 +152,12 @@ def apply_database_migrations(config) -> None:
         )
 
 
+def build_frontend_wasm(config) -> None:
+    npm_cmd = resolve_executable("npm", ["npm", "npm.cmd"])
+    print("Building Rust E2EE WASM artifacts for frontend...")
+    run_command([npm_cmd, "run", "e2ee:wasm:build"], cwd=config.project_dir / "frontend")
+
+
 def main() -> None:
     args = build_parser().parse_args()
     ensure_docker_environment()
@@ -165,6 +176,9 @@ def main() -> None:
 
     if "im-api-server" in services:
         apply_database_migrations(config)
+
+    if "im-frontend" in services and not args.no_build and not args.skip_e2ee_wasm_build:
+        build_frontend_wasm(config)
 
     command = compose_up_command(
         config,
