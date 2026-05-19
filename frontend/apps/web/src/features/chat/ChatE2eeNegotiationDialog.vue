@@ -120,11 +120,11 @@ const handleAccept = async () => {
 
     const payload = JSON.parse(props.requestPayloadJson) as {
       senderIdentityKey?: string;
-      ephemeralPublicKey?: string;
+      handshake?: string;
       deviceId?: string;
     };
 
-    if (!payload.senderIdentityKey || !payload.ephemeralPublicKey) {
+    if (!payload.senderIdentityKey || !payload.handshake) {
       throw new Error("协商载荷格式错误，缺少必要的密钥信息。");
     }
 
@@ -135,7 +135,7 @@ const handleAccept = async () => {
     const ok = await respondToNegotiation(
       props.sessionId,
       payload.senderIdentityKey,
-      payload.ephemeralPublicKey,
+      payload.handshake,
       payload.deviceId,
     );
 
