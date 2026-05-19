@@ -241,6 +241,17 @@ export const useMessageStore = defineStore("message", () => {
     });
   };
 
+  /**
+   * E2EE: 持久化前剥离 displayContent，不将本地明文写入 IndexedDB。
+   * 刷新后自己的加密消息将显示「本机明文缓存不可用」。
+   */
+  const sanitizeForPersist = (message: Message): Message => {
+    if (message.encrypted && message.displayContent) {
+      return { ...message, displayContent: undefined };
+    }
+    return message;
+  };
+
   const scheduleServerMessagePersist = async (
     sessionId: string,
     nextMessages: Message[],
@@ -257,7 +268,7 @@ export const useMessageStore = defineStore("message", () => {
     serverMessages.forEach((message) => {
       const key = String(message.id || message.clientMessageId || "");
       if (key) {
-        batch.set(key, message);
+        batch.set(key, sanitizeForPersist(message));
       }
     });
     pendingServerPersistBySession.set(sessionId, batch);

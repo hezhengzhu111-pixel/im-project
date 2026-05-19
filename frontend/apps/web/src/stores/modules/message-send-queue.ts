@@ -412,7 +412,11 @@ export function createMessageSendQueueModule(
         clearPendingInitialHandshake(session.id);
       }
       await ctx.messageRepo.removePendingMessage(session.id, localId);
-      await ctx.scheduleServerMessagePersist(session.id, [serverMessage]);
+      // E2EE: 持久化时剥离 displayContent，不将本地明文写入 IndexedDB
+      const persistMessage = encryptedEnvelope
+        ? { ...serverMessage, displayContent: undefined }
+        : serverMessage;
+      await ctx.scheduleServerMessagePersist(session.id, [persistMessage]);
       ctx.sessionStore.applyMessageToSession(session.id, serverMessage);
       return true;
     } catch (error) {
