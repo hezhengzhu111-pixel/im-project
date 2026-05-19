@@ -24,8 +24,8 @@ async function decryptE2eeMessages(
       "@/features/e2ee/manager/message-decryptor"
     );
     await decryptMessageBatch(messages, { currentUserId });
-  } catch {
-    // E2EE module unavailable — skip decryption, messages stay encrypted
+  } catch (error) {
+    console.warn("[E2EE] history decrypt batch failed:", error);
   }
 }
 

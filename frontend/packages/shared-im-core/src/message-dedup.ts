@@ -43,16 +43,19 @@ export const mergeMessagesChronologically = (
       const index = identityIndex.get(matchedIdentity);
       if (index != null) {
         const previous = merged[index];
-        // E2EE: 空 content 不覆盖已有非空 content。
-        // server ack / self echo 对加密消息的 content 为空，保留本地已有明文。
+        // E2EE: 服务端无 e2eeEnvelope/content，保留本地已持久化的数据
         const resolvedContent = message.content || previous.content;
         const resolvedDecryptStatus = message.decryptStatus || previous.decryptStatus || undefined;
+        const resolvedE2eeEnvelope = message.e2eeEnvelope || previous.e2eeEnvelope || undefined;
+        const resolvedEncrypted = message.encrypted || previous.encrypted || undefined;
         const nextMessage = {
           ...previous,
           ...message,
           id: safePreferExistingId(message.id, previous.id),
           content: resolvedContent,
           decryptStatus: resolvedDecryptStatus,
+          e2eeEnvelope: resolvedE2eeEnvelope,
+          encrypted: resolvedEncrypted,
         };
         merged[index] = nextMessage;
         indexMessage(nextMessage, index);
@@ -101,6 +104,8 @@ export const mergeServerMessageWithPending = (
     status: serverMessage.status || pending.status,
     content: mergedContent,
     decryptStatus: mergedDecryptStatus || undefined,
+    e2eeEnvelope: serverMessage.e2eeEnvelope || pending.e2eeEnvelope || undefined,
+    encrypted: serverMessage.encrypted || pending.encrypted || undefined,
   };
 };
 

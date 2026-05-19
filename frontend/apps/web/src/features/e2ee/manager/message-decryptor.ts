@@ -229,8 +229,10 @@ export async function decryptMessageBatch(
       continue;
     }
 
-    // 跳过已成功解密的
+    // 跳过已成功解密且有明文的（Double Ratchet 不能重解密同一消息）
     if (msg.decryptStatus === "success" && msg.content) continue;
+    // 跳过已解密失败的消息（保留状态，等待 session 恢复后重试）
+    if (msg.decryptStatus === "failed") continue;
     if (isAlreadyDecrypted(msg)) continue;
 
     const envelope = msg.e2eeEnvelope;
