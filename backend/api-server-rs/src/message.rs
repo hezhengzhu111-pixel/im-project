@@ -1370,10 +1370,10 @@ async fn validate_e2ee_envelope(
             ))
         })?;
 
-    // 私聊时校验 recipient device 存在且 active
-    // 不强制 device 归属 receiver_user_id：同浏览器双用户共享 deviceId 时，
-    // 收件人的设备可能由同机另一个用户上传。X3DH+Double Ratchet 保证只有私钥持有者可解密。
-    if receiver_user_id.is_some() {
+    // 私聊时校验 recipient device 必须属于 receiver_user_id 且 active。
+    // 只有私钥持有者才能解密：任何不属于 receiver 的设备无法解密消息。
+    // revoked/inactive 设备一律拒绝。
+    if let Some(receiver_id) = receiver_user_id {
         let recipient_ids = resolve_recipient_device_ids(envelope);
         if recipient_ids.is_empty() {
             return Err(AppError::BadRequest(
@@ -1381,12 +1381,14 @@ async fn validate_e2ee_envelope(
             ));
         }
         for device_id in &recipient_ids {
-            validate_device_active(db, device_id).await.map_err(|_| {
-                AppError::BadRequest(format!(
-                    "e2ee recipient device '{}' is not active or not found",
-                    device_id
-                ))
-            })?;
+            validate_device_ownership(db, device_id, receiver_id)
+                .await
+                .map_err(|_| {
+                    AppError::BadRequest(format!(
+                        "e2ee recipient device '{}' does not belong to user {} or is not active",
+                        device_id, receiver_id
+                    ))
+                })?;
         }
     }
 
@@ -1416,8 +1418,7 @@ fn e2ee_session_id_matches(session_id: &str, conversation_id: &str) -> Result<()
 }
 
 /// 校验 device_id 存在且处于 active 状态（不检查 user_id 归属）。
-/// 用于收件人 device 校验：同浏览器双用户共享 deviceId 场景下，
-/// device 可能由同机另一个用户注册。
+/// 仅在 group 场景或额外防御层使用。私聊 recipient 校验必须走 validate_device_ownership。
 async fn validate_device_active(db: &MySqlPool, device_id: &str) -> Result<(), AppError> {
     let trimmed = device_id.trim();
     if trimmed.is_empty() || trimmed == "unknown" {
@@ -1534,18 +1535,9 @@ async fn validate_recipient_devices_not_revoked(
         if trimmed.is_empty() || trimmed == "unknown" {
             continue;
         }
-        let active: Option<i64> = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM service_user_service_db.e2ee_devices \
-             WHERE device_id = ? AND status = 'active'",
-        )
-        .bind(trimmed)
-        .fetch_optional(db)
-        .await?;
-        if active.unwrap_or(0) == 0 {
-            return Err(AppError::BadRequest(
-                "revoked e2ee recipient device".to_string(),
-            ));
-        }
+        validate_device_active(db, trimmed).await.map_err(|_| {
+            AppError::BadRequest("revoked e2ee recipient device".to_string())
+        })?;
     }
     Ok(())
 }

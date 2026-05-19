@@ -250,7 +250,7 @@ export async function handleFcmTokenRefresh(token: string): Promise<void> {
   }
 }
 
-function registerNotificationBackgroundHandlers(): void {
+export function registerNotificationBackgroundHandlers(): void {
   if (backgroundHandlersRegistered) {
     return;
   }
