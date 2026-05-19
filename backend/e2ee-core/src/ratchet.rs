@@ -951,7 +951,10 @@ mod tests {
         // Alice's initial key, so perform_dh_ratchet fires and rotates Alice's
         // DH keypair. (Alice has sent before, so she takes the
         // perform_dh_ratchet path, not prepare_initial_response_ratchet.)
-        assert_ne!(a0_header.ratchet_public_key.0, b0_header.ratchet_public_key.0);
+        assert_ne!(
+            a0_header.ratchet_public_key.0,
+            b0_header.ratchet_public_key.0
+        );
         assert_eq!(ratchet_decrypt(&mut alice, &b0_header, &b0_ct)?, b"b0");
         assert_ne!(alice.dh_key_pair.public_key.0, alice_initial_pk.0);
         let alice_after_dh_pk = alice.dh_key_pair.public_key;
@@ -959,7 +962,10 @@ mod tests {
         // Step 5: Alice sends a second message with her new DH key.
         let (a1_header, a1_ct) = ratchet_encrypt(&mut alice, b"a1")?;
         assert_eq!(a1_header.ratchet_public_key.0, alice_after_dh_pk.0);
-        assert_ne!(a1_header.ratchet_public_key.0, a0_header.ratchet_public_key.0);
+        assert_ne!(
+            a1_header.ratchet_public_key.0,
+            a0_header.ratchet_public_key.0
+        );
 
         // Step 6: Bob decrypts Alice's second message — Alice's new key
         // differs from Bob's stored remote key, triggering perform_dh_ratchet
@@ -998,10 +1004,7 @@ mod tests {
         for i in (0..n).rev() {
             let (ref header, ref ct) = encrypted.get(i).ok_or(E2eeError::EncryptionFailed)?;
             let expected = format!("stress-msg-{}", i);
-            assert_eq!(
-                ratchet_decrypt(&mut bob, header, ct)?,
-                expected.as_bytes()
-            );
+            assert_eq!(ratchet_decrypt(&mut bob, header, ct)?, expected.as_bytes());
         }
 
         // Verify all skipped keys were consumed

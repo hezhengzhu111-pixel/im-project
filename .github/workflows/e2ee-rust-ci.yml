@@ -1,0 +1,74 @@
+name: E2EE Rust CI
+
+on:
+  push:
+    paths:
+      - 'backend/e2ee-core/**'
+      - 'backend/e2ee-ffi/**'
+      - 'backend/e2ee-wasm/**'
+      - '.github/workflows/e2ee-rust-ci.yml'
+  pull_request:
+    paths:
+      - 'backend/e2ee-core/**'
+      - 'backend/e2ee-ffi/**'
+      - 'backend/e2ee-wasm/**'
+      - '.github/workflows/e2ee-rust-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  e2ee-rust-core:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup component add clippy rustfmt
+
+      - name: Format check (e2ee crates only)
+        run: |
+          cargo fmt --check -p e2ee-core
+          cargo fmt --check -p e2ee-ffi
+          cargo fmt --check -p e2ee-wasm
+
+      - name: Clippy e2ee-core
+        run: cargo clippy -p e2ee-core -- -D warnings
+
+      - name: Test e2ee-core
+        run: cargo test -p e2ee-core
+
+      - name: Test e2ee-ffi
+        run: cargo test -p e2ee-ffi
+
+      - name: Test e2ee-wasm
+        run: cargo test -p e2ee-wasm
+
+      - name: Check e2ee-wasm with wasm32 target
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo check -p e2ee-wasm --target wasm32-unknown-unknown
+
+      - name: Scan e2ee-core/src for forbidden patterns
+        run: |
+          PATTERNS='\.unwrap\(|\.expect\(|\bunsafe\b|panic!|unreachable!|todo!|unimplemented!'
+          MATCHES=$(grep -nE "$PATTERNS" e2ee-core/src/*.rs | grep -v 'forbid(unsafe_code)') || true
+          if [ -n "$MATCHES" ]; then
+            echo "$MATCHES"
+            echo "::error::Forbidden patterns found in e2ee-core/src/"
+            exit 1
+          fi
+          echo "PASS: e2ee-core/src is clean"
+
+      - name: Scan e2ee-ffi/e2ee-wasm src for forbidden patterns (report only)
+        run: |
+          PATTERNS='\.unwrap\(|\.expect\(|\bunsafe\b|panic!|unreachable!|todo!|unimplemented!'
+          echo "=== e2ee-ffi/src ==="
+          grep -nE "$PATTERNS" e2ee-ffi/src/*.rs || echo "  clean"
+          echo "=== e2ee-wasm/src ==="
+          grep -nE "$PATTERNS" e2ee-wasm/src/*.rs || echo "  clean"

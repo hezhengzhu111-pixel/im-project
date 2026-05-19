@@ -375,15 +375,26 @@ async fn load_push_settings(db: &MySqlPool, user_id: i64) -> Result<PushSettings
     parse_push_settings_value(&value)
 }
 
-fn normalize_register_request(request: RegisterDeviceRequest) -> Result<RegisterDeviceRequest, AppError> {
+fn normalize_register_request(
+    request: RegisterDeviceRequest,
+) -> Result<RegisterDeviceRequest, AppError> {
     let platform = normalize_platform(&request.platform)?;
     Ok(RegisterDeviceRequest {
         device_id: normalize_device_id(&request.device_id)?,
         platform,
         fcm_token: normalize_required_token(&request.fcm_token)?,
-        app_version: normalize_optional_text(Some(request.app_version.as_str()), MAX_SIMPLE_FIELD_LEN)?,
-        device_model: normalize_optional_text(Some(request.device_model.as_str()), MAX_SIMPLE_FIELD_LEN)?,
-        os_version: normalize_optional_text(Some(request.os_version.as_str()), MAX_SIMPLE_FIELD_LEN)?,
+        app_version: normalize_optional_text(
+            Some(request.app_version.as_str()),
+            MAX_SIMPLE_FIELD_LEN,
+        )?,
+        device_model: normalize_optional_text(
+            Some(request.device_model.as_str()),
+            MAX_SIMPLE_FIELD_LEN,
+        )?,
+        os_version: normalize_optional_text(
+            Some(request.os_version.as_str()),
+            MAX_SIMPLE_FIELD_LEN,
+        )?,
         locale: normalize_optional_text(Some(request.locale.as_str()), 32)?,
         timezone: normalize_optional_text(Some(request.timezone.as_str()), 64)?,
     })
@@ -391,7 +402,9 @@ fn normalize_register_request(request: RegisterDeviceRequest) -> Result<Register
 
 fn normalize_push_settings(request: PushSettings) -> Result<PushSettings, AppError> {
     if request.muted_conversation_ids.len() > MAX_MUTED_CONVERSATIONS {
-        return Err(AppError::BadRequest("mutedConversationIds too large".to_string()));
+        return Err(AppError::BadRequest(
+            "mutedConversationIds too large".to_string(),
+        ));
     }
     let muted_conversation_ids = request
         .muted_conversation_ids
@@ -448,13 +461,16 @@ fn parse_push_settings_value(value: &Value) -> Result<PushSettings, AppError> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let policy = value.get("androidChannelPolicy").cloned().unwrap_or_else(|| {
-        json!({
-            "messages": DEFAULT_MESSAGES_CHANNEL,
-            "friendEvents": DEFAULT_FRIEND_EVENTS_CHANNEL,
-            "system": DEFAULT_SYSTEM_CHANNEL
-        })
-    });
+    let policy = value
+        .get("androidChannelPolicy")
+        .cloned()
+        .unwrap_or_else(|| {
+            json!({
+                "messages": DEFAULT_MESSAGES_CHANNEL,
+                "friendEvents": DEFAULT_FRIEND_EVENTS_CHANNEL,
+                "system": DEFAULT_SYSTEM_CHANNEL
+            })
+        });
 
     normalize_push_settings(PushSettings {
         enabled,
@@ -499,7 +515,9 @@ fn normalize_platform(raw: &str) -> Result<String, AppError> {
     let value = raw.trim().to_ascii_uppercase();
     match value.as_str() {
         "ANDROID" | "IOS" => Ok(value),
-        _ => Err(AppError::BadRequest("platform must be ANDROID or IOS".to_string())),
+        _ => Err(AppError::BadRequest(
+            "platform must be ANDROID or IOS".to_string(),
+        )),
     }
 }
 
@@ -577,7 +595,10 @@ mod tests {
         assert!(parsed.sound_enabled);
         assert!(parsed.show_preview);
         assert!(parsed.muted_conversation_ids.is_empty());
-        assert_eq!(parsed.android_channel_policy.messages, DEFAULT_MESSAGES_CHANNEL);
+        assert_eq!(
+            parsed.android_channel_policy.messages,
+            DEFAULT_MESSAGES_CHANNEL
+        );
         Ok(())
     }
 
