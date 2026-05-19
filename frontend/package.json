@@ -11,6 +11,7 @@
     "web:dev": "npm run dev --workspace=@im/web",
     "web:dev:sit": "npm run dev:sit --workspace=@im/web",
     "e2ee:wasm:build": "npm run build --workspace=@im/rust-e2ee-wasm",
+    "web:e2ee:dev": "npm run e2ee:wasm:build && node scripts/web-rust-e2ee-dev.mjs",
     "web:build": "npm run e2ee:wasm:build && npm run build --workspace=@im/web",
     "web:build:dev": "npm run e2ee:wasm:build && npm run build:dev --workspace=@im/web",
     "web:build:sit": "npm run e2ee:wasm:build && npm run build:sit --workspace=@im/web",
