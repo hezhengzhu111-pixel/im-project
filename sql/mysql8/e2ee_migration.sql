@@ -204,28 +204,79 @@ CREATE TABLE IF NOT EXISTS message_deliveries (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE message deliveries';
 
 -- 2026-05-10 E2EE envelope/session hardening
-ALTER TABLE e2ee_devices
-  ADD COLUMN IF NOT EXISTS id BIGINT NULL AUTO_INCREMENT UNIQUE,
-  ADD COLUMN IF NOT EXISTS identity_public_key TEXT NULL COMMENT 'E2EE identity public key',
-  ADD COLUMN IF NOT EXISTS fingerprint VARCHAR(64) NULL COMMENT 'public key fingerprint',
-  ADD COLUMN IF NOT EXISTS key_version INT NOT NULL DEFAULT 1 COMMENT 'device key version',
-  ADD COLUMN IF NOT EXISTS revoked_at DATETIME NULL COMMENT 'device revoke time',
-  ADD COLUMN IF NOT EXISTS last_seen_at DATETIME NULL COMMENT 'last seen time';
+-- Switch back to service_user_service_db for e2ee_devices / e2ee_one_time_pre_keys additions
+USE service_user_service_db;
+
+DROP PROCEDURE IF EXISTS add_column_if_missing;
+DELIMITER //
+CREATE PROCEDURE add_column_if_missing(
+    IN target_table VARCHAR(64),
+    IN target_column VARCHAR(64),
+    IN column_definition TEXT
+)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = target_table
+          AND COLUMN_NAME = target_column
+    ) THEN
+        SET @ddl = CONCAT('ALTER TABLE `', target_table, '` ADD COLUMN `', target_column, '` ', column_definition);
+        PREPARE stmt FROM @ddl;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END//
+DELIMITER ;
+
+CALL add_column_if_missing('e2ee_devices', 'id', 'BIGINT NULL AUTO_INCREMENT UNIQUE');
+CALL add_column_if_missing('e2ee_devices', 'identity_public_key', 'TEXT NULL COMMENT ''E2EE identity public key''');
+CALL add_column_if_missing('e2ee_devices', 'fingerprint', 'VARCHAR(64) NULL COMMENT ''public key fingerprint''');
+CALL add_column_if_missing('e2ee_devices', 'key_version', 'INT NOT NULL DEFAULT 1 COMMENT ''device key version''');
+CALL add_column_if_missing('e2ee_devices', 'revoked_at', 'DATETIME NULL COMMENT ''device revoke time''');
+CALL add_column_if_missing('e2ee_devices', 'last_seen_at', 'DATETIME NULL COMMENT ''last seen time''');
+DROP PROCEDURE IF EXISTS add_column_if_missing;
 
 UPDATE e2ee_devices SET identity_public_key = identity_key WHERE identity_public_key IS NULL;
 UPDATE e2ee_devices SET fingerprint = LEFT(SHA2(identity_key, 256), 32) WHERE fingerprint IS NULL;
 UPDATE e2ee_devices SET revoked_at = updated_time WHERE status = 'deleted' AND revoked_at IS NULL;
 
-ALTER TABLE e2ee_one_time_pre_keys
-  ADD COLUMN IF NOT EXISTS pre_key_id BIGINT NULL COMMENT 'client pre-key id',
-  ADD COLUMN IF NOT EXISTS public_key TEXT NULL COMMENT 'one-time public key',
-  ADD COLUMN IF NOT EXISTS claimed_at DATETIME NULL COMMENT 'claim time',
-  ADD COLUMN IF NOT EXISTS claimed_by_user_id BIGINT NULL COMMENT 'claimant user',
-  ADD COLUMN IF NOT EXISTS claimed_by_device_id VARCHAR(64) NULL COMMENT 'claimant device';
+DROP PROCEDURE IF EXISTS add_column_if_missing;
+DELIMITER //
+CREATE PROCEDURE add_column_if_missing(
+    IN target_table VARCHAR(64),
+    IN target_column VARCHAR(64),
+    IN column_definition TEXT
+)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = target_table
+          AND COLUMN_NAME = target_column
+    ) THEN
+        SET @ddl = CONCAT('ALTER TABLE `', target_table, '` ADD COLUMN `', target_column, '` ', column_definition);
+        PREPARE stmt FROM @ddl;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END//
+DELIMITER ;
+
+CALL add_column_if_missing('e2ee_one_time_pre_keys', 'pre_key_id', 'BIGINT NULL COMMENT ''client pre-key id''');
+CALL add_column_if_missing('e2ee_one_time_pre_keys', 'public_key', 'TEXT NULL COMMENT ''one-time public key''');
+CALL add_column_if_missing('e2ee_one_time_pre_keys', 'claimed_at', 'DATETIME NULL COMMENT ''claim time''');
+CALL add_column_if_missing('e2ee_one_time_pre_keys', 'claimed_by_user_id', 'BIGINT NULL COMMENT ''claimant user''');
+CALL add_column_if_missing('e2ee_one_time_pre_keys', 'claimed_by_device_id', 'VARCHAR(64) NULL COMMENT ''claimant device''');
+DROP PROCEDURE IF EXISTS add_column_if_missing;
 
 UPDATE e2ee_one_time_pre_keys SET pre_key_id = id WHERE pre_key_id IS NULL;
 UPDATE e2ee_one_time_pre_keys SET public_key = pre_key WHERE public_key IS NULL;
 UPDATE e2ee_one_time_pre_keys SET claimed_at = consumed_time WHERE consumed = 1 AND claimed_at IS NULL;
+
+USE service_message_service_db;
 
 CREATE TABLE IF NOT EXISTS e2ee_conversation_sessions (
   conversation_id VARCHAR(128) NOT NULL,
@@ -270,5 +321,28 @@ CREATE TABLE IF NOT EXISTS e2ee_group_epochs (
   UNIQUE KEY uk_e2ee_group_epoch (group_id, epoch)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE group epoch history';
 
-ALTER TABLE service_message_service_db.messages
-  ADD COLUMN IF NOT EXISTS e2ee_envelope_json JSON NULL COMMENT 'Unified E2EE envelope JSON';
+DROP PROCEDURE IF EXISTS add_column_if_missing;
+DELIMITER //
+CREATE PROCEDURE add_column_if_missing(
+    IN target_table VARCHAR(64),
+    IN target_column VARCHAR(64),
+    IN column_definition TEXT
+)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = 'service_message_service_db'
+          AND TABLE_NAME = target_table
+          AND COLUMN_NAME = target_column
+    ) THEN
+        SET @ddl = CONCAT('ALTER TABLE `service_message_service_db`.`', target_table, '` ADD COLUMN `', target_column, '` ', column_definition);
+        PREPARE stmt FROM @ddl;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END//
+DELIMITER ;
+
+CALL add_column_if_missing('messages', 'e2ee_envelope_json', 'JSON NULL COMMENT ''Unified E2EE envelope JSON''');
+DROP PROCEDURE IF EXISTS add_column_if_missing;
