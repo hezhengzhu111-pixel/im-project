@@ -43,10 +43,16 @@ export const mergeMessagesChronologically = (
       const index = identityIndex.get(matchedIdentity);
       if (index != null) {
         const previous = merged[index];
+        // E2EE: avoid empty fields from server overwriting non-empty local fields.
+        // server ack / self echo may have empty content for encrypted messages.
+        const isIncomingEmptyContent = !message.content && previous.content;
         const nextMessage = {
           ...previous,
           ...message,
           id: safePreferExistingId(message.id, previous.id),
+          content: isIncomingEmptyContent ? previous.content : (message.content || previous.content),
+          displayContent: message.displayContent || previous.displayContent || undefined,
+          decryptStatus: message.decryptStatus || previous.decryptStatus || undefined,
         };
         merged[index] = nextMessage;
         indexMessage(nextMessage, index);
@@ -70,25 +76,38 @@ export const mergeMessagesChronologically = (
 export const mergeServerMessageWithPending = (
   pending: Message,
   serverMessage: Message,
-): Message => ({
-  ...pending,
-  ...serverMessage,
-  // 优先使用server的id，但保留pending的id作为fallback
-  id: safePreferExistingId(serverMessage.id, pending.id),
-  // 优先使用server的messageId
-  messageId: serverMessage.messageId ?? pending.messageId,
-  // 保留clientMessageId
-  clientMessageId: serverMessage.clientMessageId ?? pending.clientMessageId,
-  // 优先使用server的sendTime
-  sendTime: serverMessage.sendTime || pending.sendTime,
-  // 保留本地媒体资源，除非server已返回
-  mediaUrl: serverMessage.mediaUrl || pending.mediaUrl,
-  thumbnailUrl: serverMessage.thumbnailUrl || pending.thumbnailUrl,
-  mediaName: serverMessage.mediaName || pending.mediaName,
-  mediaSize: serverMessage.mediaSize ?? pending.mediaSize,
-  // 优先使用server的状态
-  status: serverMessage.status || pending.status,
-});
+): Message => {
+  // E2EE: server ack content is empty for encrypted messages.
+  // Keep pending displayContent (user's plaintext) and avoid empty content overwrite.
+  const isE2eeOwn =
+    pending.encrypted === true || pending.encrypted === 1;
+  const mergedContent = isE2eeOwn && !serverMessage.content
+    ? pending.content
+    : (serverMessage.content || pending.content);
+  const mergedDisplayContent = isE2eeOwn
+    ? (pending.displayContent || serverMessage.displayContent)
+    : (serverMessage.displayContent || pending.displayContent);
+  const mergedDecryptStatus = isE2eeOwn
+    ? (pending.decryptStatus || "skipped_own")
+    : (serverMessage.decryptStatus || pending.decryptStatus);
+
+  return {
+    ...pending,
+    ...serverMessage,
+    id: safePreferExistingId(serverMessage.id, pending.id),
+    messageId: serverMessage.messageId ?? pending.messageId,
+    clientMessageId: serverMessage.clientMessageId ?? pending.clientMessageId,
+    sendTime: serverMessage.sendTime || pending.sendTime,
+    mediaUrl: serverMessage.mediaUrl || pending.mediaUrl,
+    thumbnailUrl: serverMessage.thumbnailUrl || pending.thumbnailUrl,
+    mediaName: serverMessage.mediaName || pending.mediaName,
+    mediaSize: serverMessage.mediaSize ?? pending.mediaSize,
+    status: serverMessage.status || pending.status,
+    content: mergedContent,
+    displayContent: mergedDisplayContent || undefined,
+    decryptStatus: mergedDecryptStatus || undefined,
+  };
+};
 
 export const applyMessageToMessageList = (
   messages: Message[],

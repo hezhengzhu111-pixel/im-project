@@ -687,7 +687,7 @@ async fn active_devices(db: &sqlx::MySqlPool, device_ids: &[String]) -> Result<(
     }
     for device_id in device_ids {
         let count: Option<i64> = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM service_user_service_db.e2ee_devices WHERE device_id = ? AND status = 'active' AND revoked_at IS NULL",
+            "SELECT COUNT(*) FROM service_user_service_db.e2ee_devices WHERE device_id = ? AND status = 'active'",
         )
         .bind(device_id)
         .fetch_optional(db)

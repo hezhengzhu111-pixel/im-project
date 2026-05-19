@@ -10,76 +10,22 @@ import {
   sortMessagesAscending,
 } from "@/stores/modules/message-helpers";
 import { toBigIntId } from "@/normalizers/chat";
-import { isRustE2eeEnvelope, OLD_E2EE_UNREADABLE_TEXT } from "@im/shared-e2ee-core";
-
 /**
- * Decrypt E2EE messages in-place for messages from other users.
- * Messages are processed in chronological order to maintain ratchet sequence.
+ * Decrypt E2EE messages in-place using the unified decrypt scheduler.
+ * Delegates to decryptMessageBatch which handles per-session serialization,
+ * dedup, and proper error state management.
  */
 async function decryptE2eeMessages(
   messages: Message[],
   currentUserId: string,
 ): Promise<void> {
-  // Filter to encrypted messages from other users, sorted ascending by time
-  const encrypted = messages
-    .filter((m) => {
-      return (m.encrypted === true || m.encrypted === 1) &&
-        String(m.senderId) !== currentUserId &&
-        m.messageType !== "SYSTEM";
-    })
-    .sort((a, b) => {
-      const ta = new Date(a.sendTime || 0).getTime();
-      const tb = new Date(b.sendTime || 0).getTime();
-      return ta - tb;
-    });
-
-  if (encrypted.length === 0) return;
-
   try {
-    const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
-
-    for (const msg of encrypted) {
-      try {
-        const peerId = String(msg.senderId);
-        if (isRustE2eeEnvelope(msg.e2eeEnvelope)) {
-          msg.content = await e2eeManager.decryptEnvelope(msg.e2eeEnvelope, peerId);
-          msg.encrypted = false;
-        } else {
-          msg.content = OLD_E2EE_UNREADABLE_TEXT;
-          msg.encrypted = false;
-        }
-      } catch {
-        /*
-        const classification = classifyE2eeError(e);
-        const isNoRatchetState = classification.code === "NO_RATCHET_STATE" || classification.code === "NEGOTIATION_NOT_ACCEPTED";
-
-        if (isNoRatchetState) {
-          // Cache this and remaining messages for deferred decryption
-          const { cachePendingMessage } = await import("@/features/e2ee/manager/pending-messages");
-          const peerId = String(msg.senderId);
-          const sessionId = buildSessionId("private", currentUserId, peerId);
-          const headerRaw = msg.e2eeHeader;
-          const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
-
-          cachePendingMessage({
-            sessionId,
-            peerId,
-            content: msg.content,
-            header,
-            messageRef: msg as unknown as { content: string; encrypted: boolean | number },
-          });
-          // Remaining messages will also fail — stop processing
-          console.warn(`[E2EE] ${classification.safeMessage} for session=${sessionId}, cached ${encrypted.length} messages for deferred decryption.`);
-          break;
-        }
-        // Other decrypt errors — leave as ciphertext
-        */
-        msg.content = OLD_E2EE_UNREADABLE_TEXT;
-        msg.encrypted = false;
-      }
-    }
+    const { decryptMessageBatch } = await import(
+      "@/features/e2ee/manager/message-decryptor"
+    );
+    await decryptMessageBatch(messages, { currentUserId });
   } catch {
-    // E2EE module unavailable — skip decryption
+    // E2EE module unavailable — skip decryption, messages stay encrypted
   }
 }
 

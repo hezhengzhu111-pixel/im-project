@@ -91,6 +91,22 @@ const firstNumber = (...values: unknown[]) => {
   return undefined;
 };
 
+const VALID_DECRYPT_STATUSES = new Set([
+  "success",
+  "failed",
+  "session_missing",
+  "skipped_own",
+]);
+
+const validateDecryptStatus = (
+  value: string,
+): Message["decryptStatus"] => {
+  if (VALID_DECRYPT_STATUSES.has(value)) {
+    return value as Message["decryptStatus"];
+  }
+  return undefined;
+};
+
 export const normalizeMessage = (
   raw: RawMessageDTO | unknown,
   fallbackSendTime?: string,
@@ -221,6 +237,8 @@ export const normalizeMessage = (
       asString(record.e2eeEphemeralKey ?? record.e2ee_ephemeral_key) ||
       undefined,
     e2eeEnvelope: record.e2eeEnvelope ?? record.e2ee_envelope,
+    decryptStatus: validateDecryptStatus(asString(record.decryptStatus)),
+    displayContent: asString(record.displayContent) || undefined,
   };
 };
 

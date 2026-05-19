@@ -294,7 +294,9 @@ export function createMessageSendQueueModule(
           groupId: session.type === "group" ? session.targetId : undefined,
           isGroupChat: session.type === "group",
           messageType: type,
+          // E2EE: content 置空（HTTP 请求体不传明文），displayContent 保留用户输入供本地 UI 展示
           content: "",
+          displayContent: isTextLike ? content : undefined,
           mediaUrl: undefined,
           mediaSize: mediaMetadata.mediaSize,
           mediaName: mediaMetadata.mediaName,
@@ -303,6 +305,7 @@ export function createMessageSendQueueModule(
           sendTime: new Date().toISOString(),
           status: "SENDING",
           encrypted: true,
+          decryptStatus: "skipped_own",
           e2eeEnvelope: encryptedEnvelope,
           e2eeDeviceId: encryptedEnvelope.senderDeviceId,
           extra: { ...(extra ?? {}), e2eeEnvelope: encryptedEnvelope },
@@ -391,9 +394,17 @@ export function createMessageSendQueueModule(
         status: "SENT",
       };
       if (encryptedEnvelope) {
-        serverMessage.content = "";
+        // E2EE: server ack 的 content 为空，保留 pending 的 displayContent 和 decryptStatus
+        serverMessage.encrypted = true;
+        serverMessage.decryptStatus = "skipped_own";
+        serverMessage.displayContent =
+          pendingMessage.displayContent || serverMessage.displayContent;
         serverMessage.e2eeEnvelope = encryptedEnvelope;
-        (serverMessage as unknown as Record<string, unknown>).encrypted = true;
+        serverMessage.e2eeDeviceId = encryptedEnvelope.senderDeviceId;
+        // 不覆盖 pending 已有的非空 content（尽管 E2EE 下 content 应为空）
+        if (!serverMessage.content && pendingMessage.content) {
+          serverMessage.content = pendingMessage.content;
+        }
       }
       replaceLocalMessage(session.id, localId, serverMessage);
       if (encryptedEnvelope?.handshake) {
