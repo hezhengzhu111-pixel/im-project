@@ -196,7 +196,8 @@ pub async fn send_private(
             ));
         }
         validate_e2ee_envelope(envelope, &conversation_id)?;
-        validate_recipient_devices_not_revoked(db, &envelope.recipient_device_ids).await?;
+        let device_ids = resolve_recipient_device_ids(envelope);
+        validate_recipient_devices_not_revoked(db, &device_ids).await?;
     }
     let message = build_message(
         config,
@@ -342,7 +343,8 @@ pub async fn send_group(
             ));
         }
         validate_e2ee_envelope(envelope, &conversation_id)?;
-        validate_recipient_devices_not_revoked(db, &envelope.recipient_device_ids).await?;
+        let device_ids = resolve_recipient_device_ids(envelope);
+        validate_recipient_devices_not_revoked(db, &device_ids).await?;
     }
     let message = build_message(
         config,
@@ -1260,7 +1262,7 @@ fn validate_send_input(
     Ok(())
 }
 
-fn decode_base64url_len(value: &str) -> Result<usize, AppError> {
+fn decode_base64url(value: &str) -> Result<Vec<u8>, AppError> {
     let normalized = value.replace('-', "+").replace('_', "/");
     let padded = match normalized.len() % 4 {
         0 => normalized,
@@ -1273,38 +1275,56 @@ fn decode_base64url_len(value: &str) -> Result<usize, AppError> {
         }
     };
     base64::Engine::decode(&base64::engine::general_purpose::STANDARD, padded)
-        .map(|bytes| bytes.len())
         .map_err(|_| AppError::BadRequest("invalid e2ee envelope encoding".to_string()))
+}
+
+fn decode_base64url_len(value: &str) -> Result<usize, AppError> {
+    decode_base64url(value).map(|bytes| bytes.len())
 }
 
 fn validate_e2ee_envelope(
     envelope: &E2eeEnvelopeDto,
-    conversation_id: &str,
+    _conversation_id: &str,
 ) -> Result<(), AppError> {
-    if envelope.version != 1 || envelope.alg != "AES-256-GCM" {
+    // Rust WASM E2EE: alg = "rust-x25519-x3dh-dr-v1", 加密数据在 wire 字段中
+    if envelope.version != 2 || envelope.alg != "rust-x25519-x3dh-dr-v1" {
         return Err(AppError::BadRequest(
-            "unsupported e2ee envelope".to_string(),
+            "unsupported e2ee envelope, only rust-x25519-x3dh-dr-v1 is supported".to_string(),
         ));
     }
-    if envelope.conversation_id != conversation_id
-        || envelope.client_msg_id.trim().is_empty()
-        || envelope.sender_user_id.trim().is_empty()
-        || envelope.sender_device_id.trim().is_empty()
-        || envelope.session_id.trim().is_empty()
-        || envelope.key_id.trim().is_empty()
-        || envelope.key_version <= 0
-        || envelope.aad.trim().is_empty()
-        || envelope.ciphertext.trim().is_empty()
-        || envelope.recipient_device_ids.is_empty()
-    {
-        return Err(AppError::BadRequest("invalid e2ee envelope".to_string()));
+    let wire = envelope.wire.as_deref().ok_or_else(|| {
+        AppError::BadRequest("rust e2ee wire required".to_string())
+    })?;
+    let wire_bytes = decode_base64url(wire).map_err(|_| {
+        AppError::BadRequest("invalid rust e2ee wire encoding".to_string())
+    })?;
+    if wire_bytes.len() < 56 {
+        return Err(AppError::BadRequest("rust e2ee wire too short".to_string()));
     }
-    if decode_base64url_len(&envelope.iv)? != 12 {
-        return Err(AppError::BadRequest("invalid e2ee iv".to_string()));
+    let header_len =
+        u32::from_be_bytes([wire_bytes[0], wire_bytes[1], wire_bytes[2], wire_bytes[3]])
+            as usize;
+    if header_len != 52 {
+        return Err(AppError::BadRequest("invalid rust e2ee wire header".to_string()));
     }
-    let _ = decode_base64url_len(&envelope.aad)?;
-    let _ = decode_base64url_len(&envelope.ciphertext)?;
+    if envelope.sender_device_id.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "rust e2ee sender_device_id required".to_string(),
+        ));
+    }
     Ok(())
+}
+
+/// 从 v2 信封中解析接收方设备 ID 列表。
+/// Rust E2EE 发送单个 `recipientDeviceId`，这里合并到 Vec 中供验证使用。
+fn resolve_recipient_device_ids(envelope: &E2eeEnvelopeDto) -> Vec<String> {
+    let mut ids = envelope.recipient_device_ids.clone();
+    if ids.is_empty() {
+        if let Some(ref id) = envelope.recipient_device_id {
+            ids.push(id.clone());
+        }
+    }
+    ids
 }
 
 async fn private_e2ee_enabled(db: &MySqlPool, conversation_id: &str) -> Result<bool, AppError> {
