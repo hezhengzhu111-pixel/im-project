@@ -92,7 +92,7 @@ async function fetchRemoteBundle(remoteUserId: string, remoteDeviceId?: string):
 
   // Backend returns signingIdentityKey / signedPreKey(string) / oneTimePreKey(string|null),
   // but RustPublicPreKeyBundle needs signingKey / signedPreKey({id,key}) / oneTimePreKey({id,key}|null).
-  const raw = bundleResp.data as Record<string, unknown>;
+  const raw = bundleResp.data as unknown as Record<string, unknown>;
   const identityKey = (raw.identityKey as string) ?? "";
   const signingIdKey = ((raw.signingIdentityKey ?? raw.signingKey) as string) ?? identityKey;
   const spkString = (raw.signedPreKey as string) ?? "";
