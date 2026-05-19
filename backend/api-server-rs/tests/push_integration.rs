@@ -174,7 +174,10 @@ async fn push_settings_round_trip() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(get_json["data"]["enabled"], json!(false));
     assert_eq!(get_json["data"]["soundEnabled"], json!(false));
     assert_eq!(get_json["data"]["showPreview"], json!(false));
-    assert_eq!(get_json["data"]["mutedConversationIds"], json!(["private_1_2", "group_9"]));
+    assert_eq!(
+        get_json["data"]["mutedConversationIds"],
+        json!(["private_1_2", "group_9"])
+    );
 
     Ok(())
 }

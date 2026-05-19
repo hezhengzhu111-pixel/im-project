@@ -762,8 +762,8 @@ mod tests {
             .one_time_pre_key_pairs
             .first()
             .ok_or("missing OTK".to_string())?;
-        let bob_otk_bincode = bincode::serialize(&bob_otk.key_pair)
-            .map_err(|e| format!("serialize bob_otk: {e}"))?;
+        let bob_otk_bincode =
+            bincode::serialize(&bob_otk.key_pair).map_err(|e| format!("serialize bob_otk: {e}"))?;
 
         mgr.create_inbound_session(
             "bob".to_string(),
@@ -836,8 +836,8 @@ mod tests {
             .one_time_pre_key_pairs
             .first()
             .ok_or("missing OTK".to_string())?;
-        let bob_otk_bincode = bincode::serialize(&bob_otk.key_pair)
-            .map_err(|e| format!("serialize bob_otk: {e}"))?;
+        let bob_otk_bincode =
+            bincode::serialize(&bob_otk.key_pair).map_err(|e| format!("serialize bob_otk: {e}"))?;
 
         mgr.create_inbound_session(
             "bob".to_string(),
@@ -918,8 +918,8 @@ mod tests {
             .one_time_pre_key_pairs
             .first()
             .ok_or("missing OTK".to_string())?;
-        let bob_otk_bincode = bincode::serialize(&bob_otk.key_pair)
-            .map_err(|e| format!("serialize bob_otk: {e}"))?;
+        let bob_otk_bincode =
+            bincode::serialize(&bob_otk.key_pair).map_err(|e| format!("serialize bob_otk: {e}"))?;
 
         mgr.create_inbound_session(
             "bob".to_string(),
@@ -1127,9 +1127,7 @@ mod tests {
 
         // Verify ciphertext is non-empty (at minimum 16 bytes for GCM tag)
         if wire.len() <= 4 + 52 {
-            return Err(
-                "ciphertext is empty (wire too short for header + tag)".to_string(),
-            );
+            return Err("ciphertext is empty (wire too short for header + tag)".to_string());
         }
         let ciphertext_len = wire.len() - 4 - 52;
         if ciphertext_len < 16 {
@@ -1146,11 +1144,7 @@ mod tests {
     fn two_sessions_independent() -> Result<(), String> {
         use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
 
-        fn setup_session(
-            mgr: &SessionManager,
-            alice_id: &str,
-            bob_id: &str,
-        ) -> Result<(), String> {
+        fn setup_session(mgr: &SessionManager, alice_id: &str, bob_id: &str) -> Result<(), String> {
             let bob_bundle = generate_key_bundle(1, &[(100, 1)])
                 .map_err(|e| format!("generate_key_bundle: {e}"))?;
 
@@ -1172,11 +1166,7 @@ mod tests {
                 bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
 
             let handshake = mgr
-                .create_outbound_session(
-                    alice_id.to_string(),
-                    alice_ik_bincode,
-                    fetch_json,
-                )
+                .create_outbound_session(alice_id.to_string(), alice_ik_bincode, fetch_json)
                 .map_err(|e| format!("create_outbound_session: {e}"))?;
 
             if handshake.len() < 40 {
@@ -1255,11 +1245,7 @@ mod tests {
     fn wrong_session_decrypt_fails() -> Result<(), String> {
         use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
 
-        fn setup_session(
-            mgr: &SessionManager,
-            alice_id: &str,
-            bob_id: &str,
-        ) -> Result<(), String> {
+        fn setup_session(mgr: &SessionManager, alice_id: &str, bob_id: &str) -> Result<(), String> {
             let bob_bundle = generate_key_bundle(1, &[(100, 1)])
                 .map_err(|e| format!("generate_key_bundle: {e}"))?;
 
@@ -1281,11 +1267,7 @@ mod tests {
                 bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
 
             let handshake = mgr
-                .create_outbound_session(
-                    alice_id.to_string(),
-                    alice_ik_bincode,
-                    fetch_json,
-                )
+                .create_outbound_session(alice_id.to_string(), alice_ik_bincode, fetch_json)
                 .map_err(|e| format!("create_outbound_session: {e}"))?;
 
             if handshake.len() < 40 {
