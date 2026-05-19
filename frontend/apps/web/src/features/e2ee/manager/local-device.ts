@@ -83,9 +83,9 @@ async function uploadPublicBundle(deviceId: string, bundle: RustPublicPreKeyBund
   await keyService.uploadBundle({
     deviceId,
     identityKey: bundle.identityKey,
-    signingKey: bundle.signingKey,
-    signedPreKey: bundle.signedPreKey,
+    signingIdentityKey: bundle.signingKey,
+    signedPreKey: bundle.signedPreKey.key,
     signedPreKeySignature: bundle.signedPreKeySignature,
-    oneTimePreKeys: bundle.oneTimePreKeys ?? [],
+    oneTimePreKeys: (bundle.oneTimePreKeys ?? []).map(k => k.key),
   });
 }
