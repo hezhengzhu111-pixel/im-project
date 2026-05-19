@@ -79,21 +79,23 @@ const _assertFRHasStatus: _FRHasStatus = true;
 type _HasEncrypted = 'encrypted' extends keyof Message ? true : never;
 const _assertHasEncrypted: _HasEncrypted = true;
 
-// 12. Message must have e2eeHeader (E29.1)
-type _HasE2eeHeader = 'e2eeHeader' extends keyof Message ? true : never;
-const _assertHasE2eeHeader: _HasE2eeHeader = true;
+// 12. Message must not expose legacy header fields for new E2EE.
+type _NoE2eeHeader = 'e2eeHeader' extends keyof Message ? never : true;
+const _assertNoE2eeHeader: _NoE2eeHeader = true;
 
 // 13. Message must have e2eeDeviceId (E29.1)
 type _HasE2eeDeviceId = 'e2eeDeviceId' extends keyof Message ? true : never;
 const _assertHasE2eeDeviceId: _HasE2eeDeviceId = true;
 
-// 14. Message must have e2eeSenderIdentityKey (E29.1)
-type _HasE2eeSenderIdentityKey = 'e2eeSenderIdentityKey' extends keyof Message ? true : never;
-const _assertHasE2eeSenderIdentityKey: _HasE2eeSenderIdentityKey = true;
+// 14. Message must have Rust v2 envelope.
+type _HasE2eeEnvelope = 'e2eeEnvelope' extends keyof Message ? true : never;
+const _assertHasE2eeEnvelope: _HasE2eeEnvelope = true;
 
-// 15. Message must have e2eeEphemeralKey (E29.1)
-type _HasE2eeEphemeralKey = 'e2eeEphemeralKey' extends keyof Message ? true : never;
-const _assertHasE2eeEphemeralKey: _HasE2eeEphemeralKey = true;
+// 15. Message must not expose legacy identity/ephemeral handshake fields.
+type _NoE2eeSenderIdentityKey = 'e2eeSenderIdentityKey' extends keyof Message ? never : true;
+const _assertNoE2eeSenderIdentityKey: _NoE2eeSenderIdentityKey = true;
+type _NoE2eeEphemeralKey = 'e2eeEphemeralKey' extends keyof Message ? never : true;
+const _assertNoE2eeEphemeralKey: _NoE2eeEphemeralKey = true;
 
 // 16. ChatSession must have encrypted field (E9.5, E29.2)
 type _SessionHasEncrypted = 'encrypted' extends keyof ChatSession ? true : never;
@@ -207,10 +209,11 @@ void _assertWsMessage;
 void _assertWsHeartbeat;
 void _assertFRHasStatus;
 void _assertHasEncrypted;
-void _assertHasE2eeHeader;
+void _assertNoE2eeHeader;
 void _assertHasE2eeDeviceId;
-void _assertHasE2eeSenderIdentityKey;
-void _assertHasE2eeEphemeralKey;
+void _assertHasE2eeEnvelope;
+void _assertNoE2eeSenderIdentityKey;
+void _assertNoE2eeEphemeralKey;
 void _assertSessionHasEncrypted;
 void _assertWsHasNegotiation;
 void _assertNoIdentityPrivateKey;

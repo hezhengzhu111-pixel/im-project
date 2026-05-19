@@ -4,6 +4,7 @@ import { http } from '@/services/api/httpClient';
 import { normalizeMessage, normalizeSession } from '@/utils/normalizers';
 import { buildHistoryParams } from '@/services/chat/messageTypes';
 import type { ApiResponse, ChatSession, MessageType } from '@im/shared-types';
+import { isRustE2eeEnvelope, type RustE2eeEnvelope } from '@im/shared-e2ee-core';
 import type { MobileMessage } from '@/types/models';
 import type { HistoryQueryParams } from '@/services/chat/messageTypes';
 
@@ -21,10 +22,8 @@ export interface SendMessagePayload {
   extra?: Record<string, unknown>;
   mentionedUserIds?: string[];
   encrypted?: boolean;
-  e2eeHeader?: string;
   e2eeDeviceId?: string;
-  e2eeSenderIdentityKey?: string;
-  e2eeEphemeralKey?: string;
+  e2eeEnvelope?: RustE2eeEnvelope;
 }
 
 export const resolveMarkReadTarget = (session: Pick<ChatSession, 'type' | 'targetId'>): string =>
@@ -37,10 +36,20 @@ export const messageService = {
   },
 
   async sendPrivateEncrypted(data: SendMessagePayload): Promise<ApiResponse<MobileMessage>> {
-    if (!data.encrypted || !data.e2eeHeader || !data.e2eeDeviceId || !data.content) {
+    if (!data.encrypted || !isRustE2eeEnvelope(data.e2eeEnvelope) || !data.e2eeDeviceId) {
       throw new Error('Encrypted private message payload incomplete');
     }
-    const response = await http.post<unknown>(MESSAGE_ENDPOINTS.SEND_PRIVATE, data);
+    if (typeof data.content === 'string' && data.content.trim().length > 0) {
+      throw new Error('Encrypted private message payload must not contain content');
+    }
+    const response = await http.post<unknown>(MESSAGE_ENDPOINTS.SEND_PRIVATE, {
+      receiverId: data.receiverId,
+      clientMessageId: data.clientMessageId,
+      messageType: data.messageType,
+      encrypted: true,
+      e2eeEnvelope: data.e2eeEnvelope,
+      e2eeDeviceId: data.e2eeDeviceId,
+    });
     return { ...response, data: normalizeMessage(response.data) };
   },
 

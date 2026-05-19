@@ -113,11 +113,14 @@ const pendingWithPayload = (
   ...overrides,
 });
 
-const ratchetHeader = {
-  ratchetPublicKey: 'ratchet-public-key',
-  counter: 0,
-  previousCounter: 0,
-  iv: 'iv',
+const rustEnvelope = {
+  version: 2 as const,
+  algorithm: 'rust-x25519-x3dh-dr-v1' as const,
+  senderDeviceId: 'device-100',
+  recipientDeviceId: 'device-200',
+  sessionId: '100_200',
+  handshake: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==',
+  wire: 'AAAAAA==',
 };
 
 // ─── Tests ────────────────────────────────────────────────────────────
@@ -179,15 +182,11 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
   });
 
   describe('sendText with accepted encrypted private session', () => {
-    it('keeps optimistic plaintext display, stores ciphertext pending payload, and sends encrypted only', async () => {
+    it('keeps optimistic plaintext display, stores Rust envelope pending payload, and sends encrypted only', async () => {
       const session = encryptedSession();
       let enqueued: PendingMessage | undefined;
       await e2eeSessionStore.setStatus('100', session.id, 'encrypted');
-      jest.spyOn(e2eeManager, 'encryptMessage').mockResolvedValueOnce({
-        ciphertext: 'ciphertext-hello',
-        header: ratchetHeader,
-        deviceId: 'device-100',
-      });
+      jest.spyOn(e2eeManager, 'encryptToEnvelope').mockResolvedValueOnce(rustEnvelope);
       pr.enqueue.mockImplementation((item: PendingMessage) => {
         enqueued = item;
       });
@@ -214,15 +213,16 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
         expect.objectContaining({
           receiverId: '200',
           messageType: 'TEXT',
-          content: 'ciphertext-hello',
           encrypted: true,
+          e2eeEnvelope: rustEnvelope,
           e2eeDeviceId: 'device-100',
         }),
       );
       expect(enqueued).toBeDefined();
       const pendingPayload = JSON.parse(enqueued!.payloadJson) as { data: Record<string, unknown>; encrypted?: unknown };
       expect(pendingPayload.encrypted).toBe(true);
-      expect(pendingPayload.data.content).toBe('ciphertext-hello');
+      expect(pendingPayload.data.content).toBeUndefined();
+      expect(pendingPayload.data.e2eeEnvelope).toEqual(rustEnvelope);
       expect(pendingPayload.data.content).not.toBe('hello');
 
       const display = useMessageStore.getState().messagesBySession[session.id]?.[0];
@@ -230,19 +230,19 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
       expect(display?.encrypted).toBe(true);
       expect(display?.isE2eeDisplayDecrypted).toBe(true);
       expect(display?.decryptStatus).toBe('own-echo-preserved');
-      expect(display?.rawJson).toContain('ciphertext-hello');
+      expect(display?.rawJson).toContain('rust-x25519-x3dh-dr-v1');
       expect(display?.rawJson).not.toContain('"content":"hello"');
     });
 
     it('marks local message failed and does not enqueue plaintext when encrypted preparation fails', async () => {
       const session = encryptedSession();
       await e2eeSessionStore.setStatus('100', session.id, 'encrypted');
-      jest.spyOn(e2eeManager, 'encryptMessage').mockImplementationOnce(async () => {
+      jest.spyOn(e2eeManager, 'encryptToEnvelope').mockImplementationOnce(async () => {
         await e2eeSessionStore.setStatus('100', session.id, 'failed');
-        throw new Error('No ratchet state for session');
+        throw new Error('Rust E2EE session state unavailable');
       });
 
-      await expect(useMessageStore.getState().sendText(session, 'hello')).rejects.toThrow('No ratchet state');
+      await expect(useMessageStore.getState().sendText(session, 'hello')).rejects.toThrow('Rust E2EE session state unavailable');
 
       expect(ms.sendPrivate).not.toHaveBeenCalled();
       expect(ms.sendPrivateEncrypted).not.toHaveBeenCalled();
@@ -501,17 +501,12 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
           receiverId: '200',
           clientMessageId: 'c_enc_ready',
           messageType: 'TEXT',
-          content: 'ciphertext-ready',
           encrypted: true,
-          e2eeHeader: JSON.stringify(ratchetHeader),
+          e2eeEnvelope: rustEnvelope,
           e2eeDeviceId: 'device-100',
         },
       });
-      const encryptSpy = jest.spyOn(e2eeManager, 'encryptMessage').mockResolvedValue({
-        ciphertext: 'ciphertext-new',
-        header: ratchetHeader,
-        deviceId: 'device-100',
-      });
+      const encryptSpy = jest.spyOn(e2eeManager, 'encryptToEnvelope').mockResolvedValue(rustEnvelope);
       pr.get.mockReturnValue(pending);
       ms.sendPrivateEncrypted.mockResolvedValueOnce({
         code: 0,
@@ -520,9 +515,9 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
           id: 'srv_retry',
           messageId: 'srv_retry',
           clientMessageId: 'c_enc_ready',
-          content: 'ciphertext-ready',
+          content: '',
           encrypted: true,
-          e2eeHeader: JSON.stringify(ratchetHeader),
+          e2eeEnvelope: rustEnvelope,
           e2eeDeviceId: 'device-100',
           status: 'SENT',
         },
@@ -534,9 +529,8 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
       expect(ms.sendPrivate).not.toHaveBeenCalled();
       expect(ms.sendPrivateEncrypted).toHaveBeenCalledWith(
         expect.objectContaining({
-          content: 'ciphertext-ready',
           encrypted: true,
-          e2eeHeader: JSON.stringify(ratchetHeader),
+          e2eeEnvelope: rustEnvelope,
           e2eeDeviceId: 'device-100',
         }),
       );

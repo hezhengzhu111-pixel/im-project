@@ -1,21 +1,71 @@
 import {
-  DEFAULT_MAX_COUNTER_GAP,
-  ratchetDecryptSafely,
-  ratchetEncrypt,
+  RUST_E2EE_ALGORITHM,
+  RUST_E2EE_ENVELOPE_VERSION,
+  bytesToBase64,
+  bytesToUtf8,
+  isRustE2eeEnvelope,
   sanitizeE2eeLogValue,
-  type RatchetHeader,
+  type RustE2eeEnvelope,
+  type RustPublicPreKeyBundle,
 } from '@im/shared-e2ee-core';
+import { mobileE2eeKeyService } from '@/e2ee/api/keyService';
+import { getMobileE2eeRuntime } from '@/e2ee/runtime/mobileRustE2eeRuntime';
 import { e2eeSessionStore } from '@/e2ee/store/sessionStore';
 import { logger } from '@/utils/logger';
 import { requireCurrentE2eeUserId } from './context';
-import { ensureLocalE2eeDeviceRegistered } from './localDevice';
-import { loadLocalSessionStatus } from './negotiation';
+import { ensureLocalE2eeDeviceRegistered, getLocalRustKeyMaterial } from './localDevice';
+import { loadLocalSessionStatus, setLocalSessionStatus } from './negotiation';
 
-interface EncryptResult {
-  ciphertext: string;
-  header: RatchetHeader;
-  deviceId: string;
+export interface EncryptToEnvelopeInput {
+  sessionId: string;
+  plaintext: string;
+  recipientUserId: string;
+  recipientDeviceId?: string;
 }
+
+const newestDevice = (devices: Array<{ deviceId?: string; lastActiveAt?: string; last_active_at?: string }>) =>
+  [...devices].sort((left, right) => {
+    const leftTime = new Date(left.lastActiveAt || left.last_active_at || 0).getTime();
+    const rightTime = new Date(right.lastActiveAt || right.last_active_at || 0).getTime();
+    return rightTime - leftTime;
+  })[0];
+
+const normalizeRemoteBundle = (
+  raw: Record<string, unknown>,
+  userId: string,
+  deviceId: string,
+): RustPublicPreKeyBundle => {
+  const identityKey = typeof raw.identityKey === 'string' ? raw.identityKey : '';
+  const signingKey =
+    typeof raw.signingKey === 'string'
+      ? raw.signingKey
+      : typeof raw.signingIdentityKey === 'string'
+        ? raw.signingIdentityKey
+        : '';
+  const signedPreKey = typeof raw.signedPreKey === 'string'
+    ? { id: typeof raw.signedPreKeyId === 'number' ? raw.signedPreKeyId : 1, key: raw.signedPreKey }
+    : raw.signedPreKey && typeof raw.signedPreKey === 'object'
+      ? raw.signedPreKey as RustPublicPreKeyBundle['signedPreKey']
+      : { id: 1, key: '' };
+  const oneTimePreKey = typeof raw.oneTimePreKey === 'string' && raw.oneTimePreKey.length > 0
+    ? { id: typeof raw.oneTimePreKeyId === 'number' ? raw.oneTimePreKeyId : 0, key: raw.oneTimePreKey }
+    : raw.oneTimePreKey && typeof raw.oneTimePreKey === 'object'
+      ? raw.oneTimePreKey as RustPublicPreKeyBundle['oneTimePreKey']
+      : null;
+
+  return {
+    userId,
+    deviceId: typeof raw.deviceId === 'string' && raw.deviceId ? raw.deviceId : deviceId,
+    identityKey,
+    signingKey,
+    signedPreKey,
+    signedPreKeySignature: typeof raw.signedPreKeySignature === 'string' ? raw.signedPreKeySignature : '',
+    oneTimePreKey,
+    oneTimePreKeys: Array.isArray(raw.oneTimePreKeys)
+      ? raw.oneTimePreKeys as RustPublicPreKeyBundle['oneTimePreKeys']
+      : undefined,
+  };
+};
 
 class MobileE2eeManager {
   private readonly queues = new Map<string, Promise<unknown>>();
@@ -31,61 +81,92 @@ class MobileE2eeManager {
     });
   }
 
-  async encryptMessage(sessionId: string, plaintext: string): Promise<EncryptResult> {
-    return this.enqueue(sessionId, async () => {
+  async encryptToEnvelope(params: EncryptToEnvelopeInput): Promise<RustE2eeEnvelope> {
+    return this.enqueue(params.sessionId, async () => {
       const userId = requireCurrentE2eeUserId();
-      const status = await loadLocalSessionStatus(sessionId);
+      const status = await loadLocalSessionStatus(params.sessionId);
       if (status !== 'encrypted') {
         throw new Error('E2EE negotiation has not been accepted');
       }
+
       const local = await ensureLocalE2eeDeviceRegistered();
-      const state = await e2eeSessionStore.getRatchetState(userId, sessionId);
-      if (!state) {
-        await e2eeSessionStore.setStatus(userId, sessionId, 'failed');
-        throw new Error('No ratchet state for session');
+      const runtime = getMobileE2eeRuntime();
+      const existingState = await e2eeSessionStore.getSessionState(userId, params.sessionId);
+      let recipientDeviceId = params.recipientDeviceId || (await e2eeSessionStore.getRemoteDeviceId(userId, params.sessionId));
+      let handshake: string | undefined;
+
+      if (existingState) {
+        await runtime.restoreSession(params.sessionId, existingState);
+      } else {
+        const remoteBundle = await this.fetchRemoteBundle(params.recipientUserId, recipientDeviceId || undefined);
+        recipientDeviceId = remoteBundle.deviceId || recipientDeviceId;
+        await runtime.removeSession(params.sessionId).catch(() => undefined);
+        const handshakeBytes = await runtime.createOutboundSession({
+          sessionId: params.sessionId,
+          localKeys: local,
+          remoteBundle,
+        });
+        handshake = bytesToBase64(handshakeBytes);
+        await e2eeSessionStore.saveRemoteDeviceId(userId, params.sessionId, recipientDeviceId);
       }
-      const encrypted = ratchetEncrypt(state, plaintext);
-      await e2eeSessionStore.saveRatchetState(userId, sessionId, state);
+
+      if (!recipientDeviceId) {
+        throw new Error('Rust E2EE recipient device id unavailable');
+      }
+
+      const wire = await runtime.encrypt(params.sessionId, params.plaintext);
+      await e2eeSessionStore.saveSessionState(userId, params.sessionId, await runtime.exportSession(params.sessionId));
+      await setLocalSessionStatus(params.sessionId, 'encrypted');
+
       return {
-        ciphertext: encrypted.ciphertext,
-        header: encrypted.header,
-        deviceId: local.deviceId,
+        version: RUST_E2EE_ENVELOPE_VERSION,
+        algorithm: RUST_E2EE_ALGORITHM,
+        senderDeviceId: local.deviceId,
+        recipientDeviceId,
+        sessionId: params.sessionId,
+        handshake,
+        wire: bytesToBase64(wire),
       };
     });
   }
 
-  async decryptMessage(
-    sessionId: string,
-    _senderId: string,
-    header: RatchetHeader,
-    ciphertext: string,
-  ): Promise<string> {
-    return this.enqueue(sessionId, async () => {
+  async decryptEnvelope(envelope: RustE2eeEnvelope, senderId: string): Promise<string> {
+    return this.enqueue(envelope.sessionId, async () => {
+      if (!isRustE2eeEnvelope(envelope)) {
+        throw new Error('Unsupported E2EE envelope');
+      }
       const userId = requireCurrentE2eeUserId();
-      const status = await loadLocalSessionStatus(sessionId);
-      if (status !== 'encrypted') {
-        throw new Error('E2EE negotiation has not been accepted');
+      const runtime = getMobileE2eeRuntime();
+      const state = await e2eeSessionStore.getSessionState(userId, envelope.sessionId);
+
+      if (state) {
+        await runtime.restoreSession(envelope.sessionId, state);
+      } else if (envelope.handshake) {
+        const localKeys = await getLocalRustKeyMaterial();
+        const remoteIdentityKey = await this.resolveSenderIdentityKey(senderId, envelope.senderDeviceId);
+        await runtime.removeSession(envelope.sessionId).catch(() => undefined);
+        await runtime.createInboundSession({
+          sessionId: envelope.sessionId,
+          localKeys,
+          remoteIdentityKey,
+          handshake: envelope.handshake,
+        });
+        await e2eeSessionStore.saveRemoteDeviceId(userId, envelope.sessionId, envelope.senderDeviceId);
+      } else {
+        throw new Error('Rust E2EE session state unavailable and envelope has no handshake');
       }
-      const state = await e2eeSessionStore.getRatchetState(userId, sessionId);
-      if (!state) {
-        await e2eeSessionStore.setStatus(userId, sessionId, 'failed');
-        throw new Error('No ratchet state for session');
-      }
+
       try {
-        const result = ratchetDecryptSafely(state, header, ciphertext, { maxCounterGap: DEFAULT_MAX_COUNTER_GAP });
-        await e2eeSessionStore.saveRatchetState(userId, sessionId, state);
-        if (result.repaired) {
-          logger.info('e2ee', 'ratchet inbound chain recovered', sanitizeE2eeLogValue({
-            sessionId,
-            repairChainInfo: result.repairChainInfo,
-          }));
-        }
-        return result.plaintext;
+        const plaintext = await runtime.decrypt(envelope.sessionId, envelope);
+        await e2eeSessionStore.saveSessionState(userId, envelope.sessionId, await runtime.exportSession(envelope.sessionId));
+        await setLocalSessionStatus(envelope.sessionId, 'encrypted');
+        return bytesToUtf8(plaintext);
       } catch (error) {
-        logger.warn('e2ee', 'message decrypt failed', sanitizeE2eeLogValue({
-          sessionId,
-          headerCounter: header.counter,
-          hasCiphertext: Boolean(ciphertext),
+        logger.warn('e2ee', 'rust envelope decrypt failed', sanitizeE2eeLogValue({
+          sessionId: envelope.sessionId,
+          senderDeviceId: envelope.senderDeviceId,
+          recipientDeviceId: envelope.recipientDeviceId,
+          hasHandshake: Boolean(envelope.handshake),
           error,
         }));
         throw error;
@@ -95,7 +176,41 @@ class MobileE2eeManager {
 
   async clearSession(sessionId: string): Promise<void> {
     const userId = requireCurrentE2eeUserId();
-    await e2eeSessionStore.deleteRatchetState(userId, sessionId);
+    await e2eeSessionStore.deleteSessionState(userId, sessionId);
+    try {
+      await getMobileE2eeRuntime().removeSession(sessionId);
+    } catch {
+      // Local state is already cleared; native runtime may be unavailable in tests.
+    }
+  }
+
+  private async fetchRemoteBundle(userId: string, deviceId?: string): Promise<RustPublicPreKeyBundle> {
+    const devicesResp = await mobileE2eeKeyService.getDevices(userId);
+    const devices = devicesResp.data || [];
+    const selected = deviceId ? devices.find((device) => device.deviceId === deviceId) : newestDevice(devices);
+    const resolvedDeviceId = selected?.deviceId || deviceId;
+    if (!resolvedDeviceId) {
+      throw new Error('remote user has no active Rust E2EE device');
+    }
+
+    const bundleResp = await mobileE2eeKeyService.getBundle(userId, resolvedDeviceId);
+    if (!bundleResp.data) {
+      throw new Error('remote user has no Rust E2EE key bundle');
+    }
+    return normalizeRemoteBundle(bundleResp.data as unknown as Record<string, unknown>, userId, resolvedDeviceId);
+  }
+
+  private async resolveSenderIdentityKey(senderUserId: string, senderDeviceId: string): Promise<string> {
+    const devicesResp = await mobileE2eeKeyService.getDevices(senderUserId);
+    const device = (devicesResp.data || []).find((item) => item.deviceId === senderDeviceId);
+    if (device?.identityKey) {
+      return device.identityKey;
+    }
+    const bundleResp = await mobileE2eeKeyService.getBundle(senderUserId, senderDeviceId);
+    if (bundleResp.data?.identityKey) {
+      return bundleResp.data.identityKey;
+    }
+    throw new Error('sender Rust identity key not found');
   }
 }
 

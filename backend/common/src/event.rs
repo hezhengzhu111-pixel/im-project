@@ -109,10 +109,8 @@ impl MessageStatus {
     }
 }
 
-/// E2EE 信封 DTO — 支持 legacy v1 (JS) 和 Rust WASM v2 两种格式。
-///
-/// v1: `version=1`, `alg="AES-256-GCM"`, 明文字段（iv/aad/ciphertext 等）。
-/// v2: `version=2`, `alg="rust-x25519-x3dh-dr-v1"`, 使用 `wire`/`handshake` 字段。
+/// E2EE envelope DTO. New messages must use Rust v2:
+/// `version=2`, `algorithm="rust-x25519-x3dh-dr-v1"`, plus `wire` and optional `handshake`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct E2eeEnvelopeDto {
@@ -147,7 +145,7 @@ pub struct E2eeEnvelopeDto {
     pub ciphertext: String,
     #[serde(default)]
     pub created_at: i64,
-    /// Rust E2EE (v2) — Base64 编码的 `header_len(4BE) || RatchetHeader(52) || ciphertext`
+    /// Rust E2EE (v2) — Base64 编码的 Rust wire bytes。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wire: Option<String>,
     /// Rust E2EE (v2) — X3DH 握手数据（首次消息携带）

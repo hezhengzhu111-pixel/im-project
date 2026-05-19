@@ -149,10 +149,15 @@ export function sentOtherMessage(overrides: Partial<MobileMessage> = {}): Mobile
 export function encryptedMessage(overrides: Partial<MobileMessage> = {}): MobileMessage {
   return textMessage({
     encrypted: true,
-    e2eeHeader: 'AAEC',
     e2eeDeviceId: 'device-xyz',
-    e2eeSenderIdentityKey: 'a2V5LWFiYw==',
-    e2eeEphemeralKey: 'ZXBoZW1lcmFsLWtleQ==',
+    e2eeEnvelope: {
+      version: 2,
+      algorithm: 'rust-x25519-x3dh-dr-v1',
+      senderDeviceId: 'device-xyz',
+      recipientDeviceId: 'device-current',
+      sessionId: 'current-user_other-user',
+      wire: 'AAAAAA==',
+    },
     ...overrides,
   });
 }

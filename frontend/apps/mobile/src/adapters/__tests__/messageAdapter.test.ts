@@ -79,18 +79,23 @@ describe('messageAdapter', () => {
       expect(shared.readByCount).toBe(2);
     });
 
-    it('preserves E2EE fields', () => {
+    it('preserves Rust E2EE envelope fields', () => {
+      const e2eeEnvelope = {
+        version: 2 as const,
+        algorithm: 'rust-x25519-x3dh-dr-v1' as const,
+        senderDeviceId: 'device1',
+        recipientDeviceId: 'device2',
+        sessionId: 'u1_u2',
+        wire: 'AAAAAA==',
+      };
       const mobile = baseMobile({
-        e2eeHeader: 'header',
+        encrypted: true,
         e2eeDeviceId: 'device1',
-        e2eeSenderIdentityKey: 'key',
-        e2eeEphemeralKey: 'ephemeral',
+        e2eeEnvelope,
       });
       const shared = toSharedMessage(mobile);
-      expect(shared.e2eeHeader).toBe('header');
+      expect(shared.e2eeEnvelope).toEqual(e2eeEnvelope);
       expect(shared.e2eeDeviceId).toBe('device1');
-      expect(shared.e2eeSenderIdentityKey).toBe('key');
-      expect(shared.e2eeEphemeralKey).toBe('ephemeral');
     });
 
     it('preserves AI fields', () => {
@@ -274,26 +279,30 @@ describe('messageAdapter', () => {
       expect(mobile.status).toBe('DELIVERED');
     });
 
-    it('preserves E2EE fields through full pipeline', () => {
+    it('preserves Rust E2EE envelope through full pipeline', () => {
+      const e2eeEnvelope = {
+        version: 2 as const,
+        algorithm: 'rust-x25519-x3dh-dr-v1' as const,
+        senderDeviceId: 'dev1',
+        recipientDeviceId: 'dev2',
+        sessionId: 'u1_u2',
+        wire: 'AAAAAA==',
+      };
       const raw = {
         id: '300',
         senderId: 'u1',
         messageType: 'TEXT',
-        content: 'encrypted',
+        content: '',
         status: 1,
         sendTime: '2024-06-01T10:00:00.000Z',
         encrypted: true,
-        e2eeHeader: 'hdr',
         e2eeDeviceId: 'dev1',
-        e2eeSenderIdentityKey: 'ik',
-        e2eeEphemeralKey: 'ek',
+        e2eeEnvelope,
       };
       const mobile = normalizeMobileMessage(raw);
       expect(mobile.encrypted).toBe(true);
-      expect(mobile.e2eeHeader).toBe('hdr');
       expect(mobile.e2eeDeviceId).toBe('dev1');
-      expect(mobile.e2eeSenderIdentityKey).toBe('ik');
-      expect(mobile.e2eeEphemeralKey).toBe('ek');
+      expect(mobile.e2eeEnvelope).toEqual(e2eeEnvelope);
     });
 
     it('preserves AI fields through full pipeline', () => {

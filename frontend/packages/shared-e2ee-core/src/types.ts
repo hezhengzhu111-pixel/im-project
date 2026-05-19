@@ -85,30 +85,3 @@ export interface UploadBundleRequest {
 
 export type PreKeyBundle = RustPublicPreKeyBundle;
 export type E2eeEnvelope = RustE2eeEnvelope;
-
-export interface EncodedKeyPair {
-  privateKey: string;
-  publicKey: string;
-}
-
-export type EncodedEcdhKeyPair = EncodedKeyPair;
-export type EncodedEcdsaKeyPair = EncodedKeyPair;
-
-export interface EncodedBundle {
-  identityKey: string;
-  signingKey?: string;
-  signedPreKey: RustPreKey | string;
-  signedPreKeySignature: string;
-  oneTimePreKeys?: Array<RustPreKey | string>;
-}
-
-export type KeyBundle = RustLocalE2eeKeyMaterial;
-
-export interface RatchetHeader {
-  ratchetPublicKey: string;
-  counter: number;
-  previousCounter: number;
-  iv: string;
-}
-
-export type RatchetState = Uint8Array | string;

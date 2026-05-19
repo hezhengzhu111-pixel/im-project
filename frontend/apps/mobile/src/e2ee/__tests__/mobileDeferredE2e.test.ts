@@ -50,9 +50,15 @@ describe('mobile E2EE full-mode safety', () => {
         receiverId: '200',
         clientMessageId: 'client-1',
         messageType: 'TEXT',
-        content: 'ciphertext',
         encrypted: true,
-        e2eeHeader: '{"counter":0}',
+        e2eeEnvelope: {
+          version: 2,
+          algorithm: 'rust-x25519-x3dh-dr-v1',
+          senderDeviceId: 'device-1',
+          recipientDeviceId: 'device-2',
+          sessionId: '100_200',
+          wire: 'AAAAAA==',
+        },
         e2eeDeviceId: 'device-1',
       },
     })).toBe(false);

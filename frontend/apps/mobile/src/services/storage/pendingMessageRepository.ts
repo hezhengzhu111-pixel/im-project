@@ -1,4 +1,5 @@
 import type { PendingMessage } from '@/types/models';
+import { isEncryptedValue, isRustE2eeEnvelope } from '@im/shared-e2ee-core';
 import { messageDatabase } from './messageDatabase';
 
 interface PendingPayloadRecord {
@@ -12,6 +13,32 @@ const parsePayload = (payloadJson: string): PendingPayloadRecord => {
     return JSON.parse(payloadJson) as PendingPayloadRecord;
   } catch {
     return {};
+  }
+};
+
+const sanitizePendingPayloadJson = (payloadJson: string): string => {
+  try {
+    const parsed = JSON.parse(payloadJson) as Record<string, unknown>;
+    const data = parsed.data && typeof parsed.data === 'object'
+      ? { ...(parsed.data as Record<string, unknown>) }
+      : undefined;
+    const encrypted = isEncryptedValue(parsed.encrypted) || isEncryptedValue(data?.encrypted);
+    if (!encrypted || !data) {
+      return payloadJson;
+    }
+    const safeData: Record<string, unknown> = {
+      receiverId: data.receiverId,
+      clientMessageId: data.clientMessageId,
+      messageType: data.messageType,
+      encrypted: true,
+      e2eeDeviceId: data.e2eeDeviceId,
+    };
+    if (isRustE2eeEnvelope(data.e2eeEnvelope)) {
+      safeData.e2eeEnvelope = data.e2eeEnvelope;
+    }
+    return JSON.stringify({ ...parsed, encrypted: true, data: safeData });
+  } catch {
+    return payloadJson;
   }
 };
 
@@ -32,8 +59,9 @@ const normalize = (row: Record<string, unknown>): PendingMessage => ({
 export const pendingMessageRepository = {
   enqueue(item: PendingMessage): void {
     // 优先使用独立的 clientMessageId 字段，否则从 payloadJson 解析
-    const clientMessageId = item.clientMessageId || parsePayload(item.payloadJson).data?.clientMessageId;
-    const enriched = clientMessageId ? { ...item, clientMessageId } : { ...item };
+    const payloadJson = sanitizePendingPayloadJson(item.payloadJson);
+    const clientMessageId = item.clientMessageId || parsePayload(payloadJson).data?.clientMessageId;
+    const enriched = clientMessageId ? { ...item, payloadJson, clientMessageId } : { ...item, payloadJson };
 
     messageDatabase.memoryUpsert('mobile_pending_messages', item.localId, enriched);
     messageDatabase.execute(
@@ -44,7 +72,7 @@ export const pendingMessageRepository = {
         item.localId,
         item.conversationId,
         item.sendType,
-        item.payloadJson,
+        payloadJson,
         clientMessageId || null,
         item.status,
         item.retryCount,

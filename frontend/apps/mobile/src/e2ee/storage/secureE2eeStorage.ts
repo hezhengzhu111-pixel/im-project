@@ -1,23 +1,14 @@
 import * as Keychain from 'react-native-keychain';
 import { createMMKV, type MMKV } from 'react-native-mmkv';
 import {
-  aesGcmDecryptBytes,
-  aesGcmEncryptBytes,
-  base64ToBytes,
-  bytesToBase64,
-  bytesToUtf8,
-  randomAes256Key,
-  randomAesGcmIv,
   sanitizeE2eeLogValue,
   secureRandomBytes,
-  utf8ToBytes,
 } from '@im/shared-e2ee-core';
 import { logger } from '@/utils/logger';
 
 interface EncryptedEnvelope {
-  version: 1;
-  iv: string;
-  ciphertext: string;
+  version: 2;
+  payload: string;
 }
 
 const KEYCHAIN_PREFIX = 'im.mobile.e2ee';
@@ -48,7 +39,6 @@ const keychainSetOptions = (service: string): Keychain.SetOptions => ({
 
 const serviceForDeviceId = (userId: string): string => `${KEYCHAIN_PREFIX}.${userId}.deviceId`;
 const serviceForKeys = (userId: string, deviceId: string): string => `${KEYCHAIN_PREFIX}.${userId}.${deviceId}.keys`;
-const serviceForKek = (userId: string, deviceId: string): string => `${KEYCHAIN_PREFIX}.${userId}.${deviceId}.kek`;
 const namespacePrefix = (userId: string, deviceId: string): string => `${KEYCHAIN_PREFIX}.${userId}.${deviceId}`;
 const indexKey = (userId: string, deviceId: string): string => `${namespacePrefix(userId, deviceId)}.index`;
 
@@ -148,43 +138,26 @@ export const e2eeSecureStorage = {
     await removeSecure(serviceForKeys(userId, deviceId));
   },
 
-  async getOrCreateKek(userId: string, deviceId: string): Promise<string> {
-    const service = serviceForKek(userId, deviceId);
-    const existing = await getSecure(service);
-    if (existing) {
-      return existing;
-    }
-    const kek = randomAes256Key();
-    await setSecure(service, kek);
-    return kek;
-  },
-
   async setEncryptedJson(userId: string, deviceId: string, key: string, value: unknown): Promise<void> {
-    const kek = await this.getOrCreateKek(userId, deviceId);
-    const iv = randomAesGcmIv();
-    const ciphertext = aesGcmEncryptBytes(kek, utf8ToBytes(JSON.stringify(value)), iv, utf8ToBytes(key));
     const envelope: EncryptedEnvelope = {
-      version: 1,
-      iv: bytesToBase64(iv),
-      ciphertext,
+      version: 2,
+      payload: JSON.stringify(value),
     };
-    setKv(key, JSON.stringify(envelope));
+    await setSecure(key, JSON.stringify(envelope));
     updateIndex(userId, deviceId, key);
   },
 
   async getEncryptedJson<T>(userId: string, deviceId: string, key: string): Promise<T | null> {
-    const raw = getKv(key);
+    const raw = await getSecure(key);
     if (!raw) {
       return null;
     }
     try {
       const envelope = JSON.parse(raw) as Partial<EncryptedEnvelope>;
-      if (envelope.version !== 1 || !envelope.iv || !envelope.ciphertext) {
+      if (envelope.version !== 2 || typeof envelope.payload !== 'string') {
         return null;
       }
-      const kek = await this.getOrCreateKek(userId, deviceId);
-      const plaintext = aesGcmDecryptBytes(kek, envelope.ciphertext, base64ToBytes(envelope.iv), utf8ToBytes(key));
-      return JSON.parse(bytesToUtf8(plaintext)) as T;
+      return JSON.parse(envelope.payload) as T;
     } catch (error) {
       logger.warn('e2ee', 'encrypted E2EE store read failed', sanitizeE2eeLogValue(error));
       return null;
@@ -192,7 +165,7 @@ export const e2eeSecureStorage = {
   },
 
   removeEncrypted(userId: string, deviceId: string, key: string): void {
-    removeKv(key);
+    void removeSecure(key).catch(() => undefined);
     const idxKey = indexKey(userId, deviceId);
     const next = readIndex(userId, deviceId).filter((item) => item !== key);
     setKv(idxKey, JSON.stringify(next));
@@ -205,13 +178,12 @@ export const e2eeSecureStorage = {
       return;
     }
     for (const key of readIndex(userId, deviceId)) {
-      removeKv(key);
+      await removeSecure(key).catch(() => undefined);
     }
     removeKv(indexKey(userId, deviceId));
     await Promise.all([
       removeSecure(serviceForDeviceId(userId)).catch(() => undefined),
       removeSecure(serviceForKeys(userId, deviceId)).catch(() => undefined),
-      removeSecure(serviceForKek(userId, deviceId)).catch(() => undefined),
     ]);
   },
 

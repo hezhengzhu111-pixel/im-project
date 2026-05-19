@@ -27,8 +27,8 @@ const FNV_PRIME: u64 = 1_099_511_628_211;
 /// 私聊消息发送请求体。
 ///
 /// `receiver_id` 支持数字和字符串两种 JSON 格式（通过 `deserialize_i64` 兼容）。
-/// E2EE 相关字段（`encrypted`、`e2ee_header`、`e2ee_device_id`）为可选，
-/// 用于端到端加密消息的元数据传递。
+/// E2EE messages must use the Rust v2 envelope. Legacy header/ciphertext
+/// payloads are rejected for new messages.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SendPrivateRequest {
@@ -182,19 +182,7 @@ pub async fn send_private(
     let conversation_id = keys::private_conversation_id(identity.user_id, receiver_id);
     let e2ee_enabled = private_e2ee_enabled(db, &conversation_id).await?;
     if e2ee_enabled || request.encrypted.unwrap_or(false) || request.e2ee_envelope.is_some() {
-        let envelope = request
-            .e2ee_envelope
-            .as_ref()
-            .ok_or_else(|| AppError::BadRequest("e2ee envelope required".to_string()))?;
-        if request
-            .content
-            .as_deref()
-            .is_some_and(|value| !value.trim().is_empty())
-        {
-            return Err(AppError::BadRequest(
-                "plaintext content forbidden in e2ee session".to_string(),
-            ));
-        }
+        let envelope = private_e2ee_envelope_from_request(&request)?;
         validate_e2ee_envelope(
             envelope,
             &conversation_id,
@@ -221,10 +209,14 @@ pub async fn send_private(
             thumbnail_url: request.thumbnail_url,
             duration: request.duration,
             encrypted: request.encrypted,
-            e2ee_header: request.e2ee_header,
-            e2ee_device_id: request.e2ee_device_id,
-            e2ee_sender_identity_key: request.e2ee_sender_identity_key,
-            e2ee_ephemeral_key: request.e2ee_ephemeral_key,
+            e2ee_header: None,
+            e2ee_device_id: request
+                .e2ee_envelope
+                .as_ref()
+                .map(|envelope| envelope.sender_device_id.clone())
+                .or(request.e2ee_device_id),
+            e2ee_sender_identity_key: None,
+            e2ee_ephemeral_key: None,
             e2ee_envelope: request.e2ee_envelope,
         },
     );
@@ -1292,31 +1284,29 @@ fn decode_base64url(value: &str) -> Result<Vec<u8>, AppError> {
 /// - envelope.session_id 必须等于当前会话的 conversation_id
 /// - sender_device_id 必须属于发送方用户且处于 active 状态
 /// - 私聊时 recipient device 必须属于接收方用户且处于 active 状态
-async fn validate_e2ee_envelope(
-    envelope: &E2eeEnvelopeDto,
-    conversation_id: &str,
-    sender_user_id: i64,
-    receiver_user_id: Option<i64>,
-    db: &MySqlPool,
-) -> Result<(), AppError> {
-    // Rust WASM E2EE: alg = "rust-x25519-x3dh-dr-v1", 加密数据在 wire 字段中
+fn validate_e2ee_envelope_format(envelope: &E2eeEnvelopeDto) -> Result<(), AppError> {
     if envelope.version != 2 || envelope.alg != "rust-x25519-x3dh-dr-v1" {
         return Err(AppError::BadRequest(
             "unsupported e2ee envelope, only rust-x25519-x3dh-dr-v1 is supported".to_string(),
         ));
     }
-    let wire = envelope.wire.as_deref().ok_or_else(|| {
-        AppError::BadRequest("rust e2ee wire required".to_string())
-    })?;
-    let wire_bytes = decode_base64url(wire).map_err(|_| {
-        AppError::BadRequest("invalid rust e2ee wire encoding".to_string())
-    })?;
+    let wire = envelope
+        .wire
+        .as_deref()
+        .ok_or_else(|| AppError::BadRequest("rust e2ee wire required".to_string()))?;
+    let wire_bytes = decode_base64url(wire)
+        .map_err(|_| AppError::BadRequest("invalid rust e2ee wire encoding".to_string()))?;
     if wire_bytes.len() < 56 {
         return Err(AppError::BadRequest("rust e2ee wire too short".to_string()));
     }
-    let header_len =
-        u32::from_be_bytes([wire_bytes[0], wire_bytes[1], wire_bytes[2], wire_bytes[3]])
-            as usize;
+    let header_bytes = wire_bytes
+        .get(0..4)
+        .ok_or_else(|| AppError::BadRequest("invalid rust e2ee wire header".to_string()))?;
+    let header_array: [u8; 4] = header_bytes
+        .try_into()
+        .map_err(|_| AppError::BadRequest("invalid rust e2ee wire header".to_string()))?;
+    let header_len = usize::try_from(u32::from_be_bytes(header_array))
+        .map_err(|_| AppError::BadRequest("invalid rust e2ee wire header".to_string()))?;
     if header_len != 52 {
         return Err(AppError::BadRequest("invalid rust e2ee wire header".to_string()));
     }
@@ -1325,6 +1315,45 @@ async fn validate_e2ee_envelope(
             "rust e2ee sender_device_id required".to_string(),
         ));
     }
+    Ok(())
+}
+
+fn private_e2ee_envelope_from_request(
+    request: &SendPrivateRequest,
+) -> Result<&E2eeEnvelopeDto, AppError> {
+    let envelope = request
+        .e2ee_envelope
+        .as_ref()
+        .ok_or_else(|| AppError::BadRequest("e2ee envelope required".to_string()))?;
+    if request.e2ee_header.is_some()
+        || request.e2ee_sender_identity_key.is_some()
+        || request.e2ee_ephemeral_key.is_some()
+    {
+        return Err(AppError::BadRequest(
+            "legacy e2ee payload is unsupported".to_string(),
+        ));
+    }
+    if request
+        .content
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return Err(AppError::BadRequest(
+            "plaintext content forbidden in e2ee session".to_string(),
+        ));
+    }
+    Ok(envelope)
+}
+
+async fn validate_e2ee_envelope(
+    envelope: &E2eeEnvelopeDto,
+    conversation_id: &str,
+    sender_user_id: i64,
+    receiver_user_id: Option<i64>,
+    db: &MySqlPool,
+) -> Result<(), AppError> {
+    // Rust WASM E2EE: alg = "rust-x25519-x3dh-dr-v1", 加密数据在 wire 字段中
+    validate_e2ee_envelope_format(envelope)?;
 
     // 校验 envelope.session_id 与 conversation_id 一致
     // 前端 sessionId 格式为 {idA}_{idB}，后端 conversation_id 格式为 p_{idA}_{idB}
@@ -1376,7 +1405,8 @@ fn e2ee_session_id_matches(session_id: &str, conversation_id: &str) -> Result<()
         ));
     }
     let normalized_conv = conversation_id.strip_prefix("p_").unwrap_or(conversation_id);
-    if session_id != normalized_conv {
+    let normalized_session = session_id.strip_prefix("p_").unwrap_or(session_id);
+    if normalized_session != normalized_conv {
         return Err(AppError::BadRequest(format!(
             "e2ee envelope session_id '{}' does not match conversation_id '{}'",
             session_id, conversation_id
@@ -2715,6 +2745,90 @@ async fn batch_validate_mentioned_members(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn rust_wire_base64_for_tests() -> String {
+        let mut wire = vec![0_u8, 0_u8, 0_u8, 52_u8];
+        wire.extend(std::iter::repeat(1_u8).take(52));
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, wire)
+    }
+
+    fn rust_e2ee_envelope_for_tests() -> E2eeEnvelopeDto {
+        E2eeEnvelopeDto {
+            version: 2,
+            alg: "rust-x25519-x3dh-dr-v1".to_string(),
+            conversation_id: String::new(),
+            client_msg_id: "cm-mobile".to_string(),
+            server_message_id: None,
+            sender_user_id: "1".to_string(),
+            sender_device_id: "mobile-sender".to_string(),
+            recipient_user_id: Some("2".to_string()),
+            recipient_device_ids: Vec::new(),
+            session_id: "1_2".to_string(),
+            key_id: String::new(),
+            key_version: 0,
+            iv: String::new(),
+            aad: String::new(),
+            ciphertext: String::new(),
+            created_at: 0,
+            wire: Some(rust_wire_base64_for_tests()),
+            handshake: Some("aGFuZHNoYWtl".to_string()),
+            recipient_device_id: Some("mobile-recipient".to_string()),
+        }
+    }
+
+    fn private_request_with_e2ee_envelope(envelope: E2eeEnvelopeDto) -> SendPrivateRequest {
+        SendPrivateRequest {
+            receiver_id: 2,
+            client_message_id: Some("cm-mobile".to_string()),
+            message_type: Some("TEXT".to_string()),
+            content: None,
+            media_url: None,
+            media_size: None,
+            media_name: None,
+            thumbnail_url: None,
+            duration: None,
+            encrypted: Some(true),
+            e2ee_header: None,
+            e2ee_device_id: Some("mobile-sender".to_string()),
+            e2ee_sender_identity_key: None,
+            e2ee_ephemeral_key: None,
+            e2ee_envelope: Some(envelope),
+        }
+    }
+
+    #[test]
+    fn mobile_rust_v2_envelope_format_is_accepted() {
+        let envelope = rust_e2ee_envelope_for_tests();
+        assert!(validate_e2ee_envelope_format(&envelope).is_ok());
+    }
+
+    #[test]
+    fn legacy_e2ee_envelope_format_is_rejected() {
+        let mut envelope = rust_e2ee_envelope_for_tests();
+        envelope.version = 1;
+        envelope.alg = "legacy-e2ee".to_string();
+        assert!(validate_e2ee_envelope_format(&envelope).is_err());
+    }
+
+    #[test]
+    fn mobile_rust_v2_private_request_shape_is_accepted() {
+        let request = private_request_with_e2ee_envelope(rust_e2ee_envelope_for_tests());
+        assert!(private_e2ee_envelope_from_request(&request).is_ok());
+    }
+
+    #[test]
+    fn private_e2ee_request_with_plaintext_content_is_rejected() {
+        let mut request = private_request_with_e2ee_envelope(rust_e2ee_envelope_for_tests());
+        request.content = Some("plaintext secret".to_string());
+        assert!(private_e2ee_envelope_from_request(&request).is_err());
+    }
+
+    #[test]
+    fn private_e2ee_request_with_legacy_header_is_rejected() {
+        let mut request = private_request_with_e2ee_envelope(rust_e2ee_envelope_for_tests());
+        request.e2ee_header = Some("legacy-header".to_string());
+        assert!(private_e2ee_envelope_from_request(&request).is_err());
+    }
 
     #[test]
     fn group_message_payload_should_keep_sequence_placeholder(

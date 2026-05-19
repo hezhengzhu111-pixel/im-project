@@ -135,10 +135,9 @@ describe('message fixtures', () => {
   it('encryptedMessage has E2EE fields', () => {
     const m = encryptedMessage();
     expect(m.encrypted).toBe(true);
-    expect(m.e2eeHeader).toBeDefined();
+    expect(m.e2eeEnvelope?.version).toBe(2);
+    expect(m.e2eeEnvelope?.algorithm).toBe('rust-x25519-x3dh-dr-v1');
     expect(m.e2eeDeviceId).toBeDefined();
-    expect(m.e2eeSenderIdentityKey).toBeDefined();
-    expect(m.e2eeEphemeralKey).toBeDefined();
   });
 
   it('fixture overrides are merged', () => {
