@@ -29,7 +29,13 @@ pub enum SessionError {
 
 impl From<e2ee_core::E2eeError> for SessionError {
     fn from(e: e2ee_core::E2eeError) -> Self {
-        SessionError::Crypto(e.to_string())
+        match e {
+            e2ee_core::E2eeError::StateSerializationFailed
+            | e2ee_core::E2eeError::StateDeserializationFailed => {
+                SessionError::InvalidStateData(e.to_string())
+            }
+            other => SessionError::Crypto(other.to_string()),
+        }
     }
 }
 
@@ -987,9 +993,9 @@ mod tests {
         let corrupted = vec![0xAAu8; 128];
         let result = mgr.restore_session("test".to_string(), corrupted);
         match result {
-            Err(SessionError::Crypto(msg)) => {
+            Err(SessionError::InvalidStateData(msg)) => {
                 if msg.is_empty() {
-                    return Err("Crypto error message is empty".to_string());
+                    return Err("InvalidStateData message is empty".to_string());
                 }
                 if !msg.contains("deserialization") && !msg.contains("corrupted") {
                     return Err(format!(
@@ -999,10 +1005,82 @@ mod tests {
                 Ok(())
             }
             Err(other) => Err(format!(
-                "expected Crypto error for corrupted state, got {other:?}"
+                "expected InvalidStateData for corrupted state, got {other:?}"
             )),
             Ok(()) => Err("expected error for corrupted state, got Ok".to_string()),
         }
+    }
+
+    /// From<E2eeError> routes state errors to InvalidStateData, others to Crypto.
+    #[test]
+    fn from_e2ee_error_routes_state_errors_to_invalid_state_data() -> Result<(), String> {
+        // State errors → InvalidStateData
+        let e = e2ee_core::E2eeError::StateDeserializationFailed;
+        let err = SessionError::from(e);
+        match err {
+            SessionError::InvalidStateData(msg) => {
+                if !msg.contains("deserialization") {
+                    return Err(format!("expected deserialization message, got: {msg}"));
+                }
+            }
+            other => {
+                return Err(format!(
+                    "StateDeserializationFailed should map to InvalidStateData, got {other:?}"
+                ));
+            }
+        }
+
+        let e = e2ee_core::E2eeError::StateSerializationFailed;
+        let err = SessionError::from(e);
+        match err {
+            SessionError::InvalidStateData(msg) => {
+                if !msg.contains("serialization") {
+                    return Err(format!("expected serialization message, got: {msg}"));
+                }
+            }
+            other => {
+                return Err(format!(
+                    "StateSerializationFailed should map to InvalidStateData, got {other:?}"
+                ));
+            }
+        }
+
+        // Other errors → Crypto (preserving detail)
+        let e = e2ee_core::E2eeError::CounterGapExceeded(2500, 2000);
+        let err = SessionError::from(e);
+        match err {
+            SessionError::Crypto(msg) => {
+                if !msg.contains("counter gap") || !msg.contains("2500") {
+                    return Err(format!(
+                        "Crypto should preserve CounterGapExceeded detail, got: {msg}"
+                    ));
+                }
+            }
+            other => {
+                return Err(format!(
+                    "CounterGapExceeded should map to Crypto, got {other:?}"
+                ));
+            }
+        }
+
+        let e = e2ee_core::E2eeError::DecryptionFailed;
+        let err = SessionError::from(e);
+        match err {
+            SessionError::Crypto(msg) => {
+                if !msg.contains("decryption failed") && !msg.contains("Decryption") {
+                    return Err(format!(
+                        "Crypto should preserve DecryptionFailed detail, got: {msg}"
+                    ));
+                }
+            }
+            other => {
+                return Err(format!(
+                    "DecryptionFailed should map to Crypto, got {other:?}"
+                ));
+            }
+        }
+
+        Ok(())
     }
 
     /// Encrypted wire format: first 4 bytes = header_len BE == 52, ciphertext non-empty.
