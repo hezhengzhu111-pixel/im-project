@@ -35,7 +35,7 @@ import { useChatStore } from "@/stores/chat";
 import { useUserStore } from "@/stores/user";
 import { logger } from "@/utils/logger";
 import type { E2eeNegotiationEvent } from "@/features/e2ee/negotiation-events";
-import { classifyE2eeError } from "@im/shared-e2ee-core";
+import { isRustE2eeEnvelope, OLD_E2EE_UNREADABLE_TEXT } from "@im/shared-e2ee-core";
 
 type TimerHandle = ReturnType<typeof setInterval>;
 
@@ -479,34 +479,26 @@ export const useWebSocketStore = defineStore("websocket", () => {
       if (isEncrypted && normalizedMessage.messageType !== "SYSTEM") {
         const senderId = String(normalizedMessage.senderId || "");
         if (senderId !== currentUserId) {
-        const sessionId = buildSessionId("private", currentUserId, senderId);
-        const headerRaw = normalizedMessage.e2eeHeader;
-        const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
-        const senderIdentityKey = normalizedMessage.e2eeSenderIdentityKey;
-        const ephemeralKey = normalizedMessage.e2eeEphemeralKey;
-
-        try {
-          const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
-
-          if (header && normalizedMessage.content) {
-            const decrypted = await e2eeManager.decryptMessage(
-              sessionId, senderId, header, normalizedMessage.content,
-              senderIdentityKey, ephemeralKey,
-            );
-            if (decrypted) {
-              normalizedMessage.content = decrypted;
+          const envelope = normalizedMessage.e2eeEnvelope;
+          if (isRustE2eeEnvelope(envelope)) {
+            try {
+              const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
+              normalizedMessage.content = await e2eeManager.decryptEnvelope(envelope, senderId);
+              normalizedMessage.encrypted = false;
+            } catch (error) {
+              logger.warn("[E2EE] Rust decrypt failed", {
+                messageId: normalizedMessage.id,
+                reason: error instanceof Error ? error.message : "unknown",
+              });
+              normalizedMessage.content = OLD_E2EE_UNREADABLE_TEXT;
               normalizedMessage.encrypted = false;
             }
+          } else {
+            normalizedMessage.content = OLD_E2EE_UNREADABLE_TEXT;
+            normalizedMessage.encrypted = false;
           }
-        } catch (e) {
-          const classification = classifyE2eeError(e);
-          const isNoRatchetState = classification.code === "NO_RATCHET_STATE" || classification.code === "NEGOTIATION_NOT_ACCEPTED";
-
-          if (isNoRatchetState) {
-            const { getLocalSessionStatus, setLocalSessionStatus } = await import("@/features/e2ee/manager/negotiation");
-            const status = getLocalSessionStatus(sessionId);
-
-            if (status === "encrypted") {
+        } else {
+          /*
               console.error(`[E2EE] Status is 'encrypted' but no ratchet state for session=${sessionId}. Marking session failed.`);
               setLocalSessionStatus(sessionId, "failed");
               ElNotification({ title: "E2EE unavailable", message: "Encrypted session state is unavailable. Re-negotiate E2EE before sending more messages.", type: "warning", duration: 8000 });
@@ -543,6 +535,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
         }
         } else {
           // Own message synced via WebSocket — preserve local plaintext
+          */
           const sessionId = normalizedMessage.receiverId
             ? buildSessionId("private", currentUserId, normalizedMessage.receiverId)
             : null;

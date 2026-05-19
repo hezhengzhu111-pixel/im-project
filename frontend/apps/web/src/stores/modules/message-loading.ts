@@ -9,8 +9,8 @@ import {
   mergeMessagesChronologically,
   sortMessagesAscending,
 } from "@/stores/modules/message-helpers";
-import { toBigIntId, buildSessionId } from "@/normalizers/chat";
-import { classifyE2eeError } from "@im/shared-e2ee-core";
+import { toBigIntId } from "@/normalizers/chat";
+import { isRustE2eeEnvelope, OLD_E2EE_UNREADABLE_TEXT } from "@im/shared-e2ee-core";
 
 /**
  * Decrypt E2EE messages in-place for messages from other users.
@@ -41,21 +41,15 @@ async function decryptE2eeMessages(
     for (const msg of encrypted) {
       try {
         const peerId = String(msg.senderId);
-        const sessionId = buildSessionId("private", currentUserId, peerId);
-
-        const headerRaw = msg.e2eeHeader;
-        const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
-
-        if (header && msg.content) {
-          const decrypted = await e2eeManager.decryptMessage(
-            sessionId, peerId, header, msg.content,
-          );
-          if (decrypted) {
-            msg.content = decrypted;
-            msg.encrypted = false;
-          }
+        if (isRustE2eeEnvelope(msg.e2eeEnvelope)) {
+          msg.content = await e2eeManager.decryptEnvelope(msg.e2eeEnvelope, peerId);
+          msg.encrypted = false;
+        } else {
+          msg.content = OLD_E2EE_UNREADABLE_TEXT;
+          msg.encrypted = false;
         }
-      } catch (e) {
+      } catch {
+        /*
         const classification = classifyE2eeError(e);
         const isNoRatchetState = classification.code === "NO_RATCHET_STATE" || classification.code === "NEGOTIATION_NOT_ACCEPTED";
 
@@ -79,6 +73,9 @@ async function decryptE2eeMessages(
           break;
         }
         // Other decrypt errors — leave as ciphertext
+        */
+        msg.content = OLD_E2EE_UNREADABLE_TEXT;
+        msg.encrypted = false;
       }
     }
   } catch {

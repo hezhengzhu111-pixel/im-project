@@ -677,37 +677,7 @@ onMounted(async () => {
 });
 
 const retryDecryptPendingMessages = async (sessionId: string) => {
-  try {
-    const { getPendingMessages, clearPendingMessages } = await import("@/features/e2ee/manager/pending-messages");
-    const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
-    const pending = getPendingMessages(sessionId);
-    if (pending.length === 0) return;
-
-    let decryptedCount = 0;
-    for (const msg of pending) {
-      try {
-        if (msg.header && msg.content) {
-          const decrypted = await e2eeManager.decryptMessage(
-            sessionId, msg.peerId, msg.header as import("@/features/e2ee/types").RatchetHeader, msg.content,
-            msg.senderIdentityKey, msg.ephemeralPublicKey,
-          );
-          if (decrypted) {
-            msg.messageRef.content = decrypted;
-            msg.messageRef.encrypted = false;
-            decryptedCount++;
-          }
-        }
-      } catch {
-        // Individual message decrypt failed
-      }
-    }
-    clearPendingMessages(sessionId);
-    if (decryptedCount > 0) {
-      console.log(`[E2EE] Decrypted ${decryptedCount}/${pending.length} pending messages for session=${sessionId}`);
-    }
-  } catch {
-    // Pending message retry is best-effort
-  }
+  void sessionId;
 };
 
 const retryDecryptVisibleEncryptedMessages = async (sessionId: string) => {
@@ -728,17 +698,12 @@ const retryDecryptVisibleEncryptedMessages = async (sessionId: string) => {
         continue;
       }
 
-      const headerRaw = msg.e2eeHeader || msg.e2ee_header;
-      const header = typeof headerRaw === "string" ? JSON.parse(headerRaw) : headerRaw;
-      if (!header) continue;
+      const envelope = msg.e2eeEnvelope || msg.e2ee_envelope;
 
       try {
-        const decrypted = await e2eeManager.decryptMessage(
-          sessionId,
-          senderId,
-          header as import("@/features/e2ee/types").RatchetHeader,
-          content,
-        );
+        const { isRustE2eeEnvelope } = await import("@im/shared-e2ee-core");
+        if (!isRustE2eeEnvelope(envelope)) continue;
+        const decrypted = await e2eeManager.decryptEnvelope(envelope, senderId);
         if (decrypted) {
           msg.content = decrypted;
           msg.encrypted = false;

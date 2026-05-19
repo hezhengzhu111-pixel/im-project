@@ -10,9 +10,10 @@
   "scripts": {
     "web:dev": "npm run dev --workspace=@im/web",
     "web:dev:sit": "npm run dev:sit --workspace=@im/web",
-    "web:build": "npm run build --workspace=@im/web",
-    "web:build:dev": "npm run build:dev --workspace=@im/web",
-    "web:build:sit": "npm run build:sit --workspace=@im/web",
+    "e2ee:wasm:build": "npm run build --workspace=@im/rust-e2ee-wasm",
+    "web:build": "npm run e2ee:wasm:build && npm run build --workspace=@im/web",
+    "web:build:dev": "npm run e2ee:wasm:build && npm run build:dev --workspace=@im/web",
+    "web:build:sit": "npm run e2ee:wasm:build && npm run build:sit --workspace=@im/web",
     "web:typecheck": "npm run typecheck --workspace=@im/web",
     "web:test": "npm run test --workspace=@im/web",
     "web:lint": "npm run lint --workspace=@im/web",
