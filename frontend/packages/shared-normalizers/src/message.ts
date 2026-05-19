@@ -249,7 +249,6 @@ export const normalizeMessage = (
       undefined,
     e2eeEnvelope: normalizeE2eeEnvelope(record.e2eeEnvelope ?? record.e2ee_envelope),
     decryptStatus: validateDecryptStatus(asString(record.decryptStatus)),
-    displayContent: asString(record.displayContent) || undefined,
   };
 };
 

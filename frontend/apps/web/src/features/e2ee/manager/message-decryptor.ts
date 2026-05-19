@@ -91,20 +91,15 @@ async function decryptOneMessage(
 ): Promise<DecryptResult> {
   const senderId = String(msg.senderId || "");
 
-  // 1. Own message — skip
+  // 1. Own message — skip (content is user's own input, already set)
   if (senderId === ctx.currentUserId) {
     msg.decryptStatus = "skipped_own";
-    // 如果没有 displayContent 且 content 为空，给一个占位
-    if (!msg.displayContent && !msg.content) {
-      msg.displayContent = "本机明文缓存不可用";
-    }
     return { success: true, code: "skipped_own_message" };
   }
 
   // 2. Validate envelope exists
   const envelope = msg.e2eeEnvelope;
   if (!isRustE2eeEnvelope(envelope)) {
-    msg.displayContent = OLD_E2EE_UNREADABLE_TEXT;
     msg.decryptStatus = "failed";
     return { success: false, code: "unsupported_envelope", displayMessage: OLD_E2EE_UNREADABLE_TEXT };
   }
@@ -119,9 +114,7 @@ async function decryptOneMessage(
     const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
     const plaintext = await e2eeManager.decryptEnvelope(envelope, senderId);
     msg.content = plaintext;
-    msg.displayContent = undefined; // 解密成功，直接用 content 展示
     msg.decryptStatus = "success";
-    // 保持 encrypted=true，表示这是一条端到端加密消息（只是已成功解密）
     markDecrypted(msg);
 
     logger.info("[E2EE] decrypt success", {
@@ -152,9 +145,8 @@ async function decryptOneMessage(
       ? "missing_session"
       : "crypto_failed";
 
-    // 保留 encrypted=true，设置 decryptStatus 和 displayContent
+    // 保留 encrypted=true，content 留空，UI 根据 decryptStatus 显示占位文案
     msg.content = "";
-    msg.displayContent = OLD_E2EE_UNREADABLE_TEXT;
     msg.decryptStatus = "failed";
 
     logger.warn("[E2EE] decrypt failed", {
@@ -231,12 +223,9 @@ export async function decryptMessageBatch(
     if (!isEncrypted || msg.messageType === "SYSTEM") continue;
 
     const senderId = String(msg.senderId || "");
-    // 跳过自己的消息
+    // 跳过自己的消息（content 是自己存的明文，已持久化或内存中）
     if (senderId === ctx.currentUserId) {
       msg.decryptStatus = "skipped_own";
-      if (!msg.displayContent && !msg.content) {
-        msg.displayContent = "本机明文缓存不可用";
-      }
       continue;
     }
 

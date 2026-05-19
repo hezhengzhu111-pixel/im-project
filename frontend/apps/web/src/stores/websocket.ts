@@ -493,10 +493,10 @@ export const useWebSocketStore = defineStore("websocket", () => {
               messageId: normalizedMessage.id,
               reason: error instanceof Error ? error.message : "unknown",
             });
-            // decryptSingleMessage 内部已设置 displayContent 和 decryptStatus
+            // decryptSingleMessage 内部已设置 decryptStatus
           }
         } else {
-          // Own message synced via WebSocket — preserve local plaintext
+          // Own message via WebSocket self-echo — preserve local plaintext
           normalizedMessage.decryptStatus = "skipped_own";
           const sessionId = normalizedMessage.receiverId
             ? buildSessionId("private", currentUserId, normalizedMessage.receiverId)
@@ -509,10 +509,6 @@ export const useWebSocketStore = defineStore("websocket", () => {
                 (m.id && m.id === normalizedMessage.id),
             );
             if (existing) {
-              // 保留已有的 displayContent（发送方的本地明文）
-              if (existing.displayContent && !normalizedMessage.displayContent) {
-                normalizedMessage.displayContent = existing.displayContent;
-              }
               // 保留已有的 content（非空时）
               if (existing.content && !normalizedMessage.content) {
                 normalizedMessage.content = existing.content;
@@ -522,10 +518,6 @@ export const useWebSocketStore = defineStore("websocket", () => {
                 normalizedMessage.decryptStatus = existing.decryptStatus;
               }
             }
-          }
-          // 如果还是没有可显示内容，给占位文案
-          if (!normalizedMessage.displayContent && !normalizedMessage.content) {
-            normalizedMessage.displayContent = "本机明文缓存不可用";
           }
         }
       }
@@ -618,9 +610,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
       return;
     }
     const isEncrypted = message.encrypted === true || message.encrypted === 1;
-    const displayText = isEncrypted
-      ? (message.displayContent || message.content || "加密消息暂无法解密")
-      : message.content;
+    const displayText = message.content || (isEncrypted ? "加密消息暂无法解密" : "");
     ElNotification({
       title: message.senderName || "New message",
       message: displayText,
