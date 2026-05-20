@@ -244,4 +244,6 @@ dependencies {
 
     // UniFFI-generated Rust E2EE bindings require JNA for native library loading
     implementation("net.java.dev.jna:jna:5.15.0@aar")
+
+    testImplementation("junit:junit:4.13.2")
 }

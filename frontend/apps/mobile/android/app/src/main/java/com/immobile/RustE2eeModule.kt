@@ -7,12 +7,100 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.im.e2ee.SessionException
 import com.im.e2ee.SessionManager
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicBoolean
+
+private const val MODULE_INVALIDATED_MESSAGE = "Rust E2EE module is invalidated"
+
+private fun rejectRustE2eePromise(promise: Promise, error: Throwable) {
+  val code =
+      when (error) {
+        is SessionException.Crypto -> "RUST_E2EE_CRYPTO"
+        is SessionException.SessionNotFound -> "RUST_E2EE_SESSION_NOT_FOUND"
+        is SessionException.SessionAlreadyExists -> "RUST_E2EE_SESSION_ALREADY_EXISTS"
+        is SessionException.InvalidStateData -> "RUST_E2EE_INVALID_STATE"
+        is IllegalArgumentException -> "RUST_E2EE_INVALID_ARGUMENT"
+        else -> "RUST_E2EE_ERROR"
+      }
+  promise.reject(code, error.message, error)
+}
+
+internal class RustE2eeTaskRunner(
+    private val executor: ExecutorService,
+    private val shutdownAction: () -> Unit,
+) {
+  private val invalidated = AtomicBoolean(false)
+
+  fun resolve(promise: Promise, block: () -> Any?) {
+    if (invalidated.get()) {
+      rejectRustE2eePromise(promise, IllegalStateException(MODULE_INVALIDATED_MESSAGE))
+      return
+    }
+
+    try {
+      executor.execute {
+        if (invalidated.get()) {
+          rejectRustE2eePromise(promise, IllegalStateException(MODULE_INVALIDATED_MESSAGE))
+          return@execute
+        }
+
+        try {
+          promise.resolve(block())
+        } catch (error: Throwable) {
+          rejectRustE2eePromise(promise, error)
+        }
+      }
+    } catch (error: RejectedExecutionException) {
+      rejectRustE2eePromise(promise, error)
+    }
+  }
+
+  fun invalidate() {
+    if (!invalidated.compareAndSet(false, true)) {
+      return
+    }
+
+    try {
+      executor.execute {
+        try {
+          shutdownAction()
+        } catch (_: Throwable) {
+          // React Native teardown must not be interrupted by native resource cleanup.
+        }
+      }
+    } catch (_: RejectedExecutionException) {
+      try {
+        shutdownAction()
+      } catch (_: Throwable) {
+        // React Native teardown must not be interrupted by native resource cleanup.
+      }
+    } finally {
+      executor.shutdown()
+    }
+  }
+}
 
 @OptIn(ExperimentalUnsignedTypes::class)
 class RustE2eeModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
   private val manager = SessionManager()
+  private val managerClosed = AtomicBoolean(false)
+  private val taskRunner =
+      RustE2eeTaskRunner(
+          Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "RustE2eeModule").apply { isDaemon = true }
+          },
+      ) {
+        closeManagerOnce()
+      }
 
   override fun getName(): String = "RustE2eeModule"
+
+  override fun invalidate() {
+    taskRunner.invalidate()
+    super.invalidate()
+  }
 
   private fun decodeBase64(value: String): List<UByte> =
       Base64.decode(value, Base64.NO_WRAP).map { it.toUByte() }
@@ -30,22 +118,13 @@ class RustE2eeModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
     return value.toLong().toUInt()
   }
 
-  private inline fun resolve(promise: Promise, block: () -> Any?) {
-    try {
-      promise.resolve(block())
-    } catch (error: Throwable) {
-      val code =
-          when (error) {
-            is SessionException.Crypto -> "RUST_E2EE_CRYPTO"
-            is SessionException.SessionNotFound -> "RUST_E2EE_SESSION_NOT_FOUND"
-            is SessionException.SessionAlreadyExists -> "RUST_E2EE_SESSION_ALREADY_EXISTS"
-            is SessionException.InvalidStateData -> "RUST_E2EE_INVALID_STATE"
-            is IllegalArgumentException -> "RUST_E2EE_INVALID_ARGUMENT"
-            else -> "RUST_E2EE_ERROR"
-          }
-      promise.reject(code, error.message, error)
+  private fun closeManagerOnce() {
+    if (managerClosed.compareAndSet(false, true)) {
+      manager.close()
     }
   }
+
+  private fun resolve(promise: Promise, block: () -> Any?) = taskRunner.resolve(promise, block)
 
   @ReactMethod
   fun generatePreKeyBundle(
