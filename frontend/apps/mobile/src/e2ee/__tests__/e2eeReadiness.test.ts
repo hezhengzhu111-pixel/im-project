@@ -1,3 +1,5 @@
+import type { LocalE2eeKeyMaterial } from '@/e2ee/store/keyStore';
+
 let mockAuthState: {
   currentUser: { id: string } | null;
   sessionGeneration: number;
@@ -24,6 +26,24 @@ import {
 
 const mockEnsureLocalE2eeDeviceRegistered = jest.mocked(ensureLocalE2eeDeviceRegistered);
 
+const readyMaterial = (): LocalE2eeKeyMaterial => ({
+  version: 2,
+  userId: 'alice',
+  deviceId: 'device-alice',
+  identityKeyPairBincode: 'identity-private',
+  signedPreKeyPairBincode: 'signed-private',
+  oneTimePreKeyPairs: [],
+  publicBundle: {
+    userId: 'alice',
+    deviceId: 'device-alice',
+    identityKey: 'identity-public',
+    signingKey: 'signing-public',
+    signedPreKey: { id: 1, key: 'signed-public' },
+    signedPreKeySignature: 'signature',
+    oneTimePreKeys: [],
+  },
+});
+
 const deferred = <T>() => {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -45,7 +65,7 @@ describe('E2EE readiness gate', () => {
   });
 
   it('reuses the same promise for the same user and session generation', async () => {
-    const ready = deferred<unknown>();
+    const ready = deferred<LocalE2eeKeyMaterial>();
     mockEnsureLocalE2eeDeviceRegistered.mockReturnValueOnce(ready.promise);
 
     const first = ensureE2eeReadyForCurrentUser();
@@ -54,7 +74,7 @@ describe('E2EE readiness gate', () => {
     expect(second).toBe(first);
     expect(mockEnsureLocalE2eeDeviceRegistered).toHaveBeenCalledTimes(1);
 
-    ready.resolve({});
+    ready.resolve(readyMaterial());
     await expect(first).resolves.toBeUndefined();
   });
 
@@ -99,7 +119,7 @@ describe('E2EE readiness gate', () => {
   it('does not mark a failed readiness attempt as ready', async () => {
     mockEnsureLocalE2eeDeviceRegistered
       .mockRejectedValueOnce(new Error('first readiness failed'))
-      .mockResolvedValueOnce({});
+      .mockResolvedValueOnce(readyMaterial());
 
     await expect(ensureE2eeReadyForCurrentUser()).rejects.toThrow('first readiness failed');
     await expect(ensureE2eeReadyForCurrentUser()).resolves.toBeUndefined();
