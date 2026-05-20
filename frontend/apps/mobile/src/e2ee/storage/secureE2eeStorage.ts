@@ -43,8 +43,11 @@ const namespacePrefix = (userId: string, deviceId: string): string => `${KEYCHAI
 const indexKey = (userId: string, deviceId: string): string => `${namespacePrefix(userId, deviceId)}.index`;
 
 const setSecure = async (service: string, value: string): Promise<void> => {
+  const persisted = await Keychain.setGenericPassword(service, value, keychainSetOptions(service));
+  if (!persisted) {
+    throw new Error(`E2EE secure storage persist failed for service ${service}`);
+  }
   memorySecure.set(service, value);
-  await Keychain.setGenericPassword(service, value, keychainSetOptions(service));
 };
 
 const getSecure = async (service: string): Promise<string> => {
@@ -57,8 +60,11 @@ const getSecure = async (service: string): Promise<string> => {
 };
 
 const removeSecure = async (service: string): Promise<void> => {
+  const removed = await Keychain.resetGenericPassword(keychainOptions(service));
+  if (!removed) {
+    throw new Error(`E2EE secure storage delete failed for service ${service}`);
+  }
   memorySecure.delete(service);
-  await Keychain.resetGenericPassword(keychainOptions(service));
 };
 
 const getKv = (key: string): string => storage()?.getString(key) ?? memoryKv.get(key) ?? '';
@@ -164,8 +170,8 @@ export const e2eeSecureStorage = {
     }
   },
 
-  removeEncrypted(userId: string, deviceId: string, key: string): void {
-    void removeSecure(key).catch(() => undefined);
+  async removeEncrypted(userId: string, deviceId: string, key: string): Promise<void> {
+    await removeSecure(key);
     const idxKey = indexKey(userId, deviceId);
     const next = readIndex(userId, deviceId).filter((item) => item !== key);
     setKv(idxKey, JSON.stringify(next));
@@ -174,17 +180,32 @@ export const e2eeSecureStorage = {
   async clearAccount(userId: string): Promise<void> {
     const deviceId = await this.getDeviceId(userId);
     if (!deviceId) {
-      await removeSecure(serviceForDeviceId(userId)).catch(() => undefined);
+      const result = await Promise.allSettled([removeSecure(serviceForDeviceId(userId))]);
+      result.forEach((item) => {
+        if (item.status === 'rejected') {
+          logger.warn('e2ee', 'E2EE secure storage clear failed', sanitizeE2eeLogValue({
+            operation: 'remove-device-id',
+            error: item.reason,
+          }));
+        }
+      });
       return;
     }
-    for (const key of readIndex(userId, deviceId)) {
-      await removeSecure(key).catch(() => undefined);
-    }
-    removeKv(indexKey(userId, deviceId));
-    await Promise.all([
-      removeSecure(serviceForDeviceId(userId)).catch(() => undefined),
-      removeSecure(serviceForKeys(userId, deviceId)).catch(() => undefined),
+    const indexedKeys = readIndex(userId, deviceId);
+    const clearResults = await Promise.allSettled([
+      ...indexedKeys.map((key) => removeSecure(key)),
+      removeSecure(serviceForDeviceId(userId)),
+      removeSecure(serviceForKeys(userId, deviceId)),
     ]);
+    clearResults.forEach((item, index) => {
+      if (item.status === 'rejected') {
+        logger.warn('e2ee', 'E2EE secure storage clear failed', sanitizeE2eeLogValue({
+          operation: index < indexedKeys.length ? 'remove-indexed-entry' : 'remove-account-entry',
+          error: item.reason,
+        }));
+      }
+    });
+    removeKv(indexKey(userId, deviceId));
   },
 
   namespaceKey(userId: string, deviceId: string, kind: string, id: string): string {
