@@ -20,7 +20,15 @@ class RustE2eeModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
   private fun encodeBase64(value: List<UByte>): String =
       Base64.encodeToString(value.map { it.toByte() }.toByteArray(), Base64.NO_WRAP)
 
-  private fun toUInt(value: Double): UInt = value.toLong().toUInt()
+  private fun toUInt(name: String, value: Double): UInt {
+    require(value.isFinite()) { "$name must be finite, got $value" }
+    require(value % 1.0 == 0.0) { "$name must be an integer, got $value" }
+    require(value >= 0.0) { "$name must be non-negative, got $value" }
+    require(value <= UInt.MAX_VALUE.toDouble()) {
+      "$name must be <= ${UInt.MAX_VALUE}, got $value"
+    }
+    return value.toLong().toUInt()
+  }
 
   private inline fun resolve(promise: Promise, block: () -> Any?) {
     try {
@@ -47,9 +55,9 @@ class RustE2eeModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
       promise: Promise,
   ) = resolve(promise) {
     manager.generatePreKeyBundle(
-        toUInt(signedPreKeyId),
-        toUInt(oneTimePreKeyStartId),
-        toUInt(oneTimePreKeyCount),
+        toUInt("signedPreKeyId", signedPreKeyId),
+        toUInt("oneTimePreKeyStartId", oneTimePreKeyStartId),
+        toUInt("oneTimePreKeyCount", oneTimePreKeyCount),
     )
   }
 
