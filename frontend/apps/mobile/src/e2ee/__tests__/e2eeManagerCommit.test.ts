@@ -1,4 +1,4 @@
-import type { E2eeRuntime, RustLocalE2eeKeyMaterial } from '@im/shared-e2ee-core';
+import type { Base64String, E2eeRuntime, RustLocalE2eeKeyMaterial } from '@im/shared-e2ee-core';
 
 jest.mock('@/stores/authStore', () => ({
   useAuthStore: {
@@ -95,7 +95,7 @@ describe('mobile E2EE session state commit boundary', () => {
     jest.mocked(ensureLocalE2eeDeviceRegistered).mockResolvedValue(localMaterial);
     jest.mocked(getLocalRustKeyMaterial).mockResolvedValue(localMaterial);
     jest.mocked(loadLocalSessionStatus).mockResolvedValue('encrypted');
-    jest.mocked(e2eeSessionStore.getSessionState).mockResolvedValue('c3RhdGU=');
+    jest.mocked(e2eeSessionStore.getSessionState).mockResolvedValue('c3RhdGU=' as Base64String);
     jest.mocked(e2eeSessionStore.getRemoteDeviceId).mockResolvedValue('device-bob');
     jest.mocked(e2eeSessionStore.saveRemoteDeviceId).mockResolvedValue(undefined);
     jest.mocked(e2eeSessionStore.saveSessionState).mockResolvedValue(undefined);
