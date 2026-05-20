@@ -159,6 +159,7 @@ cargo clippy -p e2ee-ffi --all-targets -- -D warnings
 cd frontend/apps/mobile
 
 # 针对性测试（按需选择）
+cd frontend/apps/mobile
 npx jest --runInBand --testPathPattern="mobileRustE2eeRuntime"
 npx jest --runInBand --testPathPattern="mobileE2ee"
 npx jest --runInBand --testPathPattern="messageProcessor.e2ee"
