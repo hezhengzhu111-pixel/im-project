@@ -8,7 +8,7 @@ jest.mock('@/utils/logger', () => ({
 }));
 
 import * as Keychain from 'react-native-keychain';
-import type { RustLocalE2eeKeyMaterial } from '@im/shared-e2ee-core';
+import type { Base64String, RustLocalE2eeKeyMaterial } from '@im/shared-e2ee-core';
 import { e2eeSecureStorage } from '@/e2ee/storage/secureE2eeStorage';
 import { e2eeKeyStore } from '@/e2ee/store/keyStore';
 import { e2eeSessionStore } from '@/e2ee/store/sessionStore';
@@ -103,7 +103,7 @@ describe('secure E2EE storage persistence semantics', () => {
     const userId = 'invalid-state-user';
     await e2eeSecureStorage.getOrCreateDeviceId(userId);
 
-    await expect(e2eeSessionStore.saveSessionState(userId, 's-invalid', 'not-base64!!'))
+    await expect(e2eeSessionStore.saveSessionState(userId, 's-invalid', 'not-base64!!' as Base64String))
       .rejects.toThrow('session state must be Base64-encoded binary data');
 
     await expect(e2eeSessionStore.getSessionState(userId, 's-invalid')).resolves.toBeNull();

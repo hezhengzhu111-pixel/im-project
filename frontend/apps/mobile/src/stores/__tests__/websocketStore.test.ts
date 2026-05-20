@@ -369,7 +369,7 @@ describe('websocketStore', () => {
     (shouldQueueIncomingPayload as jest.Mock).mockReset?.();
     (shouldQueueIncomingPayload as jest.Mock).mockReturnValue(false);
     // Default ticket response
-    mockIssueWsTicket.mockResolvedValue({ data: { ticket: 'test-ticket' } });
+    mockIssueWsTicket.mockResolvedValue({ code: 200, message: 'ok', data: { ticket: 'test-ticket' } });
   });
 
   // ─── Connect lifecycle tests ─────────────────────────────────────────────
