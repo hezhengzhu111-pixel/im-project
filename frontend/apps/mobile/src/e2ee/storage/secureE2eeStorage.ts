@@ -60,10 +60,9 @@ const getSecure = async (service: string): Promise<string> => {
 };
 
 const removeSecure = async (service: string): Promise<void> => {
-  const removed = await Keychain.resetGenericPassword(keychainOptions(service));
-  if (!removed) {
-    throw new Error(`E2EE secure storage delete failed for service ${service}`);
-  }
+  // Deletion is idempotent: some Keychain platforms return false when the
+  // credential is already absent. Only thrown errors indicate a failed delete.
+  await Keychain.resetGenericPassword(keychainOptions(service));
   memorySecure.delete(service);
 };
 

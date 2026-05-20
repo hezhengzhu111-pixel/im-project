@@ -65,8 +65,9 @@ const syncPushRegistrationAfterLogin = async () => {
  *
  * 顺序保证：
  * 1. chatStore.bootstrap（restoreFromDb → loadFriends/Groups → refreshSessions → retryPending）
- * 2. websocketStore.connect（本地 session 已就绪，WS 收到消息可正确路由）
- * 3. settings + push 并行（无顺序依赖）
+ * 2. ensureE2eeReadyForCurrentUser（按 userId + sessionGeneration 初始化本地 E2EE 设备）
+ * 3. websocketStore.connect（尽量在 WS 接收密文前完成 E2EE readiness）
+ * 4. settings + push 并行（无顺序依赖）
  */
 const applySessionSideEffects = async () => {
   await useChatStore.getState().bootstrap();
