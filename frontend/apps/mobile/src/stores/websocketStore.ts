@@ -44,6 +44,8 @@ import {
 } from '@/e2ee/manager/negotiation';
 import {
   cachePendingEncryptedMessage,
+  restorePendingEncryptedMessagesFromRepository,
+  retryAllPendingEncryptedMessages,
   retryDecryptPendingMessages,
   retryDecryptVisibleEncryptedMessages,
 } from '@/e2ee/store/pendingDecryptStore';
@@ -147,6 +149,11 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
         });
         void syncPendingNegotiations(useSessionStore.getState().currentSession?.id).catch((error: unknown) => {
           logger.warn('e2ee', 'E2EE pending negotiation sync failed after websocket open', sanitizeE2eeLogValue(error));
+        });
+        restorePendingEncryptedMessagesFromRepository();
+        void retryAllPendingEncryptedMessages().catch((error: unknown) => {
+          logger.warn('e2ee', 'E2EE pending decrypt retry failed after websocket open', sanitizeE2eeLogValue(error));
+          return 0;
         });
         const currentSessionId = useSessionStore.getState().currentSession?.id;
         if (currentSessionId) {

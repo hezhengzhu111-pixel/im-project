@@ -292,6 +292,28 @@ export const messageRepository = {
       .sort((left, right) => new Date(left.sendTime).getTime() - new Date(right.sendTime).getTime());
   },
 
+  listPendingEncryptedMessages(conversationId?: string): MobileMessage[] {
+    const rows = messageDatabase.isMemoryFallback()
+      ? messageDatabase
+          .memoryList('mobile_messages')
+          .filter((row) => !conversationId || row.conversationId === conversationId)
+      : messageDatabase.query(
+          conversationId
+            ? 'SELECT * FROM mobile_messages WHERE conversationId = ? ORDER BY sendTime ASC'
+            : 'SELECT * FROM mobile_messages ORDER BY sendTime ASC',
+          conversationId ? [conversationId] : [],
+        );
+    return rows
+      .map((row) => parseMessage(row))
+      .filter((message) =>
+        isEncryptedValue(message.encrypted) &&
+        !message.isE2eeDisplayDecrypted &&
+        message.decryptStatus !== 'decrypted' &&
+        message.decryptStatus !== 'own-echo-preserved' &&
+        message.decryptStatus !== 'failed',
+      );
+  },
+
   /**
    * 分页查询本地消息。
    *

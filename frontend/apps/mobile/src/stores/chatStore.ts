@@ -7,7 +7,12 @@ import { reconcilePendingState } from '@/services/storage/reconcilePendingState'
 import { appLifecycle, bindLifecycleHandlers } from '@/services/platform/appLifecycle';
 import { ensureLocalE2eeDeviceRegistered, heartbeatLocalE2eeDevice } from '@/e2ee/manager/localDevice';
 import { syncPendingNegotiations } from '@/e2ee/manager/negotiation';
-import { retryDecryptPendingMessages, retryDecryptVisibleEncryptedMessages } from '@/e2ee/store/pendingDecryptStore';
+import {
+  restorePendingEncryptedMessagesFromRepository,
+  retryAllPendingEncryptedMessages,
+  retryDecryptPendingMessages,
+  retryDecryptVisibleEncryptedMessages,
+} from '@/e2ee/store/pendingDecryptStore';
 import { useAuthStore } from './authStore';
 import { useContactStore } from './contactStore';
 import { useGroupStore } from './groupStore';
@@ -43,9 +48,11 @@ const foregroundReconcile = async () => {
   try {
     await heartbeatLocalE2eeDevice().catch(() => undefined);
     await syncPendingNegotiations(useSessionStore.getState().currentSession?.id).catch(() => undefined);
+    restorePendingEncryptedMessagesFromRepository();
     reconcilePendingState();
     await uploadService.retryPendingUploads();
     await useMessageStore.getState().retryPending();
+    await retryAllPendingEncryptedMessages().catch(() => 0);
     const currentSessionId = useSessionStore.getState().currentSession?.id;
     if (currentSessionId) {
       await retryDecryptPendingMessages(currentSessionId).catch(() => 0);
@@ -160,6 +167,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ loading: true });
     try {
       useSessionStore.getState().restoreFromDb();
+      restorePendingEncryptedMessagesFromRepository();
       void ensureLocalE2eeDeviceRegistered().catch(() => undefined);
       void syncPendingNegotiations().catch(() => undefined);
       await Promise.allSettled([
@@ -170,6 +178,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       await useChatStore.getState().refreshSessions();
       reconcilePendingState();
       await useChatStore.getState().retryPending();
+      await retryAllPendingEncryptedMessages().catch(() => 0);
     } finally {
       set({ loading: false });
     }
@@ -192,6 +201,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     await useMessageStore.getState().loadMessages(session);
     if (session.type === 'private') {
+      restorePendingEncryptedMessagesFromRepository(session.id);
       await retryDecryptPendingMessages(session.id).catch(() => 0);
       await retryDecryptVisibleEncryptedMessages(session.id).catch(() => 0);
     }
