@@ -95,8 +95,10 @@ export const e2eeSessionStore = {
   async deleteSessionState(userId: string, sessionId: string): Promise<void> {
     const ns = await namespace(userId);
     if (ns) {
-      e2eeSecureStorage.removeEncrypted(ns.userId, ns.deviceId, keyFor(ns.userId, ns.deviceId, SESSION_KIND, sessionId));
-      e2eeSecureStorage.removeEncrypted(ns.userId, ns.deviceId, keyFor(ns.userId, ns.deviceId, REMOTE_DEVICE_KIND, sessionId));
+      await Promise.all([
+        e2eeSecureStorage.removeEncrypted(ns.userId, ns.deviceId, keyFor(ns.userId, ns.deviceId, SESSION_KIND, sessionId)),
+        e2eeSecureStorage.removeEncrypted(ns.userId, ns.deviceId, keyFor(ns.userId, ns.deviceId, REMOTE_DEVICE_KIND, sessionId)),
+      ]);
     }
   },
 
@@ -154,7 +156,7 @@ export const e2eeSessionStore = {
   async clearInitialHandshake(userId: string, sessionId: string): Promise<void> {
     const ns = await namespace(userId);
     if (ns) {
-      e2eeSecureStorage.removeEncrypted(ns.userId, ns.deviceId, keyFor(ns.userId, ns.deviceId, HANDSHAKE_KIND, sessionId));
+      await e2eeSecureStorage.removeEncrypted(ns.userId, ns.deviceId, keyFor(ns.userId, ns.deviceId, HANDSHAKE_KIND, sessionId));
     }
   },
 
@@ -191,7 +193,7 @@ export const e2eeSessionStore = {
     pendingRequestMemory.delete(sessionId);
     const ns = await namespace(userId);
     if (ns) {
-      e2eeSecureStorage.removeEncrypted(ns.userId, ns.deviceId, keyFor(ns.userId, ns.deviceId, PENDING_REQUEST_KIND, sessionId));
+      await e2eeSecureStorage.removeEncrypted(ns.userId, ns.deviceId, keyFor(ns.userId, ns.deviceId, PENDING_REQUEST_KIND, sessionId));
     }
   },
 
