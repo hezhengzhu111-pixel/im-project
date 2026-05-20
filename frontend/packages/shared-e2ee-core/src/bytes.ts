@@ -3,6 +3,10 @@ const BASE64_LOOKUP = new Map<string, number>(
   [...BASE64_ALPHABET].map((char, index) => [char, index]),
 );
 
+declare const base64StringBrand: unique symbol;
+
+export type Base64String = string & { readonly [base64StringBrand]: "Base64String" };
+
 export const concatBytes = (...chunks: Uint8Array[]): Uint8Array => {
   const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
   const output = new Uint8Array(total);
@@ -20,7 +24,7 @@ export const copyBytes = (input: Uint8Array): Uint8Array => {
   return output;
 };
 
-export const bytesToBase64 = (bytes: Uint8Array): string => {
+export const bytesToBase64 = (bytes: Uint8Array): Base64String => {
   let output = "";
   let index = 0;
   for (; index + 2 < bytes.length; index += 3) {
@@ -38,7 +42,7 @@ export const bytesToBase64 = (bytes: Uint8Array): string => {
     output += remaining === 2 ? BASE64_ALPHABET[(chunk >> 6) & 63] : "=";
     output += "=";
   }
-  return output;
+  return output as Base64String;
 };
 
 export const base64ToBytes = (value: string): Uint8Array => {
@@ -70,6 +74,16 @@ export const base64ToBytes = (value: string): Uint8Array => {
   }
 
   return output;
+};
+
+export const asBase64String = (value: string, label = "value"): Base64String => {
+  try {
+    base64ToBytes(value);
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? `: ${error.message}` : "";
+    throw new Error(`${label} must be Base64-encoded binary data${detail}`);
+  }
+  return value as Base64String;
 };
 
 export const utf8ToBytes = (value: string): Uint8Array => {
@@ -111,4 +125,3 @@ export const secureRandomBytes = (length: number): Uint8Array => {
 
 export const hasSecureRandomSource = (): boolean =>
   Boolean(globalThis.crypto && typeof globalThis.crypto.getRandomValues === "function");
-

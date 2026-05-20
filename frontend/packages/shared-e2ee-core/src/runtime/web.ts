@@ -1,6 +1,6 @@
 import initWasm, { WasmSessionManager } from "@im/rust-e2ee-wasm";
 
-import { base64ToBytes, copyBytes, utf8ToBytes } from "../bytes";
+import { asBase64String, base64ToBytes, copyBytes, utf8ToBytes, type Base64String } from "../bytes";
 import { envelopeWireBytes } from "../envelope";
 import { assertRustWireFormat, parseRustHandshake } from "../rust-wire";
 import {
@@ -22,8 +22,8 @@ const ensureWasmLoaded = async (): Promise<void> => {
 
 const bytesToJsonArray = (value: string): number[] => Array.from(base64ToBytes(value));
 
-const optionalBytes = (value: Uint8Array | string): Uint8Array =>
-  typeof value === "string" ? base64ToBytes(value) : copyBytes(value);
+const optionalBytes = (value: Uint8Array | Base64String, label: string): Uint8Array =>
+  typeof value === "string" ? base64ToBytes(asBase64String(value, label)) : copyBytes(value);
 
 const preKeyToRustJson = (preKey: RustPreKey) => ({
   id: preKey.id,
@@ -94,7 +94,7 @@ export class WebE2eeRuntime implements E2eeRuntime {
 
   async createInboundSession(input: CreateInboundSessionInput): Promise<void> {
     const manager = await this.sessionManager();
-    const handshakeBytes = optionalBytes(input.handshake);
+    const handshakeBytes = optionalBytes(input.handshake, "handshake");
     const handshake = parseRustHandshake(handshakeBytes);
     const signedPreKeyId = input.localKeys.publicBundle.signedPreKey.id;
     if (signedPreKeyId !== handshake.signedPreKeyId) {
@@ -127,11 +127,11 @@ export class WebE2eeRuntime implements E2eeRuntime {
     return wire;
   }
 
-  async decrypt(sessionId: string, encryptedWire: Uint8Array | string | RustE2eeEnvelope): Promise<Uint8Array> {
+  async decrypt(sessionId: string, encryptedWire: Uint8Array | Base64String | RustE2eeEnvelope): Promise<Uint8Array> {
     const manager = await this.sessionManager();
     const wire =
       typeof encryptedWire === "string" || encryptedWire instanceof Uint8Array
-        ? optionalBytes(encryptedWire)
+        ? optionalBytes(encryptedWire, "encryptedWire")
         : envelopeWireBytes(encryptedWire);
     assertRustWireFormat(wire);
     return manager.decrypt(sessionId, wire);
@@ -142,9 +142,9 @@ export class WebE2eeRuntime implements E2eeRuntime {
     return manager.export_session(sessionId);
   }
 
-  async restoreSession(sessionId: string, stateBytes: Uint8Array | string): Promise<void> {
+  async restoreSession(sessionId: string, stateBytes: Uint8Array | Base64String): Promise<void> {
     const manager = await this.sessionManager();
-    manager.restore_session(sessionId, optionalBytes(stateBytes));
+    manager.restore_session(sessionId, optionalBytes(stateBytes, "stateBytes"));
   }
 
   async removeSession(sessionId: string): Promise<void> {

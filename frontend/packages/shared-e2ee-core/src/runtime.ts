@@ -4,12 +4,16 @@ import type {
   RustLocalE2eeKeyMaterial,
   RustPublicPreKeyBundle,
 } from "./types";
+import type { Base64String } from "./bytes";
+
+export type BinaryInput = Uint8Array | Base64String;
 
 export interface CreateInboundSessionInput {
   sessionId: string;
   localKeys: RustLocalE2eeKeyMaterial;
   remoteIdentityKey: string;
-  handshake: Uint8Array | string;
+  /** Binary Rust handshake bytes. String input must be Base64String, not plaintext. */
+  handshake: BinaryInput;
 }
 
 export interface CreateOutboundSessionInput {
@@ -23,9 +27,10 @@ export interface E2eeRuntime {
   generatePreKeyBundle(options?: GeneratePreKeyBundleOptions): Promise<RustLocalE2eeKeyMaterial>;
   createOutboundSession(input: CreateOutboundSessionInput): Promise<Uint8Array>;
   createInboundSession(input: CreateInboundSessionInput): Promise<void>;
+  /** String plaintext is intentionally UTF-8 text for compatibility; binary strings use Base64String elsewhere. */
   encrypt(sessionId: string, plaintext: Uint8Array | string): Promise<Uint8Array>;
-  decrypt(sessionId: string, encryptedWire: Uint8Array | string | RustE2eeEnvelope): Promise<Uint8Array>;
+  decrypt(sessionId: string, encryptedWire: BinaryInput | RustE2eeEnvelope): Promise<Uint8Array>;
   exportSession(sessionId: string): Promise<Uint8Array>;
-  restoreSession(sessionId: string, stateBytes: Uint8Array | string): Promise<void>;
+  restoreSession(sessionId: string, stateBytes: BinaryInput): Promise<void>;
   removeSession(sessionId: string): Promise<void>;
 }

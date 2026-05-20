@@ -1,7 +1,9 @@
 import { NativeModules } from 'react-native';
 import {
+  base64ToBytes,
   bytesToBase64,
   utf8ToBytes,
+  type Base64String,
   type RustLocalE2eeKeyMaterial,
 } from '@im/shared-e2ee-core';
 
@@ -39,6 +41,13 @@ const makeHandshake = (signedPreKeyId: number, oneTimePreKeyId: number | null): 
 };
 
 const b64 = (value: string): string => bytesToBase64(utf8ToBytes(value));
+
+const makeWire = (): Uint8Array => {
+  const wire = new Uint8Array(4 + 52 + 4);
+  wire.set([0, 0, 0, 52], 0);
+  wire.fill(1, 4);
+  return wire;
+};
 
 const makeLocalKeys = (): RustLocalE2eeKeyMaterial => ({
   version: 2,
@@ -142,5 +151,53 @@ describe('MobileRustE2eeRuntime inbound OTK handling', () => {
       b64('remote-identity'),
       handshake.ephemeralBase64,
     );
+  });
+
+  it('encrypts plain string input as UTF-8 plaintext for compatibility', async () => {
+    const nativeModule = installNativeModule();
+    const runtime = new MobileRustE2eeRuntime();
+    const wireBase64 = bytesToBase64(makeWire());
+    nativeModule.encrypt.mockResolvedValue(wireBase64);
+
+    await expect(runtime.encrypt('alice_bob', 'hello')).resolves.toEqual(base64ToBytes(wireBase64));
+
+    expect(nativeModule.encrypt).toHaveBeenCalledWith('alice_bob', b64('hello'));
+  });
+
+  it('rejects non-Base64 string decrypt input before calling native', async () => {
+    const nativeModule = installNativeModule();
+    const runtime = new MobileRustE2eeRuntime();
+
+    await expect(
+      runtime.decrypt('alice_bob', 'plain text' as unknown as Base64String),
+    ).rejects.toThrow('encryptedWire must be Base64-encoded binary data');
+
+    expect(nativeModule.decrypt).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-Base64 string restoreSession input before calling native', async () => {
+    const nativeModule = installNativeModule();
+    const runtime = new MobileRustE2eeRuntime();
+
+    await expect(
+      runtime.restoreSession('alice_bob', 'not session state' as unknown as Base64String),
+    ).rejects.toThrow('stateBytes must be Base64-encoded binary data');
+
+    expect(nativeModule.restoreSession).not.toHaveBeenCalled();
+  });
+
+  it('keeps Uint8Array binary input paths unchanged', async () => {
+    const nativeModule = installNativeModule();
+    const runtime = new MobileRustE2eeRuntime();
+    const wire = makeWire();
+    const plaintext = utf8ToBytes('decoded');
+    const state = utf8ToBytes('state-bytes');
+    nativeModule.decrypt.mockResolvedValue(bytesToBase64(plaintext));
+
+    await expect(runtime.decrypt('alice_bob', wire)).resolves.toEqual(plaintext);
+    await expect(runtime.restoreSession('alice_bob', state)).resolves.toBeUndefined();
+
+    expect(nativeModule.decrypt).toHaveBeenCalledWith('alice_bob', bytesToBase64(wire));
+    expect(nativeModule.restoreSession).toHaveBeenCalledWith('alice_bob', bytesToBase64(state));
   });
 });
