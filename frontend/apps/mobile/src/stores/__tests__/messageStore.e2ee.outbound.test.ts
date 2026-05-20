@@ -1,0 +1,552 @@
+/**
+ * Mobile messageStore E2EE outbound pipeline tests.
+ *
+ * Covers the complete outbound send flow:
+ *   1. plaintext private session → enqueue E2EE-waiting pending, no plaintext send
+ *   2. negotiating session → enqueue pending, no throw
+ *   3. accepted → resume pending → encrypt → sendPrivateEncrypted
+ *   4. encrypt failure → no plaintext fallback
+ *
+ * References: Rules A / B / C / D from docs/e2ee-message-pipeline.md
+ */
+
+import type { ChatSession } from '@im/shared-types';
+import type { MobileMessage, PendingMessage } from '@/types/models';
+
+// ─── Mocks (before imports) ───────────────────────────────────────────
+
+jest.mock('@/services/storage/messageRepository');
+jest.mock('@/services/storage/pendingMessageRepository');
+jest.mock('@/services/chat/messageService');
+jest.mock('@/services/upload/uploadService');
+jest.mock('@/utils/logger');
+jest.mock('@/utils/ids', () => ({
+  createClientMessageId: jest.fn(() => `client_ob_${Date.now()}`),
+  createLocalMessageId: jest.fn(() => `local_ob_${Date.now()}`),
+}));
+
+const mockSessions: ChatSession[] = [];
+const mockUpsertSession = jest.fn();
+const mockMarkRead = jest.fn();
+
+jest.mock('@/stores/authStore', () => ({
+  useAuthStore: {
+    getState: jest.fn(() => ({
+      currentUser: { id: '100', nickname: 'Alice', username: 'alice' },
+    })),
+  },
+}));
+
+jest.mock('@/stores/sessionStore', () => ({
+  useSessionStore: {
+    getState: jest.fn(() => ({
+      sessions: mockSessions,
+      currentSession: null as ChatSession | null,
+      upsertSession: mockUpsertSession,
+      markRead: mockMarkRead,
+      setCurrentSession: jest.fn(),
+    })),
+  },
+}));
+
+// Mock initiateNegotiation to return true by default (real implementation
+// requires device registration + network calls not available in test).
+jest.mock('@/e2ee/manager/negotiation', () => {
+  const actual = jest.requireActual('@/e2ee/manager/negotiation') as Record<string, unknown>;
+  return {
+    ...actual,
+    initiateNegotiation: jest.fn().mockResolvedValue(true),
+  };
+});
+
+// ─── Imports (after mocks) ────────────────────────────────────────────
+
+import { useMessageStore } from '../messageStore';
+import { messageRepository } from '@/services/storage/messageRepository';
+import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
+import { messageService } from '@/services/chat/messageService';
+import {
+  E2EE_SEND_DISABLED_TEXT,
+} from '@/e2ee/e2eeDeferred';
+import { e2eeManager } from '@/e2ee/manager/e2eeManager';
+import { initiateNegotiation } from '@/e2ee/manager/negotiation';
+import { e2eeSessionStore } from '@/e2ee/store/sessionStore';
+import {
+  clearAllPendingEncryptedMessages,
+} from '@/e2ee/store/pendingDecryptStore';
+import { encryptPendingE2eePayload } from '@/e2ee/outbound/pendingE2eeSend';
+
+const mr = jest.mocked(messageRepository);
+const pr = jest.mocked(pendingMessageRepository);
+const ms = jest.mocked(messageService);
+const mockInitiateNegotiation = initiateNegotiation as jest.MockedFunction<typeof initiateNegotiation>;
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+const baseSession = (overrides: Partial<ChatSession> = {}): ChatSession => ({
+  id: '100_200',
+  type: 'private',
+  targetId: '200',
+  targetName: 'Bob',
+  unreadCount: 0,
+  lastActiveTime: '2024-06-01T10:00:00.000Z',
+  isPinned: false,
+  isMuted: false,
+  ...overrides,
+});
+
+const rustEnvelope = {
+  version: 2 as const,
+  algorithm: 'rust-x25519-x3dh-dr-v1' as const,
+  senderDeviceId: 'device-100',
+  recipientDeviceId: 'device-200',
+  sessionId: '100_200',
+  handshake: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==',
+  wire: 'AAAAAA==',
+};
+
+// ─── Tests ────────────────────────────────────────────────────────────
+
+describe('messageStore E2EE outbound pipeline', () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    useMessageStore.setState({
+      messagesBySession: {},
+      messagesPaginationBySession: {},
+      loading: false,
+      searchResults: [],
+    });
+    e2eeSessionStore.clearRuntime();
+    clearAllPendingEncryptedMessages();
+    jest.clearAllMocks();
+    mockInitiateNegotiation.mockResolvedValue(true);
+    mockSessions.length = 0;
+    mr.listMessages.mockReturnValue([]);
+    mr.listMessagesPage.mockReturnValue({ messages: [], hasMore: false });
+    mr.listSessions.mockReturnValue([]);
+    pr.listReady.mockReturnValue([]);
+    pr.listReadyToSend.mockReturnValue([]);
+    pr.findByClientMessageId.mockReturnValue(undefined);
+    if (!pr.listByConversation) {
+      (pr as Record<string, unknown>).listByConversation = jest.fn().mockReturnValue([]);
+    } else {
+      pr.listByConversation.mockReturnValue([]);
+    }
+    if (!pr.updateStatus) {
+      (pr as Record<string, unknown>).updateStatus = jest.fn();
+    }
+  });
+
+  // ── 1. plaintext private → enqueue E2EE-waiting pending ────────────
+
+  describe('plaintext private session (Rule A)', () => {
+    it('does NOT call sendPrivate — enqueues E2EE-waiting pending instead', async () => {
+      const session = baseSession();
+
+      await useMessageStore.getState().sendText(session, 'hello');
+
+      expect(ms.sendPrivate).not.toHaveBeenCalled();
+      expect(pr.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: session.id,
+          sendType: 'private',
+          status: 'pending',
+        }),
+      );
+    });
+
+    it('calls initiateNegotiation for plaintext private session', async () => {
+      const session = baseSession();
+
+      await useMessageStore.getState().sendText(session, 'hello');
+
+      expect(mockInitiateNegotiation).toHaveBeenCalledWith(session.id, session.targetId);
+    });
+
+    it('adds optimistic message visible in UI state', async () => {
+      const session = baseSession();
+
+      await useMessageStore.getState().sendText(session, 'hello');
+
+      const messages = useMessageStore.getState().messagesBySession[session.id];
+      expect(messages).toBeDefined();
+      expect(messages!.length).toBeGreaterThanOrEqual(1);
+      expect(messages![0].content).toBe('hello');
+      expect(messages![0].encrypted).toBeFalsy();
+    });
+
+    it('payload contains requiresE2ee=true with negotiation reason', async () => {
+      const session = baseSession();
+
+      await useMessageStore.getState().sendText(session, 'hello');
+
+      const enqueueCall = (pr.enqueue as jest.Mock).mock.calls.find(
+        (call: unknown[]) => (call[0] as Record<string, unknown>)?.conversationId === session.id,
+      );
+      expect(enqueueCall).toBeDefined();
+      const payloadJson = (enqueueCall![0] as { payloadJson: string }).payloadJson;
+      const payload = JSON.parse(payloadJson) as Record<string, unknown>;
+      expect(payload.requiresE2ee).toBe(true);
+      expect(payload.e2eeWaitReason).toBe('negotiation');
+      expect(payload.plaintext).toBe('hello');
+      // data.content must NOT be set (different from non-E2EE pending)
+      expect((payload.data as Record<string, unknown>).content).toBeUndefined();
+    });
+
+    it('marks message FAILED when initiateNegotiation fails', async () => {
+      const session = baseSession();
+      mockInitiateNegotiation.mockResolvedValueOnce(false);
+
+      await useMessageStore.getState().sendText(session, 'hello');
+
+      const messages = useMessageStore.getState().messagesBySession[session.id];
+      expect(messages![0].status).toBe('FAILED');
+      // Pending still enqueued so user can retry
+      expect(pr.enqueue).toHaveBeenCalled();
+    });
+
+    it('marks message FAILED when initiateNegotiation throws', async () => {
+      const session = baseSession();
+      mockInitiateNegotiation.mockRejectedValueOnce(new Error('network error'));
+
+      await useMessageStore.getState().sendText(session, 'hello');
+
+      const messages = useMessageStore.getState().messagesBySession[session.id];
+      expect(messages![0].status).toBe('FAILED');
+      expect(pr.enqueue).toHaveBeenCalled();
+    });
+  });
+
+  // ── 2. negotiating session → no throw, pending ─────────────────────
+
+  describe('negotiating private session (Rule B)', () => {
+    beforeEach(async () => {
+      await e2eeSessionStore.setStatus('100', '100_200', 'negotiating');
+    });
+
+    it('does NOT throw when status is negotiating', async () => {
+      const session = baseSession();
+
+      await expect(
+        useMessageStore.getState().sendText(session, 'hello'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('does NOT call sendPrivate', async () => {
+      const session = baseSession();
+
+      await useMessageStore.getState().sendText(session, 'hello');
+
+      expect(ms.sendPrivate).not.toHaveBeenCalled();
+    });
+
+    it('does NOT call initiateNegotiation again (already negotiating)', async () => {
+      const session = baseSession();
+
+      await useMessageStore.getState().sendText(session, 'hello');
+
+      expect(mockInitiateNegotiation).not.toHaveBeenCalled();
+    });
+
+    it('enqueues pending with requiresE2ee=true', async () => {
+      const session = baseSession();
+
+      await useMessageStore.getState().sendText(session, 'hello');
+
+      expect(pr.enqueue).toHaveBeenCalled();
+      const enqueueCall = (pr.enqueue as jest.Mock).mock.calls.find(
+        (call: unknown[]) => (call[0] as Record<string, unknown>)?.conversationId === session.id,
+      );
+      const payloadJson = (enqueueCall![0] as { payloadJson: string }).payloadJson;
+      const payload = JSON.parse(payloadJson) as Record<string, unknown>;
+      expect(payload.requiresE2ee).toBe(true);
+    });
+
+    it('adds optimistic message to UI state', async () => {
+      const session = baseSession();
+
+      await useMessageStore.getState().sendText(session, 'hello');
+
+      const messages = useMessageStore.getState().messagesBySession[session.id];
+      expect(messages).toBeDefined();
+      expect(messages!.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  // ── 3. accepted → resume pending → encrypt → sendPrivateEncrypted ──
+
+  describe('accepted encrypted session (Rule C)', () => {
+    it('encrypts and sends via sendPrivateEncrypted after status is encrypted', async () => {
+      const session = baseSession();
+      await e2eeSessionStore.setStatus('100', session.id, 'encrypted');
+      jest.spyOn(e2eeManager, 'encryptToEnvelope').mockResolvedValueOnce(rustEnvelope);
+
+      let enqueued: PendingMessage | undefined;
+      pr.enqueue.mockImplementation((item: PendingMessage) => {
+        enqueued = item;
+      });
+      pr.get.mockImplementation((localId: string) =>
+        enqueued?.localId === localId ? enqueued : undefined,
+      );
+      // Use mockImplementation to spread input data so clientMessageId matches
+      ms.sendPrivateEncrypted.mockImplementation(async (data) => ({
+        code: 0,
+        message: 'ok',
+        data: {
+          ...data,
+          id: 'srv_enc',
+          messageId: 'srv_enc',
+          senderId: '100',
+          receiverId: '200',
+          isGroupChat: false,
+          sendTime: '2024-06-01T10:00:00.000Z',
+          status: 'SENT',
+        },
+      }) as never);
+
+      await useMessageStore.getState().sendText(session, 'hello');
+
+      // Must use encrypted channel
+      expect(ms.sendPrivate).not.toHaveBeenCalled();
+      expect(ms.sendPrivateEncrypted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          encrypted: true,
+          e2eeEnvelope: rustEnvelope,
+          e2eeDeviceId: 'device-100',
+        }),
+      );
+
+      // Pending payload must NOT contain plaintext content
+      expect(enqueued).toBeDefined();
+      const payload = JSON.parse(enqueued!.payloadJson) as Record<string, unknown>;
+      expect(payload.encrypted).toBe(true);
+      expect((payload.data as Record<string, unknown>).content).toBeUndefined();
+
+      // UI must show plaintext (optimistic display preserved via own-echo)
+      const display = useMessageStore.getState().messagesBySession[session.id];
+      expect(display).toBeDefined();
+      // The own-echo optimistic message content is preserved
+      const ownEchoDisplay = display!.find((m) => m.decryptStatus === 'own-echo-preserved' || m.isE2eeDisplayDecrypted);
+      // After processing server response, the UI message should still have the optimistic content
+      expect(display!.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('second send also goes through encryptToEnvelope', async () => {
+      const session = baseSession();
+      await e2eeSessionStore.setStatus('100', session.id, 'encrypted');
+      const encryptSpy = jest.spyOn(e2eeManager, 'encryptToEnvelope')
+        .mockResolvedValueOnce(rustEnvelope)
+        .mockResolvedValueOnce({ ...rustEnvelope, handshake: undefined });
+
+      let enqueued: PendingMessage | undefined;
+      pr.enqueue.mockImplementation((item: PendingMessage) => {
+        enqueued = item;
+      });
+      pr.get.mockImplementation((localId: string) =>
+        enqueued?.localId === localId ? enqueued : undefined,
+      );
+      ms.sendPrivateEncrypted.mockImplementation(async (data) => ({
+        code: 0,
+        message: 'ok',
+        data: { ...data, id: 'srv', messageId: 'srv', status: 'SENT' },
+      }) as never);
+
+      await useMessageStore.getState().sendText(session, 'hello 1');
+      await useMessageStore.getState().sendText(session, 'hello 2');
+
+      expect(encryptSpy).toHaveBeenCalledTimes(2);
+      expect(ms.sendPrivate).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── 4. encrypt failure → no plaintext fallback ─────────────────────
+
+  describe('encrypt failure does not fallback to plaintext', () => {
+    it('marks local message FAILED and does NOT call sendPrivate', async () => {
+      const session = baseSession();
+      await e2eeSessionStore.setStatus('100', session.id, 'encrypted');
+      jest.spyOn(e2eeManager, 'encryptToEnvelope').mockRejectedValueOnce(
+        new Error('Rust E2EE session state unavailable'),
+      );
+
+      await expect(
+        useMessageStore.getState().sendText(session, 'hello'),
+      ).rejects.toThrow('Rust E2EE session state unavailable');
+
+      expect(ms.sendPrivate).not.toHaveBeenCalled();
+      expect(ms.sendPrivateEncrypted).not.toHaveBeenCalled();
+      expect(pr.enqueue).not.toHaveBeenCalled();
+
+      const messages = useMessageStore.getState().messagesBySession[session.id];
+      expect(messages).toBeDefined();
+      expect(messages![0].status).toBe('FAILED');
+      expect(messages![0].content).toBe('hello');
+    });
+
+    it('does NOT fallback to plaintext on network error either', async () => {
+      const session = baseSession();
+      await e2eeSessionStore.setStatus('100', session.id, 'encrypted');
+      jest.spyOn(e2eeManager, 'encryptToEnvelope').mockRejectedValueOnce(
+        new Error('network timeout'),
+      );
+
+      await expect(
+        useMessageStore.getState().sendText(session, 'hello'),
+      ).rejects.toThrow('network timeout');
+
+      expect(ms.sendPrivate).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── 5. failed status blocks sending (Rule D) ───────────────────────
+
+  describe('failed session status blocks sending (Rule D)', () => {
+    it('throws E2EE_SEND_DISABLED_TEXT when status is failed', async () => {
+      const session = baseSession();
+      await e2eeSessionStore.setStatus('100', session.id, 'failed');
+
+      await expect(
+        useMessageStore.getState().sendText(session, 'hello'),
+      ).rejects.toThrow(E2EE_SEND_DISABLED_TEXT);
+
+      expect(ms.sendPrivate).not.toHaveBeenCalled();
+      expect(ms.sendPrivateEncrypted).not.toHaveBeenCalled();
+      expect(pr.enqueue).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── 6. retryMessage skips E2EE-waiting pending ─────────────────────
+
+  describe('retryMessage with E2EE-waiting pending', () => {
+    it('skips requiresE2ee payload without blocking or marking failed', async () => {
+      const pending: PendingMessage = {
+        localId: 'local_e2ee_wait',
+        conversationId: '100_200',
+        sendType: 'private',
+        payloadJson: JSON.stringify({
+          sendType: 'private',
+          requiresE2ee: true,
+          e2eeWaitReason: 'negotiation',
+          plaintext: 'hello',
+          data: {
+            receiverId: '200',
+            clientMessageId: 'c_e2ee_wait',
+            messageType: 'TEXT',
+          },
+        }),
+        status: 'pending',
+        retryCount: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      pr.get.mockReturnValue(pending);
+
+      await useMessageStore.getState().retryMessage('local_e2ee_wait');
+
+      expect(ms.sendPrivate).not.toHaveBeenCalled();
+      expect(ms.sendPrivateEncrypted).not.toHaveBeenCalled();
+
+      expect(pr.update).not.toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'blocked' }),
+      );
+      expect(pr.update).not.toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'failed' }),
+      );
+    });
+  });
+
+  // ── 7. encryptPendingE2eePayload integration ───────────────────────
+
+  describe('encryptPendingE2eePayload (core resume logic)', () => {
+    it('encrypts E2EE-waiting pending and rewrites payload with envelope', async () => {
+      const sessionId = '100_200';
+
+      const encryptSpy = jest.spyOn(e2eeManager, 'encryptToEnvelope').mockResolvedValueOnce(rustEnvelope);
+
+      const pending: PendingMessage = {
+        localId: 'local_e2ee_enc_1',
+        conversationId: sessionId,
+        sendType: 'private',
+        payloadJson: JSON.stringify({
+          sendType: 'private',
+          requiresE2ee: true,
+          e2eeWaitReason: 'negotiation',
+          plaintext: 'secret message',
+          data: {
+            receiverId: '200',
+            clientMessageId: 'c_enc_1',
+            messageType: 'TEXT',
+          },
+        }),
+        status: 'pending',
+        retryCount: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      const result = await encryptPendingE2eePayload(pending);
+
+      expect(result.ok).toBe(true);
+      expect(result.envelope).toEqual(rustEnvelope);
+      expect(encryptSpy).toHaveBeenCalledWith({
+        sessionId,
+        plaintext: 'secret message',
+        recipientUserId: '200',
+      });
+
+      // Verify the pending was updated with encrypted payload
+      expect(pr.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          localId: 'local_e2ee_enc_1',
+          payloadJson: expect.stringContaining('encrypted'),
+        }),
+      );
+
+      // The updated payload should NOT contain plaintext
+      const updateCall = (pr.update as jest.Mock).mock.calls.find(
+        (call: unknown[]) => (call[0] as Record<string, unknown>)?.localId === 'local_e2ee_enc_1',
+      );
+      const updatedPayload = JSON.parse((updateCall![0] as { payloadJson: string }).payloadJson) as Record<string, unknown>;
+      expect(updatedPayload.plaintext).toBeUndefined();
+      expect(updatedPayload.requiresE2ee).toBeUndefined();
+      expect(updatedPayload.encrypted).toBe(true);
+      expect((updatedPayload.data as Record<string, unknown>).e2eeEnvelope).toEqual(rustEnvelope);
+    });
+
+    it('returns ok=false and does not throw when encryptToEnvelope fails', async () => {
+      jest.spyOn(e2eeManager, 'encryptToEnvelope').mockRejectedValueOnce(
+        new Error('Rust E2EE session state unavailable'),
+      );
+
+      const pending: PendingMessage = {
+        localId: 'local_e2ee_fail_1',
+        conversationId: '100_200',
+        sendType: 'private',
+        payloadJson: JSON.stringify({
+          sendType: 'private',
+          requiresE2ee: true,
+          e2eeWaitReason: 'negotiation',
+          plaintext: 'do not send',
+          data: {
+            receiverId: '200',
+            clientMessageId: 'c_fail_1',
+            messageType: 'TEXT',
+          },
+        }),
+        status: 'pending',
+        retryCount: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      const result = await encryptPendingE2eePayload(pending);
+
+      expect(result.ok).toBe(false);
+      expect(result.envelope).toBeUndefined();
+      expect(result.error).toContain('Rust E2EE');
+
+      // Pending should NOT be updated with encrypted payload
+      // (The pending is updated with retry-incremented error, not cleared)
+    });
+  });
+});

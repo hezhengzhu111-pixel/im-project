@@ -223,6 +223,14 @@ jest.mock('@/e2ee/manager/readiness', () => ({
 }));
 
 // ─── Store mocks with mutable state (mock-prefixed vars allowed) ────────
+jest.mock('@/e2ee/store/pendingDecryptStore', () => ({
+  cachePendingEncryptedMessage: jest.fn(),
+  restorePendingEncryptedMessagesFromRepository: jest.fn(() => 0),
+  retryAllPendingEncryptedMessages: jest.fn(() => Promise.resolve(0)),
+  retryDecryptPendingMessages: jest.fn(() => Promise.resolve(0)),
+  retryDecryptVisibleEncryptedMessages: jest.fn(() => Promise.resolve(0)),
+}));
+
 const mockSessions: ChatSession[] = [];
 let mockCurrentSession: ChatSession | null = null;
 const mockUpsertSession = jest.fn();
@@ -315,9 +323,17 @@ import { logger } from '@/utils/logger';
 import { shouldScheduleReconnect, shouldQueueIncomingPayload } from '@im/shared-ws-core';
 import { authService } from '@/services/auth/authService';
 import { ensureE2eeReadyForCurrentUser } from '@/e2ee/manager/readiness';
+import {
+  restorePendingEncryptedMessagesFromRepository,
+  retryAllPendingEncryptedMessages,
+} from '@/e2ee/store/pendingDecryptStore';
 
 const mockIssueWsTicket = jest.mocked(authService.issueWsTicket);
 const mockEnsureE2eeReady = jest.mocked(ensureE2eeReadyForCurrentUser);
+const mockRestorePendingEncryptedMessagesFromRepository = jest.mocked(
+  restorePendingEncryptedMessagesFromRepository,
+);
+const mockRetryAllPendingEncryptedMessages = jest.mocked(retryAllPendingEncryptedMessages);
 
 const getMockDisplayNotification = () => displayMessageNotification as jest.Mock;
 
@@ -353,6 +369,10 @@ describe('websocketStore', () => {
     mockChatState.retryPending.mockClear();
     mockEnsureE2eeReady.mockReset();
     mockEnsureE2eeReady.mockResolvedValue(undefined);
+    mockRestorePendingEncryptedMessagesFromRepository.mockReset();
+    mockRestorePendingEncryptedMessagesFromRepository.mockReturnValue(0);
+    mockRetryAllPendingEncryptedMessages.mockReset();
+    mockRetryAllPendingEncryptedMessages.mockResolvedValue(0);
     getMockDisplayNotification().mockClear();
     mockIssueWsTicket.mockReset();
     mockSessions.length = 0;
@@ -415,6 +435,25 @@ describe('websocketStore', () => {
         'E2EE readiness compensation failed after websocket open',
         expect.anything(),
       );
+      (shouldScheduleReconnect as jest.Mock).mockReturnValue(false);
+      useWebsocketStore.getState().disconnect();
+    });
+
+    it('warns and continues retry when pending restore fails after open', async () => {
+      mockRestorePendingEncryptedMessagesFromRepository.mockImplementationOnce(() => {
+        throw new Error('restore failed');
+      });
+
+      await useWebsocketStore.getState().connect();
+      FakeWebSocket.instances[0]?.onopen?.();
+      await Promise.resolve();
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'e2ee',
+        'E2EE pending restore failed after websocket open',
+        expect.anything(),
+      );
+      expect(mockRetryAllPendingEncryptedMessages).toHaveBeenCalledTimes(1);
       (shouldScheduleReconnect as jest.Mock).mockReturnValue(false);
       useWebsocketStore.getState().disconnect();
     });

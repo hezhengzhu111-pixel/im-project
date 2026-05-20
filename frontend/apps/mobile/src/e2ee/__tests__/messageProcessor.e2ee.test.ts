@@ -1,5 +1,5 @@
 import { e2eeManager } from '@/e2ee/manager/e2eeManager';
-import { processE2eeMessage, processE2eeMessages } from '@/e2ee/messageProcessor';
+import { processE2eeMessage, processE2eeMessages, hasE2eeHandshake, shouldDrainPendingAfterDecrypt } from '@/e2ee/messageProcessor';
 import { E2EE_OWN_PLAINTEXT_UNAVAILABLE_TEXT, E2EE_UNSUPPORTED_TEXT } from '@/e2ee/e2eeDeferred';
 import type { MobileMessage } from '@/types/models';
 
@@ -148,5 +148,89 @@ describe('mobile E2EE message processing', () => {
 
     expect(processed.decryptStatus).toBe('pending');
     expect(processed.rawMessage.e2eeEnvelope?.handshake).toBeUndefined();
+  });
+
+  // ─── hasE2eeHandshake / shouldDrainPendingAfterDecrypt ─────────────
+
+  describe('hasE2eeHandshake', () => {
+    it('returns true when envelope has a truthy handshake string', () => {
+      const msg = encryptedMessage(0, { e2eeEnvelope: envelope(0) });
+      expect(hasE2eeHandshake(msg)).toBe(true);
+    });
+
+    it('returns false when envelope has no handshake', () => {
+      const msg = encryptedMessage(1, { e2eeEnvelope: envelope(1) });
+      expect(hasE2eeHandshake(msg)).toBe(false);
+    });
+
+    it('returns false when message is undefined', () => {
+      expect(hasE2eeHandshake(undefined)).toBe(false);
+    });
+
+    it('returns false when envelope is undefined', () => {
+      const msg = encryptedMessage(0, { e2eeEnvelope: undefined });
+      expect(hasE2eeHandshake(msg)).toBe(false);
+    });
+
+    it('returns false when envelope is a plain object without handshake', () => {
+      const msg = encryptedMessage(0, { e2eeEnvelope: { version: 2 } as unknown as MobileMessage['e2eeEnvelope'] });
+      expect(hasE2eeHandshake(msg)).toBe(false);
+    });
+
+    it('returns false when handshake is an empty string', () => {
+      const msg = encryptedMessage(0, {
+        e2eeEnvelope: { ...envelope(0), handshake: '' },
+      });
+      expect(hasE2eeHandshake(msg)).toBe(false);
+    });
+  });
+
+  describe('shouldDrainPendingAfterDecrypt', () => {
+    it('returns true when decryptStatus is decrypted and rawMessage has handshake', () => {
+      const msg = encryptedMessage(0, { e2eeEnvelope: envelope(0) });
+      expect(shouldDrainPendingAfterDecrypt({
+        rawMessage: msg,
+        displayMessage: msg,
+        decryptStatus: 'decrypted',
+      })).toBe(true);
+    });
+
+    it('returns true when decryptStatus is decrypted and displayMessage has handshake', () => {
+      const msgWithHandshake = encryptedMessage(0, { e2eeEnvelope: envelope(0) });
+      const msgWithoutHandshake = encryptedMessage(1, { e2eeEnvelope: envelope(1) });
+      expect(shouldDrainPendingAfterDecrypt({
+        rawMessage: msgWithoutHandshake,
+        displayMessage: msgWithHandshake,
+        decryptStatus: 'decrypted',
+      })).toBe(true);
+    });
+
+    it('returns false when decryptStatus is not decrypted', () => {
+      const msg = encryptedMessage(0, { e2eeEnvelope: envelope(0) });
+      expect(shouldDrainPendingAfterDecrypt({
+        rawMessage: msg,
+        displayMessage: msg,
+        decryptStatus: 'pending',
+      })).toBe(false);
+      expect(shouldDrainPendingAfterDecrypt({
+        rawMessage: msg,
+        displayMessage: msg,
+        decryptStatus: 'failed',
+      })).toBe(false);
+      expect(shouldDrainPendingAfterDecrypt({
+        rawMessage: msg,
+        displayMessage: msg,
+        decryptStatus: 'own-echo-preserved',
+      })).toBe(false);
+    });
+
+    it('returns false when no message has handshake', () => {
+      const msg = encryptedMessage(1, { e2eeEnvelope: envelope(1) });
+      expect(shouldDrainPendingAfterDecrypt({
+        rawMessage: msg,
+        displayMessage: msg,
+        decryptStatus: 'decrypted',
+      })).toBe(false);
+    });
   });
 });

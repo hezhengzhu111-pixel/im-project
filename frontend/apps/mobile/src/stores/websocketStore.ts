@@ -32,7 +32,7 @@ import { appLifecycle } from '@/services/platform/appLifecycle';
 import { networkStatus } from '@/services/platform/networkStatus';
 import { normalizeMessage } from '@/utils/normalizers';
 import { logger } from '@/utils/logger';
-import { processE2eeMessage } from '@/e2ee/messageProcessor';
+import { processE2eeMessage, shouldDrainPendingAfterDecrypt } from '@/e2ee/messageProcessor';
 import { ensureE2eeReadyForCurrentUser } from '@/e2ee/manager/readiness';
 import {
   handleNegotiationAccepted,
@@ -150,7 +150,11 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
         void syncPendingNegotiations(useSessionStore.getState().currentSession?.id).catch((error: unknown) => {
           logger.warn('e2ee', 'E2EE pending negotiation sync failed after websocket open', sanitizeE2eeLogValue(error));
         });
-        restorePendingEncryptedMessagesFromRepository();
+        try {
+          restorePendingEncryptedMessagesFromRepository();
+        } catch (error) {
+          logger.warn('e2ee', 'E2EE pending restore failed after websocket open', sanitizeE2eeLogValue(error));
+        }
         void retryAllPendingEncryptedMessages().catch((error: unknown) => {
           logger.warn('e2ee', 'E2EE pending decrypt retry failed after websocket open', sanitizeE2eeLogValue(error));
           return 0;
@@ -261,6 +265,12 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
       });
       if (processed.decryptStatus === 'pending') {
         cachePendingEncryptedMessage(routedMessage.conversationId || '', processed.rawMessage);
+      }
+      if (shouldDrainPendingAfterDecrypt(processed)) {
+        const sid = routedMessage.conversationId || '';
+        retryDecryptPendingMessages(sid).catch((error) => {
+          logger.warn('e2ee', 'pending decrypt drain failed after handshake decrypt', sanitizeE2eeLogValue({ sessionId: sid, error }));
+        });
       }
       const safeRoutedMessage = processed.displayMessage;
       useMessageStore.getState().addMessage(safeRoutedMessage, safeRoutedMessage.conversationId);
