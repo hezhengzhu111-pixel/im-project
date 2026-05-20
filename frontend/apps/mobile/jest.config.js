@@ -8,4 +8,9 @@ module.exports = {
   transformIgnorePatterns: [
     'node_modules/(?!((jest-)?react-native|@react-native|@react-navigation|@noble)/)',
   ],
+  testPathIgnorePatterns: [
+    '<rootDir>/src/e2ee/__tests__/helpers/',
+    '<rootDir>/src/e2ee/__tests__/fixtures/',
+    '<rootDir>/src/e2ee/__tests__/mocks/',
+  ],
 };
