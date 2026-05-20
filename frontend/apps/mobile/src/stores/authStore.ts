@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { sanitizeE2eeLogValue } from '@im/shared-e2ee-core';
 import type { UserPresence } from '@im/shared-types';
 import { registerAuthHooks } from '@/services/api/httpClient';
 import { authService } from '@/services/auth/authService';
@@ -19,6 +20,7 @@ import { useNotificationStore } from './notificationStore';
 import { useUploadStore } from './uploadStore';
 import { useSessionStore } from './sessionStore';
 import { clearCurrentE2eeAccountState } from '@/e2ee/clearE2eeState';
+import { ensureE2eeReadyForCurrentUser } from '@/e2ee/manager/readiness';
 
 interface AuthState {
   currentUser: User | null;
@@ -68,6 +70,9 @@ const syncPushRegistrationAfterLogin = async () => {
  */
 const applySessionSideEffects = async () => {
   await useChatStore.getState().bootstrap();
+  await ensureE2eeReadyForCurrentUser().catch((error: unknown) => {
+    logger.warn('e2ee', 'E2EE readiness failed before websocket connect', sanitizeE2eeLogValue(error));
+  });
   await useWebsocketStore.getState().connect();
   await Promise.allSettled([
     useSettingsStore.getState().loadSettings(),
