@@ -92,6 +92,10 @@ export const e2eeSessionStore = {
     }
   },
 
+  async hasSessionState(userId: string, sessionId: string): Promise<boolean> {
+    return Boolean(await this.getSessionState(userId, sessionId));
+  },
+
   async deleteSessionState(userId: string, sessionId: string): Promise<void> {
     const ns = await namespace(userId);
     if (ns) {

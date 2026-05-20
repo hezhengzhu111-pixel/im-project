@@ -136,4 +136,17 @@ describe('mobile E2EE message processing', () => {
     expect(processed.rawMessage.rawJson).toContain('e2eeEnvelope');
     expect(processed.displayMessage.content).toBe(E2EE_UNSUPPORTED_TEXT);
   });
+
+  it('keeps no-state no-handshake encrypted message pending for later retry', async () => {
+    jest.spyOn(e2eeManager, 'decryptEnvelope')
+      .mockRejectedValueOnce(new Error('Rust E2EE session state unavailable and envelope has no handshake'));
+
+    const processed = await processE2eeMessage(encryptedMessage(1), {
+      currentUserId: '100',
+      sessionId: '100_200',
+    });
+
+    expect(processed.decryptStatus).toBe('pending');
+    expect(processed.rawMessage.e2eeEnvelope?.handshake).toBeUndefined();
+  });
 });
