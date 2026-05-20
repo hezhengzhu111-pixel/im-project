@@ -6,10 +6,9 @@ jest.mock('@/services/platform/appLifecycle');
 jest.mock('@/services/platform/networkStatus');
 
 // ─── Factory mock for authService (connect needs issueWsTicket) ─────────
-const mockIssueWsTicket = jest.fn();
 jest.mock('@/services/auth/authService', () => ({
   authService: {
-    issueWsTicket: mockIssueWsTicket,
+    issueWsTicket: jest.fn(),
   },
 }));
 
@@ -219,6 +218,10 @@ jest.mock('@/services/notification/notificationService', () => ({
   displayMessageNotification: jest.fn(() => Promise.resolve()),
 }));
 
+jest.mock('@/e2ee/manager/readiness', () => ({
+  ensureE2eeReadyForCurrentUser: jest.fn(() => Promise.resolve()),
+}));
+
 // ─── Store mocks with mutable state (mock-prefixed vars allowed) ────────
 const mockSessions: ChatSession[] = [];
 let mockCurrentSession: ChatSession | null = null;
@@ -310,6 +313,11 @@ import { useMessageStore } from '@/stores/messageStore';
 import { displayMessageNotification } from '@/services/notification/notificationService';
 import { logger } from '@/utils/logger';
 import { shouldScheduleReconnect, shouldQueueIncomingPayload } from '@im/shared-ws-core';
+import { authService } from '@/services/auth/authService';
+import { ensureE2eeReadyForCurrentUser } from '@/e2ee/manager/readiness';
+
+const mockIssueWsTicket = jest.mocked(authService.issueWsTicket);
+const mockEnsureE2eeReady = jest.mocked(ensureE2eeReadyForCurrentUser);
 
 const getMockDisplayNotification = () => displayMessageNotification as jest.Mock;
 
@@ -343,6 +351,8 @@ describe('websocketStore', () => {
     mockContactState.loadFriends.mockClear();
     mockChatState.refreshSessions.mockClear();
     mockChatState.retryPending.mockClear();
+    mockEnsureE2eeReady.mockReset();
+    mockEnsureE2eeReady.mockResolvedValue(undefined);
     getMockDisplayNotification().mockClear();
     mockIssueWsTicket.mockReset();
     mockSessions.length = 0;
@@ -391,6 +401,22 @@ describe('websocketStore', () => {
       expect(useWebsocketStore.getState().connected).toBe(true);
       expect(useWebsocketStore.getState().connecting).toBe(false);
       expect(useWebsocketStore.getState().reconnectAttempts).toBe(0);
+    });
+
+    it('warns when E2EE readiness compensation fails after open', async () => {
+      mockEnsureE2eeReady.mockRejectedValueOnce(new Error('readiness unavailable'));
+
+      await useWebsocketStore.getState().connect();
+      FakeWebSocket.instances[0]?.onopen?.();
+      await Promise.resolve();
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'e2ee',
+        'E2EE readiness compensation failed after websocket open',
+        expect.anything(),
+      );
+      (shouldScheduleReconnect as jest.Mock).mockReturnValue(false);
+      useWebsocketStore.getState().disconnect();
     });
   });
 

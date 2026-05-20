@@ -80,6 +80,9 @@ jest.mock('@/stores/uploadStore', () => ({
 jest.mock('@/stores/sessionStore', () => ({
   useSessionStore: { getState: jest.fn(() => mockSessionState) },
 }));
+jest.mock('@/e2ee/manager/readiness', () => ({
+  ensureE2eeReadyForCurrentUser: jest.fn(() => Promise.resolve()),
+}));
 jest.mock('@/utils/logger', () => ({
   logger: { warn: jest.fn(), info: jest.fn() },
 }));
@@ -92,12 +95,17 @@ import { kvStorage } from '@/services/storage/kvStorage';
 import { useNotificationStore } from '@/stores/notificationStore';
 import { useUploadStore } from '@/stores/uploadStore';
 import { clearPendingNotificationRoute } from '@/services/notification/notificationService';
+import { userService } from '@/services/user/userService';
+import { authService } from '@/services/auth/authService';
+import { logger } from '@/utils/logger';
+import { ensureE2eeReadyForCurrentUser } from '@/e2ee/manager/readiness';
 
 const mr = jest.mocked(messageRepository);
 const ss = jest.mocked(secureStorage);
 const kv = jest.mocked(kvStorage);
 const ns = jest.mocked(useNotificationStore);
 const us = jest.mocked(useUploadStore);
+const mockEnsureE2eeReady = jest.mocked(ensureE2eeReadyForCurrentUser);
 
 describe('authStore cleanup', () => {
   beforeEach(() => {
@@ -110,6 +118,9 @@ describe('authStore cleanup', () => {
       authReady: true,
       sessionGeneration: 0,
     });
+    mockEnsureE2eeReady.mockResolvedValue(undefined);
+    mockChatState.bootstrap.mockResolvedValue(undefined);
+    mockWsState.connect.mockResolvedValue(undefined);
   });
 
   describe('clearSession', () => {
@@ -179,6 +190,91 @@ describe('authStore cleanup', () => {
       const before = useAuthStore.getState().sessionGeneration;
       await useAuthStore.getState().clearSession();
       expect(useAuthStore.getState().sessionGeneration).toBe(before + 1);
+    });
+  });
+
+  describe('login/restore E2EE readiness ordering', () => {
+    it('runs E2EE readiness between bootstrap and websocket connect after login', async () => {
+      const order: string[] = [];
+      jest.mocked(userService.login).mockResolvedValueOnce({
+        code: 200,
+        message: 'ok',
+        data: {
+          success: true,
+          user: { id: '100', username: 'testuser', nickname: 'Test', status: 'online' },
+          token: 'token-100',
+          permissions: ['user'],
+        },
+      } as Awaited<ReturnType<typeof userService.login>>);
+      mockChatState.bootstrap.mockImplementationOnce(async () => {
+        order.push('bootstrap');
+      });
+      mockEnsureE2eeReady.mockImplementationOnce(async () => {
+        order.push('readiness');
+      });
+      mockWsState.connect.mockImplementationOnce(async () => {
+        order.push('connect');
+      });
+
+      await expect(useAuthStore.getState().login({ username: ' testuser ', password: 'pw' })).resolves.toBe(true);
+
+      expect(order).toEqual(['bootstrap', 'readiness', 'connect']);
+    });
+
+    it('runs E2EE readiness between bootstrap and websocket connect after restoreSession', async () => {
+      const order: string[] = [];
+      jest.mocked(secureStorage.get)
+        .mockResolvedValueOnce('token-100')
+        .mockResolvedValueOnce(null);
+      jest.mocked(authService.parseAccessToken).mockResolvedValueOnce({
+        data: { valid: true, userId: '100', username: 'testuser', permissions: ['user'] },
+      } as Awaited<ReturnType<typeof authService.parseAccessToken>>);
+      mockChatState.bootstrap.mockImplementationOnce(async () => {
+        order.push('bootstrap');
+      });
+      mockEnsureE2eeReady.mockImplementationOnce(async () => {
+        order.push('readiness');
+      });
+      mockWsState.connect.mockImplementationOnce(async () => {
+        order.push('connect');
+      });
+
+      await expect(useAuthStore.getState().restoreSession()).resolves.toBe(true);
+
+      expect(order).toEqual(['bootstrap', 'readiness', 'connect']);
+    });
+
+    it('warns and still connects when E2EE readiness fails', async () => {
+      const order: string[] = [];
+      jest.mocked(userService.login).mockResolvedValueOnce({
+        code: 200,
+        message: 'ok',
+        data: {
+          success: true,
+          user: { id: '100', username: 'testuser', nickname: 'Test', status: 'online' },
+          token: 'token-100',
+          permissions: ['user'],
+        },
+      } as Awaited<ReturnType<typeof userService.login>>);
+      mockChatState.bootstrap.mockImplementationOnce(async () => {
+        order.push('bootstrap');
+      });
+      mockEnsureE2eeReady.mockImplementationOnce(async () => {
+        order.push('readiness');
+        throw new Error('keychain unavailable');
+      });
+      mockWsState.connect.mockImplementationOnce(async () => {
+        order.push('connect');
+      });
+
+      await expect(useAuthStore.getState().login({ username: 'testuser', password: 'pw' })).resolves.toBe(true);
+
+      expect(order).toEqual(['bootstrap', 'readiness', 'connect']);
+      expect(logger.warn).toHaveBeenCalledWith(
+        'e2ee',
+        'E2EE readiness failed before websocket connect',
+        expect.anything(),
+      );
     });
   });
 });

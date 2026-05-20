@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { sanitizeE2eeLogValue } from '@im/shared-e2ee-core';
 import {
   DUPLICATE_CONNECTION_REASON,
   DEFAULT_DEDUP_TTL_MS,
@@ -32,7 +33,7 @@ import { networkStatus } from '@/services/platform/networkStatus';
 import { normalizeMessage } from '@/utils/normalizers';
 import { logger } from '@/utils/logger';
 import { processE2eeMessage } from '@/e2ee/messageProcessor';
-import { ensureLocalE2eeDeviceRegistered } from '@/e2ee/manager/localDevice';
+import { ensureE2eeReadyForCurrentUser } from '@/e2ee/manager/readiness';
 import {
   handleNegotiationAccepted,
   handleNegotiationDisabled,
@@ -141,8 +142,12 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
         lastWebsocketEventAt = Date.now();
         set({ connected: true, connecting: false, reconnectAttempts: 0 });
         startHeartbeat();
-        void ensureLocalE2eeDeviceRegistered().catch(() => undefined);
-        void syncPendingNegotiations(useSessionStore.getState().currentSession?.id).catch(() => undefined);
+        void ensureE2eeReadyForCurrentUser().catch((error: unknown) => {
+          logger.warn('e2ee', 'E2EE readiness compensation failed after websocket open', sanitizeE2eeLogValue(error));
+        });
+        void syncPendingNegotiations(useSessionStore.getState().currentSession?.id).catch((error: unknown) => {
+          logger.warn('e2ee', 'E2EE pending negotiation sync failed after websocket open', sanitizeE2eeLogValue(error));
+        });
         const currentSessionId = useSessionStore.getState().currentSession?.id;
         if (currentSessionId) {
           void retryDecryptPendingMessages(currentSessionId).catch(() => 0);
