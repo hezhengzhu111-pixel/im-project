@@ -119,7 +119,8 @@ fn validate_bundle(req: &UploadBundleRequest) -> Result<(), AppError> {
     for entry in req.one_time_pre_keys.iter() {
         if entry.key.is_empty() || entry.key.len() > MAX_KEY_FIELD_LEN {
             return Err(AppError::BadRequest(format!(
-                "invalid one_time_pre_key id={}", entry.id
+                "invalid one_time_pre_key id={}",
+                entry.id
             )));
         }
     }
