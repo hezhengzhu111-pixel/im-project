@@ -153,24 +153,35 @@ cargo clippy -p e2ee-ffi --all-targets -- -D warnings
 
 ### 9.2 前端验证
 
-在仓库根目录执行（npm workspace）：
-
-```bash
-# 移动端 E2EE 相关测试
-npm run mobile:test -- --testPathPattern="mobileRustE2eeRuntime"
-npm run mobile:test -- --testPathPattern="mobileE2ee"
-npm run mobile:test -- --testPathPattern="messageProcessor.e2ee"
-
-# TypeScript 类型检查
-npm run mobile:typecheck
-```
-
-也可进入 `frontend/apps/mobile/` 直接调用 jest：
+**推荐方式：在 `frontend/apps/mobile/` 直接调用 jest**
 
 ```bash
 cd frontend/apps/mobile
+
+# 针对性测试（按需选择）
 npx jest --runInBand --testPathPattern="mobileRustE2eeRuntime"
+npx jest --runInBand --testPathPattern="mobileE2ee"
+npx jest --runInBand --testPathPattern="messageProcessor.e2ee"
+
+# TypeScript 类型检查
+npm run typecheck
 ```
+
+**备选方式：通过 npm workspace test script 正确转发**
+
+```bash
+# 在仓库根目录执行（注意双 --）
+npm run test --workspace=@im/mobile -- -- --testPathPattern="mobileRustE2eeRuntime"
+```
+
+**不推荐的写法（参数被 npm 截获，不能可靠传给 Jest）**
+
+```bash
+# 以下写法是错误的 —— npm 会将 --testPathPattern 误解析为 npm config，不转发给 jest
+npm run mobile:test -- --testPathPattern="mobileRustE2eeRuntime"   # ❌
+```
+
+原因：npm workspace 链路 `npm run mobile:test` → `npm run test --workspace=@im/mobile` → `jest --runInBand`，单层 `--` 只能穿透第一层 npm，无法穿透嵌套的 workspace 调用。
 
 ### 9.3 人工 Review Checklist
 
@@ -210,3 +221,32 @@ npx jest --runInBand --testPathPattern="mobileRustE2eeRuntime"
 | `src/e2ee/__tests__/mobileDeferredE2e.test.ts` | 移动端延迟 E2EE |
 
 > 上表随文件拆分/合并同步更新。若新增测试文件，追加到对应分类并更新本节。
+
+---
+
+### 9.5 当前验证结果摘要
+
+> 最后更新：2026-05-20，测试拆分重构完成后。
+
+| 验证项 | 命令 | 结果 |
+|--------|------|------|
+| Rust 格式 | `cargo fmt --check` | ✅ 零违规 |
+| e2ee-core 测试 | `cargo test -p e2ee-core` | ✅ **102 tests passed**（99 unit + 3 integration） |
+| e2ee-ffi 测试 | `cargo test -p e2ee-ffi` | ✅ **30 tests passed**（26 unit + 1 binding + 3 integration） |
+| e2ee-core Clippy | `cargo clippy -p e2ee-core --all-targets -- -D warnings` | ✅ 零警告 |
+| e2ee-ffi Clippy | `cargo clippy -p e2ee-ffi --all-targets -- -D warnings` | ✅ 零警告 |
+| mobileRustE2eeRuntime | `npx jest --runInBand --testPathPattern="mobileRustE2eeRuntime"` | ✅ 4 suites, **12 tests passed** |
+| mobileE2ee | `npx jest --runInBand --testPathPattern="mobileE2ee"` | ✅ 1 suite, **1 test passed** |
+| messageProcessor.e2ee | `npx jest --runInBand --testPathPattern="messageProcessor.e2ee"` | ✅ 1 suite, **4 tests passed** |
+| TypeScript 类型检查 | `npm run mobile:typecheck` | ✅ 零错误 |
+
+### 9.6 已知非本次问题（不要求修复）
+
+以下问题是预存的，在 E2EE 重构之前已存在，**不属于本次变更引入，请勿在 E2EE 重构中修复**：
+
+| 文件 | 现象 | 说明 |
+|------|------|------|
+| `src/components/chat/__tests__/MessageBubble.types.test.tsx` | FAIL | 预存问题，与 E2EE 拆分无关 |
+| `src/screens/chat/__tests__/ChatScreen.pagination.test.tsx` | `act()` 警告 | Zustand store 在 `act()` 外更新，预存问题 |
+
+> 遇到这些文件的失败时，确认非本次变更引入后即可忽略。
