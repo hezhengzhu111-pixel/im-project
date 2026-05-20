@@ -7,6 +7,7 @@ import {
   isRustE2eeEnvelope,
   sanitizeE2eeLogValue,
   type RustE2eeEnvelope,
+  type E2eeRuntime,
   type RustPublicPreKeyBundle,
 } from '@im/shared-e2ee-core';
 import { mobileE2eeKeyService } from '@/e2ee/api/keyService';
@@ -68,6 +69,32 @@ const normalizeRemoteBundle = (
   };
 };
 
+const describeError = (error: unknown): string => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return String(error || 'unknown error');
+};
+
+const hasExportedStateBytes = (state: Uint8Array | string): boolean =>
+  typeof state === 'string' ? state.length > 0 : state.byteLength > 0;
+
+const commitSessionState = async (
+  runtime: E2eeRuntime,
+  userId: string,
+  sessionId: string,
+): Promise<void> => {
+  try {
+    const state = await runtime.exportSession(sessionId);
+    if (!hasExportedStateBytes(state)) {
+      throw new Error('exported session state is empty');
+    }
+    await e2eeSessionStore.saveSessionState(userId, sessionId, state);
+  } catch (error) {
+    throw new Error(`E2EE session state storage persist failed for session ${sessionId}: ${describeError(error)}`);
+  }
+};
+
 class MobileE2eeManager {
   private readonly queues = new Map<string, Promise<unknown>>();
 
@@ -116,7 +143,7 @@ class MobileE2eeManager {
       }
 
       const wire = await runtime.encrypt(params.sessionId, params.plaintext);
-      await e2eeSessionStore.saveSessionState(userId, params.sessionId, await runtime.exportSession(params.sessionId));
+      await commitSessionState(runtime, userId, params.sessionId);
       await setLocalSessionStatus(params.sessionId, 'encrypted');
 
       return {
@@ -159,7 +186,7 @@ class MobileE2eeManager {
 
       try {
         const plaintext = await runtime.decrypt(envelope.sessionId, envelope);
-        await e2eeSessionStore.saveSessionState(userId, envelope.sessionId, await runtime.exportSession(envelope.sessionId));
+        await commitSessionState(runtime, userId, envelope.sessionId);
         await setLocalSessionStatus(envelope.sessionId, 'encrypted');
         return bytesToUtf8(plaintext);
       } catch (error) {

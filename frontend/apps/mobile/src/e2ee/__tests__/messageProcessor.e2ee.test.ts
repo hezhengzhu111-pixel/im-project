@@ -122,4 +122,18 @@ describe('mobile E2EE message processing', () => {
     expect(processed.displayMessage.encrypted).toBe(true);
     expect(processed.displayMessage.content).toBe(E2EE_UNSUPPORTED_TEXT);
   });
+
+  it('keeps message pending when decrypt succeeds but session state persistence fails', async () => {
+    jest.spyOn(e2eeManager, 'decryptEnvelope')
+      .mockRejectedValueOnce(new Error('E2EE session state storage persist failed for session 100_200'));
+
+    const processed = await processE2eeMessage(encryptedMessage(0), {
+      currentUserId: '100',
+      sessionId: '100_200',
+    });
+
+    expect(processed.decryptStatus).toBe('pending');
+    expect(processed.rawMessage.rawJson).toContain('e2eeEnvelope');
+    expect(processed.displayMessage.content).toBe(E2EE_UNSUPPORTED_TEXT);
+  });
 });
