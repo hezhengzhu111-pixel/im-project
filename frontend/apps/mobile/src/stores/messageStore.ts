@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { applyMessageToSession, applyReadReceiptToMessages, buildSessionId, createNextRetryAt, shouldStopRetry } from '@im/shared-im-core';
 import { normalizeReadReceipt } from '@im/shared-normalizers';
 import { applyMobileMessageToList, hasSameMobileMessageIdentity, resolveMessageSessionId } from '@/utils/normalizers';
-import { RETRY_CONFIG } from '@/constants/config';
+import { E2EE_DECRYPT_RETRY_CONFIG, RETRY_CONFIG } from '@/constants/config';
 import {
   E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT,
   E2EE_SEND_DISABLED_TEXT,
@@ -10,15 +10,23 @@ import {
   getSessionE2eeStatus,
   maskEncryptedMessage,
 } from '@/e2ee/e2eeDeferred';
-import { compareE2eeDecryptOrder, processE2eeMessage, processE2eeMessages } from '@/e2ee/messageProcessor';
+import { compareE2eeDecryptOrder, processE2eeMessage, processE2eeMessages, shouldDrainPendingAfterDecrypt, type ProcessedE2eeMessage } from '@/e2ee/messageProcessor';
 import { e2eeManager } from '@/e2ee/manager/e2eeManager';
-import { loadLocalSessionStatus } from '@/e2ee/manager/negotiation';
+import { initiateNegotiation, loadLocalSessionStatus } from '@/e2ee/manager/negotiation';
+import {
+  enqueuePendingE2eeText,
+  encryptPendingE2eePayload,
+  findPendingE2eeSends,
+  isE2eePendingPayload,
+  type PendingSendPayload,
+} from '@/e2ee/outbound/pendingE2eeSend';
+import { subscribeE2eeStatusChanges } from '@/e2ee/statusEvents';
 import {
   cachePendingEncryptedMessage,
   clearPendingEncryptedMessages as clearPendingDecryptCache,
   configurePendingDecryptQueue,
-  getPendingEncryptedMessages,
-  replacePendingEncryptedMessages,
+  retryDecryptPendingMessages as retryDecryptPendingFromStore,
+  type PendingEncryptedMessageEntry,
 } from '@/e2ee/store/pendingDecryptStore';
 import { messageService, resolveMarkReadTarget, type SendMessagePayload } from '@/services/chat/messageService';
 import { messageRepository } from '@/services/storage/messageRepository';
@@ -34,13 +42,6 @@ import { useSessionStore } from './sessionStore';
 import type { ChatSession, MessageType } from '@im/shared-types';
 import type { MobileMessage, PendingMessage, MessagePaginationState } from '@/types/models';
 import type { MobileFile } from '@/services/file/fileService';
-
-interface PendingSendPayload {
-  sendType: 'private' | 'group';
-  data: SendMessagePayload;
-  encrypted?: boolean;
-  uploadTaskId?: string;
-}
 
 const inflightPendingRetries = new Set<string>();
 
@@ -76,7 +77,7 @@ interface MessageState {
   sendMedia: (session: ChatSession, file: MobileFile, type: MessageType) => Promise<void>;
   retryPending: () => Promise<void>;
   retryMessage: (localId: string, options?: { force?: boolean }) => Promise<void>;
-  retryDecryptPendingMessages: (sessionId: string, cachedMessages?: MobileMessage[]) => Promise<number>;
+  retryDecryptPendingMessages: (sessionId: string, entries: PendingEncryptedMessageEntry[]) => Promise<PendingEncryptedMessageEntry[]>;
   retryDecryptVisibleEncryptedMessages: (sessionId: string) => Promise<number>;
   clearPendingEncryptedMessages: (sessionId: string) => void;
   markRead: (session: ChatSession) => Promise<void>;
@@ -115,6 +116,9 @@ const processMessagesForSession = async (
       cachePendingEncryptedMessage(sessionId, item.rawMessage);
     }
   });
+  if (processed.some((item) => shouldDrainPendingAfterDecrypt(item))) {
+    triggerPendingDrain(sessionId);
+  }
   return processed.map((item) => item.displayMessage);
 };
 
@@ -135,7 +139,28 @@ const processMessageForSession = async (
   if (processed.decryptStatus === 'pending') {
     cachePendingEncryptedMessage(sessionId, processed.rawMessage);
   }
+  if (shouldDrainPendingAfterDecrypt(processed)) {
+    triggerPendingDrain(sessionId);
+  }
   return processed.displayMessage;
+};
+
+const markDecryptFailed = (sessionId: string, message: MobileMessage, processed: ProcessedE2eeMessage) => {
+  const failed: MobileMessage = {
+    ...processed.rawMessage,
+    content: processed.displayMessage.content,
+    decryptStatus: 'failed',
+    isE2eeDisplayDecrypted: false,
+    rawJson: processed.rawMessage.rawJson || processed.displayMessage.rawJson || JSON.stringify(processed.rawMessage),
+  };
+  messageRepository.upsertMessages(sessionId, [failed]);
+};
+
+const triggerPendingDrain = (sessionId: string) => {
+  if (!sessionId) return;
+  retryDecryptPendingFromStore(sessionId).catch((error) => {
+    logger.warn('e2ee', 'pending decrypt drain failed', sanitizeE2eeLogValue({ sessionId, error }));
+  });
 };
 
 const resolveEffectiveE2eeStatus = async (session: ChatSession) => {
@@ -218,6 +243,77 @@ const enqueuePending = (
     updatedAt: now,
   };
   pendingMessageRepository.enqueue(pending);
+};
+
+/**
+ * Resume all E2EE-waiting pending sends for a session.
+ *
+ * Called when the session E2EE status transitions to `encrypted`.
+ * For each waiting pending:
+ * 1. Calls `encryptPendingE2eePayload` to encrypt the plaintext and
+ *    replace the pending payload with an encrypted envelope.
+ * 2. Updates the local optimistic message so the UI reflects the
+ *    encrypted state.
+ * 3. Calls `retryMessage` to send through the standard pipeline.
+ *
+ * This is a module-private function; it is NOT exported so it does not
+ * create import cycles. Callers trigger it indirectly via
+ * `setLocalSessionStatus('encrypted')` which emits an E2EE status
+ * change event.
+ */
+const resumeOutboundE2eeSends = async (sessionId: string): Promise<number> => {
+  const items = findPendingE2eeSends(sessionId);
+  if (items.length === 0) {
+    return 0;
+  }
+
+  const store = useMessageStore.getState();
+  let resumed = 0;
+
+  for (const item of items) {
+    const result = await encryptPendingE2eePayload(item);
+    if (!result.ok) {
+      continue;
+    }
+
+    // Update local optimistic message so the UI reflects the
+    // encrypted state before retryMessage overwrites it with the
+    // server response.
+    const messages = store.messagesBySession[item.conversationId] || [];
+    const idx = messages.findIndex((msg) => msg.id === item.localId);
+    if (idx >= 0 && result.envelope) {
+      const existing = messages[idx];
+      const updated: MobileMessage = {
+        ...existing,
+        encrypted: true,
+        e2eeEnvelope: result.envelope,
+        e2eeDeviceId: result.envelope.senderDeviceId,
+        rawJson: JSON.stringify({
+          ...existing,
+          content: '',
+          encrypted: true,
+          e2eeEnvelope: result.envelope,
+          e2eeDeviceId: result.envelope.senderDeviceId,
+        }),
+        isE2eeDisplayDecrypted: true,
+        decryptStatus: 'own-echo-preserved',
+      };
+      const nextList = [...messages];
+      nextList[idx] = updated;
+      useMessageStore.setState({
+        messagesBySession: {
+          ...store.messagesBySession,
+          [item.conversationId]: nextList,
+        },
+      });
+      messageRepository.upsertMessages(item.conversationId, [updated]);
+    }
+
+    await store.retryMessage(item.localId, { force: true });
+    resumed++;
+  }
+
+  return resumed;
 };
 
 export const useMessageStore = create<MessageState>((set, get) => ({
@@ -489,15 +585,37 @@ export const useMessageStore = create<MessageState>((set, get) => ({
 
   async sendText(session, content) {
     const e2eeStatus = await resolveEffectiveE2eeStatus(session);
-    if (session.type === 'private' && e2eeStatus === 'negotiating') {
-      throw new Error('等待对方确认端到端加密请求');
-    }
+
+    // Rule D: failed status blocks sending entirely.
     if (session.type === 'private' && e2eeStatus === 'failed') {
       throw new Error(E2EE_SEND_DISABLED_TEXT);
     }
     if (session.type === 'group' && e2eeStatus !== 'plaintext') {
       throw new Error(E2EE_SEND_DISABLED_TEXT);
     }
+
+    // Rule A + B: plaintext or negotiating private session → hold message
+    // until E2EE negotiation completes. Do NOT send plaintext.
+    if (session.type === 'private' && (e2eeStatus === 'plaintext' || e2eeStatus === 'negotiating')) {
+      const message = optimisticMessage(session, 'TEXT', { content });
+      get().addMessage(message, session.id);
+
+      enqueuePendingE2eeText(session, message, content, 'negotiation');
+
+      if (e2eeStatus === 'plaintext') {
+        const initiated = await initiateNegotiation(session.id, session.targetId).catch(() => false);
+        if (!initiated) {
+          const { nextList } = updateLocalMessage(get(), session.id, message.id, (item) => ({
+            ...item,
+            status: 'FAILED',
+          }));
+          set({ messagesBySession: { ...get().messagesBySession, [session.id]: nextList } });
+        }
+      }
+      return;
+    }
+
+    // Rule C: encrypted private session — encrypt and send.
     const message = optimisticMessage(session, 'TEXT', {
       content,
       encrypted: session.type === 'private' && e2eeStatus === 'encrypted',
@@ -604,6 +722,12 @@ export const useMessageStore = create<MessageState>((set, get) => ({
 
     try {
       const payload = JSON.parse(pending.payloadJson) as PendingSendPayload;
+
+      // 跳过等待 E2EE negotiation 的 pending：消息保留在 pending 中，
+      // 等待 handleNegotiationAccepted 触发 resumePendingE2eeSends 后恢复发送。
+      if (isE2eePendingPayload(payload)) {
+        return;
+      }
 
       // 3. E2EE blocked：pending status=blocked，本地消息 FAILED
       if (blockEncryptedPendingPayload(payload)) {
@@ -811,37 +935,60 @@ export const useMessageStore = create<MessageState>((set, get) => ({
     }
   },
 
-  async retryDecryptPendingMessages(sessionId, cachedMessages) {
+  async retryDecryptPendingMessages(sessionId, entries) {
     const currentUserId = useAuthStore.getState().currentUser?.id || '';
-    if (!currentUserId) {
-      return 0;
-    }
-    const source = (cachedMessages || getPendingEncryptedMessages(sessionId)).slice();
-    if (source.length === 0) {
-      return 0;
+    if (!currentUserId || entries.length === 0) {
+      return [];
     }
 
-    const remaining: MobileMessage[] = [];
-    let decryptedCount = 0;
-    source.sort(compareE2eeDecryptOrder);
-    for (const pending of source) {
-      const processed = await processE2eeMessage(pending, {
+    const remaining: PendingEncryptedMessageEntry[] = [];
+    const sorted = [...entries].sort((a, b) => compareE2eeDecryptOrder(a.message, b.message));
+
+    for (const entry of sorted) {
+      const processed = await processE2eeMessage(entry.message, {
         sessionId,
         currentUserId,
         findOptimisticMessage: (clientMessageId) => findOptimisticMessage(get(), sessionId, clientMessageId),
       });
-      if (processed.decryptStatus === 'pending') {
-        remaining.push(processed.rawMessage);
-        continue;
-      }
+
       if (processed.decryptStatus === 'decrypted' || processed.decryptStatus === 'own-echo-preserved') {
-        decryptedCount += 1;
         get().addMessage(processed.displayMessage, sessionId);
         messageRepository.upsertMessages(sessionId, [processed.displayMessage]);
+        continue;
       }
+
+      if (processed.decryptStatus === 'pending') {
+        const classification = processed.errorClassification;
+        const retryable = classification?.retryable ?? false;
+        if (!retryable) {
+          markDecryptFailed(sessionId, entry.message, processed);
+          continue;
+        }
+
+        const newRetryCount = entry.retryCount + 1;
+        if (shouldStopRetry(newRetryCount, E2EE_DECRYPT_RETRY_CONFIG.maxRetryCount)) {
+          markDecryptFailed(sessionId, entry.message, processed);
+          continue;
+        }
+
+        remaining.push({
+          ...entry,
+          retryCount: newRetryCount,
+          nextRetryAt: createNextRetryAt(newRetryCount, Date.now(), {
+            baseDelayMs: E2EE_DECRYPT_RETRY_CONFIG.baseDelayMs,
+            maxDelayMs: E2EE_DECRYPT_RETRY_CONFIG.maxDelayMs,
+          }),
+          lastError: classification?.safeMessage ?? 'Unknown E2EE error',
+          lastTriedAt: Date.now(),
+        });
+        continue;
+      }
+
+      // failed or other non-success status
+      markDecryptFailed(sessionId, entry.message, processed);
     }
-    replacePendingEncryptedMessages(sessionId, remaining);
-    return decryptedCount;
+
+    return remaining;
   },
 
   async retryDecryptVisibleEncryptedMessages(sessionId) {
@@ -1103,8 +1250,17 @@ export const useMessageStore = create<MessageState>((set, get) => ({
 }));
 
 configurePendingDecryptQueue({
-  retryPendingMessages: (sessionId, messages) =>
-    useMessageStore.getState().retryDecryptPendingMessages(sessionId, messages),
+  retryPendingMessages: (sessionId, entries) =>
+    useMessageStore.getState().retryDecryptPendingMessages(sessionId, entries),
   retryVisibleMessages: (sessionId) =>
     useMessageStore.getState().retryDecryptVisibleEncryptedMessages(sessionId),
+});
+
+// When E2EE negotiation is accepted and the session status transitions to
+// `encrypted`, resume any outbound pending sends that were held waiting
+// for the negotiation to complete.
+subscribeE2eeStatusChanges((sessionId, status) => {
+  if (status === 'encrypted') {
+    resumeOutboundE2eeSends(sessionId).catch(() => 0);
+  }
 });

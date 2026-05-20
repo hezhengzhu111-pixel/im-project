@@ -35,6 +35,7 @@ const keyMaterial = (): RustLocalE2eeKeyMaterial => ({
 describe('secure E2EE storage persistence semantics', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    e2eeSessionStore.clearRuntime();
   });
 
   it('does not update memory secure cache when Keychain set fails', async () => {
@@ -68,6 +69,18 @@ describe('secure E2EE storage persistence semantics', () => {
 
     await expect(e2eeSecureStorage.removeEncrypted(userId, deviceId, key))
       .rejects.toThrow('keychain delete failed');
+  });
+
+  it('treats Keychain false delete as already absent and clears memory cache', async () => {
+    const userId = 'remove-absent-user';
+    const deviceId = 'remove-absent-device';
+    const key = e2eeSecureStorage.namespaceKey(userId, deviceId, 'session', 's1');
+    await e2eeSecureStorage.setEncryptedJson(userId, deviceId, key, { state: 'cached-state' });
+    await keychainReset({ service: key });
+    keychainReset.mockResolvedValueOnce(false);
+
+    await expect(e2eeSecureStorage.removeEncrypted(userId, deviceId, key)).resolves.toBeUndefined();
+    await expect(e2eeSecureStorage.getEncryptedJson(userId, deviceId, key)).resolves.toBeNull();
   });
 
   it('logs sanitized warn when clearAccount has a partial delete failure', async () => {
@@ -107,5 +120,34 @@ describe('secure E2EE storage persistence semantics', () => {
       .rejects.toThrow('session state must be Base64-encoded binary data');
 
     await expect(e2eeSessionStore.getSessionState(userId, 's-invalid')).resolves.toBeNull();
+  });
+
+  it('updates cached status only after status persistence succeeds', async () => {
+    const userId = 'status-success-user';
+    await e2eeSecureStorage.getOrCreateDeviceId(userId);
+
+    await e2eeSessionStore.setStatus(userId, 's-status-success', 'encrypted');
+
+    expect(e2eeSessionStore.getCachedStatus('s-status-success')).toBe('encrypted');
+  });
+
+  it('keeps previous cached status when status persistence fails', async () => {
+    const userId = 'status-fails-user';
+    await e2eeSecureStorage.getOrCreateDeviceId(userId);
+    const setEncryptedSpy = jest
+      .spyOn(e2eeSecureStorage, 'setEncryptedJson')
+      .mockRejectedValueOnce(new Error('status persist failed'));
+
+    await expect(e2eeSessionStore.setStatus(userId, 's-status-fails', 'encrypted'))
+      .rejects.toThrow('status persist failed');
+
+    expect(e2eeSessionStore.getCachedStatus('s-status-fails')).toBe('plaintext');
+    setEncryptedSpy.mockRestore();
+  });
+
+  it('uses runtime-only status cache when no device namespace exists', async () => {
+    await e2eeSessionStore.setStatus('status-runtime-only-user', 's-status-runtime-only', 'negotiating');
+
+    expect(e2eeSessionStore.getCachedStatus('s-status-runtime-only')).toBe('negotiating');
   });
 });

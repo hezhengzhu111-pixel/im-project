@@ -4,6 +4,7 @@ import {
   isRustE2eeEnvelope,
   normalizeEnvelope,
   sanitizeE2eeLogValue,
+  type E2eeErrorClassification,
   type RustE2eeEnvelope,
 } from '@im/shared-e2ee-core';
 import {
@@ -23,6 +24,7 @@ export interface ProcessedE2eeMessage {
   rawMessage: MobileMessage;
   displayMessage: MobileMessage;
   decryptStatus: E2eeDecryptStatus;
+  errorClassification?: E2eeErrorClassification;
 }
 
 export interface ProcessMessageOptions {
@@ -149,6 +151,18 @@ const shouldKeepPending = (error: unknown): boolean => {
   );
 };
 
+export const hasE2eeHandshake = (message: MobileMessage | undefined): boolean => {
+  if (!message) return false;
+  const envelope = message.e2eeEnvelope;
+  if (!envelope || typeof envelope !== 'object') return false;
+  return Boolean('handshake' in envelope && (envelope as unknown as Record<string, unknown>).handshake);
+};
+
+export const shouldDrainPendingAfterDecrypt = (processed: ProcessedE2eeMessage): boolean => {
+  if (processed.decryptStatus !== 'decrypted') return false;
+  return hasE2eeHandshake(processed.rawMessage) || hasE2eeHandshake(processed.displayMessage);
+};
+
 export const processE2eeMessage = async (
   message: MobileMessage,
   options: ProcessMessageOptions,
@@ -231,6 +245,9 @@ export const processE2eeMessage = async (
       rawMessage,
       displayMessage: safePlaceholder(baseDisplay, pending ? 'pending' : 'failed'),
       decryptStatus: pending ? 'pending' : 'failed',
+      errorClassification: pending && !classification.retryable
+        ? { ...classification, retryable: true }
+        : classification,
     };
   }
 };

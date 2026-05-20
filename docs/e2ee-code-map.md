@@ -159,7 +159,6 @@ cargo clippy -p e2ee-ffi --all-targets -- -D warnings
 cd frontend/apps/mobile
 
 # 针对性测试（按需选择）
-cd frontend/apps/mobile
 npx jest --runInBand --testPathPattern="mobileRustE2eeRuntime"
 npx jest --runInBand --testPathPattern="mobileE2ee"
 npx jest --runInBand --testPathPattern="messageProcessor.e2ee"
@@ -220,6 +219,16 @@ npm run mobile:test -- --testPathPattern="mobileRustE2eeRuntime"   # ❌
 | `src/e2ee/__tests__/e2eeCapability.test.ts` | E2EE 能力检测 |
 | `src/e2ee/__tests__/e2eeDeferred.test.ts` | 延迟初始化 |
 | `src/e2ee/__tests__/mobileDeferredE2e.test.ts` | 移动端延迟 E2EE |
+| `src/e2ee/__tests__/e2eeManagerCommit.test.ts` | Session state 提交边界 |
+| `src/e2ee/__tests__/pendingDecryptStore.test.ts` | 运行时队列恢复、batch 限制 |
+| `src/e2ee/__tests__/pendingDecryptStore.retry.test.ts` | retryCount/backoff/max retry/dead-letter |
+| `src/e2ee/__tests__/localDevice.test.ts` | 本地设备注册 |
+| `src/e2ee/__tests__/e2eeReadiness.test.ts` | E2EE 就绪门 |
+| `src/e2ee/__tests__/secureE2eeStorage.test.ts` | 安全存储 |
+| `src/stores/__tests__/messageStore.e2ee.test.ts` | 发送阻塞、pending 管理、drain、retry 元数据 |
+| `src/stores/__tests__/messageStore.e2ee.outbound.test.ts` | Outbound pipeline: plaintext→pending→negotiation→resume→encrypt |
+| `src/stores/__tests__/messageStore.e2ee.inbound-order.test.ts` | Inbound 乱序恢复：no-handshake pending→handshake→drain |
+| `src/stores/__tests__/websocketStore.e2ee.test.ts` | WebSocket E2EE 协商事件、敏感字段防泄漏 |
 
 > 上表随文件拆分/合并同步更新。若新增测试文件，追加到对应分类并更新本节。
 
@@ -227,7 +236,7 @@ npm run mobile:test -- --testPathPattern="mobileRustE2eeRuntime"   # ❌
 
 ### 9.5 当前验证结果摘要
 
-> 最后更新：2026-05-20，测试拆分重构完成后。
+> 最后更新：2026-05-21，Message Pipeline 文档和测试补齐完成后。
 
 | 验证项 | 命令 | 结果 |
 |--------|------|------|
@@ -238,8 +247,11 @@ npm run mobile:test -- --testPathPattern="mobileRustE2eeRuntime"   # ❌
 | e2ee-ffi Clippy | `cargo clippy -p e2ee-ffi --all-targets -- -D warnings` | ✅ 零警告 |
 | mobileRustE2eeRuntime | `npx jest --runInBand --testPathPattern="mobileRustE2eeRuntime"` | ✅ 4 suites, **12 tests passed** |
 | mobileE2ee | `npx jest --runInBand --testPathPattern="mobileE2ee"` | ✅ 1 suite, **1 test passed** |
-| messageProcessor.e2ee | `npx jest --runInBand --testPathPattern="messageProcessor.e2ee"` | ✅ 1 suite, **4 tests passed** |
-| TypeScript 类型检查 | `npm run mobile:typecheck` | ✅ 零错误 |
+| messageProcessor.e2ee | `npx jest --runInBand --testPathPattern="messageProcessor.e2ee"` | ✅ 1 suite, **16 tests passed** |
+| messageStore.e2ee | `npx jest --runInBand --testPathPattern="messageStore.e2ee"` | ✅ 3 suites, **79 tests passed** |
+| pendingDecryptStore | `npx jest --runInBand --testPathPattern="pendingDecryptStore"` | ✅ 2 suites, **29 tests passed** |
+| 全部 E2EE 测试 | `npx jest --runInBand --testPathPattern="messageStore.e2ee\|messageProcessor.e2ee\|pendingDecryptStore\|mobileE2ee"` | ✅ 7 suites, **125 tests passed** |
+| TypeScript 类型检查 | `cd frontend/apps/mobile && npx tsc --noEmit` | ✅ 零错误 |
 
 ### 9.6 已知非本次问题（不要求修复）
 

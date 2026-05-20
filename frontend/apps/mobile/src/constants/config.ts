@@ -41,6 +41,14 @@ export const RETRY_CONFIG = {
   maxDelayMs: 60_000,
 } as const;
 
+export const E2EE_DECRYPT_RETRY_CONFIG = {
+  maxRetryCount: 5,
+  baseDelayMs: 2_000,
+  maxDelayMs: 120_000,
+  maxPerSession: 20,
+  maxGlobal: 100,
+} as const;
+
 export const RECONCILE_CONFIG = {
   /** pending.status='sending' 超过此时间视为卡死，恢复到 pending */
   staleSendingMs: 120_000,
