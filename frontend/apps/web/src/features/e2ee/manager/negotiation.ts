@@ -1,4 +1,4 @@
-import { base64ToBytes, bytesToBase64, parseRustHandshake } from "@im/shared-e2ee-core";
+import { asBase64String, base64ToBytes, bytesToBase64, parseRustHandshake } from "@im/shared-e2ee-core";
 
 import { keyService } from "../api/key-service";
 import { webE2eeRuntime } from "../runtime";
@@ -176,14 +176,15 @@ export async function respondToNegotiation(
     const localKeys = await getLocalRustKeyMaterial();
     await deleteSessionState(sessionId);
     await webE2eeRuntime.removeSession(sessionId);
+    const encodedHandshake = asBase64String(handshakeBase64, "handshake");
     await webE2eeRuntime.createInboundSession({
       sessionId,
       localKeys,
       remoteIdentityKey: remoteIdentityKeyBase64,
-      handshake: handshakeBase64,
+      handshake: encodedHandshake,
     });
 
-    const handshake = parseRustHandshake(base64ToBytes(handshakeBase64));
+    const handshake = parseRustHandshake(base64ToBytes(encodedHandshake));
     if (handshake.oneTimePreKeyId != null) {
       await markOneTimePreKeyConsumed(handshake.oneTimePreKeyId);
     }

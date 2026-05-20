@@ -1,16 +1,17 @@
 import { NativeModules } from 'react-native';
 import {
   assertRustWireFormat,
+  asBase64String,
   base64ToBytes,
   bytesToBase64,
   copyBytes,
-  envelopeWireBytes,
   parseRustHandshake,
   utf8ToBytes,
   type CreateInboundSessionInput,
   type CreateOutboundSessionInput,
   type E2eeRuntime,
   type GeneratePreKeyBundleOptions,
+  type Base64String,
   type RustE2eeEnvelope,
   type RustLocalE2eeKeyMaterial,
   type RustPreKey,
@@ -94,8 +95,8 @@ const remoteBundleToRustJson = (bundle: RustPublicPreKeyBundle): string => {
   });
 };
 
-const inputBytesToBase64 = (value: Uint8Array | string): string =>
-  typeof value === 'string' ? value : bytesToBase64(copyBytes(value));
+const binaryInputToBase64 = (value: Uint8Array | Base64String, label: string): Base64String =>
+  typeof value === 'string' ? asBase64String(value, label) : bytesToBase64(copyBytes(value));
 
 export class MobileRustE2eeRuntime implements E2eeRuntime {
   async createIdentity(options?: GeneratePreKeyBundleOptions): Promise<RustLocalE2eeKeyMaterial> {
@@ -122,7 +123,7 @@ export class MobileRustE2eeRuntime implements E2eeRuntime {
   }
 
   async createInboundSession(input: CreateInboundSessionInput): Promise<void> {
-    const handshakeBase64 = inputBytesToBase64(input.handshake);
+    const handshakeBase64 = binaryInputToBase64(input.handshake, 'handshake');
     const handshake = parseRustHandshake(base64ToBytes(handshakeBase64));
 
     const signedPreKeyId = input.localKeys.publicBundle.signedPreKey.id;
@@ -155,13 +156,13 @@ export class MobileRustE2eeRuntime implements E2eeRuntime {
     return wire;
   }
 
-  async decrypt(sessionId: string, encryptedWire: Uint8Array | string | RustE2eeEnvelope): Promise<Uint8Array> {
+  async decrypt(sessionId: string, encryptedWire: Uint8Array | Base64String | RustE2eeEnvelope): Promise<Uint8Array> {
     const wireBase64 =
       typeof encryptedWire === 'string'
-        ? encryptedWire
+        ? binaryInputToBase64(encryptedWire, 'encryptedWire')
         : encryptedWire instanceof Uint8Array
           ? bytesToBase64(copyBytes(encryptedWire))
-          : bytesToBase64(envelopeWireBytes(encryptedWire));
+          : asBase64String(encryptedWire.wire, 'encryptedWire.wire');
     const plaintext = base64ToBytes(await nativeModule().decrypt(sessionId, wireBase64));
     return plaintext;
   }
@@ -170,8 +171,8 @@ export class MobileRustE2eeRuntime implements E2eeRuntime {
     return base64ToBytes(await nativeModule().exportSession(sessionId));
   }
 
-  async restoreSession(sessionId: string, stateBytes: Uint8Array | string): Promise<void> {
-    await nativeModule().restoreSession(sessionId, inputBytesToBase64(stateBytes));
+  async restoreSession(sessionId: string, stateBytes: Uint8Array | Base64String): Promise<void> {
+    await nativeModule().restoreSession(sessionId, binaryInputToBase64(stateBytes, 'stateBytes'));
   }
 
   async removeSession(sessionId: string): Promise<void> {

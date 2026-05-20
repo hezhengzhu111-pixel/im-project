@@ -1,8 +1,8 @@
-import { bytesToBase64, type E2eeSessionStatus, type InitialE2eeHandshake } from '@im/shared-e2ee-core';
+import { asBase64String, bytesToBase64, type Base64String, type E2eeSessionStatus, type InitialE2eeHandshake } from '@im/shared-e2ee-core';
 import { e2eeSecureStorage } from '@/e2ee/storage/secureE2eeStorage';
 import { e2eeKeyStore } from './keyStore';
 
-export type RustSessionState = string;
+export type RustSessionState = Base64String;
 
 const statusMemory = new Map<string, E2eeSessionStatus>();
 const pendingRequestMemory = new Map<string, unknown>();
@@ -23,8 +23,8 @@ const namespace = async (userId: string): Promise<{ userId: string; deviceId: st
 const keyFor = (userId: string, deviceId: string, kind: string, sessionId: string): string =>
   e2eeSecureStorage.namespaceKey(userId, deviceId, kind, sessionId);
 
-const encodeSessionState = (state: Uint8Array | string): RustSessionState =>
-  typeof state === 'string' ? state : bytesToBase64(state);
+const encodeSessionState = (state: Uint8Array | Base64String): RustSessionState =>
+  typeof state === 'string' ? asBase64String(state, 'session state') : bytesToBase64(state);
 
 export const e2eeSessionStore = {
   getCachedStatus(sessionId: string): E2eeSessionStatus {
@@ -59,7 +59,7 @@ export const e2eeSessionStore = {
     }
   },
 
-  async saveSessionState(userId: string, sessionId: string, state: Uint8Array | string): Promise<void> {
+  async saveSessionState(userId: string, sessionId: string, state: Uint8Array | Base64String): Promise<void> {
     const ns = await namespace(userId);
     if (!ns) {
       throw new Error('E2EE namespace unavailable');
@@ -82,9 +82,14 @@ export const e2eeSessionStore = {
       ns.deviceId,
       keyFor(ns.userId, ns.deviceId, SESSION_KIND, sessionId),
     );
-    return stored?.version === 2 && typeof stored.state === 'string' && stored.state.length > 0
-      ? stored.state
-      : null;
+    if (stored?.version !== 2 || typeof stored.state !== 'string' || stored.state.length === 0) {
+      return null;
+    }
+    try {
+      return asBase64String(stored.state, 'stored E2EE session state');
+    } catch {
+      return null;
+    }
   },
 
   async deleteSessionState(userId: string, sessionId: string): Promise<void> {

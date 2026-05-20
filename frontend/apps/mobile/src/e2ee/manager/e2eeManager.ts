@@ -1,6 +1,7 @@
 import {
   RUST_E2EE_ALGORITHM,
   RUST_E2EE_ENVELOPE_VERSION,
+  asBase64String,
   bytesToBase64,
   bytesToUtf8,
   isRustE2eeEnvelope,
@@ -149,7 +150,7 @@ class MobileE2eeManager {
           sessionId: envelope.sessionId,
           localKeys,
           remoteIdentityKey,
-          handshake: envelope.handshake,
+          handshake: asBase64String(envelope.handshake, 'e2ee envelope handshake'),
         });
         await e2eeSessionStore.saveRemoteDeviceId(userId, envelope.sessionId, envelope.senderDeviceId);
       } else {

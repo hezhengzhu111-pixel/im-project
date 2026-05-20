@@ -1,6 +1,7 @@
 import {
   bytesToBase64,
   bytesToUtf8,
+  asBase64String,
   OLD_E2EE_UNREADABLE_TEXT,
   RUST_E2EE_ALGORITHM,
   RUST_E2EE_ENVELOPE_VERSION,
@@ -102,7 +103,7 @@ class E2eeManager {
         sessionId: envelope.sessionId,
         localKeys,
         remoteIdentityKey,
-        handshake: envelope.handshake,
+        handshake: asBase64String(envelope.handshake, "e2ee envelope handshake"),
       });
     } else {
       throw new Error("Rust E2EE session not found and envelope has no handshake");
@@ -126,7 +127,7 @@ class E2eeManager {
       throw new Error(OLD_E2EE_UNREADABLE_TEXT);
     }
     await webE2eeRuntime.restoreSession(sessionId, state);
-    const plaintext = await webE2eeRuntime.decrypt(sessionId, ciphertext);
+    const plaintext = await webE2eeRuntime.decrypt(sessionId, asBase64String(ciphertext, "legacy ciphertext"));
     await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId));
     return bytesToUtf8(plaintext);
   }
