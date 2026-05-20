@@ -150,7 +150,11 @@ export const useWebsocketStore = create<WebsocketState>((set, get) => ({
         void syncPendingNegotiations(useSessionStore.getState().currentSession?.id).catch((error: unknown) => {
           logger.warn('e2ee', 'E2EE pending negotiation sync failed after websocket open', sanitizeE2eeLogValue(error));
         });
-        restorePendingEncryptedMessagesFromRepository();
+        try {
+          restorePendingEncryptedMessagesFromRepository();
+        } catch (error) {
+          logger.warn('e2ee', 'E2EE pending restore failed after websocket open', sanitizeE2eeLogValue(error));
+        }
         void retryAllPendingEncryptedMessages().catch((error: unknown) => {
           logger.warn('e2ee', 'E2EE pending decrypt retry failed after websocket open', sanitizeE2eeLogValue(error));
           return 0;

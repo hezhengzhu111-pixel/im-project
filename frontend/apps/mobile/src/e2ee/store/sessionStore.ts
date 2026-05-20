@@ -47,7 +47,6 @@ export const e2eeSessionStore = {
   },
 
   async setStatus(userId: string, sessionId: string, status: E2eeSessionStatus): Promise<void> {
-    statusMemory.set(sessionId, status);
     const ns = await namespace(userId);
     if (ns) {
       await e2eeSecureStorage.setEncryptedJson(
@@ -56,7 +55,11 @@ export const e2eeSessionStore = {
         keyFor(ns.userId, ns.deviceId, STATUS_KIND, sessionId),
         { status },
       );
+      statusMemory.set(sessionId, status);
+      return;
     }
+    // Runtime-only fallback when the account has no local device namespace yet.
+    statusMemory.set(sessionId, status);
   },
 
   async saveSessionState(userId: string, sessionId: string, state: Uint8Array | Base64String): Promise<void> {
