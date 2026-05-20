@@ -1,3 +1,6 @@
+import { isEncryptedValue } from '@im/shared-e2ee-core';
+import { E2EE_UNSUPPORTED_TEXT } from '@/e2ee/e2eeDeferred';
+import { messageRepository } from '@/services/storage/messageRepository';
 import type { MobileMessage } from '@/types/models';
 
 export interface PendingEncryptedMessageEntry {
@@ -17,10 +20,54 @@ let handlers: PendingDecryptHandlers | null = null;
 const identityFor = (message: MobileMessage): string =>
   message.messageId || message.serverId || message.clientMessageId || message.id || `${message.senderId}:${message.sendTime}`;
 
-const withRawJson = (message: MobileMessage): MobileMessage => ({
-  ...message,
-  rawJson: message.rawJson || JSON.stringify(message),
-});
+const pendingSafeMessage = (message: MobileMessage): MobileMessage => {
+  if (!isEncryptedValue(message.encrypted)) {
+    return message;
+  }
+  const raw = (() => {
+    if (!message.rawJson) {
+      return { ...message };
+    }
+    try {
+      return JSON.parse(message.rawJson) as Record<string, unknown>;
+    } catch {
+      return { ...message };
+    }
+  })();
+  const rawJson = JSON.stringify({
+    ...raw,
+    content: E2EE_UNSUPPORTED_TEXT,
+    mediaUrl: undefined,
+    media_url: undefined,
+    thumbnailUrl: undefined,
+    thumbnail_url: undefined,
+    mediaName: undefined,
+    media_name: undefined,
+    mediaSize: undefined,
+    media_size: undefined,
+    duration: undefined,
+    encrypted: true,
+    e2eeEnvelope: message.e2eeEnvelope ?? raw.e2eeEnvelope ?? raw.e2ee_envelope,
+  });
+  return {
+    ...message,
+    content: E2EE_UNSUPPORTED_TEXT,
+    rawJson,
+    mediaUrl: undefined,
+    thumbnailUrl: undefined,
+    mediaName: undefined,
+    mediaSize: undefined,
+    duration: undefined,
+  };
+};
+
+const withRawJson = (message: MobileMessage): MobileMessage => {
+  const safeMessage = pendingSafeMessage(message);
+  return {
+    ...safeMessage,
+    rawJson: safeMessage.rawJson || JSON.stringify(safeMessage),
+  };
+};
 
 export const configurePendingDecryptQueue = (nextHandlers: PendingDecryptHandlers): void => {
   handlers = nextHandlers;
@@ -75,6 +122,28 @@ export const clearAllPendingEncryptedMessages = (): void => {
 
 export const listPendingEncryptedSessionIds = (): string[] => [...pendingBySession.keys()];
 
+export const restorePendingEncryptedMessagesFromRepository = (sessionId?: string): number => {
+  const messages = messageRepository.listPendingEncryptedMessages(sessionId);
+  messages.forEach((message) => {
+    const targetSessionId = sessionId || message.conversationId || '';
+    if (targetSessionId) {
+      cachePendingEncryptedMessage(targetSessionId, message);
+    }
+  });
+  return messages.length;
+};
+
+export const retryAllPendingEncryptedMessages = async (): Promise<number> => {
+  if (!handlers) {
+    return 0;
+  }
+  let decrypted = 0;
+  for (const sessionId of listPendingEncryptedSessionIds()) {
+    decrypted += await retryDecryptPendingMessages(sessionId);
+  }
+  return decrypted;
+};
+
 export const retryDecryptPendingMessages = async (sessionId: string): Promise<number> => {
   const messages = getPendingEncryptedMessages(sessionId);
   if (!handlers || messages.length === 0) {
@@ -89,4 +158,3 @@ export const retryDecryptVisibleEncryptedMessages = async (sessionId: string): P
   }
   return handlers.retryVisibleMessages(sessionId);
 };
-
