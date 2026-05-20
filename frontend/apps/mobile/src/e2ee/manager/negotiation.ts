@@ -21,6 +21,8 @@ export interface StoredPendingRequest extends PendingEncryptionRequest {
   action?: string;
 }
 
+export type SessionCryptoReadiness = 'none' | 'accepted' | 'ratchet_ready';
+
 const negotiationInFlight = new Map<string, Promise<boolean>>();
 
 const newestDevice = (devices: E2eeDevice[]): E2eeDevice | undefined =>
@@ -64,6 +66,18 @@ export const getStoredPendingNegotiationRequest = async (
   sessionId: string,
 ): Promise<StoredPendingRequest | null> =>
   e2eeSessionStore.getPendingRequest<StoredPendingRequest>(requireCurrentE2eeUserId(), sessionId);
+
+export const hasSessionState = async (sessionId: string): Promise<boolean> =>
+  e2eeSessionStore.hasSessionState(requireCurrentE2eeUserId(), sessionId);
+
+export const getSessionCryptoReadiness = async (sessionId: string): Promise<SessionCryptoReadiness> => {
+  const userId = requireCurrentE2eeUserId();
+  if (await e2eeSessionStore.hasSessionState(userId, sessionId)) {
+    return 'ratchet_ready';
+  }
+  const status = await e2eeSessionStore.loadStatus(userId, sessionId);
+  return status === 'encrypted' ? 'accepted' : 'none';
+};
 
 const persistStatus = async (sessionId: string, status: E2eeSessionStatus): Promise<void> => {
   await setLocalSessionStatus(sessionId, status);
@@ -157,6 +171,8 @@ const acceptStatusOnlyNegotiation = async (sessionId: string): Promise<boolean> 
   const local = await ensureLocalE2eeDeviceRegistered();
   await mobileE2eeKeyService.acceptEncryption(sessionId, local.publicBundle.identityKey, local.publicBundle.signedPreKey.key);
   await e2eeSessionStore.clearPendingRequest(local.userId, sessionId);
+  // "encrypted" here means negotiation accepted. Rust ratchet state is only
+  // ready after the first outbound session or inbound handshake is persisted.
   await persistStatus(sessionId, 'encrypted');
   return true;
 };

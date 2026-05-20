@@ -97,6 +97,7 @@ jest.mock('@/utils/logger', () => ({
 import { e2eeManager } from '@/e2ee/manager/e2eeManager';
 import {
   acceptPendingNegotiation,
+  getSessionCryptoReadiness,
   getStoredPendingNegotiationRequest,
   handleNegotiationAccepted,
   initiateNegotiation,
@@ -202,9 +203,11 @@ describe('mobile Rust E2EE v2 text integration', () => {
       targetUserId: 'bob',
     });
     expect(await acceptPendingNegotiation(sessionId)).toBe(true);
+    await expect(getSessionCryptoReadiness(sessionId)).resolves.toBe('accepted');
 
     setUser('alice');
     await handleNegotiationAccepted(sessionId);
+    await expect(getSessionCryptoReadiness(sessionId)).resolves.toBe('accepted');
 
     const aliceToBob = await e2eeManager.encryptToEnvelope({
       sessionId,
@@ -214,9 +217,12 @@ describe('mobile Rust E2EE v2 text integration', () => {
     expect(aliceToBob.version).toBe(2);
     expect(aliceToBob.algorithm).toBe('rust-x25519-x3dh-dr-v1');
     expect(aliceToBob.wire).not.toContain('111111');
+    await expect(getSessionCryptoReadiness(sessionId)).resolves.toBe('ratchet_ready');
 
     setUser('bob');
+    await expect(getSessionCryptoReadiness(sessionId)).resolves.toBe('accepted');
     await expect(e2eeManager.decryptEnvelope(aliceToBob, 'alice')).resolves.toBe('111111');
+    await expect(getSessionCryptoReadiness(sessionId)).resolves.toBe('ratchet_ready');
 
     const bobToAlice = await e2eeManager.encryptToEnvelope({
       sessionId,
