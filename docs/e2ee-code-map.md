@@ -9,12 +9,19 @@
 ```
 frontend/apps/mobile/src/e2ee/runtime/mobileRustE2eeRuntime.ts   (TS 运行时)
   → NativeModules.RustE2eeModule
-    → frontend/apps/mobile/android/app/src/main/java/com/immobile/RustE2eeModule.kt  (Android Bridge)
-    → frontend/apps/mobile/ios/ImMobile/RustE2eeModule.m / .swift                    (iOS Bridge)
-      → frontend/apps/mobile/android/app/src/main/java/com/im/e2ee/e2ee_ffi.kt       (UniFFI 生成)
-        → backend/e2ee-ffi/src/e2ee_ffi.udl                                           (接口定义)
-          → backend/e2ee-ffi/src/session/mod.rs                                       (FFI 实现)
-            → backend/e2ee-core/src/*                                                  (核心加密逻辑)
+    → Android:
+        frontend/apps/mobile/android/app/src/main/java/com/immobile/RustE2eeModule.kt  (Android Bridge)
+        → frontend/apps/mobile/android/app/src/main/java/com/im/e2ee/e2ee_ffi.kt       (UniFFI 生成)
+        → backend/e2ee-ffi/src/e2ee_ffi.udl                                             (接口定义)
+        → backend/e2ee-ffi/src/session/mod.rs                                           (FFI 实现)
+        → backend/e2ee-core/src/*                                                        (核心加密逻辑)
+    → iOS:
+        frontend/apps/mobile/ios/ImMobile/RustE2eeModule.m                              (iOS ObjC Bridge)
+        frontend/apps/mobile/ios/ImMobile/RustE2eeModule.swift                          (iOS Swift Bridge)
+        → iOS UniFFI generated binding / Rust static library binding，具体文件按构建产物生成
+        → backend/e2ee-ffi/src/e2ee_ffi.udl                                             (接口定义)
+        → backend/e2ee-ffi/src/session/mod.rs                                           (FFI 实现)
+        → backend/e2ee-core/src/*                                                        (核心加密逻辑)
 ```
 
 ---
@@ -120,3 +127,86 @@ frontend/apps/mobile/src/e2ee/runtime/mobileRustE2eeRuntime.ts   (TS 运行时)
 - 若 `e2ee_ffi.udl` 新增方法或类型，请同步更新本文档的调用链描述。
 - 若 E2EE 子模块拆分或合并，请同步更新第 4 节的 Core 层表格。
 - 本文档只描述文件位置和调用关系，不包含架构决策或协议设计说明。
+
+---
+
+## 9. 重构验证清单
+
+E2EE 测试拆分或重构后，按以下顺序验证，确保 review 能区分结构拆分与行为改动。
+
+### 9.1 Rust 验证
+
+在 `backend/` 目录下依次执行：
+
+```bash
+# 格式检查
+cargo fmt --check
+
+# 单元/集成测试
+cargo test -p e2ee-core
+cargo test -p e2ee-ffi
+
+# Clippy（零警告通过）
+cargo clippy -p e2ee-core --all-targets -- -D warnings
+cargo clippy -p e2ee-ffi --all-targets -- -D warnings
+```
+
+### 9.2 前端验证
+
+在仓库根目录执行（npm workspace）：
+
+```bash
+# 移动端 E2EE 相关测试
+npm run mobile:test -- --testPathPattern="mobileRustE2eeRuntime"
+npm run mobile:test -- --testPathPattern="mobileE2ee"
+npm run mobile:test -- --testPathPattern="messageProcessor.e2ee"
+
+# TypeScript 类型检查
+npm run mobile:typecheck
+```
+
+也可进入 `frontend/apps/mobile/` 直接调用 jest：
+
+```bash
+cd frontend/apps/mobile
+npx jest --runInBand --testPathPattern="mobileRustE2eeRuntime"
+```
+
+### 9.3 人工 Review Checklist
+
+| 检查项 | 说明 |
+|--------|------|
+| `e2ee_ffi.udl` 未修改 | `git diff main -- backend/e2ee-ffi/src/e2ee_ffi.udl` 为空 |
+| UniFFI 生成文件未修改 | `e2ee_ffi.kt`、iOS binding 等生成产物不在 diff 中 |
+| Rust `pub` re-export 未变化 | `backend/e2ee-core/src/lib.rs`、`backend/e2ee-ffi/src/lib.rs` 的 `pub use`/`pub mod` 无新增 |
+| 测试只做结构移动 | 测试从单文件拆到多文件时，`it(...)` 断言语义完全不变；若发现断言变化，必须单独 commit/PR |
+| 未为测试扩大可见性 | 没有 `pub` 化原本 `pub(crate)` / `private` 的 helper，测试只依赖已有公开 API 和 mock |
+| 行为修复独立提交 | 拆分过程中发现的 bug 修复应放在独立 commit/PR，不混入重构 diff |
+
+### 9.4 当前 E2EE 测试文件清单
+
+**Rust：**
+
+| 文件 | 说明 |
+|------|------|
+| `backend/e2ee-core/src/primitives/tests.rs` | 加密原语测试 |
+| `backend/e2ee-core/src/x3dh/tests.rs` | X3DH 协议测试 |
+| `backend/e2ee-core/src/ratchet/tests.rs` | Double Ratchet 测试 |
+| `backend/e2ee-core/src/state/tests.rs` | 状态管理测试 |
+| `backend/e2ee-ffi/src/session/tests.rs` | FFI 层集成测试 |
+
+**前端（mobile）：**
+
+| 文件 | 说明 |
+|------|------|
+| `src/e2ee/__tests__/mobileRustE2eeRuntime.e2e.test.ts` | Runtime 端到端测试 |
+| `src/e2ee/__tests__/mobileRustE2eeRuntime.handshake.test.ts` | OTK 握手处理 |
+| `src/e2ee/__tests__/mobileRustE2eeRuntime.binaryInput.test.ts` | Base64 校验 + Uint8Array 二进制路径 |
+| `src/e2ee/__tests__/mobileRustE2eeRuntime.compat.test.ts` | encrypt UTF-8 兼容 |
+| `src/e2ee/__tests__/mobileE2eeTextFlow.test.ts` | 文本消息加解密流程 |
+| `src/e2ee/__tests__/messageProcessor.e2ee.test.ts` | 消息处理器 E2EE 集成 |
+| `src/e2ee/__tests__/e2eeCapability.test.ts` | E2EE 能力检测 |
+| `src/e2ee/__tests__/e2eeDeferred.test.ts` | 延迟初始化 |
+| `src/e2ee/__tests__/mobileDeferredE2e.test.ts` | 移动端延迟 E2EE |
+
+> 上表随文件拆分/合并同步更新。若新增测试文件，追加到对应分类并更新本节。
