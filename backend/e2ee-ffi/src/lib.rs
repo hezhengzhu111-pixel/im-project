@@ -1,3 +1,5 @@
+#![allow(clippy::empty_line_after_doc_comments)]
+
 mod session;
 pub use session::*;
 

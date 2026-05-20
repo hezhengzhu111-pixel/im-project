@@ -341,8 +341,7 @@ pub async fn send_group(
                 "plaintext content forbidden in e2ee session".to_string(),
             ));
         }
-        validate_e2ee_envelope(envelope, &conversation_id, identity.user_id, None, db)
-            .await?;
+        validate_e2ee_envelope(envelope, &conversation_id, identity.user_id, None, db).await?;
         let device_ids = resolve_recipient_device_ids(envelope);
         validate_recipient_devices_not_revoked(db, &device_ids).await?;
     }
@@ -1308,7 +1307,9 @@ fn validate_e2ee_envelope_format(envelope: &E2eeEnvelopeDto) -> Result<(), AppEr
     let header_len = usize::try_from(u32::from_be_bytes(header_array))
         .map_err(|_| AppError::BadRequest("invalid rust e2ee wire header".to_string()))?;
     if header_len != 52 {
-        return Err(AppError::BadRequest("invalid rust e2ee wire header".to_string()));
+        return Err(AppError::BadRequest(
+            "invalid rust e2ee wire header".to_string(),
+        ));
     }
     if envelope.sender_device_id.trim().is_empty() {
         return Err(AppError::BadRequest(
@@ -1406,7 +1407,9 @@ fn e2ee_session_id_matches(session_id: &str, conversation_id: &str) -> Result<()
             "e2ee envelope session_id required".to_string(),
         ));
     }
-    let normalized_conv = conversation_id.strip_prefix("p_").unwrap_or(conversation_id);
+    let normalized_conv = conversation_id
+        .strip_prefix("p_")
+        .unwrap_or(conversation_id);
     let normalized_session = session_id.strip_prefix("p_").unwrap_or(session_id);
     if normalized_session != normalized_conv {
         return Err(AppError::BadRequest(format!(
@@ -1490,7 +1493,9 @@ fn resolve_recipient_device_ids(envelope: &E2eeEnvelopeDto) -> Vec<String> {
 /// 因此需要双格式查询。
 async fn private_e2ee_enabled(db: &MySqlPool, conversation_id: &str) -> Result<bool, AppError> {
     // 去掉 "p_" 前缀得到前端格式的 session_id
-    let short_id = conversation_id.strip_prefix("p_").unwrap_or(conversation_id);
+    let short_id = conversation_id
+        .strip_prefix("p_")
+        .unwrap_or(conversation_id);
 
     // 主查询：协商表（session_api.rs 的 accept_encryption 写入的状态）
     let negotiated: Option<String> = sqlx::query_scalar(
@@ -1535,9 +1540,9 @@ async fn validate_recipient_devices_not_revoked(
         if trimmed.is_empty() || trimmed == "unknown" {
             continue;
         }
-        validate_device_active(db, trimmed).await.map_err(|_| {
-            AppError::BadRequest("revoked e2ee recipient device".to_string())
-        })?;
+        validate_device_active(db, trimmed)
+            .await
+            .map_err(|_| AppError::BadRequest("revoked e2ee recipient device".to_string()))?;
     }
     Ok(())
 }
