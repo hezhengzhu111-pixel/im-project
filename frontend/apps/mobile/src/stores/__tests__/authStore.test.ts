@@ -225,7 +225,7 @@ describe('authStore cleanup', () => {
       const order: string[] = [];
       jest.mocked(secureStorage.get)
         .mockResolvedValueOnce('token-100')
-        .mockResolvedValueOnce(null);
+        .mockResolvedValueOnce('');
       jest.mocked(authService.parseAccessToken).mockResolvedValueOnce({
         data: { valid: true, userId: '100', username: 'testuser', permissions: ['user'] },
       } as Awaited<ReturnType<typeof authService.parseAccessToken>>);
