@@ -102,8 +102,12 @@ class RustE2eeModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
     super.invalidate()
   }
 
-  private fun decodeBase64(value: String): List<UByte> =
-      Base64.decode(value, Base64.NO_WRAP).map { it.toUByte() }
+  private fun decodeBase64(fieldName: String, value: String): List<UByte> =
+      try {
+        Base64.decode(value, Base64.NO_WRAP).map { it.toUByte() }
+      } catch (e: IllegalArgumentException) {
+        throw IllegalArgumentException("$fieldName is invalid standard base64", e)
+      }
 
   private fun encodeBase64(value: List<UByte>): String =
       Base64.encodeToString(value.map { it.toByte() }.toByteArray(), Base64.NO_WRAP)
@@ -150,7 +154,7 @@ class RustE2eeModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
     encodeBase64(
         manager.createOutboundSession(
             sessionId,
-            decodeBase64(identityKeyPairBincodeBase64),
+            decodeBase64("identityKeyPairBincodeBase64", identityKeyPairBincodeBase64),
             remoteBundleJson,
         ),
     )
@@ -168,23 +172,23 @@ class RustE2eeModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
   ) = resolve(promise) {
     manager.createInboundSession(
         sessionId,
-        decodeBase64(identityKeyPairBincodeBase64),
-        decodeBase64(signedPreKeyPairBincodeBase64),
-        oneTimePreKeyPairBincodeBase64?.let { decodeBase64(it) },
-        decodeBase64(remoteIdentityKeyBase64),
-        decodeBase64(remoteEphemeralKeyBase64),
+        decodeBase64("identityKeyPairBincodeBase64", identityKeyPairBincodeBase64),
+        decodeBase64("signedPreKeyPairBincodeBase64", signedPreKeyPairBincodeBase64),
+        oneTimePreKeyPairBincodeBase64?.let { decodeBase64("oneTimePreKeyPairBincodeBase64", it) },
+        decodeBase64("remoteIdentityKeyBase64", remoteIdentityKeyBase64),
+        decodeBase64("remoteEphemeralKeyBase64", remoteEphemeralKeyBase64),
     )
     null
   }
 
   @ReactMethod
   fun encrypt(sessionId: String, plaintextBase64: String, promise: Promise) = resolve(promise) {
-    encodeBase64(manager.encrypt(sessionId, decodeBase64(plaintextBase64)))
+    encodeBase64(manager.encrypt(sessionId, decodeBase64("plaintextBase64", plaintextBase64)))
   }
 
   @ReactMethod
   fun decrypt(sessionId: String, encryptedWireBase64: String, promise: Promise) = resolve(promise) {
-    encodeBase64(manager.decrypt(sessionId, decodeBase64(encryptedWireBase64)))
+    encodeBase64(manager.decrypt(sessionId, decodeBase64("encryptedWireBase64", encryptedWireBase64)))
   }
 
   @ReactMethod
@@ -194,7 +198,7 @@ class RustE2eeModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
 
   @ReactMethod
   fun restoreSession(sessionId: String, stateBincodeBase64: String, promise: Promise) = resolve(promise) {
-    manager.restoreSession(sessionId, decodeBase64(stateBincodeBase64))
+    manager.restoreSession(sessionId, decodeBase64("stateBincodeBase64", stateBincodeBase64))
     null
   }
 
