@@ -5,6 +5,7 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.im.e2ee.SessionException
 import com.im.e2ee.SessionManager
 
 @OptIn(ExperimentalUnsignedTypes::class)
@@ -25,7 +26,16 @@ class RustE2eeModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
     try {
       promise.resolve(block())
     } catch (error: Throwable) {
-      promise.reject("RUST_E2EE_ERROR", error.message, error)
+      val code =
+          when (error) {
+            is SessionException.Crypto -> "RUST_E2EE_CRYPTO"
+            is SessionException.SessionNotFound -> "RUST_E2EE_SESSION_NOT_FOUND"
+            is SessionException.SessionAlreadyExists -> "RUST_E2EE_SESSION_ALREADY_EXISTS"
+            is SessionException.InvalidStateData -> "RUST_E2EE_INVALID_STATE"
+            is IllegalArgumentException -> "RUST_E2EE_INVALID_ARGUMENT"
+            else -> "RUST_E2EE_ERROR"
+          }
+      promise.reject(code, error.message, error)
     }
   }
 
