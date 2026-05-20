@@ -135,7 +135,7 @@ export class MobileRustE2eeRuntime implements E2eeRuntime {
         ? null
         : input.localKeys.oneTimePreKeyPairs.find((pair) => pair.id === handshake.oneTimePreKeyId) ?? null;
     if (handshake.oneTimePreKeyId != null && !oneTimePreKeyPair) {
-      // OTK already consumed or missing — X3DH without OTK is still secure
+      throw new Error(`Rust E2EE handshake references missing one-time pre-key: ${handshake.oneTimePreKeyId}`);
     }
 
     await nativeModule().createInboundSession(
