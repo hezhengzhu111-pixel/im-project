@@ -1,6 +1,8 @@
 import type { ChatSession } from '@im/shared-types';
 import type { RustE2eeEnvelope } from '@im/shared-e2ee-core';
 import { sanitizeE2eeLogValue } from '@im/shared-e2ee-core';
+import { createNextRetryAt, shouldStopRetry } from '@im/shared-im-core';
+import { RETRY_CONFIG } from '@/constants/config';
 import { e2eeManager } from '@/e2ee/manager/e2eeManager';
 import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
 import { logger } from '@/utils/logger';
@@ -137,7 +139,7 @@ export async function encryptPendingE2eePayload(item: PendingMessage): Promise<E
 
     const receiverId = parsed.data.receiverId || '';
     if (!receiverId) {
-      markPendingE2eeFailed(item, 'missing receiver id for E2EE send');
+      markPendingE2eeRetryableFailure(item, 'missing receiver id for E2EE send');
       return { ...base, error: 'missing receiver id' };
     }
 
@@ -174,16 +176,43 @@ export async function encryptPendingE2eePayload(item: PendingMessage): Promise<E
       conversationId: item.conversationId,
       error: message,
     }));
-    markPendingE2eeFailed(item, `encrypt failed: ${message}`);
+    const nextRetryCount = item.retryCount + 1;
+    if (shouldStopRetry(nextRetryCount, RETRY_CONFIG.maxRetryCount)) {
+      markPendingE2eeExhausted(item, `encrypt failed: ${message}`);
+    } else {
+      markPendingE2eeRetryableFailure(item, `encrypt failed: ${message}`);
+    }
     return { ...base, error: message };
   }
 }
 
-function markPendingE2eeFailed(item: PendingMessage, reason: string): void {
+function markPendingE2eeRetryableFailure(item: PendingMessage, reason: string): void {
+  const nextRetryCount = item.retryCount + 1;
+  const nextRetryAt = createNextRetryAt(nextRetryCount, Date.now(), {
+    baseDelayMs: RETRY_CONFIG.baseDelayMs,
+    maxDelayMs: RETRY_CONFIG.maxDelayMs,
+  });
   pendingMessageRepository.update({
     ...item,
     status: 'pending',
-    retryCount: item.retryCount + 1,
+    retryCount: nextRetryCount,
+    nextRetryAt,
     lastError: `e2ee: ${reason}`,
+  });
+}
+
+function markPendingE2eeExhausted(item: PendingMessage, reason: string): void {
+  pendingMessageRepository.update({
+    ...item,
+    status: 'failed',
+    retryCount: item.retryCount + 1,
+    lastError: `e2ee encrypt exhausted: ${reason}`,
+    // Strip plaintext from the exhausted failed pending — never persist
+    // plaintext in a terminal failed payload.
+    payloadJson: JSON.stringify({
+      sendType: item.sendType,
+      data: { clientMessageId: '', messageType: 'TEXT' },
+      encrypted: true,
+    }),
   });
 }

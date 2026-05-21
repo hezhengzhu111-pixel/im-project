@@ -5,6 +5,7 @@ import { applyMobileMessageToList, hasSameMobileMessageIdentity, resolveMessageS
 import { E2EE_DECRYPT_RETRY_CONFIG, RETRY_CONFIG } from '@/constants/config';
 import {
   E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT,
+  E2EE_PRIVATE_MEDIA_UNSUPPORTED_TEXT,
   E2EE_SEND_DISABLED_TEXT,
   blockEncryptedPendingPayload,
   getSessionE2eeStatus,
@@ -246,15 +247,87 @@ const enqueuePending = (
 };
 
 /**
+ * Resume a single E2EE-waiting pending send.
+ *
+ * 1. Calls `encryptPendingE2eePayload` to encrypt the plaintext and
+ *    replace the pending payload with an encrypted envelope.
+ * 2. On success: updates the local optimistic message, then calls
+ *    `retryMessage` with force=true to send through the standard pipeline.
+ * 3. On retryable failure: the pending already has nextRetryAt set by
+ *    encryptPendingE2eePayload; returns false, caller should skip.
+ * 4. On exhausted failure: encryptPendingE2eePayload already marked the
+ *    pending as failed. This helper marks the local optimistic message
+ *    FAILED as well.
+ *
+ * Returns true if the message was resumed and sent (or queued for send).
+ */
+const resumeOnePendingE2eeSend = async (item: PendingMessage): Promise<boolean> => {
+  const result = await encryptPendingE2eePayload(item);
+  if (!result.ok) {
+    // Check whether this was exhausted (pending status now 'failed')
+    const updated = pendingMessageRepository.get(item.localId);
+    if (updated?.status === 'failed') {
+      // Mark the local optimistic message FAILED so the UI reflects exhaustion
+      const store = useMessageStore.getState();
+      const messages = store.messagesBySession[item.conversationId] || [];
+      const idx = messages.findIndex((msg) => msg.id === item.localId);
+      if (idx >= 0) {
+        const nextList = [...messages];
+        nextList[idx] = { ...nextList[idx], status: 'FAILED' };
+        useMessageStore.setState({
+          messagesBySession: {
+            ...store.messagesBySession,
+            [item.conversationId]: nextList,
+          },
+        });
+        messageRepository.upsertMessages(item.conversationId, [nextList[idx]]);
+      }
+    }
+    return false;
+  }
+
+  // Update local optimistic message so the UI reflects the
+  // encrypted state before retryMessage overwrites it with the
+  // server response.
+  const store = useMessageStore.getState();
+  const messages = store.messagesBySession[item.conversationId] || [];
+  const idx = messages.findIndex((msg) => msg.id === item.localId);
+  if (idx >= 0 && result.envelope) {
+    const existing = messages[idx];
+    const updated: MobileMessage = {
+      ...existing,
+      encrypted: true,
+      e2eeEnvelope: result.envelope,
+      e2eeDeviceId: result.envelope.senderDeviceId,
+      rawJson: JSON.stringify({
+        ...existing,
+        content: '',
+        encrypted: true,
+        e2eeEnvelope: result.envelope,
+        e2eeDeviceId: result.envelope.senderDeviceId,
+      }),
+      isE2eeDisplayDecrypted: true,
+      decryptStatus: 'own-echo-preserved',
+    };
+    const nextList = [...messages];
+    nextList[idx] = updated;
+    useMessageStore.setState({
+      messagesBySession: {
+        ...store.messagesBySession,
+        [item.conversationId]: nextList,
+      },
+    });
+    messageRepository.upsertMessages(item.conversationId, [updated]);
+  }
+
+  await useMessageStore.getState().retryMessage(item.localId, { force: true });
+  return true;
+};
+
+/**
  * Resume all E2EE-waiting pending sends for a session.
  *
  * Called when the session E2EE status transitions to `encrypted`.
- * For each waiting pending:
- * 1. Calls `encryptPendingE2eePayload` to encrypt the plaintext and
- *    replace the pending payload with an encrypted envelope.
- * 2. Updates the local optimistic message so the UI reflects the
- *    encrypted state.
- * 3. Calls `retryMessage` to send through the standard pipeline.
  *
  * This is a module-private function; it is NOT exported so it does not
  * create import cycles. Callers trigger it indirectly via
@@ -267,50 +340,12 @@ const resumeOutboundE2eeSends = async (sessionId: string): Promise<number> => {
     return 0;
   }
 
-  const store = useMessageStore.getState();
   let resumed = 0;
-
   for (const item of items) {
-    const result = await encryptPendingE2eePayload(item);
-    if (!result.ok) {
-      continue;
+    const ok = await resumeOnePendingE2eeSend(item);
+    if (ok) {
+      resumed++;
     }
-
-    // Update local optimistic message so the UI reflects the
-    // encrypted state before retryMessage overwrites it with the
-    // server response.
-    const messages = store.messagesBySession[item.conversationId] || [];
-    const idx = messages.findIndex((msg) => msg.id === item.localId);
-    if (idx >= 0 && result.envelope) {
-      const existing = messages[idx];
-      const updated: MobileMessage = {
-        ...existing,
-        encrypted: true,
-        e2eeEnvelope: result.envelope,
-        e2eeDeviceId: result.envelope.senderDeviceId,
-        rawJson: JSON.stringify({
-          ...existing,
-          content: '',
-          encrypted: true,
-          e2eeEnvelope: result.envelope,
-          e2eeDeviceId: result.envelope.senderDeviceId,
-        }),
-        isE2eeDisplayDecrypted: true,
-        decryptStatus: 'own-echo-preserved',
-      };
-      const nextList = [...messages];
-      nextList[idx] = updated;
-      useMessageStore.setState({
-        messagesBySession: {
-          ...store.messagesBySession,
-          [item.conversationId]: nextList,
-        },
-      });
-      messageRepository.upsertMessages(item.conversationId, [updated]);
-    }
-
-    await store.retryMessage(item.localId, { force: true });
-    resumed++;
   }
 
   return resumed;
@@ -671,14 +706,15 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   },
 
   async sendMedia(session, file, type) {
+    // Mobile private media is NOT supported under E2EE policy.
+    // Regardless of session E2EE status (plaintext/negotiating/encrypted/failed),
+    // private media must not be sent as plaintext downgrade.
+    if (session.type === 'private') {
+      throw new Error(E2EE_PRIVATE_MEDIA_UNSUPPORTED_TEXT);
+    }
+
     const e2eeStatus = await resolveEffectiveE2eeStatus(session);
-    if (session.type === 'private' && e2eeStatus === 'encrypted') {
-      throw new Error(E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT);
-    }
-    if (e2eeStatus === 'negotiating') {
-      throw new Error('等待对方确认端到端加密请求');
-    }
-    if (e2eeStatus === 'failed') {
+    if (session.type === 'group' && e2eeStatus !== 'plaintext') {
       throw new Error(E2EE_SEND_DISABLED_TEXT);
     }
     const message = optimisticMessage(session, type, {
@@ -700,6 +736,30 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   async retryPending() {
     const pending = pendingMessageRepository.listReadyToSend();
     for (const item of pending) {
+      // Parse payload to check if this is an E2EE-waiting pending
+      let isE2eePending = false;
+      try {
+        const payload = JSON.parse(item.payloadJson) as Record<string, unknown>;
+        isE2eePending = payload.requiresE2ee === true;
+      } catch {
+        // If we can't parse, let retryMessage handle it normally
+      }
+
+      if (isE2eePending) {
+        // E2EE-waiting pending: only resume if the session is encrypted
+        const e2eeStatus = await loadLocalSessionStatus(item.conversationId).catch(() => 'plaintext' as const);
+        if (e2eeStatus === 'encrypted') {
+          // Try to encrypt and send. If it fails (retryable), nextRetryAt was
+          // already set by encryptPendingE2eePayload so listReadyToSend will
+          // exclude it until the backoff expires. If exhausted, the pending
+          // was marked failed and the local optimistic message FAILED.
+          await resumeOnePendingE2eeSend(item);
+        }
+        // If status is not encrypted (still negotiating/plaintext/failed),
+        // skip — do NOT send plaintext.
+        continue;
+      }
+
       await get().retryMessage(item.localId, { force: false });
     }
   },

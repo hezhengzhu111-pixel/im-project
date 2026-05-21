@@ -187,12 +187,20 @@ export const restorePendingEncryptedMessagesFromRepository = (sessionId?: string
   return messages.length;
 };
 
+/**
+ * Retry all ready pending encrypted messages across every session.
+ *
+ * Returns the total number of entries resolved this round.  "Resolved"
+ * means removed from the runtime pending queue — this includes both
+ * successfully decrypted messages and dead-letter / failed entries that
+ * the handler chose not to return.  It is NOT a count of decrypted messages.
+ */
 export const retryAllPendingEncryptedMessages = async (): Promise<number> => {
   if (!handlers) {
     return 0;
   }
   const config = E2EE_DECRYPT_RETRY_CONFIG;
-  let totalDecrypted = 0;
+  let totalResolved = 0;
   let globalProcessed = 0;
 
   for (const sessionId of listPendingEncryptedSessionIds()) {
@@ -217,13 +225,21 @@ export const retryAllPendingEncryptedMessages = async (): Promise<number> => {
     ];
     setPendingEntries(sessionId, merged);
 
-    totalDecrypted += batch.length - remaining.length;
+    totalResolved += batch.length - remaining.length;
   }
-  return totalDecrypted;
+  return totalResolved;
 };
 
 const inflightRetries = new Set<string>();
 
+/**
+ * Retry ready pending encrypted messages for a single session.
+ *
+ * Returns the number of entries resolved this round (removed from the
+ * runtime queue).  Like retryAllPendingEncryptedMessages, "resolved"
+ * includes both successfully decrypted messages and dead-letter / failed
+ * entries that the handler chose not to return.
+ */
 export const retryDecryptPendingMessages = async (sessionId: string): Promise<number> => {
   if (inflightRetries.has(sessionId)) {
     return 0;
