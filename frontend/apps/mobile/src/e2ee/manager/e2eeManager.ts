@@ -12,9 +12,10 @@ import {
 } from '@im/shared-e2ee-core';
 import { mobileE2eeKeyService } from '@/e2ee/api/keyService';
 import { getMobileE2eeRuntime } from '@/e2ee/runtime/mobileRustE2eeRuntime';
+import { e2eeKeyStore } from '@/e2ee/store/keyStore';
 import { e2eeSessionStore } from '@/e2ee/store/sessionStore';
 import { logger } from '@/utils/logger';
-import { getCurrentE2eeUserId, requireCurrentE2eeUserId } from './context';
+import { requireCurrentE2eeUserId } from './context';
 import { ensureLocalE2eeDeviceRegistered, getLocalRustKeyMaterial } from './localDevice';
 import { loadLocalSessionStatus, setLocalSessionStatus } from './negotiation';
 
@@ -98,16 +99,28 @@ const commitSessionState = async (
 class MobileE2eeManager {
   private readonly queues = new Map<string, Promise<unknown>>();
 
-  private enqueue<T>(sessionId: string, task: () => Promise<T>): Promise<T> {
-    const userId = getCurrentE2eeUserId();
-    // Scope the queue key by userId so concurrent operations on the same
-    // sessionId from different accounts never share a serialisation chain.
-    // When no user is available each call gets its own anonymous key to
-    // avoid cross-account contamination.
-    const key = userId
-      ? `${encodeURIComponent(userId)}:${encodeURIComponent(sessionId)}`
-      : `anonymous:${encodeURIComponent(sessionId)}:${Date.now()}`;
+  /**
+   * Generate a scoped queue key for the session.
+   *
+   * The key includes userId, deviceId, and sessionId so two E2EE runtimes
+   * belonging to different accounts or different devices of the same account
+   * never share the same serialisation chain.
+   *
+   * If no user is logged in the call throws immediately — anonymous E2EE
+   * operations are not supported because a device namespace is required
+   * for key material and session state.
+   */
+  private async queueKey(sessionId: string): Promise<string> {
+    const userId = requireCurrentE2eeUserId();
+    const deviceId = await e2eeKeyStore.getOrCreateDeviceId(userId);
+    if (!deviceId) {
+      throw new Error('E2EE device namespace unavailable');
+    }
+    return `${encodeURIComponent(userId)}:${encodeURIComponent(deviceId)}:${encodeURIComponent(sessionId)}`;
+  }
 
+  private async enqueue<T>(sessionId: string, task: () => Promise<T>): Promise<T> {
+    const key = await this.queueKey(sessionId);
     const previous = this.queues.get(key) || Promise.resolve();
     const next = previous.then(task, task);
     this.queues.set(key, next.catch(() => undefined));

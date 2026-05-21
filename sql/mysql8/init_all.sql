@@ -199,9 +199,13 @@ CREATE TABLE IF NOT EXISTS e2ee_sessions (
   target_user_id        BIGINT NOT NULL COMMENT '目标用户ID',
   status                VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '协商状态: pending/encrypted/rejected/plaintext',
   request_payload_json  TEXT NULL COMMENT '协商请求载荷JSON',
+  state_version         INT NOT NULL DEFAULT 1 COMMENT '单调状态版本号，用于冲突检测',
+  disabled_by           BIGINT NULL COMMENT '禁用方用户ID',
+  disabled_at           DATETIME NULL COMMENT '禁用时间',
   created_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_time          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (session_id)
+  PRIMARY KEY (session_id),
+  KEY idx_e2ee_sessions_state_version (session_id, state_version)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE私聊加密会话协商表';
 
 
