@@ -1,5 +1,5 @@
-import { e2eeManager } from '@/e2ee/manager/e2eeManager';
-import { processE2eeMessage, processE2eeMessages, hasE2eeHandshake, shouldDrainPendingAfterDecrypt } from '@/e2ee/messageProcessor';
+import { e2eeManager, E2eeEnvelopeRecipientMismatchError } from '@/e2ee/manager/e2eeManager';
+import { processE2eeMessage, processE2eeMessages, hasE2eeHandshake, shouldDrainPendingAfterDecrypt, E2EE_NOT_FOR_THIS_DEVICE_TEXT } from '@/e2ee/messageProcessor';
 import { E2EE_OWN_PLAINTEXT_UNAVAILABLE_TEXT, E2EE_UNSUPPORTED_TEXT } from '@/e2ee/e2eeDeferred';
 import type { MobileMessage } from '@/types/models';
 
@@ -148,6 +148,67 @@ describe('mobile E2EE message processing', () => {
 
     expect(processed.decryptStatus).toBe('pending');
     expect(processed.rawMessage.e2eeEnvelope?.handshake).toBeUndefined();
+  });
+
+  // ─── recipient device mismatch ────────────────────────────────────
+
+  describe('recipient device mismatch', () => {
+    it('marks message as failed with not-for-this-device text when recipientDeviceId does not match', async () => {
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockRejectedValueOnce(
+        new E2eeEnvelopeRecipientMismatchError('device-100', 'device-999', '100_200'),
+      );
+
+      const processed = await processE2eeMessage(encryptedMessage(0), {
+        currentUserId: '100',
+        sessionId: '100_200',
+      });
+
+      expect(processed.decryptStatus).toBe('failed');
+      expect(processed.displayMessage.content).toBe(E2EE_NOT_FOR_THIS_DEVICE_TEXT);
+      expect(processed.errorClassification?.retryable).toBe(false);
+      expect(processed.errorClassification?.code).toBe('E2EE_RECIPIENT_DEVICE_MISMATCH');
+    });
+
+    it('does not mark as pending when recipientDeviceId does not match', async () => {
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockRejectedValueOnce(
+        new E2eeEnvelopeRecipientMismatchError('device-100', 'device-999', '100_200'),
+      );
+
+      const processed = await processE2eeMessage(encryptedMessage(0), {
+        currentUserId: '100',
+        sessionId: '100_200',
+      });
+
+      expect(processed.decryptStatus).not.toBe('pending');
+    });
+
+    it('still decrypts normally when recipientDeviceId matches local device', async () => {
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockResolvedValueOnce('hello-plaintext');
+
+      const processed = await processE2eeMessage(encryptedMessage(0), {
+        currentUserId: '100',
+        sessionId: '100_200',
+      });
+
+      expect(processed.decryptStatus).toBe('decrypted');
+      expect(processed.displayMessage.content).toBe('hello-plaintext');
+    });
+
+    it('handles plain Error with E2EE_RECIPIENT_DEVICE_MISMATCH code', async () => {
+      const mismatchError = new Error('E2EE envelope is not addressed to this device');
+      (mismatchError as any).code = 'E2EE_RECIPIENT_DEVICE_MISMATCH';
+      (mismatchError as any).nonRetryable = true;
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockRejectedValueOnce(mismatchError);
+
+      const processed = await processE2eeMessage(encryptedMessage(0), {
+        currentUserId: '100',
+        sessionId: '100_200',
+      });
+
+      expect(processed.decryptStatus).toBe('failed');
+      expect(processed.displayMessage.content).toBe(E2EE_NOT_FOR_THIS_DEVICE_TEXT);
+      expect(processed.errorClassification?.retryable).toBe(false);
+    });
   });
 
   // ─── hasE2eeHandshake / shouldDrainPendingAfterDecrypt ─────────────
