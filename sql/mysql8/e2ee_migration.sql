@@ -399,3 +399,34 @@ CREATE TABLE IF NOT EXISTS e2ee_pre_key_claims (
     PRIMARY KEY (id),
     UNIQUE KEY uniq_e2ee_prekey_claim(requester_user_id, requester_device_id, target_user_id, target_device_id, conversation_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE one-time pre-key claim idempotency';
+
+-- Add secondary index for target-based claim lookups (e.g., cleanup by target device)
+DROP PROCEDURE IF EXISTS add_index_if_missing;
+DELIMITER //
+CREATE PROCEDURE add_index_if_missing(
+    IN target_table VARCHAR(64),
+    IN index_name VARCHAR(64),
+    IN index_definition TEXT
+)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM INFORMATION_SCHEMA.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = target_table
+          AND INDEX_NAME = index_name
+    ) THEN
+        SET @ddl = CONCAT('ALTER TABLE `', target_table, '` ADD INDEX `', index_name, '` ', index_definition);
+        PREPARE stmt FROM @ddl;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END//
+DELIMITER ;
+
+CALL add_index_if_missing(
+    'e2ee_pre_key_claims',
+    'idx_e2ee_prekey_claim_target',
+    '(target_user_id, target_device_id, conversation_id)'
+);
+DROP PROCEDURE IF EXISTS add_index_if_missing;

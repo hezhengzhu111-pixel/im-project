@@ -534,97 +534,100 @@ pub async fn get_bundle(
         }
     }
 
-    // ---- 事务内原子 claim one-time pre-key（幂等） ----
+    // ---- 事务内原子 claim one-time pre-key（先占位再消费） ----
+    // 策略：先尝试 INSERT 占位 claim（pre-key 字段全 NULL），
+    // 成功则拥有 claim 权，再消费 pre-key 并 UPDATE claim；
+    // 唯一键冲突则不消费任何 pre-key，回滚后重读已有 claim。
     let mut tx = state.db.begin().await?;
 
-    // 幂等检查：是否已有 claim
-    let existing_claim = sqlx::query(
-        r#"SELECT one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key
-           FROM service_user_service_db.e2ee_pre_key_claims
-           WHERE requester_user_id = ? AND requester_device_id = ?
-             AND target_user_id = ? AND target_device_id = ?
-             AND conversation_id = ?"#,
-    )
-    .bind(identity.user_id)
-    .bind(requester_device_id)
-    .bind(target_user_id)
-    .bind(device_id)
-    .bind(conversation_id)
-    .fetch_optional(&mut *tx)
-    .await?;
-
-    if let Some(claim) = existing_claim {
-        // 已有 claim：直接返回缓存结果（幂等）
-        let otp: Option<String> = claim.get("one_time_pre_key");
-        let otp_id: Option<i32> = claim.get("one_time_pre_key_id");
-        tx.commit().await?;
-
-        let mut dto = base_dto;
-        dto.one_time_pre_key = otp;
-        dto.one_time_pre_key_id = otp_id;
-        return Ok(Json(ApiResponse::success(dto)));
-    }
-
-    // 无已有 claim：尝试消费一个 one-time pre-key
-    let otp_row = sqlx::query(
-        r#"SELECT id, pre_key, COALESCE(pre_key_id, 0) AS pre_key_id
-           FROM service_user_service_db.e2ee_one_time_pre_keys
-           WHERE user_id = ? AND device_id = ? AND consumed = 0
-           LIMIT 1
-           FOR UPDATE"#,
-    )
-    .bind(target_user_id)
-    .bind(device_id)
-    .fetch_optional(&mut *tx)
-    .await?;
-
-    let (one_time_pre_key, one_time_pre_key_id, otp_row_id) = if let Some(ref row) = otp_row {
-        let row_id: i64 = row.get("id");
-        let pre_key: String = row.get("pre_key");
-        let pre_key_id: Option<i32> = row.try_get::<i32, _>("pre_key_id").ok();
-
-        sqlx::query(
-            "UPDATE service_user_service_db.e2ee_one_time_pre_keys \
-             SET consumed = 1, consumed_time = NOW() WHERE id = ?",
-        )
-        .bind(row_id)
-        .execute(&mut *tx)
-        .await?;
-
-        (Some(pre_key), pre_key_id, Some(row_id))
-    } else {
-        (None, None, None)
-    };
-
-    // 写入 claim 表（幂等键）。唯一键冲突时回退为重新读取已有 claim。
     match sqlx::query(
         r#"INSERT INTO service_user_service_db.e2ee_pre_key_claims
            (requester_user_id, requester_device_id, target_user_id, target_device_id,
             conversation_id, one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)"#,
+           VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)"#,
     )
     .bind(identity.user_id)
     .bind(requester_device_id)
     .bind(target_user_id)
     .bind(device_id)
     .bind(conversation_id)
-    .bind(otp_row_id)
-    .bind(one_time_pre_key_id)
-    .bind(&one_time_pre_key)
     .execute(&mut *tx)
     .await
     {
-        Ok(_) => {}
+        Ok(_) => {
+            // INSERT 成功：当前请求拥有 claim 权，尝试消费一个 one-time pre-key
+            let otp_row = sqlx::query(
+                r#"SELECT id, pre_key, COALESCE(pre_key_id, 0) AS pre_key_id
+                   FROM service_user_service_db.e2ee_one_time_pre_keys
+                   WHERE user_id = ? AND device_id = ? AND consumed = 0
+                   LIMIT 1
+                   FOR UPDATE"#,
+            )
+            .bind(target_user_id)
+            .bind(device_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+
+            if let Some(ref row) = otp_row {
+                let row_id: i64 = row.get("id");
+                let pre_key: String = row.get("pre_key");
+                let pre_key_id: Option<i32> = row.try_get::<i32, _>("pre_key_id").ok();
+
+                sqlx::query(
+                    "UPDATE service_user_service_db.e2ee_one_time_pre_keys \
+                     SET consumed = 1, consumed_time = NOW() WHERE id = ?",
+                )
+                .bind(row_id)
+                .execute(&mut *tx)
+                .await?;
+
+                // 回填 claim 记录
+                sqlx::query(
+                    r#"UPDATE service_user_service_db.e2ee_pre_key_claims
+                       SET one_time_pre_key_row_id = ?,
+                           one_time_pre_key_id = ?,
+                           one_time_pre_key = ?
+                       WHERE requester_user_id = ? AND requester_device_id = ?
+                         AND target_user_id = ? AND target_device_id = ?
+                         AND conversation_id = ?"#,
+                )
+                .bind(Some(row_id))
+                .bind(pre_key_id)
+                .bind(Some(&pre_key))
+                .bind(identity.user_id)
+                .bind(requester_device_id)
+                .bind(target_user_id)
+                .bind(device_id)
+                .bind(conversation_id)
+                .execute(&mut *tx)
+                .await?;
+
+                tx.commit().await?;
+
+                let mut dto = base_dto;
+                dto.one_time_pre_key = Some(pre_key);
+                dto.one_time_pre_key_id = pre_key_id;
+                return Ok(Json(ApiResponse::success(dto)));
+            }
+
+            // 无可用 pre-key：保留空 claim（signed pre-key fallback），后续请求幂等返回相同结果
+            tx.commit().await?;
+            return Ok(Json(ApiResponse::success(base_dto)));
+        }
         Err(sqlx::Error::Database(ref db_err))
             if db_err.code().as_deref() == Some("23000") =>
         {
-            // 并发唯一键冲突：另一请求已创建 claim，重新读取
+            // 唯一键冲突：另一并发请求已创建 claim，回滚后重读已有 claim
+            // 关键：不消费任何 pre-key，避免并发导致额外 pre-key 丢失
+            tx.rollback().await.ok();
+
             tracing::warn!(
                 requester_user_id = %identity.user_id,
                 target_user_id = %target_user_id,
                 %conversation_id,
-                "e2ee_pre_key_claims unique key conflict, re-reading existing claim"
+                "e2ee_pre_key_claims unique key conflict, re-reading existing claim (no pre-key consumed)"
             );
+
             let claim = sqlx::query(
                 r#"SELECT one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key
                    FROM service_user_service_db.e2ee_pre_key_claims
@@ -637,10 +640,8 @@ pub async fn get_bundle(
             .bind(target_user_id)
             .bind(device_id)
             .bind(conversation_id)
-            .fetch_optional(&mut *tx)
+            .fetch_optional(&state.db)
             .await?;
-
-            tx.commit().await?;
 
             let mut dto = base_dto;
             if let Some(claim) = claim {
@@ -651,13 +652,6 @@ pub async fn get_bundle(
         }
         Err(e) => return Err(e.into()),
     }
-
-    tx.commit().await?;
-
-    let mut dto = base_dto;
-    dto.one_time_pre_key = one_time_pre_key;
-    dto.one_time_pre_key_id = one_time_pre_key_id;
-    Ok(Json(ApiResponse::success(dto)))
 }
 
 /// 获取目标用户的公开设备信息。
@@ -1810,7 +1804,7 @@ mod tests {
         Ok(())
     }
 
-    // 场景 6: claim 表幂等 — 同一个 claim key 应只消耗一个 pre-key
+    // 场景 6: claim 表幂等 — INSERT-first 策略：先占位再消费，同一个 claim key 只消费一个 pre-key
     #[tokio::test]
     #[ignore]
     async fn pre_key_claim_idempotency() -> anyhow::Result<()> {
@@ -1835,25 +1829,25 @@ mod tests {
         .execute(&db)
         .await?;
 
-        // 第一次 claim：应消费一个 pre-key
+        // ---- 第一次 claim：INSERT-first 策略 ----
         let mut tx = db.begin().await?;
-        let existing = sqlx::query(
-            r#"SELECT one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key
-               FROM service_user_service_db.e2ee_pre_key_claims
-               WHERE requester_user_id = ? AND requester_device_id = ?
-                 AND target_user_id = ? AND target_device_id = ?
-                 AND conversation_id = ?"#,
+
+        // Step 1: 先插入占位 claim
+        sqlx::query(
+            r#"INSERT INTO service_user_service_db.e2ee_pre_key_claims
+               (requester_user_id, requester_device_id, target_user_id, target_device_id,
+                conversation_id, one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key)
+               VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)"#,
         )
         .bind(requester)
         .bind(requester_device)
         .bind(target_user)
         .bind(target_device)
         .bind(conversation_id)
-        .fetch_optional(&mut *tx)
+        .execute(&mut *tx)
         .await?;
-        assert!(existing.is_none(), "no prior claim should exist");
 
-        // 消费一个 pre-key
+        // Step 2: INSERT 成功 → 消费一个 pre-key
         let otp_row = sqlx::query(
             r#"SELECT id, pre_key, COALESCE(pre_key_id, 0) AS pre_key_id
                FROM service_user_service_db.e2ee_one_time_pre_keys
@@ -1878,20 +1872,24 @@ mod tests {
         .execute(&mut *tx)
         .await?;
 
+        // Step 3: 回填 claim 记录
         sqlx::query(
-            r#"INSERT INTO service_user_service_db.e2ee_pre_key_claims
-               (requester_user_id, requester_device_id, target_user_id, target_device_id,
-                conversation_id, one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)"#,
+            r#"UPDATE service_user_service_db.e2ee_pre_key_claims
+               SET one_time_pre_key_row_id = ?,
+                   one_time_pre_key_id = ?,
+                   one_time_pre_key = ?
+               WHERE requester_user_id = ? AND requester_device_id = ?
+                 AND target_user_id = ? AND target_device_id = ?
+                 AND conversation_id = ?"#,
         )
+        .bind(Some(row_id))
+        .bind(pre_key_id)
+        .bind(Some(&pre_key))
         .bind(requester)
         .bind(requester_device)
         .bind(target_user)
         .bind(target_device)
         .bind(conversation_id)
-        .bind(Some(row_id))
-        .bind(pre_key_id)
-        .bind(Some(&pre_key))
         .execute(&mut *tx)
         .await?;
         tx.commit().await?;
@@ -1907,9 +1905,37 @@ mod tests {
         .await?;
         assert_eq!(consumed_count, 1, "exactly one pre-key should be consumed");
 
-        // 第二次 claim：应命中已有 claim（幂等）
+        // ---- 第二次 claim：INSERT placeholder 应触发唯一键冲突 ----
         let mut tx2 = db.begin().await?;
-        let existing2 = sqlx::query(
+        let dup_result = sqlx::query(
+            r#"INSERT INTO service_user_service_db.e2ee_pre_key_claims
+               (requester_user_id, requester_device_id, target_user_id, target_device_id,
+                conversation_id, one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key)
+               VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)"#,
+        )
+        .bind(requester)
+        .bind(requester_device)
+        .bind(target_user)
+        .bind(target_device)
+        .bind(conversation_id)
+        .execute(&mut *tx2)
+        .await;
+
+        match dup_result {
+            Err(sqlx::Error::Database(ref db_err))
+                if db_err.code().as_deref() == Some("23000") =>
+            {
+                // 符合预期：唯一键冲突，不消费 pre-key
+                tx2.rollback().await.ok();
+            }
+            other => {
+                tx2.rollback().await.ok();
+                anyhow::bail!("expected unique key violation on duplicate placeholder insert, got: {other:?}");
+            }
+        }
+
+        // 重读已有 claim，验证返回的是同一个 pre-key
+        let claim = sqlx::query(
             r#"SELECT one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key
                FROM service_user_service_db.e2ee_pre_key_claims
                WHERE requester_user_id = ? AND requester_device_id = ?
@@ -1921,14 +1947,13 @@ mod tests {
         .bind(target_user)
         .bind(target_device)
         .bind(conversation_id)
-        .fetch_optional(&mut *tx2)
+        .fetch_optional(&db)
         .await?;
-        assert!(existing2.is_some(), "existing claim should be found");
-        let claim = existing2.unwrap();
+        assert!(claim.is_some(), "existing claim should be found");
+        let claim = claim.unwrap();
         let cached_key: Option<String> = claim.get("one_time_pre_key");
         assert!(cached_key.is_some(), "cached one-time pre-key should exist");
         assert_eq!(cached_key.as_deref(), Some(pre_key.as_str()), "cached pre-key should match consumed one");
-        tx2.commit().await?;
 
         // 验证没有额外消费
         let consumed_count2: i64 = sqlx::query_scalar(
@@ -1954,7 +1979,7 @@ mod tests {
         Ok(())
     }
 
-    // 场景 7: 无可用 one-time pre-key → claim 表记录空 pre-key，重复请求幂等
+    // 场景 7: 无可用 one-time pre-key → INSERT-first 占位后保留空 claim，重复请求幂等
     #[tokio::test]
     #[ignore]
     async fn pre_key_claim_idempotency_no_available_keys() -> anyhow::Result<()> {
@@ -2004,21 +2029,10 @@ mod tests {
         .execute(&db)
         .await?;
 
-        // 第一次 claim：无 pre-key
+        // ---- 第一次 claim：INSERT-first，无可用 pre-key ----
         let mut tx = db.begin().await?;
-        let otp_row = sqlx::query(
-            r#"SELECT id, pre_key, COALESCE(pre_key_id, 0) AS pre_key_id
-               FROM service_user_service_db.e2ee_one_time_pre_keys
-               WHERE user_id = ? AND device_id = ? AND consumed = 0
-               LIMIT 1 FOR UPDATE"#,
-        )
-        .bind(target_user)
-        .bind(target_device)
-        .fetch_optional(&mut *tx)
-        .await?;
-        assert!(otp_row.is_none(), "no pre-keys should be available");
 
-        // 插入空 claim
+        // Step 1: 插入占位 claim
         sqlx::query(
             r#"INSERT INTO service_user_service_db.e2ee_pre_key_claims
                (requester_user_id, requester_device_id, target_user_id, target_device_id,
@@ -2032,9 +2046,52 @@ mod tests {
         .bind(conversation_id)
         .execute(&mut *tx)
         .await?;
+
+        // Step 2: SELECT FOR UPDATE — 无可用 pre-key
+        let otp_row = sqlx::query(
+            r#"SELECT id, pre_key, COALESCE(pre_key_id, 0) AS pre_key_id
+               FROM service_user_service_db.e2ee_one_time_pre_keys
+               WHERE user_id = ? AND device_id = ? AND consumed = 0
+               LIMIT 1 FOR UPDATE"#,
+        )
+        .bind(target_user)
+        .bind(target_device)
+        .fetch_optional(&mut *tx)
+        .await?;
+        assert!(otp_row.is_none(), "no pre-keys should be available");
+
+        // 保留空 claim，commit
         tx.commit().await?;
 
-        // 重复查询：应返回已有空 claim
+        // ---- 重复请求：INSERT 占位应唯一键冲突，不消费 pre-key ----
+        let mut tx2 = db.begin().await?;
+        let dup_result = sqlx::query(
+            r#"INSERT INTO service_user_service_db.e2ee_pre_key_claims
+               (requester_user_id, requester_device_id, target_user_id, target_device_id,
+                conversation_id, one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key)
+               VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)"#,
+        )
+        .bind(requester)
+        .bind(requester_device)
+        .bind(target_user)
+        .bind(target_device)
+        .bind(conversation_id)
+        .execute(&mut *tx2)
+        .await;
+
+        match dup_result {
+            Err(sqlx::Error::Database(ref db_err))
+                if db_err.code().as_deref() == Some("23000") =>
+            {
+                tx2.rollback().await.ok();
+            }
+            other => {
+                tx2.rollback().await.ok();
+                anyhow::bail!("expected unique key violation on duplicate placeholder insert, got: {other:?}");
+            }
+        }
+
+        // 重读已有 claim
         let claim = sqlx::query(
             r#"SELECT one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key
                FROM service_user_service_db.e2ee_pre_key_claims
@@ -2052,7 +2109,18 @@ mod tests {
         assert!(claim.is_some(), "claim should exist");
         let claim = claim.unwrap();
         let otp: Option<String> = claim.get("one_time_pre_key");
-        assert!(otp.is_none(), "one_time_pre_key should be null");
+        assert!(otp.is_none(), "one_time_pre_key should be null (signed pre-key fallback)");
+
+        // 验证没有 pre-key 被消费
+        let consumed: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM service_user_service_db.e2ee_one_time_pre_keys \
+             WHERE user_id = ? AND device_id = ? AND consumed = 1",
+        )
+        .bind(target_user)
+        .bind(target_device)
+        .fetch_one(&db)
+        .await?;
+        assert_eq!(consumed, 0, "no pre-key should be consumed");
 
         // 清理
         sqlx::query(
@@ -2067,7 +2135,10 @@ mod tests {
         Ok(())
     }
 
-    // 场景 8: 唯一键并发冲突 → 重读已有 claim，不重复消费
+    // 场景 8: INSERT-first 并发安全验证
+    // 请求 A 先 INSERT 占位成功 → SELECT FOR UPDATE pre-key1 → UPDATE consumed → UPDATE claim
+    // 请求 B INSERT 占位唯一键冲突 → 不消费任何 pre-key → 回滚 → 重读 A 的 claim
+    // 结果：只消费 1 个 pre-key（pre-key1），pre-key2 不变
     #[tokio::test]
     #[ignore]
     async fn pre_key_claim_unique_key_conflict_handling() -> anyhow::Result<()> {
@@ -2091,8 +2162,25 @@ mod tests {
         .execute(&db)
         .await?;
 
-        // 先消耗一个 pre-key 并插入第一条 claim
-        let mut tx1 = db.begin().await?;
+        // ---- 请求 A：INSERT 占位 → 消费 pre-key → UPDATE claim ----
+        let mut tx_a = db.begin().await?;
+
+        // INSERT 占位
+        sqlx::query(
+            r#"INSERT INTO service_user_service_db.e2ee_pre_key_claims
+               (requester_user_id, requester_device_id, target_user_id, target_device_id,
+                conversation_id, one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key)
+               VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)"#,
+        )
+        .bind(requester)
+        .bind(requester_device)
+        .bind(target_user)
+        .bind(target_device)
+        .bind(conversation_id)
+        .execute(&mut *tx_a)
+        .await?;
+
+        // 消费第一个 pre-key
         let otp_row = sqlx::query(
             r#"SELECT id, pre_key, COALESCE(pre_key_id, 0) AS pre_key_id
                FROM service_user_service_db.e2ee_one_time_pre_keys
@@ -2101,7 +2189,7 @@ mod tests {
         )
         .bind(target_user)
         .bind(target_device)
-        .fetch_optional(&mut *tx1)
+        .fetch_optional(&mut *tx_a)
         .await?;
         let row = otp_row.unwrap();
         let row_id: i64 = row.get("id");
@@ -2113,42 +2201,44 @@ mod tests {
              SET consumed = 1, consumed_time = NOW() WHERE id = ?",
         )
         .bind(row_id)
-        .execute(&mut *tx1)
+        .execute(&mut *tx_a)
         .await?;
 
+        // 回填 claim
         sqlx::query(
-            r#"INSERT INTO service_user_service_db.e2ee_pre_key_claims
-               (requester_user_id, requester_device_id, target_user_id, target_device_id,
-                conversation_id, one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)"#,
+            r#"UPDATE service_user_service_db.e2ee_pre_key_claims
+               SET one_time_pre_key_row_id = ?,
+                   one_time_pre_key_id = ?,
+                   one_time_pre_key = ?
+               WHERE requester_user_id = ? AND requester_device_id = ?
+                 AND target_user_id = ? AND target_device_id = ?
+                 AND conversation_id = ?"#,
         )
+        .bind(Some(row_id))
+        .bind(first_key_id)
+        .bind(Some(&first_key))
         .bind(requester)
         .bind(requester_device)
         .bind(target_user)
         .bind(target_device)
         .bind(conversation_id)
-        .bind(Some(row_id))
-        .bind(first_key_id)
-        .bind(Some(&first_key))
-        .execute(&mut *tx1)
+        .execute(&mut *tx_a)
         .await?;
-        tx1.commit().await?;
+        tx_a.commit().await?;
 
-        // 尝试第二次插入（模拟并发）：应触发唯一键冲突
+        // ---- 请求 B：尝试 INSERT 占位（模拟并发冲突） ----
+        // 此时 A 已 commit，B 的 INSERT 应触发唯一键冲突
         let result = sqlx::query(
             r#"INSERT INTO service_user_service_db.e2ee_pre_key_claims
                (requester_user_id, requester_device_id, target_user_id, target_device_id,
                 conversation_id, one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)"#,
+               VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)"#,
         )
         .bind(requester)
         .bind(requester_device)
         .bind(target_user)
         .bind(target_device)
         .bind(conversation_id)
-        .bind(Some(row_id))
-        .bind(first_key_id)
-        .bind(Some(&first_key))
         .execute(&db)
         .await;
 
@@ -2156,17 +2246,17 @@ mod tests {
             Err(sqlx::Error::Database(ref db_err))
                 if db_err.code().as_deref() == Some("23000") =>
             {
-                // 符合预期：唯一键冲突
+                // 符合预期：唯一键冲突，请求 B 没有消费任何 pre-key
             }
             Ok(_) => {
-                anyhow::bail!("expected unique key violation on duplicate claim insert");
+                anyhow::bail!("expected unique key violation on duplicate placeholder insert");
             }
             Err(e) => {
-                anyhow::bail!("unexpected error on duplicate claim insert: {e}");
+                anyhow::bail!("unexpected error on duplicate placeholder insert: {e}");
             }
         }
 
-        // 验证只消费了一个 pre-key
+        // 验证只消费了 1 个 pre-key（pre-key2 未被消费）
         let consumed: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM service_user_service_db.e2ee_one_time_pre_keys \
              WHERE user_id = ? AND device_id = ? AND consumed = 1",
@@ -2176,6 +2266,17 @@ mod tests {
         .fetch_one(&db)
         .await?;
         assert_eq!(consumed, 1, "only one pre-key should be consumed");
+
+        // 验证未消费的 pre-key 仍然可用（consumed=0）
+        let available: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM service_user_service_db.e2ee_one_time_pre_keys \
+             WHERE user_id = ? AND device_id = ? AND consumed = 0",
+        )
+        .bind(target_user)
+        .bind(target_device)
+        .fetch_one(&db)
+        .await?;
+        assert_eq!(available, 2, "two pre-keys should still be available (only 1 consumed out of 3)");
 
         // 验证重读能得到相同的 pre-key
         let claim = sqlx::query(
