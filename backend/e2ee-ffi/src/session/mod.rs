@@ -237,12 +237,15 @@ impl SessionManager {
 
         let state = init_sending_chain(&result.root_key, ikp.public_key, fetch.identity_key)?;
 
-        // Insert session (write lock)
+        // Insert session (write lock) — double-check to prevent TOCTOU race
         {
             let mut sessions = self
                 .sessions
                 .write()
                 .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
+            if sessions.contains_key(&session_id) {
+                return Err(SessionError::SessionAlreadyExists(session_id));
+            }
             sessions.insert(session_id, Mutex::new(state));
         }
 
@@ -300,6 +303,9 @@ impl SessionManager {
                 .sessions
                 .write()
                 .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
+            if sessions.contains_key(&session_id) {
+                return Err(SessionError::SessionAlreadyExists(session_id));
+            }
             sessions.insert(session_id, Mutex::new(state));
         }
         Ok(())

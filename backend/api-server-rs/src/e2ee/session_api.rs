@@ -11,6 +11,7 @@ use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::Row;
+use std::collections::{HashMap, HashSet};
 
 // ---------------------------------------------------------------------------
 // 常量
@@ -666,7 +667,7 @@ async fn ensure_conversation_member(
             .parse::<i64>()
             .map_err(|_| AppError::BadRequest("invalid conversationId".to_string()))?;
         let count: Option<i64> = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM service_group_service_db.group_members WHERE group_id = ? AND user_id = ? AND status = 1",
+            "SELECT COUNT(*) FROM service_group_service_db.im_group_member WHERE group_id = ? AND user_id = ? AND status = 1",
         )
         .bind(group_id)
         .bind(user_id)
@@ -679,25 +680,189 @@ async fn ensure_conversation_member(
     Err(AppError::Forbidden("not a conversation member".to_string()))
 }
 
-async fn active_devices(db: &sqlx::MySqlPool, device_ids: &[String]) -> Result<(), AppError> {
+/// 批量查询 device_id → user_id 映射，仅返回 status='active' 的设备。
+/// 若任意 device_id 不存在或非 active，返回 BadRequest。
+async fn fetch_device_owners(
+    db: &sqlx::MySqlPool,
+    device_ids: &[String],
+) -> Result<HashMap<String, i64>, AppError> {
     if device_ids.is_empty() {
-        return Err(AppError::BadRequest(
-            "recipientDeviceIds required".to_string(),
+        return Ok(HashMap::new());
+    }
+    let placeholders: String = device_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT device_id, user_id FROM service_user_service_db.e2ee_devices \
+         WHERE device_id IN ({placeholders}) AND status = 'active'"
+    );
+    let mut query = sqlx::query(&sql);
+    for did in device_ids {
+        query = query.bind(did);
+    }
+    let rows = query.fetch_all(db).await?;
+    if rows.len() != device_ids.len() {
+        let found: HashSet<&str> = rows.iter().map(|r| r.get::<&str, _>("device_id")).collect();
+        let missing: Vec<&str> = device_ids
+            .iter()
+            .map(|s| s.as_str())
+            .filter(|did| !found.contains(did))
+            .collect();
+        return Err(AppError::BadRequest(format!(
+            "devices not found or not active: {}",
+            missing.join(", ")
+        )));
+    }
+    let owners: HashMap<String, i64> = rows
+        .iter()
+        .map(|r| (r.get("device_id"), r.get("user_id")))
+        .collect();
+    Ok(owners)
+}
+
+/// 校验 sender_device_id 属于当前登录用户且处于 active 状态。
+async fn ensure_sender_device_belongs_to_user(
+    db: &sqlx::MySqlPool,
+    device_id: &str,
+    user_id: i64,
+) -> Result<(), AppError> {
+    let exists: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM service_user_service_db.e2ee_devices \
+         WHERE device_id = ? AND user_id = ? AND status = 'active'",
+    )
+    .bind(device_id)
+    .bind(user_id)
+    .fetch_one(db)
+    .await?;
+    if !exists {
+        return Err(AppError::Forbidden(
+            "sender device does not belong to current user".to_string(),
         ));
     }
-    for device_id in device_ids {
-        let count: Option<i64> = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM service_user_service_db.e2ee_devices WHERE device_id = ? AND status = 'active'",
-        )
-        .bind(device_id)
-        .fetch_optional(db)
-        .await?;
-        if count.unwrap_or(0) == 0 {
-            return Err(AppError::BadRequest(
-                "revoked device cannot be recipient".to_string(),
-            ));
+    Ok(())
+}
+
+/// 查询群组内所有有效成员的用户 ID。
+async fn fetch_group_member_ids(
+    db: &sqlx::MySqlPool,
+    group_id: i64,
+) -> Result<Vec<i64>, AppError> {
+    let members = sqlx::query_scalar::<_, i64>(
+        "SELECT user_id FROM service_group_service_db.im_group_member \
+         WHERE group_id = ? AND status = 1",
+    )
+    .bind(group_id)
+    .fetch_all(db)
+    .await?;
+    Ok(members)
+}
+
+/// 将 Vec<String> 解析为 Vec<i64>，跳过空字符串。
+fn parse_user_ids(raw: &[String]) -> Result<Vec<i64>, AppError> {
+    let mut ids = Vec::with_capacity(raw.len());
+    for s in raw {
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            continue;
         }
+        let id: i64 = trimmed
+            .parse()
+            .map_err(|_| AppError::BadRequest(format!("invalid userId: {trimmed}")))?;
+        ids.push(id);
     }
+    Ok(ids)
+}
+
+/// 核心授权校验：确保所有 recipient_device_ids 都属于合法的会话成员。
+///
+/// - 私聊：recipient 设备必须全部属于另一方用户，不能属于当前用户或第三方。
+/// - 群聊：recipient 设备必须全部属于群成员。
+/// - 若 recipient_user_ids 非空，校验其均为合法成员且与 device 归属一致。
+async fn ensure_recipient_devices_authorized(
+    db: &sqlx::MySqlPool,
+    conversation_id: &str,
+    caller_user_id: i64,
+    recipient_user_ids: &[String],
+    device_owners: &HashMap<String, i64>,
+) -> Result<(), AppError> {
+    let parsed_recipient_user_ids = parse_user_ids(recipient_user_ids)?;
+
+    if let Some((left, right)) = parse_private_conversation_members(conversation_id) {
+        let other_user_id = if caller_user_id == left { right } else { left };
+
+        // 校验 recipient_user_ids 只能包含另一方
+        for uid in &parsed_recipient_user_ids {
+            if *uid != other_user_id {
+                return Err(AppError::Forbidden(format!(
+                    "user {uid} is not a member of this private conversation"
+                )));
+            }
+        }
+
+        // 校验 recipient 设备归属
+        for (device_id, owner_user_id) in device_owners {
+            if *owner_user_id != other_user_id {
+                if *owner_user_id == caller_user_id {
+                    return Err(AppError::Forbidden(format!(
+                        "cannot add own device {device_id} as recipient in private conversation"
+                    )));
+                }
+                return Err(AppError::Forbidden(format!(
+                    "device {device_id} belongs to user {owner_user_id} who is not a conversation member"
+                )));
+            }
+        }
+
+        // recipient_user_ids 与 device 归属一致性校验
+        if !parsed_recipient_user_ids.is_empty() {
+            let recipient_set: HashSet<i64> = parsed_recipient_user_ids.iter().copied().collect();
+            for (device_id, owner_user_id) in device_owners {
+                if !recipient_set.contains(owner_user_id) {
+                    return Err(AppError::Forbidden(format!(
+                        "device {device_id} belongs to user {owner_user_id} which is not in recipientUserIds"
+                    )));
+                }
+            }
+        }
+    } else if let Some(group_id_raw) = conversation_id.strip_prefix("g_") {
+        let group_id: i64 = group_id_raw
+            .parse()
+            .map_err(|_| AppError::BadRequest("invalid conversationId".to_string()))?;
+
+        let group_members = fetch_group_member_ids(db, group_id).await?;
+        let member_set: HashSet<i64> = group_members.iter().copied().collect();
+
+        // 校验 recipient_user_ids 均为群成员
+        for uid in &parsed_recipient_user_ids {
+            if !member_set.contains(uid) {
+                return Err(AppError::Forbidden(format!(
+                    "user {uid} is not a member of group {group_id}"
+                )));
+            }
+        }
+
+        // 校验 recipient 设备归属
+        for (device_id, owner_user_id) in device_owners {
+            if !member_set.contains(owner_user_id) {
+                return Err(AppError::Forbidden(format!(
+                    "device {device_id} belongs to user {owner_user_id} who is not a member of group {group_id}"
+                )));
+            }
+        }
+
+        // recipient_user_ids 与 device 归属一致性校验
+        if !parsed_recipient_user_ids.is_empty() {
+            let recipient_set: HashSet<i64> = parsed_recipient_user_ids.iter().copied().collect();
+            for (device_id, owner_user_id) in device_owners {
+                if !recipient_set.contains(owner_user_id) {
+                    return Err(AppError::Forbidden(format!(
+                        "device {device_id} belongs to user {owner_user_id} which is not in recipientUserIds"
+                    )));
+                }
+            }
+        }
+    } else {
+        return Err(AppError::BadRequest("invalid conversationId".to_string()));
+    }
+
     Ok(())
 }
 
@@ -724,11 +889,41 @@ pub async fn create_session(
 ) -> Result<Json<ApiResponse<E2eeSessionMetadataDto>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
     validate_conversation_id(&request.conversation_id)?;
+
+    // 1. sender_device_id 基本校验
     if request.sender_device_id.trim().is_empty() || request.sender_device_id.len() > 64 {
         return Err(AppError::BadRequest("invalid senderDeviceId".to_string()));
     }
+
+    // 2. recipient_device_ids 不能为空
+    if request.recipient_device_ids.is_empty() {
+        return Err(AppError::BadRequest(
+            "recipientDeviceIds required".to_string(),
+        ));
+    }
+
+    // 3. 当前用户必须是会话成员（同时校验 conversation_id 合法性）
     ensure_conversation_member(&state.db, identity.user_id, &request.conversation_id).await?;
-    active_devices(&state.db, &request.recipient_device_ids).await?;
+
+    // 4. sender_device_id 必须属于当前用户且处于 active 状态
+    ensure_sender_device_belongs_to_user(&state.db, &request.sender_device_id, identity.user_id)
+        .await?;
+
+    // 5. 查询所有 recipient 设备的归属
+    let device_owners =
+        fetch_device_owners(&state.db, &request.recipient_device_ids).await?;
+
+    // 6. 核心授权：确保 recipient 设备全部属于合法会话成员
+    ensure_recipient_devices_authorized(
+        &state.db,
+        &request.conversation_id,
+        identity.user_id,
+        &request.recipient_user_ids,
+        &device_owners,
+    )
+    .await?;
+
+    // 7. 写入 e2ee_conversation_sessions
     let session_id = uuid::Uuid::new_v4().to_string();
     let key_id = uuid::Uuid::new_v4().to_string();
     let recipient_json = serde_json::to_string(&request.recipient_device_ids)?;
@@ -749,6 +944,7 @@ pub async fn create_session(
     .bind(&recipient_json)
     .execute(&state.db)
     .await?;
+
     get_conversation_session(State(state), headers, Path(request.conversation_id)).await
 }
 

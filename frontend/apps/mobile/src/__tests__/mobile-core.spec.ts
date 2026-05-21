@@ -15,6 +15,7 @@ import { uploadTaskRepository } from '@/services/storage/uploadTaskRepository';
 import { reconcilePendingState } from '@/services/storage/reconcilePendingState';
 import { notificationEventRepository } from '@/services/storage/notificationEventRepository';
 import { assertPlaintextSendAllowed, maskEncryptedMessage } from '@/e2ee/e2eeDeferred';
+import { e2eeSecureStorage } from '@/e2ee/storage/secureE2eeStorage';
 import { displaySystemNotification, getFcmToken, handleFcmTokenRefresh } from '@/services/notification/notificationService';
 import * as notificationService from '@/services/notification/notificationService';
 import { pushDeviceService } from '@/services/push/pushDeviceService';
@@ -820,18 +821,23 @@ describe('mobile core', () => {
 
   test('message send optimistic update writes local pending', async () => {
     let sawPendingBeforeResponse = false;
-    jest.spyOn(messageService, 'sendPrivate').mockImplementation(async (payload) => {
+    jest.spyOn(messageService, 'sendGroup').mockImplementation(async (payload) => {
       // At send time, pending is 'sending' (not 'pending'), so listReady excludes it.
       // Use listAll to verify pending record exists before response.
       sawPendingBeforeResponse = pendingMessageRepository.listAll().length === 1;
       return {
         code: 200,
         message: 'ok',
-        data: { ...message('server_1'), clientMessageId: payload.clientMessageId },
+        data: {
+          ...message('server_1'),
+          clientMessageId: payload.clientMessageId,
+          groupId: payload.groupId,
+          isGroupChat: true,
+        },
       };
     });
-    await useMessageStore.getState().sendText(session, 'hello');
-    const messages = useMessageStore.getState().messagesBySession[session.id];
+    await useMessageStore.getState().sendText(groupSession, 'hello');
+    const messages = useMessageStore.getState().messagesBySession[groupSession.id];
     expect(sawPendingBeforeResponse).toBe(true);
     expect(messages).toHaveLength(1);
     expect(messages[0].serverId).toBe('server_1');
@@ -849,10 +855,10 @@ describe('mobile core', () => {
         size: 2048,
       },
     });
-    jest.spyOn(messageService, 'sendPrivate').mockImplementation(async (payload) => {
+    jest.spyOn(messageService, 'sendGroup').mockImplementation(async (payload) => {
       const local = useMessageStore
         .getState()
-        .messagesBySession[session.id]
+        .messagesBySession[groupSession.id]
         .find((item) => item.messageType === 'IMAGE');
       expect(local).toEqual(
         expect.objectContaining({
@@ -873,12 +879,14 @@ describe('mobile core', () => {
           thumbnailUrl: payload.thumbnailUrl,
           mediaName: payload.mediaName,
           mediaSize: payload.mediaSize,
+          groupId: payload.groupId,
+          isGroupChat: true,
         },
       };
     });
 
     await useMessageStore.getState().sendMedia(
-      session,
+      groupSession,
       {
         uri: 'content://media/external/images/media/9',
         name: 'picked.png',
@@ -890,7 +898,7 @@ describe('mobile core', () => {
 
     const finalMessage = useMessageStore
       .getState()
-      .messagesBySession[session.id]
+      .messagesBySession[groupSession.id]
       .find((item) => item.serverId === 'server_image');
     expect(finalMessage).toEqual(
       expect.objectContaining({
@@ -903,30 +911,35 @@ describe('mobile core', () => {
   });
 
   test('message retry leaves failed pending on API failure', async () => {
-    jest.spyOn(messageService, 'sendPrivate').mockRejectedValue(new Error('offline'));
-    await useMessageStore.getState().sendText(session, 'hello');
-    const failed = useMessageStore.getState().messagesBySession[session.id].some((item) => item.status === 'FAILED');
+    jest.spyOn(messageService, 'sendGroup').mockRejectedValue(new Error('offline'));
+    await useMessageStore.getState().sendText(groupSession, 'hello');
+    const failed = useMessageStore.getState().messagesBySession[groupSession.id].some((item) => item.status === 'FAILED');
     expect(failed).toBe(true);
     expect(pendingMessageRepository.listReady(Date.now() + 120_000)).toHaveLength(1);
   });
 
   test('message retry success deletes pending and keeps original clientMessageId', async () => {
     const sendSpy = jest
-      .spyOn(messageService, 'sendPrivate')
+      .spyOn(messageService, 'sendGroup')
       .mockRejectedValueOnce(new Error('offline'))
       .mockImplementationOnce(async (payload) => ({
         code: 200,
         message: 'ok',
-        data: { ...message('server_retry'), clientMessageId: payload.clientMessageId },
+        data: {
+          ...message('server_retry'),
+          clientMessageId: payload.clientMessageId,
+          groupId: payload.groupId,
+          isGroupChat: true,
+        },
       }));
 
-    await useMessageStore.getState().sendText(session, 'hello');
+    await useMessageStore.getState().sendText(groupSession, 'hello');
     const pending = pendingMessageRepository.listReady(Date.now() + 120_000)[0];
     const payload = JSON.parse(pending.payloadJson) as { data: { clientMessageId: string } };
     pendingMessageRepository.update({ ...pending, status: 'pending', nextRetryAt: Date.now() - 1 });
     await useMessageStore.getState().retryPending();
 
-    const messages = useMessageStore.getState().messagesBySession[session.id];
+    const messages = useMessageStore.getState().messagesBySession[groupSession.id];
     expect(sendSpy).toHaveBeenCalledTimes(2);
     expect(messages).toHaveLength(1);
     expect(messages[0].clientMessageId).toBe(payload.data.clientMessageId);
@@ -988,29 +1001,34 @@ describe('mobile core', () => {
 
   test('websocket echo with same clientMessageId merges into pending message', async () => {
     let sentClientMessageId = '';
-    jest.spyOn(messageService, 'sendPrivate').mockImplementation(async (payload) => {
+    jest.spyOn(messageService, 'sendGroup').mockImplementation(async (payload) => {
       sentClientMessageId = payload.clientMessageId;
       return {
         code: 200,
         message: 'ok',
-        data: { ...message('server_2'), clientMessageId: payload.clientMessageId },
+        data: {
+          ...message('server_2'),
+          clientMessageId: payload.clientMessageId,
+          groupId: payload.groupId,
+          isGroupChat: true,
+        },
       };
     });
-    await useMessageStore.getState().sendText(session, 'hello');
+    await useMessageStore.getState().sendText(groupSession, 'hello');
     await useWebsocketStore.getState().dispatchPayload({
       type: 'MESSAGE',
       data: {
         id: 'server_2_ws',
         clientMessageId: sentClientMessageId,
         senderId: '1',
-        receiverId: '2',
+        groupId: '9',
         messageType: 'TEXT',
         content: 'hello',
         sendTime: new Date().toISOString(),
       },
     });
 
-    expect(useMessageStore.getState().messagesBySession[session.id]).toHaveLength(1);
+    expect(useMessageStore.getState().messagesBySession[groupSession.id]).toHaveLength(1);
   });
 
   test('media retry uploads once through persisted upload task before sending', async () => {
@@ -1022,18 +1040,20 @@ describe('mobile core', () => {
         message: 'ok',
         data: { url: 'https://cdn.example/a.png', fileName: 'a.png', size: 10 },
       });
-    const sendSpy = jest.spyOn(messageService, 'sendPrivate').mockResolvedValue({
+    const sendSpy = jest.spyOn(messageService, 'sendGroup').mockResolvedValue({
       code: 200,
       message: 'ok',
       data: {
         ...message('server_media'),
         messageType: 'IMAGE',
         mediaUrl: 'https://cdn.example/a.png',
+        groupId: '9',
+        isGroupChat: true,
       },
     });
 
     await useMessageStore.getState().sendMedia(
-      session,
+      groupSession,
       { uri: 'file:///tmp/a.png', name: 'a.png', type: 'image/png', size: 10 },
       'IMAGE',
     );
@@ -1041,7 +1061,7 @@ describe('mobile core', () => {
     expect(sendSpy).not.toHaveBeenCalled();
     const local = useMessageStore
       .getState()
-      .messagesBySession[session.id].find((item) => item.messageType === 'IMAGE');
+      .messagesBySession[groupSession.id].find((item) => item.messageType === 'IMAGE');
     expect(local?.status).toBe('FAILED');
     const task = uploadTaskRepository.findByLocalMessageId(local?.id || '');
     expect(task?.status).toBe('failed');
@@ -1860,6 +1880,231 @@ describe('mobile core', () => {
 
       // Only the first should execute
       expect(concurrentCalls).toBe(1);
+    });
+  });
+
+  // ── E2EE Pending Plaintext Security ──────────────────────────────────
+
+  describe('E2EE pending plaintext security', () => {
+    const e2eePendingPayload = (plaintext?: string) => ({
+      sendType: 'private' as const,
+      requiresE2ee: true,
+      e2eeWaitReason: 'negotiation' as const,
+      ...(plaintext ? { plaintext } : { plaintextRef: 'local_e2ee_sec' }),
+      data: {
+        receiverId: '2',
+        clientMessageId: 'c_e2ee_sec',
+        messageType: 'TEXT' as const,
+        ...(plaintext ? { content: plaintext } : {}),
+      },
+    });
+
+    it('mobile_pending_messages.payloadJson does NOT contain plaintext for requiresE2ee payloads', () => {
+      // Even if upstream mistakenly includes plaintext, sanitizePendingPayloadJson
+      // must strip it before writing to SQLite.
+      const pendingWithPlaintext: PendingMessage = {
+        localId: 'local_e2ee_sec_1',
+        conversationId: session.id,
+        sendType: 'private',
+        payloadJson: JSON.stringify(e2eePendingPayload('my secret message')),
+        status: 'pending',
+        retryCount: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      pendingMessageRepository.enqueue(pendingWithPlaintext);
+
+      const stored = pendingMessageRepository.get('local_e2ee_sec_1');
+      expect(stored).toBeDefined();
+      const storedPayload = JSON.parse(stored!.payloadJson) as Record<string, unknown>;
+      // plaintext field must be absent
+      expect(storedPayload.plaintext).toBeUndefined();
+      // content field in data must be absent
+      const storedData = storedPayload.data as Record<string, unknown> | undefined;
+      expect(storedData?.content).toBeUndefined();
+    });
+
+    it('mobile_pending_messages.payloadJson retains plaintextRef and requiresE2ee but not plaintext', () => {
+      const cleanPayload = e2eePendingPayload();
+      const pending: PendingMessage = {
+        localId: 'local_e2ee_sec_2',
+        conversationId: session.id,
+        sendType: 'private',
+        payloadJson: JSON.stringify(cleanPayload),
+        status: 'pending',
+        retryCount: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      pendingMessageRepository.enqueue(pending);
+
+      const stored = pendingMessageRepository.get('local_e2ee_sec_2');
+      expect(stored).toBeDefined();
+      const storedPayload = JSON.parse(stored!.payloadJson) as Record<string, unknown>;
+      expect(storedPayload.requiresE2ee).toBe(true);
+      expect(storedPayload.plaintextRef).toBe('local_e2ee_sec');
+      expect(storedPayload.plaintext).toBeUndefined();
+    });
+
+    it('mobile_messages does NOT persist real content for E2EE negotiating messages', () => {
+      const negotiatingMessage: MobileMessage = {
+        id: 'local_e2ee_msg_1',
+        clientMessageId: 'cm_e2ee_msg_1',
+        conversationId: session.id,
+        senderId: '1',
+        receiverId: '2',
+        isGroupChat: false,
+        messageType: 'TEXT',
+        content: 'this is secret plaintext',
+        sendTime: new Date().toISOString(),
+        status: 'SENDING',
+        decryptStatus: 'plaintext',
+      };
+
+      messageRepository.upsertMessages(session.id, [negotiatingMessage]);
+
+      const stored = messageRepository.listMessages(session.id)[0];
+      expect(stored).toBeDefined();
+      // Content must be replaced with placeholder
+      expect(stored.content).not.toBe('this is secret plaintext');
+      expect(stored.content).toContain('端到端加密');
+    });
+
+    it('sanitizeE2eeMessageForPersist does not sanitize non-E2EE plaintext messages', () => {
+      const normalMessage: MobileMessage = {
+        id: 'normal_msg',
+        conversationId: session.id,
+        senderId: '1',
+        receiverId: '2',
+        isGroupChat: false,
+        messageType: 'TEXT',
+        content: 'normal plaintext message',
+        sendTime: new Date().toISOString(),
+        status: 'SENDING',
+      };
+
+      messageRepository.upsertMessages(session.id, [normalMessage]);
+
+      const stored = messageRepository.listMessages(session.id)[0];
+      expect(stored).toBeDefined();
+      // Normal non-E2EE message should keep its content
+      expect(stored.content).toBe('normal plaintext message');
+    });
+
+    it('deleteLocalMessage cleans up pending E2EE plaintext from pending repository', () => {
+      // Enqueue an E2EE pending
+      const pending: PendingMessage = {
+        localId: 'local_del_sec',
+        conversationId: session.id,
+        sendType: 'private',
+        payloadJson: JSON.stringify({
+          sendType: 'private',
+          requiresE2ee: true,
+          plaintextRef: 'local_del_sec',
+          data: { receiverId: '2', clientMessageId: 'c_del_sec', messageType: 'TEXT' },
+        }),
+        status: 'pending',
+        retryCount: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      pendingMessageRepository.enqueue(pending);
+      expect(pendingMessageRepository.get('local_del_sec')).toBeDefined();
+
+      // Add a message to UI state
+      const msg: MobileMessage = {
+        id: 'local_del_sec',
+        conversationId: session.id,
+        senderId: '1',
+        receiverId: '2',
+        isGroupChat: false,
+        messageType: 'TEXT',
+        content: 'hello',
+        sendTime: new Date().toISOString(),
+        status: 'SENDING',
+        decryptStatus: 'plaintext',
+      };
+      useMessageStore.getState().addMessage(msg, session.id);
+
+      // Delete local message
+      useMessageStore.getState().deleteLocalMessage(session.id, 'local_del_sec');
+
+      // Pending should be removed (plaintext cleanup is best-effort async)
+      expect(pendingMessageRepository.get('local_del_sec')).toBeUndefined();
+    });
+
+    it('messageStore.clear cleans up E2EE pending plaintext entries', () => {
+      // Enqueue multiple E2EE pending messages
+      for (let i = 0; i < 3; i++) {
+        pendingMessageRepository.enqueue({
+          localId: `local_clear_sec_${i}`,
+          conversationId: session.id,
+          sendType: 'private',
+          payloadJson: JSON.stringify({
+            sendType: 'private',
+            requiresE2ee: true,
+            plaintextRef: `local_clear_sec_${i}`,
+            data: { receiverId: '2', clientMessageId: `c_clear_${i}`, messageType: 'TEXT' },
+          }),
+          status: 'pending',
+          retryCount: 0,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      }
+
+      expect(pendingMessageRepository.listAll().filter((p) => {
+        try { return (JSON.parse(p.payloadJson) as Record<string, unknown>).requiresE2ee === true; } catch { return false; }
+      })).toHaveLength(3);
+
+      // Clear should remove all pending entries
+      useMessageStore.getState().clear();
+
+      expect(pendingMessageRepository.listAll()).toHaveLength(0);
+    });
+
+    it('payloadJson does not contain plaintext after sanitization even with legacy plaintext payload', () => {
+      // Simulate a legacy-style payload that includes plaintext (defense in depth)
+      const legacyPayload = JSON.stringify({
+        sendType: 'private',
+        requiresE2ee: true,
+        e2eeWaitReason: 'negotiation',
+        plaintext: 'legacy plaintext that should be stripped',
+        data: {
+          receiverId: '2',
+          clientMessageId: 'c_legacy',
+          messageType: 'TEXT',
+          content: 'legacy content',
+        },
+      });
+
+      const pending: PendingMessage = {
+        localId: 'local_legacy_sec',
+        conversationId: session.id,
+        sendType: 'private',
+        payloadJson: legacyPayload,
+        status: 'pending',
+        retryCount: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      pendingMessageRepository.enqueue(pending);
+
+      const stored = pendingMessageRepository.get('local_legacy_sec');
+      expect(stored).toBeDefined();
+      const payload = JSON.parse(stored!.payloadJson) as Record<string, unknown>;
+      // MUST NOT contain plaintext
+      expect(payload.plaintext).toBeUndefined();
+      // MUST NOT contain content in data
+      const data = payload.data as Record<string, unknown> | undefined;
+      expect(data?.content).toBeUndefined();
+      // MUST retain structural fields
+      expect(payload.requiresE2ee).toBe(true);
+      expect(payload.plaintextRef).toBeUndefined(); // no plaintextRef in legacy input
+      expect(data?.receiverId).toBe('2');
     });
   });
 });
