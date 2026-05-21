@@ -23,6 +23,23 @@ const rawJsonFor = (message: MobileMessage, conversationId: string): string => {
 };
 
 export const sanitizeE2eeMessageForPersist = (message: MobileMessage): MobileMessage => {
+  // E2EE negotiating/pending message: replace content with placeholder
+  // before persisting to SQLite. The real content is kept in memory
+  // only (Zustand state) for UI display.
+  if (!isEncryptedValue(message.encrypted) && message.decryptStatus === 'plaintext' && message.receiverId) {
+    const rawSnapshot: Record<string, unknown> = { ...message, content: '', mediaUrl: undefined, thumbnailUrl: undefined, mediaName: undefined, mediaSize: undefined, duration: undefined };
+    return {
+      ...message,
+      content: E2EE_UNSUPPORTED_TEXT,
+      rawJson: JSON.stringify(rawSnapshot),
+      mediaUrl: undefined,
+      thumbnailUrl: undefined,
+      mediaName: undefined,
+      mediaSize: undefined,
+      duration: undefined,
+    };
+  }
+
   if (!isEncryptedValue(message.encrypted)) {
     return message;
   }
