@@ -13,6 +13,7 @@ import {
 } from '@/e2ee/e2eeDeferred';
 import { compareE2eeDecryptOrder, processE2eeMessage, processE2eeMessages, shouldDrainPendingAfterDecrypt, type ProcessedE2eeMessage } from '@/e2ee/messageProcessor';
 import { e2eeManager } from '@/e2ee/manager/e2eeManager';
+import { ensureLocalE2eeDeviceRegistered } from '@/e2ee/manager/localDevice';
 import { initiateNegotiation, loadLocalSessionStatus } from '@/e2ee/manager/negotiation';
 import {
   cleanupPendingE2eePlaintext,
@@ -643,9 +644,32 @@ export const useMessageStore = create<MessageState>((set, get) => ({
         rawJson: JSON.stringify({ content: '' }),
         decryptStatus: 'plaintext',
       });
-      get().addMessage(message, session.id);
 
-      await enqueuePendingE2eeText(session, message, content, 'negotiation');
+      // Ensure local E2EE device is provisioned before we try to save
+      // pending plaintext to secure storage. For first-time E2EE users,
+      // this creates the deviceId + key material that enqueuePendingE2eeText
+      // requires.
+      try {
+        await ensureLocalE2eeDeviceRegistered();
+      } catch (error) {
+        logger.warn('e2ee', 'E2EE device registration failed before pending send', sanitizeE2eeLogValue(error));
+        throw new Error('E2EE device registration failed, cannot send message');
+      }
+
+      // Save plaintext to secure storage + enqueue pending BEFORE addMessage.
+      // If either step fails, the message must not land in UI or SQLite.
+      try {
+        await enqueuePendingE2eeText(session, message, content, 'negotiation');
+      } catch (error) {
+        // Best-effort cleanup of pending plaintext that may have been saved
+        // before the enqueue step failed.
+        cleanupPendingE2eePlaintext(message.id).catch(() => {});
+        throw error;
+      }
+
+      // Only after secure storage write + pending enqueue both succeed:
+      // add the optimistic message to UI state and persist to SQLite.
+      get().addMessage(message, session.id);
 
       if (e2eeStatus === 'plaintext') {
         const initiated = await initiateNegotiation(session.id, session.targetId).catch(() => false);

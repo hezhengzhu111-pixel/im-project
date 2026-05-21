@@ -17,6 +17,7 @@ const mockSavePendingPlaintext = jest.fn();
 const mockGetPendingPlaintext = jest.fn();
 const mockRemovePendingPlaintext = jest.fn();
 const mockGetDeviceId = jest.fn();
+const mockGetOrCreateDeviceId = jest.fn();
 
 // ─── Mocks ────────────────────────────────────────────────────────────
 
@@ -52,6 +53,7 @@ jest.mock('@/e2ee/storage/secureE2eeStorage', () => ({
     getPendingPlaintext: (...args: unknown[]) => mockGetPendingPlaintext(...args),
     removePendingPlaintext: (...args: unknown[]) => mockRemovePendingPlaintext(...args),
     getDeviceId: (...args: unknown[]) => mockGetDeviceId(...args),
+    getOrCreateDeviceId: (...args: unknown[]) => mockGetOrCreateDeviceId(...args),
   },
 }));
 
@@ -304,5 +306,101 @@ describe('encryptPendingE2eePayload', () => {
     const result = await encryptPendingE2eePayload(item);
     expect(result.ok).toBe(false);
     expect(result.error).toBe('not an E2EE-waiting pending');
+  });
+
+  // ── New: failure path tests for pending state updates ──────────────
+
+  it('marks exhausted when plaintextRef is missing (empty string)', async () => {
+    const item = makePending(
+      { sendType: 'private', requiresE2ee: true, plaintextRef: '', data: { receiverId: '200', clientMessageId: 'c1', messageType: 'TEXT' } },
+    );
+    // Override localId to also be empty so both are falsy
+    const noRefItem = { ...item, localId: '' };
+
+    const result = await encryptPendingE2eePayload(noRefItem);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('missing plaintextRef');
+    // Must mark exhausted (not just return ok:false)
+    const exhaustedCall = (mockUpdate as jest.Mock).mock.calls.find(
+      (call: unknown[]) => (call[0] as Record<string, unknown>)?.status === 'failed',
+    );
+    expect(exhaustedCall).toBeDefined();
+    expect((exhaustedCall![0] as Record<string, unknown>).lastError).toContain('plaintextRef');
+    // Must not attempt encryption
+    expect(mockEncryptToEnvelope).not.toHaveBeenCalled();
+  });
+
+  it('marks retryable failure when userId is missing', async () => {
+    const { useAuthStore } = jest.requireMock('@/stores/authStore');
+    useAuthStore.getState.mockReturnValueOnce({ currentUser: null });
+
+    const item = makePending({
+      sendType: 'private', requiresE2ee: true, plaintextRef: 'local_1',
+      data: { receiverId: '200', clientMessageId: 'c1', messageType: 'TEXT' },
+    });
+
+    const result = await encryptPendingE2eePayload(item);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('without authenticated user');
+    // Must update pending (retryable) — not just return ok:false
+    const updateCall = (mockUpdate as jest.Mock).mock.calls.find(
+      (call: unknown[]) => (call[0] as Record<string, unknown>)?.localId === 'local_1',
+    );
+    expect(updateCall).toBeDefined();
+    const updated = updateCall![0] as Record<string, unknown>;
+    expect(updated.status).toBe('pending');
+    expect(updated.retryCount).toBe(1);
+    expect(updated.nextRetryAt).toBeGreaterThan(0);
+    expect(updated.lastError).toContain('e2ee: cannot encrypt');
+  });
+
+  it('tries getOrCreateDeviceId when deviceId is missing, marks retryable if still empty', async () => {
+    mockGetDeviceId.mockResolvedValueOnce('');
+    mockGetOrCreateDeviceId.mockResolvedValueOnce('');
+
+    const item = makePending({
+      sendType: 'private', requiresE2ee: true, plaintextRef: 'local_1',
+      data: { receiverId: '200', clientMessageId: 'c1', messageType: 'TEXT' },
+    });
+
+    const result = await encryptPendingE2eePayload(item);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('without provisioned device');
+    // Must have tried getOrCreateDeviceId as fallback
+    expect(mockGetOrCreateDeviceId).toHaveBeenCalled();
+    // Must update pending (retryable)
+    const updateCall = (mockUpdate as jest.Mock).mock.calls.find(
+      (call: unknown[]) => (call[0] as Record<string, unknown>)?.localId === 'local_1',
+    );
+    expect(updateCall).toBeDefined();
+    const updated = updateCall![0] as Record<string, unknown>;
+    expect(updated.status).toBe('pending');
+    expect(updated.retryCount).toBe(1);
+    expect(updated.nextRetryAt).toBeGreaterThan(0);
+    expect(updated.lastError).toContain('e2ee: cannot encrypt');
+    // Must not attempt encryption
+    expect(mockEncryptToEnvelope).not.toHaveBeenCalled();
+  });
+
+  it('uses getOrCreateDeviceId result when getDeviceId returns empty', async () => {
+    mockGetDeviceId.mockResolvedValueOnce('');
+    mockGetOrCreateDeviceId.mockResolvedValueOnce('device-fallback');
+    mockGetPendingPlaintext.mockResolvedValue('secret');
+
+    const item = makePending({
+      sendType: 'private', requiresE2ee: true, plaintextRef: 'local_1',
+      data: { receiverId: '200', clientMessageId: 'c1', messageType: 'TEXT' },
+    });
+
+    const result = await encryptPendingE2eePayload(item);
+
+    expect(result.ok).toBe(true);
+    // Must use the fallback deviceId
+    expect(mockGetOrCreateDeviceId).toHaveBeenCalledWith('100');
+    expect(mockGetPendingPlaintext).toHaveBeenCalledWith('100', 'device-fallback', 'local_1');
+    expect(mockRemovePendingPlaintext).toHaveBeenCalledWith('100', 'device-fallback', 'local_1');
   });
 });

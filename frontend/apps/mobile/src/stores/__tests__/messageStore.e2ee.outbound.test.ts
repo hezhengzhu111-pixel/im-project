@@ -79,6 +79,13 @@ jest.mock('@/e2ee/manager/negotiation', () => {
   };
 });
 
+jest.mock('@/e2ee/manager/localDevice', () => ({
+  ensureLocalE2eeDeviceRegistered: jest.fn().mockResolvedValue(undefined),
+  getLocalRustKeyMaterial: jest.fn(),
+  heartbeatLocalE2eeDevice: jest.fn(),
+  __resetLocalE2eeDeviceRegistrationForTests: jest.fn(),
+}));
+
 // ─── Imports (after mocks) ────────────────────────────────────────────
 
 import { useMessageStore } from '../messageStore';
@@ -90,7 +97,10 @@ import {
 } from '@/e2ee/e2eeDeferred';
 import { e2eeManager } from '@/e2ee/manager/e2eeManager';
 import { initiateNegotiation } from '@/e2ee/manager/negotiation';
+import { ensureLocalE2eeDeviceRegistered } from '@/e2ee/manager/localDevice';
 import { e2eeSessionStore } from '@/e2ee/store/sessionStore';
+
+const mockEnsureLocalE2eeDeviceRegistered = ensureLocalE2eeDeviceRegistered as jest.MockedFunction<typeof ensureLocalE2eeDeviceRegistered>;
 import {
   clearAllPendingEncryptedMessages,
 } from '@/e2ee/store/pendingDecryptStore';
@@ -141,6 +151,7 @@ describe('messageStore E2EE outbound pipeline', () => {
     clearAllPendingEncryptedMessages();
     jest.clearAllMocks();
     mockInitiateNegotiation.mockResolvedValue(true);
+    mockEnsureLocalE2eeDeviceRegistered.mockResolvedValue(undefined);
     mockSessions.length = 0;
     mr.listMessages.mockReturnValue([]);
     mr.listMessagesPage.mockReturnValue({ messages: [], hasMore: false });
@@ -871,6 +882,80 @@ describe('messageStore E2EE outbound pipeline', () => {
         // May throw for other reasons in test context, but NOT for private media
         expect((e as Error).message).not.toContain('私聊端到端加密策略');
       }
+    });
+  });
+
+  // ── 10. sendText ordering: device registration before pending ─────────
+
+  describe('sendText ordering guarantees (plaintext/negotiating)', () => {
+    it('calls ensureLocalE2eeDeviceRegistered before enqueueing pending', async () => {
+      const session = baseSession();
+
+      await useMessageStore.getState().sendText(session, 'hello');
+
+      // ensureLocalE2eeDeviceRegistered must be called
+      expect(mockEnsureLocalE2eeDeviceRegistered).toHaveBeenCalled();
+      // Pending must be enqueued after device registration
+      expect(pr.enqueue).toHaveBeenCalled();
+    });
+
+    it('throws and does NOT addMessage when ensureLocalE2eeDeviceRegistered fails', async () => {
+      const session = baseSession();
+      mockEnsureLocalE2eeDeviceRegistered.mockRejectedValueOnce(
+        new Error('Keychain unavailable'),
+      );
+
+      await expect(
+        useMessageStore.getState().sendText(session, 'hello'),
+      ).rejects.toThrow('E2EE device registration failed');
+
+      // Must NOT call addMessage → no UI message, no SQLite write
+      const messages = useMessageStore.getState().messagesBySession[session.id];
+      expect(messages).toBeUndefined();
+      // Must NOT enqueue pending
+      expect(pr.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('throws and does NOT addMessage when enqueuePendingE2eeText fails (secure storage save fails)', async () => {
+      const session = baseSession();
+      jest.mocked(e2eeSecureStorage.savePendingPlaintext).mockRejectedValueOnce(
+        new Error('Keychain write failed'),
+      );
+
+      await expect(
+        useMessageStore.getState().sendText(session, 'hello'),
+      ).rejects.toThrow('Keychain write failed');
+
+      // Must NOT addMessage
+      const messages = useMessageStore.getState().messagesBySession[session.id];
+      expect(messages).toBeUndefined();
+    });
+
+    it('addMessage only after secure storage + pending both succeed', async () => {
+      const session = baseSession();
+
+      // Make secure storage save fail on first attempt
+      jest.mocked(e2eeSecureStorage.savePendingPlaintext)
+        .mockRejectedValueOnce(new Error('first fail'));
+
+      await expect(
+        useMessageStore.getState().sendText(session, 'hello'),
+      ).rejects.toThrow('first fail');
+
+      // After failure, no message should be in UI state (addMessage not called)
+      let messages = useMessageStore.getState().messagesBySession[session.id];
+      expect(messages).toBeUndefined();
+
+      // Second attempt succeeds
+      jest.mocked(e2eeSecureStorage.savePendingPlaintext)
+        .mockResolvedValueOnce(undefined);
+
+      await useMessageStore.getState().sendText(session, 'hello again');
+
+      // Now the message should be in UI state
+      messages = useMessageStore.getState().messagesBySession[session.id];
+      expect(messages).toBeDefined();
+      expect(messages!.length).toBeGreaterThanOrEqual(1);
     });
   });
 });
