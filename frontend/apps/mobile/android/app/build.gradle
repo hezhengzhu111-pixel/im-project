@@ -61,7 +61,7 @@ react {
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
-def enableProguardInReleaseBuilds = false
+def enableProguardInReleaseBuilds = true
 def propOrEnv = { propName, envName, fallbackValue ->
     project.findProperty(propName) ?: System.getenv(envName) ?: fallbackValue
 }
@@ -226,6 +226,28 @@ afterEvaluate {
                         "Release build cannot use dev-emulator fallback URLs. Set IM_MOBILE_API_BASE_URL / IM_MOBILE_WS_BASE_URL / IM_MOBILE_FILE_BASE_URL and use IM_MOBILE_APP_ENV=sit or prod. " +
                         "Only IM_MOBILE_APP_ENV=internal/debug may explicitly keep 10.0.2.2 for internal builds."
                     )
+                }
+
+                def enforceSecureRelease = mobileAppEnv in ["prod", "sit"]
+                if (enforceSecureRelease) {
+                    if (!mobileApiBaseUrl.startsWith("https://")) {
+                        throw new GradleException(
+                            "Release build with IM_MOBILE_APP_ENV=${mobileAppEnv} must use HTTPS. " +
+                            "Set IM_MOBILE_API_BASE_URL to start with https:// (current: ${mobileApiBaseUrl})."
+                        )
+                    }
+                    if (!mobileWsBaseUrl.startsWith("wss://")) {
+                        throw new GradleException(
+                            "Release build with IM_MOBILE_APP_ENV=${mobileAppEnv} must use WSS. " +
+                            "Set IM_MOBILE_WS_BASE_URL to start with wss:// (current: ${mobileWsBaseUrl})."
+                        )
+                    }
+                    if (!mobileFileBaseUrl.startsWith("https://")) {
+                        throw new GradleException(
+                            "Release build with IM_MOBILE_APP_ENV=${mobileAppEnv} must use HTTPS. " +
+                            "Set IM_MOBILE_FILE_BASE_URL to start with https:// (current: ${mobileFileBaseUrl})."
+                        )
+                    }
                 }
             }
         }

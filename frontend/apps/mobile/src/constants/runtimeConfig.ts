@@ -50,6 +50,14 @@ const URL_PROTOCOLS: Record<keyof RuntimeConfigUrls, readonly string[]> = {
   FILE_BASE_URL: ['http:', 'https:'],
 };
 
+const SECURE_RELEASE_ENVS: ReadonlySet<MobileAppEnv> = new Set(['prod', 'sit']);
+
+const SECURE_PROTOCOLS: Record<keyof RuntimeConfigUrls, string> = {
+  API_BASE_URL: 'https:',
+  WS_BASE_URL: 'wss:',
+  FILE_BASE_URL: 'https:',
+};
+
 const warnedMessages = new Set<string>();
 
 const normalizeString = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
@@ -70,6 +78,32 @@ const isValidUrlForKey = (key: keyof RuntimeConfigUrls, value: string): boolean 
     return URL_PROTOCOLS[key].includes(parsed.protocol);
   } catch {
     return false;
+  }
+};
+
+const validateSecureConfig = (
+  key: keyof RuntimeConfigUrls,
+  value: string,
+  appEnv: MobileAppEnv,
+  isRelease: boolean,
+): void => {
+  if (!isRelease || !SECURE_RELEASE_ENVS.has(appEnv)) {
+    return;
+  }
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== SECURE_PROTOCOLS[key]) {
+      throw new Error(
+        `[config] Security: ${key} must use ${SECURE_PROTOCOLS[key]}// in ${appEnv} release builds, got ${parsed.protocol}//`,
+      );
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith('[config] Security:')) {
+      throw e;
+    }
+    throw new Error(
+      `[config] Security: ${key} is not a valid URL in ${appEnv} release build: ${value}`,
+    );
   }
 };
 
@@ -179,6 +213,10 @@ export const resolveRuntimeConfig = (options?: {
     ],
     warnings,
   );
+
+  validateSecureConfig('API_BASE_URL', API_BASE_URL, APP_ENV, IS_RELEASE_BUILD);
+  validateSecureConfig('WS_BASE_URL', WS_BASE_URL, APP_ENV, IS_RELEASE_BUILD);
+  validateSecureConfig('FILE_BASE_URL', FILE_BASE_URL, APP_ENV, IS_RELEASE_BUILD);
 
   const usesEmulatorFallback =
     API_BASE_URL === DEFAULT_CONFIG.API_BASE_URL &&
