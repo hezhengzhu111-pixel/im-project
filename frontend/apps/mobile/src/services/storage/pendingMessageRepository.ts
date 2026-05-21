@@ -22,6 +22,26 @@ const sanitizePendingPayloadJson = (payloadJson: string): string => {
     const data = parsed.data && typeof parsed.data === 'object'
       ? { ...(parsed.data as Record<string, unknown>) }
       : undefined;
+
+    // If this is an E2EE-waiting pending, strip all plaintext-carrying fields.
+    // The plaintext must only live in e2eeSecureStorage (Keychain).
+    if (parsed.requiresE2ee === true) {
+      const safeE2ee: Record<string, unknown> = {
+        sendType: parsed.sendType,
+        requiresE2ee: true,
+        e2eeWaitReason: parsed.e2eeWaitReason,
+        plaintextRef: parsed.plaintextRef,
+      };
+      if (data) {
+        safeE2ee.data = {
+          receiverId: data.receiverId,
+          clientMessageId: data.clientMessageId,
+          messageType: data.messageType,
+        };
+      }
+      return JSON.stringify(safeE2ee);
+    }
+
     const encrypted = isEncryptedValue(parsed.encrypted) || isEncryptedValue(data?.encrypted);
     if (!encrypted || !data) {
       return payloadJson;

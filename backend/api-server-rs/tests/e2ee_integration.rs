@@ -510,3 +510,481 @@ async fn test_e2ee_backup_upload_and_get() {
     );
     assert_eq!(body["data"]["salt"], json!(salt));
 }
+
+// ---------------------------------------------------------------------------
+// 辅助函数：上传设备 Bundle 并返回 device_id
+// ---------------------------------------------------------------------------
+
+async fn upload_test_device(
+    app: &axum::Router,
+    token: &str,
+) -> (String, Value) {
+    let device_id = unique_device_id();
+    let (status, body) = post_json(
+        app,
+        "/api/keys/bundle",
+        Some(token),
+        &json!({
+            "deviceId": &device_id,
+            "identityKey": "dGVzdF9pZGVudGl0eV9rZXk=",
+            "signingIdentityKey": "dGVzdF9zaWduaW5nX2lkZW50aXR5X2tleQ==",
+            "signedPreKey": "dGVzdF9zaWduZWRfcHJlX2tleQ==",
+            "signedPreKeySignature": "dGVzdF9zaWduYXR1cmU=",
+            "oneTimePreKeys": ["otp_key_1"]
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "upload_test_device failed: {body}");
+    (device_id, body)
+}
+
+// ---------------------------------------------------------------------------
+// 测试：senderDeviceId 不属于当前用户应返回 Forbidden
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_create_session_sender_device_must_belong_to_caller() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    let (device_a, _) = upload_test_device(&app, &user_a.token).await;
+    let (device_b, _) = upload_test_device(&app, &user_b.token).await;
+
+    let (id_a, id_b) = if user_a.user_id < user_b.user_id {
+        (user_a.user_id.clone(), user_b.user_id.clone())
+    } else {
+        (user_b.user_id.clone(), user_a.user_id.clone())
+    };
+    let conversation_id = format!("p_{id_a}_{id_b}");
+
+    // User A 尝试使用 User B 的设备作为 senderDeviceId → 应拒绝
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/sessions",
+        Some(&user_a.token),
+        &json!({
+            "conversationId": conversation_id,
+            "senderDeviceId": device_b,
+            "recipientDeviceIds": [&device_a]
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "should reject foreign senderDeviceId, got: {body}"
+    );
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("sender device does not belong"),
+        "unexpected error message: {body}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：私聊创建 session 成功
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_create_session_private_success() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    let (device_a, _) = upload_test_device(&app, &user_a.token).await;
+    let (device_b, _) = upload_test_device(&app, &user_b.token).await;
+
+    let (id_a, id_b) = if user_a.user_id < user_b.user_id {
+        (user_a.user_id.clone(), user_b.user_id.clone())
+    } else {
+        (user_b.user_id.clone(), user_a.user_id.clone())
+    };
+    let conversation_id = format!("p_{id_a}_{id_b}");
+
+    // User A 创建 session: senderDeviceId 属于 A，recipientDeviceIds 属于 B
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/sessions",
+        Some(&user_a.token),
+        &json!({
+            "conversationId": conversation_id,
+            "senderDeviceId": device_a,
+            "recipientDeviceIds": [&device_b],
+            "recipientUserIds": [&user_b.user_id]
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "private session creation should succeed: {body}"
+    );
+    assert_eq!(body["success"], json!(true));
+    let data = &body["data"];
+    assert_eq!(data["conversationId"], json!(conversation_id));
+    assert_eq!(data["senderDeviceId"], json!(device_a));
+    let recipients = data["recipientDeviceIds"].as_array().expect("should be array");
+    assert!(recipients.contains(&json!(device_b)));
+    assert_eq!(data["status"], json!("active"));
+}
+
+// ---------------------------------------------------------------------------
+// 测试：私聊中 recipientDeviceIds 包含自己的设备应拒绝
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_create_session_private_rejects_own_device_as_recipient() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    let (device_a1, _) = upload_test_device(&app, &user_a.token).await;
+    let (device_a2, _) = upload_test_device(&app, &user_a.token).await;
+
+    let (id_a, id_b) = if user_a.user_id < user_b.user_id {
+        (user_a.user_id.clone(), user_b.user_id.clone())
+    } else {
+        (user_b.user_id.clone(), user_a.user_id.clone())
+    };
+    let conversation_id = format!("p_{id_a}_{id_b}");
+
+    // User A 创建 session 时，recipientDeviceIds 包含 User A 自己的另一个设备 → 应拒绝
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/sessions",
+        Some(&user_a.token),
+        &json!({
+            "conversationId": conversation_id,
+            "senderDeviceId": device_a1,
+            "recipientDeviceIds": [&device_a2]
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "should reject own device as recipient in private chat: {body}"
+    );
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("cannot add own device"),
+        "unexpected error message: {body}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：私聊中 recipientDeviceIds 包含第三方设备应拒绝
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_create_session_private_rejects_third_party_device() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+    let user_c = register_and_login(&app).await;
+
+    let (device_a, _) = upload_test_device(&app, &user_a.token).await;
+    let (device_c, _) = upload_test_device(&app, &user_c.token).await;
+
+    let (id_a, id_b) = if user_a.user_id < user_b.user_id {
+        (user_a.user_id.clone(), user_b.user_id.clone())
+    } else {
+        (user_b.user_id.clone(), user_a.user_id.clone())
+    };
+    let conversation_id = format!("p_{id_a}_{id_b}");
+
+    // User A 创建 session，recipientDeviceIds 包含 User C 的设备 → 应拒绝
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/sessions",
+        Some(&user_a.token),
+        &json!({
+            "conversationId": conversation_id,
+            "senderDeviceId": device_a,
+            "recipientDeviceIds": [&device_c]
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "should reject third-party device in private chat: {body}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：recipientUserIds 与 recipientDeviceIds 不匹配应拒绝
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_create_session_recipient_user_ids_mismatch() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+    let user_c = register_and_login(&app).await;
+
+    let (device_a, _) = upload_test_device(&app, &user_a.token).await;
+    let (device_c, _) = upload_test_device(&app, &user_c.token).await;
+
+    let (id_a, id_b) = if user_a.user_id < user_b.user_id {
+        (user_a.user_id.clone(), user_b.user_id.clone())
+    } else {
+        (user_b.user_id.clone(), user_a.user_id.clone())
+    };
+    let conversation_id = format!("p_{id_a}_{id_b}");
+
+    // recipientUserIds 声称发给用户 B，但实际 recipientDeviceIds 属于用户 C → 应拒绝
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/sessions",
+        Some(&user_a.token),
+        &json!({
+            "conversationId": conversation_id,
+            "senderDeviceId": device_a,
+            "recipientDeviceIds": [&device_c],
+            "recipientUserIds": [&user_b.user_id]
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "should reject mismatched recipientUserIds and device owners: {body}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：recipientUserIds 为空时，根据 device 归属自动判断（合法场景）
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_create_session_empty_recipient_user_ids_success() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    let (device_a, _) = upload_test_device(&app, &user_a.token).await;
+    let (device_b, _) = upload_test_device(&app, &user_b.token).await;
+
+    let (id_a, id_b) = if user_a.user_id < user_b.user_id {
+        (user_a.user_id.clone(), user_b.user_id.clone())
+    } else {
+        (user_b.user_id.clone(), user_a.user_id.clone())
+    };
+    let conversation_id = format!("p_{id_a}_{id_b}");
+
+    // recipientUserIds 为空，但 recipientDeviceIds 全部属于另一方 → 应成功
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/sessions",
+        Some(&user_a.token),
+        &json!({
+            "conversationId": conversation_id,
+            "senderDeviceId": device_a,
+            "recipientDeviceIds": [&device_b]
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "should succeed with empty recipientUserIds: {body}"
+    );
+    assert_eq!(body["success"], json!(true));
+}
+
+// ---------------------------------------------------------------------------
+// 测试：群聊中 recipientDeviceIds 包含非群成员设备应拒绝
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_create_session_group_rejects_non_member_device() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+    let user_c = register_and_login(&app).await;
+
+    let (device_a, _) = upload_test_device(&app, &user_a.token).await;
+    let (device_c, _) = upload_test_device(&app, &user_c.token).await;
+
+    // User A 创建群组
+    let (status, create_body) = post_json(
+        &app,
+        "/api/group/create",
+        Some(&user_a.token),
+        &json!({
+            "groupName": "test_e2ee_group",
+            "memberIds": [user_b.user_id.parse::<i64>().unwrap()]
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "group creation failed: {create_body}"
+    );
+    let group_id = create_body["data"]["id"].as_i64().expect("group id");
+
+    let conversation_id = format!("g_{group_id}");
+
+    // User A 创建 session，recipientDeviceIds 包含非群成员 User C 的设备 → 应拒绝
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/sessions",
+        Some(&user_a.token),
+        &json!({
+            "conversationId": conversation_id,
+            "senderDeviceId": device_a,
+            "recipientDeviceIds": [&device_c]
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "should reject non-member device in group chat: {body}"
+    );
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("not a member of group"),
+        "unexpected error message: {body}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：recipientDeviceIds 包含不存在的设备应拒绝
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_create_session_rejects_nonexistent_device() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    let (device_a, _) = upload_test_device(&app, &user_a.token).await;
+
+    let (id_a, id_b) = if user_a.user_id < user_b.user_id {
+        (user_a.user_id.clone(), user_b.user_id.clone())
+    } else {
+        (user_b.user_id.clone(), user_a.user_id.clone())
+    };
+    let conversation_id = format!("p_{id_a}_{id_b}");
+
+    let fake_device_id = unique_device_id();
+
+    // recipientDeviceIds 包含从未注册的设备 → 应返回 BadRequest
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/sessions",
+        Some(&user_a.token),
+        &json!({
+            "conversationId": conversation_id,
+            "senderDeviceId": device_a,
+            "recipientDeviceIds": [&fake_device_id]
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "should reject nonexistent device: {body}"
+    );
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("not found or not active"),
+        "unexpected error message: {body}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：非会话成员不能创建 session
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_create_session_rejects_non_member() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+    let user_c = register_and_login(&app).await;
+
+    let (device_c, _) = upload_test_device(&app, &user_c.token).await;
+    let (device_c2, _) = upload_test_device(&app, &user_c.token).await;
+
+    let (id_a, id_b) = if user_a.user_id < user_b.user_id {
+        (user_a.user_id.clone(), user_b.user_id.clone())
+    } else {
+        (user_b.user_id.clone(), user_a.user_id.clone())
+    };
+    let conversation_id = format!("p_{id_a}_{id_b}");
+
+    // User C 不在会话中，不能创建 session
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/sessions",
+        Some(&user_c.token),
+        &json!({
+            "conversationId": conversation_id,
+            "senderDeviceId": device_c,
+            "recipientDeviceIds": [&device_c2]
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "should reject non-member from creating session: {body}"
+    );
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("not a conversation member"),
+        "unexpected error message: {body}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：recipientDeviceIds 为空应返回 BadRequest
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_create_session_rejects_empty_recipient_device_ids() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    let (device_a, _) = upload_test_device(&app, &user_a.token).await;
+
+    let (id_a, id_b) = if user_a.user_id < user_b.user_id {
+        (user_a.user_id.clone(), user_b.user_id.clone())
+    } else {
+        (user_b.user_id.clone(), user_a.user_id.clone())
+    };
+    let conversation_id = format!("p_{id_a}_{id_b}");
+
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/sessions",
+        Some(&user_a.token),
+        &json!({
+            "conversationId": conversation_id,
+            "senderDeviceId": device_a,
+            "recipientDeviceIds": []
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "should reject empty recipientDeviceIds: {body}"
+    );
+}

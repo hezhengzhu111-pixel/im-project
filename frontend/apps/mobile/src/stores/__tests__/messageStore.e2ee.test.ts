@@ -69,6 +69,26 @@ jest.mock('@/e2ee/manager/negotiation', () => {
   };
 });
 
+jest.mock('@/e2ee/storage/secureE2eeStorage', () => ({
+  e2eeSecureStorage: {
+    savePendingPlaintext: jest.fn().mockResolvedValue(undefined),
+    getPendingPlaintext: jest.fn().mockResolvedValue('hello'),
+    removePendingPlaintext: jest.fn().mockResolvedValue(undefined),
+    getDeviceId: jest.fn().mockResolvedValue('device-100'),
+    namespaceKey: jest.fn((userId: string, deviceId: string, kind: string, id: string) =>
+      `im.mobile.e2ee.${userId}.${deviceId}.${kind}.${encodeURIComponent(id)}`,
+    ),
+    setEncryptedJson: jest.fn().mockResolvedValue(undefined),
+    getEncryptedJson: jest.fn().mockResolvedValue(null),
+    removeEncrypted: jest.fn().mockResolvedValue(undefined),
+    getOrCreateDeviceId: jest.fn().mockResolvedValue('device-100'),
+    setKeyMaterial: jest.fn().mockResolvedValue(undefined),
+    getKeyMaterial: jest.fn().mockResolvedValue(''),
+    removeKeyMaterial: jest.fn().mockResolvedValue(undefined),
+    clearAccount: jest.fn().mockResolvedValue(undefined),
+  },
+}));
+
 // ─── Imports (after mocks) ────────────────────────────────────────────
 
 import { useMessageStore } from '../messageStore';
@@ -723,7 +743,9 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
       const payload = JSON.parse(payloadJson) as Record<string, unknown>;
       expect(payload.requiresE2ee).toBe(true);
       expect(payload.e2eeWaitReason).toBe('negotiation');
-      expect(payload.plaintext).toBe('hello');
+      // plaintext must NOT be in payload (stored in secure Keychain)
+      expect(payload.plaintext).toBeUndefined();
+      expect(payload.plaintextRef).toBeDefined();
       expect(payload.data).toBeDefined();
       expect((payload.data as Record<string, unknown>).content).toBeUndefined();
     });

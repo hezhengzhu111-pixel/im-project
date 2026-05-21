@@ -15,6 +15,7 @@ import { compareE2eeDecryptOrder, processE2eeMessage, processE2eeMessages, shoul
 import { e2eeManager } from '@/e2ee/manager/e2eeManager';
 import { initiateNegotiation, loadLocalSessionStatus } from '@/e2ee/manager/negotiation';
 import {
+  cleanupPendingE2eePlaintext,
   enqueuePendingE2eeText,
   encryptPendingE2eePayload,
   findPendingE2eeSends,
@@ -631,11 +632,20 @@ export const useMessageStore = create<MessageState>((set, get) => ({
 
     // Rule A + B: plaintext or negotiating private session → hold message
     // until E2EE negotiation completes. Do NOT send plaintext.
+    //
+    // SECURITY: The optimistic message carries the real content in
+    // memory for UI display, but decryptStatus='plaintext' signals
+    // sanitizeE2eeMessageForPersist to replace the content with a
+    // placeholder before persisting to SQLite.
     if (session.type === 'private' && (e2eeStatus === 'plaintext' || e2eeStatus === 'negotiating')) {
-      const message = optimisticMessage(session, 'TEXT', { content });
+      const message = optimisticMessage(session, 'TEXT', {
+        content,
+        rawJson: JSON.stringify({ content: '' }),
+        decryptStatus: 'plaintext',
+      });
       get().addMessage(message, session.id);
 
-      enqueuePendingE2eeText(session, message, content, 'negotiation');
+      await enqueuePendingE2eeText(session, message, content, 'negotiation');
 
       if (e2eeStatus === 'plaintext') {
         const initiated = await initiateNegotiation(session.id, session.targetId).catch(() => false);
@@ -1228,6 +1238,9 @@ export const useMessageStore = create<MessageState>((set, get) => ({
           uploadTaskRepository.remove(uploadTaskId);
         }
 
+        // 清理安全存储中的 pending E2EE plaintext
+        cleanupPendingE2eePlaintext(cid).catch(() => {});
+
         pendingMessageRepository.remove(cid);
       }
 
@@ -1303,6 +1316,18 @@ export const useMessageStore = create<MessageState>((set, get) => ({
    * 不会清：messages/sessions/media_cache 等主表（由 clearAllCache 处理）。
    */
   clear() {
+    // Best-effort cleanup of pending E2EE plaintext in secure storage
+    const allPending = pendingMessageRepository.listAll();
+    for (const item of allPending) {
+      try {
+        const payload = JSON.parse(item.payloadJson) as Record<string, unknown>;
+        if (payload.requiresE2ee === true && item.localId) {
+          cleanupPendingE2eePlaintext(item.localId).catch(() => {});
+        }
+      } catch {
+        // parse failure is non-fatal
+      }
+    }
     pendingMessageRepository.clear();
     inflightPendingRetries.clear();
     set({ messagesBySession: {}, messagesPaginationBySession: {}, searchResults: [] });

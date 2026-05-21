@@ -37,6 +37,26 @@ jest.mock('@/stores/authStore', () => ({
   },
 }));
 
+jest.mock('@/e2ee/storage/secureE2eeStorage', () => ({
+  e2eeSecureStorage: {
+    savePendingPlaintext: jest.fn().mockResolvedValue(undefined),
+    getPendingPlaintext: jest.fn().mockResolvedValue('hello'),
+    removePendingPlaintext: jest.fn().mockResolvedValue(undefined),
+    getDeviceId: jest.fn().mockResolvedValue('device-100'),
+    namespaceKey: jest.fn((userId: string, deviceId: string, kind: string, id: string) =>
+      `im.mobile.e2ee.${userId}.${deviceId}.${kind}.${encodeURIComponent(id)}`,
+    ),
+    setEncryptedJson: jest.fn().mockResolvedValue(undefined),
+    getEncryptedJson: jest.fn().mockResolvedValue(null),
+    removeEncrypted: jest.fn().mockResolvedValue(undefined),
+    getOrCreateDeviceId: jest.fn().mockResolvedValue('device-100'),
+    setKeyMaterial: jest.fn().mockResolvedValue(undefined),
+    getKeyMaterial: jest.fn().mockResolvedValue(''),
+    removeKeyMaterial: jest.fn().mockResolvedValue(undefined),
+    clearAccount: jest.fn().mockResolvedValue(undefined),
+  },
+}));
+
 jest.mock('@/stores/sessionStore', () => ({
   useSessionStore: {
     getState: jest.fn(() => ({
@@ -75,6 +95,7 @@ import {
   clearAllPendingEncryptedMessages,
 } from '@/e2ee/store/pendingDecryptStore';
 import { encryptPendingE2eePayload } from '@/e2ee/outbound/pendingE2eeSend';
+import { e2eeSecureStorage } from '@/e2ee/storage/secureE2eeStorage';
 
 const mr = jest.mocked(messageRepository);
 const pr = jest.mocked(pendingMessageRepository);
@@ -188,7 +209,9 @@ describe('messageStore E2EE outbound pipeline', () => {
       const payload = JSON.parse(payloadJson) as Record<string, unknown>;
       expect(payload.requiresE2ee).toBe(true);
       expect(payload.e2eeWaitReason).toBe('negotiation');
-      expect(payload.plaintext).toBe('hello');
+      // plaintext MUST NOT be in payload (stored in secure Keychain)
+      expect(payload.plaintext).toBeUndefined();
+      expect(payload.plaintextRef).toBeDefined();
       // data.content must NOT be set (different from non-E2EE pending)
       expect((payload.data as Record<string, unknown>).content).toBeUndefined();
     });
@@ -427,7 +450,7 @@ describe('messageStore E2EE outbound pipeline', () => {
           sendType: 'private',
           requiresE2ee: true,
           e2eeWaitReason: 'negotiation',
-          plaintext: 'hello',
+          plaintextRef: 'local_e2ee_wait',
           data: {
             receiverId: '200',
             clientMessageId: 'c_e2ee_wait',
@@ -462,6 +485,7 @@ describe('messageStore E2EE outbound pipeline', () => {
       const sessionId = '100_200';
 
       const encryptSpy = jest.spyOn(e2eeManager, 'encryptToEnvelope').mockResolvedValueOnce(rustEnvelope);
+      jest.mocked(e2eeSecureStorage.getPendingPlaintext).mockResolvedValueOnce('secret message');
 
       const pending: PendingMessage = {
         localId: 'local_e2ee_enc_1',
@@ -471,7 +495,7 @@ describe('messageStore E2EE outbound pipeline', () => {
           sendType: 'private',
           requiresE2ee: true,
           e2eeWaitReason: 'negotiation',
-          plaintext: 'secret message',
+          plaintextRef: 'local_e2ee_enc_1',
           data: {
             receiverId: '200',
             clientMessageId: 'c_enc_1',
@@ -502,12 +526,16 @@ describe('messageStore E2EE outbound pipeline', () => {
         }),
       );
 
+      // Plaintext must be deleted from secure storage on success
+      expect(e2eeSecureStorage.removePendingPlaintext).toHaveBeenCalled();
+
       // The updated payload should NOT contain plaintext
       const updateCall = (pr.update as jest.Mock).mock.calls.find(
         (call: unknown[]) => (call[0] as Record<string, unknown>)?.localId === 'local_e2ee_enc_1',
       );
       const updatedPayload = JSON.parse((updateCall![0] as { payloadJson: string }).payloadJson) as Record<string, unknown>;
       expect(updatedPayload.plaintext).toBeUndefined();
+      expect(updatedPayload.plaintextRef).toBeUndefined();
       expect(updatedPayload.requiresE2ee).toBeUndefined();
       expect(updatedPayload.encrypted).toBe(true);
       expect((updatedPayload.data as Record<string, unknown>).e2eeEnvelope).toEqual(rustEnvelope);
@@ -517,6 +545,7 @@ describe('messageStore E2EE outbound pipeline', () => {
       jest.spyOn(e2eeManager, 'encryptToEnvelope').mockRejectedValueOnce(
         new Error('Rust E2EE session state unavailable'),
       );
+      jest.mocked(e2eeSecureStorage.getPendingPlaintext).mockResolvedValueOnce('do not send');
 
       const pending: PendingMessage = {
         localId: 'local_e2ee_fail_1',
@@ -526,7 +555,7 @@ describe('messageStore E2EE outbound pipeline', () => {
           sendType: 'private',
           requiresE2ee: true,
           e2eeWaitReason: 'negotiation',
-          plaintext: 'do not send',
+          plaintextRef: 'local_e2ee_fail_1',
           data: {
             receiverId: '200',
             clientMessageId: 'c_fail_1',
@@ -553,6 +582,7 @@ describe('messageStore E2EE outbound pipeline', () => {
       jest.spyOn(e2eeManager, 'encryptToEnvelope').mockRejectedValueOnce(
         new Error('E2EE session state unavailable'),
       );
+      jest.mocked(e2eeSecureStorage.getPendingPlaintext).mockResolvedValueOnce('backoff test');
 
       const pending: PendingMessage = {
         localId: 'local_e2ee_backoff',
@@ -562,7 +592,7 @@ describe('messageStore E2EE outbound pipeline', () => {
           sendType: 'private',
           requiresE2ee: true,
           e2eeWaitReason: 'negotiation',
-          plaintext: 'backoff test',
+          plaintextRef: 'local_e2ee_backoff',
           data: {
             receiverId: '200',
             clientMessageId: 'c_backoff',
@@ -592,10 +622,11 @@ describe('messageStore E2EE outbound pipeline', () => {
       expect(updated.lastError).toContain('e2ee: encrypt failed:');
     });
 
-    it('marks pending as failed when maxRetryCount exceeded (exhausted)', async () => {
+    it('marks pending as failed and deletes plaintext when maxRetryCount exceeded (exhausted)', async () => {
       jest.spyOn(e2eeManager, 'encryptToEnvelope').mockRejectedValueOnce(
         new Error('E2EE negotiation has not been accepted'),
       );
+      jest.mocked(e2eeSecureStorage.getPendingPlaintext).mockResolvedValueOnce('exhausted test');
 
       const retryConfig = { maxRetryCount: 5 };
       const pending: PendingMessage = {
@@ -606,7 +637,7 @@ describe('messageStore E2EE outbound pipeline', () => {
           sendType: 'private',
           requiresE2ee: true,
           e2eeWaitReason: 'negotiation',
-          plaintext: 'exhausted test',
+          plaintextRef: 'local_e2ee_exhausted',
           data: {
             receiverId: '200',
             clientMessageId: 'c_exhausted',
@@ -632,6 +663,8 @@ describe('messageStore E2EE outbound pipeline', () => {
       expect(updated.lastError).toContain('exhausted');
       // Plaintext must be stripped from exhausted payload
       expect(updated.payloadJson).not.toContain('exhausted test');
+      // Plaintext must be deleted from secure storage on exhausted
+      expect(e2eeSecureStorage.removePendingPlaintext).toHaveBeenCalled();
     });
   });
 
@@ -646,7 +679,7 @@ describe('messageStore E2EE outbound pipeline', () => {
         sendType: 'private',
         requiresE2ee: true,
         e2eeWaitReason: 'negotiation',
-        plaintext: 'retry pending test',
+        plaintextRef: 'local_retry_pending_e2ee',
         data: {
           receiverId: '200',
           clientMessageId: 'c_rp_e2ee',
