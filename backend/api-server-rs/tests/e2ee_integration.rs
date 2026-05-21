@@ -1793,3 +1793,208 @@ async fn test_e2ee_disable_sets_disabled_fields() {
         "state_version should have been incremented at least twice (created as pending + accept + disable), got {state_version}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// 测试：disable_encryption 无已有 session 时 INSERT 写入 disabled_at
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_disable_no_existing_session_writes_disabled_at() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    establish_friendship(&app, &user_a, &user_b).await;
+
+    let (id_a, id_b) =
+        if user_a.user_id.parse::<i64>().unwrap() < user_b.user_id.parse::<i64>().unwrap() {
+            (&user_a.user_id, &user_b.user_id)
+        } else {
+            (&user_b.user_id, &user_a.user_id)
+        };
+    let session_id = format!("{id_a}_{id_b}");
+
+    // 直接调用 disable，无任何已有的 session 记录 → INSERT 路径
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/disable",
+        Some(&user_a.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "disable without prior session should succeed");
+
+    // 直接查询数据库验证字段
+    let db = test_db().await;
+    let row = sqlx::query(
+        "SELECT status, disabled_by, disabled_at IS NOT NULL AS has_disabled_at, state_version \
+         FROM service_user_service_db.e2ee_sessions \
+         WHERE session_id = ?",
+    )
+    .bind(&session_id)
+    .fetch_one(&db)
+    .await
+    .expect("should find newly inserted session row");
+
+    let status: String = row.get("status");
+    let disabled_by: Option<i64> = row.get("disabled_by");
+    let has_disabled_at: i64 = row.get("has_disabled_at");
+    let state_version: i32 = row.get("state_version");
+
+    assert_eq!(status, "plaintext", "newly inserted row should be plaintext");
+    assert_eq!(
+        disabled_by,
+        Some(user_a.user_id.parse::<i64>().unwrap()),
+        "disabled_by should be the user who called disable"
+    );
+    assert_eq!(
+        has_disabled_at, 1,
+        "disabled_at should be set to NOW() even for new INSERT"
+    );
+    assert_eq!(
+        state_version, 1,
+        "state_version should start at 1 for new INSERT"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：迁移 SQL schema 验证 — INFORMATION_SCHEMA 检查
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_migration_e2ee_pre_key_claims_table_exists() {
+    let db = test_db().await;
+
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES \
+         WHERE TABLE_SCHEMA = 'service_user_service_db' \
+         AND TABLE_NAME = 'e2ee_pre_key_claims'",
+    )
+    .fetch_one(&db)
+    .await
+    .expect("query INFORMATION_SCHEMA.TABLES");
+
+    let cnt: i64 = row.get("cnt");
+    assert_eq!(cnt, 1, "e2ee_pre_key_claims table must exist");
+}
+
+#[tokio::test]
+async fn test_migration_e2ee_pre_key_claims_unique_key_columns() {
+    let db = test_db().await;
+
+    // 验证唯一键 uk_e2ee_prekey_claim 或 uniq_e2ee_prekey_claim 包含正确的列
+    let rows = sqlx::query(
+        "SELECT COLUMN_NAME \
+         FROM INFORMATION_SCHEMA.STATISTICS \
+         WHERE TABLE_SCHEMA = 'service_user_service_db' \
+         AND TABLE_NAME = 'e2ee_pre_key_claims' \
+         AND INDEX_NAME IN ('uniq_e2ee_prekey_claim', 'uk_e2ee_prekey_claim') \
+         ORDER BY SEQ_IN_INDEX",
+    )
+    .fetch_all(&db)
+    .await
+    .expect("query INFORMATION_SCHEMA.STATISTICS");
+
+    let columns: Vec<String> = rows.iter().map(|r| r.get("COLUMN_NAME")).collect();
+    assert_eq!(
+        columns,
+        vec![
+            "requester_user_id",
+            "requester_device_id",
+            "target_user_id",
+            "target_device_id",
+            "conversation_id"
+        ],
+        "unique key must cover all 5 columns in order"
+    );
+}
+
+#[tokio::test]
+async fn test_migration_e2ee_pre_key_claims_requester_device_id_not_null_default_empty() {
+    let db = test_db().await;
+
+    let row = sqlx::query(
+        "SELECT COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE \
+         FROM INFORMATION_SCHEMA.COLUMNS \
+         WHERE TABLE_SCHEMA = 'service_user_service_db' \
+         AND TABLE_NAME = 'e2ee_pre_key_claims' \
+         AND COLUMN_NAME = 'requester_device_id'",
+    )
+    .fetch_one(&db)
+    .await
+    .expect("query INFORMATION_SCHEMA.COLUMNS");
+
+    let default: Option<String> = row.get("COLUMN_DEFAULT");
+    let nullable: String = row.get("IS_NULLABLE");
+
+    assert_eq!(nullable, "NO", "requester_device_id must be NOT NULL");
+    assert_eq!(
+        default.as_deref(),
+        Some(""),
+        "requester_device_id default must be '' (empty string)"
+    );
+}
+
+#[tokio::test]
+async fn test_migration_e2ee_sessions_has_state_version() {
+    let db = test_db().await;
+
+    let row = sqlx::query(
+        "SELECT COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE \
+         FROM INFORMATION_SCHEMA.COLUMNS \
+         WHERE TABLE_SCHEMA = 'service_user_service_db' \
+         AND TABLE_NAME = 'e2ee_sessions' \
+         AND COLUMN_NAME = 'state_version'",
+    )
+    .fetch_one(&db)
+    .await
+    .expect("state_version column must exist in e2ee_sessions");
+
+    let default: Option<String> = row.get("COLUMN_DEFAULT");
+    let nullable: String = row.get("IS_NULLABLE");
+
+    assert_eq!(nullable, "NO", "state_version must be NOT NULL");
+    assert_eq!(
+        default.as_deref(),
+        Some("1"),
+        "state_version default must be 1"
+    );
+}
+
+#[tokio::test]
+async fn test_migration_e2ee_sessions_has_disabled_by() {
+    let db = test_db().await;
+
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS cnt \
+         FROM INFORMATION_SCHEMA.COLUMNS \
+         WHERE TABLE_SCHEMA = 'service_user_service_db' \
+         AND TABLE_NAME = 'e2ee_sessions' \
+         AND COLUMN_NAME = 'disabled_by'",
+    )
+    .fetch_one(&db)
+    .await
+    .expect("query INFORMATION_SCHEMA.COLUMNS");
+
+    let cnt: i64 = row.get("cnt");
+    assert_eq!(cnt, 1, "disabled_by column must exist in e2ee_sessions");
+}
+
+#[tokio::test]
+async fn test_migration_e2ee_sessions_has_disabled_at() {
+    let db = test_db().await;
+
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS cnt \
+         FROM INFORMATION_SCHEMA.COLUMNS \
+         WHERE TABLE_SCHEMA = 'service_user_service_db' \
+         AND TABLE_NAME = 'e2ee_sessions' \
+         AND COLUMN_NAME = 'disabled_at'",
+    )
+    .fetch_one(&db)
+    .await
+    .expect("query INFORMATION_SCHEMA.COLUMNS");
+
+    let cnt: i64 = row.get("cnt");
+    assert_eq!(cnt, 1, "disabled_at column must exist in e2ee_sessions");
+}

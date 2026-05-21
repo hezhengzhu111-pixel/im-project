@@ -560,8 +560,8 @@ pub async fn disable_encryption(
         sqlx::query(
             "INSERT INTO service_user_service_db.e2ee_sessions \
              (session_id, requester_id, target_user_id, status, request_payload_json, \
-              disabled_by, state_version) \
-             VALUES (?, ?, ?, 'plaintext', NULL, ?, 1)",
+              disabled_by, disabled_at, state_version) \
+             VALUES (?, ?, ?, 'plaintext', NULL, ?, NOW(), 1)",
         )
         .bind(&request.session_id)
         .bind(identity.user_id)
