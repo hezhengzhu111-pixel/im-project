@@ -210,4 +210,37 @@ export const e2eeSecureStorage = {
   namespaceKey(userId: string, deviceId: string, kind: string, id: string): string {
     return `${namespacePrefix(userId, deviceId)}.${kind}.${encodeURIComponent(id)}`;
   },
+
+  /**
+   * Save pending E2EE plaintext to encrypted Keychain storage before
+   * negotiation completes. The plaintext is bound to userId + deviceId +
+   * localId so it cannot leak across accounts or devices.
+   */
+  async savePendingPlaintext(userId: string, deviceId: string, localId: string, plaintext: string): Promise<void> {
+    const key = this.namespaceKey(userId, deviceId, 'pending-plaintext', localId);
+    await this.setEncryptedJson(userId, deviceId, key, {
+      localId,
+      plaintext,
+      savedAt: Date.now(),
+    });
+  },
+
+  /**
+   * Retrieve pending E2EE plaintext from encrypted Keychain storage.
+   * Returns null if the entry does not exist or cannot be decrypted.
+   */
+  async getPendingPlaintext(userId: string, deviceId: string, localId: string): Promise<string | null> {
+    const key = this.namespaceKey(userId, deviceId, 'pending-plaintext', localId);
+    const entry = await this.getEncryptedJson<{ plaintext: string }>(userId, deviceId, key);
+    return entry?.plaintext ?? null;
+  },
+
+  /**
+   * Remove pending E2EE plaintext from encrypted Keychain storage.
+   * Idempotent — does not throw if the entry does not exist.
+   */
+  async removePendingPlaintext(userId: string, deviceId: string, localId: string): Promise<void> {
+    const key = this.namespaceKey(userId, deviceId, 'pending-plaintext', localId);
+    await this.removeEncrypted(userId, deviceId, key);
+  },
 };

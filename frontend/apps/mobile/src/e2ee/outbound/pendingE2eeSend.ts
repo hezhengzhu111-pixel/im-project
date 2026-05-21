@@ -4,30 +4,25 @@ import { sanitizeE2eeLogValue } from '@im/shared-e2ee-core';
 import { createNextRetryAt, shouldStopRetry } from '@im/shared-im-core';
 import { RETRY_CONFIG } from '@/constants/config';
 import { e2eeManager } from '@/e2ee/manager/e2eeManager';
+import { e2eeSecureStorage } from '@/e2ee/storage/secureE2eeStorage';
 import { pendingMessageRepository } from '@/services/storage/pendingMessageRepository';
+import { useAuthStore } from '@/stores/authStore';
 import { logger } from '@/utils/logger';
 import type { MobileMessage, PendingMessage } from '@/types/models';
 import type { SendMessagePayload } from '@/services/chat/messageService';
 
 /**
- * Extends the standard PendingSendPayload with E2EE-wait metadata.
+ * E2EE-wait metadata persisted inside pending payloadJson.
  *
- * These fields are persisted inside the pending payloadJson so that the
- * retry pipeline can distinguish "waiting for E2EE negotiation" from
- * normal plaintext sends and encrypted retries.
- *
- * SECURITY NOTE: The `plaintext` field stores the user's message content
- * in plaintext inside the local pending store. This is consistent with
- * the existing mobile pending send persistence model, where
- * `data.content` already carries plaintext for non-encrypted sends.
- * The pending store is local SQLite and is never transmitted over the
- * network — plaintext is cleared from the payload (replaced by
- * e2eeEnvelope) before the actual encrypted send.
+ * The plaintext is stored in the device Keychain (via e2eeSecureStorage),
+ * not in the SQLite pending row. The `plaintextRef` field is the localId
+ * used to retrieve the plaintext from secure storage.
  */
 export interface E2eePendingMeta {
   requiresE2ee?: boolean;
   e2eeWaitReason?: 'negotiation' | 'prekey' | 'state';
-  plaintext?: string;
+  /** localId reference to retrieve plaintext from e2eeSecureStorage */
+  plaintextRef?: string;
 }
 
 export interface PendingSendPayload extends E2eePendingMeta {
@@ -44,22 +39,42 @@ const hasE2eePendingMeta = (payload: unknown): payload is PendingSendPayload & R
 
 /**
  * Enqueue a text message as "waiting for E2EE negotiation" in the pending
- * send queue. The message will NOT be sent as plaintext; it stays pending
- * until the session E2EE status becomes `encrypted` and the caller
- * triggers `retryMessage`.
+ * send queue.
+ *
+ * SECURITY: The plaintext is saved to the device Keychain (via
+ * e2eeSecureStorage) keyed by userId + deviceId + localId. The pending
+ * payloadJson only stores a `plaintextRef` (the localId), never the
+ * plaintext itself. The message will NOT be sent as plaintext; it stays
+ * pending until the session E2EE status becomes `encrypted`.
+ *
+ * Requires a logged-in user with a provisioned deviceId. Throws if either
+ * is missing — we must not silently write plaintext to SQLite.
  */
-export function enqueuePendingE2eeText(
+export async function enqueuePendingE2eeText(
   session: ChatSession,
   message: MobileMessage,
   plaintext: string,
   reason: 'negotiation' | 'prekey' | 'state',
-): void {
+): Promise<void> {
+  const userId = useAuthStore.getState().currentUser?.id;
+  if (!userId) {
+    throw new Error('E2EE pending send requires an authenticated user');
+  }
+
+  const deviceId = await e2eeSecureStorage.getDeviceId(userId);
+  if (!deviceId) {
+    throw new Error('E2EE pending send requires a provisioned device');
+  }
+
+  // Save plaintext to encrypted Keychain, NOT to SQLite payload.
+  await e2eeSecureStorage.savePendingPlaintext(userId, deviceId, message.id, plaintext);
+
   const now = Date.now();
   const payload: PendingSendPayload = {
     sendType: 'private',
     requiresE2ee: true,
     e2eeWaitReason: reason,
-    plaintext,
+    plaintextRef: message.id,
     data: {
       receiverId: session.targetId,
       clientMessageId: message.clientMessageId || '',
@@ -118,12 +133,13 @@ export interface EncryptPendingE2eeResult {
  * Encrypt a single E2EE-waiting pending message and update its payload
  * with the Rust v2 envelope.
  *
- * On success the pending payload is rewritten from `requiresE2ee` +
- * `plaintext` to `encrypted` + `e2eeEnvelope` + `e2eeDeviceId`, ready
- * for the standard retry pipeline.
+ * Reads the plaintext from e2eeSecureStorage (Keychain), NOT from the
+ * SQLite pending payload. On success the plaintext is deleted from
+ * secure storage and the pending payload is rewritten from `requiresE2ee`
+ * to `encrypted` + `e2eeEnvelope` + `e2eeDeviceId`.
  *
- * On failure the pending is kept with an incremented retry count and an
- * error annotation — no plaintext is ever sent.
+ * On retryable failure the plaintext is kept in secure storage for the
+ * next attempt. On exhausted failure the plaintext is deleted.
  *
  * This function does NOT import from messageStore, so it can be used
  * freely without creating import cycles.
@@ -133,8 +149,13 @@ export async function encryptPendingE2eePayload(item: PendingMessage): Promise<E
 
   try {
     const parsed = JSON.parse(item.payloadJson) as PendingSendPayload;
-    if (!parsed.requiresE2ee || !parsed.plaintext) {
+    if (!parsed.requiresE2ee) {
       return { ...base, error: 'not an E2EE-waiting pending' };
+    }
+
+    const localId = parsed.plaintextRef || item.localId;
+    if (!localId) {
+      return { ...base, error: 'not an E2EE-waiting pending (missing plaintextRef)' };
     }
 
     const receiverId = parsed.data.receiverId || '';
@@ -143,11 +164,34 @@ export async function encryptPendingE2eePayload(item: PendingMessage): Promise<E
       return { ...base, error: 'missing receiver id' };
     }
 
+    const userId = useAuthStore.getState().currentUser?.id;
+    if (!userId) {
+      return { ...base, error: 'cannot encrypt pending E2EE payload without authenticated user' };
+    }
+
+    const deviceId = await e2eeSecureStorage.getDeviceId(userId);
+    if (!deviceId) {
+      return { ...base, error: 'cannot encrypt pending E2EE payload without provisioned device' };
+    }
+
+    const plaintext = await e2eeSecureStorage.getPendingPlaintext(userId, deviceId, localId);
+    if (!plaintext) {
+      // The secure stored plaintext is missing — this pending cannot be
+      // recovered. Exhaust it immediately.
+      await e2eeSecureStorage.removePendingPlaintext(userId, deviceId, localId).catch(() => {});
+      markPendingE2eeExhausted(item, 'pending plaintext missing from secure storage');
+      return { ...base, error: 'pending plaintext missing from secure storage' };
+    }
+
     const envelope = await e2eeManager.encryptToEnvelope({
       sessionId: item.conversationId,
-      plaintext: parsed.plaintext,
+      plaintext,
       recipientUserId: receiverId,
     });
+
+    // Encryption succeeded — delete the plaintext from secure storage
+    // and rewrite the pending payload as encrypted.
+    await e2eeSecureStorage.removePendingPlaintext(userId, deviceId, localId).catch(() => {});
 
     const updatedPayload: PendingSendPayload = {
       sendType: parsed.sendType,
@@ -178,6 +222,20 @@ export async function encryptPendingE2eePayload(item: PendingMessage): Promise<E
     }));
     const nextRetryCount = item.retryCount + 1;
     if (shouldStopRetry(nextRetryCount, RETRY_CONFIG.maxRetryCount)) {
+      // Exhausted — clean up secure storage plaintext
+      try {
+        const parsed = JSON.parse(item.payloadJson) as PendingSendPayload;
+        const localId = parsed.plaintextRef || item.localId;
+        const userId = useAuthStore.getState().currentUser?.id;
+        if (userId && localId) {
+          const deviceId = await e2eeSecureStorage.getDeviceId(userId).catch(() => '');
+          if (deviceId) {
+            await e2eeSecureStorage.removePendingPlaintext(userId, deviceId, localId).catch(() => {});
+          }
+        }
+      } catch {
+        // Best-effort cleanup
+      }
       markPendingE2eeExhausted(item, `encrypt failed: ${message}`);
     } else {
       markPendingE2eeRetryableFailure(item, `encrypt failed: ${message}`);
@@ -207,12 +265,29 @@ function markPendingE2eeExhausted(item: PendingMessage, reason: string): void {
     status: 'failed',
     retryCount: item.retryCount + 1,
     lastError: `e2ee encrypt exhausted: ${reason}`,
-    // Strip plaintext from the exhausted failed pending — never persist
-    // plaintext in a terminal failed payload.
+    // Strip E2EE metadata from the exhausted pending — never persist
+    // plaintextRef or other E2EE negotiation data in a terminal payload.
     payloadJson: JSON.stringify({
       sendType: item.sendType,
       data: { clientMessageId: '', messageType: 'TEXT' },
       encrypted: true,
     }),
   });
+}
+
+/**
+ * Best-effort helper to remove pending E2EE plaintext from secure storage
+ * by localId. Safe to call even when userId/deviceId are unavailable.
+ * Used by deleteLocalMessage / clear / clearRuntime paths.
+ */
+export async function cleanupPendingE2eePlaintext(localId: string): Promise<void> {
+  try {
+    const userId = useAuthStore.getState().currentUser?.id;
+    if (!userId || !localId) return;
+    const deviceId = await e2eeSecureStorage.getDeviceId(userId).catch(() => '');
+    if (!deviceId) return;
+    await e2eeSecureStorage.removePendingPlaintext(userId, deviceId, localId).catch(() => {});
+  } catch {
+    // Best-effort cleanup — never throw
+  }
 }

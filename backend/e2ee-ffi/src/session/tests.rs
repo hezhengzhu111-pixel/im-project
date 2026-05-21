@@ -1048,3 +1048,294 @@ fn wrong_session_decrypt_fails() -> Result<(), String> {
 
     Ok(())
 }
+
+// ============================================================================
+// Concurrent session creation tests — TOCTOU race condition fix verification
+// ============================================================================
+
+/// Two threads concurrently create the same outbound session.
+/// Only one must succeed; the other must return SessionAlreadyExists.
+/// The session must remain usable after the race.
+#[test]
+fn concurrent_create_outbound_same_session_id_only_one_succeeds() -> Result<(), String> {
+    use std::sync::Arc;
+    use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+    let bob_bundle =
+        generate_key_bundle(1, &[(100, 3)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+    let fetch = PreKeyBundleFetch {
+        identity_key: bob_bundle.bundle.identity_key,
+        signing_key: bob_bundle.bundle.signing_key,
+        signed_pre_key: PreKey {
+            id: 1,
+            key: bob_bundle.bundle.signed_pre_key,
+        },
+        signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+        one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+    };
+    let fetch_json = serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+    let alice_ik = generate_x25519_keypair();
+    let alice_ik_bincode =
+        bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+    let mgr = Arc::new(SessionManager::new());
+    let session_id = "concurrent-outbound".to_string();
+
+    let mut handles = Vec::new();
+    for _ in 0..2 {
+        let mgr = Arc::clone(&mgr);
+        let sid = session_id.clone();
+        let ik = alice_ik_bincode.clone();
+        let fj = fetch_json.clone();
+        handles.push(std::thread::spawn(move || {
+            mgr.create_outbound_session(sid, ik, fj)
+        }));
+    }
+
+    let mut success_count = 0;
+    let mut already_exists_count = 0;
+    let mut handshake = None;
+
+    for h in handles {
+        match h.join().expect("thread panicked") {
+            Ok(hs) => {
+                success_count += 1;
+                handshake = Some(hs);
+            }
+            Err(SessionError::SessionAlreadyExists(_)) => {
+                already_exists_count += 1;
+            }
+            Err(e) => {
+                return Err(format!("unexpected error: {e}"));
+            }
+        }
+    }
+
+    if success_count != 1 {
+        return Err(format!(
+            "expected exactly 1 success, got {success_count}"
+        ));
+    }
+    if already_exists_count != 1 {
+        return Err(format!(
+            "expected exactly 1 SessionAlreadyExists, got {already_exists_count}"
+        ));
+    }
+
+    // Verify the winning session is usable
+    let hs = handshake.ok_or("no handshake produced")?;
+    if hs.len() < 40 {
+        return Err(format!("handshake too short: {} bytes", hs.len()));
+    }
+
+    let _wire = mgr
+        .encrypt(session_id.clone(), b"concurrent outbound test".to_vec())
+        .map_err(|e| format!("encrypt after concurrent create: {e}"))?;
+
+    let exported = mgr
+        .export_session(session_id.clone())
+        .map_err(|e| format!("export after concurrent create: {e}"))?;
+    if exported.is_empty() {
+        return Err("exported state is empty after concurrent create".to_string());
+    }
+
+    // If the second thread overwrote, the first handshake would be useless.
+    // Verify by encrypting a second message with the same session.
+    let wire2 = mgr
+        .encrypt(session_id.clone(), b"second message".to_vec())
+        .map_err(|e| format!("encrypt second message: {e}"))?;
+    if wire2.is_empty() {
+        return Err("second encrypted message is empty".to_string());
+    }
+
+    Ok(())
+}
+
+/// Two threads concurrently create the same inbound session.
+/// Only one must succeed; the other must return SessionAlreadyExists.
+#[test]
+fn concurrent_create_inbound_same_session_id_only_one_succeeds() -> Result<(), String> {
+    use std::sync::Arc;
+    use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+    let bob_bundle =
+        generate_key_bundle(1, &[(100, 1)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+    let fetch = PreKeyBundleFetch {
+        identity_key: bob_bundle.bundle.identity_key,
+        signing_key: bob_bundle.bundle.signing_key,
+        signed_pre_key: PreKey {
+            id: 1,
+            key: bob_bundle.bundle.signed_pre_key,
+        },
+        signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+        one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+    };
+    let fetch_json = serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+    let alice_ik = generate_x25519_keypair();
+    let alice_ik_bincode =
+        bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+    // Create a temp outbound session to obtain a valid handshake
+    let prep_mgr = SessionManager::new();
+    let handshake = prep_mgr
+        .create_outbound_session("prep-alice".to_string(), alice_ik_bincode, fetch_json)
+        .map_err(|e| format!("prep create_outbound_session: {e}"))?;
+
+    if handshake.len() < 40 {
+        return Err(format!("handshake too short: {} bytes", handshake.len()));
+    }
+    let alice_ek = handshake[0..32].to_vec();
+
+    // Bob's key material
+    let bob_ik_bincode = bincode::serialize(&bob_bundle.identity_key_pair)
+        .map_err(|e| format!("serialize bob_ik: {e}"))?;
+    let bob_spk_bincode = bincode::serialize(&bob_bundle.signed_pre_key_pair)
+        .map_err(|e| format!("serialize bob_spk: {e}"))?;
+    let bob_otk = bob_bundle
+        .one_time_pre_key_pairs
+        .first()
+        .ok_or("missing OTK".to_string())?;
+    let bob_otk_bincode =
+        bincode::serialize(&bob_otk.key_pair).map_err(|e| format!("serialize bob_otk: {e}"))?;
+
+    let alice_ik_pub = alice_ik.public_key.0.to_vec();
+
+    // Concurrent test: two threads try to create the same inbound session
+    let mgr = Arc::new(SessionManager::new());
+    let session_id = "concurrent-inbound".to_string();
+
+    let mut handles = Vec::new();
+    for _ in 0..2 {
+        let mgr = Arc::clone(&mgr);
+        let sid = session_id.clone();
+        let bik = bob_ik_bincode.clone();
+        let bspk = bob_spk_bincode.clone();
+        let botk = bob_otk_bincode.clone();
+        let aik = alice_ik_pub.clone();
+        let aek = alice_ek.clone();
+        handles.push(std::thread::spawn(move || {
+            mgr.create_inbound_session(sid, bik, bspk, Some(botk), aik, aek)
+        }));
+    }
+
+    let mut success_count = 0;
+    let mut already_exists_count = 0;
+
+    for h in handles {
+        match h.join().expect("thread panicked") {
+            Ok(()) => success_count += 1,
+            Err(SessionError::SessionAlreadyExists(_)) => already_exists_count += 1,
+            Err(e) => return Err(format!("unexpected error: {e}")),
+        }
+    }
+
+    if success_count != 1 {
+        return Err(format!(
+            "expected exactly 1 success, got {success_count}"
+        ));
+    }
+    if already_exists_count != 1 {
+        return Err(format!(
+            "expected exactly 1 SessionAlreadyExists, got {already_exists_count}"
+        ));
+    }
+
+    // Verify session is usable: encrypt with the prep outbound session,
+    // decrypt with the concurrently-created inbound session
+    let wire = prep_mgr
+        .encrypt("prep-alice".to_string(), b"concurrent inbound test".to_vec())
+        .map_err(|e| format!("encrypt from prep: {e}"))?;
+
+    let pt = mgr
+        .decrypt(session_id.clone(), wire)
+        .map_err(|e| format!("decrypt concurrent inbound: {e}"))?;
+
+    if pt != b"concurrent inbound test" {
+        return Err("plaintext mismatch after concurrent inbound create".to_string());
+    }
+
+    // Export should work
+    let exported = mgr
+        .export_session(session_id.clone())
+        .map_err(|e| format!("export after concurrent inbound: {e}"))?;
+    if exported.is_empty() {
+        return Err("exported state is empty after concurrent inbound".to_string());
+    }
+
+    Ok(())
+}
+
+/// Multiple threads creating sessions with different session_ids must all succeed.
+/// The global write lock should not cause false SessionAlreadyExists errors.
+#[test]
+fn concurrent_create_different_session_ids_all_succeed() -> Result<(), String> {
+    use std::sync::Arc;
+    use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+    let bob_bundle =
+        generate_key_bundle(1, &[(100, 4)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+    let fetch = PreKeyBundleFetch {
+        identity_key: bob_bundle.bundle.identity_key,
+        signing_key: bob_bundle.bundle.signing_key,
+        signed_pre_key: PreKey {
+            id: 1,
+            key: bob_bundle.bundle.signed_pre_key,
+        },
+        signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+        one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+    };
+    let fetch_json = serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+    let alice_ik = generate_x25519_keypair();
+    let alice_ik_bincode =
+        bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+    let mgr = Arc::new(SessionManager::new());
+    let thread_count = 4;
+
+    let mut handles = Vec::new();
+    for i in 0..thread_count {
+        let mgr = Arc::clone(&mgr);
+        let sid = format!("concurrent-diff-{}", i);
+        let ik = alice_ik_bincode.clone();
+        let fj = fetch_json.clone();
+        handles.push(std::thread::spawn(move || {
+            mgr.create_outbound_session(sid, ik, fj)
+        }));
+    }
+
+    for (i, h) in handles.into_iter().enumerate() {
+        match h.join().expect("thread panicked") {
+            Ok(hs) => {
+                if hs.len() < 40 {
+                    return Err(format!(
+                        "thread {} handshake too short: {} bytes",
+                        i,
+                        hs.len()
+                    ));
+                }
+            }
+            Err(e) => {
+                return Err(format!("thread {} unexpected error: {e}", i));
+            }
+        }
+    }
+
+    // Verify all sessions are independently usable
+    for i in 0..thread_count {
+        let sid = format!("concurrent-diff-{}", i);
+        let wire = mgr
+            .encrypt(sid.clone(), format!("msg-{}", i).into_bytes())
+            .map_err(|e| format!("encrypt {}: {e}", i))?;
+        if wire.is_empty() {
+            return Err(format!("encrypted message {} is empty", i));
+        }
+    }
+
+    Ok(())
+}
