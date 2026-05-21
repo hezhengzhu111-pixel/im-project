@@ -27,6 +27,25 @@
 -keep class com.facebook.react.turbomodule.** { *; }
 -keep class com.immobile.ConfigModule { *; }
 -keep class com.immobile.ConfigPackage { *; }
+-keep class com.immobile.RustE2eeModule { *; }
+-keep class com.immobile.RustE2eePackage { *; }
+
+# JNA — UniFFI-generated Rust E2EE bindings depend on JNA for native library loading.
+# ProGuard/R8 can strip JNA callbacks and structures that are only referenced via reflection.
+-keep class com.sun.jna.** { *; }
+-keep class com.sun.jna.internal.** { *; }
+-keepclassmembers class * extends com.sun.jna.Structure {
+    <fields>;
+}
+-keepclassmembers class * implements com.sun.jna.Callback {
+    <methods>;
+}
+-dontwarn com.sun.jna.**
+
+# UniFFI-generated E2EE bindings — keep the entire e2ee package since it contains
+# JNA Library interfaces, Structure subclasses, Callback implementations, and
+# RustBuffer helpers that are all accessed via reflection / native lookup.
+-keep class com.im.e2ee.** { *; }
 
 # React Native ecosystem libraries that rely on JNI, reflection, or generated glue.
 -keep class io.invertase.firebase.** { *; }
