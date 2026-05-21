@@ -57,6 +57,12 @@ struct E2eeNegotiationPush {
     pub requester_name: String,
     pub target_user_id: String,
     pub request_payload_json: Option<String>,
+    /// ISO-8601 timestamp from updated_time column.
+    /// Clients compare this against their local state to discard stale events.
+    pub updated_time: Option<String>,
+    /// Monotonic state version (state_version column).
+    /// Incremented on every state transition; clients can use it for conflict detection.
+    pub state_version: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -98,11 +104,12 @@ fn validate_optional_key(value: Option<&str>, field_name: &str) -> Result<(), Ap
 ///
 /// 业务目的：向目标用户发起 E2EE 会话协商，创建 pending 状态的会话记录。
 /// 认证要求：需要有效的 JWT access token。
-/// 安全约束：session_id 格式为 `{id_a}_{id_b}`，发起者必须是其中一方；
-/// 仅保存公钥材料（identity_key、signed_pre_key、request_payload_json），
-/// 不保存任何私钥。已加密的会话可以重新发起协商以完成换钥或恢复。
-/// 返回语义：成功返回 "ok"，幂等更新；已有 encrypted 记录也允许重新发起，
-/// 用于本地密钥丢失、换设备或主动轮换会话密钥后的恢复。
+/// 安全约束：
+/// - session_id 格式为 `{id_a}_{id_b}` 或 `p_{id_a}_{id_b}`，发起者必须是其中一方；
+/// - 双方必须存在真实好友关系（im_friend 双向 status=1）；
+/// - 仅保存公钥材料，不保存任何私钥；
+/// - 已 encrypted 的会话不能被普通 request 覆盖，需走 rotate/rekey；
+/// - 同一 requester 对 pending 重复 request 幂等返回。
 pub async fn request_encryption(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -121,50 +128,103 @@ pub async fn request_encryption(
         }
     }
 
-    // 解析 session_id 中的两个 user_id，校验发起者必须是其中之一
-    let (id_a, id_b) = parse_session_partners(&request.session_id)?;
-    if identity.user_id != id_a && identity.user_id != id_b {
-        return Err(AppError::Forbidden(
-            "session_id does not include caller".to_string(),
-        ));
+    // 验证调用者是合法参与者 + 好友关系存在
+    let peer_user_id =
+        ensure_e2ee_session_participant(&state.db, identity.user_id, &request.session_id)
+            .await?;
+
+    // 加载现有协商状态
+    let existing = load_negotiation_state(&state.db, &request.session_id).await?;
+
+    if let Some((ref status, ref existing_requester, _, _, _)) = existing {
+        match status.as_str() {
+            "encrypted" => {
+                // 已加密的会话不能被普通 request 重置为 pending，
+                // 需要走 rotate/rekey 接口进行重新协商。
+                return Err(AppError::Conflict(
+                    "session already encrypted; use rotate to renegotiate".to_string(),
+                ));
+            }
+            "pending" if *existing_requester == identity.user_id => {
+                // 同一 requester 重复 request：幂等，仅更新 payload
+                sqlx::query(
+                    "UPDATE service_user_service_db.e2ee_sessions \
+                     SET request_payload_json = ?, updated_time = NOW() \
+                     WHERE session_id = ?",
+                )
+                .bind(&request.request_payload_json)
+                .bind(&request.session_id)
+                .execute(&state.db)
+                .await?;
+
+                let negotiation = load_negotiation_state(&state.db, &request.session_id).await?;
+                let (cur_sv, cur_ut) = negotiation
+                    .map(|(_, _, _, sv, ut)| (sv, Some(ut)))
+                    .unwrap_or((1, None));
+                let requester_name = resolve_user_display_name(&state, identity.user_id)
+                    .await?
+                    .unwrap_or_else(|| identity.username.clone());
+                let push = E2eeNegotiationPush {
+                    action: "request".to_string(),
+                    session_id: request.session_id.clone(),
+                    requester_id: identity.user_id.to_string(),
+                    requester_name,
+                    target_user_id: peer_user_id.to_string(),
+                    request_payload_json: request.request_payload_json.clone(),
+                    updated_time: cur_ut.map(|t| t.and_utc().to_rfc3339()),
+                    state_version: Some(cur_sv),
+                };
+                let _ = push_negotiation_event(&state, peer_user_id, &push).await;
+                return Ok(Json(ApiResponse::success("ok".to_string())));
+            }
+            "pending" => {
+                // 另一方发起 request：允许（双向均可发起协商），更新 requester
+            }
+            "rejected" | "plaintext" => {
+                // 允许重新发起协商
+            }
+            s => {
+                return Err(AppError::Conflict(format!(
+                    "cannot request encryption in '{s}' state"
+                )));
+            }
+        }
     }
-    let target_user_id = if identity.user_id == id_a { id_b } else { id_a };
 
-    // 检查是否已存在
-    let existing = sqlx::query(
-        "SELECT status FROM service_user_service_db.e2ee_sessions WHERE session_id = ?",
-    )
-    .bind(&request.session_id)
-    .fetch_optional(&state.db)
-    .await?;
-
+    // INSERT 或 UPDATE（非 encrypted、非同一 requester 的 pending）
     if existing.is_some() {
-        // 允许重新请求：更新记录并将服务端协商状态重置为 pending。
         sqlx::query(
-            r#"UPDATE service_user_service_db.e2ee_sessions
-               SET requester_id = ?, target_user_id = ?, status = 'pending',
-                   request_payload_json = ?, updated_time = NOW()
-               WHERE session_id = ?"#,
+            "UPDATE service_user_service_db.e2ee_sessions \
+             SET requester_id = ?, target_user_id = ?, status = 'pending', \
+                 request_payload_json = ?, state_version = state_version + 1, \
+                 updated_time = NOW() \
+             WHERE session_id = ?",
         )
         .bind(identity.user_id)
-        .bind(target_user_id)
+        .bind(peer_user_id)
         .bind(&request.request_payload_json)
         .bind(&request.session_id)
         .execute(&state.db)
         .await?;
     } else {
         sqlx::query(
-            r#"INSERT INTO service_user_service_db.e2ee_sessions
-               (session_id, requester_id, target_user_id, status, request_payload_json)
-               VALUES (?, ?, ?, 'pending', ?)"#,
+            "INSERT INTO service_user_service_db.e2ee_sessions \
+             (session_id, requester_id, target_user_id, status, request_payload_json, state_version) \
+             VALUES (?, ?, ?, 'pending', ?, 1)",
         )
         .bind(&request.session_id)
         .bind(identity.user_id)
-        .bind(target_user_id)
+        .bind(peer_user_id)
         .bind(&request.request_payload_json)
         .execute(&state.db)
         .await?;
     }
+
+    // 重新加载以获取更新后的 state_version 和 updated_time
+    let updated_state = load_negotiation_state(&state.db, &request.session_id).await?;
+    let (state_version, updated_time) = updated_state
+        .map(|(_, _, _, sv, ut)| (sv, Some(ut)))
+        .unwrap_or((1, None));
 
     let requester_name = resolve_user_display_name(&state, identity.user_id)
         .await?
@@ -174,14 +234,16 @@ pub async fn request_encryption(
         session_id: request.session_id.clone(),
         requester_id: identity.user_id.to_string(),
         requester_name,
-        target_user_id: target_user_id.to_string(),
+        target_user_id: peer_user_id.to_string(),
         request_payload_json: request.request_payload_json.clone(),
+        updated_time: updated_time.map(|t| t.and_utc().to_rfc3339()),
+        state_version: Some(state_version),
     };
-    if let Err(error) = push_negotiation_event(&state, target_user_id, &push).await {
+    if let Err(error) = push_negotiation_event(&state, peer_user_id, &push).await {
         tracing::warn!(
             error = %error,
             session_id = %request.session_id,
-            target_user_id = %target_user_id,
+            target_user_id = %peer_user_id,
             "failed to push e2ee negotiation request"
         );
     }
@@ -226,10 +288,10 @@ pub async fn pending_encryption_requests(
 ///
 /// POST /api/e2ee/accept
 ///
-/// 业务目的：目标用户接受加密协商请求，将会话状态从 pending 更新为 encrypted。
+/// 业务目的：被请求方（target_user_id）接受加密协商请求，将会话状态从 pending 更新为 encrypted。
 /// 认证要求：需要有效的 JWT access token。
-/// 安全约束：只有 target_user_id（被请求方）可以接受；
-/// 仅传递公钥材料，不传递私钥。会话不存在返回 404，非 pending 状态返回 409。
+/// 安全约束：只有 target_user_id（被请求方）可以接受；requester 不能接受自己的请求；
+/// 已 encrypted 的会话返回 Conflict；非 pending 状态返回 Conflict。
 /// 返回语义：成功返回 "ok"。
 pub async fn accept_encryption(
     State(state): State<AppState>,
@@ -240,37 +302,43 @@ pub async fn accept_encryption(
     validate_session_id(&request.session_id)?;
     validate_optional_key(request.signed_pre_key.as_deref(), "signed_pre_key")?;
 
-    let row = sqlx::query(
-        r#"SELECT requester_id, target_user_id, status
-           FROM service_user_service_db.e2ee_sessions
-           WHERE session_id = ?"#,
-    )
-    .bind(&request.session_id)
-    .fetch_optional(&state.db)
-    .await?;
+    // 验证调用者是合法参与者 + 好友关系存在
+    ensure_e2ee_session_participant(&state.db, identity.user_id, &request.session_id).await?;
 
-    let Some(row) = row else {
+    // 加载协商状态
+    let negotiation = load_negotiation_state(&state.db, &request.session_id).await?;
+    let Some((status, requester_id, target_user_id, state_version, _updated_time)) = negotiation
+    else {
         return Err(AppError::NotFound("session not found".to_string()));
     };
-
-    let target_user_id: i64 = row.get("target_user_id");
-    let status: String = row.get("status");
 
     if identity.user_id != target_user_id {
         return Err(AppError::Forbidden(
             "only target user can accept".to_string(),
         ));
     }
-    if status != "pending" {
-        return Err(AppError::Conflict(format!(
-            "cannot accept session in '{status}' state"
-        )));
+
+    match status.as_str() {
+        "pending" => {
+            // 正常路径：pending → encrypted
+        }
+        "encrypted" => {
+            return Err(AppError::Conflict(
+                "session is already encrypted".to_string(),
+            ));
+        }
+        s => {
+            return Err(AppError::Conflict(format!(
+                "cannot accept session in '{s}' state"
+            )));
+        }
     }
 
     sqlx::query(
         "UPDATE service_user_service_db.e2ee_sessions \
-         SET status = 'encrypted', updated_time = NOW() \
-         WHERE session_id = ?",
+         SET status = 'encrypted', state_version = state_version + 1, \
+             updated_time = NOW() \
+         WHERE session_id = ? AND status = 'pending'",
     )
     .bind(&request.session_id)
     .execute(&state.db)
@@ -279,18 +347,20 @@ pub async fn accept_encryption(
     let push = E2eeNegotiationPush {
         action: "accepted".to_string(),
         session_id: request.session_id.clone(),
-        requester_id: row.get::<i64, _>("requester_id").to_string(),
+        requester_id: requester_id.to_string(),
         requester_name: String::new(),
         target_user_id: target_user_id.to_string(),
         request_payload_json: None,
+        updated_time: Some(
+            chrono::Utc::now().to_rfc3339(),
+        ),
+        state_version: Some(state_version + 1),
     };
-    if let Err(error) =
-        push_negotiation_event(&state, row.get::<i64, _>("requester_id"), &push).await
-    {
+    if let Err(error) = push_negotiation_event(&state, requester_id, &push).await {
         tracing::warn!(
             error = %error,
             session_id = %request.session_id,
-            requester_id = %row.get::<i64, _>("requester_id"),
+            requester_id = %requester_id,
             "failed to push e2ee negotiation acceptance"
         );
     }
@@ -302,10 +372,10 @@ pub async fn accept_encryption(
 ///
 /// POST /api/e2ee/reject
 ///
-/// 业务目的：目标用户拒绝加密协商请求，将会话状态从 pending 更新为 rejected。
+/// 业务目的：被请求方拒绝加密协商请求，将会话状态从 pending 更新为 rejected。
 /// 认证要求：需要有效的 JWT access token。
-/// 安全约束：只有 target_user_id（被请求方）可以拒绝。
-/// 会话不存在返回 404，非 pending 状态返回 409。
+/// 安全约束：只有 target_user_id（被请求方）可以拒绝；已 encrypted 的会话不能 reject；
+/// 非 pending 状态返回 Conflict。
 /// 返回语义：成功返回 "ok"。
 pub async fn reject_encryption(
     State(state): State<AppState>,
@@ -315,37 +385,43 @@ pub async fn reject_encryption(
     let identity = identity_from_headers(&headers, &state.config)?;
     validate_session_id(&request.session_id)?;
 
-    let row = sqlx::query(
-        r#"SELECT requester_id, target_user_id, status
-           FROM service_user_service_db.e2ee_sessions
-           WHERE session_id = ?"#,
-    )
-    .bind(&request.session_id)
-    .fetch_optional(&state.db)
-    .await?;
+    // 验证调用者是合法参与者 + 好友关系存在
+    ensure_e2ee_session_participant(&state.db, identity.user_id, &request.session_id).await?;
 
-    let Some(row) = row else {
+    // 加载协商状态
+    let negotiation = load_negotiation_state(&state.db, &request.session_id).await?;
+    let Some((status, requester_id, target_user_id, state_version, _updated_time)) = negotiation
+    else {
         return Err(AppError::NotFound("session not found".to_string()));
     };
-
-    let target_user_id: i64 = row.get("target_user_id");
-    let status: String = row.get("status");
 
     if identity.user_id != target_user_id {
         return Err(AppError::Forbidden(
             "only target user can reject".to_string(),
         ));
     }
-    if status != "pending" {
-        return Err(AppError::Conflict(format!(
-            "cannot reject session in '{status}' state"
-        )));
+
+    match status.as_str() {
+        "pending" => {
+            // 正常路径：pending → rejected
+        }
+        "encrypted" => {
+            return Err(AppError::Conflict(
+                "cannot reject an encrypted session; use disable to exit".to_string(),
+            ));
+        }
+        s => {
+            return Err(AppError::Conflict(format!(
+                "cannot reject session in '{s}' state"
+            )));
+        }
     }
 
     sqlx::query(
         "UPDATE service_user_service_db.e2ee_sessions \
-         SET status = 'rejected', updated_time = NOW() \
-         WHERE session_id = ?",
+         SET status = 'rejected', state_version = state_version + 1, \
+             updated_time = NOW() \
+         WHERE session_id = ? AND status = 'pending'",
     )
     .bind(&request.session_id)
     .execute(&state.db)
@@ -354,18 +430,20 @@ pub async fn reject_encryption(
     let push = E2eeNegotiationPush {
         action: "rejected".to_string(),
         session_id: request.session_id.clone(),
-        requester_id: row.get::<i64, _>("requester_id").to_string(),
+        requester_id: requester_id.to_string(),
         requester_name: String::new(),
         target_user_id: target_user_id.to_string(),
         request_payload_json: None,
+        updated_time: Some(
+            chrono::Utc::now().to_rfc3339(),
+        ),
+        state_version: Some(state_version + 1),
     };
-    if let Err(error) =
-        push_negotiation_event(&state, row.get::<i64, _>("requester_id"), &push).await
-    {
+    if let Err(error) = push_negotiation_event(&state, requester_id, &push).await {
         tracing::warn!(
             error = %error,
             session_id = %request.session_id,
-            requester_id = %row.get::<i64, _>("requester_id"),
+            requester_id = %requester_id,
             "failed to push e2ee negotiation rejection"
         );
     }
@@ -377,8 +455,14 @@ pub async fn reject_encryption(
 ///
 /// POST /api/e2ee/disable
 ///
-/// 业务目的：任一会话参与方都可以主动退出私聊 E2EE，将服务端协商状态置为 plaintext，
-/// 并通知另一端清理本地 ratchet state。操作保持幂等，便于本地密钥损坏时重置通道。
+/// 业务目的：会话参与方退出 E2EE，将协商状态置为 plaintext 并通知对端清理本地 ratchet state。
+/// 认证要求：需要有效的 JWT access token。
+/// 安全约束：
+/// - 调用者必须是合法会话参与者（通过 im_friend 好友关系验证）；
+/// - encrypted → plaintext：记录 disabled_by、递增 state_version；
+/// - pending → plaintext：取消协商，记录操作者；
+/// - plaintext → plaintext：幂等返回，不插入脏记录；
+/// - 推送事件包含 updated_time 和 state_version，客户端可据此丢弃旧事件。
 pub async fn disable_encryption(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -387,38 +471,81 @@ pub async fn disable_encryption(
     let identity = identity_from_headers(&headers, &state.config)?;
     validate_session_id(&request.session_id)?;
 
-    let (id_a, id_b) = parse_session_partners(&request.session_id)?;
-    if identity.user_id != id_a && identity.user_id != id_b {
-        return Err(AppError::Forbidden(
-            "session_id does not include caller".to_string(),
-        ));
-    }
-    let peer_user_id = if identity.user_id == id_a { id_b } else { id_a };
+    // 验证调用者是合法参与者 + 好友关系存在
+    let peer_user_id =
+        ensure_e2ee_session_participant(&state.db, identity.user_id, &request.session_id)
+            .await?;
 
-    let result = sqlx::query(
-        r#"UPDATE service_user_service_db.e2ee_sessions
-           SET requester_id = ?, target_user_id = ?, status = 'plaintext',
-               request_payload_json = NULL, updated_time = NOW()
-           WHERE session_id = ?"#,
-    )
-    .bind(identity.user_id)
-    .bind(peer_user_id)
-    .bind(&request.session_id)
-    .execute(&state.db)
-    .await?;
+    // 加载现有协商状态
+    let existing = load_negotiation_state(&state.db, &request.session_id).await?;
 
-    if result.rows_affected() == 0 {
+    let needs_update = if let Some((ref status, _, _, ref state_version, _)) = existing {
+        match status.as_str() {
+            "encrypted" | "pending" | "rejected" => {
+                // 允许 disable：→ plaintext，记录 disabled_by
+                true
+            }
+            "plaintext" => {
+                // 已经是 plaintext，幂等返回
+                let requester_name = resolve_user_display_name(&state, identity.user_id)
+                    .await?
+                    .unwrap_or_else(|| identity.username.clone());
+                let push = E2eeNegotiationPush {
+                    action: "disabled".to_string(),
+                    session_id: request.session_id.clone(),
+                    requester_id: identity.user_id.to_string(),
+                    requester_name,
+                    target_user_id: peer_user_id.to_string(),
+                    request_payload_json: None,
+                    updated_time: None,
+                    state_version: Some(*state_version),
+                };
+                let _ = push_negotiation_event(&state, peer_user_id, &push).await;
+                return Ok(Json(ApiResponse::success("ok".to_string())));
+            }
+            s => {
+                return Err(AppError::Conflict(format!(
+                    "cannot disable session in '{s}' state"
+                )));
+            }
+        }
+    } else {
+        // 无现有记录
+        true
+    };
+
+    if needs_update && existing.is_some() {
         sqlx::query(
-            r#"INSERT INTO service_user_service_db.e2ee_sessions
-               (session_id, requester_id, target_user_id, status, request_payload_json)
-               VALUES (?, ?, ?, 'plaintext', NULL)"#,
+            "UPDATE service_user_service_db.e2ee_sessions \
+             SET status = 'plaintext', request_payload_json = NULL, \
+                 disabled_by = ?, state_version = state_version + 1, \
+                 updated_time = NOW() \
+             WHERE session_id = ?",
+        )
+        .bind(identity.user_id)
+        .bind(&request.session_id)
+        .execute(&state.db)
+        .await?;
+    } else if needs_update {
+        sqlx::query(
+            "INSERT INTO service_user_service_db.e2ee_sessions \
+             (session_id, requester_id, target_user_id, status, request_payload_json, \
+              disabled_by, state_version) \
+             VALUES (?, ?, ?, 'plaintext', NULL, ?, 1)",
         )
         .bind(&request.session_id)
         .bind(identity.user_id)
         .bind(peer_user_id)
+        .bind(identity.user_id)
         .execute(&state.db)
         .await?;
     }
+
+    // 重新加载以获取更新后的 state_version 和 updated_time
+    let updated_state = load_negotiation_state(&state.db, &request.session_id).await?;
+    let (state_version, updated_time) = updated_state
+        .map(|(_, _, _, sv, ut)| (sv, Some(ut)))
+        .unwrap_or((1, None));
 
     let requester_name = resolve_user_display_name(&state, identity.user_id)
         .await?
@@ -430,6 +557,8 @@ pub async fn disable_encryption(
         requester_name,
         target_user_id: peer_user_id.to_string(),
         request_payload_json: None,
+        updated_time: updated_time.map(|t| t.and_utc().to_rfc3339()),
+        state_version: Some(state_version),
     };
     if let Err(error) = push_negotiation_event(&state, peer_user_id, &push).await {
         tracing::warn!(
@@ -478,6 +607,98 @@ fn parse_session_partners(session_id: &str) -> Result<(i64, i64), AppError> {
         ));
     }
     Ok((id_a, id_b))
+}
+
+/// 验证双向好友关系是否存在且正常（status=1）。
+///
+/// 查询 im_friend 表，双向均需存在正常好友关系。
+/// 若任一方把对方拉黑（status=3）或删除（status=2），均视为不合法。
+async fn ensure_friendship_exists(
+    db: &sqlx::MySqlPool,
+    user_id: i64,
+    peer_user_id: i64,
+) -> Result<(), AppError> {
+    let count: Option<i64> = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM service_user_service_db.im_friend \
+         WHERE status = 1 \
+           AND ((user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?))",
+    )
+    .bind(user_id)
+    .bind(peer_user_id)
+    .bind(peer_user_id)
+    .bind(user_id)
+    .fetch_optional(db)
+    .await?;
+
+    if count.unwrap_or(0) >= 2 {
+        return Ok(());
+    }
+    Err(AppError::Forbidden(
+        "not a friend or private conversation does not exist".to_string(),
+    ))
+}
+
+/// 验证调用者是 E2EE 会话的合法参与者。
+///
+/// 1. 解析 session_id 确认调用者是其中之一
+/// 2. 验证双方存在真实好友关系（通过 im_friend 表）
+///
+/// 返回对方的 user_id。
+async fn ensure_e2ee_session_participant(
+    db: &sqlx::MySqlPool,
+    caller_user_id: i64,
+    session_id: &str,
+) -> Result<i64, AppError> {
+    let (id_a, id_b) = parse_session_partners(session_id)?;
+    if caller_user_id != id_a && caller_user_id != id_b {
+        return Err(AppError::Forbidden(
+            "not a session participant".to_string(),
+        ));
+    }
+    let peer_user_id = if caller_user_id == id_a { id_b } else { id_a };
+    ensure_friendship_exists(db, caller_user_id, peer_user_id).await?;
+    Ok(peer_user_id)
+}
+
+/// 从 e2ee_sessions 表加载当前协商状态。
+///
+/// 返回 (status, requester_id, target_user_id, state_version, updated_time)，
+/// 若记录不存在返回 None。
+async fn load_negotiation_state(
+    db: &sqlx::MySqlPool,
+    session_id: &str,
+) -> Result<
+    Option<(String, i64, i64, i32, chrono::NaiveDateTime)>,
+    AppError,
+> {
+    let row = sqlx::query(
+        "SELECT status, requester_id, target_user_id, \
+                COALESCE(state_version, 1) AS state_version, \
+                updated_time \
+         FROM service_user_service_db.e2ee_sessions \
+         WHERE session_id = ?",
+    )
+    .bind(session_id)
+    .fetch_optional(db)
+    .await?;
+
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let status: String = row.get("status");
+    let requester_id: i64 = row.get("requester_id");
+    let target_user_id: i64 = row.get("target_user_id");
+    let state_version: i32 = row.get("state_version");
+    let updated_time: chrono::NaiveDateTime = row.get("updated_time");
+
+    Ok(Some((
+        status,
+        requester_id,
+        target_user_id,
+        state_version,
+        updated_time,
+    )))
 }
 
 async fn resolve_user_display_name(

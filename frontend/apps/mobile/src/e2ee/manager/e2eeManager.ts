@@ -14,7 +14,7 @@ import { mobileE2eeKeyService } from '@/e2ee/api/keyService';
 import { getMobileE2eeRuntime } from '@/e2ee/runtime/mobileRustE2eeRuntime';
 import { e2eeSessionStore } from '@/e2ee/store/sessionStore';
 import { logger } from '@/utils/logger';
-import { requireCurrentE2eeUserId } from './context';
+import { getCurrentE2eeUserId, requireCurrentE2eeUserId } from './context';
 import { ensureLocalE2eeDeviceRegistered, getLocalRustKeyMaterial } from './localDevice';
 import { loadLocalSessionStatus, setLocalSessionStatus } from './negotiation';
 
@@ -99,14 +99,27 @@ class MobileE2eeManager {
   private readonly queues = new Map<string, Promise<unknown>>();
 
   private enqueue<T>(sessionId: string, task: () => Promise<T>): Promise<T> {
-    const previous = this.queues.get(sessionId) || Promise.resolve();
+    const userId = getCurrentE2eeUserId();
+    // Scope the queue key by userId so concurrent operations on the same
+    // sessionId from different accounts never share a serialisation chain.
+    // When no user is available each call gets its own anonymous key to
+    // avoid cross-account contamination.
+    const key = userId
+      ? `${encodeURIComponent(userId)}:${encodeURIComponent(sessionId)}`
+      : `anonymous:${encodeURIComponent(sessionId)}:${Date.now()}`;
+
+    const previous = this.queues.get(key) || Promise.resolve();
     const next = previous.then(task, task);
-    this.queues.set(sessionId, next.catch(() => undefined));
+    this.queues.set(key, next.catch(() => undefined));
     return next.finally(() => {
-      if (this.queues.get(sessionId) === next) {
-        this.queues.delete(sessionId);
+      if (this.queues.get(key) === next) {
+        this.queues.delete(key);
       }
     });
+  }
+
+  clearRuntime(): void {
+    this.queues.clear();
   }
 
   async encryptToEnvelope(params: EncryptToEnvelopeInput): Promise<RustE2eeEnvelope> {
