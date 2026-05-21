@@ -13,10 +13,12 @@ import {
   hasKnownE2eeDisplayPlaintext,
   markE2eeDisplayDecrypted,
 } from '@/e2ee/e2eeDeferred';
-import { e2eeManager } from '@/e2ee/manager/e2eeManager';
+import { e2eeManager, E2eeEnvelopeRecipientMismatchError } from '@/e2ee/manager/e2eeManager';
 import { logger } from '@/utils/logger';
 import { resolveMessageSessionId } from '@/utils/normalizers';
 import type { MobileMessage } from '@/types/models';
+
+export const E2EE_NOT_FOR_THIS_DEVICE_TEXT = '此加密消息发送给你的其他设备';
 
 export type E2eeDecryptStatus = 'decrypted' | 'pending' | 'failed' | 'own-echo-preserved' | 'plaintext';
 
@@ -231,7 +233,19 @@ export const processE2eeMessage = async (
       decryptStatus: 'decrypted',
     };
   } catch (error) {
-    const classification = classifyE2eeError(error);
+    const isRecipientMismatch =
+      error instanceof E2eeEnvelopeRecipientMismatchError ||
+      (error instanceof Error && (error as unknown as Record<string, unknown>).code === 'E2EE_RECIPIENT_DEVICE_MISMATCH');
+
+    const classification: E2eeErrorClassification = isRecipientMismatch
+      ? ({
+          code: 'E2EE_RECIPIENT_DEVICE_MISMATCH',
+          category: 'policy',
+          retryable: false,
+          safeMessage: E2EE_NOT_FOR_THIS_DEVICE_TEXT,
+        } as unknown as E2eeErrorClassification)
+      : classifyE2eeError(error);
+
     logger.warn('e2ee', 'encrypted message could not be displayed', sanitizeE2eeLogValue({
       sessionId,
       code: classification.code,
@@ -240,14 +254,20 @@ export const processE2eeMessage = async (
       recipientDeviceId: envelope.recipientDeviceId,
       hasHandshake: Boolean(envelope.handshake),
     }));
-    const pending = shouldKeepPending(error) || classification.retryable;
+    const pending = isRecipientMismatch ? false : (shouldKeepPending(error) || classification.retryable);
     return {
       rawMessage,
-      displayMessage: safePlaceholder(baseDisplay, pending ? 'pending' : 'failed'),
+      displayMessage: safePlaceholder(
+        baseDisplay,
+        pending ? 'pending' : 'failed',
+        isRecipientMismatch ? E2EE_NOT_FOR_THIS_DEVICE_TEXT : undefined,
+      ),
       decryptStatus: pending ? 'pending' : 'failed',
-      errorClassification: pending && !classification.retryable
-        ? { ...classification, retryable: true }
-        : classification,
+      errorClassification: isRecipientMismatch
+        ? classification
+        : (pending && !classification.retryable
+            ? { ...classification, retryable: true }
+            : classification),
     };
   }
 };

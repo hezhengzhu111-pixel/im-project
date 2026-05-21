@@ -70,6 +70,20 @@ const normalizeRemoteBundle = (
   };
 };
 
+export class E2eeEnvelopeRecipientMismatchError extends Error {
+  readonly code = 'E2EE_RECIPIENT_DEVICE_MISMATCH';
+  readonly nonRetryable = true;
+
+  constructor(
+    readonly expectedDeviceId: string,
+    readonly actualDeviceId: string,
+    readonly sessionId: string,
+  ) {
+    super('E2EE envelope is not addressed to this device');
+    this.name = 'E2eeEnvelopeRecipientMismatchError';
+  }
+}
+
 const describeError = (error: unknown): string => {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -194,13 +208,22 @@ class MobileE2eeManager {
         throw new Error('Unsupported E2EE envelope');
       }
       const userId = requireCurrentE2eeUserId();
+
+      const localKeys = await getLocalRustKeyMaterial();
+      if (!envelope.recipientDeviceId || envelope.recipientDeviceId !== localKeys.deviceId) {
+        throw new E2eeEnvelopeRecipientMismatchError(
+          localKeys.deviceId,
+          envelope.recipientDeviceId || '',
+          envelope.sessionId,
+        );
+      }
+
       const runtime = getMobileE2eeRuntime();
       const state = await e2eeSessionStore.getSessionState(userId, envelope.sessionId);
 
       if (state) {
         await runtime.restoreSession(envelope.sessionId, state);
       } else if (envelope.handshake) {
-        const localKeys = await getLocalRustKeyMaterial();
         const remoteIdentityKey = await this.resolveSenderIdentityKey(senderId, envelope.senderDeviceId);
         await runtime.removeSession(envelope.sessionId).catch(() => undefined);
         await runtime.createInboundSession({

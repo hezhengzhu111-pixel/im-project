@@ -49,7 +49,7 @@ jest.mock('@/utils/logger', () => ({
   },
 }));
 
-import { e2eeManager } from '@/e2ee/manager/e2eeManager';
+import { e2eeManager, E2eeEnvelopeRecipientMismatchError } from '@/e2ee/manager/e2eeManager';
 import { ensureLocalE2eeDeviceRegistered, getLocalRustKeyMaterial } from '@/e2ee/manager/localDevice';
 import { loadLocalSessionStatus, setLocalSessionStatus } from '@/e2ee/manager/negotiation';
 import { getMobileE2eeRuntime } from '@/e2ee/runtime/mobileRustE2eeRuntime';
@@ -145,5 +145,51 @@ describe('mobile E2EE session state commit boundary', () => {
 
     expect(runtime.decrypt).toHaveBeenCalled();
     expect(setLocalSessionStatus).not.toHaveBeenCalledWith('s-decrypt-save-fails', 'encrypted');
+  });
+
+  it('throws E2eeEnvelopeRecipientMismatchError when envelope recipient does not match local device', async () => {
+    await expect(e2eeManager.decryptEnvelope({
+      version: 2,
+      algorithm: 'rust-x25519-x3dh-dr-v1',
+      senderDeviceId: 'device-bob',
+      recipientDeviceId: 'device-other',
+      sessionId: 's-mismatch',
+      wire: 'AQID',
+    }, 'bob')).rejects.toThrow(E2eeEnvelopeRecipientMismatchError);
+
+    expect(runtime.restoreSession).not.toHaveBeenCalled();
+    expect(runtime.createInboundSession).not.toHaveBeenCalled();
+    expect(runtime.decrypt).not.toHaveBeenCalled();
+  });
+
+  it('throws E2eeEnvelopeRecipientMismatchError when envelope recipientDeviceId is empty', async () => {
+    await expect(e2eeManager.decryptEnvelope({
+      version: 2,
+      algorithm: 'rust-x25519-x3dh-dr-v1',
+      senderDeviceId: 'device-bob',
+      recipientDeviceId: '',
+      sessionId: 's-empty-recipient',
+      wire: 'AQID',
+    }, 'bob')).rejects.toThrow(E2eeEnvelopeRecipientMismatchError);
+
+    expect(runtime.decrypt).not.toHaveBeenCalled();
+  });
+
+  it('throws E2eeEnvelopeRecipientMismatchError even when session state exists', async () => {
+    // Session state exists but the envelope is for a different device —
+    // must still reject before restoreSession is called.
+    jest.mocked(e2eeSessionStore.getSessionState).mockResolvedValue('c3RhdGU=' as Base64String);
+
+    await expect(e2eeManager.decryptEnvelope({
+      version: 2,
+      algorithm: 'rust-x25519-x3dh-dr-v1',
+      senderDeviceId: 'device-bob',
+      recipientDeviceId: 'device-other',
+      sessionId: 's-state-exists-mismatch',
+      wire: 'AQID',
+    }, 'bob')).rejects.toThrow(E2eeEnvelopeRecipientMismatchError);
+
+    expect(runtime.restoreSession).not.toHaveBeenCalled();
+    expect(runtime.decrypt).not.toHaveBeenCalled();
   });
 });
