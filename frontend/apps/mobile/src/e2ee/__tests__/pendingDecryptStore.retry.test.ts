@@ -398,6 +398,26 @@ describe('retryAllPendingEncryptedMessages global limit', () => {
 
     expect(totalProcessed).toBeLessThanOrEqual(E2EE_DECRYPT_RETRY_CONFIG.maxGlobal);
   });
+
+  it('return value is resolved count (not decrypted count)', async () => {
+    // When handler returns empty remaining, ALL entries are "resolved"
+    // (either decrypted or dead-lettered), regardless of the actual outcome.
+    cachePendingEncryptedMessage(sessionId, encryptedMessage({ messageId: 'res-1' }));
+    cachePendingEncryptedMessage(sessionId, encryptedMessage({ messageId: 'res-2' }));
+
+    configurePendingDecryptQueue({
+      retryPendingMessages: async (_sid, _entries) => {
+        // Return empty → all 2 entries resolved (could be decrypted or dead-letter)
+        return [];
+      },
+      retryVisibleMessages: async () => 0,
+    });
+
+    const result = await retryAllPendingEncryptedMessages();
+    // 2 entries removed from queue = 2 resolved
+    expect(result).toBe(2);
+    expect(getPendingEncryptedMessages(sessionId)).toHaveLength(0);
+  });
 });
 
 // ─── 6. envelope change resets retry metadata ────────────────────────

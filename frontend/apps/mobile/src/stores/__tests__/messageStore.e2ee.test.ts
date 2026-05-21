@@ -77,6 +77,7 @@ import { pendingMessageRepository } from '@/services/storage/pendingMessageRepos
 import { messageService } from '@/services/chat/messageService';
 import {
   E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT,
+  E2EE_PRIVATE_MEDIA_UNSUPPORTED_TEXT,
   E2EE_SEND_DISABLED_TEXT,
   E2EE_UNSUPPORTED_TEXT,
 } from '@/e2ee/e2eeDeferred';
@@ -327,23 +328,31 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
     });
   });
 
-  // ── 3. sendMedia on encrypted session must throw, not upload or send ──
+  // ── 3. sendMedia on private session must throw, not upload or send ──
 
-  describe('sendMedia with encrypted=true session (E5.2/E8.1/E21.4/E27.1)', () => {
-    it('throws E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT for encrypted session', async () => {
+  describe('sendMedia with private session — all statuses blocked', () => {
+    const file = { uri: 'file:///img.jpg', name: 'img.jpg', size: 1024 };
+
+    it('throws E2EE_PRIVATE_MEDIA_UNSUPPORTED_TEXT for private encrypted session', async () => {
       const session = encryptedSession();
       await e2eeSessionStore.setStatus('100', session.id, 'encrypted');
-      const file = { uri: 'file:///img.jpg', name: 'img.jpg', size: 1024 };
 
       await expect(
         useMessageStore.getState().sendMedia(session, file as never, 'IMAGE'),
-      ).rejects.toThrow(E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT);
+      ).rejects.toThrow(E2EE_PRIVATE_MEDIA_UNSUPPORTED_TEXT);
     });
 
-    it('does NOT call messageService.sendPrivate or uploadService for encrypted session', async () => {
+    it('throws E2EE_PRIVATE_MEDIA_UNSUPPORTED_TEXT for private plaintext session', async () => {
+      const session = baseSession();
+
+      await expect(
+        useMessageStore.getState().sendMedia(session, file as never, 'IMAGE'),
+      ).rejects.toThrow(E2EE_PRIVATE_MEDIA_UNSUPPORTED_TEXT);
+    });
+
+    it('does NOT call messageService.sendPrivate or uploadService for private session', async () => {
       const session = encryptedSession();
       await e2eeSessionStore.setStatus('100', session.id, 'encrypted');
-      const file = { uri: 'file:///img.jpg', name: 'img.jpg', size: 1024 };
 
       try {
         await useMessageStore.getState().sendMedia(session, file as never, 'IMAGE');
@@ -355,10 +364,9 @@ describe('messageStore E2EE sending block (E5/E8/E21/E24/E25/E27)', () => {
       expect(ms.sendGroup).not.toHaveBeenCalled();
     });
 
-    it('does NOT enqueue plaintext pending for encrypted media send', async () => {
+    it('does NOT enqueue plaintext pending for private media send', async () => {
       const session = encryptedSession();
       await e2eeSessionStore.setStatus('100', session.id, 'encrypted');
-      const file = { uri: 'file:///img.jpg', name: 'img.jpg', size: 1024 };
 
       try {
         await useMessageStore.getState().sendMedia(session, file as never, 'IMAGE');

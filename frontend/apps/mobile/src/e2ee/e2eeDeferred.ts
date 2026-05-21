@@ -11,6 +11,8 @@ export const E2EE_WAITING_TEXT = '等待对方确认端到端加密请求';
 
 export const E2EE_ENCRYPTED_MEDIA_UNSUPPORTED_TEXT = '当前移动端加密会话仅支持文字消息，暂不支持加密媒体。';
 
+export const E2EE_PRIVATE_MEDIA_UNSUPPORTED_TEXT = '移动端私聊端到端加密策略下暂不支持发送媒体，请发送文字消息。';
+
 export const E2EE_OWN_PLAINTEXT_UNAVAILABLE_TEXT = '此设备未保存该端到端加密消息的明文，移动端不会显示密文。';
 
 type EncryptedMarker = {

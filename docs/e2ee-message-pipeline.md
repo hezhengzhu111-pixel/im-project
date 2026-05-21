@@ -130,9 +130,33 @@ enqueuePendingE2eeText(session, message, plaintext, 'negotiation')
 3. `subscribeE2eeStatusChanges` 回调（messageStore.ts:1262）→ `resumeOutboundE2eeSends(sessionId)`
 4. `resumeOutboundE2eeSends`：
    - `findPendingE2eeSends(sessionId)` — 查找 `requiresE2ee=true` 的 pending
-   - 对每个 pending：`encryptPendingE2eePayload(item)` → 加密并替换 payload
-   - 更新本地 optimistic message
-   - `retryMessage(item.localId, { force: true })` → 通过正常 retry 管道发送
+   - 对每个 pending 调用 `resumeOnePendingE2eeSend(item)` → 加密失败时标记本地消息 FAILED（如已 exhausted）
+   - 加密成功后 `retryMessage(item.localId, { force: true })` → 通过正常 retry 管道发送
+
+此外，`retryPending()` 也会恢复 E2EE-waiting pending：
+   - 遍历 `listReadyToSend()` 结果
+   - 若 payload 为 `requiresE2ee=true`，检查 session E2EE status
+   - 若 `status=encrypted` → 调用 `resumeOnePendingE2eeSend(item)`
+   - 若 `status≠encrypted` → 跳过，不发送明文
+   - 若 `nextRetryAt` 未到 → `listReadyToSend` 自然排除
+
+**1.2.7 E2EE Pending Send 的 Retry / Backoff / Exhausted 规则**
+
+`encryptPendingE2eePayload()` 失败时使用 `RETRY_CONFIG`（与普通发送 retry 共用）：
+
+| 配置项 | 值 | 说明 |
+|--------|-----|------|
+| `maxRetryCount` | 5 | 最大重试次数 |
+| `baseDelayMs` | 1,000 | 初始退避延迟 |
+| `maxDelayMs` | 60,000 | 最大退避延迟（1 分钟） |
+
+- **Retryable 失败**：`retryCount + 1`，设置 `nextRetryAt`（使用 `createNextRetryAt`），
+  pending 保持 `status='pending'`。`listReadyToSend()` 在 `nextRetryAt` 到期前不会返回该条目。
+- **Exhausted**：`retryCount > maxRetryCount` → pending `status='failed'`，
+  `lastError` 包含 `e2ee encrypt exhausted`。本地 optimistic message 标记为 `FAILED`。
+  **不会** fallback 到明文发送。
+- **成功**：payload 被重写为 encrypted 格式（`requiresE2ee`/`plaintext` 被移除，
+  替换为 `encrypted: true` + `e2eeEnvelope`），然后通过 `sendPrivateEncrypted` 发送。
 
 ---
 
@@ -293,6 +317,11 @@ E2EE_DECRYPT_RETRY_CONFIG = {
 **Inflight Guard**：`pendingDecryptStore.retryDecryptPendingMessages` 使用
 `inflightRetries` Set 防止同一 session 的并发/递归 drain。
 
+**返回值语义**：`retryAllPendingEncryptedMessages()` 和 `retryDecryptPendingMessages()`
+返回的是 **resolved count**（本轮从运行时队列中移除的条目数），**不是** decrypted count。
+resolved 包含成功解密的条目和被 dead-letter/failed 的条目——handler 未返回的
+条目即为 resolved。调用者不应将该返回值解释为解密成功数。
+
 ### 3.4 Runtime → Durable 同步
 
 `restorePendingEncryptedMessagesFromRepository(sessionId?)` 在以下场景被调用：
@@ -348,6 +377,8 @@ E2EE_DECRYPT_RETRY_CONFIG = {
 | `status=failed` 私聊发送 | Rule D：直接 `throw` |
 | encrypted 群聊 | `sendText` 直接 `throw` E2EE_SEND_DISABLED_TEXT |
 | encrypted=undefined + 已协商 | `resolveEffectiveE2eeStatus` 从持久化加载状态 |
+| private session + media（任意状态） | 直接 `throw` E2EE_PRIVATE_MEDIA_UNSUPPORTED_TEXT，不创建 pending，不上传 |
+| exhausted E2EE pending send | pending `status='failed'`，本地 optimistic message `FAILED`，不发送
 | pending payload 含 encrypted 但不完整 | `blockEncryptedPendingPayload` 标记 blocked |
 
 ### 4.5 日志安全

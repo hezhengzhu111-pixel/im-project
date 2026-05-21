@@ -548,5 +548,296 @@ describe('messageStore E2EE outbound pipeline', () => {
       // Pending should NOT be updated with encrypted payload
       // (The pending is updated with retry-incremented error, not cleared)
     });
+
+    it('sets nextRetryAt on retryable failure (backoff)', async () => {
+      jest.spyOn(e2eeManager, 'encryptToEnvelope').mockRejectedValueOnce(
+        new Error('E2EE session state unavailable'),
+      );
+
+      const pending: PendingMessage = {
+        localId: 'local_e2ee_backoff',
+        conversationId: '100_200',
+        sendType: 'private',
+        payloadJson: JSON.stringify({
+          sendType: 'private',
+          requiresE2ee: true,
+          e2eeWaitReason: 'negotiation',
+          plaintext: 'backoff test',
+          data: {
+            receiverId: '200',
+            clientMessageId: 'c_backoff',
+            messageType: 'TEXT',
+          },
+        }),
+        status: 'pending',
+        retryCount: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      const before = Date.now();
+      const result = await encryptPendingE2eePayload(pending);
+
+      expect(result.ok).toBe(false);
+
+      // Check that pending was updated with backoff metadata
+      const updateCall = (pr.update as jest.Mock).mock.calls.find(
+        (call: unknown[]) => (call[0] as Record<string, unknown>)?.localId === 'local_e2ee_backoff',
+      );
+      expect(updateCall).toBeDefined();
+      const updated = updateCall![0] as Record<string, unknown>;
+      expect(updated.status).toBe('pending');
+      expect(updated.retryCount).toBe(1);
+      expect(updated.nextRetryAt).toBeGreaterThan(before);
+      expect(updated.lastError).toContain('e2ee: encrypt failed:');
+    });
+
+    it('marks pending as failed when maxRetryCount exceeded (exhausted)', async () => {
+      jest.spyOn(e2eeManager, 'encryptToEnvelope').mockRejectedValueOnce(
+        new Error('E2EE negotiation has not been accepted'),
+      );
+
+      const retryConfig = { maxRetryCount: 5 };
+      const pending: PendingMessage = {
+        localId: 'local_e2ee_exhausted',
+        conversationId: '100_200',
+        sendType: 'private',
+        payloadJson: JSON.stringify({
+          sendType: 'private',
+          requiresE2ee: true,
+          e2eeWaitReason: 'negotiation',
+          plaintext: 'exhausted test',
+          data: {
+            receiverId: '200',
+            clientMessageId: 'c_exhausted',
+            messageType: 'TEXT',
+          },
+        }),
+        status: 'pending',
+        retryCount: retryConfig.maxRetryCount, // already at max
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      const result = await encryptPendingE2eePayload(pending);
+
+      expect(result.ok).toBe(false);
+
+      const updateCall = (pr.update as jest.Mock).mock.calls.find(
+        (call: unknown[]) => (call[0] as Record<string, unknown>)?.localId === 'local_e2ee_exhausted',
+      );
+      expect(updateCall).toBeDefined();
+      const updated = updateCall![0] as Record<string, unknown>;
+      expect(updated.status).toBe('failed');
+      expect(updated.lastError).toContain('exhausted');
+      // Plaintext must be stripped from exhausted payload
+      expect(updated.payloadJson).not.toContain('exhausted test');
+    });
+  });
+
+  // ── 8. retryPending handles E2EE-waiting items ──────────────────────
+
+  describe('retryPending with E2EE-waiting pending', () => {
+    const e2eeWaitPending = (overrides: Partial<PendingMessage> = {}): PendingMessage => ({
+      localId: 'local_retry_pending_e2ee',
+      conversationId: '100_200',
+      sendType: 'private',
+      payloadJson: JSON.stringify({
+        sendType: 'private',
+        requiresE2ee: true,
+        e2eeWaitReason: 'negotiation',
+        plaintext: 'retry pending test',
+        data: {
+          receiverId: '200',
+          clientMessageId: 'c_rp_e2ee',
+          messageType: 'TEXT',
+        },
+      }),
+      status: 'pending',
+      retryCount: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      ...overrides,
+    });
+
+    it('encrypts and sends when status=encrypted and nextRetryAt is due', async () => {
+      const pending = e2eeWaitPending();
+      pr.listReadyToSend.mockReturnValue([pending]);
+      pr.get.mockReturnValue(pending);
+
+      // Session is encrypted
+      await e2eeSessionStore.setStatus('100', '100_200', 'encrypted');
+
+      jest.spyOn(e2eeManager, 'encryptToEnvelope').mockResolvedValueOnce(rustEnvelope);
+      ms.sendPrivateEncrypted.mockResolvedValueOnce({
+        code: 0,
+        message: 'ok',
+        data: { id: 'srv_rp', messageId: 'srv_rp', status: 'SENT' },
+      } as never);
+
+      await useMessageStore.getState().retryPending();
+
+      // encryptToEnvelope should have been called
+      expect(jest.spyOn(e2eeManager, 'encryptToEnvelope')).toHaveBeenCalled();
+    });
+
+    it('does NOT send when status is still negotiating', async () => {
+      const pending = e2eeWaitPending();
+      pr.listReadyToSend.mockReturnValue([pending]);
+      pr.get.mockReturnValue(pending);
+
+      // Session is still negotiating
+      await e2eeSessionStore.setStatus('100', '100_200', 'negotiating');
+
+      const encryptSpy = jest.spyOn(e2eeManager, 'encryptToEnvelope');
+
+      await useMessageStore.getState().retryPending();
+
+      // Must NOT attempt encryption
+      expect(encryptSpy).not.toHaveBeenCalled();
+      expect(ms.sendPrivate).not.toHaveBeenCalled();
+      expect(ms.sendPrivateEncrypted).not.toHaveBeenCalled();
+    });
+
+    it('does NOT attempt when nextRetryAt is in the future', async () => {
+      const futurePending = e2eeWaitPending({
+        nextRetryAt: Date.now() + 3600_000, // 1 hour in future
+      });
+      // listReadyToSend should exclude this item due to future nextRetryAt
+      pr.listReadyToSend.mockReturnValue([]);
+
+      await e2eeSessionStore.setStatus('100', '100_200', 'encrypted');
+      const encryptSpy = jest.spyOn(e2eeManager, 'encryptToEnvelope');
+
+      await useMessageStore.getState().retryPending();
+
+      expect(encryptSpy).not.toHaveBeenCalled();
+    });
+
+    it('marks local optimistic message FAILED when E2EE pending encrypt is exhausted', async () => {
+      // Add optimistic message to UI state
+      const msg: MobileMessage = {
+        id: 'local_exhausted_rp',
+        clientMessageId: 'c_rp_exhausted',
+        conversationId: '100_200',
+        senderId: '100',
+        receiverId: '200',
+        isGroupChat: false,
+        messageType: 'TEXT' as const,
+        content: 'will be exhausted',
+        sendTime: new Date().toISOString(),
+        status: 'SENDING' as const,
+      };
+      useMessageStore.setState({
+        messagesBySession: { '100_200': [msg] },
+      });
+
+      const exhaustedPending = e2eeWaitPending({
+        localId: 'local_exhausted_rp',
+        retryCount: 5, // at max
+      });
+      pr.listReadyToSend.mockReturnValue([exhaustedPending]);
+
+      // get returns 'failed' status after encryptPendingE2eePayload exhausts it
+      pr.get.mockImplementation((localId: string) => {
+        if (localId === 'local_exhausted_rp') {
+          return {
+            ...exhaustedPending,
+            status: 'failed',
+            lastError: 'e2ee encrypt exhausted: test',
+          };
+        }
+        return undefined;
+      });
+
+      await e2eeSessionStore.setStatus('100', '100_200', 'encrypted');
+      jest.spyOn(e2eeManager, 'encryptToEnvelope').mockRejectedValueOnce(
+        new Error('test'),
+      );
+
+      await useMessageStore.getState().retryPending();
+
+      // Local message should be marked FAILED
+      const messages = useMessageStore.getState().messagesBySession['100_200'];
+      expect(messages).toBeDefined();
+      expect(messages![0].status).toBe('FAILED');
+    });
+  });
+
+  // ── 9. sendMedia blocks all private sessions ────────────────────────
+
+  describe('sendMedia blocks all private sessions', () => {
+    const privateSession = (overrides: Partial<ChatSession> = {}): ChatSession => ({
+      id: '100_200',
+      type: 'private',
+      targetId: '200',
+      targetName: 'Bob',
+      unreadCount: 0,
+      lastActiveTime: '2024-06-01T10:00:00.000Z',
+      isPinned: false,
+      isMuted: false,
+      ...overrides,
+    });
+
+    const file = { uri: 'file:///photo.jpg', name: 'photo.jpg', size: 2048 };
+
+    it('rejects private plaintext media', async () => {
+      const session = privateSession();
+      await expect(
+        useMessageStore.getState().sendMedia(session, file as never, 'IMAGE'),
+      ).rejects.toThrow('私聊端到端加密策略下暂不支持发送媒体');
+      expect(ms.sendPrivate).not.toHaveBeenCalled();
+    });
+
+    it('rejects private negotiating media', async () => {
+      await e2eeSessionStore.setStatus('100', '100_200', 'negotiating');
+      const session = privateSession();
+      await expect(
+        useMessageStore.getState().sendMedia(session, file as never, 'IMAGE'),
+      ).rejects.toThrow('私聊端到端加密策略下暂不支持发送媒体');
+    });
+
+    it('rejects private encrypted media (unchanged behavior)', async () => {
+      await e2eeSessionStore.setStatus('100', '100_200', 'encrypted');
+      const session = privateSession();
+      await expect(
+        useMessageStore.getState().sendMedia(session, file as never, 'IMAGE'),
+      ).rejects.toThrow('私聊端到端加密策略下暂不支持发送媒体');
+    });
+
+    it('rejects private failed media', async () => {
+      await e2eeSessionStore.setStatus('100', '100_200', 'failed');
+      const session = privateSession();
+      await expect(
+        useMessageStore.getState().sendMedia(session, file as never, 'IMAGE'),
+      ).rejects.toThrow('私聊端到端加密策略下暂不支持发送媒体');
+    });
+
+    it('does NOT call uploadService or enqueue pending', async () => {
+      const session = privateSession();
+      try {
+        await useMessageStore.getState().sendMedia(session, file as never, 'IMAGE');
+      } catch { /* expected */ }
+      expect(pr.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('group plaintext media still works unchanged', async () => {
+      const groupSession: ChatSession = {
+        ...privateSession(),
+        id: 'group_g1',
+        type: 'group',
+        targetId: 'g1',
+        targetName: 'Test Group',
+      };
+      // For group plaintext, sendMedia should NOT throw on the private check
+      // (it will proceed to the group-specific check and do normal send)
+      // We just verify it doesn't throw the private media error
+      try {
+        await useMessageStore.getState().sendMedia(groupSession, file as never, 'IMAGE');
+      } catch (e) {
+        // May throw for other reasons in test context, but NOT for private media
+        expect((e as Error).message).not.toContain('私聊端到端加密策略');
+      }
+    });
   });
 });
