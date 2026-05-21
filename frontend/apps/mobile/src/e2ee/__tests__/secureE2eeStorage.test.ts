@@ -145,9 +145,11 @@ describe('secure E2EE storage persistence semantics', () => {
     setEncryptedSpy.mockRestore();
   });
 
-  it('uses runtime-only status cache when no device namespace exists', async () => {
+  it('does not write to unscoped memory when no device namespace exists', async () => {
+    // Without a device namespace, setStatus must NOT write to the global
+    // memory map. getCachedStatus must return the safe default 'plaintext'.
     await e2eeSessionStore.setStatus('status-runtime-only-user', 's-status-runtime-only', 'negotiating');
 
-    expect(e2eeSessionStore.getCachedStatus('s-status-runtime-only')).toBe('negotiating');
+    expect(e2eeSessionStore.getCachedStatus('s-status-runtime-only')).toBe('plaintext');
   });
 });

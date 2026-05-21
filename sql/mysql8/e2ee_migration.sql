@@ -347,3 +347,55 @@ DELIMITER ;
 
 CALL add_column_if_missing('messages', 'e2ee_envelope_json', 'JSON NULL COMMENT ''Unified E2EE envelope JSON''');
 DROP PROCEDURE IF EXISTS add_column_if_missing;
+
+-- 2026-05-21 E2EE session negotiation state-machine hardening
+-- state_version: monotonic counter for detecting stale events & optimistic concurrency
+-- disabled_by: records who disabled the session (NULL = never disabled)
+USE service_user_service_db;
+
+DROP PROCEDURE IF EXISTS add_column_if_missing_sm;
+DELIMITER //
+CREATE PROCEDURE add_column_if_missing_sm(
+    IN target_table VARCHAR(64),
+    IN target_column VARCHAR(64),
+    IN column_definition TEXT
+)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = target_table
+          AND COLUMN_NAME = target_column
+    ) THEN
+        SET @ddl = CONCAT('ALTER TABLE `', target_table, '` ADD COLUMN `', target_column, '` ', column_definition);
+        PREPARE stmt FROM @ddl;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END//
+DELIMITER ;
+
+CALL add_column_if_missing_sm('e2ee_sessions', 'state_version', 'INT NOT NULL DEFAULT 1 COMMENT ''monotonic state version for conflict detection''');
+CALL add_column_if_missing_sm('e2ee_sessions', 'disabled_by', 'BIGINT NULL COMMENT ''user id who disabled the session''');
+
+DROP PROCEDURE IF EXISTS add_column_if_missing_sm;
+
+-- e2ee_pre_key_claims: idempotent one-time pre-key claim tracking
+-- Prevents duplicate consumption of one-time pre-keys by binding each claim
+-- to a (requester, target, conversation) tuple. The UNIQUE constraint ensures
+-- concurrent requests return the same pre-key instead of consuming a new one.
+CREATE TABLE IF NOT EXISTS e2ee_pre_key_claims (
+    id                      BIGINT NOT NULL AUTO_INCREMENT,
+    requester_user_id       BIGINT NOT NULL COMMENT 'Claimant user ID',
+    requester_device_id     VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Claimant device ID (empty if not provided)',
+    target_user_id          BIGINT NOT NULL COMMENT 'Target user ID',
+    target_device_id        VARCHAR(64) NOT NULL COMMENT 'Target device ID',
+    conversation_id         VARCHAR(128) NOT NULL COMMENT 'Conversation ID (p_1_2 or g_123)',
+    one_time_pre_key_row_id BIGINT NULL COMMENT 'Consumed row ID in e2ee_one_time_pre_keys',
+    one_time_pre_key_id     INT NULL COMMENT 'Client pre-key ID',
+    one_time_pre_key        TEXT NULL COMMENT 'One-time pre-key (Base64)',
+    created_at              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Claim time',
+    PRIMARY KEY (id),
+    UNIQUE KEY uniq_e2ee_prekey_claim(requester_user_id, requester_device_id, target_user_id, target_device_id, conversation_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE one-time pre-key claim idempotency';
