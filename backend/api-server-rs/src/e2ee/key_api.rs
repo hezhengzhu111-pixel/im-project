@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::Row;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // ---------------------------------------------------------------------------
 // 常量：字段长度上限
@@ -24,6 +24,16 @@ const MAX_KEY_FIELD_LEN: usize = 1000;
 const MAX_ONE_TIME_KEYS: usize = 200;
 const MAX_BACKUP_LEN: usize = 100_000;
 const MAX_SALT_LEN: usize = 64;
+
+/// X25519 公钥的字节长度（Signal/X3DH 协议标准）。
+const X25519_KEY_BYTES: usize = 32;
+
+/// Ed25519 签名的字节长度。
+///
+/// 当前协议约定使用 Ed25519 对 signed pre-key 进行签名，签名固定为 64 字节。
+/// 如果未来支持其他签名算法（如 ECDSA P-256 的 64–72 字节可变长度），
+/// 需要将此处替换为范围校验。
+const ED25519_SIGNATURE_BYTES: usize = 64;
 
 // ---------------------------------------------------------------------------
 // 请求 / 响应类型
@@ -89,41 +99,73 @@ pub struct DeviceDto {
 // 辅助校验
 // ---------------------------------------------------------------------------
 
+/// 解码 Base64 字符串并校验解码后的字节长度是否正好等于 `expected_len`。
+///
+/// 先做字符串长度上限检查（防止 DoS），再做 Base64 解码，最后校验字节长度。
+/// 所有错误都映射为 `AppError::BadRequest("invalid {field}")`，不暴露内部细节。
+fn decode_base64_exact_len(field: &str, value: &str, expected_len: usize) -> Result<(), AppError> {
+    if value.len() > MAX_KEY_FIELD_LEN {
+        return Err(AppError::BadRequest(format!("invalid {field}")));
+    }
+    let bytes = B64
+        .decode(value)
+        .map_err(|_| AppError::BadRequest(format!("invalid {field}")))?;
+    if bytes.len() != expected_len {
+        return Err(AppError::BadRequest(format!("invalid {field}")));
+    }
+    Ok(())
+}
+
 fn validate_bundle(req: &UploadBundleRequest) -> Result<(), AppError> {
-    if req.device_id.is_empty() || req.device_id.len() > MAX_DEVICE_ID_LEN {
+    // device_id：trim 后不能为空，不能是纯空白，长度不能超限
+    if req.device_id.trim().is_empty() || req.device_id.len() > MAX_DEVICE_ID_LEN {
         return Err(AppError::BadRequest("invalid device_id".to_string()));
     }
-    if req.identity_key.is_empty() || req.identity_key.len() > MAX_KEY_FIELD_LEN {
-        return Err(AppError::BadRequest("invalid identity_key".to_string()));
-    }
-    if req.signing_identity_key.is_empty() || req.signing_identity_key.len() > MAX_KEY_FIELD_LEN {
-        return Err(AppError::BadRequest(
-            "invalid signing_identity_key".to_string(),
-        ));
-    }
-    if req.signed_pre_key.is_empty() || req.signed_pre_key.len() > MAX_KEY_FIELD_LEN {
-        return Err(AppError::BadRequest("invalid signed_pre_key".to_string()));
-    }
-    if req.signed_pre_key_signature.is_empty()
-        || req.signed_pre_key_signature.len() > MAX_KEY_FIELD_LEN
-    {
-        return Err(AppError::BadRequest(
-            "invalid signed_pre_key_signature".to_string(),
-        ));
-    }
+
+    // 所有公钥字段：合法 Base64 + 正好 32 字节（X25519 公钥）
+    decode_base64_exact_len("identity_key", &req.identity_key, X25519_KEY_BYTES)?;
+    decode_base64_exact_len(
+        "signing_identity_key",
+        &req.signing_identity_key,
+        X25519_KEY_BYTES,
+    )?;
+    decode_base64_exact_len("signed_pre_key", &req.signed_pre_key, X25519_KEY_BYTES)?;
+
+    // signed_pre_key_signature：合法 Base64 + 正好 64 字节（Ed25519 签名）
+    decode_base64_exact_len(
+        "signed_pre_key_signature",
+        &req.signed_pre_key_signature,
+        ED25519_SIGNATURE_BYTES,
+    )?;
+
+    // one_time_pre_keys：数量限制、id 合法性、Base64+字节长度校验
     if req.one_time_pre_keys.len() > MAX_ONE_TIME_KEYS {
         return Err(AppError::BadRequest(
             "too many one_time_pre_keys".to_string(),
         ));
     }
-    for entry in req.one_time_pre_keys.iter() {
-        if entry.key.is_empty() || entry.key.len() > MAX_KEY_FIELD_LEN {
+
+    let mut seen_ids: HashSet<i32> = HashSet::with_capacity(req.one_time_pre_keys.len());
+    for entry in &req.one_time_pre_keys {
+        if entry.id < 0 {
             return Err(AppError::BadRequest(format!(
                 "invalid one_time_pre_key id={}",
                 entry.id
             )));
         }
+        if !seen_ids.insert(entry.id) {
+            return Err(AppError::BadRequest(format!(
+                "duplicate one_time_pre_key id={}",
+                entry.id
+            )));
+        }
+        decode_base64_exact_len(
+            &format!("one_time_pre_key id={}", entry.id),
+            &entry.key,
+            X25519_KEY_BYTES,
+        )?;
     }
+
     Ok(())
 }
 
@@ -731,11 +773,8 @@ fn fingerprint_for_key(key: &str) -> String {
         .collect()
 }
 
-fn validate_public_material(value: &str, field: &str) -> Result<(), AppError> {
-    if value.trim().is_empty() || value.len() > MAX_KEY_FIELD_LEN {
-        return Err(AppError::BadRequest(format!("invalid {field}")));
-    }
-    Ok(())
+fn validate_public_material(value: &str, field: &str, expected_len: usize) -> Result<(), AppError> {
+    decode_base64_exact_len(field, value, expected_len)
 }
 
 pub async fn register_device(
@@ -747,14 +786,14 @@ pub async fn register_device(
     if request.device_id.trim().is_empty() || request.device_id.len() > MAX_DEVICE_ID_LEN {
         return Err(AppError::BadRequest("invalid deviceId".to_string()));
     }
-    validate_public_material(&request.identity_public_key, "identityPublicKey")?;
-    validate_public_material(&request.signed_pre_key, "signedPreKey")?;
-    validate_public_material(&request.signed_pre_key_signature, "signedPreKeySignature")?;
+    validate_public_material(&request.identity_public_key, "identityPublicKey", X25519_KEY_BYTES)?;
+    validate_public_material(&request.signed_pre_key, "signedPreKey", X25519_KEY_BYTES)?;
+    validate_public_material(&request.signed_pre_key_signature, "signedPreKeySignature", ED25519_SIGNATURE_BYTES)?;
     if request.one_time_pre_keys.len() > MAX_ONE_TIME_KEYS {
         return Err(AppError::BadRequest("too many oneTimePreKeys".to_string()));
     }
     for key in &request.one_time_pre_keys {
-        validate_public_material(key, "oneTimePreKeys")?;
+        validate_public_material(key, "oneTimePreKeys", X25519_KEY_BYTES)?;
     }
 
     let fingerprint = fingerprint_for_key(&request.identity_public_key);
@@ -961,4 +1000,252 @@ pub async fn claim_prekey(
         pre_key_id,
         public_key,
     })))
+}
+
+// ---------------------------------------------------------------------------
+// 测试
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::engine::general_purpose::STANDARD as B64;
+    use base64::Engine;
+
+    fn make_key() -> String {
+        B64.encode([0xABu8; 32])
+    }
+
+    fn make_sig() -> String {
+        B64.encode([0xCDu8; 64])
+    }
+
+    fn make_invalid_base64() -> String {
+        "!!!not-valid-base64!!!".to_string()
+    }
+
+    fn make_wrong_len_key() -> String {
+        B64.encode([0x11u8; 16])
+    }
+
+    fn valid_bundle() -> UploadBundleRequest {
+        UploadBundleRequest {
+            device_id: "test-device-001".to_string(),
+            identity_key: make_key(),
+            signing_identity_key: make_key(),
+            signed_pre_key: make_key(),
+            signed_pre_key_signature: make_sig(),
+            one_time_pre_keys: vec![PreKeyEntry {
+                id: 0,
+                key: make_key(),
+            }],
+        }
+    }
+
+    // ---- 正向测试 ----
+
+    #[test]
+    fn valid_bundle_passes() {
+        let bundle = valid_bundle();
+        assert!(validate_bundle(&bundle).is_ok());
+    }
+
+    #[test]
+    fn multiple_valid_one_time_pre_keys_pass() {
+        let mut bundle = valid_bundle();
+        bundle.one_time_pre_keys = vec![
+            PreKeyEntry { id: 0, key: make_key() },
+            PreKeyEntry { id: 1, key: make_key() },
+            PreKeyEntry { id: 100, key: make_key() },
+            PreKeyEntry { id: 42, key: make_key() },
+        ];
+        assert!(validate_bundle(&bundle).is_ok());
+    }
+
+    // ---- device_id ----
+
+    #[test]
+    fn device_id_blank_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.device_id = "   ".to_string();
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("invalid device_id"), "got: {msg}");
+    }
+
+    #[test]
+    fn device_id_empty_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.device_id = String::new();
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("invalid device_id"), "got: {msg}");
+    }
+
+    // ---- identity_key ----
+
+    #[test]
+    fn identity_key_not_base64_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.identity_key = make_invalid_base64();
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("invalid identity_key"), "got: {msg}");
+    }
+
+    #[test]
+    fn identity_key_wrong_byte_len_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.identity_key = make_wrong_len_key();
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("invalid identity_key"), "got: {msg}");
+    }
+
+    // ---- signing_identity_key ----
+
+    #[test]
+    fn signing_identity_key_not_base64_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.signing_identity_key = make_invalid_base64();
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("invalid signing_identity_key"), "got: {msg}");
+    }
+
+    // ---- signed_pre_key ----
+
+    #[test]
+    fn signed_pre_key_not_base64_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.signed_pre_key = make_invalid_base64();
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("invalid signed_pre_key"), "got: {msg}");
+    }
+
+    // ---- signed_pre_key_signature ----
+
+    #[test]
+    fn signed_pre_key_signature_not_base64_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.signed_pre_key_signature = make_invalid_base64();
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("invalid signed_pre_key_signature"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn signed_pre_key_signature_wrong_byte_len_rejected() {
+        let mut bundle = valid_bundle();
+        // 32 bytes instead of 64
+        bundle.signed_pre_key_signature = B64.encode([0x42u8; 32]);
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("invalid signed_pre_key_signature"),
+            "got: {msg}"
+        );
+    }
+
+    // ---- one_time_pre_keys.key ----
+
+    #[test]
+    fn one_time_pre_key_not_base64_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.one_time_pre_keys = vec![PreKeyEntry {
+            id: 0,
+            key: make_invalid_base64(),
+        }];
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("invalid one_time_pre_key id=0"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn one_time_pre_key_wrong_byte_len_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.one_time_pre_keys = vec![PreKeyEntry {
+            id: 0,
+            key: make_wrong_len_key(),
+        }];
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("invalid one_time_pre_key id=0"),
+            "got: {msg}"
+        );
+    }
+
+    // ---- one_time_pre_keys.id ----
+
+    #[test]
+    fn one_time_pre_key_negative_id_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.one_time_pre_keys = vec![PreKeyEntry {
+            id: -1,
+            key: make_key(),
+        }];
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("invalid one_time_pre_key id=-1"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn one_time_pre_key_duplicate_id_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.one_time_pre_keys = vec![
+            PreKeyEntry { id: 5, key: make_key() },
+            PreKeyEntry { id: 5, key: make_key() },
+        ];
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("duplicate one_time_pre_key id=5"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn one_time_pre_key_id_zero_allowed() {
+        let mut bundle = valid_bundle();
+        bundle.one_time_pre_keys = vec![PreKeyEntry {
+            id: 0,
+            key: make_key(),
+        }];
+        assert!(validate_bundle(&bundle).is_ok());
+    }
+
+    // ---- 边界测试 ----
+
+    #[test]
+    fn too_many_one_time_pre_keys_rejected() {
+        let mut bundle = valid_bundle();
+        bundle.one_time_pre_keys = (0..=MAX_ONE_TIME_KEYS)
+            .map(|i| PreKeyEntry {
+                id: i as i32,
+                key: make_key(),
+            })
+            .collect();
+        let err = validate_bundle(&bundle).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("too many one_time_pre_keys"), "got: {msg}");
+    }
+
+    #[test]
+    fn decode_base64_exact_len_rejects_empty_string() {
+        let result = decode_base64_exact_len("test_field", "", X25519_KEY_BYTES);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("invalid test_field"), "got: {msg}");
+    }
 }
