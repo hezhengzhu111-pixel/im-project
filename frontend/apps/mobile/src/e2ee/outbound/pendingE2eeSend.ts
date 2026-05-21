@@ -155,6 +155,9 @@ export async function encryptPendingE2eePayload(item: PendingMessage): Promise<E
 
     const localId = parsed.plaintextRef || item.localId;
     if (!localId) {
+      // Missing plaintextRef is unrecoverable data corruption — the pending
+      // can never be resolved without a reference to the stored plaintext.
+      markPendingE2eeExhausted(item, 'missing plaintextRef in E2EE pending');
       return { ...base, error: 'not an E2EE-waiting pending (missing plaintextRef)' };
     }
 
@@ -166,11 +169,20 @@ export async function encryptPendingE2eePayload(item: PendingMessage): Promise<E
 
     const userId = useAuthStore.getState().currentUser?.id;
     if (!userId) {
+      markPendingE2eeRetryableFailure(item, 'cannot encrypt pending E2EE payload without authenticated user');
       return { ...base, error: 'cannot encrypt pending E2EE payload without authenticated user' };
     }
 
-    const deviceId = await e2eeSecureStorage.getDeviceId(userId);
+    let deviceId = await e2eeSecureStorage.getDeviceId(userId);
     if (!deviceId) {
+      // The device should have been provisioned by ensureLocalE2eeDeviceRegistered
+      // before the pending was enqueued. If the deviceId is missing here it may
+      // be a transient Keychain issue — try getOrCreateDeviceId once and retry
+      // later if that also fails.
+      deviceId = await e2eeSecureStorage.getOrCreateDeviceId(userId).catch(() => '');
+    }
+    if (!deviceId) {
+      markPendingE2eeRetryableFailure(item, 'cannot encrypt pending E2EE payload without provisioned device');
       return { ...base, error: 'cannot encrypt pending E2EE payload without provisioned device' };
     }
 
