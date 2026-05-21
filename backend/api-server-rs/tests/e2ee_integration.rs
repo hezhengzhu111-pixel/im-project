@@ -139,6 +139,55 @@ async fn delete_json(app: &axum::Router, uri: &str, token: Option<&str>) -> (Sta
     (status, json)
 }
 
+/// 通过好友 API 建立双向好友关系：A 向 B 发送申请，B 接受。
+async fn establish_friendship(app: &axum::Router, user_a: &AuthedUser, user_b: &AuthedUser) {
+    // User A sends friend request to B
+    let (status, _body) = post_json(
+        app,
+        "/api/friend/request",
+        Some(&user_a.token),
+        &json!({
+            "targetUserId": &user_b.user_id,
+            "reason": "test friendship"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "friend request failed");
+
+    // User B fetches pending friend requests to find the request ID
+    let (status, list_body) =
+        get_json(app, "/api/friend/requests", Some(&user_b.token)).await;
+    assert_eq!(status, StatusCode::OK, "friend requests list failed");
+
+    let requests = list_body["data"]
+        .as_array()
+        .expect("friend requests data should be array");
+    let target_req = requests
+        .iter()
+        .find(|r| {
+            r["applicantId"].as_str().map(|s| s.to_string()) == Some(user_a.user_id.clone())
+                && r["status"].as_i64() == Some(0)
+        })
+        .expect("should find pending friend request from user_a");
+    let request_id = target_req["id"].as_i64().expect("request should have id");
+
+    // User B accepts
+    let (status, _body) = post_json(
+        app,
+        "/api/friend/accept",
+        Some(&user_b.token),
+        &json!({
+            "requestId": request_id
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "friend accept failed: {_body}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // 测试：上传 bundle 后能查询到设备
 // ---------------------------------------------------------------------------
@@ -383,6 +432,9 @@ async fn test_e2ee_session_request_accept_reject_flow() {
     let app = test_app().await;
     let user_a = register_and_login(&app).await;
     let user_b = register_and_login(&app).await;
+
+    // Establish friendship first (required for negotiation)
+    establish_friendship(&app, &user_a, &user_b).await;
 
     // 构造 session_id: smaller_larger
     let (id_a, id_b) =
@@ -986,5 +1038,463 @@ async fn test_e2ee_create_session_rejects_empty_recipient_device_ids() {
         status,
         StatusCode::BAD_REQUEST,
         "should reject empty recipientDeviceIds: {body}"
+    );
+}
+
+// ===========================================================================
+// E2EE 会话协商状态机安全测试（问题 4 修复验证）
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 测试：非好友不能发起 E2EE 协商请求
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_non_friends_cannot_request_encryption() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    let (id_a, id_b) =
+        if user_a.user_id.parse::<i64>().unwrap() < user_b.user_id.parse::<i64>().unwrap() {
+            (&user_a.user_id, &user_b.user_id)
+        } else {
+            (&user_b.user_id, &user_a.user_id)
+        };
+    let session_id = format!("{id_a}_{id_b}");
+
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_a.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "test_key"
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "non-friends should not be allowed to request encryption: {body}"
+    );
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("not a friend"),
+        "unexpected error message: {body}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：encrypted 状态下再次 request_encryption 不能覆盖为 pending
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_encrypted_rejects_overwrite_by_request() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    establish_friendship(&app, &user_a, &user_b).await;
+
+    let (id_a, id_b) =
+        if user_a.user_id.parse::<i64>().unwrap() < user_b.user_id.parse::<i64>().unwrap() {
+            (&user_a.user_id, &user_b.user_id)
+        } else {
+            (&user_b.user_id, &user_a.user_id)
+        };
+    let session_id = format!("{id_a}_{id_b}");
+
+    // A requests → pending
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_a.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "test_key"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // B accepts → encrypted
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/accept",
+        Some(&user_b.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // A tries to request again → Conflict (encrypted cannot be overwritten)
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_a.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "test_key_2"
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "encrypted session should not be overwritten by request: {body}"
+    );
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("already encrypted"),
+        "unexpected error message: {body}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：pending 状态下，同一 requester 重复 request 幂等处理
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_pending_same_requester_idempotent() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    establish_friendship(&app, &user_a, &user_b).await;
+
+    let (id_a, id_b) =
+        if user_a.user_id.parse::<i64>().unwrap() < user_b.user_id.parse::<i64>().unwrap() {
+            (&user_a.user_id, &user_b.user_id)
+        } else {
+            (&user_b.user_id, &user_a.user_id)
+        };
+    let session_id = format!("{id_a}_{id_b}");
+
+    // A requests first time
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_a.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "first_key"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // A requests again (same requester) → idempotent, should succeed
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_a.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "second_key",
+            "requestPayloadJson": "{\"updated\":true}"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "same requester repeat request should be idempotent");
+
+    // B should still be able to accept (status is still pending)
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/accept",
+        Some(&user_b.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+// ---------------------------------------------------------------------------
+// 测试：pending 状态下，requester 自己不能 accept
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_pending_requester_cannot_accept_own() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    establish_friendship(&app, &user_a, &user_b).await;
+
+    let (id_a, id_b) =
+        if user_a.user_id.parse::<i64>().unwrap() < user_b.user_id.parse::<i64>().unwrap() {
+            (&user_a.user_id, &user_b.user_id)
+        } else {
+            (&user_b.user_id, &user_a.user_id)
+        };
+    let session_id = format!("{id_a}_{id_b}");
+
+    // A requests
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_a.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "test_key"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // A tries to accept own request → Forbidden (only target can accept)
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/accept",
+        Some(&user_a.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "requester should not be able to accept own request: {body}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：encrypted 状态下 reject 应被拒绝
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_encrypted_rejects_reject() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    establish_friendship(&app, &user_a, &user_b).await;
+
+    let (id_a, id_b) =
+        if user_a.user_id.parse::<i64>().unwrap() < user_b.user_id.parse::<i64>().unwrap() {
+            (&user_a.user_id, &user_b.user_id)
+        } else {
+            (&user_b.user_id, &user_a.user_id)
+        };
+    let session_id = format!("{id_a}_{id_b}");
+
+    // A requests → pending
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_a.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "test_key"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // B accepts → encrypted
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/accept",
+        Some(&user_b.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // B tries to reject encrypted session → Conflict
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/reject",
+        Some(&user_b.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "encrypted session should not be rejectable: {body}"
+    );
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("cannot reject an encrypted session"),
+        "unexpected error message: {body}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：disable encrypted 操作正常执行并允许后续重新协商
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_disable_encrypted_session() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    establish_friendship(&app, &user_a, &user_b).await;
+
+    let (id_a, id_b) =
+        if user_a.user_id.parse::<i64>().unwrap() < user_b.user_id.parse::<i64>().unwrap() {
+            (&user_a.user_id, &user_b.user_id)
+        } else {
+            (&user_b.user_id, &user_a.user_id)
+        };
+    let session_id = format!("{id_a}_{id_b}");
+
+    // A requests → pending
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_a.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "test_key"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // B accepts → encrypted
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/accept",
+        Some(&user_b.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // A disables → plaintext
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/disable",
+        Some(&user_a.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "disable encrypted should succeed");
+
+    // After disable, re-request should work (plaintext → pending)
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_b.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "renegotiated_key"
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "re-request after disable should succeed"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：非参与者（非好友的用户 C）不能 accept/reject/disable
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_non_participant_blocked_by_friendship_check() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+    let user_c = register_and_login(&app).await;
+
+    // Only establish friendship between A and B, not C
+    establish_friendship(&app, &user_a, &user_b).await;
+
+    let (id_a, id_b) =
+        if user_a.user_id.parse::<i64>().unwrap() < user_b.user_id.parse::<i64>().unwrap() {
+            (&user_a.user_id, &user_b.user_id)
+        } else {
+            (&user_b.user_id, &user_a.user_id)
+        };
+    let session_id = format!("{id_a}_{id_b}");
+
+    // A requests
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_a.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "test_key"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // C tries to accept → Forbidden (not a friend)
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/accept",
+        Some(&user_c.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "non-friend should not be able to accept: {body}"
+    );
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("not a friend"),
+        "unexpected error message: {body}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：伪造 session_id（用户存在但非好友）不能执行任何操作
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_fake_session_id_with_non_friends() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    let (id_a, id_b) =
+        if user_a.user_id.parse::<i64>().unwrap() < user_b.user_id.parse::<i64>().unwrap() {
+            (&user_a.user_id, &user_b.user_id)
+        } else {
+            (&user_b.user_id, &user_a.user_id)
+        };
+    let session_id = format!("p_{id_a}_{id_b}");
+
+    // Accept on non-existent session → Forbidden (friendship check first)
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/accept",
+        Some(&user_a.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert!(
+        status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
+        "fake session should be rejected, got {status}: {body}"
+    );
+
+    // Disable on non-existent session → Forbidden
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/disable",
+        Some(&user_a.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert!(
+        status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
+        "disable on fake session should be rejected, got {status}"
     );
 }
