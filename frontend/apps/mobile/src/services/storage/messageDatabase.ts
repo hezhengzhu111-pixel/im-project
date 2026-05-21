@@ -11,6 +11,12 @@ function persistentStorageUnavailableError(reason: string): Error {
   );
 }
 
+function assertPersistentStorageAvailableForRelease(reason: string): void {
+  if (isReleaseRuntime()) {
+    throw persistentStorageUnavailableError(reason);
+  }
+}
+
 // --- Test seam: allows tests to override IS_RELEASE_RUNTIME ---
 let __releaseOverride: boolean | null = null;
 
@@ -178,7 +184,13 @@ export const messageDatabase = {
   },
 
   isMemoryFallback(): boolean {
-    return !openSqlite();
+    const fallback = !openSqlite();
+    if (fallback) {
+      assertPersistentStorageAvailableForRelease(
+        storageHealth.lastError || 'quick-sqlite unavailable',
+      );
+    }
+    return fallback;
   },
 
   getStorageHealth(): StorageHealthState {

@@ -451,6 +451,31 @@ describe('Release build fail-fast', () => {
       expect(health.lastError).toBeTruthy();
       expect(health.migrationStatus).toBe('failed');
     });
+
+    it('isMemoryFallback throws (does NOT return true silently)', () => {
+      // openSqlite() will fail because no db injected + require() throws in test
+      // → sqliteUnavailable=true → isMemoryFallback=true → release → throw
+      expect(() => {
+        messageDatabase.isMemoryFallback();
+      }).toThrow(
+        'Persistent message database unavailable in release build:',
+      );
+    });
+
+    it('getStorageHealth does NOT throw even after isMemoryFallback would throw', () => {
+      // First ensure openSqlite() triggers reportFallback
+      try {
+        messageDatabase.isMemoryFallback();
+      } catch {
+        // expected in release
+      }
+
+      // getStorageHealth must always return data, never throw
+      const health = messageDatabase.getStorageHealth();
+      expect(health.releaseVisibilityRequired).toBe(true);
+      expect(health.mode).toBe('memory');
+      expect(health.lastError).toBeTruthy();
+    });
   });
 
   describe('migration failed in release', () => {
@@ -507,6 +532,22 @@ describe('Release build fail-fast', () => {
 
       await expect(initializeStorage()).rejects.toThrow('raw string failure');
     });
+
+    it('isMemoryFallback throws after migration failed in release', async () => {
+      const failDb = createFakeDb();
+      failDb.throwOnSql(/CREATE TABLE/, new Error('disk full'));
+      __setDbForTests(failDb);
+
+      await expect(initializeStorage()).rejects.toThrow();
+
+      // After migration failure, sqliteUnavailable is set to true,
+      // so isMemoryFallback() should throw (not silently return true)
+      expect(() => {
+        messageDatabase.isMemoryFallback();
+      }).toThrow(
+        'Persistent message database unavailable in release build: disk full',
+      );
+    });
   });
 
   describe('SQLite available in release — happy path', () => {
@@ -539,6 +580,15 @@ describe('Release build fail-fast', () => {
       expect(health.releaseVisibilityRequired).toBe(false);
       expect(health.lastError).toBe('');
       expect(health.lastMigrationError).toBe('');
+    });
+
+    it('isMemoryFallback returns false when SQLite is available', async () => {
+      const fake = createFakeDb();
+      __setDbForTests(fake);
+
+      await initializeStorage();
+
+      expect(messageDatabase.isMemoryFallback()).toBe(false);
     });
   });
 });
@@ -585,6 +635,10 @@ describe('Debug build memory fallback', () => {
 
     const rows = messageDatabase.memoryList('test_table');
     expect(rows).toEqual([{ value: 'hello' }, { value: 'world' }]);
+  });
+
+  it('isMemoryFallback returns true in debug (does not throw)', () => {
+    expect(messageDatabase.isMemoryFallback()).toBe(true);
   });
 
   it('storageHealth.releaseVisibilityRequired is false', async () => {
