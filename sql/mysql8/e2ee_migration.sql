@@ -378,8 +378,40 @@ DELIMITER ;
 
 CALL add_column_if_missing_sm('e2ee_sessions', 'state_version', 'INT NOT NULL DEFAULT 1 COMMENT ''monotonic state version for conflict detection''');
 CALL add_column_if_missing_sm('e2ee_sessions', 'disabled_by', 'BIGINT NULL COMMENT ''user id who disabled the session''');
+CALL add_column_if_missing_sm('e2ee_sessions', 'disabled_at', 'DATETIME NULL COMMENT ''when the session was disabled''');
 
 DROP PROCEDURE IF EXISTS add_column_if_missing_sm;
+
+-- Add index on state_version for conflict-detection queries
+DROP PROCEDURE IF EXISTS add_index_if_missing_sm;
+DELIMITER //
+CREATE PROCEDURE add_index_if_missing_sm(
+    IN target_table VARCHAR(64),
+    IN index_name VARCHAR(64),
+    IN index_definition TEXT
+)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM INFORMATION_SCHEMA.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = target_table
+          AND INDEX_NAME = index_name
+    ) THEN
+        SET @ddl = CONCAT('ALTER TABLE `', target_table, '` ADD INDEX `', index_name, '` ', index_definition);
+        PREPARE stmt FROM @ddl;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END//
+DELIMITER ;
+
+CALL add_index_if_missing_sm(
+    'e2ee_sessions',
+    'idx_e2ee_sessions_state_version',
+    '(session_id, state_version)'
+);
+DROP PROCEDURE IF EXISTS add_index_if_missing_sm;
 
 -- e2ee_pre_key_claims: idempotent one-time pre-key claim tracking
 -- Prevents duplicate consumption of one-time pre-keys by binding each claim

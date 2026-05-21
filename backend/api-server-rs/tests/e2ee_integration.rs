@@ -4,6 +4,7 @@ use api_server_rs::web;
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use serde_json::{json, Value};
+use sqlx::Row;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -157,7 +158,7 @@ async fn establish_friendship(app: &axum::Router, user_a: &AuthedUser, user_b: &
     // User B fetches pending friend requests to find the request ID
     let (status, list_body) =
         get_json(app, "/api/friend/requests", Some(&user_b.token)).await;
-    assert_eq!(status, StatusCode::OK, "friend requests list failed");
+    assert_eq!(status, StatusCode::OK, "friend requests list failed: {list_body}");
 
     let requests = list_body["data"]
         .as_array()
@@ -166,10 +167,10 @@ async fn establish_friendship(app: &axum::Router, user_a: &AuthedUser, user_b: &
         .iter()
         .find(|r| {
             r["applicantId"].as_str().map(|s| s.to_string()) == Some(user_a.user_id.clone())
-                && r["status"].as_i64() == Some(0)
+                && r["status"].as_str() == Some("PENDING")
         })
         .expect("should find pending friend request from user_a");
-    let request_id = target_req["id"].as_i64().expect("request should have id");
+    let request_id = target_req["id"].as_str().expect("request should have id");
 
     // User B accepts
     let (status, _body) = post_json(
@@ -628,7 +629,7 @@ async fn test_e2ee_create_session_sender_device_must_belong_to_caller() {
         "should reject foreign senderDeviceId, got: {body}"
     );
     assert!(
-        body["error"]
+        body["message"]
             .as_str()
             .unwrap_or("")
             .contains("sender device does not belong"),
@@ -721,7 +722,7 @@ async fn test_e2ee_create_session_private_rejects_own_device_as_recipient() {
         "should reject own device as recipient in private chat: {body}"
     );
     assert!(
-        body["error"]
+        body["message"]
             .as_str()
             .unwrap_or("")
             .contains("cannot add own device"),
@@ -902,7 +903,7 @@ async fn test_e2ee_create_session_group_rejects_non_member_device() {
         "should reject non-member device in group chat: {body}"
     );
     assert!(
-        body["error"]
+        body["message"]
             .as_str()
             .unwrap_or("")
             .contains("not a member of group"),
@@ -949,7 +950,7 @@ async fn test_e2ee_create_session_rejects_nonexistent_device() {
         "should reject nonexistent device: {body}"
     );
     assert!(
-        body["error"]
+        body["message"]
             .as_str()
             .unwrap_or("")
             .contains("not found or not active"),
@@ -996,7 +997,7 @@ async fn test_e2ee_create_session_rejects_non_member() {
         "should reject non-member from creating session: {body}"
     );
     assert!(
-        body["error"]
+        body["message"]
             .as_str()
             .unwrap_or("")
             .contains("not a conversation member"),
@@ -1079,7 +1080,7 @@ async fn test_e2ee_non_friends_cannot_request_encryption() {
         "non-friends should not be allowed to request encryption: {body}"
     );
     assert!(
-        body["error"]
+        body["message"]
             .as_str()
             .unwrap_or("")
             .contains("not a friend"),
@@ -1147,7 +1148,7 @@ async fn test_e2ee_encrypted_rejects_overwrite_by_request() {
         "encrypted session should not be overwritten by request: {body}"
     );
     assert!(
-        body["error"]
+        body["message"]
             .as_str()
             .unwrap_or("")
             .contains("already encrypted"),
@@ -1318,7 +1319,7 @@ async fn test_e2ee_encrypted_rejects_reject() {
         "encrypted session should not be rejectable: {body}"
     );
     assert!(
-        body["error"]
+        body["message"]
             .as_str()
             .unwrap_or("")
             .contains("cannot reject an encrypted session"),
@@ -1443,13 +1444,11 @@ async fn test_e2ee_non_participant_blocked_by_friendship_check() {
     assert_eq!(
         status,
         StatusCode::FORBIDDEN,
-        "non-friend should not be able to accept: {body}"
+        "non-participant should not be able to accept: {body}"
     );
+    let msg = body["message"].as_str().unwrap_or("");
     assert!(
-        body["error"]
-            .as_str()
-            .unwrap_or("")
-            .contains("not a friend"),
+        msg.contains("not a friend") || msg.contains("not a session participant"),
         "unexpected error message: {body}"
     );
 }
@@ -1496,5 +1495,301 @@ async fn test_e2ee_fake_session_id_with_non_friends() {
     assert!(
         status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
         "disable on fake session should be rejected, got {status}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 辅助：获取测试数据库连接
+// ---------------------------------------------------------------------------
+
+async fn test_db() -> sqlx::MySqlPool {
+    let db_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "mysql://root:root123@127.0.0.1:3306/service_message_service_db".into());
+    sqlx::MySqlPool::connect(&db_url)
+        .await
+        .expect("connect to test db")
+}
+
+// ---------------------------------------------------------------------------
+// 测试：pending 状态下另一方 request 返回 Conflict，不覆盖 requester/target
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_pending_other_requester_request_rejected() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    establish_friendship(&app, &user_a, &user_b).await;
+
+    let (id_a, id_b) =
+        if user_a.user_id.parse::<i64>().unwrap() < user_b.user_id.parse::<i64>().unwrap() {
+            (&user_a.user_id, &user_b.user_id)
+        } else {
+            (&user_b.user_id, &user_a.user_id)
+        };
+    let session_id = format!("{id_a}_{id_b}");
+
+    // A requests → pending
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_a.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "a_key"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // B tries to request (other direction) → Conflict, must not flip requester
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_b.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "b_key"
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "other party request should return Conflict when pending exists: {body}"
+    );
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("pending request already exists"),
+        "unexpected error message: {body}"
+    );
+
+    // Verify: B can still accept (requester is still A, not flipped)
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/accept",
+        Some(&user_b.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "B should still be able to accept since requester was not flipped"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：accept 并发/重复调用时 rows_affected 检查返回 Conflict
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_accept_twice_returns_conflict() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    establish_friendship(&app, &user_a, &user_b).await;
+
+    let (id_a, id_b) =
+        if user_a.user_id.parse::<i64>().unwrap() < user_b.user_id.parse::<i64>().unwrap() {
+            (&user_a.user_id, &user_b.user_id)
+        } else {
+            (&user_b.user_id, &user_a.user_id)
+        };
+    let session_id = format!("{id_a}_{id_b}");
+
+    // A requests → pending
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_a.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "test_key"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // B accepts first time → OK
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/accept",
+        Some(&user_b.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // B accepts second time → Conflict (either early status check or rows_affected guard)
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/accept",
+        Some(&user_b.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "second accept should return Conflict: {body}"
+    );
+    let msg = body["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("session state changed") || msg.contains("already encrypted"),
+        "unexpected error message: {body}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：reject 并发/重复调用时 rows_affected 检查返回 Conflict
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_reject_twice_returns_conflict() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    establish_friendship(&app, &user_a, &user_b).await;
+
+    let (id_a, id_b) =
+        if user_a.user_id.parse::<i64>().unwrap() < user_b.user_id.parse::<i64>().unwrap() {
+            (&user_a.user_id, &user_b.user_id)
+        } else {
+            (&user_b.user_id, &user_a.user_id)
+        };
+    let session_id = format!("{id_a}_{id_b}");
+
+    // A requests → pending
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_a.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "test_key"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // B rejects first time → OK
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/reject",
+        Some(&user_b.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // B rejects second time → Conflict (either early status check or rows_affected guard)
+    let (status, body) = post_json(
+        &app,
+        "/api/e2ee/reject",
+        Some(&user_b.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "second reject should return Conflict: {body}"
+    );
+    let msg = body["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("session state changed") || msg.contains("cannot reject session"),
+        "unexpected error message: {body}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 测试：disable encrypted 验证 disabled_by、disabled_at、state_version
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_e2ee_disable_sets_disabled_fields() {
+    let app = test_app().await;
+    let user_a = register_and_login(&app).await;
+    let user_b = register_and_login(&app).await;
+
+    establish_friendship(&app, &user_a, &user_b).await;
+
+    let (id_a, id_b) =
+        if user_a.user_id.parse::<i64>().unwrap() < user_b.user_id.parse::<i64>().unwrap() {
+            (&user_a.user_id, &user_b.user_id)
+        } else {
+            (&user_b.user_id, &user_a.user_id)
+        };
+    let session_id = format!("{id_a}_{id_b}");
+
+    // A requests → pending
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/request",
+        Some(&user_a.token),
+        &json!({
+            "sessionId": &session_id,
+            "identityKey": "test_key"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // B accepts → encrypted
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/accept",
+        Some(&user_b.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // A disables → plaintext
+    let (status, _) = post_json(
+        &app,
+        "/api/e2ee/disable",
+        Some(&user_a.token),
+        &json!({"sessionId": &session_id}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "disable encrypted should succeed");
+
+    // 直接查询数据库验证字段
+    let db = test_db().await;
+    let row = sqlx::query(
+        "SELECT status, disabled_by, disabled_at IS NOT NULL AS has_disabled_at, state_version \
+         FROM service_user_service_db.e2ee_sessions \
+         WHERE session_id = ?",
+    )
+    .bind(&session_id)
+    .fetch_one(&db)
+    .await
+    .expect("should find session row");
+
+    let status: String = row.get("status");
+    let disabled_by: Option<i64> = row.get("disabled_by");
+    let has_disabled_at: i64 = row.get("has_disabled_at");
+    let state_version: i32 = row.get("state_version");
+
+    assert_eq!(status, "plaintext");
+    assert_eq!(
+        disabled_by,
+        Some(user_a.user_id.parse::<i64>().unwrap()),
+        "disabled_by should be the user who called disable"
+    );
+    assert_eq!(
+        has_disabled_at, 1,
+        "disabled_at should be set to NOW()"
+    );
+    assert!(
+        state_version >= 2,
+        "state_version should have been incremented at least twice (created as pending + accept + disable), got {state_version}"
     );
 }

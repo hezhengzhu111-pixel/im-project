@@ -109,7 +109,8 @@ fn validate_optional_key(value: Option<&str>, field_name: &str) -> Result<(), Ap
 /// - 双方必须存在真实好友关系（im_friend 双向 status=1）；
 /// - 仅保存公钥材料，不保存任何私钥；
 /// - 已 encrypted 的会话不能被普通 request 覆盖，需走 rotate/rekey；
-/// - 同一 requester 对 pending 重复 request 幂等返回。
+/// - 同一 requester 对 pending 重复 request 幂等返回；
+/// - pending 状态下另一方 request 返回 Conflict，不允许翻转 requester/target。
 pub async fn request_encryption(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -178,7 +179,9 @@ pub async fn request_encryption(
                 return Ok(Json(ApiResponse::success("ok".to_string())));
             }
             "pending" => {
-                // 另一方发起 request：允许（双向均可发起协商），更新 requester
+                return Err(AppError::Conflict(
+                    "pending request already exists".to_string(),
+                ));
             }
             "rejected" | "plaintext" => {
                 // 允许重新发起协商
@@ -334,7 +337,7 @@ pub async fn accept_encryption(
         }
     }
 
-    sqlx::query(
+    let result = sqlx::query(
         "UPDATE service_user_service_db.e2ee_sessions \
          SET status = 'encrypted', state_version = state_version + 1, \
              updated_time = NOW() \
@@ -344,6 +347,18 @@ pub async fn accept_encryption(
     .execute(&state.db)
     .await?;
 
+    if result.rows_affected() != 1 {
+        return Err(AppError::Conflict(
+            "session state changed, retry".to_string(),
+        ));
+    }
+
+    // 重新加载以获取数据库实际的 updated_time 和 state_version
+    let updated_state = load_negotiation_state(&state.db, &request.session_id).await?;
+    let (db_state_version, db_updated_time) = updated_state
+        .map(|(_, _, _, sv, ut)| (sv, Some(ut)))
+        .unwrap_or((state_version + 1, None));
+
     let push = E2eeNegotiationPush {
         action: "accepted".to_string(),
         session_id: request.session_id.clone(),
@@ -351,10 +366,8 @@ pub async fn accept_encryption(
         requester_name: String::new(),
         target_user_id: target_user_id.to_string(),
         request_payload_json: None,
-        updated_time: Some(
-            chrono::Utc::now().to_rfc3339(),
-        ),
-        state_version: Some(state_version + 1),
+        updated_time: db_updated_time.map(|t| t.and_utc().to_rfc3339()),
+        state_version: Some(db_state_version),
     };
     if let Err(error) = push_negotiation_event(&state, requester_id, &push).await {
         tracing::warn!(
@@ -417,7 +430,7 @@ pub async fn reject_encryption(
         }
     }
 
-    sqlx::query(
+    let result = sqlx::query(
         "UPDATE service_user_service_db.e2ee_sessions \
          SET status = 'rejected', state_version = state_version + 1, \
              updated_time = NOW() \
@@ -427,6 +440,18 @@ pub async fn reject_encryption(
     .execute(&state.db)
     .await?;
 
+    if result.rows_affected() != 1 {
+        return Err(AppError::Conflict(
+            "session state changed, retry".to_string(),
+        ));
+    }
+
+    // 重新加载以获取数据库实际的 updated_time 和 state_version
+    let updated_state = load_negotiation_state(&state.db, &request.session_id).await?;
+    let (db_state_version, db_updated_time) = updated_state
+        .map(|(_, _, _, sv, ut)| (sv, Some(ut)))
+        .unwrap_or((state_version + 1, None));
+
     let push = E2eeNegotiationPush {
         action: "rejected".to_string(),
         session_id: request.session_id.clone(),
@@ -434,10 +459,8 @@ pub async fn reject_encryption(
         requester_name: String::new(),
         target_user_id: target_user_id.to_string(),
         request_payload_json: None,
-        updated_time: Some(
-            chrono::Utc::now().to_rfc3339(),
-        ),
-        state_version: Some(state_version + 1),
+        updated_time: db_updated_time.map(|t| t.and_utc().to_rfc3339()),
+        state_version: Some(db_state_version),
     };
     if let Err(error) = push_negotiation_event(&state, requester_id, &push).await {
         tracing::warn!(
@@ -515,10 +538,11 @@ pub async fn disable_encryption(
     };
 
     if needs_update && existing.is_some() {
-        sqlx::query(
+        let result = sqlx::query(
             "UPDATE service_user_service_db.e2ee_sessions \
              SET status = 'plaintext', request_payload_json = NULL, \
-                 disabled_by = ?, state_version = state_version + 1, \
+                 disabled_by = ?, disabled_at = NOW(), \
+                 state_version = state_version + 1, \
                  updated_time = NOW() \
              WHERE session_id = ?",
         )
@@ -526,6 +550,12 @@ pub async fn disable_encryption(
         .bind(&request.session_id)
         .execute(&state.db)
         .await?;
+
+        if result.rows_affected() != 1 {
+            return Err(AppError::Conflict(
+                "session state changed, retry".to_string(),
+            ));
+        }
     } else if needs_update {
         sqlx::query(
             "INSERT INTO service_user_service_db.e2ee_sessions \
