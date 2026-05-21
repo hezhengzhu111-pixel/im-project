@@ -7,10 +7,23 @@ export const mobileE2eeKeyService = {
     return http.post<string>('/keys/bundle', data);
   },
 
-  getBundle(userId: string, deviceId?: string): Promise<ApiResponse<PreKeyBundle>> {
+  getBundle(
+    userId: string,
+    deviceId?: string,
+    options?: {
+      conversationId?: string;
+      requesterDeviceId?: string;
+    },
+  ): Promise<ApiResponse<PreKeyBundle>> {
     const params: Record<string, string> = { userId };
     if (deviceId) {
       params.deviceId = deviceId;
+    }
+    if (options?.conversationId) {
+      params.conversationId = options.conversationId;
+    }
+    if (options?.requesterDeviceId) {
+      params.requesterDeviceId = options.requesterDeviceId;
     }
     return http.get<PreKeyBundle>('/keys/bundle', { params } as never);
   },

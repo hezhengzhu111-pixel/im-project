@@ -173,6 +173,25 @@ CREATE TABLE IF NOT EXISTS e2ee_one_time_pre_keys (
   KEY idx_otp_user_device_consumed (user_id, device_id, consumed)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE一次性预密钥池';
 
+-- E2EE 一次性预密钥 claim 幂等表
+-- 保证同一 (requester, target, conversation) 组合只消费一个 one-time pre-key，
+-- 并发重复请求返回同一个 pre-key 结果。
+CREATE TABLE IF NOT EXISTS e2ee_pre_key_claims (
+  id                      BIGINT NOT NULL AUTO_INCREMENT COMMENT '自增ID',
+  requester_user_id       BIGINT NOT NULL COMMENT 'Claim 方用户ID',
+  requester_device_id     VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Claim 方设备ID（空字符串表示未提供）',
+  target_user_id          BIGINT NOT NULL COMMENT '目标用户ID',
+  target_device_id        VARCHAR(64) NOT NULL COMMENT '目标设备ID',
+  conversation_id         VARCHAR(128) NOT NULL COMMENT '会话ID（p_1_2 或 g_123）',
+  one_time_pre_key_row_id BIGINT NULL COMMENT '被消费的 e2ee_one_time_pre_keys.id',
+  one_time_pre_key_id     INT NULL COMMENT '客户端 pre-key ID',
+  one_time_pre_key        TEXT NULL COMMENT 'One-time pre-key 公钥（Base64）',
+  created_at              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Claim 时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_e2ee_prekey_claim (requester_user_id, requester_device_id, target_user_id, target_device_id, conversation_id),
+  KEY idx_e2ee_prekey_claim_target (target_user_id, target_device_id, conversation_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='E2EE 一次性预密钥 claim 幂等表';
+
 -- E2EE 私聊加密会话协商表
 CREATE TABLE IF NOT EXISTS e2ee_sessions (
   session_id            VARCHAR(64) NOT NULL COMMENT '会话ID',

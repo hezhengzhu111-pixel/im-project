@@ -46,7 +46,7 @@ jest.mock('@/e2ee/api/keyService', () => ({
         data: deviceId ? [{ deviceId, userId: targetUserId, identityKey: bundle?.identityKey, lastActiveAt: new Date().toISOString() }] : [],
       };
     }),
-    getBundle: jest.fn(async (userId: string, deviceId?: string) => {
+    getBundle: jest.fn(async (userId: string, deviceId?: string, _options?: { conversationId?: string; requesterDeviceId?: string }) => {
       const bundle = mockBundles.get(userId);
       if (!bundle || (deviceId && bundle.deviceId !== deviceId)) {
         return { code: 404, message: 'missing', data: null };
@@ -95,6 +95,7 @@ jest.mock('@/utils/logger', () => ({
 }));
 
 import { e2eeManager } from '@/e2ee/manager/e2eeManager';
+import { mobileE2eeKeyService } from '@/e2ee/api/keyService';
 import {
   acceptPendingNegotiation,
   getSessionCryptoReadiness,
@@ -217,6 +218,16 @@ describe('mobile Rust E2EE v2 text integration', () => {
     expect(aliceToBob.version).toBe(2);
     expect(aliceToBob.algorithm).toBe('rust-x25519-x3dh-dr-v1');
     expect(aliceToBob.wire).not.toContain('111111');
+
+    // 验证 encryptToEnvelope 首次创建 outbound session 时 getBundle 传了 conversationId 和 requesterDeviceId
+    const getBundleCalls = (mobileE2eeKeyService.getBundle as jest.Mock).mock.calls;
+    const outboundCall = getBundleCalls[getBundleCalls.length - 1];
+    expect(outboundCall[0]).toBe('bob'); // userId
+    expect(outboundCall[2]).toMatchObject({
+      conversationId: sessionId,
+      requesterDeviceId: expect.any(String),
+    });
+    expect(outboundCall[2].requesterDeviceId).toBeTruthy();
     await expect(getSessionCryptoReadiness(sessionId)).resolves.toBe('ratchet_ready');
 
     setUser('bob');

@@ -139,7 +139,11 @@ class MobileE2eeManager {
       if (existingState) {
         await runtime.restoreSession(params.sessionId, existingState);
       } else {
-        const remoteBundle = await this.fetchRemoteBundle(params.recipientUserId, recipientDeviceId || undefined);
+        const remoteBundle = await this.fetchRemoteBundle(
+          params.recipientUserId,
+          recipientDeviceId || undefined,
+          { conversationId: params.sessionId, requesterDeviceId: local.deviceId },
+        );
         recipientDeviceId = remoteBundle.deviceId || recipientDeviceId;
         await runtime.removeSession(params.sessionId).catch(() => undefined);
         const handshakeBytes = await runtime.createOutboundSession({
@@ -225,7 +229,11 @@ class MobileE2eeManager {
     }
   }
 
-  private async fetchRemoteBundle(userId: string, deviceId?: string): Promise<RustPublicPreKeyBundle> {
+  private async fetchRemoteBundle(
+    userId: string,
+    deviceId?: string,
+    options?: { conversationId?: string; requesterDeviceId?: string },
+  ): Promise<RustPublicPreKeyBundle> {
     const devicesResp = await mobileE2eeKeyService.getDevices(userId);
     const devices = devicesResp.data || [];
     const selected = deviceId ? devices.find((device) => device.deviceId === deviceId) : newestDevice(devices);
@@ -234,7 +242,10 @@ class MobileE2eeManager {
       throw new Error('remote user has no active Rust E2EE device');
     }
 
-    const bundleResp = await mobileE2eeKeyService.getBundle(userId, resolvedDeviceId);
+    const bundleResp = await mobileE2eeKeyService.getBundle(userId, resolvedDeviceId, {
+      conversationId: options?.conversationId,
+      requesterDeviceId: options?.requesterDeviceId,
+    });
     if (!bundleResp.data) {
       throw new Error('remote user has no Rust E2EE key bundle');
     }
