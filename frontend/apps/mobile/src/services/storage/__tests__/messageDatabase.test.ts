@@ -3,6 +3,7 @@ import {
   initializeStorage,
   __resetForTests,
   __setDbForTests,
+  __setReleaseOverrideForTests,
   __getInternalStateForTests,
 } from '../messageDatabase';
 import { CURRENT_DB_VERSION } from '../storageMigrations';
@@ -402,5 +403,194 @@ describe('messageDatabase test seam', () => {
       expect(state1.storageHealth).not.toBe(state2.storageHealth);
       expect(state1.storageHealth).toEqual(state2.storageHealth);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Release build fail-fast behavior
+// ---------------------------------------------------------------------------
+
+describe('Release build fail-fast', () => {
+  beforeEach(() => {
+    __resetForTests();
+    __setReleaseOverrideForTests(true);
+  });
+
+  afterEach(() => {
+    __resetForTests();
+  });
+
+  describe('quick-sqlite unavailable in release', () => {
+    it('initializeStorage throws with persistentStorageUnavailableError', async () => {
+      await expect(initializeStorage()).rejects.toThrow(
+        'Persistent message database unavailable in release build: quick-sqlite unavailable',
+      );
+    });
+
+    it('execute throws with persistentStorageUnavailableError', () => {
+      expect(() => {
+        messageDatabase.execute('SELECT 1');
+      }).toThrow(
+        'Persistent message database unavailable in release build: quick-sqlite unavailable',
+      );
+    });
+
+    it('storageHealth.releaseVisibilityRequired is true after failure', async () => {
+      await expect(initializeStorage()).rejects.toThrow();
+
+      const health = messageDatabase.getStorageHealth();
+      expect(health.releaseVisibilityRequired).toBe(true);
+    });
+
+    it('storageHealth records failure details before throw', async () => {
+      await expect(initializeStorage()).rejects.toThrow();
+
+      const health = messageDatabase.getStorageHealth();
+      expect(health.mode).toBe('memory');
+      expect(health.persistenceAvailable).toBe(false);
+      expect(health.lastError).toBeTruthy();
+      expect(health.migrationStatus).toBe('failed');
+    });
+  });
+
+  describe('migration failed in release', () => {
+    it('initializeStorage throws when migration fails', async () => {
+      const failDb = createFakeDb();
+      failDb.throwOnSql(/CREATE TABLE/, new Error('disk full'));
+      __setDbForTests(failDb);
+
+      await expect(initializeStorage()).rejects.toThrow(
+        'Persistent message database unavailable in release build: schema migration failed: disk full',
+      );
+    });
+
+    it('error message includes original migration error reason', async () => {
+      const failDb = createFakeDb();
+      failDb.throwOnSql(/CREATE TABLE/, new Error('database is locked'));
+      __setDbForTests(failDb);
+
+      await expect(initializeStorage()).rejects.toThrow('database is locked');
+    });
+
+    it('storageHealth records migrationStatus=failed and lastMigrationError', async () => {
+      const failDb = createFakeDb();
+      failDb.throwOnSql(/CREATE TABLE/, new Error('disk full'));
+      __setDbForTests(failDb);
+
+      await expect(initializeStorage()).rejects.toThrow();
+
+      const health = messageDatabase.getStorageHealth();
+      expect(health.migrationStatus).toBe('failed');
+      expect(health.lastMigrationError).toBe('disk full');
+      expect(health.mode).toBe('memory');
+      expect(health.persistenceAvailable).toBe(false);
+    });
+
+    it('throw happens after storageHealth is updated for diagnostics', async () => {
+      const failDb = createFakeDb();
+      failDb.throwOnSql(/CREATE TABLE/, new Error('disk full'));
+      __setDbForTests(failDb);
+
+      await expect(initializeStorage()).rejects.toThrow();
+
+      // storageHealth must not be stuck at 'running' or 'unknown'
+      const health = messageDatabase.getStorageHealth();
+      expect(health.migrationStatus).not.toBe('running');
+      expect(health.migrationStatus).not.toBe('unknown');
+      expect(health.lastMigrationError).toBeTruthy();
+    });
+
+    it('non-Error migration failure objects are stringified in the throw', async () => {
+      const failDb = createFakeDb();
+      failDb.throwOnSql(/CREATE TABLE/, 'raw string failure' as any);
+      __setDbForTests(failDb);
+
+      await expect(initializeStorage()).rejects.toThrow('raw string failure');
+    });
+  });
+
+  describe('SQLite available in release — happy path', () => {
+    it('initializeStorage succeeds', async () => {
+      const fake = createFakeDb();
+      __setDbForTests(fake);
+
+      await expect(initializeStorage()).resolves.toBeUndefined();
+    });
+
+    it('storageHealth mode is sqlite and persistenceAvailable is true', async () => {
+      const fake = createFakeDb();
+      __setDbForTests(fake);
+
+      await initializeStorage();
+
+      const health = messageDatabase.getStorageHealth();
+      expect(health.mode).toBe('sqlite');
+      expect(health.persistenceAvailable).toBe(true);
+    });
+
+    it('migrationStatus is success and releaseVisibilityRequired is false', async () => {
+      const fake = createFakeDb();
+      __setDbForTests(fake);
+
+      await initializeStorage();
+
+      const health = messageDatabase.getStorageHealth();
+      expect(health.migrationStatus).toBe('success');
+      expect(health.releaseVisibilityRequired).toBe(false);
+      expect(health.lastError).toBe('');
+      expect(health.lastMigrationError).toBe('');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Debug build memory fallback (explicit non-release behavior)
+// ---------------------------------------------------------------------------
+
+describe('Debug build memory fallback', () => {
+  beforeEach(() => {
+    __resetForTests();
+    __setReleaseOverrideForTests(false);
+  });
+
+  afterEach(() => {
+    __resetForTests();
+  });
+
+  it('initializeStorage does not throw when quick-sqlite unavailable', async () => {
+    await expect(initializeStorage()).resolves.toBeUndefined();
+  });
+
+  it('mode is memory and persistenceAvailable is false', async () => {
+    await initializeStorage();
+
+    const health = messageDatabase.getStorageHealth();
+    expect(health.mode).toBe('memory');
+    expect(health.persistenceAvailable).toBe(false);
+  });
+
+  it('execute returns empty result instead of throwing', () => {
+    const result = messageDatabase.execute('INSERT INTO t VALUES (?)', ['x']);
+    expect(result).toEqual({});
+  });
+
+  it('query returns empty array from memory fallback', () => {
+    const rows = messageDatabase.query('SELECT * FROM t');
+    expect(rows).toEqual([]);
+  });
+
+  it('memory fallback operations (upsert/list) work correctly', () => {
+    messageDatabase.memoryUpsert('test_table', 'key1', { value: 'hello' });
+    messageDatabase.memoryUpsert('test_table', 'key2', { value: 'world' });
+
+    const rows = messageDatabase.memoryList('test_table');
+    expect(rows).toEqual([{ value: 'hello' }, { value: 'world' }]);
+  });
+
+  it('storageHealth.releaseVisibilityRequired is false', async () => {
+    await initializeStorage();
+
+    const health = messageDatabase.getStorageHealth();
+    expect(health.releaseVisibilityRequired).toBe(false);
   });
 });

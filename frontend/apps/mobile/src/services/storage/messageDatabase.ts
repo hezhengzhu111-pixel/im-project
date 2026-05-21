@@ -5,6 +5,22 @@ import { logger } from '@/utils/logger';
 
 type SqlValue = string | number | null | undefined;
 
+function persistentStorageUnavailableError(reason: string): Error {
+  return new Error(
+    `Persistent message database unavailable in release build: ${reason}`,
+  );
+}
+
+// --- Test seam: allows tests to override IS_RELEASE_RUNTIME ---
+let __releaseOverride: boolean | null = null;
+
+function isReleaseRuntime(): boolean {
+  if (__releaseOverride !== null) {
+    return __releaseOverride;
+  }
+  return IS_RELEASE_RUNTIME;
+}
+
 export type MigrationStatus = 'unknown' | 'not_started' | 'running' | 'success' | 'failed';
 
 export interface StorageHealthState {
@@ -70,11 +86,11 @@ const reportFallback = (message: string, error: unknown) => {
     mode: 'memory',
     persistenceAvailable: false,
     lastError: errorMsg,
-    releaseVisibilityRequired: IS_RELEASE_RUNTIME,
+    releaseVisibilityRequired: isReleaseRuntime(),
     migrationStatus: 'failed',
     lastMigrationError: errorMsg,
   });
-  if (IS_RELEASE_RUNTIME) {
+  if (isReleaseRuntime()) {
     logger.error('message-db', `${message}; release build cannot assume offline persistence is available`, error);
     return;
   }
@@ -133,6 +149,9 @@ export const messageDatabase = {
   execute(sql: string, params: SqlValue[] = []): DbResult {
     const conn = openSqlite();
     if (!conn) {
+      if (isReleaseRuntime()) {
+        throw persistentStorageUnavailableError('quick-sqlite unavailable');
+      }
       return {};
     }
     return conn.execute(sql, params);
@@ -173,9 +192,14 @@ export const messageDatabase = {
  * Reset all internal module state. Test-only.
  * Restores the module to its initial pre-open state so tests run in isolation.
  */
+export function __setReleaseOverrideForTests(value: boolean | null): void {
+  __releaseOverride = value;
+}
+
 export function __resetForTests(): void {
   db = null;
   sqliteUnavailable = false;
+  __releaseOverride = null;
   memoryTables.clear();
   storageHealth = {
     mode: 'unknown',
@@ -214,6 +238,9 @@ export function __getInternalStateForTests(): {
 export async function initializeStorage(): Promise<void> {
   const conn = openSqlite();
   if (!conn) {
+    if (isReleaseRuntime()) {
+      throw persistentStorageUnavailableError('quick-sqlite unavailable');
+    }
     return;
   }
   try {
@@ -235,5 +262,10 @@ export async function initializeStorage(): Promise<void> {
   } catch (error) {
     sqliteUnavailable = true;
     reportFallback('schema migration failed', error);
+    if (isReleaseRuntime()) {
+      throw persistentStorageUnavailableError(
+        `schema migration failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 }
