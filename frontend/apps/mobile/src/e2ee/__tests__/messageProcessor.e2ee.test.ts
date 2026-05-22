@@ -1,6 +1,7 @@
 import { e2eeManager, E2eeEnvelopeRecipientMismatchError } from '@/e2ee/manager/e2eeManager';
 import { processE2eeMessage, processE2eeMessages, compareE2eeDecryptOrder, hasE2eeHandshake, shouldDrainPendingAfterDecrypt, E2EE_NOT_FOR_THIS_DEVICE_TEXT } from '@/e2ee/messageProcessor';
 import { E2EE_OWN_PLAINTEXT_UNAVAILABLE_TEXT, E2EE_UNSUPPORTED_TEXT } from '@/e2ee/e2eeDeferred';
+import { logger } from '@/utils/logger';
 import type { MobileMessage } from '@/types/models';
 
 jest.mock('@/utils/logger', () => ({
@@ -527,6 +528,98 @@ describe('mobile E2EE message processing', () => {
         displayMessage: msg,
         decryptStatus: 'decrypted',
       })).toBe(false);
+    });
+  });
+
+  // ─── OTK missing handling ──────────────────────────────────────────
+
+  describe('one-time pre-key missing errors', () => {
+    it('marks message as failed (not pending) when OTK is missing during handshake', async () => {
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockRejectedValueOnce(
+        new Error('Rust E2EE handshake references missing one-time pre-key: 7'),
+      );
+
+      const processed = await processE2eeMessage(encryptedMessage(0), {
+        currentUserId: '100',
+        sessionId: '100_200',
+      });
+
+      expect(processed.decryptStatus).toBe('failed');
+    });
+
+    it('displays the safe placeholder message for OTK missing errors', async () => {
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockRejectedValueOnce(
+        new Error('Rust E2EE handshake references missing one-time pre-key: 7'),
+      );
+
+      const processed = await processE2eeMessage(encryptedMessage(0), {
+        currentUserId: '100',
+        sessionId: '100_200',
+      });
+
+      expect(processed.displayMessage.content).toBe('加密会话状态不完整，请重新协商');
+    });
+
+    it('classifies OTK missing error as protocol/not retryable', async () => {
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockRejectedValueOnce(
+        new Error('Rust E2EE handshake references missing one-time pre-key: 7'),
+      );
+
+      const processed = await processE2eeMessage(encryptedMessage(0), {
+        currentUserId: '100',
+        sessionId: '100_200',
+      });
+
+      expect(processed.errorClassification?.code).toBe('E2EE_ONE_TIME_PREKEY_MISSING');
+      expect(processed.errorClassification?.category).toBe('protocol');
+      expect(processed.errorClassification?.retryable).toBe(false);
+    });
+
+    it('does not log key material or plaintext in OTK missing warnings', async () => {
+      const warnSpy = jest.spyOn(logger, 'warn');
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockRejectedValueOnce(
+        new Error('Rust E2EE handshake references missing one-time pre-key: 7'),
+      );
+
+      await processE2eeMessage(encryptedMessage(0), {
+        currentUserId: '100',
+        sessionId: '100_200',
+      });
+
+      // messageProcessor logs a warning via logger.warn
+      expect(warnSpy).toHaveBeenCalled();
+
+      // Collect all warn calls and join their stringified args
+      const allWarnData = warnSpy.mock.calls
+        .map((call) => JSON.stringify(call).toLowerCase())
+        .join(' ');
+
+      // Must contain safe fields
+      expect(allWarnData).toMatch(/senderdeviceid/);
+      expect(allWarnData).toMatch(/recipientdeviceid/);
+      expect(allWarnData).toMatch(/hashandshake/);
+
+      // Must NOT expose key material or plaintext
+      expect(allWarnData).not.toMatch(/privatekey/);
+      expect(allWarnData).not.toMatch(/plaintext/);
+      expect(allWarnData).not.toMatch(/onetimeprekeypairbincode/);
+      expect(allWarnData).not.toMatch(/identitykeypairbincode/);
+      expect(allWarnData).not.toMatch(/signedprekeypairbincode/);
+    });
+
+    it('does not retry or stay pending — always marks as failed', async () => {
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockRejectedValueOnce(
+        new Error('Rust E2EE handshake references missing one-time pre-key: 7'),
+      );
+
+      const processed = await processE2eeMessage(encryptedMessage(0), {
+        currentUserId: '100',
+        sessionId: '100_200',
+      });
+
+      expect(processed.decryptStatus).not.toBe('pending');
+      expect(processed.decryptStatus).toBe('failed');
+      expect(processed.errorClassification?.retryable).toBe(false);
     });
   });
 });

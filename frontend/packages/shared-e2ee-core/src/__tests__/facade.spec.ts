@@ -7,6 +7,7 @@ import {
   bytesToBase64,
   createE2eeEnvelope,
   isRustE2eeEnvelope,
+  normalizeHandshake,
   parseE2eeEnvelope,
   parseRustHandshake,
 } from "../index";
@@ -65,5 +66,68 @@ describe("shared-e2ee-core rust-only facade", () => {
     expect(parsed.signedPreKeyId).toBe(1);
     expect(parsed.oneTimePreKeyId).toBe(9);
     expect(bytesToBase64(parsed.ephemeralPublicKey)).toBe(bytesToBase64(handshake.slice(0, 32)));
+  });
+
+  it("parses handshake with oneTimePreKeyId=0xffffffff as null (no OTK)", () => {
+    const handshake = new Uint8Array(40);
+    handshake.fill(7, 0, 32);
+    handshake.set([0, 0, 0, 1], 32);
+    handshake.set([0xff, 0xff, 0xff, 0xff], 36);
+
+    const parsed = parseRustHandshake(handshake);
+    expect(parsed.signedPreKeyId).toBe(1);
+    expect(parsed.oneTimePreKeyId).toBeNull();
+  });
+
+  it("normalizeHandshake preserves oneTimePreKeyId=0 as a valid OTK id", () => {
+    const handshake = new Uint8Array(40);
+    handshake.fill(7, 0, 32);
+    handshake.set([0, 0, 0, 1], 32);
+    handshake.set([0, 0, 0, 0], 36);
+
+    const parsed = parseRustHandshake(handshake);
+    expect(parsed.oneTimePreKeyId).toBe(0);
+
+    const normalized = normalizeHandshake(parsed);
+    expect(normalized.oneTimePreKeyId).toBe(0);
+  });
+
+  it("normalizeHandshake normalizes undefined oneTimePreKeyId to null", () => {
+    const normalized = normalizeHandshake({
+      ephemeralPublicKey: new Uint8Array(32),
+      signedPreKeyId: 1,
+      oneTimePreKeyId: undefined,
+    });
+    expect(normalized.oneTimePreKeyId).toBeNull();
+  });
+
+  it("normalizeHandshake rejects handshake with wrong ephemeral key length", () => {
+    expect(() =>
+      normalizeHandshake({
+        ephemeralPublicKey: new Uint8Array(16),
+        signedPreKeyId: 1,
+        oneTimePreKeyId: null,
+      }),
+    ).toThrow("ephemeral public key length mismatch");
+  });
+
+  it("normalizeHandshake rejects handshake with invalid signed pre-key id", () => {
+    expect(() =>
+      normalizeHandshake({
+        ephemeralPublicKey: new Uint8Array(32),
+        signedPreKeyId: NaN,
+        oneTimePreKeyId: null,
+      }),
+    ).toThrow("signed pre-key id out of range");
+  });
+
+  it("normalizeHandshake rejects handshake with invalid one-time pre-key id (0xffffffff)", () => {
+    expect(() =>
+      normalizeHandshake({
+        ephemeralPublicKey: new Uint8Array(32),
+        signedPreKeyId: 1,
+        oneTimePreKeyId: 0xffffffff,
+      }),
+    ).toThrow("one-time pre-key id out of range");
   });
 });

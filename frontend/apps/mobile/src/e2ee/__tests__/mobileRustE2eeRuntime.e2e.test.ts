@@ -123,4 +123,81 @@ describe('MobileRustE2eeRuntime native bridge end-to-end security regressions', 
     expect(bridge.module.decrypt).not.toHaveBeenCalled();
     expect(bridge.module.restoreSession).not.toHaveBeenCalled();
   });
+
+  // --- restoreSession safety: prevent silent overwrite ---
+
+  it('rejects restoreSession with RUST_E2EE_SESSION_ALREADY_EXISTS when the session already exists', async () => {
+    const { bobBridge, bobRuntime, sessionId } = await setupAliceBobSession();
+
+    useNativeModule(bobBridge);
+    const exportedState = await bobRuntime.exportSession(sessionId);
+
+    // restoreSession on an existing session must throw
+    await expect(bobRuntime.restoreSession(sessionId, exportedState)).rejects.toThrow(
+      'RUST_E2EE_SESSION_ALREADY_EXISTS',
+    );
+    expect(bobBridge.module.restoreSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not destroy the active session when restoreSession is rejected', async () => {
+    const { aliceBridge, bobBridge, aliceRuntime, bobRuntime, sessionId } = await setupAliceBobSession();
+
+    useNativeModule(bobBridge);
+    const exportedState = await bobRuntime.exportSession(sessionId);
+
+    // Attempt restore — must fail
+    await expect(bobRuntime.restoreSession(sessionId, exportedState)).rejects.toThrow(
+      'RUST_E2EE_SESSION_ALREADY_EXISTS',
+    );
+
+    // Bob's session must still be usable for decryption
+    useNativeModule(aliceBridge);
+    const wire = await aliceRuntime.encrypt(sessionId, 'still valid after rejected restore');
+
+    useNativeModule(bobBridge);
+    const plaintext = await bobRuntime.decrypt(sessionId, wire);
+    expect(bytesToUtf8(plaintext)).toBe('still valid after rejected restore');
+    expect(bobBridge.module.restoreSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows restoreSession after removeSession on the same session id', async () => {
+    const { aliceBridge, bobBridge, aliceRuntime, bobRuntime, sessionId } = await setupAliceBobSession();
+
+    useNativeModule(bobBridge);
+    const exportedState = await bobRuntime.exportSession(sessionId);
+    await bobRuntime.removeSession(sessionId);
+
+    // restoreSession after removeSession must succeed
+    await bobRuntime.restoreSession(sessionId, exportedState);
+
+    // Verify the restored session works
+    useNativeModule(aliceBridge);
+    const wire = await aliceRuntime.encrypt(sessionId, utf8ToBytes('restored after remove'));
+
+    useNativeModule(bobBridge);
+    const plaintext = await bobRuntime.decrypt(sessionId, wire);
+    expect(bytesToUtf8(plaintext)).toBe('restored after remove');
+    expect(bobBridge.module.removeSession).toHaveBeenCalledWith(sessionId);
+  });
+
+  it('encrypt path does not double-restore and overwrite the active session', async () => {
+    const { aliceBridge, bobBridge, aliceRuntime, bobRuntime, sessionId } = await setupAliceBobSession();
+
+    // Simulate the encrypt flow: export, then (simulating db reload) try to restore — should fail
+    useNativeModule(bobBridge);
+    const exportedState = await bobRuntime.exportSession(sessionId);
+
+    // First restore attempt on existing session — must fail
+    await expect(bobRuntime.restoreSession(sessionId, exportedState)).rejects.toThrow(
+      'RUST_E2EE_SESSION_ALREADY_EXISTS',
+    );
+
+    // Session must still be usable after rejected restore
+    useNativeModule(aliceBridge);
+    const wire = await aliceRuntime.encrypt(sessionId, 'encrypt after double-restore rejection');
+
+    useNativeModule(bobBridge);
+    const plaintext = await bobRuntime.decrypt(sessionId, wire);
+    expect(bytesToUtf8(plaintext)).toBe('encrypt after double-restore rejection');
+  });
 });

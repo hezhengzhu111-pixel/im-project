@@ -28,6 +28,8 @@ export interface EncryptedPayload {
 
 class E2eeManager {
   private deviceId = "";
+  /** Track sessions currently loaded in the WASM runtime to avoid duplicate restore. */
+  private readonly loadedSessions = new Set<string>();
 
   async init(deviceId: string): Promise<void> {
     this.deviceId = deviceId;
@@ -49,7 +51,7 @@ class E2eeManager {
     const state = await getSessionStateBytes(sessionId);
     if (!state) return null;
 
-    await webE2eeRuntime.restoreSession(sessionId, state);
+    await this.restoreSessionIfNeeded(sessionId, state);
     const wire = await webE2eeRuntime.encrypt(sessionId, plaintext);
     await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId));
 
@@ -95,7 +97,7 @@ class E2eeManager {
   async decryptEnvelope(envelope: RustE2eeEnvelope, senderUserId: string): Promise<string> {
     const state = await getSessionStateBytes(envelope.sessionId);
     if (state) {
-      await webE2eeRuntime.restoreSession(envelope.sessionId, state);
+      await this.restoreSessionIfNeeded(envelope.sessionId, state);
     } else if (envelope.handshake) {
       const localKeys = await getLocalRustKeyMaterial();
       const remoteIdentityKey = await this.resolveSenderIdentityKey(senderUserId, envelope.senderDeviceId);
@@ -105,6 +107,7 @@ class E2eeManager {
         remoteIdentityKey,
         handshake: asBase64String(envelope.handshake, "e2ee envelope handshake"),
       });
+      this.loadedSessions.add(envelope.sessionId);
     } else {
       throw new Error("Rust E2EE session not found and envelope has no handshake");
     }
@@ -126,7 +129,7 @@ class E2eeManager {
     if (!state) {
       throw new Error(OLD_E2EE_UNREADABLE_TEXT);
     }
-    await webE2eeRuntime.restoreSession(sessionId, state);
+    await this.restoreSessionIfNeeded(sessionId, state);
     const plaintext = await webE2eeRuntime.decrypt(sessionId, asBase64String(ciphertext, "legacy ciphertext"));
     await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId));
     return bytesToUtf8(plaintext);
@@ -136,6 +139,23 @@ class E2eeManager {
     localStorage.removeItem("e2ee:status:" + sessionId);
     await deleteSessionState(sessionId);
     await webE2eeRuntime.removeSession(sessionId);
+    this.loadedSessions.delete(sessionId);
+  }
+
+  /**
+   * Restore a session from persisted state, skipping if already loaded in memory.
+   *
+   * After the first encrypt / decrypt in a page load the session is resident in
+   * the WASM runtime. Calling restore_session again would fail with
+   * SessionAlreadyExists. We track loaded sessions locally so the encrypt /
+   * decrypt path does not trigger a duplicate restore.
+   */
+  private async restoreSessionIfNeeded(sessionId: string, state: Uint8Array): Promise<void> {
+    if (this.loadedSessions.has(sessionId)) {
+      return;
+    }
+    await webE2eeRuntime.restoreSession(sessionId, state);
+    this.loadedSessions.add(sessionId);
   }
 
   private async ensureOutboundSession(input: {
@@ -145,7 +165,7 @@ class E2eeManager {
   }): Promise<{ recipientDeviceId: string; handshake?: string }> {
     const existingState = await getSessionStateBytes(input.sessionId);
     if (existingState) {
-      await webE2eeRuntime.restoreSession(input.sessionId, existingState);
+      await this.restoreSessionIfNeeded(input.sessionId, existingState);
       // Restore previously stored remote device ID
       const storedDeviceId = localStorage.getItem(`e2ee:remote_device:${input.sessionId}`) ?? "";
       return {
@@ -158,13 +178,21 @@ class E2eeManager {
     }
 
     const localKeys = await getLocalRustKeyMaterial();
-    const remoteBundle = await this.fetchRemoteBundle(input.recipientUserId, input.recipientDeviceId);
+    const requesterDeviceId = await this.resolveCurrentDeviceId();
+    const remoteBundle = await this.fetchRemoteBundle(
+      input.recipientUserId,
+      input.recipientDeviceId,
+      input.sessionId,
+      requesterDeviceId,
+    );
     await webE2eeRuntime.removeSession(input.sessionId);
+    this.loadedSessions.delete(input.sessionId);
     const handshakeBytes = await webE2eeRuntime.createOutboundSession({
       sessionId: input.sessionId,
       localKeys,
       remoteBundle,
     });
+    this.loadedSessions.add(input.sessionId);
     await saveSessionStateBytes(input.sessionId, await webE2eeRuntime.exportSession(input.sessionId));
 
     // Store remote device ID for subsequent message encryption
@@ -179,7 +207,12 @@ class E2eeManager {
     };
   }
 
-  private async fetchRemoteBundle(userId: string, deviceId?: string): Promise<RustPublicPreKeyBundle> {
+  private async fetchRemoteBundle(
+    userId: string,
+    deviceId: string | undefined,
+    conversationId: string,
+    requesterDeviceId: string,
+  ): Promise<RustPublicPreKeyBundle> {
     const devicesResp = await keyService.getDevices(userId);
     const targetDevice =
       deviceId != null
@@ -194,7 +227,12 @@ class E2eeManager {
       throw new Error("remote user has no active Rust E2EE device");
     }
 
-    const bundleResp = await keyService.getBundle(userId, targetDevice.deviceId);
+    const bundleResp = await keyService.getBundle(
+      userId,
+      targetDevice.deviceId,
+      conversationId,
+      requesterDeviceId,
+    );
     if (!bundleResp.data) {
       throw new Error("remote user has no Rust E2EE bundle");
     }
@@ -225,10 +263,6 @@ class E2eeManager {
     const device = (devicesResp.data || []).find((item) => item.deviceId === senderDeviceId);
     if (device?.identityKey) {
       return device.identityKey;
-    }
-    const bundleResp = await keyService.getBundle(senderUserId, senderDeviceId);
-    if (bundleResp.data?.identityKey) {
-      return bundleResp.data.identityKey;
     }
     throw new Error("sender Rust identity key not found");
   }

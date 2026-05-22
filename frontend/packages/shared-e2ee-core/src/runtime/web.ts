@@ -2,7 +2,8 @@ import initWasm, { WasmSessionManager } from "@im/rust-e2ee-wasm";
 
 import { asBase64String, base64ToBytes, copyBytes, utf8ToBytes, type Base64String } from "../bytes";
 import { envelopeWireBytes } from "../envelope";
-import { assertRustWireFormat, parseRustHandshake } from "../rust-wire";
+import { E2eePolicyError } from "../policy";
+import { assertRustWireFormat, normalizeHandshake, parseRustHandshake } from "../rust-wire";
 import {
   RUST_E2EE_ENVELOPE_VERSION,
   type GeneratePreKeyBundleOptions,
@@ -95,7 +96,7 @@ export class WebE2eeRuntime implements E2eeRuntime {
   async createInboundSession(input: CreateInboundSessionInput): Promise<void> {
     const manager = await this.sessionManager();
     const handshakeBytes = optionalBytes(input.handshake, "handshake");
-    const handshake = parseRustHandshake(handshakeBytes);
+    const handshake = normalizeHandshake(parseRustHandshake(handshakeBytes));
     const signedPreKeyId = input.localKeys.publicBundle.signedPreKey.id;
     if (signedPreKeyId !== handshake.signedPreKeyId) {
       throw new Error("Rust E2EE handshake references an unknown signed pre-key");
@@ -104,9 +105,13 @@ export class WebE2eeRuntime implements E2eeRuntime {
     const oneTimePreKeyPair =
       handshake.oneTimePreKeyId == null
         ? null
-        : input.localKeys.oneTimePreKeyPairs.find((pair) => pair.id === handshake.oneTimePreKeyId);
+        : input.localKeys.oneTimePreKeyPairs.find((pair) => pair.id === handshake.oneTimePreKeyId) ?? null;
     if (handshake.oneTimePreKeyId != null && !oneTimePreKeyPair) {
-      // OTK already consumed or missing — X3DH without OTK is still secure
+      throw new E2eePolicyError(
+        `Rust E2EE handshake references missing one-time pre-key: ${handshake.oneTimePreKeyId}`,
+        "E2EE_ONE_TIME_PREKEY_MISSING",
+        "protocol",
+      );
     }
 
     manager.create_inbound_session(

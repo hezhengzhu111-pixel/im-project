@@ -48,3 +48,32 @@ export const parseRustHandshake = (handshake: Uint8Array): RustHandshake => {
     oneTimePreKeyId: otkId === 0xffffffff ? null : otkId,
   };
 };
+
+/**
+ * Normalize a parsed handshake to ensure protocol-level field stability.
+ *
+ * - `oneTimePreKeyId` must be `null` (not `undefined` or `0`) when no OTK is referenced.
+ * - `oneTimePreKeyId=0` is a valid OTK id and must be preserved as `0`, not co-mingled with `null`.
+ * - `signedPreKeyId` must be a valid u32 and not overflow.
+ * - `ephemeralPublicKey` must be exactly 32 bytes.
+ *
+ * Returns the validated handshake on success, throws on invalid data.
+ */
+export const normalizeHandshake = (handshake: RustHandshake): RustHandshake => {
+  if (handshake.ephemeralPublicKey.byteLength !== 32) {
+    throw new Error("handshake ephemeral public key length mismatch");
+  }
+  if (!Number.isFinite(handshake.signedPreKeyId) || handshake.signedPreKeyId < 0 || handshake.signedPreKeyId > 0xffffffff) {
+    throw new Error("handshake signed pre-key id out of range");
+  }
+  if (handshake.oneTimePreKeyId !== null && handshake.oneTimePreKeyId !== undefined) {
+    if (!Number.isFinite(handshake.oneTimePreKeyId) || handshake.oneTimePreKeyId < 0 || handshake.oneTimePreKeyId > 0xfffffffe) {
+      throw new Error("handshake one-time pre-key id out of range");
+    }
+  }
+  return {
+    ephemeralPublicKey: handshake.ephemeralPublicKey,
+    signedPreKeyId: handshake.signedPreKeyId,
+    oneTimePreKeyId: handshake.oneTimePreKeyId ?? null,
+  };
+};

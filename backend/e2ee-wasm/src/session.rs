@@ -277,12 +277,21 @@ impl WasmSessionManager {
         try_export_state(state).map_err(to_js_error)
     }
 
-    /// Restore session from bincode bytes
+    /// Restore session from bincode bytes.
+    ///
+    /// Fails if a session with the same id is already present.
+    /// Callers that intend to replace an existing session must call
+    /// `remove_session` first.
     pub fn restore_session(
         &mut self,
         session_id: String,
         state_bincode: Vec<u8>,
     ) -> Result<(), JsValue> {
+        if self.sessions.contains_key(&session_id) {
+            return Err(JsValue::from_str(
+                "session already exists; remove it before restore",
+            ));
+        }
         let state = restore_state(&state_bincode).map_err(to_js_error)?;
         self.sessions.insert(session_id, state);
         Ok(())
@@ -566,6 +575,139 @@ mod tests {
             result.is_err(),
             "wrong session decryption MUST fail, but succeeded"
         );
+    }
+
+    /// restore_session must fail when the session already exists.
+    #[wasm_bindgen_test]
+    fn restore_session_fails_when_session_already_exists() {
+        use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+        let bob_bundle = generate_key_bundle(1, &[(100, 1)]).expect("generate bundle");
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+        };
+        let fetch_json = serde_json::to_string(&fetch).expect("serialize fetch");
+        let alice_ik = generate_x25519_keypair();
+        let alice_ik_bincode = bincode::serialize(&alice_ik).expect("serialize ik");
+
+        let mut mgr = WasmSessionManager::new();
+        mgr.create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+            .expect("create session");
+        let exported = mgr.export_session("alice".to_string()).expect("export");
+
+        // Restore on existing session must fail
+        let result = mgr.restore_session("alice".to_string(), exported);
+        assert!(
+            result.is_err(),
+            "restore_session on existing session must fail"
+        );
+        let msg = result.err().and_then(|v| v.as_string()).unwrap_or_default();
+        assert!(
+            msg.contains("session already exists"),
+            "error should mention 'session already exists', got: {msg}"
+        );
+        assert!(
+            msg.contains("remove it before restore"),
+            "error should include guidance 'remove it before restore', got: {msg}"
+        );
+    }
+
+    /// restore_session failure must not overwrite the original session.
+    #[wasm_bindgen_test]
+    fn restore_session_failure_does_not_overwrite_original() {
+        use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+        let bob_bundle = generate_key_bundle(1, &[(100, 3)]).expect("generate bundle");
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+        };
+        let fetch_json = serde_json::to_string(&fetch).expect("serialize fetch");
+        let alice_ik = generate_x25519_keypair();
+        let alice_ik_bincode = bincode::serialize(&alice_ik).expect("serialize ik");
+
+        let mut mgr = WasmSessionManager::new();
+        mgr.create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+            .expect("create session");
+
+        // Encrypt with original session
+        let wire1 = mgr
+            .encrypt("alice".to_string(), b"original message".to_vec())
+            .expect("encrypt original");
+
+        // Create a different session, export it, try to restore over "alice"
+        let fetch2_json = serde_json::to_string(&fetch).expect("serialize fetch2");
+        let alice2_ik = generate_x25519_keypair();
+        let alice2_ik_bincode = bincode::serialize(&alice2_ik).expect("serialize ik2");
+        let mut mgr2 = WasmSessionManager::new();
+        mgr2.create_outbound_session("temp".to_string(), alice2_ik_bincode, fetch2_json)
+            .expect("create temp");
+        let exported_other = mgr2
+            .export_session("temp".to_string())
+            .expect("export temp");
+
+        // Attempt to restore over "alice" — must fail
+        let result = mgr.restore_session("alice".to_string(), exported_other);
+        assert!(result.is_err(), "restore over existing session must fail");
+
+        // Original session must still work
+        let wire2 = mgr
+            .encrypt("alice".to_string(), b"still original".to_vec())
+            .expect("encrypt after failed restore");
+        assert_ne!(
+            wire1, wire2,
+            "two encryptions on the same session produced identical wire — ratchet did not advance"
+        );
+    }
+
+    /// remove_session then restore_session must succeed.
+    #[wasm_bindgen_test]
+    fn remove_then_restore_succeeds() {
+        use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+        let bob_bundle = generate_key_bundle(1, &[(100, 1)]).expect("generate bundle");
+        let fetch = PreKeyBundleFetch {
+            identity_key: bob_bundle.bundle.identity_key,
+            signing_key: bob_bundle.bundle.signing_key,
+            signed_pre_key: PreKey {
+                id: 1,
+                key: bob_bundle.bundle.signed_pre_key,
+            },
+            signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+        };
+        let fetch_json = serde_json::to_string(&fetch).expect("serialize fetch");
+        let alice_ik = generate_x25519_keypair();
+        let alice_ik_bincode = bincode::serialize(&alice_ik).expect("serialize ik");
+
+        let mut mgr = WasmSessionManager::new();
+        mgr.create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+            .expect("create session");
+        let exported = mgr.export_session("alice".to_string()).expect("export");
+
+        // Remove, then restore — must succeed
+        mgr.remove_session("alice".to_string());
+        mgr.restore_session("alice".to_string(), exported)
+            .expect("restore after remove should succeed");
+
+        // Verify it works
+        let wire = mgr
+            .encrypt("alice".to_string(), b"restored after remove".to_vec())
+            .expect("encrypt after restore");
+        assert!(!wire.is_empty(), "encrypted wire must not be empty");
     }
 
     /// Verify that calling encrypt / export_session on a non-existent session

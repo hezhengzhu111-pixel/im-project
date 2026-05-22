@@ -7,7 +7,6 @@ use axum::http::HeaderMap;
 use axum::Json;
 use im_rs_common::api::ApiResponse;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sqlx::Row;
 
 // ---------------------------------------------------------------------------
@@ -22,17 +21,6 @@ use sqlx::Row;
 #[serde(rename_all = "camelCase")]
 pub struct EnableGroupEncryptionRequest {
     pub sender_keys: Vec<EncryptedSenderKeyEntry>,
-}
-
-/// 旧版启用群聊加密请求体（group_id 在请求体中，向后兼容）。
-///
-/// 功能与 `EnableGroupEncryptionRequest` 相同，仅参数位置不同。
-/// 服务端仅保存密文材料，不保存私钥。
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LegacyEnableGroupEncryptionRequest {
-    pub group_id: i64,
-    pub encrypted_sender_keys: Vec<EncryptedSenderKeyEntry>,
 }
 
 /// 加密 Sender Key 条目。
@@ -431,116 +419,3 @@ pub async fn get_group_status(
 // ---------------------------------------------------------------------------
 // 旧版处理器（向后兼容，group_id 在请求体中）
 // ---------------------------------------------------------------------------
-
-/// 旧版启用群聊加密（group_id 在请求体中，向后兼容）。
-///
-/// POST /api/e2ee/group/enable
-///
-/// 业务目的：与 `enable_group_encryption` 相同，仅 group_id 参数在请求体中。
-/// 认证要求：需要有效的 JWT access token。
-/// 安全约束：仅群管理员或群主可操作；仅保存密文，不保存私钥。
-/// 返回语义：成功返回 "ok"。
-pub async fn enable_group_encryption_legacy(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(request): Json<LegacyEnableGroupEncryptionRequest>,
-) -> Result<Json<ApiResponse<String>>, AppError> {
-    let identity = identity_from_headers(&headers, &state.config)?;
-
-    // 验证管理员权限
-    access_control::ensure_group_admin(&state.db, request.group_id, identity.user_id).await?;
-
-    // 批量校验所有 recipient 必须是群成员
-    let recipient_ids: Vec<i64> = request
-        .encrypted_sender_keys
-        .iter()
-        .map(|e| e.recipient_id)
-        .collect();
-    access_control::ensure_group_members_batch(&state.db, request.group_id, &recipient_ids).await?;
-
-    // 批量校验所有 device 属于对应 recipient 且处于有效状态
-    let device_entries: Vec<(i64, String)> = request
-        .encrypted_sender_keys
-        .iter()
-        .map(|e| (e.recipient_id, e.device_id.clone()))
-        .collect();
-    ensure_all_devices_belong_to_recipients(&state.db, &device_entries).await?;
-
-    // 开启事务，保证 e2ee_groups 和 e2ee_sender_keys 的原子写入
-    let mut tx = state.db.begin().await?;
-
-    // 插入群聊加密状态记录（幂等：已存在则更新）
-    sqlx::query(
-        r#"INSERT INTO service_user_service_db.e2ee_groups (group_id, status, enabled_by)
-           VALUES (?, 'encrypted', ?)
-           ON DUPLICATE KEY UPDATE status = 'encrypted', enabled_by = VALUES(enabled_by)"#,
-    )
-    .bind(request.group_id)
-    .bind(identity.user_id)
-    .execute(&mut *tx)
-    .await?;
-
-    // 批量插入加密后的 Sender Key
-    for entry in &request.encrypted_sender_keys {
-        sqlx::query(
-            r#"INSERT INTO service_user_service_db.e2ee_sender_keys
-               (group_id, sender_id, device_id, recipient_id, encrypted_sender_key, counter)
-               VALUES (?, ?, ?, ?, ?, 0)
-               ON DUPLICATE KEY UPDATE
-                 encrypted_sender_key = VALUES(encrypted_sender_key),
-                 counter = 0"#,
-        )
-        .bind(request.group_id)
-        .bind(identity.user_id)
-        .bind(&entry.device_id)
-        .bind(entry.recipient_id)
-        .bind(&entry.encrypted_sender_key)
-        .execute(&mut *tx)
-        .await?;
-    }
-
-    tx.commit().await?;
-
-    Ok(Json(ApiResponse::success("ok".to_string())))
-}
-
-/// 旧版禁用群聊加密（group_id 在请求体中，向后兼容）。
-///
-/// POST /api/e2ee/group/disable
-///
-/// 业务目的：与 `disable_group_encryption` 相同，仅 group_id 参数在请求体中。
-/// 认证要求：需要有效的 JWT access token。
-/// 安全约束：仅群管理员或群主可操作。
-/// 返回语义：成功返回 "ok"。
-pub async fn disable_group_encryption_legacy(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(body): Json<Value>,
-) -> Result<Json<ApiResponse<String>>, AppError> {
-    let identity = identity_from_headers(&headers, &state.config)?;
-
-    let group_id = body
-        .get("groupId")
-        .and_then(|v| v.as_i64())
-        .or_else(|| body.get("group_id").and_then(|v| v.as_i64()))
-        .ok_or_else(|| AppError::BadRequest("missing groupId".to_string()))?;
-
-    // 验证管理员权限
-    access_control::ensure_group_admin(&state.db, group_id, identity.user_id).await?;
-
-    // 更新群聊加密状态为明文
-    sqlx::query(
-        "UPDATE service_user_service_db.e2ee_groups SET status = 'plaintext' WHERE group_id = ?",
-    )
-    .bind(group_id)
-    .execute(&state.db)
-    .await?;
-
-    // 清理该群的所有 Sender Key
-    sqlx::query("DELETE FROM service_user_service_db.e2ee_sender_keys WHERE group_id = ?")
-        .bind(group_id)
-        .execute(&state.db)
-        .await?;
-
-    Ok(Json(ApiResponse::success("ok".to_string())))
-}

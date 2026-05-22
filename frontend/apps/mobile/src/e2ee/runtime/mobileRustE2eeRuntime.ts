@@ -5,6 +5,8 @@ import {
   base64ToBytes,
   bytesToBase64,
   copyBytes,
+  E2eePolicyError,
+  normalizeHandshake,
   parseRustHandshake,
   utf8ToBytes,
   type CreateInboundSessionInput,
@@ -124,7 +126,7 @@ export class MobileRustE2eeRuntime implements E2eeRuntime {
 
   async createInboundSession(input: CreateInboundSessionInput): Promise<void> {
     const handshakeBase64 = binaryInputToBase64(input.handshake, 'handshake');
-    const handshake = parseRustHandshake(base64ToBytes(handshakeBase64));
+    const handshake = normalizeHandshake(parseRustHandshake(base64ToBytes(handshakeBase64)));
 
     const signedPreKeyId = input.localKeys.publicBundle.signedPreKey.id;
     if (signedPreKeyId !== handshake.signedPreKeyId) {
@@ -136,7 +138,11 @@ export class MobileRustE2eeRuntime implements E2eeRuntime {
         ? null
         : input.localKeys.oneTimePreKeyPairs.find((pair) => pair.id === handshake.oneTimePreKeyId) ?? null;
     if (handshake.oneTimePreKeyId != null && !oneTimePreKeyPair) {
-      throw new Error(`Rust E2EE handshake references missing one-time pre-key: ${handshake.oneTimePreKeyId}`);
+      throw new E2eePolicyError(
+        `Rust E2EE handshake references missing one-time pre-key: ${handshake.oneTimePreKeyId}`,
+        'E2EE_ONE_TIME_PREKEY_MISSING',
+        'protocol',
+      );
     }
 
     await nativeModule().createInboundSession(

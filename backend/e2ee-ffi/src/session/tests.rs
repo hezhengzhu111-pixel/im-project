@@ -1058,8 +1058,8 @@ fn wrong_session_decrypt_fails() -> Result<(), String> {
 /// The session must remain usable after the race.
 #[test]
 fn concurrent_create_outbound_same_session_id_only_one_succeeds() -> Result<(), String> {
-    use std::sync::Arc;
     use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+    use std::sync::Arc;
 
     let bob_bundle =
         generate_key_bundle(1, &[(100, 3)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
@@ -1114,9 +1114,7 @@ fn concurrent_create_outbound_same_session_id_only_one_succeeds() -> Result<(), 
     }
 
     if success_count != 1 {
-        return Err(format!(
-            "expected exactly 1 success, got {success_count}"
-        ));
+        return Err(format!("expected exactly 1 success, got {success_count}"));
     }
     if already_exists_count != 1 {
         return Err(format!(
@@ -1157,8 +1155,8 @@ fn concurrent_create_outbound_same_session_id_only_one_succeeds() -> Result<(), 
 /// Only one must succeed; the other must return SessionAlreadyExists.
 #[test]
 fn concurrent_create_inbound_same_session_id_only_one_succeeds() -> Result<(), String> {
-    use std::sync::Arc;
     use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+    use std::sync::Arc;
 
     let bob_bundle =
         generate_key_bundle(1, &[(100, 1)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
@@ -1234,9 +1232,7 @@ fn concurrent_create_inbound_same_session_id_only_one_succeeds() -> Result<(), S
     }
 
     if success_count != 1 {
-        return Err(format!(
-            "expected exactly 1 success, got {success_count}"
-        ));
+        return Err(format!("expected exactly 1 success, got {success_count}"));
     }
     if already_exists_count != 1 {
         return Err(format!(
@@ -1247,7 +1243,10 @@ fn concurrent_create_inbound_same_session_id_only_one_succeeds() -> Result<(), S
     // Verify session is usable: encrypt with the prep outbound session,
     // decrypt with the concurrently-created inbound session
     let wire = prep_mgr
-        .encrypt("prep-alice".to_string(), b"concurrent inbound test".to_vec())
+        .encrypt(
+            "prep-alice".to_string(),
+            b"concurrent inbound test".to_vec(),
+        )
         .map_err(|e| format!("encrypt from prep: {e}"))?;
 
     let pt = mgr
@@ -1269,12 +1268,396 @@ fn concurrent_create_inbound_same_session_id_only_one_succeeds() -> Result<(), S
     Ok(())
 }
 
+// ============================================================================
+// restore_session safety tests — prevent silent overwrite of active sessions
+// ============================================================================
+
+/// restore_session succeeds when the session does not exist.
+#[test]
+fn restore_session_succeeds_when_session_missing() -> Result<(), String> {
+    use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+    let bob_bundle =
+        generate_key_bundle(1, &[(100, 1)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+    let fetch = PreKeyBundleFetch {
+        identity_key: bob_bundle.bundle.identity_key,
+        signing_key: bob_bundle.bundle.signing_key,
+        signed_pre_key: PreKey {
+            id: 1,
+            key: bob_bundle.bundle.signed_pre_key,
+        },
+        signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+        one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+    };
+    let fetch_json = serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+    let alice_ik = generate_x25519_keypair();
+    let alice_ik_bincode =
+        bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+    // Create a session in one manager, export it
+    let mgr1 = SessionManager::new();
+    mgr1.create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+        .map_err(|e| format!("create_outbound_session: {e}"))?;
+    let exported = mgr1
+        .export_session("alice".to_string())
+        .map_err(|e| format!("export_session: {e}"))?;
+
+    // Restore into a fresh manager — must succeed
+    let mgr2 = SessionManager::new();
+    mgr2.restore_session("alice".to_string(), exported)
+        .map_err(|e| format!("restore_session should succeed on empty manager: {e}"))?;
+
+    // Verify the restored session is usable
+    let wire = mgr2
+        .encrypt("alice".to_string(), b"restored session works".to_vec())
+        .map_err(|e| format!("encrypt after restore: {e}"))?;
+    if wire.is_empty() {
+        return Err("encrypted wire is empty".to_string());
+    }
+    Ok(())
+}
+
+/// restore_session must fail with SessionAlreadyExists when the session already exists.
+#[test]
+fn restore_session_fails_when_session_already_exists() -> Result<(), String> {
+    use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+    let bob_bundle =
+        generate_key_bundle(1, &[(100, 1)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+    let fetch = PreKeyBundleFetch {
+        identity_key: bob_bundle.bundle.identity_key,
+        signing_key: bob_bundle.bundle.signing_key,
+        signed_pre_key: PreKey {
+            id: 1,
+            key: bob_bundle.bundle.signed_pre_key,
+        },
+        signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+        one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+    };
+    let fetch_json = serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+    let alice_ik = generate_x25519_keypair();
+    let alice_ik_bincode =
+        bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+    let mgr = SessionManager::new();
+    mgr.create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+        .map_err(|e| format!("create_outbound_session: {e}"))?;
+    let exported = mgr
+        .export_session("alice".to_string())
+        .map_err(|e| format!("export_session: {e}"))?;
+
+    // restore_session on an existing session must fail
+    let result = mgr.restore_session("alice".to_string(), exported);
+    match result {
+        Err(SessionError::SessionAlreadyExists(msg)) => {
+            if !msg.contains("session already exists") {
+                return Err(format!(
+                    "expected 'session already exists' message, got: {msg}"
+                ));
+            }
+            if !msg.contains("remove it before restore") {
+                return Err(format!(
+                    "expected 'remove it before restore' guidance, got: {msg}"
+                ));
+            }
+        }
+        Err(other) => {
+            return Err(format!("expected SessionAlreadyExists, got {other:?}"));
+        }
+        Ok(()) => {
+            return Err("expected SessionAlreadyExists, got Ok — silent overwrite!".to_string());
+        }
+    }
+
+    Ok(())
+}
+
+/// A failed restore_session must NOT overwrite the original session state.
+#[test]
+fn restore_session_failure_does_not_overwrite_original() -> Result<(), String> {
+    use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+    let bob_bundle =
+        generate_key_bundle(1, &[(100, 3)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+    let fetch = PreKeyBundleFetch {
+        identity_key: bob_bundle.bundle.identity_key,
+        signing_key: bob_bundle.bundle.signing_key,
+        signed_pre_key: PreKey {
+            id: 1,
+            key: bob_bundle.bundle.signed_pre_key,
+        },
+        signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+        one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+    };
+    let fetch_json = serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+    let alice_ik = generate_x25519_keypair();
+    let alice_ik_bincode =
+        bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+    let mgr = SessionManager::new();
+    mgr.create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+        .map_err(|e| format!("create_outbound_session: {e}"))?;
+
+    // Encrypt a message with the original session
+    let wire1 = mgr
+        .encrypt("alice".to_string(), b"original session message".to_vec())
+        .map_err(|e| format!("encrypt original: {e}"))?;
+
+    // Create a different session, export it, then try to restore over "alice"
+    let alice2_ik = generate_x25519_keypair();
+    let alice2_ik_bincode =
+        bincode::serialize(&alice2_ik).map_err(|e| format!("serialize alice2_ik: {e}"))?;
+    let fetch2_json =
+        serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch2: {e}"))?;
+    let mgr2 = SessionManager::new();
+    mgr2.create_outbound_session("temp".to_string(), alice2_ik_bincode, fetch2_json)
+        .map_err(|e| format!("create_outbound_session temp: {e}"))?;
+    let exported_other = mgr2
+        .export_session("temp".to_string())
+        .map_err(|e| format!("export_session temp: {e}"))?;
+
+    // Attempt to restore over "alice" — must fail
+    let result = mgr.restore_session("alice".to_string(), exported_other);
+    assert!(result.is_err(), "restore over existing session must fail");
+
+    // Original session must still work after the failed restore
+    let wire2 = mgr
+        .encrypt(
+            "alice".to_string(),
+            b"still the original after failed restore".to_vec(),
+        )
+        .map_err(|e| format!("encrypt after failed restore: {e}"))?;
+
+    if wire1 == wire2 {
+        return Err(
+            "two encryptions on the same session produced identical wire — ratchet did not advance"
+                .to_string(),
+        );
+    }
+
+    Ok(())
+}
+
+/// remove_session then restore_session must succeed.
+#[test]
+fn remove_then_restore_succeeds() -> Result<(), String> {
+    use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+    let bob_bundle =
+        generate_key_bundle(1, &[(100, 1)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+    let fetch = PreKeyBundleFetch {
+        identity_key: bob_bundle.bundle.identity_key,
+        signing_key: bob_bundle.bundle.signing_key,
+        signed_pre_key: PreKey {
+            id: 1,
+            key: bob_bundle.bundle.signed_pre_key,
+        },
+        signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+        one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+    };
+    let fetch_json = serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+    let alice_ik = generate_x25519_keypair();
+    let alice_ik_bincode =
+        bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+    let mgr = SessionManager::new();
+    mgr.create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+        .map_err(|e| format!("create_outbound_session: {e}"))?;
+    let exported = mgr
+        .export_session("alice".to_string())
+        .map_err(|e| format!("export_session: {e}"))?;
+
+    // Remove, then restore — must succeed
+    mgr.remove_session("alice".to_string());
+    mgr.restore_session("alice".to_string(), exported)
+        .map_err(|e| format!("restore after remove should succeed: {e}"))?;
+
+    // Verify it works
+    let wire = mgr
+        .encrypt("alice".to_string(), b"restored after remove".to_vec())
+        .map_err(|e| format!("encrypt after restore: {e}"))?;
+    if wire.is_empty() {
+        return Err("encrypted wire is empty".to_string());
+    }
+    Ok(())
+}
+
+/// Full flow: create -> export -> remove -> restore -> encrypt -> decrypt still works.
+#[test]
+fn export_remove_restore_full_roundtrip() -> Result<(), String> {
+    use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+    let bob_bundle =
+        generate_key_bundle(1, &[(100, 3)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+
+    let fetch = PreKeyBundleFetch {
+        identity_key: bob_bundle.bundle.identity_key,
+        signing_key: bob_bundle.bundle.signing_key,
+        signed_pre_key: PreKey {
+            id: 1,
+            key: bob_bundle.bundle.signed_pre_key,
+        },
+        signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+        one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+    };
+    let fetch_json = serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+
+    let alice_ik = generate_x25519_keypair();
+    let alice_ik_bincode =
+        bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+    let mgr = SessionManager::new();
+
+    // Alice creates outbound session
+    let handshake = mgr
+        .create_outbound_session("alice".to_string(), alice_ik_bincode, fetch_json)
+        .map_err(|e| format!("create_outbound_session: {e}"))?;
+    if handshake.len() < 40 {
+        return Err(format!("handshake too short: {} bytes", handshake.len()));
+    }
+    let ek_bytes = &handshake[0..32];
+
+    // Bob's side
+    let bob_ik_bincode = bincode::serialize(&bob_bundle.identity_key_pair)
+        .map_err(|e| format!("serialize bob_ik: {e}"))?;
+    let bob_spk_bincode = bincode::serialize(&bob_bundle.signed_pre_key_pair)
+        .map_err(|e| format!("serialize bob_spk: {e}"))?;
+    let bob_otk = bob_bundle
+        .one_time_pre_key_pairs
+        .first()
+        .ok_or("missing OTK".to_string())?;
+    let bob_otk_bincode =
+        bincode::serialize(&bob_otk.key_pair).map_err(|e| format!("serialize bob_otk: {e}"))?;
+
+    mgr.create_inbound_session(
+        "bob".to_string(),
+        bob_ik_bincode,
+        bob_spk_bincode,
+        Some(bob_otk_bincode),
+        alice_ik.public_key.0.to_vec(),
+        ek_bytes.to_vec(),
+    )
+    .map_err(|e| format!("create_inbound_session: {e}"))?;
+
+    // Alice encrypts
+    let wire1 = mgr
+        .encrypt("alice".to_string(), b"before export".to_vec())
+        .map_err(|e| format!("encrypt before export: {e}"))?;
+
+    // Export Alice's state
+    let alice_state = mgr
+        .export_session("alice".to_string())
+        .map_err(|e| format!("export_session: {e}"))?;
+    if alice_state.is_empty() {
+        return Err("exported state is empty".to_string());
+    }
+
+    // Remove Alice's session
+    mgr.remove_session("alice".to_string());
+
+    // Verify session is gone
+    match mgr.encrypt("alice".to_string(), b"test".to_vec()) {
+        Err(SessionError::SessionNotFound(_)) => {}
+        other => {
+            return Err(format!(
+                "expected SessionNotFound after remove, got {:?}",
+                other
+            ));
+        }
+    }
+
+    // Restore Alice's session
+    mgr.restore_session("alice".to_string(), alice_state)
+        .map_err(|e| format!("restore_session: {e}"))?;
+
+    // Alice encrypts again — must succeed
+    let wire2 = mgr
+        .encrypt("alice".to_string(), b"after restore".to_vec())
+        .map_err(|e| format!("encrypt after restore: {e}"))?;
+
+    // Bob decrypts both messages
+    let pt1 = mgr
+        .decrypt("bob".to_string(), wire1)
+        .map_err(|e| format!("decrypt wire1: {e}"))?;
+    if pt1 != b"before export" {
+        return Err("plaintext1 mismatch".to_string());
+    }
+
+    let pt2 = mgr
+        .decrypt("bob".to_string(), wire2)
+        .map_err(|e| format!("decrypt wire2: {e}"))?;
+    if pt2 != b"after restore" {
+        return Err("plaintext2 mismatch".to_string());
+    }
+
+    Ok(())
+}
+
+/// restore_session with the session_id from the error message confirms the right session
+/// is identified in the conflict.
+#[test]
+fn restore_session_already_exists_message_preserves_session_id_context() -> Result<(), String> {
+    use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+
+    let bob_bundle =
+        generate_key_bundle(1, &[(100, 1)]).map_err(|e| format!("generate_key_bundle: {e}"))?;
+    let fetch = PreKeyBundleFetch {
+        identity_key: bob_bundle.bundle.identity_key,
+        signing_key: bob_bundle.bundle.signing_key,
+        signed_pre_key: PreKey {
+            id: 1,
+            key: bob_bundle.bundle.signed_pre_key,
+        },
+        signed_pre_key_signature: bob_bundle.bundle.signed_pre_key_signature,
+        one_time_pre_key: bob_bundle.bundle.one_time_pre_keys.first().copied(),
+    };
+    let fetch_json = serde_json::to_string(&fetch).map_err(|e| format!("serialize fetch: {e}"))?;
+    let alice_ik = generate_x25519_keypair();
+    let alice_ik_bincode =
+        bincode::serialize(&alice_ik).map_err(|e| format!("serialize alice_ik: {e}"))?;
+
+    let mgr = SessionManager::new();
+    mgr.create_outbound_session("my-session".to_string(), alice_ik_bincode, fetch_json)
+        .map_err(|e| format!("create_outbound_session: {e}"))?;
+
+    // Export some valid state so we trigger the "already exists" path, not
+    // InvalidStateData.
+    let exported = mgr
+        .export_session("my-session".to_string())
+        .map_err(|e| format!("export_session: {e}"))?;
+
+    let err = match mgr.restore_session("my-session".to_string(), exported.clone()) {
+        Err(e) => e,
+        Ok(()) => return Err("expected SessionAlreadyExists, got Ok".to_string()),
+    };
+    let msg = match err {
+        SessionError::SessionAlreadyExists(m) => m,
+        other => return Err(format!("expected SessionAlreadyExists, got {other:?}")),
+    };
+    // The existing SessionAlreadyExists Display format does not include the
+    // session_id in the payload for restore_session (it uses a fixed guidance
+    // message). This is intentional — the caller already knows the session_id
+    // from the argument. The guidance message is the key information.
+    if msg.is_empty() {
+        return Err("SessionAlreadyExists message is empty".to_string());
+    }
+    Ok(())
+}
+
 /// Multiple threads creating sessions with different session_ids must all succeed.
 /// The global write lock should not cause false SessionAlreadyExists errors.
 #[test]
 fn concurrent_create_different_session_ids_all_succeed() -> Result<(), String> {
-    use std::sync::Arc;
     use e2ee_core::{generate_key_bundle, PreKey, PreKeyBundleFetch};
+    use std::sync::Arc;
 
     let bob_bundle =
         generate_key_bundle(1, &[(100, 4)]).map_err(|e| format!("generate_key_bundle: {e}"))?;

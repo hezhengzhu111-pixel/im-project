@@ -9,7 +9,7 @@
  * - 自己的加密消息不尝试解密，标记 decryptStatus="skipped_own"。
  */
 import type { Message } from "@/types";
-import { isRustE2eeEnvelope, OLD_E2EE_UNREADABLE_TEXT } from "@im/shared-e2ee-core";
+import { classifyE2eeError, isRustE2eeEnvelope, OLD_E2EE_UNREADABLE_TEXT } from "@im/shared-e2ee-core";
 import { logger } from "@/utils/logger";
 
 // ---------------------------------------------------------------------------
@@ -136,6 +136,7 @@ async function decryptOneMessage(
     const hasHandshake = !!envelope.handshake;
 
     // 判断失败类型
+    const classification = classifyE2eeError(error);
     const isMissingSession =
       errMsg.includes("session not found") ||
       errMsg.includes("no handshake") ||
@@ -143,7 +144,9 @@ async function decryptOneMessage(
 
     const code = isMissingSession && !hasHandshake
       ? "missing_session"
-      : "crypto_failed";
+      : classification.code === "E2EE_ONE_TIME_PREKEY_MISSING"
+        ? "crypto_failed"
+        : "crypto_failed";
 
     // 保留 encrypted=true，content 留空，UI 根据 decryptStatus 显示占位文案
     msg.content = "";
@@ -157,6 +160,7 @@ async function decryptOneMessage(
       senderDeviceId: envelope.senderDeviceId,
       recipientDeviceId: envelope.recipientDeviceId,
       hasHandshake,
+      errorCode: classification.code,
       errorMessage: errMsg,
       resultCode: code,
     });
@@ -164,7 +168,9 @@ async function decryptOneMessage(
     return {
       success: false,
       code,
-      displayMessage: OLD_E2EE_UNREADABLE_TEXT,
+      displayMessage: classification.safeMessage !== "Unknown E2EE error"
+        ? classification.safeMessage
+        : OLD_E2EE_UNREADABLE_TEXT,
     };
   }
 }
