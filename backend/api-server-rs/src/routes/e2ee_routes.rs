@@ -14,18 +14,6 @@ pub fn routes() -> Router<AppState> {
         .route("/api/keys/backup", get(e2ee::key_api::get_backup))
         .route("/api/keys/device/:id", delete(e2ee::key_api::delete_device))
         .route(
-            "/api/e2ee/devices/register",
-            post(e2ee::key_api::register_device),
-        )
-        .route(
-            "/api/e2ee/users/:user_id/devices",
-            get(e2ee::key_api::get_user_devices),
-        )
-        .route(
-            "/api/e2ee/devices/:device_id/revoke",
-            post(e2ee::key_api::revoke_device),
-        )
-        .route(
             "/api/e2ee/sessions",
             post(e2ee::session_api::create_session),
         )
@@ -56,14 +44,6 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/e2ee/disable",
             post(e2ee::session_api::disable_encryption),
-        )
-        .route(
-            "/api/e2ee/group/enable",
-            post(e2ee::group_api::enable_group_encryption_legacy),
-        )
-        .route(
-            "/api/e2ee/group/disable",
-            post(e2ee::group_api::disable_group_encryption_legacy),
         )
         .route(
             "/api/e2ee/groups/:group_id/enable",

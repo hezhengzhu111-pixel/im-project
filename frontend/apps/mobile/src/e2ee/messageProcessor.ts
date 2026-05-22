@@ -282,12 +282,17 @@ export const processE2eeMessage = async (
       hasHandshake: Boolean(envelope.handshake),
     }));
     const pending = isRecipientMismatch ? false : (shouldKeepPending(error) || classification.retryable);
+    const displayContent = isRecipientMismatch
+      ? E2EE_NOT_FOR_THIS_DEVICE_TEXT
+      : classification.code === 'E2EE_ONE_TIME_PREKEY_MISSING'
+        ? classification.safeMessage
+        : undefined;
     return {
       rawMessage,
       displayMessage: safePlaceholder(
         baseDisplay,
         pending ? 'pending' : 'failed',
-        isRecipientMismatch ? E2EE_NOT_FOR_THIS_DEVICE_TEXT : undefined,
+        displayContent,
       ),
       decryptStatus: pending ? 'pending' : 'failed',
       errorClassification: isRecipientMismatch

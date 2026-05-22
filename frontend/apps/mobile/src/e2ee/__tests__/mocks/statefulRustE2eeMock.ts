@@ -247,6 +247,9 @@ export class StatefulRustE2eeNativeMock {
   };
 
   private readonly restoreSession = async (sessionId: string, stateBincodeBase64: string): Promise<void> => {
+    if (this.sessions.has(sessionId)) {
+      throw new Error('RUST_E2EE_SESSION_ALREADY_EXISTS: session already exists; remove it before restore');
+    }
     const parsed = JSON.parse(bytesToUtf8(base64ToBytes(stateBincodeBase64))) as unknown;
     if (!isRecord(parsed) || parsed.sessionId !== sessionId || typeof parsed.secret !== 'string' || typeof parsed.nextSequence !== 'number') {
       throw new Error('RUST_E2EE_INVALID_STATE: invalid session state');

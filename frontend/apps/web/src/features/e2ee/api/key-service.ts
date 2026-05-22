@@ -41,21 +41,6 @@ export interface PendingEncryptionRequest {
   requestPayloadJson?: string;
 }
 
-/** 群聊加密启用请求体 */
-interface EnableGroupEncryptionBody {
-  groupId: number;
-  encryptedSenderKeys: Array<{
-    userId: number;
-    deviceId: string;
-    encryptedSenderKey: string;
-  }>;
-}
-
-/** 群聊加密禁用请求体 */
-interface DisableGroupEncryptionBody {
-  groupId: number;
-}
-
 // ---------------------------------------------------------------------------
 // /api/keys/ 端点
 // ---------------------------------------------------------------------------
@@ -71,15 +56,17 @@ export const keyService = {
 
   /**
    * 获取指定用户的公钥 Bundle（用于 X3DH 密钥协商）
-   * GET /api/keys/bundle?userId=xxx&deviceId=xxx
-   *
-   * @param userId - 目标用户 ID
-   * @param deviceId - 目标设备 ID（可选，不传则返回主设备）
+   * GET /api/keys/bundle?userId=xxx&deviceId=xxx&conversationId=p_1_2&requesterDeviceId=abc
    */
-  getBundle(userId: string, deviceId?: string): Promise<ApiResponse<PreKeyBundle>> {
-    const params: Record<string, string> = { userId };
-    if (deviceId) params.deviceId = deviceId;
-    return http.get<PreKeyBundle>('/keys/bundle', { params });
+  getBundle(
+    userId: string,
+    deviceId: string,
+    conversationId: string,
+    requesterDeviceId: string,
+  ): Promise<ApiResponse<PreKeyBundle>> {
+    return http.get<PreKeyBundle>('/keys/bundle', {
+      params: { userId, deviceId, conversationId, requesterDeviceId },
+    });
   },
 
   /**
@@ -212,30 +199,4 @@ export const keyService = {
     return http.get<PendingEncryptionRequest[]>('/e2ee/pending');
   },
 
-  /**
-   * 启用群聊加密
-   * POST /api/e2ee/group/enable
-   *
-   * @param groupId - 群组 ID
-   * @param encryptedSenderKeys - 加密后的 Sender Key 列表
-   */
-  enableGroupEncryption(
-    groupId: number,
-    encryptedSenderKeys: EnableGroupEncryptionBody['encryptedSenderKeys'],
-  ): Promise<ApiResponse<string>> {
-    return http.post<string>('/e2ee/group/enable', {
-      groupId,
-      encryptedSenderKeys,
-    });
-  },
-
-  /**
-   * 禁用群聊加密
-   * POST /api/e2ee/group/disable
-   *
-   * @param groupId - 群组 ID
-   */
-  disableGroupEncryption(groupId: number): Promise<ApiResponse<string>> {
-    return http.post<string>('/e2ee/group/disable', { groupId });
-  },
 };

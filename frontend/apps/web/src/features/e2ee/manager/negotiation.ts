@@ -76,7 +76,12 @@ function newestDevice(devices: E2eeDevice[]): E2eeDevice | undefined {
   })[0];
 }
 
-async function fetchRemoteBundle(remoteUserId: string, remoteDeviceId?: string): Promise<PreKeyBundle> {
+async function fetchRemoteBundle(
+  remoteUserId: string,
+  remoteDeviceId: string | undefined,
+  conversationId: string,
+  requesterDeviceId: string,
+): Promise<PreKeyBundle> {
   const devicesResp = await keyService.getDevices(remoteUserId);
   const targetDevice = remoteDeviceId
     ? (devicesResp.data || []).find((device) => device.deviceId === remoteDeviceId)
@@ -85,7 +90,12 @@ async function fetchRemoteBundle(remoteUserId: string, remoteDeviceId?: string):
     throw new Error("remote user has no active Rust E2EE device");
   }
 
-  const bundleResp = await keyService.getBundle(remoteUserId, targetDevice.deviceId);
+  const bundleResp = await keyService.getBundle(
+    remoteUserId,
+    targetDevice.deviceId,
+    conversationId,
+    requesterDeviceId,
+  );
   if (!bundleResp.data) {
     throw new Error("remote user has no Rust E2EE key bundle");
   }
@@ -119,9 +129,14 @@ export async function initiateNegotiation(
 ): Promise<boolean> {
   setLocalSessionStatus(sessionId, "negotiating");
   try {
-    await ensureLocalE2eeDeviceRegistered();
+    const deviceId = await ensureLocalE2eeDeviceRegistered();
     const localKeys = await getLocalRustKeyMaterial();
-    const remoteBundle = await fetchRemoteBundle(remoteUserId, remoteDeviceId);
+    const remoteBundle = await fetchRemoteBundle(
+      remoteUserId,
+      remoteDeviceId,
+      sessionId,
+      deviceId,
+    );
 
     await deleteSessionState(sessionId);
     await webE2eeRuntime.removeSession(sessionId);

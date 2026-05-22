@@ -20,6 +20,7 @@ export type E2eeErrorCode =
   | "KEY_STORE_FAILED"
   | "UNSUPPORTED_ON_MOBILE"
   | "PLAINTEXT_DOWNGRADE_BLOCKED"
+  | "E2EE_ONE_TIME_PREKEY_MISSING"
   | "UNKNOWN";
 
 export interface E2eeErrorClassification {
@@ -52,6 +53,14 @@ export class E2eePolicyError extends Error {
 const classifyByMessage = (message: string): E2eeErrorClassification => {
   const normalized = message.toLowerCase();
 
+  if (normalized.includes("one-time pre-key") || normalized.includes("one time prekey") || normalized.includes("one_time_pre_key")) {
+    return {
+      code: "E2EE_ONE_TIME_PREKEY_MISSING",
+      category: "protocol",
+      retryable: false,
+      safeMessage: "加密会话状态不完整，请重新协商",
+    };
+  }
   if (normalized.includes("plaintext downgrade")) {
     return {
       code: "PLAINTEXT_DOWNGRADE_BLOCKED",

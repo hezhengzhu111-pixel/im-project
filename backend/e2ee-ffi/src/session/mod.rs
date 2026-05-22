@@ -391,17 +391,43 @@ impl SessionManager {
     }
 
     /// Restore a previously exported session state.
+    ///
+    /// Fails with `SessionAlreadyExists` if a session with the same id is already
+    /// present. Callers that intend to replace an existing session must call
+    /// `remove_session` first.
     pub fn restore_session(
         &self,
         session_id: String,
         state_bincode: Vec<u8>,
     ) -> Result<(), SessionError> {
+        // Check for existing session (read lock first)
+        {
+            let sessions = self
+                .sessions
+                .read()
+                .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
+            if sessions.contains_key(&session_id) {
+                return Err(SessionError::SessionAlreadyExists(
+                    "session already exists; remove it before restore".to_string(),
+                ));
+            }
+        }
+
         let state = restore_state(&state_bincode)?;
-        let mut sessions = self
-            .sessions
-            .write()
-            .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
-        sessions.insert(session_id, Mutex::new(state));
+
+        // Double-check before insert to prevent TOCTOU race
+        {
+            let mut sessions = self
+                .sessions
+                .write()
+                .map_err(|_| SessionError::Crypto("internal lock error".to_string()))?;
+            if sessions.contains_key(&session_id) {
+                return Err(SessionError::SessionAlreadyExists(
+                    "session already exists; remove it before restore".to_string(),
+                ));
+            }
+            sessions.insert(session_id, Mutex::new(state));
+        }
         Ok(())
     }
 
