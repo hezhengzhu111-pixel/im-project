@@ -2,6 +2,7 @@ import { sanitizeE2eeLogValue } from '@im/shared-e2ee-core';
 import { mobileE2eeKeyService } from '@/e2ee/api/keyService';
 import { getMobileE2eeRuntime } from '@/e2ee/runtime/mobileRustE2eeRuntime';
 import { e2eeKeyStore, type LocalE2eeKeyMaterial } from '@/e2ee/store/keyStore';
+import { e2eeSecureStorage } from '@/e2ee/storage/secureE2eeStorage';
 import { logger } from '@/utils/logger';
 import { requireCurrentE2eeSessionContext, requireCurrentE2eeUserId } from './context';
 
@@ -9,20 +10,33 @@ const SIGNED_PRE_KEY_ID = 1;
 const ONE_TIME_PRE_KEY_START_ID = 1;
 const ONE_TIME_PRE_KEY_COUNT = 100;
 
+// TODO: When the server exposes an OTK count/stock query endpoint (e.g.
+// GET /keys/otk-status), use it to drive data-based replenishment decisions.
+// Without a server-side query we cannot know how many OTKs have been consumed
+// and must conservatively avoid re-uploading any previously-published OTK.
+
 let ensureInFlight: {
   userId: string;
   sessionGeneration: number;
   promise: Promise<LocalE2eeKeyMaterial>;
 } | null = null;
 
-const uploadPublicBundle = async (material: LocalE2eeKeyMaterial): Promise<void> => {
-  await mobileE2eeKeyService.uploadBundle({
-    deviceId: material.deviceId,
-    identityKey: material.publicBundle.identityKey,
-    signingIdentityKey: material.publicBundle.signingKey,
-    signedPreKey: material.publicBundle.signedPreKey.key,
-    signedPreKeySignature: material.publicBundle.signedPreKeySignature,
-    oneTimePreKeys: material.publicBundle.oneTimePreKeys ?? [],
+const getPublishedOtkIds = async (userId: string, deviceId: string): Promise<Set<number>> => {
+  const state = await e2eeSecureStorage.getPublishedOtkState(userId, deviceId);
+  if (state && Array.isArray(state.publishedIds)) {
+    return new Set(state.publishedIds);
+  }
+  return new Set();
+};
+
+const setPublishedOtkIds = async (
+  userId: string,
+  deviceId: string,
+  ids: number[],
+): Promise<void> => {
+  await e2eeSecureStorage.setPublishedOtkState(userId, deviceId, {
+    publishedIds: ids,
+    publishedAt: Date.now(),
   });
 };
 
@@ -37,9 +51,38 @@ const ensureInternal = async (userId: string): Promise<LocalE2eeKeyMaterial> => 
       oneTimePreKeyCount: ONE_TIME_PRE_KEY_COUNT,
     });
     material = await e2eeKeyStore.saveKeyMaterial(userId, deviceId, generated);
+
+    // First registration: upload the full bundle including one-time prekeys.
+    await mobileE2eeKeyService.uploadBundle({
+      deviceId: material.deviceId,
+      identityKey: material.publicBundle.identityKey,
+      signingIdentityKey: material.publicBundle.signingKey,
+      signedPreKey: material.publicBundle.signedPreKey.key,
+      signedPreKeySignature: material.publicBundle.signedPreKeySignature,
+      oneTimePreKeys: material.publicBundle.oneTimePreKeys ?? [],
+    });
+
+    const otkIds = (material.publicBundle.oneTimePreKeys ?? []).map((k) => k.id);
+    await setPublishedOtkIds(userId, deviceId, otkIds);
+  } else {
+    // Device already registered — do NOT re-upload one-time prekeys.
+    // If the published-OTK state is missing (upgrade from an older version or
+    // local corruption), we must NOT blindly re-upload old OTKs because the
+    // server may have already consumed some of them. Instead we warn and skip
+    // OTK upload, preserving any unconsumed server-side OTKs.
+    const publishedIds = await getPublishedOtkIds(userId, deviceId);
+    if (publishedIds.size === 0) {
+      logger.warn(
+        'e2ee',
+        'OTK published state missing for registered device — skipping OTK upload to avoid re-publishing consumed keys',
+        {
+          userId: sanitizeE2eeLogValue(userId),
+          deviceId: sanitizeE2eeLogValue(deviceId),
+        },
+      );
+    }
   }
 
-  await uploadPublicBundle(material);
   await mobileE2eeKeyService.heartbeat(deviceId).catch((error: unknown) => {
     logger.warn('e2ee', 'device heartbeat failed', sanitizeE2eeLogValue(error));
   });
@@ -81,6 +124,82 @@ export const heartbeatLocalE2eeDevice = async (): Promise<void> => {
   if (deviceId) {
     await mobileE2eeKeyService.heartbeat(deviceId);
   }
+};
+
+/**
+ * Generate and upload new one-time prekeys for the current device.
+ *
+ * New OTK IDs are assigned starting from max(publishedIds) + 1 to guarantee
+ * they never collide with previously-published keys. The existing identity
+ * key and signed prekey are preserved — only the OTK material is extended.
+ *
+ * TODO: Before calling this, query the server-side OTK stock endpoint to
+ * determine if replenishment is actually needed. Without a server query the
+ * caller must decide the appropriate threshold and timing.
+ *
+ * TODO: The current {@link getMobileE2eeRuntime().generatePreKeyBundle} API
+ * regenerates the full key material (identity + signed prekey + OTKs). A
+ * lighter-weight "generate only OTKs" API in the Rust layer would avoid
+ * unnecessary computation and make replenishment cheaper.
+ */
+export const replenishOneTimePreKeys = async (count?: number): Promise<void> => {
+  const effectiveCount = count ?? ONE_TIME_PRE_KEY_COUNT;
+  const userId = requireCurrentE2eeUserId();
+  const deviceId = await e2eeKeyStore.getOrCreateDeviceId(userId);
+  const material = await e2eeKeyStore.getKeyMaterial(userId, deviceId);
+  if (!material) {
+    throw new Error('Cannot replenish OTKs without existing key material — register the device first');
+  }
+
+  const publishedIds = await getPublishedOtkIds(userId, deviceId);
+  const maxPublishedId = publishedIds.size > 0 ? Math.max(...publishedIds) : 0;
+  const startId = maxPublishedId + 1;
+
+  const generated = await getMobileE2eeRuntime().generatePreKeyBundle({
+    signedPreKeyId: SIGNED_PRE_KEY_ID,
+    oneTimePreKeyStartId: startId,
+    oneTimePreKeyCount: effectiveCount,
+  });
+
+  const newOtks = generated.publicBundle.oneTimePreKeys ?? [];
+  if (newOtks.length === 0) {
+    return;
+  }
+
+  const mergedMaterial: LocalE2eeKeyMaterial = {
+    ...material,
+    oneTimePreKeyPairs: [
+      ...(material.oneTimePreKeyPairs ?? []),
+      ...(generated.oneTimePreKeyPairs ?? []),
+    ],
+    publicBundle: {
+      ...material.publicBundle,
+      oneTimePreKeys: [
+        ...(material.publicBundle.oneTimePreKeys ?? []),
+        ...newOtks,
+      ],
+    },
+  };
+
+  await e2eeKeyStore.saveKeyMaterial(userId, deviceId, mergedMaterial);
+
+  await mobileE2eeKeyService.uploadBundle({
+    deviceId,
+    identityKey: mergedMaterial.publicBundle.identityKey,
+    signingIdentityKey: mergedMaterial.publicBundle.signingKey,
+    signedPreKey: mergedMaterial.publicBundle.signedPreKey.key,
+    signedPreKeySignature: mergedMaterial.publicBundle.signedPreKeySignature,
+    oneTimePreKeys: newOtks,
+  });
+
+  const newIds = newOtks.map((k) => k.id);
+  const allPublished = [...publishedIds, ...newIds];
+  await setPublishedOtkIds(userId, deviceId, allPublished);
+
+  logger.info('e2ee', 'OTK replenishment complete', {
+    added: newIds.length,
+    totalPublished: allPublished.length,
+  });
 };
 
 export const __resetLocalE2eeDeviceRegistrationForTests = (): void => {

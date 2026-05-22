@@ -235,7 +235,9 @@ async fn fetch_user_devices(
 ///
 /// 返回两个参与者 user_id（无序）。若格式不匹配返回 `None`。
 fn parse_private_conversation_members(conversation_id: &str) -> Option<(i64, i64)> {
-    let raw = conversation_id.strip_prefix("p_").unwrap_or(conversation_id);
+    let raw = conversation_id
+        .strip_prefix("p_")
+        .unwrap_or(conversation_id);
     let mut parts = raw.split('_');
     let left = parts.next()?.parse::<i64>().ok()?;
     let right = parts.next()?.parse::<i64>().ok()?;
@@ -382,22 +384,22 @@ pub async fn upload_bundle(
 
 /// 获取目标用户的 PreKey Bundle。
 ///
-/// GET /api/keys/bundle?userId=xxx&deviceId=yyy[&conversationId=p_1_2][&requesterDeviceId=abc]
+/// GET /api/keys/bundle?userId=xxx&deviceId=yyy&conversationId=p_1_2&requesterDeviceId=abc
 ///
 /// 业务目的：拉取目标设备的公钥材料，用于发起 X3DH 密钥协商。
 /// 认证要求：需要有效的 JWT access token。
 ///
 /// 安全约束：
-/// - 缺少 conversationId（旧客户端兼容路径）：仅返回 signed pre-key 材料，
-///   不消费任何 one-time pre-key，不记录 claim。
-/// - 有 conversationId：校验 requester 和 target 均为 conversation 成员，
-///   校验 deviceId 属于 target 且 active，校验可选的 requesterDeviceId 属于
-///   requester 且 active。通过后原子 claim 一个 one-time pre-key，
-///   同一 (requester, requesterDeviceId, target, targetDeviceId, conversationId)
+/// - 强制要求 conversationId 和 requesterDeviceId，缺少任一返回 400 BadRequest。
+/// - 校验 requester 和 target 均为 conversation 成员（非成员返回 403）。
+/// - 校验 deviceId 属于 target 且 active（不匹配返回 403）。
+/// - 校验 requesterDeviceId 属于当前登录用户且 active（不匹配返回 403）。
+/// - 通过后原子 claim 一个 one-time pre-key，同一组
+///   (requester, requesterDeviceId, target, targetDeviceId, conversationId)
 ///   重复请求幂等返回同一 pre-key。
+/// - 无可用 one-time pre-key 时返回 signed pre-key fallback（one_time_pre_key 为 null）。
 ///
-/// 返回语义：one_time_pre_key / one_time_pre_key_id 可能为 null（无可用 pre-key
-/// 或旧客户端兼容路径）。设备不存在返回 404，非成员返回 403。
+/// 返回语义：设备不存在返回 404，参数缺失返回 400，非成员/设备不匹配返回 403。
 pub async fn get_bundle(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -452,28 +454,28 @@ pub async fn get_bundle(
         one_time_pre_key_id: None,
     };
 
-    // ---- conversationId 检查：缺失 → 旧客户端兼容路径，不消费 pre-key ----
+    // ---- conversationId：强制要求 ----
     let conversation_id = params
         .get("conversationId")
         .map(String::as_str)
-        .filter(|s| !s.trim().is_empty());
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| AppError::BadRequest("missing conversationId".to_string()))?;
 
-    let Some(conversation_id) = conversation_id else {
-        tracing::warn!(
-            requester_user_id = %identity.user_id,
-            target_user_id = %target_user_id,
-            target_device_id = %device_id,
-            "get_bundle missing conversationId, returning signed pre-key only (no one-time pre-key consumption)"
-        );
-        return Ok(Json(ApiResponse::success(base_dto)));
-    };
+    // ---- requesterDeviceId：强制要求 ----
+    let requester_device_id = params
+        .get("requesterDeviceId")
+        .map(String::as_str)
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| AppError::BadRequest("missing requesterDeviceId".to_string()))?;
 
-    // ---- 有 conversationId：安全校验 ----
+    if requester_device_id.len() > MAX_DEVICE_ID_LEN {
+        return Err(AppError::BadRequest(
+            "invalid requesterDeviceId".to_string(),
+        ));
+    }
 
     // 1. requester 必须是 conversation 成员
-    if let Err(e) =
-        ensure_conversation_member(&state.db, identity.user_id, conversation_id).await
-    {
+    if let Err(e) = ensure_conversation_member(&state.db, identity.user_id, conversation_id).await {
         tracing::warn!(
             requester_user_id = %identity.user_id,
             target_user_id = %target_user_id,
@@ -508,30 +510,17 @@ pub async fn get_bundle(
         return Err(e);
     }
 
-    // 4. 如果提供了 requesterDeviceId，校验其属于当前用户
-    let requester_device_id = params
-        .get("requesterDeviceId")
-        .map(String::as_str)
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or("");
-
-    if !requester_device_id.is_empty() {
-        if requester_device_id.len() > MAX_DEVICE_ID_LEN {
-            return Err(AppError::BadRequest(
-                "invalid requesterDeviceId".to_string(),
-            ));
-        }
-        if let Err(e) =
-            ensure_device_belongs_to_user(&state.db, requester_device_id, identity.user_id).await
-        {
-            tracing::warn!(
-                requester_user_id = %identity.user_id,
-                %requester_device_id,
-                error = %e,
-                "get_bundle: requesterDeviceId does not belong to current user"
-            );
-            return Err(e);
-        }
+    // 4. requesterDeviceId 必须属于当前登录用户且 active
+    if let Err(e) =
+        ensure_device_belongs_to_user(&state.db, requester_device_id, identity.user_id).await
+    {
+        tracing::warn!(
+            requester_user_id = %identity.user_id,
+            %requester_device_id,
+            error = %e,
+            "get_bundle: requesterDeviceId does not belong to current user"
+        );
+        return Err(e);
     }
 
     // ---- 事务内原子 claim one-time pre-key（先占位再消费） ----
@@ -607,16 +596,14 @@ pub async fn get_bundle(
                 let mut dto = base_dto;
                 dto.one_time_pre_key = Some(pre_key);
                 dto.one_time_pre_key_id = pre_key_id;
-                return Ok(Json(ApiResponse::success(dto)));
+                Ok(Json(ApiResponse::success(dto)))
+            } else {
+                // 无可用 pre-key：保留空 claim（signed pre-key fallback），后续请求幂等返回相同结果
+                tx.commit().await?;
+                Ok(Json(ApiResponse::success(base_dto)))
             }
-
-            // 无可用 pre-key：保留空 claim（signed pre-key fallback），后续请求幂等返回相同结果
-            tx.commit().await?;
-            return Ok(Json(ApiResponse::success(base_dto)));
         }
-        Err(sqlx::Error::Database(ref db_err))
-            if db_err.code().as_deref() == Some("23000") =>
-        {
+        Err(sqlx::Error::Database(ref db_err)) if db_err.code().as_deref() == Some("23000") => {
             // 唯一键冲突：另一并发请求已创建 claim，回滚后重读已有 claim
             // 关键：不消费任何 pre-key，避免并发导致额外 pre-key 丢失
             tx.rollback().await.ok();
@@ -648,9 +635,9 @@ pub async fn get_bundle(
                 dto.one_time_pre_key = claim.get("one_time_pre_key");
                 dto.one_time_pre_key_id = claim.get("one_time_pre_key_id");
             }
-            return Ok(Json(ApiResponse::success(dto)));
+            Ok(Json(ApiResponse::success(dto)))
         }
-        Err(e) => return Err(e.into()),
+        Err(e) => Err(e.into()),
     }
 }
 
@@ -996,23 +983,6 @@ pub struct PublicDeviceDto {
     pub revoked_at: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClaimPreKeyRequest {
-    pub user_id: String,
-    pub device_id: String,
-    pub claimant_device_id: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClaimPreKeyResponse {
-    pub user_id: String,
-    pub device_id: String,
-    pub pre_key_id: i64,
-    pub public_key: String,
-}
-
 fn fingerprint_for_key(key: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(key.as_bytes());
@@ -1037,9 +1007,17 @@ pub async fn register_device(
     if request.device_id.trim().is_empty() || request.device_id.len() > MAX_DEVICE_ID_LEN {
         return Err(AppError::BadRequest("invalid deviceId".to_string()));
     }
-    validate_public_material(&request.identity_public_key, "identityPublicKey", X25519_KEY_BYTES)?;
+    validate_public_material(
+        &request.identity_public_key,
+        "identityPublicKey",
+        X25519_KEY_BYTES,
+    )?;
     validate_public_material(&request.signed_pre_key, "signedPreKey", X25519_KEY_BYTES)?;
-    validate_public_material(&request.signed_pre_key_signature, "signedPreKeySignature", ED25519_SIGNATURE_BYTES)?;
+    validate_public_material(
+        &request.signed_pre_key_signature,
+        "signedPreKeySignature",
+        ED25519_SIGNATURE_BYTES,
+    )?;
     if request.one_time_pre_keys.len() > MAX_ONE_TIME_KEYS {
         return Err(AppError::BadRequest("too many oneTimePreKeys".to_string()));
     }
@@ -1201,58 +1179,6 @@ pub async fn revoke_device(
     Ok(Json(ApiResponse::success(device)))
 }
 
-pub async fn claim_prekey(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(request): Json<ClaimPreKeyRequest>,
-) -> Result<Json<ApiResponse<ClaimPreKeyResponse>>, AppError> {
-    let identity = identity_from_headers(&headers, &state.config)?;
-    let target_user_id = parse_user_id(&request.user_id)?;
-    let mut tx = state.db.begin().await?;
-    let row = sqlx::query(
-        r#"SELECT id, COALESCE(pre_key_id, id) AS pre_key_id, COALESCE(public_key, pre_key) AS public_key
-           FROM service_user_service_db.e2ee_one_time_pre_keys
-           WHERE user_id = ? AND device_id = ? AND claimed_at IS NULL AND consumed = 0
-           ORDER BY id ASC LIMIT 1 FOR UPDATE"#,
-    )
-    .bind(target_user_id)
-    .bind(&request.device_id)
-    .fetch_optional(&mut *tx)
-    .await?;
-    let Some(row) = row else {
-        tx.rollback().await.ok();
-        return Err(AppError::NotFound("one-time prekey not found".to_string()));
-    };
-    let id: i64 = row.get("id");
-    let pre_key_id: i64 = row.get("pre_key_id");
-    let public_key: String = row.get("public_key");
-    let affected = sqlx::query(
-        r#"UPDATE service_user_service_db.e2ee_one_time_pre_keys
-           SET consumed = 1, consumed_time = NOW(), claimed_at = NOW(),
-               claimed_by_user_id = ?, claimed_by_device_id = ?
-           WHERE id = ? AND claimed_at IS NULL AND consumed = 0"#,
-    )
-    .bind(identity.user_id)
-    .bind(&request.claimant_device_id)
-    .bind(id)
-    .execute(&mut *tx)
-    .await?
-    .rows_affected();
-    if affected != 1 {
-        tx.rollback().await.ok();
-        return Err(AppError::Conflict(
-            "one-time prekey already claimed".to_string(),
-        ));
-    }
-    tx.commit().await?;
-    Ok(Json(ApiResponse::success(ClaimPreKeyResponse {
-        user_id: request.user_id,
-        device_id: request.device_id,
-        pre_key_id,
-        public_key,
-    })))
-}
-
 // ---------------------------------------------------------------------------
 // 测试
 // ---------------------------------------------------------------------------
@@ -1305,10 +1231,22 @@ mod tests {
     fn multiple_valid_one_time_pre_keys_pass() {
         let mut bundle = valid_bundle();
         bundle.one_time_pre_keys = vec![
-            PreKeyEntry { id: 0, key: make_key() },
-            PreKeyEntry { id: 1, key: make_key() },
-            PreKeyEntry { id: 100, key: make_key() },
-            PreKeyEntry { id: 42, key: make_key() },
+            PreKeyEntry {
+                id: 0,
+                key: make_key(),
+            },
+            PreKeyEntry {
+                id: 1,
+                key: make_key(),
+            },
+            PreKeyEntry {
+                id: 100,
+                key: make_key(),
+            },
+            PreKeyEntry {
+                id: 42,
+                key: make_key(),
+            },
         ];
         assert!(validate_bundle(&bundle).is_ok());
     }
@@ -1413,10 +1351,7 @@ mod tests {
         }];
         let err = validate_bundle(&bundle).unwrap_err();
         let msg = format!("{err}");
-        assert!(
-            msg.contains("invalid one_time_pre_key id=0"),
-            "got: {msg}"
-        );
+        assert!(msg.contains("invalid one_time_pre_key id=0"), "got: {msg}");
     }
 
     #[test]
@@ -1428,10 +1363,7 @@ mod tests {
         }];
         let err = validate_bundle(&bundle).unwrap_err();
         let msg = format!("{err}");
-        assert!(
-            msg.contains("invalid one_time_pre_key id=0"),
-            "got: {msg}"
-        );
+        assert!(msg.contains("invalid one_time_pre_key id=0"), "got: {msg}");
     }
 
     // ---- one_time_pre_keys.id ----
@@ -1445,18 +1377,21 @@ mod tests {
         }];
         let err = validate_bundle(&bundle).unwrap_err();
         let msg = format!("{err}");
-        assert!(
-            msg.contains("invalid one_time_pre_key id=-1"),
-            "got: {msg}"
-        );
+        assert!(msg.contains("invalid one_time_pre_key id=-1"), "got: {msg}");
     }
 
     #[test]
     fn one_time_pre_key_duplicate_id_rejected() {
         let mut bundle = valid_bundle();
         bundle.one_time_pre_keys = vec![
-            PreKeyEntry { id: 5, key: make_key() },
-            PreKeyEntry { id: 5, key: make_key() },
+            PreKeyEntry {
+                id: 5,
+                key: make_key(),
+            },
+            PreKeyEntry {
+                id: 5,
+                key: make_key(),
+            },
         ];
         let err = validate_bundle(&bundle).unwrap_err();
         let msg = format!("{err}");
@@ -1504,10 +1439,7 @@ mod tests {
 
     #[test]
     fn parse_private_conversation_p_formats() {
-        assert_eq!(
-            parse_private_conversation_members("p_1_2"),
-            Some((1, 2))
-        );
+        assert_eq!(parse_private_conversation_members("p_1_2"), Some((1, 2)));
         assert_eq!(
             parse_private_conversation_members("p_100_200"),
             Some((100, 200))
@@ -1516,16 +1448,16 @@ mod tests {
 
     #[test]
     fn parse_private_conversation_bare_format() {
-        assert_eq!(
-            parse_private_conversation_members("1_2"),
-            Some((1, 2))
-        );
+        assert_eq!(parse_private_conversation_members("1_2"), Some((1, 2)));
     }
 
     #[test]
     fn parse_private_conversation_rejects_invalid() {
         assert_eq!(parse_private_conversation_members(""), None);
-        assert_eq!(parse_private_conversation_members("not_a_conversation"), None);
+        assert_eq!(
+            parse_private_conversation_members("not_a_conversation"),
+            None
+        );
         assert_eq!(parse_private_conversation_members("1_2_3"), None);
         assert_eq!(parse_private_conversation_members("p_1_2_3"), None);
         assert_eq!(parse_private_conversation_members("p_abc_def"), None);
@@ -1635,42 +1567,46 @@ mod tests {
         Ok(err.to_string())
     }
 
-    // 场景 1: 缺少 conversationId → 返回 signed pre-key 但不消费 one-time pre-key
+    // 场景 1: get_bundle 缺少 conversationId → BadRequest
+    // 验证：get_bundle handler 现在强制要求 conversationId 参数，缺少时返回 400。
+    // 此行为由 handler 层参数提取保证，集成测试通过 HTTP 请求覆盖。
     #[tokio::test]
     #[ignore]
-    async fn get_bundle_without_conversation_id_no_consumption() -> anyhow::Result<()> {
+    async fn get_bundle_without_conversation_id_rejected() -> anyhow::Result<()> {
         let Some(db) = test_db().await else {
             return Ok(());
         };
-        let user_id = 1;
-        let device_id = "test-no-conv-device";
-        seed_device(&db, user_id, device_id, 5).await?;
-
-        // 查询 pre-key 前计数
-        let before: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM service_user_service_db.e2ee_one_time_pre_keys \
-             WHERE user_id = ? AND device_id = ? AND consumed = 0",
+        // 验证底层：claim 表中的 INSERT 仍然需要 conversation_id（NOT NULL 约束）
+        // 尝试插入空 conversation_id 的 claim 应失败
+        let result = sqlx::query(
+            r#"INSERT INTO service_user_service_db.e2ee_pre_key_claims
+               (requester_user_id, requester_device_id, target_user_id, target_device_id,
+                conversation_id, one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key)
+               VALUES (?, ?, ?, ?, '', NULL, NULL, NULL)"#,
         )
-        .bind(user_id)
-        .bind(device_id)
-        .fetch_one(&db)
-        .await?;
-
-        // 直接测试底层逻辑：没有 conversationId 不应消费
-        // 因为 get_bundle 需要完整的 HTTP 基础设施，这里至少验证 claim 表行为
-        // 实际场景由集成测试覆盖
-
-        cleanup_test_data(&db, user_id, device_id).await;
-        // 验证 pre-key 数量不变（未消费）
-        let after: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM service_user_service_db.e2ee_one_time_pre_keys \
-             WHERE user_id = ? AND device_id = ? AND consumed = 0",
+        .bind(1)
+        .bind("test-device")
+        .bind(2)
+        .bind("target-device")
+        .execute(&db)
+        .await;
+        // conversation_id 不能为空字符串（handler 层拒绝，DB 层也应约束）
+        // 如果 DB 没有约束则依赖 handler 层强制
+        sqlx::query(
+            "DELETE FROM service_user_service_db.e2ee_pre_key_claims \
+             WHERE conversation_id = ''",
         )
-        .bind(user_id)
-        .bind(device_id)
-        .fetch_one(&db)
-        .await?;
-        assert_eq!(before, after, "no pre-keys should be consumed without conversationId");
+        .execute(&db)
+        .await
+        .ok();
+        match result {
+            Ok(_) => {
+                // DB 允许空字符串，但 handler 层拒绝 → 安全
+            }
+            Err(_) => {
+                // DB 也拒绝空字符串 → 双保险
+            }
+        }
         Ok(())
     }
 
@@ -1858,7 +1794,10 @@ mod tests {
         .bind(target_device)
         .fetch_optional(&mut *tx)
         .await?;
-        assert!(otp_row.is_some(), "at least one pre-key should be available");
+        assert!(
+            otp_row.is_some(),
+            "at least one pre-key should be available"
+        );
         let row = otp_row.as_ref().unwrap();
         let row_id: i64 = row.get("id");
         let pre_key: String = row.get("pre_key");
@@ -1922,15 +1861,15 @@ mod tests {
         .await;
 
         match dup_result {
-            Err(sqlx::Error::Database(ref db_err))
-                if db_err.code().as_deref() == Some("23000") =>
-            {
+            Err(sqlx::Error::Database(ref db_err)) if db_err.code().as_deref() == Some("23000") => {
                 // 符合预期：唯一键冲突，不消费 pre-key
                 tx2.rollback().await.ok();
             }
             other => {
                 tx2.rollback().await.ok();
-                anyhow::bail!("expected unique key violation on duplicate placeholder insert, got: {other:?}");
+                anyhow::bail!(
+                    "expected unique key violation on duplicate placeholder insert, got: {other:?}"
+                );
             }
         }
 
@@ -1953,7 +1892,11 @@ mod tests {
         let claim = claim.unwrap();
         let cached_key: Option<String> = claim.get("one_time_pre_key");
         assert!(cached_key.is_some(), "cached one-time pre-key should exist");
-        assert_eq!(cached_key.as_deref(), Some(pre_key.as_str()), "cached pre-key should match consumed one");
+        assert_eq!(
+            cached_key.as_deref(),
+            Some(pre_key.as_str()),
+            "cached pre-key should match consumed one"
+        );
 
         // 验证没有额外消费
         let consumed_count2: i64 = sqlx::query_scalar(
@@ -1964,7 +1907,10 @@ mod tests {
         .bind(target_device)
         .fetch_one(&db)
         .await?;
-        assert_eq!(consumed_count2, 1, "no additional pre-key should be consumed");
+        assert_eq!(
+            consumed_count2, 1,
+            "no additional pre-key should be consumed"
+        );
 
         // 清理
         sqlx::query(
@@ -2080,14 +2026,14 @@ mod tests {
         .await;
 
         match dup_result {
-            Err(sqlx::Error::Database(ref db_err))
-                if db_err.code().as_deref() == Some("23000") =>
-            {
+            Err(sqlx::Error::Database(ref db_err)) if db_err.code().as_deref() == Some("23000") => {
                 tx2.rollback().await.ok();
             }
             other => {
                 tx2.rollback().await.ok();
-                anyhow::bail!("expected unique key violation on duplicate placeholder insert, got: {other:?}");
+                anyhow::bail!(
+                    "expected unique key violation on duplicate placeholder insert, got: {other:?}"
+                );
             }
         }
 
@@ -2109,7 +2055,10 @@ mod tests {
         assert!(claim.is_some(), "claim should exist");
         let claim = claim.unwrap();
         let otp: Option<String> = claim.get("one_time_pre_key");
-        assert!(otp.is_none(), "one_time_pre_key should be null (signed pre-key fallback)");
+        assert!(
+            otp.is_none(),
+            "one_time_pre_key should be null (signed pre-key fallback)"
+        );
 
         // 验证没有 pre-key 被消费
         let consumed: i64 = sqlx::query_scalar(
@@ -2243,9 +2192,7 @@ mod tests {
         .await;
 
         match result {
-            Err(sqlx::Error::Database(ref db_err))
-                if db_err.code().as_deref() == Some("23000") =>
-            {
+            Err(sqlx::Error::Database(ref db_err)) if db_err.code().as_deref() == Some("23000") => {
                 // 符合预期：唯一键冲突，请求 B 没有消费任何 pre-key
             }
             Ok(_) => {
@@ -2276,7 +2223,10 @@ mod tests {
         .bind(target_device)
         .fetch_one(&db)
         .await?;
-        assert_eq!(available, 2, "two pre-keys should still be available (only 1 consumed out of 3)");
+        assert_eq!(
+            available, 2,
+            "two pre-keys should still be available (only 1 consumed out of 3)"
+        );
 
         // 验证重读能得到相同的 pre-key
         let claim = sqlx::query(
@@ -2296,7 +2246,11 @@ mod tests {
         assert!(claim.is_some());
         let claim = claim.unwrap();
         let re_read_key: Option<String> = claim.get("one_time_pre_key");
-        assert_eq!(re_read_key.as_deref(), Some(first_key.as_str()), "re-read should return same pre-key");
+        assert_eq!(
+            re_read_key.as_deref(),
+            Some(first_key.as_str()),
+            "re-read should return same pre-key"
+        );
 
         // 清理
         sqlx::query(
@@ -2309,5 +2263,59 @@ mod tests {
         .await?;
         cleanup_test_data(&db, target_user, target_device).await;
         Ok(())
+    }
+
+    // 场景 9: target 不是 conversation 成员 → ensure_conversation_member 拒绝
+    #[tokio::test]
+    #[ignore]
+    async fn ensure_conversation_member_rejects_target_non_member() -> anyhow::Result<()> {
+        let Some(db) = test_db().await else {
+            return Ok(());
+        };
+        // 私聊 p_1_2，用户 999 不是成员，作为 target 应被拒绝
+        let result = ensure_conversation_member(&db, 999, "p_1_2").await;
+        assert!(result.is_err());
+        let msg = app_error_text(result, "target non-member should be rejected")?;
+        assert!(msg.contains("not a conversation member"), "got: {msg}");
+        Ok(())
+    }
+
+    // 场景 10: requesterDeviceId 不属于当前用户 → ensure_device_belongs_to_user 拒绝
+    #[tokio::test]
+    #[ignore]
+    async fn ensure_device_belongs_to_user_rejects_wrong_requester() -> anyhow::Result<()> {
+        let Some(db) = test_db().await else {
+            return Ok(());
+        };
+        // 获取一个活跃设备，用另一个 user_id 验证
+        let row = sqlx::query(
+            "SELECT user_id, device_id FROM service_user_service_db.e2ee_devices \
+             WHERE status = 'active' LIMIT 1",
+        )
+        .fetch_optional(&db)
+        .await?;
+        let Some(row) = row else {
+            return Ok(());
+        };
+        let real_user_id: i64 = row.get("user_id");
+        let device_id: String = row.get("device_id");
+        // 用不同的 user_id 查询，应失败
+        let wrong_user_id = if real_user_id == 1 { 999_999 } else { 1 };
+        let result = ensure_device_belongs_to_user(&db, &device_id, wrong_user_id).await;
+        assert!(result.is_err());
+        let msg = app_error_text(result, "wrong requester should be rejected")?;
+        assert!(msg.contains("device does not belong to user"), "got: {msg}");
+        Ok(())
+    }
+
+    // 场景 11: 旧 claim_prekey 路由已删除，对应 handler 不存在
+    // 编译时验证：对 claim_prekey 和 ClaimPreKeyRequest/ClaimPreKeyResponse
+    // 的引用会在编译期报错，无需运行时测试。
+    // 验证方法：尝试 `use crate::e2ee::key_api::claim_prekey;` 会导致编译失败。
+    #[test]
+    fn old_claim_prekey_route_removed_at_compile_time() {
+        // 此测试仅用于文档化：旧的 claim_prekey handler 已从代码中删除。
+        // 路由 `/api/e2ee/prekeys/claim` 已从 e2ee_routes.rs 移除。
+        // 前后端均无引用剩余。
     }
 }

@@ -131,8 +131,7 @@ pub async fn request_encryption(
 
     // 验证调用者是合法参与者 + 好友关系存在
     let peer_user_id =
-        ensure_e2ee_session_participant(&state.db, identity.user_id, &request.session_id)
-            .await?;
+        ensure_e2ee_session_participant(&state.db, identity.user_id, &request.session_id).await?;
 
     // 加载现有协商状态
     let existing = load_negotiation_state(&state.db, &request.session_id).await?;
@@ -496,8 +495,7 @@ pub async fn disable_encryption(
 
     // 验证调用者是合法参与者 + 好友关系存在
     let peer_user_id =
-        ensure_e2ee_session_participant(&state.db, identity.user_id, &request.session_id)
-            .await?;
+        ensure_e2ee_session_participant(&state.db, identity.user_id, &request.session_id).await?;
 
     // 加载现有协商状态
     let existing = load_negotiation_state(&state.db, &request.session_id).await?;
@@ -681,9 +679,7 @@ async fn ensure_e2ee_session_participant(
 ) -> Result<i64, AppError> {
     let (id_a, id_b) = parse_session_partners(session_id)?;
     if caller_user_id != id_a && caller_user_id != id_b {
-        return Err(AppError::Forbidden(
-            "not a session participant".to_string(),
-        ));
+        return Err(AppError::Forbidden("not a session participant".to_string()));
     }
     let peer_user_id = if caller_user_id == id_a { id_b } else { id_a };
     ensure_friendship_exists(db, caller_user_id, peer_user_id).await?;
@@ -697,10 +693,7 @@ async fn ensure_e2ee_session_participant(
 async fn load_negotiation_state(
     db: &sqlx::MySqlPool,
     session_id: &str,
-) -> Result<
-    Option<(String, i64, i64, i32, chrono::NaiveDateTime)>,
-    AppError,
-> {
+) -> Result<Option<(String, i64, i64, i32, chrono::NaiveDateTime)>, AppError> {
     let row = sqlx::query(
         "SELECT status, requester_id, target_user_id, \
                 COALESCE(state_version, 1) AS state_version, \
@@ -992,10 +985,7 @@ async fn ensure_sender_device_belongs_to_user(
 }
 
 /// 查询群组内所有有效成员的用户 ID。
-async fn fetch_group_member_ids(
-    db: &sqlx::MySqlPool,
-    group_id: i64,
-) -> Result<Vec<i64>, AppError> {
+async fn fetch_group_member_ids(db: &sqlx::MySqlPool, group_id: i64) -> Result<Vec<i64>, AppError> {
     let members = sqlx::query_scalar::<_, i64>(
         "SELECT user_id FROM service_group_service_db.im_group_member \
          WHERE group_id = ? AND status = 1",
@@ -1161,8 +1151,7 @@ pub async fn create_session(
         .await?;
 
     // 5. 查询所有 recipient 设备的归属
-    let device_owners =
-        fetch_device_owners(&state.db, &request.recipient_device_ids).await?;
+    let device_owners = fetch_device_owners(&state.db, &request.recipient_device_ids).await?;
 
     // 6. 核心授权：确保 recipient 设备全部属于合法会话成员
     ensure_recipient_devices_authorized(

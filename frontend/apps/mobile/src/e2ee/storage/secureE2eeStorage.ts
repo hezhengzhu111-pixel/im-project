@@ -41,6 +41,12 @@ const serviceForDeviceId = (userId: string): string => `${KEYCHAIN_PREFIX}.${use
 const serviceForKeys = (userId: string, deviceId: string): string => `${KEYCHAIN_PREFIX}.${userId}.${deviceId}.keys`;
 const namespacePrefix = (userId: string, deviceId: string): string => `${KEYCHAIN_PREFIX}.${userId}.${deviceId}`;
 const indexKey = (userId: string, deviceId: string): string => `${namespacePrefix(userId, deviceId)}.index`;
+const OTK_STATE_KIND = 'otk-published';
+
+interface PublishedOtkState {
+  publishedIds: number[];
+  publishedAt: number;
+}
 
 const setSecure = async (service: string, value: string): Promise<void> => {
   const persisted = await Keychain.setGenericPassword(service, value, keychainSetOptions(service));
@@ -241,6 +247,21 @@ export const e2eeSecureStorage = {
    */
   async removePendingPlaintext(userId: string, deviceId: string, localId: string): Promise<void> {
     const key = this.namespaceKey(userId, deviceId, 'pending-plaintext', localId);
+    await this.removeEncrypted(userId, deviceId, key);
+  },
+
+  async getPublishedOtkState(userId: string, deviceId: string): Promise<PublishedOtkState | null> {
+    const key = this.namespaceKey(userId, deviceId, OTK_STATE_KIND, 'state');
+    return this.getEncryptedJson<PublishedOtkState>(userId, deviceId, key);
+  },
+
+  async setPublishedOtkState(userId: string, deviceId: string, state: PublishedOtkState): Promise<void> {
+    const key = this.namespaceKey(userId, deviceId, OTK_STATE_KIND, 'state');
+    await this.setEncryptedJson(userId, deviceId, key, state);
+  },
+
+  async clearPublishedOtkState(userId: string, deviceId: string): Promise<void> {
+    const key = this.namespaceKey(userId, deviceId, OTK_STATE_KIND, 'state');
     await this.removeEncrypted(userId, deviceId, key);
   },
 };
