@@ -25,7 +25,6 @@ pub fn routes() -> Router<AppState> {
             "/api/e2ee/devices/:device_id/revoke",
             post(e2ee::key_api::revoke_device),
         )
-        .route("/api/e2ee/prekeys/claim", post(e2ee::key_api::claim_prekey))
         .route(
             "/api/e2ee/sessions",
             post(e2ee::session_api::create_session),
