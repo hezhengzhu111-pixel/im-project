@@ -160,11 +160,17 @@ const classifyByMessage = (message: string): E2eeErrorClassification => {
 
 export const classifyE2eeError = (error: unknown): E2eeErrorClassification => {
   if (error instanceof E2eePolicyError) {
+    const safeMessage =
+      error.code === "E2EE_ONE_TIME_PREKEY_MISSING"
+        ? "加密会话状态不完整，请重新协商"
+        : error.code === "PLAINTEXT_DOWNGRADE_BLOCKED"
+          ? "Plaintext downgrade blocked"
+          : error.message;
     return {
       code: error.code,
       category: error.category,
       retryable: false,
-      safeMessage: error.message,
+      safeMessage,
     };
   }
   if (error instanceof Error) {

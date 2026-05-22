@@ -51,8 +51,10 @@ const normalizeRemoteBundle = (
       ? raw.signedPreKey as RustPublicPreKeyBundle['signedPreKey']
       : { id: 1, key: '' };
   const oneTimePreKey = typeof raw.oneTimePreKey === 'string' && raw.oneTimePreKey.length > 0
-    ? { id: typeof raw.oneTimePreKeyId === 'number' ? raw.oneTimePreKeyId : 0, key: raw.oneTimePreKey }
-    : raw.oneTimePreKey && typeof raw.oneTimePreKey === 'object'
+    ? typeof raw.oneTimePreKeyId === 'number' && Number.isFinite(raw.oneTimePreKeyId)
+      ? { id: raw.oneTimePreKeyId, key: raw.oneTimePreKey }
+      : null // OTK present but id missing — treat as absent to avoid conflating 0 with absent
+    : raw.oneTimePreKey && typeof raw.oneTimePreKey === 'object' && typeof raw.oneTimePreKey.id === 'number' && typeof raw.oneTimePreKey.key === 'string'
       ? raw.oneTimePreKey as RustPublicPreKeyBundle['oneTimePreKey']
       : null;
 
