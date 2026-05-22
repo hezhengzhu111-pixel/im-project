@@ -343,4 +343,71 @@ describe("SessionStateEnvelope", () => {
     const parsed = JSON.parse(json);
     expect(parsed.version).toBe(3);
   });
+
+  // ── encode rejects empty required fields ──────────────────────────
+
+  it("encodeSessionStateEnvelope throws when userId is empty", async () => {
+    await expect(
+      encodeSessionStateEnvelope(mockState, { ...mockContext, userId: "" }),
+    ).rejects.toThrow("SessionStateEnvelope requires userId");
+  });
+
+  it("encodeSessionStateEnvelope throws when localDeviceId is empty", async () => {
+    await expect(
+      encodeSessionStateEnvelope(mockState, { ...mockContext, localDeviceId: "" }),
+    ).rejects.toThrow("SessionStateEnvelope requires localDeviceId");
+  });
+
+  it("encodeSessionStateEnvelope throws when sessionId is empty", async () => {
+    await expect(
+      encodeSessionStateEnvelope(mockState, { ...mockContext, sessionId: "" }),
+    ).rejects.toThrow("SessionStateEnvelope requires sessionId");
+  });
+
+  it("encodeSessionStateEnvelope throws when remoteUserId is empty", async () => {
+    await expect(
+      encodeSessionStateEnvelope(mockState, { ...mockContext, remoteUserId: "" }),
+    ).rejects.toThrow("SessionStateEnvelope requires remoteUserId");
+  });
+
+  it("encodeSessionStateEnvelope throws when remoteDeviceId is empty", async () => {
+    await expect(
+      encodeSessionStateEnvelope(mockState, { ...mockContext, remoteDeviceId: "" }),
+    ).rejects.toThrow("SessionStateEnvelope requires remoteDeviceId");
+  });
+
+  // ── decode continues to reject empty remoteDeviceId ────────────────
+
+  it("decodeSessionStateEnvelope returns null when remoteDeviceId is empty", () => {
+    const record = {
+      version: 3,
+      algorithm: SESSION_STATE_ALGORITHM,
+      userId: "u",
+      localDeviceId: "d",
+      sessionId: "s",
+      remoteUserIdHash: "a1b2c3d4e5f6a7b8",
+      remoteDeviceId: "",
+      createdAt: 1,
+      updatedAt: 1,
+      state: "AA==",
+    };
+    expect(decodeSessionStateEnvelope(record)).toBeNull();
+  });
+
+  it("decodeSessionStateEnvelope returns null when remoteUserIdHash is empty", () => {
+    const record = {
+      version: 3,
+      algorithm: SESSION_STATE_ALGORITHM,
+      userId: "u",
+      localDeviceId: "d",
+      sessionId: "s",
+      remoteUserIdHash: "",
+      remoteDeviceId: "rd",
+      createdAt: 1,
+      updatedAt: 1,
+      state: "AA==",
+    };
+    expect(decodeSessionStateEnvelope(record)).toBeNull();
+  });
+
 });

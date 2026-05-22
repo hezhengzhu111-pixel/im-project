@@ -243,4 +243,59 @@ describe('E2EE session store v3 envelope', () => {
     const storedDeviceId = await e2eeSessionStore.getRemoteDeviceId(userId, sessionId);
     expect(storedDeviceId).toBe('');
   });
+
+  // ── saveSessionState defensive validation ──────────────────────────
+
+  it('saveSessionState throws when remoteDeviceId is empty', async () => {
+    await registerDevice(userId);
+    await expect(
+      e2eeSessionStore.saveSessionState(userId, sessionId, mockState, {
+        remoteUserId,
+        remoteDeviceId: '',
+      }),
+    ).rejects.toThrow('E2EE session state requires remoteDeviceId');
+  });
+
+  it('saveSessionState throws when remoteUserId is empty', async () => {
+    await registerDevice(userId);
+    await expect(
+      e2eeSessionStore.saveSessionState(userId, sessionId, mockState, {
+        remoteUserId: '',
+        remoteDeviceId,
+      }),
+    ).rejects.toThrow('E2EE session state requires remoteUserId');
+  });
+
+  it('saveSessionState throws when userId is empty', async () => {
+    await expect(
+      e2eeSessionStore.saveSessionState('', sessionId, mockState, {
+        remoteUserId,
+        remoteDeviceId,
+      }),
+    ).rejects.toThrow('E2EE session state requires userId');
+  });
+
+  it('saveSessionState throws when sessionId is empty', async () => {
+    await registerDevice(userId);
+    await expect(
+      e2eeSessionStore.saveSessionState(userId, '', mockState, {
+        remoteUserId,
+        remoteDeviceId,
+      }),
+    ).rejects.toThrow('E2EE session state requires sessionId');
+  });
+
+  // ── valid save still works ─────────────────────────────────────────
+
+  it('saveSessionState saves and restores with valid meta', async () => {
+    await registerDevice(userId);
+    await e2eeSessionStore.saveSessionState(userId, sessionId, mockState, {
+      remoteUserId,
+      remoteDeviceId,
+    });
+
+    const result = await e2eeSessionStore.getSessionState(userId, sessionId, remoteUserId, remoteDeviceId);
+    expect(result).not.toBeNull();
+    expect(typeof result).toBe('string');
+  });
 });

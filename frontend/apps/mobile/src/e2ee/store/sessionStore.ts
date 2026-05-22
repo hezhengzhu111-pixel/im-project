@@ -130,6 +130,18 @@ export const e2eeSessionStore = {
     state: Uint8Array | Base64String,
     meta: SaveSessionStateMeta,
   ): Promise<void> {
+    if (!userId || userId.length === 0) {
+      throw new Error('E2EE session state requires userId');
+    }
+    if (!sessionId || sessionId.length === 0) {
+      throw new Error('E2EE session state requires sessionId');
+    }
+    if (!meta.remoteUserId || meta.remoteUserId.length === 0) {
+      throw new Error('E2EE session state requires remoteUserId');
+    }
+    if (!meta.remoteDeviceId || meta.remoteDeviceId.length === 0) {
+      throw new Error('E2EE session state requires remoteDeviceId');
+    }
     const ns = await namespace(userId);
     if (!ns) {
       throw new Error('E2EE namespace unavailable');

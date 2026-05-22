@@ -108,7 +108,9 @@ async function fetchRemoteBundle(
   const spkString = (raw.signedPreKey as string) ?? "";
 
   const maybeOtk = typeof raw.oneTimePreKey === "string" && raw.oneTimePreKey.length > 0
-    ? { id: (raw.oneTimePreKeyId as number) ?? 0, key: raw.oneTimePreKey as string }
+    ? typeof raw.oneTimePreKeyId === "number" && Number.isFinite(raw.oneTimePreKeyId)
+      ? { id: raw.oneTimePreKeyId, key: raw.oneTimePreKey as string }
+      : (() => { throw new Error("E2EE bundle contains oneTimePreKey without oneTimePreKeyId"); })()
     : null;
 
   return {
@@ -145,22 +147,24 @@ export async function initiateNegotiation(
       localKeys,
       remoteBundle,
     });
+
+    if (!remoteBundle.deviceId || remoteBundle.deviceId.length === 0) {
+      throw new Error("E2EE negotiation requires remote device id");
+    }
+
     await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId), {
       localDeviceId: deviceId,
       remoteUserId,
-      remoteDeviceId: remoteBundle.deviceId ?? "",
+      remoteDeviceId: remoteBundle.deviceId,
       direction: "outbound",
     });
 
-    // Store remote device ID for subsequent message encryption
-    if (remoteBundle.deviceId) {
-      localStorage.setItem(`e2ee:remote_device:${sessionId}`, remoteBundle.deviceId);
-    }
+    localStorage.setItem(`e2ee:remote_device:${sessionId}`, remoteBundle.deviceId);
 
     const handshake: InitialE2eeHandshake = {
       senderIdentityKey: localKeys.publicBundle.identityKey,
       handshake: bytesToBase64(handshakeBytes),
-      deviceId: remoteBundle.deviceId ?? "",
+      deviceId: remoteBundle.deviceId,
     };
     savePendingInitialHandshake(sessionId, handshake);
 
@@ -187,10 +191,16 @@ export async function respondToNegotiation(
   senderUserId: string,
   expectedDeviceId?: string,
 ): Promise<boolean> {
+  if (!expectedDeviceId || expectedDeviceId.length === 0) {
+    console.error("[E2EE] respondToNegotiation failed: missing sender device id");
+    setLocalSessionStatus(sessionId, "failed");
+    return false;
+  }
+
   setLocalSessionStatus(sessionId, "negotiating");
   try {
     const deviceId = await ensureLocalE2eeDeviceRegistered();
-    if (expectedDeviceId && deviceId !== expectedDeviceId) {
+    if (deviceId !== expectedDeviceId) {
       throw new Error("E2EE negotiation request targets a different device");
     }
 
@@ -213,13 +223,10 @@ export async function respondToNegotiation(
     await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId), {
       localDeviceId: deviceId,
       remoteUserId: senderUserId,
-      remoteDeviceId: expectedDeviceId ?? "",
+      remoteDeviceId: expectedDeviceId,
       direction: "inbound",
     });
-    // Store initiator's device ID for subsequent message encryption
-    if (expectedDeviceId) {
-      localStorage.setItem(`e2ee:remote_device:${sessionId}`, expectedDeviceId);
-    }
+    localStorage.setItem(`e2ee:remote_device:${sessionId}`, expectedDeviceId);
     setLocalSessionStatus(sessionId, "encrypted");
     return true;
   } catch (error) {

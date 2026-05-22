@@ -75,6 +75,22 @@ export const encodeSessionStateEnvelope = async (
     createdAt?: number;
   },
 ): Promise<SessionStateEnvelope> => {
+  if (!isNonEmptyString(context.userId)) {
+    throw new Error("SessionStateEnvelope requires userId");
+  }
+  if (!isNonEmptyString(context.localDeviceId)) {
+    throw new Error("SessionStateEnvelope requires localDeviceId");
+  }
+  if (!isNonEmptyString(context.sessionId)) {
+    throw new Error("SessionStateEnvelope requires sessionId");
+  }
+  if (!isNonEmptyString(context.remoteUserId)) {
+    throw new Error("SessionStateEnvelope requires remoteUserId");
+  }
+  if (!isNonEmptyString(context.remoteDeviceId)) {
+    throw new Error("SessionStateEnvelope requires remoteDeviceId");
+  }
+
   const stateBase64 = typeof state === "string" ? asBase64String(state, "session state") : bytesToBase64(state);
   const timestamp = options?.createdAt ?? now();
 
