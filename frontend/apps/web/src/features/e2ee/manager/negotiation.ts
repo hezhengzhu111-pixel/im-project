@@ -108,7 +108,9 @@ async function fetchRemoteBundle(
   const spkString = (raw.signedPreKey as string) ?? "";
 
   const maybeOtk = typeof raw.oneTimePreKey === "string" && raw.oneTimePreKey.length > 0
-    ? { id: (raw.oneTimePreKeyId as number) ?? 0, key: raw.oneTimePreKey as string }
+    ? typeof raw.oneTimePreKeyId === "number" && Number.isFinite(raw.oneTimePreKeyId)
+      ? { id: raw.oneTimePreKeyId, key: raw.oneTimePreKey as string }
+      : (() => { throw new Error("E2EE bundle contains oneTimePreKey without oneTimePreKeyId"); })()
     : null;
 
   return {
