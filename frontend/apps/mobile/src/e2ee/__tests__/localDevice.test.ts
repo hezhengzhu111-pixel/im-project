@@ -412,88 +412,27 @@ describe('replenishOneTimePreKeys', () => {
     mockGetOrCreateDeviceId.mockImplementation(async (userId: string) => `device-${userId}`);
   });
 
-  it('throws when no existing key material exists', async () => {
-    mockGetKeyMaterial.mockResolvedValue(null);
+  it('throws explicit error because replenishment requires append-only server API', async () => {
+    const existing = materialFor('alice');
+    mockGetKeyMaterial.mockResolvedValue(existing);
+    mockPublishedOtkState.set('alice:device-alice', {
+      publishedIds: [1, 2],
+      publishedAt: Date.now(),
+    });
 
     await expect(replenishOneTimePreKeys()).rejects.toThrow(
-      'Cannot replenish OTKs without existing key material',
+      'OTK replenishment requires append-only server API; uploadBundle must not be used for replenishment',
     );
+
+    // Must NOT call uploadBundle.
+    expect(mockUploadBundle).not.toHaveBeenCalled();
   });
 
-  it('generates new OTKs with non-conflicting IDs and uploads only new ones', async () => {
+  it('does not call uploadBundle even with existing material', async () => {
     const existing = materialFor('alice');
     mockGetKeyMaterial.mockResolvedValue(existing);
 
-    // Existing published OTK IDs: [1, 2].
-    mockPublishedOtkState.set('alice:device-alice', {
-      publishedIds: [1, 2],
-      publishedAt: Date.now(),
-    });
-
-    // The replenishment generates OTKs starting from max(1,2) + 1 = 3.
-    const newOtks: LocalE2eeKeyMaterial = {
-      version: 2,
-      userId: 'alice',
-      deviceId: 'device-alice',
-      identityKeyPairBincode: 'new-identity-private',
-      signedPreKeyPairBincode: 'new-signed-private',
-      oneTimePreKeyPairs: [
-        { id: 3, keyPairBincode: 'new-otk-private-3', publicKey: 'new-otk-public-3' },
-        { id: 4, keyPairBincode: 'new-otk-private-4', publicKey: 'new-otk-public-4' },
-      ],
-      publicBundle: {
-        userId: 'alice',
-        deviceId: 'device-alice',
-        identityKey: 'new-identity-public',
-        signingKey: 'new-signing-public',
-        signedPreKey: { id: 1, key: 'new-signed-public' },
-        signedPreKeySignature: 'new-signature',
-        oneTimePreKeys: [
-          { id: 3, key: 'new-otk-public-3' },
-          { id: 4, key: 'new-otk-public-4' },
-        ],
-      },
-    };
-    mockGeneratePreKeyBundle.mockResolvedValue(newOtks);
-    mockSaveKeyMaterial.mockImplementation(async (_u, _d, mat) => mat as LocalE2eeKeyMaterial);
-
-    await replenishOneTimePreKeys(2);
-
-    // Should upload only the new OTKs (3 and 4).
-    expect(mockUploadBundle).toHaveBeenCalledTimes(1);
-    const uploadCall = mockUploadBundle.mock.calls[0][0];
-    expect(uploadCall.oneTimePreKeys).toHaveLength(2);
-    expect(uploadCall.oneTimePreKeys[0].id).toBe(3);
-    expect(uploadCall.oneTimePreKeys[1].id).toBe(4);
-
-    // Published state should now include both old and new IDs.
-    const state = mockPublishedOtkState.get('alice:device-alice');
-    expect(state).toBeDefined();
-    expect(state!.publishedIds).toEqual([1, 2, 3, 4]);
-
-    // The merged material should preserve the original identity key.
-    const saveCall = mockSaveKeyMaterial.mock.calls[0] as unknown as [
-      string,
-      string,
-      LocalE2eeKeyMaterial,
-    ];
-    const savedMaterial = saveCall[2];
-    expect(savedMaterial.identityKeyPairBincode).toBe(existing.identityKeyPairBincode);
-    expect(savedMaterial.oneTimePreKeyPairs).toHaveLength(4);
-  });
-
-  it('does not upload anything when generated bundle has no OTKs', async () => {
-    const existing = materialFor('alice');
-    mockGetKeyMaterial.mockResolvedValue(existing);
-    mockPublishedOtkState.set('alice:device-alice', {
-      publishedIds: [1, 2],
-      publishedAt: Date.now(),
-    });
-
-    const emptyOtks = { ...materialFor('alice', false), publicBundle: { ...materialFor('alice', false).publicBundle, oneTimePreKeys: [] } };
-    mockGeneratePreKeyBundle.mockResolvedValue(emptyOtks);
-
-    await replenishOneTimePreKeys(0);
+    await expect(replenishOneTimePreKeys(5)).rejects.toThrow();
 
     expect(mockUploadBundle).not.toHaveBeenCalled();
   });

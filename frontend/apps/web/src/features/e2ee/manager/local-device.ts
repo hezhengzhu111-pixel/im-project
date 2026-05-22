@@ -14,6 +14,31 @@ const SIGNED_PRE_KEY_ID = 1;
 const ONE_TIME_PRE_KEY_START_ID = 1;
 const ONE_TIME_PRE_KEY_COUNT = 100;
 
+const OTK_PUBLISHED_PREFIX = "e2ee:otk_published:";
+
+function getPublishedOtkIds(deviceId: string): Set<number> {
+  try {
+    const raw = localStorage.getItem(OTK_PUBLISHED_PREFIX + deviceId);
+    if (raw) {
+      const ids = JSON.parse(raw) as number[];
+      if (Array.isArray(ids)) {
+        return new Set(ids);
+      }
+    }
+  } catch {
+    // corrupted state
+  }
+  return new Set();
+}
+
+function setPublishedOtkIds(deviceId: string, ids: number[]): void {
+  try {
+    localStorage.setItem(OTK_PUBLISHED_PREFIX + deviceId, JSON.stringify(ids));
+  } catch {
+    // localStorage unavailable
+  }
+}
+
 let registrationInFlight: Promise<string> | null = null;
 let legacyCleanupDone = false;
 
@@ -56,12 +81,28 @@ async function ensureLocalE2eeDeviceRegisteredInternal(): Promise<string> {
     });
     await saveLocalKeyMaterial(generated);
     await uploadPublicBundle(deviceId, generated.publicBundle);
+    const otkIds = (generated.publicBundle.oneTimePreKeys ?? []).map((k) => k.id);
+    setPublishedOtkIds(deviceId, otkIds);
     logger.info("[E2EE] Rust key bundle generated and uploaded", { deviceId });
     return deviceId;
   }
 
-  await uploadPublicBundle(deviceId, keys.publicBundle);
-  logger.info("[E2EE] Rust key bundle uploaded for current account", { deviceId });
+  // Device already registered — do NOT re-upload one-time prekeys.
+  // The server's upload_bundle performs a full replace (DELETE old OTKs + INSERT new OTKs),
+  // so re-uploading the same OTK batch would be idempotent but unnecessary.
+  // We send only a heartbeat to keep the device active.
+  const publishedIds = getPublishedOtkIds(deviceId);
+  if (publishedIds.size === 0) {
+    logger.warn(
+      "[E2EE] OTK published state missing for registered device — skipping OTK upload to avoid re-publishing consumed keys",
+      { deviceId },
+    );
+  }
+
+  await keyService.heartbeat(deviceId).catch((err: unknown) => {
+    logger.warn("[E2EE] device heartbeat failed", err);
+  });
+  logger.info("[E2EE] device already registered, heartbeat sent", { deviceId });
   return deviceId;
 }
 
