@@ -15,6 +15,7 @@ import {
   deleteSessionState,
   getSessionStateBytes,
   saveSessionStateBytes,
+  type SaveSessionMeta,
 } from "../store/session-store";
 import type { E2eeSessionStatus } from "../types";
 import { resolveDeviceId } from "./device-identity";
@@ -48,16 +49,23 @@ class E2eeManager {
 
   /** @deprecated 旧 header/ciphertext 入口，仅测试 mock 保留。生产使用 encryptToEnvelope。 */
   async encryptMessage(sessionId: string, plaintext: string): Promise<EncryptedPayload | null> {
-    const state = await getSessionStateBytes(sessionId);
+    const localDeviceId = await this.resolveCurrentDeviceId();
+    // Deprecated path: cannot validate context without remoteUserId/remoteDeviceId.
+    // TODO: remove this method once all callers use encryptToEnvelope.
+    const state = await getSessionStateBytes(sessionId, localDeviceId, "", "");
     if (!state) return null;
 
     await this.restoreSessionIfNeeded(sessionId, state);
     const wire = await webE2eeRuntime.encrypt(sessionId, plaintext);
-    await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId));
+    await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId), {
+      localDeviceId,
+      remoteDeviceId: "",
+      direction: "outbound",
+    });
 
     return {
       ciphertext: bytesToBase64(wire),
-      deviceId: await this.resolveCurrentDeviceId(),
+      deviceId: localDeviceId,
     };
   }
 
@@ -80,7 +88,14 @@ class E2eeManager {
     });
 
     const wire = await webE2eeRuntime.encrypt(sessionId, params.plaintext);
-    await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId));
+    const meta: SaveSessionMeta = {
+      localDeviceId: senderDeviceId,
+      remoteUserId: params.recipientUserId,
+      remoteDeviceId: recipientDeviceId,
+      userId: params.senderUserId,
+      direction: "outbound",
+    };
+    await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId), meta);
     setLocalSessionStatus(sessionId, "encrypted");
 
     return {
@@ -95,7 +110,13 @@ class E2eeManager {
   }
 
   async decryptEnvelope(envelope: RustE2eeEnvelope, senderUserId: string): Promise<string> {
-    const state = await getSessionStateBytes(envelope.sessionId);
+    const localDeviceId = await this.resolveCurrentDeviceId();
+    const state = await getSessionStateBytes(
+      envelope.sessionId,
+      localDeviceId,
+      senderUserId,
+      envelope.senderDeviceId,
+    );
     if (state) {
       await this.restoreSessionIfNeeded(envelope.sessionId, state);
     } else if (envelope.handshake) {
@@ -113,7 +134,13 @@ class E2eeManager {
     }
 
     const plaintext = await webE2eeRuntime.decrypt(envelope.sessionId, envelope);
-    await saveSessionStateBytes(envelope.sessionId, await webE2eeRuntime.exportSession(envelope.sessionId));
+    const meta: SaveSessionMeta = {
+      localDeviceId,
+      remoteUserId: senderUserId,
+      remoteDeviceId: envelope.senderDeviceId,
+      direction: "inbound",
+    };
+    await saveSessionStateBytes(envelope.sessionId, await webE2eeRuntime.exportSession(envelope.sessionId), meta);
     setLocalSessionStatus(envelope.sessionId, "encrypted");
     return bytesToUtf8(plaintext);
   }
@@ -125,13 +152,20 @@ class E2eeManager {
     _header: unknown,
     ciphertext: string,
   ): Promise<string> {
-    const state = await getSessionStateBytes(sessionId);
+    const localDeviceId = await this.resolveCurrentDeviceId();
+    // Deprecated path: cannot validate context without remoteUserId/remoteDeviceId.
+    // TODO: remove this method once all callers use decryptEnvelope.
+    const state = await getSessionStateBytes(sessionId, localDeviceId, "", "");
     if (!state) {
       throw new Error(OLD_E2EE_UNREADABLE_TEXT);
     }
     await this.restoreSessionIfNeeded(sessionId, state);
     const plaintext = await webE2eeRuntime.decrypt(sessionId, asBase64String(ciphertext, "legacy ciphertext"));
-    await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId));
+    await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId), {
+      localDeviceId,
+      remoteDeviceId: "",
+      direction: "inbound",
+    });
     return bytesToUtf8(plaintext);
   }
 
@@ -163,7 +197,16 @@ class E2eeManager {
     recipientUserId?: string;
     recipientDeviceId?: string;
   }): Promise<{ recipientDeviceId: string; handshake?: string }> {
-    const existingState = await getSessionStateBytes(input.sessionId);
+    const localDeviceId = await this.resolveCurrentDeviceId();
+    const resolvedRemoteUserId = input.recipientUserId ?? "";
+    const resolvedRemoteDeviceId = input.recipientDeviceId ?? "";
+
+    const existingState = await getSessionStateBytes(
+      input.sessionId,
+      localDeviceId,
+      resolvedRemoteUserId,
+      resolvedRemoteDeviceId,
+    );
     if (existingState) {
       await this.restoreSessionIfNeeded(input.sessionId, existingState);
       // Restore previously stored remote device ID
@@ -193,7 +236,13 @@ class E2eeManager {
       remoteBundle,
     });
     this.loadedSessions.add(input.sessionId);
-    await saveSessionStateBytes(input.sessionId, await webE2eeRuntime.exportSession(input.sessionId));
+    const meta: SaveSessionMeta = {
+      localDeviceId,
+      remoteUserId: input.recipientUserId,
+      remoteDeviceId: remoteBundle.deviceId ?? input.recipientDeviceId ?? "",
+      direction: "outbound",
+    };
+    await saveSessionStateBytes(input.sessionId, await webE2eeRuntime.exportSession(input.sessionId), meta);
 
     // Store remote device ID for subsequent message encryption
     const resolvedDeviceId = remoteBundle.deviceId ?? input.recipientDeviceId ?? "";
@@ -243,9 +292,12 @@ class E2eeManager {
     const identityKey = (raw.identityKey as string) ?? "";
     const signingIdKey = ((raw.signingIdentityKey ?? raw.signingKey) as string) ?? identityKey;
     const spkString = (raw.signedPreKey as string) ?? "";
-    const maybeOtk = typeof raw.oneTimePreKey === "string" && raw.oneTimePreKey.length > 0
-      ? { id: (raw.oneTimePreKeyId as number) ?? 0, key: raw.oneTimePreKey as string }
-      : null;
+    const maybeOtk =
+      typeof raw.oneTimePreKey === "string" && raw.oneTimePreKey.length > 0
+        ? typeof raw.oneTimePreKeyId === "number" && Number.isFinite(raw.oneTimePreKeyId)
+          ? { id: raw.oneTimePreKeyId, key: raw.oneTimePreKey as string }
+          : null // OTK present but id missing — treat as absent to avoid conflating 0 with absent
+        : null;
 
     return {
       identityKey,

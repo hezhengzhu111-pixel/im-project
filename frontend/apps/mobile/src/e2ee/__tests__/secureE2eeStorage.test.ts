@@ -116,10 +116,12 @@ describe('secure E2EE storage persistence semantics', () => {
     const userId = 'invalid-state-user';
     await e2eeSecureStorage.getOrCreateDeviceId(userId);
 
-    await expect(e2eeSessionStore.saveSessionState(userId, 's-invalid', 'not-base64!!' as Base64String))
-      .rejects.toThrow('session state must be Base64-encoded binary data');
+    await expect(e2eeSessionStore.saveSessionState(userId, 's-invalid', 'not-base64!!' as Base64String, {
+      remoteUserId: 'bob',
+      remoteDeviceId: 'device-1',
+    })).rejects.toThrow('session state must be Base64-encoded binary data');
 
-    await expect(e2eeSessionStore.getSessionState(userId, 's-invalid')).resolves.toBeNull();
+    await expect(e2eeSessionStore.getSessionState(userId, 's-invalid', 'bob', 'device-1')).resolves.toBeNull();
   });
 
   it('updates cached status only after status persistence succeeds', async () => {

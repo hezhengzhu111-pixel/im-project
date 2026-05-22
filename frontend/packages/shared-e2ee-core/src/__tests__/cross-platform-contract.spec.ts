@@ -5,9 +5,13 @@
 import {
   RUST_E2EE_ALGORITHM,
   RUST_E2EE_ENVELOPE_VERSION,
+  classifyE2eeError,
   isRustE2eeEnvelope,
   normalizeEnvelope,
   parseE2eeEnvelope,
+  parseRustHandshake,
+  normalizeHandshake,
+  E2eePolicyError,
 } from "../index";
 import { describe, expect, it } from "vitest";
 
@@ -146,6 +150,114 @@ describe("cross-platform Rust E2EE v2 contract", () => {
       expect(parsed!.version).toBe(RUST_E2EE_ENVELOPE_VERSION);
       expect(parsed!.algorithm).toBe(RUST_E2EE_ALGORITHM);
       expect(parsed!.sessionId).toBe("100_200");
+    });
+  });
+
+  // ─── OTK handshake contract ────────────────────────────────────────
+
+  describe("OTK handshake cross-platform contract", () => {
+    it("parseRustHandshake: oneTimePreKeyId=0 is a valid OTK id, not null", () => {
+      const handshake = new Uint8Array(40);
+      handshake.fill(7, 0, 32);
+      handshake.set([0, 0, 0, 1], 32);
+      handshake.set([0, 0, 0, 0], 36); // OTK id = 0
+
+      const parsed = parseRustHandshake(handshake);
+      expect(parsed.oneTimePreKeyId).toBe(0);
+      expect(parsed.oneTimePreKeyId).not.toBeNull();
+    });
+
+    it("parseRustHandshake: oneTimePreKeyId=0xFFFFFFFF is null (no OTK referenced)", () => {
+      const handshake = new Uint8Array(40);
+      handshake.fill(7, 0, 32);
+      handshake.set([0, 0, 0, 1], 32);
+      handshake.set([0xff, 0xff, 0xff, 0xff], 36);
+
+      const parsed = parseRustHandshake(handshake);
+      expect(parsed.oneTimePreKeyId).toBeNull();
+    });
+
+    it("normalizeHandshake: undefined oneTimePreKeyId → null", () => {
+      const normalized = normalizeHandshake({
+        ephemeralPublicKey: new Uint8Array(32),
+        signedPreKeyId: 1,
+        oneTimePreKeyId: undefined,
+      });
+      expect(normalized.oneTimePreKeyId).toBeNull();
+    });
+
+    it("normalizeHandshake: 0 is preserved as a valid OTK id", () => {
+      const normalized = normalizeHandshake({
+        ephemeralPublicKey: new Uint8Array(32),
+        signedPreKeyId: 1,
+        oneTimePreKeyId: 0,
+      });
+      expect(normalized.oneTimePreKeyId).toBe(0);
+    });
+
+    it("normalizeHandshake: rejects 0xFFFFFFFF (sentinel must not leak past parseRustHandshake)", () => {
+      expect(() =>
+        normalizeHandshake({
+          ephemeralPublicKey: new Uint8Array(32),
+          signedPreKeyId: 1,
+          oneTimePreKeyId: 0xffffffff,
+        }),
+      ).toThrow("one-time pre-key id out of range");
+    });
+
+    it("classifyE2eeError: E2EE_ONE_TIME_PREKEY_MISSING → protocol / not retryable / safe message", () => {
+      const classification = classifyE2eeError(
+        new Error("Rust E2EE handshake references missing one-time pre-key: 7"),
+      );
+      expect(classification.code).toBe("E2EE_ONE_TIME_PREKEY_MISSING");
+      expect(classification.category).toBe("protocol");
+      expect(classification.retryable).toBe(false);
+      expect(classification.safeMessage).toBe("加密会话状态不完整，请重新协商");
+    });
+
+    it("classifyE2eeError: E2eePolicyError OTK_MISSING does not leak OTK id in safeMessage", () => {
+      const classification = classifyE2eeError(
+        new E2eePolicyError(
+          "Rust E2EE handshake references missing one-time pre-key: 42",
+          "E2EE_ONE_TIME_PREKEY_MISSING",
+          "protocol",
+        ),
+      );
+      expect(classification.code).toBe("E2EE_ONE_TIME_PREKEY_MISSING");
+      expect(classification.category).toBe("protocol");
+      expect(classification.retryable).toBe(false);
+      expect(classification.safeMessage).toBe("加密会话状态不完整，请重新协商");
+      // Must NOT leak OTK id in the safe message
+      expect(classification.safeMessage).not.toContain("42");
+      expect(classification.safeMessage).not.toContain("pre-key");
+    });
+
+    it("classifyE2eeError: E2eePolicyError PLAINTEXT_DOWNGRADE returns its own safe message", () => {
+      const classification = classifyE2eeError(
+        new E2eePolicyError(
+          "Plaintext downgrade blocked",
+          "PLAINTEXT_DOWNGRADE_BLOCKED",
+          "policy",
+        ),
+      );
+      expect(classification.code).toBe("PLAINTEXT_DOWNGRADE_BLOCKED");
+      expect(classification.safeMessage).toBe("Plaintext downgrade blocked");
+    });
+
+    it("Web/Mobile must use the same error code for OTK missing", () => {
+      // This test enforces the contract: any platform that encounters a missing OTK
+      // must throw E2eePolicyError with code E2EE_ONE_TIME_PREKEY_MISSING.
+      const error = new E2eePolicyError(
+        "Rust E2EE handshake references missing one-time pre-key: 7",
+        "E2EE_ONE_TIME_PREKEY_MISSING",
+        "protocol",
+      );
+      expect(error.code).toBe("E2EE_ONE_TIME_PREKEY_MISSING");
+      expect(error.category).toBe("protocol");
+
+      const classification = classifyE2eeError(error);
+      expect(classification.code).toBe("E2EE_ONE_TIME_PREKEY_MISSING");
+      expect(classification.retryable).toBe(false);
     });
   });
 });

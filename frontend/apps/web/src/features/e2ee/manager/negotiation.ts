@@ -145,7 +145,12 @@ export async function initiateNegotiation(
       localKeys,
       remoteBundle,
     });
-    await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId));
+    await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId), {
+      localDeviceId: deviceId,
+      remoteUserId,
+      remoteDeviceId: remoteBundle.deviceId ?? "",
+      direction: "outbound",
+    });
 
     // Store remote device ID for subsequent message encryption
     if (remoteBundle.deviceId) {
@@ -179,6 +184,7 @@ export async function respondToNegotiation(
   sessionId: string,
   remoteIdentityKeyBase64: string,
   handshakeBase64: string,
+  senderUserId: string,
   expectedDeviceId?: string,
 ): Promise<boolean> {
   setLocalSessionStatus(sessionId, "negotiating");
@@ -204,7 +210,12 @@ export async function respondToNegotiation(
       await markOneTimePreKeyConsumed(handshake.oneTimePreKeyId);
     }
 
-    await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId));
+    await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId), {
+      localDeviceId: deviceId,
+      remoteUserId: senderUserId,
+      remoteDeviceId: expectedDeviceId ?? "",
+      direction: "inbound",
+    });
     // Store initiator's device ID for subsequent message encryption
     if (expectedDeviceId) {
       localStorage.setItem(`e2ee:remote_device:${sessionId}`, expectedDeviceId);
@@ -222,11 +233,11 @@ export async function restoreE2eeSession(sessionId: string): Promise<boolean> {
   if (getLocalSessionStatus(sessionId) !== "encrypted") {
     return false;
   }
-  const state = await getSessionStateBytes(sessionId);
-  if (!state) return false;
-  await webE2eeRuntime.restoreSession(sessionId, state);
-  setLocalSessionStatus(sessionId, "encrypted");
-  return true;
+  // TODO: restoreE2eeSession needs localDeviceId + remote context to validate
+  // the envelope. Since this function has no caller currently, it is retained
+  // for future use. When wiring it up, accept (localDeviceId, remoteUserId,
+  // remoteDeviceId) parameters and pass them to getSessionStateBytes.
+  return false;
 }
 
 export async function resetNegotiation(sessionId: string, status: E2eeSessionStatus = "plaintext"): Promise<void> {

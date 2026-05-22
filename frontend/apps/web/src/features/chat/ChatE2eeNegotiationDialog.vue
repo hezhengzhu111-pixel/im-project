@@ -71,6 +71,7 @@ import { Lock } from "@element-plus/icons-vue";
 interface Props {
   modelValue: boolean;
   requesterName: string;
+  requesterId: string;
   sessionId: string;
   requestPayloadJson?: string;
 }
@@ -136,6 +137,7 @@ const handleAccept = async () => {
       props.sessionId,
       payload.senderIdentityKey,
       payload.handshake,
+      props.requesterId,
       payload.deviceId,
     );
 

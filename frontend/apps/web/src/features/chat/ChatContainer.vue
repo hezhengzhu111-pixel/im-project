@@ -475,6 +475,7 @@
       v-if="pendingNegotiation"
       v-model="showNegotiationDialog"
       :requester-name="pendingNegotiation.requesterName"
+      :requester-id="pendingNegotiation.requesterId"
       :session-id="pendingNegotiation.sessionId"
       :request-payload-json="pendingNegotiation.requestPayloadJson"
       @accepted="handleNegotiationAccepted"
