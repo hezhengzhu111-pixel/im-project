@@ -5,6 +5,9 @@
  *   1. #2 no-handshake arrives first → pending (no session state, no handshake)
  *   2. #1 handshake arrives later → decrypted (creates session from handshake)
  *   3. Auto drain #2 → decrypted (session now exists)
+ *   4. compareE2eeDecryptOrder: conversationSeq first, sendTime fallback, stable key tiebreak
+ *   5. processE2eeMessages batch ordering by conversationSeq
+ *   6. Recipient mismatch → failed with correct placeholder (regression for issue #9)
  *
  * References: docs/e2ee-message-pipeline.md Chapter 2 (Inbound Pipeline)
  */
@@ -45,13 +48,14 @@ jest.mock('@/stores/sessionStore', () => ({
 
 // ─── Imports ──────────────────────────────────────────────────────────
 
-import { e2eeManager } from '@/e2ee/manager/e2eeManager';
+import { e2eeManager, E2eeEnvelopeRecipientMismatchError } from '@/e2ee/manager/e2eeManager';
 import {
   processE2eeMessage,
   processE2eeMessages,
   compareE2eeDecryptOrder,
   hasE2eeHandshake,
   shouldDrainPendingAfterDecrypt,
+  E2EE_NOT_FOR_THIS_DEVICE_TEXT,
   type ProcessedE2eeMessage,
 } from '@/e2ee/messageProcessor';
 import {
@@ -283,16 +287,58 @@ describe('inbound E2EE message ordering', () => {
     });
   });
 
-  // ── Test 4: concurrent inbound via processE2eeMessages ──────────────
+  // ── Test 4: batch inbound processing ordering ───────────────────────
 
-  describe('batch inbound processing sorts by sendTime', () => {
-    it('processes messages in sendTime order regardless of input order', async () => {
+  describe('batch inbound processing sorts by conversationSeq first', () => {
+    it('processes messages in conversationSeq order when seq and sendTime disagree', async () => {
       const decryptOrder: string[] = [];
       jest.spyOn(e2eeManager, 'decryptEnvelope').mockImplementation(async (env) => {
         decryptOrder.push(env.wire);
         return `plaintext-${env.wire.slice(-1)}`;
       });
 
+      // Input order: msg-3, msg-1, msg-2
+      // conversationSeq: 3, 1, 2 → expected decrypt order: 1, 2, 3 (WIRE1, WIRE2, WIRE3)
+      // sendTime order is deliberately reversed: msg-3 earliest, msg-1 latest
+      const input = [
+        encryptedMsg({
+          messageId: 'msg-3',
+          conversationSeq: 3,
+          e2eeEnvelope: { ...noHandshakeEnvelope, wire: 'WIRE3' },
+          sendTime: '2024-06-01T09:00:00.000Z', // earliest
+        }),
+        encryptedMsg({
+          messageId: 'msg-1',
+          conversationSeq: 1,
+          e2eeEnvelope: { ...handshakeEnvelope, wire: 'WIRE1' },
+          sendTime: '2024-06-01T11:00:00.000Z', // latest
+        }),
+        encryptedMsg({
+          messageId: 'msg-2',
+          conversationSeq: 2,
+          e2eeEnvelope: { ...noHandshakeEnvelope, wire: 'WIRE2' },
+          sendTime: '2024-06-01T10:00:00.000Z', // middle
+        }),
+      ];
+
+      await processE2eeMessages(input, {
+        currentUserId: '100',
+        sessionId,
+        concurrency: 8,
+      });
+
+      // Messages must be processed in conversationSeq order: 1, 2, 3
+      expect(decryptOrder).toEqual(['WIRE1', 'WIRE2', 'WIRE3']);
+    });
+
+    it('falls back to valid sendTime when no messages have conversationSeq', async () => {
+      const decryptOrder: string[] = [];
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockImplementation(async (env) => {
+        decryptOrder.push(env.wire);
+        return `plaintext-${env.wire.slice(-1)}`;
+      });
+
+      // No conversationSeq on any message — must fall back to sendTime
       const input = [
         encryptedMsg({
           messageId: 'msg-3',
@@ -322,21 +368,146 @@ describe('inbound E2EE message ordering', () => {
     });
   });
 
-  // ── Test 5: compareE2eeDecryptOrder tie-breaking ────────────────────
+  // ── Test 5: compareE2eeDecryptOrder ─────────────────────────────────
 
   describe('compareE2eeDecryptOrder', () => {
-    it('sorts by sendTime first', () => {
+    // ── conversationSeq priority ─────────────────────────────────────
+
+    it('sorts by conversationSeq first, ignoring sendTime', () => {
+      // left has smaller seq (1) but later sendTime → should come first
+      const first = encryptedMsg({
+        messageId: 'msg-1',
+        conversationSeq: 1,
+        sendTime: '2024-06-01T10:00:10.000Z',
+      });
+      const second = encryptedMsg({
+        messageId: 'msg-2',
+        conversationSeq: 2,
+        sendTime: '2024-06-01T10:00:01.000Z',
+      });
+      expect(compareE2eeDecryptOrder(first, second)).toBeLessThan(0);
+      expect(compareE2eeDecryptOrder(second, first)).toBeGreaterThan(0);
+    });
+
+    it('reads conversation_seq snake_case field', () => {
+      const first = encryptedMsg({ messageId: 'msg-1' });
+      (first as unknown as Record<string, unknown>).conversation_seq = 1;
+      const second = encryptedMsg({ messageId: 'msg-2' });
+      (second as unknown as Record<string, unknown>).conversation_seq = 2;
+      expect(compareE2eeDecryptOrder(first, second)).toBeLessThan(0);
+    });
+
+    it('parses conversationSeq as numeric string', () => {
+      const a = encryptedMsg({ messageId: 'msg-a' });
+      (a as unknown as Record<string, unknown>).conversationSeq = '10';
+      const b = encryptedMsg({ messageId: 'msg-b' });
+      (b as unknown as Record<string, unknown>).conversationSeq = '2';
+      // 2 < 10, so b should come before a
+      expect(compareE2eeDecryptOrder(b, a)).toBeLessThan(0);
+      expect(compareE2eeDecryptOrder(a, b)).toBeGreaterThan(0);
+    });
+
+    it('ignores non-numeric conversationSeq and falls back to sendTime', () => {
+      const a = encryptedMsg({
+        messageId: 'msg-a',
+        sendTime: '2024-06-01T10:00:02.000Z',
+      });
+      (a as unknown as Record<string, unknown>).conversationSeq = 'abc';
+      const b = encryptedMsg({
+        messageId: 'msg-b',
+        sendTime: '2024-06-01T10:00:01.000Z',
+      });
+      (b as unknown as Record<string, unknown>).conversationSeq = 'xyz';
+      // Both have invalid seq → fall back to sendTime: b is earlier
+      expect(compareE2eeDecryptOrder(b, a)).toBeLessThan(0);
+    });
+
+    it('places message with conversationSeq before message without', () => {
+      const withSeq = encryptedMsg({
+        messageId: 'msg-with-seq',
+        conversationSeq: 5,
+        sendTime: '2024-06-01T12:00:00.000Z', // much later
+      });
+      const withoutSeq = encryptedMsg({
+        messageId: 'msg-no-seq',
+        sendTime: '2024-06-01T10:00:00.000Z', // much earlier
+      });
+      // withSeq has conversationSeq → comes first despite later sendTime
+      expect(compareE2eeDecryptOrder(withSeq, withoutSeq)).toBeLessThan(0);
+      expect(compareE2eeDecryptOrder(withoutSeq, withSeq)).toBeGreaterThan(0);
+    });
+
+    it('falls back to stable message key when both conversationSeq and sendTime are equal', () => {
+      const a = encryptedMsg({
+        messageId: 'msg-a',
+        conversationSeq: 1,
+        sendTime: '2024-06-01T10:00:00.000Z',
+      });
+      const b = encryptedMsg({
+        messageId: 'msg-b',
+        conversationSeq: 1,
+        sendTime: '2024-06-01T10:00:00.000Z',
+      });
+      // Same seq AND same sendTime → fallback to messageId: 'msg-a' < 'msg-b'
+      expect(compareE2eeDecryptOrder(a, b)).toBeLessThan(0);
+    });
+
+    // ── sendTime fallback ───────────────────────────────────────────
+
+    it('falls back to valid sendTime when conversationSeq is unavailable', () => {
       const early = encryptedMsg({ sendTime: '2024-06-01T10:00:01.000Z' });
       const late = encryptedMsg({ sendTime: '2024-06-01T10:00:02.000Z' });
       expect(compareE2eeDecryptOrder(early, late)).toBeLessThan(0);
       expect(compareE2eeDecryptOrder(late, early)).toBeGreaterThan(0);
     });
 
-    it('sorts by messageId when sendTime is equal', () => {
-      const a = encryptedMsg({ sendTime: '2024-06-01T10:00:00.000Z', messageId: 'msg-a' });
-      const b = encryptedMsg({ sendTime: '2024-06-01T10:00:00.000Z', messageId: 'msg-b' });
+    it('does not return NaN when sendTime is invalid', () => {
+      const a = encryptedMsg({
+        messageId: 'msg-a',
+        sendTime: 'not-a-date',
+      });
+      const b = encryptedMsg({
+        messageId: 'msg-b',
+        sendTime: '2024-06-01T10:00:00.000Z',
+      });
+      const result = compareE2eeDecryptOrder(a, b);
+      expect(Number.isNaN(result)).toBe(false);
+    });
+
+    it('treats missing sendTime as unavailable, not as 1970', () => {
+      const missing = encryptedMsg({ messageId: 'msg-missing' });
+      delete (missing as Record<string, unknown>).sendTime;
+      const hasValid = encryptedMsg({
+        messageId: 'msg-has-time',
+        sendTime: '2024-06-01T10:00:00.000Z',
+      });
+      // hasValid has a valid sendTime → should come before missing
+      expect(compareE2eeDecryptOrder(hasValid, missing)).toBeLessThan(0);
+    });
+
+    it('falls back to stable message key when both sendTime are missing', () => {
+      const a = encryptedMsg({ messageId: 'msg-a' });
+      delete (a as Record<string, unknown>).sendTime;
+      const b = encryptedMsg({ messageId: 'msg-b' });
+      delete (b as Record<string, unknown>).sendTime;
+      // Both missing sendTime → fallback to messageId
+      expect(compareE2eeDecryptOrder(a, b)).toBeLessThan(0);
+      expect(compareE2eeDecryptOrder(b, a)).toBeGreaterThan(0);
+    });
+
+    it('falls back to stable message key when both have same valid sendTime', () => {
+      const a = encryptedMsg({
+        sendTime: '2024-06-01T10:00:00.000Z',
+        messageId: 'msg-a',
+      });
+      const b = encryptedMsg({
+        sendTime: '2024-06-01T10:00:00.000Z',
+        messageId: 'msg-b',
+      });
       expect(compareE2eeDecryptOrder(a, b)).toBeLessThan(0);
     });
+
+    // ── stable tiebreak ─────────────────────────────────────────────
 
     it('returns 0 for identical messages', () => {
       const msg = encryptedMsg({
@@ -344,6 +515,16 @@ describe('inbound E2EE message ordering', () => {
         sendTime: '2024-06-01T10:00:00.000Z',
       });
       expect(compareE2eeDecryptOrder(msg, msg)).toBe(0);
+    });
+
+    it('uses serverId as stable key when messageId is absent', () => {
+      const a = encryptedMsg({ sendTime: '2024-06-01T10:00:00.000Z' });
+      delete (a as Record<string, unknown>).messageId;
+      (a as MobileMessage).serverId = 'server-a';
+      const b = encryptedMsg({ sendTime: '2024-06-01T10:00:00.000Z' });
+      delete (b as Record<string, unknown>).messageId;
+      (b as MobileMessage).serverId = 'server-b';
+      expect(compareE2eeDecryptOrder(a, b)).toBeLessThan(0);
     });
   });
 
@@ -363,6 +544,76 @@ describe('inbound E2EE message ordering', () => {
       expect(pending?.content).toBe(E2EE_UNSUPPORTED_TEXT);
       expect(pending?.rawJson).not.toContain('ACTUAL_PLAINTEXT_SECRET');
       expect(pending?.rawJson).toContain('e2eeEnvelope');
+    });
+  });
+
+  // ── Test 7: recipient mismatch regression (issue #9) ────────────────
+
+  describe('recipient device mismatch', () => {
+    it('marks as failed with localized placeholder when decryptEnvelope throws E2eeEnvelopeRecipientMismatchError', async () => {
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockRejectedValueOnce(
+        new E2eeEnvelopeRecipientMismatchError('device-100', 'device-999', sessionId),
+      );
+
+      const msg = encryptedMsg({
+        messageId: 'msg-recipient-mismatch',
+        e2eeEnvelope: noHandshakeEnvelope,
+      });
+
+      const processed = await processE2eeMessage(msg, {
+        sessionId,
+        currentUserId: '100',
+      });
+
+      expect(processed.decryptStatus).toBe('failed');
+      expect(processed.displayMessage.content).toBe(E2EE_NOT_FOR_THIS_DEVICE_TEXT);
+      expect(processed.errorClassification?.retryable).toBe(false);
+    });
+
+    it('marks as failed when error has E2EE_RECIPIENT_DEVICE_MISMATCH code (plain Error fallback)', async () => {
+      const error = new Error('E2EE envelope is not addressed to this device');
+      (error as any).code = 'E2EE_RECIPIENT_DEVICE_MISMATCH';
+      (error as any).nonRetryable = true;
+
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockRejectedValueOnce(error);
+
+      const msg = encryptedMsg({
+        messageId: 'msg-recipient-mismatch-plain',
+        e2eeEnvelope: noHandshakeEnvelope,
+      });
+
+      const processed = await processE2eeMessage(msg, {
+        sessionId,
+        currentUserId: '100',
+      });
+
+      expect(processed.decryptStatus).toBe('failed');
+      expect(processed.displayMessage.content).toBe(E2EE_NOT_FOR_THIS_DEVICE_TEXT);
+      expect(processed.errorClassification?.retryable).toBe(false);
+    });
+
+    it('does not add the message to pendingDecryptStore after mismatch failure', async () => {
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockRejectedValueOnce(
+        new E2eeEnvelopeRecipientMismatchError('device-100', 'device-999', sessionId),
+      );
+
+      const msg = encryptedMsg({
+        messageId: 'msg-recipient-mismatch-no-pending',
+        e2eeEnvelope: noHandshakeEnvelope,
+      });
+
+      const processed = await processE2eeMessage(msg, {
+        sessionId,
+        currentUserId: '100',
+      });
+
+      // Only cache if decryptStatus is 'pending'
+      if (processed.decryptStatus === 'pending') {
+        cachePendingEncryptedMessage(sessionId, processed.rawMessage);
+      }
+
+      // Should be 'failed', not 'pending' → no cache entry
+      expect(getPendingEncryptedMessages(sessionId)).toHaveLength(0);
     });
   });
 });
