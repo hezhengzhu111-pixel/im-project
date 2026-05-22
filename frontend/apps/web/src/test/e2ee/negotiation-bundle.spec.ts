@@ -13,47 +13,70 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockBundleData = vi.fn();
-const mockGetDevices = vi.fn();
+const {
+  mockBundleData,
+  mockGetDevices,
+  mockSaveSessionStateBytes,
+  mockDeleteSessionState,
+  mockGetSessionStateBytes,
+  mockRequestEncryption,
+} = vi.hoisted(() => ({
+  mockBundleData: vi.fn(),
+  mockGetDevices: vi.fn(),
+  mockSaveSessionStateBytes: vi.fn(() => Promise.resolve()),
+  mockDeleteSessionState: vi.fn(() => Promise.resolve()),
+  mockGetSessionStateBytes: vi.fn(() => Promise.resolve(null)),
+  mockRequestEncryption: vi.fn(() => Promise.resolve()),
+}));
 
 vi.mock("@/features/e2ee/api/key-service", () => ({
   keyService: {
     getDevices: () => mockGetDevices(),
     getBundle: () => mockBundleData(),
-    requestEncryption: vi.fn().mockResolvedValue(undefined),
+    requestEncryption: mockRequestEncryption,
   },
 }));
 
 vi.mock("@/features/e2ee/runtime", () => ({
   webE2eeRuntime: {
-    exportSession: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
-    removeSession: vi.fn().mockResolvedValue(undefined),
-    createOutboundSession: vi.fn().mockResolvedValue(new Uint8Array(40)),
+    exportSession: () => Promise.resolve(new Uint8Array([1, 2, 3])),
+    removeSession: () => Promise.resolve(),
+    createOutboundSession: () => Promise.resolve(new Uint8Array(40)),
   },
 }));
 
 vi.mock("@/features/e2ee/manager/local-device", () => ({
-  ensureLocalE2eeDeviceRegistered: vi.fn().mockResolvedValue("web-device-alice"),
-  getLocalRustKeyMaterial: vi.fn().mockResolvedValue({
-    deviceId: "web-device-alice",
-    userId: "alice",
-    publicBundle: {
-      identityKey: "identity-alice",
-      signedPreKey: { id: 1, key: "spk-alice" },
-      oneTimePreKeys: [],
-    },
-    oneTimePreKeyPairs: [],
-  }),
+  ensureLocalE2eeDeviceRegistered: () => Promise.resolve("web-device-alice"),
+  getLocalRustKeyMaterial: () =>
+    Promise.resolve({
+      deviceId: "web-device-alice",
+      userId: "alice",
+      publicBundle: {
+        identityKey: "identity-alice",
+        signedPreKey: { id: 1, key: "spk-alice" },
+        oneTimePreKeys: [],
+      },
+      oneTimePreKeyPairs: [],
+    }),
 }));
 
 vi.mock("@/features/e2ee/store/session-store", () => ({
-  saveSessionStateBytes: vi.fn().mockResolvedValue(undefined),
-  deleteSessionState: vi.fn().mockResolvedValue(undefined),
-  getSessionStateBytes: vi.fn().mockResolvedValue(null),
+  saveSessionStateBytes: mockSaveSessionStateBytes,
+  deleteSessionState: mockDeleteSessionState,
+  getSessionStateBytes: mockGetSessionStateBytes,
 }));
 
 vi.mock("@/features/e2ee/store/key-store", () => ({
-  markOneTimePreKeyConsumed: vi.fn().mockResolvedValue(undefined),
+  markOneTimePreKeyConsumed: () => Promise.resolve(),
+}));
+
+// Mock shared-e2ee-core: provide the 4 functions that negotiation.ts imports.
+// Must be synchronous because async factories block dependent module resolution.
+vi.mock("@im/shared-e2ee-core", () => ({
+  asBase64String: (input: string) => input,
+  base64ToBytes: (input: string) => new Uint8Array(input.split("").map((c: string) => c.charCodeAt(0))),
+  bytesToBase64: (input: Uint8Array) => Array.from(input).map((b: number) => String.fromCharCode(b)).join(""),
+  parseRustHandshake: () => ({ oneTimePreKeyId: null }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -66,17 +89,17 @@ import {
   getLocalSessionStatus,
 } from "@/features/e2ee/manager/negotiation";
 
-describe("E2EE negotiation — respondToNegotiation 空 remoteDeviceId 拒绝", () => {
+describe("E2EE negotiation — respondToNegotiation senderDeviceId / targetDeviceId 语义", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
-  it("respondToNegotiation 缺少 expectedDeviceId 时进入 failed，且不保存 session state", async () => {
+  it("respondToNegotiation 缺少 senderDeviceId 时进入 failed，且不保存 session state", async () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { saveSessionStateBytes } = await import("@/features/e2ee/store/session-store");
 
@@ -85,7 +108,8 @@ describe("E2EE negotiation — respondToNegotiation 空 remoteDeviceId 拒绝", 
       "remote-ik-b64",
       "aGFuZHNoYWtl",
       "bob",
-      undefined, // missing expectedDeviceId
+      "", // empty senderDeviceId
+      "web-device-alice",
     );
 
     expect(result).toBe(false);
@@ -98,7 +122,7 @@ describe("E2EE negotiation — respondToNegotiation 空 remoteDeviceId 拒绝", 
     consoleSpy.mockRestore();
   });
 
-  it("respondToNegotiation expectedDeviceId 为空字符串时进入 failed", async () => {
+  it("respondToNegotiation senderDeviceId 为空字符串时进入 failed", async () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { saveSessionStateBytes } = await import("@/features/e2ee/store/session-store");
 
@@ -108,6 +132,50 @@ describe("E2EE negotiation — respondToNegotiation 空 remoteDeviceId 拒绝", 
       "aGFuZHNoYWtl",
       "bob",
       "", // empty string
+      "web-device-alice",
+    );
+
+    expect(result).toBe(false);
+    expect(getLocalSessionStatus("p_alice_bob")).toBe("failed");
+    expect(saveSessionStateBytes).not.toHaveBeenCalled();
+    expect(localStorage.getItem("e2ee:remote_device:p_alice_bob")).toBeNull();
+
+    consoleSpy.mockRestore();
+  });
+
+  it("respondToNegotiation 缺少 targetDeviceId 时进入 failed，不保存 session state", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { saveSessionStateBytes } = await import("@/features/e2ee/store/session-store");
+
+    const result = await respondToNegotiation(
+      "p_alice_bob",
+      "remote-ik-b64",
+      "aGFuZHNoYWtl",
+      "bob",
+      "mobile-bob",
+      "", // empty targetDeviceId
+    );
+
+    expect(result).toBe(false);
+    expect(getLocalSessionStatus("p_alice_bob")).toBe("failed");
+    expect(saveSessionStateBytes).not.toHaveBeenCalled();
+    expect(localStorage.getItem("e2ee:remote_device:p_alice_bob")).toBeNull();
+
+    consoleSpy.mockRestore();
+  });
+
+  it("respondToNegotiation targetDeviceId 与当前 deviceId 不匹配时返回 false，不保存 session state", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { saveSessionStateBytes } = await import("@/features/e2ee/store/session-store");
+
+    // Current local device is "web-device-alice" (mocked), but targetDeviceId is "web-device-bob"
+    const result = await respondToNegotiation(
+      "p_alice_bob",
+      "remote-ik-b64",
+      "aGFuZHNoYWtl",
+      "bob",
+      "mobile-bob",
+      "web-device-bob", // does NOT match current local device "web-device-alice"
     );
 
     expect(result).toBe(false);
@@ -136,7 +204,7 @@ describe("E2EE negotiation — oneTimePreKeyId 语义", () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
   it("oneTimePreKeyId=0 时必须保留 0（不变成 null/undefined）", async () => {
@@ -252,5 +320,144 @@ describe("E2EE negotiation — oneTimePreKeyId 语义", () => {
 
     const result = await initiateNegotiation("p_alice_bob", "bob");
     expect(result).toBeDefined();
+  });
+});
+
+describe("E2EE negotiation — senderDeviceId / targetDeviceId payload 语义", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+
+    mockGetDevices.mockResolvedValue({
+      data: [
+        {
+          deviceId: "mobile-bob",
+          identityKey: "identity-bob",
+          lastActiveAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    mockBundleData.mockResolvedValue({
+      data: {
+        identityKey: "ik-bob",
+        signingIdentityKey: "sign-ik-bob",
+        signedPreKey: "spk-bob",
+        signedPreKeySignature: "sig-bob",
+        oneTimePreKey: "otk-bob",
+        oneTimePreKeyId: 1,
+        deviceId: "mobile-bob",
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("initiateNegotiation requestPayloadJson 包含 senderDeviceId 和 targetDeviceId", async () => {
+    const { keyService } = await import("@/features/e2ee/api/key-service");
+    const requestEncryptionMock = keyService.requestEncryption as ReturnType<typeof vi.fn>;
+
+    await initiateNegotiation("p_alice_bob", "bob");
+
+    // Verify requestEncryption was called
+    expect(requestEncryptionMock).toHaveBeenCalledTimes(1);
+    const payloadJson = requestEncryptionMock.mock.calls[0][3] as string;
+    const payload = JSON.parse(payloadJson);
+
+    // initiator local device = "web-device-alice" (mocked ensureLocalE2eeDeviceRegistered)
+    expect(payload.senderDeviceId).toBe("web-device-alice");
+    // remote bundle deviceId = "mobile-bob"
+    expect(payload.targetDeviceId).toBe("mobile-bob");
+  });
+
+  it("initiateNegotiation 不再生成旧字段 deviceId", async () => {
+    const { keyService } = await import("@/features/e2ee/api/key-service");
+    const requestEncryptionMock = keyService.requestEncryption as ReturnType<typeof vi.fn>;
+
+    await initiateNegotiation("p_alice_bob", "bob");
+
+    const payloadJson = requestEncryptionMock.mock.calls[0][3] as string;
+    const payload = JSON.parse(payloadJson);
+
+    // Old deviceId field must NOT be present
+    expect(payload.deviceId).toBeUndefined();
+  });
+
+  it("initiateNegotiation 在 remoteBundle.deviceId 为空时 fail-fast，不保存 session state", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { saveSessionStateBytes } = await import("@/features/e2ee/store/session-store");
+
+    mockBundleData.mockResolvedValue({
+      data: {
+        identityKey: "ik-bob",
+        signingIdentityKey: "sign-ik-bob",
+        signedPreKey: "spk-bob",
+        signedPreKeySignature: "sig-bob",
+        oneTimePreKey: null,
+        deviceId: "", // empty!
+      },
+    });
+
+    const result = await initiateNegotiation("p_alice_bob", "bob");
+    expect(result).toBe(false);
+    expect(saveSessionStateBytes).not.toHaveBeenCalled();
+
+    consoleSpy.mockRestore();
+  });
+});
+
+describe("E2EE negotiation — respondToNegotiation inbound session state 语义", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("respondToNegotiation 保存 session state 时 remoteDeviceId === senderDeviceId", async () => {
+    // Need to mock createInboundSession for this test
+    const { webE2eeRuntime } = await import("@/features/e2ee/runtime");
+    (webE2eeRuntime as unknown as Record<string, unknown>).createInboundSession = vi.fn().mockResolvedValue(undefined);
+
+    const { saveSessionStateBytes } = await import("@/features/e2ee/store/session-store");
+
+    const result = await respondToNegotiation(
+      "p_alice_bob",
+      "remote-ik-b64",
+      "aGFuZHNoYWtl",
+      "bob",
+      "mobile-bob", // senderDeviceId — initiator's device
+      "web-device-alice", // targetDeviceId — this device (responder)
+    );
+
+    expect(result).toBe(true);
+    // Check saveSessionStateBytes was called with remoteDeviceId = senderDeviceId
+    expect(saveSessionStateBytes).toHaveBeenCalledTimes(1);
+    const meta = (saveSessionStateBytes as ReturnType<typeof vi.fn>).mock.calls[0][2];
+    expect(meta.localDeviceId).toBe("web-device-alice");
+    expect(meta.remoteDeviceId).toBe("mobile-bob"); // senderDeviceId, not targetDeviceId
+    expect(meta.remoteUserId).toBe("bob");
+    expect(meta.direction).toBe("inbound");
+  });
+
+  it("respondToNegotiation 写入 localStorage remote_device 的值是 senderDeviceId", async () => {
+    const { webE2eeRuntime } = await import("@/features/e2ee/runtime");
+    (webE2eeRuntime as unknown as Record<string, unknown>).createInboundSession = vi.fn().mockResolvedValue(undefined);
+
+    await respondToNegotiation(
+      "p_alice_bob",
+      "remote-ik-b64",
+      "aGFuZHNoYWtl",
+      "bob",
+      "mobile-bob", // senderDeviceId
+      "web-device-alice", // targetDeviceId
+    );
+
+    // localStorage remote_device must be senderDeviceId, NOT targetDeviceId
+    expect(localStorage.getItem("e2ee:remote_device:p_alice_bob")).toBe("mobile-bob");
   });
 });
