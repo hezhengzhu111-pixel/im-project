@@ -286,6 +286,10 @@ class MobileE2eeManager {
         throw new Error('Rust E2EE session state unavailable and envelope has no handshake');
       }
 
+      if (!envelope.senderDeviceId || envelope.senderDeviceId.length === 0) {
+        throw new Error('E2EE envelope sender device id unavailable');
+      }
+
       try {
         const plaintext = await runtime.decrypt(envelope.sessionId, envelope);
         await commitSessionState(runtime, userId, envelope.sessionId, {

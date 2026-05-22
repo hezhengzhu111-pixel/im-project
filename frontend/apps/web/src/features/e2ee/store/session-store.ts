@@ -63,14 +63,29 @@ export async function saveSessionStateBytes(
   stateBytes: Uint8Array | string,
   meta: SaveSessionMeta,
 ): Promise<void> {
+  if (!sessionId || sessionId.length === 0) {
+    throw new Error("E2EE session state requires sessionId");
+  }
+  if (!meta.localDeviceId || meta.localDeviceId.length === 0) {
+    throw new Error("E2EE session state requires localDeviceId");
+  }
+  if (!meta.remoteDeviceId || meta.remoteDeviceId.length === 0) {
+    throw new Error("E2EE session state requires remoteDeviceId");
+  }
+
   const resolvedUserId = meta.userId || meta.localDeviceId;
+  const remoteUserId = meta.remoteUserId || meta.remoteDeviceId;
+  if (!remoteUserId || remoteUserId.length === 0) {
+    throw new Error("E2EE session state requires remoteUserId");
+  }
+
   const envelope = await encodeSessionStateEnvelope(
     stateBytes,
     {
       userId: resolvedUserId,
       localDeviceId: meta.localDeviceId,
       sessionId,
-      remoteUserId: meta.remoteUserId || meta.remoteDeviceId,
+      remoteUserId,
       remoteDeviceId: meta.remoteDeviceId,
     },
     {

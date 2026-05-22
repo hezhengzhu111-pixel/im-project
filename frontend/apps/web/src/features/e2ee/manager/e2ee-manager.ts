@@ -1,8 +1,7 @@
 import {
+  asBase64String,
   bytesToBase64,
   bytesToUtf8,
-  asBase64String,
-  OLD_E2EE_UNREADABLE_TEXT,
   RUST_E2EE_ALGORITHM,
   RUST_E2EE_ENVELOPE_VERSION,
   type RustE2eeEnvelope,
@@ -47,26 +46,11 @@ class E2eeManager {
     return getLocalSessionStatus(sessionId);
   }
 
-  /** @deprecated 旧 header/ciphertext 入口，仅测试 mock 保留。生产使用 encryptToEnvelope。 */
-  async encryptMessage(sessionId: string, plaintext: string): Promise<EncryptedPayload | null> {
-    const localDeviceId = await this.resolveCurrentDeviceId();
-    // Deprecated path: cannot validate context without remoteUserId/remoteDeviceId.
-    // TODO: remove this method once all callers use encryptToEnvelope.
-    const state = await getSessionStateBytes(sessionId, localDeviceId, "", "");
-    if (!state) return null;
-
-    await this.restoreSessionIfNeeded(sessionId, state);
-    const wire = await webE2eeRuntime.encrypt(sessionId, plaintext);
-    await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId), {
-      localDeviceId,
-      remoteDeviceId: "",
-      direction: "outbound",
-    });
-
-    return {
-      ciphertext: bytesToBase64(wire),
-      deviceId: localDeviceId,
-    };
+  /** @deprecated 旧 header/ciphertext 入口已移除，使用 encryptToEnvelope。 */
+  async encryptMessage(_sessionId: string, _plaintext: string): Promise<EncryptedPayload | null> {
+    throw new Error(
+      "Legacy E2EE header/ciphertext API is removed; use encryptToEnvelope",
+    );
   }
 
   async encryptToEnvelope(params: {
@@ -110,6 +94,9 @@ class E2eeManager {
   }
 
   async decryptEnvelope(envelope: RustE2eeEnvelope, senderUserId: string): Promise<string> {
+    if (!envelope.senderDeviceId || envelope.senderDeviceId.length === 0) {
+      throw new Error("E2EE envelope sender device id unavailable");
+    }
     const localDeviceId = await this.resolveCurrentDeviceId();
     const state = await getSessionStateBytes(
       envelope.sessionId,
@@ -145,28 +132,16 @@ class E2eeManager {
     return bytesToUtf8(plaintext);
   }
 
-  /** @deprecated 旧 header/ciphertext 入口，仅测试 mock 保留。生产使用 decryptEnvelope。 */
+  /** @deprecated 旧 header/ciphertext 入口已移除，使用 decryptEnvelope。 */
   async decryptMessage(
-    sessionId: string,
+    _sessionId: string,
     _senderId: string,
     _header: unknown,
-    ciphertext: string,
+    _ciphertext: string,
   ): Promise<string> {
-    const localDeviceId = await this.resolveCurrentDeviceId();
-    // Deprecated path: cannot validate context without remoteUserId/remoteDeviceId.
-    // TODO: remove this method once all callers use decryptEnvelope.
-    const state = await getSessionStateBytes(sessionId, localDeviceId, "", "");
-    if (!state) {
-      throw new Error(OLD_E2EE_UNREADABLE_TEXT);
-    }
-    await this.restoreSessionIfNeeded(sessionId, state);
-    const plaintext = await webE2eeRuntime.decrypt(sessionId, asBase64String(ciphertext, "legacy ciphertext"));
-    await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId), {
-      localDeviceId,
-      remoteDeviceId: "",
-      direction: "inbound",
-    });
-    return bytesToUtf8(plaintext);
+    throw new Error(
+      "Legacy E2EE header/ciphertext API is removed; use decryptEnvelope",
+    );
   }
 
   async clearSession(sessionId: string): Promise<void> {
@@ -198,22 +173,30 @@ class E2eeManager {
     recipientDeviceId?: string;
   }): Promise<{ recipientDeviceId: string; handshake?: string }> {
     const localDeviceId = await this.resolveCurrentDeviceId();
-    const resolvedRemoteUserId = input.recipientUserId ?? "";
-    const resolvedRemoteDeviceId = input.recipientDeviceId ?? "";
 
-    const existingState = await getSessionStateBytes(
-      input.sessionId,
-      localDeviceId,
-      resolvedRemoteUserId,
-      resolvedRemoteDeviceId,
-    );
-    if (existingState) {
-      await this.restoreSessionIfNeeded(input.sessionId, existingState);
-      // Restore previously stored remote device ID
-      const storedDeviceId = localStorage.getItem(`e2ee:remote_device:${input.sessionId}`) ?? "";
-      return {
-        recipientDeviceId: input.recipientDeviceId ?? storedDeviceId,
-      };
+    // Read stored remote device ID first so we can attempt session
+    // restore even when input.recipientDeviceId is not provided.
+    const storedRemoteDeviceId = localStorage.getItem(`e2ee:remote_device:${input.sessionId}`) ?? "";
+    const expectedRemoteUserId = input.recipientUserId ?? "";
+    const expectedRemoteDeviceId = input.recipientDeviceId ?? storedRemoteDeviceId;
+
+    // Only attempt restore when we have a valid remote device ID to
+    // match against the v3 envelope context.
+    if (expectedRemoteDeviceId) {
+      const existingState = await getSessionStateBytes(
+        input.sessionId,
+        localDeviceId,
+        expectedRemoteUserId,
+        expectedRemoteDeviceId,
+      );
+      if (existingState) {
+        await this.restoreSessionIfNeeded(input.sessionId, existingState);
+        const recipientDeviceId = input.recipientDeviceId || storedRemoteDeviceId;
+        if (!recipientDeviceId) {
+          throw new Error("E2EE session state restored but remote device ID is empty");
+        }
+        return { recipientDeviceId };
+      }
     }
 
     if (!input.recipientUserId) {
@@ -236,19 +219,21 @@ class E2eeManager {
       remoteBundle,
     });
     this.loadedSessions.add(input.sessionId);
+
+    const resolvedDeviceId = remoteBundle.deviceId ?? input.recipientDeviceId ?? "";
+    if (!resolvedDeviceId || resolvedDeviceId.length === 0) {
+      throw new Error("E2EE session state requires remoteDeviceId");
+    }
+
     const meta: SaveSessionMeta = {
       localDeviceId,
       remoteUserId: input.recipientUserId,
-      remoteDeviceId: remoteBundle.deviceId ?? input.recipientDeviceId ?? "",
+      remoteDeviceId: resolvedDeviceId,
       direction: "outbound",
     };
     await saveSessionStateBytes(input.sessionId, await webE2eeRuntime.exportSession(input.sessionId), meta);
 
-    // Store remote device ID for subsequent message encryption
-    const resolvedDeviceId = remoteBundle.deviceId ?? input.recipientDeviceId ?? "";
-    if (resolvedDeviceId) {
-      localStorage.setItem(`e2ee:remote_device:${input.sessionId}`, resolvedDeviceId);
-    }
+    localStorage.setItem(`e2ee:remote_device:${input.sessionId}`, resolvedDeviceId);
 
     return {
       recipientDeviceId: resolvedDeviceId,
@@ -296,7 +281,7 @@ class E2eeManager {
       typeof raw.oneTimePreKey === "string" && raw.oneTimePreKey.length > 0
         ? typeof raw.oneTimePreKeyId === "number" && Number.isFinite(raw.oneTimePreKeyId)
           ? { id: raw.oneTimePreKeyId, key: raw.oneTimePreKey as string }
-          : null // OTK present but id missing — treat as absent to avoid conflating 0 with absent
+          : (() => { throw new Error("E2EE bundle contains oneTimePreKey without oneTimePreKeyId"); })()
         : null;
 
     return {
