@@ -1,5 +1,5 @@
 import { e2eeManager, E2eeEnvelopeRecipientMismatchError } from '@/e2ee/manager/e2eeManager';
-import { processE2eeMessage, processE2eeMessages, hasE2eeHandshake, shouldDrainPendingAfterDecrypt, E2EE_NOT_FOR_THIS_DEVICE_TEXT } from '@/e2ee/messageProcessor';
+import { processE2eeMessage, processE2eeMessages, compareE2eeDecryptOrder, hasE2eeHandshake, shouldDrainPendingAfterDecrypt, E2EE_NOT_FOR_THIS_DEVICE_TEXT } from '@/e2ee/messageProcessor';
 import { E2EE_OWN_PLAINTEXT_UNAVAILABLE_TEXT, E2EE_UNSUPPORTED_TEXT } from '@/e2ee/e2eeDeferred';
 import type { MobileMessage } from '@/types/models';
 
@@ -243,6 +243,241 @@ describe('mobile E2EE message processing', () => {
         e2eeEnvelope: { ...envelope(0), handshake: '' },
       });
       expect(hasE2eeHandshake(msg)).toBe(false);
+    });
+  });
+
+  // ─── compareE2eeDecryptOrder ──────────────────────────────────────
+
+  const makeMsg = (overrides: Partial<MobileMessage> = {}): MobileMessage => ({
+    id: 'id-0',
+    messageId: 'msg-0',
+    senderId: '200',
+    isGroupChat: false,
+    messageType: 'TEXT',
+    content: '',
+    sendTime: '2024-06-01T10:00:00.000Z',
+    status: 'SENT',
+    ...overrides,
+  });
+
+  describe('compareE2eeDecryptOrder', () => {
+    it('sorts by conversationSeq even when sendTime is opposite', () => {
+      const left = makeMsg({ id: 'left', messageId: 'left', conversationSeq: 1, sendTime: '2024-06-01T10:00:02.000Z' });
+      const right = makeMsg({ id: 'right', messageId: 'right', conversationSeq: 0, sendTime: '2024-06-01T10:00:01.000Z' });
+      // left has higher seq → should come after right, even though left has later time
+      expect(compareE2eeDecryptOrder(left, right)).toBeGreaterThan(0);
+      expect(compareE2eeDecryptOrder(right, left)).toBeLessThan(0);
+    });
+
+    it('puts message with conversationSeq before message without it', () => {
+      const withSeq = makeMsg({ id: 'a', messageId: 'a', conversationSeq: 5 });
+      const withoutSeq = makeMsg({ id: 'b', messageId: 'b', conversationSeq: undefined });
+      expect(compareE2eeDecryptOrder(withSeq, withoutSeq)).toBe(-1);
+      expect(compareE2eeDecryptOrder(withoutSeq, withSeq)).toBe(1);
+    });
+
+    it('returns 0 when both have same conversationSeq and same sendTime and same id', () => {
+      const msg = makeMsg({ id: 'x', messageId: 'x', conversationSeq: 3, sendTime: '2024-06-01T10:00:00.000Z' });
+      expect(compareE2eeDecryptOrder(msg, { ...msg })).toBe(0);
+    });
+
+    it('falls back to sendTime when both have valid sendTime and no seq', () => {
+      const earlier = makeMsg({ id: 'a', messageId: 'a', sendTime: '2024-06-01T10:00:01.000Z' });
+      const later = makeMsg({ id: 'b', messageId: 'b', sendTime: '2024-06-01T10:00:02.000Z' });
+      expect(compareE2eeDecryptOrder(earlier, later)).toBeLessThan(0);
+      expect(compareE2eeDecryptOrder(later, earlier)).toBeGreaterThan(0);
+    });
+
+    it('puts message with valid sendTime before message without sendTime when no seq', () => {
+      const withTime = makeMsg({ id: 'a', messageId: 'a', sendTime: '2024-06-01T10:00:00.000Z' });
+      const withoutTime = makeMsg({ id: 'b', messageId: 'b', sendTime: undefined as unknown as string });
+      expect(compareE2eeDecryptOrder(withTime, withoutTime)).toBe(-1);
+      expect(compareE2eeDecryptOrder(withoutTime, withTime)).toBe(1);
+    });
+
+    it('does not return NaN when sendTime is invalid', () => {
+      const a = makeMsg({ id: 'a', messageId: 'a', sendTime: 'not-a-date' });
+      const b = makeMsg({ id: 'b', messageId: 'b', sendTime: 'also-invalid' });
+      const result = compareE2eeDecryptOrder(a, b);
+      expect(Number.isFinite(result)).toBe(true);
+      expect(Number.isNaN(result)).toBe(false);
+    });
+
+    it('does not return NaN when one sendTime is invalid and the other is valid', () => {
+      const valid = makeMsg({ id: 'a', messageId: 'a', sendTime: '2024-06-01T10:00:00.000Z' });
+      const invalid = makeMsg({ id: 'b', messageId: 'b', sendTime: 'not-a-date' });
+      const r1 = compareE2eeDecryptOrder(valid, invalid);
+      const r2 = compareE2eeDecryptOrder(invalid, valid);
+      expect(Number.isFinite(r1)).toBe(true);
+      expect(Number.isNaN(r1)).toBe(false);
+      expect(Number.isFinite(r2)).toBe(true);
+      expect(Number.isNaN(r2)).toBe(false);
+    });
+
+    it('does not treat missing sendTime as 1970-01-01', () => {
+      const withZeroTime = makeMsg({ id: 'a', messageId: 'a', sendTime: '1970-01-01T00:00:00.000Z' });
+      const withMissingTime = makeMsg({ id: 'b', messageId: 'b', sendTime: undefined as unknown as string });
+      // Missing sendTime (undefined) should NOT sort as 1970-01-01
+      // It should fall back to stable ID comparison
+      const result = compareE2eeDecryptOrder(withZeroTime, withMissingTime);
+      expect(Number.isFinite(result)).toBe(true);
+      expect(Number.isNaN(result)).toBe(false);
+    });
+
+    it('falls back to stableMessageKey when sendTime is same', () => {
+      const a = makeMsg({ id: 'a', messageId: 'z', sendTime: '2024-06-01T10:00:00.000Z' });
+      const b = makeMsg({ id: 'b', messageId: 'a', sendTime: '2024-06-01T10:00:00.000Z' });
+      // Same time, no seq → fallback to messageId comparison: 'a' < 'z'
+      expect(compareE2eeDecryptOrder(a, b)).toBeGreaterThan(0); // 'z' > 'a'
+    });
+
+    it('uses serverId as fallback key when messageId is absent', () => {
+      const a = makeMsg({ id: 'a', messageId: undefined, serverId: 'z' });
+      const b = makeMsg({ id: 'b', messageId: undefined, serverId: 'a' });
+      expect(compareE2eeDecryptOrder(a, b)).toBeGreaterThan(0);
+    });
+
+    it('uses id as fallback key when messageId and serverId are absent', () => {
+      const a = makeMsg({ id: 'z', messageId: undefined, serverId: undefined });
+      const b = makeMsg({ id: 'a', messageId: undefined, serverId: undefined });
+      expect(compareE2eeDecryptOrder(a, b)).toBeGreaterThan(0);
+    });
+
+    it('uses clientMessageId as last fallback key', () => {
+      const a = makeMsg({ id: '', messageId: undefined, serverId: undefined, clientMessageId: 'z' });
+      const b = makeMsg({ id: '', messageId: undefined, serverId: undefined, clientMessageId: 'a' });
+      expect(compareE2eeDecryptOrder(a, b)).toBeGreaterThan(0);
+    });
+
+    it('parses string-number conversationSeq correctly', () => {
+      // conversationSeq as string should be parsed to number via readNumberField
+      const left = makeMsg({ id: 'left', messageId: 'left', conversationSeq: '5' as unknown as number });
+      const right = makeMsg({ id: 'right', messageId: 'right', conversationSeq: '10' as unknown as number });
+      expect(compareE2eeDecryptOrder(left, right)).toBeLessThan(0);
+    });
+
+    it('ignores invalid-string conversationSeq and falls back to time/ID', () => {
+      const a = makeMsg({ id: 'a', messageId: 'a', conversationSeq: 'abc' as unknown as number, sendTime: '2024-06-01T10:00:01.000Z' });
+      const b = makeMsg({ id: 'b', messageId: 'b', conversationSeq: 'xyz' as unknown as number, sendTime: '2024-06-01T10:00:02.000Z' });
+      // Both seq are invalid → should fall back to sendTime
+      expect(compareE2eeDecryptOrder(a, b)).toBeLessThan(0);
+      // Verify no NaN
+      expect(Number.isNaN(compareE2eeDecryptOrder(a, b))).toBe(false);
+    });
+
+    it('conversationSeq 0 is treated as valid (not falsy)', () => {
+      const left = makeMsg({ id: 'left', messageId: 'left', conversationSeq: 0 });
+      const right = makeMsg({ id: 'right', messageId: 'right', conversationSeq: 1 });
+      expect(compareE2eeDecryptOrder(left, right)).toBeLessThan(0);
+    });
+
+    it('produces stable sort for array with mixed valid/invalid fields', () => {
+      const messages = [
+        makeMsg({ id: '3', messageId: '3', conversationSeq: undefined, sendTime: 'invalid' }),
+        makeMsg({ id: '1', messageId: '1', conversationSeq: 2, sendTime: '2024-06-01T10:00:00.000Z' }),
+        makeMsg({ id: '2', messageId: '2', conversationSeq: 1, sendTime: '2024-06-01T10:00:03.000Z' }),
+      ];
+      const sorted = [...messages].sort(compareE2eeDecryptOrder);
+      // Should be ordered by conversationSeq: seq=1 then seq=2 then no-seq
+      expect(sorted.map((m) => m.id)).toEqual(['2', '1', '3']);
+      // All comparisons must be finite
+      sorted.forEach((_, i) => {
+        if (i > 0) {
+          const cmp = compareE2eeDecryptOrder(sorted[i - 1], sorted[i]);
+          expect(Number.isFinite(cmp)).toBe(true);
+          expect(cmp).toBeLessThanOrEqual(0);
+        }
+      });
+    });
+
+    it('never returns NaN for any pairwise combination of edge-case messages', () => {
+      const edgeCases: MobileMessage[] = [
+        makeMsg({ id: 'a', messageId: 'a', conversationSeq: 1, sendTime: '2024-06-01T10:00:00.000Z' }),
+        makeMsg({ id: 'b', messageId: 'b', conversationSeq: undefined, sendTime: undefined as unknown as string }),
+        makeMsg({ id: 'c', messageId: 'c', conversationSeq: undefined, sendTime: 'not-a-date' }),
+        makeMsg({ id: 'd', messageId: 'd', conversationSeq: NaN, sendTime: '2024-06-01T10:00:00.000Z' }),
+        makeMsg({ id: 'e', messageId: 'e', conversationSeq: 0, sendTime: '1970-01-01T00:00:00.000Z' }),
+        makeMsg({ id: 'f', messageId: 'f', conversationSeq: undefined, sendTime: '1970-01-01T00:00:00.000Z' }),
+        makeMsg({ id: 'g', messageId: 'g', conversationSeq: 'abc' as unknown as number, sendTime: 'invalid' }),
+        makeMsg({ id: '', messageId: undefined, serverId: undefined, clientMessageId: undefined, conversationSeq: undefined, sendTime: undefined as unknown as string }),
+      ];
+      for (const left of edgeCases) {
+        for (const right of edgeCases) {
+          const result = compareE2eeDecryptOrder(left, right);
+          expect(Number.isFinite(result)).toBe(true);
+          expect(Number.isNaN(result)).toBe(false);
+        }
+      }
+    });
+  });
+
+  // ─── processE2eeMessages ordering ─────────────────────────────────
+
+  describe('processE2eeMessages ordering', () => {
+    it('decrypts same-session remote encrypted messages in conversationSeq order', async () => {
+      const decryptOrder: string[] = [];
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockImplementation(async (rustEnvelope) => {
+        decryptOrder.push(rustEnvelope.wire);
+        return `plaintext-${rustEnvelope.wire.slice(-1)}`;
+      });
+
+      // conversationSeq 2, 0, 1 — should decrypt as 0, 1, 2
+      const input = [
+        encryptedMessage(0, { conversationSeq: 2 }),
+        encryptedMessage(1, { conversationSeq: 0 }),
+        encryptedMessage(2, { conversationSeq: 1 }),
+      ];
+
+      await processE2eeMessages(input, {
+        currentUserId: '100',
+        sessionId: '100_200',
+        concurrency: 8,
+      });
+
+      expect(decryptOrder).toEqual(['AAAA1', 'AAAA2', 'AAAA0']);
+    });
+
+    it('decrypts same-session messages in conversationSeq order regardless of sendTime', async () => {
+      const decryptOrder: string[] = [];
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockImplementation(async (rustEnvelope) => {
+        decryptOrder.push(rustEnvelope.wire);
+        return `plaintext-${rustEnvelope.wire.slice(-1)}`;
+      });
+
+      const input = [
+        encryptedMessage(0, { conversationSeq: 1, sendTime: '2024-06-01T10:00:05.000Z' }),
+        encryptedMessage(1, { conversationSeq: 0, sendTime: '2024-06-01T10:00:01.000Z' }),
+      ];
+
+      await processE2eeMessages(input, {
+        currentUserId: '100',
+        sessionId: '100_200',
+        concurrency: 8,
+      });
+
+      // seq 0 before seq 1, even though seq 1 has later sendTime
+      expect(decryptOrder).toEqual(['AAAA1', 'AAAA0']);
+    });
+
+    it('groups different sessions independently', async () => {
+      const decryptCalls: Array<{ sessionId: string; wire: string }> = [];
+      jest.spyOn(e2eeManager, 'decryptEnvelope').mockImplementation(async (rustEnvelope) => {
+        decryptCalls.push({ sessionId: rustEnvelope.sessionId, wire: rustEnvelope.wire });
+        return `plaintext-${rustEnvelope.wire.slice(-1)}`;
+      });
+
+      const msgA = encryptedMessage(0, { e2eeEnvelope: { ...envelope(0), sessionId: 'session-A' }, conversationSeq: 1 });
+      const msgB = encryptedMessage(1, { e2eeEnvelope: { ...envelope(1), sessionId: 'session-B' }, conversationSeq: 0 });
+      const msgC = encryptedMessage(2, { e2eeEnvelope: { ...envelope(2), sessionId: 'session-A' }, conversationSeq: 0 });
+
+      await processE2eeMessages([msgA, msgB, msgC], {
+        currentUserId: '100',
+        concurrency: 8,
+      });
+
+      // Within session-A: seq 0 (msgC) before seq 1 (msgA)
+      const sessionAOrder = decryptCalls.filter((c) => c.sessionId === 'session-A').map((c) => c.wire);
+      expect(sessionAOrder).toEqual(['AAAA2', 'AAAA0']);
     });
   });
 

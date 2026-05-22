@@ -86,6 +86,15 @@ const readEnvelope = (value: unknown): RustE2eeEnvelope | undefined => {
   return normalized ?? undefined;
 };
 
+const readTimestampMs = (value: unknown): number | undefined => {
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const stableMessageKey = (message: MobileMessage): string =>
+  String(message.messageId || message.serverId || message.id || message.clientMessageId || '');
+
 const parseRawMessage = (message: MobileMessage): MobileMessage => {
   if (!message.rawJson) {
     return message;
@@ -110,20 +119,38 @@ const parseRawMessage = (message: MobileMessage): MobileMessage => {
   }
 };
 
+/**
+ * E2EE 批量解密排序 comparator。
+ *
+ * 排序优先级：
+ * 1. 服务端单调序号 conversationSeq / conversation_seq（优先，保证 Double Ratchet 解密顺序正确）
+ * 2. 有效 sendTime（仅作为 fallback，缺失或非法时降级到 ID 比较）
+ * 3. stable message key（messageId / serverId / id / clientMessageId），保证稳定且不会返回 NaN
+ *
+ * 约束：comparator 永远不返回 NaN，否则 JS sort 行为不可预测，会导致乱序解密失败。
+ */
 export const compareE2eeDecryptOrder = (left: MobileMessage, right: MobileMessage): number => {
-  const leftTime = new Date(left.sendTime || 0).getTime();
-  const rightTime = new Date(right.sendTime || 0).getTime();
-  if (leftTime !== rightTime) {
-    return leftTime - rightTime;
-  }
   const leftSeq = readNumberField(left, 'conversationSeq', 'conversation_seq');
   const rightSeq = readNumberField(right, 'conversationSeq', 'conversation_seq');
+
   if (leftSeq != null && rightSeq != null && leftSeq !== rightSeq) {
     return leftSeq - rightSeq;
   }
-  return (left.messageId || left.serverId || left.id || left.clientMessageId || '').localeCompare(
-    right.messageId || right.serverId || right.id || right.clientMessageId || '',
-  );
+
+  if (leftSeq != null && rightSeq == null) return -1;
+  if (leftSeq == null && rightSeq != null) return 1;
+
+  const leftTime = readTimestampMs(left.sendTime);
+  const rightTime = readTimestampMs(right.sendTime);
+
+  if (leftTime != null && rightTime != null && leftTime !== rightTime) {
+    return leftTime - rightTime;
+  }
+
+  if (leftTime != null && rightTime == null) return -1;
+  if (leftTime == null && rightTime != null) return 1;
+
+  return stableMessageKey(left).localeCompare(stableMessageKey(right));
 };
 
 const hasLegacyEncryptedPayload = (message: MobileMessage): boolean => {
