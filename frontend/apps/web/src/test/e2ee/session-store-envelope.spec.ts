@@ -14,7 +14,7 @@ import {
   saveRatchetState,
   saveSessionStateBytes,
 } from "@/features/e2ee/store/session-store";
-import { SESSION_STATE_ENVELOPE_VERSION } from "@im/shared-e2ee-core";
+import { bytesToBase64, SESSION_STATE_ENVELOPE_VERSION } from "@im/shared-e2ee-core";
 
 const localDeviceId = "web-aaaa-bbbb-cccc-dddd-eeee";
 const sessionId = "p_100_200";
@@ -255,5 +255,64 @@ describe("Web session-store v3 envelope", () => {
       // userId intentionally omitted
     );
     expect(result).not.toBeNull();
+  });
+
+  // ── remoteDeviceId="" 拒绝 ──────────────────────────────────────────
+
+  it("rejects envelope with empty remoteDeviceId during decode", async () => {
+    // Directly write a v3 record with empty remoteDeviceId to simulate a
+    // legacy bug path where encryptMessage/decryptMessage saved envelopes
+    // with remoteDeviceId="".
+    const { openDB } = await import("fake-indexeddb");
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("e2ee_keys", 3);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("sessions", "readwrite");
+      tx.objectStore("sessions").put(
+        {
+          version: 3,
+          algorithm: "rust-x25519-x3dh-dr-v1",
+          userId: "alice-123",
+          localDeviceId,
+          sessionId,
+          remoteUserIdHash: "0000111122223333",
+          remoteDeviceId: "",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          state: bytesToBase64(mockState),
+        },
+        sessionId,
+      );
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+
+    const result = await getSessionStateBytes(
+      sessionId,
+      localDeviceId,
+      remoteUserId,
+      "",
+      "alice-123",
+    );
+    expect(result).toBeNull();
+  });
+
+  // ── validateSessionStateEnvelopeContext remoteDeviceId mismatch ────
+
+  it("validateSessionStateEnvelopeContext remoteDeviceId mismatch returns null", async () => {
+    await saveSessionStateBytes(sessionId, mockState, defaultMeta);
+
+    // Use a wrong remoteDeviceId — must NOT restore
+    const result = await getSessionStateBytes(
+      sessionId,
+      localDeviceId,
+      remoteUserId,
+      "wrong-device-id-xyz",
+      "alice-123",
+    );
+    expect(result).toBeNull();
   });
 });
