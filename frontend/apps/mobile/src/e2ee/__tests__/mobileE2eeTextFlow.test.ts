@@ -46,7 +46,7 @@ jest.mock('@/e2ee/api/keyService', () => ({
         data: deviceId ? [{ deviceId, userId: targetUserId, identityKey: bundle?.identityKey, lastActiveAt: new Date().toISOString() }] : [],
       };
     }),
-    getBundle: jest.fn(async (userId: string, deviceId?: string, _options?: { conversationId?: string; requesterDeviceId?: string }) => {
+    getBundle: jest.fn(async (userId: string, deviceId: string, _conversationId: string, _requesterDeviceId: string) => {
       const bundle = mockBundles.get(userId);
       if (!bundle || (deviceId && bundle.deviceId !== deviceId)) {
         return { code: 404, message: 'missing', data: null };
@@ -223,11 +223,9 @@ describe('mobile Rust E2EE v2 text integration', () => {
     const getBundleCalls = (mobileE2eeKeyService.getBundle as jest.Mock).mock.calls;
     const outboundCall = getBundleCalls[getBundleCalls.length - 1];
     expect(outboundCall[0]).toBe('bob'); // userId
-    expect(outboundCall[2]).toMatchObject({
-      conversationId: sessionId,
-      requesterDeviceId: expect.any(String),
-    });
-    expect(outboundCall[2].requesterDeviceId).toBeTruthy();
+    expect(outboundCall[1]).toBeTruthy(); // deviceId
+    expect(outboundCall[2]).toBe(sessionId); // conversationId
+    expect(outboundCall[3]).toBeTruthy(); // requesterDeviceId
     await expect(getSessionCryptoReadiness(sessionId)).resolves.toBe('ratchet_ready');
 
     setUser('bob');
