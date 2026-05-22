@@ -142,64 +142,23 @@ export const heartbeatLocalE2eeDevice = async (): Promise<void> => {
  * lighter-weight "generate only OTKs" API in the Rust layer would avoid
  * unnecessary computation and make replenishment cheaper.
  */
-export const replenishOneTimePreKeys = async (count?: number): Promise<void> => {
-  const effectiveCount = count ?? ONE_TIME_PRE_KEY_COUNT;
-  const userId = requireCurrentE2eeUserId();
-  const deviceId = await e2eeKeyStore.getOrCreateDeviceId(userId);
-  const material = await e2eeKeyStore.getKeyMaterial(userId, deviceId);
-  if (!material) {
-    throw new Error('Cannot replenish OTKs without existing key material — register the device first');
-  }
-
-  const publishedIds = await getPublishedOtkIds(userId, deviceId);
-  const maxPublishedId = publishedIds.size > 0 ? Math.max(...publishedIds) : 0;
-  const startId = maxPublishedId + 1;
-
-  const generated = await getMobileE2eeRuntime().generatePreKeyBundle({
-    signedPreKeyId: SIGNED_PRE_KEY_ID,
-    oneTimePreKeyStartId: startId,
-    oneTimePreKeyCount: effectiveCount,
-  });
-
-  const newOtks = generated.publicBundle.oneTimePreKeys ?? [];
-  if (newOtks.length === 0) {
-    return;
-  }
-
-  const mergedMaterial: LocalE2eeKeyMaterial = {
-    ...material,
-    oneTimePreKeyPairs: [
-      ...(material.oneTimePreKeyPairs ?? []),
-      ...(generated.oneTimePreKeyPairs ?? []),
-    ],
-    publicBundle: {
-      ...material.publicBundle,
-      oneTimePreKeys: [
-        ...(material.publicBundle.oneTimePreKeys ?? []),
-        ...newOtks,
-      ],
-    },
-  };
-
-  await e2eeKeyStore.saveKeyMaterial(userId, deviceId, mergedMaterial);
-
-  await mobileE2eeKeyService.uploadBundle({
-    deviceId,
-    identityKey: mergedMaterial.publicBundle.identityKey,
-    signingIdentityKey: mergedMaterial.publicBundle.signingKey,
-    signedPreKey: mergedMaterial.publicBundle.signedPreKey.key,
-    signedPreKeySignature: mergedMaterial.publicBundle.signedPreKeySignature,
-    oneTimePreKeys: newOtks,
-  });
-
-  const newIds = newOtks.map((k) => k.id);
-  const allPublished = [...publishedIds, ...newIds];
-  await setPublishedOtkIds(userId, deviceId, allPublished);
-
-  logger.info('e2ee', 'OTK replenishment complete', {
-    added: newIds.length,
-    totalPublished: allPublished.length,
-  });
+/**
+ * Generate and upload new one-time prekeys for the current device.
+ *
+ * **DEPRECATED — DO NOT USE**: The server's `uploadBundle` performs a full
+ * replace (DELETE all existing OTKs, then INSERT the request OTKs). Using it
+ * for replenishment with only new OTKs would delete all unconsumed server-side
+ * OTKs, causing OTK exhaustion and potential security issues.
+ *
+ * Replenishment requires an append-only server API (e.g. `POST /keys/otk`).
+ * Until that endpoint exists, this function throws unconditionally.
+ *
+ * @throws {Error} always — replenishment requires append-only server API.
+ */
+export const replenishOneTimePreKeys = async (_count?: number): Promise<void> => {
+  throw new Error(
+    'OTK replenishment requires append-only server API; uploadBundle must not be used for replenishment',
+  );
 };
 
 export const __resetLocalE2eeDeviceRegistrationForTests = (): void => {
