@@ -122,11 +122,15 @@ const handleAccept = async () => {
     const payload = JSON.parse(props.requestPayloadJson) as {
       senderIdentityKey?: string;
       handshake?: string;
-      deviceId?: string;
+      senderDeviceId?: string;
+      targetDeviceId?: string;
     };
 
     if (!payload.senderIdentityKey || !payload.handshake) {
       throw new Error("协商载荷格式错误，缺少必要的密钥信息。");
+    }
+    if (!payload.senderDeviceId || !payload.targetDeviceId) {
+      throw new Error("协商载荷格式错误，缺少必要的设备信息。");
     }
 
     // Perform X3DH response and initialize receiving chain
@@ -138,7 +142,8 @@ const handleAccept = async () => {
       payload.senderIdentityKey,
       payload.handshake,
       props.requesterId,
-      payload.deviceId,
+      payload.senderDeviceId,
+      payload.targetDeviceId,
     );
 
     if (!ok) {
