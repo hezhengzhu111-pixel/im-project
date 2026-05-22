@@ -1,4 +1,16 @@
-import { asBase64String, bytesToBase64, type Base64String, type E2eeSessionStatus, type InitialE2eeHandshake } from '@im/shared-e2ee-core';
+import {
+  asBase64String,
+  bytesToBase64,
+  decodeSessionStateEnvelope,
+  encodeSessionStateEnvelope,
+  extractSessionStateBytes,
+  serializeSessionStateEnvelope,
+  validateSessionStateEnvelopeContext,
+  type Base64String,
+  type E2eeSessionStatus,
+  type InitialE2eeHandshake,
+  type SessionStateEnvelope,
+} from '@im/shared-e2ee-core';
 import { e2eeSecureStorage } from '@/e2ee/storage/secureE2eeStorage';
 import { e2eeKeyStore } from './keyStore';
 
@@ -34,6 +46,14 @@ const scopedMemoryKey = (userId: string, deviceId: string, sessionId: string): s
 
 const encodeSessionState = (state: Uint8Array | Base64String): RustSessionState =>
   typeof state === 'string' ? asBase64String(state, 'session state') : bytesToBase64(state);
+
+export interface SaveSessionStateMeta {
+  remoteUserId: string;
+  remoteDeviceId: string;
+  direction?: SessionStateEnvelope['direction'];
+  localIdentityKey?: string;
+  remoteIdentityKey?: string;
+}
 
 export const e2eeSessionStore = {
   /**
@@ -97,41 +117,147 @@ export const e2eeSessionStore = {
     // Do not fall back to an unscoped global key.
   },
 
-  async saveSessionState(userId: string, sessionId: string, state: Uint8Array | Base64String): Promise<void> {
+  /**
+   * Save session state as a version 3 envelope.
+   *
+   * The envelope binds the raw bincode state to the current userId,
+   * localDeviceId, sessionId, remoteUserId (hashed), and remoteDeviceId.
+   * On restore, all fields must match or the state is rejected.
+   */
+  async saveSessionState(
+    userId: string,
+    sessionId: string,
+    state: Uint8Array | Base64String,
+    meta: SaveSessionStateMeta,
+  ): Promise<void> {
     const ns = await namespace(userId);
     if (!ns) {
       throw new Error('E2EE namespace unavailable');
     }
+    const envelope = await encodeSessionStateEnvelope(state, {
+      userId: ns.userId,
+      localDeviceId: ns.deviceId,
+      sessionId,
+      remoteUserId: meta.remoteUserId,
+      remoteDeviceId: meta.remoteDeviceId,
+    }, {
+      direction: meta.direction,
+      localIdentityKey: meta.localIdentityKey,
+      remoteIdentityKey: meta.remoteIdentityKey,
+    });
     await e2eeSecureStorage.setEncryptedJson(
       ns.userId,
       ns.deviceId,
       keyFor(ns.userId, ns.deviceId, SESSION_KIND, sessionId),
-      { version: 2, state: encodeSessionState(state) },
+      JSON.parse(serializeSessionStateEnvelope(envelope)),
     );
+    // Keep the remote-device-id record for quick pre-session lookups.
+    if (meta.remoteDeviceId) {
+      await e2eeSecureStorage.setEncryptedJson(
+        ns.userId,
+        ns.deviceId,
+        keyFor(ns.userId, ns.deviceId, REMOTE_DEVICE_KIND, sessionId),
+        { deviceId: meta.remoteDeviceId },
+      );
+    }
   },
 
-  async getSessionState(userId: string, sessionId: string): Promise<RustSessionState | null> {
+  /**
+   * Retrieve session state, validating the version 3 envelope context.
+   *
+   * @param expectedRemoteUserId — validated against the hashed remoteUserId in the envelope.
+   * @param expectedRemoteDeviceId — validated against remoteDeviceId in the envelope.
+   *
+   * Returns `null` when:
+   * - No stored state exists
+   * - The envelope is version 2 and cannot be migrated (missing context)
+   * - The version 3 envelope fails context validation
+   * - The state bytes are empty or invalid
+   */
+  async getSessionState(
+    userId: string,
+    sessionId: string,
+    expectedRemoteUserId: string,
+    expectedRemoteDeviceId: string,
+  ): Promise<RustSessionState | null> {
     const ns = await namespace(userId);
     if (!ns) {
       return null;
+    }
+    const stored = await e2eeSecureStorage.getEncryptedJson<Record<string, unknown>>(
+      ns.userId,
+      ns.deviceId,
+      keyFor(ns.userId, ns.deviceId, SESSION_KIND, sessionId),
+    );
+    if (!stored || typeof stored !== 'object') {
+      return null;
+    }
+
+    // ── Version 3: validate full context ──────────────────────────
+    if (stored.version === 3) {
+      const envelope = decodeSessionStateEnvelope(stored);
+      if (!envelope) {
+        return null;
+      }
+      try {
+        await validateSessionStateEnvelopeContext(envelope, {
+          userId: ns.userId,
+          localDeviceId: ns.deviceId,
+          sessionId,
+          remoteUserId: expectedRemoteUserId,
+          remoteDeviceId: expectedRemoteDeviceId,
+        });
+      } catch {
+        // Context mismatch — do NOT restore, trigger re-negotiation.
+        return null;
+      }
+      try {
+        const stateBytes = extractSessionStateBytes(envelope);
+        if (stateBytes.length === 0) {
+          return null;
+        }
+        return bytesToBase64(stateBytes);
+      } catch {
+        return null;
+      }
+    }
+
+    // ── Version 2: attempt one-shot migration ─────────────────────
+    if (stored.version === 2 && typeof stored.state === 'string' && stored.state.length > 0) {
+      // V2 data lacks remoteUserId and may lack remoteDeviceId.
+      // If both expected values are available, migrate immediately.
+      if (expectedRemoteUserId && expectedRemoteDeviceId) {
+        try {
+          // Preserve the raw state and re-save as v3
+          const rawState = asBase64String(stored.state, 'stored v2 session state');
+          await this.saveSessionState(userId, sessionId, rawState, {
+            remoteUserId: expectedRemoteUserId,
+            remoteDeviceId: expectedRemoteDeviceId,
+          });
+          return rawState;
+        } catch {
+          // Migration failed — discard and re-negotiate.
+          return null;
+        }
+      }
+      // Cannot prove context correctness — discard and re-negotiate.
+      return null;
+    }
+
+    return null;
+  },
+
+  async hasSessionState(userId: string, sessionId: string): Promise<boolean> {
+    const ns = await namespace(userId);
+    if (!ns) {
+      return false;
     }
     const stored = await e2eeSecureStorage.getEncryptedJson<{ version?: number; state?: string }>(
       ns.userId,
       ns.deviceId,
       keyFor(ns.userId, ns.deviceId, SESSION_KIND, sessionId),
     );
-    if (stored?.version !== 2 || typeof stored.state !== 'string' || stored.state.length === 0) {
-      return null;
-    }
-    try {
-      return asBase64String(stored.state, 'stored E2EE session state');
-    } catch {
-      return null;
-    }
-  },
-
-  async hasSessionState(userId: string, sessionId: string): Promise<boolean> {
-    return Boolean(await this.getSessionState(userId, sessionId));
+    return stored?.version != null && (stored.version === 3 || (stored.version === 2 && typeof stored.state === 'string' && stored.state.length > 0));
   },
 
   async deleteSessionState(userId: string, sessionId: string): Promise<void> {
@@ -144,6 +270,13 @@ export const e2eeSessionStore = {
     }
   },
 
+  /**
+   * Persist remote device id for quick pre-session lookups.
+   *
+   * The authoritative remote device id is stored inside the version 3 envelope.
+   * This separate record is a cache for use before a session exists (e.g. to
+   * decide which device to target for the first encrypt).
+   */
   async saveRemoteDeviceId(userId: string, sessionId: string, deviceId: string): Promise<void> {
     const ns = await namespace(userId);
     if (!ns || !deviceId) {

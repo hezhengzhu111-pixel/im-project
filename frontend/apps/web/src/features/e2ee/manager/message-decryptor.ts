@@ -26,6 +26,7 @@ export interface DecryptResult {
     | "missing_envelope"
     | "missing_session"
     | "crypto_failed"
+    | "otk_missing"
     | "duplicate"
     | "unsupported_envelope"
     | "session_created_from_handshake";
@@ -145,7 +146,7 @@ async function decryptOneMessage(
     const code = isMissingSession && !hasHandshake
       ? "missing_session"
       : classification.code === "E2EE_ONE_TIME_PREKEY_MISSING"
-        ? "crypto_failed"
+        ? "otk_missing"
         : "crypto_failed";
 
     // 保留 encrypted=true，content 留空，UI 根据 decryptStatus 显示占位文案

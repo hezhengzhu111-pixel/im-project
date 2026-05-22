@@ -1,6 +1,7 @@
 import {
   RUST_E2EE_ALGORITHM,
   RUST_E2EE_ENVELOPE_VERSION,
+  SessionStateContextMismatchError,
   asBase64String,
   bytesToBase64,
   bytesToUtf8,
@@ -13,7 +14,7 @@ import {
 import { mobileE2eeKeyService } from '@/e2ee/api/keyService';
 import { getMobileE2eeRuntime } from '@/e2ee/runtime/mobileRustE2eeRuntime';
 import { e2eeKeyStore } from '@/e2ee/store/keyStore';
-import { e2eeSessionStore } from '@/e2ee/store/sessionStore';
+import { e2eeSessionStore, type SaveSessionStateMeta } from '@/e2ee/store/sessionStore';
 import { logger } from '@/utils/logger';
 import { requireCurrentE2eeUserId } from './context';
 import { ensureLocalE2eeDeviceRegistered, getLocalRustKeyMaterial } from './localDevice';
@@ -51,8 +52,10 @@ const normalizeRemoteBundle = (
       ? raw.signedPreKey as RustPublicPreKeyBundle['signedPreKey']
       : { id: 1, key: '' };
   const oneTimePreKey = typeof raw.oneTimePreKey === 'string' && raw.oneTimePreKey.length > 0
-    ? { id: typeof raw.oneTimePreKeyId === 'number' ? raw.oneTimePreKeyId : 0, key: raw.oneTimePreKey }
-    : raw.oneTimePreKey && typeof raw.oneTimePreKey === 'object'
+    ? typeof raw.oneTimePreKeyId === 'number' && Number.isFinite(raw.oneTimePreKeyId)
+      ? { id: raw.oneTimePreKeyId, key: raw.oneTimePreKey }
+      : null // OTK present but id missing — treat as absent to avoid conflating 0 with absent
+    : raw.oneTimePreKey && typeof raw.oneTimePreKey === 'object' && typeof raw.oneTimePreKey.id === 'number' && typeof raw.oneTimePreKey.key === 'string'
       ? raw.oneTimePreKey as RustPublicPreKeyBundle['oneTimePreKey']
       : null;
 
@@ -98,14 +101,18 @@ const commitSessionState = async (
   runtime: E2eeRuntime,
   userId: string,
   sessionId: string,
+  meta: SaveSessionStateMeta,
 ): Promise<void> => {
   try {
     const state = await runtime.exportSession(sessionId);
     if (!hasExportedStateBytes(state)) {
       throw new Error('exported session state is empty');
     }
-    await e2eeSessionStore.saveSessionState(userId, sessionId, state);
+    await e2eeSessionStore.saveSessionState(userId, sessionId, state, meta);
   } catch (error) {
+    if (error instanceof SessionStateContextMismatchError) {
+      throw error;
+    }
     throw new Error(`E2EE session state storage persist failed for session ${sessionId}: ${describeError(error)}`);
   }
 };
@@ -182,8 +189,13 @@ class MobileE2eeManager {
 
       const local = await ensureLocalE2eeDeviceRegistered();
       const runtime = getMobileE2eeRuntime();
-      const existingState = await e2eeSessionStore.getSessionState(userId, params.sessionId);
       let recipientDeviceId = params.recipientDeviceId || (await e2eeSessionStore.getRemoteDeviceId(userId, params.sessionId));
+      const existingState = await e2eeSessionStore.getSessionState(
+        userId,
+        params.sessionId,
+        params.recipientUserId,
+        recipientDeviceId,
+      );
       let handshake: string | undefined;
 
       if (existingState) {
@@ -213,7 +225,11 @@ class MobileE2eeManager {
       }
 
       const wire = await runtime.encrypt(params.sessionId, params.plaintext);
-      await commitSessionState(runtime, userId, params.sessionId);
+      await commitSessionState(runtime, userId, params.sessionId, {
+        remoteUserId: params.recipientUserId,
+        remoteDeviceId: recipientDeviceId,
+        direction: 'outbound',
+      });
       await setLocalSessionStatus(params.sessionId, 'encrypted');
 
       return {
@@ -245,7 +261,12 @@ class MobileE2eeManager {
       }
 
       const runtime = getMobileE2eeRuntime();
-      const state = await e2eeSessionStore.getSessionState(userId, envelope.sessionId);
+      const state = await e2eeSessionStore.getSessionState(
+        userId,
+        envelope.sessionId,
+        senderId,
+        envelope.senderDeviceId,
+      );
 
       if (state) {
         await this.restoreSessionIfNeeded(runtime, envelope.sessionId, state);
@@ -267,7 +288,11 @@ class MobileE2eeManager {
 
       try {
         const plaintext = await runtime.decrypt(envelope.sessionId, envelope);
-        await commitSessionState(runtime, userId, envelope.sessionId);
+        await commitSessionState(runtime, userId, envelope.sessionId, {
+          remoteUserId: senderId,
+          remoteDeviceId: envelope.senderDeviceId,
+          direction: 'inbound',
+        });
         await setLocalSessionStatus(envelope.sessionId, 'encrypted');
         return bytesToUtf8(plaintext);
       } catch (error) {

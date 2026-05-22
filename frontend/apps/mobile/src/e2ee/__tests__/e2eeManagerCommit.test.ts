@@ -162,13 +162,15 @@ describe('mobile E2EE session state commit boundary', () => {
     expect(runtime.decrypt).not.toHaveBeenCalled();
   });
 
-  it('throws E2eeEnvelopeRecipientMismatchError when envelope recipientDeviceId is empty', async () => {
+  it('throws E2eeEnvelopeRecipientMismatchError when envelope recipientDeviceId does not match local device', async () => {
+    // isRustE2eeEnvelope requires non-empty recipientDeviceId, so use a
+    // valid-looking but mismatched device id to trigger the mismatch check.
     await expect(e2eeManager.decryptEnvelope({
       version: 2,
       algorithm: 'rust-x25519-x3dh-dr-v1',
       senderDeviceId: 'device-bob',
-      recipientDeviceId: '',
-      sessionId: 's-empty-recipient',
+      recipientDeviceId: 'device-bob',
+      sessionId: 's-mismatch-recipient',
       wire: 'AQID',
     }, 'bob')).rejects.toThrow(E2eeEnvelopeRecipientMismatchError);
 
