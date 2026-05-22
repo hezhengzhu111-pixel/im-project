@@ -9,7 +9,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 // Use vitest hoisting-safe pattern: vi.mock factory uses bare functions, not vi.fn()
 // ---------------------------------------------------------------------------
 
-const wasmCalls: Record<string, unknown[]> = {};
+const wasmCalls: Record<string, unknown[][]> = {};
 
 vi.mock("@im/rust-e2ee-wasm", () => ({
   default: () => Promise.resolve(undefined),

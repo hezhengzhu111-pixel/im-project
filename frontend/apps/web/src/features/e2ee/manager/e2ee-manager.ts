@@ -243,9 +243,12 @@ class E2eeManager {
     const identityKey = (raw.identityKey as string) ?? "";
     const signingIdKey = ((raw.signingIdentityKey ?? raw.signingKey) as string) ?? identityKey;
     const spkString = (raw.signedPreKey as string) ?? "";
-    const maybeOtk = typeof raw.oneTimePreKey === "string" && raw.oneTimePreKey.length > 0
-      ? { id: (raw.oneTimePreKeyId as number) ?? 0, key: raw.oneTimePreKey as string }
-      : null;
+    const maybeOtk =
+      typeof raw.oneTimePreKey === "string" && raw.oneTimePreKey.length > 0
+        ? typeof raw.oneTimePreKeyId === "number" && Number.isFinite(raw.oneTimePreKeyId)
+          ? { id: raw.oneTimePreKeyId, key: raw.oneTimePreKey as string }
+          : null // OTK present but id missing — treat as absent to avoid conflating 0 with absent
+        : null;
 
     return {
       identityKey,
