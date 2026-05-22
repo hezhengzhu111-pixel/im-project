@@ -156,9 +156,12 @@ async fn establish_friendship(app: &axum::Router, user_a: &AuthedUser, user_b: &
     assert_eq!(status, StatusCode::OK, "friend request failed");
 
     // User B fetches pending friend requests to find the request ID
-    let (status, list_body) =
-        get_json(app, "/api/friend/requests", Some(&user_b.token)).await;
-    assert_eq!(status, StatusCode::OK, "friend requests list failed: {list_body}");
+    let (status, list_body) = get_json(app, "/api/friend/requests", Some(&user_b.token)).await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "friend requests list failed: {list_body}"
+    );
 
     let requests = list_body["data"]
         .as_array()
@@ -182,11 +185,7 @@ async fn establish_friendship(app: &axum::Router, user_a: &AuthedUser, user_b: &
         }),
     )
     .await;
-    assert_eq!(
-        status,
-        StatusCode::OK,
-        "friend accept failed: {_body}"
-    );
+    assert_eq!(status, StatusCode::OK, "friend accept failed: {_body}");
 }
 
 // ---------------------------------------------------------------------------
@@ -239,17 +238,17 @@ async fn test_e2ee_upload_bundle_then_get_devices() {
 }
 
 // ---------------------------------------------------------------------------
-// 测试：get_bundle 会消费 one-time pre-key，第二次不会返回同一个
+// 测试：缺少 conversationId 或 requesterDeviceId 返回 400 BadRequest
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn test_e2ee_get_bundle_consumes_one_time_pre_key() {
+async fn test_e2ee_get_bundle_requires_conversation_id() {
     let app = test_app().await;
     let user = register_and_login(&app).await;
     let device_id = unique_device_id();
 
-    // Upload bundle with 2 one-time pre-keys
-    let (status, upload_body) = post_json(
+    // Upload bundle
+    let (status, _) = post_json(
         &app,
         "/api/keys/bundle",
         Some(&user.token),
@@ -259,61 +258,43 @@ async fn test_e2ee_get_bundle_consumes_one_time_pre_key() {
             "signingIdentityKey": "c2lnbmluZ19pZGVudGl0eQ==",
             "signedPreKey": "c2lnbmVkX3ByZV9rZXk=",
             "signedPreKeySignature": "c2lnbmF0dXJl",
-            "oneTimePreKeys": ["first_otp_key", "second_otp_key"]
+            "oneTimePreKeys": ["first_otp_key"]
         }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // 缺少 conversationId → 400 BadRequest
+    let (status, body) = get_json(
+        &app,
+        &format!(
+            "/api/keys/bundle?userId={}&deviceId={}&requesterDeviceId={}",
+            user.user_id, device_id, device_id
+        ),
+        Some(&user.token),
     )
     .await;
     assert_eq!(
         status,
-        StatusCode::OK,
-        "upload_bundle failed: {upload_body}"
+        StatusCode::BAD_REQUEST,
+        "missing conversationId should return 400, got: {body}"
     );
 
-    // First get_bundle — should return first one-time pre-key
+    // 缺少 requesterDeviceId → 400 BadRequest
     let (status, body) = get_json(
         &app,
         &format!(
-            "/api/keys/bundle?userId={}&deviceId={}",
+            "/api/keys/bundle?userId={}&deviceId={}&conversationId=p_1_2",
             user.user_id, device_id
         ),
         Some(&user.token),
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
-    let first_otp = body["data"]["oneTimePreKey"].as_str().unwrap().to_string();
-    assert_eq!(first_otp, "first_otp_key");
-
-    // Second get_bundle — should return second one-time pre-key
-    let (status, body) = get_json(
-        &app,
-        &format!(
-            "/api/keys/bundle?userId={}&deviceId={}",
-            user.user_id, device_id
-        ),
-        Some(&user.token),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    let second_otp = body["data"]["oneTimePreKey"].as_str().unwrap().to_string();
-    assert_eq!(second_otp, "second_otp_key");
-
-    // Third get_bundle — no more one-time pre-keys, should be null
-    let (status, body) = get_json(
-        &app,
-        &format!(
-            "/api/keys/bundle?userId={}&deviceId={}",
-            user.user_id, device_id
-        ),
-        Some(&user.token),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(
-        body["data"]["oneTimePreKey"].is_null(),
-        "expected null when no more one-time pre-keys"
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "missing requesterDeviceId should return 400, got: {body}"
     );
-    // signed pre key should still be present
-    assert_eq!(body["data"]["signedPreKey"], json!("c2lnbmVkX3ByZV9rZXk="));
 }
 
 // ---------------------------------------------------------------------------
@@ -388,7 +369,12 @@ async fn test_e2ee_unauthenticated_returns_401() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 
     // Get bundle without token
-    let (status, _) = get_json(&app, "/api/keys/bundle?userId=1&deviceId=test", None).await;
+    let (status, _) = get_json(
+        &app,
+        "/api/keys/bundle?userId=1&deviceId=test&conversationId=p_1_2&requesterDeviceId=test",
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 
     // Heartbeat without token
@@ -568,10 +554,7 @@ async fn test_e2ee_backup_upload_and_get() {
 // 辅助函数：上传设备 Bundle 并返回 device_id
 // ---------------------------------------------------------------------------
 
-async fn upload_test_device(
-    app: &axum::Router,
-    token: &str,
-) -> (String, Value) {
+async fn upload_test_device(app: &axum::Router, token: &str) -> (String, Value) {
     let device_id = unique_device_id();
     let (status, body) = post_json(
         app,
@@ -679,7 +662,9 @@ async fn test_e2ee_create_session_private_success() {
     let data = &body["data"];
     assert_eq!(data["conversationId"], json!(conversation_id));
     assert_eq!(data["senderDeviceId"], json!(device_a));
-    let recipients = data["recipientDeviceIds"].as_array().expect("should be array");
+    let recipients = data["recipientDeviceIds"]
+        .as_array()
+        .expect("should be array");
     assert!(recipients.contains(&json!(device_b)));
     assert_eq!(data["status"], json!("active"));
 }
@@ -1201,7 +1186,11 @@ async fn test_e2ee_pending_same_requester_idempotent() {
         }),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "same requester repeat request should be idempotent");
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "same requester repeat request should be idempotent"
+    );
 
     // B should still be able to accept (status is still pending)
     let (status, _) = post_json(
@@ -1503,8 +1492,9 @@ async fn test_e2ee_fake_session_id_with_non_friends() {
 // ---------------------------------------------------------------------------
 
 async fn test_db() -> sqlx::MySqlPool {
-    let db_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "mysql://root:root123@127.0.0.1:3306/service_message_service_db".into());
+    let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        "mysql://root:root123@127.0.0.1:3306/service_message_service_db".into()
+    });
     sqlx::MySqlPool::connect(&db_url)
         .await
         .expect("connect to test db")
@@ -1784,10 +1774,7 @@ async fn test_e2ee_disable_sets_disabled_fields() {
         Some(user_a.user_id.parse::<i64>().unwrap()),
         "disabled_by should be the user who called disable"
     );
-    assert_eq!(
-        has_disabled_at, 1,
-        "disabled_at should be set to NOW()"
-    );
+    assert_eq!(has_disabled_at, 1, "disabled_at should be set to NOW()");
     assert!(
         state_version >= 2,
         "state_version should have been incremented at least twice (created as pending + accept + disable), got {state_version}"
@@ -1822,7 +1809,11 @@ async fn test_e2ee_disable_no_existing_session_writes_disabled_at() {
         &json!({"sessionId": &session_id}),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "disable without prior session should succeed");
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "disable without prior session should succeed"
+    );
 
     // 直接查询数据库验证字段
     let db = test_db().await;
@@ -1841,7 +1832,10 @@ async fn test_e2ee_disable_no_existing_session_writes_disabled_at() {
     let has_disabled_at: i64 = row.get("has_disabled_at");
     let state_version: i32 = row.get("state_version");
 
-    assert_eq!(status, "plaintext", "newly inserted row should be plaintext");
+    assert_eq!(
+        status, "plaintext",
+        "newly inserted row should be plaintext"
+    );
     assert_eq!(
         disabled_by,
         Some(user_a.user_id.parse::<i64>().unwrap()),
