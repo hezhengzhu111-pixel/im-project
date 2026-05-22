@@ -16,8 +16,9 @@ describe("E2EE negotiation local state", () => {
       `e2ee:initial-handshake:${sessionId}`,
       JSON.stringify({
         senderIdentityKey: "identity",
-        ephemeralPublicKey: "ephemeral",
-        deviceId: "device-2",
+        handshake: "aGFuZHNoYWtl",
+        senderDeviceId: "device-1",
+        targetDeviceId: "device-2",
       }),
     );
 
@@ -25,5 +26,21 @@ describe("E2EE negotiation local state", () => {
 
     expect(getLocalSessionStatus(sessionId)).toBe("encrypted");
     expect(getPendingInitialHandshake(sessionId)).toBeNull();
+  });
+
+  it("rejects old handshake with only deviceId field", () => {
+    const sessionId = "user1_user2";
+    localStorage.setItem(
+      `e2ee:initial-handshake:${sessionId}`,
+      JSON.stringify({
+        senderIdentityKey: "identity",
+        handshake: "aGFuZHNoYWtl",
+        deviceId: "device-2",
+      }),
+    );
+
+    // Old payload only has deviceId — should be rejected, no senderDeviceId/targetDeviceId
+    const handshake = getPendingInitialHandshake(sessionId);
+    expect(handshake).toBeNull();
   });
 });

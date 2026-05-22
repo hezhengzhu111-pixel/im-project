@@ -71,7 +71,8 @@ export interface PendingEncryptionRequest {
 export interface InitialE2eeHandshake {
   senderIdentityKey: string;
   handshake: string;
-  deviceId: string;
+  senderDeviceId: string;
+  targetDeviceId: string;
 }
 
 export interface UploadBundleRequest {
