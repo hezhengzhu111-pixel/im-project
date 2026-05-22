@@ -169,7 +169,8 @@ class MobileE2eeManager {
         const remoteBundle = await this.fetchRemoteBundle(
           params.recipientUserId,
           recipientDeviceId || undefined,
-          { conversationId: params.sessionId, requesterDeviceId: local.deviceId },
+          params.sessionId,
+          local.deviceId,
         );
         recipientDeviceId = remoteBundle.deviceId || recipientDeviceId;
         await runtime.removeSession(params.sessionId).catch(() => undefined);
@@ -267,8 +268,9 @@ class MobileE2eeManager {
 
   private async fetchRemoteBundle(
     userId: string,
-    deviceId?: string,
-    options?: { conversationId?: string; requesterDeviceId?: string },
+    deviceId: string | undefined,
+    conversationId: string,
+    requesterDeviceId: string,
   ): Promise<RustPublicPreKeyBundle> {
     const devicesResp = await mobileE2eeKeyService.getDevices(userId);
     const devices = devicesResp.data || [];
@@ -278,10 +280,7 @@ class MobileE2eeManager {
       throw new Error('remote user has no active Rust E2EE device');
     }
 
-    const bundleResp = await mobileE2eeKeyService.getBundle(userId, resolvedDeviceId, {
-      conversationId: options?.conversationId,
-      requesterDeviceId: options?.requesterDeviceId,
-    });
+    const bundleResp = await mobileE2eeKeyService.getBundle(userId, resolvedDeviceId, conversationId, requesterDeviceId);
     if (!bundleResp.data) {
       throw new Error('remote user has no Rust E2EE key bundle');
     }
@@ -293,10 +292,6 @@ class MobileE2eeManager {
     const device = (devicesResp.data || []).find((item) => item.deviceId === senderDeviceId);
     if (device?.identityKey) {
       return device.identityKey;
-    }
-    const bundleResp = await mobileE2eeKeyService.getBundle(senderUserId, senderDeviceId);
-    if (bundleResp.data?.identityKey) {
-      return bundleResp.data.identityKey;
     }
     throw new Error('sender Rust identity key not found');
   }
