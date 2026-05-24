@@ -26,11 +26,12 @@ api-server-rs  (HTTP API + WS 网关 :8082)
    └── Redis Stream im:ai:tasks ──► spring-ai (Java 25 LLM :8084)
 ```
 
-- **`backend/`** — Rust Cargo workspace：`common`（共享类型/JWT）、`api-server-rs`（HTTP API + WS 网关 + 内嵌 Push）、`im-server-rs`（WS 扇出/在线状态，独立运行时）、`e2ee-core/ffi/wasm`（端到端加密）、`spring-ai`（Java 25 + Spring Boot + Spring AI，LLM 微服务）
-- **`frontend/`** — npm workspaces monorepo：`apps/web`（Vue 3 + Vite + Pinia + Element Plus）、`apps/mobile`（React Native）、`packages/*`（共享包）
+- **`backend/`** — Rust Cargo workspace：`common`（共享类型/JWT）、`api-server-rs`（HTTP API + WS 网关 + 内嵌 Push）、`im-server-rs`（WS 扇出/在线状态，独立运行时）、`e2ee-core`（E2EE 引擎）、`e2ee-ffi`（UniFFI 移动端绑定）、`e2ee-wasm`（WASM 浏览器绑定）、`spring-ai`（Java 25 + Spring Boot + Spring AI，LLM 微服务）
+- **`frontend/`** — npm workspaces monorepo：`apps/web`（Vue 3 + Vite + Pinia + Element Plus）、`apps/mobile`（React Native）、`packages/*`（10 个共享包）
 - **`scripts/`** — Python 部署和集成测试工具
 - **`deploy/sit/docker-compose.yml`** — 完整 SIT 环境（MySQL、Redis、后端服务、Nginx）
-- **`sql/mysql8/`** — 数据库 schema（9 个库，消息发件箱模式）
+- **`sql/mysql8/`** — 数据库 schema（9 个库，含 E2EE 迁移和 Moments 朋友圈 schema）
+- **`tests/e2e/e2ee/`** — Playwright E2E 测试（E2EE 完整流程）
 
 ### 关键架构细节
 
@@ -55,6 +56,10 @@ api-server-rs  (HTTP API + WS 网关 :8082)
 | `npm run web:lint:check` | ESLint 仅检查（CI 安全） |
 | `npm run test` | 运行所有 workspace 测试 |
 | `npm run test --workspace=@im/shared-im-core` | 运行单个包测试 |
+| `npm run mobile:start` | 启动 Metro bundler |
+| `npm run mobile:android` | 构建/安装/运行 Android 应用 |
+| `npm run mobile:test` | 运行移动端 Jest 测试 |
+| `npm run mobile:clean` | 清理 Android Gradle 构建产物 |
 
 ### Backend Rust（从 `backend/` 运行）
 
@@ -64,8 +69,12 @@ api-server-rs  (HTTP API + WS 网关 :8082)
 | `cargo build -p im-server-rs` | 构建 IM 服务器 |
 | `cargo build --workspace` | 构建所有 crate |
 | `cargo test -p api-server-rs` | 运行 api-server 测试 |
+| `cargo test -p e2ee-core` | 运行 E2EE 核心测试 |
+| `cargo test -p e2ee-ffi` | 运行 E2EE FFI 测试 |
+| `cargo test -p e2ee-wasm` | 运行 E2EE WASM 测试 |
 | `cargo fmt --check` | 格式检查 |
-| `cargo clippy -- -D warnings` | **质量门** — 必须零警告通过 |
+| `cargo clippy -p e2ee-core -- -D warnings` | E2EE 核心 Clippy（零警告要求） |
+| `cargo clippy --workspace -- -D warnings` | **质量门** — 必须零警告通过 |
 
 ### Backend Spring AI（从 `backend/spring-ai/` 运行，需要 JDK 25 + Maven）
 
@@ -86,9 +95,16 @@ python scripts/deploy_services.py api  # 部署单个服务
 python scripts/test.py                 # 运行集成测试套件
 ```
 
+### E2E 测试
+
+```bash
+cd tests/e2e/e2ee
+# 需要先启动 SIT 环境，然后运行 Playwright 测试
+```
+
 ## Rust 编码规则（编译强制）
 
-所有 crate 在 `main.rs` / `lib.rs` 顶部共享这些 lint 属性，**违反则无法编译**：
+所有核心 crate 在 `main.rs` / `lib.rs` 顶部共享这些 lint 属性，**违反则无法编译**：
 
 | Lint | 禁止内容 |
 |------|---------|
@@ -96,9 +112,14 @@ python scripts/test.py                 # 运行集成测试套件
 | `#![deny(clippy::unwrap_used)]` | `.unwrap()` |
 | `#![deny(clippy::expect_used)]` | `.expect()` |
 | `#![deny(clippy::indexing_slicing)]` | 直接数组索引 `arr[i]` |
-| `#![deny(clippy::panic)]` | `panic!()`、`todo!()`、`unimplemented!()` |
+| `#![deny(clippy::panic)]` | `panic!()` |
+| `#![deny(clippy::todo)]` | `todo!()` |
+| `#![deny(clippy::unimplemented)]` | `unimplemented!()` |
 | `#![deny(clippy::as_conversions)]` | `as` 类型转换（使用 `From`/`TryFrom`） |
 | `#![deny(unused_must_use)]` | 未消费的 `Result` 和 `Option` |
+
+适用 crate：`common`、`api-server-rs`、`im-server-rs`、`e2ee-core`。
+注意：`e2ee-ffi` 和 `e2ee-wasm` 不强制执行这些规则（CI 仅报告不阻断）。
 
 - 只能使用 **stable Rust**，不得使用 `#![feature(...)]`
 - 所有错误必须通过 `?` 传播或显式处理
@@ -112,11 +133,17 @@ python scripts/test.py                 # 运行集成测试套件
 - **Docker 镜像使用中国镜像源**：基础镜像前缀 `docker.m.daocloud.io/library/`
 - **前端开发代理**：目标由 `VITE_GATEWAY_HOST` / `VITE_GATEWAY_PORT` 环境变量控制（在 `frontend/.env.*` 文件中）
 - **生成的文件不要编辑**：`auto-imports.d.ts`、`components.d.ts`、`dist/`、`target/`
+- **pnpm 文件残留**：仓库中同时存在 `pnpm-workspace.yaml`、`pnpm-lock.yaml` 和 `package-lock.json`，实际使用 **npm workspaces**（Dockerfile 使用 `npm ci`），忽略 pnpm 相关文件
+
+## CI
+
+- **`.github/workflows/e2ee-rust-ci.yml`**：仅针对 E2EE 相关 crate（`e2ee-core`、`e2ee-ffi`、`e2ee-wasm`）的 CI，包含格式检查、Clippy（仅 e2ee-core 强制零警告）、测试、wasm32 目标检查、禁止模式扫描（e2ee-core 硬阻断，ffi/wasm 仅报告）
 
 ## 参考文档
 
-- `AGENTS.md` — 完整的工作流、架构、命令参考和本地开发环境设置
 - `backend/API.md` — API 端点文档和运行时拓扑
 - `frontend/README.md` — 前端 workspace 结构和包依赖图
+- `backend/e2ee-core/README.md` — E2EE 核心库文档（安全保证、模块概览、线格式约定）
 - `frontend/apps/mobile/README.md` — 移动端文档
-- `backend/e2ee-core/README.md` — E2EE 核心库文档
+- `frontend/apps/mobile/ANDROID_RUNBOOK.md` — Android 运行手册
+- `frontend/apps/mobile/MOBILE_PARITY_MATRIX.md` — 移动端功能对齐矩阵
