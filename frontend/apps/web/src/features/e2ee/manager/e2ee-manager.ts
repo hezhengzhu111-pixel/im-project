@@ -1,7 +1,9 @@
 import {
   asBase64String,
+  base64ToBytes,
   bytesToBase64,
   bytesToUtf8,
+  parseRustHandshake,
   RUST_E2EE_ALGORITHM,
   RUST_E2EE_ENVELOPE_VERSION,
   type RustE2eeEnvelope,
@@ -11,7 +13,12 @@ import {
 import { keyService } from "../api/key-service";
 import { webE2eeRuntime } from "../runtime";
 import {
+  clearLocalKeyMaterial,
+  markOneTimePreKeyConsumed,
+} from "../store/key-store";
+import {
   deleteSessionState,
+  findSessionByLocalDevice,
   getSessionStateBytes,
   saveSessionStateBytes,
   type SaveSessionMeta,
@@ -20,6 +27,7 @@ import type { E2eeSessionStatus } from "../types";
 import { resolveDeviceId } from "./device-identity";
 import { ensureLocalE2eeDeviceRegistered, getLocalRustKeyMaterial } from "./local-device";
 import { getLocalSessionStatus, setLocalSessionStatus } from "./negotiation";
+import { logger } from "@/utils/logger";
 
 export interface EncryptedPayload {
   ciphertext: string;
@@ -103,46 +111,286 @@ class E2eeManager {
       senderUserId,
       envelope.senderDeviceId,
     );
-    if (state) {
+
+    // When a handshake replaces an existing session (sender re-created their
+    // ratchet), we keep the old session state in a backup slot so that
+    // in-flight messages encrypted with the old session can still be decrypted.
+    const BACKUP_SUFFIX = ":backup";
+    const backupSessionId = envelope.sessionId + BACKUP_SUFFIX;
+    let createdFromHandshake = false;
+    let hadStoredState = state !== null;
+
+    // ── Phase 1: Ensure a session is loaded in the WASM runtime ──
+    let sessionReady = false;
+
+    if (envelope.handshake) {
+      // Handshake present — always try to establish a new inbound session.
+      // This takes precedence over any stored session because the sender may
+      // have re-created their session (e.g. device re-registration), making
+      // the stored session's keys stale.
+      const remoteIdentityKey = await this.resolveSenderIdentityKey(
+        senderUserId,
+        envelope.senderDeviceId,
+      );
+
+      // Save the old session state as a backup before replacing it.
+      // In-flight messages encrypted with the old session can still be
+      // decrypted using this backup if the new session fails.
+      if (state) {
+        try {
+          await webE2eeRuntime.removeSession(backupSessionId);
+          await webE2eeRuntime.restoreSession(backupSessionId, state);
+          // Persist backup to IndexedDB so it survives page reloads
+          await saveSessionStateBytes(backupSessionId, state, {
+            localDeviceId,
+            remoteUserId: senderUserId,
+            remoteDeviceId: envelope.senderDeviceId,
+            direction: "inbound",
+          });
+          logger.info("[E2EE] decryptEnvelope: saved old session as backup", {
+            sessionId: envelope.sessionId,
+            backupSessionId,
+          });
+        } catch (backupErr: unknown) {
+          logger.warn("[E2EE] decryptEnvelope: failed to save backup session", {
+            sessionId: envelope.sessionId,
+            error: backupErr instanceof Error ? backupErr.message : String(backupErr ?? ""),
+          });
+        }
+      }
+
+      // Remove any old primary session from WASM to avoid SessionAlreadyExists
+      await webE2eeRuntime.removeSession(envelope.sessionId);
+      this.loadedSessions.delete(envelope.sessionId);
+
+      try {
+        const localKeys = await getLocalRustKeyMaterial();
+        await webE2eeRuntime.createInboundSession({
+          sessionId: envelope.sessionId,
+          localKeys,
+          remoteIdentityKey,
+          handshake: asBase64String(envelope.handshake, "e2ee envelope handshake"),
+        });
+        this.loadedSessions.add(envelope.sessionId);
+        createdFromHandshake = true;
+
+        // Track OTK consumption to keep local key material in sync
+        const parsed = parseRustHandshake(base64ToBytes(envelope.handshake));
+        if (parsed.oneTimePreKeyId != null) {
+          await markOneTimePreKeyConsumed(parsed.oneTimePreKeyId);
+        }
+
+        logger.info("[E2EE] decryptEnvelope: inbound session created from handshake", {
+          sessionId: envelope.sessionId,
+          localDeviceId,
+          senderUserId,
+          senderDeviceId: envelope.senderDeviceId,
+          oneTimePreKeyId: parsed.oneTimePreKeyId,
+          hadStoredState,
+        });
+        sessionReady = true;
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err ?? "");
+
+        if (errMsg.includes("missing one-time pre-key")) {
+          // The sender used an OTK that we no longer have locally (likely
+          // already consumed by a concurrent negotiation). Mark this
+          // session as failed so the sender will re-initiate with a fresh
+          // bundle. Do NOT clear all key material — that would destroy
+          // every other active E2EE session.
+          logger.warn("[E2EE] decryptEnvelope: OTK referenced by handshake not available locally", {
+            sessionId: envelope.sessionId,
+            localDeviceId,
+            senderUserId,
+            senderDeviceId: envelope.senderDeviceId,
+          });
+          setLocalSessionStatus(envelope.sessionId, "failed");
+          throw err;
+        }
+
+        // Non-OTK error: fall back to stored session if available
+        if (state) {
+          logger.warn("[E2EE] decryptEnvelope: handshake failed, falling back to stored session", {
+            sessionId: envelope.sessionId,
+            localDeviceId,
+            senderUserId,
+            senderDeviceId: envelope.senderDeviceId,
+            errorMessage: errMsg,
+          });
+          await this.restoreSessionIfNeeded(envelope.sessionId, state);
+          sessionReady = true;
+        } else {
+          logger.error("[E2EE] decryptEnvelope: handshake failed and no stored session fallback", {
+            sessionId: envelope.sessionId,
+            localDeviceId,
+            senderUserId,
+            senderDeviceId: envelope.senderDeviceId,
+            errorMessage: errMsg,
+          });
+          throw err;
+        }
+      }
+    } else if (state) {
       await this.restoreSessionIfNeeded(envelope.sessionId, state);
-    } else if (envelope.handshake) {
-      const localKeys = await getLocalRustKeyMaterial();
-      const remoteIdentityKey = await this.resolveSenderIdentityKey(senderUserId, envelope.senderDeviceId);
-      await webE2eeRuntime.createInboundSession({
-        sessionId: envelope.sessionId,
-        localKeys,
-        remoteIdentityKey,
-        handshake: asBase64String(envelope.handshake, "e2ee envelope handshake"),
-      });
-      this.loadedSessions.add(envelope.sessionId);
+      sessionReady = true;
     } else {
+      logger.warn("[E2EE] decryptEnvelope: no session available for decryption", {
+        sessionId: envelope.sessionId,
+        localDeviceId,
+        senderUserId,
+        senderDeviceId: envelope.senderDeviceId,
+        recipientDeviceId: envelope.recipientDeviceId,
+      });
       throw new Error("Rust E2EE session not found and envelope has no handshake");
     }
 
+    // ── Phase 2: Decrypt ─────────────────────────────────────────────
     let plaintext: Uint8Array;
+    let usedBackup = false;
     try {
       plaintext = await webE2eeRuntime.decrypt(envelope.sessionId, envelope);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err ?? "");
-      if (msg.includes("AES-GCM") || msg.includes("authentication")) {
-        // Session key material mismatch — likely caused by device re-registration
-        // after this session was established. Clear the corrupted session so the
-        // user can re-negotiate.
+
+      // If we just created a new session from handshake and decryption fails,
+      // the message may have been encrypted with the OLD session. Try the backup.
+      if (createdFromHandshake && (msg.includes("AES-GCM") || msg.includes("authentication"))) {
+        logger.warn("[E2EE] decryptEnvelope: new session decrypt failed, trying backup session", {
+          sessionId: envelope.sessionId,
+          backupSessionId,
+          errorMessage: msg,
+        });
+        try {
+          // Swap: move the new session to a temp slot, restore backup as primary
+          const tempSessionId = envelope.sessionId + ":temp";
+          await webE2eeRuntime.removeSession(tempSessionId);
+          const newState = await webE2eeRuntime.exportSession(envelope.sessionId);
+          await webE2eeRuntime.restoreSession(tempSessionId, newState);
+
+          await webE2eeRuntime.removeSession(envelope.sessionId);
+          this.loadedSessions.delete(envelope.sessionId);
+
+          // Restore the backup session — try WASM first, then IndexedDB
+          let backupState: Uint8Array;
+          try {
+            backupState = await webE2eeRuntime.exportSession(backupSessionId);
+          } catch {
+            // Backup not in WASM (e.g. page reload) — try IndexedDB
+            const storedBackup = await getSessionStateBytes(
+              backupSessionId,
+              localDeviceId,
+              senderUserId,
+              envelope.senderDeviceId,
+            );
+            if (!storedBackup) {
+              throw new Error("backup session not found in WASM or IndexedDB");
+            }
+            await webE2eeRuntime.restoreSession(backupSessionId, storedBackup);
+            backupState = await webE2eeRuntime.exportSession(backupSessionId);
+          }
+          await webE2eeRuntime.restoreSession(envelope.sessionId, backupState);
+          this.loadedSessions.add(envelope.sessionId);
+
+          // Try decrypting with the backup (old session)
+          plaintext = await webE2eeRuntime.decrypt(envelope.sessionId, envelope);
+          usedBackup = true;
+
+          // Move the new session back to backup slot — future messages
+          // (encrypted with the new session) will have their own handshake
+          // or the new session will be restored from storage.
+          await webE2eeRuntime.removeSession(backupSessionId);
+          const currentNewState = await webE2eeRuntime.exportSession(tempSessionId);
+          await webE2eeRuntime.restoreSession(backupSessionId, currentNewState);
+          await webE2eeRuntime.removeSession(tempSessionId);
+
+          logger.info("[E2EE] decryptEnvelope: backup session decrypted successfully", {
+            sessionId: envelope.sessionId,
+            backupSessionId,
+          });
+        } catch (backupErr: unknown) {
+          // Both primary and backup failed — clean up and report
+          logger.error("[E2EE] decryptEnvelope: both primary and backup sessions failed", {
+            sessionId: envelope.sessionId,
+            primaryError: msg,
+            backupError: backupErr instanceof Error ? backupErr.message : String(backupErr ?? ""),
+          });
+          await webE2eeRuntime.removeSession(envelope.sessionId);
+          this.loadedSessions.delete(envelope.sessionId);
+          await webE2eeRuntime.removeSession(backupSessionId);
+          await deleteSessionState(envelope.sessionId);
+          localStorage.removeItem(`e2ee:remote_device:${envelope.sessionId}`);
+          setLocalSessionStatus(envelope.sessionId, "plaintext");
+          throw err;
+        }
+      } else if (msg.includes("AES-GCM") || msg.includes("authentication")) {
+        logger.error("[E2EE] decryptEnvelope: AES-GCM authentication failed — session key mismatch", {
+          sessionId: envelope.sessionId,
+          localDeviceId,
+          senderDeviceId: envelope.senderDeviceId,
+          recipientDeviceId: envelope.recipientDeviceId,
+          senderUserId,
+          hasHandshake: !!envelope.handshake,
+          hadStoredState,
+          errorMessage: msg,
+        });
         await deleteSessionState(envelope.sessionId);
         await webE2eeRuntime.removeSession(envelope.sessionId);
         this.loadedSessions.delete(envelope.sessionId);
+        await webE2eeRuntime.removeSession(backupSessionId);
         localStorage.removeItem(`e2ee:remote_device:${envelope.sessionId}`);
         setLocalSessionStatus(envelope.sessionId, "plaintext");
       }
       throw err;
     }
+
+    // ── Phase 3: Persist updated session state ────────────────────────
     const meta: SaveSessionMeta = {
       localDeviceId,
       remoteUserId: senderUserId,
       remoteDeviceId: envelope.senderDeviceId,
       direction: "inbound",
     };
-    await saveSessionStateBytes(envelope.sessionId, await webE2eeRuntime.exportSession(envelope.sessionId), meta);
+
+    if (usedBackup) {
+      // Save the backup (old session) as the primary since it was used to
+      // decrypt this message. Also save the new session state from the
+      // backup slot so future messages with the new handshake can still
+      // establish a fresh session.
+      await saveSessionStateBytes(
+        envelope.sessionId,
+        await webE2eeRuntime.exportSession(envelope.sessionId),
+        meta,
+      );
+      // Persist the new (future) session state under the backup slot
+      // so that when the next handshake arrives, it can be promoted.
+      try {
+        const futureState = await webE2eeRuntime.exportSession(backupSessionId);
+        await saveSessionStateBytes(
+          backupSessionId,
+          futureState,
+          { ...meta, direction: "inbound" },
+        );
+      } catch {
+        // Backup save is best-effort; next handshake will recreate anyway
+      }
+    } else {
+      await saveSessionStateBytes(
+        envelope.sessionId,
+        await webE2eeRuntime.exportSession(envelope.sessionId),
+        meta,
+      );
+      // On successful decrypt with the primary (new) session, clean up the
+      // backup — we no longer need the old session state.
+      if (createdFromHandshake) {
+        try {
+          await webE2eeRuntime.removeSession(backupSessionId);
+          await deleteSessionState(backupSessionId);
+        } catch {
+          // Already gone or never existed
+        }
+      }
+    }
+
     setLocalSessionStatus(envelope.sessionId, "encrypted");
     return bytesToUtf8(plaintext);
   }
@@ -239,8 +487,32 @@ class E2eeManager {
     // Read stored remote device ID first so we can attempt session
     // restore even when input.recipientDeviceId is not provided.
     const storedRemoteDeviceId = localStorage.getItem(`e2ee:remote_device:${input.sessionId}`) ?? "";
-    const expectedRemoteUserId = input.recipientUserId ?? "";
-    const expectedRemoteDeviceId = input.recipientDeviceId ?? storedRemoteDeviceId;
+    let expectedRemoteUserId = input.recipientUserId ?? "";
+    let expectedRemoteDeviceId = input.recipientDeviceId ?? storedRemoteDeviceId;
+
+    // When the localStorage mapping has been lost (e.g. browser data cleared),
+    // scan IndexedDB directly to recover the session. Without this fallback
+    // every message would create a new X3DH session with a fresh handshake,
+    // causing the peer's session to diverge and producing AES-GCM failures.
+    if (!expectedRemoteDeviceId) {
+      const recovered = await findSessionByLocalDevice(
+        input.sessionId,
+        localDeviceId,
+      );
+      if (recovered) {
+        expectedRemoteDeviceId = recovered.remoteDeviceId;
+        // Reconstruct the localStorage mapping so subsequent calls hit
+        // the fast path.
+        localStorage.setItem(
+          `e2ee:remote_device:${input.sessionId}`,
+          recovered.remoteDeviceId,
+        );
+        logger.info("[E2EE] ensureOutboundSession: recovered remote device id from IndexedDB", {
+          sessionId: input.sessionId,
+          remoteDeviceId: recovered.remoteDeviceId,
+        });
+      }
+    }
 
     // Only attempt restore when we have a valid remote device ID to
     // match against the v3 envelope context.
@@ -252,8 +524,14 @@ class E2eeManager {
         expectedRemoteDeviceId,
       );
       if (existingState) {
+        logger.info("[E2EE] ensureOutboundSession: reusing stored session (no handshake)", {
+          sessionId: input.sessionId,
+          localDeviceId,
+          remoteDeviceId: expectedRemoteDeviceId,
+          remoteUserId: expectedRemoteUserId,
+        });
         await this.restoreSessionIfNeeded(input.sessionId, existingState);
-        const recipientDeviceId = input.recipientDeviceId || storedRemoteDeviceId;
+        const recipientDeviceId = input.recipientDeviceId || expectedRemoteDeviceId;
         if (!recipientDeviceId) {
           throw new Error("E2EE session state restored but remote device ID is empty");
         }
@@ -264,6 +542,14 @@ class E2eeManager {
     if (!input.recipientUserId) {
       throw new Error("missing recipient user id for Rust E2EE session");
     }
+
+    logger.info("[E2EE] ensureOutboundSession: creating new outbound session (with handshake)", {
+      sessionId: input.sessionId,
+      localDeviceId,
+      remoteUserId: input.recipientUserId,
+      remoteDeviceId: input.recipientDeviceId ?? storedRemoteDeviceId,
+      reason: "no_stored_session_found",
+    });
 
     const localKeys = await getLocalRustKeyMaterial();
     const requesterDeviceId = await this.resolveCurrentDeviceId();

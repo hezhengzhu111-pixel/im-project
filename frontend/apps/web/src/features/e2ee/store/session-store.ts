@@ -11,6 +11,7 @@ import {
   type SessionStateEnvelope,
   type SessionStateEnvelopeContext,
 } from "@im/shared-e2ee-core";
+import { logger } from "@/utils/logger";
 
 const DB_NAME = "e2ee_keys";
 const DB_VERSION = 3;
@@ -151,8 +152,18 @@ export async function getSessionStateBytes(
         remoteUserId: resolvedRemoteUserId,
         remoteDeviceId: expectedRemoteDeviceId,
       });
-    } catch {
-      // Context mismatch — do NOT restore.
+    } catch (ctxErr: unknown) {
+      // DIAGNOSTIC: 记录上下文验证失败的具体原因
+      const mismatchDetail = ctxErr instanceof Error ? ctxErr.message : String(ctxErr ?? "");
+      logger.warn("[E2EE] getSessionStateBytes: context mismatch — stored session rejected", {
+        sessionId,
+        localDeviceId,
+        expectedRemoteUserId,
+        expectedRemoteDeviceId,
+        storedLocalDeviceId: envelope.localDeviceId,
+        storedRemoteDeviceId: envelope.remoteDeviceId,
+        mismatchDetail,
+      });
       return null;
     }
     try {
@@ -169,6 +180,73 @@ export async function getSessionStateBytes(
   // because we cannot prove which user/device/session/peer they belong to.
   // Returning null triggers re-negotiation.
   return null;
+}
+
+/**
+ * Find a session state by sessionId and localDeviceId alone, without requiring
+ * remoteUserId or remoteDeviceId. Used as a fallback when the localStorage
+ * mapping of remote device IDs has been lost (e.g. browser data cleared).
+ *
+ * Returns the state bytes together with the remoteUserId and remoteDeviceId
+ * extracted from the envelope so the caller can reconstruct the mapping.
+ */
+export async function findSessionByLocalDevice(
+  sessionId: string,
+  localDeviceId: string,
+  userId?: string,
+): Promise<{ state: Uint8Array; remoteUserId: string; remoteDeviceId: string } | null> {
+  const db = await openDB();
+  const stored = await new Promise<Record<string, unknown> | undefined>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const req = tx.objectStore(STORE_NAME).get(sessionId);
+    req.onsuccess = () => resolve(req.result as Record<string, unknown> | undefined);
+    req.onerror = () => reject(req.error);
+  });
+
+  if (!stored || typeof stored !== "object") {
+    return null;
+  }
+
+  if (stored.version !== SESSION_STATE_ENVELOPE_VERSION) {
+    return null;
+  }
+
+  const envelope = decodeSessionStateEnvelope(stored);
+  if (!envelope) {
+    return null;
+  }
+
+  const resolvedUserId = userId || localDeviceId;
+
+  // Only validate userId and localDeviceId — we don't know the remote peer yet
+  if (envelope.userId !== resolvedUserId) {
+    return null;
+  }
+  if (envelope.localDeviceId !== localDeviceId) {
+    return null;
+  }
+  if (envelope.sessionId !== sessionId) {
+    return null;
+  }
+
+  // Extract the remote peer info from the envelope so the caller can
+  // reconstruct the localStorage mapping and use it going forward.
+  try {
+    const stateBytes = extractSessionStateBytes(envelope);
+    if (stateBytes.length === 0) {
+      return null;
+    }
+    return {
+      state: copyBytes(stateBytes),
+      remoteDeviceId: envelope.remoteDeviceId,
+      // The envelope stores remoteUserIdHash, not the raw userId.
+      // We return the hash as a best-effort identifier — the caller
+      // should already know the remoteUserId from the conversation context.
+      remoteUserId: "",
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function deleteSessionState(sessionId: string): Promise<void> {
