@@ -163,7 +163,19 @@ class E2eeManager {
     if (this.loadedSessions.has(sessionId)) {
       return;
     }
-    await webE2eeRuntime.restoreSession(sessionId, state);
+    try {
+      await webE2eeRuntime.restoreSession(sessionId, state);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err ?? "");
+      if (message.includes("session already exists")) {
+        // Session was created outside e2eeManager (e.g., by initiateNegotiation
+        // in negotiation.ts) and is still resident in WASM memory. Mark it as
+        // loaded so we can use it directly without a duplicate restore.
+        this.loadedSessions.add(sessionId);
+        return;
+      }
+      throw err;
+    }
     this.loadedSessions.add(sessionId);
   }
 
