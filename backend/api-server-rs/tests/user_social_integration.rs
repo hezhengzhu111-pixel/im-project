@@ -8,23 +8,21 @@ use axum::{
 };
 use redis::aio::ConnectionManager;
 use serde_json::{json, Value};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tower::ServiceExt;
 
-// ── counter for unique test usernames ────────────────────────────
-static COUNTER: AtomicU64 = AtomicU64::new(0);
-
+// ── unique test usernames using timestamp+random ─────────────────
 fn unique_username(prefix: &str) -> String {
-    let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-    format!("{}{}", prefix, n)
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let rnd = uuid::Uuid::new_v4().as_u64_pair().0 % 1_000_000;
+    format!("{}{:0>4}{:0>6}", prefix, ts % 10000, rnd)
 }
 
 fn unique_username_pair(prefix: &str) -> (String, String) {
-    (
-        format!("{}a{}", prefix, COUNTER.fetch_add(1, Ordering::SeqCst)),
-        format!("{}b{}", prefix, COUNTER.fetch_add(1, Ordering::SeqCst)),
-    )
+    (unique_username(&format!("{prefix}a")), unique_username(&format!("{prefix}b")))
 }
 
 // ── test infrastructure ─────────────────────────────────────────
@@ -167,15 +165,20 @@ struct AuthedUser {
 }
 
 async fn register_and_login(app: &Router, username: &str, password: &str) -> AuthedUser {
-    let _reg = register(app, username, password).await;
+    let reg_resp = register(app, username, password).await;
+    assert!(
+        reg_resp.status == StatusCode::OK || reg_resp.status == StatusCode::CONFLICT,
+        "register failed: status={} body={}",
+        reg_resp.status, reg_resp.body
+    );
     let login_resp = login(app, username, password).await;
     let token = login_resp.body["data"]["token"]
         .as_str()
-        .unwrap()
+        .unwrap_or_else(|| panic!("login failed: status={} body={}", login_resp.status, login_resp.body))
         .to_string();
     let user_id: i64 = login_resp.body["data"]["user"]["id"]
         .as_str()
-        .unwrap()
+        .unwrap_or_else(|| panic!("user id missing in login: {}", login_resp.body))
         .parse()
         .unwrap();
     AuthedUser {

@@ -119,7 +119,23 @@ class E2eeManager {
       throw new Error("Rust E2EE session not found and envelope has no handshake");
     }
 
-    const plaintext = await webE2eeRuntime.decrypt(envelope.sessionId, envelope);
+    let plaintext: Uint8Array;
+    try {
+      plaintext = await webE2eeRuntime.decrypt(envelope.sessionId, envelope);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err ?? "");
+      if (msg.includes("AES-GCM") || msg.includes("authentication")) {
+        // Session key material mismatch — likely caused by device re-registration
+        // after this session was established. Clear the corrupted session so the
+        // user can re-negotiate.
+        await deleteSessionState(envelope.sessionId);
+        await webE2eeRuntime.removeSession(envelope.sessionId);
+        this.loadedSessions.delete(envelope.sessionId);
+        localStorage.removeItem(`e2ee:remote_device:${envelope.sessionId}`);
+        setLocalSessionStatus(envelope.sessionId, "plaintext");
+      }
+      throw err;
+    }
     const meta: SaveSessionMeta = {
       localDeviceId,
       remoteUserId: senderUserId,

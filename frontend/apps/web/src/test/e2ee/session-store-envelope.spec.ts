@@ -45,7 +45,6 @@ describe("Web session-store v3 envelope", () => {
     await saveSessionStateBytes(sessionId, mockState, defaultMeta);
 
     // Retrieve raw stored data to verify envelope structure
-    const { openDB } = await import("fake-indexeddb");
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open("e2ee_keys", 3);
       request.onsuccess = () => resolve(request.result);
@@ -141,7 +140,6 @@ describe("Web session-store v3 envelope", () => {
 
   it("getSessionStateBytes returns null for raw v2 records (no context, discard)", async () => {
     // Simulate an old v2 record by writing directly to IndexedDB
-    const { openDB } = await import("fake-indexeddb");
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open("e2ee_keys", 3);
       request.onsuccess = () => resolve(request.result);
@@ -263,7 +261,6 @@ describe("Web session-store v3 envelope", () => {
     // Directly write a v3 record with empty remoteDeviceId to simulate a
     // legacy bug path where encryptMessage/decryptMessage saved envelopes
     // with remoteDeviceId="".
-    const { openDB } = await import("fake-indexeddb");
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open("e2ee_keys", 3);
       request.onsuccess = () => resolve(request.result);

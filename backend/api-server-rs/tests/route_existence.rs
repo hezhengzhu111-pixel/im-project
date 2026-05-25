@@ -249,9 +249,10 @@ async fn test_unknown_route_returns_not_found() {
         )
         .await
         .unwrap();
+    // Without auth, the gateway returns 401 before route lookup
     assert_eq!(
         response.status(),
-        StatusCode::NOT_FOUND,
-        "unknown routes should be handled by fallback proxy"
+        StatusCode::UNAUTHORIZED,
+        "unknown routes without auth should be rejected by gateway"
     );
 }

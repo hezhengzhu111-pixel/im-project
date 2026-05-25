@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+from urllib.parse import quote_plus
 
 from deploy_utils import (
     compose_service_container,
@@ -33,10 +34,11 @@ APP_SERVICES = ["im-server", "im-api-server", "im-frontend", "im-spring-ai"]
 
 def _hot_urls(host_prefix: str, env_key: str, password: str) -> str:
     count = int(os.getenv(env_key, "4"))
+    encoded_pw = quote_plus(password)
     urls = []
     for i in range(1, count + 1):
         suffix = f"-{i}" if i > 1 else ""
-        urls.append(f"redis://:{password}@{host_prefix}{suffix}:6379/0")
+        urls.append(f"redis://:{encoded_pw}@{host_prefix}{suffix}:6379/0")
     return ",".join(urls)
 
 

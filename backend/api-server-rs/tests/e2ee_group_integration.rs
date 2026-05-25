@@ -29,6 +29,22 @@ async fn read_json(response: axum::response::Response<Body>) -> Value {
     serde_json::from_slice(&bytes).expect("parse json")
 }
 
+fn x25519_key() -> String {
+    let bytes: Vec<u8> = (0..32).map(|i| (i % 26) as u8 + b'a').collect();
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(&bytes)
+}
+
+fn ed25519_sig() -> String {
+    let bytes: Vec<u8> = (0..64).map(|i| (i % 26) as u8 + b'a').collect();
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(&bytes)
+}
+
+fn make_otp_keys(_keys: &[&str]) -> Value {
+    vec![json!({"id": 1, "key": x25519_key()})].into()
+}
+
 struct AuthedUser {
     token: String,
     user_id: i64,
@@ -129,11 +145,11 @@ async fn register_device(app: &axum::Router, token: &str) -> String {
         Some(token),
         &json!({
             "deviceId": &device_id,
-            "identityKey": "dGVzdF9pZGVudGl0eV9rZXk=",
-            "signingIdentityKey": "dGVzdF9zaWduaW5nX2lkZW50aXR5X2tleQ==",
-            "signedPreKey": "dGVzdF9zaWduZWRfcHJlX2tleQ==",
-            "signedPreKeySignature": "dGVzdF9zaWduYXR1cmU=",
-            "oneTimePreKeys": ["otp1"]
+            "identityKey": x25519_key(),
+            "signingIdentityKey": x25519_key(),
+            "signedPreKey": x25519_key(),
+            "signedPreKeySignature": ed25519_sig(),
+            "oneTimePreKeys": make_otp_keys(&["otp1"])
         }),
     )
     .await;
