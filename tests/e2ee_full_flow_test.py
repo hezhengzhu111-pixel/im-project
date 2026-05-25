@@ -200,7 +200,7 @@ class APIClient:
             "receiverId": receiver_id,
             "clientMessageId": client_msg_id,
             "messageType": message_type,
-            "messageContent": content,
+            "content": content,
             "encrypted": False,
         })
 
@@ -450,8 +450,8 @@ class E2EEUser:
         if local_keys is None:
             raise Exception("local key material not found")
 
-        conversation_id = recipient_user_id  # 协商时用 userId 作为 conversation_id 的后半部分
-        remote_bundle = self.fetch_remote_bundle(recipient_user_id, recipient_device_id, conversation_id)
+        # conversation_id 使用 session_id 格式 ({id_a}_{id_b})，与前端一致
+        remote_bundle = self.fetch_remote_bundle(recipient_user_id, recipient_device_id, session_id)
 
         self._engine.remove_session(session_id)
         self._loaded_sessions.discard(session_id)
