@@ -76,7 +76,6 @@ class E2eeManager {
       localDeviceId: senderDeviceId,
       remoteUserId: params.recipientUserId,
       remoteDeviceId: recipientDeviceId,
-      userId: params.senderUserId,
       direction: "outbound",
     };
     await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId), meta);
