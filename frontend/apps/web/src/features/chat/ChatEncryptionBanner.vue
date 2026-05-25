@@ -10,16 +10,23 @@
       <button type="button" class="banner-link" @click="emit('showInfo')">
         详情
       </button>
+      <button type="button" class="banner-link danger" @click="handleReset">
+        退出加密
+      </button>
     </template>
     <template v-else-if="status === 'failed'">
       <el-icon class="banner-icon"><Lock /></el-icon>
       <span class="banner-text">端到端加密异常</span>
+      <button type="button" class="banner-link" @click="handleReset">
+        清理状态
+      </button>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { Lock, Loading } from "@element-plus/icons-vue";
+import { ElMessageBox } from "element-plus";
 import type { E2eeSessionStatus } from "@/features/e2ee/types";
 
 defineProps<{
@@ -28,7 +35,21 @@ defineProps<{
 
 const emit = defineEmits<{
   (e: "showInfo"): void;
+  (e: "reset"): void;
 }>();
+
+async function handleReset() {
+  try {
+    await ElMessageBox.confirm(
+      "将清除本地加密状态并退出加密通道。双方需重新协商才能恢复加密。",
+      "确认退出加密",
+      { confirmButtonText: "确认退出", cancelButtonText: "取消", type: "warning" },
+    );
+    emit("reset");
+  } catch {
+    // user cancelled
+  }
+}
 </script>
 
 <style scoped lang="scss">
@@ -87,6 +108,11 @@ const emit = defineEmits<{
 
   &:hover {
     opacity: 1;
+  }
+
+  &.danger {
+    color: #dc2626;
+    margin-left: 12px;
   }
 }
 
