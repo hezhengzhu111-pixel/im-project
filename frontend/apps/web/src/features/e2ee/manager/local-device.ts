@@ -15,6 +15,7 @@ import { resolveDeviceId } from "./device-identity";
 const SIGNED_PRE_KEY_ID = 1;
 const ONE_TIME_PRE_KEY_START_ID = 1;
 const ONE_TIME_PRE_KEY_COUNT = 100;
+const OTK_REPLENISH_THRESHOLD = 20;
 
 const OTK_PUBLISHED_PREFIX = "e2ee:otk_published:";
 
@@ -76,6 +77,12 @@ async function ensureLocalE2eeDeviceRegisteredInternal(): Promise<string> {
 
   const keys = await getLocalKeyMaterial();
   if (!keys || !isLocalBundleConsistent(keys)) {
+    // New key material invalidates all existing Double Ratchet sessions —
+    // they were established with old public keys that no longer match the
+    // new private keys. Clear them so peers re-negotiate cleanly.
+    if (keys) {
+      await clearAllSessionState();
+    }
     const generated = await webE2eeRuntime.generatePreKeyBundle({
       signedPreKeyId: SIGNED_PRE_KEY_ID,
       oneTimePreKeyStartId: ONE_TIME_PRE_KEY_START_ID,
@@ -89,10 +96,10 @@ async function ensureLocalE2eeDeviceRegisteredInternal(): Promise<string> {
     return deviceId;
   }
 
-  // Device already registered — do NOT re-upload one-time prekeys.
-  // The server's upload_bundle performs a full replace (DELETE old OTKs + INSERT new OTKs),
-  // so re-uploading the same OTK batch would be idempotent but unnecessary.
-  // We send only a heartbeat to keep the device active.
+  // Device already registered — do NOT re-upload the full bundle (which would
+  // replace identity key + SPK). Instead, check if one-time pre-keys are running
+  // low and replenish only the OTK pool while preserving the existing identity
+  // and signed pre-key material.
   const publishedIds = getPublishedOtkIds(deviceId);
   if (publishedIds.size === 0) {
     logger.warn(
@@ -104,7 +111,6 @@ async function ensureLocalE2eeDeviceRegisteredInternal(): Promise<string> {
   try {
     await keyService.heartbeat(deviceId);
     logger.info("[E2EE] device already registered, heartbeat sent", { deviceId });
-    return deviceId;
   } catch (err: unknown) {
     const status = (err as { response?: { status?: number } })?.response?.status;
     if (status === 404) {
@@ -115,13 +121,52 @@ async function ensureLocalE2eeDeviceRegisteredInternal(): Promise<string> {
       localStorage.removeItem(OTK_PUBLISHED_PREFIX + deviceId);
       await clearLocalKeyMaterial();
       await clearAllSessionState();
-      // Retry — will hit the first-time registration branch above
       return ensureLocalE2eeDeviceRegisteredInternal();
     }
     logger.warn("[E2EE] device heartbeat failed", err);
     logger.info("[E2EE] device already registered, heartbeat sent", { deviceId });
     return deviceId;
   }
+
+  // Replenish OTKs when running low. The server's upload_bundle does a full
+  // OTK replace, so we regenerate the full OTK pool and upload only when the
+  // remaining count drops below the threshold.
+  const remainingOtkCount = keys.oneTimePreKeyPairs.length;
+  if (remainingOtkCount < OTK_REPLENISH_THRESHOLD) {
+    try {
+      const fresh = await webE2eeRuntime.generatePreKeyBundle({
+        signedPreKeyId: SIGNED_PRE_KEY_ID,
+        oneTimePreKeyStartId: ONE_TIME_PRE_KEY_START_ID,
+        oneTimePreKeyCount: ONE_TIME_PRE_KEY_COUNT,
+      });
+      // Merge fresh OTKs into existing key material, preserving identity + SPK
+      const replenished: RustLocalE2eeKeyMaterial = {
+        ...keys,
+        oneTimePreKeyPairs: fresh.oneTimePreKeyPairs,
+        publicBundle: {
+          ...keys.publicBundle,
+          oneTimePreKeys: fresh.publicBundle.oneTimePreKeys,
+        },
+      };
+      await saveLocalKeyMaterial(replenished);
+      await uploadPublicBundle(deviceId, replenished.publicBundle);
+      const newOtkIds = (fresh.publicBundle.oneTimePreKeys ?? []).map((k) => k.id);
+      setPublishedOtkIds(deviceId, newOtkIds);
+      logger.info("[E2EE] OTK pool replenished", {
+        deviceId,
+        previousCount: remainingOtkCount,
+        newCount: newOtkIds.length,
+      });
+    } catch (otkErr: unknown) {
+      logger.warn("[E2EE] OTK replenishment failed, continuing with remaining keys", {
+        deviceId,
+        remainingCount: remainingOtkCount,
+        error: otkErr instanceof Error ? otkErr.message : String(otkErr ?? ""),
+      });
+    }
+  }
+
+  return deviceId;
 }
 
 function isLocalBundleConsistent(keys: RustLocalE2eeKeyMaterial): boolean {

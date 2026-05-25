@@ -760,7 +760,7 @@ const disableEncryptionChannel = async () => {
       import("@/features/e2ee/manager/e2ee-manager"),
     ]);
     await keyService.disableEncryption(session.id);
-    await e2eeManager.resetAllE2eeState();
+    await e2eeManager.clearSession(session.id);
     showSecurityPanel.value = false;
     ElNotification({
       title: "端到端加密已退出",
