@@ -1,5 +1,6 @@
 import { asBase64String, base64ToBytes, bytesToBase64, parseRustHandshake } from "@im/shared-e2ee-core";
 
+import { logger } from "@/utils/logger";
 import { keyService } from "../api/key-service";
 import { webE2eeRuntime } from "../runtime";
 import { markOneTimePreKeyConsumed } from "../store/key-store";
@@ -181,6 +182,15 @@ export async function initiateNegotiation(
     setLocalSessionStatus(sessionId, "negotiating");
     return true;
   } catch (error) {
+    const status = (error as { response?: { status?: number } })?.response?.status;
+
+    // 409 Conflict: server already has a pending request → idempotent, treat as success.
+    if (status === 409) {
+      logger.info("[E2EE] encryption request already pending, continuing wait", { sessionId });
+      setLocalSessionStatus(sessionId, "negotiating");
+      return true;
+    }
+
     console.error("[E2EE] Rust negotiation initiation failed:", error instanceof Error ? error.message : "unknown");
     clearPendingInitialHandshake(sessionId);
     setLocalSessionStatus(sessionId, "failed");
