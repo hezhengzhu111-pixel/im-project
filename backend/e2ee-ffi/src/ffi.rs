@@ -43,7 +43,7 @@ unsafe fn slice_from_ptr<'a, T>(ptr: *const T, len: u32) -> &'a [T] {
 // ---------------------------------------------------------------------------
 
 thread_local! {
-    static LAST_ERROR: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
+    static LAST_ERROR: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
 }
 
 fn store_error(msg: String) {
