@@ -4,6 +4,7 @@ import type { RustLocalE2eeKeyMaterial, RustPublicPreKeyBundle } from "@im/share
 import { keyService } from "../api/key-service";
 import { webE2eeRuntime } from "../runtime";
 import {
+  clearAllSessionState,
   clearLegacyE2eeState,
   clearLocalKeyMaterial,
   getLocalKeyMaterial,
@@ -113,6 +114,7 @@ async function ensureLocalE2eeDeviceRegisteredInternal(): Promise<string> {
       );
       localStorage.removeItem(OTK_PUBLISHED_PREFIX + deviceId);
       await clearLocalKeyMaterial();
+      await clearAllSessionState();
       // Retry — will hit the first-time registration branch above
       return ensureLocalE2eeDeviceRegisteredInternal();
     }

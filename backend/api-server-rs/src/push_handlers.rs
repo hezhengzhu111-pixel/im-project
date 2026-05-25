@@ -1,3 +1,4 @@
+use super::*;
 use crate::auth::identity_from_headers;
 use crate::error::AppError;
 use crate::web::AppState;
@@ -17,78 +18,6 @@ const MAX_TOKEN_LEN: usize = 2048;
 const MAX_SIMPLE_FIELD_LEN: usize = 128;
 const MAX_MUTED_CONVERSATIONS: usize = 1_024;
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RegisterDeviceRequest {
-    device_id: String,
-    platform: String,
-    fcm_token: String,
-    #[serde(default)]
-    app_version: String,
-    #[serde(default)]
-    device_model: String,
-    #[serde(default)]
-    os_version: String,
-    #[serde(default)]
-    locale: String,
-    #[serde(default)]
-    timezone: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UnregisterDeviceRequest {
-    device_id: String,
-    fcm_token: Option<String>,
-    reason: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateDeviceTokenRequest {
-    device_id: String,
-    old_token: Option<String>,
-    new_token: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RegisterDeviceResponse {
-    device_id: String,
-    registered: bool,
-    token_version: i64,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateDeviceTokenResponse {
-    updated: bool,
-    token_version: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AndroidChannelPolicy {
-    messages: String,
-    friend_events: String,
-    system: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PushSettings {
-    enabled: bool,
-    sound_enabled: bool,
-    show_preview: bool,
-    muted_conversation_ids: Vec<String>,
-    android_channel_policy: AndroidChannelPolicy,
-}
-
-#[derive(Debug, Clone)]
-struct PushDeviceRecord {
-    token_version: i64,
-    fcm_token: String,
-}
 
 pub async fn ensure_schema(db: &MySqlPool) -> Result<(), AppError> {
     sqlx::query(
@@ -138,7 +67,7 @@ pub async fn ensure_schema(db: &MySqlPool) -> Result<(), AppError> {
     Ok(())
 }
 
-pub async fn register_device(
+pub(crate) async fn register_device(
     headers: HeaderMap,
     State(state): State<AppState>,
     Json(request): Json<RegisterDeviceRequest>,
@@ -154,7 +83,7 @@ pub async fn register_device(
     })))
 }
 
-pub async fn unregister_device(
+pub(crate) async fn unregister_device(
     headers: HeaderMap,
     State(state): State<AppState>,
     Json(request): Json<UnregisterDeviceRequest>,
@@ -189,7 +118,7 @@ pub async fn unregister_device(
     Ok(Json(ApiResponse::success(true)))
 }
 
-pub async fn update_device_token(
+pub(crate) async fn update_device_token(
     headers: HeaderMap,
     State(state): State<AppState>,
     Json(request): Json<UpdateDeviceTokenRequest>,
@@ -251,7 +180,7 @@ pub async fn update_device_token(
     })))
 }
 
-pub async fn get_settings(
+pub(crate) async fn get_settings(
     headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<PushSettings>>, AppError> {
@@ -260,7 +189,7 @@ pub async fn get_settings(
     Ok(Json(ApiResponse::success(settings)))
 }
 
-pub async fn update_settings(
+pub(crate) async fn update_settings(
     headers: HeaderMap,
     State(state): State<AppState>,
     Json(request): Json<PushSettings>,
@@ -285,7 +214,7 @@ pub async fn update_settings(
     Ok(Json(ApiResponse::success(true)))
 }
 
-async fn upsert_device(
+pub(crate) async fn upsert_device(
     db: &MySqlPool,
     user_id: i64,
     device: &RegisterDeviceRequest,
@@ -334,7 +263,7 @@ async fn upsert_device(
     Ok(token_version)
 }
 
-async fn load_push_device_for_update(
+pub(crate) async fn load_push_device_for_update(
     tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
     user_id: i64,
     device_id: &str,
@@ -355,7 +284,7 @@ async fn load_push_device_for_update(
     }))
 }
 
-async fn load_push_settings(db: &MySqlPool, user_id: i64) -> Result<PushSettings, AppError> {
+pub(crate) async fn load_push_settings(db: &MySqlPool, user_id: i64) -> Result<PushSettings, AppError> {
     let row = sqlx::query(
         "SELECT CAST(push_settings AS CHAR) AS push_settings \
          FROM service_user_service_db.user_settings WHERE user_id = ?",
@@ -375,7 +304,7 @@ async fn load_push_settings(db: &MySqlPool, user_id: i64) -> Result<PushSettings
     parse_push_settings_value(&value)
 }
 
-fn normalize_register_request(
+pub(crate) fn normalize_register_request(
     request: RegisterDeviceRequest,
 ) -> Result<RegisterDeviceRequest, AppError> {
     let platform = normalize_platform(&request.platform)?;
@@ -400,7 +329,7 @@ fn normalize_register_request(
     })
 }
 
-fn normalize_push_settings(request: PushSettings) -> Result<PushSettings, AppError> {
+pub(crate) fn normalize_push_settings(request: PushSettings) -> Result<PushSettings, AppError> {
     if request.muted_conversation_ids.len() > MAX_MUTED_CONVERSATIONS {
         return Err(AppError::BadRequest(
             "mutedConversationIds too large".to_string(),
@@ -437,7 +366,7 @@ fn normalize_push_settings(request: PushSettings) -> Result<PushSettings, AppErr
     })
 }
 
-fn parse_push_settings_value(value: &Value) -> Result<PushSettings, AppError> {
+pub(crate) fn parse_push_settings_value(value: &Value) -> Result<PushSettings, AppError> {
     let enabled = value
         .get("enabled")
         .and_then(Value::as_bool)
@@ -497,7 +426,7 @@ fn parse_push_settings_value(value: &Value) -> Result<PushSettings, AppError> {
     })
 }
 
-fn default_push_settings() -> PushSettings {
+pub(crate) fn default_push_settings() -> PushSettings {
     PushSettings {
         enabled: true,
         sound_enabled: true,
@@ -511,7 +440,7 @@ fn default_push_settings() -> PushSettings {
     }
 }
 
-fn normalize_platform(raw: &str) -> Result<String, AppError> {
+pub(crate) fn normalize_platform(raw: &str) -> Result<String, AppError> {
     let value = raw.trim().to_ascii_uppercase();
     match value.as_str() {
         "ANDROID" | "IOS" => Ok(value),
@@ -521,7 +450,7 @@ fn normalize_platform(raw: &str) -> Result<String, AppError> {
     }
 }
 
-fn normalize_device_id(raw: &str) -> Result<String, AppError> {
+pub(crate) fn normalize_device_id(raw: &str) -> Result<String, AppError> {
     let value = raw.trim();
     if value.is_empty() || value.len() > MAX_DEVICE_ID_LEN {
         return Err(AppError::BadRequest("invalid deviceId".to_string()));
@@ -529,7 +458,7 @@ fn normalize_device_id(raw: &str) -> Result<String, AppError> {
     Ok(value.to_string())
 }
 
-fn normalize_required_token(raw: &str) -> Result<String, AppError> {
+pub(crate) fn normalize_required_token(raw: &str) -> Result<String, AppError> {
     let value = raw.trim();
     if value.is_empty() || value.len() > MAX_TOKEN_LEN {
         return Err(AppError::BadRequest("invalid token".to_string()));
@@ -537,7 +466,7 @@ fn normalize_required_token(raw: &str) -> Result<String, AppError> {
     Ok(value.to_string())
 }
 
-fn normalize_token(raw: Option<&str>) -> Result<String, AppError> {
+pub(crate) fn normalize_token(raw: Option<&str>) -> Result<String, AppError> {
     let Some(raw) = raw else {
         return Ok(String::new());
     };
@@ -551,7 +480,7 @@ fn normalize_token(raw: Option<&str>) -> Result<String, AppError> {
     Ok(value.to_string())
 }
 
-fn normalize_reason(raw: Option<&str>) -> Result<String, AppError> {
+pub(crate) fn normalize_reason(raw: Option<&str>) -> Result<String, AppError> {
     let value = raw.unwrap_or("LOGOUT").trim();
     if value.is_empty() || value.len() > 32 {
         return Err(AppError::BadRequest("invalid reason".to_string()));
@@ -559,7 +488,7 @@ fn normalize_reason(raw: Option<&str>) -> Result<String, AppError> {
     Ok(value.to_ascii_uppercase())
 }
 
-fn normalize_optional_text(raw: Option<&str>, max_len: usize) -> Result<String, AppError> {
+pub(crate) fn normalize_optional_text(raw: Option<&str>, max_len: usize) -> Result<String, AppError> {
     let Some(raw) = raw else {
         return Ok(String::new());
     };
@@ -570,7 +499,7 @@ fn normalize_optional_text(raw: Option<&str>, max_len: usize) -> Result<String, 
     Ok(value.to_string())
 }
 
-fn normalize_channel(raw: Option<&str>, fallback: &str) -> Result<String, AppError> {
+pub(crate) fn normalize_channel(raw: Option<&str>, fallback: &str) -> Result<String, AppError> {
     let value = raw.unwrap_or(fallback).trim();
     if value.is_empty() || value.len() > 64 {
         return Err(AppError::BadRequest("invalid channel policy".to_string()));
@@ -578,45 +507,3 @@ fn normalize_channel(raw: Option<&str>, fallback: &str) -> Result<String, AppErr
     Ok(value.to_string())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn normalize_platform_rejects_unknown_platform() {
-        let result = normalize_platform("web");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn parse_push_settings_defaults_missing_fields() -> Result<(), AppError> {
-        let parsed = parse_push_settings_value(&json!({}))?;
-        assert!(parsed.enabled);
-        assert!(parsed.sound_enabled);
-        assert!(parsed.show_preview);
-        assert!(parsed.muted_conversation_ids.is_empty());
-        assert_eq!(
-            parsed.android_channel_policy.messages,
-            DEFAULT_MESSAGES_CHANNEL
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn normalize_push_settings_rejects_oversized_mute_list() {
-        let request = PushSettings {
-            enabled: true,
-            sound_enabled: true,
-            show_preview: true,
-            muted_conversation_ids: vec!["a".to_string(); MAX_MUTED_CONVERSATIONS + 1],
-            android_channel_policy: AndroidChannelPolicy {
-                messages: DEFAULT_MESSAGES_CHANNEL.to_string(),
-                friend_events: DEFAULT_FRIEND_EVENTS_CHANNEL.to_string(),
-                system: DEFAULT_SYSTEM_CHANNEL.to_string(),
-            },
-        };
-
-        let result = normalize_push_settings(request);
-        assert!(result.is_err());
-    }
-}

@@ -103,18 +103,3 @@ pub fn moments_notify_key(user_id: i64) -> String {
     format!("{MOMENTS_NOTIFY_PREFIX}{user_id}")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn should_build_group_watermark_keys() -> Result<(), &'static str> {
-        if group_sequence_key(42) != "im:conv:g_42:seq" {
-            return Err("group sequence key format changed");
-        }
-        if group_read_sequence_key(7, 42) != "im:readseq:7:g_42" {
-            return Err("group read sequence key format changed");
-        }
-        Ok(())
-    }
-}

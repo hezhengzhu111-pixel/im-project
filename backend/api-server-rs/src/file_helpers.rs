@@ -1,3 +1,4 @@
+use super::*;
 use crate::auth::identity_from_headers;
 use crate::config::AppConfig;
 use crate::error::AppError;
@@ -19,241 +20,7 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio_util::io::ReaderStream;
 use uuid::Uuid;
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct FileUploadResponse {
-    pub original_filename: String,
-    pub filename: String,
-    pub url: String,
-    pub size: i64,
-    pub content_type: String,
-    pub category: String,
-    pub upload_date: String,
-    pub upload_time: i64,
-    pub uploader_id: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct KnowledgeFileSaved {
-    pub url: String,
-    pub size: i64,
-}
-
-pub fn store_knowledge_file(
-    base_dir: &std::path::Path,
-    _original_name: &str,
-    file_type: &str,
-    data: &[u8],
-) -> Result<KnowledgeFileSaved, AppError> {
-    let date = Local::now().format("%Y-%m-%d").to_string();
-    let safe_name = format!("{}.{}", uuid::Uuid::new_v4(), file_type);
-    let dir = base_dir.join("knowledge").join(&date);
-    std::fs::create_dir_all(&dir).map_err(AppError::Io)?;
-    let path = dir.join(&safe_name);
-    std::fs::write(&path, data).map_err(AppError::Io)?;
-    let url = format!("/files/knowledge/{}/{}", date, safe_name);
-    let size = i64::try_from(data.len())
-        .map_err(|_| AppError::BadRequest("file too large".to_string()))?;
-    Ok(KnowledgeFileSaved { url, size })
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FileInfoResponse {
-    pub filename: String,
-    pub size: i64,
-    pub content_type: Option<String>,
-    pub last_modified: i64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct FileMetadata {
-    category: String,
-    date: String,
-    filename: String,
-    original_filename: String,
-    uploader_id: Option<i64>,
-    size: i64,
-    content_type: String,
-    created_at: i64,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct FileLocator {
-    category: String,
-    date: String,
-    filename: String,
-}
-
-pub async fn upload_image(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    multipart: Multipart,
-) -> Result<Json<ApiResponse<FileUploadResponse>>, AppError> {
-    upload(
-        state,
-        headers,
-        multipart,
-        "images",
-        "image",
-        allowed_image_types(),
-        |cfg| cfg.file_image_max_size,
-    )
-    .await
-}
-
-pub async fn upload_file(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    multipart: Multipart,
-) -> Result<Json<ApiResponse<FileUploadResponse>>, AppError> {
-    upload(
-        state,
-        headers,
-        multipart,
-        "files",
-        "file",
-        allowed_file_types(),
-        |cfg| cfg.file_file_max_size,
-    )
-    .await
-}
-
-pub async fn upload_audio(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    multipart: Multipart,
-) -> Result<Json<ApiResponse<FileUploadResponse>>, AppError> {
-    upload(
-        state,
-        headers,
-        multipart,
-        "audios",
-        "audio",
-        allowed_audio_types(),
-        |cfg| cfg.file_audio_max_size,
-    )
-    .await
-}
-
-pub async fn upload_video(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    multipart: Multipart,
-) -> Result<Json<ApiResponse<FileUploadResponse>>, AppError> {
-    upload(
-        state,
-        headers,
-        multipart,
-        "videos",
-        "video",
-        allowed_video_types(),
-        |cfg| cfg.file_video_max_size,
-    )
-    .await
-}
-
-pub async fn upload_avatar(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    multipart: Multipart,
-) -> Result<Json<ApiResponse<FileUploadResponse>>, AppError> {
-    upload(
-        state,
-        headers,
-        multipart,
-        "avatars",
-        "avatar",
-        allowed_image_types(),
-        |cfg| cfg.file_avatar_max_size,
-    )
-    .await
-}
-
-pub async fn download_get(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Query(request): Query<FileLocator>,
-) -> Response {
-    stream_file(state, headers, request).await
-}
-
-pub async fn download_post(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(request): Json<FileLocator>,
-) -> Response {
-    stream_file(state, headers, request).await
-}
-
-pub async fn file_info(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(request): Json<FileLocator>,
-) -> Result<Json<ApiResponse<FileInfoResponse>>, AppError> {
-    let identity = identity_from_headers(&headers, &state.config)?;
-    if !can_read(&state, identity.user_id, &request).await {
-        return Err(AppError::Forbidden("file access denied".to_string()));
-    }
-    let path = resolve_path(
-        &state.config.storage_base_dir,
-        &request.category,
-        &request.date,
-        &request.filename,
-    );
-    let metadata = fs::metadata(&path).await.map_err(|err| {
-        if err.kind() == std::io::ErrorKind::NotFound {
-            AppError::NotFound("file not found".to_string())
-        } else {
-            AppError::Anyhow(err.into())
-        }
-    })?;
-    let last_modified = metadata
-        .modified()
-        .ok()
-        .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
-        .map(|value| i64::try_from(value.as_millis()).unwrap_or(i64::MAX))
-        .unwrap_or_default();
-    let size = i64::try_from(metadata.len())
-        .map_err(|_| AppError::BadRequest("file size is too large".to_string()))?;
-    Ok(Json(ApiResponse::success(FileInfoResponse {
-        filename: request.filename,
-        size,
-        content_type: mime_guess::from_path(&path).first_raw().map(str::to_string),
-        last_modified,
-    })))
-}
-
-pub async fn delete_file(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Query(request): Query<FileLocator>,
-) -> Result<Json<ApiResponse<bool>>, AppError> {
-    let identity = identity_from_headers(&headers, &state.config)?;
-    if !can_delete(&state, identity.user_id, &request).await {
-        return Err(AppError::Forbidden("file delete denied".to_string()));
-    }
-    let path = resolve_path(
-        &state.config.storage_base_dir,
-        &request.category,
-        &request.date,
-        &request.filename,
-    );
-    match fs::remove_file(&path).await {
-        Ok(()) => {
-            delete_metadata(&state, &request).await;
-            Ok(Json(ApiResponse::success(true)))
-        }
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            Err(AppError::NotFound("file not found".to_string()))
-        }
-        Err(err) => Err(AppError::Anyhow(err.into())),
-    }
-}
-
-async fn upload(
+pub(crate) async fn upload(
     state: AppState,
     headers: HeaderMap,
     multipart: Multipart,
@@ -277,7 +44,7 @@ async fn upload(
     Ok(Json(ApiResponse::success(response)))
 }
 
-async fn store_file_from_multipart(
+pub(crate) async fn store_file_from_multipart(
     state: &AppState,
     mut multipart: Multipart,
     category: &str,
@@ -375,7 +142,7 @@ async fn store_file_from_multipart(
     ))
 }
 
-async fn remove_temp_file(path: &Path) {
+pub(crate) async fn remove_temp_file(path: &Path) {
     match fs::remove_file(path).await {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -385,7 +152,7 @@ async fn remove_temp_file(path: &Path) {
     }
 }
 
-async fn stream_file(state: AppState, headers: HeaderMap, request: FileLocator) -> Response {
+pub(crate) async fn stream_file(state: AppState, headers: HeaderMap, request: FileLocator) -> Response {
     let identity = match identity_from_headers(&headers, &state.config) {
         Ok(identity) => identity,
         Err(err) => return err.into_response(),
@@ -436,7 +203,7 @@ async fn stream_file(state: AppState, headers: HeaderMap, request: FileLocator) 
         .into_response()
 }
 
-async fn can_read(state: &AppState, user_id: i64, request: &FileLocator) -> bool {
+pub(crate) async fn can_read(state: &AppState, user_id: i64, request: &FileLocator) -> bool {
     if let Some(metadata) = get_metadata(state, request).await {
         if metadata.uploader_id == Some(user_id) {
             return true;
@@ -445,7 +212,7 @@ async fn can_read(state: &AppState, user_id: i64, request: &FileLocator) -> bool
     can_read_message_media(state, user_id, request).await
 }
 
-async fn can_read_message_media(state: &AppState, user_id: i64, request: &FileLocator) -> bool {
+pub(crate) async fn can_read_message_media(state: &AppState, user_id: i64, request: &FileLocator) -> bool {
     let media_url = static_file_url(&request.category, &request.date, &request.filename);
     let media_url_no_slash = media_url.trim_start_matches('/').to_string();
     let rows = match sqlx::query(
@@ -489,7 +256,7 @@ async fn can_read_message_media(state: &AppState, user_id: i64, request: &FileLo
     false
 }
 
-async fn is_active_group_member(state: &AppState, user_id: i64, group_id: i64) -> bool {
+pub(crate) async fn is_active_group_member(state: &AppState, user_id: i64, group_id: i64) -> bool {
     let result = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(1) \
          FROM service_group_service_db.im_group_member \
@@ -509,14 +276,14 @@ async fn is_active_group_member(state: &AppState, user_id: i64, group_id: i64) -
     }
 }
 
-async fn can_delete(state: &AppState, user_id: i64, request: &FileLocator) -> bool {
+pub(crate) async fn can_delete(state: &AppState, user_id: i64, request: &FileLocator) -> bool {
     match get_metadata(state, request).await {
         Some(metadata) => metadata.uploader_id == Some(user_id),
         None => false,
     }
 }
 
-async fn save_metadata(state: &AppState, response: &FileUploadResponse) {
+pub(crate) async fn save_metadata(state: &AppState, response: &FileUploadResponse) {
     let metadata = FileMetadata {
         category: response.category.clone(),
         date: response.upload_date.clone(),
@@ -542,7 +309,7 @@ async fn save_metadata(state: &AppState, response: &FileUploadResponse) {
     }
 }
 
-async fn get_metadata(state: &AppState, request: &FileLocator) -> Option<FileMetadata> {
+pub(crate) async fn get_metadata(state: &AppState, request: &FileLocator) -> Option<FileMetadata> {
     let mut redis = state.redis_manager.clone();
     let raw: redis::RedisResult<Option<String>> = redis
         .get(metadata_key(
@@ -561,7 +328,7 @@ async fn get_metadata(state: &AppState, request: &FileLocator) -> Option<FileMet
     }
 }
 
-async fn delete_metadata(state: &AppState, request: &FileLocator) {
+pub(crate) async fn delete_metadata(state: &AppState, request: &FileLocator) {
     let mut redis = state.redis_manager.clone();
     let result: redis::RedisResult<()> = redis
         .del(metadata_key(
@@ -575,7 +342,7 @@ async fn delete_metadata(state: &AppState, request: &FileLocator) {
     }
 }
 
-fn metadata_key(category: &str, date: &str, filename: &str) -> String {
+pub(crate) fn metadata_key(category: &str, date: &str, filename: &str) -> String {
     format!(
         "file:meta:{}:{}:{}",
         safe_segment(category),
@@ -584,13 +351,13 @@ fn metadata_key(category: &str, date: &str, filename: &str) -> String {
     )
 }
 
-fn resolve_path(base: &Path, category: &str, date: &str, filename: &str) -> PathBuf {
+pub(crate) fn resolve_path(base: &Path, category: &str, date: &str, filename: &str) -> PathBuf {
     base.join(safe_segment(category))
         .join(safe_segment(date))
         .join(safe_segment(filename))
 }
 
-fn static_file_url(category: &str, date: &str, filename: &str) -> String {
+pub(crate) fn static_file_url(category: &str, date: &str, filename: &str) -> String {
     format!(
         "/files/{}/{}/{}",
         safe_segment(category),
@@ -599,7 +366,7 @@ fn static_file_url(category: &str, date: &str, filename: &str) -> String {
     )
 }
 
-fn safe_segment(value: &str) -> String {
+pub(crate) fn safe_segment(value: &str) -> String {
     let sanitized = value
         .replace("..", "_")
         .replace(['\\', '/'], "_")
@@ -612,7 +379,7 @@ fn safe_segment(value: &str) -> String {
     }
 }
 
-fn file_extension(filename: &str) -> String {
+pub(crate) fn file_extension(filename: &str) -> String {
     let Some(extension) = Path::new(filename)
         .extension()
         .and_then(|value| value.to_str())
@@ -631,7 +398,7 @@ fn file_extension(filename: &str) -> String {
     }
 }
 
-fn format_limit(size: usize) -> String {
+pub(crate) fn format_limit(size: usize) -> String {
     if size >= 1024 * 1024 {
         format!("{}MB", size / 1024 / 1024)
     } else if size >= 1024 {
@@ -641,7 +408,7 @@ fn format_limit(size: usize) -> String {
     }
 }
 
-fn normalize_content_type(value: &str) -> String {
+pub(crate) fn normalize_content_type(value: &str) -> String {
     value
         .split(';')
         .next()
@@ -650,7 +417,7 @@ fn normalize_content_type(value: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn resolve_content_type(filename: &str, raw_content_type: &str, file_type_name: &str) -> String {
+pub(crate) fn resolve_content_type(filename: &str, raw_content_type: &str, file_type_name: &str) -> String {
     let normalized = normalize_content_type(raw_content_type);
     if !normalized.is_empty() {
         return normalized;
@@ -677,11 +444,11 @@ fn resolve_content_type(filename: &str, raw_content_type: &str, file_type_name: 
         .unwrap_or_else(|| "application/octet-stream".to_string())
 }
 
-fn is_content_type_allowed(content_type: &str, allowed_types: &HashSet<&'static str>) -> bool {
+pub(crate) fn is_content_type_allowed(content_type: &str, allowed_types: &HashSet<&'static str>) -> bool {
     allowed_types.contains("*/*") || allowed_types.contains(content_type)
 }
 
-fn allowed_image_types() -> HashSet<&'static str> {
+pub(crate) fn allowed_image_types() -> HashSet<&'static str> {
     HashSet::from([
         "image/jpeg",
         "image/jpg",
@@ -692,11 +459,11 @@ fn allowed_image_types() -> HashSet<&'static str> {
     ])
 }
 
-fn allowed_file_types() -> HashSet<&'static str> {
+pub(crate) fn allowed_file_types() -> HashSet<&'static str> {
     HashSet::from(["*/*"])
 }
 
-fn allowed_audio_types() -> HashSet<&'static str> {
+pub(crate) fn allowed_audio_types() -> HashSet<&'static str> {
     HashSet::from([
         "audio/mpeg",
         "audio/mp3",
@@ -710,7 +477,7 @@ fn allowed_audio_types() -> HashSet<&'static str> {
     ])
 }
 
-fn allowed_video_types() -> HashSet<&'static str> {
+pub(crate) fn allowed_video_types() -> HashSet<&'static str> {
     HashSet::from([
         "video/mp4",
         "video/webm",
@@ -724,3 +491,4 @@ fn allowed_video_types() -> HashSet<&'static str> {
         "video/flv",
     ])
 }
+
