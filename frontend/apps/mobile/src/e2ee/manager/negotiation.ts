@@ -110,6 +110,12 @@ const initiateInternal = async (
     await persistStatus(sessionId, 'negotiating');
     return true;
   } catch (error) {
+    const status = (error as { response?: { status?: number } })?.response?.status;
+    if (status === 409) {
+      logger.warn('e2ee', 'encryption request already pending, continuing wait', sanitizeE2eeLogValue({ sessionId }));
+      await persistStatus(sessionId, 'negotiating');
+      return true;
+    }
     await persistStatus(sessionId, 'failed').catch(() => undefined);
     logger.warn('e2ee', 'negotiation initiation failed', sanitizeE2eeLogValue(error));
     return false;
