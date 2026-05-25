@@ -1,4 +1,4 @@
-# CLAUDE.md
+/ide# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -37,7 +37,7 @@ api-server-rs  (HTTP API + WS 网关 :8082)
 
 - **消息流**：消息通过持久化发件箱（`message_outbox` 表）→ Redis Streams（`im:events`）→ 内嵌 dispatcher → `im-server-rs` → WebSocket 推送到用户
 - **AI 路径**：前端 → api-server-rs（快速：验证/加密/缓存）→ Redis Stream（`im:ai:tasks`）→ spring-ai（慢速：LLM 调用/流式/RAG）→ Pub/Sub 流式块 → SSE 前端；同时 HMAC 回调注入 MessageDto → 正常推送流
-- **Redis 分片**：私聊/群聊热数据可分片（`IM_PRIVATE_HOT_SHARDS` / `IM_GROUP_HOT_SHARDS`），其他 Redis 用途共享单实例
+- **Redis 分片**：私聊/群聊热数据可分片（`IM_PRIVATE_HOT_SHARDS` / `IM_GROUP_HOT_SHARDS`），SIT 环境配置了 4 个私聊热分片 + 4 个群聊热分片独立 Redis 实例，其他 Redis 用途共享单实例
 - **im-server-rs 不使用 workspace dependencies** — 其 `Cargo.toml` 独立锁定版本。给 im-server-rs 添加依赖时直接加在其 Cargo.toml，不要加在 workspace 表中
 - **WebSocket 网关**：基于 ticket 的认证，im-server 实例注册在 Redis 路由表中，dispatcher 通过路由表查找目标节点进行精确推送
 - **BYOK**：用户 API key 由 Rust 在 MySQL 中使用 AES-256-GCM 加密存储，仅由 Spring AI 在内存中按需解密，调用完成后丢弃
@@ -59,7 +59,10 @@ api-server-rs  (HTTP API + WS 网关 :8082)
 | `npm run mobile:start` | 启动 Metro bundler |
 | `npm run mobile:android` | 构建/安装/运行 Android 应用 |
 | `npm run mobile:test` | 运行移动端 Jest 测试 |
+| `npm run mobile:reverse` | adb reverse 代理（Android 调试） |
 | `npm run mobile:clean` | 清理 Android Gradle 构建产物 |
+| `npm run e2ee:wasm:build` | 构建 E2EE WASM 包（`@im/rust-e2ee-wasm`） |
+| `npm run web:e2ee:dev` | E2EE WASM + Web 联合开发模式 |
 
 ### Backend Rust（从 `backend/` 运行）
 
@@ -88,6 +91,7 @@ api-server-rs  (HTTP API + WS 网关 :8082)
 ### 部署（从仓库根目录运行）
 
 ```bash
+python scripts/generate_env.py           # 生成 .env 文件（首次部署前运行）
 python scripts/deploy_middleware.py    # 启动 MySQL + Redis + 文件卷
 python scripts/init_db.py --full       # 初始化数据库（首次或 schema 变更）
 python scripts/deploy_services.py      # 构建并启动所有 4 个服务
@@ -137,7 +141,7 @@ cd tests/e2e/e2ee
 
 ## CI
 
-- **`.github/workflows/e2ee-rust-ci.yml`**：仅针对 E2EE 相关 crate（`e2ee-core`、`e2ee-ffi`、`e2ee-wasm`）的 CI，包含格式检查、Clippy（仅 e2ee-core 强制零警告）、测试、wasm32 目标检查、禁止模式扫描（e2ee-core 硬阻断，ffi/wasm 仅报告）
+- **`.github/workflows/e2ee-rust-ci.yml`**：仅针对 E2EE 相关 crate（`e2ee-core`、`e2ee-ffi`、`e2ee-wasm`）的 CI，包含格式检查、Clippy（仅 e2ee-core 强制零警告）、测试、wasm32 目标检查、禁止模式扫描（e2ee-core 硬阻断，ffi/wasm 仅报告）。**注意：`api-server-rs`、`im-server-rs`、`common` 和前端目前无 CI 覆盖。**
 
 ## 参考文档
 
@@ -147,3 +151,5 @@ cd tests/e2e/e2ee
 - `frontend/apps/mobile/README.md` — 移动端文档
 - `frontend/apps/mobile/ANDROID_RUNBOOK.md` — Android 运行手册
 - `frontend/apps/mobile/MOBILE_PARITY_MATRIX.md` — 移动端功能对齐矩阵
+- `frontend/apps/mobile/LOCAL_STORAGE_DESIGN.md` — 移动端本地存储设计
+- `frontend/apps/mobile/PUSH_BACKEND_CONTRACT.md` — 移动端推送后端契约

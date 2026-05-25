@@ -278,12 +278,12 @@ async fn test_refresh_success() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(refresh_json["success"], json!(true));
     // 响应体不得暴露 token
     assert!(
-        refresh_json["data"]["accessToken"].is_null(),
-        "accessToken must not be in response body"
+        refresh_json["data"]["token"].is_null(),
+        "token must not be in response body"
     );
     assert!(
-        refresh_json["data"]["refreshToken"].is_null(),
-        "refreshToken must not be in response body"
+        refresh_json["data"]["refresh_token"].is_null(),
+        "refresh_token must not be in response body"
     );
     // 新字段
     assert_eq!(refresh_json["data"]["authenticated"], json!(true));
