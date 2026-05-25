@@ -163,10 +163,12 @@
                   </span>
                   <span
                     v-else-if="currentSession.type === 'private' && e2eeStatus === 'failed'"
-                    class="status-chip failed"
+                    class="status-chip failed clickable"
+                    title="点击清理加密状态"
+                    @click="disableEncryptionChannel"
                   >
                     <span class="status-chip-dot"></span>
-                    加密异常
+                    加密异常 — 点击修复
                   </span>
                   <span v-if="autoReplyEnabled" class="status-chip ai">
                     <span class="status-chip-dot"></span>
@@ -753,12 +755,12 @@ const disableEncryptionChannel = async () => {
       },
     );
 
-    const [{ keyService }, { resetNegotiation }] = await Promise.all([
+    const [{ keyService }, { e2eeManager }] = await Promise.all([
       import("@/features/e2ee/api/key-service"),
-      import("@/features/e2ee/manager/negotiation"),
+      import("@/features/e2ee/manager/e2ee-manager"),
     ]);
     await keyService.disableEncryption(session.id);
-    await resetNegotiation(session.id, "plaintext");
+    await e2eeManager.resetAllE2eeState();
     showSecurityPanel.value = false;
     ElNotification({
       title: "端到端加密已退出",
@@ -1180,6 +1182,16 @@ const handleChatAction = (command: string | number | object) => {
 .status-chip.failed {
   color: var(--color-danger, #ef4444);
   background: rgba(239, 68, 68, 0.08);
+}
+
+.status-chip.failed.clickable {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+
+  &:hover {
+    opacity: 0.8;
+  }
 }
 
 .status-chip.failed .status-chip-dot {

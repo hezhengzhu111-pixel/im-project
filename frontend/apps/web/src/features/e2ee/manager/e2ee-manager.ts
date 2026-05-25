@@ -161,9 +161,44 @@ class E2eeManager {
 
   async clearSession(sessionId: string): Promise<void> {
     localStorage.removeItem("e2ee:status:" + sessionId);
+    localStorage.removeItem("e2ee:remote_device:" + sessionId);
     await deleteSessionState(sessionId);
     await webE2eeRuntime.removeSession(sessionId);
     this.loadedSessions.delete(sessionId);
+  }
+
+  /**
+   * 清除所有 E2EE 状态，退出加密通道。
+   *
+   * 用途：手动调试/恢复时清理损坏的加密状态，回到 plaintext 重新开始。
+   */
+  async resetAllE2eeState(): Promise<void> {
+    // 1. 清除所有 WASM 会话
+    for (const sid of this.loadedSessions) {
+      await webE2eeRuntime.removeSession(sid);
+    }
+    this.loadedSessions.clear();
+
+    // 2. 清除 localStorage 中的 E2EE 标记
+    try {
+      for (const key of Object.keys(localStorage)) {
+        if (
+          key.startsWith("e2ee:status:") ||
+          key.startsWith("e2ee:remote_device:") ||
+          key.startsWith("e2ee:initial-handshake:") ||
+          key.startsWith("e2ee:otk_published:")
+        ) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch {
+      // localStorage may be unavailable
+    }
+
+    // 3. 清除 IndexedDB 中的会话和密钥
+    const { clearLocalKeyMaterial, clearAllSessionState } = await import("../store/key-store");
+    await clearLocalKeyMaterial();
+    await clearAllSessionState();
   }
 
   /**
