@@ -189,29 +189,35 @@ pub(crate) async fn pending_encryption_requests(
     headers: HeaderMap,
 ) -> Result<Json<ApiResponse<Vec<PendingE2eeSessionDto>>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
+
+    // Simple query without JOIN — avoids a server crash triggered by the
+    // LEFT JOIN between e2ee_sessions and users on some MySQL versions.
     let rows = sqlx::query(
-        r#"SELECT s.session_id, s.requester_id, s.target_user_id, s.request_payload_json,
-                  COALESCE(NULLIF(u.nickname, ''), u.username, CAST(s.requester_id AS CHAR)) AS requester_name
-           FROM service_user_service_db.e2ee_sessions s
-           LEFT JOIN service_user_service_db.users u ON u.id = s.requester_id
-           WHERE s.target_user_id = ? AND s.status = 'pending'
-           ORDER BY s.updated_time DESC
+        r#"SELECT session_id, requester_id, target_user_id, request_payload_json
+           FROM service_user_service_db.e2ee_sessions
+           WHERE target_user_id = ? AND status = 'pending'
+           ORDER BY updated_time DESC
            LIMIT 20"#,
     )
     .bind(identity.user_id)
     .fetch_all(&state.db)
     .await?;
 
-    let requests = rows
-        .into_iter()
-        .map(|row| PendingE2eeSessionDto {
-            session_id: row.get::<String, _>("session_id"),
-            requester_id: row.get::<i64, _>("requester_id").to_string(),
-            requester_name: row.get::<String, _>("requester_name"),
+    let mut requests: Vec<PendingE2eeSessionDto> = Vec::with_capacity(rows.len());
+    for row in rows {
+        let requester_id: i64 = row.get("requester_id");
+        let requester_name = resolve_user_display_name(&state, requester_id)
+            .await?
+            .unwrap_or_else(|| requester_id.to_string());
+
+        requests.push(PendingE2eeSessionDto {
+            session_id: row.get("session_id"),
+            requester_id: requester_id.to_string(),
+            requester_name,
             target_user_id: row.get::<i64, _>("target_user_id").to_string(),
-            request_payload_json: row.get::<Option<String>, _>("request_payload_json"),
-        })
-        .collect();
+            request_payload_json: row.get("request_payload_json"),
+        });
+    }
 
     Ok(Json(ApiResponse::success(requests)))
 }
