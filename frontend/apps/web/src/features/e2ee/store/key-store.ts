@@ -118,6 +118,17 @@ export async function savePreKeyBundle(bundle: unknown): Promise<unknown> {
   return id;
 }
 
+export async function clearLocalKeyMaterial(): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(["identity", "meta"], "readwrite");
+    tx.objectStore("identity").delete(LOCAL_KEY_MATERIAL_KEY);
+    tx.objectStore("meta").delete("localPublicBundle");
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 export async function clearLegacyE2eeState(): Promise<void> {
   try {
     for (const key of Object.keys(localStorage)) {
