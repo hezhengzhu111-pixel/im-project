@@ -148,6 +148,34 @@ export async function initiateNegotiation(
       throw new Error("E2EE negotiation requires remote device id");
     }
 
+    // Backup any existing session before replacing it so that in-flight
+    // messages encrypted with the old session can still be decrypted.
+    const existingRemoteDeviceId =
+      localStorage.getItem(`e2ee:remote_device:${sessionId}`) ?? "";
+    if (existingRemoteDeviceId) {
+      const oldState = await getSessionStateBytes(
+        sessionId,
+        deviceId,
+        remoteUserId,
+        existingRemoteDeviceId,
+      );
+      if (oldState) {
+        try {
+          const backupId = sessionId + ":backup";
+          await webE2eeRuntime.removeSession(backupId);
+          await webE2eeRuntime.restoreSession(backupId, oldState);
+          await saveSessionStateBytes(backupId, oldState, {
+            localDeviceId: deviceId,
+            remoteUserId,
+            remoteDeviceId: existingRemoteDeviceId,
+            direction: "outbound",
+          });
+        } catch {
+          // best-effort backup
+        }
+      }
+    }
+
     await deleteSessionState(sessionId);
     await webE2eeRuntime.removeSession(sessionId);
     const handshakeBytes = await webE2eeRuntime.createOutboundSession({
@@ -225,6 +253,30 @@ export async function respondToNegotiation(
     }
 
     const localKeys = await getLocalRustKeyMaterial();
+
+    // Backup any existing session before replacing it.
+    const oldState = await getSessionStateBytes(
+      sessionId,
+      deviceId,
+      senderUserId,
+      senderDeviceId,
+    );
+    if (oldState) {
+      try {
+        const backupId = sessionId + ":backup";
+        await webE2eeRuntime.removeSession(backupId);
+        await webE2eeRuntime.restoreSession(backupId, oldState);
+        await saveSessionStateBytes(backupId, oldState, {
+          localDeviceId: deviceId,
+          remoteUserId: senderUserId,
+          remoteDeviceId: senderDeviceId,
+          direction: "inbound",
+        });
+      } catch {
+        // best-effort backup
+      }
+    }
+
     await deleteSessionState(sessionId);
     await webE2eeRuntime.removeSession(sessionId);
     const encodedHandshake = asBase64String(handshakeBase64, "handshake");
@@ -237,7 +289,18 @@ export async function respondToNegotiation(
 
     const handshake = parseRustHandshake(base64ToBytes(encodedHandshake));
     if (handshake.oneTimePreKeyId != null) {
-      await markOneTimePreKeyConsumed(handshake.oneTimePreKeyId);
+      try {
+        await markOneTimePreKeyConsumed(handshake.oneTimePreKeyId);
+      } catch (otkErr: unknown) {
+        logger.error("[E2EE] failed to mark OTK as consumed after negotiation", {
+          sessionId,
+          oneTimePreKeyId: handshake.oneTimePreKeyId,
+          error:
+            otkErr instanceof Error
+              ? otkErr.message
+              : String(otkErr ?? ""),
+        });
+      }
     }
 
     await saveSessionStateBytes(sessionId, await webE2eeRuntime.exportSession(sessionId), {
@@ -248,6 +311,24 @@ export async function respondToNegotiation(
     });
     localStorage.setItem(`e2ee:remote_device:${sessionId}`, senderDeviceId);
     setLocalSessionStatus(sessionId, "encrypted");
+
+    // Update server-side negotiation state to "encrypted".
+    try {
+      await keyService.acceptEncryption(
+        sessionId,
+        localKeys.publicBundle.signedPreKey.key,
+      );
+    } catch (acceptErr: unknown) {
+      logger.warn("[E2EE] accept encryption API call failed", {
+        sessionId,
+        error:
+          acceptErr instanceof Error
+            ? acceptErr.message
+            : String(acceptErr ?? ""),
+      });
+      // Session is already established locally; do not fail the negotiation.
+    }
+
     return true;
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error ?? "");

@@ -50,6 +50,7 @@ function enqueueSessionTask(sessionId: string, task: () => Promise<void>): Promi
   const prev = sessionQueues.get(sessionId) ?? Promise.resolve();
   const next = prev.then(task, task);
   sessionQueues.set(sessionId, next);
+  trimSessionQueues();
   return next;
 }
 
@@ -275,4 +276,22 @@ export async function decryptMessageBatch(
  */
 export function clearDecryptorSession(sessionId: string): void {
   sessionQueues.delete(sessionId);
+  // Also clean up any backup/temp-suffixed queues
+  for (const key of sessionQueues.keys()) {
+    if (key.startsWith(sessionId + ":")) {
+      sessionQueues.delete(key);
+    }
+  }
+}
+
+const MAX_QUEUED_SESSIONS = 200;
+
+function trimSessionQueues(): void {
+  if (sessionQueues.size > MAX_QUEUED_SESSIONS) {
+    const entries = Array.from(sessionQueues.keys());
+    const toDelete = entries.slice(0, entries.length - MAX_QUEUED_SESSIONS + 50);
+    for (const key of toDelete) {
+      sessionQueues.delete(key);
+    }
+  }
 }

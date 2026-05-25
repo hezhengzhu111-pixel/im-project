@@ -177,7 +177,18 @@ class E2eeManager {
         // Track OTK consumption to keep local key material in sync
         const parsed = parseRustHandshake(base64ToBytes(envelope.handshake));
         if (parsed.oneTimePreKeyId != null) {
-          await markOneTimePreKeyConsumed(parsed.oneTimePreKeyId);
+          try {
+            await markOneTimePreKeyConsumed(parsed.oneTimePreKeyId);
+          } catch (otkErr: unknown) {
+            logger.error("[E2EE] failed to mark OTK as consumed after decrypt", {
+              sessionId: envelope.sessionId,
+              oneTimePreKeyId: parsed.oneTimePreKeyId,
+              error:
+                otkErr instanceof Error
+                  ? otkErr.message
+                  : String(otkErr ?? ""),
+            });
+          }
         }
 
         logger.info("[E2EE] decryptEnvelope: inbound session created from handshake", {
@@ -469,7 +480,12 @@ class E2eeManager {
         // Session was created outside e2eeManager (e.g., by initiateNegotiation
         // in negotiation.ts) and is still resident in WASM memory. Mark it as
         // loaded so we can use it directly without a duplicate restore.
+        // The caller will export and persist the updated state after
+        // encrypt/decrypt, so IndexedDB stays in sync with WASM.
         this.loadedSessions.add(sessionId);
+        logger.info("[E2EE] restoreSessionIfNeeded: session already in WASM, skipping restore", {
+          sessionId,
+        });
         return;
       }
       throw err;

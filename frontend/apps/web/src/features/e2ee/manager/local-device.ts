@@ -44,6 +44,8 @@ function setPublishedOtkIds(deviceId: string, ids: number[]): void {
 
 let registrationInFlight: Promise<string> | null = null;
 let legacyCleanupDone = false;
+let registrationDepth = 0;
+const MAX_REGISTRATION_DEPTH = 3;
 
 export async function ensureLocalE2eeDeviceRegistered(): Promise<string> {
   if (registrationInFlight) {
@@ -69,6 +71,22 @@ export async function getLocalRustKeyMaterial(): Promise<RustLocalE2eeKeyMateria
 }
 
 async function ensureLocalE2eeDeviceRegisteredInternal(): Promise<string> {
+  registrationDepth += 1;
+  if (registrationDepth > MAX_REGISTRATION_DEPTH) {
+    registrationDepth = 0;
+    throw new Error(
+      "E2EE device registration exceeded maximum retry depth — aborting to prevent infinite loop",
+    );
+  }
+
+  try {
+    return await ensureLocalE2eeDeviceRegisteredInternalImpl();
+  } finally {
+    registrationDepth = 0;
+  }
+}
+
+async function ensureLocalE2eeDeviceRegisteredInternalImpl(): Promise<string> {
   const deviceId = await resolveDeviceId();
   if (!legacyCleanupDone) {
     await clearLegacyE2eeState();
@@ -123,8 +141,10 @@ async function ensureLocalE2eeDeviceRegisteredInternal(): Promise<string> {
       await clearAllSessionState();
       return ensureLocalE2eeDeviceRegisteredInternal();
     }
-    logger.warn("[E2EE] device heartbeat failed", err);
-    logger.info("[E2EE] device already registered, heartbeat sent", { deviceId });
+    logger.warn("[E2EE] device heartbeat failed, continuing with local state", {
+      deviceId,
+      error: err instanceof Error ? err.message : String(err ?? ""),
+    });
     return deviceId;
   }
 
