@@ -156,7 +156,11 @@ export class WasmSessionManager {
         wasm.wasmsessionmanager_remove_session(this.__wbg_ptr, ptr0, len0);
     }
     /**
-     * Restore session from bincode bytes
+     * Restore session from bincode bytes.
+     *
+     * Fails if a session with the same id is already present.
+     * Callers that intend to replace an existing session must call
+     * `remove_session` first.
      * @param {string} session_id
      * @param {Uint8Array} state_bincode
      */

@@ -1,3 +1,5 @@
+use super::user_helpers::*;
+use super::user_types::*;
 use crate::auth::identity_from_headers;
 use crate::auth_api::{self, IssueTokenRequest, TokenPairDto};
 use crate::error::AppError;
@@ -14,121 +16,8 @@ use serde_json::{json, Value};
 use sqlx::{MySqlPool, Row};
 use std::collections::HashMap;
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LoginRequest {
-    username: String,
-    password: String,
-}
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RegisterRequest {
-    username: String,
-    password: String,
-    nickname: Option<String>,
-    email: Option<String>,
-    phone: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateProfileRequest {
-    nickname: Option<String>,
-    avatar: Option<String>,
-    email: Option<String>,
-    phone: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ChangePasswordRequest {
-    current_password: String,
-    new_password: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeTargetRequest {
-    target: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BindPhoneRequest {
-    phone: String,
-    code: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BindEmailRequest {
-    email: String,
-    code: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DeleteAccountRequest {
-    password: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SearchQuery {
-    keyword: String,
-    #[serde(default = "default_search_type")]
-    r#type: String,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct UserDto {
-    id: String,
-    username: String,
-    nickname: String,
-    avatar: Option<String>,
-    email: Option<String>,
-    phone: Option<String>,
-    status: String,
-    last_login_time: Option<String>,
-    create_time: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UserAuthResponse {
-    success: bool,
-    message: String,
-    user: UserDto,
-    token: Option<String>,
-    refresh_token: Option<String>,
-    expires_in_ms: Option<i64>,
-    refresh_expires_in_ms: Option<i64>,
-    permissions: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct UpstreamApiResponse<T> {
-    code: i32,
-    message: String,
-    data: Option<T>,
-}
-
-struct UserRecord {
-    id: i64,
-    username: String,
-    password: String,
-    nickname: Option<String>,
-    avatar: Option<String>,
-    email: Option<String>,
-    phone: Option<String>,
-    status: i32,
-    last_login_time: Option<chrono::NaiveDateTime>,
-    created_time: Option<chrono::NaiveDateTime>,
-}
-
-pub async fn login(
+pub(crate) async fn login(
     State(state): State<AppState>,
     Json(request): Json<LoginRequest>,
 ) -> Result<(StatusCode, HeaderMap, Json<ApiResponse<UserAuthResponse>>), AppError> {
@@ -170,7 +59,7 @@ pub async fn login(
     ))
 }
 
-pub async fn register(
+pub(crate) async fn register(
     State(state): State<AppState>,
     Json(request): Json<RegisterRequest>,
 ) -> Result<Json<ApiResponse<UserDto>>, AppError> {
@@ -220,7 +109,7 @@ pub async fn register(
     })))
 }
 
-pub async fn logout(
+pub(crate) async fn logout(
     State(state): State<AppState>,
 ) -> (StatusCode, HeaderMap, Json<ApiResponse<String>>) {
     let mut headers = HeaderMap::new();
@@ -232,11 +121,11 @@ pub async fn logout(
     )
 }
 
-pub async fn offline() -> Json<ApiResponse<String>> {
+pub(crate) async fn offline() -> Json<ApiResponse<String>> {
     Json(ApiResponse::success("ok".to_string()))
 }
 
-pub async fn update_profile(
+pub(crate) async fn update_profile(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(request): Json<UpdateProfileRequest>,
@@ -263,7 +152,7 @@ pub async fn update_profile(
     Ok(Json(ApiResponse::success(user.to_dto())))
 }
 
-pub async fn change_password(
+pub(crate) async fn change_password(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(request): Json<ChangePasswordRequest>,
@@ -288,7 +177,7 @@ pub async fn change_password(
     Ok(Json(ApiResponse::success(true)))
 }
 
-pub async fn send_phone_code(
+pub(crate) async fn send_phone_code(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(request): Json<CodeTargetRequest>,
@@ -308,7 +197,7 @@ pub async fn send_phone_code(
     Ok(Json(ApiResponse::success(code)))
 }
 
-pub async fn bind_phone(
+pub(crate) async fn bind_phone(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(request): Json<BindPhoneRequest>,
@@ -332,7 +221,7 @@ pub async fn bind_phone(
     Ok(Json(ApiResponse::success(true)))
 }
 
-pub async fn send_email_code(
+pub(crate) async fn send_email_code(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(request): Json<CodeTargetRequest>,
@@ -352,7 +241,7 @@ pub async fn send_email_code(
     Ok(Json(ApiResponse::success(code)))
 }
 
-pub async fn bind_email(
+pub(crate) async fn bind_email(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(request): Json<BindEmailRequest>,
@@ -376,7 +265,7 @@ pub async fn bind_email(
     Ok(Json(ApiResponse::success(true)))
 }
 
-pub async fn delete_account(
+pub(crate) async fn delete_account(
     State(state): State<AppState>,
     headers: HeaderMap,
     body: Bytes,
@@ -419,7 +308,7 @@ pub async fn delete_account(
     ))
 }
 
-pub async fn search(
+pub(crate) async fn search(
     State(state): State<AppState>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<ApiResponse<Vec<UserDto>>>, AppError> {
@@ -447,7 +336,7 @@ pub async fn search(
     )))
 }
 
-pub async fn heartbeat(
+pub(crate) async fn heartbeat(
     State(state): State<AppState>,
     headers: HeaderMap,
     body: Bytes,
@@ -471,7 +360,7 @@ pub async fn heartbeat(
     online_status_impl(state, body).await
 }
 
-pub async fn online_status(
+pub(crate) async fn online_status(
     State(state): State<AppState>,
     headers: HeaderMap,
     body: Bytes,
@@ -480,7 +369,7 @@ pub async fn online_status(
     online_status_impl(state, body).await
 }
 
-pub async fn settings(
+pub(crate) async fn settings(
     headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Value>>, AppError> {
@@ -488,7 +377,7 @@ pub async fn settings(
     Ok(Json(ApiResponse::success(default_settings())))
 }
 
-pub async fn update_settings(
+pub(crate) async fn update_settings(
     headers: HeaderMap,
     State(state): State<AppState>,
     Path(_kind): Path<String>,
@@ -496,299 +385,4 @@ pub async fn update_settings(
 ) -> Result<Json<ApiResponse<bool>>, AppError> {
     let _identity = identity_from_headers(&headers, &state.config)?;
     Ok(Json(ApiResponse::success(true)))
-}
-
-async fn online_status_impl(
-    state: AppState,
-    body: Bytes,
-) -> Result<Json<ApiResponse<HashMap<String, bool>>>, AppError> {
-    let user_ids = parse_user_ids(&body)?;
-    if user_ids.is_empty() {
-        return Ok(Json(ApiResponse::success(HashMap::new())));
-    }
-    match signed_internal_post::<HashMap<String, bool>>(
-        &state,
-        &format!(
-            "{}/api/im/online-status",
-            state.config.im_server_url.trim_end_matches('/')
-        ),
-        "/api/im/online-status",
-        Bytes::from(serde_json::to_vec(&user_ids)?),
-    )
-    .await
-    {
-        Ok(status) => Ok(Json(ApiResponse::success(status))),
-        Err(error) => {
-            tracing::warn!(error = %error, "online-status fallback to offline map");
-            Ok(Json(ApiResponse::success(
-                user_ids.into_iter().map(|id| (id, false)).collect(),
-            )))
-        }
-    }
-}
-
-async fn signed_internal_post<T>(
-    state: &AppState,
-    url: &str,
-    signed_path: &str,
-    body: Bytes,
-) -> Result<T, AppError>
-where
-    T: for<'de> Deserialize<'de>,
-{
-    let headers = auth_api::internal_signature_headers("POST", signed_path, &body, &state.config)?;
-    let response = state
-        .http
-        .post(url)
-        .headers(headers)
-        .header(header::CONTENT_TYPE, "application/json")
-        .body(body.to_vec())
-        .send()
-        .await?;
-    let status = response.status();
-    let payload: UpstreamApiResponse<T> = response.json().await?;
-    if !status.is_success() || payload.code != 200 {
-        return Err(AppError::Upstream(payload.message));
-    }
-    payload
-        .data
-        .ok_or_else(|| AppError::Upstream("upstream response missing data".to_string()))
-}
-
-async fn issue_token(state: &AppState, user: &UserRecord) -> Result<TokenPairDto, AppError> {
-    auth_api::issue_token_pair(
-        state,
-        IssueTokenRequest {
-            user_id: Some(user.id),
-            username: Some(user.username.clone()),
-            nickname: user.nickname.clone(),
-            avatar: user.avatar.clone(),
-            email: user.email.clone(),
-            phone: user.phone.clone(),
-            permissions: Vec::new(),
-        },
-    )
-    .await
-}
-
-async fn load_user_by_username(
-    db: &MySqlPool,
-    username: &str,
-) -> Result<Option<UserRecord>, AppError> {
-    let row = sqlx::query(&user_select_sql("username = ?"))
-        .bind(username)
-        .fetch_optional(db)
-        .await?;
-    Ok(row.as_ref().map(user_from_row))
-}
-
-async fn load_user_by_id(db: &MySqlPool, user_id: i64) -> Result<Option<UserRecord>, AppError> {
-    let row = sqlx::query(&user_select_sql("id = ?"))
-        .bind(user_id)
-        .fetch_optional(db)
-        .await?;
-    Ok(row.as_ref().map(user_from_row))
-}
-
-fn user_select_sql(where_clause: &str) -> String {
-    format!(
-        "SELECT id, username, password, nickname, avatar, email, phone, status, last_login_time, created_time \
-         FROM service_user_service_db.users WHERE status = 1 AND {where_clause} LIMIT 20"
-    )
-}
-
-fn user_from_row(row: &sqlx::mysql::MySqlRow) -> UserRecord {
-    UserRecord {
-        id: row.get("id"),
-        username: row.get("username"),
-        password: row.get("password"),
-        nickname: row.get("nickname"),
-        avatar: row.get("avatar"),
-        email: row.get("email"),
-        phone: row.get("phone"),
-        status: i32::from(row.get::<i8, _>("status")),
-        last_login_time: row.get("last_login_time"),
-        created_time: row.get("created_time"),
-    }
-}
-
-impl UserRecord {
-    fn to_dto(&self) -> UserDto {
-        UserDto {
-            id: self.id.to_string(),
-            username: self.username.clone(),
-            nickname: self
-                .nickname
-                .clone()
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| self.username.clone()),
-            avatar: self.avatar.clone(),
-            email: self.email.clone(),
-            phone: self.phone.clone(),
-            status: "offline".to_string(),
-            last_login_time: self.last_login_time.map(|value| value.to_string()),
-            create_time: self.created_time.map(|value| value.to_string()),
-        }
-    }
-}
-
-fn normalize_username(raw: &str) -> Result<String, AppError> {
-    let username = raw.trim().to_ascii_lowercase();
-    if username.len() < 3
-        || username.len() > 20
-        || !username
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-    {
-        return Err(AppError::BadRequest(
-            "用户名只能包含3-20位字母、数字和下划线".to_string(),
-        ));
-    }
-    Ok(username)
-}
-
-fn validate_password(password: &str) -> Result<(), AppError> {
-    let has_letter = password.chars().any(|ch| ch.is_ascii_alphabetic());
-    let has_digit = password.chars().any(|ch| ch.is_ascii_digit());
-    if password.len() < 8 || password.len() > 64 || !has_letter || !has_digit {
-        return Err(AppError::BadRequest(
-            "密码需为8-64位，且包含字母和数字".to_string(),
-        ));
-    }
-    Ok(())
-}
-
-fn validate_phone(phone: &str) -> Result<(), AppError> {
-    let value = phone.trim();
-    if value.len() < 6
-        || value.len() > 20
-        || !value.chars().all(|ch| ch.is_ascii_digit() || ch == '+')
-    {
-        return Err(AppError::BadRequest("invalid phone".to_string()));
-    }
-    Ok(())
-}
-
-fn validate_email(email: &str) -> Result<(), AppError> {
-    let value = email.trim();
-    if value.len() < 5 || value.len() > 128 || !value.contains('@') || value.starts_with('@') {
-        return Err(AppError::BadRequest("invalid email".to_string()));
-    }
-    Ok(())
-}
-
-fn validate_code(code: &str) -> Result<(), AppError> {
-    let value = code.trim();
-    if value.is_empty() || value.len() > 16 {
-        return Err(AppError::BadRequest(
-            "invalid verification code".to_string(),
-        ));
-    }
-    Ok(())
-}
-
-fn generate_verification_code() -> String {
-    let num = uuid::Uuid::new_v4()
-        .as_u128()
-        .checked_rem(1_000_000)
-        .unwrap_or(0);
-    format!("{num:06}")
-}
-
-fn verification_code_key(user_id: i64, kind: &str, target: &str) -> String {
-    format!("im:code:{user_id}:{kind}:{target}")
-}
-
-async fn verify_and_consume_code(
-    state: &AppState,
-    user_id: i64,
-    kind: &str,
-    target: &str,
-    code: &str,
-) -> Result<(), AppError> {
-    let key = verification_code_key(user_id, kind, target);
-    let mut redis = state.redis_manager.clone();
-    let stored: redis::RedisResult<Option<String>> = redis.get(&key).await;
-    match stored {
-        Ok(Some(stored_code)) if stored_code == code => {
-            let _: redis::RedisResult<()> = redis.del(&key).await;
-            Ok(())
-        }
-        Ok(_) => Err(AppError::BadRequest(
-            "verification code is incorrect or expired".to_string(),
-        )),
-        Err(error) => {
-            tracing::warn!(error = %error, user_id, kind, target, "redis error during code verification");
-            Err(AppError::BadRequest(
-                "verification code is incorrect or expired".to_string(),
-            ))
-        }
-    }
-}
-
-fn normalize_optional(raw: Option<&str>) -> Option<String> {
-    raw.map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-}
-
-fn verify_password(raw: &str, stored: &str) -> bool {
-    if stored.starts_with("$2") {
-        bcrypt::verify(raw, stored).unwrap_or(false)
-    } else {
-        raw == stored
-    }
-}
-
-fn parse_user_ids(body: &[u8]) -> Result<Vec<String>, AppError> {
-    if body.is_empty() {
-        return Ok(Vec::new());
-    }
-    let value: Value = serde_json::from_slice(body)?;
-    let Some(items) = value.as_array() else {
-        return Ok(Vec::new());
-    };
-    Ok(items
-        .iter()
-        .filter_map(|item| {
-            item.as_str()
-                .map(str::to_string)
-                .or_else(|| item.as_i64().map(|id| id.to_string()))
-        })
-        .filter(|id| !id.trim().is_empty())
-        .collect())
-}
-
-fn default_search_type() -> String {
-    "username".to_string()
-}
-
-fn default_settings() -> Value {
-    json!({
-        "general": {
-            "language": "zh-CN",
-            "theme": "light",
-            "fontSize": "medium",
-            "autoLogin": true,
-            "minimizeOnStart": false
-        },
-        "privacy": {
-            "allowStrangerAdd": true,
-            "showOnlineStatus": true,
-            "allowViewMoments": true,
-            "messageReadReceipt": true
-        },
-        "message": {
-            "enableNotification": true,
-            "enableSound": true,
-            "enableVibration": false,
-            "muteGroupMessages": false,
-            "autoDownloadImages": true
-        },
-        "notifications": {
-            "sound": true,
-            "desktop": true,
-            "preview": true
-        }
-    })
 }

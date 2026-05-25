@@ -129,6 +129,34 @@ export async function clearLocalKeyMaterial(): Promise<void> {
   });
 }
 
+/**
+ * Clear all session state and reset E2EE status markers.
+ *
+ * Called during device re-registration because new key material (SPK, OTKs)
+ * invalidates all existing Double Ratchet sessions — they were established
+ * with old public keys that no longer match the new private keys.
+ */
+export async function clearAllSessionState(): Promise<void> {
+  const db = await openDB();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(["sessions"], "readwrite");
+    tx.objectStore("sessions").clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+
+  // Reset all e2ee status markers so the UI shows "enable encryption" again
+  try {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith("e2ee:status:") || key.startsWith("e2ee:remote_device:") || key.startsWith("e2ee:initial-handshake:")) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // localStorage may be unavailable
+  }
+}
+
 export async function clearLegacyE2eeState(): Promise<void> {
   try {
     for (const key of Object.keys(localStorage)) {

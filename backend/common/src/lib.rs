@@ -15,3 +15,12 @@ pub mod ids;
 pub mod keys;
 pub mod moments;
 pub mod time;
+
+#[cfg(test)]
+mod api_tests;
+#[cfg(test)]
+mod ids_tests;
+#[cfg(test)]
+mod keys_tests;
+#[cfg(test)]
+mod time_tests;
