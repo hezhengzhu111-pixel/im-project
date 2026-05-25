@@ -83,9 +83,25 @@ const ensureInternal = async (userId: string): Promise<LocalE2eeKeyMaterial> => 
     }
   }
 
-  await mobileE2eeKeyService.heartbeat(deviceId).catch((error: unknown) => {
+  try {
+    await mobileE2eeKeyService.heartbeat(deviceId);
+  } catch (error: unknown) {
+    const status = (error as { response?: { status?: number } })?.response?.status;
+    if (status === 404) {
+      logger.warn(
+        'e2ee',
+        'device not found on server, clearing stale local state and re-registering',
+        {
+          userId: sanitizeE2eeLogValue(userId),
+          deviceId: sanitizeE2eeLogValue(deviceId),
+        },
+      );
+      await e2eeSecureStorage.clearPublishedOtkState(userId, deviceId);
+      await e2eeSecureStorage.removeKeyMaterial(userId, deviceId);
+      return ensureInternal(userId);
+    }
     logger.warn('e2ee', 'device heartbeat failed', sanitizeE2eeLogValue(error));
-  });
+  }
   return material;
 };
 
@@ -121,8 +137,23 @@ export const getLocalRustKeyMaterial = async (): Promise<LocalE2eeKeyMaterial> =
 export const heartbeatLocalE2eeDevice = async (): Promise<void> => {
   const userId = requireCurrentE2eeUserId();
   const deviceId = await e2eeKeyStore.getDeviceId(userId);
-  if (deviceId) {
+  if (!deviceId) return;
+  try {
     await mobileE2eeKeyService.heartbeat(deviceId);
+  } catch (err: unknown) {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    if (status === 404) {
+      logger.warn(
+        'e2ee',
+        'heartbeatLocalE2eeDevice: device not found on server, re-registering',
+        { userId: sanitizeE2eeLogValue(userId), deviceId: sanitizeE2eeLogValue(deviceId) },
+      );
+      try {
+        await ensureLocalE2eeDeviceRegistered();
+      } catch (reRegErr: unknown) {
+        logger.warn('e2ee', 'heartbeatLocalE2eeDevice: re-registration failed', sanitizeE2eeLogValue(reRegErr));
+      }
+    }
   }
 };
 

@@ -5,6 +5,7 @@ import { keyService } from "../api/key-service";
 import { webE2eeRuntime } from "../runtime";
 import {
   clearLegacyE2eeState,
+  clearLocalKeyMaterial,
   getLocalKeyMaterial,
   saveLocalKeyMaterial,
 } from "../store/key-store";
@@ -99,11 +100,26 @@ async function ensureLocalE2eeDeviceRegisteredInternal(): Promise<string> {
     );
   }
 
-  await keyService.heartbeat(deviceId).catch((err: unknown) => {
+  try {
+    await keyService.heartbeat(deviceId);
+    logger.info("[E2EE] device already registered, heartbeat sent", { deviceId });
+    return deviceId;
+  } catch (err: unknown) {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    if (status === 404) {
+      logger.warn(
+        "[E2EE] device not found on server, clearing stale local state and re-registering",
+        { deviceId },
+      );
+      localStorage.removeItem(OTK_PUBLISHED_PREFIX + deviceId);
+      await clearLocalKeyMaterial();
+      // Retry — will hit the first-time registration branch above
+      return ensureLocalE2eeDeviceRegisteredInternal();
+    }
     logger.warn("[E2EE] device heartbeat failed", err);
-  });
-  logger.info("[E2EE] device already registered, heartbeat sent", { deviceId });
-  return deviceId;
+    logger.info("[E2EE] device already registered, heartbeat sent", { deviceId });
+    return deviceId;
+  }
 }
 
 function isLocalBundleConsistent(keys: RustLocalE2eeKeyMaterial): boolean {

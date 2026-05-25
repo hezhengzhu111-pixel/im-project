@@ -18,6 +18,10 @@ const HEARTBEAT_INTERVAL_MS = 30 * 60 * 1000; // 30 分钟
 
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
+function isNotFoundError(err: unknown): boolean {
+  return (err as { response?: { status?: number } })?.response?.status === 404;
+}
+
 /**
  * 初始化 E2EE 子系统。
  *
@@ -38,6 +42,26 @@ export async function initE2ee(): Promise<void> {
 }
 
 /**
+ * 发送单次心跳，如遇 404 则触发重新注册。
+ */
+async function sendHeartbeat(deviceId: string): Promise<void> {
+  try {
+    await keyService.heartbeat(deviceId);
+  } catch (err: unknown) {
+    if (isNotFoundError(err)) {
+      logger.warn('[E2EE] periodic heartbeat: device not found on server, re-registering', { deviceId });
+      try {
+        await ensureLocalE2eeDeviceRegistered();
+      } catch (reRegErr: unknown) {
+        logger.warn('[E2EE] periodic heartbeat: re-registration failed', reRegErr);
+      }
+    } else {
+      logger.warn('[E2EE] heartbeat failed', err);
+    }
+  }
+}
+
+/**
  * 启动设备心跳定时器。
  * 定期向服务端上报设备活跃状态，防止设备被清理。
  */
@@ -45,14 +69,10 @@ function startDeviceHeartbeat(deviceId: string): void {
   stopDeviceHeartbeat();
 
   // 首次心跳立即发送
-  void keyService.heartbeat(deviceId).catch((err) => {
-    logger.warn('[E2EE] heartbeat failed', err);
-  });
+  void sendHeartbeat(deviceId);
 
   heartbeatTimer = setInterval(() => {
-    void keyService.heartbeat(deviceId).catch((err) => {
-      logger.warn('[E2EE] heartbeat failed', err);
-    });
+    void sendHeartbeat(deviceId);
   }, HEARTBEAT_INTERVAL_MS);
 }
 
