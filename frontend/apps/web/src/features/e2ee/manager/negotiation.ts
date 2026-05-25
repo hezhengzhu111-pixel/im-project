@@ -250,7 +250,23 @@ export async function respondToNegotiation(
     setLocalSessionStatus(sessionId, "encrypted");
     return true;
   } catch (error) {
-    console.error("[E2EE] Rust negotiation response failed:", error instanceof Error ? error.message : "unknown");
+    const errMsg = error instanceof Error ? error.message : String(error ?? "");
+
+    if (errMsg.includes("missing one-time pre-key")) {
+      logger.warn("[E2EE] OTK referenced by handshake not available locally, forcing re-registration", { sessionId });
+      try {
+        const { clearLocalKeyMaterial } = await import("../store/key-store");
+        await clearLocalKeyMaterial();
+      } catch {
+        // best-effort cleanup
+      }
+      setLocalSessionStatus(sessionId, "failed");
+      throw new Error(
+        "一次性密钥已过期，请通知对方重新发起加密请求。",
+      );
+    }
+
+    console.error("[E2EE] Rust negotiation response failed:", errMsg);
     setLocalSessionStatus(sessionId, "failed");
     return false;
   }
