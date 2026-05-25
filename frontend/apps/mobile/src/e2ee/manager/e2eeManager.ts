@@ -175,7 +175,16 @@ class MobileE2eeManager {
     if (this.loadedSessions.has(sessionId)) {
       return;
     }
-    await runtime.restoreSession(sessionId, state);
+    try {
+      await runtime.restoreSession(sessionId, state);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err ?? "");
+      if (message.includes("session already exists")) {
+        this.loadedSessions.add(sessionId);
+        return;
+      }
+      throw err;
+    }
     this.loadedSessions.add(sessionId);
   }
 
