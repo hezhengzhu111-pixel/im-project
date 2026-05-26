@@ -539,10 +539,8 @@ export const useWebSocketStore = defineStore("websocket", () => {
             const { handleIncomingPing } = await import(
               "@/features/e2ee/manager/channel-ping"
             );
-            const sessionId = normalizedMessage.receiverId
-              ? buildSessionId("private", currentUserId, normalizedMessage.receiverId)
-              : "";
-            if (sessionId) handleIncomingPing(content, sessionId, msgSenderId);
+            const sessionId = buildSessionId("private", currentUserId, msgSenderId);
+            handleIncomingPing(content, sessionId, msgSenderId);
           }
           return;
         }
@@ -551,10 +549,8 @@ export const useWebSocketStore = defineStore("websocket", () => {
             const { handleIncomingPong } = await import(
               "@/features/e2ee/manager/channel-ping"
             );
-            const sessionId = normalizedMessage.receiverId
-              ? buildSessionId("private", currentUserId, normalizedMessage.receiverId)
-              : "";
-            if (sessionId) handleIncomingPong(content, sessionId);
+            const sessionId = buildSessionId("private", currentUserId, msgSenderId);
+            handleIncomingPong(content, sessionId);
           }
           return;
         }
