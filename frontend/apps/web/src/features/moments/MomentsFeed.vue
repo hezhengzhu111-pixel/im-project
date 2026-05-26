@@ -9,37 +9,31 @@
     </div>
 
     <template v-else>
-      <MomentsPostCard
-        v-for="item in feed"
-        :key="item.post.id"
-        :post="item"
-      />
+      <MomentsPostCard v-for="item in feed" :key="item.post.id" :post="item" />
 
       <div v-if="loading" class="feed-loading-more">
         <el-icon class="is-loading"><Loading /></el-icon>
         加载中...
       </div>
 
-      <div v-else-if="!hasMore" class="feed-no-more">
-        没有更多了
-      </div>
+      <div v-else-if="!hasMore" class="feed-no-more">没有更多了</div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { Loading } from '@element-plus/icons-vue'
-import { useMomentsStore } from '@/stores/moments'
-import { storeToRefs } from 'pinia'
-import MomentsPostCard from './MomentsPostCard.vue'
+import { onMounted } from "vue";
+import { Loading } from "@element-plus/icons-vue";
+import { useMomentsStore } from "@/stores/moments";
+import { storeToRefs } from "pinia";
+import MomentsPostCard from "./MomentsPostCard.vue";
 
-const store = useMomentsStore()
-const { feed, loading, hasMore } = storeToRefs(store)
+const store = useMomentsStore();
+const { feed, loading, hasMore } = storeToRefs(store);
 
 onMounted(() => {
-  store.loadFeed(true)
-})
+  store.loadFeed(true);
+});
 </script>
 
 <style scoped lang="scss">
