@@ -29,6 +29,13 @@
   // 文字
   --fresh-text: #12201a;
   --fresh-text-muted: rgba(18, 32, 26, 0.58);
+
+  // 密度与半径
+  --fresh-radius-page: 20px;
+  --fresh-radius-card: 16px;
+  --fresh-radius-control: 10px;
+  --fresh-section-gap: 14px;
+  --fresh-row-height: 58px;
 }
 
 // ── 暗色主题 ──
@@ -91,14 +98,14 @@
   box-shadow: var(--fresh-glass-shadow-soft);
   backdrop-filter: var(--fresh-blur);
   -webkit-backdrop-filter: var(--fresh-blur);
-  border-radius: 20px;
+  border-radius: var(--fresh-radius-page);
 
   &.is-interactive {
     cursor: pointer;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 
     &:hover {
-      transform: translateY(-2px);
+      transform: translateY(-1px);
       box-shadow: var(--fresh-glass-shadow);
     }
   }
