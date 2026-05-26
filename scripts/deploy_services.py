@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 from urllib.parse import quote_plus
 
 from deploy_utils import (
@@ -155,9 +156,23 @@ def apply_database_migrations(config) -> None:
 
 
 def build_frontend_wasm(config) -> None:
-    npm_cmd = resolve_executable("npm", ["npm", "npm.cmd"])
+    npm_path = shutil.which("npm") or shutil.which("npm.cmd")
+    if npm_path is None:
+        # 纯 Docker + Git 环境可能没有 npm，此时依赖预构建的 WASM 产物
+        wasm_dir = config.project_dir / "frontend" / "packages" / "rust-e2ee-wasm" / "src"
+        required = ["e2ee_wasm.js", "e2ee_wasm.d.ts", "e2ee_wasm_bg.wasm"]
+        missing = [f for f in required if not (wasm_dir / f).exists()]
+        if missing:
+            fatal(
+                "npm is not available and E2EE WASM artifacts are missing: "
+                + ", ".join(missing)
+                + ". Install Node.js or run 'npm run e2ee:wasm:build' on a "
+                + "development machine and commit the generated files."
+            )
+        print("npm not found; using pre-built E2EE WASM artifacts.")
+        return
     print("Building Rust E2EE WASM artifacts for frontend...")
-    run_command([npm_cmd, "run", "e2ee:wasm:build"], cwd=config.project_dir / "frontend")
+    run_command([npm_path, "run", "e2ee:wasm:build"], cwd=config.project_dir / "frontend")
 
 
 def main() -> None:
