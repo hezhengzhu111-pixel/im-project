@@ -167,6 +167,7 @@
       >
         {{ senderAvatarText }}
       </el-avatar>
+      <div v-else-if="isMine" class="msg-avatar-spacer"></div>
     </template>
   </div>
 </template>
@@ -310,7 +311,7 @@ const handleMediaLoaded = () => {
   margin-bottom: 24px !important;
   animation: msgFadeIn 0.25s var(--motion-out, ease-out) both;
 
-  &--self { flex-direction: row-reverse; }
+  &--self { justify-content: flex-end; }
   &--compact { margin-bottom: 24px !important; }
   &--system { justify-content: center; margin-bottom: 20px !important; }
 }
