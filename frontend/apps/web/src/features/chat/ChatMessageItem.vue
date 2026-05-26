@@ -308,11 +308,11 @@ const handleMediaLoaded = () => {
   display: flex;
   align-items: flex-start;
   padding: 0 var(--space-4, 16px);
-  padding-bottom: 24px;
+  padding-bottom: 20px;
   animation: msgFadeIn 0.25s var(--motion-out, ease-out) both;
 
   &--self { justify-content: flex-end; }
-  &--compact { padding-bottom: 12px; }
+  &--compact { padding-bottom: 8px; }
   &--system { justify-content: center; padding-bottom: 20px; }
 }
 
@@ -344,7 +344,8 @@ const handleMediaLoaded = () => {
   position: relative;
   display: inline-block;
   padding: 9px 13px;
-  border-radius: var(--chat-bubble-radius, 12px);
+  border-radius: var(--chat-bubble-radius, 4px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   font-size: var(--font-size-base, 14px);
   line-height: var(--line-height-base, 1.5);
   word-break: break-word;
@@ -367,6 +368,7 @@ const handleMediaLoaded = () => {
   &.is-own {
     background: var(--chat-bubble-own);
     color: var(--chat-bubble-own-text, #fff);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 
     // 右侧三角尾巴（发送方）
     &::before {
