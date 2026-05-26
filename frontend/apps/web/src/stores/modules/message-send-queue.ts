@@ -248,7 +248,8 @@ export function createMessageSendQueueModule(
         const { getLocalSessionStatus } = await import(
           "@/features/e2ee/manager/negotiation"
         );
-        e2eeRequired = privateE2eeStatus === "encrypted"
+        e2eeRequired = session.encrypted === true
+          || privateE2eeStatus === "encrypted"
           || getLocalSessionStatus(session.id) === "encrypted";
 
         if (e2eeRequired) {
