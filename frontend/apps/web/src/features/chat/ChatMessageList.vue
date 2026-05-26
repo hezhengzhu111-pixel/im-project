@@ -1043,7 +1043,9 @@ onUnmounted(() => {
   min-height: 0;
   overflow-y: auto;
   padding: 14px 18px 16px;
-  background: var(--chat-bg, var(--surface-tertiary, #f5f5f5));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.08) 60%),
+    var(--chat-bg, var(--surface-tertiary, #f5f5f5));
 }
 
 .history-indicator {
