@@ -47,7 +47,6 @@ const coverBgStyle = computed(() => {
 .moments-cover {
   position: relative;
   height: var(--moments-cover-height);
-  overflow: hidden;
   flex-shrink: 0;
 }
 
@@ -55,6 +54,7 @@ const coverBgStyle = computed(() => {
   position: absolute;
   inset: 0;
   background-repeat: no-repeat;
+  overflow: hidden;
 }
 
 .cover-body {
@@ -90,5 +90,7 @@ const coverBgStyle = computed(() => {
   flex-shrink: 0;
   object-fit: cover;
   background: var(--surface-sunken);
+  z-index: 10;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 </style>

@@ -120,7 +120,8 @@ onUnmounted(() => {
   border-right: 1px solid #ECECEC;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.08);
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 
 .moments-topbar {
