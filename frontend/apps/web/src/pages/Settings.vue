@@ -338,24 +338,18 @@ onMounted(() => {
 <style scoped lang="scss">
 .settings-page {
   min-height: 100%;
-  padding: 24px;
+  padding: 28px;
   overflow-y: auto;
-  background:
-    radial-gradient(circle at 12% 8%, rgba(37, 99, 235, 0.14), transparent 28%),
-    radial-gradient(
-      circle at 88% 0%,
-      rgba(16, 185, 129, 0.12),
-      transparent 30%
-    ),
-    var(--chat-shell-bg);
+  background: var(--fresh-page-bg);
 }
 
 .settings-hero,
 .settings-card {
-  border: 1px solid var(--chat-panel-border);
-  background: var(--chat-panel-bg);
-  box-shadow: var(--chat-surface-shadow);
-  backdrop-filter: var(--chat-glass-blur);
+  border: 1px solid var(--fresh-glass-border);
+  background: var(--fresh-glass-bg);
+  box-shadow: var(--fresh-glass-shadow-soft);
+  backdrop-filter: var(--fresh-blur);
+  -webkit-backdrop-filter: var(--fresh-blur);
 }
 
 .settings-hero {
@@ -363,10 +357,10 @@ onMounted(() => {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 18px;
-  max-width: 980px;
+  max-width: 1120px;
   margin: 0 auto 18px;
   padding: 18px;
-  border-radius: 8px;
+  border-radius: 22px;
 }
 
 .hero-copy h1,
@@ -387,7 +381,7 @@ onMounted(() => {
 }
 
 .settings-content {
-  max-width: 980px;
+  max-width: 1120px;
   margin: 0 auto;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -401,22 +395,33 @@ onMounted(() => {
   justify-content: space-between;
   gap: 18px;
   padding: 18px;
-  border-radius: 8px;
+  border-radius: 22px;
   transition:
     transform 0.2s ease,
     border-color 0.2s ease,
     box-shadow 0.2s ease;
 }
 
-.settings-card:hover {
-  transform: translateY(-1px);
-  border-color: rgba(37, 99, 235, 0.28);
-}
-
 .account-card {
   grid-column: 1 / -1;
   justify-content: flex-start;
   cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--fresh-glass-shadow);
+  }
+}
+
+.ai-card {
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--fresh-glass-shadow);
+  }
 }
 
 .account-avatar {
@@ -432,7 +437,7 @@ onMounted(() => {
 
 .settings-kicker {
   margin-bottom: 4px;
-  color: var(--chat-accent-strong);
+  color: var(--fresh-green);
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
@@ -490,8 +495,8 @@ onMounted(() => {
 .flat-button:hover,
 .icon-button:hover {
   transform: translateY(-1px);
-  color: var(--chat-accent-strong);
-  background: rgba(37, 99, 235, 0.1);
+  color: var(--fresh-green);
+  background: rgba(7, 193, 96, 0.10);
 }
 
 .logout-button:disabled {
@@ -504,8 +509,8 @@ onMounted(() => {
   display: inline-flex;
   gap: 4px;
   padding: 4px;
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.06);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.42);
 }
 
 .segmented-control button {
@@ -513,14 +518,18 @@ onMounted(() => {
   min-height: 32px;
   padding: 0 10px;
   background: transparent;
-  color: var(--chat-text-secondary);
-  font-weight: 800;
+  color: var(--fresh-text-muted);
+  font-weight: 700;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.18s ease;
 }
 
 .segmented-control button.active {
-  background: rgba(255, 255, 255, 0.88);
-  color: var(--chat-accent-strong);
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+  background: linear-gradient(135deg, rgba(167, 243, 208, 0.9), rgba(186, 230, 253, 0.8));
+  color: var(--fresh-text);
+  box-shadow: 0 4px 14px rgba(7, 193, 96, 0.12);
 }
 
 @media (max-width: 860px) {
