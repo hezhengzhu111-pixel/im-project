@@ -1,5 +1,6 @@
 <template>
-  <div class="moments-container">
+  <div class="moments-page-wrapper">
+    <div class="moments-container">
     <!-- 顶栏：sticky, 透明→实色 -->
     <div ref="topbarRef" class="moments-topbar">
       <span class="topbar-title">朋友圈</span>
@@ -22,6 +23,7 @@
     <el-drawer v-model="showComposer" title="发布动态" :size="drawerSize" direction="btt">
       <MomentsComposer @close="showComposer = false" />
     </el-drawer>
+    </div>
   </div>
 </template>
 
@@ -99,11 +101,26 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
+.moments-page-wrapper {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  background-color: #F0F0F0;
+}
+
 .moments-container {
+  width: 100%;
+  max-width: 600px;
   height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--moments-bg);
+  border-left: 1px solid #ECECEC;
+  border-right: 1px solid #ECECEC;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.08);
+  position: relative;
+  overflow: hidden;
 }
 
 .moments-topbar {
@@ -157,6 +174,17 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
+  .moments-page-wrapper {
+    background-color: var(--moments-bg);
+  }
+
+  .moments-container {
+    max-width: 100%;
+    border-left: none;
+    border-right: none;
+    box-shadow: none;
+  }
+
   .topbar-title {
     font-size: 16px;
   }
