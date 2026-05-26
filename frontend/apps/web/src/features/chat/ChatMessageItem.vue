@@ -318,6 +318,7 @@ const handleMediaLoaded = () => {
 .msg-avatar {
   flex-shrink: 0;
   margin-top: 0;
+  :deep(img) { border-radius: 4px; }
   &--left { margin-right: var(--space-2); }
   &--right { margin-left: var(--space-2); }
 }
@@ -339,6 +340,7 @@ const handleMediaLoaded = () => {
 }
 
 .msg-bubble {
+  position: relative;
   display: inline-block;
   padding: 9px 13px;
   border-radius: var(--chat-bubble-radius, 12px);
@@ -347,17 +349,43 @@ const handleMediaLoaded = () => {
   word-break: break-word;
   background: var(--chat-bubble-other);
   color: var(--chat-bubble-other-text, var(--chat-text-primary));
-  border: 0.5px solid var(--border-light, var(--chat-panel-border));
+
+  // 左侧三角尾巴（接收方）
+  &:not(.is-own)::before {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: 12px;
+    width: 0;
+    height: 0;
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+    border-right: 6px solid var(--chat-bubble-other);
+  }
 
   &.is-own {
     background: var(--chat-bubble-own);
     color: var(--chat-bubble-own-text, #fff);
-    border: none;
+
+    // 右侧三角尾巴（发送方）
+    &::before {
+      content: '';
+      position: absolute;
+      right: -6px;
+      top: 12px;
+      width: 0;
+      height: 0;
+      border-top: 6px solid transparent;
+      border-bottom: 6px solid transparent;
+      border-left: 6px solid var(--chat-bubble-own);
+    }
   }
 
   &.is-muted {
     background: rgba(248, 250, 252, 0.96);
     color: var(--chat-text-tertiary);
+
+    &::before { display: none; }
   }
 }
 
@@ -442,6 +470,8 @@ const handleMediaLoaded = () => {
 .msg-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  word-break: break-all;
+  word-wrap: break-word;
 
   &.status-copy {
     font-size: 14px;
