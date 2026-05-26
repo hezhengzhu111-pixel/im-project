@@ -1,224 +1,172 @@
 <template>
   <div
     v-memo="[renderDigest, audioPlaying]"
-    class="message-item"
+    class="msg-item"
     :class="{
-      'is-mine': isMine,
-      'is-system': isSystemMessage,
-      'is-status-only': isRecalled || isDeleted,
-      'is-ai': isAiGenerated,
-      'is-compact': compact,
+      'msg-item--self': isMine,
+      'msg-item--compact': compact,
+      'msg-item--system': isSystemMessage,
     }"
     @contextmenu.prevent="handleContextMenu"
   >
-    <template v-if="isSystemMessage">
-      <div class="system-pill">{{ content }}</div>
-    </template>
+    <div v-if="isSystemMessage" class="msg-system">
+      {{ content }}
+    </div>
 
     <template v-else>
+      <!-- 对方头像在左 -->
       <el-avatar
         v-if="!isMine && showAvatar"
-        :size="32"
         :src="senderAvatar"
-        class="message-avatar"
+        :size="36"
+        class="msg-avatar msg-avatar--left"
       >
         {{ senderAvatarText }}
       </el-avatar>
+      <div v-else-if="!isMine" class="msg-avatar-spacer"></div>
 
-      <div v-else-if="!isMine" class="message-avatar-spacer"></div>
-
-      <div class="message-lane">
-        <div v-if="showSenderLabel" class="message-sender">
+      <div class="msg-body" :class="{ 'msg-body--self': isMine }">
+        <!-- 昵称（群聊） -->
+        <div v-if="showSenderLabel && !isMine" class="msg-sender">
           {{ senderName || t("message.unknownUser") }}
         </div>
 
-        <div class="message-stack">
-          <div class="message-bubble" :class="bubbleClass">
-            <div v-if="isRecalled" class="status-copy">
-              {{ t("message.recalled") }}
-            </div>
-            <div v-else-if="isDeleted" class="status-copy">
-              {{ t("message.deleted") }}
-            </div>
-
-            <div v-else-if="messageType === 'TEXT'" class="text-content">
-              <template v-if="shouldMaskEncryptedContent">
-                <span class="encrypted-placeholder">加密消息暂无法解密</span>
-              </template>
-              <template v-else v-for="(token, ti) in messageTokens" :key="ti">
-                <span v-if="token.type === 'mention'" class="mention-highlight">{{ token.text }}</span>
-                <template v-else>{{ token.text }}</template>
-              </template>
-            </div>
-
-            <div v-else-if="messageType === 'AI_REPLY'" class="text-content">
-              <span class="ai-badge">AI</span>
-              <span v-if="aiProvider" class="ai-provider">{{
-                aiProvider
-              }}</span>
-              <template v-if="shouldMaskEncryptedContent">
-                <span class="encrypted-placeholder">加密消息暂无法解密</span>
-              </template>
-              <template v-else v-for="(token, ti) in messageTokens" :key="ti">
-                <span v-if="token.type === 'mention'" class="mention-highlight">{{ token.text }}</span>
-                <template v-else>{{ token.text }}</template>
-              </template>
-            </div>
-
-            <button
-              v-else-if="messageType === 'IMAGE'"
-              type="button"
-              class="media-card interactive-reset"
-              :aria-label="t('message.previewImage')"
-              @click="emit('preview-image', messageId)"
-            >
-              <el-image
-                :src="mediaSource"
-                :preview-src-list="[]"
-                :scroll-container="imageScrollContainer || undefined"
-                fit="contain"
-                class="message-image"
-                @load="handleMediaLoaded"
-                @error="handleMediaLoaded"
-              >
-                <template #placeholder>
-                  <div class="media-placeholder">
-                    {{ t("message.loadingImage") }}
-                  </div>
-                </template>
-                <template #error>
-                  <div class="media-placeholder">
-                    {{ t("message.previewUnavailable") }}
-                  </div>
-                </template>
-              </el-image>
-            </button>
-
-            <div v-else-if="messageType === 'FILE'" class="attachment-card">
-              <div class="attachment-icon">
-                <el-icon><Document /></el-icon>
-              </div>
-              <div class="attachment-meta">
-                <div class="attachment-title">
-                  {{ fileName || t("message.unknownFile") }}
-                </div>
-                <div class="attachment-subtitle">
-                  {{ fileSizeLabel || t("message.sizeUnknown") }}
-                </div>
-              </div>
-              <button
-                type="button"
-                class="attachment-action interactive-reset"
-                @click="emit('download-file', messageId)"
-              >
-                {{ t("message.download") }}
-              </button>
-            </div>
-
-            <button
-              v-else-if="messageType === 'VOICE'"
-              type="button"
-              class="attachment-card attachment-card-voice interactive-reset"
-              @click="emit('toggle-audio', messageId)"
-            >
-              <div class="attachment-icon">
-                <el-icon>
-                  <VideoPause v-if="audioPlaying" />
-                  <Microphone v-else />
-                </el-icon>
-              </div>
-              <div class="attachment-meta">
-                <div class="attachment-title">
-                  {{
-                    audioPlaying
-                      ? t("message.playingVoice")
-                      : t("message.voice")
-                  }}
-                </div>
-                <div class="attachment-subtitle">
-                  {{ durationLabel || "0:00" }}
-                </div>
-              </div>
-            </button>
-
-            <div
-              v-else-if="messageType === 'VIDEO'"
-              class="media-card media-card-video"
-            >
-              <video
-                :src="mediaSource"
-                :poster="thumbnailUrl"
-                controls
-                class="message-video"
-                @play="emit('play-video', messageId)"
-                @loadeddata="handleMediaLoaded"
-              />
-              <div class="media-caption">
-                <span>{{ t("message.video") }}</span>
-                <span>{{ durationLabel || "0:00" }}</span>
-              </div>
-            </div>
+        <div class="msg-bubble" :class="bubbleClass">
+          <!-- 撤回 / 删除 -->
+          <div v-if="isRecalled" class="msg-text status-copy">
+            {{ t("message.recalled") }}
+          </div>
+          <div v-else-if="isDeleted" class="msg-text status-copy">
+            {{ t("message.deleted") }}
           </div>
 
-          <div class="message-meta" :class="{ 'is-mine': isMine }">
-            <span class="message-time">{{ timeLabel }}</span>
-            <ChatEncryptionBadge :encrypted="encrypted" />
-            <span
-              v-if="statusLabel"
-              class="message-state"
-              :class="statusToneClass"
-              :aria-label="statusLabel"
+          <!-- 文件 -->
+          <div v-else-if="messageType === 'FILE'" class="msg-file" @click="emit('download-file', messageId)">
+            <el-icon><Document /></el-icon>
+            <span class="msg-file-name">{{ fileName || t("message.unknownFile") }}</span>
+            <span class="msg-file-size">{{ fileSizeLabel || '' }}</span>
+          </div>
+
+          <!-- 图片 -->
+          <button
+            v-else-if="messageType === 'IMAGE'"
+            type="button"
+            class="interactive-reset msg-image-btn"
+            :aria-label="t('message.previewImage')"
+            @click="emit('preview-image', messageId)"
+          >
+            <el-image
+              :src="mediaSource"
+              :preview-src-list="[]"
+              :scroll-container="imageScrollContainer || undefined"
+              fit="contain"
+              class="msg-image"
+              @load="handleMediaLoaded"
+              @error="handleMediaLoaded"
             >
-              <span
-                v-if="statusTone === 'sending'"
-                class="status-icon status-sending"
-              >
-                <el-icon class="spin"><Loading /></el-icon>
-              </span>
-              <span
-                v-else-if="statusTone === 'loading'"
-                class="status-icon status-sending"
-              >
-                <el-icon class="spin"><Loading /></el-icon>
-              </span>
-              <span
-                v-else-if="statusTone === 'sent'"
-                class="status-icon status-sent"
-              >
-                <el-icon><Check /></el-icon>
-              </span>
-              <span
-                v-else-if="statusTone === 'delivered'"
-                class="status-icon status-delivered"
-              >
-                <el-icon><Check /></el-icon>
-              </span>
-              <span
-                v-else-if="statusTone === 'read'"
-                class="status-icon status-read"
-              >
-                <el-icon><Check /></el-icon>
-              </span>
-              <el-icon
-                v-else-if="statusTone === 'failed'"
-                class="message-state-icon"
-              >
-                <Warning />
-              </el-icon>
-              {{ statusLabel }}
-            </span>
-            <button
-              v-if="groupReadLabel"
-              type="button"
-              class="message-state interactive-reset is-link"
-              :title="groupReadLabel"
-              @click.stop="emit('show-group-readers', messageId)"
-            >
-              {{ groupReadLabel }}
-            </button>
+              <template #placeholder>
+                <div class="media-placeholder">{{ t("message.loadingImage") }}</div>
+              </template>
+              <template #error>
+                <div class="media-placeholder">{{ t("message.previewUnavailable") }}</div>
+              </template>
+            </el-image>
+          </button>
+
+          <!-- 语音 -->
+          <button
+            v-else-if="messageType === 'VOICE'"
+            type="button"
+            class="interactive-reset msg-voice"
+            @click="emit('toggle-audio', messageId)"
+          >
+            <el-icon>
+              <VideoPause v-if="audioPlaying" />
+              <Microphone v-else />
+            </el-icon>
+            <span>{{ durationLabel || "0:00" }}</span>
+          </button>
+
+          <!-- 视频 -->
+          <div v-else-if="messageType === 'VIDEO'" class="msg-video-card">
+            <video
+              :src="mediaSource"
+              :poster="thumbnailUrl"
+              controls
+              class="msg-video"
+              @play="emit('play-video', messageId)"
+              @loadeddata="handleMediaLoaded"
+            />
+          </div>
+
+          <!-- AI 回复 -->
+          <div v-else-if="messageType === 'AI_REPLY'" class="msg-text">
+            <span class="ai-badge">AI</span>
+            <span v-if="aiProvider" class="ai-provider">{{ aiProvider }}</span>
+            <span v-if="shouldMaskEncryptedContent" class="msg-encrypted">加密消息暂无法解密</span>
+            <template v-else v-for="(token, ti) in messageTokens" :key="ti">
+              <span v-if="token.type === 'mention'" class="mention-highlight">{{ token.text }}</span>
+              <template v-else>{{ token.text }}</template>
+            </template>
+          </div>
+
+          <!-- 文本 -->
+          <div v-else class="msg-text">
+            <span v-if="shouldMaskEncryptedContent" class="msg-encrypted">加密消息暂无法解密</span>
+            <template v-else v-for="(token, ti) in messageTokens" :key="ti">
+              <span v-if="token.type === 'mention'" class="mention-highlight">{{ token.text }}</span>
+              <template v-else>{{ token.text }}</template>
+            </template>
           </div>
         </div>
+
+        <div class="msg-meta" :class="{ 'msg-meta--self': isMine }">
+          <span class="msg-time">{{ timeLabel }}</span>
+          <ChatEncryptionBadge :encrypted="encrypted" />
+          <span
+            v-if="statusLabel"
+            class="msg-state"
+            :class="statusToneClass"
+            :aria-label="statusLabel"
+          >
+            <span v-if="statusTone === 'sending' || statusTone === 'loading'" class="msg-state-icon">
+              <el-icon class="spin"><Loading /></el-icon>
+            </span>
+            <span v-else-if="statusTone === 'sent'" class="msg-state-icon">
+              <el-icon><Check /></el-icon>
+            </span>
+            <span v-else-if="statusTone === 'delivered'" class="msg-state-icon">
+              <el-icon><Check /></el-icon>
+            </span>
+            <span v-else-if="statusTone === 'read'" class="msg-state-icon">
+              <el-icon><Check /></el-icon>
+            </span>
+            <el-icon v-else-if="statusTone === 'failed'" class="msg-state-icon msg-state-icon--failed">
+              <Warning />
+            </el-icon>
+            {{ statusLabel }}
+          </span>
+          <button
+            v-if="groupReadLabel"
+            type="button"
+            class="msg-state interactive-reset is-link"
+            :title="groupReadLabel"
+            @click.stop="emit('show-group-readers', messageId)"
+          >
+            {{ groupReadLabel }}
+          </button>
+        </div>
       </div>
+
+      <!-- 自己头像在右 -->
+      <el-avatar
+        v-if="isMine && showAvatar"
+        :src="senderAvatar"
+        :size="36"
+        class="msg-avatar msg-avatar--right"
+      >
+        {{ senderAvatarText }}
+      </el-avatar>
     </template>
   </div>
 </template>
@@ -355,82 +303,57 @@ const handleMediaLoaded = () => {
   margin: 0;
 }
 
-.message-item {
+.msg-item {
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  margin-bottom: 12px;
+  align-items: flex-start;
+  padding: 0 var(--space-4);
+  margin-bottom: var(--space-2);
   animation: msgFadeIn 0.25s var(--motion-out, ease-out) both;
 
-  &.is-mine {
-    justify-content: flex-end;
-  }
-
-  &.is-system {
-    justify-content: center;
-    margin-bottom: 12px;
-  }
-
-  &.is-compact {
-    margin-bottom: 2px;
-  }
+  &--self { flex-direction: row-reverse; }
+  &--compact { margin-bottom: 2px; }
+  &--system { justify-content: center; margin-bottom: var(--space-3); }
 }
 
-.message-avatar {
+.msg-avatar {
   flex-shrink: 0;
-  border: 1px solid var(--chat-panel-border);
+  margin-top: 0;
+  &--left { margin-right: var(--space-2); }
+  &--right { margin-left: var(--space-2); }
 }
 
-.message-avatar-spacer {
+.msg-avatar-spacer {
   flex-shrink: 0;
-  width: 32px;
+  width: 36px;
 }
 
-.message-lane {
+.msg-body {
+  max-width: var(--chat-bubble-max-width, 420px);
   min-width: 0;
-  max-width: var(--chat-max-bubble-width);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  overflow: hidden;
 }
 
-.message-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.msg-sender {
+  font-size: var(--font-size-xs, 12px);
+  color: var(--text-tertiary);
+  margin-bottom: 2px;
+  margin-left: 2px;
 }
 
-.message-sender {
-  padding-left: 4px;
-  color: var(--chat-accent-strong);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-
-.message-bubble {
-  position: relative;
-  max-width: 100%;
-  padding: 10px 14px;
-  border-radius: var(--radius-md, 12px);
-  border: 1px solid var(--chat-panel-border);
+.msg-bubble {
+  display: inline-block;
+  padding: var(--chat-bubble-padding-y, 10px) var(--chat-bubble-padding-x, 14px);
+  border-radius: var(--chat-bubble-radius, 12px);
+  font-size: var(--font-size-base, 14px);
+  line-height: var(--line-height-base, 1.5);
+  word-break: break-word;
   background: var(--chat-bubble-other);
-  color: var(--chat-text-primary);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
-  backdrop-filter: var(--chat-glass-blur);
-  overflow: hidden;
-  transition: box-shadow 0.15s ease;
+  color: var(--chat-bubble-other-text, var(--chat-text-primary));
+  border: 0.5px solid var(--border-light, var(--chat-panel-border));
 
   &.is-own {
-    border-color: transparent;
-    background: linear-gradient(
-      135deg,
-      var(--color-primary, #6366f1),
-      var(--color-primary-2, #818cf8)
-    );
-    color: #fff;
-    box-shadow: 0 1px 4px rgba(99, 102, 241, 0.12);
+    background: var(--chat-bubble-own);
+    color: var(--chat-bubble-own-text, #fff);
+    border: none;
   }
 
   &.is-muted {
@@ -439,60 +362,9 @@ const handleMediaLoaded = () => {
   }
 }
 
-.message-item.is-ai .message-bubble:not(.is-own) {
-  background: linear-gradient(
-    135deg,
-    rgba(99, 102, 241, 0.06),
-    rgba(139, 92, 246, 0.06)
-  );
-  border-color: rgba(99, 102, 241, 0.15);
-}
-
-.text-content,
-.status-copy {
-  font-size: 14px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-
-.encrypted-placeholder {
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-.media-card {
-  display: block;
-  width: 100%;
-  max-width: min(320px, 62vw);
-  border-radius: var(--radius-sm, 8px);
-  background: rgba(248, 250, 252, 0.94);
-  overflow: hidden;
-}
-
-.attachment-card {
-  width: min(320px, 62vw);
-  max-width: 100%;
-  border-radius: var(--radius-sm, 8px);
-  background: rgba(248, 250, 252, 0.94);
-  overflow: hidden;
-}
-
-.message-bubble.is-own .media-card,
-.message-bubble.is-own .attachment-card {
-  background: rgba(255, 255, 255, 0.16);
-}
-
-.message-bubble:has(.media-card) {
-  padding: 0;
-
-  .media-card {
-    border-radius: 0;
-  }
-}
-
-.message-image {
+.msg-image {
+  max-width: 240px;
+  border-radius: var(--radius-xs, 4px);
   display: block;
   width: 100%;
   height: auto;
@@ -500,12 +372,14 @@ const handleMediaLoaded = () => {
   object-fit: cover;
 }
 
-.message-video {
+.msg-image-btn {
   display: block;
   width: 100%;
-  max-height: 260px;
-  object-fit: cover;
-  background: rgba(15, 23, 42, 0.88);
+  max-width: min(320px, 62vw);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
 }
 
 .media-placeholder {
@@ -520,189 +394,140 @@ const handleMediaLoaded = () => {
   background: linear-gradient(135deg, #e2e8f0, #f8fafc);
 }
 
-.media-caption {
+.msg-file {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px 12px;
-  color: inherit;
-  font-size: 12px;
-  font-weight: 600;
+  gap: var(--space-2, 8px);
+  font-size: var(--font-size-sm, 13px);
+  cursor: pointer;
+
+  &-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 700;
+  }
+
+  &-size {
+    color: var(--text-tertiary);
+    font-size: var(--font-size-xs, 12px);
+  }
 }
 
-.attachment-card {
+.msg-voice {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px;
-}
-
-.attachment-card-voice {
+  gap: var(--space-1, 4px);
+  font-size: var(--font-size-sm, 13px);
+  cursor: pointer;
+  min-width: 60px;
   text-align: left;
-  cursor: pointer;
 }
 
-.attachment-icon {
+.msg-video-card {
+  max-width: min(320px, 62vw);
+  border-radius: var(--radius-sm, 8px);
+  overflow: hidden;
+}
+
+.msg-video {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  object-fit: cover;
+  background: rgba(15, 23, 42, 0.88);
+  border-radius: var(--radius-sm, 8px);
+}
+
+.msg-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+
+  &.status-copy {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--chat-text-tertiary);
+  }
+}
+
+.msg-encrypted {
+  color: var(--text-tertiary);
+  font-style: italic;
+  font-size: var(--font-size-sm, 13px);
+}
+
+.msg-meta {
+  font-size: var(--font-size-xs, 12px);
+  color: var(--text-tertiary);
+  margin-top: var(--space-1, 4px);
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-sm, 8px);
-  background: rgba(99, 102, 241, 0.1);
-  color: var(--color-primary, #6366f1);
-  font-size: 18px;
-  flex-shrink: 0;
+  gap: var(--space-1, 4px);
+
+  &--self { text-align: right; justify-content: flex-end; }
 }
 
-.message-bubble.is-own .attachment-icon {
-  background: rgba(255, 255, 255, 0.18);
-  color: #fff;
-}
-
-.attachment-meta {
-  min-width: 0;
-  flex: 1;
-}
-
-.attachment-title {
-  color: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.4;
-  word-break: break-word;
-}
-
-.attachment-subtitle {
-  margin-top: 4px;
-  color: inherit;
-  opacity: 0.72;
-  font-size: 12px;
-}
-
-.attachment-action {
-  flex-shrink: 0;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm, 8px);
-  background: rgba(99, 102, 241, 0.1);
-  color: var(--color-primary, #6366f1);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s ease;
-
-  &:hover {
-    background: rgba(99, 102, 241, 0.18);
-  }
-}
-
-.message-bubble.is-own .attachment-action {
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.3);
-  }
-}
-
-.message-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 2px;
-  color: var(--chat-text-quaternary);
-  font-size: 10px;
-  line-height: 1.2;
-  opacity: 0.7;
-
-  &.is-mine {
-    justify-content: flex-end;
-  }
-}
-
-.message-time {
+.msg-time {
   white-space: nowrap;
 }
 
-.message-state {
+.msg-state {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: var(--chat-text-tertiary);
   font-weight: 600;
+  cursor: default;
+
+  &.is-link {
+    cursor: pointer;
+  }
+
+  &.is-failed {
+    color: var(--chat-danger, #ef4444);
+  }
+
+  &.is-read {
+    color: var(--chat-success, #22c55e);
+  }
 }
 
-.message-state-icon {
-  font-size: 12px;
-}
-
-.message-state.is-failed {
-  color: var(--chat-danger, #ef4444);
-}
-
-.message-state.is-read {
-  color: var(--chat-success, #22c55e);
-}
-
-.message-state.is-link {
-  cursor: pointer;
-}
-
-.status-icon {
+.msg-state-icon {
   display: inline-flex;
   align-items: center;
   font-size: 12px;
-}
 
-.status-sending {
-  color: var(--text-placeholder);
-}
-
-.status-sent {
-  color: var(--text-placeholder);
-  animation: fadeIn 0.3s ease;
-}
-
-.status-delivered {
-  color: var(--text-secondary);
-  animation: fadeIn 0.3s ease;
-}
-
-.status-read {
-  color: var(--el-color-primary);
-  animation: colorShift 0.3s ease;
-}
-
-.spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
+  &--failed {
+    color: var(--chat-danger, #ef4444);
   }
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+.msg-system {
+  text-align: center;
+  font-size: var(--font-size-xs, 12px);
+  color: var(--text-tertiary);
+  padding: var(--space-1, 4px) var(--space-4, 16px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: min(100%, 460px);
+  background: var(--chat-bubble-system);
+  backdrop-filter: blur(8px);
+  border-radius: var(--radius-full, 999px);
+  font-weight: 600;
+  padding: 6px 14px;
 }
 
-@keyframes colorShift {
-  from {
-    color: var(--text-secondary);
-  }
-  to {
-    color: var(--el-color-primary);
-  }
+.ai-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: var(--radius-xs, 4px);
+  margin-right: 2px;
+  background: var(--color-primary, #6366f1);
+  color: #fff;
+  vertical-align: middle;
 }
 
 .ai-provider {
@@ -712,29 +537,19 @@ const handleMediaLoaded = () => {
   padding: 1px 5px;
   border-radius: var(--radius-xs, 4px);
   margin-right: 4px;
-  background: color-mix(
-    in srgb,
-    var(--color-primary, #6366f1),
-    transparent 85%
-  );
+  background: color-mix(in srgb, var(--color-primary, #6366f1), transparent 85%);
   color: var(--color-primary, #6366f1);
   vertical-align: middle;
   text-transform: capitalize;
 }
 
-.system-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  max-width: min(100%, 460px);
-  padding: 6px 14px;
-  border-radius: var(--radius-full, 999px);
-  background: var(--chat-bubble-system);
-  color: var(--chat-text-tertiary);
-  font-size: 12px;
-  font-weight: 600;
-  text-align: center;
-  backdrop-filter: blur(8px);
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 @keyframes msgFadeIn {
@@ -749,41 +564,17 @@ const handleMediaLoaded = () => {
 }
 
 @media (max-width: 768px) {
-  .message-item {
-    gap: 6px;
-    margin-bottom: 10px;
+  .msg-item {
+    padding: 0 var(--space-2, 8px);
   }
-
-  .message-item.is-compact {
-    margin-bottom: 1px;
-  }
-
-  .message-avatar {
-    width: 36px;
-    height: 36px;
-  }
-
-  .message-avatar-spacer {
-    width: 36px;
-  }
-
-  .message-bubble {
+  .msg-bubble {
     padding: 8px 10px;
-    border-radius: var(--radius-sm, 8px);
   }
-
-  .text-content,
-  .status-copy {
-    font-size: 14px;
-    line-height: 1.6;
+  .msg-image {
+    max-width: 200px;
   }
-
-  .attachment-card {
-    width: min(280px, 64vw);
-  }
-
-  .media-card {
-    max-width: min(280px, 72vw);
+  .msg-file {
+    font-size: var(--font-size-xs, 12px);
   }
 }
 </style>
