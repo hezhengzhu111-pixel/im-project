@@ -7,12 +7,20 @@ import Components from "unplugin-vue-components/vite";
 import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const gatewayHost = env.VITE_GATEWAY_HOST || env.GATEWAY_HOST || "127.0.0.1";
   const gatewayPort = env.VITE_GATEWAY_PORT || env.GATEWAY_PORT || "8082";
   const apiTarget = `http://${gatewayHost}:${gatewayPort}`;
   const wsTarget = `ws://${gatewayHost}:${gatewayPort}`;
+
+  const certDir = resolve(__dirname, "cert");
+  const certKey = resolve(certDir, "localhost+2-key.pem");
+  const certPem = resolve(certDir, "localhost+2.pem");
+  const devHttps =
+    command === "serve" && fs.existsSync(certKey) && fs.existsSync(certPem)
+      ? { key: fs.readFileSync(certKey), cert: fs.readFileSync(certPem) }
+      : undefined;
 
   return {
     plugins: [
@@ -42,10 +50,7 @@ export default defineConfig(({ mode }) => {
       host: "0.0.0.0",
       port: 3000,
       open: true,
-      https: {
-        key: fs.readFileSync(resolve(__dirname, "cert/localhost+2-key.pem")),
-        cert: fs.readFileSync(resolve(__dirname, "cert/localhost+2.pem")),
-      },
+      https: devHttps,
       proxy: {
         "/api": {
           target: apiTarget,
