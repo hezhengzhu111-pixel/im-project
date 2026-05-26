@@ -1,9 +1,11 @@
 // ============================================
-// Design Token System — WeChat-Style
+// Design Token System — WeChat PC Style
+// 所有颜色与主题变量均使用 CSS 自定义属性
+// 架构原则：颜色归 CSS 变量，尺寸归 SCSS 变量
 // ============================================
 
 :root {
-  // --- Color: Primary (WeChat Green) ---
+  // --- Color: Brand（微信绿）---
   --color-primary: #07C160;
   --color-primary-dark: #06AD56;
   --color-primary-light: #95EC69;
@@ -11,34 +13,52 @@
   --color-primary-muted: #D4F5C4;
   --color-primary-subtle: #E8F9E3;
 
-  // --- Color: Semantic ---
+  // --- Color: Semantic（语义色）---
   --color-success: #07C160;
   --color-warning: #FA9D3B;
   --color-danger: #FA5151;
   --color-info: #576B95;
 
-  // --- Color: Text ---
+  // --- Color: Text（文字层级）---
   --text-primary: #111111;
   --text-secondary: #576B95;
   --text-tertiary: #B0B0B0;
   --text-placeholder: #CCCCCC;
   --text-inverse: #FFFFFF;
 
-  // --- Color: Surface ---
-  --surface-primary: #FFFFFF;
-  --surface-secondary: #F7F7F7;
-  --surface-tertiary: #EDEDED;
-  --surface-elevated: #FFFFFF;
-  --surface-overlay: #FFFFFF;
-  --surface-sunken: #EDEDED;
+  // --- Color: Surface（面板三明治背景 — 以微妙色差区分层级，替代生硬边框）---
+  --surface-nav: #2E2E2E;          // 最左侧图标导航栏（深灰）
+  --surface-secondary: #F7F7F7;    // 中间会话列表（浅灰）
+  --surface-tertiary: #F5F5F5;     // 右侧聊天主区域（极浅灰）
+  --surface-primary: #FFFFFF;      // 卡片 / 气泡 / 提升内容
+  --surface-elevated: #FFFFFF;     // 浮层
+  --surface-overlay: #FFFFFF;      // 弹窗 / 对话框
+  --surface-sunken: #EDEDED;       // 凹陷背景
 
-  // --- Color: Border ---
-  --border-light: #E6E6E6;
-  --border-default: #E6E6E6;
-  --border-strong: #CCCCCC;
+  // --- Color: Border（极浅灰过渡线，取代黑色/深色边框）---
+  --border-subtle: #ECECEC;        // 模块间 1px 过渡线（核心：仅靠色差暗示边界）
+  --border-light: #ECECEC;         // 常规浅色边框
+  --border-default: #E0E0E0;       // 表单 / 输入框边框（略深，确保可辨识）
   --border-focus: var(--color-primary);
 
-  // --- Radius (WeChat: tight corners) ---
+  // --- Chat: Bubble（聊天气泡）---
+  --chat-bubble-own: #95EC69;      // 发送方气泡（微信绿）
+  --chat-bubble-own-text: #111111;
+  --chat-bubble-other: #FFFFFF;    // 接收方气泡
+  --chat-bubble-other-text: #111111;
+  --chat-bubble-system: transparent;
+  --chat-bubble-system-text: #B0B0B0;
+
+  // --- Chat: Card States（会话列表项状态）---
+  --chat-card-hover: #EDEDED;
+  --chat-card-active: #E5E5E5;
+
+  // --- Chat: Misc ---
+  --chat-bg: #F5F5F5;             // 聊天消息区域背景
+  --chat-badge-bg: #FA5151;
+  --chat-badge-text: #FFFFFF;
+
+  // --- Radius（微信：克制的小圆角）---
   --radius-xs: 2px;
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -46,7 +66,7 @@
   --radius-xl: 12px;
   --radius-full: 9999px;
 
-  // --- Shadow (WeChat: minimal) ---
+  // --- Shadow（微信：极简阴影，几乎无投影）---
   --shadow-xs: none;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
   --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
@@ -97,6 +117,6 @@
   --mobile-nav-height: 48px;
   --mobile-tab-height: 56px;
 
-  // --- Background gradient (removed, flat only) ---
+  // --- Background（微信：纯平，无渐变）---
   --bg-gradient: none;
 }

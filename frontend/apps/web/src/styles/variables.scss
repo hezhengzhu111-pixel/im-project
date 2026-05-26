@@ -1,66 +1,16 @@
 // ============================================
 // SCSS Variables & Mixins
-// Tokens come from tokens.scss (CSS vars)
-// This file provides SCSS-level helpers
+// 仅包含不随主题切换的"物理常量"
+// 所有颜色 → tokens.scss（CSS 自定义属性）
 // ============================================
 
-@use 'sass:color';
 @use 'sass:math';
 
-// --- Backward-compatible SCSS vars (WeChat style) ---
-$primary-color: #07C160;
-$primary-color-2: #06AD56;
-$success-color: #07C160;
-$warning-color: #FA9D3B;
-$danger-color: #FA5151;
-$info-color: #576B95;
-
-// Primary variants (for components that need SCSS color math)
-$primary-light-1: color.mix(white, $primary-color, 10%);
-$primary-light-2: color.mix(white, $primary-color, 20%);
-$primary-light-3: color.mix(white, $primary-color, 30%);
-$primary-light-4: color.mix(white, $primary-color, 40%);
-$primary-light-5: color.mix(white, $primary-color, 50%);
-$primary-light-6: color.mix(white, $primary-color, 60%);
-$primary-light-7: color.mix(white, $primary-color, 70%);
-$primary-light-8: color.mix(white, $primary-color, 80%);
-$primary-light-9: color.mix(white, $primary-color, 90%);
-$primary-dark-1: color.mix(black, $primary-color, 10%);
-$primary-dark-2: color.mix(black, $primary-color, 20%);
-
-// Text
-$text-color-primary: #111111;
-$text-color-regular: #576B95;
-$text-color-secondary: #B0B0B0;
-$text-color-placeholder: #CCCCCC;
-
-// Border
-$border-color-base: #E6E6E6;
-$border-color-light: #E6E6E6;
-$border-color-lighter: #F0F0F0;
-$border-color-extra-light: #F5F5F5;
-
-// Background
-$background-color-base: #F7F7F7;
-$background-color-light: #EDEDED;
-$background-color-lighter: #FFFFFF;
-
-// Fill
-$fill-color-base: #EDEDED;
-$fill-color-light: #F7F7F7;
-$fill-color-lighter: #FAFAFA;
-$fill-color-extra-light: #FDFDFD;
-$fill-color-blank: #FFFFFF;
-
-// Shadow
-$box-shadow-base: 0 2px 8px rgba(0, 0, 0, 0.08);
-$box-shadow-dark: 0 4px 16px rgba(0, 0, 0, 0.12);
-$box-shadow-light: 0 1px 2px rgba(0, 0, 0, 0.04);
-
-// Font
+// --- Font Family ---
 $font-family-base: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 $font-family-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
 
+// --- Font Size ---
 $font-size-extra-large: 20px;
 $font-size-large: 18px;
 $font-size-medium: 16px;
@@ -68,19 +18,21 @@ $font-size-base: 14px;
 $font-size-small: 13px;
 $font-size-extra-small: 12px;
 
+// --- Font Weight ---
 $font-weight-primary: 500;
 $font-weight-secondary: 400;
 
+// --- Line Height ---
 $line-height-primary: 24px;
 $line-height-base: 1.5;
 
-// Border radius
+// --- Border Radius ---
 $border-radius-base: 4px;
 $border-radius-small: 2px;
 $border-radius-round: 8px;
 $border-radius-circle: 50%;
 
-// Spacing
+// --- Spacing ---
 $spacing-extra-small: 4px;
 $spacing-small: 8px;
 $spacing-medium: 12px;
@@ -88,12 +40,12 @@ $spacing-base: 16px;
 $spacing-large: 20px;
 $spacing-extra-large: 24px;
 
-// Component sizes
+// --- Component Sizes ---
 $component-size-large: 40px;
 $component-size-default: 32px;
 $component-size-small: 24px;
 
-// Breakpoints
+// --- Breakpoints ---
 $breakpoint-xs: 480px;
 $breakpoint-sm: 576px;
 $breakpoint-md: 768px;
@@ -101,7 +53,7 @@ $breakpoint-lg: 992px;
 $breakpoint-xl: 1200px;
 $breakpoint-xxl: 1600px;
 
-// Z-index
+// --- Z-Index ---
 $z-index-normal: 1;
 $z-index-top: 1000;
 $z-index-popper: 2000;
@@ -109,81 +61,34 @@ $z-index-message: 3000;
 $z-index-notification: 4000;
 $z-index-loading: 5000;
 
-// Transition
+// --- Transition ---
 $transition-base: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 $transition-fade: opacity 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 $transition-border: border-color 0.12s cubic-bezier(0.4, 0, 0.2, 1);
 $transition-box-shadow: box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 $transition-color: color 0.12s cubic-bezier(0.4, 0, 0.2, 1);
 
-// Chat
-$chat-bg-color: #EDEDED;
-$chat-sidebar-bg: #F7F7F7;
-$chat-message-bg: #FFFFFF;
-$chat-message-own-bg: #95EC69;
-$chat-message-other-bg: #FFFFFF;
-$chat-input-bg: #F7F7F7;
-$chat-online-color: #07C160;
-$chat-offline-color: #B0B0B0;
-$chat-away-color: #FA9D3B;
-$chat-busy-color: #FA5151;
-
-// Status
-$status-online: #07C160;
-$status-offline: #B0B0B0;
-$status-away: #FA9D3B;
-$status-busy: #FA5151;
-$status-invisible: #576B95;
-
-// Message
-$message-text-color: $text-color-primary;
-$message-time-color: $text-color-secondary;
-$message-system-color: $text-color-secondary;
-$message-error-color: $danger-color;
-$message-success-color: $success-color;
-
-// Avatar
+// --- Avatar ---
 $avatar-size-large: 60px;
 $avatar-size-default: 40px;
 $avatar-size-small: 32px;
 $avatar-size-mini: 24px;
 
-// Sidebar
+// --- Sidebar ---
 $sidebar-width: 280px;
 $sidebar-collapsed-width: 72px;
 
-// Chat area
+// --- Chat Area ---
 $chat-header-height: 60px;
 $chat-input-height: 120px;
 $chat-message-max-width: 60%;
 
-// Scrollbar
+// --- Scrollbar ---
 $scrollbar-width: 6px;
 
-// Dark
-$dark-bg-color: #111111;
-$dark-surface-color: #191919;
-$dark-border-color: #333333;
-$dark-text-primary: #E5E5E5;
-$dark-text-secondary: #7B8FA0;
-$dark-text-placeholder: #666666;
-
-// Gradient (WeChat: flat, no gradients)
-$gradient-primary: none;
-$gradient-success: none;
-$gradient-warning: none;
-$gradient-danger: none;
-
-// --- Functions ---
-@function tint($color, $percentage) {
-  @return color.mix(white, $color, $percentage);
-}
-
-@function shade($color, $percentage) {
-  @return color.mix(black, $color, $percentage);
-}
-
-// --- Mixins ---
+// ============================================
+// Mixins
+// ============================================
 
 @mixin respond-to($breakpoint) {
   @if $breakpoint == xs {
@@ -266,23 +171,23 @@ $gradient-danger: none;
   &:hover,
   &:focus {
     color: $color;
-    background-color: tint($background, 20%);
-    border-color: tint($border, 20%);
+    background-color: color-mix(in srgb, $background, white 20%);
+    border-color: color-mix(in srgb, $border, white 20%);
   }
 
   &:active {
     color: $color;
-    background-color: shade($background, 10%);
-    border-color: shade($border, 10%);
+    background-color: color-mix(in srgb, $background, black 10%);
+    border-color: color-mix(in srgb, $border, black 10%);
   }
 
   &.is-disabled,
   &.is-disabled:hover,
   &.is-disabled:focus,
   &.is-disabled:active {
-    color: $text-color-placeholder;
-    background-color: $fill-color-light;
-    border-color: $border-color-lighter;
+    color: var(--text-placeholder);
+    background-color: var(--surface-sunken);
+    border-color: var(--border-subtle);
   }
 }
 
