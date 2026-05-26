@@ -42,7 +42,7 @@ defineEmits<{ change: [key: 'chat' | 'contacts' | 'moments' | 'settings'] }>();
 const tabs = [
   { key: 'chat', icon: '💬', label: '聊天', unread: 0 },
   { key: 'contacts', icon: '👤', label: '通讯录', unread: 0 },
-  { key: 'moments', icon: '🔍', label: '发现', unread: 0 },
+  { key: 'moments', icon: '🧭', label: '发现', unread: 0 },
 ] as const;
 </script>
 
