@@ -49,6 +49,20 @@ type MessageSendQueueModuleContext = {
   ) => Promise<void> | void;
 };
 
+const E2EE_ENVELOPE_REQUIRED_MSG = "e2ee envelope required";
+
+const isE2eeEnvelopeRequiredError = (error: unknown): boolean => {
+  if (!error || typeof error !== "object") return false;
+  const e = error as Record<string, unknown>;
+  const data = e.response && typeof e.response === "object"
+    ? (e.response as Record<string, unknown>).data
+    : null;
+  const msg = (data && typeof data === "object" && "message" in (data as Record<string, unknown>))
+    ? String((data as Record<string, unknown>).message)
+    : "";
+  return msg.toLowerCase().includes(E2EE_ENVELOPE_REQUIRED_MSG);
+};
+
 const isNetworkError = (error: unknown): boolean => {
   if (typeof navigator !== "undefined" && !navigator.onLine) {
     return true;
@@ -413,6 +427,66 @@ export function createMessageSendQueueModule(
       ctx.sessionStore.applyMessageToSession(session.id, serverMessage);
       return true;
     } catch (error) {
+      // 自愈：后端要求 E2EE 信封但前端发了明文 → 同步状态并加密重试
+      if (
+        session.type === "private" &&
+        !encryptedEnvelope &&
+        isE2eeEnvelopeRequiredError(error)
+      ) {
+        const { setLocalSessionStatus } = await import(
+          "@/features/e2ee/manager/negotiation"
+        );
+        setLocalSessionStatus(session.id, "encrypted");
+        try {
+          const { e2eeManager } = await import("@/features/e2ee/manager/e2ee-manager");
+          encryptedEnvelope = await e2eeManager.encryptToEnvelope({
+            conversationId: session.id,
+            clientMsgId: clientMessageId,
+            senderUserId: currentUser.id,
+            recipientUserId: session.targetId,
+            plaintext: content,
+          });
+          const retryResponse = await ctx.messageService.sendPrivateEncrypted({
+            receiverId: session.targetId,
+            clientMessageId,
+            messageType: String(type),
+            encrypted: true,
+            e2eeEnvelope: encryptedEnvelope,
+            e2eeDeviceId: encryptedEnvelope.senderDeviceId,
+          });
+          const serverMessage: Message = {
+            ...retryResponse.data,
+            id: safePreferExistingId(retryResponse.data.id, pendingMessage.id),
+            clientMessageId:
+              retryResponse.data.clientMessageId || pendingMessage.clientMessageId,
+            senderId: safePreferExistingId(
+              retryResponse.data.senderId,
+              pendingMessage.senderId,
+            ),
+            receiverId: retryResponse.data.receiverId || pendingMessage.receiverId,
+            receiverName: retryResponse.data.receiverName || pendingMessage.receiverName,
+            receiverAvatar:
+              retryResponse.data.receiverAvatar || pendingMessage.receiverAvatar,
+            groupId: retryResponse.data.groupId || pendingMessage.groupId,
+            status: "SENT",
+            encrypted: true,
+            decryptStatus: "skipped_own",
+            e2eeEnvelope: encryptedEnvelope,
+            e2eeDeviceId: encryptedEnvelope.senderDeviceId,
+          };
+          if (!serverMessage.content) {
+            serverMessage.content = pendingMessage.content;
+          }
+          replaceLocalMessage(session.id, localId, serverMessage);
+          await ctx.messageRepo.removePendingMessage(session.id, localId);
+          await ctx.scheduleServerMessagePersist(session.id, [serverMessage]);
+          ctx.sessionStore.applyMessageToSession(session.id, serverMessage);
+          return true;
+        } catch (retryError) {
+          // 自愈失败，降级为普通发送失败处理
+        }
+      }
+
       markPendingFailed(session.id, localId);
       await ctx.messageRepo.upsertPendingMessage(session.id, localId, {
         ...pendingMessage,
