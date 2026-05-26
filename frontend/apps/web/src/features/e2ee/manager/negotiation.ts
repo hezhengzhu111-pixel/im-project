@@ -141,14 +141,17 @@ export async function initiateNegotiation(
   remoteUserId: string,
   remoteDeviceId?: string,
 ): Promise<boolean> {
-  // 清理上一次协商的残留状态（本地 session、服务端状态）
-  await resetNegotiation(sessionId, "plaintext");
+  // 清理上一次协商的残留状态（本地 session、服务端状态）。
+  // 传入 "negotiating" 而非 "plaintext"，确保在 async 清理期间
+  // 并发解密任务不会因看到 "plaintext" 而重复触发协商。
+  await resetNegotiation(sessionId, "negotiating");
   try {
     await keyService.disableEncryption(sessionId);
   } catch {
     // 服务端可能还没有 session 记录，忽略错误
   }
 
+  // 确保 clean up 后状态仍为 negotiating（resetNegotiation 已设置）
   setLocalSessionStatus(sessionId, "negotiating");
   try {
     const deviceId = await ensureLocalE2eeDeviceRegistered();

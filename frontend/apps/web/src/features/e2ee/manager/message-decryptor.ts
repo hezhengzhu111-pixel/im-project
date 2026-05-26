@@ -144,7 +144,9 @@ async function decryptOneMessage(
       errMsg.includes("no handshake") ||
       errMsg.includes("Rust E2EE session not found");
 
-    // 自愈：收到加密消息本身即证明该会话已加密
+    // 自愈：收到加密消息本身即证明该会话已加密。
+    // 但需防止并发解密失败引发协商风暴：每条消息都会走到这里，
+    // 如果协商已在进行中则不应重复触发。
     if (isMissingSession) {
       const {
         setLocalSessionStatus,
@@ -152,10 +154,19 @@ async function decryptOneMessage(
         initiateNegotiation,
       } = await import("@/features/e2ee/manager/negotiation");
 
-      setLocalSessionStatus(envelope.sessionId, "encrypted");
+      const currentStatus = getLocalSessionStatus(envelope.sessionId);
+
+      // 如果已有协商在进行中，不要覆盖状态或重复触发。
+      if (currentStatus === "negotiating") {
+        // 保持当前状态，等待协商结果
+      } else if (currentStatus !== "encrypted") {
+        // 仅在状态不是 encrypted 时才更新为 encrypted。
+        // 注意：如果会话因 OTK 过期等原因被标记为 failed，
+        // 我们不在此处覆盖——由上层（message-send-queue.ts）处理恢复。
+        setLocalSessionStatus(envelope.sessionId, "encrypted");
+      }
 
       // 没有入站会话且信封无 handshake → 主动触发重新协商以重建会话
-      const currentStatus = getLocalSessionStatus(envelope.sessionId);
       if (
         !hasHandshake &&
         currentStatus !== "negotiating" &&
@@ -165,12 +176,16 @@ async function decryptOneMessage(
           sessionId: envelope.sessionId,
           remoteUserId: senderId,
         });
+        // 在触发协商前立即标记为 negotiating，防止并发消息重复触发
+        setLocalSessionStatus(envelope.sessionId, "negotiating");
         initiateNegotiation(
           envelope.sessionId,
           senderId,
           envelope.senderDeviceId,
         ).catch(() => {
-          // 重新协商失败不影响解密流程
+          // 重新协商失败不影响解密流程。
+          // initiateNegotiation 内部已将状态设为 failed，
+          // 由 message-send-queue.ts 的后续修复处理恢复。
         });
       }
     }
