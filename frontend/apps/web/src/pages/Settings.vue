@@ -1,162 +1,136 @@
 <template>
-  <div class="settings-page">
-    <header class="settings-hero">
-      <div class="hero-actions">
-        <button
-          type="button"
-          class="icon-button"
-          :aria-label="t('settings.back')"
-          @click="router.back()"
-        >
-          <el-icon><ArrowLeft /></el-icon>
-        </button>
-      </div>
-
-      <div class="hero-copy">
-        <h1>{{ t("settings.title") }}</h1>
-        <p>{{ t("settings.subtitle") }}</p>
-      </div>
-
-      <button
-        type="button"
-        class="logout-button"
-        :disabled="loggingOut"
-        @click="logout"
-      >
-        <el-icon><SwitchButton /></el-icon>
-        <span>{{ t("settings.logout") }}</span>
-      </button>
-    </header>
-
-    <main class="settings-content">
-      <section
-        class="settings-card account-card"
-        @click="router.push('/profile')"
-      >
-        <div class="account-avatar">
-          <el-avatar :size="54" :src="userStore.avatar">
+  <div class="settings-page fresh-page">
+    <div class="settings-shell">
+      <!-- 左侧导航面板 -->
+      <aside class="settings-nav-panel">
+        <div class="nav-user">
+          <el-avatar :size="40" :src="userStore.avatar">
             {{ avatarText }}
           </el-avatar>
+          <span class="nav-username">{{ userDisplayName }}</span>
         </div>
-        <div class="settings-copy">
-          <div class="settings-kicker">{{ t("settings.account") }}</div>
-          <h2>{{ userDisplayName }}</h2>
-          <p>{{ t("settings.profileDesc") }}</p>
-        </div>
-      </section>
-
-      <section class="settings-card">
-        <div class="settings-copy">
-          <div class="settings-kicker">{{ t("settings.language") }}</div>
-          <h2>{{ localeName }}</h2>
-          <p>{{ t("settings.languageDesc") }}</p>
-        </div>
-        <div class="segmented-control">
-          <button
-            v-for="option in localeOptions"
-            :key="option.value"
-            type="button"
-            :class="{ active: locale === option.value }"
-            @click="setLocale(option.value)"
-          >
-            {{ option.label }}
-          </button>
-        </div>
-      </section>
-
-      <section class="settings-card">
-        <div class="settings-copy">
-          <div class="settings-kicker">{{ t("settings.appearance") }}</div>
-          <h2>{{ t("settings.theme") }}</h2>
-          <p>{{ t("settings.themeDesc") }}</p>
-        </div>
-        <div class="segmented-control">
-          <button
-            v-for="option in themeOptions"
-            :key="option.value"
-            type="button"
-            :class="{ active: theme === option.value }"
-            @click="theme = option.value"
-          >
-            {{ option.label }}
-          </button>
-        </div>
-      </section>
-
-      <section class="settings-card">
-        <div class="settings-copy">
-          <div class="settings-kicker">{{ t("settings.notifications") }}</div>
-          <h2>{{ t("settings.notifications") }}</h2>
-          <p>{{ t("settings.notificationDesc") }}</p>
-        </div>
-        <el-switch
-          v-model="notificationEnabled"
-          size="large"
-          @change="updateMessageSetting('enableNotification', Boolean($event))"
-        />
-      </section>
-
-      <section class="settings-card">
-        <div class="settings-copy">
-          <div class="settings-kicker">{{ t("settings.sound") }}</div>
-          <h2>{{ t("settings.sound") }}</h2>
-          <p>{{ t("settings.soundDesc") }}</p>
-        </div>
-        <el-switch
-          v-model="soundEnabled"
-          size="large"
-          @change="updateMessageSetting('enableSound', Boolean($event))"
-        />
-      </section>
-
-      <section class="settings-card">
-        <div class="settings-copy">
-          <div class="settings-kicker">{{ t("settings.voice") }}</div>
-          <h2>{{ t("settings.insecureVoice") }}</h2>
-          <p>{{ t("settings.insecureVoiceDesc") }}</p>
-        </div>
-        <el-switch
-          v-model="allowInsecureVoiceRecording"
-          size="large"
-          @change="updateInsecureVoiceSetting(Boolean($event))"
-        />
-      </section>
-
-      <section class="settings-card">
-        <div class="settings-copy">
-          <div class="settings-kicker">{{ t("settings.privacy") }}</div>
-          <h2>{{ t("settings.readReceipt") }}</h2>
-          <p>{{ t("settings.readReceiptDesc") }}</p>
-        </div>
-        <el-switch
-          v-model="readReceiptEnabled"
-          size="large"
-          @change="updatePrivacySetting('messageReadReceipt', Boolean($event))"
-        />
-      </section>
-
-      <section class="settings-card">
-        <div class="settings-copy">
-          <div class="settings-kicker">{{ t("settings.storage") }}</div>
-          <h2>{{ t("settings.clearCache") }}</h2>
-          <p>{{ t("settings.clearCacheDesc") }}</p>
-        </div>
-        <button type="button" class="flat-button" @click="clearCache">
-          {{ t("settings.clearCache") }}
+        <nav class="nav-items">
+          <button type="button" class="nav-item">账号</button>
+          <button type="button" class="nav-item">外观</button>
+          <button type="button" class="nav-item">通知</button>
+          <button type="button" class="nav-item">隐私</button>
+          <button type="button" class="nav-item">存储</button>
+          <button type="button" class="nav-item" @click="router.push('/settings/ai')">AI</button>
+        </nav>
+        <button type="button" class="logout-button nav-logout" :disabled="loggingOut" @click="logout">
+          <el-icon><SwitchButton /></el-icon>
+          <span>{{ t("settings.logout") }}</span>
         </button>
-      </section>
+      </aside>
 
-      <section
-        class="settings-card ai-card"
-        @click="router.push('/settings/ai')"
-      >
-        <div class="settings-copy">
-          <div class="settings-kicker">AI</div>
-          <h2>{{ t("settings.aiAssistant") }}</h2>
-          <p>{{ t("settings.aiAssistantDesc") }}</p>
+      <!-- 右侧主区域 -->
+      <main class="settings-main">
+        <!-- Hero -->
+        <header class="settings-hero">
+          <button type="button" class="icon-button" :aria-label="t('settings.back')" @click="router.back()">
+            <el-icon><ArrowLeft /></el-icon>
+          </button>
+          <div class="hero-copy">
+            <h1>{{ t("settings.title") }}</h1>
+            <p>{{ t("settings.subtitle") }}</p>
+          </div>
+        </header>
+
+        <!-- 账号 section -->
+        <section class="setting-section account-section" @click="router.push('/profile')">
+          <div class="account-row">
+            <el-avatar :size="44" :src="userStore.avatar">{{ avatarText }}</el-avatar>
+            <div class="account-info">
+              <div class="account-name">{{ userDisplayName }}</div>
+              <div class="account-desc">查看和编辑个人资料</div>
+            </div>
+            <el-icon class="account-arrow"><ArrowRight /></el-icon>
+          </div>
+        </section>
+
+        <!-- 偏好 section -->
+        <section class="setting-section">
+          <div class="setting-row">
+            <div class="setting-label">
+              <div class="setting-title">语言</div>
+              <div class="setting-desc">{{ localeName }}</div>
+            </div>
+            <div class="segmented-control">
+              <button v-for="option in localeOptions" :key="option.value" type="button" :class="{ active: locale === option.value }" @click="setLocale(option.value)">
+                {{ option.label }}
+              </button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-label">
+              <div class="setting-title">{{ t("settings.theme") }}</div>
+              <div class="setting-desc">{{ t("settings.themeDesc") }}</div>
+            </div>
+            <div class="segmented-control">
+              <button v-for="option in themeOptions" :key="option.value" type="button" :class="{ active: theme === option.value }" @click="theme = option.value">
+                {{ option.label }}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 通知 section -->
+        <section class="setting-section">
+          <div class="setting-row">
+            <div class="setting-label">
+              <div class="setting-title">{{ t("settings.notifications") }}</div>
+            </div>
+            <el-switch v-model="notificationEnabled" size="large" @change="updateMessageSetting('enableNotification', Boolean($event))" />
+          </div>
+          <div class="setting-row">
+            <div class="setting-label">
+              <div class="setting-title">{{ t("settings.sound") }}</div>
+            </div>
+            <el-switch v-model="soundEnabled" size="large" @change="updateMessageSetting('enableSound', Boolean($event))" />
+          </div>
+          <div class="setting-row">
+            <div class="setting-label">
+              <div class="setting-title">{{ t("settings.insecureVoice") }}</div>
+              <div class="setting-desc">{{ t("settings.insecureVoiceDesc") }}</div>
+            </div>
+            <el-switch v-model="allowInsecureVoiceRecording" size="large" @change="updateInsecureVoiceSetting(Boolean($event))" />
+          </div>
+        </section>
+
+        <!-- 隐私 section -->
+        <section class="setting-section">
+          <div class="setting-row">
+            <div class="setting-label">
+              <div class="setting-title">{{ t("settings.readReceipt") }}</div>
+              <div class="setting-desc">{{ t("settings.readReceiptDesc") }}</div>
+            </div>
+            <el-switch v-model="readReceiptEnabled" size="large" @change="updatePrivacySetting('messageReadReceipt', Boolean($event))" />
+          </div>
+        </section>
+
+        <!-- 存储 + AI 双卡片 -->
+        <div class="setting-grid-2">
+          <section class="setting-section">
+            <div class="setting-row" style="border-bottom:none">
+              <div class="setting-label">
+                <div class="setting-title">{{ t("settings.clearCache") }}</div>
+                <div class="setting-desc">{{ t("settings.clearCacheDesc") }}</div>
+              </div>
+              <button type="button" class="flat-button" @click="clearCache">{{ t("settings.clearCache") }}</button>
+            </div>
+          </section>
+          <section class="setting-section is-interactive" @click="router.push('/settings/ai')">
+            <div class="setting-row" style="border-bottom:none">
+              <div class="setting-label">
+                <div class="setting-title">{{ t("settings.aiAssistant") }}</div>
+                <div class="setting-desc">{{ t("settings.aiAssistantDesc") }}</div>
+              </div>
+              <el-icon class="account-arrow"><ArrowRight /></el-icon>
+            </div>
+          </section>
         </div>
-      </section>
-    </main>
+      </main>
+    </div>
   </div>
 </template>
 
@@ -164,7 +138,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { ArrowLeft, SwitchButton } from "@element-plus/icons-vue";
+import { ArrowLeft, ArrowRight, SwitchButton } from "@element-plus/icons-vue";
 import { useErrorHandler } from "@/hooks/useErrorHandler";
 import { defaultUserSettings } from "@/normalizers/user";
 import { useI18nStore } from "@/stores/i18n";
@@ -340,235 +314,326 @@ onMounted(() => {
   min-height: 100%;
   padding: 28px;
   overflow-y: auto;
-  background: var(--fresh-page-bg);
 }
 
-.settings-hero,
-.settings-card {
-  border: 1px solid var(--fresh-glass-border);
-  background: var(--fresh-glass-bg);
-  box-shadow: var(--fresh-glass-shadow-soft);
-  backdrop-filter: var(--fresh-blur);
-  -webkit-backdrop-filter: var(--fresh-blur);
-}
-
-.settings-hero {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 18px;
-  max-width: 1120px;
-  margin: 0 auto 18px;
-  padding: 18px;
-  border-radius: 22px;
-}
-
-.hero-copy h1,
-.settings-copy h2 {
-  margin: 0;
-  color: var(--chat-text-primary);
-}
-
-.hero-copy h1 {
-  font-size: 24px;
-  font-weight: 800;
-}
-
-.hero-copy p,
-.settings-copy p {
-  margin: 4px 0 0;
-  color: var(--chat-text-tertiary);
-}
-
-.settings-content {
-  max-width: 1120px;
+.settings-shell {
+  width: min(1180px, 100%);
   margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
 }
 
-.settings-card {
-  min-height: 108px;
+// ── 左侧导航面板 ──
+.settings-nav-panel {
+  position: sticky;
+  top: 28px;
+  background: var(--fresh-glass-bg);
+  border: 1px solid var(--fresh-glass-border);
+  border-radius: var(--fresh-radius-page);
+  padding: 20px 16px;
+  backdrop-filter: var(--fresh-blur);
+  -webkit-backdrop-filter: var(--fresh-blur);
+  box-shadow: var(--fresh-glass-shadow-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.nav-user {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 18px;
-  border-radius: 22px;
-  transition:
-    transform 0.2s ease,
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
+  gap: 10px;
 }
 
-.account-card {
-  grid-column: 1 / -1;
-  justify-content: flex-start;
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+.nav-username {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fresh-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-item {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--fresh-radius-control);
+  background: transparent;
+  color: var(--fresh-text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease;
 
   &:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--fresh-glass-shadow);
+    background: rgba(255, 255, 255, 0.40);
+    color: var(--fresh-text);
   }
 }
 
-.ai-card {
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--fresh-glass-shadow);
-  }
+.nav-logout {
+  margin-top: auto;
+  width: 100%;
+  justify-content: center;
 }
 
-.account-avatar {
-  flex-shrink: 0;
-  padding: 4px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.58);
-}
-
-.settings-copy {
+// ── 右侧主区域 ──
+.settings-main {
   min-width: 0;
 }
 
-.settings-kicker {
-  margin-bottom: 4px;
-  color: var(--fresh-green);
-  font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
+.settings-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 72px;
+  padding: 0 4px;
+  margin-bottom: 14px;
 }
 
-.settings-copy h2 {
-  font-size: 16px;
+.hero-copy h1 {
+  margin: 0;
+  font-size: 22px;
   font-weight: 800;
+  color: var(--fresh-text);
 }
 
-.settings-copy p {
+.hero-copy p {
+  margin: 2px 0 0;
   font-size: 13px;
+  color: var(--fresh-text-muted);
 }
 
-.icon-button,
-.logout-button,
-.flat-button,
-.segmented-control button {
-  border: 0;
-  border-radius: 8px;
+// ── Section 容器 ──
+.setting-section {
+  border-radius: var(--fresh-radius-page);
+  background: var(--fresh-glass-bg);
+  border: 1px solid var(--fresh-glass-border);
+  backdrop-filter: var(--fresh-blur);
+  -webkit-backdrop-filter: var(--fresh-blur);
+  box-shadow: var(--fresh-glass-shadow-soft);
+  margin-bottom: var(--fresh-section-gap);
+  overflow: hidden;
+
+  &.is-interactive {
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+    &:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--fresh-glass-shadow);
+    }
+  }
+}
+
+.setting-row {
+  min-height: var(--fresh-row-height);
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.38);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.setting-label {
+  min-width: 0;
+  flex: 1;
+  padding-right: 16px;
+}
+
+.setting-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fresh-text);
+}
+
+.setting-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--fresh-text-muted);
+}
+
+.setting-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--fresh-section-gap);
+}
+
+// ── 账号卡片 ──
+.account-section {
   cursor: pointer;
-  font: inherit;
-  transition:
-    transform 0.18s ease,
-    background-color 0.18s ease,
-    color 0.18s ease,
-    box-shadow 0.18s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--fresh-glass-shadow);
+  }
 }
 
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+}
+
+.account-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fresh-text);
+}
+
+.account-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--fresh-text-muted);
+}
+
+.account-arrow {
+  flex-shrink: 0;
+  color: var(--fresh-text-muted);
+  font-size: 18px;
+}
+
+// ── Segmented control ──
+.segmented-control {
+  flex-shrink: 0;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--fresh-radius-control);
+  background: rgba(255, 255, 255, 0.42);
+
+  button {
+    min-width: 64px;
+    min-height: 30px;
+    padding: 0 10px;
+    background: transparent;
+    color: var(--fresh-text-muted);
+    font-weight: 600;
+    font-size: 13px;
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+  }
+
+  button.active {
+    background: linear-gradient(135deg, rgba(167, 243, 208, 0.9), rgba(186, 230, 253, 0.8));
+    color: var(--fresh-text);
+    box-shadow: 0 4px 14px rgba(7, 193, 96, 0.10);
+  }
+}
+
+// ── Buttons ──
 .icon-button {
   width: 38px;
   height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.72);
-  color: var(--chat-text-secondary);
+  border: 1px solid var(--fresh-glass-border);
+  border-radius: var(--fresh-radius-control);
+  background: var(--fresh-glass-bg);
+  color: var(--fresh-text);
+  cursor: pointer;
+  transition: all 0.18s ease;
+
+  &:hover {
+    background: var(--fresh-glass-bg-strong);
+  }
 }
 
-.logout-button,
+.logout-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--fresh-radius-control);
+  background: rgba(255, 255, 255, 0.42);
+  color: var(--fresh-text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+
+  &:hover:not(:disabled) {
+    background: rgba(7, 193, 96, 0.12);
+    color: var(--fresh-green);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
 .flat-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 38px;
+  min-height: 34px;
   padding: 0 14px;
-  background: rgba(15, 23, 42, 0.06);
-  color: var(--chat-text-secondary);
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.logout-button:hover,
-.flat-button:hover,
-.icon-button:hover {
-  transform: translateY(-1px);
-  color: var(--fresh-green);
-  background: rgba(7, 193, 96, 0.10);
-}
-
-.logout-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.62;
-}
-
-.segmented-control {
-  flex-shrink: 0;
-  display: inline-flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.42);
-}
-
-.segmented-control button {
-  min-width: 72px;
-  min-height: 32px;
-  padding: 0 10px;
-  background: transparent;
-  color: var(--fresh-text-muted);
-  font-weight: 700;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--fresh-radius-control);
+  background: rgba(255, 255, 255, 0.42);
+  color: var(--fresh-text);
+  font-weight: 600;
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.18s ease;
+
+  &:hover {
+    background: rgba(7, 193, 96, 0.10);
+    color: var(--fresh-green);
+  }
 }
 
-.segmented-control button.active {
-  background: linear-gradient(135deg, rgba(167, 243, 208, 0.9), rgba(186, 230, 253, 0.8));
-  color: var(--fresh-text);
-  box-shadow: 0 4px 14px rgba(7, 193, 96, 0.12);
-}
-
+// ── 移动端 ──
 @media (max-width: 860px) {
-  .settings-page {
-    padding: 16px;
+  .settings-shell {
+    grid-template-columns: 1fr;
   }
 
-  .settings-hero,
-  .settings-content {
-    max-width: none;
+  .settings-nav-panel {
+    display: none;
   }
 
-  .settings-hero {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .logout-button {
-    grid-column: 1 / -1;
-    width: 100%;
-  }
-
-  .settings-content {
+  .setting-grid-2 {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 560px) {
-  .settings-card {
-    align-items: stretch;
+  .settings-page {
+    padding: 16px;
+  }
+
+  .setting-row {
     flex-direction: column;
-  }
-
-  .segmented-control,
-  .flat-button {
-    width: 100%;
-  }
-
-  .segmented-control button {
-    flex: 1;
+    align-items: flex-start;
+    gap: 10px;
   }
 }
 </style>
