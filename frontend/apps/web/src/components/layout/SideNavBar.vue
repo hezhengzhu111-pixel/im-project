@@ -37,7 +37,7 @@ defineProps<{
   unreadChat?: number;
 }>();
 
-defineEmits<{ change: [key: string] }>();
+defineEmits<{ change: [key: 'chat' | 'contacts' | 'moments' | 'settings'] }>();
 
 const tabs = [
   { key: 'chat', icon: '💬', label: '聊天', unread: 0 },
