@@ -93,4 +93,10 @@ const coverBgStyle = computed(() => {
   z-index: 10;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
+
+@media (min-width: 769px) {
+  .moments-cover {
+    height: 220px;
+  }
+}
 </style>
