@@ -312,7 +312,7 @@ const handleMediaLoaded = () => {
   animation: msgFadeIn 0.25s var(--motion-out, ease-out) both;
 
   &--self { justify-content: flex-end; }
-  &--compact { margin-bottom: 24px !important; }
+  &--compact { margin-bottom: 4px !important; }
   &--system { justify-content: center; margin-bottom: 20px !important; }
 }
 
