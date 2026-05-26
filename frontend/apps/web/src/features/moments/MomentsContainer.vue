@@ -128,20 +128,21 @@ onUnmounted(() => {
 }
 
 .moments-container {
-  width: min(1040px, 100%);
+  width: 100%;
+  max-width: none;
   height: 100%;
   min-height: 0;
-  margin: 0 auto;
-  padding: 20px;
+  padding: 16px 20px;
   display: grid;
-  grid-template-columns: minmax(0, 680px) 280px;
+  grid-template-columns: minmax(0, 1fr) 300px;
   gap: 16px;
-  background: transparent;
   align-items: start;
 }
 
 // 左侧主面板 — 玻璃卡片
 .moments-main-panel {
+  width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background: var(--fresh-glass-bg);
@@ -159,7 +160,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-self: start;
   position: sticky;
-  top: 20px;
+  top: 16px;
   gap: 14px;
   // Do NOT set min-height, height, or flex:1
 }
@@ -271,10 +272,10 @@ onUnmounted(() => {
 }
 
 // ── 窄屏/嵌入上下文 ──
-@media (max-width: 1180px) {
+@media (max-width: 1100px) {
   .moments-container {
-    grid-template-columns: minmax(0, 680px);
-    justify-content: center;
+    grid-template-columns: 1fr;
+    padding: 12px;
   }
 
   .moments-side-panel {

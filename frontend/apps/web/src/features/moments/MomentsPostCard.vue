@@ -211,8 +211,8 @@ const openLink = () => {
 .moments-post-card {
   background: rgba(255, 255, 255, 0.68);
   border: 1px solid rgba(255, 255, 255, 0.56);
-  border-radius: 18px;
-  padding: 16px;
+  border-radius: 16px;
+  padding: 14px;
   box-shadow: 0 8px 24px rgba(31, 41, 55, 0.06);
   backdrop-filter: blur(16px) saturate(1.25);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -237,6 +237,7 @@ const openLink = () => {
   border-bottom: none;
   margin-bottom: 0;
   padding-bottom: 0;
+  max-width: var(--web-readable-max);
 }
 
 .post-nickname {
@@ -251,6 +252,10 @@ const openLink = () => {
 .media-grid {
   gap: 6px;
   border-radius: 14px;
+}
+
+.media-grid.grid-1 {
+  max-width: 520px;
 }
 
 .media-item,
