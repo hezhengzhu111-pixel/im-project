@@ -2,50 +2,56 @@
   <!-- 会话列表 (chat tab) -->
   <div v-if="activeTab === 'chat'" class="session-list" v-loading="!!loading">
     <div
-      v-for="session in sessions"
-      :key="session.id"
+      v-for="item in filteredSessionItems"
+      :key="item.session.id"
       class="session-item"
-      :class="{ 'session-item--active': session.id === currentSessionId }"
-      @click="handleSelectSession(session)"
+      :class="{ 'session-item--active': item.session.id === currentSessionId }"
+      @click="handleSelectSession(item.session)"
     >
-      <el-badge :hidden="!session.unreadCount" is-dot>
-        <el-avatar :src="session.avatar" :size="40" />
+      <el-badge :hidden="!item.session.unreadCount" is-dot>
+        <el-avatar :src="item.session.avatar" :size="40" />
       </el-badge>
       <div class="session-info">
         <div class="session-top">
-          <span class="session-name">{{ session.name }}</span>
-          <span class="session-time">{{ formatTime(session.lastMessageTime) }}</span>
+          <span class="session-name">{{ item.session.name }}</span>
+          <span class="session-time">{{ formatTime(item.session.lastMessageTime) }}</span>
         </div>
         <div class="session-preview">
-          <span class="session-last-msg">{{ session.lastMessage?.content || '' }}</span>
+          <span class="session-last-msg">{{ item.preview }}</span>
         </div>
       </div>
     </div>
-    <div v-if="sessions.length === 0 && !loading" class="session-empty">
+    <div v-if="filteredSessionItems.length === 0 && !loading" class="session-empty">
       <p>暂无会话</p>
     </div>
   </div>
 
   <!-- 联系人列表 (contacts tab) -->
   <div v-else-if="activeTab === 'contacts'" class="contact-list">
-    <div class="contact-section">
-      <div
-        v-for="friend in friends"
-        :key="friend.friendId"
-        class="contact-item"
-        @click="handleStartPrivateChat(friend)"
-      >
-        <el-avatar :src="friend.avatar" :size="40" />
+    <template v-if="normalizedSearchKeyword">
+      <div v-for="contact in filteredContacts" :key="contact.friendId" class="contact-item" @click="handleStartPrivateChat(contact)">
+        <el-avatar :src="contact.avatar" :size="40" />
         <div class="contact-info">
-          <span class="contact-name">{{ friend.nickname || friend.username }}</span>
-          <span class="contact-status" :class="{ online: friend.isOnline }">
-            {{ friend.isOnline ? '在线' : '离线' }}
+          <span class="contact-name">{{ contact.nickname || contact.username }}</span>
+          <span class="contact-status" :class="{ online: contact.isOnline }">
+            {{ contact.isOnline ? '在线' : '离线' }}
           </span>
         </div>
       </div>
-      <div v-if="friends.length === 0" class="session-empty">
-        <p>暂无联系人</p>
+    </template>
+    <template v-else>
+      <div v-for="group in groupedContacts" :key="group.key" class="contact-group">
+        <div class="contact-group-title">{{ group.key }}</div>
+        <div v-for="contact in group.contacts" :key="contact.friendId" class="contact-item" @click="handleStartPrivateChat(contact)">
+          <el-avatar :src="contact.avatar" :size="40" />
+          <div class="contact-info">
+            <span class="contact-name">{{ contact.nickname || contact.username }}</span>
+          </div>
+        </div>
       </div>
+    </template>
+    <div v-if="filteredContacts.length === 0" class="session-empty">
+      <p>暂无联系人</p>
     </div>
   </div>
 </template>
@@ -510,5 +516,20 @@ const filteredGroups = computed(() => {
   font-size: var(--font-size-xs); color: var(--text-tertiary);
 
   &.online { color: var(--color-primary); }
+}
+
+.contact-group {
+  margin-bottom: var(--space-1, 4px);
+}
+
+.contact-group-title {
+  padding: var(--space-1, 4px) var(--space-4, 16px);
+  font-size: var(--font-size-xs, 11px);
+  font-weight: 600;
+  color: var(--text-tertiary, #B0B0B0);
+  background: var(--surface-secondary, #F7F7F7);
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 </style>
