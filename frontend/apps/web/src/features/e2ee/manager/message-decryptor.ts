@@ -144,6 +144,14 @@ async function decryptOneMessage(
       errMsg.includes("no handshake") ||
       errMsg.includes("Rust E2EE session not found");
 
+    // 自愈：收到加密消息本身即证明该会话已加密，同步本地状态
+    if (isMissingSession) {
+      const { setLocalSessionStatus } = await import(
+        "@/features/e2ee/manager/negotiation"
+      );
+      setLocalSessionStatus(envelope.sessionId, "encrypted");
+    }
+
     const code = isMissingSession && !hasHandshake
       ? "missing_session"
       : classification.code === "E2EE_ONE_TIME_PREKEY_MISSING"
