@@ -290,15 +290,16 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .ai-settings-page {
-  min-height: 100vh;
-  padding: var(--web-page-padding-y) var(--web-page-padding-x);
+  min-height: 100%;
+  padding: 16px var(--web-page-padding-x);
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--fresh-page-bg);
 }
 
 .ai-settings-shell {
-  width: min(var(--web-content-max), calc(100vw - var(--web-page-padding-x) * 2));
+  width: 100%;
+  max-width: var(--web-content-max);
   margin: 0 auto;
 }
 
@@ -306,8 +307,8 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: 20px;
-  height: 60px;
+  margin-bottom: 14px;
+  height: 52px;
 
   .hero-actions {
     flex-shrink: 0;
@@ -353,7 +354,7 @@ onMounted(() => {
 
 .settings-content {
   display: grid;
-  grid-template-columns: minmax(520px, 1fr) 360px;
+  grid-template-columns: minmax(520px, 1fr) 340px;
   gap: var(--web-gap);
   align-items: start;
 }
@@ -362,7 +363,7 @@ onMounted(() => {
 .ai-side-column {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .settings-card {

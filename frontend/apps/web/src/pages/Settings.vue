@@ -321,13 +321,14 @@ onMounted(() => {
 <style scoped lang="scss">
 .settings-page {
   min-height: 100%;
-  padding: var(--web-page-padding-y) var(--web-page-padding-x);
+  padding: 16px var(--web-page-padding-x);
   overflow-y: auto;
   overflow-x: hidden;
 }
 
 .settings-shell {
-  width: min(var(--web-content-max), calc(100vw - var(--web-page-padding-x) * 2));
+  width: 100%;
+  max-width: var(--web-content-max);
   margin: 0 auto;
   display: grid;
   grid-template-columns: 216px minmax(0, 1fr);
@@ -415,9 +416,9 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 14px;
-  height: 60px;
+  height: 52px;
   padding: 0 4px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .hero-copy h1 {
