@@ -58,6 +58,9 @@ jspm_packages/
 # Optional stylelint cache
 .stylelintcache
 
+# TLS certificates for local dev (mkcert)
+cert/
+
 # Microbundle cache
 .rpt2_cache/
 .rts2_cache_cjs/
@@ -124,3 +127,6 @@ build/Release
 
 # Optional stylelint cache
 .stylelintcache
+
+# TLS certificates for local dev (mkcert)
+cert/
