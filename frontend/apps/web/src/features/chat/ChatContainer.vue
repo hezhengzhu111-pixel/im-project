@@ -603,6 +603,55 @@ const handleChatAction = (command: string | number | object) => {
   font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
 }
 
+// ── 液体光斑背景 ──
+.wechat-layout::before,
+.wechat-layout::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  filter: blur(40px);
+  opacity: 0.40;
+  z-index: 0;
+}
+
+.wechat-layout::before {
+  width: 420px;
+  height: 420px;
+  background: radial-gradient(circle, var(--fx-liquid-green), transparent 70%);
+  top: -120px;
+  right: -100px;
+  animation: liquidFloat1 18s ease-in-out infinite;
+}
+
+.wechat-layout::after {
+  width: 360px;
+  height: 360px;
+  background: radial-gradient(circle, var(--fx-liquid-cyan), transparent 70%);
+  bottom: -80px;
+  left: 180px;
+  animation: liquidFloat2 22s ease-in-out infinite;
+}
+
+@keyframes liquidFloat1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-40px, 30px) scale(1.1); }
+  66% { transform: translate(20px, -20px) scale(0.9); }
+}
+
+@keyframes liquidFloat2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -25px) scale(1.08); }
+  66% { transform: translate(-25px, 15px) scale(0.92); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wechat-layout::before,
+  .wechat-layout::after {
+    animation: none;
+  }
+}
+
 // ── Override ChatSidebarPanel internals to fit sidebar ──
 .chat-sidebar {
   position: relative;
@@ -612,7 +661,9 @@ const handleChatAction = (command: string | number | object) => {
   max-width: 360px;
   display: flex;
   flex-direction: column;
-  background: var(--surface-secondary, #ffffff);
+  background: var(--fx-glass-bg, var(--surface-secondary, #f7f7f7));
+  backdrop-filter: var(--fx-glass-blur);
+  -webkit-backdrop-filter: var(--fx-glass-blur);
   border-right: 1px solid var(--border-light, #e5e7eb);
   overflow: hidden;
 
@@ -697,7 +748,9 @@ const handleChatAction = (command: string | number | object) => {
   justify-content: space-between;
   height: 56px;
   padding: 0 var(--space-4, 16px);
-  background: var(--surface-secondary, #ffffff);
+  background: var(--fx-glass-bg, var(--surface-secondary, #ffffff));
+  backdrop-filter: var(--fx-glass-blur);
+  -webkit-backdrop-filter: var(--fx-glass-blur);
   border-bottom: 1px solid var(--border-subtle, #ECECEC);
   flex-shrink: 0;
 }
@@ -821,7 +874,9 @@ const handleChatAction = (command: string | number | object) => {
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--border-light, #e5e7eb);
-  background: var(--surface-secondary, #fff);
+  background: var(--fx-glass-bg-strong, var(--surface-secondary, #fff));
+  backdrop-filter: var(--fx-glass-blur);
+  -webkit-backdrop-filter: var(--fx-glass-blur);
   box-shadow: var(--shadow-panel, 0 4px 12px rgba(0, 0, 0, 0.1));
   overflow: hidden;
 }
@@ -993,5 +1048,23 @@ const handleChatAction = (command: string | number | object) => {
     width: 100%;
     max-width: 320px;
   }
+}
+
+:deep(.wechat-composer) {
+  background: var(--fx-glass-bg, var(--chat-composer-bg));
+  backdrop-filter: var(--fx-glass-blur);
+  -webkit-backdrop-filter: var(--fx-glass-blur);
+}
+
+:deep(.message-empty-card) {
+  background: var(--fx-glass-bg, var(--chat-panel-bg));
+  backdrop-filter: var(--fx-glass-blur);
+  -webkit-backdrop-filter: var(--fx-glass-blur);
+}
+
+:deep(.history-indicator) {
+  background: var(--fx-glass-bg, var(--chat-panel-bg));
+  backdrop-filter: var(--fx-glass-blur);
+  -webkit-backdrop-filter: var(--fx-glass-blur);
 }
 </style>
