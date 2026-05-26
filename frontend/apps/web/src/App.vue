@@ -30,6 +30,8 @@ import { useWebSocketStore } from "@/stores/websocket";
 import { useIsMobile } from "@/composables/useIsMobile";
 import { logger } from "@/utils/logger";
 import { initE2ee, stopDeviceHeartbeat } from "@/features/e2ee/manager/e2ee-init";
+import { clearAllKeys } from "@/features/e2ee/store/key-store";
+import { resetDeviceIdCache } from "@/features/e2ee/manager/device-identity";
 
 const { isMobile } = useIsMobile();
 const loading = ref(false);
@@ -62,6 +64,17 @@ const resetUserServices = () => {
   webSocketStore.disconnect();
   chatStore.clear();
   stopDeviceHeartbeat();
+  clearAllKeys().catch(() => {});
+  resetDeviceIdCache();
+  try {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith("e2ee:")) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // localStorage may be unavailable
+  }
 };
 
 const initApp = async () => {
