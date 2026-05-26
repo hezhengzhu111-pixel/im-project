@@ -46,6 +46,10 @@
               <span class="separator-pill">{{ item.label }}</span>
             </div>
 
+            <div v-else-if="item.kind === 'time-separator'" class="message-time-separator">
+              {{ item.label }}
+            </div>
+
             <div
               v-else-if="item.kind === 'unread'"
               class="message-separator message-separator-unread"
@@ -157,6 +161,12 @@ type SeparatorItem = {
   label: string;
 };
 
+type TimeSeparatorItem = {
+  id: string;
+  kind: "time-separator";
+  label: string;
+};
+
 type UnreadItem = {
   id: string;
   kind: "unread";
@@ -201,7 +211,7 @@ type MessageRenderItem = {
   view: MessageListItemView;
 };
 
-type RenderItem = SeparatorItem | UnreadItem | MessageRenderItem;
+type RenderItem = SeparatorItem | TimeSeparatorItem | UnreadItem | MessageRenderItem;
 
 const props = withDefaults(defineProps<Props>(), {
   loadingHistory: false,
@@ -449,9 +459,8 @@ const buildMessageView = (message: Message): MessageListItemView => {
   const isSystemMessage = message.messageType === "SYSTEM";
   const isRecalled = message.status === "RECALLED";
   const isDeleted = message.status === "DELETED";
-  const timeLabel = Number.isNaN(new Date(message.sendTime).getTime())
-    ? ""
-    : timeFormatter.value.format(new Date(message.sendTime));
+  // 时间戳由列表级 separator 聚合显示，不在每条气泡上重复
+  const timeLabel = "";
   const statusView = resolveStatusView(message, isMine);
 
   const view: MessageListItemView = {
@@ -492,10 +501,13 @@ const buildMessageView = (message: Message): MessageListItemView => {
   return view;
 };
 
+const TIME_GAP_THRESHOLD = 5 * 60 * 1000; // 5 分钟
+
 const renderItems = computed<RenderItem[]>(() => {
   const items: RenderItem[] = [];
   let previousDateKey = "";
   let previousSenderId = "";
+  let previousTimestamp = 0;
   const activeMessageIds = new Set<string>();
 
   // Private session encryption notice — only when E2EE is actually active
@@ -533,12 +545,21 @@ const renderItems = computed<RenderItem[]>(() => {
     activeMessageIds.add(key);
 
     const currentDate = new Date(message.sendTime);
-    const currentDateKey = Number.isNaN(currentDate.getTime())
+    const currentTimestamp = currentDate.getTime();
+    const currentDateKey = Number.isNaN(currentTimestamp)
       ? ""
       : dateFormatter.value.format(currentDate);
 
-    // 日期变化时重置分组
-    if (currentDateKey && currentDateKey !== previousDateKey) {
+    // 时间间隔 > 5 分钟 → 插入时间分隔符
+    const shouldShowTime =
+      previousTimestamp > 0 &&
+      currentTimestamp - previousTimestamp > TIME_GAP_THRESHOLD;
+
+    // 日期变化 → 显示日期（覆盖时间分隔符）
+    const isNewDay =
+      currentDateKey && currentDateKey !== previousDateKey;
+
+    if (isNewDay) {
       items.push({
         id: `separator-${currentDateKey}-${key}`,
         kind: "separator",
@@ -546,7 +567,16 @@ const renderItems = computed<RenderItem[]>(() => {
       });
       previousDateKey = currentDateKey;
       previousSenderId = "";
+    } else if (shouldShowTime) {
+      const timeText = timeFormatter.value.format(currentDate);
+      items.push({
+        id: `time-${currentTimestamp}-${key}`,
+        kind: "time-separator",
+        label: timeText,
+      });
     }
+
+    previousTimestamp = currentTimestamp;
 
     if (unreadBoundaryIndex.value === index) {
       items.push({
@@ -1056,6 +1086,7 @@ onUnmounted(() => {
 .message-scroller {
   flex: 1;
   min-height: 0;
+  scroll-behavior: smooth;
 }
 
 .message-scroller-inner {
@@ -1076,6 +1107,14 @@ onUnmounted(() => {
   display: flex;
   justify-content: center;
   padding: 6px 0 10px;
+}
+
+.message-time-separator {
+  text-align: center;
+  padding: 8px 0;
+  font-size: var(--font-size-xs, 11px);
+  color: var(--text-placeholder);
+  user-select: none;
 }
 
 .message-separator-unread {
