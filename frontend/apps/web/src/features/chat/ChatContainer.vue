@@ -8,7 +8,7 @@
     />
 
     <!-- 左侧会话列表 -->
-    <aside class="chat-sidebar" :style="{ width: sidebarWidth + 'px' }">
+    <aside class="chat-sidebar" :style="{ flexBasis: sidebarWidth + 'px' }">
       <div class="sidebar-header">
         <el-avatar :src="userStore.avatar" :size="36">
           {{ userStore.nickname?.[0] || userStore.userInfo?.username?.[0] || "U" }}
@@ -350,9 +350,9 @@ const handleNavChange = (key: string) => {
 };
 
 // ── 可拖拽侧边栏宽度 ──
-const sidebarWidth = ref(260);
-const MIN_SIDEBAR = 180;
-const MAX_SIDEBAR = 400;
+const sidebarWidth = ref(280);
+const MIN_SIDEBAR = 240;
+const MAX_SIDEBAR = 360;
 
 const startResize = (e: MouseEvent) => {
   const startX = e.clientX;
@@ -602,8 +602,9 @@ const handleChatAction = (command: string | number | object) => {
 
 // ── Override ChatSidebarPanel internals to fit sidebar ──
 .chat-sidebar {
-  width: 280px;
-  min-width: 280px;
+  flex: 0 0 auto;
+  min-width: 240px;
+  max-width: 360px;
   display: flex;
   flex-direction: column;
   background: var(--surface-secondary, #ffffff);
