@@ -4,7 +4,7 @@
     <SideNavBar
       :active-tab="activeTab"
       :avatar="userStore.avatar"
-      @change="handleTabChange"
+      @change="handleNavChange"
     />
 
     <!-- 左侧会话列表 -->
@@ -244,6 +244,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { ElMessageBox, ElNotification } from "element-plus";
 import ChatComposer from "@/features/chat/ChatComposer.vue";
 import ChatDialogs from "@/features/chat/ChatDialogs.vue";
@@ -332,6 +333,16 @@ const e2eeStatus = useE2eeSessionStatus(
 );
 const showEncryptionDialog = ref(false);
 const searchQuery = ref("");
+
+const router = useRouter();
+
+const handleNavChange = (key: string) => {
+  if (key === 'settings') {
+    router.push('/settings');
+  } else {
+    handleTabChange(key as 'chat' | 'contacts' | 'moments');
+  }
+};
 
 // ── 可拖拽侧边栏宽度 ──
 const sidebarWidth = ref(260);
