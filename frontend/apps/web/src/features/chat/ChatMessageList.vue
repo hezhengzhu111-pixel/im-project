@@ -1156,9 +1156,9 @@ onUnmounted(() => {
 }
 
 .unread-pill {
-  border-color: #93c5fd;
+  border-color: rgba(7, 193, 96, 0.25);
   color: var(--chat-accent-strong);
-  background: rgba(37, 99, 235, 0.08);
+  background: rgba(7, 193, 96, 0.10);
 }
 
 .scroll-to-latest {
@@ -1177,7 +1177,7 @@ onUnmounted(() => {
   color: #fff;
   font-size: 12px;
   font-weight: 700;
-  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
+  box-shadow: 0 10px 24px rgba(7, 193, 96, 0.22);
   cursor: pointer;
 }
 
