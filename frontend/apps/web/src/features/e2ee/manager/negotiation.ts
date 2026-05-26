@@ -153,13 +153,10 @@ export async function initiateNegotiation(
   try {
     const deviceId = await ensureLocalE2eeDeviceRegistered();
     const localKeys = await getLocalRustKeyMaterial();
-    // 使用唯一 claimId 绕过 e2ee_pre_key_claims 幂等声明，
-    // 避免复用上一次协商已消耗的 OTK
-    const claimId = `${sessionId}:${Date.now()}`;
     const remoteBundle = await fetchRemoteBundle(
       remoteUserId,
       remoteDeviceId,
-      claimId,
+      sessionId,
       deviceId,
     );
 
