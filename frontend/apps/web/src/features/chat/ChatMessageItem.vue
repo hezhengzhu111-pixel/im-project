@@ -306,13 +306,13 @@ const handleMediaLoaded = () => {
 .msg-item {
   display: flex;
   align-items: flex-start;
-  padding: 0 var(--space-4);
-  margin-bottom: var(--space-2);
+  padding: 0 var(--space-4, 16px);
+  margin-bottom: 20px;
   animation: msgFadeIn 0.25s var(--motion-out, ease-out) both;
 
   &--self { flex-direction: row-reverse; }
-  &--compact { margin-bottom: 2px; }
-  &--system { justify-content: center; margin-bottom: var(--space-3); }
+  &--compact { margin-bottom: 4px; }
+  &--system { justify-content: center; margin-bottom: 16px; }
 }
 
 .msg-avatar {
@@ -336,12 +336,11 @@ const handleMediaLoaded = () => {
   font-size: var(--font-size-xs, 12px);
   color: var(--text-tertiary);
   margin-bottom: 2px;
-  margin-left: 2px;
 }
 
 .msg-bubble {
   display: inline-block;
-  padding: var(--chat-bubble-padding-y, 10px) var(--chat-bubble-padding-x, 14px);
+  padding: 9px 13px;
   border-radius: var(--chat-bubble-radius, 12px);
   font-size: var(--font-size-base, 14px);
   line-height: var(--line-height-base, 1.5);
