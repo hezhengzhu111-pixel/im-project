@@ -1,58 +1,44 @@
 // ============================================
 // Chat-Specific CSS Custom Properties
+// 颜色定义统一在 tokens.scss，本文件仅保留聊天维度的结构变量
 // ============================================
 
 :root {
+  // 面板引用（颜色值来自 tokens.scss）
   --chat-shell-bg: var(--surface-secondary);
   --chat-panel-bg: var(--surface-primary);
-  --chat-card-hover: #F0F0F0;
-  --chat-card-active: #E5E5E5;
 
-  --chat-bubble-own: #95EC69;
-  --chat-bubble-own-text: #111111;
-  --chat-bubble-other: #FFFFFF;
-  --chat-bubble-other-text: #111111;
-  --chat-bubble-system: transparent;
-  --chat-bubble-system-text: #B0B0B0;
-
-  --chat-message-area-bg: #EDEDED;
-
+  // 尺寸
   --chat-avatar-size: 36px;
   --chat-avatar-radius: var(--radius-sm);
 
+  // 气泡布局
   --chat-bubble-radius: var(--radius-sm);
   --chat-bubble-padding-y: 10px;
   --chat-bubble-padding-x: 14px;
   --chat-bubble-max-width: 60%;
 
+  // 输入框
   --chat-composer-bg: var(--surface-secondary);
   --chat-composer-border: var(--border-light);
   --chat-composer-toolbar-size: 36px;
 
+  // 效果（微信：扁平，无投影无模糊）
   --chat-message-shadow: none;
-
-  --chat-badge-bg: #FA5151;
-  --chat-badge-text: #FFFFFF;
-
-  --chat-accent-color: var(--color-primary);
-  --chat-accent-hover: var(--color-primary-dark);
-
   --chat-glass-bg: var(--surface-elevated);
   --chat-glass-blur: none;
 
+  // 强调色引用
+  --chat-accent-color: var(--color-primary);
+  --chat-accent-hover: var(--color-primary-dark);
+
+  // 时间线
   --chat-timeline-max-width: 800px;
 }
 
 .theme-dark {
   --chat-shell-bg: var(--surface-tertiary);
   --chat-panel-bg: var(--surface-primary);
-  --chat-card-hover: #262626;
-  --chat-card-active: #333333;
-  --chat-bubble-own: #05A351;
-  --chat-bubble-own-text: #E5E5E5;
-  --chat-bubble-other: #262626;
-  --chat-bubble-other-text: #E5E5E5;
-  --chat-message-area-bg: #111111;
   --chat-composer-bg: var(--surface-primary);
   --chat-composer-border: var(--border-light);
 }

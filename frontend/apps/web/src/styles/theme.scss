@@ -1,8 +1,9 @@
 // ============================================
-// Dark Theme Overrides (WeChat-Style)
+// Dark Theme Overrides（微信暗黑模式）
 // ============================================
 
 .theme-dark {
+  // --- Brand ---
   --color-primary: #07C160;
   --color-primary-dark: #06AD56;
   --color-primary-light: #05A351;
@@ -10,27 +11,50 @@
   --color-primary-muted: #037037;
   --color-primary-subtle: #02562A;
 
+  // --- Text ---
   --text-primary: #E5E5E5;
   --text-secondary: #7B8FA0;
   --text-tertiary: #666666;
   --text-placeholder: #444444;
   --text-inverse: #111111;
 
-  --surface-primary: #191919;
-  --surface-secondary: #222222;
-  --surface-tertiary: #111111;
-  --surface-elevated: #262626;
-  --surface-overlay: #2C2C2C;
-  --surface-sunken: #0D0D0D;
+  // --- Surface（面板三明治 — 暗黑版）---
+  --surface-nav: #1A1A1A;          // 左侧导航栏（深黑）
+  --surface-secondary: #222222;    // 中间会话列表
+  --surface-tertiary: #111111;     // 右侧聊天主区域
+  --surface-primary: #191919;      // 卡片 / 气泡
+  --surface-elevated: #262626;     // 浮层
+  --surface-overlay: #2C2C2C;      // 弹窗
+  --surface-sunken: #0D0D0D;       // 凹陷区域
 
+  // --- Border ---
+  --border-subtle: #2C2C2C;
   --border-light: #333333;
   --border-default: #444444;
-  --border-strong: #555555;
 
+  // --- Chat: Bubble ---
+  --chat-bubble-own: #05A351;
+  --chat-bubble-own-text: #E5E5E5;
+  --chat-bubble-other: #262626;
+  --chat-bubble-other-text: #E5E5E5;
+  --chat-bubble-system: transparent;
+  --chat-bubble-system-text: #666666;
+
+  // --- Chat: Card States ---
+  --chat-card-hover: #262626;
+  --chat-card-active: #333333;
+
+  // --- Chat: Misc ---
+  --chat-bg: #111111;
+  --chat-badge-bg: #FA5151;
+  --chat-badge-text: #FFFFFF;
+
+  // --- Shadow（暗黑模式用更深的阴影）---
   --shadow-sm: none;
   --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.30);
   --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.40);
   --shadow-xl: 0 8px 24px rgba(0, 0, 0, 0.50);
 
+  // --- Background ---
   --bg-gradient: none;
 }
