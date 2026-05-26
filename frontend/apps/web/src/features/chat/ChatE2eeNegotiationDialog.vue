@@ -124,6 +124,7 @@ const handleAccept = async () => {
       handshake?: string;
       senderDeviceId?: string;
       targetDeviceId?: string;
+      verifyPhrase?: string;
     };
 
     if (!payload.senderIdentityKey || !payload.handshake) {
@@ -144,6 +145,7 @@ const handleAccept = async () => {
       props.requesterId,
       payload.senderDeviceId,
       payload.targetDeviceId,
+      payload.verifyPhrase,
     );
 
     if (!ok) {
