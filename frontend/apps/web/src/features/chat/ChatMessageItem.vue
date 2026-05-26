@@ -308,12 +308,12 @@ const handleMediaLoaded = () => {
   display: flex;
   align-items: flex-start;
   padding: 0 var(--space-4, 16px);
-  margin-bottom: 24px !important;
+  padding-bottom: 24px;
   animation: msgFadeIn 0.25s var(--motion-out, ease-out) both;
 
   &--self { justify-content: flex-end; }
-  &--compact { margin-bottom: 4px !important; }
-  &--system { justify-content: center; margin-bottom: 20px !important; }
+  &--compact { padding-bottom: 12px; }
+  &--system { justify-content: center; padding-bottom: 20px; }
 }
 
 .msg-avatar {
