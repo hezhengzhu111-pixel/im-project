@@ -1,165 +1,124 @@
 <template>
   <div class="moments-post-card">
-    <!-- Header: avatar + nickname + time + more menu -->
-    <div class="post-header">
-      <el-avatar
-        :size="40"
-        :src="post.userAvatar"
+    <div class="post-layout">
+      <img
         class="post-avatar"
-      >
-        {{ avatarText }}
-      </el-avatar>
+        :src="post.userAvatar"
+        :alt="avatarText"
+        @click="handleAvatarClick"
+      />
+      <div class="post-main">
+        <!-- Nickname -->
+        <div class="post-nickname">
+          {{ post.userNickname || '未知用户' }}
+        </div>
 
-      <div class="post-user-info">
-        <div class="post-nickname">{{ post.userNickname || '未知用户' }}</div>
-        <div class="post-time">{{ formattedTime }}</div>
-      </div>
-
-      <el-dropdown
-        v-if="isOwner"
-        trigger="click"
-        @command="handleMoreAction"
-      >
-        <el-icon class="post-more-btn"><MoreFilled /></el-icon>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="delete">
-              <el-icon><Delete /></el-icon>
-              删除
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-    </div>
-
-    <!-- Content: text -->
-    <div v-if="post.post.content" class="post-content">
-      {{ post.post.content }}
-    </div>
-
-    <!-- Media: image grid or video -->
-    <div v-if="post.media.length > 0" class="post-media">
-      <!-- Single video -->
-      <div
-        v-if="isSingleVideo"
-        class="media-video"
-      >
-        <video
-          :src="post.media[0].url"
-          controls
-          class="video-player"
-        />
-      </div>
-
-      <!-- Image grid -->
-      <div
-        v-else
-        class="media-grid"
-        :class="gridClass"
-      >
+        <!-- Content: text -->
+        <div v-if="post.post.content" class="post-content" :class="{ 'is-truncated': !isExpanded && shouldTruncate }">
+          {{ post.post.content }}
+        </div>
         <div
-          v-for="(media, index) in post.media"
-          :key="media.id"
-          class="media-item"
-          @click="openImageViewer(index)"
+          v-if="shouldTruncate && !isExpanded"
+          class="post-expand"
+          @click="handleExpand"
         >
-          <el-image
-            :src="media.url"
-            fit="cover"
-            class="media-image"
-            lazy
-          >
-            <template #placeholder>
-              <div class="media-placeholder">加载中...</div>
-            </template>
-            <template #error>
-              <div class="media-placeholder">加载失败</div>
-            </template>
-          </el-image>
+          全文
+        </div>
+
+        <!-- Media: image grid or video -->
+        <div v-if="post.media.length > 0" class="post-media">
+          <div v-if="isSingleVideo" class="media-video">
+            <video :src="post.media[0].url" controls class="video-player" />
+          </div>
+          <div v-else class="media-grid" :class="gridClass">
+            <div
+              v-for="(media, index) in post.media"
+              :key="media.id"
+              class="media-item"
+              @click="openImageViewer(index)"
+            >
+              <el-image :src="media.url" fit="cover" class="media-image" lazy>
+                <template #placeholder>
+                  <div class="media-placeholder">加载中...</div>
+                </template>
+                <template #error>
+                  <div class="media-placeholder">加载失败</div>
+                </template>
+              </el-image>
+            </div>
+          </div>
+        </div>
+
+        <!-- Link: card preview -->
+        <div v-if="post.post.linkUrl" class="post-link" @click="openLink">
+          <div v-if="post.post.linkCover" class="link-cover">
+            <el-image :src="post.post.linkCover" fit="cover" class="link-cover-image" />
+          </div>
+          <div class="link-info">
+            <div class="link-title">{{ post.post.linkTitle || post.post.linkUrl }}</div>
+            <div class="link-url">{{ post.post.linkUrl }}</div>
+          </div>
+          <el-icon class="link-arrow"><ArrowRight /></el-icon>
+        </div>
+
+        <!-- Location -->
+        <div v-if="post.post.location" class="post-location">
+          <el-icon><Location /></el-icon>
+          <span>{{ post.post.location }}</span>
+        </div>
+
+        <!-- Time + Actions row -->
+        <div class="post-meta">
+          <span class="post-time">{{ formattedTime }}</span>
+          <div class="post-actions">
+            <button
+              class="action-btn"
+              :class="{ 'is-liked': post.isLiked }"
+              @click="handleToggleLike"
+            >
+              <el-icon><StarFilled v-if="post.isLiked" /><Star v-else /></el-icon>
+              <span v-if="post.likeCount > 0" class="action-count">{{ post.likeCount }}</span>
+            </button>
+            <button class="action-btn" @click="handleToggleComments">
+              <el-icon><ChatDotRound /></el-icon>
+              <span v-if="post.commentCount > 0" class="action-count">{{ post.commentCount }}</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Link: card preview -->
-    <div
-      v-if="post.post.linkUrl"
-      class="post-link"
-      @click="openLink"
-    >
-      <div v-if="post.post.linkCover" class="link-cover">
-        <el-image
-          :src="post.post.linkCover"
-          fit="cover"
-          class="link-cover-image"
-        />
-      </div>
-      <div class="link-info">
-        <div class="link-title">{{ post.post.linkTitle || post.post.linkUrl }}</div>
-        <div class="link-url">{{ post.post.linkUrl }}</div>
-      </div>
-      <el-icon class="link-arrow"><ArrowRight /></el-icon>
+    <!-- Like bar + Comments (social area) -->
+    <div v-if="post.likeCount > 0 || showComments" class="post-social">
+      <MomentsLikeBar
+        v-if="post.likeCount > 0"
+        :post-id="post.post.id"
+      />
+      <MomentsComments
+        v-if="showComments"
+        :post-id="post.post.id"
+      />
     </div>
 
-    <!-- Location: icon + text -->
-    <div v-if="post.post.location" class="post-location">
-      <el-icon><Location /></el-icon>
-      <span>{{ post.post.location }}</span>
-    </div>
-
-    <!-- Actions: like button + comment button -->
-    <div class="post-actions">
-      <button
-        class="action-btn"
-        :class="{ 'is-liked': post.isLiked }"
-        @click="handleToggleLike"
-      >
-        <el-icon>
-          <StarFilled v-if="post.isLiked" />
-          <Star v-else />
-        </el-icon>
-        <span v-if="post.likeCount > 0" class="action-count">{{ post.likeCount }}</span>
-      </button>
-
-      <button class="action-btn" @click="handleToggleComments">
-        <el-icon><ChatDotRound /></el-icon>
-        <span v-if="post.commentCount > 0" class="action-count">{{ post.commentCount }}</span>
-      </button>
-    </div>
-
-    <!-- Like bar (will be implemented in Task 14) -->
-    <MomentsLikeBar
-      v-if="post.likeCount > 0"
-      :post-id="post.post.id"
-    />
-
-    <!-- Comments section -->
-    <MomentsComments
-      v-if="showComments"
-      :post-id="post.post.id"
+    <!-- Image viewer dialog -->
+    <MomentsImageViewer
+      v-if="showImageViewer"
+      v-model:visible="showImageViewer"
+      :images="imageUrls"
+      :initial-index="viewerInitialIndex"
     />
   </div>
-
-  <!-- Image viewer dialog -->
-  <MomentsImageViewer
-    v-if="showImageViewer"
-    v-model:visible="showImageViewer"
-    :images="imageUrls"
-    :initial-index="viewerInitialIndex"
-  />
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import {
-  MoreFilled,
-  Delete,
   Star,
   StarFilled,
   ChatDotRound,
   Location,
   ArrowRight,
 } from '@element-plus/icons-vue'
-import { ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useMomentsStore } from '@/stores/moments'
 import { formatTime } from '@/utils/common'
@@ -180,10 +139,16 @@ const showComments = ref(false)
 const showImageViewer = ref(false)
 const viewerInitialIndex = ref(0)
 
-// Computed
-const isOwner = computed(() => {
-  return userStore.currentUser?.id === props.post.post.userId
+const shouldTruncate = computed(() => {
+  const content = props.post.post.content
+  if (!content) return false
+  return content.length > 200
 })
+const isExpanded = ref(false)
+
+function handleExpand() {
+  isExpanded.value = true
+}
 
 const avatarText = computed(() => {
   return getAvatarText(props.post.userNickname || '未知用户')
@@ -214,7 +179,10 @@ const gridClass = computed(() => {
   }
 })
 
-// Methods
+function handleAvatarClick() {
+  // Navigate to user profile (placeholder for future routing)
+}
+
 const handleToggleLike = async () => {
   try {
     await momentsStore.toggleLike(props.post.post.id)
@@ -237,88 +205,86 @@ const openLink = () => {
     window.open(props.post.post.linkUrl, '_blank')
   }
 }
-
-const handleMoreAction = async (command: string) => {
-  if (command === 'delete') {
-    try {
-      await ElMessageBox.confirm('确定要删除这条动态吗？', '删除确认', {
-        confirmButtonText: '删除',
-        cancelButtonText: '取消',
-        type: 'warning',
-      })
-      momentsStore.removePost(props.post.post.id)
-    } catch {
-      // User cancelled
-    }
-  }
-}
 </script>
 
 <style scoped lang="scss">
 .moments-post-card {
-  background: var(--el-bg-color);
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  background: var(--moments-bg);
 }
 
-.post-header {
+.post-layout {
   display: flex;
-  align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
+  padding: 0 20px;
 }
 
 .post-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
   flex-shrink: 0;
+  object-fit: cover;
+  cursor: pointer;
 }
 
-.post-user-info {
+.post-main {
   flex: 1;
   min-width: 0;
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #F0F0F0;
 }
 
+// --- Nickname ---
 .post-nickname {
   font-size: 15px;
   font-weight: 600;
-  color: var(--el-text-color-primary);
+  color: #576B95;
   line-height: 1.4;
-}
-
-.post-time {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-top: 2px;
-}
-
-.post-more-btn {
-  font-size: 18px;
-  color: var(--el-text-color-secondary);
+  margin-bottom: 4px;
   cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-
+  transition: opacity 0.15s ease;
   &:hover {
-    background: var(--el-fill-color-light);
+    opacity: 0.7;
   }
 }
 
+// --- Content ---
 .post-content {
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.6;
-  color: var(--el-text-color-primary);
-  margin-bottom: 12px;
+  color: #111111;
+  margin-bottom: 8px;
   white-space: pre-wrap;
   word-break: break-word;
+
+  &.is-truncated {
+    display: -webkit-box;
+    -webkit-line-clamp: 6;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 }
 
+.post-expand {
+  color: #576B95;
+  font-size: 15px;
+  cursor: pointer;
+  margin-bottom: 8px;
+  display: inline-block;
+  transition: opacity 0.15s ease;
+  &:hover {
+    opacity: 0.7;
+  }
+}
+
+// --- Media ---
 .post-media {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .media-video {
-  border-radius: 8px;
+  border-radius: 4px;
   overflow: hidden;
 }
 
@@ -332,26 +298,22 @@ const handleMoreAction = async (command: string) => {
 .media-grid {
   display: grid;
   gap: 4px;
-  border-radius: 8px;
+  border-radius: 4px;
   overflow: hidden;
 
   &.grid-1 {
     grid-template-columns: 1fr;
     max-width: 300px;
   }
-
   &.grid-2 {
     grid-template-columns: repeat(2, 1fr);
   }
-
   &.grid-3 {
     grid-template-columns: repeat(3, 1fr);
   }
-
   &.grid-4 {
     grid-template-columns: repeat(2, 1fr);
   }
-
   &.grid-6 {
     grid-template-columns: repeat(3, 1fr);
   }
@@ -367,7 +329,6 @@ const handleMoreAction = async (command: string) => {
   width: 100%;
   height: 100%;
   transition: transform 0.2s ease;
-
   &:hover {
     transform: scale(1.02);
   }
@@ -379,24 +340,24 @@ const handleMoreAction = async (command: string) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--el-fill-color-light);
-  color: var(--el-text-color-secondary);
+  background: var(--surface-sunken);
+  color: var(--text-tertiary);
   font-size: 13px;
 }
 
+// --- Link ---
 .post-link {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  background: var(--el-fill-color-light);
-  border-radius: 8px;
-  margin-bottom: 12px;
+  background: var(--surface-secondary);
+  border-radius: 4px;
+  margin-bottom: 8px;
   cursor: pointer;
   transition: background 0.2s ease;
-
   &:hover {
-    background: var(--el-fill-color);
+    background: var(--surface-sunken);
   }
 }
 
@@ -404,7 +365,7 @@ const handleMoreAction = async (command: string) => {
   flex-shrink: 0;
   width: 48px;
   height: 48px;
-  border-radius: 6px;
+  border-radius: 4px;
   overflow: hidden;
 }
 
@@ -421,7 +382,7 @@ const handleMoreAction = async (command: string) => {
 .link-title {
   font-size: 14px;
   font-weight: 500;
-  color: var(--el-text-color-primary);
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -429,7 +390,7 @@ const handleMoreAction = async (command: string) => {
 
 .link-url {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--text-tertiary);
   margin-top: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -438,100 +399,99 @@ const handleMoreAction = async (command: string) => {
 
 .link-arrow {
   flex-shrink: 0;
-  color: var(--el-text-color-secondary);
+  color: var(--text-tertiary);
 }
 
+// --- Location ---
 .post-location {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 12px;
-
+  color: var(--text-tertiary);
+  margin-bottom: 8px;
   .el-icon {
     font-size: 14px;
   }
+}
+
+// --- Time + Actions ---
+.post-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.post-time {
+  font-size: 12px;
+  color: #B0B0B0;
 }
 
 .post-actions {
   display: flex;
-  align-items: center;
-  gap: 24px;
-  padding-top: 12px;
-  border-top: 1px solid var(--el-border-color-lighter);
-}
+  gap: 20px;
 
-.action-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border: none;
-  background: transparent;
-  color: var(--el-text-color-secondary);
-  font-size: 14px;
-  cursor: pointer;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-
-  &:hover {
-    background: var(--el-fill-color-light);
-    color: var(--el-text-color-primary);
-  }
-
-  &.is-liked {
-    color: var(--el-color-primary);
-
+  .action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    color: #B0B0B0;
+    font-size: 14px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    padding: 4px 0;
+    transition: opacity 0.15s ease;
     &:hover {
-      background: var(--el-color-primary-light-9);
+      opacity: 0.7;
+    }
+    &.is-liked {
+      color: #576B95;
     }
   }
-
-  .el-icon {
-    font-size: 18px;
+  .action-count {
+    font-size: 13px;
   }
 }
 
-.action-count {
-  font-size: 13px;
-  font-weight: 500;
+// --- Social area (like bar + comments) ---
+.post-social {
+  margin-top: -12px;
+  margin-bottom: 20px;
+  margin-left: 52px;
+  background: #F7F7F7;
+  border-radius: 4px;
+  padding: 6px 8px;
 }
 
+// --- Mobile ---
 @media (max-width: 768px) {
-  .moments-post-card {
-    padding: 12px;
+  .post-layout {
+    padding: 0 12px;
   }
-
   .post-avatar {
     width: 36px;
     height: 36px;
   }
-
+  .post-main {
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+  }
   .post-nickname {
     font-size: 14px;
   }
-
   .post-content {
-    font-size: 14px;
+    font-size: 15px;
   }
-
-  .media-grid {
-    gap: 4px;
+  .post-social {
+    margin-left: 48px;
   }
-
   .media-grid.grid-2,
   .media-grid.grid-3 {
     max-width: 280px;
   }
-
   .media-grid.grid-4 {
     grid-template-columns: repeat(2, 1fr);
-  }
-
-  .action-btn {
-    min-height: 44px;
-    min-width: 44px;
   }
 }
 </style>
