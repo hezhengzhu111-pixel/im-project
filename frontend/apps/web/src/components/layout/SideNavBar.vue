@@ -13,7 +13,7 @@
         @click="$emit('change', tab.key)"
       >
         <el-badge :hidden="tab.unread === 0" is-dot>
-          <span class="nav-icon">{{ tab.icon }}</span>
+          <el-icon class="nav-icon"><component :is="tab.icon" /></el-icon>
         </el-badge>
       </button>
     </div>
@@ -24,37 +24,39 @@
         title="设置"
         @click="$emit('change', 'settings')"
       >
-        <span class="nav-icon">⚙</span>
+        <el-icon class="nav-icon"><Setting /></el-icon>
       </button>
     </div>
   </nav>
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  activeTab: string;
-  avatar?: string;
-  unreadChat?: number;
-}>();
+import { ChatDotRound, User, Compass, Setting } from '@element-plus/icons-vue'
 
-defineEmits<{ change: [key: 'chat' | 'contacts' | 'moments' | 'settings'] }>();
+defineProps<{
+  activeTab: string
+  avatar?: string
+  unreadChat?: number
+}>()
+
+defineEmits<{ change: [key: 'chat' | 'contacts' | 'moments' | 'settings'] }>()
 
 const tabs = [
-  { key: 'chat', icon: '💬', label: '聊天', unread: 0 },
-  { key: 'contacts', icon: '👤', label: '通讯录', unread: 0 },
-  { key: 'moments', icon: '🧭', label: '发现', unread: 0 },
-] as const;
+  { key: 'chat', icon: ChatDotRound, label: '聊天', unread: 0 },
+  { key: 'contacts', icon: User, label: '通讯录', unread: 0 },
+  { key: 'moments', icon: Compass, label: '发现', unread: 0 },
+] as const
 </script>
 
 <style lang="scss" scoped>
 .side-nav {
   width: 56px;
   min-width: 56px;
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  background: #1E1E1E;
+  background: var(--surface-nav);
   padding: var(--space-2) 0;
   user-select: none;
 }
@@ -126,5 +128,5 @@ const tabs = [
   }
 }
 
-.nav-icon { font-size: 20px; line-height: 1; }
+.nav-icon { font-size: 20px; line-height: 1; display: flex; align-items: center; justify-content: center; }
 </style>
