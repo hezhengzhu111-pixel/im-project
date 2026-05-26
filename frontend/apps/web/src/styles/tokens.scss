@@ -1,60 +1,60 @@
 // ============================================
-// Design Token System — CSS Custom Properties
+// Design Token System — WeChat-Style
 // ============================================
 
 :root {
-  // --- Color: Primary ---
-  --color-primary: #6366f1;
-  --color-primary-2: #8b5cf6;
-  --color-primary-light: color-mix(in srgb, var(--color-primary), white 90%);
-  --color-primary-soft: color-mix(in srgb, var(--color-primary), white 80%);
-  --color-primary-muted: color-mix(in srgb, var(--color-primary), white 60%);
-  --color-primary-subtle: color-mix(in srgb, var(--color-primary), white 40%);
+  // --- Color: Primary (WeChat Green) ---
+  --color-primary: #07C160;
+  --color-primary-dark: #06AD56;
+  --color-primary-light: #95EC69;
+  --color-primary-soft: #B6F0A5;
+  --color-primary-muted: #D4F5C4;
+  --color-primary-subtle: #E8F9E3;
 
   // --- Color: Semantic ---
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
-  --color-info: #64748b;
+  --color-success: #07C160;
+  --color-warning: #FA9D3B;
+  --color-danger: #FA5151;
+  --color-info: #576B95;
 
   // --- Color: Text ---
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-tertiary: #94a3b8;
-  --text-placeholder: #cbd5e1;
-  --text-inverse: #f8fafc;
+  --text-primary: #111111;
+  --text-secondary: #576B95;
+  --text-tertiary: #B0B0B0;
+  --text-placeholder: #CCCCCC;
+  --text-inverse: #FFFFFF;
 
   // --- Color: Surface ---
-  --surface-primary: #ffffff;
-  --surface-secondary: #f8fafc;
-  --surface-tertiary: #f1f5f9;
-  --surface-elevated: rgba(255, 255, 255, 0.72);
-  --surface-overlay: rgba(255, 255, 255, 0.65);
-  --surface-sunken: #f0f2f5;
+  --surface-primary: #FFFFFF;
+  --surface-secondary: #F7F7F7;
+  --surface-tertiary: #EDEDED;
+  --surface-elevated: #FFFFFF;
+  --surface-overlay: #FFFFFF;
+  --surface-sunken: #EDEDED;
 
   // --- Color: Border ---
-  --border-light: rgba(148, 163, 184, 0.24);
-  --border-default: rgba(148, 163, 184, 0.32);
-  --border-strong: rgba(148, 163, 184, 0.48);
+  --border-light: #E6E6E6;
+  --border-default: #E6E6E6;
+  --border-strong: #CCCCCC;
   --border-focus: var(--color-primary);
 
-  // --- Radius ---
-  --radius-xs: 6px;
-  --radius-sm: 10px;
-  --radius-md: 16px;
-  --radius-lg: 22px;
-  --radius-xl: 28px;
+  // --- Radius (WeChat: tight corners) ---
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
   --radius-full: 9999px;
 
-  // --- Shadow ---
-  --shadow-xs: 0 1px 3px rgba(15, 23, 42, 0.04);
-  --shadow-soft: 0 12px 32px rgba(15, 23, 42, 0.08);
-  --shadow-panel: 0 24px 80px rgba(15, 23, 42, 0.12);
-  --shadow-glow: 0 0 24px rgba(99, 102, 241, 0.15);
-  --shadow-inset: inset 0 1px 2px rgba(15, 23, 42, 0.06);
-  --shadow-card-hover: 0 16px 48px rgba(15, 23, 42, 0.12);
+  // --- Shadow (WeChat: minimal) ---
+  --shadow-xs: none;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.10);
+  --shadow-xl: 0 8px 24px rgba(0, 0, 0, 0.12);
 
   // --- Spacing ---
+  --space-0: 0;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -65,60 +65,38 @@
   --space-10: 40px;
 
   // --- Typography ---
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
-  --text-xs: 12px;
-  --text-sm: 13px;
-  --text-base: 14px;
-  --text-md: 16px;
-  --text-lg: 18px;
-  --text-xl: 20px;
-  --text-2xl: 24px;
-  --leading-tight: 1.25;
-  --leading-normal: 1.5;
-  --leading-relaxed: 1.625;
-  --weight-normal: 400;
-  --weight-medium: 500;
-  --weight-semibold: 600;
-  --weight-bold: 700;
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "Menlo", "Monaco", monospace;
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-base: 15px;
+  --font-size-lg: 17px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+  --line-height-base: 1.5;
+  --line-height-tight: 1.3;
 
   // --- Motion ---
-  --motion-fast: 120ms;
-  --motion-normal: 180ms;
-  --motion-slow: 260ms;
-  --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
-  --motion-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --motion-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-fast: 150ms;
+  --motion-base: 250ms;
+  --motion-slow: 350ms;
+  --motion-ease: ease;
 
   // --- Z-Index ---
-  --z-base: 0;
+  --z-base: 1;
   --z-dropdown: 100;
   --z-sticky: 200;
   --z-overlay: 300;
   --z-modal: 400;
-  --z-popover: 500;
-  --z-toast: 600;
-  --z-tooltip: 700;
-  --z-max: 9999;
+  --z-toast: 500;
 
-  // --- Background Gradient ---
-  --bg-gradient: radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.04) 0%, transparent 50%),
-    linear-gradient(180deg, #f8fafc 0%, #eef2ff 50%, #f0fdf4 100%);
-
-  // --- Component Sizing ---
+  // --- Sizing ---
   --sidebar-width: 280px;
-  --sidebar-collapsed-width: 72px;
-  --header-height: 60px;
-  --input-height: 120px;
-  --avatar-lg: 60px;
-  --avatar-md: 40px;
-  --avatar-sm: 32px;
-  --avatar-xs: 24px;
+  --chat-header-height: 56px;
+  --composer-min-height: 140px;
+  --mobile-nav-height: 48px;
+  --mobile-tab-height: 56px;
 
-  // --- Mobile ---
-  --mobile-header-height: 48px;
-  --mobile-tabbar-height: 56px;
-  --mobile-composer-min-height: 52px;
+  // --- Background gradient (removed, flat only) ---
+  --bg-gradient: none;
 }
