@@ -119,4 +119,19 @@
 
   // --- Background（微信：纯平，无渐变）---
   --bg-gradient: none;
+
+  // --- Moments 朋友圈 ---
+  --moments-bg: #FFFFFF;
+  --moments-cover-height: 280px;
+  --moments-cover-placeholder: #4A5568;
+  --moments-avatar-size: 68px;
+  --moments-avatar-radius: 8px;
+  --moments-topbar-height: 48px;
+}
+
+@media (max-width: 768px) {
+  :root {
+    --moments-cover-height: 240px;
+    --moments-avatar-size: 60px;
+  }
 }
