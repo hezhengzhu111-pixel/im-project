@@ -128,15 +128,16 @@ onUnmounted(() => {
 }
 
 .moments-container {
-  width: min(1120px, 100%);
+  width: min(1040px, 100%);
   height: 100%;
   min-height: 0;
   margin: 0 auto;
-  padding: 24px;
+  padding: 20px;
   display: grid;
-  grid-template-columns: minmax(0, 720px) 320px;
-  gap: 20px;
+  grid-template-columns: minmax(0, 680px) 280px;
+  gap: 16px;
   background: transparent;
+  align-items: start;
 }
 
 // 左侧主面板 — 玻璃卡片
@@ -145,7 +146,7 @@ onUnmounted(() => {
   flex-direction: column;
   background: var(--fresh-glass-bg);
   border: 1px solid var(--fresh-glass-border);
-  border-radius: 24px;
+  border-radius: var(--fresh-radius-page);
   overflow: hidden;
   backdrop-filter: var(--fresh-blur);
   -webkit-backdrop-filter: var(--fresh-blur);
@@ -156,7 +157,11 @@ onUnmounted(() => {
 .moments-side-panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  align-self: start;
+  position: sticky;
+  top: 20px;
+  gap: 14px;
+  // Do NOT set min-height, height, or flex:1
 }
 
 .side-profile-card {
@@ -263,6 +268,18 @@ onUnmounted(() => {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   min-height: 0;
+}
+
+// ── 窄屏/嵌入上下文 ──
+@media (max-width: 1180px) {
+  .moments-container {
+    grid-template-columns: minmax(0, 680px);
+    justify-content: center;
+  }
+
+  .moments-side-panel {
+    display: none;
+  }
 }
 
 // ── 移动端 ──

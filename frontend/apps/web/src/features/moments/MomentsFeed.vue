@@ -39,8 +39,11 @@ onMounted(() => {
 <style scoped lang="scss">
 .moments-feed {
   flex: 1;
-  background: var(--moments-bg);
-  padding: 0 20px;
+  background: transparent;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .feed-loading,
