@@ -38,8 +38,8 @@
         <el-avatar :src="friend.avatar" :size="40" />
         <div class="contact-info">
           <span class="contact-name">{{ friend.nickname || friend.username }}</span>
-          <span class="contact-status" :class="{ online: friend.online }">
-            {{ friend.online ? '在线' : '离线' }}
+          <span class="contact-status" :class="{ online: friend.isOnline }">
+            {{ friend.isOnline ? '在线' : '离线' }}
           </span>
         </div>
       </div>
