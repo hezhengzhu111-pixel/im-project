@@ -595,13 +595,18 @@ const handleChatAction = (command: string | number | object) => {
 <style scoped lang="scss">
 .wechat-layout {
   display: flex;
-  height: 100vh;
+  height: 100dvh;
+  height: 100vh; // fallback
+  position: relative;
+  overflow: hidden;
   background: var(--surface-tertiary, #f5f5f5);
   font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
 }
 
 // ── Override ChatSidebarPanel internals to fit sidebar ──
 .chat-sidebar {
+  position: relative;
+  z-index: 1;
   flex: 0 0 auto;
   min-width: 240px;
   max-width: 360px;
@@ -752,7 +757,7 @@ const handleChatAction = (command: string | number | object) => {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.15);
-  z-index: var(--z-overlay, 300);
+  z-index: 50;
 }
 
 // ── Status dot in chat header ──
@@ -802,7 +807,8 @@ const handleChatAction = (command: string | number | object) => {
   right: 0;
   top: 0;
   bottom: 0;
-  z-index: 20;
+  z-index: 60;
+  transition: transform 180ms ease-out;
   width: 320px;
   display: flex;
   flex-direction: column;
@@ -947,6 +953,22 @@ const handleChatAction = (command: string | number | object) => {
   &.online {
     background: var(--color-success, #07c160);
   }
+}
+
+// Ensure all content layers sit above background blobs
+:deep(.side-nav) {
+  position: relative;
+  z-index: 1;
+}
+
+.chat-main {
+  position: relative;
+  z-index: 1;
+}
+
+.sidebar-resize-handle {
+  position: relative;
+  z-index: 1;
 }
 
 @media (max-width: 768px) {
