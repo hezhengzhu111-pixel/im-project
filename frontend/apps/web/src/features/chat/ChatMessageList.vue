@@ -1038,12 +1038,12 @@ onUnmounted(() => {
 .message-list {
   position: relative;
   flex: 1;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow-y: auto;
   padding: 14px 18px 16px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0)),
-    rgba(226, 232, 240, 0.42);
+  background: var(--chat-bg, var(--surface-tertiary, #f5f5f5));
 }
 
 .history-indicator {
@@ -1105,6 +1105,13 @@ onUnmounted(() => {
 
 .message-row {
   min-width: 0;
+}
+
+:deep(.msg-item) {
+  width: min(100%, var(--chat-timeline-max-width, 840px));
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
 }
 
 .message-separator {
