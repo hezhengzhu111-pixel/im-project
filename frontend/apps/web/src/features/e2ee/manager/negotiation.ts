@@ -12,6 +12,11 @@ import {
 import type { E2eeDevice, E2eeSessionStatus, PreKeyBundle } from "../types";
 import { emitE2eeStatusChange } from "../status-events";
 import { ensureLocalE2eeDeviceRegistered, getLocalRustKeyMaterial } from "./local-device";
+import {
+  generateVerifyPhrase,
+  saveVerifyPhrase,
+  startPingTimer,
+} from "./channel-ping";
 
 const SESSION_STATUS_PREFIX = "e2ee:status:";
 const INITIAL_HANDSHAKE_PREFIX = "e2ee:initial-handshake:";
@@ -63,9 +68,12 @@ export function clearPendingInitialHandshake(sessionId: string): void {
   localStorage.removeItem(INITIAL_HANDSHAKE_PREFIX + sessionId);
 }
 
-export function markNegotiationAccepted(sessionId: string): void {
+export function markNegotiationAccepted(sessionId: string, remoteUserId?: string): void {
   clearPendingInitialHandshake(sessionId);
   setLocalSessionStatus(sessionId, "encrypted");
+  if (remoteUserId) {
+    startPingTimer(sessionId, remoteUserId);
+  }
 }
 
 function savePendingInitialHandshake(sessionId: string, handshake: InitialE2eeHandshake): void {
@@ -199,13 +207,15 @@ export async function initiateNegotiation(
       senderDeviceId: deviceId,
       targetDeviceId: remoteBundle.deviceId,
     };
+    const verifyPhrase = generateVerifyPhrase();
+    saveVerifyPhrase(sessionId, verifyPhrase);
     savePendingInitialHandshake(sessionId, handshake);
 
     await keyService.requestEncryption(
       sessionId,
       localKeys.publicBundle.identityKey,
       localKeys.publicBundle.signedPreKey.key,
-      JSON.stringify(handshake),
+      JSON.stringify({ ...handshake, verifyPhrase }),
     );
     setLocalSessionStatus(sessionId, "negotiating");
     return true;
@@ -233,6 +243,7 @@ export async function respondToNegotiation(
   senderUserId: string,
   senderDeviceId: string,
   targetDeviceId: string,
+  verifyPhrase?: string,
 ): Promise<boolean> {
   if (!senderDeviceId || senderDeviceId.length === 0) {
     console.error("[E2EE] respondToNegotiation failed: missing sender device id");
@@ -310,6 +321,9 @@ export async function respondToNegotiation(
       direction: "inbound",
     });
     localStorage.setItem(`e2ee:remote_device:${sessionId}`, senderDeviceId);
+    if (verifyPhrase && verifyPhrase.length > 0) {
+      saveVerifyPhrase(sessionId, verifyPhrase);
+    }
     setLocalSessionStatus(sessionId, "encrypted");
 
     // Update server-side negotiation state to "encrypted".
