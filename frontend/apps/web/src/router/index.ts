@@ -86,15 +86,6 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
-    path: "/groups",
-    name: "Groups",
-    component: () => import("@/pages/Groups.vue"),
-    meta: {
-      title: "群组",
-      requiresAuth: true,
-    },
-  },
-  {
     path: "/profile",
     name: "Profile",
     component: () => import("@/pages/Profile.vue"),

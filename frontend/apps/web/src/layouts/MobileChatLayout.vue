@@ -28,7 +28,7 @@
         :unread-count="chatStore.totalUnreadCount"
         :pending-requests="pendingRequestsCount"
         :moments-unread-count="momentsUnreadCount"
-        @change-tab="handleMobileTabChange"
+        @change="handleMobileTabChange"
       />
     </template>
 
@@ -128,15 +128,15 @@ const {
 } = useChatPage();
 
 const handleMobileTabChange = (tab: string) => {
-  if (tab === "settings") {
-    router.push("/settings");
-    return;
-  }
   if (tab === "moments") {
     router.push("/moments");
     return;
   }
-  if (tab === "chat" || tab === "contacts" || tab === "groups") {
+  if (tab === "me") {
+    router.push("/profile");
+    return;
+  }
+  if (tab === "chat" || tab === "contacts") {
     handleTabChange(tab);
   }
 };
