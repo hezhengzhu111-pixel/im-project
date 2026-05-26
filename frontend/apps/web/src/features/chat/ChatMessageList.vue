@@ -1231,6 +1231,12 @@ onUnmounted(() => {
   to { transform: rotate(360deg); }
 }
 
+:global(.theme-dark) .message-list {
+  background:
+    linear-gradient(180deg, rgba(18, 24, 27, 0.62), rgba(14, 20, 22, 0.42) 60%),
+    #0d1418;
+}
+
 @media (max-width: 768px) {
   .message-list {
     padding: 12px 10px 14px;
