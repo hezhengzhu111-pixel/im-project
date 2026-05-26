@@ -449,7 +449,9 @@ const filteredGroups = computed(() => {
   height: 64px;
 
   &:hover { background: var(--chat-card-hover); }
-  &--active { background: var(--chat-card-active); }
+  &--active { background: #C4C4C4; }
+
+  :deep(.el-avatar) { border-radius: 4px; }
 }
 
 .session-info {
@@ -492,6 +494,7 @@ const filteredGroups = computed(() => {
   transition: background var(--motion-fast); height: 60px;
 
   &:hover { background: var(--chat-card-hover); }
+  :deep(.el-avatar) { border-radius: 4px; }
 }
 
 .contact-info {
@@ -501,6 +504,7 @@ const filteredGroups = computed(() => {
 
 .contact-name {
   font-size: var(--font-size-base); color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 .contact-status {
