@@ -88,8 +88,17 @@ export function useFileMessageUpload() {
       const e2eeStatus = sessionId
         ? e2eeManager.getSessionStatus(sessionId)
         : "plaintext";
-      if (e2eeStatus === "negotiating" || e2eeStatus === "failed") {
-        throw new Error("E2EE session is unavailable; media upload was not started.");
+      if (e2eeStatus === "negotiating") {
+        throw new Error("端到端加密协商尚未完成；媒体上传未开始。");
+      }
+      if (e2eeStatus === "failed") {
+        // 协商失败不应永久阻塞明文上传。重置为 plaintext 并继续。
+        if (sessionId) {
+          import("@/features/e2ee/manager/negotiation").then(
+            ({ setLocalSessionStatus }) => setLocalSessionStatus(sessionId, "plaintext")
+          );
+        }
+        // fall through — proceed as plaintext
       }
       const isEncrypted = Boolean(sessionId && e2eeStatus === "encrypted");
 

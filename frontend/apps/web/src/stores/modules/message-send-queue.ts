@@ -234,8 +234,12 @@ export function createMessageSendQueueModule(
         );
         privateE2eeStatus = getLocalSessionStatus(session.id);
         if (privateE2eeStatus === "failed") {
-          ctx.notifyWarning("E2EE session is unavailable; message was not sent.");
-          return false;
+          // 协商失败不应永久阻塞明文发送。重置为 plaintext 并继续。
+          const { setLocalSessionStatus } = await import(
+            "@/features/e2ee/manager/negotiation"
+          );
+          setLocalSessionStatus(session.id, "plaintext");
+          privateE2eeStatus = "plaintext";
         }
         if (privateE2eeStatus === "negotiating") {
           ctx.notifyWarning("端到端加密协商尚未完成，请等待对方确认。");
