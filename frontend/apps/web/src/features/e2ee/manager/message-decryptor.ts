@@ -144,12 +144,35 @@ async function decryptOneMessage(
       errMsg.includes("no handshake") ||
       errMsg.includes("Rust E2EE session not found");
 
-    // 自愈：收到加密消息本身即证明该会话已加密，同步本地状态
+    // 自愈：收到加密消息本身即证明该会话已加密
     if (isMissingSession) {
-      const { setLocalSessionStatus } = await import(
-        "@/features/e2ee/manager/negotiation"
-      );
+      const {
+        setLocalSessionStatus,
+        getLocalSessionStatus,
+        initiateNegotiation,
+      } = await import("@/features/e2ee/manager/negotiation");
+
       setLocalSessionStatus(envelope.sessionId, "encrypted");
+
+      // 没有入站会话且信封无 handshake → 主动触发重新协商以重建会话
+      const currentStatus = getLocalSessionStatus(envelope.sessionId);
+      if (
+        !hasHandshake &&
+        currentStatus !== "negotiating" &&
+        envelope.senderDeviceId
+      ) {
+        logger.info("[E2EE] triggering re-negotiation to recover missing session", {
+          sessionId: envelope.sessionId,
+          remoteUserId: senderId,
+        });
+        initiateNegotiation(
+          envelope.sessionId,
+          senderId,
+          envelope.senderDeviceId,
+        ).catch(() => {
+          // 重新协商失败不影响解密流程
+        });
+      }
     }
 
     const code = isMissingSession && !hasHandshake
