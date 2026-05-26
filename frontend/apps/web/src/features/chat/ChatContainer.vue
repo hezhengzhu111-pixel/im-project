@@ -645,7 +645,7 @@ const handleChatAction = (command: string | number | object) => {
   align-items: center;
   gap: var(--space-3, 12px);
   padding: var(--space-4, 16px);
-  height: 64px;
+  height: 56px;
   flex-shrink: 0;
 }
 
@@ -661,6 +661,14 @@ const handleChatAction = (command: string | number | object) => {
 .sidebar-search {
   padding: 0 var(--space-3, 12px) var(--space-3, 12px);
   flex-shrink: 0;
+
+  :deep(.el-input__wrapper) {
+    height: 32px;
+    background: var(--surface-sunken, #EDEDED);
+    border: none;
+    box-shadow: none;
+    border-radius: var(--radius-sm, 4px);
+  }
 }
 
 // ── 拖拽分界线 ──
@@ -680,17 +688,17 @@ const handleChatAction = (command: string | number | object) => {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: var(--surface-tertiary, #f5f5f5);
+  background: var(--chat-bg, var(--surface-tertiary, #f5f5f5));
 }
 
 .chat-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 64px;
+  height: 56px;
   padding: 0 var(--space-4, 16px);
   background: var(--surface-secondary, #ffffff);
-  border-bottom: 1px solid var(--border-light, #e5e7eb);
+  border-bottom: 1px solid var(--border-subtle, #ECECEC);
   flex-shrink: 0;
 }
 
