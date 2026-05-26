@@ -34,17 +34,14 @@
         :disabled="disabled || uploading || isRecording"
         rows="1"
         @keydown.enter.exact.prevent="handleSend"
-        @keydown.enter.shift.exact.prevent="handleShiftEnter"
         @input="onInput"
         @paste="handlePaste"
-        @focus="isFocused = true"
       />
       <button
         class="send-btn"
-        :class="{ 'send-btn--active': canSend }"
         :disabled="!canSend"
         @click="handleSend"
-      >发送</button>
+      >发送(S)</button>
     </div>
     <input
       ref="imageInputRef"
@@ -219,6 +216,9 @@ const onInput = () => {
   onTextareaInput();
   const ta = textareaRef.value;
   if (!ta) return;
+  // 高度自适应
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
   const pos = ta.selectionStart;
   const before = messageInput.value.slice(0, pos);
 
@@ -274,17 +274,6 @@ const handleSend = () => {
   emit("send-text", text, ids);
   messageInput.value = "";
   focusTextarea();
-};
-
-const handleShiftEnter = (event: KeyboardEvent) => {
-  const textarea = event.target as HTMLTextAreaElement;
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
-  messageInput.value =
-    messageInput.value.slice(0, start) + "\n" + messageInput.value.slice(end);
-  nextTick(() => {
-    textarea.selectionStart = textarea.selectionEnd = start + 1;
-  });
 };
 
 async function selectImage() {
@@ -489,21 +478,18 @@ onUnmounted(() => {
   flex: 1;
   min-height: 40px;
   max-height: 120px;
-  padding: var(--space-2, 8px);
+  overflow-y: auto;
+  padding: var(--space-2, 8px) 0;
   font-family: var(--font-sans, inherit);
   font-size: var(--font-size-base, 14px);
   line-height: var(--line-height-base, 1.5);
   color: var(--text-primary, var(--chat-text-primary));
-  background: var(--surface-primary, transparent);
-  border: 1px solid var(--border-light, var(--chat-panel-border));
-  border-radius: var(--radius-sm, 8px);
+  background: transparent;
+  border: none;
+  border-radius: 0;
   resize: none;
   outline: none;
-  transition: border-color var(--motion-fast, 0.18s) ease;
-
-  &:focus {
-    border-color: var(--color-primary, #6366f1);
-  }
+  box-shadow: none;
 
   &::placeholder {
     color: var(--text-placeholder, var(--chat-text-quaternary));
@@ -516,28 +502,31 @@ onUnmounted(() => {
 }
 
 .send-btn {
-  width: 68px;
-  height: 40px;
   flex-shrink: 0;
-  background: var(--surface-tertiary, rgba(255, 255, 255, 0.4));
-  color: var(--text-tertiary, rgba(0, 0, 0, 0.4));
+  align-self: flex-end;
+  height: 28px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--text-tertiary);
   border: none;
-  border-radius: var(--radius-sm, 8px);
+  border-radius: var(--radius-sm, 4px);
   font-size: var(--font-size-sm, 13px);
   cursor: pointer;
   transition: all var(--motion-fast, 0.18s) ease;
 
-  &--active {
-    background: var(--color-primary, #6366f1);
-    color: var(--text-inverse, #fff);
+  &:not(:disabled) {
+    background: var(--color-primary);
+    color: #fff;
   }
 
   &:hover:not(:disabled) {
-    background: var(--color-primary-dark, #4f46e5);
+    background: var(--color-primary-dark);
   }
 
   &:disabled {
-    cursor: not-allowed;
+    cursor: default;
+    background: var(--surface-sunken);
+    color: var(--text-placeholder);
   }
 }
 
@@ -563,8 +552,8 @@ onUnmounted(() => {
   }
 
   .send-btn {
-    width: 56px;
-    height: 40px;
+    height: 28px;
+    padding: 0 10px;
   }
 }
 </style>
