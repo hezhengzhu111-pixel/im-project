@@ -1,11 +1,12 @@
 <template>
-  <div class="session-list" v-loading="!!loading">
+  <!-- 会话列表 (chat tab) -->
+  <div v-if="activeTab === 'chat'" class="session-list" v-loading="!!loading">
     <div
       v-for="session in sessions"
       :key="session.id"
       class="session-item"
       :class="{ 'session-item--active': session.id === activeSessionId }"
-      @click="$emit('select', session.id)"
+      @click="handleSelectSession(session)"
     >
       <el-badge :hidden="!session.unreadCount" is-dot>
         <el-avatar :src="session.avatar" :size="40" />
@@ -22,6 +23,29 @@
     </div>
     <div v-if="sessions.length === 0 && !loading" class="session-empty">
       <p>暂无会话</p>
+    </div>
+  </div>
+
+  <!-- 联系人列表 (contacts tab) -->
+  <div v-else-if="activeTab === 'contacts'" class="contact-list">
+    <div class="contact-section">
+      <div
+        v-for="friend in friends"
+        :key="friend.friendId"
+        class="contact-item"
+        @click="handleStartPrivateChat(friend)"
+      >
+        <el-avatar :src="friend.avatar" :size="40" />
+        <div class="contact-info">
+          <span class="contact-name">{{ friend.nickname || friend.username }}</span>
+          <span class="contact-status" :class="{ online: friend.online }">
+            {{ friend.online ? '在线' : '离线' }}
+          </span>
+        </div>
+      </div>
+      <div v-if="friends.length === 0" class="session-empty">
+        <p>暂无联系人</p>
+      </div>
     </div>
   </div>
 </template>
@@ -455,5 +479,33 @@ const filteredGroups = computed(() => {
 .session-empty {
   display: flex; justify-content: center; padding: var(--space-8);
   color: var(--text-tertiary); font-size: var(--font-size-sm);
+}
+
+// ── 联系人列表 ──
+.contact-list {
+  flex: 1; overflow-y: auto;
+}
+
+.contact-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4); cursor: pointer;
+  transition: background var(--motion-fast); height: 60px;
+
+  &:hover { background: var(--chat-card-hover); }
+}
+
+.contact-info {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px;
+}
+
+.contact-name {
+  font-size: var(--font-size-base); color: var(--text-primary);
+}
+
+.contact-status {
+  font-size: var(--font-size-xs); color: var(--text-tertiary);
+
+  &.online { color: var(--color-primary); }
 }
 </style>
