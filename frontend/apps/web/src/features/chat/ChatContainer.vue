@@ -1,7 +1,14 @@
 <template>
   <div class="wechat-layout" :class="{ 'theme-dark': isDarkTheme }">
+    <!-- 左侧图标导航栏 -->
+    <SideNavBar
+      :active-tab="activeTab"
+      :avatar="userStore.avatar"
+      @change="handleTabChange"
+    />
+
     <!-- 左侧会话列表 -->
-    <aside class="chat-sidebar">
+    <aside class="chat-sidebar" :style="{ width: sidebarWidth + 'px' }">
       <div class="sidebar-header">
         <el-avatar :src="userStore.avatar" :size="36">
           {{ userStore.nickname?.[0] || userStore.userInfo?.username?.[0] || "U" }}
@@ -33,6 +40,12 @@
       />
     </aside>
 
+    <!-- 拖拽分界线 -->
+    <div
+      class="sidebar-resize-handle"
+      @mousedown="startResize"
+    />
+
     <!-- 右侧聊天区 -->
     <main class="chat-main">
       <template v-if="currentSession">
@@ -48,6 +61,9 @@
             <el-icon v-if="currentSession.type === 'private' && e2eeStatus === 'encrypted'" class="encryption-icon" title="端到端加密">
               <Lock />
             </el-icon>
+            <button class="info-btn" title="会话详情" @click="showDetailPanel = !showDetailPanel">
+              <el-icon><InfoFilled /></el-icon>
+            </button>
             <el-dropdown trigger="click" @command="handleChatAction">
               <button class="more-btn"><el-icon><MoreFilled /></el-icon></button>
               <template #dropdown>
@@ -94,6 +110,9 @@
         <p>{{ t('chat.noConversationSelected') }}</p>
       </div>
     </main>
+
+    <!-- 详情面板遮罩 -->
+    <div v-if="showDetailPanel && currentSession" class="detail-overlay" @click="showDetailPanel = false" />
 
     <!-- 右侧详情面板 overlay -->
     <div v-if="showDetailPanel && currentSession" class="chat-detail-panel">
@@ -232,6 +251,7 @@ import ChatE2eeNegotiationDialog from "@/features/chat/ChatE2eeNegotiationDialog
 import ChatEncryptionDialog from "@/features/chat/ChatEncryptionDialog.vue";
 import ChatMessageList from "@/features/chat/ChatMessageList.vue";
 import ChatSidebarPanel from "@/features/chat/ChatSidebarPanel.vue";
+import SideNavBar from "@/components/layout/SideNavBar.vue";
 import EncryptionBadge from "@/components/security/EncryptionBadge.vue";
 import SecurityPanel from "@/components/security/SecurityPanel.vue";
 import AiStatusBadge from "@/components/ai/AiStatusBadge.vue";
@@ -245,6 +265,7 @@ import {
   ArrowLeft,
   ChatDotRound,
   Close,
+  InfoFilled,
   Lock,
   MoreFilled,
   Moon,
@@ -311,6 +332,30 @@ const e2eeStatus = useE2eeSessionStatus(
 );
 const showEncryptionDialog = ref(false);
 const searchQuery = ref("");
+
+// ── 可拖拽侧边栏宽度 ──
+const sidebarWidth = ref(260);
+const MIN_SIDEBAR = 180;
+const MAX_SIDEBAR = 400;
+
+const startResize = (e: MouseEvent) => {
+  const startX = e.clientX;
+  const startWidth = sidebarWidth.value;
+  const onMove = (ev: MouseEvent) => {
+    const next = Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, startWidth + (ev.clientX - startX)));
+    sidebarWidth.value = next;
+  };
+  const onUp = () => {
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  };
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", onUp);
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+};
 
 const openEncryptionDialog = () => {
   if (currentSession.value?.type !== "private") return;
@@ -596,6 +641,17 @@ const handleChatAction = (command: string | number | object) => {
   flex-shrink: 0;
 }
 
+// ── 拖拽分界线 ──
+.sidebar-resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background var(--motion-fast, 150ms);
+  flex-shrink: 0;
+
+  &:hover { background: var(--color-primary, #07C160); }
+}
+
 // ── 右侧聊天区 ──
 .chat-main {
   flex: 1;
@@ -654,6 +710,35 @@ const handleChatAction = (command: string | number | object) => {
 
   &:hover {
     background: var(--chat-card-hover, rgba(0, 0, 0, 0.04));
+  }
+}
+
+.info-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  color: var(--text-secondary, #6b7280);
+  font-size: 16px;
+  transition: all 0.15s ease;
+
+  &:hover { background: var(--chat-card-hover, rgba(0, 0, 0, 0.04)); color: var(--color-primary, #07C160); }
+}
+
+// ── 详情面板遮罩 ──
+.detail-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.15);
+  z-index: var(--z-overlay, 300);
+}
+
+// ── 右侧详情面板 ──
   }
 }
 
