@@ -29,7 +29,8 @@ RUN npm config set registry https://registry.npmmirror.com/ \
 COPY . .
 ARG FRONTEND_BUILD_MODE=sit
 ENV E2EE_WASM_BUILD_SKIP=1
-RUN if [ "${FRONTEND_BUILD_MODE}" = "dev" ]; then npm run web:build:dev; \
+ARG BUILD_DATE=unknown
+RUN echo "Build: ${BUILD_DATE}" && if [ "${FRONTEND_BUILD_MODE}" = "dev" ]; then npm run web:build:dev; \
     elif [ "${FRONTEND_BUILD_MODE}" = "sit" ]; then npm run web:build:sit; \
     else npm run web:build; \
     fi
