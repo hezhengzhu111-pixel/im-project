@@ -225,6 +225,8 @@ const openLink = () => {
   flex-shrink: 0;
   object-fit: cover;
   cursor: pointer;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .post-main {
@@ -243,7 +245,7 @@ const openLink = () => {
   line-height: 1.4;
   margin-bottom: 4px;
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   &:hover {
     opacity: 0.7;
   }
@@ -272,7 +274,7 @@ const openLink = () => {
   cursor: pointer;
   margin-bottom: 8px;
   display: inline-block;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   &:hover {
     opacity: 0.7;
   }
@@ -328,9 +330,9 @@ const openLink = () => {
 .media-image {
   width: 100%;
   height: 100%;
-  transition: transform 0.2s ease;
+  transition: filter 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   &:hover {
-    transform: scale(1.02);
+    filter: brightness(0.95);
   }
 }
 
@@ -355,7 +357,7 @@ const openLink = () => {
   border-radius: 4px;
   margin-bottom: 8px;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   &:hover {
     background: var(--surface-sunken);
   }
@@ -441,7 +443,7 @@ const openLink = () => {
     background: none;
     cursor: pointer;
     padding: 4px 0;
-    transition: opacity 0.15s ease;
+    transition: opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1);
     &:hover {
       opacity: 0.7;
     }
@@ -461,7 +463,20 @@ const openLink = () => {
   margin-left: 52px;
   background: #F7F7F7;
   border-radius: 4px;
-  padding: 6px 8px;
+  padding: 6px 10px;
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 12px;
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-bottom: 6px solid #F7F7F7;
+  }
 }
 
 // --- Mobile ---
@@ -472,6 +487,8 @@ const openLink = () => {
   .post-avatar {
     width: 36px;
     height: 36px;
+    border-width: 1.5px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   }
   .post-main {
     padding-bottom: 16px;

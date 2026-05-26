@@ -1,5 +1,6 @@
 <template>
-  <div class="moments-user-profile">
+  <div class="moments-page-wrapper">
+    <div class="moments-user-profile">
     <!-- 顶栏：sticky, 返回箭头 + 昵称 -->
     <div ref="topbarRef" class="profile-topbar">
       <el-icon class="topbar-back" @click="handleBack">
@@ -55,6 +56,7 @@
           </div>
         </template>
       </div>
+    </div>
     </div>
   </div>
 </template>
@@ -197,11 +199,26 @@ watch(userId, () => {
 </script>
 
 <style scoped lang="scss">
+.moments-page-wrapper {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  background-color: #F0F0F0;
+}
+
 .moments-user-profile {
+  width: 100%;
+  max-width: 600px;
   height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--moments-bg);
+  border-left: 1px solid #ECECEC;
+  border-right: 1px solid #ECECEC;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.08);
+  position: relative;
+  overflow: hidden;
 }
 
 .profile-topbar {
@@ -276,5 +293,17 @@ watch(userId, () => {
   padding: 20px 0;
   color: var(--el-text-color-secondary);
   font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  .moments-page-wrapper {
+    background-color: var(--moments-bg);
+  }
+  .moments-user-profile {
+    max-width: 100%;
+    border-left: none;
+    border-right: none;
+    box-shadow: none;
+  }
 }
 </style>
