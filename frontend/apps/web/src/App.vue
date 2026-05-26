@@ -32,6 +32,7 @@ import { logger } from "@/utils/logger";
 import { initE2ee, stopDeviceHeartbeat } from "@/features/e2ee/manager/e2ee-init";
 import { clearAllKeys } from "@/features/e2ee/store/key-store";
 import { resetDeviceIdCache } from "@/features/e2ee/manager/device-identity";
+import { stopAllPingTimers } from "@/features/e2ee/manager/channel-ping";
 
 const { isMobile } = useIsMobile();
 const loading = ref(false);
@@ -75,6 +76,7 @@ const resetUserServices = () => {
   } catch {
     // localStorage may be unavailable
   }
+  stopAllPingTimers();
 };
 
 const initApp = async () => {
