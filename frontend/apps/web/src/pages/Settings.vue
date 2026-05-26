@@ -17,115 +17,124 @@
           <button type="button" class="nav-item">存储</button>
           <button type="button" class="nav-item" @click="router.push('/settings/ai')">AI</button>
         </nav>
-        <button type="button" class="logout-button nav-logout" :disabled="loggingOut" @click="logout">
-          <el-icon><SwitchButton /></el-icon>
-          <span>{{ t("settings.logout") }}</span>
-        </button>
       </aside>
 
       <!-- 右侧主区域 -->
       <main class="settings-main">
-        <!-- Hero -->
-        <header class="settings-hero">
-          <button type="button" class="icon-button" :aria-label="t('settings.back')" @click="router.back()">
-            <el-icon><ArrowLeft /></el-icon>
-          </button>
-          <div class="hero-copy">
-            <h1>{{ t("settings.title") }}</h1>
-            <p>{{ t("settings.subtitle") }}</p>
-          </div>
-        </header>
+        <div class="settings-primary">
+          <!-- Hero -->
+          <header class="settings-hero">
+            <button type="button" class="icon-button" :aria-label="t('settings.back')" @click="router.back()">
+              <el-icon><ArrowLeft /></el-icon>
+            </button>
+            <div class="hero-copy">
+              <h1>{{ t("settings.title") }}</h1>
+              <p>{{ t("settings.subtitle") }}</p>
+            </div>
+          </header>
 
-        <!-- 账号 section -->
-        <section class="setting-section account-section" @click="router.push('/profile')">
-          <div class="account-row">
-            <el-avatar :size="44" :src="userStore.avatar">{{ avatarText }}</el-avatar>
-            <div class="account-info">
-              <div class="account-name">{{ userDisplayName }}</div>
-              <div class="account-desc">查看和编辑个人资料</div>
-            </div>
-            <el-icon class="account-arrow"><ArrowRight /></el-icon>
-          </div>
-        </section>
-
-        <!-- 偏好 section -->
-        <section class="setting-section">
-          <div class="setting-row">
-            <div class="setting-label">
-              <div class="setting-title">语言</div>
-              <div class="setting-desc">{{ localeName }}</div>
-            </div>
-            <div class="segmented-control">
-              <button v-for="option in localeOptions" :key="option.value" type="button" :class="{ active: locale === option.value }" @click="setLocale(option.value)">
-                {{ option.label }}
-              </button>
-            </div>
-          </div>
-          <div class="setting-row">
-            <div class="setting-label">
-              <div class="setting-title">{{ t("settings.theme") }}</div>
-              <div class="setting-desc">{{ t("settings.themeDesc") }}</div>
-            </div>
-            <div class="segmented-control">
-              <button v-for="option in themeOptions" :key="option.value" type="button" :class="{ active: theme === option.value }" @click="theme = option.value">
-                {{ option.label }}
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <!-- 通知 section -->
-        <section class="setting-section">
-          <div class="setting-row">
-            <div class="setting-label">
-              <div class="setting-title">{{ t("settings.notifications") }}</div>
-            </div>
-            <el-switch v-model="notificationEnabled" size="large" @change="updateMessageSetting('enableNotification', Boolean($event))" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label">
-              <div class="setting-title">{{ t("settings.sound") }}</div>
-            </div>
-            <el-switch v-model="soundEnabled" size="large" @change="updateMessageSetting('enableSound', Boolean($event))" />
-          </div>
-          <div class="setting-row">
-            <div class="setting-label">
-              <div class="setting-title">{{ t("settings.insecureVoice") }}</div>
-              <div class="setting-desc">{{ t("settings.insecureVoiceDesc") }}</div>
-            </div>
-            <el-switch v-model="allowInsecureVoiceRecording" size="large" @change="updateInsecureVoiceSetting(Boolean($event))" />
-          </div>
-        </section>
-
-        <!-- 隐私 section -->
-        <section class="setting-section">
-          <div class="setting-row">
-            <div class="setting-label">
-              <div class="setting-title">{{ t("settings.readReceipt") }}</div>
-              <div class="setting-desc">{{ t("settings.readReceiptDesc") }}</div>
-            </div>
-            <el-switch v-model="readReceiptEnabled" size="large" @change="updatePrivacySetting('messageReadReceipt', Boolean($event))" />
-          </div>
-        </section>
-
-        <!-- 存储 + AI 双卡片 -->
-        <div class="setting-grid-2">
-          <section class="setting-section">
-            <div class="setting-row" style="border-bottom:none">
-              <div class="setting-label">
-                <div class="setting-title">{{ t("settings.clearCache") }}</div>
-                <div class="setting-desc">{{ t("settings.clearCacheDesc") }}</div>
-              </div>
-              <button type="button" class="flat-button" @click="clearCache">{{ t("settings.clearCache") }}</button>
-            </div>
-          </section>
-          <section class="setting-section is-interactive" @click="router.push('/settings/ai')">
-            <div class="setting-row" style="border-bottom:none">
-              <div class="setting-label">
-                <div class="setting-title">{{ t("settings.aiAssistant") }}</div>
-                <div class="setting-desc">{{ t("settings.aiAssistantDesc") }}</div>
+          <!-- 账号 section -->
+          <section class="setting-section account-section" @click="router.push('/profile')">
+            <div class="account-row">
+              <el-avatar :size="44" :src="userStore.avatar">{{ avatarText }}</el-avatar>
+              <div class="account-info">
+                <div class="account-name">{{ userDisplayName }}</div>
+                <div class="account-desc">查看和编辑个人资料</div>
               </div>
               <el-icon class="account-arrow"><ArrowRight /></el-icon>
+            </div>
+          </section>
+
+          <!-- 偏好 section -->
+          <section class="setting-section">
+            <div class="setting-row">
+              <div class="setting-label">
+                <div class="setting-title">语言</div>
+                <div class="setting-desc">{{ localeName }}</div>
+              </div>
+              <div class="segmented-control">
+                <button v-for="option in localeOptions" :key="option.value" type="button" :class="{ active: locale === option.value }" @click="setLocale(option.value)">
+                  {{ option.label }}
+                </button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">
+                <div class="setting-title">{{ t("settings.theme") }}</div>
+                <div class="setting-desc">{{ t("settings.themeDesc") }}</div>
+              </div>
+              <div class="segmented-control">
+                <button v-for="option in themeOptions" :key="option.value" type="button" :class="{ active: theme === option.value }" @click="theme = option.value">
+                  {{ option.label }}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- 通知 section -->
+          <section class="setting-section">
+            <div class="setting-row">
+              <div class="setting-label">
+                <div class="setting-title">{{ t("settings.notifications") }}</div>
+              </div>
+              <el-switch v-model="notificationEnabled" size="large" @change="updateMessageSetting('enableNotification', Boolean($event))" />
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">
+                <div class="setting-title">{{ t("settings.sound") }}</div>
+              </div>
+              <el-switch v-model="soundEnabled" size="large" @change="updateMessageSetting('enableSound', Boolean($event))" />
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">
+                <div class="setting-title">{{ t("settings.insecureVoice") }}</div>
+                <div class="setting-desc">{{ t("settings.insecureVoiceDesc") }}</div>
+              </div>
+              <el-switch v-model="allowInsecureVoiceRecording" size="large" @change="updateInsecureVoiceSetting(Boolean($event))" />
+            </div>
+          </section>
+
+          <!-- 隐私 section -->
+          <section class="setting-section">
+            <div class="setting-row">
+              <div class="setting-label">
+                <div class="setting-title">{{ t("settings.readReceipt") }}</div>
+                <div class="setting-desc">{{ t("settings.readReceiptDesc") }}</div>
+              </div>
+              <el-switch v-model="readReceiptEnabled" size="large" @change="updatePrivacySetting('messageReadReceipt', Boolean($event))" />
+            </div>
+          </section>
+        </div>
+        <div class="settings-secondary">
+          <!-- 存储 + AI 双卡片 -->
+          <div class="setting-grid-2">
+            <section class="setting-section">
+              <div class="setting-row" style="border-bottom:none">
+                <div class="setting-label">
+                  <div class="setting-title">{{ t("settings.clearCache") }}</div>
+                  <div class="setting-desc">{{ t("settings.clearCacheDesc") }}</div>
+                </div>
+                <button type="button" class="flat-button" @click="clearCache">{{ t("settings.clearCache") }}</button>
+              </div>
+            </section>
+            <section class="setting-section is-interactive" @click="router.push('/settings/ai')">
+              <div class="setting-row" style="border-bottom:none">
+                <div class="setting-label">
+                  <div class="setting-title">{{ t("settings.aiAssistant") }}</div>
+                  <div class="setting-desc">{{ t("settings.aiAssistantDesc") }}</div>
+                </div>
+                <el-icon class="account-arrow"><ArrowRight /></el-icon>
+              </div>
+            </section>
+          </div>
+
+          <!-- 退出登录 -->
+          <section class="setting-section">
+            <div class="setting-row" style="border-bottom:none;justify-content:center">
+              <button type="button" class="logout-button" :disabled="loggingOut" @click="logout">
+                <el-icon><SwitchButton /></el-icon>
+                <span>{{ t("settings.logout") }}</span>
+              </button>
             </div>
           </section>
         </div>
@@ -312,16 +321,17 @@ onMounted(() => {
 <style scoped lang="scss">
 .settings-page {
   min-height: 100%;
-  padding: 28px;
+  padding: var(--web-page-padding-y) var(--web-page-padding-x);
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .settings-shell {
-  width: min(1180px, 100%);
+  width: min(var(--web-content-max), calc(100vw - var(--web-page-padding-x) * 2));
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: 216px minmax(0, 1fr);
+  gap: var(--web-gap);
   align-items: start;
 }
 
@@ -382,13 +392,22 @@ onMounted(() => {
 }
 
 .nav-logout {
-  margin-top: auto;
   width: 100%;
   justify-content: center;
 }
 
 // ── 右侧主区域 ──
 .settings-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--web-gap);
+  align-items: start;
+}
+
+.settings-primary,
+.settings-secondary {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 
@@ -396,9 +415,9 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 14px;
-  height: 72px;
+  height: 60px;
   padding: 0 4px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .hero-copy h1 {
@@ -422,7 +441,7 @@ onMounted(() => {
   backdrop-filter: var(--fresh-blur);
   -webkit-backdrop-filter: var(--fresh-blur);
   box-shadow: var(--fresh-glass-shadow-soft);
-  margin-bottom: var(--fresh-section-gap);
+  margin-bottom: 12px;
   overflow: hidden;
 
   &.is-interactive {
@@ -437,8 +456,8 @@ onMounted(() => {
 }
 
 .setting-row {
-  min-height: var(--fresh-row-height);
-  padding: 14px 18px;
+  min-height: 52px;
+  padding: 12px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -611,6 +630,12 @@ onMounted(() => {
 }
 
 // ── 移动端 ──
+@media (max-width: 1200px) {
+  .settings-main {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 860px) {
   .settings-shell {
     grid-template-columns: 1fr;
