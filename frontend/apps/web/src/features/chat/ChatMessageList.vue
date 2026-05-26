@@ -829,7 +829,11 @@ const scrollToBottom = async () => {
   await nextFrame();
   const container = scrollContainerRef.value;
   if (container) {
-    setContainerScrollTop(container.scrollHeight);
+    suppressScrollTracking.value = true;
+    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    requestAnimationFrame(() => {
+      suppressScrollTracking.value = false;
+    });
   }
   await updateShortListOffset();
   nearBottom.value = true;
