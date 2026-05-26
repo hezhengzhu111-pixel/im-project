@@ -581,15 +581,8 @@ onMounted(() => {
 .profile-page {
   min-height: 100%;
   overflow-y: auto;
-  padding: 24px;
-  background:
-    radial-gradient(
-      circle at 16% 10%,
-      rgba(37, 99, 235, 0.12),
-      transparent 26%
-    ),
-    radial-gradient(circle at 84% 4%, rgba(16, 185, 129, 0.1), transparent 28%),
-    var(--chat-shell-bg);
+  padding: 28px;
+  background: var(--fresh-page-bg);
 }
 
 .profile-shell {
@@ -628,11 +621,12 @@ onMounted(() => {
 }
 
 .glass-card {
-  border: 1px solid var(--chat-panel-border);
-  border-radius: 8px;
-  background: var(--chat-panel-bg);
-  box-shadow: var(--chat-surface-shadow);
-  backdrop-filter: var(--chat-glass-blur);
+  border: 1px solid var(--fresh-glass-border);
+  border-radius: 22px;
+  background: var(--fresh-glass-bg);
+  box-shadow: var(--fresh-glass-shadow-soft);
+  backdrop-filter: var(--fresh-blur);
+  -webkit-backdrop-filter: var(--fresh-blur);
 }
 
 .profile-hero {
@@ -651,9 +645,12 @@ onMounted(() => {
 }
 
 .profile-avatar {
-  border: 1px solid var(--chat-panel-border);
-  border-radius: 8px;
-  background: var(--chat-panel-strong);
+  border: 1px solid var(--fresh-glass-border);
+  border-radius: 16px;
+  background: var(--surface-primary);
+  box-shadow:
+    0 0 0 8px rgba(255, 255, 255, 0.45),
+    0 18px 36px rgba(7, 193, 96, 0.16);
 }
 
 .avatar-button,
@@ -677,15 +674,20 @@ onMounted(() => {
 .primary-button {
   min-height: 36px;
   padding: 0 14px;
-  background: var(--chat-accent);
+  background: linear-gradient(135deg, var(--fresh-green), var(--fresh-mint));
   color: #fff;
-  box-shadow: 0 12px 26px rgba(37, 99, 235, 0.2);
+  box-shadow: 0 8px 22px rgba(7, 193, 96, 0.18);
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
 .avatar-button:hover,
 .primary-button:hover {
-  transform: translateY(-1px);
-  background: var(--chat-accent-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(7, 193, 96, 0.24);
 }
 
 .primary-button:disabled {
@@ -711,8 +713,8 @@ onMounted(() => {
 .mini-button:hover,
 .icon-button:hover {
   transform: translateY(-1px);
-  color: var(--chat-accent-strong);
-  background: rgba(37, 99, 235, 0.1);
+  color: var(--fresh-green);
+  background: rgba(7, 193, 96, 0.10);
 }
 
 .section-kicker {
@@ -829,16 +831,16 @@ onMounted(() => {
 
 .profile-form :deep(.el-input__wrapper),
 .profile-form :deep(.el-textarea__inner) {
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 0 0 1px var(--chat-panel-border) inset;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: 0 0 0 1px var(--fresh-glass-border) inset;
 }
 
 .profile-form :deep(.el-input__wrapper.is-focus),
 .profile-form :deep(.el-textarea__inner:focus) {
   box-shadow:
-    0 0 0 1px rgba(37, 99, 235, 0.48) inset,
-    0 0 0 3px rgba(37, 99, 235, 0.1);
+    0 0 0 1px rgba(7, 193, 96, 0.48) inset,
+    0 0 0 3px rgba(7, 193, 96, 0.12);
 }
 
 .form-actions {
