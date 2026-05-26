@@ -749,10 +749,6 @@ const handleChatAction = (command: string | number | object) => {
   z-index: var(--z-overlay, 300);
 }
 
-// ── 右侧详情面板 ──
-  }
-}
-
 // ── Status dot in chat header ──
 .status-dot {
   width: 8px;
