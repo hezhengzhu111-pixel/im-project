@@ -10,6 +10,8 @@
 
 **本轮原则：收紧密度、减少空白、建立清晰桌面分栏。不要新增大面积渐变、红框、调试边框。**
 
+**本轮视觉目标不是"更炫"，而是"更像桌面 Web 产品"：信息更紧凑、分组更清楚、空白更少、玻璃更克制。**
+
 ---
 
 ## 第 1 层：Fresh Glass 密度变量收敛
@@ -48,7 +50,7 @@
 ### 允许改动范围
 
 - **模板：可以重排结构**，把每个 section 从独立大卡片改为分组 section + setting-row
-- **逻辑：不改**事件处理、store 调用、函数签名、data 绑定
+- **脚本：不允许重写** `<script setup>` 里的 store、watch、onMounted、update 函数、事件处理、data 绑定。只允许重排 template 和重写 style。
 - **样式：全面重写**
 
 ### 桌面端布局（≥860px）
@@ -70,10 +72,11 @@
 
 ### 左侧导航
 
-- 导航项为 `<button>`，但目前只做视觉分组提示
-- AI 项点击 `router.push('/settings/ai')`
+- 导航项为 `<button type="button">`，只做视觉分组提示
+- 除 AI 项外，全部使用普通 button，**不加** `router.push`，**不加** active 状态
+- AI 项点击 `router.push('/settings/ai')`（唯一有交互的导航项）
 - 其他项先不做滚动定位（后续迭代）
-- **不要**加 active 状态管理、滚动监听、复杂 JS
+- **不要**加 active 状态管理、滚动监听、复杂 JS。避免"点了没反应"的伪交互问题。
 
 ### 行样式
 
@@ -130,6 +133,7 @@
   - API Key 区域 → `ai-section ai-section--keys`
   - 添加 Key 区域 → `ai-section ai-section--add-key`
   - 自动回复区域 → `ai-section ai-section--auto-reply`
+- 如果仅靠 section class 难以实现稳定双栏，**允许新增** `.ai-settings-shell`、`.ai-main-column`、`.ai-side-column` 包裹层。不改业务数据绑定。
 - CSS grid：
   ```scss
   .settings-content {
@@ -170,7 +174,7 @@
 
 - 右侧面板：
   - `align-self: start; position: sticky; top: 20px;`
-  - 不要 `height: 100%`（避免空白盒子）
+  - **不允许**设置 `min-height`、`height`、`flex: 1`；只按内容自然高度排列，彻底避免空盒子
   - 保留 2-3 个小卡片
   - 删除任何调试红色边框
 
