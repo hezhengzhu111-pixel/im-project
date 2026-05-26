@@ -524,6 +524,42 @@ export const useWebSocketStore = defineStore("websocket", () => {
 
       const isSelfMessage =
         String(normalizedMessage.senderId) === currentUserId;
+
+      // Intercept E2EE Ping/Pong — process but don't add to chat
+      if (
+        normalizedMessage.encrypted &&
+        normalizedMessage.messageType !== "SYSTEM" &&
+        typeof normalizedMessage.content === "string" &&
+        normalizedMessage.content.length > 0
+      ) {
+        const content = normalizedMessage.content;
+        const msgSenderId = String(normalizedMessage.senderId || "");
+        if (content.startsWith("E2EE_PING|")) {
+          if (msgSenderId !== currentUserId) {
+            const { handleIncomingPing } = await import(
+              "@/features/e2ee/manager/channel-ping"
+            );
+            const sessionId = normalizedMessage.receiverId
+              ? buildSessionId("private", currentUserId, normalizedMessage.receiverId)
+              : "";
+            if (sessionId) handleIncomingPing(content, sessionId, msgSenderId);
+          }
+          return;
+        }
+        if (content.startsWith("E2EE_PONG|")) {
+          if (msgSenderId !== currentUserId) {
+            const { handleIncomingPong } = await import(
+              "@/features/e2ee/manager/channel-ping"
+            );
+            const sessionId = normalizedMessage.receiverId
+              ? buildSessionId("private", currentUserId, normalizedMessage.receiverId)
+              : "";
+            if (sessionId) handleIncomingPong(content, sessionId);
+          }
+          return;
+        }
+      }
+
       await chatStore.addMessage(normalizedMessage);
       if (!isSelfMessage) {
         showMessageNotification(normalizedMessage);
