@@ -30,7 +30,7 @@ export function useChatPage() {
   const { t } = useI18nStore();
 
   // --- UI state ---
-  const activeTab = ref<"chat" | "contacts" | "groups" | "moments">("chat");
+  const activeTab = ref<"chat" | "contacts" | "moments">("chat");
   const showAddFriend = ref(false);
   const showCreateGroup = ref(false);
   const showGroupReadDialog = ref(false);
@@ -200,7 +200,7 @@ export function useChatPage() {
   };
 
   // --- Actions ---
-  const handleTabChange = (tabName: "chat" | "contacts" | "groups" | "moments") => {
+  const handleTabChange = (tabName: "chat" | "contacts" | "moments") => {
     if (tabName === "moments") {
       router.push("/moments");
       return;

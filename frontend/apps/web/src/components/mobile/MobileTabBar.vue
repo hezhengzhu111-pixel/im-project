@@ -2,15 +2,15 @@
   <nav class="mobile-tabbar">
     <button
       v-for="tab in tabs"
-      :key="tab.name"
+      :key="tab.key"
       type="button"
       class="tabbar-item"
-      :class="{ active: activeTab === tab.name }"
+      :class="{ 'tabbar-item--active': activeTab === tab.key }"
       :aria-label="tab.label"
-      @click="$emit('change-tab', tab.name)"
+      @click="$emit('change', tab.key)"
     >
       <span class="tabbar-icon-wrap">
-        <el-icon :size="22"><component :is="tab.icon" /></el-icon>
+        <el-icon :size="24"><component :is="tab.icon" /></el-icon>
         <span v-if="tab.badge > 0" class="tabbar-badge">{{
           tab.badge > 99 ? "99+" : tab.badge
         }}</span>
@@ -22,7 +22,12 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { ChatDotRound, PictureFilled, Setting, User } from "@element-plus/icons-vue";
+import {
+  ChatDotRound,
+  User,
+  PictureFilled,
+  UserFilled,
+} from "@element-plus/icons-vue";
 import { useI18nStore } from "@/stores/i18n";
 
 const props = defineProps<{
@@ -33,31 +38,36 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  (e: "change-tab", tab: string): void;
+  (e: "change", key: string): void;
 }>();
 
 const { t } = useI18nStore();
 
 const tabs = computed(() => [
   {
-    name: "chat",
+    key: "chat",
     label: t("sidebar.messagesTitle"),
     icon: ChatDotRound,
     badge: props.unreadCount || 0,
   },
   {
-    name: "contacts",
+    key: "contacts",
     label: t("sidebar.contactsTitle"),
     icon: User,
     badge: props.pendingRequests || 0,
   },
   {
-    name: "moments",
+    key: "moments",
     label: t("nav.moments"),
     icon: PictureFilled,
     badge: props.momentsUnreadCount || 0,
   },
-  { name: "settings", label: t("nav.settings"), icon: Setting, badge: 0 },
+  {
+    key: "me",
+    label: t("nav.me"),
+    icon: UserFilled,
+    badge: 0,
+  },
 ]);
 </script>
 
@@ -89,7 +99,7 @@ const tabs = computed(() => [
   color: var(--text-tertiary, #94a3b8);
   transition: color 0.15s ease;
 
-  &.active {
+  &--active {
     color: var(--color-primary, #6366f1);
   }
 }

@@ -28,9 +28,6 @@
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue";
-import { Bell, Plus, Search, Top } from "@element-plus/icons-vue";
-import EmptyState from "@/components/common/EmptyState.vue";
-import SideNavBar from "@/components/layout/SideNavBar.vue";
 import { useI18nStore } from "@/stores/i18n";
 import { useWebSocketStore } from "@/stores/websocket";
 import type { ChatSession, Friend, Group } from "@/types";
@@ -47,7 +44,7 @@ interface Props {
   isChatActiveOnMobile: boolean;
   sessionsLoading?: boolean;
   searchKeyword?: string;
-  activeTab: "chat" | "contacts" | "groups" | "moments";
+  activeTab: "chat" | "contacts" | "moments";
   currentSessionId?: string;
 }
 
@@ -58,7 +55,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   (e: "select", sessionId: string): void;
-  (e: "change-tab", tab: "chat" | "contacts" | "groups" | "moments"): void;
+  (e: "change-tab", tab: "chat" | "contacts" | "moments"): void;
   (e: "select-session", session: ChatSession): void;
   (e: "start-private-chat", contact: Friend): void;
   (e: "start-group-chat", group: Group): void;
@@ -92,9 +89,6 @@ const panelTitle = computed(() => {
   if (props.activeTab === "contacts") {
     return t("sidebar.contactsTitle");
   }
-  if (props.activeTab === "groups") {
-    return t("sidebar.groupsTitle");
-  }
   return t("sidebar.messagesTitle");
 });
 
@@ -102,14 +96,11 @@ const panelSubtitle = computed(() => {
   if (props.activeTab === "contacts") {
     return t("sidebar.contactsAvailable", { count: props.friends.length });
   }
-  if (props.activeTab === "groups") {
-    return t("sidebar.groupsReady", { count: props.groups.length });
-  }
   return t("sidebar.activeConversations", { count: props.sessions.length });
 });
 
 const handleChangeTab = (tab: string) => {
-  if (tab === "chat" || tab === "contacts" || tab === "groups" || tab === "moments") {
+  if (tab === "chat" || tab === "contacts" || tab === "moments") {
     emit("change-tab", tab);
   }
 };

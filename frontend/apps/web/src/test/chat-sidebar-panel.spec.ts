@@ -23,13 +23,6 @@ vi.mock("@/stores/websocket", () => ({
   }),
 }));
 
-vi.mock("@/components/layout/SideNavBar.vue", () => ({
-  default: {
-    name: "SideNavBar",
-    template: "<div class='side-nav-stub' />",
-  },
-}));
-
 const ElInputStub = {
   name: "ElInput",
   props: ["modelValue"],
