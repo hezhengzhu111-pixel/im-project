@@ -635,7 +635,7 @@ onMounted(() => {
   align-items: center;
   gap: 22px;
   margin-bottom: 14px;
-  padding: 18px;
+  padding: 14px 18px;
 }
 
 .avatar-block {
@@ -795,6 +795,7 @@ onMounted(() => {
 .profile-form :deep(.el-form-item__label) {
   color: var(--chat-text-secondary);
   font-weight: 700;
+  margin-bottom: 2px;
 }
 
 .profile-form :deep(.el-form-item) {
@@ -804,7 +805,7 @@ onMounted(() => {
 .form-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px 14px;
+  gap: 10px 14px;
 }
 
 .form-item-full {
@@ -851,6 +852,8 @@ onMounted(() => {
 }
 
 .side-stack {
+  position: sticky;
+  top: 28px;
   display: flex;
   flex-direction: column;
   gap: 14px;
