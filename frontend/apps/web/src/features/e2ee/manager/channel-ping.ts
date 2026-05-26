@@ -84,6 +84,8 @@ function clearPendingTimeout(sessionId: string): void {
 
 const pingTimers = new Map<string, ReturnType<typeof setInterval>>();
 
+const FIRST_PING_DELAY_MS = 3_000;
+
 export function startPingTimer(sessionId: string, remoteUserId: string): void {
   stopPingTimer(sessionId);
 
@@ -91,7 +93,9 @@ export function startPingTimer(sessionId: string, remoteUserId: string): void {
     void sendPing(sessionId, remoteUserId);
   };
 
-  tick(); // 立即首次 ping
+  // 延迟首次 ping，确保协商阶段的 IndexedDB session 写入完成，
+  // 避免 ensureOutboundSession 因找不到 session 而创建新的 X3DH 握手
+  setTimeout(tick, FIRST_PING_DELAY_MS);
 
   pingTimers.set(sessionId, setInterval(tick, PING_INTERVAL_MS));
 }
@@ -124,6 +128,10 @@ async function sendPing(sessionId: string, remoteUserId: string): Promise<void> 
   const senderUserId = String(userStore.userId);
   if (!senderUserId) return;
 
+  // 显式解析远端设备 ID，帮助 ensureOutboundSession 精确匹配已有 session
+  const remoteDeviceId =
+    localStorage.getItem(`e2ee:remote_device:${sessionId}`) || undefined;
+
   const plaintext = `${PING_PREFIX}${phrase}|${Date.now()}`;
 
   try {
@@ -132,6 +140,7 @@ async function sendPing(sessionId: string, remoteUserId: string): Promise<void> 
       clientMsgId: crypto.randomUUID(),
       senderUserId,
       recipientUserId: remoteUserId,
+      recipientDeviceIds: remoteDeviceId ? [remoteDeviceId] : undefined,
       plaintext,
     });
 
@@ -147,7 +156,7 @@ async function sendPing(sessionId: string, remoteUserId: string): Promise<void> 
     setPendingTimeout(
       sessionId,
       () => {
-        logger.warn("[E2EE Ping] pong timeout", { sessionId });
+        logger.warn("[E2EE Ping] pong timeout, exiting encryption", { sessionId });
         void exitEncryption(sessionId);
       },
       PING_TIMEOUT_MS,
@@ -171,6 +180,9 @@ async function sendPong(sessionId: string, remoteUserId: string): Promise<void> 
   const senderUserId = String(userStore.userId);
   if (!senderUserId) return;
 
+  const remoteDeviceId =
+    localStorage.getItem(`e2ee:remote_device:${sessionId}`) || undefined;
+
   const plaintext = `${PONG_PREFIX}${phrase}|${Date.now()}`;
 
   try {
@@ -179,6 +191,7 @@ async function sendPong(sessionId: string, remoteUserId: string): Promise<void> 
       clientMsgId: crypto.randomUUID(),
       senderUserId,
       recipientUserId: remoteUserId,
+      recipientDeviceIds: remoteDeviceId ? [remoteDeviceId] : undefined,
       plaintext,
     });
 
