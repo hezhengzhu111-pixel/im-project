@@ -1,6 +1,5 @@
 <template>
   <el-tooltip
-    v-if="encrypted"
     content="此消息已端到端加密"
     placement="top"
     :show-after="300"
@@ -21,22 +20,24 @@ defineProps<{
 
 <style scoped lang="scss">
 .encryption-badge {
+  position: absolute;
+  right: 6px;
+  bottom: 3px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  vertical-align: middle;
-  margin-left: 4px;
-  color: var(--chat-text-quaternary);
-  opacity: 0.6;
+  color: var(--text-placeholder);
+  opacity: 0.35;
   transition: opacity 0.15s ease;
   cursor: default;
+  pointer-events: auto;
 
   &:hover {
-    opacity: 1;
+    opacity: 0.7;
   }
 
   .badge-icon {
-    font-size: 11px;
+    font-size: 10px;
   }
 }
 </style>

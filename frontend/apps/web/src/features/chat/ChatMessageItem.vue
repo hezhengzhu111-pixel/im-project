@@ -118,11 +118,11 @@
               <template v-else>{{ token.text }}</template>
             </template>
           </div>
+          <ChatEncryptionBadge v-if="encrypted" :encrypted="encrypted" />
         </div>
 
         <div class="msg-meta" :class="{ 'msg-meta--self': isMine }">
           <span class="msg-time">{{ timeLabel }}</span>
-          <ChatEncryptionBadge :encrypted="encrypted" />
           <span
             v-if="statusLabel"
             class="msg-state"
