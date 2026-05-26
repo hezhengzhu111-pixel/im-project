@@ -152,10 +152,7 @@ const handleAccept = async () => {
       throw new Error("密钥协商响应失败。");
     }
 
-    // Notify server that we accepted
-    const { keyService } = await import("@/features/e2ee/api/key-service");
-    await keyService.acceptEncryption(props.sessionId);
-
+    // acceptEncryption 已在 respondToNegotiation 内部调用，无需重复
     emit("accepted");
     visible.value = false;
   } catch (err) {
