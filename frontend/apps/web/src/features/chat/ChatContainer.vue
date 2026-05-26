@@ -613,7 +613,7 @@ const unsubNegotiation = onE2eeNegotiation((event) => {
   } else if (event.action === "accepted") {
     // The requester (Alice) receives acceptance — update local status
     import("@/features/e2ee/manager/negotiation").then(({ markNegotiationAccepted }) => {
-      markNegotiationAccepted(event.sessionId);
+      markNegotiationAccepted(event.sessionId, event.targetUserId);
       retryDecryptPendingMessages(event.sessionId);
       retryDecryptVisibleEncryptedMessages(event.sessionId);
     });
