@@ -257,10 +257,7 @@ import ChatEncryptionDialog from "@/features/chat/ChatEncryptionDialog.vue";
 import ChatMessageList from "@/features/chat/ChatMessageList.vue";
 import ChatSidebarPanel from "@/features/chat/ChatSidebarPanel.vue";
 import SideNavBar from "@/components/layout/SideNavBar.vue";
-import EncryptionBadge from "@/components/security/EncryptionBadge.vue";
-import SecurityPanel from "@/components/security/SecurityPanel.vue";
 import AiStatusBadge from "@/components/ai/AiStatusBadge.vue";
-import ConnectionStatusBar from "@/components/status/ConnectionStatusBar.vue";
 import MomentsContainer from "@/features/moments/MomentsContainer.vue";
 import { useChatPage } from "@/features/chat/composables/useChatPage";
 import { useE2eeSessionStatus } from "@/features/e2ee/composables/useE2eeSessionStatus";
@@ -268,16 +265,11 @@ import { onE2eeNegotiation } from "@/features/e2ee/negotiation-events";
 import type { E2eeNegotiationEvent } from "@/features/e2ee/negotiation-events";
 import { buildSessionId } from "@/normalizers/chat";
 import {
-  ArrowLeft,
-  ChatDotRound,
   Close,
   InfoFilled,
   Lock,
   MoreFilled,
-  Moon,
   Search,
-  Setting,
-  Sunny,
 } from "@element-plus/icons-vue";
 
 const {
