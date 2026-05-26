@@ -591,7 +591,7 @@ const handleChatAction = (command: string | number | object) => {
   height: 100dvh;
   position: relative;
   overflow: hidden;
-  background: var(--surface-tertiary, #f5f5f5);
+  background: var(--fresh-page-bg);
   font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
 }
 
@@ -653,9 +653,9 @@ const handleChatAction = (command: string | number | object) => {
   max-width: 360px;
   display: flex;
   flex-direction: column;
-  background: var(--fx-glass-bg, var(--surface-secondary, #f7f7f7));
-  backdrop-filter: var(--fx-glass-blur);
-  -webkit-backdrop-filter: var(--fx-glass-blur);
+  background: var(--fresh-glass-bg-strong);
+  backdrop-filter: var(--fresh-blur);
+  -webkit-backdrop-filter: var(--fresh-blur);
   border-right: 1px solid var(--border-light, #e5e7eb);
   overflow: hidden;
 
@@ -731,7 +731,10 @@ const handleChatAction = (command: string | number | object) => {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: var(--chat-bg, var(--surface-tertiary, #f5f5f5));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.18)),
+    radial-gradient(circle at 82% 12%, rgba(167, 243, 208, 0.22), transparent 30%),
+    var(--chat-bg);
 }
 
 .chat-header {
@@ -740,9 +743,9 @@ const handleChatAction = (command: string | number | object) => {
   justify-content: space-between;
   height: 56px;
   padding: 0 var(--space-4, 16px);
-  background: var(--fx-glass-bg, var(--surface-secondary, #ffffff));
-  backdrop-filter: var(--fx-glass-blur);
-  -webkit-backdrop-filter: var(--fx-glass-blur);
+  background: var(--fresh-glass-bg-strong);
+  backdrop-filter: var(--fresh-blur);
+  -webkit-backdrop-filter: var(--fresh-blur);
   border-bottom: 1px solid var(--border-subtle, #ECECEC);
   flex-shrink: 0;
 }
@@ -866,9 +869,9 @@ const handleChatAction = (command: string | number | object) => {
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--border-light, #e5e7eb);
-  background: var(--fx-glass-bg-strong, var(--surface-secondary, #fff));
-  backdrop-filter: var(--fx-glass-blur);
-  -webkit-backdrop-filter: var(--fx-glass-blur);
+  background: var(--fresh-glass-bg-strong);
+  backdrop-filter: var(--fresh-blur);
+  -webkit-backdrop-filter: var(--fresh-blur);
   box-shadow: var(--shadow-panel, 0 4px 12px rgba(0, 0, 0, 0.1));
   overflow: hidden;
 }
@@ -1043,9 +1046,10 @@ const handleChatAction = (command: string | number | object) => {
 }
 
 :deep(.wechat-composer) {
-  background: var(--fx-glass-bg, var(--chat-composer-bg));
-  backdrop-filter: var(--fx-glass-blur);
-  -webkit-backdrop-filter: var(--fx-glass-blur);
+  background: var(--fresh-glass-bg-strong);
+  backdrop-filter: var(--fresh-blur);
+  -webkit-backdrop-filter: var(--fresh-blur);
+  border-top: 1px solid var(--fresh-glass-border);
 }
 
 :deep(.message-empty-card) {

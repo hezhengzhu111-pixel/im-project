@@ -431,8 +431,10 @@ onUnmounted(() => {
 
 <style scoped lang="scss">
 .wechat-composer {
-  background: var(--chat-composer-bg, var(--chat-panel-bg));
-  border-top: 1px solid var(--chat-composer-border, var(--chat-panel-border));
+  background: var(--fresh-glass-bg-strong);
+  backdrop-filter: var(--fresh-blur);
+  -webkit-backdrop-filter: var(--fresh-blur);
+  border-top: 1px solid var(--fresh-glass-border);
   padding: var(--space-2, 8px) var(--space-4, 16px) var(--space-3, 12px);
   min-height: 132px;
   display: flex;
