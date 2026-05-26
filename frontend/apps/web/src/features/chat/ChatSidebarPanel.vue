@@ -5,7 +5,7 @@
       v-for="session in sessions"
       :key="session.id"
       class="session-item"
-      :class="{ 'session-item--active': session.id === activeSessionId }"
+      :class="{ 'session-item--active': session.id === currentSessionId }"
       @click="handleSelectSession(session)"
     >
       <el-badge :hidden="!session.unreadCount" is-dot>
