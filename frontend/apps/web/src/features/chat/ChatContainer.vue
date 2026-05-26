@@ -1,64 +1,17 @@
 <template>
-  <div class="chat-container">
-    <ConnectionStatusBar />
-    <!-- 顶部全局状态栏 -->
-    <div class="app-topbar">
-      <div class="topbar-left">
-        <el-avatar :size="32" :src="userStore.avatar" class="topbar-avatar">
-          {{ userStore.nickname?.[0] || "U" }}
+  <div class="wechat-layout" :class="{ 'theme-dark': isDarkTheme }">
+    <!-- 左侧会话列表 -->
+    <aside class="chat-sidebar">
+      <div class="sidebar-header">
+        <el-avatar :src="userStore.avatar" :size="36">
+          {{ userStore.nickname?.[0] || userStore.userInfo?.username?.[0] || "U" }}
         </el-avatar>
-        <span class="topbar-username">{{
-          userStore.nickname || userStore.userInfo?.username || "User"
-        }}</span>
-        <span
-          class="status-dot"
-          :class="{ offline: connectionStatus !== 'connected' }"
-        ></span>
+        <span class="sidebar-username">{{ userStore.nickname || userStore.userInfo?.username }}</span>
       </div>
-
-      <div class="topbar-center">
-        <button
-          type="button"
-          class="topbar-search-btn"
-          :aria-label="t('chat.searchMessages')"
-        >
-          <el-icon :size="16"><Search /></el-icon>
-          <span class="topbar-search-text">{{ t("chat.searchMessages") }}</span>
-        </button>
+      <div class="sidebar-search">
+        <el-input v-model="searchQuery" placeholder="搜索" :prefix-icon="Search" size="small" clearable />
       </div>
-
-      <div class="topbar-right">
-        <span class="topbar-connection" :class="connectionStatus">
-          <span class="connection-dot-sm" :class="connectionStatus"></span>
-          {{ connectionStatusLabel }}
-        </span>
-        <button
-          type="button"
-          class="topbar-icon-btn"
-          :title="t('nav.settings')"
-          :aria-label="t('nav.settings')"
-          @click="$router.push('/settings')"
-        >
-          <el-icon :size="18"><Setting /></el-icon>
-        </button>
-        <button
-          type="button"
-          class="topbar-icon-btn"
-          :title="isDarkTheme ? '切换浅色模式' : '切换深色模式'"
-          @click="toggleTheme"
-        >
-          <el-icon :size="18">
-            <Moon v-if="!isDarkTheme" />
-            <Sunny v-else />
-          </el-icon>
-        </button>
-      </div>
-    </div>
-
-    <!-- 主体区域 -->
-    <div class="chat-body">
       <ChatSidebarPanel
-        class="chat-shell-sidebar"
         :active-tab="activeTab"
         :sessions="chatStore.sortedSessions"
         :current-session-id="currentSession?.id"
@@ -69,6 +22,7 @@
         :moments-unread-count="momentsUnreadCount"
         :is-chat-active-on-mobile="isChatActiveOnMobile"
         :sessions-loading="chatStore.loading"
+        :search-keyword="searchQuery"
         @change-tab="handleTabChange"
         @select-session="selectSession"
         @start-private-chat="startChat"
@@ -77,376 +31,159 @@
         @open-create-group="showCreateGroup = true"
         @open-settings="$router.push('/settings')"
       />
+    </aside>
 
-      <div class="chat-main" :class="{ 'active-mobile': isChatActiveOnMobile }">
-        <div v-if="!currentSession" class="chat-welcome">
-          <div class="welcome-card">
-            <el-icon class="welcome-icon" :size="42"><ChatDotRound /></el-icon>
-            <div class="welcome-title">
-              {{ t("chat.noConversationSelected") }}
-            </div>
-            <div class="welcome-status">
-              <span class="connection-dot" :class="connectionStatus"></span>
-              <span>{{ connectionStatusLabel }}</span>
-            </div>
+    <!-- 右侧聊天区 -->
+    <main class="chat-main">
+      <template v-if="currentSession">
+        <header class="chat-header">
+          <div class="chat-header-left">
+            <el-avatar :src="headerAvatar" :size="32">
+              {{ headerAvatarText }}
+            </el-avatar>
+            <span class="chat-header-name">{{ currentSession.targetName }}</span>
+            <span class="status-dot" :class="{ offline: !currentSessionOnline }" />
           </div>
-        </div>
-
-        <div v-else class="chat-content">
-          <div class="chat-header">
-            <button
-              type="button"
-              class="chat-action-button mobile-back interactive-reset"
-              @click="chatStore.clearCurrentSession()"
-            >
-              <el-icon><ArrowLeft /></el-icon>
-            </button>
-
-            <button
-              type="button"
-              class="chat-header-main interactive-reset"
-              :title="
-                currentSession.type === 'group'
-                  ? t('chat.groupInfo')
-                  : t('chat.contactInfo')
-              "
-              @click="openSessionInfoDrawer(currentSession)"
-            >
-              <div class="chat-avatar-shell">
-                <el-avatar :size="42" :src="headerAvatar" class="chat-avatar">
-                  {{ headerAvatarText }}
-                </el-avatar>
-                <span
-                  v-if="currentSession.type === 'private'"
-                  class="presence-dot"
-                  :class="{ online: currentSessionOnline }"
-                ></span>
-              </div>
-
-              <div class="chat-title-block">
-                <div class="chat-title-row">
-                  <span class="chat-title-text">{{
-                    currentSession.targetName
-                  }}</span>
-                </div>
-
-                <div class="chat-status-row">
-                  <span
-                    v-if="currentSession.type === 'private'"
-                    class="status-chip"
-                    :class="{ online: currentSessionOnline }"
-                  >
-                    <span class="status-chip-dot"></span>
-                    {{
-                      currentSessionOnline
-                        ? t("chat.onlineNow")
-                        : t("chat.offline")
-                    }}
-                  </span>
-                  <span v-else class="status-chip">
-                    <span class="status-chip-dot"></span>
-                    {{ t("chat.members", { count: groupMemberCount }) }}
-                  </span>
-                  <span
-                    v-if="currentSession.type === 'private' && e2eeStatus === 'encrypted'"
-                    class="status-chip secure"
-                  >
-                    <span class="status-chip-dot"></span>
-                    端到端加密
-                  </span>
-                  <span
-                    v-else-if="currentSession.type === 'private' && e2eeStatus === 'negotiating'"
-                    class="status-chip negotiating"
-                  >
-                    <span class="status-chip-dot"></span>
-                    协商加密中
-                  </span>
-                  <span
-                    v-else-if="currentSession.type === 'private' && e2eeStatus === 'failed'"
-                    class="status-chip failed clickable"
-                    title="点击清理加密状态"
-                    @click="disableEncryptionChannel"
-                  >
-                    <span class="status-chip-dot"></span>
-                    加密异常 — 点击修复
-                  </span>
-                  <span v-if="autoReplyEnabled" class="status-chip ai">
-                    <span class="status-chip-dot"></span>
-                    AI 助手在线
-                  </span>
-                </div>
-              </div>
-            </button>
-
-            <div class="chat-header-side">
-              <div
-                class="security-badge-wrap"
-                v-if="currentSession.type === 'private'"
-              >
-                <EncryptionBadge
-                  :status="e2eeStatus"
-                  :expanded="showSecurityPanel"
-                  @toggle="showSecurityPanel = !showSecurityPanel"
-                />
-                <Transition name="panel-fade">
-                  <SecurityPanel
-                    v-if="showSecurityPanel"
-                    :status="e2eeStatus"
-                    :can-enable="e2eeStatus === 'plaintext' || e2eeStatus === 'failed'"
-                    :can-disable="e2eeStatus === 'encrypted' || e2eeStatus === 'negotiating'"
-                    class="security-popover"
-                    @enable-encryption="openEncryptionDialog"
-                    @disable-encryption="disableEncryptionChannel"
-                    @close="showSecurityPanel = false"
-                  />
-                </Transition>
-              </div>
-              <div
-                v-if="currentSession.type === 'private'"
-                class="header-ai-badge-wrap"
-              >
-                <AiStatusBadge
-                  :auto-reply-enabled="autoReplyEnabled"
-                  :has-human-intervention="humanIntervention"
-                  class="header-ai-badge"
-                  @click="toggleAutoReply"
-                />
-              </div>
-              <div class="chat-actions">
-                <el-dropdown trigger="click" @command="handleChatAction">
-                  <button
-                    type="button"
-                    class="chat-action-button interactive-reset"
-                    :aria-label="t('chat.moreActions')"
-                  >
-                    <el-icon><MoreFilled /></el-icon>
-                  </button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item
-                        command="search-messages"
-                        data-command="search-messages"
-                      >
-                        {{ t("chat.searchMessages") }}
-                      </el-dropdown-item>
-                      <el-dropdown-item
-                        command="toggle-pin"
-                        data-command="toggle-pin"
-                      >
-                        {{
-                          currentSession?.isPinned
-                            ? t("chat.unpin")
-                            : t("chat.pin")
-                        }}
-                      </el-dropdown-item>
-                      <el-dropdown-item
-                        command="toggle-mute"
-                        data-command="toggle-mute"
-                      >
-                        {{
-                          currentSession?.isMuted
-                            ? t("chat.unmute")
-                            : t("chat.mute")
-                        }}
-                      </el-dropdown-item>
-                      <el-dropdown-item
-                        command="open-session-info"
-                        data-command="open-session-info"
-                      >
-                        {{
-                          currentSession?.type === "group"
-                            ? t("chat.groupInfo")
-                            : t("chat.contactInfo")
-                        }}
-                      </el-dropdown-item>
-                      <el-dropdown-item
-                        v-if="currentSession.type === 'private' && (e2eeStatus === 'plaintext' || e2eeStatus === 'failed')"
-                        command="enable-encryption"
-                        data-command="enable-encryption"
-                      >
-                        启用端到端加密
-                      </el-dropdown-item>
-                      <el-dropdown-item
-                        v-if="currentSession.type === 'private' && (e2eeStatus === 'encrypted' || e2eeStatus === 'negotiating')"
-                        command="disable-encryption"
-                        data-command="disable-encryption"
-                      >
-                        退出加密通道
-                      </el-dropdown-item>
-                      <el-dropdown-item
-                        command="clear-history"
-                        data-command="clear-history"
-                      >
-                        {{ t("chat.clearHistory") }}
-                      </el-dropdown-item>
-                      <el-dropdown-item
-                        command="delete-session"
-                        data-command="delete-session"
-                      >
-                        {{ t("chat.removeConversation") }}
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
-              </div>
-            </div>
+          <div class="chat-header-right">
+            <el-icon v-if="currentSession.type === 'private' && e2eeStatus === 'encrypted'" class="encryption-icon" title="端到端加密">
+              <Lock />
+            </el-icon>
+            <el-dropdown trigger="click" @command="handleChatAction">
+              <button class="more-btn"><el-icon><MoreFilled /></el-icon></button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="search-messages">搜索消息</el-dropdown-item>
+                  <el-dropdown-item command="toggle-pin">{{ currentSession?.isPinned ? '取消置顶' : '置顶' }}</el-dropdown-item>
+                  <el-dropdown-item command="toggle-mute">{{ currentSession?.isMuted ? '取消免打扰' : '免打扰' }}</el-dropdown-item>
+                  <el-dropdown-item command="open-session-info">{{ currentSession?.type === 'group' ? '群聊信息' : '联系人信息' }}</el-dropdown-item>
+                  <el-dropdown-item v-if="currentSession.type === 'private' && (e2eeStatus === 'plaintext' || e2eeStatus === 'failed')" command="enable-encryption">启用端到端加密</el-dropdown-item>
+                  <el-dropdown-item v-if="currentSession.type === 'private' && (e2eeStatus === 'encrypted' || e2eeStatus === 'negotiating')" command="disable-encryption">退出加密通道</el-dropdown-item>
+                  <el-dropdown-item command="clear-history">清空聊天</el-dropdown-item>
+                  <el-dropdown-item command="delete-session">删除会话</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
+        </header>
 
-          <ChatMessageList
-            :messages="chatStore.currentMessages"
-            :current-user-id="String(userStore.userId)"
-            :current-user-name="
-              userStore.userInfo?.username || userStore.nickname
-            "
-            :current-user-avatar="userStore.avatar"
-            :loading-history="loadingMoreHistory"
-            :opened-unread-count="currentSessionUnreadSnapshot"
-            :session-type="currentSession.type"
-            :e2ee-status="currentSession.type === 'private' ? e2eeStatus : undefined"
-            @request-history="loadMoreHistory"
-            @mark-read="tryAckRead"
-            @show-group-readers="openGroupReadDialog"
-          />
+        <ChatMessageList
+          :messages="chatStore.currentMessages"
+          :current-user-id="String(userStore.userId)"
+          :current-user-name="userStore.userInfo?.username || userStore.nickname"
+          :current-user-avatar="userStore.avatar"
+          :loading-history="loadingMoreHistory"
+          :opened-unread-count="currentSessionUnreadSnapshot"
+          :session-type="currentSession.type"
+          :e2ee-status="currentSession.type === 'private' ? e2eeStatus : undefined"
+          @request-history="loadMoreHistory"
+          @mark-read="tryAckRead"
+          @show-group-readers="openGroupReadDialog"
+        />
 
-          <ChatComposer
-            :disabled="!currentSession"
-            :members="composerMembers"
-            :session-id="currentSession.type === 'private' ? currentSession.id : undefined"
-            @send-text="sendTextMessage"
-            @send-media="sendMediaMessage"
-            @request-members="handleRequestMembers"
-          />
-        </div>
+        <ChatComposer
+          :disabled="!currentSession"
+          :members="composerMembers"
+          :session-id="currentSession.type === 'private' ? currentSession.id : undefined"
+          @send-text="sendTextMessage"
+          @send-media="sendMediaMessage"
+          @request-members="handleRequestMembers"
+        />
+      </template>
+      <div v-else class="chat-placeholder">
+        <div class="placeholder-logo">💬</div>
+        <p>{{ t('chat.noConversationSelected') }}</p>
       </div>
+    </main>
 
-      <!-- 右侧详情面板 -->
-      <div v-if="showDetailPanel && currentSession" class="chat-detail-panel">
-        <div class="detail-header">
-          <span class="detail-title">{{ t("chat.contactInfo") }}</span>
-          <button
-            type="button"
-            class="topbar-icon-btn"
-            @click="showDetailPanel = false"
-          >
-            <el-icon><Close /></el-icon>
-          </button>
+    <!-- 右侧详情面板 overlay -->
+    <div v-if="showDetailPanel && currentSession" class="chat-detail-panel">
+      <div class="detail-header">
+        <span class="detail-title">{{ t("chat.contactInfo") }}</span>
+        <button type="button" class="topbar-icon-btn" @click="showDetailPanel = false">
+          <el-icon><Close /></el-icon>
+        </button>
+      </div>
+      <div class="detail-body chat-soft-scrollbar">
+        <div class="detail-section">
+          <div class="detail-avatar-wrap">
+            <el-avatar :size="64" :src="headerAvatar">{{ headerAvatarText }}</el-avatar>
+            <span v-if="currentSession.type === 'private'" class="presence-dot detail-presence" :class="{ online: currentSessionOnline }"></span>
+          </div>
+          <div class="detail-name">{{ currentSession.targetName }}</div>
+          <div class="detail-subtitle">
+            <span v-if="currentSession.type === 'private'" :class="{ online: currentSessionOnline }">
+              {{ currentSessionOnline ? t("chat.onlineNow") : t("chat.offline") }}
+            </span>
+            <span v-else>{{ t("chat.members", { count: groupMemberCount }) }}</span>
+          </div>
         </div>
-
-        <div class="detail-body chat-soft-scrollbar">
-          <div class="detail-section">
-            <div class="detail-avatar-wrap">
-              <el-avatar :size="64" :src="headerAvatar">{{
-                headerAvatarText
-              }}</el-avatar>
-              <span
-                v-if="currentSession.type === 'private'"
-                class="presence-dot detail-presence"
-                :class="{ online: currentSessionOnline }"
-              ></span>
-            </div>
-            <div class="detail-name">{{ currentSession.targetName }}</div>
-            <div class="detail-subtitle">
-              <span
-                v-if="currentSession.type === 'private'"
-                :class="{ online: currentSessionOnline }"
-              >
-                {{
-                  currentSessionOnline ? t("chat.onlineNow") : t("chat.offline")
-                }}
-              </span>
-              <span v-else>{{
-                t("chat.members", { count: groupMemberCount })
-              }}</span>
-            </div>
+        <div class="detail-section">
+          <div class="detail-section-title">会话信息</div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">类型</span>
+            <span class="detail-info-value">{{ currentSession.type === "private" ? "私聊" : "群聊" }}</span>
           </div>
-
-          <div class="detail-section">
-            <div class="detail-section-title">会话信息</div>
-            <div class="detail-info-row">
-              <span class="detail-info-label">类型</span>
-              <span class="detail-info-value">{{
-                currentSession.type === "private" ? "私聊" : "群聊"
-              }}</span>
-            </div>
-            <div v-if="currentSession.type === 'group'" class="detail-info-row">
-              <span class="detail-info-label">成员数</span>
-              <span class="detail-info-value">{{ groupMemberCount }}</span>
-            </div>
-            <div class="detail-info-row">
-              <span class="detail-info-label">置顶</span>
-              <span class="detail-info-value">{{
-                currentSession.isPinned ? "是" : "否"
-              }}</span>
-            </div>
-            <div class="detail-info-row">
-              <span class="detail-info-label">免打扰</span>
-              <span class="detail-info-value">{{
-                currentSession.isMuted ? "是" : "否"
-              }}</span>
-            </div>
+          <div v-if="currentSession.type === 'group'" class="detail-info-row">
+            <span class="detail-info-label">成员数</span>
+            <span class="detail-info-value">{{ groupMemberCount }}</span>
           </div>
-
-          <div class="detail-section">
-            <div class="detail-section-title">安全</div>
-            <div class="detail-info-row">
-              <span class="detail-info-label">加密状态</span>
-              <span class="detail-info-value detail-secure">
-                <span class="status-dot"></span>
-                端对端加密已启用
-              </span>
-            </div>
-            <div class="detail-info-row">
-              <span class="detail-info-label">加密协议</span>
-              <span class="detail-info-value">AES-256-GCM</span>
-            </div>
-            <div class="detail-info-row">
-              <span class="detail-info-label">密钥状态</span>
-              <span class="detail-info-value detail-secure">活跃</span>
-            </div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">置顶</span>
+            <span class="detail-info-value">{{ currentSession.isPinned ? "是" : "否" }}</span>
           </div>
-
-          <div class="detail-section">
-            <div class="detail-section-title">AI 助手</div>
-            <div class="detail-ai-status">
-              <AiStatusBadge
-                :auto-reply-enabled="autoReplyEnabled"
-                :has-human-intervention="humanIntervention"
-              />
-            </div>
-            <div class="detail-info-row">
-              <span class="detail-info-label">自动回复</span>
-              <span class="detail-info-value">{{
-                autoReplyEnabled ? "已开启" : "未开启"
-              }}</span>
-            </div>
-            <div class="detail-info-row">
-              <span class="detail-info-label">人工介入</span>
-              <span class="detail-info-value">{{
-                humanIntervention ? "已接管" : "未检测到"
-              }}</span>
-            </div>
-            <div v-if="lastAiReplyInfo" class="detail-info-row">
-              <span class="detail-info-label">最近 AI 回复</span>
-              <span class="detail-info-value">{{
-                formatDetailTime(lastAiReplyInfo.time)
-              }}</span>
-            </div>
-            <div v-if="lastAiReplyInfo?.provider" class="detail-info-row">
-              <span class="detail-info-label">AI 提供商</span>
-              <span class="detail-info-value">{{
-                lastAiReplyInfo.provider
-              }}</span>
-            </div>
-            <div v-if="lastAiReplyInfo?.model" class="detail-info-row">
-              <span class="detail-info-label">AI 模型</span>
-              <span class="detail-info-value">{{ lastAiReplyInfo.model }}</span>
-            </div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">免打扰</span>
+            <span class="detail-info-value">{{ currentSession.isMuted ? "是" : "否" }}</span>
+          </div>
+        </div>
+        <div class="detail-section">
+          <div class="detail-section-title">安全</div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">加密状态</span>
+            <span class="detail-info-value detail-secure">
+              <span class="status-dot"></span>
+              端对端加密已启用
+            </span>
+          </div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">加密协议</span>
+            <span class="detail-info-value">AES-256-GCM</span>
+          </div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">密钥状态</span>
+            <span class="detail-info-value detail-secure">活跃</span>
+          </div>
+        </div>
+        <div class="detail-section">
+          <div class="detail-section-title">AI 助手</div>
+          <div class="detail-ai-status">
+            <AiStatusBadge :auto-reply-enabled="autoReplyEnabled" :has-human-intervention="humanIntervention" />
+          </div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">自动回复</span>
+            <span class="detail-info-value">{{ autoReplyEnabled ? "已开启" : "未开启" }}</span>
+          </div>
+          <div class="detail-info-row">
+            <span class="detail-info-label">人工介入</span>
+            <span class="detail-info-value">{{ humanIntervention ? "已接管" : "未检测到" }}</span>
+          </div>
+          <div v-if="lastAiReplyInfo" class="detail-info-row">
+            <span class="detail-info-label">最近 AI 回复</span>
+            <span class="detail-info-value">{{ formatDetailTime(lastAiReplyInfo.time) }}</span>
+          </div>
+          <div v-if="lastAiReplyInfo?.provider" class="detail-info-row">
+            <span class="detail-info-label">AI 提供商</span>
+            <span class="detail-info-value">{{ lastAiReplyInfo.provider }}</span>
+          </div>
+          <div v-if="lastAiReplyInfo?.model" class="detail-info-row">
+            <span class="detail-info-label">AI 模型</span>
+            <span class="detail-info-value">{{ lastAiReplyInfo.model }}</span>
           </div>
         </div>
       </div>
     </div>
-    <!-- .chat-body -->
 
+    <!-- Dialogs -->
     <ChatDialogs
       v-model:visible-add-friend="showAddFriend"
       v-model:visible-create-group="showCreateGroup"
@@ -508,6 +245,7 @@ import {
   ArrowLeft,
   ChatDotRound,
   Close,
+  Lock,
   MoreFilled,
   Moon,
   Search,
@@ -572,6 +310,7 @@ const e2eeStatus = useE2eeSessionStatus(
   computed(() => currentSession.value?.id),
 );
 const showEncryptionDialog = ref(false);
+const searchQuery = ref("");
 
 const openEncryptionDialog = () => {
   if (currentSession.value?.type !== "private") return;
@@ -793,481 +532,179 @@ const handleChatAction = (command: string | number | object) => {
 </script>
 
 <style scoped lang="scss">
-.interactive-reset {
-  border: 0;
-  background: transparent;
+.wechat-layout {
+  display: flex;
+  height: 100vh;
+  background: var(--surface-tertiary, #f5f5f5);
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
 }
 
-.chat-container {
-  position: relative;
+// ── Override ChatSidebarPanel internals to fit sidebar ──
+.chat-sidebar {
+  width: 280px;
+  min-width: 280px;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 0;
+  background: var(--surface-secondary, #ffffff);
+  border-right: 1px solid var(--border-light, #e5e7eb);
   overflow: hidden;
-  background: var(--chat-shell-bg);
+
+  :deep(.chat-layout) {
+    min-width: 0;
+    width: 100%;
+    flex: 1;
+  }
+
+  :deep(.side-nav-bar) {
+    display: none;
+  }
+
+  :deep(.list-panel) {
+    width: 100%;
+    border-right: none;
+  }
+
+  :deep(.panel-top) {
+    display: none;
+  }
+
+  :deep(.mobile-nav-bar) {
+    display: none;
+  }
 }
 
-/* === 顶部状态栏 === */
-.app-topbar {
+.sidebar-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 52px;
-  padding: 0 20px;
-  background: var(--chat-panel-bg);
-  border-bottom: 1px solid var(--chat-panel-border);
-  backdrop-filter: var(--chat-glass-blur);
-  -webkit-backdrop-filter: var(--chat-glass-blur);
+  gap: var(--space-3, 12px);
+  padding: var(--space-4, 16px);
+  height: 64px;
   flex-shrink: 0;
-  z-index: 2;
 }
 
-.topbar-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.topbar-avatar {
-  flex-shrink: 0;
-  border: 1px solid var(--chat-panel-border);
-}
-
-.topbar-username {
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-  color: var(--chat-text-primary);
+.sidebar-username {
+  font-size: var(--font-size-lg, 16px);
+  font-weight: 600;
+  color: var(--text-primary, #1f2937);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.sidebar-search {
+  padding: 0 var(--space-3, 12px) var(--space-3, 12px);
+  flex-shrink: 0;
+}
+
+// ── 右侧聊天区 ──
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface-tertiary, #f5f5f5);
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  padding: 0 var(--space-4, 16px);
+  background: var(--surface-secondary, #ffffff);
+  border-bottom: 1px solid var(--border-light, #e5e7eb);
+  flex-shrink: 0;
+}
+
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+.chat-header-name {
+  font-size: var(--font-size-base, 14px);
+  font-weight: 600;
+  color: var(--text-primary, #1f2937);
+}
+
+.chat-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+.encryption-icon {
+  color: var(--color-primary, #07c160);
+  font-size: 16px;
+}
+
+.more-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  color: var(--text-secondary, #6b7280);
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background: var(--chat-card-hover, rgba(0, 0, 0, 0.04));
+  }
+}
+
+// ── Status dot in chat header ──
 .status-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--color-success);
-  box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+  background: var(--color-success, #07c160);
+  box-shadow: 0 0 6px rgba(7, 193, 96, 0.4);
   flex-shrink: 0;
 
   &.offline {
-    background: var(--text-tertiary);
+    background: var(--text-tertiary, #9ca3af);
     box-shadow: none;
   }
 }
 
-.topbar-center {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-}
-
-.topbar-search-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
-  border-radius: var(--radius-full);
-  background: var(--surface-tertiary);
-  border: 1px solid var(--border-light);
-  color: var(--text-tertiary);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition:
-    background var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease);
-  min-width: 200px;
-
-  &:hover {
-    background: var(--surface-overlay);
-    border-color: var(--border-default);
-  }
-}
-
-.topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.topbar-connection {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  color: var(--text-tertiary);
-
-  &.connected {
-    color: var(--color-success);
-  }
-
-  &.connecting {
-    color: var(--color-warning);
-  }
-}
-
-.connection-dot-sm {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-tertiary);
-
-  &.connected {
-    background: var(--color-success);
-  }
-
-  &.connecting {
-    background: var(--color-warning);
-  }
-}
-
-.topbar-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-sm);
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition:
-    background var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease);
-
-  &:hover {
-    background: var(--surface-tertiary);
-    color: var(--text-primary);
-  }
-}
-
-/* === 主体区域 === */
-.chat-body {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.chat-shell-sidebar {
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-  align-self: stretch;
-}
-
-.chat-main {
-  min-width: 0;
+// ── Placeholder ──
+.chat-placeholder {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: transparent;
-}
-
-.chat-content {
-  position: relative;
-  display: flex;
-  height: 100%;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.chat-welcome {
-  flex: 1;
-  display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-}
+  color: var(--text-tertiary, #9ca3af);
+  gap: var(--space-3, 12px);
 
-.welcome-card {
-  width: min(100%, 360px);
-  padding: 24px;
-  border-radius: 8px;
-  background: var(--chat-panel-bg);
-  border: 1px solid var(--chat-panel-border);
-  box-shadow: var(--chat-surface-shadow);
-  backdrop-filter: var(--chat-glass-blur);
-  text-align: center;
-}
+  .placeholder-logo {
+    font-size: 64px;
+    opacity: 0.3;
+  }
 
-.welcome-icon {
-  color: var(--chat-accent);
-}
-
-.welcome-title {
-  margin-top: 12px;
-  color: var(--chat-text-primary);
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-.welcome-status {
-  margin-top: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.68);
-  color: var(--chat-text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.connection-dot,
-.presence-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #94a3b8;
-}
-
-.connection-dot.connected,
-.presence-dot.online {
-  background: var(--chat-success);
-}
-
-.connection-dot.connecting {
-  background: var(--chat-warning);
-}
-
-.chat-header {
-  position: relative;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 68px;
-  max-height: 76px;
-  padding: 10px 18px;
-  border-bottom: 1px solid var(--chat-panel-border);
-  background: var(--chat-panel-bg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-}
-
-.chat-header-main {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  text-align: left;
-  cursor: pointer;
-  border-radius: 8px;
-  padding: 4px;
-  transition: background-color var(--motion-normal, 180ms)
-    var(--motion-ease, ease);
-}
-
-.chat-header-main:hover {
-  background: rgba(37, 99, 235, 0.06);
-}
-
-.chat-avatar-shell {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.chat-avatar {
-  border: 1px solid var(--chat-panel-border);
-}
-
-.presence-dot {
-  position: absolute;
-  right: 2px;
-  bottom: 2px;
-  border: 2px solid #fff;
-}
-
-.chat-title-block {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.chat-title-row,
-.chat-subtitle-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-
-.chat-title-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--chat-text-primary);
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.chat-presence,
-.chat-detail-pill,
-.chat-detail-text {
-  color: var(--chat-text-tertiary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.chat-presence.online {
-  color: var(--chat-success);
-  font-weight: 700;
-}
-
-.chat-status-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-
-.status-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--chat-text-tertiary);
-  background: rgba(148, 163, 184, 0.1);
-}
-
-.status-chip-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--chat-text-tertiary);
-  flex-shrink: 0;
-}
-
-.status-chip.online {
-  color: var(--chat-success);
-  background: rgba(34, 197, 94, 0.08);
-}
-
-.status-chip.online .status-chip-dot {
-  background: var(--chat-success);
-}
-
-.status-chip.secure {
-  color: var(--color-success, #22c55e);
-  background: rgba(34, 197, 94, 0.08);
-}
-
-.status-chip.secure .status-chip-dot {
-  background: var(--color-success, #22c55e);
-}
-
-.status-chip.negotiating {
-  color: var(--color-warning, #f59e0b);
-  background: rgba(251, 191, 36, 0.08);
-}
-
-.status-chip.negotiating .status-chip-dot {
-  background: var(--color-warning, #f59e0b);
-}
-
-.status-chip.failed {
-  color: var(--color-danger, #ef4444);
-  background: rgba(239, 68, 68, 0.08);
-}
-
-.status-chip.failed.clickable {
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-
-  &:hover {
-    opacity: 0.8;
+  p {
+    font-size: var(--font-size-sm, 13px);
   }
 }
 
-.status-chip.failed .status-chip-dot {
-  background: var(--color-danger, #ef4444);
-}
-
-.status-chip.ai {
-  color: var(--color-primary-2, #818cf8);
-  background: rgba(129, 140, 248, 0.08);
-}
-
-.status-chip.ai .status-chip-dot {
-  background: var(--color-primary-2, #818cf8);
-}
-
-.chat-header-side {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.security-badge-wrap {
-  position: relative;
-  z-index: 40;
-}
-
-.header-ai-badge-wrap {
-  cursor: pointer;
-}
-
-.header-ai-badge {
-  cursor: pointer;
-}
-
-.security-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  width: 300px;
-  z-index: 1000;
-  pointer-events: auto;
-}
-
-.panel-fade-enter-active,
-.panel-fade-leave-active {
-  transition:
-    opacity var(--motion-normal, 180ms) var(--motion-ease, ease),
-    transform var(--motion-normal, 180ms) var(--motion-ease, ease);
-}
-
-.panel-fade-enter-from,
-.panel-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-6px);
-}
-
-.chat-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mobile-back {
-  display: none;
-}
-
-/* === 右侧详情面板 === */
+// ── 右侧详情面板 overlay ──
 .chat-detail-panel {
-  width: 300px;
-  flex-shrink: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 20;
+  width: 320px;
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--chat-panel-border);
-  background: var(--chat-panel-bg);
-  backdrop-filter: var(--chat-glass-blur);
-  -webkit-backdrop-filter: var(--chat-glass-blur);
+  border-left: 1px solid var(--border-light, #e5e7eb);
+  background: var(--surface-secondary, #fff);
+  box-shadow: var(--shadow-panel, 0 4px 12px rgba(0, 0, 0, 0.1));
   overflow: hidden;
 }
 
@@ -1275,25 +712,25 @@ const handleChatAction = (command: string | number | object) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--chat-panel-border);
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-light, #e5e7eb);
   flex-shrink: 0;
 }
 
 .detail-title {
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-  color: var(--chat-text-primary);
+  font-size: var(--font-size-base, 14px);
+  font-weight: 600;
+  color: var(--text-primary, #1f2937);
 }
 
 .detail-body {
   flex: 1;
   overflow-y: auto;
-  padding: 18px;
+  padding: 16px;
 }
 
 .detail-section {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 
   &:last-child {
     margin-bottom: 0;
@@ -1313,39 +750,39 @@ const handleChatAction = (command: string | number | object) => {
   bottom: 2px;
   width: 12px;
   height: 12px;
-  border: 2px solid var(--chat-panel-bg);
+  border: 2px solid var(--surface-secondary, #fff);
 }
 
 .detail-name {
   text-align: center;
-  font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
-  color: var(--chat-text-primary);
+  font-size: var(--font-size-base, 14px);
+  font-weight: 600;
+  color: var(--text-primary, #1f2937);
   margin-bottom: 4px;
 }
 
 .detail-subtitle {
   text-align: center;
-  font-size: var(--text-sm);
-  color: var(--text-tertiary);
+  font-size: var(--font-size-sm, 13px);
+  color: var(--text-tertiary, #9ca3af);
 
   .online {
-    color: var(--color-success);
-    font-weight: var(--weight-semibold);
+    color: var(--color-success, #07c160);
+    font-weight: 600;
   }
 }
 
 .detail-section-title {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--text-secondary);
-  margin-bottom: 12px;
+  font-size: var(--font-size-sm, 13px);
+  font-weight: 600;
+  color: var(--text-secondary, #6b7280);
+  margin-bottom: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .detail-ai-status {
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .detail-info-row {
@@ -1353,7 +790,7 @@ const handleChatAction = (command: string | number | object) => {
   align-items: center;
   justify-content: space-between;
   padding: 8px 0;
-  border-bottom: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light, #e5e7eb);
 
   &:last-child {
     border-bottom: none;
@@ -1361,120 +798,66 @@ const handleChatAction = (command: string | number | object) => {
 }
 
 .detail-info-label {
-  font-size: var(--text-sm);
-  color: var(--text-tertiary);
+  font-size: var(--font-size-sm, 13px);
+  color: var(--text-tertiary, #9ca3af);
 }
 
 .detail-info-value {
-  font-size: var(--text-sm);
-  color: var(--chat-text-primary);
-  font-weight: var(--weight-medium);
+  font-size: var(--font-size-sm, 13px);
+  color: var(--text-primary, #1f2937);
+  font-weight: 500;
 }
 
 .detail-secure {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--color-success);
+  color: var(--color-success, #07c160);
+}
+
+.topbar-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm, 4px);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+
+  &:hover {
+    background: var(--surface-tertiary, #f5f5f5);
+    color: var(--text-primary, #1f2937);
+  }
+}
+
+.presence-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #94a3b8;
+
+  &.online {
+    background: var(--color-success, #07c160);
+  }
 }
 
 @media (max-width: 768px) {
-  .app-topbar {
-    padding: 0 12px;
-    height: 48px;
-    padding-top: env(safe-area-inset-top, 0px);
-  }
-
-  .topbar-search-btn {
-    min-width: 120px;
-  }
-
-  .topbar-search-text {
-    display: none;
-  }
-
-  .topbar-connection {
-    display: none;
-  }
-
-  .chat-detail-panel {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    z-index: 20;
-    width: 100%;
-    max-width: 320px;
-    box-shadow: var(--shadow-panel);
-    animation: slideInRight var(--motion-normal, 180ms) var(--motion-ease, ease);
-  }
-
-  .chat-body {
-    position: relative;
+  .chat-sidebar {
+    width: 100% !important;
+    min-width: 0;
   }
 
   .chat-main {
     display: none;
-
-    &.active-mobile {
-      position: absolute;
-      inset: 0;
-      z-index: 10;
-      display: flex;
-      width: 100%;
-      height: 100%;
-      background: var(--chat-shell-bg);
-      animation: slideInRight var(--motion-normal, 180ms)
-        var(--motion-ease, ease);
-    }
   }
 
-  .chat-header {
-    min-height: 58px;
-    padding: 8px 10px;
-    gap: 8px;
-  }
-
-  .chat-status-row {
-    gap: 4px;
-  }
-
-  .status-chip {
-    font-size: 10px;
-    padding: 1px 6px;
-  }
-
-  .mobile-back {
-    display: inline-flex;
-  }
-
-  .chat-header-main {
-    gap: 12px;
-  }
-
-  .chat-avatar {
-    width: 40px;
-    height: 40px;
-  }
-
-  .chat-title-text {
-    font-size: 15px;
-  }
-
-  .chat-subtitle-row {
-    gap: 8px;
-  }
-
-  .chat-actions {
-    gap: 6px;
-  }
-
-  .welcome-card {
-    padding: 22px;
-  }
-
-  .welcome-title {
-    font-size: 15px;
+  .chat-detail-panel {
+    width: 100%;
+    max-width: 320px;
   }
 }
 </style>
