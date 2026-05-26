@@ -48,7 +48,11 @@
 
     <!-- 右侧聊天区 -->
     <main class="chat-main">
-      <template v-if="currentSession">
+      <!-- 朋友圈 -->
+      <div v-if="activeTab === 'moments'" class="moments-inline">
+        <MomentsContainer />
+      </div>
+      <template v-else-if="currentSession">
         <header class="chat-header">
           <div class="chat-header-left">
             <el-avatar :src="headerAvatar" :size="32">
@@ -257,6 +261,7 @@ import EncryptionBadge from "@/components/security/EncryptionBadge.vue";
 import SecurityPanel from "@/components/security/SecurityPanel.vue";
 import AiStatusBadge from "@/components/ai/AiStatusBadge.vue";
 import ConnectionStatusBar from "@/components/status/ConnectionStatusBar.vue";
+import MomentsContainer from "@/features/moments/MomentsContainer.vue";
 import { useChatPage } from "@/features/chat/composables/useChatPage";
 import { useE2eeSessionStatus } from "@/features/e2ee/composables/useE2eeSessionStatus";
 import { onE2eeNegotiation } from "@/features/e2ee/negotiation-events";
@@ -782,6 +787,12 @@ const handleChatAction = (command: string | number | object) => {
   p {
     font-size: var(--font-size-sm, 13px);
   }
+}
+
+.moments-inline {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--surface-tertiary, #ededed);
 }
 
 // ── 右侧详情面板 overlay ──

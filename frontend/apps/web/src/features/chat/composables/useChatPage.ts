@@ -201,10 +201,6 @@ export function useChatPage() {
 
   // --- Actions ---
   const handleTabChange = (tabName: "chat" | "contacts" | "moments") => {
-    if (tabName === "moments") {
-      router.push("/moments");
-      return;
-    }
     activeTab.value = tabName;
   };
 
