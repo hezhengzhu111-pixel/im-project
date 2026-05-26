@@ -141,14 +141,25 @@ export async function initiateNegotiation(
   remoteUserId: string,
   remoteDeviceId?: string,
 ): Promise<boolean> {
+  // 清理上一次协商的残留状态（本地 session、服务端状态）
+  await resetNegotiation(sessionId, "plaintext");
+  try {
+    await keyService.disableEncryption(sessionId);
+  } catch {
+    // 服务端可能还没有 session 记录，忽略错误
+  }
+
   setLocalSessionStatus(sessionId, "negotiating");
   try {
     const deviceId = await ensureLocalE2eeDeviceRegistered();
     const localKeys = await getLocalRustKeyMaterial();
+    // 使用唯一 claimId 绕过 e2ee_pre_key_claims 幂等声明，
+    // 避免复用上一次协商已消耗的 OTK
+    const claimId = `${sessionId}:${Date.now()}`;
     const remoteBundle = await fetchRemoteBundle(
       remoteUserId,
       remoteDeviceId,
-      sessionId,
+      claimId,
       deviceId,
     );
 
