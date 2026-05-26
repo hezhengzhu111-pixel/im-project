@@ -595,8 +595,8 @@ const handleChatAction = (command: string | number | object) => {
 <style scoped lang="scss">
 .wechat-layout {
   display: flex;
+  height: 100vh; // fallback for older browsers
   height: 100dvh;
-  height: 100vh; // fallback
   position: relative;
   overflow: hidden;
   background: var(--surface-tertiary, #f5f5f5);
