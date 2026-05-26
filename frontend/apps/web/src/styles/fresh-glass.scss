@@ -36,6 +36,14 @@
   --fresh-radius-control: 10px;
   --fresh-section-gap: 14px;
   --fresh-row-height: 58px;
+
+  // Web 工作区尺寸系统
+  --web-page-padding-x: clamp(20px, 3vw, 48px);
+  --web-page-padding-y: 24px;
+  --web-content-max: 1480px;
+  --web-readable-max: 980px;
+  --web-aside-width: 320px;
+  --web-gap: 18px;
 }
 
 // ── 暗色主题 ──
