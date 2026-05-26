@@ -580,13 +580,14 @@ onMounted(() => {
 <style scoped lang="scss">
 .profile-page {
   min-height: 100%;
+  padding: var(--web-page-padding-y) var(--web-page-padding-x);
   overflow-y: auto;
-  padding: 28px;
+  overflow-x: hidden;
   background: var(--fresh-page-bg);
 }
 
 .profile-shell {
-  width: min(1180px, 100%);
+  width: min(var(--web-content-max), calc(100vw - var(--web-page-padding-x) * 2));
   margin: 0 auto;
 }
 
@@ -634,8 +635,8 @@ onMounted(() => {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 22px;
-  margin-bottom: 14px;
-  padding: 14px 18px;
+  margin-bottom: 12px;
+  padding: 16px 18px;
 }
 
 .avatar-block {
@@ -771,13 +772,13 @@ onMounted(() => {
 .profile-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 14px;
+  gap: var(--web-gap);
   align-items: stretch;
 }
 
 .form-card,
 .side-card {
-  padding: 16px;
+  padding: 14px 16px;
 }
 
 .section-heading {
@@ -805,7 +806,7 @@ onMounted(() => {
 .form-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px 14px;
+  gap: 10px 12px;
 }
 
 .form-item-full {
@@ -853,7 +854,7 @@ onMounted(() => {
 
 .side-stack {
   position: sticky;
-  top: 28px;
+  top: 24px;
   display: flex;
   flex-direction: column;
   gap: 14px;

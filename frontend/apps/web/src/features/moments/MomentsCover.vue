@@ -96,7 +96,7 @@ const coverBgStyle = computed(() => {
 
 @media (min-width: 769px) {
   .moments-cover {
-    height: 220px;
+    height: clamp(180px, 20vh, 240px);
   }
 }
 </style>
