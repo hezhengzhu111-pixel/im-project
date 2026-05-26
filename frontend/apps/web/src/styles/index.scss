@@ -8,10 +8,7 @@
 // 2. Theme overrides (dark mode)
 @use 'theme';
 
-// 3. Glassmorphism mixins (backward compat)
-@use 'glassmorphism';
-
-// 4. Chat-specific variables
+// 3. Chat-specific variables
 @use 'chat-theme';
 
 // 5. Motion system (transitions + animations)
