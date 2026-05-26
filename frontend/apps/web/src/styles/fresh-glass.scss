@@ -38,12 +38,20 @@
   --fresh-row-height: 58px;
 
   // Web 工作区尺寸系统
-  --web-page-padding-x: clamp(20px, 3vw, 48px);
-  --web-page-padding-y: 24px;
+  --web-page-padding-x: clamp(16px, 2vw, 32px);
+  --web-page-padding-y: 16px;
   --web-content-max: 1480px;
   --web-readable-max: 980px;
-  --web-aside-width: 320px;
-  --web-gap: 18px;
+  --web-sidebar-width: 280px;
+  --web-aside-width: 336px;
+  --web-gap: 16px;
+
+  --web-avatar-lg: 78px;
+  --web-avatar-md: 56px;
+  --web-avatar-sm: 44px;
+
+  --web-action-height: 36px;
+  --web-action-radius: 12px;
 }
 
 // ── 暗色主题 ──

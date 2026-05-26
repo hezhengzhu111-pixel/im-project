@@ -40,10 +40,10 @@ onMounted(() => {
 .moments-feed {
   flex: 1;
   background: transparent;
-  padding: 14px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .feed-loading,

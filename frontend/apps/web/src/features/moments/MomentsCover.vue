@@ -75,7 +75,7 @@ const coverBgStyle = computed(() => {
   color: var(--text-inverse);
   font-size: 18px;
   font-weight: 600;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -85,18 +85,29 @@ const coverBgStyle = computed(() => {
   width: var(--moments-avatar-size);
   height: var(--moments-avatar-size);
   border-radius: var(--moments-avatar-radius);
-  border: 2px solid #FFFFFF;
+  border: 3px solid #FFFFFF;
   transform: translateY(50%);
   flex-shrink: 0;
   object-fit: cover;
   background: var(--surface-sunken);
   z-index: 10;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
 }
 
 @media (min-width: 769px) {
   .moments-cover {
-    height: clamp(180px, 20vh, 240px);
+    height: clamp(178px, 20vh, 236px);
+  }
+
+  .cover-avatar {
+    width: 76px;
+    height: 76px;
+    border-radius: 18px;
+    border-width: 3px;
+  }
+
+  .cover-nickname {
+    font-size: 18px;
   }
 }
 </style>

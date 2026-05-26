@@ -26,6 +26,32 @@
     </div>
   </div>
 
+  <!-- 朋友圈快捷入口 (moments tab) -->
+  <div v-else-if="activeTab === 'moments'" class="moments-shortcuts">
+    <div class="side-section-title">朋友圈</div>
+    <div class="moment-shortcut">
+      <el-icon class="moment-shortcut-icon"><Picture /></el-icon>
+      <span class="moment-shortcut-text">我的相册</span>
+    </div>
+    <div class="moment-shortcut">
+      <el-icon class="moment-shortcut-icon"><Bell /></el-icon>
+      <span class="moment-shortcut-text">互动通知</span>
+    </div>
+    <div class="moment-shortcut">
+      <el-icon class="moment-shortcut-icon"><UserFilled /></el-icon>
+      <span class="moment-shortcut-text">朋友动态</span>
+    </div>
+    <div class="side-section-title" style="margin-top: 16px">快捷操作</div>
+    <div class="moment-shortcut">
+      <el-icon class="moment-shortcut-icon"><Edit /></el-icon>
+      <span class="moment-shortcut-text">草稿箱</span>
+    </div>
+    <div class="moment-shortcut">
+      <el-icon class="moment-shortcut-icon"><Clock /></el-icon>
+      <span class="moment-shortcut-text">最近发布</span>
+    </div>
+  </div>
+
   <!-- 联系人列表 (contacts tab) -->
   <div v-else-if="activeTab === 'contacts'" class="contact-list">
     <template v-if="normalizedSearchKeyword">
@@ -531,5 +557,48 @@ const filteredGroups = computed(() => {
   position: sticky;
   top: 0;
   z-index: 1;
+}
+
+// ── 朋友圈快捷入口 ──
+.moments-shortcuts {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+
+.side-section-title {
+  margin: 18px 8px 8px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: rgba(24, 37, 31, 0.42);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.moment-shortcut {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 9px 10px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: rgba(7, 193, 96, 0.08);
+  }
+}
+
+.moment-shortcut-icon {
+  font-size: 20px;
+  color: rgba(24, 37, 31, 0.45);
+  flex-shrink: 0;
+}
+
+.moment-shortcut-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fresh-text);
 }
 </style>

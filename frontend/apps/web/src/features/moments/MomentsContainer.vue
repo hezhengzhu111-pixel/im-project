@@ -22,6 +22,7 @@
 
       <!-- 右侧面板（桌面端可见） -->
       <aside class="moments-side-panel">
+        <!-- 个人发布卡 -->
         <div class="fresh-glass-card side-profile-card">
           <el-avatar :src="avatar" :size="64" class="side-avatar">
             {{ nickname?.[0] || 'U' }}
@@ -32,6 +33,36 @@
             <span>发布动态</span>
           </button>
         </div>
+
+        <!-- 今日概览 -->
+        <div class="fresh-glass-card side-stats-card">
+          <div class="side-section-title">今日概览</div>
+          <div class="side-stats-row">
+            <div class="side-stat">
+              <span class="side-stat-num">--</span>
+              <span class="side-stat-label">互动</span>
+            </div>
+            <div class="side-stat">
+              <span class="side-stat-num">--</span>
+              <span class="side-stat-label">照片</span>
+            </div>
+            <div class="side-stat">
+              <span class="side-stat-num">--</span>
+              <span class="side-stat-label">评论</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 最近互动 -->
+        <div class="fresh-glass-card side-activity-card">
+          <div class="side-section-title">最近互动</div>
+          <div class="side-activity-item">
+            <span class="side-activity-dot" />
+            <span class="side-activity-text">暂无最近互动</span>
+          </div>
+        </div>
+
+        <!-- 发布建议 -->
         <div class="fresh-glass-card side-tip-card">
           <p>分享你的生活瞬间</p>
           <p class="tip-muted">照片、文字、视频都可以发布到朋友圈</p>
@@ -39,8 +70,29 @@
       </aside>
     </div>
 
-    <!-- 发布动态抽屉 -->
-    <el-drawer v-model="showComposer" title="发布动态" :size="drawerSize" direction="btt">
+    <!-- 桌面端：居中弹窗 -->
+    <el-dialog
+      v-if="!isMobile"
+      v-model="showComposer"
+      title="发布动态"
+      :width="dialogWidth"
+      :close-on-click-modal="false"
+      destroy-on-close
+      class="composer-dialog"
+      append-to-body
+    >
+      <MomentsComposer @close="showComposer = false" />
+    </el-dialog>
+
+    <!-- 移动端：底部抽屉 -->
+    <el-drawer
+      v-if="isMobile"
+      v-model="showComposer"
+      title="发布动态"
+      :size="drawerSize"
+      direction="btt"
+      destroy-on-close
+    >
       <MomentsComposer @close="showComposer = false" />
     </el-drawer>
   </div>
@@ -59,6 +111,7 @@ import MomentsComposer from './MomentsComposer.vue'
 const showComposer = ref(false)
 const { isMobile } = useIsMobile()
 const drawerSize = computed(() => (isMobile.value ? '100vw' : 'min(400px, 100vw)'))
+const dialogWidth = computed(() => 'min(760px, 94vw)')
 
 const userStore = useUserStore()
 const momentsStore = useMomentsStore()
@@ -122,9 +175,8 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .moments-page-wrapper {
   width: 100%;
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
+  min-height: 100%;
+  display: block;
 }
 
 .moments-container {
@@ -134,35 +186,44 @@ onUnmounted(() => {
   min-height: 0;
   padding: 16px 20px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr) 336px;
   gap: 16px;
   align-items: start;
 }
 
 // 左侧主面板 — 玻璃卡片
 .moments-main-panel {
-  width: 100%;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--fresh-glass-bg);
-  border: 1px solid var(--fresh-glass-border);
-  border-radius: var(--fresh-radius-page);
+  width: 100%;
+  height: calc(100vh - 52px - 32px);
   overflow: hidden;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  box-shadow: var(--fresh-glass-shadow-soft);
   backdrop-filter: var(--fresh-blur);
   -webkit-backdrop-filter: var(--fresh-blur);
-  min-height: 0;
-}
-
-// 右侧面板 — 桌面端显示
-.moments-side-panel {
   display: flex;
   flex-direction: column;
-  align-self: start;
+}
+
+// 右侧面板
+.moments-side-panel {
+  width: 336px;
   position: sticky;
   top: 16px;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
-  // Do NOT set min-height, height, or flex:1
+}
+
+.side-section-title {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: rgba(24, 37, 31, 0.42);
+  font-weight: 700;
+  margin-bottom: 10px;
+  text-transform: uppercase;
 }
 
 .side-profile-card {
@@ -175,12 +236,14 @@ onUnmounted(() => {
 }
 
 .side-avatar {
-  border-radius: 16px;
+  border-radius: 18px;
+  border: 3px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 8px 20px rgba(22, 47, 37, 0.11);
 }
 
 .side-nickname {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 760;
   color: var(--fresh-text);
 }
 
@@ -204,6 +267,62 @@ onUnmounted(() => {
   }
 }
 
+// 今日概览卡片
+.side-stats-card {
+  padding: 18px 20px;
+}
+
+.side-stats-row {
+  display: flex;
+  gap: 0;
+}
+
+.side-stat {
+  flex: 1;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.side-stat-num {
+  font-size: 22px;
+  font-weight: 760;
+  color: var(--fresh-green);
+}
+
+.side-stat-label {
+  font-size: 12px;
+  color: var(--fresh-text-muted);
+}
+
+// 最近互动
+.side-activity-card {
+  padding: 18px 20px;
+}
+
+.side-activity-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.side-activity-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fresh-green);
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.side-activity-text {
+  font-size: 13px;
+  color: var(--fresh-text-muted);
+}
+
+// 发布建议
 .side-tip-card {
   padding: 18px 20px;
 
@@ -222,7 +341,7 @@ onUnmounted(() => {
   }
 }
 
-// topbar（保留原有 sticky 逻辑）
+// topbar
 .moments-topbar {
   position: sticky;
   top: 0;
@@ -236,6 +355,7 @@ onUnmounted(() => {
   border-bottom: 1px solid rgba(236, 236, 236, var(--topbar-border-opacity, 0));
   backdrop-filter: blur(var(--topbar-blur, 0px));
   -webkit-backdrop-filter: blur(var(--topbar-blur, 0px));
+  flex-shrink: 0;
 }
 
 .topbar-title {
@@ -271,7 +391,37 @@ onUnmounted(() => {
   min-height: 0;
 }
 
-// ── 窄屏/嵌入上下文 ──
+// 桌面端发布弹窗样式
+:deep(.composer-dialog) {
+  .el-dialog {
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 30px 90px rgba(10, 24, 18, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    overflow: hidden;
+  }
+
+  .el-dialog__header {
+    height: 58px;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    border-bottom: 1px solid rgba(24, 37, 31, 0.06);
+    margin: 0;
+
+    .el-dialog__title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--fresh-text);
+    }
+  }
+
+  .el-dialog__body {
+    padding: 0 20px 20px;
+  }
+}
+
+// 窄屏
 @media (max-width: 1100px) {
   .moments-container {
     grid-template-columns: 1fr;
@@ -283,7 +433,7 @@ onUnmounted(() => {
   }
 }
 
-// ── 移动端 ──
+// 移动端
 @media (max-width: 768px) {
   .moments-page-wrapper {
     background: var(--moments-bg);
@@ -297,11 +447,14 @@ onUnmounted(() => {
   }
 
   .moments-main-panel {
+    height: auto;
+    min-height: 100vh;
     border-radius: 0;
     border: none;
     background: var(--moments-bg);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+    box-shadow: none;
   }
 
   .moments-side-panel {

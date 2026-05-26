@@ -580,14 +580,15 @@ onMounted(() => {
 <style scoped lang="scss">
 .profile-page {
   min-height: 100%;
-  padding: var(--web-page-padding-y) var(--web-page-padding-x);
+  padding: 16px var(--web-page-padding-x);
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--fresh-page-bg);
 }
 
 .profile-shell {
-  width: min(var(--web-content-max), calc(100vw - var(--web-page-padding-x) * 2));
+  width: 100%;
+  max-width: var(--web-content-max);
   margin: 0 auto;
 }
 
@@ -634,9 +635,9 @@ onMounted(() => {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 22px;
-  margin-bottom: 12px;
-  padding: 16px 18px;
+  gap: 18px;
+  margin-bottom: 10px;
+  padding: 14px 16px;
 }
 
 .avatar-block {
