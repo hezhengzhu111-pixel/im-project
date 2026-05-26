@@ -1,8 +1,11 @@
 <template>
   <div class="wechat-composer" ref="shellRef">
     <div class="composer-toolbar">
-      <button class="toolbar-btn" title="表情" disabled>
+      <button class="toolbar-btn" title="表情" @click="() => {}">
         <el-icon><ChatDotRound /></el-icon>
+      </button>
+      <button class="toolbar-btn" title="图片" :disabled="disabled || uploading || isRecording" @click="selectImage">
+        <el-icon><Picture /></el-icon>
       </button>
       <button
         class="toolbar-btn"
@@ -431,6 +434,9 @@ onUnmounted(() => {
   background: var(--chat-composer-bg, var(--chat-panel-bg));
   border-top: 1px solid var(--chat-composer-border, var(--chat-panel-border));
   padding: var(--space-2, 8px) var(--space-4, 16px) var(--space-3, 12px);
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
 }
 
 .composer-toolbar {
