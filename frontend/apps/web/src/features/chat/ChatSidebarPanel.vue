@@ -59,7 +59,6 @@ import type { ChatSession, Friend, Group } from "@/types";
 interface Props {
   sessions: ChatSession[];
   loading?: boolean;
-  activeSessionId?: string;
   friends: Friend[];
   groups: Group[];
   pendingRequestsCount: number;
