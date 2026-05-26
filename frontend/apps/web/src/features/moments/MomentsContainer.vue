@@ -1,29 +1,48 @@
 <template>
-  <div class="moments-page-wrapper">
+  <div class="moments-page-wrapper fresh-page">
     <div class="moments-container">
-    <!-- 顶栏：sticky, 透明→实色 -->
-    <div ref="topbarRef" class="moments-topbar">
-      <span class="topbar-title">朋友圈</span>
-      <el-icon class="topbar-camera" @click="showComposer = true">
-        <Camera />
-      </el-icon>
-    </div>
+      <!-- 左侧主面板 -->
+      <div class="moments-main-panel">
+        <div ref="topbarRef" class="moments-topbar">
+          <span class="topbar-title">朋友圈</span>
+          <el-icon class="topbar-camera" @click="showComposer = true">
+            <Camera />
+          </el-icon>
+        </div>
 
-    <!-- 统一滚动区 -->
-    <div ref="scrollRef" class="moments-scroll" @scroll="handleScroll">
-      <MomentsCover
-        :cover-photo="coverPhoto"
-        :avatar="avatar"
-        :nickname="nickname"
-      />
-      <MomentsFeed />
+        <div ref="scrollRef" class="moments-scroll" @scroll="handleScroll">
+          <MomentsCover
+            :cover-photo="coverPhoto"
+            :avatar="avatar"
+            :nickname="nickname"
+          />
+          <MomentsFeed />
+        </div>
+      </div>
+
+      <!-- 右侧面板（桌面端可见） -->
+      <aside class="moments-side-panel">
+        <div class="fresh-glass-card side-profile-card">
+          <el-avatar :src="avatar" :size="64" class="side-avatar">
+            {{ nickname?.[0] || 'U' }}
+          </el-avatar>
+          <div class="side-nickname">{{ nickname || '用户' }}</div>
+          <button class="side-post-btn" @click="showComposer = true">
+            <el-icon><Camera /></el-icon>
+            <span>发布动态</span>
+          </button>
+        </div>
+        <div class="fresh-glass-card side-tip-card">
+          <p>分享你的生活瞬间</p>
+          <p class="tip-muted">照片、文字、视频都可以发布到朋友圈</p>
+        </div>
+      </aside>
     </div>
 
     <!-- 发布动态抽屉 -->
     <el-drawer v-model="showComposer" title="发布动态" :size="drawerSize" direction="btt">
       <MomentsComposer @close="showComposer = false" />
     </el-drawer>
-    </div>
   </div>
 </template>
 
@@ -103,31 +122,105 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .moments-page-wrapper {
   width: 100%;
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   justify-content: center;
-  background-color: #F0F0F0;
 }
 
 .moments-container {
-  width: 100%;
-  max-width: 600px;
+  width: min(1120px, 100%);
   height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--moments-bg);
-  border-left: 1px solid #ECECEC;
-  border-right: 1px solid #ECECEC;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.08);
-  position: relative;
-  overflow-x: hidden;
-  overflow-y: visible;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 720px) 320px;
+  gap: 20px;
+  background: transparent;
 }
 
+// 左侧主面板 — 玻璃卡片
+.moments-main-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--fresh-glass-bg);
+  border: 1px solid var(--fresh-glass-border);
+  border-radius: 24px;
+  overflow: hidden;
+  backdrop-filter: var(--fresh-blur);
+  -webkit-backdrop-filter: var(--fresh-blur);
+  min-height: 0;
+}
+
+// 右侧面板 — 桌面端显示
+.moments-side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.side-profile-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.side-avatar {
+  border-radius: 16px;
+}
+
+.side-nickname {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fresh-text);
+}
+
+.side-post-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  border: none;
+  border-radius: 20px;
+  background: linear-gradient(135deg, var(--fresh-green), var(--fresh-mint));
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(7, 193, 96, 0.22);
+  }
+}
+
+.side-tip-card {
+  padding: 18px 20px;
+
+  p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--fresh-text);
+    font-weight: 500;
+  }
+
+  .tip-muted {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--fresh-text-muted);
+    font-weight: 400;
+  }
+}
+
+// topbar（保留原有 sticky 逻辑）
 .moments-topbar {
   position: sticky;
   top: 0;
-  z-index: var(--z-sticky, 200);
+  z-index: 10;
   height: var(--moments-topbar-height);
   display: flex;
   align-items: center;
@@ -137,7 +230,6 @@ onUnmounted(() => {
   border-bottom: 1px solid rgba(236, 236, 236, var(--topbar-border-opacity, 0));
   backdrop-filter: blur(var(--topbar-blur, 0px));
   -webkit-backdrop-filter: blur(var(--topbar-blur, 0px));
-  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .topbar-title {
@@ -145,7 +237,6 @@ onUnmounted(() => {
   font-weight: 600;
   color: var(--text-inverse);
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
-  transition: color 0.15s ease, text-shadow 0.15s ease;
 }
 
 .topbar-camera {
@@ -155,16 +246,15 @@ onUnmounted(() => {
   color: var(--text-inverse);
   cursor: pointer;
   padding: 4px;
-  transition: color 0.15s ease;
 }
 
 .moments-topbar.is-solid {
   .topbar-title {
-    color: var(--text-primary);
+    color: var(--fresh-text);
     text-shadow: none;
   }
   .topbar-camera {
-    color: var(--text-primary);
+    color: var(--fresh-text);
   }
 }
 
@@ -172,18 +262,32 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  min-height: 0;
 }
 
+// ── 移动端 ──
 @media (max-width: 768px) {
   .moments-page-wrapper {
-    background-color: var(--moments-bg);
+    background: var(--moments-bg);
   }
 
   .moments-container {
     max-width: 100%;
-    border-left: none;
-    border-right: none;
-    box-shadow: none;
+    padding: 0;
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .moments-main-panel {
+    border-radius: 0;
+    border: none;
+    background: var(--moments-bg);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .moments-side-panel {
+    display: none;
   }
 
   .topbar-title {
