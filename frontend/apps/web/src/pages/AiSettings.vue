@@ -18,133 +18,137 @@
     </header>
 
     <main class="settings-content">
-      <!-- API Keys Section -->
-      <section class="settings-card">
-        <div class="settings-copy">
-          <div class="settings-kicker">Key</div>
-          <h2>{{ t("ai.apiKeys") }}</h2>
-          <p>{{ t("ai.apiKeysDesc") }}</p>
-        </div>
-      </section>
+      <div class="ai-main-column">
+        <!-- API Keys Section -->
+        <section class="settings-card ai-section ai-section--keys">
+          <div class="settings-copy">
+            <div class="settings-kicker">Key</div>
+            <h2>{{ t("ai.apiKeys") }}</h2>
+            <p>{{ t("ai.apiKeysDesc") }}</p>
+          </div>
+        </section>
 
-      <div
-        v-if="keys.length === 0 && !keyLoading"
-        class="settings-card empty-card"
-      >
-        <p>{{ t("ai.noKeys") }}</p>
+        <div
+          v-if="keys.length === 0 && !keyLoading"
+          class="settings-card empty-card ai-section ai-section--keys"
+        >
+          <p>{{ t("ai.noKeys") }}</p>
+        </div>
+
+        <section
+          v-for="item in keys"
+          :key="item.id"
+          class="settings-card key-card ai-section ai-section--keys"
+        >
+          <div class="settings-copy">
+            <div class="settings-kicker">{{ item.provider }}</div>
+            <h2>{{ item.keyName || item.maskedKey }}</h2>
+            <p>{{ item.maskedKey }}</p>
+          </div>
+          <div class="key-actions">
+            <span :class="['status-badge', item.validateStatus]">
+              {{ item.validateStatus || "unchecked" }}
+            </span>
+            <button
+              type="button"
+              class="flat-button small"
+              :disabled="testingId === item.id"
+              @click="testKey(item.id)"
+            >
+              {{
+                testingId === item.id ? t("ai.testing") : t("ai.testConnection")
+              }}
+            </button>
+            <button
+              type="button"
+              class="flat-button small"
+              @click="removeKey(item.id)"
+            >
+              {{ t("ai.deleteKey") }}
+            </button>
+          </div>
+        </section>
+
+        <section class="settings-card ai-section ai-section--add-key">
+          <div class="settings-copy">
+            <div class="settings-kicker">Add</div>
+            <h2>{{ t("ai.addKey") }}</h2>
+          </div>
+          <div class="add-key-form">
+            <div class="add-key-field">
+              <label>{{ t("ai.provider") }}</label>
+              <el-select v-model="newProvider" size="large" style="width: 100%">
+                <el-option label="DeepSeek" value="deepseek" />
+                <el-option label="MiniMax" value="minimax" />
+                <el-option label="OpenAI" value="openai" />
+              </el-select>
+            </div>
+            <div class="add-key-field">
+              <label>{{ t("ai.apiKeyInput") }}</label>
+              <el-input
+                v-model="newApiKey"
+                :placeholder="'sk-...'"
+                type="password"
+                show-password
+                size="large"
+                @keyup.enter="addKey"
+              />
+            </div>
+            <div class="add-key-field">
+              <label
+                >{{ t("ai.keyName") }}
+                <span class="optional">({{ t("common.optional") }})</span></label
+              >
+              <el-input
+                v-model="newKeyName"
+                :placeholder="t('ai.keyNamePlaceholder')"
+                size="large"
+              />
+            </div>
+            <button
+              type="button"
+              class="flat-button"
+              :disabled="!canAdd"
+              @click="addKey"
+            >
+              {{ t("ai.save") }}
+            </button>
+          </div>
+        </section>
       </div>
 
-      <section
-        v-for="item in keys"
-        :key="item.id"
-        class="settings-card key-card"
-      >
-        <div class="settings-copy">
-          <div class="settings-kicker">{{ item.provider }}</div>
-          <h2>{{ item.keyName || item.maskedKey }}</h2>
-          <p>{{ item.maskedKey }}</p>
-        </div>
-        <div class="key-actions">
-          <span :class="['status-badge', item.validateStatus]">
-            {{ item.validateStatus || "unchecked" }}
-          </span>
-          <button
-            type="button"
-            class="flat-button small"
-            :disabled="testingId === item.id"
-            @click="testKey(item.id)"
-          >
-            {{
-              testingId === item.id ? t("ai.testing") : t("ai.testConnection")
-            }}
-          </button>
-          <button
-            type="button"
-            class="flat-button small"
-            @click="removeKey(item.id)"
-          >
-            {{ t("ai.deleteKey") }}
-          </button>
-        </div>
-      </section>
-
-      <section class="settings-card">
-        <div class="settings-copy">
-          <div class="settings-kicker">Add</div>
-          <h2>{{ t("ai.addKey") }}</h2>
-        </div>
-        <div class="add-key-form">
-          <div class="add-key-field">
-            <label>{{ t("ai.provider") }}</label>
-            <el-select v-model="newProvider" size="large" style="width: 100%">
-              <el-option label="DeepSeek" value="deepseek" />
-              <el-option label="MiniMax" value="minimax" />
-              <el-option label="OpenAI" value="openai" />
-            </el-select>
+      <div class="ai-side-column">
+        <!-- Auto Reply Section -->
+        <section class="settings-card ai-section ai-section--auto-reply">
+          <div class="settings-copy">
+            <div class="settings-kicker">Auto</div>
+            <h2>{{ t("ai.autoReply") }}</h2>
+            <p>{{ t("ai.autoReplyDesc") }}</p>
           </div>
-          <div class="add-key-field">
-            <label>{{ t("ai.apiKeyInput") }}</label>
-            <el-input
-              v-model="newApiKey"
-              :placeholder="'sk-...'"
-              type="password"
-              show-password
-              size="large"
-              @keyup.enter="addKey"
-            />
-          </div>
-          <div class="add-key-field">
-            <label
-              >{{ t("ai.keyName") }}
-              <span class="optional">({{ t("common.optional") }})</span></label
-            >
-            <el-input
-              v-model="newKeyName"
-              :placeholder="t('ai.keyNamePlaceholder')"
-              size="large"
-            />
-          </div>
-          <button
-            type="button"
-            class="flat-button"
-            :disabled="!canAdd"
-            @click="addKey"
-          >
-            {{ t("ai.save") }}
-          </button>
-        </div>
-      </section>
-
-      <!-- Auto Reply Section -->
-      <section class="settings-card">
-        <div class="settings-copy">
-          <div class="settings-kicker">Auto</div>
-          <h2>{{ t("ai.autoReply") }}</h2>
-          <p>{{ t("ai.autoReplyDesc") }}</p>
-        </div>
-        <el-switch
-          v-model="autoReplyEnabled"
-          size="large"
-          @change="updateAutoReply"
-        />
-      </section>
-
-      <section v-if="autoReplyEnabled" class="settings-card">
-        <div class="settings-copy" style="flex: 1">
-          <div class="settings-kicker">Persona</div>
-          <h2>{{ t("ai.autoReplyPersona") }}</h2>
-          <p>{{ t("ai.autoReplyPersonaHint") }}</p>
-        </div>
-        <div style="width: 100%; margin-top: 12px">
-          <el-input
-            v-model="autoReplyPersona"
-            type="textarea"
-            :rows="4"
-            :placeholder="t('ai.autoReplyPersonaPlaceholder')"
-            @input="onPersonaInput"
+          <el-switch
+            v-model="autoReplyEnabled"
+            size="large"
+            @change="updateAutoReply"
           />
-        </div>
-      </section>
+        </section>
+
+        <section v-if="autoReplyEnabled" class="settings-card ai-section ai-section--auto-reply">
+          <div class="settings-copy" style="flex: 1">
+            <div class="settings-kicker">Persona</div>
+            <h2>{{ t("ai.autoReplyPersona") }}</h2>
+            <p>{{ t("ai.autoReplyPersonaHint") }}</p>
+          </div>
+          <div style="width: 100%; margin-top: 12px">
+            <el-input
+              v-model="autoReplyPersona"
+              type="textarea"
+              :rows="4"
+              :placeholder="t('ai.autoReplyPersonaPlaceholder')"
+              @input="onPersonaInput"
+            />
+          </div>
+        </section>
+      </div>
     </main>
   </div>
 </template>
@@ -286,7 +290,7 @@ onMounted(() => {
 .ai-settings-page {
   min-height: 100vh;
   padding: 28px;
-  max-width: 1120px;
+  max-width: 1180px;
   margin: 0 auto;
   background: var(--fresh-page-bg);
 }
@@ -295,7 +299,8 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
+  height: 60px;
 
   .hero-actions {
     flex-shrink: 0;
@@ -341,8 +346,16 @@ onMounted(() => {
 
 .settings-content {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 18px;
+  align-items: start;
+}
+
+.ai-main-column,
+.ai-side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .settings-card {
@@ -351,7 +364,7 @@ onMounted(() => {
   gap: 16px;
   background: var(--fresh-glass-bg);
   border: 1px solid var(--fresh-glass-border);
-  border-radius: 22px;
+  border-radius: var(--fresh-radius-page);
   padding: 20px;
   flex-wrap: wrap;
   box-shadow: var(--fresh-glass-shadow-soft);
@@ -474,6 +487,12 @@ onMounted(() => {
     font-weight: 400;
     color: var(--chat-text-quaternary);
     font-size: 12px;
+  }
+}
+
+@media (max-width: 860px) {
+  .settings-content {
+    grid-template-columns: 1fr;
   }
 }
 
