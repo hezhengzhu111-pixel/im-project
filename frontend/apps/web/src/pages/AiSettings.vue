@@ -285,9 +285,10 @@ onMounted(() => {
 <style lang="scss" scoped>
 .ai-settings-page {
   min-height: 100vh;
-  padding: 24px;
-  max-width: 860px;
+  padding: 28px;
+  max-width: 1120px;
   margin: 0 auto;
+  background: var(--fresh-page-bg);
 }
 
 .settings-hero {
@@ -322,9 +323,11 @@ onMounted(() => {
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  border: none;
-  background: var(--chat-panel-bg);
-  color: var(--chat-text-primary);
+  border: 1px solid var(--fresh-glass-border);
+  background: var(--fresh-glass-bg);
+  backdrop-filter: var(--fresh-blur);
+  -webkit-backdrop-filter: var(--fresh-blur);
+  color: var(--fresh-text);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -332,7 +335,7 @@ onMounted(() => {
   font-size: 20px;
 
   &:hover {
-    background: var(--chat-bubble-other);
+    background: var(--fresh-glass-bg-strong);
   }
 }
 
@@ -346,11 +349,14 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 16px;
-  background: var(--chat-panel-bg);
-  border: 1px solid var(--chat-panel-border);
-  border-radius: 16px;
+  background: var(--fresh-glass-bg);
+  border: 1px solid var(--fresh-glass-border);
+  border-radius: 22px;
   padding: 20px;
   flex-wrap: wrap;
+  box-shadow: var(--fresh-glass-shadow-soft);
+  backdrop-filter: var(--fresh-blur);
+  -webkit-backdrop-filter: var(--fresh-blur);
 
   &.key-card {
     padding-bottom: 12px;
@@ -366,7 +372,7 @@ onMounted(() => {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--chat-accent);
+    color: var(--fresh-green);
     margin-bottom: 4px;
   }
 
@@ -431,7 +437,7 @@ onMounted(() => {
   white-space: nowrap;
 
   &:hover:not(:disabled) {
-    background: var(--chat-accent);
+    background: linear-gradient(135deg, var(--fresh-green), var(--fresh-mint));
     color: #fff;
   }
 
