@@ -53,7 +53,6 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SecurityPanel: typeof import('./src/components/security/SecurityPanel.vue')['default']
-    SideNavBar: typeof import('./src/components/layout/SideNavBar.vue')['default']
     SkeletonList: typeof import('./src/components/common/SkeletonList.vue')['default']
   }
   export interface ComponentCustomProperties {
