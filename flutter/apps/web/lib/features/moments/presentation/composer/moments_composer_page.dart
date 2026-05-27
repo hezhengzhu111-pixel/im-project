@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/di/providers.dart';
-import '../feed/moments_feed_provider.dart';
 import 'composer_provider.dart';
 import 'widgets/media_upload_grid.dart';
 import 'widgets/visibility_picker.dart';

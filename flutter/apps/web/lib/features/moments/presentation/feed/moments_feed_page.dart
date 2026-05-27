@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'moments_feed_provider.dart';
+import '../../../../core/di/providers.dart';
 import 'widgets/post_card.dart';
 
 class MomentsFeedPage extends ConsumerStatefulWidget {

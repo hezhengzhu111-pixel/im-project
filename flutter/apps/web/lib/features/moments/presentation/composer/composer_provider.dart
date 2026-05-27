@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/di/providers.dart';
 import '../../data/moments_repository.dart';
 import 'widgets/visibility_picker.dart';
 
@@ -100,7 +99,3 @@ class ComposerNotifier extends StateNotifier<ComposerState> {
     }
   }
 }
-
-final composerProvider = StateNotifierProvider<ComposerNotifier, ComposerState>((ref) {
-  return ComposerNotifier(ref.watch(momentsRepositoryProvider));
-});

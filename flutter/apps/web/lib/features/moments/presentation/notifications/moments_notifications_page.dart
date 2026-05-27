@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
-import 'notifications_provider.dart';
+import '../../../../core/di/providers.dart';
 
 class MomentsNotificationsPage extends ConsumerStatefulWidget {
   const MomentsNotificationsPage({super.key});
