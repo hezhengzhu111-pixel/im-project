@@ -27,6 +27,16 @@ class MomentsNotifier extends StateNotifier<MomentsState> {
     state = MomentsState(posts: posts);
   }
 
+  Future<void> createPost(String content) async {
+    state = state.copyWith(isLoading: true);
+    try {
+      await _api.createPost(content);
+      await loadFeed();
+    } catch (e) {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
   Future<void> toggleLike(String postId, bool isLiked) async {
     if (isLiked) {
       await _api.unlikePost(postId);

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/features/auth/presentation/login_page.dart';
 import 'package:im_web/features/auth/presentation/register_page.dart';
 import 'package:im_web/features/chat/presentation/chat_page.dart';
@@ -7,23 +9,42 @@ import 'package:im_web/features/contacts/presentation/contacts_page.dart';
 import 'package:im_web/features/moments/presentation/moments_page.dart';
 import 'package:im_web/features/settings/presentation/settings_page.dart';
 
-final appRouter = GoRouter(
-  initialLocation: '/chat',
-  routes: [
-    GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
-    GoRoute(path: '/register', builder: (_, __) => const RegisterPage()),
-    ShellRoute(
-      builder: (_, __, child) => MainLayout(child: child),
-      routes: [
-        GoRoute(path: '/chat', builder: (_, __) => const ChatPage()),
-        GoRoute(path: '/contacts', builder: (_, __) => const ContactsPage()),
-        GoRoute(path: '/moments', builder: (_, __) => const MomentsPage()),
-        GoRoute(
-            path: '/settings', builder: (_, __) => const SettingsPage()),
-      ],
-    ),
-  ],
-);
+final routerProvider = Provider<GoRouter>((ref) {
+  final authState = ref.watch(authStateProvider);
+
+  return GoRouter(
+    initialLocation: '/chat',
+    redirect: (context, state) {
+      final isAuth = authState.isAuthenticated;
+      final isLoginRoute = state.uri.path == '/login' ||
+          state.uri.path == '/register';
+
+      // If not authenticated and not on auth pages, redirect to login
+      if (!isAuth && !isLoginRoute) return '/login';
+
+      // If authenticated and on auth pages, redirect to chat
+      if (isAuth && isLoginRoute) return '/chat';
+
+      return null;
+    },
+    routes: [
+      GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
+      GoRoute(path: '/register', builder: (_, __) => const RegisterPage()),
+      ShellRoute(
+        builder: (_, __, child) => MainLayout(child: child),
+        routes: [
+          GoRoute(path: '/chat', builder: (_, __) => const ChatPage()),
+          GoRoute(
+              path: '/contacts', builder: (_, __) => const ContactsPage()),
+          GoRoute(
+              path: '/moments', builder: (_, __) => const MomentsPage()),
+          GoRoute(
+              path: '/settings', builder: (_, __) => const SettingsPage()),
+        ],
+      ),
+    ],
+  );
+});
 
 class MainLayout extends StatelessWidget {
   const MainLayout({required this.child, super.key});

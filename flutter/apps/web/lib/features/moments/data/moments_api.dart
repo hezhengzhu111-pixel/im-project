@@ -26,6 +26,15 @@ class MomentsApi {
     await _httpClient.delete<void>(MomentsEndpoints.unlike(postId), fromJson: (_) {});
   }
 
+  Future<MomentPost> createPost(String content) async {
+    final response = await _httpClient.post<MomentPost>(
+      MomentsEndpoints.create,
+      body: {'content': content},
+      fromJson: MomentPost.fromJson,
+    );
+    return response.data;
+  }
+
   Future<MomentComment> addComment(String postId, String content) async {
     final response = await _httpClient.post<MomentComment>(
       MomentsEndpoints.createComment(postId),
