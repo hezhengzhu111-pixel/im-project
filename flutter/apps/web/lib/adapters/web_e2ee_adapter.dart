@@ -10,6 +10,15 @@ class WebE2eeAdapter implements E2eeService {
     return await frb.generateKeyBundle(otkCount: otkCount);
   }
 
+  /// Generate key bundle and return as JSON with base64-encoded fields.
+  /// Returns a map with: identity_key_pair_bincode, signing_public_key,
+  /// signing_private_key_bytes, signed_pre_key_pair_bincode, signed_pre_key_id,
+  /// public_bundle, otk_pairs.
+  Future<Map<String, dynamic>> generateKeyBundleJson(int otkCount) async {
+    final result = await frb.generateKeyBundleJson(otkCount: otkCount);
+    return jsonDecode(result) as Map<String, dynamic>;
+  }
+
   @override
   Future<Uint8List> x3dhInitiate(
     Uint8List identityKey,
