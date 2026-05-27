@@ -19,8 +19,13 @@ import '../../features/settings/presentation/ai_settings_provider.dart';
 import '../../features/settings/presentation/profile_provider.dart';
 import '../../features/group/data/group_api.dart';
 import '../../features/group/presentation/group_provider.dart';
-import '../../features/e2ee/presentation/e2ee_provider.dart';
 import '../../features/chat/data/file_api.dart';
+import '../../adapters/web_e2ee_adapter.dart';
+import '../../features/e2ee/data/e2ee_api.dart';
+import '../../features/e2ee/data/e2ee_key_store.dart';
+import '../../features/e2ee/data/e2ee_session_store.dart';
+import '../../features/e2ee/data/e2ee_meta_store.dart';
+import '../../features/e2ee/data/e2ee_manager.dart';
 import '../../core/error/error_notifier.dart';
 
 // Storage
@@ -128,3 +133,45 @@ final languageProvider = StateProvider<String>((ref) => 'zh');
 
 // Theme
 final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.system);
+
+// E2EE
+final e2eeAdapterProvider = Provider<WebE2eeAdapter>((ref) {
+  return WebE2eeAdapter();
+});
+
+final e2eeApiProvider = Provider<E2eeApi>((ref) {
+  return E2eeApi(ref.watch(httpClientProvider));
+});
+
+final e2eeKeyStoreProvider = Provider<E2eeKeyStore>((ref) {
+  final store = E2eeKeyStore();
+  ref.onDispose(() => store.dispose());
+  return store;
+});
+
+final e2eeSessionStoreProvider = Provider<E2eeSessionStore>((ref) {
+  final store = E2eeSessionStore();
+  ref.onDispose(() => store.dispose());
+  return store;
+});
+
+final e2eeMetaStoreProvider = Provider<E2eeMetaStore>((ref) {
+  return E2eeMetaStore(ref.watch(secureStorageProvider));
+});
+
+final e2eeManagerProvider = Provider<E2eeManager>((ref) {
+  final authState = ref.watch(authStateProvider);
+  return E2eeManager(
+    adapter: ref.watch(e2eeAdapterProvider),
+    api: ref.watch(e2eeApiProvider),
+    keyStore: ref.watch(e2eeKeyStoreProvider),
+    sessionStore: ref.watch(e2eeSessionStoreProvider),
+    metaStore: ref.watch(e2eeMetaStoreProvider),
+    currentUserId: authState.user?.id ?? '',
+  );
+});
+
+final e2eeSessionStatusProvider = FutureProvider.family<String, String>((ref, sessionId) async {
+  final metaStore = ref.watch(e2eeMetaStoreProvider);
+  return metaStore.getSessionStatus(sessionId);
+});
