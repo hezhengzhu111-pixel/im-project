@@ -2,6 +2,7 @@ library im_core;
 
 export 'src/models/models.dart';
 export 'src/contracts/contracts.dart';
+export 'src/contracts/msg_type.dart';
 export 'src/network/network.dart';
 export 'src/storage/storage.dart';
 export 'src/auth/auth.dart';
