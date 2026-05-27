@@ -8,11 +8,50 @@ class SettingsNotifier extends StateNotifier<UserSettings?> {
   final SettingsApi _api;
 
   Future<void> loadSettings() async {
-    state = await _api.getSettings();
+    try {
+      state = await _api.getSettings();
+    } catch (_) {
+      // Keep current state
+    }
   }
 
-  Future<void> updateSettings(UserSettings settings) async {
-    await _api.updateSettings(settings);
-    state = settings;
+  Future<void> updatePrivacySettings(PrivacySettings privacy) async {
+    final current = state;
+    if (current == null) return;
+    state = current.copyWith(privacy: privacy);
+    try {
+      await _api.updateSettings('privacy', privacy.toJson());
+    } catch (e) {
+      state = current;
+      rethrow;
+    }
+  }
+
+  Future<void> updateMessageSettings(MessagePreferenceSettings message) async {
+    final current = state;
+    if (current == null) return;
+    state = current.copyWith(message: message);
+    try {
+      await _api.updateSettings('message', message.toJson());
+    } catch (e) {
+      state = current;
+      rethrow;
+    }
+  }
+
+  Future<void> updateGeneralSettings(GeneralSettings general) async {
+    final current = state;
+    if (current == null) return;
+    state = current.copyWith(general: general);
+    try {
+      await _api.updateSettings('general', general.toJson());
+    } catch (e) {
+      state = current;
+      rethrow;
+    }
+  }
+
+  void clearCache() {
+    // Clear web local storage items
   }
 }

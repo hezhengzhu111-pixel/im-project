@@ -12,7 +12,10 @@ import '../../features/contacts/presentation/contacts_provider.dart';
 import '../../features/moments/data/moments_api.dart';
 import '../../features/moments/presentation/moments_provider.dart';
 import '../../features/settings/data/settings_api.dart';
+import '../../features/settings/data/ai_api.dart';
 import '../../features/settings/presentation/settings_provider.dart';
+import '../../features/settings/presentation/ai_settings_provider.dart';
+import '../../features/settings/presentation/profile_provider.dart';
 import '../../features/group/data/group_api.dart';
 import '../../features/group/presentation/group_provider.dart';
 import '../../features/chat/data/file_api.dart';
@@ -102,6 +105,17 @@ final errorProvider = StateNotifierProvider<ErrorNotifier, ErrorState>((ref) {
 // File
 final fileApiProvider = Provider<FileApi>((ref) {
   return FileApi(ref.watch(httpClientProvider));
+});
+
+// AI
+final aiApiProvider = Provider<AiApi>((ref) => AiApi(ref.watch(httpClientProvider)));
+final aiSettingsStateProvider = StateNotifierProvider<AiSettingsNotifier, AiSettingsState>((ref) {
+  return AiSettingsNotifier(ref.watch(aiApiProvider));
+});
+
+// Profile
+final profileStateProvider = StateNotifierProvider<ProfileNotifier, ProfileState>((ref) {
+  return ProfileNotifier(ref.watch(settingsApiProvider));
 });
 
 // Language
