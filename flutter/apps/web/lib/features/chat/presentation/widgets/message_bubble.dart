@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:im_core/core.dart';
+import 'image_bubble.dart';
+import 'file_bubble.dart';
+import 'voice_bubble.dart';
+import 'video_bubble.dart';
 
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
@@ -44,57 +48,7 @@ class MessageBubble extends StatelessWidget {
               const SizedBox(width: 8),
             ],
             Flexible(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isMe
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(18),
-                    topRight: const Radius.circular(18),
-                    bottomLeft: Radius.circular(isMe ? 18 : 4),
-                    bottomRight: Radius.circular(isMe ? 4 : 18),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      message.content,
-                      style: TextStyle(
-                        color: isMe
-                            ? theme.colorScheme.onPrimary
-                            : theme.colorScheme.onSurface,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _formatTime(message.sendTime),
-                          style: TextStyle(
-                            color: isMe
-                                ? theme.colorScheme.onPrimary.withAlpha(170)
-                                : theme.colorScheme.onSurfaceVariant,
-                            fontSize: 11,
-                          ),
-                        ),
-                        if (isMe) ...[
-                          const SizedBox(width: 4),
-                          Icon(
-                            _statusIcon(message.status),
-                            size: 14,
-                            color: theme.colorScheme.onPrimary.withAlpha(170),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+              child: _buildMessageContent(context),
             ),
             if (isMe) ...[
               const SizedBox(width: 8),
@@ -115,6 +69,77 @@ class MessageBubble extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildMessageContent(BuildContext context) {
+    final theme = Theme.of(context);
+    final isMedia = switch (message.messageType.toUpperCase()) {
+      'IMAGE' || 'FILE' || 'VOICE' || 'VIDEO' => true,
+      _ => false,
+    };
+
+    return Container(
+      padding: isMedia
+          ? const EdgeInsets.all(4)
+          : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: isMedia
+          ? null
+          : BoxDecoration(
+              color: isMe
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(18),
+                topRight: const Radius.circular(18),
+                bottomLeft: Radius.circular(isMe ? 18 : 4),
+                bottomRight: Radius.circular(isMe ? 4 : 18),
+              ),
+            ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          switch (message.messageType.toUpperCase()) {
+            'IMAGE' => ImageBubble(message: message, isMe: isMe),
+            'FILE' => FileBubble(message: message, isMe: isMe),
+            'VOICE' => VoiceBubble(message: message, isMe: isMe),
+            'VIDEO' => VideoBubble(message: message, isMe: isMe),
+            _ => Text(
+                message.content,
+                style: TextStyle(
+                  color: isMe
+                      ? theme.colorScheme.onPrimary
+                      : theme.colorScheme.onSurface,
+                  fontSize: 15,
+                ),
+              ),
+          },
+          const SizedBox(height: 4),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _formatTime(message.sendTime),
+                style: TextStyle(
+                  color: isMe
+                      ? theme.colorScheme.onPrimary.withAlpha(170)
+                      : theme.colorScheme.onSurfaceVariant,
+                  fontSize: 11,
+                ),
+              ),
+              if (isMe) ...[
+                const SizedBox(width: 4),
+                Icon(
+                  _statusIcon(message.status),
+                  size: 14,
+                  color: theme.colorScheme.onPrimary.withAlpha(170),
+                ),
+              ],
+            ],
+          ),
+        ],
       ),
     );
   }
