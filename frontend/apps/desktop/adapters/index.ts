@@ -8,10 +8,10 @@ import type {
 } from "@im/shared-platform-ports";
 
 import { TauriSecureStorageAdapter } from "./storage.adapter";
-import { NotImplementedHttpAdapter } from "./http.adapter";
+import { TauriHttpClientAdapter } from "./http.adapter";
 import { NotImplementedNotifierAdapter } from "./notifier.adapter";
-import { NotImplementedLifecycleAdapter } from "./lifecycle.adapter";
-import { NotImplementedNetworkAdapter } from "./network.adapter";
+import { TauriLifecycleAdapter } from "./lifecycle.adapter";
+import { TauriNetworkStatusAdapter } from "./network.adapter";
 import { DateClockAdapter } from "./clock.adapter";
 
 export interface PlatformAdapters {
@@ -28,10 +28,10 @@ let adapters: PlatformAdapters | null = null;
 export function registerAdapters(): PlatformAdapters {
   adapters = {
     secureStorage: new TauriSecureStorageAdapter(),
-    httpClient: new NotImplementedHttpAdapter(),
+    httpClient: new TauriHttpClientAdapter(),
     notifier: new NotImplementedNotifierAdapter(),
-    lifecycle: new NotImplementedLifecycleAdapter(),
-    networkStatus: new NotImplementedNetworkAdapter(),
+    lifecycle: new TauriLifecycleAdapter(),
+    networkStatus: new TauriNetworkStatusAdapter(),
     clock: new DateClockAdapter(),
   };
   return adapters;
