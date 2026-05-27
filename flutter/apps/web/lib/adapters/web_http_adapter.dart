@@ -5,8 +5,7 @@ class WebHttpClient implements HttpClientPort {
   WebHttpClient({
     required String baseUrl,
     required SecureStoragePort secureStorage,
-  })  : _dio = Dio(BaseOptions(baseUrl: baseUrl)),
-        _secureStorage = secureStorage {
+  }) : _dio = Dio(BaseOptions(baseUrl: baseUrl)) {
     _dio.interceptors.addAll([
       _AuthInterceptor(secureStorage),
       LogInterceptor(requestBody: true, responseBody: true),
@@ -14,7 +13,6 @@ class WebHttpClient implements HttpClientPort {
   }
 
   final Dio _dio;
-  final SecureStoragePort _secureStorage;
 
   @override
   Future<ApiResponse<T>> get<T>(

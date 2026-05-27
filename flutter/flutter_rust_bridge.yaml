@@ -1,0 +1,3 @@
+rust_input: crate::api
+rust_root: native/rust/
+dart_output: packages/core/lib/src/generated
