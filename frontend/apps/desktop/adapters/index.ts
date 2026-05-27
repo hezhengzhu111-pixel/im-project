@@ -9,7 +9,7 @@ import type {
 
 import { TauriSecureStorageAdapter } from "./storage.adapter";
 import { TauriHttpClientAdapter } from "./http.adapter";
-import { NotImplementedNotifierAdapter } from "./notifier.adapter";
+import { TauriNotifierAdapter } from "./notifier.adapter";
 import { TauriLifecycleAdapter } from "./lifecycle.adapter";
 import { TauriNetworkStatusAdapter } from "./network.adapter";
 import { DateClockAdapter } from "./clock.adapter";
@@ -29,7 +29,7 @@ export function registerAdapters(): PlatformAdapters {
   adapters = {
     secureStorage: new TauriSecureStorageAdapter(),
     httpClient: new TauriHttpClientAdapter(),
-    notifier: new NotImplementedNotifierAdapter(),
+    notifier: new TauriNotifierAdapter(),
     lifecycle: new TauriLifecycleAdapter(),
     networkStatus: new TauriNetworkStatusAdapter(),
     clock: new DateClockAdapter(),
