@@ -124,6 +124,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
           ? (message.groupId ?? '')
           : message.senderId;
       addMessage(sessionKey, message);
+
+      // Auto mark read if viewing this session
+      if (state.activeSessionId == sessionKey) {
+        markRead(sessionKey);
+      }
     } catch (e) {
       print('Failed to handle incoming message: $e');
     }
@@ -300,6 +305,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   void setActiveSession(String sessionId) {
     state = state.copyWith(activeSessionId: sessionId);
+    markRead(sessionId);
   }
 
   Future<void> loadMessages(String targetId, {int? page, int? size}) async {
