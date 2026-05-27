@@ -15,17 +15,20 @@ async fn main() {
         .manage(e2ee::E2eeManager::new())
         .setup(|app| {
             // Create system tray
-            commands::tray::create_tray(app.handle())
-                .expect("failed to create tray icon");
+            if let Err(e) = commands::tray::create_tray(app.handle()) {
+                eprintln!("[setup] Failed to create tray: {e}");
+            }
 
             // Register global shortcuts
-            commands::shortcut::register_shortcuts(app.handle())
-                .expect("failed to register shortcuts");
+            if let Err(e) = commands::shortcut::register_shortcuts(app.handle()) {
+                eprintln!("[setup] Failed to register shortcuts: {e}");
+            }
 
             // Set up file drag-and-drop on the main window
             if let Some(window) = app.get_webview_window("main") {
-                commands::drag::setup_drag_drop(&window)
-                    .expect("failed to set up drag-drop handler");
+                if let Err(e) = commands::drag::setup_drag_drop(&window) {
+                    eprintln!("[setup] Failed to set up drag-drop: {e}");
+                }
             }
 
             Ok(())
