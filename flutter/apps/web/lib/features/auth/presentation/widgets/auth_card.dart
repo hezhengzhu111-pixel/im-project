@@ -24,7 +24,7 @@ class AuthCard extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.all(ResponsiveLayout.getCardPadding(context)),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 400),
+          constraints: BoxConstraints(maxWidth: ResponsiveLayout.getMaxWidth(context)),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
