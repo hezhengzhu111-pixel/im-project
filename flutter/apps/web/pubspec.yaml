@@ -7,8 +7,13 @@ publish_to: none
 environment:
   sdk: '>=3.3.0 <4.0.0'
 
+flutter:
+  generate: true
+
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
   im_core:
     path: ../../packages/core
