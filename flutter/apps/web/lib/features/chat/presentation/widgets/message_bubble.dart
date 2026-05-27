@@ -134,7 +134,9 @@ class MessageBubble extends StatelessWidget {
                 Icon(
                   _statusIcon(message.status),
                   size: 14,
-                  color: theme.colorScheme.onPrimary.withAlpha(170),
+                  color: message.status == 'READ'
+                      ? Colors.blue
+                      : theme.colorScheme.onPrimary.withAlpha(170),
                 ),
               ],
             ],
