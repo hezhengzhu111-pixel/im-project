@@ -4,6 +4,12 @@ import 'package:im_core/core.dart';
 import 'package:im_web/features/chat/data/message_api.dart';
 import 'package:im_web/features/chat/data/message_pipeline.dart';
 import 'package:im_web/features/chat/presentation/chat_provider.dart';
+import 'package:im_web/features/e2ee/data/e2ee_manager.dart';
+import 'package:im_web/features/e2ee/data/e2ee_meta_store.dart';
+import 'package:im_web/features/e2ee/data/e2ee_api.dart';
+import 'package:im_web/features/e2ee/data/e2ee_key_store.dart';
+import 'package:im_web/features/e2ee/data/e2ee_session_store.dart';
+import 'package:im_web/adapters/web_e2ee_adapter.dart';
 
 /// Mock HttpClientPort for testing
 class MockHttpClient implements HttpClientPort {
@@ -77,6 +83,25 @@ class TestMessageApi extends MessageApi {
   }
 }
 
+/// Mock SecureStoragePort for testing
+class MockSecureStoragePort implements SecureStoragePort {
+  final _storage = <String, String?>{};
+
+  @override
+  Future<String?> read(String key) async => _storage[key];
+
+  @override
+  Future<void> write(String key, String value) async => _storage[key] = value;
+
+  @override
+  Future<void> delete(String key) async => _storage.remove(key);
+}
+
+/// Mock E2eeMetaStore for testing
+class MockE2eeMetaStore extends E2eeMetaStore {
+  MockE2eeMetaStore() : super(MockSecureStoragePort());
+}
+
 /// Mock WsClientPort for testing
 class MockWsClientPort implements WsClientPort {
   final _eventsController = StreamController<WsEvent>.broadcast();
@@ -113,11 +138,26 @@ void main() {
   late TestMessageApi mockApi;
   late ChatNotifier notifier;
   late MockWsClientPort mockWsClient;
+  late MockE2eeMetaStore mockE2eeMetaStore;
 
   setUp(() {
     mockApi = TestMessageApi();
     mockWsClient = MockWsClientPort();
-    notifier = ChatNotifier(mockApi, MessagePipeline(), mockWsClient);
+    mockE2eeMetaStore = MockE2eeMetaStore();
+    // Create a minimal E2eeManager for testing.
+    // In plaintext mode, no E2EE methods are actually called.
+    final e2eeManager = E2eeManager(
+      adapter: WebE2eeAdapter(),
+      api: E2eeApi(MockHttpClient()),
+      keyStore: E2eeKeyStore(),
+      sessionStore: E2eeSessionStore(),
+      metaStore: mockE2eeMetaStore,
+      currentUserId: 'test-user-id',
+    );
+    notifier = ChatNotifier(
+      mockApi, MessagePipeline(), mockWsClient, () => 'test-user-id',
+      e2eeManager, mockE2eeMetaStore,
+    );
   });
 
   tearDown(() {

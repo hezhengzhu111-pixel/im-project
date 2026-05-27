@@ -11,7 +11,9 @@ import '../../features/contacts/data/contacts_api.dart';
 import '../../features/contacts/presentation/contacts_provider.dart';
 import '../../features/moments/data/moments_api.dart';
 import '../../features/moments/data/moments_repository.dart';
-import '../../features/moments/presentation/moments_provider.dart';
+import '../../features/moments/presentation/feed/moments_feed_provider.dart';
+import '../../features/moments/presentation/composer/composer_provider.dart';
+import '../../features/moments/presentation/notifications/notifications_provider.dart';
 import '../../features/settings/data/settings_api.dart';
 import '../../features/settings/data/ai_api.dart';
 import '../../features/settings/presentation/settings_provider.dart';
@@ -74,6 +76,8 @@ final chatStateProvider = StateNotifierProvider<ChatNotifier, ChatState>((ref) {
     MessagePipeline(),
     ref.watch(wsClientProvider),
     () => ref.read(authStateProvider).user?.id ?? '',
+    ref.watch(e2eeManagerProvider),
+    ref.watch(e2eeMetaStoreProvider),
   );
 });
 
@@ -88,8 +92,14 @@ final momentsApiProvider = Provider<MomentsApi>((ref) => MomentsApi(ref.watch(ht
 final momentsRepositoryProvider = Provider<MomentsRepository>((ref) {
   return MomentsRepository(ref.watch(momentsApiProvider), ref.watch(fileApiProvider));
 });
-final momentsStateProvider = StateNotifierProvider<MomentsNotifier, MomentsState>((ref) {
-  return MomentsNotifier(ref.watch(momentsApiProvider));
+final momentsFeedProvider = StateNotifierProvider<MomentsFeedNotifier, MomentsFeedState>((ref) {
+  return MomentsFeedNotifier(ref.watch(momentsRepositoryProvider));
+});
+final composerProvider = StateNotifierProvider<ComposerNotifier, ComposerState>((ref) {
+  return ComposerNotifier(ref.watch(momentsRepositoryProvider));
+});
+final notificationsProvider = StateNotifierProvider<MomentsNotificationsNotifier, MomentsNotificationsState>((ref) {
+  return MomentsNotificationsNotifier(ref.watch(momentsRepositoryProvider));
 });
 
 // Settings
