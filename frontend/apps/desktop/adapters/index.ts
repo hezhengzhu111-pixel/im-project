@@ -6,6 +6,7 @@ import type {
   NetworkStatusPort,
   ClockPort,
 } from "@im/shared-platform-ports";
+import type { E2eeRuntime } from "@im/shared-e2ee-core/src/runtime";
 
 import { TauriSecureStorageAdapter } from "./storage.adapter";
 import { TauriHttpClientAdapter } from "./http.adapter";
@@ -13,6 +14,7 @@ import { TauriNotifierAdapter } from "./notifier.adapter";
 import { TauriLifecycleAdapter } from "./lifecycle.adapter";
 import { TauriNetworkStatusAdapter } from "./network.adapter";
 import { DateClockAdapter } from "./clock.adapter";
+import { TauriE2eeRuntime } from "./e2ee.adapter";
 
 export interface PlatformAdapters {
   secureStorage: SecureStoragePort;
@@ -21,6 +23,7 @@ export interface PlatformAdapters {
   lifecycle: LifecyclePort;
   networkStatus: NetworkStatusPort;
   clock: ClockPort;
+  e2ee: E2eeRuntime;
 }
 
 let adapters: PlatformAdapters | null = null;
@@ -33,6 +36,7 @@ export function registerAdapters(): PlatformAdapters {
     lifecycle: new TauriLifecycleAdapter(),
     networkStatus: new TauriNetworkStatusAdapter(),
     clock: new DateClockAdapter(),
+    e2ee: new TauriE2eeRuntime(),
   };
   return adapters;
 }
