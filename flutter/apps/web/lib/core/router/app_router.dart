@@ -7,9 +7,11 @@ import 'package:im_web/features/auth/presentation/login_page.dart';
 import 'package:im_web/features/auth/presentation/register_page.dart';
 import 'package:im_web/features/chat/presentation/chat_page.dart';
 import 'package:im_web/features/contacts/presentation/contacts_page.dart';
+import 'package:im_web/features/contacts/presentation/add_friend_page.dart';
 import 'package:im_web/features/group/presentation/group_list_page.dart';
 import 'package:im_web/features/group/presentation/create_group_page.dart';
-import 'package:im_web/features/moments/presentation/moments_page.dart';
+import 'package:im_web/features/moments/presentation/moments_main_page.dart';
+import 'package:im_web/features/moments/presentation/notifications/moments_notifications_page.dart';
 import 'package:im_web/features/settings/presentation/settings_page.dart';
 import 'package:im_web/features/settings/presentation/profile_page.dart';
 import 'package:im_web/features/settings/presentation/ai_settings_page.dart';
@@ -42,12 +44,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
               path: '/contacts', builder: (_, __) => const ContactsPage()),
           GoRoute(
+              path: '/contacts/add',
+              builder: (_, __) => const AddFriendPage()),
+          GoRoute(
               path: '/groups', builder: (_, __) => const GroupListPage()),
           GoRoute(
               path: '/groups/create',
               builder: (_, __) => const CreateGroupPage()),
           GoRoute(
-              path: '/moments', builder: (_, __) => const MomentsPage()),
+              path: '/moments', builder: (_, __) => const MomentsMainPage()),
+          GoRoute(
+              path: '/moments/notifications',
+              builder: (_, __) => const MomentsNotificationsPage()),
           GoRoute(
               path: '/settings', builder: (_, __) => const SettingsPage()),
           GoRoute(
