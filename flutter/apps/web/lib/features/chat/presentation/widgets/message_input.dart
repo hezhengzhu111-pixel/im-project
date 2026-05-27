@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 class MessageInput extends StatefulWidget {
   const MessageInput({
     required this.onSend,
+    this.onSendImage,
+    this.onSendFile,
     super.key,
   });
 
   final ValueChanged<String> onSend;
+  final ValueChanged<String>? onSendImage;
+  final ValueChanged<String>? onSendFile;
 
   @override
   State<MessageInput> createState() => _MessageInputState();
@@ -14,69 +18,105 @@ class MessageInput extends StatefulWidget {
 
 class _MessageInputState extends State<MessageInput> {
   final _controller = TextEditingController();
-  final _focusNode = FocusNode();
+  bool _isRecording = false;
 
-  void _send() {
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleSend() {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     widget.onSend(text);
     _controller.clear();
-    _focusNode.requestFocus();
+  }
+
+  void _showAttachmentMenu() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.image),
+              title: const Text('Image'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickAndSendImage();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.attach_file),
+              title: const Text('File'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickAndSendFile();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _pickAndSendImage() {
+    // TODO: integrate file_picker for proper file selection on web
+    widget.onSendImage?.call('image');
+  }
+
+  void _pickAndSendFile() {
+    // TODO: integrate file_picker for proper file selection on web
+    widget.onSendFile?.call('file');
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(8.0),
       decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
         border: Border(
-          top: BorderSide(color: Theme.of(context).dividerColor),
+          top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
         ),
       ),
       child: Row(
         children: [
           IconButton(
-            onPressed: () {
-              // TODO: attach file
-            },
             icon: const Icon(Icons.add_circle_outline),
-            tooltip: '附件',
+            onPressed: _showAttachmentMenu,
+            tooltip: 'Attach',
+          ),
+          IconButton(
+            icon: Icon(_isRecording ? Icons.stop : Icons.mic),
+            onPressed: () {
+              setState(() => _isRecording = !_isRecording);
+              // TODO: implement actual voice recording
+            },
+            tooltip: 'Voice',
+            color: _isRecording ? Colors.red : null,
           ),
           Expanded(
             child: TextField(
               controller: _controller,
-              focusNode: _focusNode,
-              maxLines: 4,
-              minLines: 1,
-              textInputAction: TextInputAction.newline,
-              decoration: InputDecoration(
-                hintText: '输入消息...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-                isDense: true,
+              decoration: const InputDecoration(
+                hintText: 'Type a message...',
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12),
               ),
-              onSubmitted: (_) => _send(),
+              minLines: 1,
+              maxLines: 4,
+              onSubmitted: (_) => _handleSend(),
             ),
           ),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: _send,
-            child: const Text('发送'),
+          IconButton(
+            icon: const Icon(Icons.send),
+            onPressed: _handleSend,
+            color: Theme.of(context).colorScheme.primary,
           ),
         ],
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _focusNode.dispose();
-    super.dispose();
   }
 }
