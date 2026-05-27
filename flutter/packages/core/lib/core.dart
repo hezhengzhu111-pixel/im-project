@@ -8,3 +8,4 @@ export 'src/auth/auth.dart';
 export 'src/im/im.dart';
 export 'src/ws/ws.dart';
 export 'src/utils/utils.dart';
+export 'src/crypto/crypto.dart';
