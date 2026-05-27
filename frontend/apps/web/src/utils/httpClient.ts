@@ -133,7 +133,7 @@ const normalizeHttpError = (error: any): any => {
 };
 
 const httpClient: AxiosInstance = axios.create({
-  baseURL: "/api",
+  baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
   timeout: 10000,
   withCredentials: true,
   headers: {
