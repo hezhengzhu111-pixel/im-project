@@ -9,6 +9,7 @@ import 'package:im_web/features/auth/presentation/widgets/gradient_button.dart';
 import 'package:im_web/features/auth/presentation/widgets/form_field.dart';
 import 'package:im_web/features/auth/presentation/widgets/brand_showcase.dart';
 import 'package:im_web/features/auth/presentation/widgets/decorative_background.dart';
+import 'auth_provider.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});

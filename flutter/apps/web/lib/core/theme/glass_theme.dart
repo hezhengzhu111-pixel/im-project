@@ -119,7 +119,7 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
     return GlassTheme(
       cardBackground: Color.lerp(cardBackground, other.cardBackground, t)!,
       cardBorder: Color.lerp(cardBorder, other.cardBorder, t)!,
-      softShadow: BoxShadow.lerpList(softShadow, other.softShadow, t),
+      softShadow: BoxShadow.lerpList(softShadow, other.softShadow, t) ?? [],
       pageRadius: lerpDouble(pageRadius, other.pageRadius, t)!,
       controlRadius: lerpDouble(controlRadius, other.controlRadius, t)!,
       accentGradient: LinearGradient.lerp(accentGradient, other.accentGradient, t)!,

@@ -303,9 +303,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
-  void setActiveSession(String sessionId) {
+  void setActiveSession(String? sessionId) {
     state = state.copyWith(activeSessionId: sessionId);
-    markRead(sessionId);
+    if (sessionId != null) {
+      markRead(sessionId);
+    }
   }
 
   Future<void> loadMessages(String targetId, {int? page, int? size}) async {

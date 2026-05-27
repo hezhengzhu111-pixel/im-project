@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/core/di/providers.dart';
+import 'package:im_web/core/responsive/breakpoints.dart';
 import '../../auth/presentation/auth_provider.dart';
 import '../../e2ee/presentation/encryption_banner.dart';
 import '../../e2ee/presentation/e2ee_provider.dart';
@@ -39,67 +40,32 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       return s.targetName.toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
 
+    final isMobile =
+        getScreenSize(MediaQuery.of(context).size.width) == ScreenSize.mobile;
+
+    if (isMobile) {
+      return _buildMobileLayout(chatState, activeId, sessions);
+    }
+    return _buildDesktopLayout(chatState, activeId, sessions);
+  }
+
+  Widget _buildMobileLayout(
+      dynamic chatState, String? activeId, List<dynamic> sessions) {
+    // Mobile: full-screen chat if active session, otherwise session list
+    if (activeId != null) {
+      return _buildChatView(activeId);
+    }
+    return _buildSessionList(sessions, activeId);
+  }
+
+  Widget _buildDesktopLayout(
+      dynamic chatState, String? activeId, List<dynamic> sessions) {
     return Row(
       children: [
         // Session list panel
         SizedBox(
           width: 320,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: '搜索会话...',
-                    prefixIcon: const Icon(Icons.search, size: 20),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    isDense: true,
-                  ),
-                  onChanged: (v) => setState(() => _searchQuery = v),
-                ),
-              ),
-              Expanded(
-                child: chatState.isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : sessions.isEmpty
-                        ? const Center(child: Text('暂无会话'))
-                        : ListView.builder(
-                            itemCount: sessions.length,
-                            itemBuilder: (context, index) {
-                              final session = sessions[index];
-                              return SessionTile(
-                                session: session,
-                                isSelected: session.id == activeId,
-                                onTap: () {
-                                  ref
-                                      .read(chatStateProvider.notifier)
-                                      .setActiveSession(session.id);
-                                  final isGroup =
-                                      session.conversationType == 'group' ||
-                                          session.type == 'group';
-                                  if (isGroup) {
-                                    ref
-                                        .read(chatStateProvider.notifier)
-                                        .loadGroupMessages(session.targetId);
-                                  } else {
-                                    ref
-                                        .read(chatStateProvider.notifier)
-                                        .loadMessages(session.targetId);
-                                  }
-                                },
-                              );
-                            },
-                          ),
-              ),
-            ],
-          ),
+          child: _buildSessionList(sessions, activeId),
         ),
         const VerticalDivider(thickness: 1, width: 1),
         // Message area
@@ -107,6 +73,65 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           child: activeId == null
               ? const Center(child: Text('选择一个会话开始聊天'))
               : _buildChatView(activeId),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSessionList(List<dynamic> sessions, String? activeId) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: '搜索会话...',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 10,
+              ),
+              isDense: true,
+            ),
+            onChanged: (v) => setState(() => _searchQuery = v),
+          ),
+        ),
+        Expanded(
+          child: ref.watch(chatStateProvider).isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : sessions.isEmpty
+                  ? const Center(child: Text('暂无会话'))
+                  : ListView.builder(
+                      itemCount: sessions.length,
+                      itemBuilder: (context, index) {
+                        final session = sessions[index];
+                        return SessionTile(
+                          session: session,
+                          isSelected: session.id == activeId,
+                          onTap: () {
+                            ref
+                                .read(chatStateProvider.notifier)
+                                .setActiveSession(session.id);
+                            final isGroup =
+                                session.conversationType == 'group' ||
+                                    session.type == 'group';
+                            if (isGroup) {
+                              ref
+                                  .read(chatStateProvider.notifier)
+                                  .loadGroupMessages(session.targetId);
+                            } else {
+                              ref
+                                  .read(chatStateProvider.notifier)
+                                  .loadMessages(session.targetId);
+                            }
+                          },
+                        );
+                      },
+                    ),
         ),
       ],
     );
@@ -142,6 +167,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final sessionName =
         session?.conversationName ?? session?.targetName ?? sessionId;
     final memberCount = session?.memberCount;
+    final isMobile =
+        getScreenSize(MediaQuery.of(context).size.width) == ScreenSize.mobile;
 
     return Column(
       children: [
@@ -155,6 +182,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           ),
           child: Row(
             children: [
+              if (isMobile)
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () {
+                    ref.read(chatStateProvider.notifier).setActiveSession(null);
+                  },
+                ),
               Text(
                 sessionName,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(

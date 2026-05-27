@@ -16,6 +16,7 @@ use sqlx::mysql::MySqlConnectOptions;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -56,7 +57,12 @@ async fn main() -> anyhow::Result<()> {
     api_server_rs::background_writer::spawn(config.clone(), state.db.clone());
     api_server_rs::push_dispatcher::spawn(config.clone(), state.db.clone());
     api_server_rs::e2ee::cleanup::spawn(state.db.clone());
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
     let app = web::router(state)
+        .layer(cors)
         .layer(DefaultBodyLimit::max(config.request_body_limit))
         .layer(TraceLayer::new_for_http());
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));

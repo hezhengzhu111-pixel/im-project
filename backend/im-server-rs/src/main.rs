@@ -22,6 +22,7 @@ use crate::service::ImService;
 use redis::aio::ConnectionManager;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -41,7 +42,13 @@ async fn main() -> anyhow::Result<()> {
     let service = ImService::new(config.clone(), redis);
     service.spawn_background_tasks(redis_client);
 
-    let app = web::router(service.clone()).layer(TraceLayer::new_for_http());
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+    let app = web::router(service.clone())
+        .layer(cors)
+        .layer(TraceLayer::new_for_http());
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     tracing::info!("im-server-rs listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
