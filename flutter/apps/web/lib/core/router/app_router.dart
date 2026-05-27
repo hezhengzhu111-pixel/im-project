@@ -3,6 +3,9 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/core/error/error_notifier.dart';
+import 'package:im_web/core/responsive/breakpoints.dart';
+import 'package:im_web/core/responsive/mobile_shell.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_web/features/auth/presentation/login_page.dart';
 import 'package:im_web/features/auth/presentation/register_page.dart';
 import 'package:im_web/features/chat/presentation/chat_page.dart';
@@ -38,7 +41,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
       GoRoute(path: '/register', builder: (_, __) => const RegisterPage()),
       ShellRoute(
-        builder: (_, __, child) => MainLayout(child: child),
+        builder: (_, __, child) => ResponsiveLayout(
+          mobile: (_) => MobileShell(child: child),
+          desktop: (_) => MainLayout(child: child),
+        ),
         routes: [
           GoRoute(path: '/chat', builder: (_, __) => const ChatPage()),
           GoRoute(
@@ -76,6 +82,8 @@ class MainLayout extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
+
     ref.listen<ErrorState>(errorProvider, (prev, next) {
       if (next.message != null && next.message != prev?.message) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -95,31 +103,31 @@ class MainLayout extends ConsumerWidget {
             selectedIndex: _selectedIndex(context),
             onDestinationSelected: (index) => _onNavigate(context, index),
             labelType: NavigationRailLabelType.all,
-            destinations: const [
+            destinations: [
               NavigationRailDestination(
-                icon: Icon(Icons.chat_outlined),
-                selectedIcon: Icon(Icons.chat),
-                label: Text('聊天'),
+                icon: const Icon(Icons.chat_outlined),
+                selectedIcon: const Icon(Icons.chat),
+                label: Text(l10n.navChat),
               ),
               NavigationRailDestination(
-                icon: Icon(Icons.people_outlined),
-                selectedIcon: Icon(Icons.people),
-                label: Text('联系人'),
+                icon: const Icon(Icons.people_outlined),
+                selectedIcon: const Icon(Icons.people),
+                label: Text(l10n.navContacts),
               ),
               NavigationRailDestination(
-                icon: Icon(Icons.group_outlined),
-                selectedIcon: Icon(Icons.group),
-                label: Text('群组'),
+                icon: const Icon(Icons.group_outlined),
+                selectedIcon: const Icon(Icons.group),
+                label: Text(l10n.navGroups),
               ),
               NavigationRailDestination(
-                icon: Icon(Icons.camera_alt_outlined),
-                selectedIcon: Icon(Icons.camera_alt),
-                label: Text('朋友圈'),
+                icon: const Icon(Icons.camera_alt_outlined),
+                selectedIcon: const Icon(Icons.camera_alt),
+                label: Text(l10n.navMoments),
               ),
               NavigationRailDestination(
-                icon: Icon(Icons.settings_outlined),
-                selectedIcon: Icon(Icons.settings),
-                label: Text('设置'),
+                icon: const Icon(Icons.settings_outlined),
+                selectedIcon: const Icon(Icons.settings),
+                label: Text(l10n.navSettings),
               ),
             ],
           ),
