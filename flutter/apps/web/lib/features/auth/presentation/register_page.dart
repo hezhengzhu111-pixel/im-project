@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
+import 'package:im_web/core/utils/validators.dart';
+import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
+import 'package:im_web/features/auth/presentation/widgets/gradient_button.dart';
+import 'package:im_web/features/auth/presentation/widgets/form_field.dart';
+import 'package:im_web/features/auth/presentation/widgets/agreement_dialog.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});
@@ -10,91 +15,173 @@ class RegisterPage extends ConsumerStatefulWidget {
   ConsumerState<RegisterPage> createState() => _RegisterPageState();
 }
 
-class _RegisterPageState extends ConsumerState<RegisterPage> {
+class _RegisterPageState extends ConsumerState<RegisterPage>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  bool _agreementAccepted = false;
+
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    ));
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    ));
+
+    _controller.forward();
+  }
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authStateProvider);
 
     return Scaffold(
-      body: Center(
-        child: Card(
-          margin: const EdgeInsets.all(32),
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('注册',
-                        style: Theme.of(context).textTheme.headlineMedium),
-                    const SizedBox(height: 32),
-                    TextFormField(
-                      controller: _usernameController,
-                      decoration: const InputDecoration(labelText: '用户名'),
-                      validator: (v) => v?.isEmpty ?? true ? '请输入用户名' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _emailController,
-                      decoration: const InputDecoration(labelText: '邮箱'),
-                      keyboardType: TextInputType.emailAddress,
-                      validator: (v) => v?.isEmpty ?? true ? '请输入邮箱' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: true,
-                      decoration: const InputDecoration(labelText: '密码'),
-                      validator: (v) =>
-                          (v?.length ?? 0) < 6 ? '密码至少6位' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _confirmPasswordController,
-                      obscureText: true,
-                      decoration: const InputDecoration(labelText: '确认密码'),
-                      validator: (v) =>
-                          v != _passwordController.text ? '密码不一致' : null,
-                    ),
-                    if (authState.error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        authState.error!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF667eea), Color(0xFF764ba2)],
+          ),
+        ),
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: SlideTransition(
+            position: _slideAnimation,
+            child: Center(
+              child: AuthCard(
+                title: '注册',
+                subtitle: '创建您的账户，开始聊天之旅',
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AuthFormField(
+                        controller: _usernameController,
+                        label: '用户名',
+                        icon: Icons.person,
+                        validator: Validators.validateUsername,
+                      ),
+                      const SizedBox(height: 16),
+                      AuthFormField(
+                        controller: _emailController,
+                        label: '邮箱',
+                        icon: Icons.email,
+                        validator: Validators.validateEmail,
+                      ),
+                      const SizedBox(height: 16),
+                      AuthFormField(
+                        controller: _passwordController,
+                        label: '密码',
+                        icon: Icons.lock,
+                        obscureText: true,
+                        validator: Validators.validatePassword,
+                      ),
+                      const SizedBox(height: 16),
+                      AuthFormField(
+                        controller: _confirmPasswordController,
+                        label: '确认密码',
+                        icon: Icons.lock,
+                        obscureText: true,
+                        validator: (v) => Validators.validateConfirmPassword(
+                            v, _passwordController.text),
+                      ),
+                      if (authState.error != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          authState.error!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
                         ),
+                      ],
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Checkbox(
+                            value: _agreementAccepted,
+                            onChanged: (value) {
+                              setState(() {
+                                _agreementAccepted = value ?? false;
+                              });
+                            },
+                          ),
+                          Expanded(
+                            child: Wrap(
+                              children: [
+                                const Text('我已阅读并同意 '),
+                                GestureDetector(
+                                  onTap: () => AgreementDialog.show(
+                                    context,
+                                    '用户协议',
+                                    userAgreementContent,
+                                  ),
+                                  child: Text(
+                                    '用户协议',
+                                    style: TextStyle(
+                                      color: Theme.of(context).primaryColor,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                ),
+                                const Text(' 和 '),
+                                GestureDetector(
+                                  onTap: () => AgreementDialog.show(
+                                    context,
+                                    '隐私政策',
+                                    privacyPolicyContent,
+                                  ),
+                                  child: Text(
+                                    '隐私政策',
+                                    style: TextStyle(
+                                      color: Theme.of(context).primaryColor,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      GradientButton(
+                        text: '注册',
+                        isLoading: authState.isLoading,
+                        onPressed: _register,
+                      ),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () => context.go('/login'),
+                        child: const Text('已有账号？登录'),
                       ),
                     ],
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: authState.isLoading ? null : _register,
-                        child: authState.isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('注册'),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextButton(
-                      onPressed: () => context.go('/login'),
-                      child: const Text('已有账号？登录'),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -104,22 +191,20 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     );
   }
 
-  void _register() async {
+  void _register() {
+    if (!_agreementAccepted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请阅读并同意用户协议和隐私政策')),
+      );
+      return;
+    }
+
     if (_formKey.currentState?.validate() ?? false) {
-      await ref.read(authStateProvider.notifier).register(
+      ref.read(authStateProvider.notifier).register(
             _usernameController.text.trim(),
             _emailController.text.trim(),
             _passwordController.text,
           );
-      if (mounted) {
-        final authState = ref.read(authStateProvider);
-        if (authState.error == null && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('注册成功，请登录')),
-          );
-          context.go('/login');
-        }
-      }
     }
   }
 
@@ -129,6 +214,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 }
