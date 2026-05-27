@@ -1,0 +1,15 @@
+# flutter/melos.yaml
+name: im_flutter
+repository: https://github.com/example/im-flutter
+
+packages:
+  - packages/**
+  - apps/**
+
+scripts:
+  build:web:
+    run: melos exec --scope="im_web" -- flutter build web
+  test:
+    run: melos exec -- flutter test
+  analyze:
+    run: melos exec -- flutter analyze
