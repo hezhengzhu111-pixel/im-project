@@ -32,15 +32,27 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
 
     return Column(
       children: [
-        TabBar(
-          controller: _tabController,
-          tabs: [
-            Tab(text: '好友 (${contactsState.friends.length})'),
-            Tab(
-              text: contactsState.friendRequests.isNotEmpty
-                  ? '请求 (${contactsState.friendRequests.length})'
-                  : '请求',
+        Row(
+          children: [
+            Expanded(
+              child: TabBar(
+                controller: _tabController,
+                tabs: [
+                  Tab(text: '好友 (${contactsState.friends.length})'),
+                  Tab(
+                    text: contactsState.friendRequests.isNotEmpty
+                        ? '请求 (${contactsState.friendRequests.length})'
+                        : '请求',
+                  ),
+                ],
+              ),
             ),
+            IconButton(
+              icon: const Icon(Icons.person_add),
+              tooltip: '添加好友',
+              onPressed: () => context.go('/contacts/add'),
+            ),
+            const SizedBox(width: 8),
           ],
         ),
         Expanded(
