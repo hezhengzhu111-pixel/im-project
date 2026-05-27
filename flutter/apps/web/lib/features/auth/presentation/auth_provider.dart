@@ -30,9 +30,10 @@ class AuthState {
 }
 
 class AuthNotifier extends StateNotifier<AuthState> {
-  AuthNotifier(this._repository) : super(const AuthState());
+  AuthNotifier(this._repository, this._wsClient) : super(const AuthState());
 
   final AuthRepository _repository;
+  final WsClientPort _wsClient;
 
   Future<void> login(String username, String password) async {
     state = state.copyWith(isLoading: true, error: null);
@@ -41,6 +42,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         LoginRequest(username: username, password: password),
       );
       state = AuthState(user: response.user, isAuthenticated: true);
+      // Connect WebSocket after successful login
+      _connectWs();
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -61,6 +64,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
+    _wsClient.disconnect();
     await _repository.logout();
     state = const AuthState();
   }
@@ -71,9 +75,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
       try {
         final user = await _repository.getProfile();
         state = AuthState(user: user, isAuthenticated: true);
+        // Reconnect WebSocket on session restore
+        _connectWs();
       } catch (e) {
         state = const AuthState();
       }
     }
+  }
+
+  void _connectWs() {
+    // Build WS URL with ticket — for now, connect without ticket (simplified)
+    // TODO: fetch ticket from AuthEndpoints.wsTicket and append as query param
+    _wsClient.connect('ws://localhost:8082/websocket');
   }
 }

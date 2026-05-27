@@ -38,9 +38,12 @@ class ChatState {
 }
 
 class ChatNotifier extends StateNotifier<ChatState> {
-  ChatNotifier(this._messageApi) : super(const ChatState());
+  ChatNotifier(this._messageApi, [this._pipeline, this._wsClient])
+      : super(const ChatState());
 
   final MessageApi _messageApi;
+  final dynamic _pipeline;
+  final WsClientPort? _wsClient;
 
   Future<void> loadSessions() async {
     state = state.copyWith(isLoading: true, error: null);
