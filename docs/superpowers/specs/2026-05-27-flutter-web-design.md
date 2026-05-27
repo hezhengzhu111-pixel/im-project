@@ -401,6 +401,26 @@ final appRouter = GoRouter(
 | 集成 | E2E 测试 | `integration_test` |
 | 归一化 | 快照测试 | 对比 Vue 端输出 |
 
+## flutter_rust_bridge Web 构建
+
+Web 端需要将 Rust 编译为 WASM：
+
+```bash
+# 安装 wasm-pack
+cargo install wasm-pack
+
+# 构建 Rust 为 WASM
+cd native/rust
+wasm-pack build --target web --out-dir ../../apps/web/lib/src/rust
+
+# 运行 flutter_rust_bridge_codegen 生成 Dart 绑定
+flutter_rust_bridge_codegen generate
+```
+
+**构建产物**：`apps/web/lib/src/rust/` 目录下生成 `.wasm` + `.js` 胶水代码 + Dart 绑定文件。
+
+**注意**：Web 端的 Rust WASM 构建与 Desktop 端的 native Rust 构建是独立的流程，CI/CD 需要分别配置。
+
 ## 关键依赖
 
 | 包 | 用途 |
