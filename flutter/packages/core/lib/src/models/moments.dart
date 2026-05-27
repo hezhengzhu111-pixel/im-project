@@ -87,6 +87,7 @@ class MomentNotification with _$MomentNotification {
     bool? isRead,
     String? userId,
     String? userName,
+    String? userNickname,
     String? userAvatar,
     String? postId,
     String? commentId,
