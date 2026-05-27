@@ -14,13 +14,13 @@ void main() {
         'media': [
           {
             'url': 'https://example.com/photo1.jpg',
-            'type': 'image',
+            'type': 0,
             'thumbnailUrl': 'https://example.com/thumb1.jpg',
             'size': 1024000,
           },
           {
             'url': 'https://example.com/video1.mp4',
-            'type': 'video',
+            'type': 1,
             'duration': 30,
           },
         ],
@@ -39,11 +39,11 @@ void main() {
       expect(post.media, isNotNull);
       expect(post.media!.length, 2);
       expect(post.media![0].url, 'https://example.com/photo1.jpg');
-      expect(post.media![0].type, 'image');
+      expect(post.media![0].type, 0);
       expect(post.media![0].thumbnailUrl, 'https://example.com/thumb1.jpg');
       expect(post.media![0].size, 1024000);
       expect(post.media![1].url, 'https://example.com/video1.mp4');
-      expect(post.media![1].type, 'video');
+      expect(post.media![1].type, 1);
       expect(post.media![1].duration, 30);
       expect(post.likeCount, 10);
       expect(post.commentCount, 5);
@@ -97,7 +97,7 @@ void main() {
     test('fromJson creates MomentMedia correctly', () {
       final json = {
         'url': 'https://example.com/photo.jpg',
-        'type': 'image',
+        'type': 0,
         'thumbnailUrl': 'https://example.com/thumb.jpg',
         'size': 512000,
         'duration': null,
@@ -105,7 +105,7 @@ void main() {
       final media = MomentMedia.fromJson(json);
 
       expect(media.url, 'https://example.com/photo.jpg');
-      expect(media.type, 'image');
+      expect(media.type, 0);
       expect(media.thumbnailUrl, 'https://example.com/thumb.jpg');
       expect(media.size, 512000);
       expect(media.duration, isNull);
@@ -114,12 +114,12 @@ void main() {
     test('fromJson creates video media', () {
       final json = {
         'url': 'https://example.com/video.mp4',
-        'type': 'video',
+        'type': 1,
         'duration': 60,
       };
       final media = MomentMedia.fromJson(json);
 
-      expect(media.type, 'video');
+      expect(media.type, 1);
       expect(media.duration, 60);
       expect(media.thumbnailUrl, isNull);
     });
@@ -127,7 +127,7 @@ void main() {
     test('toJson roundtrip preserves data', () {
       const media = MomentMedia(
         url: 'https://example.com/img.png',
-        type: 'image',
+        type: 0,
         size: 1000,
       );
       final json = media.toJson();
