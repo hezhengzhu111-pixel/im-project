@@ -43,6 +43,11 @@ class WebWsClient implements WsClientPort {
   Timer? _reconnectTimer;
   String? _lastUrl;
 
+  StreamSubscription? _onOpenSub;
+  StreamSubscription? _onMessageSub;
+  StreamSubscription? _onCloseSub;
+  StreamSubscription? _onErrorSub;
+
   @override
   Stream<WsEvent> get events => _eventsController.stream;
 
@@ -59,11 +64,16 @@ class WebWsClient implements WsClientPort {
     _updateState(WsConnectionState.connecting);
 
     try {
+      _onOpenSub?.cancel();
+      _onMessageSub?.cancel();
+      _onCloseSub?.cancel();
+      _onErrorSub?.cancel();
+
       _socket = html.WebSocket(url);
-      _socket!.onOpen.listen(_onOpen);
-      _socket!.onMessage.listen(_onMessage);
-      _socket!.onClose.listen(_onClose);
-      _socket!.onError.listen(_onError);
+      _onOpenSub = _socket!.onOpen.listen(_onOpen);
+      _onMessageSub = _socket!.onMessage.listen(_onMessage);
+      _onCloseSub = _socket!.onClose.listen(_onClose);
+      _onErrorSub = _socket!.onError.listen(_onError);
     } catch (e) {
       _updateState(WsConnectionState.disconnected);
       _scheduleReconnect();
@@ -88,6 +98,7 @@ class WebWsClient implements WsClientPort {
     _socket = null;
     _isConnected = false;
     _retryCount = 0;
+    _manualDisconnect = false;
     if (_lastUrl != null) {
       await connect(_lastUrl!);
     }
@@ -97,6 +108,8 @@ class WebWsClient implements WsClientPort {
   void send(Map<String, dynamic> message) {
     if (_isConnected && _socket != null) {
       _socket!.send(jsonEncode(message));
+    } else {
+      print('WS send dropped: not connected');
     }
   }
 
@@ -132,6 +145,7 @@ class WebWsClient implements WsClientPort {
   void _onError(html.Event event) {
     _isConnected = false;
     _stopHeartbeat();
+    _updateState(WsConnectionState.disconnected);
     if (!_manualDisconnect) {
       _scheduleReconnect();
     }
@@ -176,6 +190,10 @@ class WebWsClient implements WsClientPort {
   void dispose() {
     _stopHeartbeat();
     _reconnectTimer?.cancel();
+    _onOpenSub?.cancel();
+    _onMessageSub?.cancel();
+    _onCloseSub?.cancel();
+    _onErrorSub?.cancel();
     _eventsController.close();
     _stateController.close();
     _socket?.close();
