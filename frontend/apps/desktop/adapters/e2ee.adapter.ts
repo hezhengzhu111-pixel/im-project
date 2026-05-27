@@ -13,19 +13,17 @@ import type {
   RustE2eeEnvelope,
   GeneratePreKeyBundleOptions,
   RustPreKey,
-} from "@im/shared-e2ee-core/src/types";
-import type { BinaryInput } from "@im/shared-e2ee-core/src/runtime";
+  BinaryInput,
+  Base64String,
+} from "@im/shared-e2ee-core";
 import {
   base64ToBytes,
   asBase64String,
   copyBytes,
   utf8ToBytes,
-  type Base64String,
-} from "@im/shared-e2ee-core/src/bytes";
-import {
   assertRustWireFormat,
   envelopeWireBytes,
-} from "@im/shared-e2ee-core/src/rust-wire";
+} from "@im/shared-e2ee-core";
 
 // ---------------------------------------------------------------------------
 // Helpers
