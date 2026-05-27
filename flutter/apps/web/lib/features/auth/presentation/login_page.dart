@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
+import 'package:im_web/core/utils/responsive.dart';
 import 'package:im_web/core/utils/validators.dart';
 import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
 import 'package:im_web/features/auth/presentation/widgets/gradient_button.dart';
@@ -58,11 +59,13 @@ class _LoginPageState extends ConsumerState<LoginPage>
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF667eea), Color(0xFF764ba2)],
+            colors: ResponsiveLayout.isMobile(context)
+                ? const [Color(0xFF667eea), Color(0xFF764ba2)]
+                : const [Color(0xFF667eea), Color(0xFF764ba2), Color(0xFF6B73FF)],
           ),
         ),
         child: FadeTransition(
