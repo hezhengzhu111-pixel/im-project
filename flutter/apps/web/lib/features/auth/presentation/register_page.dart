@@ -10,6 +10,7 @@ import 'package:im_web/features/auth/presentation/widgets/form_field.dart';
 import 'package:im_web/features/auth/presentation/widgets/agreement_dialog.dart';
 import 'package:im_web/features/auth/presentation/widgets/brand_showcase.dart';
 import 'package:im_web/features/auth/presentation/widgets/decorative_background.dart';
+import 'auth_provider.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});

@@ -30,7 +30,8 @@ SERVICE_ALIASES = {
     "spring-ai": "im-spring-ai",
 }
 
-APP_SERVICES = ["im-server", "im-api-server", "im-frontend", "im-spring-ai"]
+APP_SERVICES = ["im-server", "im-api-server", "im-spring-ai"]
+# APP_SERVICES = ["im-server", "im-api-server", "im-frontend", "im-spring-ai"]
 
 
 def _hot_urls(host_prefix: str, env_key: str, password: str) -> str:
@@ -194,8 +195,8 @@ def main() -> None:
     if "im-api-server" in services:
         apply_database_migrations(config)
 
-    if "im-frontend" in services and not args.no_build and not args.skip_e2ee_wasm_build:
-        build_frontend_wasm(config)
+    # if "im-frontend" in services and not args.no_build and not args.skip_e2ee_wasm_build:
+    #     build_frontend_wasm(config)
 
     command = compose_up_command(
         config,

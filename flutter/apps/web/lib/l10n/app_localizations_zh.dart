@@ -7,6 +7,105 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get appTitle => 'IM 即时通讯';
+
+  @override
+  String get navChat => '聊天';
+
+  @override
+  String get navContacts => '联系人';
+
+  @override
+  String get navGroups => '群组';
+
+  @override
+  String get navMoments => '朋友圈';
+
+  @override
+  String get navSettings => '设置';
+
+  @override
+  String get loginTitle => '登录';
+
+  @override
+  String get loginUsername => '用户名';
+
+  @override
+  String get loginPassword => '密码';
+
+  @override
+  String get loginButton => '登录';
+
+  @override
+  String get loginNoAccount => '没有账号？';
+
+  @override
+  String get loginRegister => '注册';
+
+  @override
+  String get chatSend => '发送';
+
+  @override
+  String get chatSearch => '搜索';
+
+  @override
+  String get chatNoSessions => '暂无会话';
+
+  @override
+  String get contactsSearch => '搜索联系人';
+
+  @override
+  String get contactsNoFriends => '暂无好友';
+
+  @override
+  String get contactsAddFriend => '添加好友';
+
+  @override
+  String get contactsFriendRequests => '好友请求';
+
+  @override
+  String get contactsAccept => '接受';
+
+  @override
+  String get contactsReject => '拒绝';
+
+  @override
+  String get retry => '重试';
+
+  @override
+  String get noData => '暂无数据';
+
+  @override
+  String get e2eeEncrypted => '端到端加密已启用';
+
+  @override
+  String get e2eeNegotiating => '正在协商加密';
+
+  @override
+  String get e2eeFailed => '端到端加密异常';
+
+  @override
+  String get e2eePlaintext => '未启用端到端加密';
+
+  @override
+  String get e2eeMessageEncrypted => '此消息已端到端加密';
+
+  @override
+  String get e2eeAccept => '接受加密';
+
+  @override
+  String get e2eeReject => '拒绝加密';
+
+  @override
+  String get e2eeExit => '退出加密';
+
+  @override
+  String get e2eeInitiate => '启用端到端加密';
+
+  @override
+  String get settingsEditProfile => '编辑资料';
+
+  @override
   String get settingsTitle => '设置';
 
   @override

@@ -7,6 +7,105 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get appTitle => 'IM Messenger';
+
+  @override
+  String get navChat => 'Chat';
+
+  @override
+  String get navContacts => 'Contacts';
+
+  @override
+  String get navGroups => 'Groups';
+
+  @override
+  String get navMoments => 'Moments';
+
+  @override
+  String get navSettings => 'Settings';
+
+  @override
+  String get loginTitle => 'Login';
+
+  @override
+  String get loginUsername => 'Username';
+
+  @override
+  String get loginPassword => 'Password';
+
+  @override
+  String get loginButton => 'Login';
+
+  @override
+  String get loginNoAccount => 'No account?';
+
+  @override
+  String get loginRegister => 'Register';
+
+  @override
+  String get chatSend => 'Send';
+
+  @override
+  String get chatSearch => 'Search';
+
+  @override
+  String get chatNoSessions => 'No conversations yet';
+
+  @override
+  String get contactsSearch => 'Search contacts';
+
+  @override
+  String get contactsNoFriends => 'No friends yet';
+
+  @override
+  String get contactsAddFriend => 'Add Friend';
+
+  @override
+  String get contactsFriendRequests => 'Friend Requests';
+
+  @override
+  String get contactsAccept => 'Accept';
+
+  @override
+  String get contactsReject => 'Reject';
+
+  @override
+  String get retry => 'Retry';
+
+  @override
+  String get noData => 'No data';
+
+  @override
+  String get e2eeEncrypted => 'End-to-end encryption enabled';
+
+  @override
+  String get e2eeNegotiating => 'Negotiating encryption';
+
+  @override
+  String get e2eeFailed => 'Encryption error';
+
+  @override
+  String get e2eePlaintext => 'Encryption not enabled';
+
+  @override
+  String get e2eeMessageEncrypted => 'This message is end-to-end encrypted';
+
+  @override
+  String get e2eeAccept => 'Accept encryption';
+
+  @override
+  String get e2eeReject => 'Reject encryption';
+
+  @override
+  String get e2eeExit => 'Exit encryption';
+
+  @override
+  String get e2eeInitiate => 'Enable end-to-end encryption';
+
+  @override
+  String get settingsEditProfile => 'Edit profile';
+
+  @override
   String get settingsTitle => 'Settings';
 
   @override

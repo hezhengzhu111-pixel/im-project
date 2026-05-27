@@ -95,6 +95,204 @@ abstract class AppLocalizations {
     Locale('zh')
   ];
 
+  /// No description provided for @appTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'IM Messenger'**
+  String get appTitle;
+
+  /// No description provided for @navChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat'**
+  String get navChat;
+
+  /// No description provided for @navContacts.
+  ///
+  /// In en, this message translates to:
+  /// **'Contacts'**
+  String get navContacts;
+
+  /// No description provided for @navGroups.
+  ///
+  /// In en, this message translates to:
+  /// **'Groups'**
+  String get navGroups;
+
+  /// No description provided for @navMoments.
+  ///
+  /// In en, this message translates to:
+  /// **'Moments'**
+  String get navMoments;
+
+  /// No description provided for @navSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get navSettings;
+
+  /// No description provided for @loginTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Login'**
+  String get loginTitle;
+
+  /// No description provided for @loginUsername.
+  ///
+  /// In en, this message translates to:
+  /// **'Username'**
+  String get loginUsername;
+
+  /// No description provided for @loginPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Password'**
+  String get loginPassword;
+
+  /// No description provided for @loginButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Login'**
+  String get loginButton;
+
+  /// No description provided for @loginNoAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'No account?'**
+  String get loginNoAccount;
+
+  /// No description provided for @loginRegister.
+  ///
+  /// In en, this message translates to:
+  /// **'Register'**
+  String get loginRegister;
+
+  /// No description provided for @chatSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get chatSend;
+
+  /// No description provided for @chatSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get chatSearch;
+
+  /// No description provided for @chatNoSessions.
+  ///
+  /// In en, this message translates to:
+  /// **'No conversations yet'**
+  String get chatNoSessions;
+
+  /// No description provided for @contactsSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search contacts'**
+  String get contactsSearch;
+
+  /// No description provided for @contactsNoFriends.
+  ///
+  /// In en, this message translates to:
+  /// **'No friends yet'**
+  String get contactsNoFriends;
+
+  /// No description provided for @contactsAddFriend.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Friend'**
+  String get contactsAddFriend;
+
+  /// No description provided for @contactsFriendRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'Friend Requests'**
+  String get contactsFriendRequests;
+
+  /// No description provided for @contactsAccept.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept'**
+  String get contactsAccept;
+
+  /// No description provided for @contactsReject.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject'**
+  String get contactsReject;
+
+  /// No description provided for @retry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retry;
+
+  /// No description provided for @noData.
+  ///
+  /// In en, this message translates to:
+  /// **'No data'**
+  String get noData;
+
+  /// No description provided for @e2eeEncrypted.
+  ///
+  /// In en, this message translates to:
+  /// **'End-to-end encryption enabled'**
+  String get e2eeEncrypted;
+
+  /// No description provided for @e2eeNegotiating.
+  ///
+  /// In en, this message translates to:
+  /// **'Negotiating encryption'**
+  String get e2eeNegotiating;
+
+  /// No description provided for @e2eeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Encryption error'**
+  String get e2eeFailed;
+
+  /// No description provided for @e2eePlaintext.
+  ///
+  /// In en, this message translates to:
+  /// **'Encryption not enabled'**
+  String get e2eePlaintext;
+
+  /// No description provided for @e2eeMessageEncrypted.
+  ///
+  /// In en, this message translates to:
+  /// **'This message is end-to-end encrypted'**
+  String get e2eeMessageEncrypted;
+
+  /// No description provided for @e2eeAccept.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept encryption'**
+  String get e2eeAccept;
+
+  /// No description provided for @e2eeReject.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject encryption'**
+  String get e2eeReject;
+
+  /// No description provided for @e2eeExit.
+  ///
+  /// In en, this message translates to:
+  /// **'Exit encryption'**
+  String get e2eeExit;
+
+  /// No description provided for @e2eeInitiate.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable end-to-end encryption'**
+  String get e2eeInitiate;
+
+  /// No description provided for @settingsEditProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit profile'**
+  String get settingsEditProfile;
+
   /// No description provided for @settingsTitle.
   ///
   /// In en, this message translates to:
