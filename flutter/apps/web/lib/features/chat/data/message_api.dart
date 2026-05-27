@@ -1,5 +1,26 @@
 import 'package:im_core/core.dart';
 
+class SendPrivateMessageRequest {
+  const SendPrivateMessageRequest({
+    required this.receiverId,
+    required this.content,
+    this.messageType = 'text',
+    this.clientMessageId,
+  });
+
+  final String receiverId;
+  final String content;
+  final String messageType;
+  final String? clientMessageId;
+
+  Map<String, dynamic> toJson() => {
+        'receiverId': receiverId,
+        'content': content,
+        'messageType': messageType,
+        if (clientMessageId != null) 'clientMessageId': clientMessageId,
+      };
+}
+
 class MessageApi {
   MessageApi(this._httpClient);
   final HttpClientPort _httpClient;

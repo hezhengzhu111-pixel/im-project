@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:im_web/core/di/providers.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});
@@ -18,6 +19,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authStateProvider);
+
     return Scaffold(
       body: Center(
         child: Card(
@@ -61,12 +64,28 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                       validator: (v) =>
                           v != _passwordController.text ? '密码不一致' : null,
                     ),
+                    if (authState.error != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        authState.error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
-                        onPressed: _register,
-                        child: const Text('注册'),
+                        onPressed: authState.isLoading ? null : _register,
+                        child: authState.isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('注册'),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -84,9 +103,22 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     );
   }
 
-  void _register() {
+  void _register() async {
     if (_formKey.currentState?.validate() ?? false) {
-      // TODO: Call auth provider register
+      await ref.read(authStateProvider.notifier).register(
+            _usernameController.text.trim(),
+            _passwordController.text,
+            _nicknameController.text.trim(),
+          );
+      if (mounted) {
+        final authState = ref.read(authStateProvider);
+        if (authState.error == null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('注册成功，请登录')),
+          );
+          context.go('/login');
+        }
+      }
     }
   }
 

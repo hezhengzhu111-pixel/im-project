@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:im_web/core/di/providers.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -16,6 +17,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authStateProvider);
+
     return Scaffold(
       body: Center(
         child: Card(
@@ -50,12 +53,27 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       ),
                       validator: (v) => v?.isEmpty ?? true ? '请输入密码' : null,
                     ),
+                    if (authState.error != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        authState.error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
-                        onPressed: _login,
-                        child: const Text('登录'),
+                        onPressed: authState.isLoading ? null : _login,
+                        child: authState.isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('登录'),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -75,7 +93,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   void _login() {
     if (_formKey.currentState?.validate() ?? false) {
-      // TODO: Call auth provider login
+      ref.read(authStateProvider.notifier).login(
+            _usernameController.text.trim(),
+            _passwordController.text,
+          );
     }
   }
 
