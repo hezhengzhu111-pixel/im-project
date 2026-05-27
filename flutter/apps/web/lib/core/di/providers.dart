@@ -10,6 +10,7 @@ import '../../features/chat/presentation/chat_provider.dart';
 import '../../features/contacts/data/contacts_api.dart';
 import '../../features/contacts/presentation/contacts_provider.dart';
 import '../../features/moments/data/moments_api.dart';
+import '../../features/moments/data/moments_repository.dart';
 import '../../features/moments/presentation/moments_provider.dart';
 import '../../features/settings/data/settings_api.dart';
 import '../../features/settings/data/ai_api.dart';
@@ -18,6 +19,7 @@ import '../../features/settings/presentation/ai_settings_provider.dart';
 import '../../features/settings/presentation/profile_provider.dart';
 import '../../features/group/data/group_api.dart';
 import '../../features/group/presentation/group_provider.dart';
+import '../../features/e2ee/presentation/e2ee_provider.dart';
 import '../../features/chat/data/file_api.dart';
 import '../../core/error/error_notifier.dart';
 
@@ -78,6 +80,9 @@ final contactsStateProvider = StateNotifierProvider<ContactsNotifier, ContactsSt
 
 // Moments
 final momentsApiProvider = Provider<MomentsApi>((ref) => MomentsApi(ref.watch(httpClientProvider)));
+final momentsRepositoryProvider = Provider<MomentsRepository>((ref) {
+  return MomentsRepository(ref.watch(momentsApiProvider), ref.watch(fileApiProvider));
+});
 final momentsStateProvider = StateNotifierProvider<MomentsNotifier, MomentsState>((ref) {
   return MomentsNotifier(ref.watch(momentsApiProvider));
 });

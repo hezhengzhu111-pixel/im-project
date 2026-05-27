@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import '../../../../core/di/providers.dart';
 import '../../data/moments_repository.dart';
 
 class MomentsInteractionsState {
