@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:im_core/core.dart';
+import 'package:im_web/core/theme/glass_theme.dart';
 
 class ProfileHero extends StatelessWidget {
   const ProfileHero({
@@ -14,15 +15,15 @@ class ProfileHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final glass = theme.extension<GlassTheme>()!;
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-        ),
+        color: glass.cardBackground,
+        borderRadius: BorderRadius.circular(glass.pageRadius),
+        border: Border.all(color: glass.cardBorder),
+        boxShadow: glass.softShadow,
       ),
       child: Row(
         children: [
@@ -50,13 +51,13 @@ class ProfileHero extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primary,
+                      gradient: glass.accentGradient,
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(
+                    child: const Icon(
                       Icons.camera_alt,
                       size: 14,
-                      color: theme.colorScheme.onPrimary,
+                      color: Colors.white,
                     ),
                   ),
                 ),
@@ -86,22 +87,42 @@ class ProfileHero extends StatelessWidget {
                   spacing: 6,
                   children: [
                     if (user?.email != null)
-                      Chip(
-                        avatar: const Icon(Icons.check_circle, size: 14, color: Colors.green),
-                        label: Text(user!.email!, style: const TextStyle(fontSize: 11)),
-                        visualDensity: VisualDensity.compact,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
+                      _VerificationChip(label: user!.email!),
                     if (user?.phone != null)
-                      Chip(
-                        avatar: const Icon(Icons.check_circle, size: 14, color: Colors.green),
-                        label: Text(user!.phone!, style: const TextStyle(fontSize: 11)),
-                        visualDensity: VisualDensity.compact,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
+                      _VerificationChip(label: user!.phone!),
                   ],
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VerificationChip extends StatelessWidget {
+  const _VerificationChip({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.green.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.check_circle, size: 12, color: Colors.green),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.green.shade700,
             ),
           ),
         ],

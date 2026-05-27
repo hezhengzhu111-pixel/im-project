@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:im_web/core/theme/glass_theme.dart';
 
 class SettingsSection extends StatelessWidget {
   const SettingsSection({
@@ -13,13 +14,13 @@ class SettingsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final glass = theme.extension<GlassTheme>()!;
     return Container(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-        ),
+        color: glass.cardBackground,
+        borderRadius: BorderRadius.circular(glass.pageRadius),
+        border: Border.all(color: glass.cardBorder),
+        boxShadow: glass.softShadow,
       ),
       clipBehavior: Clip.antiAlias,
       margin: const EdgeInsets.only(bottom: 12),
@@ -61,6 +62,7 @@ class SettingsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final glass = theme.extension<GlassTheme>()!;
     return Column(
       children: [
         Padding(
@@ -97,7 +99,7 @@ class SettingsRow extends StatelessWidget {
           Divider(
             height: 1,
             thickness: 0.5,
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+            color: glass.dividerColor,
           ),
       ],
     );

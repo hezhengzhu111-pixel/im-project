@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:im_core/core.dart';
+import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
 class ApiKeyCard extends StatelessWidget {
@@ -50,7 +51,16 @@ class ApiKeyCard extends StatelessWidget {
         ? '${apiKey.key.substring(0, 4)}****${apiKey.key.substring(apiKey.key.length - 4)}'
         : '****';
 
-    return Card(
+    final glass = theme.extension<GlassTheme>()!;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: glass.cardBackground,
+        borderRadius: BorderRadius.circular(glass.controlRadius),
+        border: Border.all(color: glass.cardBorder),
+        boxShadow: glass.softShadow,
+      ),
+      margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
