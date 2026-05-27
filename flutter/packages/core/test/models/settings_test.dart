@@ -237,4 +237,51 @@ void main() {
       expect(restored, equals(settings));
     });
   });
+
+  group('UserSettings toJson', () {
+    test('toJson serializes nested objects as typed references', () {
+      const settings = UserSettings(
+        general: GeneralSettings(
+          language: 'zh-CN',
+          theme: 'dark',
+          fontSize: '16',
+          autoLogin: true,
+          minimizeOnStart: false,
+        ),
+        privacy: PrivacySettings(
+          allowStrangerAdd: false,
+          showOnlineStatus: true,
+          allowViewMoments: false,
+          messageReadReceipt: true,
+        ),
+        message: MessagePreferenceSettings(
+          enableNotification: false,
+          enableSound: true,
+          enableVibration: false,
+          muteGroupMessages: true,
+          autoDownloadImages: false,
+        ),
+        notifications: NotificationSettings(
+          sound: true,
+          desktop: false,
+          preview: true,
+        ),
+      );
+      final json = settings.toJson();
+
+      expect(json['general'], isA<GeneralSettings>());
+      expect(json['privacy'], isA<PrivacySettings>());
+      expect(json['message'], isA<MessagePreferenceSettings>());
+      expect(json['notifications'], isA<NotificationSettings>());
+
+      final general = json['general'] as GeneralSettings;
+      expect(general.language, 'zh-CN');
+      expect(general.theme, 'dark');
+      expect(general.autoLogin, true);
+
+      final privacy = json['privacy'] as PrivacySettings;
+      expect(privacy.allowStrangerAdd, false);
+      expect(privacy.showOnlineStatus, true);
+    });
+  });
 }

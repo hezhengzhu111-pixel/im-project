@@ -328,5 +328,114 @@ void main() {
 
       expect(status.lastSeen, isNull);
     });
+
+    test('toJson roundtrip preserves data', () {
+      const status = OnlineStatus(userId: 'u1', status: 'online', lastSeen: '2024-01-01T00:00:00Z');
+      final json = status.toJson();
+      final restored = OnlineStatus.fromJson(json);
+
+      expect(restored, equals(status));
+    });
+  });
+
+  group('User toJson roundtrip', () {
+    test('toJson roundtrip preserves all fields', () {
+      const user = User(
+        id: '1',
+        username: 'testuser',
+        nickname: 'Test',
+        avatar: 'https://example.com/avatar.png',
+        email: 'test@example.com',
+        permissions: ['admin'],
+      );
+      final json = user.toJson();
+      final restored = User.fromJson(json);
+
+      expect(restored, equals(user));
+    });
+  });
+
+  group('User copyWith', () {
+    test('copyWith updates fields correctly', () {
+      const user = User(id: '1', username: 'test', nickname: 'Old');
+      final updated = user.copyWith(nickname: 'New', avatar: 'new.png');
+
+      expect(updated.id, '1');
+      expect(updated.username, 'test');
+      expect(updated.nickname, 'New');
+      expect(updated.avatar, 'new.png');
+    });
+  });
+
+  group('AuthSession toJson', () {
+    test('toJson serializes fields correctly', () {
+      final session = AuthSession(
+        currentUser: const User(id: '1', username: 'test'),
+        isAuthenticated: true,
+        authReady: true,
+        permissions: ['admin'],
+      );
+      final json = session.toJson();
+
+      expect(json['isAuthenticated'], true);
+      expect(json['authReady'], true);
+      expect(json['permissions'], ['admin']);
+      expect(json['currentUser'], isA<User>());
+      expect((json['currentUser'] as User).id, '1');
+    });
+
+    test('toJson with null currentUser', () {
+      const session = AuthSession(
+        currentUser: null,
+        isAuthenticated: false,
+        authReady: false,
+      );
+      final json = session.toJson();
+
+      expect(json['currentUser'], isNull);
+      expect(json['isAuthenticated'], false);
+    });
+  });
+
+  group('UserAuthResponse toJson roundtrip', () {
+    test('toJson roundtrip preserves data', () {
+      const response = UserAuthResponse(
+        success: true,
+        message: 'OK',
+        token: 'tok',
+        accessToken: 'acc',
+        expiresInMs: 3600,
+      );
+      final json = response.toJson();
+      final restored = UserAuthResponse.fromJson(json);
+
+      expect(restored, equals(response));
+    });
+  });
+
+  group('Friendship toJson roundtrip', () {
+    test('toJson roundtrip preserves data', () {
+      const friendship = Friendship(id: 'f1', friendId: 'u2', username: 'friend1');
+      final json = friendship.toJson();
+      final restored = Friendship.fromJson(json);
+
+      expect(restored, equals(friendship));
+    });
+  });
+
+  group('FriendRequest toJson roundtrip', () {
+    test('toJson roundtrip preserves data', () {
+      const request = FriendRequest(
+        id: 'fr1',
+        applicantId: 'u1',
+        applicantUsername: 'user1',
+        status: 'pending',
+        createTime: '2024-01-01T00:00:00Z',
+      );
+      final json = request.toJson();
+      final restored = FriendRequest.fromJson(json);
+
+      expect(restored, equals(request));
+    });
   });
 }

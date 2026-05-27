@@ -263,5 +263,18 @@ void main() {
       expect(response.size, isNull);
       expect(response.originalFilename, isNull);
     });
+
+    test('toJson roundtrip preserves data', () {
+      const response = FileUploadResponse(
+        url: 'https://example.com/file.pdf',
+        size: 2048,
+        originalFilename: 'doc.pdf',
+        contentType: 'application/pdf',
+      );
+      final json = response.toJson();
+      final restored = FileUploadResponse.fromJson(json);
+
+      expect(restored, equals(response));
+    });
   });
 }

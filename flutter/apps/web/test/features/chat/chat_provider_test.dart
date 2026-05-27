@@ -215,5 +215,105 @@ void main() {
       expect(mockApi.markReadCallCount, 1);
       expect(mockApi.lastMarkReadId, 'conv-1');
     });
+
+    test('does not throw on failure', () async {
+      mockApi.errorToThrow = Exception('Mark read failed');
+      // Should not throw
+      await notifier.markRead('conv-1');
+      expect(mockApi.markReadCallCount, 1);
+    });
+  });
+
+  group('ChatNotifier - additional edge cases', () {
+    test('loadSessions clears previous error', () async {
+      mockApi.errorToThrow = Exception('First error');
+      await notifier.loadSessions();
+      expect(notifier.state.error, isNotNull);
+
+      mockApi.errorToThrow = null;
+      mockApi.conversationsResponse = [makeSession('s1')];
+      await notifier.loadSessions();
+      expect(notifier.state.error, isNull);
+    });
+
+    test('loadSessions replaces previous sessions', () async {
+      mockApi.conversationsResponse = [makeSession('s1')];
+      await notifier.loadSessions();
+      expect(notifier.state.sessions.length, 1);
+
+      mockApi.conversationsResponse = [makeSession('s2'), makeSession('s3')];
+      await notifier.loadSessions();
+      expect(notifier.state.sessions.length, 2);
+    });
+
+    test('loadMessages replaces messages for same session', () async {
+      mockApi.privateHistoryResponse = [makeMessage('m1')];
+      await notifier.loadMessages('s1');
+      expect(notifier.state.messages['s1']!.length, 1);
+
+      mockApi.privateHistoryResponse = [makeMessage('m2'), makeMessage('m3')];
+      await notifier.loadMessages('s1');
+      expect(notifier.state.messages['s1']!.length, 2);
+    });
+
+    test('addMessage preserves messages in other sessions', () {
+      notifier.addMessage('s1', makeMessage('m1'));
+      notifier.addMessage('s2', makeMessage('m2'));
+      notifier.addMessage('s1', makeMessage('m3'));
+
+      expect(notifier.state.messages['s1']!.length, 2);
+      expect(notifier.state.messages['s2']!.length, 1);
+    });
+
+    test('setActiveSession with null resets active session', () {
+      notifier.setActiveSession('s1');
+      expect(notifier.state.activeSessionId, 's1');
+
+      notifier.setActiveSession('s2');
+      expect(notifier.state.activeSessionId, 's2');
+    });
+  });
+
+  group('SendPrivateMessageRequest', () {
+    test('toJson includes required fields', () {
+      const request = SendPrivateMessageRequest(
+        receiverId: 'u2',
+        content: 'Hello!',
+      );
+      final json = request.toJson();
+
+      expect(json['receiverId'], 'u2');
+      expect(json['content'], 'Hello!');
+      expect(json['messageType'], 'text');
+    });
+
+    test('toJson excludes null clientMessageId', () {
+      const request = SendPrivateMessageRequest(
+        receiverId: 'u2',
+        content: 'Hi',
+      );
+      final json = request.toJson();
+
+      expect(json.containsKey('clientMessageId'), isFalse);
+    });
+
+    test('toJson includes non-null clientMessageId', () {
+      const request = SendPrivateMessageRequest(
+        receiverId: 'u2',
+        content: 'Hi',
+        clientMessageId: 'client-1',
+      );
+      final json = request.toJson();
+
+      expect(json['clientMessageId'], 'client-1');
+    });
+
+    test('default messageType is text', () {
+      const request = SendPrivateMessageRequest(
+        receiverId: 'u2',
+        content: 'Hello',
+      );
+      expect(request.messageType, 'text');
+    });
   });
 }
