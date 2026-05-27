@@ -78,9 +78,18 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                                   ref
                                       .read(chatStateProvider.notifier)
                                       .setActiveSession(session.id);
-                                  ref
-                                      .read(chatStateProvider.notifier)
-                                      .loadMessages(session.targetId);
+                                  final isGroup =
+                                      session.conversationType == 'group' ||
+                                          session.type == 'group';
+                                  if (isGroup) {
+                                    ref
+                                        .read(chatStateProvider.notifier)
+                                        .loadGroupMessages(session.targetId);
+                                  } else {
+                                    ref
+                                        .read(chatStateProvider.notifier)
+                                        .loadMessages(session.targetId);
+                                  }
                                 },
                               );
                             },
@@ -104,6 +113,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final chatState = ref.watch(chatStateProvider);
     final messages = chatState.messages[sessionId] ?? [];
     final session = chatState.sessions.where((s) => s.id == sessionId).firstOrNull;
+    final isGroup = session?.conversationType == 'group' ||
+        session?.type == 'group';
+    final sessionName =
+        session?.conversationName ?? session?.targetName ?? sessionId;
+    final memberCount = session?.memberCount;
 
     return Column(
       children: [
@@ -118,11 +132,33 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           child: Row(
             children: [
               Text(
-                session?.targetName ?? sessionId,
+                sessionName,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
               ),
+              if (isGroup && memberCount != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primaryContainer
+                        .withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$memberCount 人',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                  ),
+                ),
+              ],
               const Spacer(),
               if (messages.isNotEmpty)
                 Text(
@@ -157,10 +193,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         MessageInput(
           onSend: (text) {
             if (session == null) return;
-            ref.read(chatStateProvider.notifier).sendMessage(
-                  session.targetId,
-                  text,
-                );
+            if (isGroup) {
+              ref.read(chatStateProvider.notifier).sendGroupMessage(
+                    session.targetId,
+                    text,
+                  );
+            } else {
+              ref.read(chatStateProvider.notifier).sendMessage(
+                    session.targetId,
+                    text,
+                  );
+            }
           },
         ),
       ],
