@@ -67,10 +67,19 @@ class WebHttpClient implements HttpClientPort {
     T Function(Map<String, dynamic>) fromJson,
   ) {
     final data = response.data!;
+    final rawData = data['data'];
+    dynamic parsedData;
+    if (rawData is Map<String, dynamic>) {
+      parsedData = fromJson(rawData);
+    } else if (rawData is List) {
+      parsedData = fromJson({'items': rawData});
+    } else {
+      parsedData = rawData;
+    }
     return ApiResponse<T>(
       code: data['code'] as int,
       message: data['message'] as String,
-      data: fromJson(data['data'] as Map<String, dynamic>),
+      data: parsedData as T,
       timestamp: data['timestamp'] as int?,
     );
   }

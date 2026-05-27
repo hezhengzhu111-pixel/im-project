@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_web/core/di/providers.dart';
+import 'package:im_web/core/error/error_notifier.dart';
 import 'package:im_web/features/auth/presentation/login_page.dart';
 import 'package:im_web/features/auth/presentation/register_page.dart';
 import 'package:im_web/features/chat/presentation/chat_page.dart';
@@ -46,12 +47,24 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-class MainLayout extends StatelessWidget {
+class MainLayout extends ConsumerWidget {
   const MainLayout({required this.child, super.key});
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<ErrorState>(errorProvider, (prev, next) {
+      if (next.message != null && next.message != prev?.message) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(next.message!),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        ref.read(errorProvider.notifier).clear();
+      }
+    });
+
     return Scaffold(
       body: Row(
         children: [
