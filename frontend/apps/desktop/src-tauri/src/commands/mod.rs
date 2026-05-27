@@ -1,3 +1,4 @@
+pub mod drag;
 pub mod e2ee;
 pub mod file;
 pub mod notification;
