@@ -17,7 +17,7 @@ class MomentsRepository {
   }
 
   Future<PostWithDetails> createPost({
-    required String? content,
+    String? content,
     int? visibility,
     String? location,
     List<Uint8List>? fileBytes,
