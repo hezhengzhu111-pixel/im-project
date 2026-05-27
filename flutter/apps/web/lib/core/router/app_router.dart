@@ -11,6 +11,8 @@ import 'package:im_web/features/group/presentation/group_list_page.dart';
 import 'package:im_web/features/group/presentation/create_group_page.dart';
 import 'package:im_web/features/moments/presentation/moments_page.dart';
 import 'package:im_web/features/settings/presentation/settings_page.dart';
+import 'package:im_web/features/settings/presentation/profile_page.dart';
+import 'package:im_web/features/settings/presentation/ai_settings_page.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
@@ -48,6 +50,12 @@ final routerProvider = Provider<GoRouter>((ref) {
               path: '/moments', builder: (_, __) => const MomentsPage()),
           GoRoute(
               path: '/settings', builder: (_, __) => const SettingsPage()),
+          GoRoute(
+              path: '/settings/profile',
+              builder: (_, __) => const ProfilePage()),
+          GoRoute(
+              path: '/settings/ai',
+              builder: (_, __) => const AiSettingsPage()),
         ],
       ),
     ],
