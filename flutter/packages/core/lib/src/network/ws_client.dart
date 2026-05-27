@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'ws_connection_state.dart';
+
 /// Represents an event received over a WebSocket connection.
 abstract class WsEvent {
   String get type;
@@ -15,6 +17,9 @@ abstract class WsClientPort {
   /// Stream of events received from the WebSocket server.
   Stream<WsEvent> get events;
 
+  /// Stream of connection state changes.
+  Stream<WsConnectionState> get connectionState;
+
   /// Whether the WebSocket connection is currently active.
   bool get isConnected;
 
@@ -23,6 +28,9 @@ abstract class WsClientPort {
 
   /// Closes the WebSocket connection.
   Future<void> disconnect();
+
+  /// Attempts to reconnect to the WebSocket server.
+  Future<void> reconnect();
 
   /// Sends a JSON message over the WebSocket connection.
   void send(Map<String, dynamic> message);
