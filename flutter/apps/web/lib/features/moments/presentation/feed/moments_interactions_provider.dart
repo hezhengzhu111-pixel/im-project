@@ -8,24 +8,28 @@ class MomentsInteractionsState {
     this.comments = const [],
     this.loadingLikes = false,
     this.loadingComments = false,
+    this.error,
   });
 
   final List<MomentLike> likes;
   final List<MomentComment> comments;
   final bool loadingLikes;
   final bool loadingComments;
+  final String? error;
 
   MomentsInteractionsState copyWith({
     List<MomentLike>? likes,
     List<MomentComment>? comments,
     bool? loadingLikes,
     bool? loadingComments,
+    String? error,
   }) {
     return MomentsInteractionsState(
       likes: likes ?? this.likes,
       comments: comments ?? this.comments,
       loadingLikes: loadingLikes ?? this.loadingLikes,
       loadingComments: loadingComments ?? this.loadingComments,
+      error: error,
     );
   }
 }
@@ -38,22 +42,22 @@ class MomentsInteractionsNotifier extends StateNotifier<MomentsInteractionsState
   final String _postId;
 
   Future<void> loadLikes() async {
-    state = state.copyWith(loadingLikes: true);
+    state = state.copyWith(loadingLikes: true, error: null);
     try {
       final likes = await _repository.getLikes(_postId);
       state = state.copyWith(likes: likes, loadingLikes: false);
     } catch (e) {
-      state = state.copyWith(loadingLikes: false);
+      state = state.copyWith(loadingLikes: false, error: e.toString());
     }
   }
 
   Future<void> loadComments() async {
-    state = state.copyWith(loadingComments: true);
+    state = state.copyWith(loadingComments: true, error: null);
     try {
       final comments = await _repository.getComments(_postId);
       state = state.copyWith(comments: comments, loadingComments: false);
     } catch (e) {
-      state = state.copyWith(loadingComments: false);
+      state = state.copyWith(loadingComments: false, error: e.toString());
     }
   }
 
@@ -63,6 +67,7 @@ class MomentsInteractionsNotifier extends StateNotifier<MomentsInteractionsState
       await loadComments();
       return comment;
     } catch (e) {
+      state = state.copyWith(error: e.toString());
       return null;
     }
   }
@@ -74,7 +79,7 @@ class MomentsInteractionsNotifier extends StateNotifier<MomentsInteractionsState
         comments: state.comments.where((c) => c.id != commentId).toList(),
       );
     } catch (e) {
-      // ignore
+      state = state.copyWith(error: e.toString());
     }
   }
 }

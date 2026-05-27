@@ -47,17 +47,7 @@ class MomentsNotificationsNotifier extends StateNotifier<MomentsNotificationsSta
     try {
       await _repository.markNotificationsRead();
       state = state.copyWith(
-        notifications: state.notifications.map((n) => MomentNotification(
-          id: n.id,
-          type: n.type,
-          createTime: n.createTime,
-          isRead: true,
-          userId: n.userId,
-          userName: n.userName,
-          userAvatar: n.userAvatar,
-          postId: n.postId,
-          commentId: n.commentId,
-        )).toList(),
+        notifications: state.notifications.map((n) => n.copyWith(isRead: true)).toList(),
       );
     } catch (e) {
       state = state.copyWith(error: e.toString());
