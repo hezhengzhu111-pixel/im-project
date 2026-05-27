@@ -89,7 +89,7 @@ final groupApiProvider = Provider<GroupApi>((ref) {
 });
 
 final groupStateProvider = StateNotifierProvider<GroupNotifier, GroupState>((ref) {
-  return GroupNotifier(ref.watch(groupApiProvider), ref.watch(httpClientProvider));
+  return GroupNotifier(ref.watch(groupApiProvider));
 });
 
 // Error
