@@ -1,0 +1,33 @@
+{
+  "name": "@im/desktop",
+  "version": "1.0.0",
+  "description": "IM聊天应用桌面客户端",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite --mode dev --port 3001",
+    "build": "vite build",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "dependencies": {
+    "@im/shared-api-contract": "*",
+    "@im/shared-auth-core": "*",
+    "@im/shared-e2ee-core": "*",
+    "@im/shared-im-core": "*",
+    "@im/shared-normalizers": "*",
+    "@im/shared-platform-ports": "*",
+    "@im/shared-types": "*",
+    "@im/shared-utils": "*",
+    "@im/shared-ws-core": "*",
+    "@tauri-apps/api": "^2.0.0",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@vitejs/plugin-vue": "^5.2.3",
+    "typescript": "~5.7.3",
+    "vite": "^6.0.7"
+  }
+}
