@@ -105,6 +105,18 @@ class AdminEndpoints {
   static const logs = '/admin/logs';
 }
 
+class E2eeEndpoints {
+  static const bundle = '/api/keys/bundle';
+  static String bundleByUser(String userId) => '/api/keys/bundle/$userId';
+  static const request = '/api/e2ee/request';
+  static const accept = '/api/e2ee/accept';
+  static const reject = '/api/e2ee/reject';
+  static const disable = '/api/e2ee/disable';
+  static const heartbeat = '/api/keys/heartbeat';
+  static const otkCount = '/api/keys/otk-count';
+  static const otk = '/api/keys/otk';
+}
+
 class WsEndpoints {
   static const path = '/websocket';
   static const ticketParam = 'ticket';
