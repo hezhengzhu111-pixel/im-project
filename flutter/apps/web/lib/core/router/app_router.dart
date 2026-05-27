@@ -7,6 +7,8 @@ import 'package:im_web/features/auth/presentation/login_page.dart';
 import 'package:im_web/features/auth/presentation/register_page.dart';
 import 'package:im_web/features/chat/presentation/chat_page.dart';
 import 'package:im_web/features/contacts/presentation/contacts_page.dart';
+import 'package:im_web/features/group/presentation/group_list_page.dart';
+import 'package:im_web/features/group/presentation/create_group_page.dart';
 import 'package:im_web/features/moments/presentation/moments_page.dart';
 import 'package:im_web/features/settings/presentation/settings_page.dart';
 
@@ -37,6 +39,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/chat', builder: (_, __) => const ChatPage()),
           GoRoute(
               path: '/contacts', builder: (_, __) => const ContactsPage()),
+          GoRoute(
+              path: '/groups', builder: (_, __) => const GroupListPage()),
+          GoRoute(
+              path: '/groups/create',
+              builder: (_, __) => const CreateGroupPage()),
           GoRoute(
               path: '/moments', builder: (_, __) => const MomentsPage()),
           GoRoute(
@@ -84,6 +91,11 @@ class MainLayout extends ConsumerWidget {
                 label: Text('联系人'),
               ),
               NavigationRailDestination(
+                icon: Icon(Icons.group_outlined),
+                selectedIcon: Icon(Icons.group),
+                label: Text('群组'),
+              ),
+              NavigationRailDestination(
                 icon: Icon(Icons.camera_alt_outlined),
                 selectedIcon: Icon(Icons.camera_alt),
                 label: Text('朋友圈'),
@@ -106,8 +118,9 @@ class MainLayout extends ConsumerWidget {
     final location = GoRouterState.of(context).uri.path;
     if (location.startsWith('/chat')) return 0;
     if (location.startsWith('/contacts')) return 1;
-    if (location.startsWith('/moments')) return 2;
-    if (location.startsWith('/settings')) return 3;
+    if (location.startsWith('/groups')) return 2;
+    if (location.startsWith('/moments')) return 3;
+    if (location.startsWith('/settings')) return 4;
     return 0;
   }
 
@@ -118,8 +131,10 @@ class MainLayout extends ConsumerWidget {
       case 1:
         context.go('/contacts');
       case 2:
-        context.go('/moments');
+        context.go('/groups');
       case 3:
+        context.go('/moments');
+      case 4:
         context.go('/settings');
     }
   }
