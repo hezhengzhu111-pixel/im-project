@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_core/core.dart';
+import '../../chat/presentation/chat_provider.dart';
 import 'contacts_provider.dart';
 
 class ContactsPage extends ConsumerStatefulWidget {
@@ -66,7 +68,20 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
       itemCount: state.friends.length,
       itemBuilder: (context, index) {
         final friend = state.friends[index];
-        return _FriendTile(friend: friend);
+        return _FriendTile(
+          friend: friend,
+          onTap: () async {
+            final chatNotifier = ref.read(chatStateProvider.notifier);
+            final session =
+                await chatNotifier.getOrCreateSession(friend.friendId);
+            if (session != null) {
+              chatNotifier.setActiveSession(session.id);
+              if (context.mounted) {
+                context.go('/chat');
+              }
+            }
+          },
+        );
       },
     );
   }
@@ -108,8 +123,9 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
 }
 
 class _FriendTile extends StatelessWidget {
-  const _FriendTile({required this.friend});
+  const _FriendTile({required this.friend, required this.onTap});
   final Friendship friend;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -163,9 +179,7 @@ class _FriendTile extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      onTap: () {
-        // TODO: navigate to chat with this friend
-      },
+      onTap: onTap,
     );
   }
 }
