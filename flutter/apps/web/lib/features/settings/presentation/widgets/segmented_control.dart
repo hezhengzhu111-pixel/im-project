@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:im_web/core/theme/glass_theme.dart';
 
 class Segment<T> {
   const Segment({required this.label, required this.value});
@@ -21,11 +22,12 @@ class SegmentedControl<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final glass = theme.extension<GlassTheme>()!;
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(10),
+        color: glass.segmentedBackground,
+        borderRadius: BorderRadius.circular(glass.controlRadius),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -39,10 +41,18 @@ class SegmentedControl<T> extends StatelessWidget {
                 duration: const Duration(milliseconds: 180),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  color: isActive
-                      ? theme.colorScheme.primaryContainer
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
+                  gradient: isActive ? glass.accentGradient : null,
+                  color: isActive ? null : Colors.transparent,
+                  borderRadius: BorderRadius.circular(glass.controlRadius - 2),
+                  boxShadow: isActive
+                      ? [
+                          BoxShadow(
+                            color: glass.segmentedActiveBackground.withValues(alpha: 0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
                 ),
                 child: Text(
                   segment.label,
@@ -50,7 +60,7 @@ class SegmentedControl<T> extends StatelessWidget {
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: isActive
-                        ? theme.colorScheme.onPrimaryContainer
+                        ? Colors.white
                         : theme.colorScheme.onSurfaceVariant,
                   ),
                 ),

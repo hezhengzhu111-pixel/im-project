@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
 class AddApiKeyForm extends StatefulWidget {
@@ -27,7 +28,15 @@ class _AddApiKeyFormState extends State<AddApiKeyForm> {
     final loc = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
 
-    return Card(
+    final glass = theme.extension<GlassTheme>()!;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: glass.cardBackground,
+        borderRadius: BorderRadius.circular(glass.controlRadius),
+        border: Border.all(color: glass.cardBorder),
+      ),
+      margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
