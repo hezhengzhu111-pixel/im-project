@@ -39,4 +39,27 @@ class ContactsApi {
       fromJson: (_) {},
     );
   }
+
+  Future<List<User>> searchUsers(String keyword) async {
+    final response = await _httpClient.get<List<dynamic>>(
+      UserEndpoints.search,
+      queryParameters: {'keyword': keyword},
+      fromJson: (json) => (json as List)
+          .map((e) => User.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+    return response.data.cast<User>();
+  }
+
+  Future<void> sendFriendRequest(String targetUserId,
+      {String? reason}) async {
+    await _httpClient.post<void>(
+      FriendEndpoints.request,
+      body: {
+        'targetUserId': targetUserId,
+        if (reason != null) 'reason': reason,
+      },
+      fromJson: (_) {},
+    );
+  }
 }
