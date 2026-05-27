@@ -6,7 +6,7 @@ import type {
   NetworkStatusPort,
   ClockPort,
 } from "@im/shared-platform-ports";
-import type { E2eeRuntime } from "@im/shared-e2ee-core/src/runtime";
+import type { E2eeRuntime } from "@im/shared-e2ee-core";
 
 import { TauriSecureStorageAdapter } from "./storage.adapter";
 import { TauriHttpClientAdapter } from "./http.adapter";
