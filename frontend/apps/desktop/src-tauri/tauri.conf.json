@@ -37,8 +37,8 @@
     }
   },
   "plugins": {
-    "notification": {},
-    "global-shortcut": {},
+    "notification": null,
+    "global-shortcut": null,
     "shell": {
       "open": true
     }
