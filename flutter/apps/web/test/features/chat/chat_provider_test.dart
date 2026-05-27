@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/features/chat/data/message_api.dart';
+import 'package:im_web/features/chat/data/message_pipeline.dart';
 import 'package:im_web/features/chat/presentation/chat_provider.dart';
 
 /// Mock HttpClientPort for testing
@@ -75,13 +77,51 @@ class TestMessageApi extends MessageApi {
   }
 }
 
+/// Mock WsClientPort for testing
+class MockWsClientPort implements WsClientPort {
+  final _eventsController = StreamController<WsEvent>.broadcast();
+  final _connectionStateController = StreamController<WsConnectionState>.broadcast();
+
+  @override
+  Stream<WsEvent> get events => _eventsController.stream;
+
+  @override
+  Stream<WsConnectionState> get connectionState => _connectionStateController.stream;
+
+  @override
+  bool get isConnected => false;
+
+  @override
+  Future<void> connect(String url) async {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> reconnect() async {}
+
+  @override
+  void send(Map<String, dynamic> message) {}
+
+  void dispose() {
+    _eventsController.close();
+    _connectionStateController.close();
+  }
+}
+
 void main() {
   late TestMessageApi mockApi;
   late ChatNotifier notifier;
+  late MockWsClientPort mockWsClient;
 
   setUp(() {
     mockApi = TestMessageApi();
-    notifier = ChatNotifier(mockApi);
+    mockWsClient = MockWsClientPort();
+    notifier = ChatNotifier(mockApi, MessagePipeline(), mockWsClient);
+  });
+
+  tearDown(() {
+    mockWsClient.dispose();
   });
 
   Message makeMessage(String id, {String? content}) {
