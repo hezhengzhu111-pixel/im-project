@@ -1,12 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
-import '../../../../core/di/providers.dart';
 import '../../data/moments_repository.dart';
-
-final notificationsProvider = StateNotifierProvider<MomentsNotificationsNotifier, MomentsNotificationsState>((ref) {
-  final repository = ref.watch(momentsRepositoryProvider);
-  return MomentsNotificationsNotifier(repository);
-});
 
 class MomentsNotificationsState {
   const MomentsNotificationsState({
