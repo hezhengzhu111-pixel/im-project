@@ -4,11 +4,31 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import '../frb_generated.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BridgeX3dhInitiateResult`, `BridgeX3dhRespondResult`
+
+/// Generate a key bundle for X3DH.
+///
+/// Creates a fresh identity key pair, signing key pair, signed pre-key,
+/// and the requested number of one-time pre-keys. Returns a bincode-
+/// serialized `BridgeKeyBundle` containing all public and private key material.
+///
+/// # Arguments
+/// * `otk_count` — Number of one-time pre-keys to generate.
 Future<Uint8List> generateKeyBundle({required int otkCount}) =>
     RustLib.instance.api.crateApiE2EeGenerateKeyBundle(otkCount: otkCount);
 
+/// Initiate X3DH key agreement (Alice side).
+///
+/// # Arguments
+/// * `identity_key` — Alice's identity key pair, bincode-serialized `X25519KeyPair`.
+/// * `signed_pre_key` — Bob's pre-key bundle, bincode-serialized `PreKeyBundleFetch`.
+/// * `one_time_pre_key` — Unused (OTK is already inside `PreKeyBundleFetch`).
+///
+/// Returns a bincode-serialized `BridgeX3dhInitiateResult` containing the
+/// initial sending RatchetState and metadata to send to Bob.
 Future<Uint8List> x3DhInitiate(
         {required List<int> identityKey,
         required List<int> signedPreKey,
@@ -18,6 +38,16 @@ Future<Uint8List> x3DhInitiate(
         signedPreKey: signedPreKey,
         oneTimePreKey: oneTimePreKey);
 
+/// Respond to X3DH key agreement (Bob side).
+///
+/// # Arguments
+/// * `identity_key` — Bob's identity key pair, bincode-serialized `X25519KeyPair`.
+/// * `ephemeral_key` — 64 bytes: Alice's identity public key (32) || Alice's ephemeral public key (32).
+/// * `signed_pre_key` — Bob's signed pre-key pair, bincode-serialized `X25519KeyPair`.
+/// * `one_time_pre_key` — Bob's one-time pre-key pair, bincode-serialized `X25519KeyPair` (optional).
+///
+/// Returns a bincode-serialized `BridgeX3dhRespondResult` containing the
+/// initial receiving RatchetState.
 Future<Uint8List> x3DhRespond(
         {required List<int> identityKey,
         required List<int> ephemeralKey,
@@ -29,18 +59,149 @@ Future<Uint8List> x3DhRespond(
         signedPreKey: signedPreKey,
         oneTimePreKey: oneTimePreKey);
 
+/// Encrypt a plaintext message using the Double Ratchet.
+///
+/// # Arguments
+/// * `state_bytes` — Bincode-serialized `RatchetState`.
+/// * `plaintext` — The message bytes to encrypt.
+///
+/// Returns `(new_state_bytes, header_and_ciphertext)`:
+/// - `new_state_bytes`: Updated serialized RatchetState (must be stored for next operation).
+/// - `header_and_ciphertext`: 52-byte ratchet header || AES-GCM ciphertext (to send to peer).
 Future<(Uint8List, Uint8List)> ratchetEncrypt(
         {required List<int> stateBytes, required List<int> plaintext}) =>
     RustLib.instance.api.crateApiE2EeRatchetEncrypt(
         stateBytes: stateBytes, plaintext: plaintext);
 
+/// Decrypt a ciphertext message using the Double Ratchet.
+///
+/// # Arguments
+/// * `state_bytes` — Bincode-serialized `RatchetState`.
+/// * `ciphertext` — 52-byte ratchet header || AES-GCM ciphertext (from peer).
+///
+/// Returns `(new_state_bytes, plaintext)`:
+/// - `new_state_bytes`: Updated serialized RatchetState (must be stored for next operation).
+/// - `plaintext`: The decrypted message bytes.
 Future<(Uint8List, Uint8List)> ratchetDecrypt(
         {required List<int> stateBytes, required List<int> ciphertext}) =>
     RustLib.instance.api.crateApiE2EeRatchetDecrypt(
         stateBytes: stateBytes, ciphertext: ciphertext);
 
+/// Validate and re-export ratchet state bytes.
+///
+/// Deserializes the state, then re-serializes it to ensure canonical format.
+/// Returns the validated, canonical bincode bytes.
 Future<Uint8List> exportState({required List<int> stateBytes}) =>
     RustLib.instance.api.crateApiE2EeExportState(stateBytes: stateBytes);
 
+/// Restore ratchet state from previously exported bytes.
+///
+/// Validates and deserializes the state, then re-exports in canonical form.
+/// Returns the validated, canonical bincode bytes.
 Future<Uint8List> restoreState({required List<int> stateBytes}) =>
     RustLib.instance.api.crateApiE2EeRestoreState(stateBytes: stateBytes);
+
+/// Create outbound X3DH session (Alice side).
+/// Input JSON: {"session_id": "...", "local_identity_key_pair": "<base64 bincode X25519KeyPair>", "remote_bundle": "<base64 bincode PreKeyBundleFetch>"}
+/// Output JSON: {"state": "<base64>", "handshake": "<base64>", "otk_id": <u32|null>}
+Future<String> createOutboundSession({required String configJson}) =>
+    RustLib.instance.api
+        .crateApiE2EeCreateOutboundSession(configJson: configJson);
+
+/// Create inbound X3DH session (Bob side).
+/// Input JSON: {"session_id": "...", "local_identity_key_pair": "<base64 bincode X25519KeyPair>", "local_spk_pair": "<base64 bincode X25519KeyPair>", "local_otk_pair?": "<base64 bincode X25519KeyPair>", "remote_identity_key": "<base64 32 raw bytes>", "remote_handshake": "<base64 40 bytes: ephemeral_pk(32)||spk_id(4BE)||otk_id(4BE)>"}
+/// Output JSON: {"state": "<base64>", "otk_id": <u32|null>}
+Future<String> createInboundSession({required String configJson}) =>
+    RustLib.instance.api
+        .crateApiE2EeCreateInboundSession(configJson: configJson);
+
+/// Encrypt message, output E2eeEnvelope JSON.
+/// Input JSON: {"state": "<base64>", "plaintext": "<base64>", "sender_device_id": "...", "recipient_device_id": "...", "session_id": "...", "handshake?": "<base64>"}
+/// Output JSON: {"version": 2, "algorithm": "rust-x25519-x3dh-dr-v1", "sender_device_id": "...", "recipient_device_id": "...", "session_id": "...", "wire": "<base64>", "handshake?": "<base64>", "new_state": "<base64>"}
+Future<String> encryptMessage({required String configJson}) =>
+    RustLib.instance.api.crateApiE2EeEncryptMessage(configJson: configJson);
+
+/// Decrypt message from E2eeEnvelope JSON.
+/// Input JSON: {"state": "<base64>", "envelope": {"wire": "<base64>", ...}}
+/// Output JSON: {"plaintext": "<base64>", "new_state": "<base64>"}
+Future<String> decryptMessage({required String configJson}) =>
+    RustLib.instance.api.crateApiE2EeDecryptMessage(configJson: configJson);
+
+/// Export session state with v3 envelope context binding.
+/// Input JSON: {"state": "<base64>", "user_id", "device_id", "session_id", "remote_user_id", "remote_device_id"}
+/// Output JSON: {"envelope": "<base64>"}
+Future<String> exportSessionEnvelope({required String configJson}) =>
+    RustLib.instance.api
+        .crateApiE2EeExportSessionEnvelope(configJson: configJson);
+
+/// Restore session from v3 envelope, validating context binding.
+/// Input JSON: {"envelope": "<base64>", "user_id", "device_id", "session_id", "remote_user_id", "remote_device_id"}
+/// Output JSON: {"state": "<base64>"} or error
+Future<String> restoreSessionEnvelope({required String configJson}) =>
+    RustLib.instance.api
+        .crateApiE2EeRestoreSessionEnvelope(configJson: configJson);
+
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<BridgeKeyBundle>>
+abstract class BridgeKeyBundle implements RustOpaqueInterface {
+  PreKeyBundle get bundle;
+
+  X25519KeyPair get identityKeyPair;
+
+  List<BridgeOtkPair> get otkPairs;
+
+  X25519KeyPair get signedPreKeyPair;
+
+  U8Array32 get signingPrivateKeyBytes;
+
+  Ed25519PublicKey get signingPublicKey;
+
+  int get spkId;
+
+  set bundle(PreKeyBundle bundle);
+
+  set identityKeyPair(X25519KeyPair identityKeyPair);
+
+  set otkPairs(List<BridgeOtkPair> otkPairs);
+
+  set signedPreKeyPair(X25519KeyPair signedPreKeyPair);
+
+  set signingPrivateKeyBytes(U8Array32 signingPrivateKeyBytes);
+
+  set signingPublicKey(Ed25519PublicKey signingPublicKey);
+
+  set spkId(int spkId);
+}
+
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<BridgeOtkPair>>
+abstract class BridgeOtkPair implements RustOpaqueInterface {
+  int get id;
+
+  X25519KeyPair get keyPair;
+
+  set id(int id);
+
+  set keyPair(X25519KeyPair keyPair);
+}
+
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Ed25519PublicKey>>
+abstract class Ed25519PublicKey implements RustOpaqueInterface {}
+
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PreKeyBundle>>
+abstract class PreKeyBundle implements RustOpaqueInterface {}
+
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<X25519KeyPair>>
+abstract class X25519KeyPair implements RustOpaqueInterface {}
+
+class U8Array32 extends NonGrowableListView<int> {
+  static const arraySize = 32;
+
+  @internal
+  Uint8List get inner => _inner;
+  final Uint8List _inner;
+
+  U8Array32(this._inner)
+      : assert(_inner.length == arraySize),
+        super(_inner);
+
+  U8Array32.init() : this(Uint8List(arraySize));
+}
