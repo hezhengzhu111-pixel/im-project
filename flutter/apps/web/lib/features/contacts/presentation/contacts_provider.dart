@@ -27,9 +27,11 @@ class ContactsState {
 }
 
 class ContactsNotifier extends StateNotifier<ContactsState> {
-  ContactsNotifier(this._api) : super(const ContactsState());
+  ContactsNotifier(this._api, [this._wsClient])
+      : super(const ContactsState());
 
   final ContactsApi _api;
+  final WsClientPort? _wsClient;
 
   Future<void> loadFriends() async {
     state = state.copyWith(isLoading: true);
