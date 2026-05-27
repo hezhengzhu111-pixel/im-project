@@ -20,6 +20,32 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 Future<Uint8List> generateKeyBundle({required int otkCount}) =>
     RustLib.instance.api.crateApiE2EeGenerateKeyBundle(otkCount: otkCount);
 
+/// Generate a key bundle and return it as JSON (for Dart consumption).
+///
+/// Returns a JSON string with all key material encoded as base64, so the Dart
+/// side can parse individual fields without needing bincode deserialization.
+///
+/// Output JSON:
+/// ```json
+/// {
+///   "identity_key_pair_bincode": "<base64>",
+///   "signing_public_key": "<base64 32 bytes>",
+///   "signing_private_key_bytes": "<base64 32 bytes>",
+///   "signed_pre_key_pair_bincode": "<base64>",
+///   "signed_pre_key_id": 1,
+///   "public_bundle": {
+///     "identity_key": "<base64 32 bytes>",
+///     "signing_key": "<base64 32 bytes>",
+///     "signed_pre_key": { "id": 1, "key": "<base64 32 bytes>" },
+///     "signed_pre_key_signature": "<base64>",
+///     "one_time_pre_keys": [ { "id": 1, "key": "<base64 32 bytes>" }, ... ]
+///   },
+///   "otk_pairs": [ { "id": 1, "key_pair_bincode": "<base64>" }, ... ]
+/// }
+/// ```
+Future<String> generateKeyBundleJson({required int otkCount}) =>
+    RustLib.instance.api.crateApiE2EeGenerateKeyBundleJson(otkCount: otkCount);
+
 /// Initiate X3DH key agreement (Alice side).
 ///
 /// # Arguments

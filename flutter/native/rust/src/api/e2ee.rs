@@ -128,6 +128,77 @@ pub fn generate_key_bundle(otk_count: u32) -> Result<Vec<u8>> {
     bincode::serialize(&bridge_bundle).context("failed to serialize key bundle")
 }
 
+/// Generate a key bundle and return it as JSON (for Dart consumption).
+///
+/// Returns a JSON string with all key material encoded as base64, so the Dart
+/// side can parse individual fields without needing bincode deserialization.
+///
+/// Output JSON:
+/// ```json
+/// {
+///   "identity_key_pair_bincode": "<base64>",
+///   "signing_public_key": "<base64 32 bytes>",
+///   "signing_private_key_bytes": "<base64 32 bytes>",
+///   "signed_pre_key_pair_bincode": "<base64>",
+///   "signed_pre_key_id": 1,
+///   "public_bundle": {
+///     "identity_key": "<base64 32 bytes>",
+///     "signing_key": "<base64 32 bytes>",
+///     "signed_pre_key": { "id": 1, "key": "<base64 32 bytes>" },
+///     "signed_pre_key_signature": "<base64>",
+///     "one_time_pre_keys": [ { "id": 1, "key": "<base64 32 bytes>" }, ... ]
+///   },
+///   "otk_pairs": [ { "id": 1, "key_pair_bincode": "<base64>" }, ... ]
+/// }
+/// ```
+pub fn generate_key_bundle_json(otk_count: u32) -> Result<String> {
+    let key_bundle = generate_key_bundle_with_count(1, otk_count)
+        .context("failed to generate key bundle")?;
+
+    let identity_key_pair_bytes = bincode::serialize(&key_bundle.identity_key_pair)
+        .context("failed to serialize identity key pair")?;
+    let signed_pre_key_pair_bytes = bincode::serialize(&key_bundle.signed_pre_key_pair)
+        .context("failed to serialize signed pre-key pair")?;
+
+    let b64 = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+
+    let mut otk_pairs_json = Vec::with_capacity(key_bundle.one_time_pre_key_pairs.len());
+    let mut one_time_pre_keys_json = Vec::with_capacity(key_bundle.one_time_pre_key_pairs.len());
+    for otk in &key_bundle.one_time_pre_key_pairs {
+        let otk_pair_bytes = bincode::serialize(&otk.key_pair)
+            .context("failed to serialize OTK pair")?;
+        otk_pairs_json.push(serde_json::json!({
+            "id": otk.id,
+            "key_pair_bincode": b64(&otk_pair_bytes),
+        }));
+        one_time_pre_keys_json.push(serde_json::json!({
+            "id": otk.id,
+            "key": b64(&otk.key_pair.public_key.0),
+        }));
+    }
+
+    let result = serde_json::json!({
+        "identity_key_pair_bincode": b64(&identity_key_pair_bytes),
+        "signing_public_key": b64(&key_bundle.signing_key_pair.public_key.0),
+        "signing_private_key_bytes": b64(&key_bundle.signing_key_pair.private_key.0),
+        "signed_pre_key_pair_bincode": b64(&signed_pre_key_pair_bytes),
+        "signed_pre_key_id": key_bundle.spk_id,
+        "public_bundle": {
+            "identity_key": b64(&key_bundle.bundle.identity_key.0),
+            "signing_key": b64(&key_bundle.signing_key_pair.public_key.0),
+            "signed_pre_key": {
+                "id": key_bundle.spk_id,
+                "key": b64(&key_bundle.signed_pre_key_pair.public_key.0),
+            },
+            "signed_pre_key_signature": b64(&key_bundle.bundle.signed_pre_key_signature.0),
+            "one_time_pre_keys": one_time_pre_keys_json,
+        },
+        "otk_pairs": otk_pairs_json,
+    });
+
+    Ok(result.to_string())
+}
+
 /// Initiate X3DH key agreement (Alice side).
 ///
 /// # Arguments
