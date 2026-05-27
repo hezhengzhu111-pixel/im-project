@@ -1,30 +1,39 @@
-import type {
-  HttpClientPort,
-  RequestConfig,
-} from "@im/shared-platform-ports";
+import axios from "axios";
+import type { HttpClientPort, RequestConfig } from "@im/shared-platform-ports";
 
-export class NotImplementedHttpAdapter implements HttpClientPort {
-  async get<T>(_url: string, _config?: RequestConfig): Promise<T> {
-    throw new Error("HttpClientPort.get not implemented for desktop");
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8082";
+
+const instance = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: false,
+});
+
+function toAxiosConfig(config?: RequestConfig) {
+  return {
+    headers: config?.headers,
+    timeout: config?.timeout,
+    signal: config?.signal,
+  };
+}
+
+export class TauriHttpClientAdapter implements HttpClientPort {
+  async get<T>(url: string, config?: RequestConfig): Promise<T> {
+    const res = await instance.get(url, toAxiosConfig(config));
+    return res.data;
   }
 
-  async post<T>(
-    _url: string,
-    _data?: unknown,
-    _config?: RequestConfig,
-  ): Promise<T> {
-    throw new Error("HttpClientPort.post not implemented for desktop");
+  async post<T>(url: string, data?: unknown, config?: RequestConfig): Promise<T> {
+    const res = await instance.post(url, data, toAxiosConfig(config));
+    return res.data;
   }
 
-  async put<T>(
-    _url: string,
-    _data?: unknown,
-    _config?: RequestConfig,
-  ): Promise<T> {
-    throw new Error("HttpClientPort.put not implemented for desktop");
+  async put<T>(url: string, data?: unknown, config?: RequestConfig): Promise<T> {
+    const res = await instance.put(url, data, toAxiosConfig(config));
+    return res.data;
   }
 
-  async delete<T>(_url: string, _config?: RequestConfig): Promise<T> {
-    throw new Error("HttpClientPort.delete not implemented for desktop");
+  async delete<T>(url: string, config?: RequestConfig): Promise<T> {
+    const res = await instance.delete(url, toAxiosConfig(config));
+    return res.data;
   }
 }

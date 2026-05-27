@@ -1,15 +1,32 @@
+import { listen } from "@tauri-apps/api/event";
 import type { NetworkStatusPort } from "@im/shared-platform-ports";
 
-export class NotImplementedNetworkAdapter implements NetworkStatusPort {
-  onOnline(_callback: () => void): void {
-    throw new Error("NetworkStatusPort.onOnline not implemented for desktop");
+let connected = true;
+
+interface NetworkEvent {
+  isConnected: boolean;
+}
+
+export class TauriNetworkStatusAdapter implements NetworkStatusPort {
+  onOnline(callback: () => void): void {
+    void listen<NetworkEvent>("network-status-changed", (event) => {
+      if (event.payload.isConnected && !connected) {
+        connected = true;
+        callback();
+      }
+    });
   }
 
-  onOffline(_callback: () => void): void {
-    throw new Error("NetworkStatusPort.onOffline not implemented for desktop");
+  onOffline(callback: () => void): void {
+    void listen<NetworkEvent>("network-status-changed", (event) => {
+      if (!event.payload.isConnected && connected) {
+        connected = false;
+        callback();
+      }
+    });
   }
 
   isConnected(): boolean {
-    throw new Error("NetworkStatusPort.isConnected not implemented for desktop");
+    return connected;
   }
 }
