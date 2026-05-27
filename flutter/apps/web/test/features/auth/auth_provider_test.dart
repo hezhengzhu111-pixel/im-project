@@ -2,6 +2,69 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 
+/// Manual mock implementation of WsClientPort for testing.
+class MockWsClientPort implements WsClientPort {
+  @override
+  Stream<WsEvent> get events => const Stream.empty();
+
+  @override
+  Stream<WsConnectionState> get connectionState => const Stream.empty();
+
+  @override
+  bool get isConnected => false;
+
+  @override
+  Future<void> connect(String url) async {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> reconnect() async {}
+
+  @override
+  void send(Map<String, dynamic> message) {}
+}
+
+/// Manual mock implementation of HttpClientPort for testing.
+class MockHttpClientPort implements HttpClientPort {
+  @override
+  Future<ApiResponse<T>> get<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    required T Function(Map<String, dynamic>) fromJson,
+  }) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<ApiResponse<T>> post<T>(
+    String path, {
+    dynamic body,
+    required T Function(Map<String, dynamic>) fromJson,
+  }) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<ApiResponse<T>> put<T>(
+    String path, {
+    dynamic body,
+    required T Function(Map<String, dynamic>) fromJson,
+  }) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<ApiResponse<T>> delete<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    required T Function(Map<String, dynamic>) fromJson,
+  }) async {
+    throw UnimplementedError();
+  }
+}
+
 /// Manual mock implementation of AuthRepository for testing.
 class MockAuthRepository implements AuthRepository {
   UserAuthResponse? loginResponse;
@@ -65,11 +128,15 @@ class MockAuthRepository implements AuthRepository {
 
 void main() {
   late MockAuthRepository mockRepo;
+  late MockWsClientPort mockWsClient;
+  late MockHttpClientPort mockHttpClient;
   late AuthNotifier notifier;
 
   setUp(() {
     mockRepo = MockAuthRepository();
-    notifier = AuthNotifier(mockRepo);
+    mockWsClient = MockWsClientPort();
+    mockHttpClient = MockHttpClientPort();
+    notifier = AuthNotifier(mockRepo, mockWsClient, mockHttpClient);
   });
 
   group('AuthNotifier', () {
@@ -146,7 +213,7 @@ void main() {
         final states = <AuthState>[];
         notifier.addListener(states.add, fireImmediately: true);
 
-        await notifier.register('newuser', 'password123', 'New User');
+        await notifier.register('newuser', 'newuser@example.com', 'password123');
 
         // States: initial (from fireImmediately), loading, success
         expect(states.length, greaterThanOrEqualTo(2));
@@ -160,18 +227,19 @@ void main() {
       test('passes correct RegisterRequest to repository', () async {
         mockRepo.registerResponse = const UserAuthResponse(success: true);
 
-        await notifier.register('bob', 'pass123', 'Bob');
+        await notifier.register('bob', 'bob@example.com', 'pass123');
 
         expect(mockRepo.registerCallCount, 1);
         expect(mockRepo.lastRegisterRequest!.username, 'bob');
         expect(mockRepo.lastRegisterRequest!.password, 'pass123');
-        expect(mockRepo.lastRegisterRequest!.nickname, 'Bob');
+        expect(mockRepo.lastRegisterRequest!.email, 'bob@example.com');
+        expect(mockRepo.lastRegisterRequest!.nickname, 'bob');
       });
 
       test('sets error on failure', () async {
         mockRepo.errorToThrow = Exception('Username taken');
 
-        await notifier.register('user', 'pass', 'Nick');
+        await notifier.register('user', 'user@example.com', 'pass');
 
         expect(notifier.state.isLoading, isFalse);
         expect(notifier.state.error, contains('Username taken'));
@@ -290,7 +358,7 @@ void main() {
     group('register - additional edge cases', () {
       test('register with error does not leave isLoading true', () async {
         mockRepo.errorToThrow = Exception('Username taken');
-        await notifier.register('user', 'pass', 'Nick');
+        await notifier.register('user', 'user@example.com', 'pass');
 
         expect(notifier.state.isLoading, isFalse);
         expect(notifier.state.error, contains('Username taken'));
@@ -298,7 +366,7 @@ void main() {
 
       test('register success does not change user or isAuthenticated', () async {
         mockRepo.registerResponse = const UserAuthResponse(success: true);
-        await notifier.register('newuser', 'pass', 'New');
+        await notifier.register('newuser', 'newuser@example.com', 'pass');
 
         expect(notifier.state.user, isNull);
         expect(notifier.state.isAuthenticated, isFalse);

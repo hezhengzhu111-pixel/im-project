@@ -13,9 +13,9 @@ class RegisterPage extends ConsumerStatefulWidget {
 class _RegisterPageState extends ConsumerState<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _nicknameController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -44,9 +44,10 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
-                      controller: _nicknameController,
-                      decoration: const InputDecoration(labelText: '昵称'),
-                      validator: (v) => v?.isEmpty ?? true ? '请输入昵称' : null,
+                      controller: _emailController,
+                      decoration: const InputDecoration(labelText: '邮箱'),
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (v) => v?.isEmpty ?? true ? '请输入邮箱' : null,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -107,8 +108,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     if (_formKey.currentState?.validate() ?? false) {
       await ref.read(authStateProvider.notifier).register(
             _usernameController.text.trim(),
+            _emailController.text.trim(),
             _passwordController.text,
-            _nicknameController.text.trim(),
           );
       if (mounted) {
         final authState = ref.read(authStateProvider);
@@ -125,9 +126,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   @override
   void dispose() {
     _usernameController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _nicknameController.dispose();
     super.dispose();
   }
 }
