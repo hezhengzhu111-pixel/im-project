@@ -332,3 +332,232 @@ pub fn restore_state(state_bytes: Vec<u8>) -> Result<Vec<u8>> {
 
     try_export_state(&state).context("failed to re-export restored ratchet state")
 }
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use e2ee_core::PreKeyBundleFetch;
+
+    /// Helper: deserialize a bincode-serialized BridgeKeyBundle.
+    fn deserialize_bundle(bytes: &[u8]) -> BridgeKeyBundle {
+        bincode::deserialize(bytes).expect("failed to deserialize BridgeKeyBundle")
+    }
+
+    /// Helper: build a PreKeyBundleFetch from a BridgeKeyBundle so that
+    /// Alice can call `x3dh_initiate`.
+    fn build_fetch_bundle(bundle: &BridgeKeyBundle) -> PreKeyBundleFetch {
+        let first_otk = bundle.otk_pairs.first().map(|otk| e2ee_core::PreKey {
+            id: otk.id,
+            key: otk.key_pair.public_key,
+        });
+
+        PreKeyBundleFetch {
+            identity_key: bundle.bundle.identity_key,
+            signing_key: bundle.signing_public_key,
+            signed_pre_key: e2ee_core::PreKey {
+                id: bundle.spk_id,
+                key: bundle.signed_pre_key_pair.public_key,
+            },
+            signed_pre_key_signature: bundle.bundle.signed_pre_key_signature,
+            one_time_pre_key: first_otk,
+        }
+    }
+
+    /// Perform a full X3DH handshake and return both serialized ratchet states.
+    ///
+    /// Returns `(alice_state, bob_state)`.
+    fn run_x3dh_handshake() -> (Vec<u8>, Vec<u8>) {
+        let alice_bundle_bytes =
+            generate_key_bundle(1).expect("Alice key bundle generation failed");
+        let alice_bundle = deserialize_bundle(&alice_bundle_bytes);
+
+        let bob_bundle_bytes =
+            generate_key_bundle(1).expect("Bob key bundle generation failed");
+        let bob_bundle = deserialize_bundle(&bob_bundle_bytes);
+
+        // Serialize Alice's identity key pair for the bridge.
+        let alice_identity_bytes =
+            bincode::serialize(&alice_bundle.identity_key_pair).expect("serialize alice identity");
+
+        // Build Bob's PreKeyBundleFetch.
+        let bob_fetch = build_fetch_bundle(&bob_bundle);
+        let bob_fetch_bytes =
+            bincode::serialize(&bob_fetch).expect("serialize bob fetch bundle");
+
+        // Alice initiates.
+        let initiate_bytes = x3dh_initiate(alice_identity_bytes.clone(), bob_fetch_bytes, None)
+            .expect("x3dh_initiate failed");
+        let initiate: BridgeX3dhInitiateResult =
+            bincode::deserialize(&initiate_bytes).expect("deserialize initiate");
+
+        // Build 64-byte ephemeral_key = alice_identity_pk || alice_ephemeral_pk.
+        let mut ephemeral_key = Vec::with_capacity(64);
+        ephemeral_key.extend_from_slice(&alice_bundle.identity_key_pair.public_key.0);
+        ephemeral_key.extend_from_slice(&initiate.ephemeral_public_key);
+
+        // Serialize Bob's keys for the bridge.
+        let bob_identity_bytes =
+            bincode::serialize(&bob_bundle.identity_key_pair).expect("serialize bob identity");
+        let bob_spk_bytes = bincode::serialize(&bob_bundle.signed_pre_key_pair)
+            .expect("serialize bob signed pre-key");
+        let bob_otk_bytes = bincode::serialize(&bob_bundle.otk_pairs[0].key_pair)
+            .expect("serialize bob one-time pre-key");
+
+        // Bob responds.
+        let respond_bytes = x3dh_respond(
+            bob_identity_bytes,
+            ephemeral_key,
+            bob_spk_bytes,
+            Some(bob_otk_bytes),
+        )
+        .expect("x3dh_respond failed");
+        let respond: BridgeX3dhRespondResult =
+            bincode::deserialize(&respond_bytes).expect("deserialize respond");
+
+        (initiate.state, respond.state)
+    }
+
+    #[test]
+    fn test_generate_key_bundle() {
+        let bundle_bytes = generate_key_bundle(5).expect("generate_key_bundle failed");
+        assert!(!bundle_bytes.is_empty(), "bundle bytes must not be empty");
+
+        let bundle = deserialize_bundle(&bundle_bytes);
+
+        // Verify public key material is present (non-zero).
+        assert_ne!(
+            bundle.bundle.identity_key.0,
+            [0u8; 32],
+            "identity key must not be all zeros"
+        );
+        assert_ne!(
+            bundle.bundle.signed_pre_key.0,
+            [0u8; 32],
+            "signed pre-key must not be all zeros"
+        );
+
+        // Verify OTK count matches.
+        assert_eq!(
+            bundle.otk_pairs.len(),
+            5,
+            "expected 5 one-time pre-keys"
+        );
+
+        // Verify OTK ids are sequential starting at 1.
+        for (i, otk) in bundle.otk_pairs.iter().enumerate() {
+            assert_eq!(otk.id, (i as u32) + 1, "OTK id mismatch");
+            assert_ne!(
+                otk.key_pair.public_key.0,
+                [0u8; 32],
+                "OTK public key must not be all zeros"
+            );
+        }
+    }
+
+    #[test]
+    fn test_x3dh_initiate_and_respond() {
+        let (alice_state, bob_state) = run_x3dh_handshake();
+        assert!(!alice_state.is_empty(), "Alice state must not be empty");
+        assert!(!bob_state.is_empty(), "Bob state must not be empty");
+    }
+
+    #[test]
+    fn test_ratchet_encrypt_decrypt() {
+        let (alice_state, bob_state) = run_x3dh_handshake();
+
+        // --- Encrypt with Alice's sending state ---
+        let plaintext = b"Hello, Bob!";
+        let (alice_state_after, ciphertext) =
+            ratchet_encrypt(alice_state, plaintext.to_vec()).expect("ratchet_encrypt failed");
+
+        assert!(
+            !ciphertext.is_empty(),
+            "ciphertext must not be empty"
+        );
+        // ciphertext = 52-byte header + encrypted data
+        assert!(
+            ciphertext.len() > 52,
+            "ciphertext must be longer than header ({} bytes)",
+            ciphertext.len()
+        );
+
+        // --- Decrypt with Bob's receiving state ---
+        let (bob_state_after, decrypted) =
+            ratchet_decrypt(bob_state, ciphertext).expect("ratchet_decrypt failed");
+
+        assert_eq!(
+            decrypted,
+            plaintext.to_vec(),
+            "decrypted plaintext must match original"
+        );
+        assert!(
+            !bob_state_after.is_empty(),
+            "Bob's updated state must not be empty"
+        );
+        assert!(
+            !alice_state_after.is_empty(),
+            "Alice's updated state must not be empty"
+        );
+    }
+
+    #[test]
+    fn test_ratchet_multiple_messages() {
+        let (alice_state, bob_state) = run_x3dh_handshake();
+
+        // --- Alice sends 5 messages, Bob decrypts each ---
+        let mut alice_state = alice_state;
+        let mut bob_state = bob_state;
+        let messages: Vec<Vec<u8>> = (0..5)
+            .map(|i| format!("Message {}", i).into_bytes())
+            .collect();
+
+        for plaintext in &messages {
+            let (new_alice_state, ciphertext) =
+                ratchet_encrypt(alice_state, plaintext.clone()).expect("encrypt failed");
+            alice_state = new_alice_state;
+
+            let (new_bob_state, decrypted) =
+                ratchet_decrypt(bob_state, ciphertext).expect("decrypt failed");
+            bob_state = new_bob_state;
+
+            assert_eq!(
+                &decrypted, plaintext,
+                "decrypted message must match original"
+            );
+        }
+    }
+
+    #[test]
+    fn test_export_restore_state() {
+        let (alice_state, bob_state) = run_x3dh_handshake();
+
+        // --- Export and restore Alice's state ---
+        let exported = export_state(alice_state.clone()).expect("export_state failed");
+        let restored = restore_state(exported).expect("restore_state failed");
+
+        // Verify restored state works for encryption.
+        let plaintext = b"State persistence test";
+        let (_, ciphertext) = ratchet_encrypt(restored, plaintext.to_vec())
+            .expect("encrypt with restored state failed");
+
+        let (_, decrypted) = ratchet_decrypt(bob_state, ciphertext).expect("decrypt failed");
+        assert_eq!(
+            decrypted,
+            plaintext.to_vec(),
+            "decrypted must match after state restore"
+        );
+
+        // --- Also test bincode roundtrip via try_export_state / core_restore_state ---
+        let (alice_state_after, _) =
+            ratchet_encrypt(alice_state, b"before export".to_vec()).expect("encrypt failed");
+        let deserialized_state: e2ee_core::RatchetState =
+            bincode::deserialize(&alice_state_after).expect("deserialize state");
+        let exported2 =
+            try_export_state(&deserialized_state).expect("try_export_state failed");
+        let _restored2 = core_restore_state(&exported2).expect("core_restore_state failed");
+    }
+}
