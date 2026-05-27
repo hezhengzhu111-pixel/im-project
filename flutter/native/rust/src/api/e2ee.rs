@@ -9,6 +9,8 @@ use e2ee_core::{
 use e2ee_core::x3dh::{
     generate_key_bundle_with_count, x3dh_initiate as core_x3dh_initiate,
 };
+use base64::Engine as _;
+use sha2::{Sha256, Digest};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
@@ -331,6 +333,293 @@ pub fn restore_state(state_bytes: Vec<u8>) -> Result<Vec<u8>> {
     let state = core_restore_state(&state_bytes).context("failed to restore ratchet state")?;
 
     try_export_state(&state).context("failed to re-export restored ratchet state")
+}
+
+// ============================================================================
+// High-level SessionManager functions (JSON in/out)
+// ============================================================================
+
+/// Create outbound X3DH session (Alice side).
+/// Input JSON: {"session_id": "...", "local_identity_key_pair": "<base64 bincode X25519KeyPair>", "remote_bundle": "<base64 bincode PreKeyBundleFetch>"}
+/// Output JSON: {"state": "<base64>", "handshake": "<base64>", "otk_id": <u32|null>}
+#[allow(dead_code)]
+pub fn create_outbound_session(config_json: String) -> Result<String> {
+    let config: serde_json::Value = serde_json::from_str(&config_json)
+        .context("failed to parse create_outbound_session config")?;
+
+    let identity_bytes = base64::engine::general_purpose::STANDARD
+        .decode(config["local_identity_key_pair"].as_str().unwrap_or(""))
+        .context("invalid local_identity_key_pair base64")?;
+    let alice_identity: X25519KeyPair = bincode::deserialize(&identity_bytes)
+        .context("failed to deserialize local identity key pair")?;
+
+    let bundle_bytes = base64::engine::general_purpose::STANDARD
+        .decode(config["remote_bundle"].as_str().unwrap_or(""))
+        .context("invalid remote_bundle base64")?;
+    let remote_bundle: PreKeyBundleFetch = bincode::deserialize(&bundle_bytes)
+        .context("failed to deserialize remote bundle")?;
+
+    let initiate_result = core_x3dh_initiate(&alice_identity, &remote_bundle)
+        .context("X3DH initiation failed")?;
+
+    let sending_state = init_sending_chain(
+        &initiate_result.root_key,
+        alice_identity.public_key,
+        remote_bundle.identity_key,
+    )
+    .context("failed to initialize sending ratchet chain")?;
+
+    let state_bytes = try_export_state(&sending_state)
+        .context("failed to serialize ratchet state")?;
+
+    let mut handshake = Vec::with_capacity(40);
+    handshake.extend_from_slice(&initiate_result.ephemeral_public_key.0);
+    handshake.extend_from_slice(&initiate_result.spk_id.to_be_bytes());
+    let otk_id_val = initiate_result.otk_id.unwrap_or(0xffffffff);
+    handshake.extend_from_slice(&otk_id_val.to_be_bytes());
+
+    let result = serde_json::json!({
+        "state": base64::engine::general_purpose::STANDARD.encode(&state_bytes),
+        "handshake": base64::engine::general_purpose::STANDARD.encode(&handshake),
+        "otk_id": initiate_result.otk_id,
+    });
+
+    Ok(result.to_string())
+}
+
+/// Create inbound X3DH session (Bob side).
+/// Input JSON: {"session_id": "...", "local_identity_key_pair": "<base64 bincode X25519KeyPair>", "local_spk_pair": "<base64 bincode X25519KeyPair>", "local_otk_pair?": "<base64 bincode X25519KeyPair>", "remote_identity_key": "<base64 32 raw bytes>", "remote_handshake": "<base64 40 bytes: ephemeral_pk(32)||spk_id(4BE)||otk_id(4BE)>"}
+/// Output JSON: {"state": "<base64>", "otk_id": <u32|null>}
+#[allow(dead_code)]
+pub fn create_inbound_session(config_json: String) -> Result<String> {
+    let config: serde_json::Value = serde_json::from_str(&config_json)
+        .context("failed to parse create_inbound_session config")?;
+
+    let identity_bytes = base64::engine::general_purpose::STANDARD
+        .decode(config["local_identity_key_pair"].as_str().unwrap_or(""))
+        .context("invalid local_identity_key_pair")?;
+    let bob_identity: X25519KeyPair = bincode::deserialize(&identity_bytes)
+        .context("failed to deserialize local identity key pair")?;
+
+    let spk_bytes = base64::engine::general_purpose::STANDARD
+        .decode(config["local_spk_pair"].as_str().unwrap_or(""))
+        .context("invalid local_spk_pair")?;
+    let bob_spk: X25519KeyPair = bincode::deserialize(&spk_bytes)
+        .context("failed to deserialize local SPK pair")?;
+
+    let bob_otk: Option<X25519KeyPair> = match config.get("local_otk_pair") {
+        Some(v) if v.is_string() => {
+            let otk_bytes = base64::engine::general_purpose::STANDARD
+                .decode(v.as_str().unwrap_or(""))
+                .context("invalid local_otk_pair")?;
+            Some(bincode::deserialize(&otk_bytes).context("failed to deserialize OTK pair")?)
+        }
+        _ => None,
+    };
+
+    let remote_id_bytes = base64::engine::general_purpose::STANDARD
+        .decode(config["remote_identity_key"].as_str().unwrap_or(""))
+        .context("invalid remote_identity_key")?;
+    if remote_id_bytes.len() != 32 {
+        anyhow::bail!("remote_identity_key must be 32 bytes, got {}", remote_id_bytes.len());
+    }
+    let alice_identity_pk = X25519PublicKey({
+        let mut buf = [0u8; 32];
+        buf.copy_from_slice(&remote_id_bytes);
+        buf
+    });
+
+    let handshake_bytes = base64::engine::general_purpose::STANDARD
+        .decode(config["remote_handshake"].as_str().unwrap_or(""))
+        .context("invalid remote_handshake")?;
+    if handshake_bytes.len() != 40 {
+        anyhow::bail!("handshake must be 40 bytes, got {}", handshake_bytes.len());
+    }
+    let alice_ephemeral_pk = X25519PublicKey({
+        let mut buf = [0u8; 32];
+        buf.copy_from_slice(&handshake_bytes[..32]);
+        buf
+    });
+
+    let respond_result = e2ee_core::x3dh::x3dh_respond_with_raw_otk(
+        &bob_identity,
+        &bob_spk,
+        bob_otk.as_ref(),
+        &alice_identity_pk,
+        &alice_ephemeral_pk,
+    )
+    .context("X3DH response failed")?;
+
+    let receiving_state = init_receiving_chain(
+        &respond_result.root_key,
+        bob_identity.public_key,
+        alice_identity_pk,
+    )
+    .context("failed to initialize receiving ratchet chain")?;
+
+    let state_bytes = try_export_state(&receiving_state)
+        .context("failed to serialize ratchet state")?;
+
+    let result = serde_json::json!({
+        "state": base64::engine::general_purpose::STANDARD.encode(&state_bytes),
+        "otk_id": respond_result.otk_id,
+    });
+
+    Ok(result.to_string())
+}
+
+/// Encrypt message, output E2eeEnvelope JSON.
+/// Input JSON: {"state": "<base64>", "plaintext": "<base64>", "sender_device_id": "...", "recipient_device_id": "...", "session_id": "...", "handshake?": "<base64>"}
+/// Output JSON: {"version": 2, "algorithm": "rust-x25519-x3dh-dr-v1", "sender_device_id": "...", "recipient_device_id": "...", "session_id": "...", "wire": "<base64>", "handshake?": "<base64>", "new_state": "<base64>"}
+#[allow(dead_code)]
+pub fn encrypt_message(config_json: String) -> Result<String> {
+    let config: serde_json::Value = serde_json::from_str(&config_json)
+        .context("failed to parse encrypt_message config")?;
+
+    let state_bytes = base64::engine::general_purpose::STANDARD
+        .decode(config["state"].as_str().unwrap_or(""))
+        .context("invalid state base64")?;
+    let plaintext_bytes = base64::engine::general_purpose::STANDARD
+        .decode(config["plaintext"].as_str().unwrap_or(""))
+        .context("invalid plaintext base64")?;
+
+    let (new_state, header_and_ciphertext) =
+        ratchet_encrypt(state_bytes, plaintext_bytes)?;
+
+    let wire = base64::engine::general_purpose::STANDARD.encode(&header_and_ciphertext);
+    let new_state_b64 = base64::engine::general_purpose::STANDARD.encode(&new_state);
+
+    let mut envelope = serde_json::json!({
+        "version": 2,
+        "algorithm": "rust-x25519-x3dh-dr-v1",
+        "sender_device_id": config["sender_device_id"],
+        "recipient_device_id": config["recipient_device_id"],
+        "session_id": config["session_id"],
+        "wire": wire,
+        "new_state": new_state_b64,
+    });
+
+    if let Some(handshake) = config.get("handshake") {
+        if handshake.is_string() && !handshake.as_str().unwrap_or("").is_empty() {
+            envelope["handshake"] = handshake.clone();
+        }
+    }
+
+    Ok(envelope.to_string())
+}
+
+/// Decrypt message from E2eeEnvelope JSON.
+/// Input JSON: {"state": "<base64>", "envelope": {"wire": "<base64>", ...}}
+/// Output JSON: {"plaintext": "<base64>", "new_state": "<base64>"}
+#[allow(dead_code)]
+pub fn decrypt_message(config_json: String) -> Result<String> {
+    let config: serde_json::Value = serde_json::from_str(&config_json)
+        .context("failed to parse decrypt_message config")?;
+
+    let state_bytes = base64::engine::general_purpose::STANDARD
+        .decode(config["state"].as_str().unwrap_or(""))
+        .context("invalid state base64")?;
+
+    let wire_b64 = config["envelope"]["wire"].as_str()
+        .context("envelope.wire is required")?;
+    let wire_bytes = base64::engine::general_purpose::STANDARD
+        .decode(wire_b64)
+        .context("invalid wire base64")?;
+
+    let (new_state, plaintext) = ratchet_decrypt(state_bytes, wire_bytes)?;
+
+    let result = serde_json::json!({
+        "plaintext": base64::engine::general_purpose::STANDARD.encode(&plaintext),
+        "new_state": base64::engine::general_purpose::STANDARD.encode(&new_state),
+    });
+
+    Ok(result.to_string())
+}
+
+/// Export session state with v3 envelope context binding.
+/// Input JSON: {"state": "<base64>", "user_id", "device_id", "session_id", "remote_user_id", "remote_device_id"}
+/// Output JSON: {"envelope": "<base64>"}
+#[allow(dead_code)]
+pub fn export_session_envelope(config_json: String) -> Result<String> {
+    let config: serde_json::Value = serde_json::from_str(&config_json)
+        .context("failed to parse export_session_envelope config")?;
+
+    let state_bytes = base64::engine::general_purpose::STANDARD
+        .decode(config["state"].as_str().unwrap_or(""))
+        .context("invalid state base64")?;
+
+    let user_id = config["user_id"].as_str().unwrap_or("");
+    let device_id = config["device_id"].as_str().unwrap_or("");
+    let session_id = config["session_id"].as_str().unwrap_or("");
+    let remote_user_id = config["remote_user_id"].as_str().unwrap_or("");
+    let remote_device_id = config["remote_device_id"].as_str().unwrap_or("");
+
+    let context_str = format!("{}:{}:{}:{}:{}", user_id, device_id, session_id, remote_user_id, remote_device_id);
+    let mut hasher = Sha256::new();
+    hasher.update(context_str.as_bytes());
+    let hash = hasher.finalize();
+    let context_hash = &hash[..16];
+
+    let mut envelope = Vec::with_capacity(1 + 16 + state_bytes.len());
+    envelope.push(3u8); // version 3
+    envelope.extend_from_slice(context_hash);
+    envelope.extend_from_slice(&state_bytes);
+
+    let result = serde_json::json!({
+        "envelope": base64::engine::general_purpose::STANDARD.encode(&envelope),
+    });
+
+    Ok(result.to_string())
+}
+
+/// Restore session from v3 envelope, validating context binding.
+/// Input JSON: {"envelope": "<base64>", "user_id", "device_id", "session_id", "remote_user_id", "remote_device_id"}
+/// Output JSON: {"state": "<base64>"} or error
+#[allow(dead_code)]
+pub fn restore_session_envelope(config_json: String) -> Result<String> {
+    let config: serde_json::Value = serde_json::from_str(&config_json)
+        .context("failed to parse restore_session_envelope config")?;
+
+    let envelope_bytes = base64::engine::general_purpose::STANDARD
+        .decode(config["envelope"].as_str().unwrap_or(""))
+        .context("invalid envelope base64")?;
+
+    if envelope_bytes.len() < 17 {
+        anyhow::bail!("envelope too short: expected at least 17 bytes, got {}", envelope_bytes.len());
+    }
+
+    let version = envelope_bytes[0];
+    if version != 3 {
+        anyhow::bail!("unsupported envelope version: {}", version);
+    }
+
+    let stored_hash = &envelope_bytes[1..17];
+    let state_bytes = &envelope_bytes[17..];
+
+    let user_id = config["user_id"].as_str().unwrap_or("");
+    let device_id = config["device_id"].as_str().unwrap_or("");
+    let session_id = config["session_id"].as_str().unwrap_or("");
+    let remote_user_id = config["remote_user_id"].as_str().unwrap_or("");
+    let remote_device_id = config["remote_device_id"].as_str().unwrap_or("");
+
+    let context_str = format!("{}:{}:{}:{}:{}", user_id, device_id, session_id, remote_user_id, remote_device_id);
+    let mut hasher = Sha256::new();
+    hasher.update(context_str.as_bytes());
+    let hash = hasher.finalize();
+    let computed_hash = &hash[..16];
+
+    if stored_hash != computed_hash {
+        anyhow::bail!("session context mismatch — possible cross-account restore attack");
+    }
+
+    let _state: e2ee_core::RatchetState = bincode::deserialize(state_bytes)
+        .context("failed to deserialize ratchet state from envelope")?;
+
+    let result = serde_json::json!({
+        "state": base64::engine::general_purpose::STANDARD.encode(state_bytes),
+    });
+
+    Ok(result.to_string())
 }
 
 // ============================================================================
