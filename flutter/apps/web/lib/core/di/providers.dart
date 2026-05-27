@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../../adapters/adapters.dart';
@@ -38,7 +39,7 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 });
 
 final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  return AuthNotifier(ref.watch(authRepositoryProvider), ref.watch(wsClientProvider));
+  return AuthNotifier(ref.watch(authRepositoryProvider), ref.watch(wsClientProvider), ref.watch(httpClientProvider));
 });
 
 // WebSocket
@@ -62,6 +63,7 @@ final chatStateProvider = StateNotifierProvider<ChatNotifier, ChatState>((ref) {
     ref.watch(messageApiProvider),
     MessagePipeline(),
     ref.watch(wsClientProvider),
+    () => ref.read(authStateProvider).user?.id ?? '',
   );
 });
 
@@ -101,3 +103,9 @@ final errorProvider = StateNotifierProvider<ErrorNotifier, ErrorState>((ref) {
 final fileApiProvider = Provider<FileApi>((ref) {
   return FileApi(ref.watch(httpClientProvider));
 });
+
+// Language
+final languageProvider = StateProvider<String>((ref) => 'zh');
+
+// Theme
+final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.system);
