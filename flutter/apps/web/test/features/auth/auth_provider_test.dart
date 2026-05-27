@@ -267,5 +267,63 @@ void main() {
         expect(updated.error, 'new error');
       });
     });
+
+    group('login - additional edge cases', () {
+      test('login with correct error clears isLoading', () async {
+        mockRepo.errorToThrow = Exception('Server error');
+        await notifier.login('user', 'pass');
+
+        expect(notifier.state.isLoading, isFalse);
+        expect(notifier.state.error, isNotNull);
+        expect(notifier.state.isAuthenticated, isFalse);
+      });
+
+      test('login does not set isAuthenticated on error', () async {
+        mockRepo.errorToThrow = Exception('Network error');
+        await notifier.login('user', 'pass');
+
+        expect(notifier.state.isAuthenticated, isFalse);
+        expect(notifier.state.user, isNull);
+      });
+    });
+
+    group('register - additional edge cases', () {
+      test('register with error does not leave isLoading true', () async {
+        mockRepo.errorToThrow = Exception('Username taken');
+        await notifier.register('user', 'pass', 'Nick');
+
+        expect(notifier.state.isLoading, isFalse);
+        expect(notifier.state.error, contains('Username taken'));
+      });
+
+      test('register success does not change user or isAuthenticated', () async {
+        mockRepo.registerResponse = const UserAuthResponse(success: true);
+        await notifier.register('newuser', 'pass', 'New');
+
+        expect(notifier.state.user, isNull);
+        expect(notifier.state.isAuthenticated, isFalse);
+        expect(notifier.state.error, isNull);
+      });
+    });
+
+    group('checkAuth - additional edge cases', () {
+      test('checkAuth when isAuthenticated throws propagates error', () async {
+        mockRepo.errorToThrow = Exception('Token check failed');
+
+        // checkAuth does not catch errors from isAuthenticated itself
+        expect(
+          () => notifier.checkAuth(),
+          throwsA(isA<Exception>()),
+        );
+      });
+
+      test('checkAuth after logout preserves logout state', () async {
+        mockRepo.isAuthResponse = false;
+        await notifier.checkAuth();
+
+        expect(notifier.state.isAuthenticated, isFalse);
+        expect(notifier.state.user, isNull);
+      });
+    });
   });
 }

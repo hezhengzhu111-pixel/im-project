@@ -244,5 +244,67 @@ void main() {
       expect(notification.commentId, 'comment1');
       expect(notification.isRead, isNull);
     });
+
+    test('toJson roundtrip preserves data', () {
+      const notification = MomentNotification(
+        id: 'n1',
+        type: 'like',
+        createTime: '2024-01-01T00:00:00Z',
+        isRead: true,
+        userId: 'u1',
+        postId: 'p1',
+      );
+      final json = notification.toJson();
+      final restored = MomentNotification.fromJson(json);
+
+      expect(restored, equals(notification));
+    });
+  });
+
+  group('MomentLike toJson roundtrip', () {
+    test('toJson roundtrip preserves data', () {
+      const like = MomentLike(
+        id: 'like1',
+        userId: 'u1',
+        createTime: '2024-01-01T00:00:00Z',
+        userName: 'Alice',
+      );
+      final json = like.toJson();
+      final restored = MomentLike.fromJson(json);
+
+      expect(restored, equals(like));
+    });
+  });
+
+  group('MomentComment toJson roundtrip', () {
+    test('toJson roundtrip preserves data', () {
+      const comment = MomentComment(
+        id: 'c1',
+        userId: 'u1',
+        content: 'Nice!',
+        createTime: '2024-01-01T00:00:00Z',
+        replyToUserId: 'u2',
+      );
+      final json = comment.toJson();
+      final restored = MomentComment.fromJson(json);
+
+      expect(restored, equals(comment));
+    });
+  });
+
+  group('MomentPost toJson roundtrip', () {
+    test('toJson roundtrip preserves data', () {
+      const post = MomentPost(
+        id: 'p1',
+        userId: 'u1',
+        content: 'Hello World',
+        createTime: '2024-01-01T00:00:00Z',
+        likeCount: 5,
+      );
+      final json = post.toJson();
+      final restored = MomentPost.fromJson(json);
+
+      expect(restored, equals(post));
+    });
   });
 }

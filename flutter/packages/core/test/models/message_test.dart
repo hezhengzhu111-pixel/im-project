@@ -274,5 +274,69 @@ void main() {
       expect(config.textEnforce, isFalse);
       expect(config.textMaxLength, 1000);
     });
+
+    test('toJson roundtrip preserves data', () {
+      const config = MessageConfig(textEnforce: true, textMaxLength: 5000);
+      final json = config.toJson();
+      final restored = MessageConfig.fromJson(json);
+
+      expect(restored, equals(config));
+    });
+  });
+
+  group('Message toJson roundtrip', () {
+    test('toJson roundtrip preserves all fields', () {
+      const message = Message(
+        id: 'msg1',
+        senderId: 'u1',
+        isGroupChat: false,
+        messageType: 'text',
+        content: 'Hello',
+        sendTime: '2024-01-01T00:00:00Z',
+        status: 'sent',
+        clientMessageId: 'client-1',
+      );
+      final json = message.toJson();
+      final restored = Message.fromJson(json);
+
+      expect(restored, equals(message));
+    });
+  });
+
+  group('Message copyWith', () {
+    test('copyWith updates status', () {
+      const msg = Message(
+        id: 'msg1',
+        senderId: 'u1',
+        isGroupChat: false,
+        messageType: 'text',
+        content: 'Hi',
+        sendTime: '2024-01-01T00:00:00Z',
+        status: 'sending',
+      );
+      final updated = msg.copyWith(status: 'sent', messageId: 'server-1');
+
+      expect(updated.id, 'msg1');
+      expect(updated.status, 'sent');
+      expect(updated.messageId, 'server-1');
+      expect(updated.content, 'Hi');
+    });
+  });
+
+  group('ReadReceipt toJson roundtrip', () {
+    test('toJson roundtrip preserves data', () {
+      const receipt = ReadReceipt(
+        readerId: 'u1',
+        toUserId: 'u2',
+        conversationId: 'conv1',
+        lastReadMessageId: 'msg5',
+        lastReadSeq: 5,
+        readAt: '2024-01-01T00:01:00Z',
+      );
+      final json = receipt.toJson();
+      final restored = ReadReceipt.fromJson(json);
+
+      expect(restored, equals(receipt));
+    });
   });
 }

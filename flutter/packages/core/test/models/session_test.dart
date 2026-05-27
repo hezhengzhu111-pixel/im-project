@@ -216,4 +216,48 @@ void main() {
       expect(restored, equals(user));
     });
   });
+
+  group('ChatSession toJson', () {
+    test('toJson serializes fields correctly', () {
+      const session = ChatSession(
+        id: 's1',
+        type: 'private',
+        targetId: 'u1',
+        targetName: 'Alice',
+        unreadCount: 5,
+        encrypted: true,
+      );
+      final json = session.toJson();
+
+      expect(json['id'], 's1');
+      expect(json['type'], 'private');
+      expect(json['targetId'], 'u1');
+      expect(json['targetName'], 'Alice');
+      expect(json['unreadCount'], 5);
+      expect(json['encrypted'], true);
+    });
+
+    test('toJson with lastMessage preserves reference', () {
+      final session = ChatSession(
+        id: 's1',
+        type: 'private',
+        targetId: 'u1',
+        targetName: 'Alice',
+        unreadCount: 1,
+        lastMessage: const Message(
+          id: 'msg1',
+          senderId: 'u1',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Hello',
+          sendTime: '2024-01-01T00:00:00Z',
+          status: 'sent',
+        ),
+      );
+      final json = session.toJson();
+
+      expect(json['lastMessage'], isA<Message>());
+      expect((json['lastMessage'] as Message).id, 'msg1');
+    });
+  });
 }
