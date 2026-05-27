@@ -21,6 +21,27 @@ class SendPrivateMessageRequest {
       };
 }
 
+class SendGroupMessageRequest {
+  const SendGroupMessageRequest({
+    required this.groupId,
+    required this.content,
+    this.messageType = 'text',
+    this.clientMessageId,
+  });
+
+  final String groupId;
+  final String content;
+  final String messageType;
+  final String? clientMessageId;
+
+  Map<String, dynamic> toJson() => {
+        'groupId': groupId,
+        'content': content,
+        'messageType': messageType,
+        if (clientMessageId != null) 'clientMessageId': clientMessageId,
+      };
+}
+
 class MessageApi {
   MessageApi(this._httpClient);
   final HttpClientPort _httpClient;
@@ -63,5 +84,29 @@ class MessageApi {
       MessageEndpoints.markRead(conversationId),
       fromJson: (_) {},
     );
+  }
+
+  Future<Message> sendGroupMessage(SendGroupMessageRequest request) async {
+    final response = await _httpClient.post<Message>(
+      MessageEndpoints.sendGroup,
+      body: request.toJson(),
+      fromJson: Message.fromJson,
+    );
+    return response.data;
+  }
+
+  Future<List<Message>> getGroupHistory(String groupId,
+      {int? page, int? size}) async {
+    final response = await _httpClient.get<List<dynamic>>(
+      MessageEndpoints.groupHistory(groupId),
+      queryParameters: {
+        if (page != null) 'page': page,
+        if (size != null) 'size': size,
+      },
+      fromJson: (json) => (json as List)
+          .map((e) => Message.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+    return response.data.cast<Message>();
   }
 }
