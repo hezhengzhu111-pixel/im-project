@@ -52,36 +52,64 @@
 
 ### 2.2 架构设计
 
-对标 Vue Web 的 7 层架构：
+对标 Vue Web 的 7 层架构，Dart 侧仅做薄封装，E2EE 协议逻辑全部在 Rust 侧：
 
 ```
 ┌─────────────────────────────────────────────┐
-│  UI Layer                                   │
+│  UI Layer (Dart)                            │
 │  EncryptionBadge, NegotiationDialog,        │
 │  EncryptionBanner, MessageEncryptionIcon     │
 ├─────────────────────────────────────────────┤
-│  Integration Layer                          │
+│  Integration Layer (Dart)                   │
 │  ChatNotifier (send encrypt / receive decrypt)│
 ├─────────────────────────────────────────────┤
-│  Manager Layer                              │
-│  E2eeManager: negotiation, device reg,      │
-│  message decryptor, channel ping/pong       │
+│  Manager Layer (Dart — 薄封装)              │
+│  E2eeManager: 调用 Rust SessionManager,     │
+│  管理协商流程、存储、UI 状态                  │
 ├─────────────────────────────────────────────┤
-│  Service Layer                              │
-│  WebE2eeAdapter (FRB bindings)              │
-├─────────────────────────────────────────────┤
-│  Storage Layer                              │
+│  Storage Layer (Dart)                       │
 │  E2eeKeyStore (IndexedDB),                  │
 │  E2eeSessionStore (IndexedDB),              │
 │  E2eeMetaStore (SecureStorage)              │
 ├─────────────────────────────────────────────┤
-│  API Layer                                  │
+│  API Layer (Dart)                           │
 │  E2eeApi: /api/keys/*, /api/e2ee/*          │
 ├─────────────────────────────────────────────┤
-│  Core (Rust via FRB)                        │
-│  X3DH key agreement + Double Ratchet        │
+│  Rust Core (via FRB) — 所有协议逻辑         │
+│  SessionManager:                            │
+│  ├─ generate_key_bundle()                   │
+│  ├─ create_outbound_session()               │
+│  ├─ create_inbound_session()                │
+│  ├─ encrypt() → 直接输出 E2eeEnvelope JSON  │
+│  ├─ decrypt() → 接收 E2eeEnvelope JSON      │
+│  ├─ export_session() / restore_session()    │
+│  └─ remove_session()                        │
 └─────────────────────────────────────────────┘
 ```
+
+### 2.2.1 Vue Web → Flutter 映射表
+
+| Vue Web 模块 | Vue Web 文件 | Flutter 对应 | 说明 |
+|---|---|---|---|
+| `@im/rust-e2ee-wasm` (WASM) | `packages/rust-e2ee-wasm/` | `native/rust/src/api/e2ee.rs` (FRB) | 同一个 Rust 核心，WASM → FRB |
+| `shared-e2ee-core` (类型) | `packages/shared-e2ee-core/src/types.ts` | `packages/core/lib/src/crypto/e2ee_types.dart` | Dart freezed 类型 |
+| `shared-e2ee-core` (信封) | `packages/shared-e2ee-core/src/envelope.ts` | Rust `SessionManager.encrypt/decrypt` | 信封构造移入 Rust |
+| `shared-e2ee-core` (wire) | `packages/shared-e2ee-core/src/rust-wire.ts` | Rust 内部处理 | Dart 不需要知道 wire 格式 |
+| `shared-e2ee-core` (session-state-envelope) | `packages/shared-e2ee-core/src/session-state-envelope.ts` | Rust `export_session/restore_session` | v3 信封逻辑移入 Rust |
+| `shared-e2ee-core` (policy) | `packages/shared-e2ee-core/src/policy.ts` | `packages/core/lib/src/crypto/e2ee_policy.dart` | Dart 侧策略检查 |
+| `features/e2ee/manager/` | `e2ee-manager.ts`, `negotiation.ts` | `features/e2ee/data/e2ee_manager.dart` | 管理器薄封装 |
+| `features/e2ee/manager/device-identity.ts` | `device-identity.ts` | `features/e2ee/data/device_identity.dart` | 设备 ID 解析 |
+| `features/e2ee/manager/message-decryptor.ts` | `message-decryptor.ts` | `features/e2ee/data/message_decryptor.dart` | 解密调度器 |
+| `features/e2ee/manager/channel-ping.ts` | `channel-ping.ts` | `features/e2ee/data/channel_ping.dart` | Ping/Pong |
+| `features/e2ee/store/key-store.ts` | IndexedDB | `features/e2ee/data/e2ee_key_store.dart` | IndexedDB |
+| `features/e2ee/store/session-store.ts` | IndexedDB | `features/e2ee/data/e2ee_session_store.dart` | IndexedDB |
+| `features/e2ee/api/` | HTTP 客户端 | `features/e2ee/data/e2ee_api.dart` | Dio HTTP |
+| `features/chat/ChatEncryptionDialog.vue` | Vue 组件 | `features/e2ee/presentation/encryption_dialog.dart` | Flutter Widget |
+| `features/chat/ChatE2eeNegotiationDialog.vue` | Vue 组件 | `features/e2ee/presentation/negotiation_dialog.dart` | Flutter Widget |
+| `features/chat/ChatEncryptionBadge.vue` | Vue 组件 | `features/e2ee/presentation/encryption_badge.dart` | Flutter Widget |
+| `features/chat/ChatEncryptionBanner.vue` | Vue 组件 | `features/e2ee/presentation/encryption_banner.dart` | Flutter Widget |
+| `stores/modules/message-send-queue.ts` | 消息发送拦截 | `chat_provider.dart` sendMessage 修改 | 集成层 |
+| `stores/websocket.ts` | WS 事件分发 | `chat_provider.dart` _subscribeToWs 修改 | 集成层 |
 
 ### 2.3 文件结构
 
@@ -135,7 +163,50 @@ apps/web/lib/adapters/
 - 读取时校验上下文，不匹配则丢弃（触发重新协商）
 - remoteUserId 存储为 SHA-256 指纹（前 16 位 hex）
 
-### 2.5 E2eeManager 核心 API
+### 2.5 Rust SessionManager API（协议逻辑全在 Rust）
+
+增强 Rust API，添加 `SessionManager` 高级封装。Dart 侧只需传递 JSON，不需要理解 wire 格式。
+
+**新增 Rust 函数**（`native/rust/src/api/e2ee.rs`）：
+
+```rust
+/// 创建出站会话（Alice 发起 X3DH）
+/// 输入: JSON {"session_id", "local_identity_key_pair", "remote_bundle"}
+/// 输出: JSON {"state": base64, "handshake": base64, "otk_id"}
+pub fn create_outbound_session(config_json: String) -> Result<String>;
+
+/// 创建入站会话（Bob 响应 X3DH）
+/// 输入: JSON {"session_id", "local_identity_key_pair", "local_spk_pair", "local_otk_pair?", "remote_identity_key", "remote_handshake"}
+/// 输出: JSON {"state": base64, "otk_id?"}
+pub fn create_inbound_session(config_json: String) -> Result<String>;
+
+/// 加密消息，直接输出 E2eeEnvelope JSON
+/// 输入: JSON {"state": base64, "plaintext": base64, "sender_device_id", "recipient_device_id", "session_id", "handshake?"}
+/// 输出: JSON {"version": 2, "algorithm": "rust-x25519-x3dh-dr-v1", "sender_device_id", "recipient_device_id", "session_id", "wire": base64, "handshake?": base64, "new_state": base64}
+pub fn encrypt_message(config_json: String) -> Result<String>;
+
+/// 解密消息，接收 E2eeEnvelope JSON
+/// 输入: JSON {"state": base64, "envelope": {...}} (同 E2eeEnvelope 结构)
+/// 输出: JSON {"plaintext": base64, "new_state": base64}
+pub fn decrypt_message(config_json: String) -> Result<String>;
+
+/// 导出会话状态（v3 信封格式，绑定上下文）
+/// 输入: JSON {"state": base64, "user_id", "device_id", "session_id", "remote_user_id", "remote_device_id"}
+/// 输出: JSON {"envelope": base64}
+pub fn export_session_envelope(config_json: String) -> Result<String>;
+
+/// 恢复会话状态（校验 v3 信封上下文）
+/// 输入: JSON {"envelope": base64, "user_id", "device_id", "session_id", "remote_user_id", "remote_device_id"}
+/// 输出: JSON {"state": base64} 或错误
+pub fn restore_session_envelope(config_json: String) -> Result<String>;
+```
+
+**设计原则**：
+- Rust 负责所有协议逻辑：X3DH 握手、Double Ratchet 加解密、wire 格式构造/解析、v3 信封包装
+- Dart 只做 JSON 序列化/反序列化 + 存储 + UI
+- 原有低级函数（`generate_key_bundle`、`x3dh_initiate`、`ratchet_encrypt` 等）保留供测试用
+
+### 2.5.1 Dart E2eeManager API（薄封装）
 
 ```dart
 class E2eeManager {
@@ -146,32 +217,30 @@ class E2eeManager {
   Future<void> ensureDeviceRegistered();
 
   /// 发起 E2EE 协商
+  /// 内部: create_outbound_session() → 存储状态 → 发送协商请求
   Future<void> initiateNegotiation(String sessionId, String peerId);
 
   /// 响应 E2EE 协商
+  /// 内部: create_inbound_session() → 存储状态 → 发送接受确认
   Future<void> respondToNegotiation(
     String sessionId,
-    String senderIdentityKey,
-    String handshake,
-    String requesterId,
-    String senderDeviceId,
-    String targetDeviceId,
-    String verifyPhrase,
+    Map<String, dynamic> requestPayload,
   );
 
-  /// 加密消息，返回 E2eeEnvelope
+  /// 加密消息，返回 E2eeEnvelope JSON
+  /// 内部: 读取状态 → encrypt_message() → 存储新状态 → 返回信封
   Future<Map<String, dynamic>> encryptToEnvelope({
     required String sessionId,
-    required String senderUserId,
-    required String recipientUserId,
+    required String senderDeviceId,
+    required String recipientDeviceId,
     required String plaintext,
   });
 
   /// 解密消息
+  /// 内部: 读取状态 → decrypt_message() → 存储新状态 → 返回明文
   Future<String?> decryptEnvelope({
     required String sessionId,
     required Map<String, dynamic> envelope,
-    required String senderUserId,
   });
 
   /// 退出加密
@@ -184,28 +253,28 @@ class E2eeManager {
 
 ### 2.6 协商流程
 
-**发起方流程**：
+**发起方流程**（对标 Vue Web `negotiation.ts` → `initiateNegotiation()`）：
 1. 用户点击"启用加密" → `initiateNegotiation(sessionId, peerId)`
 2. 重置之前的协商状态
 3. 调用 `/api/e2ee/disable` 清除服务端旧状态
 4. 设置本地状态为 `"negotiating"`
 5. 调用 `ensureDeviceRegistered()`
-6. 调用 `/api/keys/bundle/{userId}` 获取对方预密钥包
+6. 调用 `/api/keys/bundle/{userId}` 获取对方预密钥包（JSON）
 7. 备份现有会话状态
-8. 调用 FRB `x3dhInitiate()` 创建出站 X3DH 会话
+8. 调用 Rust `create_outbound_session()` — 传入本地身份密钥 + 对方预密钥包 JSON，返回状态 + 握手
 9. 持久化会话状态到 IndexedDB
 10. 生成 6 位验证短语，保存到 SecureStorage
 11. 保存待处理握手到 SecureStorage
 12. 调用 `/api/e2ee/request` 发送协商请求（含握手、身份公钥、设备 ID、验证短语）
 
-**响应方流程**：
+**响应方流程**（对标 Vue Web `ChatE2eeNegotiationDialog.vue` → `respondToNegotiation()`）：
 1. WS 收到 `E2EE_NEGOTIATION` 事件（action=request）
 2. 解析 `requestPayloadJson`：握手、senderIdentityKey、senderDeviceId、targetDeviceId、verifyPhrase
 3. 显示 `NegotiationDialog`
 4. 用户点击"接受"：
    - 校验设备 ID
    - 备份现有会话
-   - 调用 FRB `x3dhRespond()` 创建入站 X3DH 会话
+   - 调用 Rust `create_inbound_session()` — 传入本地密钥 + 对方握手，返回状态
    - 标记 OTK 已消费
    - 持久化会话状态到 IndexedDB
    - 保存验证短语
@@ -215,35 +284,39 @@ class E2eeManager {
 
 ### 2.7 消息流集成
 
-**发送路径**（修改 `chat_provider.dart` 的 `sendMessage`）：
+对标 Vue Web `message-send-queue.ts`（发送拦截）和 `websocket.ts`（接收解密）。
+
+**发送路径**（修改 `chat_provider.dart` 的 `sendMessage`，对标 Vue Web `sendSingleMessage`）：
 
 ```dart
 Future<Message?> sendMessage(String receiverId, String content, ...) async {
-  // 检查加密状态
+  // 检查加密状态（对标 Vue Web getLocalSessionStatus）
   final status = await _e2eeMetaStore.getSessionStatus(sessionId);
   if (status == 'negotiating') {
-    // 阻止发送，提示用户
+    // 阻止发送，提示用户（对标 Vue Web assertNoPlaintextDowngrade）
     return null;
   }
 
   String? e2eeEnvelopeJson;
   if (status == 'encrypted' || session.encrypted == true) {
+    // 调用 Rust encrypt_message()，直接输出 E2eeEnvelope JSON
+    // Dart 不需要理解 wire 格式
     final envelope = await _e2eeManager.encryptToEnvelope(
       sessionId: sessionId,
-      senderUserId: _currentUserId(),
-      recipientUserId: receiverId,
+      senderDeviceId: await _getDeviceId(),
+      recipientDeviceId: await _e2eeMetaStore.getRemoteDeviceId(sessionId),
       plaintext: content,
     );
     e2eeEnvelopeJson = jsonEncode(envelope);
     // 本地存储明文用于显示
-    // HTTP 请求只发送加密信封，不发送明文
+    // HTTP 请求只发送加密信封（e2eeEnvelope + e2eeDeviceId），不发送明文
   }
 
   // ... 原有 optimistic send 逻辑 ...
 }
 ```
 
-**接收路径**（修改 `_handleIncomingMessage`）：
+**接收路径**（修改 `_handleIncomingMessage`，对标 Vue Web `decryptSingleMessage`）：
 
 ```dart
 void _handleIncomingMessage(Map<String, dynamic> data) {
@@ -251,12 +324,12 @@ void _handleIncomingMessage(Map<String, dynamic> data) {
     var message = Message.fromJson(data);
     if (!_pipeline.shouldProcess(message.id)) return;
 
-    // 解密
+    // 解密（对标 Vue Web decryptSingleMessage）
     if (message.encrypted == true && message.e2eeEnvelope != null) {
+      // 调用 Rust decrypt_message()，传入 E2eeEnvelope JSON
       final plaintext = await _e2eeManager.decryptEnvelope(
         sessionId: sessionId,
         envelope: message.e2eeEnvelope!.toJson(),
-        senderUserId: message.senderId,
       );
       if (plaintext != null) {
         message = message.copyWith(content: plaintext);
@@ -271,7 +344,7 @@ void _handleIncomingMessage(Map<String, dynamic> data) {
 }
 ```
 
-**解密调度器**（`message_decryptor.dart`）：
+**解密调度器**（`message_decryptor.dart`，对标 Vue Web `message-decryptor.ts`）：
 - 每会话串行队列（`Map<String, Queue<Future>>`）防止 Double Ratchet 状态损坏
 - 每消息去重缓存（500 条 LRU）
 - 解密失败自愈：无会话且无握手 → 触发 `initiateNegotiation()`
