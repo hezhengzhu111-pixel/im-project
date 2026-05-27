@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../data/contacts_api.dart';
@@ -27,11 +28,47 @@ class ContactsState {
 }
 
 class ContactsNotifier extends StateNotifier<ContactsState> {
-  ContactsNotifier(this._api, [this._wsClient])
-      : super(const ContactsState());
+  ContactsNotifier(this._api, this._wsClient) : super(const ContactsState()) {
+    _subscribeToWs();
+  }
 
   final ContactsApi _api;
-  final WsClientPort? _wsClient;
+  final WsClientPort _wsClient;
+  StreamSubscription? _wsSubscription;
+
+  void _subscribeToWs() {
+    _wsSubscription = _wsClient.events.listen((event) {
+      if (event.type == WsMessageType.onlineStatus) {
+        _handleOnlineStatus(event.data);
+      } else if (event.type == WsMessageType.friendRequest ||
+          event.type == WsMessageType.friendAccepted) {
+        loadFriends();
+      }
+    });
+  }
+
+  void _handleOnlineStatus(Map<String, dynamic> data) {
+    try {
+      final userIds = (data['userIds'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [];
+      final online = data['online'] as bool? ?? false;
+
+      if (userIds.isEmpty) return;
+
+      final updatedFriends = state.friends.map((f) {
+        if (userIds.contains(f.friendId)) {
+          return f.copyWith(isOnline: online);
+        }
+        return f;
+      }).toList();
+
+      state = state.copyWith(friends: updatedFriends);
+    } catch (e) {
+      print('Failed to handle online status: $e');
+    }
+  }
 
   Future<void> loadFriends() async {
     state = state.copyWith(isLoading: true);
@@ -48,5 +85,11 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
   Future<void> rejectRequest(String requestId) async {
     await _api.rejectFriendRequest(requestId);
     await loadFriends();
+  }
+
+  @override
+  void dispose() {
+    _wsSubscription?.cancel();
+    super.dispose();
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_web/core/di/providers.dart';
+import '../../auth/presentation/auth_provider.dart';
 import 'widgets/session_tile.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/message_input.dart';
@@ -143,11 +144,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final msg = messages[index];
-                    // For now, consider messages from current user as "me"
-                    // TODO: replace with actual current user id from auth
+                    final currentUserId =
+                        ref.watch(authStateProvider).user?.id ?? '';
                     return MessageBubble(
                       message: msg,
-                      isMe: msg.senderId == 'current_user',
+                      isMe: msg.senderId == currentUserId,
                     );
                   },
                 ),
