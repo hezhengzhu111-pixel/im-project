@@ -5,8 +5,8 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://127.0.0.1:3001",
-    "beforeDevCommand": "cd .. && npx vite --mode dev --port 3001",
-    "beforeBuildCommand": "cd .. && npx vite build"
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [
@@ -22,6 +22,18 @@
     ],
     "security": {
       "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "both"
+      }
     }
   },
   "plugins": {
