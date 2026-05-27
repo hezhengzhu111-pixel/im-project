@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import '../../../../core/di/providers.dart';
 import '../../data/moments_repository.dart';
 
 class MomentsFeedState {
@@ -114,3 +115,9 @@ class MomentsFeedNotifier extends StateNotifier<MomentsFeedState> {
     state = state.copyWith(posts: updatedPosts);
   }
 }
+
+final momentsFeedProvider = StateNotifierProvider<MomentsFeedNotifier, MomentsFeedState>((ref) {
+  return MomentsFeedNotifier(
+    ref.watch(momentsRepositoryProvider),
+  );
+});
