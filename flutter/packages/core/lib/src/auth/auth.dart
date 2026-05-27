@@ -1,1 +1,1 @@
-// Empty - auth will be added in Task 8
+export 'auth_repository.dart';
