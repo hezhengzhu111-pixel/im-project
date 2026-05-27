@@ -4,6 +4,8 @@ import 'package:im_core/core.dart';
 import 'package:im_core/src/network/ws_connection_state.dart';
 import '../data/message_api.dart';
 import '../data/message_pipeline.dart';
+import '../../e2ee/data/e2ee_manager.dart';
+import '../../e2ee/data/e2ee_meta_store.dart';
 
 class ChatState {
   const ChatState({
@@ -41,15 +43,28 @@ class ChatState {
 }
 
 class ChatNotifier extends StateNotifier<ChatState> {
-  ChatNotifier(this._messageApi, this._pipeline, this._wsClient)
-      : super(const ChatState()) {
+  ChatNotifier(
+    this._messageApi,
+    this._pipeline,
+    this._wsClient,
+    this._currentUserId,
+    this._e2eeManager,
+    this._e2eeMetaStore,
+  ) : super(const ChatState()) {
     _subscribeToWs();
   }
 
   final MessageApi _messageApi;
   final MessagePipeline _pipeline;
   final WsClientPort _wsClient;
+  final String Function() _currentUserId;
+  final E2eeManager _e2eeManager;
+  final E2eeMetaStore _e2eeMetaStore;
   StreamSubscription? _wsSubscription;
+
+  E2eeNegotiationEvent? _pendingNegotiation;
+  E2eeNegotiationEvent? get pendingNegotiation => _pendingNegotiation;
+  void clearPendingNegotiation() => _pendingNegotiation = null;
 
   void _subscribeToWs() {
     _wsSubscription = _wsClient.events.listen((event) {
@@ -57,6 +72,12 @@ class ChatNotifier extends StateNotifier<ChatState> {
         _handleIncomingMessage(event.data);
       } else if (event.type == WsMessageType.messageStatusChanged) {
         _handleMessageStatusChanged(event.data);
+      } else if (event.type == WsMessageType.readReceipt) {
+        _handleReadReceipt(event.data);
+      } else if (event.type == WsMessageType.system) {
+        _handleSystemMessage(event.data);
+      } else if (event.type == WsMessageType.e2eeNegotiation) {
+        _handleE2eeNegotiation(event.data);
       }
     });
     // Sync offline messages on reconnect
@@ -70,6 +91,19 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<void> _syncOfflineMessages() async {
     try {
       await loadSessions();
+      // Also reload messages for the active session
+      final activeId = state.activeSessionId;
+      if (activeId != null) {
+        final session = state.sessions.where((s) => s.id == activeId).firstOrNull;
+        if (session != null) {
+          final isGroup = session.conversationType == 'group' || session.type == 'group';
+          if (isGroup) {
+            await loadGroupMessages(session.targetId);
+          } else {
+            await loadMessages(session.targetId);
+          }
+        }
+      }
     } catch (_) {}
   }
 
@@ -77,6 +111,15 @@ class ChatNotifier extends StateNotifier<ChatState> {
     try {
       final message = Message.fromJson(data);
       if (!_pipeline.shouldProcess(message.id)) return;
+
+      // Decrypt E2EE messages from other users.
+      if (message.encrypted == true &&
+          message.e2eeEnvelope != null &&
+          message.senderId != _currentUserId()) {
+        _decryptAndAdd(message, data['e2eeEnvelope'] as Map<String, dynamic>?);
+        return;
+      }
+
       final sessionKey = message.isGroupChat
           ? (message.groupId ?? '')
           : message.senderId;
@@ -84,6 +127,63 @@ class ChatNotifier extends StateNotifier<ChatState> {
     } catch (e) {
       print('Failed to handle incoming message: $e');
     }
+  }
+
+  /// Decrypt an incoming E2EE message and add it to the message list.
+  /// Runs asynchronously to avoid blocking the WS event loop.
+  Future<void> _decryptAndAdd(
+    Message message,
+    Map<String, dynamic>? rawEnvelope,
+  ) async {
+    final sessionKey = message.isGroupChat
+        ? (message.groupId ?? '')
+        : message.senderId;
+
+    try {
+      // Build the E2EE session ID.
+      final e2eeSessionId = message.e2eeEnvelope?.sessionId ??
+          '${_currentUserId()}_private_${message.senderId}';
+
+      // Convert camelCase envelope to snake_case for the Rust adapter.
+      final snakeEnvelope = rawEnvelope != null
+          ? _camelToSnakeEnvelope(rawEnvelope)
+          : null;
+
+      if (snakeEnvelope == null) {
+        // No raw envelope available; add message as-is with failed status.
+        addMessage(sessionKey, message.copyWith(decryptStatus: 'failed'));
+        return;
+      }
+
+      final plaintext = await _e2eeManager.decryptEnvelope(
+        sessionId: e2eeSessionId,
+        envelope: snakeEnvelope,
+      );
+
+      addMessage(sessionKey, message.copyWith(
+        content: plaintext,
+        decryptStatus: 'success',
+      ));
+    } catch (e) {
+      print('E2EE decrypt failed: $e');
+      addMessage(sessionKey, message.copyWith(
+        content: '',
+        decryptStatus: 'failed',
+      ));
+    }
+  }
+
+  /// Convert camelCase envelope keys from JSON to snake_case for the Rust adapter.
+  Map<String, dynamic> _camelToSnakeEnvelope(Map<String, dynamic> camel) {
+    return {
+      'version': camel['version'],
+      'algorithm': camel['algorithm'],
+      'sender_device_id': camel['senderDeviceId'],
+      'recipient_device_id': camel['recipientDeviceId'],
+      'session_id': camel['sessionId'],
+      'wire': camel['wire'],
+      if (camel['handshake'] != null) 'handshake': camel['handshake'],
+    };
   }
 
   void _handleMessageStatusChanged(Map<String, dynamic> data) {
@@ -102,6 +202,89 @@ class ChatNotifier extends StateNotifier<ChatState> {
       }
     } catch (e) {
       print('Failed to handle message status change: $e');
+    }
+  }
+
+  void _handleReadReceipt(Map<String, dynamic> data) {
+    try {
+      final sessionId = data['sessionId']?.toString() ?? data['conversationId']?.toString() ?? '';
+      if (sessionId.isEmpty) return;
+      final messages = state.messages[sessionId];
+      if (messages == null || messages.isEmpty) return;
+
+      // Mark all messages in this session as READ
+      final updated = messages.map((m) {
+        if (m.status != 'READ') {
+          return Message(
+            id: m.id, senderId: m.senderId, receiverId: m.receiverId,
+            isGroupChat: m.isGroupChat, messageType: m.messageType,
+            content: m.content, sendTime: m.sendTime, status: 'READ',
+            clientMessageId: m.clientMessageId, groupId: m.groupId,
+            senderName: m.senderName, senderAvatar: m.senderAvatar,
+            mediaUrl: m.mediaUrl, mediaSize: m.mediaSize,
+            mediaName: m.mediaName, thumbnailUrl: m.thumbnailUrl,
+            duration: m.duration,
+          );
+        }
+        return m;
+      }).toList();
+
+      state = state.copyWith(messages: {...state.messages, sessionId: updated});
+    } catch (e) {
+      print('Failed to handle read receipt: $e');
+    }
+  }
+
+  void _handleSystemMessage(Map<String, dynamic> data) {
+    try {
+      final content = data['content']?.toString() ?? '';
+      // System messages that affect contacts/sessions trigger a refresh
+      if (content.contains('FRIEND') || content.contains('GROUP') || content.contains('friend') || content.contains('group')) {
+        loadSessions();
+      }
+    } catch (e) {
+      print('Failed to handle system message: $e');
+    }
+  }
+
+  /// Handle E2EE negotiation events from WebSocket.
+  void _handleE2eeNegotiation(Map<String, dynamic> data) {
+    try {
+      final action = E2eeNegotiationAction.fromString(
+        data['action']?.toString() ?? '',
+      );
+      final sessionId = data['sessionId']?.toString() ?? '';
+      final requesterId = data['requesterId']?.toString() ?? '';
+      final requesterName = data['requesterName']?.toString();
+      final requestPayloadJson = data['requestPayloadJson']?.toString();
+
+      if (sessionId.isEmpty) return;
+
+      final event = E2eeNegotiationEvent(
+        sessionId: sessionId,
+        action: action,
+        requesterId: requesterId,
+        requesterName: requesterName,
+        requestPayloadJson: requestPayloadJson,
+      );
+
+      switch (action) {
+        case E2eeNegotiationAction.request:
+          // Store pending negotiation for UI to pick up and prompt the user.
+          _pendingNegotiation = event;
+          _e2eeMetaStore.setSessionStatus(sessionId, 'negotiating');
+        case E2eeNegotiationAction.accepted:
+          // Peer accepted — session is now encrypted.
+          _e2eeMetaStore.setSessionStatus(sessionId, 'encrypted');
+          _pendingNegotiation = null;
+        case E2eeNegotiationAction.rejected:
+        case E2eeNegotiationAction.disabled:
+          // Peer rejected or disabled — revert to plaintext.
+          _e2eeMetaStore.setSessionStatus(sessionId, 'plaintext');
+          _pendingNegotiation = null;
+      }
+    } catch (e) {
+      print('Failed to handle E2EE negotiation: $e');
     }
   }
 
@@ -150,9 +333,31 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<Message?> sendMessage(String receiverId, String content,
       {String messageType = 'text', String? clientMessageId}) async {
     final cid = clientMessageId ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+    final currentUid = _currentUserId();
+    final e2eeSessionId = '${currentUid}_private_$receiverId';
+
+    // Check E2EE session status before sending.
+    String e2eeStatus = 'plaintext';
+    try {
+      e2eeStatus = await _e2eeMetaStore.getSessionStatus(e2eeSessionId);
+    } catch (_) {
+      // If meta store is unavailable, fall back to plaintext.
+    }
+
+    if (e2eeStatus == 'negotiating') {
+      state = state.copyWith(error: '端到端加密协商尚未完成，请等待对方确认。');
+      return null;
+    }
+    if (e2eeStatus == 'failed') {
+      // Reset failed status to plaintext so the message can be sent.
+      await _e2eeMetaStore.setSessionStatus(e2eeSessionId, 'plaintext');
+      e2eeStatus = 'plaintext';
+    }
+
+    // Prepare the pending message with plaintext for local display.
     final pendingMessage = Message(
       id: cid,
-      senderId: '',
+      senderId: currentUid,
       receiverId: receiverId,
       isGroupChat: false,
       messageType: messageType,
@@ -160,21 +365,50 @@ class ChatNotifier extends StateNotifier<ChatState> {
       sendTime: DateTime.now().toIso8601String(),
       status: 'SENDING',
       clientMessageId: cid,
+      encrypted: e2eeStatus == 'encrypted',
+      decryptStatus: e2eeStatus == 'encrypted' ? 'skipped_own' : null,
     );
     addMessage(receiverId, pendingMessage);
 
     try {
-      final serverMessage = await _messageApi.sendPrivateMessage(
-        SendPrivateMessageRequest(
+      Message serverMessage;
+      if (e2eeStatus == 'encrypted') {
+        // Encrypt the message.
+        final senderDeviceId = await _e2eeMetaStore.getOrCreateDeviceId();
+        final recipientDeviceId =
+            await _e2eeMetaStore.getRemoteDeviceId(e2eeSessionId);
+        if (recipientDeviceId == null || recipientDeviceId.isEmpty) {
+          throw Exception('remote device ID not found for session');
+        }
+
+        final envelope = await _e2eeManager.encryptToEnvelope(
+          sessionId: e2eeSessionId,
+          senderDeviceId: senderDeviceId,
+          recipientDeviceId: recipientDeviceId,
+          plaintext: content,
+        );
+
+        serverMessage = await _messageApi.sendPrivateEncrypted(
           receiverId: receiverId,
-          content: content,
-          messageType: messageType,
           clientMessageId: cid,
-        ),
-      );
+          messageType: messageType,
+          e2eeEnvelope: envelope,
+          e2eeDeviceId: senderDeviceId,
+        );
+      } else {
+        serverMessage = await _messageApi.sendPrivateMessage(
+          SendPrivateMessageRequest(
+            receiverId: receiverId,
+            content: content,
+            messageType: messageType,
+            clientMessageId: cid,
+          ),
+        );
+      }
       _replaceMessage(receiverId, cid, serverMessage);
       return serverMessage;
     } catch (e) {
+      print('Send message failed: $e');
       _updateMessageStatus(receiverId, cid, 'FAILED');
       return null;
     }
@@ -185,7 +419,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     final cid = clientMessageId ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
     final pendingMessage = Message(
       id: cid,
-      senderId: '',
+      senderId: _currentUserId(),
       isGroupChat: true,
       groupId: groupId,
       messageType: messageType,

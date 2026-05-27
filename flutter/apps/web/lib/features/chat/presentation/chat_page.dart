@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:im_core/core.dart';
 import 'package:im_web/core/di/providers.dart';
 import '../../auth/presentation/auth_provider.dart';
+import '../../e2ee/presentation/encryption_banner.dart';
+import '../../e2ee/presentation/e2ee_provider.dart';
 import 'widgets/session_tile.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/message_input.dart';
@@ -109,7 +112,28 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     );
   }
 
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
+  }
+
   Widget _buildChatView(String sessionId) {
+    ref.listen(chatStateProvider.select((s) => s.messages[sessionId]),
+        (prev, next) {
+      if (next != null && (prev == null || next.length > prev.length)) {
+        _scrollToBottom();
+      }
+    });
+
     final chatState = ref.watch(chatStateProvider);
     final messages = chatState.messages[sessionId] ?? [];
     final session = chatState.sessions.where((s) => s.id == sessionId).firstOrNull;
@@ -170,6 +194,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             ],
           ),
         ),
+        // E2EE encryption banner (private chats only)
+        if (!isGroup)
+          ref.watch(e2eeSessionStatusProvider(sessionId)).when(
+            data: (statusStr) => EncryptionBanner(
+              status: E2eeSessionStatus.fromString(statusStr),
+              onExit: () async {
+                await ref.read(e2eeManagerProvider).exitEncryption(sessionId);
+                ref.invalidate(e2eeSessionStatusProvider(sessionId));
+              },
+            ),
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+          ),
         // Messages
         Expanded(
           child: messages.isEmpty
@@ -204,6 +241,16 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     text,
                   );
             }
+          },
+          onSendImage: (_) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('图片发送功能开发中...')),
+            );
+          },
+          onSendFile: (_) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('文件发送功能开发中...')),
+            );
           },
         ),
       ],

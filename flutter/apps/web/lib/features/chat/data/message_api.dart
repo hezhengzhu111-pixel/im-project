@@ -79,6 +79,28 @@ class MessageApi {
     return response.data;
   }
 
+  Future<Message> sendPrivateEncrypted({
+    required String receiverId,
+    required String clientMessageId,
+    required String messageType,
+    required Map<String, dynamic> e2eeEnvelope,
+    required String e2eeDeviceId,
+  }) async {
+    final response = await _httpClient.post<Message>(
+      MessageEndpoints.sendPrivate,
+      body: {
+        'receiverId': receiverId,
+        'clientMessageId': clientMessageId,
+        'messageType': messageType,
+        'encrypted': true,
+        'e2eeEnvelope': e2eeEnvelope,
+        'e2eeDeviceId': e2eeDeviceId,
+      },
+      fromJson: Message.fromJson,
+    );
+    return response.data;
+  }
+
   Future<void> markRead(String conversationId) async {
     await _httpClient.put<void>(
       MessageEndpoints.markRead(conversationId),
