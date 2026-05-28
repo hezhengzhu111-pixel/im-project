@@ -316,43 +316,35 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget _buildSecondaryColumn(AppLocalizations loc, ThemeData theme) {
     return Column(
       children: [
-        Row(
+        SettingsSection(
           children: [
-            Expanded(
-              child: SettingsSection(
-                children: [
-                  SettingsRow(
-                    title: loc.settingsClearCache,
-                    description: loc.settingsClearCacheDesc,
-                    showDivider: false,
-                    trailing: FilledButton.tonal(
-                      onPressed: _confirmClearCache,
-                      child: Text(loc.settingsClearCache),
-                    ),
-                  ),
-                ],
+            SettingsRow(
+              title: loc.settingsClearCache,
+              description: loc.settingsClearCacheDesc,
+              showDivider: false,
+              trailing: FilledButton.tonal(
+                onPressed: _confirmClearCache,
+                child: Text(loc.settingsClearCache),
               ),
             ),
-            const SizedBox(width: ImTokens.layoutSectionGap),
-            Expanded(
-              child: SettingsSection(
-                children: [
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () => context.push('/settings/ai'),
-                      child: SettingsRow(
-                        title: loc.settingsAiAssistant,
-                        description: loc.settingsAiAssistantDesc,
-                        showDivider: false,
-                        trailing: Icon(
-                          Icons.chevron_right,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
+          ],
+        ),
+        const SizedBox(height: ImTokens.layoutSectionGap),
+        SettingsSection(
+          children: [
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => context.push('/settings/ai'),
+                child: SettingsRow(
+                  title: loc.settingsAiAssistant,
+                  description: loc.settingsAiAssistantDesc,
+                  showDivider: false,
+                  trailing: Icon(
+                    Icons.chevron_right,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
-                ],
+                ),
               ),
             ),
           ],
