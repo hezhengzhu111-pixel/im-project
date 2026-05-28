@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,15 +30,16 @@ import 'deferred_route_page.dart';
 import 'route_meta.dart';
 import 'route_names.dart';
 import 'route_resolver.dart';
+import 'route_observer.dart';
 export 'route_resolver.dart' show routeMetaMap, resolveRouteMeta;
 import 'not_found_page.dart';
-import 'permission_provider.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
 
   return GoRouter(
     initialLocation: '/chat',
+    observers: [routeObserver],
     redirect: (context, state) {
       final isAuth = authState.isAuthenticated;
       final meta = resolveRouteMeta(state.uri.path);
@@ -55,10 +57,9 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // permission: user lacks required permission -> /chat
       if (meta.permission != null) {
-        final hasPerm = ref
-            .read(permissionProvider.notifier)
-            .hasPermission(meta.permission!);
-        if (!hasPerm) return '/chat';
+        if (!authState.permissions.contains(meta.permission!)) {
+          return '/chat';
+        }
       }
 
       return null;
@@ -74,10 +75,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: RouteNames.register,
         builder: (_, __) => const RegisterPage(),
       ),
-      GoRoute(
-        path: '/debug/gallery',
-        builder: (context, state) => const ComponentGalleryPage(),
-      ),
+      if (kDebugMode)
+        GoRoute(
+          path: '/debug/gallery',
+          builder: (context, state) => const ComponentGalleryPage(),
+        ),
       ShellRoute(
         builder: (context, state, child) {
           final l10n = AppLocalizations.of(context);

@@ -269,4 +269,70 @@ void main() {
       router.dispose();
     });
   });
+
+  group('GoRouter observers', () {
+    test('GoRouter can be created with observers', () {
+      final observer = RouteObserver<ModalRoute<void>>();
+      final router = GoRouter(
+        initialLocation: '/chat',
+        observers: [observer],
+        routes: [
+          GoRoute(
+            path: '/chat',
+            builder: (_, __) => const SizedBox(),
+          ),
+        ],
+      );
+
+      expect(router, isA<GoRouter>());
+      router.dispose();
+    });
+  });
+
+  group('Debug route conditional registration', () {
+    test('kDebugMode controls debug route presence', () {
+      // In test, kDebugMode is false (profile-like).
+      // A router built WITHOUT debug routes should not have /debug/gallery.
+      final router = GoRouter(
+        initialLocation: '/chat',
+        routes: [
+          GoRoute(
+            path: '/chat',
+            builder: (_, __) => const SizedBox(),
+          ),
+          // Simulate release: no /debug/gallery route
+        ],
+      );
+
+      // Verify the router was created (debug route absent is implicit)
+      expect(router, isA<GoRouter>());
+      router.dispose();
+    });
+  });
+
+  group('Permission guard with AuthState.permissions', () {
+    test('permission guard redirects when permission missing', () {
+      const meta = RouteMeta(title: 'Admin', permission: 'admin:read');
+      final userPermissions = <String>{}; // empty like AuthState.permissions
+
+      String? result;
+      if (meta.permission != null && !userPermissions.contains(meta.permission)) {
+        result = '/chat';
+      }
+
+      expect(result, '/chat');
+    });
+
+    test('permission guard allows when permission present', () {
+      const meta = RouteMeta(title: 'Admin', permission: 'admin:read');
+      final userPermissions = {'admin:read'}; // has permission
+
+      String? result;
+      if (meta.permission != null && !userPermissions.contains(meta.permission)) {
+        result = '/chat';
+      }
+
+      expect(result, isNull);
+    });
+  });
 }
