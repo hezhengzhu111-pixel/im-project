@@ -10,18 +10,15 @@ export 'src/im/im.dart';
 export 'src/ws/ws.dart';
 export 'src/utils/utils.dart';
 export 'src/crypto/crypto.dart';
-export 'src/services/analytics_port.dart';
-export 'src/services/error_reporter_port.dart';
-export 'src/services/push_port.dart';
-export 'src/services/models.dart';
-export 'src/services/payment_port.dart';
-export 'src/services/map_port.dart';
-export 'src/services/file_preview_port.dart';
+export 'src/services/services.dart';
 
 // Models
 export 'src/models/result.dart';
 export 'src/models/failure_error.dart';
 export 'src/models/picked_file.dart';
+
+// Config
+export 'src/config/app_config.dart';
 
 // Ports
 export 'src/ports/file_picker_port.dart';
