@@ -11,32 +11,11 @@ import 'package:im_web/features/e2ee/data/e2ee_key_store.dart';
 import 'package:im_web/features/e2ee/data/e2ee_session_store.dart';
 import 'package:im_web/adapters/web_e2ee_adapter.dart';
 
-/// Mock HttpClientPort for testing
-class MockHttpClient implements HttpClientPort {
-  @override
-  Future<ApiResponse<T>> get<T>(String path, {Map<String, dynamic>? queryParameters, required T Function(Map<String, dynamic> p1) fromJson}) async {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<ApiResponse<T>> post<T>(String path, {body, required T Function(Map<String, dynamic> p1) fromJson}) async {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<ApiResponse<T>> put<T>(String path, {body, required T Function(Map<String, dynamic> p1) fromJson}) async {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<ApiResponse<T>> delete<T>(String path, {Map<String, dynamic>? queryParameters, required T Function(Map<String, dynamic> p1) fromJson}) async {
-    throw UnimplementedError();
-  }
-}
+import '../../helpers/fakes.dart';
 
 /// Testable MessageApi that overrides methods
 class TestMessageApi extends MessageApi {
-  TestMessageApi() : super(MockHttpClient());
+  TestMessageApi() : super(FakeHttpClientPort());
 
   List<ChatSession>? conversationsResponse;
   List<Message>? privateHistoryResponse;
@@ -83,72 +62,26 @@ class TestMessageApi extends MessageApi {
   }
 }
 
-/// Mock SecureStoragePort for testing
-class MockSecureStoragePort implements SecureStoragePort {
-  final _storage = <String, String?>{};
-
-  @override
-  Future<String?> read(String key) async => _storage[key];
-
-  @override
-  Future<void> write(String key, String value) async => _storage[key] = value;
-
-  @override
-  Future<void> delete(String key) async => _storage.remove(key);
-}
-
 /// Mock E2eeMetaStore for testing
 class MockE2eeMetaStore extends E2eeMetaStore {
-  MockE2eeMetaStore() : super(MockSecureStoragePort());
-}
-
-/// Mock WsClientPort for testing
-class MockWsClientPort implements WsClientPort {
-  final _eventsController = StreamController<WsEvent>.broadcast();
-  final _connectionStateController = StreamController<WsConnectionState>.broadcast();
-
-  @override
-  Stream<WsEvent> get events => _eventsController.stream;
-
-  @override
-  Stream<WsConnectionState> get connectionState => _connectionStateController.stream;
-
-  @override
-  bool get isConnected => false;
-
-  @override
-  Future<void> connect(String url) async {}
-
-  @override
-  Future<void> disconnect() async {}
-
-  @override
-  Future<void> reconnect() async {}
-
-  @override
-  void send(Map<String, dynamic> message) {}
-
-  void dispose() {
-    _eventsController.close();
-    _connectionStateController.close();
-  }
+  MockE2eeMetaStore() : super(FakeSecureStoragePort());
 }
 
 void main() {
   late TestMessageApi mockApi;
   late ChatNotifier notifier;
-  late MockWsClientPort mockWsClient;
+  late FakeWsClientPort mockWsClient;
   late MockE2eeMetaStore mockE2eeMetaStore;
 
   setUp(() {
     mockApi = TestMessageApi();
-    mockWsClient = MockWsClientPort();
+    mockWsClient = FakeWsClientPort();
     mockE2eeMetaStore = MockE2eeMetaStore();
     // Create a minimal E2eeManager for testing.
     // In plaintext mode, no E2EE methods are actually called.
     final e2eeManager = E2eeManager(
       adapter: WebE2eeAdapter(),
-      api: E2eeApi(MockHttpClient()),
+      api: E2eeApi(FakeHttpClientPort()),
       keyStore: E2eeKeyStore(),
       sessionStore: E2eeSessionStore(),
       metaStore: mockE2eeMetaStore,
