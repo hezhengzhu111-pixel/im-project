@@ -713,7 +713,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get momentsPublishTitle => '发布动态';
 
   @override
-  String get momentsPublishButton => '发布';
+  String get momentsPublishButton => '发布动态';
 
   @override
   String get momentsShareHint => '分享新鲜事...';
@@ -806,4 +806,159 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get formErrorRateLimit => '尝试次数过多，请稍后重试。';
+
+  @override
+  String get e2eeEncryptedBadge => '端到端加密已启用';
+
+  @override
+  String get e2eeNegotiatingBadge => '正在协商加密';
+
+  @override
+  String get e2eeFailedBadge => '端到端加密异常';
+
+  @override
+  String get e2eePlaintextBadge => '未启用端到端加密';
+
+  @override
+  String get networkDisconnected => '网络已断开，消息将在恢复后自动发送';
+
+  @override
+  String chatMessagesFailed(Object count) {
+    return '$count 条消息发送失败';
+  }
+
+  @override
+  String chatMessagesPending(Object count) {
+    return '$count 条消息等待发送';
+  }
+
+  @override
+  String get chatRetrying => '正在重试发送消息...';
+
+  @override
+  String get chatRetry => '重试';
+
+  @override
+  String get errorE2eeNotReady => '端到端加密协商尚未完成，请等待对方确认。';
+
+  @override
+  String get errorAlreadyRecording => '已在录音中';
+
+  @override
+  String get errorNotRecording => '未在录音中';
+
+  @override
+  String get errorRecordingNotImplemented => '录音功能待实现';
+
+  @override
+  String get momentsTitle => '朋友圈';
+
+  @override
+  String get momentsUserFallback => '用户';
+
+  @override
+  String get momentsDailyOverview => '今日概览';
+
+  @override
+  String get momentsInteractions => '互动';
+
+  @override
+  String get momentsPhotos => '照片';
+
+  @override
+  String get momentsComments => '评论';
+
+  @override
+  String get momentsRecentInteractions => '最近互动';
+
+  @override
+  String get momentsNoRecentInteractions => '暂无最近互动';
+
+  @override
+  String get momentsSharePrompt => '分享你的生活瞬间';
+
+  @override
+  String get momentsShareDesc => '照片、文字、视频都可以发布到朋友圈';
+
+  @override
+  String get momentsNoPosts => '暂无动态';
+
+  @override
+  String get momentsNotifications => '通知';
+
+  @override
+  String get momentsMarkAllRead => '全部已读';
+
+  @override
+  String get momentsNoNotifications => '暂无通知';
+
+  @override
+  String momentsNotificationLiked(Object name) {
+    return '$name 赞了你的动态';
+  }
+
+  @override
+  String momentsNotificationCommented(Object name) {
+    return '$name 评论了你的动态';
+  }
+
+  @override
+  String momentsNotificationReplied(Object name) {
+    return '$name 回复了你的评论';
+  }
+
+  @override
+  String momentsNotificationInteracted(Object name) {
+    return '$name 与你互动';
+  }
+
+  @override
+  String get momentsVisibilityPublic => '公开';
+
+  @override
+  String get momentsVisibilityFriends => '好友可见';
+
+  @override
+  String get momentsVisibilitySelf => '仅自己';
+
+  @override
+  String momentsAddMedia(Object count) {
+    return '添加图片/视频，最多 $count 张';
+  }
+
+  @override
+  String get momentsShowFull => '全文';
+
+  @override
+  String get timeJustNow => '刚刚';
+
+  @override
+  String timeMinutesAgo(Object minutes) {
+    return '$minutes分钟前';
+  }
+
+  @override
+  String timeHoursAgo(Object hours) {
+    return '$hours小时前';
+  }
+
+  @override
+  String timeDaysAgo(Object days) {
+    return '$days天前';
+  }
+
+  @override
+  String get brandSubtitle => '端对端加密即时通信系统，\n您的消息仅在设备上解密。';
+
+  @override
+  String get brandFeatureE2ee => '端对端加密';
+
+  @override
+  String get brandFeatureRealtime => '实时消息同步';
+
+  @override
+  String get brandFeatureDeviceTrust => '多设备安全登录';
+
+  @override
+  String get brandFeatureAi => 'AI 助手接入';
 }

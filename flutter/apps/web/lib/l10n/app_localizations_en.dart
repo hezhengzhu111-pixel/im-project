@@ -713,7 +713,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get momentsPublishTitle => 'Publish Moment';
 
   @override
-  String get momentsPublishButton => 'Publish';
+  String get momentsPublishButton => 'Publish Moment';
 
   @override
   String get momentsShareHint => 'Share something...';
@@ -806,4 +806,159 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get formErrorRateLimit => 'Too many attempts. Please try again later.';
+
+  @override
+  String get e2eeEncryptedBadge => 'End-to-end encryption enabled';
+
+  @override
+  String get e2eeNegotiatingBadge => 'Negotiating encryption';
+
+  @override
+  String get e2eeFailedBadge => 'Encryption error';
+
+  @override
+  String get e2eePlaintextBadge => 'Encryption not enabled';
+
+  @override
+  String get networkDisconnected => 'Network disconnected, messages will be sent when restored';
+
+  @override
+  String chatMessagesFailed(Object count) {
+    return '$count messages failed to send';
+  }
+
+  @override
+  String chatMessagesPending(Object count) {
+    return '$count messages waiting to send';
+  }
+
+  @override
+  String get chatRetrying => 'Retrying to send messages...';
+
+  @override
+  String get chatRetry => 'Retry';
+
+  @override
+  String get errorE2eeNotReady => 'E2EE negotiation not complete, waiting for peer confirmation';
+
+  @override
+  String get errorAlreadyRecording => 'Already recording';
+
+  @override
+  String get errorNotRecording => 'Not recording';
+
+  @override
+  String get errorRecordingNotImplemented => 'Voice recording not yet implemented';
+
+  @override
+  String get momentsTitle => 'Moments';
+
+  @override
+  String get momentsUserFallback => 'User';
+
+  @override
+  String get momentsDailyOverview => 'Daily Overview';
+
+  @override
+  String get momentsInteractions => 'Interactions';
+
+  @override
+  String get momentsPhotos => 'Photos';
+
+  @override
+  String get momentsComments => 'Comments';
+
+  @override
+  String get momentsRecentInteractions => 'Recent Interactions';
+
+  @override
+  String get momentsNoRecentInteractions => 'No recent interactions';
+
+  @override
+  String get momentsSharePrompt => 'Share your life moments';
+
+  @override
+  String get momentsShareDesc => 'Photos, text, videos can all be published to Moments';
+
+  @override
+  String get momentsNoPosts => 'No moments yet';
+
+  @override
+  String get momentsNotifications => 'Notifications';
+
+  @override
+  String get momentsMarkAllRead => 'Mark all as read';
+
+  @override
+  String get momentsNoNotifications => 'No notifications';
+
+  @override
+  String momentsNotificationLiked(Object name) {
+    return '$name liked your moment';
+  }
+
+  @override
+  String momentsNotificationCommented(Object name) {
+    return '$name commented on your moment';
+  }
+
+  @override
+  String momentsNotificationReplied(Object name) {
+    return '$name replied to your comment';
+  }
+
+  @override
+  String momentsNotificationInteracted(Object name) {
+    return '$name interacted with you';
+  }
+
+  @override
+  String get momentsVisibilityPublic => 'Public';
+
+  @override
+  String get momentsVisibilityFriends => 'Friends only';
+
+  @override
+  String get momentsVisibilitySelf => 'Only me';
+
+  @override
+  String momentsAddMedia(Object count) {
+    return 'Add photos/videos, max $count';
+  }
+
+  @override
+  String get momentsShowFull => 'Show full';
+
+  @override
+  String get timeJustNow => 'just now';
+
+  @override
+  String timeMinutesAgo(Object minutes) {
+    return '$minutes min ago';
+  }
+
+  @override
+  String timeHoursAgo(Object hours) {
+    return '$hours h ago';
+  }
+
+  @override
+  String timeDaysAgo(Object days) {
+    return '$days d ago';
+  }
+
+  @override
+  String get brandSubtitle => 'End-to-end encrypted instant messaging,\nyour messages are only decrypted on your device.';
+
+  @override
+  String get brandFeatureE2ee => 'End-to-end encryption';
+
+  @override
+  String get brandFeatureRealtime => 'Realtime sync';
+
+  @override
+  String get brandFeatureDeviceTrust => 'Multi-device secure login';
+
+  @override
+  String get brandFeatureAi => 'AI assistant';
 }
