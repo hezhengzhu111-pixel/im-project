@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_web/core/di/providers.dart';
+import 'package:im_web/core/forms/form_controller.dart';
+import 'package:im_web/core/forms/form_schema.dart';
+import 'package:im_web/core/forms/validators.dart';
 import 'package:im_web/features/settings/presentation/widgets/profile_hero.dart';
 import 'package:im_web/features/settings/presentation/widgets/settings_section.dart';
 import 'package:im_web/features/settings/presentation/widgets/password_dialog.dart';
 import 'package:im_web/features/settings/presentation/widgets/bind_phone_dialog.dart';
 import 'package:im_web/features/settings/presentation/widgets/bind_email_dialog.dart';
 import 'package:im_web/l10n/app_localizations.dart';
+import 'package:im_web/widgets/validated_form.dart';
+import 'package:im_web/widgets/validated_form_field.dart';
 import 'package:im_core/core.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
@@ -17,33 +22,39 @@ class ProfilePage extends ConsumerStatefulWidget {
 }
 
 class _ProfilePageState extends ConsumerState<ProfilePage> {
-  final _formKey = GlobalKey<FormState>();
-  late TextEditingController _nicknameController;
-  late TextEditingController _emailController;
-  late TextEditingController _phoneController;
-  late TextEditingController _signatureController;
-  late TextEditingController _locationController;
+  FormController? _formController;
   String _gender = '';
   DateTime? _birthday;
   bool _initialized = false;
 
-  @override
-  void dispose() {
-    _nicknameController.dispose();
-    _emailController.dispose();
-    _phoneController.dispose();
-    _signatureController.dispose();
-    _locationController.dispose();
-    super.dispose();
-  }
-
   void _initControllers(User user) {
     if (_initialized) return;
-    _nicknameController = TextEditingController(text: user.nickname ?? '');
-    _emailController = TextEditingController(text: user.email ?? '');
-    _phoneController = TextEditingController(text: user.phone ?? '');
-    _signatureController = TextEditingController(text: user.signature ?? '');
-    _locationController = TextEditingController(text: user.location ?? '');
+    final loc = AppLocalizations.of(context)!;
+    _formController = FormController(FormSchema(fields: [
+      FormFieldSchema(
+        name: 'nickname',
+        initialValue: user.nickname ?? '',
+        validators: [
+          FormValidators.required(loc.validationNicknameRequired),
+          FormValidators.maxLength(20, loc.validationNicknameMaxLength(20)),
+        ],
+      ),
+      FormFieldSchema(
+        name: 'email',
+        initialValue: user.email ?? '',
+        validators: [
+          FormValidators.email(loc.validationEmailInvalid),
+        ],
+      ),
+      FormFieldSchema(
+        name: 'signature',
+        initialValue: user.signature ?? '',
+      ),
+      FormFieldSchema(
+        name: 'location',
+        initialValue: user.location ?? '',
+      ),
+    ]));
     _gender = user.gender ?? '';
     _birthday = user.birthday != null ? DateTime.tryParse(user.birthday!) : null;
     _initialized = true;
@@ -75,8 +86,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Form(
-                      key: _formKey,
+                    child: ValidatedForm(
+                      controller: _formController!,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -88,23 +99,21 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                             enabled: false,
                           ),
                           const SizedBox(height: 12),
-                          TextFormField(
-                            controller: _nicknameController,
-                            decoration: InputDecoration(labelText: loc.profileNickname),
-                            validator: (v) {
-                              if (v == null || v.isEmpty) return loc.profileNicknameRequired;
-                              if (v.length > 20) return loc.profileNicknameLength;
-                              return null;
-                            },
+                          ValidatedFormField(
+                            controller: _formController!,
+                            name: 'nickname',
+                            label: loc.profileNickname,
+                          ),
+                          const SizedBox(height: 12),
+                          ValidatedFormField(
+                            controller: _formController!,
+                            name: 'email',
+                            label: loc.profileEmail,
+                            keyboardType: TextInputType.emailAddress,
                           ),
                           const SizedBox(height: 12),
                           TextFormField(
-                            controller: _emailController,
-                            decoration: InputDecoration(labelText: loc.profileEmail),
-                          ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: _phoneController,
+                            initialValue: user.phone,
                             decoration: InputDecoration(labelText: loc.profilePhone),
                             enabled: false,
                           ),
@@ -151,9 +160,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                             },
                           ),
                           const SizedBox(height: 12),
-                          TextFormField(
-                            controller: _signatureController,
-                            decoration: InputDecoration(labelText: loc.profileSignature),
+                          ValidatedFormField(
+                            controller: _formController!,
+                            name: 'signature',
+                            label: loc.profileSignature,
                             maxLines: 3,
                           ),
                           const SizedBox(height: 16),
@@ -283,17 +293,18 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!await _formController!.validate()) return;
+    final values = _formController!.values;
     final loc = AppLocalizations.of(context)!;
     try {
       await ref.read(profileStateProvider.notifier).updateProfile(
         UpdateProfileRequest(
-          nickname: _nicknameController.text.trim(),
-          email: _emailController.text.trim(),
+          nickname: values['nickname']?.trim(),
+          email: values['email']?.trim(),
           gender: _gender,
           birthday: _birthday?.toIso8601String(),
-          signature: _signatureController.text.trim(),
-          location: _locationController.text.trim(),
+          signature: values['signature']?.trim(),
+          location: values['location']?.trim(),
         ),
       );
       if (mounted) {
@@ -313,10 +324,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   void _reset() {
     final user = ref.read(authStateProvider).user;
     if (user == null) return;
-    _nicknameController.text = user.nickname ?? '';
-    _emailController.text = user.email ?? '';
-    _signatureController.text = user.signature ?? '';
-    _locationController.text = user.location ?? '';
+    _formController?.reset();
     setState(() {
       _gender = user.gender ?? '';
       _birthday = user.birthday != null ? DateTime.tryParse(user.birthday!) : null;

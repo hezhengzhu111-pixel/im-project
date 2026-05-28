@@ -2,7 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/core/di/providers.dart';
+import 'package:im_web/core/forms/form_controller.dart';
+import 'package:im_web/core/forms/form_schema.dart';
+import 'package:im_web/core/forms/validators.dart';
 import 'package:im_web/l10n/app_localizations.dart';
+import 'package:im_web/widgets/validated_form.dart';
+import 'package:im_web/widgets/validated_form_field.dart';
+import 'package:im_web/core/forms/form_field_state.dart' as custom;
 
 class PasswordDialog extends ConsumerStatefulWidget {
   const PasswordDialog({super.key});
@@ -12,18 +18,44 @@ class PasswordDialog extends ConsumerStatefulWidget {
 }
 
 class _PasswordDialogState extends ConsumerState<PasswordDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _currentController = TextEditingController();
-  final _newController = TextEditingController();
-  final _confirmController = TextEditingController();
+  late final FormController _formController;
   bool _loading = false;
 
   @override
-  void dispose() {
-    _currentController.dispose();
-    _newController.dispose();
-    _confirmController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    final loc = AppLocalizations.of(context)!;
+    final newPasswordField = custom.FormFieldState(
+      name: 'newPassword',
+      initialValue: '',
+    );
+    _formController = FormController(FormSchema(fields: [
+      FormFieldSchema(
+        name: 'currentPassword',
+        initialValue: '',
+        validators: [
+          FormValidators.required(loc.profileCurrentPasswordRequired),
+        ],
+      ),
+      FormFieldSchema(
+        name: 'newPassword',
+        initialValue: '',
+        validators: [
+          FormValidators.required(loc.profileNewPasswordRequired),
+          FormValidators.minLength(8, loc.validatorPasswordLength),
+          FormValidators.maxLength(64, loc.validatorPasswordLength),
+          FormValidators.passwordStrength(loc.validatorPasswordFormat),
+        ],
+      ),
+      FormFieldSchema(
+        name: 'confirmPassword',
+        initialValue: '',
+        validators: [
+          FormValidators.required(loc.validatorConfirmPasswordRequired),
+          FormValidators.sameAs(newPasswordField, loc.validatorPasswordMismatch),
+        ],
+      ),
+    ]));
   }
 
   @override
@@ -32,37 +64,30 @@ class _PasswordDialogState extends ConsumerState<PasswordDialog> {
 
     return AlertDialog(
       title: Text(loc.profileChangePassword),
-      content: Form(
-        key: _formKey,
+      content: ValidatedForm(
+        controller: _formController,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextFormField(
-              controller: _currentController,
+            ValidatedFormField(
+              controller: _formController,
+              name: 'currentPassword',
+              label: loc.profileCurrentPassword,
               obscureText: true,
-              decoration: InputDecoration(labelText: loc.profileCurrentPassword),
-              validator: (v) => v?.isEmpty == true ? loc.profileCurrentPasswordRequired : null,
             ),
             const SizedBox(height: 12),
-            TextFormField(
-              controller: _newController,
+            ValidatedFormField(
+              controller: _formController,
+              name: 'newPassword',
+              label: loc.profileNewPassword,
               obscureText: true,
-              decoration: InputDecoration(labelText: loc.profileNewPassword),
-              validator: (v) {
-                if (v == null || v.isEmpty) return loc.profileNewPasswordRequired;
-                if (v.length < 6 || v.length > 20) return loc.profilePasswordLength;
-                return null;
-              },
             ),
             const SizedBox(height: 12),
-            TextFormField(
-              controller: _confirmController,
+            ValidatedFormField(
+              controller: _formController,
+              name: 'confirmPassword',
+              label: loc.profileConfirmPassword,
               obscureText: true,
-              decoration: InputDecoration(labelText: loc.profileConfirmPassword),
-              validator: (v) {
-                if (v != _newController.text) return loc.profilePasswordMismatch;
-                return null;
-              },
             ),
           ],
         ),
@@ -83,13 +108,14 @@ class _PasswordDialogState extends ConsumerState<PasswordDialog> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!await _formController.validate()) return;
     setState(() => _loading = true);
     try {
+      final values = _formController.values;
       await ref.read(profileStateProvider.notifier).changePassword(
         ChangePasswordRequest(
-          currentPassword: _currentController.text,
-          newPassword: _newController.text,
+          currentPassword: values['currentPassword']!,
+          newPassword: values['newPassword']!,
         ),
       );
       if (mounted) {
