@@ -612,4 +612,13 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get a11ySettingsAi => 'AI 设置';
+
+  @override
+  String get a11ySendMessage => '发送消息';
+
+  @override
+  String get a11yAddAttachment => '添加附件';
+
+  @override
+  String get a11yVoiceInput => '语音输入';
 }

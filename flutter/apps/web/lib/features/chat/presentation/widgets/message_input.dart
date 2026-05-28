@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/l10n/app_localizations.dart';
-import 'package:im_web/features/chat/presentation/widgets/network_status_banner.dart';
-import 'package:im_web/features/chat/data/file_api.dart';
-import 'package:im_web/features/chat/data/file_providers.dart';
-import 'package:im_web/core/di/platform_providers.dart';
+import '../../data/file_api.dart';
+import '../../data/file_providers.dart';
+import '../../../../core/di/platform_providers.dart';
+import 'network_status_banner.dart';
 
 class MessageInput extends ConsumerStatefulWidget {
   const MessageInput({

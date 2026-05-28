@@ -12,9 +12,8 @@ final messageOutboxProvider = Provider<MessageOutbox>((ref) {
 
   final outbox = MessageOutbox(
     messageApi: messageApi,
-    idbFactory: getIdbFactory(),
+    idbFactory: getIdbFactory()!,
     isOnline: () => ref.read(networkStatusProvider).isOnline,
-    onNetworkRestored: () => outbox.onNetworkAvailable(),
   );
 
   // Initialize the outbox

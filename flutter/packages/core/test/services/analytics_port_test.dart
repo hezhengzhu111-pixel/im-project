@@ -1,4 +1,4 @@
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 import 'package:im_core/src/services/analytics_port.dart';
 
 class _TestAnalyticsAdapter implements AnalyticsPort {
