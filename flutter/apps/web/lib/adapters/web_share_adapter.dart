@@ -1,35 +1,41 @@
+import 'package:web/web.dart' as web;
 import 'package:im_core/core.dart';
 
 class WebShareAdapter implements SharePort {
   @override
   Future<Result<bool>> isAvailable() async {
     try {
-      // 实际实现需要通过 dart:js_interop 检查 navigator.share
-      return const Success(false);
+      return Success(web.window.navigator.canShare != null);
     } catch (e) {
-      return Failure(UnknownError(e.toString()));
+      return const Failure(UnknownError('share_check_failed'));
     }
   }
 
   @override
   Future<Result<void>> shareText(String text) async {
     try {
-      if (!await isAvailable().then((r) {
-        if (r is Success<bool>) return r.data;
-        return false;
-      })) {
+      final available = await isAvailable();
+      if (available case Success(:final data) when !data) {
         return const Failure(UnsupportedCapability('share'));
       }
 
-      // 实际实现需要通过 dart:js_interop 使用 Web Share API
+      await web.window.navigator
+          .share(web.ShareData(text: text))
+          .toDart;
       return const Success(null);
     } catch (e) {
-      return Failure(UnknownError(e.toString()));
+      if (e is web.DOMException && e.name == 'AbortError') {
+        return const Failure(OperationCancelled());
+      }
+      return const Failure(UnknownError('share_failed'));
     }
   }
 
   @override
-  Future<Result<void>> shareFile({required String filePath, String? mimeType}) async {
+  Future<Result<void>> shareFile({
+    required String filePath,
+    String? mimeType,
+  }) async {
     return const Failure(UnsupportedCapability('share_file'));
   }
 }
