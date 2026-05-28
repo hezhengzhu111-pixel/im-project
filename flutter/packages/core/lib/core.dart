@@ -20,6 +20,9 @@ export 'src/models/picked_file.dart';
 // Config
 export 'src/config/app_config.dart';
 
+// Logging
+export 'src/logging/sanitized_error.dart';
+
 // Ports
 export 'src/ports/file_picker_port.dart';
 export 'src/ports/notification_port.dart';
