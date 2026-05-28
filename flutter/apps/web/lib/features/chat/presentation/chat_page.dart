@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/core/di/providers.dart';
-import 'package:im_web/core/responsive/breakpoints.dart';
+import 'package:im_ui/im_ui.dart';
 import '../../auth/presentation/auth_provider.dart';
 import '../../e2ee/presentation/encryption_banner.dart';
 import '../../e2ee/presentation/e2ee_provider.dart';
@@ -45,8 +45,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       return s.targetName.toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
 
-    final isMobile =
-        getScreenSize(MediaQuery.of(context).size.width) == ScreenSize.mobile;
+    final isMobile = context.isMobile;
 
     if (isMobile) {
       return _buildMobileLayout(chatState, activeId, sessions);
@@ -172,8 +171,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final sessionName =
         session?.conversationName ?? session?.targetName ?? sessionId;
     final memberCount = session?.memberCount;
-    final isMobile =
-        getScreenSize(MediaQuery.of(context).size.width) == ScreenSize.mobile;
+    final isMobile = context.isMobile;
 
     return Column(
       children: [

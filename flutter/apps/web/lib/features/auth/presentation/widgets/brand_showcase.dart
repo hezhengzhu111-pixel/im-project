@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:im_web/core/utils/responsive.dart';
+import 'package:im_ui/im_ui.dart';
 
 class BrandShowcase extends StatelessWidget {
   const BrandShowcase({super.key});
 
   @override
   Widget build(BuildContext context) {
-    if (ResponsiveLayout.isMobile(context)) {
+    if (context.isMobile) {
       return const SizedBox.shrink();
     }
 
