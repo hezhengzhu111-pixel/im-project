@@ -20,8 +20,7 @@ class ChatHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
-    final sessionName =
-        session.conversationName ?? session.targetName ?? session.id;
+    final sessionName = session.conversationName ?? session.targetName;
     final isGroup =
         session.conversationType == 'group' || session.type == 'group';
     final memberCount = session.memberCount;
