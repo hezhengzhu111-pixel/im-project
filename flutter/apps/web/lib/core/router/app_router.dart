@@ -23,6 +23,7 @@ import 'package:im_web/features/settings/presentation/profile_page.dart'
     deferred as profile_page;
 import 'package:im_web/features/settings/presentation/ai_settings_page.dart'
     deferred as ai_settings_page;
+import 'package:im_web/features/debug/presentation/component_gallery_page.dart';
 
 import 'deferred_route_page.dart';
 import 'route_meta.dart';
@@ -72,6 +73,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/register',
         name: RouteNames.register,
         builder: (_, __) => const RegisterPage(),
+      ),
+      GoRoute(
+        path: '/debug/gallery',
+        builder: (context, state) => const ComponentGalleryPage(),
       ),
       ShellRoute(
         builder: (context, state, child) {
