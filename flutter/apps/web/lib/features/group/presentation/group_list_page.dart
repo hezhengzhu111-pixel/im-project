@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'widgets/group_tile.dart';
+import 'widgets/join_group_dialog.dart';
 
 class GroupListPage extends ConsumerStatefulWidget {
   const GroupListPage({super.key});
@@ -33,6 +34,14 @@ class _GroupListPageState extends ConsumerState<GroupListPage> {
       appBar: AppBar(
         title: Text(loc.navGroups),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () => showDialog(
+              context: context,
+              builder: (_) => const JoinGroupDialog(),
+            ),
+            tooltip: '加入群聊',
+          ),
           IconButton(
             icon: const Icon(Icons.add),
             onPressed: () => context.push('/groups/create'),
