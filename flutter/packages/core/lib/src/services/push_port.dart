@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'models.dart';
 
 export 'models.dart' show PushMessage;
@@ -21,8 +20,6 @@ abstract class PushPort {
 
 /// Noop implementation that never subscribes and never receives messages.
 class NoopPushPort implements PushPort {
-  final _controller = StreamController<PushMessage>.broadcast();
-
   @override
   Future<String?> subscribe() async => null;
 
@@ -30,7 +27,5 @@ class NoopPushPort implements PushPort {
   Future<void> unsubscribe() async {}
 
   @override
-  Stream<PushMessage> get onMessage => _controller.stream;
-
-  void dispose() => _controller.close();
+  Stream<PushMessage> get onMessage => const Stream.empty();
 }
