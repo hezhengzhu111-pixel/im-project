@@ -283,14 +283,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   );
             }
           },
-          onSendImage: (_) {
+          onSendImage: (result) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('图片发送功能开发中...')),
             );
           },
-          onSendFile: (_) {
+          onSendFile: (result) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('文件发送功能开发中...')),
+            );
+          },
+          onSendVoice: (result) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('语音发送功能开发中...')),
             );
           },
         ),
