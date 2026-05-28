@@ -14,7 +14,9 @@ import 'package:im_web/features/auth/presentation/widgets/decorative_background.
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_web/widgets/validated_form.dart';
 import 'package:im_web/widgets/validated_form_field.dart';
+import 'package:im_web/features/auth/domain/auth_error_code.dart';
 import 'auth_provider.dart';
+import 'auth_providers.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});
@@ -26,6 +28,7 @@ class RegisterPage extends ConsumerStatefulWidget {
 class _RegisterPageState extends ConsumerState<RegisterPage>
     with SingleTickerProviderStateMixin {
   late FormController _formController;
+  Locale? _locale;
   bool _agreementAccepted = false;
 
   late AnimationController _controller;
@@ -57,14 +60,33 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
     ));
 
     _controller.forward();
+
+    _formController = FormController(FormSchema(fields: []));
+
+    ref.listen<AuthState>(authStateProvider, (prev, next) {
+      if (!mounted) return;
+      if (next.errorCode != null) {
+        _formController.setFormError(_locErrorCode(next.errorCode!));
+      } else if (prev?.errorCode != null && next.errorCode == null) {
+        _formController.setFormError(null);
+      }
+    });
   }
 
   @override
-  Widget build(BuildContext context) {
-    final authState = ref.watch(authStateProvider);
-    final loc = AppLocalizations.of(context)!;
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final locale = Localizations.localeOf(context);
+    if (_locale != locale) {
+      _locale = locale;
+      _formController.dispose();
+      _formController = _buildFormController();
+    }
+  }
 
-    _formController = FormController(FormSchema(fields: [
+  FormController _buildFormController() {
+    final loc = AppLocalizations.of(context)!;
+    return FormController(FormSchema(fields: [
       FormFieldSchema(
         name: 'username',
         validators: [
@@ -105,12 +127,28 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
         ],
       ),
     ]));
+  }
 
-    ref.listen<AuthState>(authStateProvider, (prev, next) {
-      if (next.error != null && mounted) {
-        _formController.setFormError(next.error);
-      }
-    });
+  String _locErrorCode(AuthErrorCode code) {
+    final loc = AppLocalizations.of(context)!;
+    switch (code) {
+      case AuthErrorCode.invalidCredentials:
+        return loc.authInvalidCredentials;
+      case AuthErrorCode.networkError:
+        return loc.authNetworkError;
+      case AuthErrorCode.serverError:
+        return loc.authServerError;
+      case AuthErrorCode.tooManyRequests:
+        return loc.authTooManyRequests;
+      case AuthErrorCode.unknown:
+        return loc.authUnknownError;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = ref.watch(authStateProvider);
+    final loc = AppLocalizations.of(context)!;
 
     return Scaffold(
       body: Container(
