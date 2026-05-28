@@ -5,7 +5,6 @@ import 'package:im_core/core.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_ui/im_ui.dart';
-import '../../auth/presentation/auth_provider.dart';
 import '../../e2ee/presentation/encryption_banner.dart';
 import '../../e2ee/presentation/e2ee_provider.dart';
 import 'widgets/session_tile.dart';
@@ -194,14 +193,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       if (next != null && next != prev) {
         final errorMessage = switch (next) {
           'e2ee_not_ready' => loc.errorE2eeNotReady,
-          final e? => e,
-          null => null,
+          final e => e,
         };
-        if (errorMessage != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(errorMessage)),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMessage)),
+        );
       }
     });
 
