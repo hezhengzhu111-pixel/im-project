@@ -1,11 +1,10 @@
-import 'dart:html' as html;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_core/core.dart';
 import 'package:im_ui/im_ui.dart';
 import 'package:im_web/core/di/providers.dart';
+import 'package:im_web/core/platform/platform_adapter.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'widgets/settings_nav_panel.dart';
@@ -222,7 +221,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             value: ref.watch(languageProvider),
             onChanged: (value) {
               ref.read(languageProvider.notifier).state = value;
-              html.window.localStorage['app_language'] = value;
+              getPlatformAdapter().setLocalStorage('app_language', value);
             },
           ),
         ),
@@ -238,7 +237,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             value: ref.watch(themeModeProvider),
             onChanged: (value) {
               ref.read(themeModeProvider.notifier).state = value;
-              html.window.localStorage['app_theme_mode'] = value.name;
+              getPlatformAdapter().setLocalStorage('app_theme_mode', value.name);
             },
           ),
         ),
