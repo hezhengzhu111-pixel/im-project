@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
-import 'package:im_web/core/utils/responsive.dart';
+import 'package:im_ui/im_ui.dart';
 import 'package:im_web/core/utils/validators.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
 import 'package:im_web/features/auth/presentation/widgets/gradient_button.dart';
 import 'package:im_web/features/auth/presentation/widgets/form_field.dart';
@@ -59,6 +60,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authStateProvider);
+    final loc = AppLocalizations.of(context)!;
 
     return Scaffold(
       body: Container(
@@ -66,7 +68,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: ResponsiveLayout.isMobile(context)
+            colors: context.isMobile
                 ? const [Color(0xFF667eea), Color(0xFF764ba2)]
                 : const [Color(0xFF667eea), Color(0xFF764ba2), Color(0xFF6B73FF)],
           ),
@@ -76,9 +78,9 @@ class _LoginPageState extends ConsumerState<LoginPage>
             opacity: _fadeAnimation,
             child: SlideTransition(
               position: _slideAnimation,
-              child: ResponsiveLayout.isMobile(context)
-                  ? _buildMobileLayout(authState)
-                  : _buildDesktopLayout(authState),
+              child: context.isMobile
+                  ? _buildMobileLayout(authState, loc)
+                  : _buildDesktopLayout(authState, loc),
             ),
           ),
         ),
@@ -86,35 +88,33 @@ class _LoginPageState extends ConsumerState<LoginPage>
     );
   }
 
-  Widget _buildMobileLayout(AuthState authState) {
+  Widget _buildMobileLayout(AuthState authState, AppLocalizations loc) {
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: AuthCard(
-          title: '登录',
-          subtitle: '请登录您的加密通信账户',
-          child: _buildForm(authState),
+          title: loc.loginTitle,
+          subtitle: loc.loginSubtitle,
+          child: _buildForm(authState, loc),
         ),
       ),
     );
   }
 
-  Widget _buildDesktopLayout(AuthState authState) {
+  Widget _buildDesktopLayout(AuthState authState, AppLocalizations loc) {
     return Row(
       children: [
-        // 左侧品牌展示区
         const Expanded(
           child: BrandShowcase(),
         ),
-        // 右侧登录表单区
         Expanded(
           child: Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(40),
               child: AuthCard(
-                title: '登录',
-                subtitle: '请登录您的加密通信账户',
-                child: _buildForm(authState),
+                title: loc.loginTitle,
+                subtitle: loc.loginSubtitle,
+                child: _buildForm(authState, loc),
               ),
             ),
           ),
@@ -123,7 +123,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
     );
   }
 
-  Widget _buildForm(AuthState authState) {
+  Widget _buildForm(AuthState authState, AppLocalizations loc) {
     return Form(
       key: _formKey,
       child: Column(
@@ -131,17 +131,17 @@ class _LoginPageState extends ConsumerState<LoginPage>
         children: [
           AuthFormField(
             controller: _usernameController,
-            label: '用户名',
+            label: loc.loginUsername,
             icon: Icons.person,
-            validator: Validators.validateUsername,
+            validator: (v) => Validators.validateUsername(v, loc),
           ),
           const SizedBox(height: 16),
           AuthFormField(
             controller: _passwordController,
-            label: '密码',
+            label: loc.loginPassword,
             icon: Icons.lock,
             obscureText: true,
-            validator: Validators.validatePassword,
+            validator: (v) => Validators.validatePassword(v, loc),
           ),
           if (authState.error != null) ...[
             const SizedBox(height: 12),
@@ -189,22 +189,22 @@ class _LoginPageState extends ConsumerState<LoginPage>
                 ),
               ),
               const SizedBox(width: 8),
-              const Text(
-                '记住我',
-                style: TextStyle(fontSize: 14),
+              Text(
+                loc.loginRememberMe,
+                style: const TextStyle(fontSize: 14),
               ),
             ],
           ),
           const SizedBox(height: 24),
           GradientButton(
-            text: '登录',
+            text: loc.loginButton,
             isLoading: authState.isLoading,
             onPressed: _login,
           ),
           const SizedBox(height: 16),
           TextButton(
             onPressed: () => context.go('/register'),
-            child: const Text('没有账号？注册'),
+            child: Text(loc.loginNoAccountRegister),
           ),
         ],
       ),
