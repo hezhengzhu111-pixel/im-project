@@ -9,6 +9,7 @@ import '../../e2ee/presentation/e2ee_provider.dart';
 import 'widgets/session_tile.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/message_input.dart';
+import 'widgets/network_status_banner.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({this.sessionId, super.key});
@@ -28,6 +29,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(chatStateProvider.notifier).loadSessions();
+      // Initialize active session from route parameter (deep link support)
+      if (widget.sessionId != null) {
+        ref.read(chatStateProvider.notifier).setActiveSession(widget.sessionId);
+      }
     });
   }
 
@@ -172,6 +177,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     return Column(
       children: [
+        // Network status banner
+        const NetworkStatusBanner(),
         // Header
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
