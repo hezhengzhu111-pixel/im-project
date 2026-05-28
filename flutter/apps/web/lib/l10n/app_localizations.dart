@@ -940,6 +940,78 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Loading...'**
   String get commonLoading;
+
+  /// No description provided for @validationRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'This field is required'**
+  String get validationRequired;
+
+  /// No description provided for @validationUsernameMinLength.
+  ///
+  /// In en, this message translates to:
+  /// **'Username must be at least {min} characters'**
+  String validationUsernameMinLength(Object min);
+
+  /// No description provided for @validationUsernameMaxLength.
+  ///
+  /// In en, this message translates to:
+  /// **'Username must be no more than {max} characters'**
+  String validationUsernameMaxLength(Object max);
+
+  /// No description provided for @validationUsernameInvalidChars.
+  ///
+  /// In en, this message translates to:
+  /// **'Username can only contain letters, numbers, and underscores'**
+  String get validationUsernameInvalidChars;
+
+  /// No description provided for @validationEmailInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a valid email address'**
+  String get validationEmailInvalid;
+
+  /// No description provided for @validationPasswordMinLength.
+  ///
+  /// In en, this message translates to:
+  /// **'Password must be at least {min} characters'**
+  String validationPasswordMinLength(Object min);
+
+  /// No description provided for @validationPasswordMaxLength.
+  ///
+  /// In en, this message translates to:
+  /// **'Password must be no more than {max} characters'**
+  String validationPasswordMaxLength(Object max);
+
+  /// No description provided for @validationPasswordStrength.
+  ///
+  /// In en, this message translates to:
+  /// **'Password must contain both letters and digits'**
+  String get validationPasswordStrength;
+
+  /// No description provided for @validationPasswordMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Passwords do not match'**
+  String get validationPasswordMismatch;
+
+  /// No description provided for @validationAgreementRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'You must accept the agreement to continue'**
+  String get validationAgreementRequired;
+
+  /// No description provided for @validationNicknameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a nickname'**
+  String get validationNicknameRequired;
+
+  /// No description provided for @validationNicknameMaxLength.
+  ///
+  /// In en, this message translates to:
+  /// **'Nickname must be no more than {max} characters'**
+  String validationNicknameMaxLength(Object max);
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
