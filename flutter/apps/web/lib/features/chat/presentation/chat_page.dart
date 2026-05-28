@@ -279,8 +279,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final messages = chatState.messages[sessionId] ?? [];
     final session =
         chatState.sessions.where((s) => s.id == sessionId).firstOrNull;
+    if (session == null) return const SizedBox.shrink();
     final isGroup =
-        session?.conversationType == 'group' || session?.type == 'group';
+        session.conversationType == 'group' || session.type == 'group';
     final isMobile = context.isMobile;
 
     return Column(
@@ -289,7 +290,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         const NetworkStatusBanner(),
         // Header
         ChatHeader(
-          session: session!,
+          session: session,
           isMobile: isMobile,
           onBackPressed: () {
             ref.read(chatStateProvider.notifier).setActiveSession(null);
