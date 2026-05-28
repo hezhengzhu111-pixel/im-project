@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import '../../../../core/di/providers.dart';
 import 'widgets/post_card.dart';
 
@@ -57,7 +58,7 @@ class _MomentsFeedPageState extends ConsumerState<MomentsFeedPage> {
                     Icon(Icons.camera_alt_outlined, size: 64, color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
                     const SizedBox(height: 16),
                     Text(
-                      '暂无动态',
+                      AppLocalizations.of(context)!.momentsNoPosts,
                       style: TextStyle(
                         fontSize: 16,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
