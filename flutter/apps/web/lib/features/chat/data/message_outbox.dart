@@ -179,6 +179,7 @@ class MessageOutbox {
   final _eventsController = StreamController<OutboxEvent>.broadcast();
   Timer? _retryTimer;
   bool _isRetrying = false;
+  bool _isDisposed = false;
 
   /// Stream of outbox events
   Stream<OutboxEvent> get events => _eventsController.stream;
@@ -315,6 +316,7 @@ class MessageOutbox {
   }
 
   Future<void> _processPendingMessages() async {
+    if (_isDisposed) return;
     if (_isRetrying) return;
     _isRetrying = true;
 
@@ -335,6 +337,7 @@ class MessageOutbox {
   }
 
   Future<void> _retryMessage(OutboxMessage message) async {
+    if (_isDisposed) return;
     if (message.retryCount >= _maxRetries) {
       final failedMessage = message.copyWith(
         status: OutboxMessageStatus.failed,
@@ -419,8 +422,8 @@ class MessageOutbox {
         await _updateInDb(pendingMessage);
 
         final delay = _retryDelay * (1 << message.retryCount);
-        Timer(delay, () {
-          if (_isOnline()) {
+        _retryTimer = Timer(delay, () {
+          if (!_isDisposed && _isOnline()) {
             _processPendingMessages();
           }
         });
@@ -483,6 +486,7 @@ class MessageOutbox {
   }
 
   void dispose() {
+    _isDisposed = true;
     _eventsController.close();
     _retryTimer?.cancel();
   }
