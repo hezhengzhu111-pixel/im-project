@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_web/core/logging/error_sanitizer.dart';
 
@@ -155,6 +156,70 @@ void main() {
     test('returns null stackTrace when input is null', () {
       final result = sanitizer.sanitize(Exception('test'), null);
       expect(result.stackTrace, isNull);
+    });
+  });
+
+  group('ErrorSanitizer - DioException', () {
+    late ErrorSanitizer sanitizer;
+
+    setUp(() {
+      sanitizer = ErrorSanitizer();
+    });
+
+    test('sets category to http_error for DioException', () {
+      final dioError = DioException(
+        requestOptions: RequestOptions(path: '/api/test'),
+        response: Response(
+          statusCode: 401,
+          requestOptions: RequestOptions(path: '/api/test'),
+        ),
+      );
+      final result = sanitizer.sanitize(dioError, null);
+      expect(result.category, 'http_error');
+    });
+
+    test('strips query parameters from DioException URI', () {
+      final dioError = DioException(
+        requestOptions: RequestOptions(path: '/api?token=secret123&user=admin'),
+      );
+      final result = sanitizer.sanitize(dioError, null);
+      expect(result.safeMessage, isNot(contains('secret123')));
+    });
+
+    test('strips Authorization header from DioException', () {
+      final dioError = DioException(
+        requestOptions: RequestOptions(
+          path: '/api',
+          headers: {'Authorization': 'Bearer eyJhbGciOiJSUzI1NiJ9.payload.sig'},
+        ),
+      );
+      final result = sanitizer.sanitize(dioError, null);
+      expect(result.safeMessage, isNot(contains('eyJhbGciOiJSUzI1NiJ9')));
+    });
+
+    test('preserves statusCode in safeMessage', () {
+      final dioError = DioException(
+        requestOptions: RequestOptions(path: '/api'),
+        response: Response(
+          statusCode: 404,
+          requestOptions: RequestOptions(path: '/api'),
+        ),
+      );
+      final result = sanitizer.sanitize(dioError, null);
+      expect(result.safeMessage, contains('404'));
+    });
+
+    test('strips response body from DioException', () {
+      final dioError = DioException(
+        requestOptions: RequestOptions(path: '/api'),
+        response: Response(
+          statusCode: 500,
+          data: '{"error":"internal details with token=abc123"}',
+          requestOptions: RequestOptions(path: '/api'),
+        ),
+      );
+      final result = sanitizer.sanitize(dioError, null);
+      expect(result.safeMessage, isNot(contains('abc123')));
     });
   });
 }

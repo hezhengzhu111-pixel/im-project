@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:im_core/core.dart';
 
 /// Sanitizes error objects to remove sensitive information before logging/reporting.
@@ -73,11 +74,16 @@ class ErrorSanitizer {
         _ => 'unknown_error',
       };
     }
-    // DioException check will be added in Task 4
+    if (error is DioException) {
+      return 'http_error';
+    }
     return 'unknown_error';
   }
 
   String _sanitizeMessage(Object error, String? category) {
+    if (error is DioException) {
+      return _sanitizeDio(error);
+    }
     final raw = error.toString();
     var sanitized = _stripGenericPatterns(raw);
 
@@ -88,6 +94,33 @@ class ErrorSanitizer {
     }
 
     return sanitized;
+  }
+
+  String _sanitizeDio(DioException error) {
+    final parts = <String>[];
+
+    // Status code (safe)
+    final statusCode = error.response?.statusCode;
+    if (statusCode != null) {
+      parts.add('status=$statusCode');
+    }
+
+    // Dio error type (safe)
+    parts.add('type=${error.type}');
+
+    // Message without sensitive details
+    final message = error.message;
+    if (message != null) {
+      parts.add('message=${_stripGenericPatterns(message)}');
+    }
+
+    // URI path without query params
+    final path = error.requestOptions.uri.path;
+    if (path.isNotEmpty) {
+      parts.add('path=$path');
+    }
+
+    return parts.join(', ');
   }
 
   String _stripGenericPatterns(String input) {
