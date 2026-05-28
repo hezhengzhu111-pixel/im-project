@@ -47,7 +47,7 @@
 <meta name="twitter:card" content="summary">
 <meta name="twitter:site" content="@im_app">
 <meta name="twitter:image" content="icons/icon-512.png">
-<meta name="viewport" content="...">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#1a1a2e">
 ```
 
@@ -176,7 +176,13 @@ class WebMetaServiceImpl implements WebMetaService {
     }
   }
 
-  // ... 其他方法不变
+  // 以下方法保持不变：
+  // - _setTitle(String title)
+  // - _setMeta(String name, String content)
+  // - _setCanonical(String? path)
+  // - _setOg(PageMeta meta)
+  // - _setTwitter(PageMeta meta)
+  // - _setProperty(String property, String content)
 }
 ```
 
