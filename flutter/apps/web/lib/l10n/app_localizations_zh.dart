@@ -1,3 +1,5 @@
+// ignore: unused_import
+import 'package:intl/intl.dart' as intl;
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -553,6 +555,15 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get chatVoice => '语音';
+
+  @override
+  String get a11ySendMessage => '发送消息';
+
+  @override
+  String get a11yAddAttachment => '添加附件';
+
+  @override
+  String get a11yVoiceInput => '语音输入';
 
   @override
   String get validatorUsernameRequired => '请输入用户名';
