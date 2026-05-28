@@ -9,6 +9,8 @@ class ValidatedFormField extends StatefulWidget {
   final bool obscureText;
   final TextInputType? keyboardType;
   final int maxLines;
+  final Widget? prefix;
+  final Widget? suffix;
 
   const ValidatedFormField({
     super.key,
@@ -19,6 +21,8 @@ class ValidatedFormField extends StatefulWidget {
     this.obscureText = false,
     this.keyboardType,
     this.maxLines = 1,
+    this.prefix,
+    this.suffix,
   });
 
   @override
@@ -65,7 +69,8 @@ class _ValidatedFormFieldState extends State<ValidatedFormField> {
           maxLines: widget.obscureText ? 1 : widget.maxLines,
           decoration: InputDecoration(
             labelText: widget.label,
-            prefixIcon: widget.icon != null ? Icon(widget.icon) : null,
+            prefixIcon: widget.prefix ??
+                (widget.icon != null ? Icon(widget.icon) : null),
             suffixIcon: _buildSuffix(field),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -102,11 +107,17 @@ class _ValidatedFormFieldState extends State<ValidatedFormField> {
       );
     }
     if (widget.obscureText) {
-      return IconButton(
-        icon: Icon(_obscured ? Icons.visibility_off : Icons.visibility),
-        onPressed: () => setState(() => _obscured = !_obscured),
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.suffix != null) widget.suffix!,
+          IconButton(
+            icon: Icon(_obscured ? Icons.visibility_off : Icons.visibility),
+            onPressed: () => setState(() => _obscured = !_obscured),
+          ),
+        ],
       );
     }
-    return null;
+    return widget.suffix;
   }
 }

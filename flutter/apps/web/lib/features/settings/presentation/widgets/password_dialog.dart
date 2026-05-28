@@ -8,7 +8,6 @@ import 'package:im_web/core/forms/validators.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_web/widgets/validated_form.dart';
 import 'package:im_web/widgets/validated_form_field.dart';
-import 'package:im_web/core/forms/form_field_state.dart' as custom;
 
 class PasswordDialog extends ConsumerStatefulWidget {
   const PasswordDialog({super.key});
@@ -25,10 +24,6 @@ class _PasswordDialogState extends ConsumerState<PasswordDialog> {
   void initState() {
     super.initState();
     final loc = AppLocalizations.of(context)!;
-    final newPasswordField = custom.FormFieldState(
-      name: 'newPassword',
-      initialValue: '',
-    );
     _formController = FormController(FormSchema(fields: [
       FormFieldSchema(
         name: 'currentPassword',
@@ -52,7 +47,11 @@ class _PasswordDialogState extends ConsumerState<PasswordDialog> {
         initialValue: '',
         validators: [
           FormValidators.required(loc.validatorConfirmPasswordRequired),
-          FormValidators.sameAs(newPasswordField, loc.validatorPasswordMismatch),
+          (value) {
+            final pw = _formController.field('newPassword').value;
+            if (value != pw) return loc.validatorPasswordMismatch;
+            return null;
+          },
         ],
       ),
     ]));

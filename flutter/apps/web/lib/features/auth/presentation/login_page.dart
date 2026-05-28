@@ -197,13 +197,9 @@ class _LoginPageState extends ConsumerState<LoginPage>
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(loc.loginNoAccountRegister.contains('注册')
-                  ? loc.loginNoAccount
-                  : loc.loginNoAccountRegister),
+              Text('${loc.loginNoAccount} ${loc.loginRegister}'),
               GradientButton(
-                text: loc.loginNoAccountRegister.contains('注册')
-                    ? loc.loginRegister
-                    : loc.loginNoAccountRegister,
+                text: loc.loginRegister,
                 onPressed: () => context.go('/register'),
               ),
             ],

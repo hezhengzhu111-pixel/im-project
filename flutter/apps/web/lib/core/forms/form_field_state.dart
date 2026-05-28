@@ -16,6 +16,7 @@ class FormFieldState extends ChangeNotifier {
         _value = initialValue ?? '';
 
   String get value => _value;
+  String? get initialValue => _initialValue;
   String? get error => _error;
   bool get touched => _touched;
   bool get dirty => _dirty;
