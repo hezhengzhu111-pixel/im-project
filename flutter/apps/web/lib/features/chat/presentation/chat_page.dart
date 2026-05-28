@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/core/di/providers.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_ui/im_ui.dart';
 import '../../auth/presentation/auth_provider.dart';
 import '../../e2ee/presentation/encryption_banner.dart';
@@ -23,6 +25,16 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
   final _scrollController = ScrollController();
+  final _messageInputFocusNode = FocusNode();
+  bool _messageInputFocused = false;
+
+  void _handleEsc() {
+    if (_messageInputFocused) {
+      _messageInputFocusNode.unfocus();
+    } else {
+      ref.read(chatStateProvider.notifier).setActiveSession(null);
+    }
+  }
 
   @override
   void initState() {
@@ -44,45 +56,43 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       if (_searchQuery.isEmpty) return true;
       return s.targetName.toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
+    final loc = AppLocalizations.of(context)!;
 
-    final isMobile = context.isMobile;
-
-    if (isMobile) {
-      return _buildMobileLayout(chatState, activeId, sessions);
-    }
-    return _buildDesktopLayout(chatState, activeId, sessions);
-  }
-
-  Widget _buildMobileLayout(
-      dynamic chatState, String? activeId, List<dynamic> sessions) {
-    // Mobile: full-screen chat if active session, otherwise session list
-    if (activeId != null) {
-      return _buildChatView(activeId);
-    }
-    return _buildSessionList(sessions, activeId);
-  }
-
-  Widget _buildDesktopLayout(
-      dynamic chatState, String? activeId, List<dynamic> sessions) {
-    return Row(
-      children: [
-        // Session list panel
-        SizedBox(
-          width: 320,
-          child: _buildSessionList(sessions, activeId),
+    return CallbackShortcuts(
+      bindings: {
+        LogicalKeySet(LogicalKeyboardKey.escape): _handleEsc,
+      },
+      child: Focus(
+        autofocus: true,
+        child: AdaptivePane(
+          compact: activeId != null
+              ? _buildChatView(activeId, loc)
+              : _buildSessionList(sessions, activeId, loc),
+          medium: activeId != null
+              ? _buildChatView(activeId, loc)
+              : _buildSessionList(sessions, activeId, loc),
+          expanded: Row(
+            children: [
+              SizedBox(
+                width: context.breakpoint.value(
+                  compact: 0, medium: 0, expanded: 320, large: 320,
+                ).toDouble(),
+                child: _buildSessionList(sessions, activeId, loc),
+              ),
+              const VerticalDivider(thickness: 1, width: 1),
+              Expanded(
+                child: activeId == null
+                    ? Center(child: Text(loc.chatSelectSession))
+                    : _buildChatView(activeId, loc),
+              ),
+            ],
+          ),
         ),
-        const VerticalDivider(thickness: 1, width: 1),
-        // Message area
-        Expanded(
-          child: activeId == null
-              ? const Center(child: Text('选择一个会话开始聊天'))
-              : _buildChatView(activeId),
-        ),
-      ],
+      ),
     );
   }
 
-  Widget _buildSessionList(List<dynamic> sessions, String? activeId) {
+  Widget _buildSessionList(List<dynamic> sessions, String? activeId, AppLocalizations loc) {
     return Column(
       children: [
         Padding(
@@ -90,7 +100,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           child: TextField(
             controller: _searchController,
             decoration: InputDecoration(
-              hintText: '搜索会话...',
+              hintText: loc.chatSearchHint,
               prefixIcon: const Icon(Icons.search, size: 20),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(24),
@@ -108,7 +118,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           child: ref.watch(chatStateProvider).isLoading
               ? const Center(child: CircularProgressIndicator())
               : sessions.isEmpty
-                  ? const Center(child: Text('暂无会话'))
+                  ? Center(child: Text(loc.chatNoSessions))
                   : ListView.builder(
                       itemCount: sessions.length,
                       itemBuilder: (context, index) {
@@ -155,7 +165,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
 
-  Widget _buildChatView(String sessionId) {
+  Widget _buildChatView(String sessionId, AppLocalizations loc) {
     ref.listen(chatStateProvider.select((s) => s.messages[sessionId]),
         (prev, next) {
       if (next != null && (prev == null || next.length > prev.length)) {
@@ -215,7 +225,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    '$memberCount 人',
+                    loc.chatMemberCount(memberCount),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.primary,
                         ),
@@ -225,7 +235,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               const Spacer(),
               if (messages.isNotEmpty)
                 Text(
-                  '${messages.length} 条消息',
+                  loc.chatMessageCount(messages.length),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -249,7 +259,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         // Messages
         Expanded(
           child: messages.isEmpty
-              ? const Center(child: Text('暂无消息'))
+              ? Center(child: Text(loc.noData))
               : ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -267,6 +277,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         ),
         // Input
         MessageInput(
+          focusNode: _messageInputFocusNode,
+          onFocusChanged: (focused) => setState(() => _messageInputFocused = focused),
           onSend: (text) {
             if (session == null) return;
             if (isGroup) {
@@ -283,12 +295,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           },
           onSendImage: (result) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('图片发送功能开发中...')),
+              SnackBar(content: Text(loc.chatImageSending)),
             );
           },
           onSendFile: (result) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('文件发送功能开发中...')),
+              SnackBar(content: Text(loc.chatFileSending)),
             );
           },
           onSendVoice: (result) {
@@ -305,6 +317,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   void dispose() {
     _searchController.dispose();
     _scrollController.dispose();
+    _messageInputFocusNode.dispose();
     super.dispose();
   }
 }
