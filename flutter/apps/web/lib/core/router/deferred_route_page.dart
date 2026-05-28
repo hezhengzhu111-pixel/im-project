@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 
 class DeferredRoutePage extends StatefulWidget {
   final Future<void> Function() loadLibrary;
@@ -61,30 +62,32 @@ class _DeferredRoutePageState extends State<DeferredRoutePage> {
   }
 
   Widget _defaultLoadingWidget() {
-    return const Center(
+    final loc = AppLocalizations.of(context)!;
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          CircularProgressIndicator(),
-          SizedBox(height: 16),
-          Text('加载中...'),
+          const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          Text(loc.commonLoading),
         ],
       ),
     );
   }
 
   Widget _defaultErrorWidget(Object error, VoidCallback retry) {
+    final loc = AppLocalizations.of(context)!;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Icon(Icons.error_outline, size: 48, color: Colors.red),
           const SizedBox(height: 16),
-          Text('加载失败: $error'),
+          Text(loc.loadingFailed(error.toString())),
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: retry,
-            child: const Text('重试'),
+            child: Text(loc.retry),
           ),
         ],
       ),

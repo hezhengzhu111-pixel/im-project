@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 
 class NotFoundPage extends StatelessWidget {
   const NotFoundPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Scaffold(
       body: Center(
         child: Column(
@@ -20,14 +22,14 @@ class NotFoundPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              '页面不存在',
+              loc.notFoundTitle,
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: () => context.go('/chat'),
               icon: const Icon(Icons.home),
-              label: const Text('返回首页'),
+              label: Text(loc.notFoundBackHome),
             ),
           ],
         ),

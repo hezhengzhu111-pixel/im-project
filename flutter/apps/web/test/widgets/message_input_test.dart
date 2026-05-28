@@ -1,10 +1,12 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/core/di/platform_providers.dart';
 import 'package:im_web/features/chat/presentation/widgets/message_input.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import '../mocks/mock_file_picker_adapter.dart';
 import '../mocks/mock_audio_recorder_adapter.dart';
 
@@ -34,6 +36,13 @@ void main() {
             audioRecorderPortProvider.overrideWithValue(mockAudioRecorder),
           ],
           child: MaterialApp(
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.supportedLocales,
             home: Scaffold(
               body: MessageInput(
                 onSend: (_) {},
@@ -66,6 +75,13 @@ void main() {
             audioRecorderPortProvider.overrideWithValue(mockAudioRecorder),
           ],
           child: MaterialApp(
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.supportedLocales,
             home: Scaffold(
               body: MessageInput(
                 onSend: (_) {},

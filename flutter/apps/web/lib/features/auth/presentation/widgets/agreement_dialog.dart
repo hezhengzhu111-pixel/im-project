@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 
 class AgreementDialog extends StatelessWidget {
   final String title;
@@ -27,7 +28,7 @@ class AgreementDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('关闭'),
+          child: Text(AppLocalizations.of(context)!.commonClose),
         ),
       ],
     );
