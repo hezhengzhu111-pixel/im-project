@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
-import 'package:im_web/core/utils/responsive.dart';
+import 'package:im_ui/im_ui.dart';
 import 'package:im_web/core/utils/validators.dart';
 import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
 import 'package:im_web/features/auth/presentation/widgets/gradient_button.dart';
@@ -10,6 +10,7 @@ import 'package:im_web/features/auth/presentation/widgets/form_field.dart';
 import 'package:im_web/features/auth/presentation/widgets/agreement_dialog.dart';
 import 'package:im_web/features/auth/presentation/widgets/brand_showcase.dart';
 import 'package:im_web/features/auth/presentation/widgets/decorative_background.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import 'auth_provider.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
@@ -62,6 +63,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authStateProvider);
+    final loc = AppLocalizations.of(context)!;
 
     return Scaffold(
       body: Container(
@@ -69,7 +71,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: ResponsiveLayout.isMobile(context)
+            colors: context.isMobile
                 ? const [Color(0xFF667eea), Color(0xFF764ba2)]
                 : const [Color(0xFF667eea), Color(0xFF764ba2), Color(0xFF6B73FF)],
           ),
@@ -79,9 +81,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
             opacity: _fadeAnimation,
             child: SlideTransition(
               position: _slideAnimation,
-              child: ResponsiveLayout.isMobile(context)
-                  ? _buildMobileLayout(authState)
-                  : _buildDesktopLayout(authState),
+              child: context.isMobile
+                  ? _buildMobileLayout(authState, loc)
+                  : _buildDesktopLayout(authState, loc),
             ),
           ),
         ),
@@ -89,20 +91,20 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
     );
   }
 
-  Widget _buildMobileLayout(AuthState authState) {
+  Widget _buildMobileLayout(AuthState authState, AppLocalizations loc) {
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: AuthCard(
-          title: '注册',
-          subtitle: '创建您的账户，开始聊天之旅',
-          child: _buildForm(authState),
+          title: loc.registerTitle,
+          subtitle: loc.registerSubtitle,
+          child: _buildForm(authState, loc),
         ),
       ),
     );
   }
 
-  Widget _buildDesktopLayout(AuthState authState) {
+  Widget _buildDesktopLayout(AuthState authState, AppLocalizations loc) {
     return Row(
       children: [
         // 左侧品牌展示区
@@ -115,9 +117,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(40),
               child: AuthCard(
-                title: '注册',
-                subtitle: '创建您的账户，开始聊天之旅',
-                child: _buildForm(authState),
+                title: loc.registerTitle,
+                subtitle: loc.registerSubtitle,
+                child: _buildForm(authState, loc),
               ),
             ),
           ),
@@ -126,7 +128,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
     );
   }
 
-  Widget _buildForm(AuthState authState) {
+  Widget _buildForm(AuthState authState, AppLocalizations loc) {
     return Form(
       key: _formKey,
       child: Column(
@@ -134,33 +136,33 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
         children: [
           AuthFormField(
             controller: _usernameController,
-            label: '用户名',
+            label: loc.loginUsername,
             icon: Icons.person,
-            validator: Validators.validateUsername,
+            validator: (v) => Validators.validateUsername(v, loc),
           ),
           const SizedBox(height: 16),
           AuthFormField(
             controller: _emailController,
-            label: '邮箱',
+            label: loc.registerEmail,
             icon: Icons.email,
-            validator: Validators.validateEmail,
+            validator: (v) => Validators.validateEmail(v, loc),
           ),
           const SizedBox(height: 16),
           AuthFormField(
             controller: _passwordController,
-            label: '密码',
+            label: loc.loginPassword,
             icon: Icons.lock,
             obscureText: true,
-            validator: Validators.validatePassword,
+            validator: (v) => Validators.validatePassword(v, loc),
           ),
           const SizedBox(height: 16),
           AuthFormField(
             controller: _confirmPasswordController,
-            label: '确认密码',
+            label: loc.registerConfirmPassword,
             icon: Icons.lock,
             obscureText: true,
             validator: (v) => Validators.validateConfirmPassword(
-                v, _passwordController.text),
+                v, _passwordController.text, loc),
           ),
           if (authState.error != null) ...[
             const SizedBox(height: 12),
@@ -211,38 +213,38 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
               Expanded(
                 child: Wrap(
                   children: [
-                    const Text(
-                      '我已阅读并同意 ',
-                      style: TextStyle(fontSize: 14),
+                    Text(
+                      loc.registerAgreementPrefix,
+                      style: const TextStyle(fontSize: 14),
                     ),
                     GestureDetector(
                       onTap: () => AgreementDialog.show(
                         context,
-                        '用户协议',
+                        loc.registerUserAgreement,
                         userAgreementContent,
                       ),
-                      child: const Text(
-                        '用户协议',
-                        style: TextStyle(
+                      child: Text(
+                        loc.registerUserAgreement,
+                        style: const TextStyle(
                           color: Color(0xFF667eea),
                           fontSize: 14,
                           decoration: TextDecoration.underline,
                         ),
                       ),
                     ),
-                    const Text(
-                      ' 和 ',
-                      style: TextStyle(fontSize: 14),
+                    Text(
+                      loc.registerAgreementSuffix,
+                      style: const TextStyle(fontSize: 14),
                     ),
                     GestureDetector(
                       onTap: () => AgreementDialog.show(
                         context,
-                        '隐私政策',
+                        loc.registerPrivacyPolicy,
                         privacyPolicyContent,
                       ),
-                      child: const Text(
-                        '隐私政策',
-                        style: TextStyle(
+                      child: Text(
+                        loc.registerPrivacyPolicy,
+                        style: const TextStyle(
                           color: Color(0xFF667eea),
                           fontSize: 14,
                           decoration: TextDecoration.underline,
@@ -256,14 +258,14 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
           ),
           const SizedBox(height: 24),
           GradientButton(
-            text: '注册',
+            text: loc.registerButton,
             isLoading: authState.isLoading,
             onPressed: _register,
           ),
           const SizedBox(height: 16),
           TextButton(
             onPressed: () => context.go('/login'),
-            child: const Text('已有账号？登录'),
+            child: Text(loc.registerHasAccountLogin),
           ),
         ],
       ),
@@ -271,9 +273,11 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
   }
 
   void _register() {
+    final loc = AppLocalizations.of(context)!;
+
     if (!_agreementAccepted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请阅读并同意用户协议和隐私政策')),
+        SnackBar(content: Text(loc.registerAgreementRequired)),
       );
       return;
     }

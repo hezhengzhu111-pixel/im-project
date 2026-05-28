@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:im_web/core/utils/responsive.dart';
+import 'package:im_ui/im_ui.dart';
 
 class AuthCard extends StatelessWidget {
   final Widget child;
@@ -16,15 +16,15 @@ class AuthCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: ResponsiveLayout.getCardElevation(context),
+      elevation: context.breakpoint.value(compact: 0, medium: 0, expanded: 8, large: 8),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
-      margin: EdgeInsets.all(ResponsiveLayout.getCardMargin(context)),
+      margin: EdgeInsets.all(context.breakpoint.value(compact: 16, medium: 16, expanded: 32, large: 32)),
       child: Padding(
-        padding: EdgeInsets.all(ResponsiveLayout.getCardPadding(context)),
+        padding: EdgeInsets.all(context.breakpoint.value(compact: 24, medium: 24, expanded: 32, large: 32)),
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: ResponsiveLayout.getMaxWidth(context)),
+          constraints: BoxConstraints(maxWidth: context.breakpoint.value(compact: double.infinity, medium: double.infinity, expanded: 400, large: 400)),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
