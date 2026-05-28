@@ -14,13 +14,15 @@
 
 ```
 catch (e, st)
-  → AppLogger.error(message, e, st)
-    → ErrorSanitizer.sanitize(e, st)
-      → 按类型路由：DioException / E2eeException / WebSocketException / Unknown
+  → AppLogger.error(message, e, st, category: 'e2ee')  // 调用点声明类别
+    → ErrorSanitizer.sanitize(e, st, category: 'e2ee')
+      → 优先级：调用点 hint → DioException 类型匹配 → 通用模式剥离
       → 剥离敏感模式 → 返回 SanitizedError
     → debugPrint(message + errorType)  // 安全
     → ErrorReporterPort.reportError(sanitized)  // 安全
 ```
+
+**检测策略说明：** 代码库中 E2EE 和 WebSocket 错误都是通用 `Exception`，没有专门的异常类。因此类别检测采用调用点 hint 为主、类型匹配为辅的策略。调用点最清楚上下文，通过可选 `category` 参数直接声明错误类别。
 
 ### 1. SanitizedError 数据模型
 
@@ -47,42 +49,47 @@ class SanitizedError {
 
 ### 2. ErrorSanitizer 处理逻辑
 
-单 `ErrorSanitizer` 类，按 `error.runtimeType` 做 switch 路由：
+单 `ErrorSanitizer` 类，按优先级确定类别和剥离规则：
 
 ```dart
 class ErrorSanitizer {
-  SanitizedError sanitize(Object error, StackTrace? stackTrace) {
-    return switch (error) {
-      DioException() => _sanitizeDio(error, stackTrace),
-      E2eeException() => _sanitizeE2ee(error, stackTrace),
-      WebSocketException() => _sanitizeWs(error, stackTrace),
-      _ => _sanitizeUnknown(error, stackTrace),
-    };
+  SanitizedError sanitize(Object error, StackTrace? stackTrace, {String? category}) {
+    // 优先级 1：调用点 hint
+    if (category != null) {
+      return _sanitizeWithCategory(error, stackTrace, category);
+    }
+    // 优先级 2：DioException 类型匹配
+    if (error is DioException) {
+      return _sanitizeDio(error, stackTrace);
+    }
+    // 优先级 3：通用模式剥离
+    return _sanitizeUnknown(error, stackTrace);
   }
 }
 ```
 
-#### 类别映射
+#### 类别确定
 
-| 异常类型 | category |
-|---|---|
-| `DioException` | `http_error` |
-| `E2eeException` | `e2ee_error` |
-| `WebSocketException` | `ws_error` |
-| 其他 | `unknown_error` |
+| 来源 | 条件 | category |
+|---|---|---|
+| 调用点 hint | `category: 'e2ee'` | `e2ee_error` |
+| 调用点 hint | `category: 'ws'` | `ws_error` |
+| 调用点 hint | `category: 'http'` | `http_error` |
+| 类型匹配 | `error is DioException` | `http_error` |
+| 无 hint 且非 Dio | 兜底 | `unknown_error` |
 
 #### 各分支处理
 
-- **DioException** → `http_error`
+- **DioException**（类型匹配）→ `http_error`
   - safeMessage: 保留 `statusCode`、`message`（Dio 的错误消息），剥离 `requestOptions.uri` 中的 query 参数、`headers` 中的 Authorization、`response.data` body。
 
-- **E2eeException** → `e2ee_error`
-  - safeMessage: 保留异常类型和通用描述，剥离 envelope、session key、device id 等字段。
+- **E2EE 错误**（调用点 hint `category: 'e2ee'`）→ `e2ee_error`
+  - safeMessage: 对 `error.toString()` 做通用模式剥离，额外剥离 envelope、session key、device id 等 E2EE 特有模式。
 
-- **WebSocketException** → `ws_error`
-  - safeMessage: 保留异常类型和通用描述，剥离 ticket 等字段。
+- **WebSocket 错误**（调用点 hint `category: 'ws'`）→ `ws_error`
+  - safeMessage: 对 `error.toString()` 做通用模式剥离，额外剥离 ticket 等 WS 特有模式。
 
-- **Unknown** → `unknown_error`
+- **Unknown**（无 hint 且非 Dio）→ `unknown_error`
   - safeMessage: 对 `error.toString()` 做通用敏感模式剥离。
 
 #### 通用敏感模式剥离（硬编码正则）
@@ -108,8 +115,8 @@ class AppLogger {
   final ErrorReporterPort? _errorReporter;
   final ErrorSanitizer _sanitizer;
 
-  void error(String message, Object error, [StackTrace? stackTrace]) {
-    final sanitized = _sanitizer.sanitize(error, stackTrace);
+  void error(String message, Object error, [StackTrace? stackTrace, String? category]) {
+    final sanitized = _sanitizer.sanitize(error, stackTrace, category: category);
     debugPrint('[im:error] $message (type: ${sanitized.errorType})');
     _errorReporter?.reportError(sanitized);
   }
@@ -134,39 +141,50 @@ abstract class ErrorReporterPort {
 
 ### 5. 调用点变更
 
-12 处 catch 块全部改为 `catch (e, st)` 并传入 `st`：
+12 处 catch 块全部改为 `catch (e, st)` 并传入 `st`。部分调用点需传入 `category` hint：
 
 ```dart
-// 之前
-} catch (e) {
-  AppLogger.instance.error('Failed to handle incoming message', e);
+// E2EE 相关错误
+} catch (e, st) {
+  AppLogger.instance.error('E2EE decrypt failed', e, st, 'e2ee');
 }
 
-// 之后
+// WebSocket 相关错误
 } catch (e, st) {
-  AppLogger.instance.error('Failed to handle incoming message', e, st);
+  AppLogger.instance.error('WS parse error', e, st, 'ws');
+}
+
+// HTTP / 其他错误（不传 category，由 sanitizer 按类型或通用规则处理）
+} catch (e, st) {
+  AppLogger.instance.error('Send message failed, adding to outbox', e, st);
 }
 ```
 
-涉及文件：
-- `auth_provider.dart`（1 处）
-- `chat_provider_with_outbox.dart`（8 处）
-- `contacts_provider.dart`（1 处）
-- `message_outbox.dart`（1 处）
-- `web_ws_adapter_web.dart`（1 处）
+**category 分配：**
+
+| 文件 | 调用点 | category |
+|---|---|---|
+| `auth_provider.dart` | WS ticket fetch | `'ws'` |
+| `chat_provider_with_outbox.dart` | E2EE decrypt failed | `'e2ee'` |
+| `chat_provider_with_outbox.dart` | E2EE negotiation | `'e2ee'` |
+| `chat_provider_with_outbox.dart` | 其他 6 处 | 不传（通用处理） |
+| `contacts_provider.dart` | online status | 不传 |
+| `message_outbox.dart` | outbox retry | 不传 |
+| `web_ws_adapter_web.dart` | WS parse error | `'ws'` |
 
 ### 6. 测试策略
 
 #### ErrorSanitizer 单元测试
 
-| 测试用例 | 输入 | 期望 safeMessage |
-|---|---|---|
-| DioException 带 token query | `DioException(requestOptions: RequestOptions(path: '/api?token=abc123'))` | 不含 `abc123`，保留 statusCode |
-| DioException 带 Authorization header | `DioException(headers: {'Authorization': 'Bearer eyJhb...'})` | 不含 JWT |
-| E2eeException 带 envelope | 自定义 E2eeException 含 envelope 字段 | 不含 envelope 内容 |
-| 通用异常含邮箱 | `Exception('user test@example.com failed')` | 邮箱被替换为 `***@***` |
-| 通用异常含手机号 | `Exception('call 13812345678 failed')` | 手机号被替换为 `***` |
-| 通用异常含 JWT | `Exception('token=eyJhbGciOi...')` | JWT 被替换为 `***` |
+| 测试用例 | 输入 | category hint | 期望 safeMessage |
+|---|---|---|---|
+| DioException 带 token query | `DioException(requestOptions: RequestOptions(path: '/api?token=abc123'))` | 无 | 不含 `abc123`，保留 statusCode |
+| DioException 带 Authorization header | `DioException(headers: {'Authorization': 'Bearer eyJhb...'})` | 无 | 不含 JWT |
+| E2EE 错误含 envelope | `Exception('decrypt failed envelope=abc123 session=xyz')` | `'e2ee'` | 不含 `abc123`、`xyz` |
+| WS 错误含 ticket | `Exception('ws connect ticket=t-abc123')` | `'ws'` | 不含 `t-abc123` |
+| 通用异常含邮箱 | `Exception('user test@example.com failed')` | 无 | 邮箱被替换为 `***@***` |
+| 通用异常含手机号 | `Exception('call 13812345678 failed')` | 无 | 手机号被替换为 `***` |
+| 通用异常含 JWT | `Exception('token=eyJhbGciOi...')` | 无 | JWT 被替换为 `***` |
 
 #### AppLogger 集成测试
 
