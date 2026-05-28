@@ -23,6 +23,8 @@ class _AppState extends ConsumerState<App> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final analytics = ref.read(analyticsProvider);
+      analytics.trackEvent('app_start', {'platform': 'web'});
       ref.read(authStateProvider.notifier).checkAuth();
       _webMetaService.apply(appFallbackMeta);
 

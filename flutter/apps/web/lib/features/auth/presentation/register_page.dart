@@ -1,16 +1,20 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide FormFieldState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_ui/im_ui.dart';
-import 'package:im_web/core/utils/validators.dart';
+import 'package:im_web/core/forms/form_controller.dart';
+import 'package:im_web/core/forms/form_field_state.dart';
+import 'package:im_web/core/forms/form_schema.dart';
+import 'package:im_web/core/forms/validators.dart';
 import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
 import 'package:im_web/features/auth/presentation/widgets/gradient_button.dart';
-import 'package:im_web/features/auth/presentation/widgets/form_field.dart';
 import 'package:im_web/features/auth/presentation/widgets/agreement_dialog.dart';
 import 'package:im_web/features/auth/presentation/widgets/brand_showcase.dart';
 import 'package:im_web/features/auth/presentation/widgets/decorative_background.dart';
 import 'package:im_web/l10n/app_localizations.dart';
+import 'package:im_web/widgets/validated_form.dart';
+import 'package:im_web/widgets/validated_form_field.dart';
 import 'auth_provider.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
@@ -22,11 +26,7 @@ class RegisterPage extends ConsumerStatefulWidget {
 
 class _RegisterPageState extends ConsumerState<RegisterPage>
     with SingleTickerProviderStateMixin {
-  final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
+  late FormController _formController;
   bool _agreementAccepted = false;
 
   late AnimationController _controller;
@@ -64,6 +64,53 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
   Widget build(BuildContext context) {
     final authState = ref.watch(authStateProvider);
     final loc = AppLocalizations.of(context)!;
+
+    final passwordField = FormFieldState(name: 'password');
+    _formController = FormController(FormSchema(fields: [
+      FormFieldSchema(
+        name: 'username',
+        validators: [
+          FormValidators.required(loc.validationRequired),
+          FormValidators.minLength(3, loc.validationUsernameMinLength(3)),
+          FormValidators.maxLength(20, loc.validationUsernameMaxLength(20)),
+          FormValidators.pattern(
+            RegExp(r'^[a-zA-Z0-9_]+$'),
+            loc.validationUsernameInvalidChars,
+          ),
+        ],
+      ),
+      FormFieldSchema(
+        name: 'email',
+        validators: [
+          FormValidators.required(loc.validationRequired),
+          FormValidators.email(loc.validationEmailInvalid),
+        ],
+      ),
+      FormFieldSchema(
+        name: 'password',
+        validators: [
+          FormValidators.required(loc.validationRequired),
+          FormValidators.minLength(8, loc.validationPasswordMinLength(8)),
+          FormValidators.maxLength(64, loc.validationPasswordMaxLength(64)),
+          FormValidators.passwordStrength(loc.validationPasswordStrength),
+        ],
+      ),
+      FormFieldSchema(
+        name: 'confirmPassword',
+        validators: [
+          FormValidators.required(loc.validationRequired),
+          FormValidators.sameAs(passwordField, loc.validationPasswordMismatch),
+        ],
+      ),
+    ]));
+
+    ref.listen<AuthState>(authStateProvider, (prev, next) {
+      if (next.error != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(next.error!)),
+        );
+      }
+    });
 
     return Scaffold(
       body: Container(
@@ -107,11 +154,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
   Widget _buildDesktopLayout(AuthState authState, AppLocalizations loc) {
     return Row(
       children: [
-        // 左侧品牌展示区
         const Expanded(
           child: BrandShowcase(),
         ),
-        // 右侧注册表单区
         Expanded(
           child: Center(
             child: SingleChildScrollView(
@@ -129,70 +174,41 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
   }
 
   Widget _buildForm(AuthState authState, AppLocalizations loc) {
-    return Form(
-      key: _formKey,
+    return ValidatedForm(
+      controller: _formController,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          AuthFormField(
-            controller: _usernameController,
+          ValidatedFormField(
+            controller: _formController,
+            name: 'username',
             label: loc.loginUsername,
             icon: Icons.person,
-            validator: (v) => Validators.validateUsername(v, loc),
           ),
           const SizedBox(height: 16),
-          AuthFormField(
-            controller: _emailController,
+          ValidatedFormField(
+            controller: _formController,
+            name: 'email',
             label: loc.registerEmail,
             icon: Icons.email,
-            validator: (v) => Validators.validateEmail(v, loc),
+            keyboardType: TextInputType.emailAddress,
           ),
           const SizedBox(height: 16),
-          AuthFormField(
-            controller: _passwordController,
+          ValidatedFormField(
+            controller: _formController,
+            name: 'password',
             label: loc.loginPassword,
             icon: Icons.lock,
             obscureText: true,
-            validator: (v) => Validators.validatePassword(v, loc),
           ),
           const SizedBox(height: 16),
-          AuthFormField(
-            controller: _confirmPasswordController,
+          ValidatedFormField(
+            controller: _formController,
+            name: 'confirmPassword',
             label: loc.registerConfirmPassword,
             icon: Icons.lock,
             obscureText: true,
-            validator: (v) => Validators.validateConfirmPassword(
-                v, _passwordController.text, loc),
           ),
-          if (authState.error != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.error.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    color: Theme.of(context).colorScheme.error,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      authState.error!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
           const SizedBox(height: 16),
           Row(
             children: [
@@ -272,7 +288,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
     );
   }
 
-  void _register() {
+  void _register() async {
     final loc = AppLocalizations.of(context)!;
 
     if (!_agreementAccepted) {
@@ -282,21 +298,20 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
       return;
     }
 
-    if (_formKey.currentState?.validate() ?? false) {
-      ref.read(authStateProvider.notifier).register(
-            _usernameController.text.trim(),
-            _emailController.text.trim(),
-            _passwordController.text,
-          );
-    }
+    final valid = await _formController.validate();
+    if (!valid) return;
+
+    final values = _formController.values;
+    ref.read(authStateProvider.notifier).register(
+          values['username']!.trim(),
+          values['email']!.trim(),
+          values['password']!,
+        );
   }
 
   @override
   void dispose() {
-    _usernameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
+    _formController.dispose();
     _controller.dispose();
     super.dispose();
   }
