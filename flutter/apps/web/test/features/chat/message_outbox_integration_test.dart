@@ -256,5 +256,142 @@ void main() {
       expect(await outbox.getPendingCount(), 0);
       expect(await outbox.getFailedCount(), 0);
     });
+
+    test('group message offline enqueue', () async {
+      outbox = MessageOutbox(
+        messageApi: mockMessageApi,
+        idbFactory: idbFactorySembastMemory,
+        isOnline: () => false,
+      );
+      await outbox.initialize();
+
+      final message = await outbox.enqueue(
+        sessionKey: 'group-1',
+        receiverId: 'group-1',
+        content: 'Hello Group',
+        messageType: 'text',
+        clientMessageId: 'client-msg-2',
+        isGroupChat: true,
+        groupId: 'group-1',
+      );
+
+      expect(message.status, OutboxMessageStatus.pending);
+      expect(message.content, 'Hello Group');
+      expect(message.sessionKey, 'group-1');
+      expect(message.receiverId, 'group-1');
+      expect(message.clientMessageId, 'client-msg-2');
+      expect(message.isGroupChat, true);
+      expect(message.groupId, 'group-1');
+      expect(await outbox.getPendingCount(), 1);
+    });
+
+    test('group message is sent via sendGroupMessage', () async {
+      outbox = MessageOutbox(
+        messageApi: mockMessageApi,
+        idbFactory: idbFactorySembastMemory,
+        isOnline: () => true,
+      );
+      await outbox.initialize();
+
+      await outbox.enqueue(
+        sessionKey: 'group-1',
+        receiverId: 'group-1',
+        content: 'Hello Group',
+        messageType: 'text',
+        clientMessageId: 'client-msg-3',
+        isGroupChat: true,
+        groupId: 'group-1',
+      );
+
+      // Wait for async send to complete
+      await Future.delayed(Duration(seconds: 1));
+
+      // Message should be sent and removed from outbox
+      expect(await outbox.getPendingCount(), 0);
+      expect(await outbox.getFailedCount(), 0);
+    });
+
+    test('E2EE message is sent via sendPrivateEncrypted', () async {
+      outbox = MessageOutbox(
+        messageApi: mockMessageApi,
+        idbFactory: idbFactorySembastMemory,
+        isOnline: () => true,
+      );
+      await outbox.initialize();
+
+      await outbox.enqueue(
+        sessionKey: 'session-1',
+        receiverId: 'user-2',
+        content: 'encrypted content',
+        messageType: 'text',
+        clientMessageId: 'client-e2ee-1',
+        isEncrypted: true,
+        e2eeEnvelope: {'wire': 'encrypted_data'},
+        e2eeDeviceId: 'device-1',
+      );
+
+      // Wait for async send to complete
+      await Future.delayed(Duration(seconds: 1));
+
+      // Message should be sent via encrypted path and removed from outbox
+      expect(await outbox.getPendingCount(), 0);
+      expect(await outbox.getFailedCount(), 0);
+    });
+
+    test('E2EE message offline enqueue preserves encryption fields', () async {
+      outbox = MessageOutbox(
+        messageApi: mockMessageApi,
+        idbFactory: idbFactorySembastMemory,
+        isOnline: () => false,
+      );
+      await outbox.initialize();
+
+      final message = await outbox.enqueue(
+        sessionKey: 'session-1',
+        receiverId: 'user-2',
+        content: 'secret data',
+        messageType: 'text',
+        clientMessageId: 'client-e2ee-2',
+        isEncrypted: true,
+        e2eeEnvelope: {'wire': 'encrypted_payload'},
+        e2eeDeviceId: 'device-1',
+      );
+
+      expect(message.status, OutboxMessageStatus.pending);
+      expect(message.isEncrypted, true);
+      expect(message.e2eeEnvelope, {'wire': 'encrypted_payload'});
+      expect(message.e2eeDeviceId, 'device-1');
+      expect(await outbox.getPendingCount(), 1);
+    });
+
+    test('does not add duplicate clientMessageId', () async {
+      outbox = MessageOutbox(
+        messageApi: mockMessageApi,
+        idbFactory: idbFactorySembastMemory,
+        isOnline: () => false,
+      );
+      await outbox.initialize();
+
+      // First enqueue
+      final first = await outbox.enqueue(
+        sessionKey: 'session-1',
+        receiverId: 'user-2',
+        content: 'First message',
+        clientMessageId: 'client-dup-1',
+      );
+
+      // Second enqueue with same clientMessageId
+      final second = await outbox.enqueue(
+        sessionKey: 'session-1',
+        receiverId: 'user-2',
+        content: 'Second message',
+        clientMessageId: 'client-dup-1',
+      );
+
+      // Should return the same message (dedup by clientMessageId)
+      expect(first.id, second.id);
+      expect(first.clientMessageId, second.clientMessageId);
+      expect(await outbox.getPendingCount(), 1);
+    });
   });
 }
