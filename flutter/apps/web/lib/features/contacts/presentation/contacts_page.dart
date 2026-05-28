@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_core/core.dart';
+import 'package:im_ui/im_ui.dart';
 import '../../chat/presentation/chat_providers.dart';
 import 'contacts_provider.dart';
 
@@ -54,7 +55,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
               tooltip: loc.contactsAddFriend,
               onPressed: () => context.go('/contacts/add'),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: ImTokens.layoutItemGap),
           ],
         ),
         Expanded(
@@ -158,7 +159,7 @@ class _FriendTile extends StatelessWidget {
                     (friend.nickname ?? friend.username)
                         .substring(0, 1)
                         .toUpperCase(),
-                    style: const TextStyle(fontSize: 16),
+                    style: const TextStyle(fontSize: ImTokens.textBase),
                   )
                 : null,
           ),
@@ -170,7 +171,7 @@ class _FriendTile extends StatelessWidget {
                 width: 12,
                 height: 12,
                 decoration: BoxDecoration(
-                  color: Colors.green,
+                  color: Theme.of(context).colorScheme.primary,
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: Theme.of(context).colorScheme.surface,
@@ -189,7 +190,7 @@ class _FriendTile extends StatelessWidget {
         friend.signature ?? (friend.isOnline == true ? loc.contactsOnline : loc.contactsOffline),
         style: TextStyle(
           color: Theme.of(context).colorScheme.onSurfaceVariant,
-          fontSize: 13,
+          fontSize: ImTokens.textSm,
         ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -237,7 +238,7 @@ class _RequestTile extends StatelessWidget {
         request.reason ?? loc.contactsFriendRequestReason,
         style: TextStyle(
           color: theme.colorScheme.onSurfaceVariant,
-          fontSize: 13,
+          fontSize: ImTokens.textSm,
         ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -260,7 +261,7 @@ class _RequestTile extends StatelessWidget {
               request.status == 'ACCEPTED' ? loc.contactsAccepted : loc.contactsRejected,
               style: TextStyle(
                 color: theme.colorScheme.onSurfaceVariant,
-                fontSize: 13,
+                fontSize: ImTokens.textSm,
               ),
             ),
     );
