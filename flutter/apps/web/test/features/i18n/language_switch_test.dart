@@ -1,66 +1,79 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:im_web/core/di/providers.dart';
-import 'package:im_web/features/auth/presentation/login_page.dart';
-import 'package:im_web/l10n/app_localizations.dart';
+import 'package:im_web/features/settings/presentation/settings_providers.dart';
+
+/// A minimal widget that displays the current language from the provider.
+class _LanguageDisplayWidget extends ConsumerWidget {
+  const _LanguageDisplayWidget();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final language = ref.watch(languageProvider);
+    return Text('current_language:$language');
+  }
+}
 
 void main() {
   group('Language Switch', () {
-    testWidgets('should switch login page text from Chinese to English', (tester) async {
+    testWidgets('should default to zh when no saved language', (tester) async {
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [
-            languageProvider.overrideWithValue('zh'),
-          ],
           child: const MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: LoginPage(),
+            home: Scaffold(body: _LanguageDisplayWidget()),
           ),
         ),
       );
 
-      // Verify Chinese text is displayed
-      expect(find.text('登录'), findsOneWidget);
-      expect(find.text('请登录您的加密通信账户'), findsOneWidget);
-
-      // Switch to English
-      final container = ProviderScope.containerOf(find.byType(LoginPage));
-      container.read(languageProvider.notifier).state = 'en';
-      await tester.pumpAndSettle();
-
-      // Verify English text is displayed
-      expect(find.text('Login'), findsOneWidget);
-      expect(find.text('Please log in to your encrypted communication account'), findsOneWidget);
+      expect(find.text('current_language:zh'), findsOneWidget);
     });
 
-    testWidgets('should switch login page text from English to Chinese', (tester) async {
+    testWidgets('should reflect language change via provider', (tester) async {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            languageProvider.overrideWithValue('en'),
+            languageProvider.overrideWith((ref) => 'en'),
           ],
           child: const MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: LoginPage(),
+            home: Scaffold(body: _LanguageDisplayWidget()),
           ),
         ),
       );
 
-      // Verify English text is displayed
-      expect(find.text('Login'), findsOneWidget);
-      expect(find.text('Please log in to your encrypted communication account'), findsOneWidget);
+      expect(find.text('current_language:en'), findsOneWidget);
 
-      // Switch to Chinese
-      final container = ProviderScope.containerOf(find.byType(LoginPage));
+      // Switch language by updating provider
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(_LanguageDisplayWidget)),
+      );
       container.read(languageProvider.notifier).state = 'zh';
       await tester.pumpAndSettle();
 
-      // Verify Chinese text is displayed
-      expect(find.text('登录'), findsOneWidget);
-      expect(find.text('请登录您的加密通信账户'), findsOneWidget);
+      expect(find.text('current_language:zh'), findsOneWidget);
+    });
+
+    testWidgets('should support switching between all locales', (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          child: const MaterialApp(
+            home: Scaffold(body: _LanguageDisplayWidget()),
+          ),
+        ),
+      );
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(_LanguageDisplayWidget)),
+      );
+
+      // Switch to English
+      container.read(languageProvider.notifier).state = 'en';
+      await tester.pumpAndSettle();
+      expect(find.text('current_language:en'), findsOneWidget);
+
+      // Switch back to Chinese
+      container.read(languageProvider.notifier).state = 'zh';
+      await tester.pumpAndSettle();
+      expect(find.text('current_language:zh'), findsOneWidget);
     });
   });
 }

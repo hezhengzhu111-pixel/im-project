@@ -1,9 +1,8 @@
-import 'dart:html' as html;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../../../core/network/network_providers.dart';
+import '../../../core/platform/platform_adapter.dart';
 import '../data/ai_api.dart';
 import '../data/settings_api.dart';
 import 'ai_settings_provider.dart';
@@ -35,17 +34,16 @@ final profileStateProvider =
 
 // 从localStorage读取初始语言
 String _getInitialLanguage() {
-  try {
-    final saved = html.window.localStorage['app_language'];
-    if (saved != null && (saved == 'en' || saved == 'zh')) {
-      return saved;
-    }
-  } catch (_) {}
+  final adapter = getPlatformAdapter();
+  final saved = adapter.getLocalStorage('app_language');
+  if (saved != null && (saved == 'en' || saved == 'zh')) {
+    return saved;
+  }
 
   // 读取浏览器语言
-  final browserLang = html.window.navigator.language;
-  if (browserLang.startsWith('zh')) return 'zh';
-  if (browserLang.startsWith('en')) return 'en';
+  final browserLang = adapter.getBrowserLanguage();
+  if (browserLang != null && browserLang.startsWith('zh')) return 'zh';
+  if (browserLang != null && browserLang.startsWith('en')) return 'en';
 
   // fallback到中文
   return 'zh';
@@ -53,19 +51,18 @@ String _getInitialLanguage() {
 
 // 从localStorage读取初始主题
 ThemeMode _getInitialThemeMode() {
-  try {
-    final saved = html.window.localStorage['app_theme_mode'];
-    if (saved != null) {
-      switch (saved) {
-        case 'light':
-          return ThemeMode.light;
-        case 'dark':
-          return ThemeMode.dark;
-        case 'system':
-          return ThemeMode.system;
-      }
+  final adapter = getPlatformAdapter();
+  final saved = adapter.getLocalStorage('app_theme_mode');
+  if (saved != null) {
+    switch (saved) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      case 'system':
+        return ThemeMode.system;
     }
-  } catch (_) {}
+  }
   return ThemeMode.system;
 }
 

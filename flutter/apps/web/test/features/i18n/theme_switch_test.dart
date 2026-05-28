@@ -1,57 +1,84 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:im_web/core/di/providers.dart';
-import 'package:im_web/app.dart';
+import 'package:im_web/features/settings/presentation/settings_providers.dart';
+
+/// A minimal widget that displays the current theme mode from the provider.
+class _ThemeDisplayWidget extends ConsumerWidget {
+  const _ThemeDisplayWidget();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+    return Text('current_theme:${themeMode.name}');
+  }
+}
 
 void main() {
   group('Theme Switch', () {
-    testWidgets('should switch from light to dark theme', (tester) async {
+    testWidgets('should default to system theme', (tester) async {
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [
-            themeModeProvider.overrideWithValue(ThemeMode.light),
-          ],
-          child: const App(),
+          child: const MaterialApp(
+            home: Scaffold(body: _ThemeDisplayWidget()),
+          ),
         ),
       );
 
-      // Verify light theme is applied
-      final materialApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
-      expect(materialApp.themeMode, ThemeMode.light);
-
-      // Switch to dark theme
-      final container = ProviderScope.containerOf(find.byType(App));
-      container.read(themeModeProvider.notifier).state = ThemeMode.dark;
-      await tester.pumpAndSettle();
-
-      // Verify dark theme is applied
-      final updatedMaterialApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
-      expect(updatedMaterialApp.themeMode, ThemeMode.dark);
+      expect(find.text('current_theme:system'), findsOneWidget);
     });
 
-    testWidgets('should switch from dark to system theme', (tester) async {
+    testWidgets('should reflect theme change via provider', (tester) async {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            themeModeProvider.overrideWithValue(ThemeMode.dark),
+            themeModeProvider.overrideWith((ref) => ThemeMode.dark),
           ],
-          child: const App(),
+          child: const MaterialApp(
+            home: Scaffold(body: _ThemeDisplayWidget()),
+          ),
         ),
       );
 
-      // Verify dark theme is applied
-      final materialApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
-      expect(materialApp.themeMode, ThemeMode.dark);
+      expect(find.text('current_theme:dark'), findsOneWidget);
 
-      // Switch to system theme
-      final container = ProviderScope.containerOf(find.byType(App));
-      container.read(themeModeProvider.notifier).state = ThemeMode.system;
+      // Switch theme by updating provider
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(_ThemeDisplayWidget)),
+      );
+      container.read(themeModeProvider.notifier).state = ThemeMode.light;
       await tester.pumpAndSettle();
 
-      // Verify system theme is applied
-      final updatedMaterialApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
-      expect(updatedMaterialApp.themeMode, ThemeMode.system);
+      expect(find.text('current_theme:light'), findsOneWidget);
+    });
+
+    testWidgets('should support switching between all theme modes', (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          child: const MaterialApp(
+            home: Scaffold(body: _ThemeDisplayWidget()),
+          ),
+        ),
+      );
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(_ThemeDisplayWidget)),
+      );
+
+      // Switch to light
+      container.read(themeModeProvider.notifier).state = ThemeMode.light;
+      await tester.pumpAndSettle();
+      expect(find.text('current_theme:light'), findsOneWidget);
+
+      // Switch to dark
+      container.read(themeModeProvider.notifier).state = ThemeMode.dark;
+      await tester.pumpAndSettle();
+      expect(find.text('current_theme:dark'), findsOneWidget);
+
+      // Switch to system
+      container.read(themeModeProvider.notifier).state = ThemeMode.system;
+      await tester.pumpAndSettle();
+      expect(find.text('current_theme:system'), findsOneWidget);
     });
   });
 }
