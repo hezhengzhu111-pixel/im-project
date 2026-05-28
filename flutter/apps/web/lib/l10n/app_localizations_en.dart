@@ -428,4 +428,50 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commonLoading => 'Loading...';
+
+  @override
+  String get validationRequired => 'This field is required';
+
+  @override
+  String validationUsernameMinLength(Object min) {
+    return 'Username must be at least $min characters';
+  }
+
+  @override
+  String validationUsernameMaxLength(Object max) {
+    return 'Username must be no more than $max characters';
+  }
+
+  @override
+  String get validationUsernameInvalidChars => 'Username can only contain letters, numbers, and underscores';
+
+  @override
+  String get validationEmailInvalid => 'Please enter a valid email address';
+
+  @override
+  String validationPasswordMinLength(Object min) {
+    return 'Password must be at least $min characters';
+  }
+
+  @override
+  String validationPasswordMaxLength(Object max) {
+    return 'Password must be no more than $max characters';
+  }
+
+  @override
+  String get validationPasswordStrength => 'Password must contain both letters and digits';
+
+  @override
+  String get validationPasswordMismatch => 'Passwords do not match';
+
+  @override
+  String get validationAgreementRequired => 'You must accept the agreement to continue';
+
+  @override
+  String get validationNicknameRequired => 'Please enter a nickname';
+
+  @override
+  String validationNicknameMaxLength(Object max) {
+    return 'Nickname must be no more than $max characters';
+  }
 }

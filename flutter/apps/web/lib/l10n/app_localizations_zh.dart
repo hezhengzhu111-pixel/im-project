@@ -428,4 +428,50 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get commonLoading => '加载中...';
+
+  @override
+  String get validationRequired => '此项为必填项';
+
+  @override
+  String validationUsernameMinLength(Object min) {
+    return '用户名长度至少为 $min 个字符';
+  }
+
+  @override
+  String validationUsernameMaxLength(Object max) {
+    return '用户名长度不能超过 $max 个字符';
+  }
+
+  @override
+  String get validationUsernameInvalidChars => '用户名只能包含字母、数字和下划线';
+
+  @override
+  String get validationEmailInvalid => '请输入正确的邮箱格式';
+
+  @override
+  String validationPasswordMinLength(Object min) {
+    return '密码长度至少为 $min 个字符';
+  }
+
+  @override
+  String validationPasswordMaxLength(Object max) {
+    return '密码长度不能超过 $max 个字符';
+  }
+
+  @override
+  String get validationPasswordStrength => '密码必须包含字母和数字';
+
+  @override
+  String get validationPasswordMismatch => '两次输入的密码不一致';
+
+  @override
+  String get validationAgreementRequired => '请阅读并同意用户协议和隐私政策';
+
+  @override
+  String get validationNicknameRequired => '请输入昵称';
+
+  @override
+  String validationNicknameMaxLength(Object max) {
+    return '昵称长度不能超过 $max 个字符';
+  }
 }
