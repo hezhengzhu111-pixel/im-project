@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:im_ui/im_ui.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import 'feed/moments_feed_page.dart';
 import 'composer/moments_composer_page.dart';
 import 'widgets/moments_cover.dart';
@@ -82,7 +83,7 @@ class _MomentsMainPageState extends State<MomentsMainPage> {
                     slivers: [
                       SliverToBoxAdapter(
                         child: MomentsCover(
-                          nickname: '用户',
+                          nickname: AppLocalizations.of(context)!.momentsUserFallback,
                         ),
                       ),
                       SliverFillRemaining(
