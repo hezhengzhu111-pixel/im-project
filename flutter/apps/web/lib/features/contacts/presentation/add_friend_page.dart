@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_core/core.dart';
+import 'package:im_ui/im_ui.dart';
 
 class AddFriendPage extends ConsumerStatefulWidget {
   const AddFriendPage({super.key});
@@ -93,7 +94,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(ImTokens.layoutPanelPadding),
             child: TextField(
               controller: _searchController,
               onChanged: _onSearchChanged,
@@ -118,12 +119,12 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
           ),
           if (_isSearching)
             const Padding(
-              padding: EdgeInsets.all(16),
+              padding: EdgeInsets.all(ImTokens.layoutPanelPadding),
               child: CircularProgressIndicator(),
             ),
           if (_error != null)
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(ImTokens.layoutPanelPadding),
               child: Text(
                 _error!,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
@@ -134,13 +135,13 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
               _results.isEmpty &&
               _searchController.text.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.all(32),
-              child: Text(loc.addFriendNoMatch, style: const TextStyle(color: Colors.grey)),
+              padding: const EdgeInsets.all(ImTokens.space8),
+              child: Text(loc.addFriendNoMatch, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ),
           if (!_isSearching && _error == null && _results.isEmpty && _searchController.text.isEmpty)
             Padding(
-              padding: const EdgeInsets.all(32),
-              child: Text(loc.addFriendSearchPrompt, style: const TextStyle(color: Colors.grey)),
+              padding: const EdgeInsets.all(ImTokens.space8),
+              child: Text(loc.addFriendSearchPrompt, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ),
           Expanded(
             child: ListView.builder(
@@ -157,7 +158,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
                             (user.nickname ?? user.username)
                                 .substring(0, 1)
                                 .toUpperCase(),
-                            style: const TextStyle(fontSize: 16),
+                            style: const TextStyle(fontSize: ImTokens.textBase),
                           )
                         : null,
                   ),
