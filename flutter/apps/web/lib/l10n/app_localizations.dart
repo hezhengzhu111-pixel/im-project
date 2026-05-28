@@ -1918,6 +1918,183 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'AI assistant'**
   String get brandFeatureAi;
+
+  /// No description provided for @seoLoginTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Login - IM'**
+  String get seoLoginTitle;
+
+  /// No description provided for @seoLoginDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Secure messaging, end-to-end encrypted login'**
+  String get seoLoginDescription;
+
+  /// No description provided for @seoRegisterTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Register - IM'**
+  String get seoRegisterTitle;
+
+  /// No description provided for @seoRegisterDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Create your IM account'**
+  String get seoRegisterDescription;
+
+  /// No description provided for @seoChatTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat - IM'**
+  String get seoChatTitle;
+
+  /// No description provided for @seoChatDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat with friends securely, end-to-end encrypted'**
+  String get seoChatDescription;
+
+  /// No description provided for @seoContactsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Contacts - IM'**
+  String get seoContactsTitle;
+
+  /// No description provided for @seoContactsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage your contacts'**
+  String get seoContactsDescription;
+
+  /// No description provided for @seoAddFriendTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Friend - IM'**
+  String get seoAddFriendTitle;
+
+  /// No description provided for @seoAddFriendDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Search and add new friends'**
+  String get seoAddFriendDescription;
+
+  /// No description provided for @seoGroupsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Groups - IM'**
+  String get seoGroupsTitle;
+
+  /// No description provided for @seoGroupsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage and join groups'**
+  String get seoGroupsDescription;
+
+  /// No description provided for @seoCreateGroupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Create Group - IM'**
+  String get seoCreateGroupTitle;
+
+  /// No description provided for @seoCreateGroupDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a new group chat'**
+  String get seoCreateGroupDescription;
+
+  /// No description provided for @seoMomentsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Moments - IM'**
+  String get seoMomentsTitle;
+
+  /// No description provided for @seoMomentsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'View friends\' updates'**
+  String get seoMomentsDescription;
+
+  /// No description provided for @seoMomentsNotificationsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Moment Notifications - IM'**
+  String get seoMomentsNotificationsTitle;
+
+  /// No description provided for @seoMomentsNotificationsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'View moments interaction notifications'**
+  String get seoMomentsNotificationsDescription;
+
+  /// No description provided for @seoSettingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings - IM'**
+  String get seoSettingsTitle;
+
+  /// No description provided for @seoSettingsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Personalize your IM experience'**
+  String get seoSettingsDescription;
+
+  /// No description provided for @seoProfileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile - IM'**
+  String get seoProfileTitle;
+
+  /// No description provided for @seoProfileDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit your profile'**
+  String get seoProfileDescription;
+
+  /// No description provided for @seoAiSettingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'AI Settings - IM'**
+  String get seoAiSettingsTitle;
+
+  /// No description provided for @seoAiSettingsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Configure AI assistant'**
+  String get seoAiSettingsDescription;
+
+  /// Translate a key to its localized string.
+  ///
+  /// Used by [metaForPath] to resolve SEO keys to localized text.
+  String translate(String key) {
+    switch (key) {
+      case 'seoLoginTitle': return seoLoginTitle;
+      case 'seoLoginDescription': return seoLoginDescription;
+      case 'seoRegisterTitle': return seoRegisterTitle;
+      case 'seoRegisterDescription': return seoRegisterDescription;
+      case 'seoChatTitle': return seoChatTitle;
+      case 'seoChatDescription': return seoChatDescription;
+      case 'seoContactsTitle': return seoContactsTitle;
+      case 'seoContactsDescription': return seoContactsDescription;
+      case 'seoAddFriendTitle': return seoAddFriendTitle;
+      case 'seoAddFriendDescription': return seoAddFriendDescription;
+      case 'seoGroupsTitle': return seoGroupsTitle;
+      case 'seoGroupsDescription': return seoGroupsDescription;
+      case 'seoCreateGroupTitle': return seoCreateGroupTitle;
+      case 'seoCreateGroupDescription': return seoCreateGroupDescription;
+      case 'seoMomentsTitle': return seoMomentsTitle;
+      case 'seoMomentsDescription': return seoMomentsDescription;
+      case 'seoMomentsNotificationsTitle': return seoMomentsNotificationsTitle;
+      case 'seoMomentsNotificationsDescription': return seoMomentsNotificationsDescription;
+      case 'seoSettingsTitle': return seoSettingsTitle;
+      case 'seoSettingsDescription': return seoSettingsDescription;
+      case 'seoProfileTitle': return seoProfileTitle;
+      case 'seoProfileDescription': return seoProfileDescription;
+      case 'seoAiSettingsTitle': return seoAiSettingsTitle;
+      case 'seoAiSettingsDescription': return seoAiSettingsDescription;
+      default: return key;
+    }
+  }
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

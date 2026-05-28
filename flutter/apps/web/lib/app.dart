@@ -33,7 +33,7 @@ class _AppState extends ConsumerState<App> {
 
       ref.listen<GoRouter>(routerProvider, (prev, next) {
         final path = next.routeInformationProvider.value.uri.path;
-        final meta = metaForPath(path);
+        final meta = metaForPath(path, null);
         _webMetaService.apply(meta);
       });
     });

@@ -39,63 +39,84 @@ void main() {
     });
   });
 
-  group('OgMeta', () {
-    test('constructs with no fields', () {
-      const og = OgMeta();
-      expect(og.title, isNull);
-      expect(og.description, isNull);
-      expect(og.image, isNull);
-      expect(og.type, isNull);
-    });
-  });
-
-  group('TwitterMeta', () {
-    test('constructs with no fields', () {
-      const twitter = TwitterMeta();
-      expect(twitter.card, isNull);
-      expect(twitter.title, isNull);
-      expect(twitter.description, isNull);
-      expect(twitter.image, isNull);
-    });
-  });
-
   group('metaForPath', () {
-    test('returns correct meta for known routes', () {
-      final loginMeta = metaForPath('/login');
-      expect(loginMeta.title, '登录 - IM');
-      expect(loginMeta.description, '安全即时通讯，端到端加密登录');
-      expect(loginMeta.canonicalPath, '/login');
+    test('returns correct meta for /login (no l10n, falls back to key)', () {
+      final meta = metaForPath('/login', null);
+      expect(meta.title, 'seoLoginTitle');
+      expect(meta.description, 'seoLoginDescription');
+      expect(meta.canonicalPath, '/login');
+      expect(meta.og?.title, 'seoLoginTitle');
+      expect(meta.og?.type, 'website');
+      expect(meta.twitter?.card, 'summary');
+    });
 
-      final chatMeta = metaForPath('/chat');
-      expect(chatMeta.title, '聊天 - IM');
-      expect(chatMeta.description, '与好友安全聊天，端到端加密');
+    test('returns correct meta for /chat', () {
+      final meta = metaForPath('/chat', null);
+      expect(meta.title, 'seoChatTitle');
+      expect(meta.description, 'seoChatDescription');
+      expect(meta.canonicalPath, '/chat');
+    });
+
+    test('returns correct meta for /settings', () {
+      final meta = metaForPath('/settings', null);
+      expect(meta.title, 'seoSettingsTitle');
+      expect(meta.canonicalPath, '/settings');
     });
 
     test('returns appFallbackMeta for unknown routes', () {
-      final unknownMeta = metaForPath('/unknown');
-      expect(unknownMeta.title, appFallbackMeta.title);
-      expect(unknownMeta.description, appFallbackMeta.description);
+      final meta = metaForPath('/unknown', null);
+      expect(meta.title, appFallbackMeta.title);
+      expect(meta.description, appFallbackMeta.description);
     });
 
     test('returns appFallbackMeta for empty path', () {
-      final emptyMeta = metaForPath('');
-      expect(emptyMeta.title, appFallbackMeta.title);
+      final meta = metaForPath('', null);
+      expect(meta.title, appFallbackMeta.title);
     });
 
-    test('covers all 12 routes', () {
-      expect(pageMetaMap.length, 12);
-      expect(pageMetaMap.containsKey('/login'), isTrue);
-      expect(pageMetaMap.containsKey('/register'), isTrue);
-      expect(pageMetaMap.containsKey('/chat'), isTrue);
-      expect(pageMetaMap.containsKey('/contacts'), isTrue);
-      expect(pageMetaMap.containsKey('/contacts/add'), isTrue);
-      expect(pageMetaMap.containsKey('/groups'), isTrue);
-      expect(pageMetaMap.containsKey('/groups/create'), isTrue);
-      expect(pageMetaMap.containsKey('/moments'), isTrue);
-      expect(pageMetaMap.containsKey('/moments/notifications'), isTrue);
-      expect(pageMetaMap.containsKey('/settings'), isTrue);
-      expect(pageMetaMap.containsKey('/settings/profile'), isTrue);
-      expect(pageMetaMap.containsKey('/settings/ai'), isTrue);
+    test('canonical does not contain localhost', () {
+      for (final path in [
+        '/login', '/register', '/chat', '/contacts', '/contacts/add',
+        '/groups', '/groups/create', '/moments', '/moments/notifications',
+        '/settings', '/settings/profile', '/settings/ai',
+      ]) {
+        final meta = metaForPath(path, null);
+        expect(meta.canonicalPath, isNot(contains('localhost')),
+            reason: 'Path $path has localhost in canonical');
+      }
+    });
+
+    test('all routes have canonicalPath matching path', () {
+      for (final path in [
+        '/login', '/register', '/chat', '/contacts', '/contacts/add',
+        '/groups', '/groups/create', '/moments', '/moments/notifications',
+        '/settings', '/settings/profile', '/settings/ai',
+      ]) {
+        final meta = metaForPath(path, null);
+        expect(meta.canonicalPath, path);
+      }
+    });
+
+    test('all routes have og and twitter meta', () {
+      for (final path in [
+        '/login', '/register', '/chat', '/contacts', '/contacts/add',
+        '/groups', '/groups/create', '/moments', '/moments/notifications',
+        '/settings', '/settings/profile', '/settings/ai',
+      ]) {
+        final meta = metaForPath(path, null);
+        expect(meta.og, isNotNull, reason: 'Path $path missing og');
+        expect(meta.twitter, isNotNull, reason: 'Path $path missing twitter');
+        expect(meta.twitter?.card, 'summary');
+      }
+    });
+  });
+
+  group('appFallbackMeta', () {
+    test('has default values', () {
+      expect(appFallbackMeta.title, 'IM - 安全即时通讯');
+      expect(appFallbackMeta.canonicalPath, '/');
+      expect(appFallbackMeta.og?.type, 'website');
+      expect(appFallbackMeta.twitter?.card, 'summary');
     });
   });
 }

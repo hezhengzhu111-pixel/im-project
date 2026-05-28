@@ -961,4 +961,76 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get brandFeatureAi => 'AI 助手接入';
+
+  @override
+  String get seoLoginTitle => '登录 - IM';
+
+  @override
+  String get seoLoginDescription => '安全即时通讯，端到端加密登录';
+
+  @override
+  String get seoRegisterTitle => '注册 - IM';
+
+  @override
+  String get seoRegisterDescription => '创建您的 IM 账户';
+
+  @override
+  String get seoChatTitle => '聊天 - IM';
+
+  @override
+  String get seoChatDescription => '与好友安全聊天，端到端加密';
+
+  @override
+  String get seoContactsTitle => '通讯录 - IM';
+
+  @override
+  String get seoContactsDescription => '管理您的联系人';
+
+  @override
+  String get seoAddFriendTitle => '添加好友 - IM';
+
+  @override
+  String get seoAddFriendDescription => '搜索并添加新朋友';
+
+  @override
+  String get seoGroupsTitle => '群组 - IM';
+
+  @override
+  String get seoGroupsDescription => '管理和加入群组';
+
+  @override
+  String get seoCreateGroupTitle => '创建群组 - IM';
+
+  @override
+  String get seoCreateGroupDescription => '创建新的群组聊天';
+
+  @override
+  String get seoMomentsTitle => '朋友圈 - IM';
+
+  @override
+  String get seoMomentsDescription => '查看好友动态';
+
+  @override
+  String get seoMomentsNotificationsTitle => '动态通知 - IM';
+
+  @override
+  String get seoMomentsNotificationsDescription => '查看朋友圈互动通知';
+
+  @override
+  String get seoSettingsTitle => '设置 - IM';
+
+  @override
+  String get seoSettingsDescription => '个性化您的 IM 体验';
+
+  @override
+  String get seoProfileTitle => '个人资料 - IM';
+
+  @override
+  String get seoProfileDescription => '编辑您的个人资料';
+
+  @override
+  String get seoAiSettingsTitle => 'AI 设置 - IM';
+
+  @override
+  String get seoAiSettingsDescription => '配置 AI 助手';
 }
