@@ -8,6 +8,12 @@ abstract class WebMetaService {
   void apply(PageMeta meta);
 }
 
+/// Non-web fallback (no-op).
+class NoOpWebMetaService implements WebMetaService {
+  @override
+  void apply(PageMeta meta) {}
+}
+
 WebMetaService createWebMetaService() {
   if (kIsWeb) {
     return WebMetaServiceImpl();

@@ -196,5 +196,8 @@
   "a11ySettingsNotifications": "Notification settings",
   "a11ySettingsSecurity": "Security settings",
   "a11ySettingsStorage": "Storage settings",
-  "a11ySettingsAi": "AI settings"
+  "a11ySettingsAi": "AI settings",
+  "a11ySendMessage": "Send message",
+  "a11yAddAttachment": "Add attachment",
+  "a11yVoiceInput": "Voice input"
 }

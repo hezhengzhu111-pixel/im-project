@@ -5,11 +5,23 @@ class AppConfig {
     required this.apiBaseUrl,
     required this.wsBaseUrl,
     this.appEnv = 'production',
+    this.analyticsEnabled = false,
+    this.errorReporterEnabled = false,
+    this.pushEnabled = false,
+    this.paymentEnabled = false,
+    this.mapEnabled = false,
+    this.filePreviewEnabled = false,
   });
 
   final String apiBaseUrl;
   final String wsBaseUrl;
   final String appEnv;
+  final bool analyticsEnabled;
+  final bool errorReporterEnabled;
+  final bool pushEnabled;
+  final bool paymentEnabled;
+  final bool mapEnabled;
+  final bool filePreviewEnabled;
 
   bool get isDevelopment => appEnv == 'development';
   bool get isProduction => appEnv == 'production';

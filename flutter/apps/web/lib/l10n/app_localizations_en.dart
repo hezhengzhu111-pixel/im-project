@@ -628,4 +628,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get a11ySettingsAi => 'AI settings';
+
+  @override
+  String get a11ySendMessage => 'Send message';
+
+  @override
+  String get a11yAddAttachment => 'Add attachment';
+
+  @override
+  String get a11yVoiceInput => 'Voice input';
 }

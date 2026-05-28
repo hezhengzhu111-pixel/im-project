@@ -1,4 +1,4 @@
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 import 'package:im_core/src/services/error_reporter_port.dart';
 
 class _TestErrorReporterAdapter implements ErrorReporterPort {

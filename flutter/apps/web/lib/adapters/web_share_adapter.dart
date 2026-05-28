@@ -14,7 +14,10 @@ class WebShareAdapter implements SharePort {
   @override
   Future<Result<void>> shareText(String text) async {
     try {
-      if (!await isAvailable().then((r) => r is Success ? r.data : false)) {
+      if (!await isAvailable().then((r) {
+        if (r is Success<bool>) return r.data;
+        return false;
+      })) {
         return const Failure(UnsupportedCapability('share'));
       }
 

@@ -196,5 +196,8 @@
   "a11ySettingsNotifications": "通知设置",
   "a11ySettingsSecurity": "安全设置",
   "a11ySettingsStorage": "存储设置",
-  "a11ySettingsAi": "AI 设置"
+  "a11ySettingsAi": "AI 设置",
+  "a11ySendMessage": "发送消息",
+  "a11yAddAttachment": "添加附件",
+  "a11yVoiceInput": "语音输入"
 }

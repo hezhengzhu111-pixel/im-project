@@ -1279,6 +1279,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'AI settings'**
   String get a11ySettingsAi;
+
+  /// No description provided for @a11ySendMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Send message'**
+  String get a11ySendMessage;
+
+  /// No description provided for @a11yAddAttachment.
+  ///
+  /// In en, this message translates to:
+  /// **'Add attachment'**
+  String get a11yAddAttachment;
+
+  /// No description provided for @a11yVoiceInput.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice input'**
+  String get a11yVoiceInput;
 }
 
 class _AppLocalizationsDelegate
