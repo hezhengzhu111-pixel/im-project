@@ -17,7 +17,7 @@ const appFallbackMeta = PageMeta(
   ),
 );
 
-const routeMetaMap = <String, PageMeta>{
+const pageMetaMap = <String, PageMeta>{
   '/login': PageMeta(
     title: '登录 - IM',
     description: '安全即时通讯，端到端加密登录',
@@ -105,5 +105,5 @@ const routeMetaMap = <String, PageMeta>{
 };
 
 PageMeta metaForPath(String path) {
-  return routeMetaMap[path] ?? appFallbackMeta;
+  return pageMetaMap[path] ?? appFallbackMeta;
 }
