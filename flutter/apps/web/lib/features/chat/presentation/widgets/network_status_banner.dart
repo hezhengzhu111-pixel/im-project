@@ -33,6 +33,7 @@ class NetworkStatusBanner extends ConsumerWidget {
     ChatStateWithOutbox chatState,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
+    final loc = AppLocalizations.of(context)!;
 
     // Determine banner color and message
     Color backgroundColor;
@@ -43,21 +44,21 @@ class NetworkStatusBanner extends ConsumerWidget {
 
     if (networkState.isOffline) {
       backgroundColor = colorScheme.error;
-      message = '网络已断开，消息将在恢复后自动发送';
+      message = loc.networkDisconnected;
       icon = Icons.cloud_off;
     } else if (chatState.failedCount > 0) {
       backgroundColor = colorScheme.error;
-      message = '${chatState.failedCount} 条消息发送失败';
+      message = loc.chatMessagesFailed(chatState.failedCount);
       icon = Icons.error_outline;
       action = () => ref.read(chatStateProvider.notifier).retryAllFailed();
-      actionLabel = '重试';
+      actionLabel = loc.chatRetry;
     } else if (chatState.isRetrying) {
       backgroundColor = colorScheme.tertiary;
-      message = '正在重试发送消息...';
+      message = loc.chatRetrying;
       icon = Icons.sync;
     } else if (chatState.pendingCount > 0) {
       backgroundColor = colorScheme.secondary;
-      message = '${chatState.pendingCount} 条消息等待发送';
+      message = loc.chatMessagesPending(chatState.pendingCount);
       icon = Icons.schedule;
     } else {
       return const SizedBox.shrink();
@@ -124,14 +125,14 @@ class OutboxIndicator extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    final l10n = AppLocalizations.of(context);
+    final loc = AppLocalizations.of(context)!;
 
     return Tooltip(
       message: networkState.isOffline
-          ? (l10n?.a11yNetworkDisconnected ?? '网络已断开')
+          ? loc.a11yNetworkDisconnected
           : chatState.failedCount > 0
-              ? '${chatState.failedCount} 条消息发送失败'
-              : '${chatState.pendingCount} 条消息等待发送',
+              ? loc.chatMessagesFailed(chatState.failedCount)
+              : loc.chatMessagesPending(chatState.pendingCount),
       child: Container(
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
