@@ -434,8 +434,9 @@ class MessageOutbox {
     final store = txn.objectStore(_storeName);
 
     await store.openCursor(autoAdvance: true).forEach((cursor) {
-      final map = cursor.value as Map<String, dynamic>;
-      if (map['status'] == OutboxMessageStatus.failed.name) {
+      final original = cursor.value as Map<String, dynamic>;
+      if (original['status'] == OutboxMessageStatus.failed.name) {
+        final map = Map<String, dynamic>.from(original);
         map['status'] = OutboxMessageStatus.pending.name;
         map['retryCount'] = 0;
         cursor.update(map);

@@ -233,6 +233,57 @@ void main() {
       expect(await outbox.getPendingCount(), 0);
     });
 
+    test('retryAllFailed resets failed messages and retries', () async {
+      outbox = MessageOutbox(
+        messageApi: mockMessageApi,
+        idbFactory: idbFactorySembastMemory,
+        isOnline: () => true,
+      );
+      await outbox.initialize();
+
+      // Enqueue a message
+      await outbox.enqueue(
+        sessionKey: 'session-1',
+        receiverId: 'user-2',
+        content: 'Test message',
+        clientMessageId: 'client-1',
+      );
+
+      // Mock API to always fail
+      mockMessageApi.sendPrivateMessageException = Exception('Network error');
+
+      // Retry until failed (max retries is 5)
+      for (int i = 0; i < 6; i++) {
+        outbox.onNetworkAvailable();
+        await Future.delayed(Duration(milliseconds: 500));
+      }
+
+      // Verify message is marked as failed
+      expect(await outbox.getFailedCount(), 1);
+      expect(await outbox.getPendingCount(), 0);
+
+      // Now mock successful API response
+      final serverMessage = Message(
+        id: 'server-1',
+        senderId: 'user-1',
+        isGroupChat: false,
+        messageType: 'text',
+        content: 'Test message',
+        sendTime: DateTime.now().toIso8601String(),
+        status: 'SENT',
+        clientMessageId: 'client-1',
+      );
+      mockMessageApi.sendPrivateMessageResponse = Future.value(serverMessage);
+      mockMessageApi.sendPrivateMessageException = null;
+
+      // Call retryAllFailed
+      await outbox.retryAllFailed();
+
+      // Verify message was sent and removed from outbox
+      expect(await outbox.getPendingCount(), 0);
+      expect(await outbox.getFailedCount(), 0);
+    });
+
     test('network restoration triggers retry of pending messages', () async {
       // Start offline with mutable network state
       bool isOnline = false;
