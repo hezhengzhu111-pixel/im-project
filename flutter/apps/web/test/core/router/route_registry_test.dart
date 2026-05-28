@@ -90,4 +90,35 @@ void main() {
       expect(routeMetaMap.length, routeRegistry.length);
     });
   });
+
+  group('resolveRouteMeta', () {
+    test('returns exact match for /login', () {
+      final meta = resolveRouteMeta('/login');
+      expect(meta, isNotNull);
+      expect(meta!.title, 'seoLoginTitle');
+    });
+
+    test('resolves /chat/abc123 to /chat meta (deep link)', () {
+      final meta = resolveRouteMeta('/chat/abc123');
+      expect(meta, isNotNull);
+      expect(meta!.title, 'seoChatTitle');
+    });
+
+    test('resolves /contacts/add to exact match', () {
+      final meta = resolveRouteMeta('/contacts/add');
+      expect(meta, isNotNull);
+      expect(meta!.title, 'seoAddFriendTitle');
+    });
+
+    test('returns null for unknown path (404)', () {
+      final meta = resolveRouteMeta('/unknown-page');
+      expect(meta, isNull);
+    });
+
+    test('/login has hideForAuth via routeMetaMap', () {
+      final meta = routeMetaMap['/login']!;
+      expect(meta.requiresAuth, isFalse);
+      expect(meta.hideForAuth, isTrue);
+    });
+  });
 }
