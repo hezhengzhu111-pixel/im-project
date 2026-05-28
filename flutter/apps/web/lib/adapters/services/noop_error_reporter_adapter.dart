@@ -4,7 +4,7 @@ import 'package:im_core/core.dart';
 /// Replace with real SDK (e.g., Sentry) when ready.
 class NoopErrorReporterAdapter implements ErrorReporterPort {
   @override
-  void reportError(Object error, StackTrace? stackTrace, {Map<String, dynamic>? extra}) {}
+  void reportError(SanitizedError error) {}
 
   @override
   void reportMessage(String message, {String? level}) {}

@@ -37,9 +37,11 @@ class AppLogger {
     final typeName = error.runtimeType.toString();
     debugPrint('[im:error] $message (type: $typeName)');
     _errorReporter?.reportError(
-      error,
-      null,
-      extra: {'error_type': typeName},
+      SanitizedError(
+        errorType: typeName,
+        category: 'unknown_error',
+        safeMessage: '$message (type: $typeName)',
+      ),
     );
   }
 }
