@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-class DeferredRoutePage<T> extends StatefulWidget {
+class DeferredRoutePage extends StatefulWidget {
   final Future<void> Function() loadLibrary;
-  final T Function() builder;
+  final Widget Function() builder;
   final Widget Function()? loadingBuilder;
   final Widget Function(Object error, VoidCallback retry)? errorBuilder;
 
@@ -15,12 +15,11 @@ class DeferredRoutePage<T> extends StatefulWidget {
   });
 
   @override
-  State<DeferredRoutePage<T>> createState() => _DeferredRoutePageState<T>();
+  State<DeferredRoutePage> createState() => _DeferredRoutePageState();
 }
 
-class _DeferredRoutePageState<T> extends State<DeferredRoutePage<T>> {
+class _DeferredRoutePageState extends State<DeferredRoutePage> {
   late Future<void> _future;
-  Object? _error;
 
   @override
   void initState() {
@@ -29,38 +28,17 @@ class _DeferredRoutePageState<T> extends State<DeferredRoutePage<T>> {
   }
 
   Future<void> _loadLibrary() async {
-    try {
-      await widget.loadLibrary();
-      if (mounted) {
-        setState(() {
-          _error = null;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e;
-        });
-      }
-    }
+    await widget.loadLibrary();
   }
 
   void _retry() {
     setState(() {
-      _error = null;
       _future = _loadLibrary();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_error != null) {
-      if (widget.errorBuilder != null) {
-        return widget.errorBuilder!(_error!, _retry);
-      }
-      return _defaultErrorWidget(_error!, _retry);
-    }
-
     return FutureBuilder<void>(
       future: _future,
       builder: (context, snapshot) {
@@ -71,7 +49,7 @@ class _DeferredRoutePageState<T> extends State<DeferredRoutePage<T>> {
             }
             return _defaultErrorWidget(snapshot.error!, _retry);
           }
-          return widget.builder() as Widget;
+          return widget.builder();
         }
 
         if (widget.loadingBuilder != null) {
