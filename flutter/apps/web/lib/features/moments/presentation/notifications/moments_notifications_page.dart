@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import 'package:im_web/core/utils/time_formatter.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import '../../../../core/di/providers.dart';
 
 class MomentsNotificationsPage extends ConsumerStatefulWidget {
@@ -23,10 +25,11 @@ class _MomentsNotificationsPageState extends ConsumerState<MomentsNotificationsP
   Widget build(BuildContext context) {
     final state = ref.watch(notificationsProvider);
     final theme = Theme.of(context);
+    final loc = AppLocalizations.of(context)!;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('通知'),
+        title: Text(loc.momentsNotifications),
         centerTitle: true,
         actions: [
           if (state.unreadCount > 0)
@@ -34,7 +37,7 @@ class _MomentsNotificationsPageState extends ConsumerState<MomentsNotificationsP
               onPressed: () {
                 ref.read(notificationsProvider.notifier).markAllRead();
               },
-              child: const Text('全部已读'),
+              child: Text(loc.momentsMarkAllRead),
             ),
         ],
       ),
@@ -48,7 +51,7 @@ class _MomentsNotificationsPageState extends ConsumerState<MomentsNotificationsP
                       Icon(Icons.notifications_none, size: 64, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
                       const SizedBox(height: 16),
                       Text(
-                        '暂无通知',
+                        loc.momentsNoNotifications,
                         style: TextStyle(fontSize: 16, color: theme.colorScheme.onSurfaceVariant),
                       ),
                     ],
@@ -102,7 +105,7 @@ class _MomentsNotificationsPageState extends ConsumerState<MomentsNotificationsP
         ],
       ),
       title: Text(
-        _buildNotificationText(notification),
+        _buildNotificationText(context, notification),
         style: TextStyle(
           fontSize: 14,
           fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal,
@@ -115,32 +118,22 @@ class _MomentsNotificationsPageState extends ConsumerState<MomentsNotificationsP
     );
   }
 
-  String _buildNotificationText(MomentNotification notification) {
-    final userName = notification.userNickname ?? notification.userName ?? '用户';
+  String _buildNotificationText(BuildContext context, MomentNotification notification) {
+    final loc = AppLocalizations.of(context)!;
+    final userName = notification.userNickname ?? notification.userName ?? loc.momentsUserFallback;
     switch (notification.type) {
       case 'like':
-        return '$userName 赞了你的动态';
+        return loc.momentsNotificationLiked(userName);
       case 'comment':
-        return '$userName 评论了你的动态';
+        return loc.momentsNotificationCommented(userName);
       case 'reply':
-        return '$userName 回复了你的评论';
+        return loc.momentsNotificationReplied(userName);
       default:
-        return '$userName 与你互动';
+        return loc.momentsNotificationInteracted(userName);
     }
   }
 
   String _formatTime(String time) {
-    try {
-      final dt = DateTime.parse(time);
-      final now = DateTime.now();
-      final diff = now.difference(dt);
-      if (diff.inMinutes < 1) return '刚刚';
-      if (diff.inHours < 1) return '${diff.inMinutes}分钟前';
-      if (diff.inDays < 1) return '${diff.inHours}小时前';
-      if (diff.inDays < 30) return '${diff.inDays}天前';
-      return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return time;
-    }
+    return formatRelativeTime(context, time);
   }
 }
