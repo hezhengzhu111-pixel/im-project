@@ -108,9 +108,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
 
     ref.listen<AuthState>(authStateProvider, (prev, next) {
       if (next.error != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(next.error!)),
-        );
+        _formController.setFormError(next.error);
       }
     });
 
