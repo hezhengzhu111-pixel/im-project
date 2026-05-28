@@ -328,5 +328,10 @@
   "seoProfileTitle": "Profile - IM",
   "seoProfileDescription": "Edit your profile",
   "seoAiSettingsTitle": "AI Settings - IM",
-  "seoAiSettingsDescription": "Configure AI assistant"
+  "seoAiSettingsDescription": "Configure AI assistant",
+  "authInvalidCredentials": "Invalid username or password.",
+  "authNetworkError": "Network error. Please check your connection.",
+  "authServerError": "Server error. Please try again later.",
+  "authTooManyRequests": "Too many attempts. Please try again later.",
+  "authUnknownError": "An unexpected error occurred. Please try again."
 }

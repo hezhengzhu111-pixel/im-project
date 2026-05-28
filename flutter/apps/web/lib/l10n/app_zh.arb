@@ -328,5 +328,10 @@
   "seoProfileTitle": "个人资料 - IM",
   "seoProfileDescription": "编辑您的个人资料",
   "seoAiSettingsTitle": "AI 设置 - IM",
-  "seoAiSettingsDescription": "配置 AI 助手"
+  "seoAiSettingsDescription": "配置 AI 助手",
+  "authInvalidCredentials": "用户名或密码错误。",
+  "authNetworkError": "网络错误，请检查网络连接。",
+  "authServerError": "服务器错误，请稍后重试。",
+  "authTooManyRequests": "尝试次数过多，请稍后重试。",
+  "authUnknownError": "发生未知错误，请重试。"
 }

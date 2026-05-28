@@ -1,13 +1,17 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../../../core/logging/app_logger.dart';
+import '../domain/auth_error_code.dart';
 
 class AuthState {
+  static const _sentinel = Object();
+
   const AuthState({
     this.user,
     this.isAuthenticated = false,
     this.isLoading = false,
     this.error,
+    this.errorCode,
     this.rememberMe = false,
     this.authReady = false,
     this.permissions = const [],
@@ -17,24 +21,27 @@ class AuthState {
   final bool isAuthenticated;
   final bool isLoading;
   final String? error;
+  final AuthErrorCode? errorCode;
   final bool rememberMe;
   final bool authReady;
   final List<String> permissions;
 
   AuthState copyWith({
-    User? user,
+    Object? user = _sentinel,
     bool? isAuthenticated,
     bool? isLoading,
-    String? error,
+    Object? error = _sentinel,
+    Object? errorCode = _sentinel,
     bool? rememberMe,
     bool? authReady,
     List<String>? permissions,
   }) {
     return AuthState(
-      user: user ?? this.user,
+      user: identical(user, _sentinel) ? this.user : user as User?,
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
       isLoading: isLoading ?? this.isLoading,
-      error: error,
+      error: identical(error, _sentinel) ? this.error : error as String?,
+      errorCode: identical(errorCode, _sentinel) ? this.errorCode : errorCode as AuthErrorCode?,
       rememberMe: rememberMe ?? this.rememberMe,
       authReady: authReady ?? this.authReady,
       permissions: permissions ?? this.permissions,
@@ -67,7 +74,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _connectWs();
     } catch (e) {
       _analytics.trackEvent('login_failed', {'error_type': 'auth'});
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString(),
+        errorCode: _mapExceptionToErrorCode(e),
+      );
     }
   }
 
@@ -86,7 +97,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _analytics.trackEvent('register_success');
     } catch (e) {
       _analytics.trackEvent('register_failed', {'error_type': 'auth'});
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString(),
+        errorCode: _mapExceptionToErrorCode(e),
+      );
     }
   }
 
@@ -141,6 +156,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   bool hasAnyPermission(List<String> permissions) {
     return permissions.any(state.permissions.contains);
+  }
+
+  AuthErrorCode _mapExceptionToErrorCode(Object e) {
+    final msg = e.toString().toLowerCase();
+    if (msg.contains('401') || msg.contains('403') || msg.contains('unauthorized')) {
+      return AuthErrorCode.invalidCredentials;
+    }
+    if (msg.contains('429') || msg.contains('too many')) {
+      return AuthErrorCode.tooManyRequests;
+    }
+    if (msg.contains('500') || msg.contains('502') || msg.contains('503') || msg.contains('server')) {
+      return AuthErrorCode.serverError;
+    }
+    if (msg.contains('network') || msg.contains('connection') || msg.contains('socket')) {
+      return AuthErrorCode.networkError;
+    }
+    return AuthErrorCode.unknown;
   }
 
   Future<void> _connectWs() async {
