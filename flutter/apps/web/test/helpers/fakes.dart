@@ -317,11 +317,23 @@ class FakeAuthRepository implements AuthRepository {
   /// If set, [login] will throw this instead of returning [loginResponse].
   Exception? loginError;
 
+  /// Pre-configured response for [register].
+  UserAuthResponse? registerResponse;
+
+  /// If set, [register] will throw this instead of returning [registerResponse].
+  Exception? registerError;
+
   /// Pre-configured response for [getProfile].
   User? profileResponse;
 
+  /// If set, [getProfile] will throw this.
+  Exception? getProfileError;
+
   /// Value returned by [isAuthenticated].
   bool isAuthenticatedValue = false;
+
+  /// If set, [isAuthenticated] will throw this.
+  Exception? isAuthenticatedError;
 
   /// Value returned by [getToken].
   String? tokenValue;
@@ -329,25 +341,48 @@ class FakeAuthRepository implements AuthRepository {
   /// Number of times [login] was called.
   int loginCallCount = 0;
 
+  /// Number of times [register] was called.
+  int registerCallCount = 0;
+
   /// Number of times [logout] was called.
   int logoutCallCount = 0;
+
+  /// Number of times [isAuthenticated] was called.
+  int isAuthenticatedCallCount = 0;
+
+  /// Number of times [getProfile] was called.
+  int getProfileCallCount = 0;
+
+  /// Last [LoginRequest] passed to [login].
+  LoginRequest? lastLoginRequest;
+
+  /// Last [RegisterRequest] passed to [register].
+  RegisterRequest? lastRegisterRequest;
+
+  /// If set, [refreshToken] will throw this.
+  Exception? refreshTokenError;
 
   @override
   Future<UserAuthResponse> login(LoginRequest request) async {
     loginCallCount++;
+    lastLoginRequest = request;
     if (loginError != null) throw loginError!;
     return loginResponse ?? const UserAuthResponse(success: true);
   }
 
   @override
-  Future<UserAuthResponse> register(RegisterRequest request) async =>
-      const UserAuthResponse(success: true);
+  Future<UserAuthResponse> register(RegisterRequest request) async {
+    registerCallCount++;
+    lastRegisterRequest = request;
+    if (registerError != null) throw registerError!;
+    return registerResponse ?? const UserAuthResponse(success: true);
+  }
 
   @override
   Future<User> getProfile() async {
-    if (profileResponse == null) {
-      throw Exception('No profile configured');
-    }
+    getProfileCallCount++;
+    if (getProfileError != null) throw getProfileError!;
+    if (profileResponse == null) throw Exception('No profile configured');
     return profileResponse!;
   }
 
@@ -357,11 +392,17 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<bool> isAuthenticated() async => isAuthenticatedValue;
+  Future<bool> isAuthenticated() async {
+    isAuthenticatedCallCount++;
+    if (isAuthenticatedError != null) throw isAuthenticatedError!;
+    return isAuthenticatedValue;
+  }
 
   @override
   Future<String?> getToken() async => tokenValue;
 
   @override
-  Future<void> refreshToken() async {}
+  Future<void> refreshToken() async {
+    if (refreshTokenError != null) throw refreshTokenError!;
+  }
 }
