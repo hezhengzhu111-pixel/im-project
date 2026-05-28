@@ -12,3 +12,4 @@ export 'src/utils/utils.dart';
 export 'src/crypto/crypto.dart';
 export 'src/services/analytics_port.dart';
 export 'src/services/error_reporter_port.dart';
+export 'src/services/push_port.dart';

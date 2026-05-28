@@ -1012,6 +1012,216 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Nickname must be no more than {max} characters'**
   String validationNicknameMaxLength(Object max);
+
+  /// No description provided for @loginSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Please log in to your encrypted communication account'**
+  String get loginSubtitle;
+
+  /// No description provided for @loginRememberMe.
+  ///
+  /// In en, this message translates to:
+  /// **'Remember me'**
+  String get loginRememberMe;
+
+  /// No description provided for @loginNoAccountRegister.
+  ///
+  /// In en, this message translates to:
+  /// **'No account? Register'**
+  String get loginNoAccountRegister;
+
+  /// No description provided for @registerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Register'**
+  String get registerTitle;
+
+  /// No description provided for @registerSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Create your account and start chatting'**
+  String get registerSubtitle;
+
+  /// No description provided for @registerEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get registerEmail;
+
+  /// No description provided for @registerConfirmPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm password'**
+  String get registerConfirmPassword;
+
+  /// No description provided for @registerAgreementPrefix.
+  ///
+  /// In en, this message translates to:
+  /// **'I have read and agree to the '**
+  String get registerAgreementPrefix;
+
+  /// No description provided for @registerAgreementSuffix.
+  ///
+  /// In en, this message translates to:
+  /// **' and '**
+  String get registerAgreementSuffix;
+
+  /// No description provided for @registerUserAgreement.
+  ///
+  /// In en, this message translates to:
+  /// **'User Agreement'**
+  String get registerUserAgreement;
+
+  /// No description provided for @registerPrivacyPolicy.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy Policy'**
+  String get registerPrivacyPolicy;
+
+  /// No description provided for @registerButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Register'**
+  String get registerButton;
+
+  /// No description provided for @registerHasAccountLogin.
+  ///
+  /// In en, this message translates to:
+  /// **'Already have an account? Login'**
+  String get registerHasAccountLogin;
+
+  /// No description provided for @registerAgreementRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Please read and agree to the User Agreement and Privacy Policy'**
+  String get registerAgreementRequired;
+
+  /// No description provided for @chatSelectSession.
+  ///
+  /// In en, this message translates to:
+  /// **'Select a conversation to start chatting'**
+  String get chatSelectSession;
+
+  /// No description provided for @chatSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search conversations...'**
+  String get chatSearchHint;
+
+  /// No description provided for @chatMessageCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} messages'**
+  String chatMessageCount(Object count);
+
+  /// No description provided for @chatMemberCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} members'**
+  String chatMemberCount(Object count);
+
+  /// No description provided for @chatImageSending.
+  ///
+  /// In en, this message translates to:
+  /// **'Image sending feature under development...'**
+  String get chatImageSending;
+
+  /// No description provided for @chatFileSending.
+  ///
+  /// In en, this message translates to:
+  /// **'File sending feature under development...'**
+  String get chatFileSending;
+
+  /// No description provided for @chatInputHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Type a message...'**
+  String get chatInputHint;
+
+  /// No description provided for @chatAttach.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach'**
+  String get chatAttach;
+
+  /// No description provided for @chatImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Image'**
+  String get chatImage;
+
+  /// No description provided for @chatFile.
+  ///
+  /// In en, this message translates to:
+  /// **'File'**
+  String get chatFile;
+
+  /// No description provided for @chatVoice.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice'**
+  String get chatVoice;
+
+  /// No description provided for @validatorUsernameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a username'**
+  String get validatorUsernameRequired;
+
+  /// No description provided for @validatorUsernameLength.
+  ///
+  /// In en, this message translates to:
+  /// **'Username must be 3-20 characters'**
+  String get validatorUsernameLength;
+
+  /// No description provided for @validatorUsernameFormat.
+  ///
+  /// In en, this message translates to:
+  /// **'Username can only contain letters, numbers, and underscores'**
+  String get validatorUsernameFormat;
+
+  /// No description provided for @validatorEmailRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter an email'**
+  String get validatorEmailRequired;
+
+  /// No description provided for @validatorEmailFormat.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a valid email format'**
+  String get validatorEmailFormat;
+
+  /// No description provided for @validatorPasswordRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a password'**
+  String get validatorPasswordRequired;
+
+  /// No description provided for @validatorPasswordLength.
+  ///
+  /// In en, this message translates to:
+  /// **'Password must be 8-64 characters'**
+  String get validatorPasswordLength;
+
+  /// No description provided for @validatorPasswordFormat.
+  ///
+  /// In en, this message translates to:
+  /// **'Password must contain letters and numbers'**
+  String get validatorPasswordFormat;
+
+  /// No description provided for @validatorConfirmPasswordRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Please confirm your password'**
+  String get validatorConfirmPasswordRequired;
+
+  /// No description provided for @validatorPasswordMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Passwords do not match'**
+  String get validatorPasswordMismatch;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

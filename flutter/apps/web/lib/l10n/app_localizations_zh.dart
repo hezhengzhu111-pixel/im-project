@@ -474,4 +474,113 @@ class AppLocalizationsZh extends AppLocalizations {
   String validationNicknameMaxLength(Object max) {
     return '昵称长度不能超过 $max 个字符';
   }
+
+  @override
+  String get loginSubtitle => '请登录您的加密通信账户';
+
+  @override
+  String get loginRememberMe => '记住我';
+
+  @override
+  String get loginNoAccountRegister => '没有账号？注册';
+
+  @override
+  String get registerTitle => '注册';
+
+  @override
+  String get registerSubtitle => '创建您的账户，开始聊天之旅';
+
+  @override
+  String get registerEmail => '邮箱';
+
+  @override
+  String get registerConfirmPassword => '确认密码';
+
+  @override
+  String get registerAgreementPrefix => '我已阅读并同意 ';
+
+  @override
+  String get registerAgreementSuffix => ' 和 ';
+
+  @override
+  String get registerUserAgreement => '用户协议';
+
+  @override
+  String get registerPrivacyPolicy => '隐私政策';
+
+  @override
+  String get registerButton => '注册';
+
+  @override
+  String get registerHasAccountLogin => '已有账号？登录';
+
+  @override
+  String get registerAgreementRequired => '请阅读并同意用户协议和隐私政策';
+
+  @override
+  String get chatSelectSession => '选择一个会话开始聊天';
+
+  @override
+  String get chatSearchHint => '搜索会话...';
+
+  @override
+  String chatMessageCount(Object count) {
+    return '$count 条消息';
+  }
+
+  @override
+  String chatMemberCount(Object count) {
+    return '$count 人';
+  }
+
+  @override
+  String get chatImageSending => '图片发送功能开发中...';
+
+  @override
+  String get chatFileSending => '文件发送功能开发中...';
+
+  @override
+  String get chatInputHint => '输入消息...';
+
+  @override
+  String get chatAttach => '附件';
+
+  @override
+  String get chatImage => '图片';
+
+  @override
+  String get chatFile => '文件';
+
+  @override
+  String get chatVoice => '语音';
+
+  @override
+  String get validatorUsernameRequired => '请输入用户名';
+
+  @override
+  String get validatorUsernameLength => '用户名长度在 3 到 20 个字符';
+
+  @override
+  String get validatorUsernameFormat => '用户名只能包含字母、数字和下划线';
+
+  @override
+  String get validatorEmailRequired => '请输入邮箱';
+
+  @override
+  String get validatorEmailFormat => '请输入正确的邮箱格式';
+
+  @override
+  String get validatorPasswordRequired => '请输入密码';
+
+  @override
+  String get validatorPasswordLength => '密码长度在 8 到 64 个字符';
+
+  @override
+  String get validatorPasswordFormat => '密码必须包含字母和数字';
+
+  @override
+  String get validatorConfirmPasswordRequired => '请确认密码';
+
+  @override
+  String get validatorPasswordMismatch => '两次输入密码不一致';
 }
