@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:im_ui/im_ui.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'core/di/providers.dart';
 import 'core/router/app_router.dart';
@@ -51,10 +52,12 @@ class _AppState extends ConsumerState<App> {
       routerConfig: router,
       builder: (context, child) {
         if (child == null) return const SizedBox.shrink();
-        return Navigator(
-          observers: [routeObserver],
-          onGenerateRoute: (_) => null,
-          pages: [MaterialPage(child: child)],
+        return BreakpointScope(
+          child: Navigator(
+            observers: [routeObserver],
+            onGenerateRoute: (_) => null,
+            pages: [MaterialPage(child: child)],
+          ),
         );
       },
       localizationsDelegates: AppLocalizations.localizationsDelegates,

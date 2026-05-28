@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:im_core/core.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 
 class SessionTile extends StatelessWidget {
   const SessionTile({
@@ -19,7 +20,7 @@ class SessionTile extends StatelessWidget {
     final lastMsg = session.lastMessage;
 
     return Semantics(
-      label: session.targetName.isNotEmpty ? session.targetName : '会话',
+      label: session.targetName.isNotEmpty ? session.targetName : (AppLocalizations.of(context)?.chatSelectSession ?? '会话'),
       button: true,
       child: ListTile(
       selected: isSelected,
