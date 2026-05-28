@@ -37,6 +37,12 @@ void main() {
   });
 
   group('routeRegistry', () {
+    test('/chat has canonicalOverride', () {
+      final entry = routeRegistry['/chat'];
+      expect(entry, isNotNull);
+      expect(entry!.canonicalOverride, '/chat');
+    });
+
     test('contains all 12 routes', () {
       expect(routeRegistry.length, 12);
     });

@@ -10,6 +10,7 @@ class RouteEntry {
   final String descriptionKey;
   final String? ogImage;
   final String? ogType;
+  final String? canonicalOverride;
 
   const RouteEntry({
     required this.titleKey,
@@ -19,6 +20,7 @@ class RouteEntry {
     required this.descriptionKey,
     this.ogImage,
     this.ogType,
+    this.canonicalOverride,
   });
 }
 
@@ -38,6 +40,7 @@ const routeRegistry = <String, RouteEntry>{
   '/chat': RouteEntry(
     titleKey: 'seoChatTitle',
     descriptionKey: 'seoChatDescription',
+    canonicalOverride: '/chat',
   ),
   '/contacts': RouteEntry(
     titleKey: 'seoContactsTitle',
