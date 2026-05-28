@@ -8,6 +8,8 @@ class AuthState {
     this.isLoading = false,
     this.error,
     this.rememberMe = false,
+    this.authReady = false,
+    this.permissions = const [],
   });
 
   final User? user;
@@ -15,6 +17,8 @@ class AuthState {
   final bool isLoading;
   final String? error;
   final bool rememberMe;
+  final bool authReady;
+  final List<String> permissions;
 
   AuthState copyWith({
     User? user,
@@ -22,6 +26,8 @@ class AuthState {
     bool? isLoading,
     String? error,
     bool? rememberMe,
+    bool? authReady,
+    List<String>? permissions,
   }) {
     return AuthState(
       user: user ?? this.user,
@@ -29,6 +35,8 @@ class AuthState {
       isLoading: isLoading ?? this.isLoading,
       error: error,
       rememberMe: rememberMe ?? this.rememberMe,
+      authReady: authReady ?? this.authReady,
+      permissions: permissions ?? this.permissions,
     );
   }
 }
@@ -82,18 +90,49 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = const AuthState();
   }
 
-  Future<void> checkAuth() async {
-    final isAuth = await _repository.isAuthenticated();
-    if (isAuth) {
-      try {
+  Future<void> restoreSession() async {
+    state = state.copyWith(authReady: false);
+    try {
+      final isAuth = await _repository.isAuthenticated();
+      if (isAuth) {
         final user = await _repository.getProfile();
-        state = AuthState(user: user, isAuthenticated: true);
-        // Reconnect WebSocket on session restore
+        state = AuthState(
+          user: user,
+          isAuthenticated: true,
+          authReady: true,
+          permissions: user.permissions ?? [],
+        );
         _connectWs();
+      } else {
+        state = const AuthState(authReady: true);
+      }
+    } catch (e) {
+      state = const AuthState(authReady: true);
+    }
+  }
+
+  Future<void> checkAuth() => restoreSession();
+
+  Future<bool> ensureFreshSession() async {
+    final isAuth = await _repository.isAuthenticated();
+    if (!isAuth) {
+      try {
+        await _repository.refreshToken();
+        return true;
       } catch (e) {
         state = const AuthState();
+        return false;
       }
     }
+    return true;
+  }
+
+  bool hasPermission(String permission) {
+    return state.permissions.contains(permission);
+  }
+
+  bool hasAnyPermission(List<String> permissions) {
+    return permissions.any(state.permissions.contains);
   }
 
   Future<void> _connectWs() async {

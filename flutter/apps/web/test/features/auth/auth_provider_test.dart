@@ -73,6 +73,7 @@ class MockAuthRepository implements AuthRepository {
   bool? isAuthResponse;
   String? tokenResponse;
   Exception? errorToThrow;
+  Exception? refreshTokenErrorToThrow;
 
   int loginCallCount = 0;
   int registerCallCount = 0;
@@ -123,6 +124,11 @@ class MockAuthRepository implements AuthRepository {
   @override
   Future<String?> getToken() async {
     return tokenResponse;
+  }
+
+  @override
+  Future<void> refreshToken() async {
+    if (refreshTokenErrorToThrow != null) throw refreshTokenErrorToThrow!;
   }
 }
 
@@ -375,14 +381,15 @@ void main() {
     });
 
     group('checkAuth - additional edge cases', () {
-      test('checkAuth when isAuthenticated throws propagates error', () async {
+      test('checkAuth when isAuthenticated throws resets to authReady', () async {
         mockRepo.errorToThrow = Exception('Token check failed');
 
-        // checkAuth does not catch errors from isAuthenticated itself
-        expect(
-          () => notifier.checkAuth(),
-          throwsA(isA<Exception>()),
-        );
+        // restoreSession catches errors from isAuthenticated
+        await notifier.checkAuth();
+
+        expect(notifier.state.isAuthenticated, isFalse);
+        expect(notifier.state.authReady, isTrue);
+        expect(notifier.state.user, isNull);
       });
 
       test('checkAuth after logout preserves logout state', () async {
@@ -391,6 +398,66 @@ void main() {
 
         expect(notifier.state.isAuthenticated, isFalse);
         expect(notifier.state.user, isNull);
+      });
+    });
+
+    group('AuthNotifier - restoreSession', () {
+      test('restoreSession sets authReady true when not authenticated', () async {
+        mockRepo.isAuthResponse = false;
+        await notifier.restoreSession();
+        expect(notifier.state.authReady, isTrue);
+        expect(notifier.state.isAuthenticated, isFalse);
+      });
+
+      test('restoreSession sets authReady true when authenticated', () async {
+        mockRepo.isAuthResponse = true;
+        const user = User(id: '1', username: 'test', permissions: ['chat:read']);
+        mockRepo.profileResponse = user;
+        await notifier.restoreSession();
+        expect(notifier.state.authReady, isTrue);
+        expect(notifier.state.isAuthenticated, isTrue);
+        expect(notifier.state.permissions, ['chat:read']);
+      });
+
+      test('checkAuth delegates to restoreSession', () async {
+        mockRepo.isAuthResponse = false;
+        await notifier.checkAuth();
+        expect(notifier.state.authReady, isTrue);
+      });
+    });
+
+    group('AuthNotifier - permissions', () {
+      test('hasPermission returns true for granted permission', () async {
+        mockRepo.isAuthResponse = true;
+        const user = User(id: '1', username: 'test', permissions: ['chat:read', 'chat:write']);
+        mockRepo.profileResponse = user;
+        await notifier.restoreSession();
+        expect(notifier.hasPermission('chat:read'), isTrue);
+        expect(notifier.hasPermission('admin'), isFalse);
+      });
+
+      test('hasAnyPermission returns true if any match', () async {
+        mockRepo.isAuthResponse = true;
+        const user = User(id: '1', username: 'test', permissions: ['chat:read']);
+        mockRepo.profileResponse = user;
+        await notifier.restoreSession();
+        expect(notifier.hasAnyPermission(['admin', 'chat:read']), isTrue);
+        expect(notifier.hasAnyPermission(['admin', 'superadmin']), isFalse);
+      });
+    });
+
+    group('AuthNotifier - ensureFreshSession', () {
+      test('returns true when already authenticated', () async {
+        mockRepo.isAuthResponse = true;
+        final result = await notifier.ensureFreshSession();
+        expect(result, isTrue);
+      });
+
+      test('returns false when refresh fails', () async {
+        mockRepo.isAuthResponse = false;
+        mockRepo.refreshTokenErrorToThrow = Exception('refresh failed');
+        final result = await notifier.ensureFreshSession();
+        expect(result, isFalse);
       });
     });
   });
