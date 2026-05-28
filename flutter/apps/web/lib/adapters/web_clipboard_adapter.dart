@@ -1,23 +1,24 @@
+import 'package:web/web.dart' as web;
 import 'package:im_core/core.dart';
 
 class WebClipboardAdapter implements ClipboardPort {
   @override
   Future<Result<void>> copy(String text) async {
     try {
-      // 实际实现需要通过 dart:js_interop 使用 Clipboard API
+      await web.window.navigator.clipboard.writeText(text).toDart;
       return const Success(null);
     } catch (e) {
-      return Failure(UnknownError(e.toString()));
+      return const Failure(UnknownError('clipboard_copy_failed'));
     }
   }
 
   @override
   Future<Result<String?>> paste() async {
     try {
-      // 实际实现需要通过 dart:js_interop 使用 Clipboard API
-      return const Success(null);
+      final text = await web.window.navigator.clipboard.readText().toDart;
+      return Success(text.isNotEmpty ? text : null);
     } catch (e) {
-      return Failure(UnknownError(e.toString()));
+      return const Failure(UnknownError('clipboard_paste_failed'));
     }
   }
 }
