@@ -1,32 +1,33 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
-import '../../adapters/adapters.dart';
 import '../config/app_config_provider.dart';
 
+// ---------------------------------------------------------------------------
+// Network & Storage Providers
+//
+// Web-specific adapter imports have been removed from this file to keep it
+// safe for VM tests.  The real web adapters are provided via ProviderScope
+// overrides in main.dart.
+// ---------------------------------------------------------------------------
+
 final secureStorageProvider = Provider<SecureStoragePort>((ref) {
-  return WebSecureStorageAdapter();
+  throw UnimplementedError(
+      'secureStorageProvider must be overridden at app startup');
 });
 
 final storageProvider = Provider<StoragePort>((ref) {
-  return WebStorageAdapter();
+  throw UnimplementedError(
+      'storageProvider must be overridden at app startup');
 });
 
 final httpClientProvider = Provider<HttpClientPort>((ref) {
-  final config = ref.watch(appConfigProvider);
-  return WebHttpClient(
-    baseUrl: config.apiBaseUrl,
-    secureStorage: ref.watch(secureStorageProvider),
-  );
+  throw UnimplementedError(
+      'httpClientProvider must be overridden at app startup');
 });
 
 final wsClientProvider = Provider<WsClientPort>((ref) {
-  final config = ref.watch(appConfigProvider);
-  final client = WebWsClient(
-    ticketUrl: AuthEndpoints.wsTicket,
-    wsBaseUrl: '${config.wsBaseUrl}${WsEndpoints.path}',
-  );
-  ref.onDispose(() => client.dispose());
-  return client;
+  throw UnimplementedError(
+      'wsClientProvider must be overridden at app startup');
 });
 
 final wsStateProvider = StreamProvider<WsConnectionState>((ref) {
