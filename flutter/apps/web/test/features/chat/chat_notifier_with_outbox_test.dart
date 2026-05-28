@@ -1,0 +1,732 @@
+import 'dart:async';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:idb_shim/idb_client_memory.dart';
+import 'package:im_core/core.dart';
+import 'package:im_web/features/chat/data/message_api.dart';
+import 'package:im_web/features/chat/data/message_outbox.dart';
+import 'package:im_web/features/chat/data/message_pipeline.dart';
+import 'package:im_web/features/chat/presentation/chat_provider_with_outbox.dart';
+import 'package:im_web/features/chat/presentation/chat_state.dart';
+import 'package:im_web/features/e2ee/data/e2ee_manager.dart';
+import 'package:im_web/features/e2ee/data/e2ee_meta_store.dart';
+import 'package:im_web/features/e2ee/data/e2ee_api.dart';
+import 'package:im_web/features/e2ee/data/e2ee_key_store.dart';
+import 'package:im_web/features/e2ee/data/e2ee_session_store.dart';
+import 'package:im_web/adapters/web_e2ee_adapter.dart';
+import 'package:im_web/adapters/services/noop_analytics_adapter.dart';
+import 'package:im_web/core/network/network_status_provider.dart';
+
+import '../../helpers/fakes.dart';
+
+// ---------------------------------------------------------------------------
+// Test doubles
+// ---------------------------------------------------------------------------
+
+/// Testable MessageApi that tracks calls and can simulate failures.
+class TestMessageApi extends MessageApi {
+  TestMessageApi() : super(FakeHttpClientPort());
+
+  List<ChatSession>? conversationsResponse;
+  List<Message>? privateHistoryResponse;
+  List<Message>? groupHistoryResponse;
+  Message? sendPrivateMessageResponse;
+  Message? sendGroupMessageResponse;
+  Message? sendPrivateEncryptedResponse;
+  Exception? errorToThrow;
+
+  int getConversationsCallCount = 0;
+  int sendPrivateMessageCallCount = 0;
+  int sendGroupMessageCallCount = 0;
+  int sendPrivateEncryptedCallCount = 0;
+
+  SendPrivateMessageRequest? lastSendPrivateRequest;
+  SendGroupMessageRequest? lastSendGroupRequest;
+  Map<String, dynamic>? lastEncryptedArgs;
+
+  @override
+  Future<List<ChatSession>> getConversations() async {
+    getConversationsCallCount++;
+    if (errorToThrow != null) throw errorToThrow!;
+    return conversationsResponse ?? [];
+  }
+
+  @override
+  Future<List<Message>> getPrivateHistory(String friendId,
+      {int? page, int? size}) async {
+    if (errorToThrow != null) throw errorToThrow!;
+    return privateHistoryResponse ?? [];
+  }
+
+  @override
+  Future<List<Message>> getGroupHistory(String groupId,
+      {int? page, int? size}) async {
+    if (errorToThrow != null) throw errorToThrow!;
+    return groupHistoryResponse ?? [];
+  }
+
+  @override
+  Future<Message> sendPrivateMessage(SendPrivateMessageRequest request) async {
+    sendPrivateMessageCallCount++;
+    lastSendPrivateRequest = request;
+    if (errorToThrow != null) throw errorToThrow!;
+    return sendPrivateMessageResponse ?? _dummyMessage();
+  }
+
+  @override
+  Future<Message> sendGroupMessage(SendGroupMessageRequest request) async {
+    sendGroupMessageCallCount++;
+    lastSendGroupRequest = request;
+    if (errorToThrow != null) throw errorToThrow!;
+    return sendGroupMessageResponse ?? _dummyMessage();
+  }
+
+  @override
+  Future<Message> sendPrivateEncrypted({
+    required String receiverId,
+    required String clientMessageId,
+    required String messageType,
+    required Map<String, dynamic> e2eeEnvelope,
+    required String e2eeDeviceId,
+  }) async {
+    sendPrivateEncryptedCallCount++;
+    lastEncryptedArgs = {
+      'receiverId': receiverId,
+      'clientMessageId': clientMessageId,
+      'messageType': messageType,
+      'e2eeEnvelope': e2eeEnvelope,
+      'e2eeDeviceId': e2eeDeviceId,
+    };
+    if (errorToThrow != null) throw errorToThrow!;
+    return sendPrivateEncryptedResponse ?? _dummyMessage();
+  }
+
+  @override
+  Future<void> markRead(String conversationId) async {}
+
+  Message _dummyMessage() {
+    return const Message(
+      id: 'server-msg-1',
+      senderId: 'user-1',
+      isGroupChat: false,
+      messageType: 'text',
+      content: '',
+      sendTime: '2024-01-01T00:00:00Z',
+      status: 'sent',
+    );
+  }
+}
+
+/// Testable E2eeManager that overrides encrypt/decrypt to avoid WASM dependency.
+///
+/// Uses real E2eeManager constructor (with real adapter + empty stores) but
+/// overrides encryptToEnvelope to return a fake envelope without touching crypto.
+class TestableE2eeManager extends E2eeManager {
+  TestableE2eeManager({
+    required E2eeMetaStore metaStore,
+    String currentUserId = 'user-1',
+  }) : super(
+          adapter: WebE2eeAdapter(),
+          api: E2eeApi(FakeHttpClientPort()),
+          keyStore: E2eeKeyStore(),
+          sessionStore: E2eeSessionStore(),
+          metaStore: metaStore,
+          currentUserId: currentUserId,
+        );
+
+  @override
+  Future<Map<String, dynamic>> encryptToEnvelope({
+    required String sessionId,
+    required String senderDeviceId,
+    required String recipientDeviceId,
+    required String plaintext,
+  }) async {
+    // Return a fake envelope containing no trace of the plaintext.
+    return {
+      'ciphertext': 'fake_ciphertext',
+      'sessionId': sessionId,
+      'senderDeviceId': senderDeviceId,
+      'recipientDeviceId': recipientDeviceId,
+    };
+  }
+
+  @override
+  Future<String> decryptEnvelope({
+    required String sessionId,
+    required Map<String, dynamic> envelope,
+  }) async {
+    return 'fake_plaintext';
+  }
+}
+
+/// Spy MessageOutbox that tracks enqueue and retryAllFailed calls
+/// without requiring IndexedDB.
+class SpyMessageOutbox extends MessageOutbox {
+  SpyMessageOutbox()
+      : super(
+          messageApi: MessageApi(FakeHttpClientPort()),
+          idbFactory: newIdbFactoryMemory(),
+          isOnline: () => true,
+        );
+
+  final _eventsController = StreamController<OutboxEvent>.broadcast();
+
+  /// Recorded enqueue calls (as argument maps).
+  final List<Map<String, dynamic>> enqueueCalls = [];
+
+  /// Number of times retryAllFailed was called.
+  int retryAllFailedCallCount = 0;
+
+  /// Configurable return values for count methods.
+  int pendingCountResult = 0;
+  int failedCountResult = 0;
+
+  @override
+  Stream<OutboxEvent> get events => _eventsController.stream;
+
+  /// Emit an event to listeners (test helper).
+  void emitEvent(OutboxEvent event) => _eventsController.add(event);
+
+  @override
+  Future<int> getPendingCount() async => pendingCountResult;
+
+  @override
+  Future<int> getFailedCount() async => failedCountResult;
+
+  @override
+  Future<void> retryAllFailed() async {
+    retryAllFailedCallCount++;
+  }
+
+  @override
+  Future<OutboxMessage> enqueue({
+    required String sessionKey,
+    required String receiverId,
+    required String content,
+    String messageType = 'text',
+    required String clientMessageId,
+    bool isGroupChat = false,
+    String? groupId,
+    bool isEncrypted = false,
+    Map<String, dynamic>? e2eeEnvelope,
+    String? e2eeDeviceId,
+  }) async {
+    enqueueCalls.add({
+      'sessionKey': sessionKey,
+      'receiverId': receiverId,
+      'content': content,
+      'messageType': messageType,
+      'clientMessageId': clientMessageId,
+      'isGroupChat': isGroupChat,
+      'groupId': groupId,
+      'isEncrypted': isEncrypted,
+      'e2eeDeviceId': e2eeDeviceId,
+    });
+
+    return OutboxMessage(
+      id: 'outbox_spy_$clientMessageId',
+      sessionKey: sessionKey,
+      receiverId: receiverId,
+      content: content,
+      messageType: messageType,
+      clientMessageId: clientMessageId,
+      isGroupChat: isGroupChat,
+      groupId: groupId,
+      status: OutboxMessageStatus.pending,
+      createdAt: DateTime.now(),
+      isEncrypted: isEncrypted,
+      e2eeDeviceId: e2eeDeviceId,
+    );
+  }
+
+  @override
+  void dispose() {
+    _eventsController.close();
+    super.dispose();
+  }
+}
+
+/// Controllable NetworkStatusNotifier that exposes goOnline/goOffline methods.
+class ControllableNetworkStatusNotifier extends NetworkStatusNotifier {
+  ControllableNetworkStatusNotifier._(this._ds) : super(dataSource: _ds);
+
+  final _ControllableNetworkDataSource _ds;
+
+  factory ControllableNetworkStatusNotifier() {
+    final ds = _ControllableNetworkDataSource();
+    return ControllableNetworkStatusNotifier._(ds);
+  }
+
+  /// Simulate the browser going online.
+  void goOnline() => _ds._goOnline();
+
+  /// Simulate the browser going offline.
+  void goOffline() => _ds._goOffline();
+}
+
+class _ControllableNetworkDataSource implements NetworkStatusDataSource {
+  final _onlineController = StreamController<void>.broadcast();
+  final _offlineController = StreamController<void>.broadcast();
+
+  @override
+  bool get isNavigatorOnline => true;
+
+  @override
+  Stream<void> get onOnline => _onlineController.stream;
+
+  @override
+  Stream<void> get onOffline => _offlineController.stream;
+
+  @override
+  Future<bool> checkServerReachable(String url) async => true;
+
+  void _goOnline() => _onlineController.add(null);
+  void _goOffline() => _offlineController.add(null);
+
+  void dispose() {
+    _onlineController.close();
+    _offlineController.close();
+  }
+}
+
+/// Mock E2eeMetaStore backed by FakeSecureStorage.
+///
+/// Accepts an optional pre-seeded [SecureStoragePort] so callers can inject
+/// values (e.g. device ID) before the notifier tries to call getOrCreateDeviceId.
+class MockE2eeMetaStore extends E2eeMetaStore {
+  MockE2eeMetaStore([SecureStoragePort? storage])
+      : super(storage ?? FakeSecureStoragePort());
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+void main() {
+  late ChatNotifierWithOutbox notifier;
+  late TestMessageApi testApi;
+  late SpyMessageOutbox spyOutbox;
+  late FakeWsClientPort fakeWsClient;
+  late ControllableNetworkStatusNotifier fakeNetwork;
+  late MockE2eeMetaStore mockE2eeMetaStore;
+  late TestableE2eeManager testE2eeManager;
+
+  setUp(() {
+    testApi = TestMessageApi();
+    spyOutbox = SpyMessageOutbox();
+    fakeWsClient = FakeWsClientPort();
+    fakeNetwork = ControllableNetworkStatusNotifier();
+    // Pre-seed device ID to avoid calling the buggy _generateUuid in tests.
+    final fakeSecureStorage = FakeSecureStoragePort({
+      'e2ee_device_id': 'test-device-id',
+    });
+    mockE2eeMetaStore = MockE2eeMetaStore(fakeSecureStorage);
+    testE2eeManager = TestableE2eeManager(metaStore: mockE2eeMetaStore);
+
+    // Default: return empty sessions so loadSessions doesn't fail.
+    testApi.conversationsResponse = [];
+  });
+
+  tearDown(() {
+    notifier?.dispose();
+    spyOutbox.dispose();
+    fakeWsClient.dispose();
+    fakeNetwork.dispose();
+  });
+
+  ChatNotifierWithOutbox createNotifier() {
+    return ChatNotifierWithOutbox(
+      testApi,
+      MessagePipeline(),
+      fakeWsClient,
+      () => 'user-1',
+      testE2eeManager,
+      mockE2eeMetaStore,
+      spyOutbox,
+      fakeNetwork,
+      NoopAnalyticsAdapter(),
+    );
+  }
+
+  // =========================================================================
+  // Step 3: Send private message enqueues to outbox on failure
+  // =========================================================================
+
+  group('send private message enqueues to outbox on failure', () {
+    test('calls outbox.enqueue with correct args when API throws', () async {
+      notifier = createNotifier();
+
+      // Simulate network failure.
+      testApi.errorToThrow = Exception('Network error');
+
+      final result = await notifier.sendMessage('user-2', 'Hello');
+
+      // Message was not sent successfully.
+      expect(result, isNull);
+
+      // Verify outbox.enqueue was called once.
+      expect(spyOutbox.enqueueCalls.length, 1);
+
+      final call = spyOutbox.enqueueCalls.first;
+      expect(call['sessionKey'], 'user-2');
+      expect(call['receiverId'], 'user-2');
+      expect(call['content'], 'Hello');
+      expect(call['messageType'], 'text');
+      expect(call['clientMessageId'], isNotNull);
+      expect(call['isGroupChat'], false);
+      expect(call['isEncrypted'], false);
+    });
+
+    test('marks message status as PENDING in UI state', () async {
+      notifier = createNotifier();
+      testApi.errorToThrow = Exception('Network error');
+
+      await notifier.sendMessage('user-2', 'Hello');
+
+      // The pending message should be in the state with status PENDING.
+      final messages = notifier.state.messages['user-2'];
+      expect(messages, isNotNull);
+      expect(messages!.length, 1);
+      expect(messages.first.status, 'PENDING');
+    });
+  });
+
+  // =========================================================================
+  // Step 4: Send group message enqueues to outbox on failure
+  // =========================================================================
+
+  group('send group message enqueues to outbox on failure', () {
+    test('calls outbox.enqueue with correct group args when API throws',
+        () async {
+      notifier = createNotifier();
+      testApi.errorToThrow = Exception('Network error');
+
+      final result =
+          await notifier.sendGroupMessage('group-1', 'Hello Group');
+
+      expect(result, isNull);
+
+      expect(spyOutbox.enqueueCalls.length, 1);
+
+      final call = spyOutbox.enqueueCalls.first;
+      expect(call['sessionKey'], 'group-1');
+      expect(call['receiverId'], 'group-1');
+      expect(call['content'], 'Hello Group');
+      expect(call['messageType'], 'text');
+      expect(call['isGroupChat'], true);
+      expect(call['groupId'], 'group-1');
+    });
+
+    test('marks group message status as PENDING in UI state', () async {
+      notifier = createNotifier();
+      testApi.errorToThrow = Exception('Network error');
+
+      await notifier.sendGroupMessage('group-1', 'Hello Group');
+
+      final messages = notifier.state.messages['group-1'];
+      expect(messages, isNotNull);
+      expect(messages!.length, 1);
+      expect(messages.first.status, 'PENDING');
+    });
+  });
+
+  // =========================================================================
+  // Step 5: Network state changes update UI
+  // =========================================================================
+
+  group('network state changes', () {
+    test('network restoration updates isOffline state', () async {
+      notifier = createNotifier();
+
+      // Initially online.
+      expect(notifier.state.isOffline, isFalse);
+
+      // Simulate going offline.
+      fakeNetwork.goOffline();
+      // Allow stream listener to process.
+      await Future.delayed(Duration.zero);
+      expect(notifier.state.isOffline, isTrue);
+
+      // Simulate going back online.
+      fakeNetwork.goOnline();
+      await Future.delayed(Duration.zero);
+      expect(notifier.state.isOffline, isFalse);
+    });
+
+    test('retryAllFailed delegates to outbox', () async {
+      notifier = createNotifier();
+
+      await notifier.retryAllFailed();
+
+      expect(spyOutbox.retryAllFailedCallCount, 1);
+    });
+  });
+
+  // =========================================================================
+  // Step 6: Outbox events update UI state
+  // =========================================================================
+
+  group('outbox events update UI state', () {
+    test('messageAdded event triggers pending count update', () async {
+      spyOutbox.pendingCountResult = 3;
+      spyOutbox.failedCountResult = 1;
+      notifier = createNotifier();
+
+      // Emit a messageAdded event from the outbox.
+      spyOutbox.emitEvent(OutboxEvent(
+        type: OutboxEventType.messageAdded,
+        message: OutboxMessage(
+          id: 'outbox-1',
+          sessionKey: 'session-1',
+          receiverId: 'user-2',
+          content: 'Test',
+          messageType: 'text',
+          clientMessageId: 'client-1',
+        ),
+      ));
+
+      // Allow async _updateOutboxCounts to complete.
+      await Future.delayed(Duration(milliseconds: 100));
+
+      expect(notifier.state.pendingCount, 3);
+      expect(notifier.state.failedCount, 1);
+    });
+
+    test('messageRetrying event sets isRetrying to true', () async {
+      spyOutbox.pendingCountResult = 1;
+      notifier = createNotifier();
+
+      spyOutbox.emitEvent(OutboxEvent(
+        type: OutboxEventType.messageRetrying,
+        message: OutboxMessage(
+          id: 'outbox-2',
+          sessionKey: 'session-1',
+          receiverId: 'user-2',
+          content: 'Retrying',
+          messageType: 'text',
+          clientMessageId: 'client-2',
+        ),
+      ));
+
+      await Future.delayed(Duration(milliseconds: 100));
+
+      expect(notifier.state.isRetrying, isTrue);
+    });
+
+    test('messageFailed event sets isRetrying to false', () async {
+      spyOutbox.failedCountResult = 1;
+      notifier = createNotifier();
+
+      // First set isRetrying to true.
+      spyOutbox.emitEvent(OutboxEvent(
+        type: OutboxEventType.messageRetrying,
+        message: OutboxMessage(
+          id: 'outbox-3',
+          sessionKey: 'session-1',
+          receiverId: 'user-2',
+          content: 'test',
+          messageType: 'text',
+          clientMessageId: 'client-3',
+        ),
+      ));
+      await Future.delayed(Duration(milliseconds: 50));
+      expect(notifier.state.isRetrying, isTrue);
+
+      // Then emit a failed event.
+      spyOutbox.emitEvent(OutboxEvent(
+        type: OutboxEventType.messageFailed,
+        message: OutboxMessage(
+          id: 'outbox-3',
+          sessionKey: 'session-1',
+          receiverId: 'user-2',
+          content: 'test',
+          messageType: 'text',
+          clientMessageId: 'client-3',
+          status: OutboxMessageStatus.failed,
+        ),
+      ));
+      await Future.delayed(Duration(milliseconds: 100));
+
+      expect(notifier.state.isRetrying, isFalse);
+      expect(notifier.state.failedCount, 1);
+    });
+
+    test('retryAllStarted sets isRetrying, retryAllCompleted clears it',
+        () async {
+      spyOutbox.pendingCountResult = 0;
+      notifier = createNotifier();
+
+      spyOutbox.emitEvent(const OutboxEvent(
+        type: OutboxEventType.retryAllStarted,
+      ));
+      await Future.delayed(Duration.zero);
+      expect(notifier.state.isRetrying, isTrue);
+
+      spyOutbox.emitEvent(const OutboxEvent(
+        type: OutboxEventType.retryAllCompleted,
+      ));
+      await Future.delayed(Duration(milliseconds: 100));
+      expect(notifier.state.isRetrying, isFalse);
+    });
+  });
+
+  // =========================================================================
+  // Step 7: E2EE message security
+  // =========================================================================
+
+  group('E2EE message does not leak plaintext', () {
+    test(
+        'encrypted session sends via sendPrivateEncrypted, not sendPrivateMessage',
+        () async {
+      notifier = createNotifier();
+
+      // Pre-seed: device ID and remote device ID for the session.
+      await mockE2eeMetaStore.setSessionStatus(
+        'user-1_private_user-2',
+        'encrypted',
+      );
+      await mockE2eeMetaStore.setRemoteDeviceId(
+        'user-1_private_user-2',
+        'device-remote-1',
+      );
+
+      final result =
+          await notifier.sendMessage('user-2', 'Secret message');
+
+      // Should have succeeded.
+      expect(result, isNotNull);
+
+      // Must NOT have used the plaintext API.
+      expect(testApi.sendPrivateMessageCallCount, 0);
+
+      // Must have used the encrypted API.
+      expect(testApi.sendPrivateEncryptedCallCount, 1);
+      expect(testApi.lastEncryptedArgs, isNotNull);
+      expect(testApi.lastEncryptedArgs!['receiverId'], 'user-2');
+      expect(testApi.lastEncryptedArgs!['messageType'], 'text');
+      expect(testApi.lastEncryptedArgs!['e2eeEnvelope'], isA<Map>());
+      expect(testApi.lastEncryptedArgs!['e2eeDeviceId'], isNotEmpty);
+    });
+
+    test('encrypted session sends envelope, not plaintext content', () async {
+      notifier = createNotifier();
+
+      await mockE2eeMetaStore.setSessionStatus(
+        'user-1_private_user-2',
+        'encrypted',
+      );
+      await mockE2eeMetaStore.setRemoteDeviceId(
+        'user-1_private_user-2',
+        'device-remote-1',
+      );
+
+      await notifier.sendMessage('user-2', 'Top secret');
+
+      // The encrypted envelope should come from TestableE2eeManager, not
+      // contain the plaintext.
+      final envelope =
+          testApi.lastEncryptedArgs!['e2eeEnvelope'] as Map;
+      expect(envelope['ciphertext'], 'fake_ciphertext');
+      // Ensure no field contains the plaintext.
+      expect(
+        envelope.values.every((v) => v != 'Top secret'),
+        isTrue,
+      );
+    });
+
+    test('plaintext session sends via sendPrivateMessage', () async {
+      notifier = createNotifier();
+
+      // Default session status is 'plaintext'.
+      final result =
+          await notifier.sendMessage('user-2', 'Plain message');
+
+      expect(result, isNotNull);
+
+      // Must have used the plaintext API.
+      expect(testApi.sendPrivateMessageCallCount, 1);
+      expect(testApi.lastSendPrivateRequest, isNotNull);
+      expect(testApi.lastSendPrivateRequest!.content, 'Plain message');
+
+      // Must NOT have used the encrypted API.
+      expect(testApi.sendPrivateEncryptedCallCount, 0);
+    });
+
+    test('negotiating session returns null and sets error', () async {
+      notifier = createNotifier();
+
+      await mockE2eeMetaStore.setSessionStatus(
+        'user-1_private_user-2',
+        'negotiating',
+      );
+
+      final result =
+          await notifier.sendMessage('user-2', 'Blocked message');
+
+      expect(result, isNull);
+      expect(notifier.state.error, 'e2ee_not_ready');
+
+      // Neither API should have been called.
+      expect(testApi.sendPrivateMessageCallCount, 0);
+      expect(testApi.sendPrivateEncryptedCallCount, 0);
+
+      // Outbox should NOT have been called.
+      expect(spyOutbox.enqueueCalls, isEmpty);
+    });
+  });
+
+  // =========================================================================
+  // Additional edge cases
+  // =========================================================================
+
+  group('additional outbox integration edge cases', () {
+    test('sendMessage success does not enqueue to outbox', () async {
+      notifier = createNotifier();
+      testApi.sendPrivateMessageResponse = const Message(
+        id: 'server-1',
+        senderId: 'user-1',
+        isGroupChat: false,
+        messageType: 'text',
+        content: 'Hello!',
+        sendTime: '2024-01-01T00:00:00Z',
+        status: 'sent',
+      );
+
+      final result = await notifier.sendMessage('user-2', 'Hello!');
+
+      expect(result, isNotNull);
+      expect(spyOutbox.enqueueCalls, isEmpty);
+    });
+
+    test('sendGroupMessage success does not enqueue to outbox', () async {
+      notifier = createNotifier();
+      testApi.sendGroupMessageResponse = const Message(
+        id: 'server-1',
+        senderId: 'user-1',
+        isGroupChat: true,
+        messageType: 'text',
+        content: 'Hello Group!',
+        sendTime: '2024-01-01T00:00:00Z',
+        status: 'sent',
+      );
+
+      final result =
+          await notifier.sendGroupMessage('group-1', 'Hello Group!');
+
+      expect(result, isNotNull);
+      expect(spyOutbox.enqueueCalls, isEmpty);
+    });
+
+    test('pending message is added to state before outbox enqueue', () async {
+      notifier = createNotifier();
+      testApi.errorToThrow = Exception('fail');
+
+      await notifier.sendMessage('user-2', 'Queued msg');
+
+      // The message should be visible in state even though send failed.
+      final messages = notifier.state.messages['user-2'];
+      expect(messages, isNotNull);
+      expect(messages!.any((m) => m.content == 'Queued msg'), isTrue);
+    });
+  });
+}
