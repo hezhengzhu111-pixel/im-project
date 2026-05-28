@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 /// IM 应用主题配置
+@Deprecated('Use ImTheme.light() / ImTheme.dark() + ImTokens instead')
 class AppTheme {
   AppTheme._();
 
