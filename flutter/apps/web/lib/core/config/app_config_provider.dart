@@ -37,5 +37,15 @@ final appConfigProvider = Provider<AppConfig>((ref) {
     defaultValue: 'ws://localhost:8082',
   );
   const env = String.fromEnvironment('APP_ENV', defaultValue: 'development');
-  return AppConfig(apiBaseUrl: apiBase, wsBaseUrl: wsBase, appEnv: env);
+  return AppConfig(
+    apiBaseUrl: apiBase,
+    wsBaseUrl: wsBase,
+    appEnv: env,
+    analyticsEnabled: const bool.fromEnvironment('ANALYTICS_ENABLED'),
+    errorReporterEnabled: const bool.fromEnvironment('ERROR_REPORTER_ENABLED'),
+    pushEnabled: const bool.fromEnvironment('PUSH_ENABLED'),
+    paymentEnabled: const bool.fromEnvironment('PAYMENT_ENABLED'),
+    mapEnabled: const bool.fromEnvironment('MAP_ENABLED'),
+    filePreviewEnabled: const bool.fromEnvironment('FILE_PREVIEW_ENABLED'),
+  );
 });
