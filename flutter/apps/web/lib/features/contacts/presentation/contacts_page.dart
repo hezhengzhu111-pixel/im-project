@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_core/core.dart';
 import '../../chat/presentation/chat_provider.dart';
 import 'contacts_provider.dart';
@@ -29,6 +30,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   @override
   Widget build(BuildContext context) {
     final contactsState = ref.watch(contactsStateProvider);
+    final loc = AppLocalizations.of(context)!;
 
     return Column(
       children: [
@@ -38,18 +40,18 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
               child: TabBar(
                 controller: _tabController,
                 tabs: [
-                  Tab(text: '好友 (${contactsState.friends.length})'),
+                  Tab(text: loc.contactsFriends(contactsState.friends.length)),
                   Tab(
                     text: contactsState.friendRequests.isNotEmpty
-                        ? '请求 (${contactsState.friendRequests.length})'
-                        : '请求',
+                        ? loc.contactsRequests(contactsState.friendRequests.length)
+                        : loc.contactsFriendRequests,
                   ),
                 ],
               ),
             ),
             IconButton(
               icon: const Icon(Icons.person_add),
-              tooltip: '添加好友',
+              tooltip: loc.contactsAddFriend,
               onPressed: () => context.go('/contacts/add'),
             ),
             const SizedBox(width: 8),
@@ -59,8 +61,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
           child: TabBarView(
             controller: _tabController,
             children: [
-              _buildFriendList(contactsState),
-              _buildRequestList(contactsState),
+              _buildFriendList(contactsState, loc),
+              _buildRequestList(contactsState, loc),
             ],
           ),
         ),
@@ -68,12 +70,12 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     );
   }
 
-  Widget _buildFriendList(ContactsState state) {
+  Widget _buildFriendList(ContactsState state, AppLocalizations loc) {
     if (state.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
     if (state.friends.isEmpty) {
-      return const Center(child: Text('暂无好友'));
+      return Center(child: Text(loc.contactsNoFriends));
     }
 
     return ListView.builder(
@@ -98,12 +100,12 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     );
   }
 
-  Widget _buildRequestList(ContactsState state) {
+  Widget _buildRequestList(ContactsState state, AppLocalizations loc) {
     if (state.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
     if (state.friendRequests.isEmpty) {
-      return const Center(child: Text('暂无好友请求'));
+      return Center(child: Text(loc.contactsNoRequests));
     }
 
     return ListView.builder(
@@ -141,6 +143,7 @@ class _FriendTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return ListTile(
       leading: Stack(
         clipBehavior: Clip.none,
@@ -183,7 +186,7 @@ class _FriendTile extends StatelessWidget {
         style: const TextStyle(fontWeight: FontWeight.w500),
       ),
       subtitle: Text(
-        friend.signature ?? (friend.isOnline == true ? '在线' : '离线'),
+        friend.signature ?? (friend.isOnline == true ? loc.contactsOnline : loc.contactsOffline),
         style: TextStyle(
           color: Theme.of(context).colorScheme.onSurfaceVariant,
           fontSize: 13,
@@ -209,6 +212,7 @@ class _RequestTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final loc = AppLocalizations.of(context)!;
 
     return ListTile(
       leading: CircleAvatar(
@@ -230,7 +234,7 @@ class _RequestTile extends StatelessWidget {
         style: const TextStyle(fontWeight: FontWeight.w500),
       ),
       subtitle: Text(
-        request.reason ?? '请求添加你为好友',
+        request.reason ?? loc.contactsFriendRequestReason,
         style: TextStyle(
           color: theme.colorScheme.onSurfaceVariant,
           fontSize: 13,
@@ -244,16 +248,16 @@ class _RequestTile extends StatelessWidget {
               children: [
                 TextButton(
                   onPressed: onReject,
-                  child: const Text('拒绝'),
+                  child: Text(loc.contactsReject),
                 ),
                 FilledButton.tonal(
                   onPressed: onAccept,
-                  child: const Text('接受'),
+                  child: Text(loc.contactsAccept),
                 ),
               ],
             )
           : Text(
-              request.status == 'ACCEPTED' ? '已接受' : '已拒绝',
+              request.status == 'ACCEPTED' ? loc.contactsAccepted : loc.contactsRejected,
               style: TextStyle(
                 color: theme.colorScheme.onSurfaceVariant,
                 fontSize: 13,

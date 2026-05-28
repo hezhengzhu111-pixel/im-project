@@ -102,8 +102,61 @@ test('my provider test', () {
 
 - 仅在 `kDebugMode == true` 时渲染（debug/profile 模式）
 - release 模式下完全 tree-shake，零运行时开销
-- 显示：Auth 状态、WS 连接、当前路由、活跃会话、会话数量
-- 右下角 FAB 展开/收起
+- 显示：Auth 状态、WS 连接、当前路由、活跃会话、会话数量、离线队列
+- 右下角 FAB 展开/收起，点击外部区域自动收起
+
+### 挂载方式
+
+在 `MainLayout` 的 `Stack` 中添加：
+```dart
+const DebugPanelEntry(),
+```
+
+## CI 集成
+
+### 当前状态
+
+项目使用 melos 管理 Flutter monorepo，已配置以下脚本：
+
+| 脚本 | 命令 | 说明 |
+|------|------|------|
+| `test:web` | `melos run test:web` | 运行 Web 单元测试 + widget 测试 |
+| `analyze:web` | `melos run analyze:web` | 代码静态分析 |
+| `coverage:web` | `melos run coverage:web` | 生成 lcov 覆盖率报告 |
+| `test:integration` | `melos run test:integration` | 运行整合测试 |
+| `format:check` | `melos run format:check` | 代码格式检查 |
+
+### 后续 GitHub Actions 接入
+
+创建 `.github/workflows/flutter-web-ci.yml`：
+
+```yaml
+name: Flutter Web CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.x'
+      - run: flutter pub get
+        working-directory: flutter/apps/web
+      - run: melos run analyze:web
+      - run: melos run test:web
+      - run: melos run coverage:web
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: flutter/apps/web/coverage/lcov.info
+```
 
 ## 对标 Vue Web
 

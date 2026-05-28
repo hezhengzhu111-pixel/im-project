@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/features/contacts/presentation/contacts_provider.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 
 class CreateGroupPage extends ConsumerStatefulWidget {
   const CreateGroupPage({super.key});
@@ -50,12 +51,13 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     final contactsState = ref.watch(contactsStateProvider);
     final groupState = ref.watch(groupStateProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('创建群组'),
+        title: Text(loc.groupCreateTitle),
         actions: [
           TextButton(
             onPressed: groupState.isLoading ? null : _createGroup,
@@ -65,7 +67,7 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('创建'),
+                : Text(loc.groupCreateButton),
           ),
         ],
       ),
@@ -74,22 +76,22 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
         children: [
           TextField(
             controller: _nameController,
-            decoration: const InputDecoration(
-              labelText: '群组名称',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: loc.groupNameLabel,
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 16),
           TextField(
             controller: _descController,
-            decoration: const InputDecoration(
-              labelText: '描述（可选）',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: loc.groupDescLabel,
+              border: const OutlineInputBorder(),
             ),
             maxLines: 2,
           ),
           const SizedBox(height: 24),
-          Text('选择成员', style: Theme.of(context).textTheme.titleSmall),
+          Text(loc.groupSelectMembers, style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 8),
           ...contactsState.friends.map((friend) => CheckboxListTile(
                 value: _selectedMemberIds.contains(friend.friendId),

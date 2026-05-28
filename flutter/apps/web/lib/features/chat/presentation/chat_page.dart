@@ -305,7 +305,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           },
           onSendVoice: (result) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('语音发送功能开发中...')),
+              SnackBar(content: Text(loc.chatVoiceSending)),
             );
           },
         ),

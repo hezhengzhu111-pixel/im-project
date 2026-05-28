@@ -1,5 +1,3 @@
-// ignore: unused_import
-import 'package:intl/intl.dart' as intl;
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -60,16 +58,44 @@ class AppLocalizationsZh extends AppLocalizations {
   String get contactsNoFriends => '暂无好友';
 
   @override
+  String contactsFriends(Object count) {
+    return '好友 ($count)';
+  }
+
+  @override
+  String contactsRequests(Object count) {
+    return '请求 ($count)';
+  }
+
+  @override
   String get contactsAddFriend => '添加好友';
 
   @override
   String get contactsFriendRequests => '好友请求';
 
   @override
+  String get contactsNoRequests => '暂无好友请求';
+
+  @override
+  String get contactsOnline => '在线';
+
+  @override
+  String get contactsOffline => '离线';
+
+  @override
+  String get contactsFriendRequestReason => '请求添加你为好友';
+
+  @override
   String get contactsAccept => '接受';
 
   @override
   String get contactsReject => '拒绝';
+
+  @override
+  String get contactsAccepted => '已接受';
+
+  @override
+  String get contactsRejected => '已拒绝';
 
   @override
   String get retry => '重试';
@@ -542,6 +568,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get chatFileSending => '文件发送功能开发中...';
 
   @override
+  String get chatVoiceSending => '语音发送功能开发中...';
+
+  @override
   String get chatInputHint => '输入消息...';
 
   @override
@@ -621,4 +650,51 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get a11yVoiceInput => '语音输入';
+
+  @override
+  String get addFriendTitle => '添加好友';
+
+  @override
+  String get addFriendSearchHint => '搜索用户名或昵称';
+
+  @override
+  String get addFriendSearchFailed => '搜索失败，请重试';
+
+  @override
+  String addFriendRequestSent(Object name) {
+    return '已向 $name 发送好友请求';
+  }
+
+  @override
+  String get addFriendRequestFailed => '发送请求失败，请重试';
+
+  @override
+  String get addFriendNoMatch => '未找到匹配的用户';
+
+  @override
+  String get addFriendSearchPrompt => '输入关键词搜索用户';
+
+  @override
+  String get addFriendButton => '添加';
+
+  @override
+  String get groupCreateTooltip => '创建群组';
+
+  @override
+  String get groupNoGroups => '暂无群组';
+
+  @override
+  String get groupCreateTitle => '创建群组';
+
+  @override
+  String get groupCreateButton => '创建';
+
+  @override
+  String get groupNameLabel => '群组名称';
+
+  @override
+  String get groupDescLabel => '描述（可选）';
+
+  @override
+  String get groupSelectMembers => '选择成员';
 }
