@@ -31,6 +31,7 @@ dependencies:
   idb_shim: ^2.6.1+7
   crypto: ^3.0.6
   file_picker: ^6.1.1
+  web: ^1.0.0
 
 dev_dependencies:
   flutter_test:
