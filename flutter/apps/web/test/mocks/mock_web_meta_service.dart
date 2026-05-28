@@ -5,7 +5,7 @@ class MockWebMetaService implements WebMetaService {
   final List<PageMeta> appliedMetas = [];
 
   @override
-  void apply(PageMeta meta) {
+  void apply(PageMeta meta, {String? locale}) {
     appliedMetas.add(meta);
   }
 

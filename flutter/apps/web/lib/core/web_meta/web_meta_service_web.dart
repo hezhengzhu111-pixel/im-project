@@ -5,13 +5,18 @@ import 'web_meta_service.dart';
 class WebMetaServiceImpl implements WebMetaService {
   String get _baseUrl => web.window.location.origin;
 
+  static const _supportedLocales = ['zh', 'en'];
+
   @override
-  void apply(PageMeta meta) {
+  void apply(PageMeta meta, {String? locale}) {
     _setTitle(meta.title);
     _setMeta('description', meta.description);
     _setCanonical(meta.canonicalPath);
     _setOg(meta);
     _setTwitter(meta);
+    if (locale != null) {
+      _setLocale(locale);
+    }
   }
 
   void _setTitle(String title) {
@@ -72,6 +77,20 @@ class WebMetaServiceImpl implements WebMetaService {
 
     if (twitter?.image != null) {
       _setMeta('twitter:image', twitter!.image!);
+    }
+  }
+
+  void _setLocale(String locale) {
+    web.document.documentElement?.setAttribute('lang', locale);
+
+    final ogLocale = locale.replaceAll('-', '_');
+    _setProperty('og:locale', ogLocale);
+
+    for (final alt in _supportedLocales) {
+      if (alt != locale) {
+        final altOg = alt.replaceAll('-', '_');
+        _setProperty('og:locale:alternate', altOg);
+      }
     }
   }
 
