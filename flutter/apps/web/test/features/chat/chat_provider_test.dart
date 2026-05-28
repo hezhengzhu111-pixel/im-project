@@ -44,7 +44,8 @@ class TestMessageApi extends MessageApi {
   }
 
   @override
-  Future<List<Message>> getPrivateHistory(String friendId, {int? page, int? size}) async {
+  Future<List<Message>> getPrivateHistory(String friendId,
+      {int? page, int? size}) async {
     getPrivateHistoryCallCount++;
     lastPrivateHistoryId = friendId;
     if (errorToThrow != null) throw errorToThrow!;
@@ -188,8 +189,14 @@ void main() {
       currentUserId: 'test-user-id',
     );
     notifier = ChatNotifierWithOutbox(
-      mockApi, MessagePipeline(), mockWsClient, () => 'test-user-id',
-      e2eeManager, mockE2eeMetaStore, fakeOutbox, fakeNetwork,
+      mockApi,
+      MessagePipeline(),
+      mockWsClient,
+      () => 'test-user-id',
+      e2eeManager,
+      mockE2eeMetaStore,
+      fakeOutbox,
+      fakeNetwork,
       NoopAnalyticsAdapter(),
     );
   });
@@ -244,7 +251,9 @@ void main() {
 
     test('currentMessages returns empty when no active session', () {
       final state = ChatState(
-        messages: {'s1': [makeMessage('m1')]},
+        messages: {
+          's1': [makeMessage('m1')]
+        },
       );
       expect(state.currentMessages, isEmpty);
     });
@@ -259,7 +268,10 @@ void main() {
 
   group('ChatNotifierWithOutbox - loadSessions', () {
     test('loads sessions successfully', () async {
-      mockApi.conversationsResponse = [makeSession('s1', name: 'Alice'), makeSession('s2', name: 'Bob')];
+      mockApi.conversationsResponse = [
+        makeSession('s1', name: 'Alice'),
+        makeSession('s2', name: 'Bob')
+      ];
       await notifier.loadSessions();
       expect(notifier.state.isLoading, isFalse);
       expect(notifier.state.sessions.length, 2);
@@ -277,7 +289,7 @@ void main() {
   group('ChatNotifierWithOutbox - setActiveSession', () {
     test('sets active session id', () {
       notifier.setActiveSession('session-1');
-      expect(notifier.state.activeSessionId, 'session-1');
+      expect(notifier.state.activeSessionId, 'session-1_test-user-id');
     });
   });
 
@@ -285,7 +297,7 @@ void main() {
     test('loads messages for a session', () async {
       mockApi.privateHistoryResponse = [makeMessage('m1'), makeMessage('m2')];
       await notifier.loadMessages('session-1');
-      expect(notifier.state.messages['session-1']!.length, 2);
+      expect(notifier.state.messages['session-1_test-user-id']!.length, 2);
     });
 
     test('sets error on failure', () async {
@@ -298,14 +310,14 @@ void main() {
   group('ChatNotifierWithOutbox - addMessage', () {
     test('adds message to session', () {
       notifier.addMessage('session-1', makeMessage('m1'));
-      expect(notifier.state.messages['session-1']!.length, 1);
+      expect(notifier.state.messages['session-1_test-user-id']!.length, 1);
     });
 
     test('deduplicates messages by id', () {
       final msg = makeMessage('m1');
       notifier.addMessage('session-1', msg);
       notifier.addMessage('session-1', msg);
-      expect(notifier.state.messages['session-1']!.length, 1);
+      expect(notifier.state.messages['session-1_test-user-id']!.length, 1);
     });
   });
 
@@ -315,7 +327,7 @@ void main() {
       final result = await notifier.sendMessage('u2', 'Hello!');
       expect(result, isNotNull);
       expect(result!.content, 'Hello!');
-      expect(notifier.state.messages['u2']!.length, 1);
+      expect(notifier.state.messages['test-user-id_u2']!.length, 1);
     });
 
     test('returns null on failure', () async {
@@ -329,7 +341,7 @@ void main() {
     test('calls markRead on the API', () async {
       await notifier.markRead('conv-1');
       expect(mockApi.markReadCallCount, 1);
-      expect(mockApi.lastMarkReadId, 'conv-1');
+      expect(mockApi.lastMarkReadId, 'conv-1_test-user-id');
     });
 
     test('does not throw on failure', () async {
@@ -364,11 +376,11 @@ void main() {
     test('loadMessages replaces messages for same session', () async {
       mockApi.privateHistoryResponse = [makeMessage('m1')];
       await notifier.loadMessages('s1');
-      expect(notifier.state.messages['s1']!.length, 1);
+      expect(notifier.state.messages['s1_test-user-id']!.length, 1);
 
       mockApi.privateHistoryResponse = [makeMessage('m2'), makeMessage('m3')];
       await notifier.loadMessages('s1');
-      expect(notifier.state.messages['s1']!.length, 2);
+      expect(notifier.state.messages['s1_test-user-id']!.length, 2);
     });
 
     test('addMessage preserves messages in other sessions', () {
@@ -376,16 +388,16 @@ void main() {
       notifier.addMessage('s2', makeMessage('m2'));
       notifier.addMessage('s1', makeMessage('m3'));
 
-      expect(notifier.state.messages['s1']!.length, 2);
-      expect(notifier.state.messages['s2']!.length, 1);
+      expect(notifier.state.messages['s1_test-user-id']!.length, 2);
+      expect(notifier.state.messages['s2_test-user-id']!.length, 1);
     });
 
     test('setActiveSession with null resets active session', () {
       notifier.setActiveSession('s1');
-      expect(notifier.state.activeSessionId, 's1');
+      expect(notifier.state.activeSessionId, 's1_test-user-id');
 
       notifier.setActiveSession('s2');
-      expect(notifier.state.activeSessionId, 's2');
+      expect(notifier.state.activeSessionId, 's2_test-user-id');
     });
   });
 

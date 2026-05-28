@@ -7,7 +7,6 @@ import 'package:im_web/features/chat/data/message_api.dart';
 import 'package:im_web/features/chat/data/message_outbox.dart';
 import 'package:im_web/features/chat/data/message_pipeline.dart';
 import 'package:im_web/features/chat/presentation/chat_provider_with_outbox.dart';
-import 'package:im_web/features/chat/presentation/chat_state.dart';
 import 'package:im_web/features/e2ee/data/e2ee_manager.dart';
 import 'package:im_web/features/e2ee/data/e2ee_meta_store.dart';
 import 'package:im_web/features/e2ee/data/e2ee_api.dart';
@@ -328,7 +327,7 @@ void main() {
   });
 
   tearDown(() {
-    notifier?.dispose();
+    notifier.dispose();
     spyOutbox.dispose();
     fakeWsClient.dispose();
     fakeNetwork.dispose();
@@ -368,7 +367,7 @@ void main() {
       expect(spyOutbox.enqueueCalls.length, 1);
 
       final call = spyOutbox.enqueueCalls.first;
-      expect(call['sessionKey'], 'user-2');
+      expect(call['sessionKey'], 'user-1_user-2');
       expect(call['receiverId'], 'user-2');
       expect(call['content'], 'Hello');
       expect(call['messageType'], 'text');
@@ -384,7 +383,7 @@ void main() {
       await notifier.sendMessage('user-2', 'Hello');
 
       // The pending message should be in the state with status PENDING.
-      final messages = notifier.state.messages['user-2'];
+      final messages = notifier.state.messages['user-1_user-2'];
       expect(messages, isNotNull);
       expect(messages!.length, 1);
       expect(messages.first.status, 'PENDING');
@@ -401,15 +400,14 @@ void main() {
       notifier = createNotifier();
       testApi.errorToThrow = Exception('Network error');
 
-      final result =
-          await notifier.sendGroupMessage('group-1', 'Hello Group');
+      final result = await notifier.sendGroupMessage('group-1', 'Hello Group');
 
       expect(result, isNull);
 
       expect(spyOutbox.enqueueCalls.length, 1);
 
       final call = spyOutbox.enqueueCalls.first;
-      expect(call['sessionKey'], 'group-1');
+      expect(call['sessionKey'], 'group_group-1');
       expect(call['receiverId'], 'group-1');
       expect(call['content'], 'Hello Group');
       expect(call['messageType'], 'text');
@@ -423,7 +421,7 @@ void main() {
 
       await notifier.sendGroupMessage('group-1', 'Hello Group');
 
-      final messages = notifier.state.messages['group-1'];
+      final messages = notifier.state.messages['group_group-1'];
       expect(messages, isNotNull);
       expect(messages!.length, 1);
       expect(messages.first.status, 'PENDING');
@@ -590,8 +588,7 @@ void main() {
         'device-remote-1',
       );
 
-      final result =
-          await notifier.sendMessage('user-2', 'Secret message');
+      final result = await notifier.sendMessage('user-2', 'Secret message');
 
       // Should have succeeded.
       expect(result, isNotNull);
@@ -624,8 +621,7 @@ void main() {
 
       // The encrypted envelope should come from TestableE2eeManager, not
       // contain the plaintext.
-      final envelope =
-          testApi.lastEncryptedArgs!['e2eeEnvelope'] as Map;
+      final envelope = testApi.lastEncryptedArgs!['e2eeEnvelope'] as Map;
       expect(envelope['ciphertext'], 'fake_ciphertext');
       // Ensure no field contains the plaintext.
       expect(
@@ -638,8 +634,7 @@ void main() {
       notifier = createNotifier();
 
       // Default session status is 'plaintext'.
-      final result =
-          await notifier.sendMessage('user-2', 'Plain message');
+      final result = await notifier.sendMessage('user-2', 'Plain message');
 
       expect(result, isNotNull);
 
@@ -660,8 +655,7 @@ void main() {
         'negotiating',
       );
 
-      final result =
-          await notifier.sendMessage('user-2', 'Blocked message');
+      final result = await notifier.sendMessage('user-2', 'Blocked message');
 
       expect(result, isNull);
       expect(notifier.state.error, 'e2ee_not_ready');
@@ -710,8 +704,7 @@ void main() {
         status: 'sent',
       );
 
-      final result =
-          await notifier.sendGroupMessage('group-1', 'Hello Group!');
+      final result = await notifier.sendGroupMessage('group-1', 'Hello Group!');
 
       expect(result, isNotNull);
       expect(spyOutbox.enqueueCalls, isEmpty);
@@ -724,9 +717,207 @@ void main() {
       await notifier.sendMessage('user-2', 'Queued msg');
 
       // The message should be visible in state even though send failed.
-      final messages = notifier.state.messages['user-2'];
+      final messages = notifier.state.messages['user-1_user-2'];
       expect(messages, isNotNull);
       expect(messages!.any((m) => m.content == 'Queued msg'), isTrue);
+    });
+  });
+
+  // =========================================================================
+  // Session key routing regression tests (Codex-C1)
+  // =========================================================================
+
+  group('session key routing', () {
+    test('private chat: message routes to session by id even when id != targetId',
+        () async {
+      notifier = createNotifier();
+
+      // Load sessions with a custom session id that differs from the
+      // auto-generated key pattern (user-1_user-2).
+      testApi.conversationsResponse = [
+        const ChatSession(
+          id: 'custom-session-1',
+          type: 'private',
+          targetId: 'user-2',
+          targetName: 'User 2',
+          unreadCount: 0,
+          conversationType: 'private',
+        ),
+      ];
+      await notifier.loadSessions();
+
+      // Push an incoming message from user-2 via WebSocket.
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.message,
+        data: {
+          'id': 'msg-from-user2',
+          'senderId': 'user-2',
+          'receiverId': 'user-1',
+          'isGroupChat': false,
+          'messageType': 'text',
+          'content': 'Hello from user-2',
+          'sendTime': '2024-01-01T00:00:00Z',
+          'status': 'sent',
+        },
+      ));
+      await Future.delayed(Duration.zero);
+
+      // Message must be stored under the session's custom id.
+      expect(notifier.state.messages['custom-session-1'], isNotNull);
+      expect(notifier.state.messages['custom-session-1']!.length, 1);
+      expect(
+        notifier.state.messages['custom-session-1']!.first.content,
+        'Hello from user-2',
+      );
+
+      // Must NOT create a separate entry under the auto-generated key.
+      expect(notifier.state.messages['user-1_user-2'], isNull);
+    });
+
+    test('group chat: message routes to session by id even when id != groupId',
+        () async {
+      notifier = createNotifier();
+
+      // Load sessions with a custom group session id that differs from
+      // the auto-generated key pattern (group_group-1).
+      testApi.conversationsResponse = [
+        const ChatSession(
+          id: 'custom-group-session',
+          type: 'group',
+          targetId: 'group-1',
+          targetName: 'Test Group',
+          unreadCount: 0,
+          conversationType: 'group',
+        ),
+      ];
+      await notifier.loadSessions();
+
+      // Push an incoming group message via WebSocket.
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.message,
+        data: {
+          'id': 'group-msg-1',
+          'senderId': 'user-3',
+          'isGroupChat': true,
+          'groupId': 'group-1',
+          'messageType': 'text',
+          'content': 'Hello group',
+          'sendTime': '2024-01-01T00:00:00Z',
+          'status': 'sent',
+        },
+      ));
+      await Future.delayed(Duration.zero);
+
+      // Message must be stored under the session's custom id.
+      expect(notifier.state.messages['custom-group-session'], isNotNull);
+      expect(notifier.state.messages['custom-group-session']!.length, 1);
+      expect(
+        notifier.state.messages['custom-group-session']!.first.content,
+        'Hello group',
+      );
+
+      // Must NOT create a separate entry under the auto-generated key.
+      expect(notifier.state.messages['group_group-1'], isNull);
+    });
+  });
+
+  // =========================================================================
+  // Pending message replacement regression test (Codex-C1)
+  // =========================================================================
+
+  group('pending message replacement', () {
+    test('pending message is replaced by server message via clientMessageId',
+        () async {
+      notifier = createNotifier();
+
+      // Add a pending message (simulating a failed send that's in the outbox).
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'local-123',
+          senderId: 'user-1',
+          receiverId: 'user-2',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Pending message',
+          sendTime: '2024-01-01T00:00:00Z',
+          status: 'PENDING',
+          clientMessageId: 'local-123',
+        ),
+      );
+
+      expect(notifier.state.messages['user-1_user-2']!.length, 1);
+      expect(
+        notifier.state.messages['user-1_user-2']!.first.status,
+        'PENDING',
+      );
+
+      // Server confirms with a different id but same clientMessageId.
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'server-456',
+          senderId: 'user-1',
+          receiverId: 'user-2',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Pending message',
+          sendTime: '2024-01-01T00:00:01Z',
+          status: 'SENT',
+          clientMessageId: 'local-123',
+        ),
+      );
+
+      final messages = notifier.state.messages['user-1_user-2']!;
+
+      // Must NOT duplicate — still exactly one message.
+      expect(messages.length, 1);
+
+      // Must be the server version.
+      expect(messages.first.id, 'server-456');
+      expect(messages.first.status, 'SENT');
+    });
+
+    test('pending message is replaced by server message with matching id',
+        () async {
+      notifier = createNotifier();
+
+      // Add a pending message.
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'msg-789',
+          senderId: 'user-1',
+          receiverId: 'user-2',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Original content',
+          sendTime: '2024-01-01T00:00:00Z',
+          status: 'SENDING',
+          clientMessageId: 'msg-789',
+        ),
+      );
+
+      // Server returns same id with updated status.
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'msg-789',
+          senderId: 'user-1',
+          receiverId: 'user-2',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Original content',
+          sendTime: '2024-01-01T00:00:01Z',
+          status: 'SENT',
+          clientMessageId: 'msg-789',
+        ),
+      );
+
+      final messages = notifier.state.messages['user-1_user-2']!;
+
+      expect(messages.length, 1);
+      expect(messages.first.status, 'SENT');
     });
   });
 }

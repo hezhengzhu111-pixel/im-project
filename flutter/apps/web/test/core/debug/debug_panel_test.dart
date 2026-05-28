@@ -190,12 +190,12 @@ class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>
 
   @override
   Future<Message?> sendMessage(String receiverId, String content,
-          {String messageType = 'text', String? clientMessageId}) async =>
+          {String messageType = 'text', String? clientMessageId, String? mediaUrl, String? mediaName, int? mediaSize, String? thumbnailUrl, int? duration}) async =>
       null;
 
   @override
   Future<Message?> sendGroupMessage(String groupId, String content,
-          {String messageType = 'text', String? clientMessageId}) async =>
+          {String messageType = 'text', String? clientMessageId, String? mediaUrl, String? mediaName, int? mediaSize, String? thumbnailUrl, int? duration}) async =>
       null;
 
   @override
@@ -208,7 +208,12 @@ class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>
   Future<void> retryAllFailed() async {}
 
   @override
-  Future<ChatSession?> getOrCreateSession(String targetId) async => null;
+  Future<ChatSession?> getOrCreateSession(String targetId,
+          {String? targetName, String? targetAvatar}) async =>
+      null;
+
+  @override
+  String getGroupSessionKey(String groupId) => 'group_$groupId';
 
   @override
   Future<void> markRead(String conversationId) async {}
