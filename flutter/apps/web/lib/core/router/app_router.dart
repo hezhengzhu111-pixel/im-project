@@ -9,53 +9,29 @@ import 'package:im_web/features/auth/presentation/login_page.dart';
 import 'package:im_web/features/auth/presentation/register_page.dart';
 import 'package:im_web/features/chat/presentation/chat_page.dart';
 import 'package:im_web/features/contacts/presentation/contacts_page.dart';
-import 'package:im_web/features/contacts/presentation/add_friend_page.dart';
 import 'package:im_web/features/group/presentation/group_list_page.dart';
-import 'package:im_web/features/group/presentation/create_group_page.dart';
 import 'package:im_web/features/moments/presentation/moments_main_page.dart';
-import 'package:im_web/features/moments/presentation/notifications/moments_notifications_page.dart';
 import 'package:im_web/features/settings/presentation/settings_page.dart';
-import 'package:im_web/features/settings/presentation/profile_page.dart';
-import 'package:im_web/features/settings/presentation/ai_settings_page.dart';
+
+// Deferred imports for low-frequency routes
+import 'package:im_web/features/contacts/presentation/add_friend_page.dart'
+    deferred as add_friend_page;
+import 'package:im_web/features/group/presentation/create_group_page.dart'
+    deferred as create_group_page;
+import 'package:im_web/features/moments/presentation/notifications/moments_notifications_page.dart'
+    deferred as notifications_page;
+import 'package:im_web/features/settings/presentation/profile_page.dart'
+    deferred as profile_page;
+import 'package:im_web/features/settings/presentation/ai_settings_page.dart'
+    deferred as ai_settings_page;
+
+import 'deferred_route_page.dart';
 import 'route_meta.dart';
 import 'route_names.dart';
+import 'route_resolver.dart';
+export 'route_resolver.dart' show routeMetaMap, resolveRouteMeta;
 import 'not_found_page.dart';
 import 'permission_provider.dart';
-
-/// Route metadata lookup table.
-///
-/// go_router 13.x does not support [GoRoute.extra] as a constructor
-/// parameter, so metadata is stored in a flat map keyed by path.
-const Map<String, RouteMeta> routeMetaMap = {
-  '/login': RouteMeta(title: '登录', requiresAuth: false, hideForAuth: true),
-  '/register': RouteMeta(title: '注册', requiresAuth: false, hideForAuth: true),
-  '/chat': RouteMeta(title: '聊天'),
-  '/contacts': RouteMeta(title: '联系人'),
-  '/contacts/add': RouteMeta(title: '添加好友'),
-  '/groups': RouteMeta(title: '群组'),
-  '/groups/create': RouteMeta(title: '创建群组'),
-  '/moments': RouteMeta(title: '朋友圈'),
-  '/moments/notifications': RouteMeta(title: '朋友圈通知'),
-  '/settings': RouteMeta(title: '设置'),
-  '/settings/profile': RouteMeta(title: '个人资料'),
-  '/settings/ai': RouteMeta(title: 'AI 助手'),
-};
-
-/// Resolve [RouteMeta] for a given location by longest-prefix match.
-RouteMeta? resolveRouteMeta(String location) {
-  if (routeMetaMap.containsKey(location)) {
-    return routeMetaMap[location];
-  }
-  String bestMatch = '';
-  for (final key in routeMetaMap.keys) {
-    if (location.startsWith(key) &&
-        key.length > bestMatch.length &&
-        (key.length == location.length || location[key.length] == '/')) {
-      bestMatch = key;
-    }
-  }
-  return bestMatch.isEmpty ? null : routeMetaMap[bestMatch];
-}
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
@@ -127,7 +103,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/contacts/add',
             name: RouteNames.contactsAdd,
-            builder: (_, __) => const AddFriendPage(),
+            pageBuilder: (_, __) => NoTransitionPage(
+              child: DeferredRoutePage(
+                loadLibrary: add_friend_page.loadLibrary,
+                builder: () => add_friend_page.AddFriendPage(),
+              ),
+            ),
           ),
           GoRoute(
             path: '/groups',
@@ -137,7 +118,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/groups/create',
             name: RouteNames.groupsCreate,
-            builder: (_, __) => const CreateGroupPage(),
+            pageBuilder: (_, __) => NoTransitionPage(
+              child: DeferredRoutePage(
+                loadLibrary: create_group_page.loadLibrary,
+                builder: () => create_group_page.CreateGroupPage(),
+              ),
+            ),
           ),
           GoRoute(
             path: '/moments',
@@ -147,7 +133,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/moments/notifications',
             name: RouteNames.momentsNotifications,
-            builder: (_, __) => const MomentsNotificationsPage(),
+            pageBuilder: (_, __) => NoTransitionPage(
+              child: DeferredRoutePage(
+                loadLibrary: notifications_page.loadLibrary,
+                builder: () => notifications_page.MomentsNotificationsPage(),
+              ),
+            ),
           ),
           GoRoute(
             path: '/settings',
@@ -157,12 +148,22 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/settings/profile',
             name: RouteNames.settingsProfile,
-            builder: (_, __) => const ProfilePage(),
+            pageBuilder: (_, __) => NoTransitionPage(
+              child: DeferredRoutePage(
+                loadLibrary: profile_page.loadLibrary,
+                builder: () => profile_page.ProfilePage(),
+              ),
+            ),
           ),
           GoRoute(
             path: '/settings/ai',
             name: RouteNames.settingsAi,
-            builder: (_, __) => const AiSettingsPage(),
+            pageBuilder: (_, __) => NoTransitionPage(
+              child: DeferredRoutePage(
+                loadLibrary: ai_settings_page.loadLibrary,
+                builder: () => ai_settings_page.AiSettingsPage(),
+              ),
+            ),
           ),
         ],
       ),
