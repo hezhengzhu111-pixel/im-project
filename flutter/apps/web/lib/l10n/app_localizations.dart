@@ -2140,6 +2140,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{name} requests to enable end-to-end encryption'**
   String e2eeNegotiationNotification(Object name);
+
+  /// No description provided for @chatLoadMoreHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Load earlier messages'**
+  String get chatLoadMoreHistory;
+
+  /// No description provided for @chatNoMoreHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'No earlier messages'**
+  String get chatNoMoreHistory;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

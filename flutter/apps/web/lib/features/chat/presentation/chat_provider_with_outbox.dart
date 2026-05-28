@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../../../core/network/network_status_provider.dart';
 import '../data/message_api.dart';
+import '../data/message_config.dart';
 import '../data/message_pipeline.dart';
 import '../data/message_outbox.dart';
 import '../../e2ee/data/e2ee_manager.dart';
@@ -19,6 +20,9 @@ class ChatStateWithOutbox extends ChatState {
     super.isLoading,
     super.activeSessionId,
     super.error,
+    super.loadingHistoryBySession,
+    super.hasMoreHistoryBySession,
+    super.oldestLoadedServerMessageIdBySession,
     this.pendingCount = 0,
     this.failedCount = 0,
     this.isRetrying = false,
@@ -49,6 +53,9 @@ class ChatStateWithOutbox extends ChatState {
     bool? isLoading,
     String? activeSessionId,
     String? error,
+    Map<String, bool>? loadingHistoryBySession,
+    Map<String, bool>? hasMoreHistoryBySession,
+    Map<String, String>? oldestLoadedServerMessageIdBySession,
     int? pendingCount,
     int? failedCount,
     bool? isRetrying,
@@ -61,6 +68,9 @@ class ChatStateWithOutbox extends ChatState {
       isLoading: isLoading ?? this.isLoading,
       activeSessionId: activeSessionId ?? this.activeSessionId,
       error: error,
+      loadingHistoryBySession: loadingHistoryBySession ?? this.loadingHistoryBySession,
+      hasMoreHistoryBySession: hasMoreHistoryBySession ?? this.hasMoreHistoryBySession,
+      oldestLoadedServerMessageIdBySession: oldestLoadedServerMessageIdBySession ?? this.oldestLoadedServerMessageIdBySession,
       pendingCount: pendingCount ?? this.pendingCount,
       failedCount: failedCount ?? this.failedCount,
       isRetrying: isRetrying ?? this.isRetrying,
@@ -97,6 +107,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   final MessageOutbox _outbox;
   final NetworkStatusNotifier _networkStatus;
   final AnalyticsPort _analytics;
+  MessageConfig? _messageConfig;
   StreamSubscription? _wsSubscription;
   StreamSubscription? _outboxSubscription;
   StreamSubscription? _networkSubscription;
@@ -558,9 +569,18 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       final sessionKey = _sessionKeyForPrivateTarget(targetId);
       final messages =
           await _messageApi.getPrivateHistory(targetId, page: page, size: size);
+      final oldestId = _findOldestLoadedServerMessageId(messages);
       state = state.copyWith(
         messages: {...state.messages, sessionKey: messages},
         isLoading: false,
+        hasMoreHistoryBySession: {
+          ...state.hasMoreHistoryBySession,
+          sessionKey: messages.length >= (size ?? 20),
+        },
+        oldestLoadedServerMessageIdBySession: {
+          ...state.oldestLoadedServerMessageIdBySession,
+          if (oldestId != null) sessionKey: oldestId,
+        },
       );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
@@ -573,16 +593,270 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       final sessionKey = _sessionKeyForGroupTarget(groupId);
       final messages =
           await _messageApi.getGroupHistory(groupId, page: page, size: size);
+      final oldestId = _findOldestLoadedServerMessageId(messages);
       state = state.copyWith(
         messages: {...state.messages, sessionKey: messages},
         isLoading: false,
+        hasMoreHistoryBySession: {
+          ...state.hasMoreHistoryBySession,
+          sessionKey: messages.length >= (size ?? 20),
+        },
+        oldestLoadedServerMessageIdBySession: {
+          ...state.oldestLoadedServerMessageIdBySession,
+          if (oldestId != null) sessionKey: oldestId,
+        },
       );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
+  Future<void> loadMoreHistory(String sessionId, {int size = 20}) async {
+    if (state.loadingHistoryBySession[sessionId] == true) {
+      return;
+    }
+
+    if (!state.messages.containsKey(sessionId)) {
+      return;
+    }
+
+    final session = state.sessions.where((s) => s.id == sessionId).firstOrNull;
+    if (session == null) {
+      return;
+    }
+
+    final existingMessages = state.messages[sessionId] ?? [];
+    final oldestMessageId =
+        state.oldestLoadedServerMessageIdBySession[sessionId] ??
+            _findOldestLoadedServerMessageId(existingMessages);
+
+    if (oldestMessageId == null) {
+      state = state.copyWith(
+        hasMoreHistoryBySession: {
+          ...state.hasMoreHistoryBySession,
+          sessionId: false,
+        },
+      );
+      return;
+    }
+
+    state = state.copyWith(
+      loadingHistoryBySession: {
+        ...state.loadingHistoryBySession,
+        sessionId: true,
+      },
+    );
+
+    try {
+      final isGroup = session.type == 'group' || session.conversationType == 'group';
+      List<Message> newMessages;
+
+      try {
+        if (isGroup) {
+          newMessages = await _messageApi.getGroupHistoryCursor(
+            session.targetId,
+            limit: size,
+            lastMessageId: oldestMessageId,
+          );
+        } else {
+          newMessages = await _messageApi.getPrivateHistoryCursor(
+            session.targetId,
+            limit: size,
+            lastMessageId: oldestMessageId,
+          );
+        }
+      } catch (e) {
+        final fallbackPage = _fallbackHistoryPageBySession(sessionId);
+        if (isGroup) {
+          newMessages = await _messageApi.getGroupHistory(
+            session.targetId,
+            page: fallbackPage,
+            size: size,
+          );
+        } else {
+          newMessages = await _messageApi.getPrivateHistory(
+            session.targetId,
+            page: fallbackPage,
+            size: size,
+          );
+        }
+        _incrementFallbackHistoryPage(sessionId);
+      }
+
+      final merged = _mergeMessagesChronologically(existingMessages, newMessages);
+      final hasMore = newMessages.length >= size;
+
+      final oldestId = _findOldestLoadedServerMessageId(merged);
+
+      state = state.copyWith(
+        messages: {...state.messages, sessionId: merged},
+        loadingHistoryBySession: {
+          ...state.loadingHistoryBySession,
+          sessionId: false,
+        },
+        hasMoreHistoryBySession: {
+          ...state.hasMoreHistoryBySession,
+          sessionId: hasMore,
+        },
+        oldestLoadedServerMessageIdBySession: {
+          ...state.oldestLoadedServerMessageIdBySession,
+          if (oldestId != null) sessionId: oldestId,
+        },
+      );
+    } catch (e) {
+      state = state.copyWith(
+        loadingHistoryBySession: {
+          ...state.loadingHistoryBySession,
+          sessionId: false,
+        },
+      );
+    }
+  }
+
+  String? _findOldestLoadedServerMessageId(List<Message> messages) {
+    String? oldestId;
+    for (final msg in messages) {
+      if (msg.id.startsWith('local_')) continue;
+      if (oldestId == null) {
+        oldestId = msg.id;
+      } else {
+        final currentId = BigInt.tryParse(msg.id);
+        final oldestBigInt = BigInt.tryParse(oldestId);
+        if (currentId != null && oldestBigInt != null) {
+          if (currentId < oldestBigInt) {
+            oldestId = msg.id;
+          }
+        } else if (msg.id.compareTo(oldestId) < 0) {
+          oldestId = msg.id;
+        }
+      }
+    }
+    return oldestId;
+  }
+
+  List<Message> _mergeMessagesChronologically(
+      List<Message> existing, List<Message> incoming) {
+    final merged = <String, Message>{};
+
+    for (final msg in existing) {
+      merged[msg.id] = msg;
+      if (msg.clientMessageId != null) {
+        merged[msg.clientMessageId!] = msg;
+      }
+    }
+
+    for (final msg in incoming) {
+      final existingMsg = merged[msg.id] ?? (msg.clientMessageId != null ? merged[msg.clientMessageId!] : null);
+      if (existingMsg != null) {
+        final mergedMsg = Message(
+          id: existingMsg.id,
+          senderId: existingMsg.senderId,
+          receiverId: existingMsg.receiverId,
+          isGroupChat: existingMsg.isGroupChat,
+          messageType: existingMsg.messageType,
+          content: msg.content.isNotEmpty ? msg.content : existingMsg.content,
+          sendTime: existingMsg.sendTime,
+          status: msg.status.isNotEmpty ? msg.status : existingMsg.status,
+          clientMessageId: existingMsg.clientMessageId,
+          groupId: existingMsg.groupId,
+          senderName: existingMsg.senderName,
+          senderAvatar: existingMsg.senderAvatar,
+          mediaUrl: msg.mediaUrl ?? existingMsg.mediaUrl,
+          mediaSize: msg.mediaSize ?? existingMsg.mediaSize,
+          mediaName: msg.mediaName ?? existingMsg.mediaName,
+          thumbnailUrl: msg.thumbnailUrl ?? existingMsg.thumbnailUrl,
+          duration: msg.duration ?? existingMsg.duration,
+          encrypted: msg.encrypted ?? existingMsg.encrypted,
+          decryptStatus: msg.decryptStatus ?? existingMsg.decryptStatus,
+          e2eeEnvelope: msg.e2eeEnvelope ?? existingMsg.e2eeEnvelope,
+        );
+        merged[msg.id] = mergedMsg;
+        if (msg.clientMessageId != null) {
+          merged[msg.clientMessageId!] = mergedMsg;
+        }
+      } else {
+        merged[msg.id] = msg;
+        if (msg.clientMessageId != null) {
+          merged[msg.clientMessageId!] = msg;
+        }
+      }
+    }
+
+    final result = merged.values.toList();
+    result.sort((a, b) {
+      final timeA = DateTime.tryParse(a.sendTime) ?? DateTime(2000);
+      final timeB = DateTime.tryParse(b.sendTime) ?? DateTime(2000);
+      return timeA.compareTo(timeB);
+    });
+
+    return result;
+  }
+
+  final Map<String, int> _fallbackHistoryPages = {};
+
+  int _fallbackHistoryPageBySession(String sessionId) {
+    return _fallbackHistoryPages[sessionId] ?? 1;
+  }
+
+  void _incrementFallbackHistoryPage(String sessionId) {
+    _fallbackHistoryPages[sessionId] = (_fallbackHistoryPages[sessionId] ?? 1) + 1;
+  }
+
+  Future<MessageConfig> _ensureMessageConfig() async {
+    if (_messageConfig != null) return _messageConfig!;
+    try {
+      _messageConfig = await _messageApi.getConfig();
+    } catch (_) {
+      _messageConfig = defaultMessageConfig;
+    }
+    return _messageConfig!;
+  }
+
   Future<Message?> sendMessage(String receiverId, String content,
+      {String messageType = 'TEXT',
+      String? clientMessageId,
+      String? mediaUrl,
+      String? mediaName,
+      int? mediaSize,
+      String? thumbnailUrl,
+      int? duration}) async {
+    // Text splitting: only applies to TEXT messages with enforce enabled.
+    if (messageType == 'TEXT') {
+      final config = await _ensureMessageConfig();
+      if (config.textEnforce && config.textMaxLength > 0) {
+        final parts = splitTextByCodePoints(content, config.textMaxLength);
+        if (parts.length > 1) {
+          Message? lastResult;
+          for (final part in parts) {
+            lastResult = await _sendSinglePrivateMessage(
+              receiverId, part,
+              messageType: messageType,
+              mediaUrl: mediaUrl,
+              mediaName: mediaName,
+              mediaSize: mediaSize,
+              thumbnailUrl: thumbnailUrl,
+              duration: duration,
+            );
+            if (lastResult == null) return null;
+          }
+          return lastResult;
+        }
+      }
+    }
+    return _sendSinglePrivateMessage(
+      receiverId, content,
+      messageType: messageType,
+      clientMessageId: clientMessageId,
+      mediaUrl: mediaUrl,
+      mediaName: mediaName,
+      mediaSize: mediaSize,
+      thumbnailUrl: thumbnailUrl,
+      duration: duration,
+    );
+  }
+
+  Future<Message?> _sendSinglePrivateMessage(
+      String receiverId, String content,
       {String messageType = 'TEXT',
       String? clientMessageId,
       String? mediaUrl,
@@ -707,7 +981,54 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       String? mediaName,
       int? mediaSize,
       String? thumbnailUrl,
-      int? duration}) async {
+      int? duration,
+      List<String>? mentionedUserIds}) async {
+    // Text splitting: only applies to TEXT messages with enforce enabled.
+    if (messageType == 'TEXT') {
+      final config = await _ensureMessageConfig();
+      if (config.textEnforce && config.textMaxLength > 0) {
+        final parts = splitTextByCodePoints(content, config.textMaxLength);
+        if (parts.length > 1) {
+          Message? lastResult;
+          for (final part in parts) {
+            lastResult = await _sendSingleGroupMessage(
+              groupId, part,
+              messageType: messageType,
+              mediaUrl: mediaUrl,
+              mediaName: mediaName,
+              mediaSize: mediaSize,
+              thumbnailUrl: thumbnailUrl,
+              duration: duration,
+              mentionedUserIds: mentionedUserIds,
+            );
+            if (lastResult == null) return null;
+          }
+          return lastResult;
+        }
+      }
+    }
+    return _sendSingleGroupMessage(
+      groupId, content,
+      messageType: messageType,
+      clientMessageId: clientMessageId,
+      mediaUrl: mediaUrl,
+      mediaName: mediaName,
+      mediaSize: mediaSize,
+      thumbnailUrl: thumbnailUrl,
+      duration: duration,
+      mentionedUserIds: mentionedUserIds,
+    );
+  }
+
+  Future<Message?> _sendSingleGroupMessage(String groupId, String content,
+      {String messageType = 'TEXT',
+      String? clientMessageId,
+      String? mediaUrl,
+      String? mediaName,
+      int? mediaSize,
+      String? thumbnailUrl,
+      int? duration,
+      List<String>? mentionedUserIds}) async {
     final cid =
         clientMessageId ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
     final sessionKey = _sessionKeyForGroupTarget(groupId);
@@ -741,6 +1062,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           mediaSize: mediaSize,
           thumbnailUrl: thumbnailUrl,
           duration: duration,
+          mentionedUserIds: mentionedUserIds,
         ),
       );
       _replaceMessage(sessionKey, cid, serverMessage);

@@ -108,6 +108,11 @@ class TestMessageApi extends MessageApi {
     lastMarkReadConversationId = conversationId;
   }
 
+  @override
+  Future<MessageConfig> getConfig() async {
+    return const MessageConfig(textEnforce: true, textMaxLength: 2000);
+  }
+
   Message _dummyMessage() {
     return const Message(
       id: 'server-msg-1',

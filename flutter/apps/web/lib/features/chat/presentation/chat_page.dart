@@ -12,6 +12,7 @@ import 'widgets/session_tile.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/message_input.dart';
 import 'widgets/network_status_banner.dart';
+import 'widgets/load_more_history_button.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({this.sessionId, super.key});
@@ -27,6 +28,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final _scrollController = ScrollController();
   final _messageInputFocusNode = FocusNode();
   bool _messageInputFocused = false;
+  List<GroupMember> _groupMembers = [];
 
   void _handleEsc() {
     if (_messageInputFocused) {
@@ -91,8 +93,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         session.conversationType == 'group' || session.type == 'group';
     if (isGroup) {
       await notifier.loadGroupMessages(session.targetId);
+      _loadGroupMembers(session.targetId);
     } else {
       await notifier.loadMessages(session.targetId);
+      setState(() => _groupMembers = []);
     }
 
     // Check for cached negotiation request after switching session
@@ -101,6 +105,18 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       if (pending != null && pending.action == E2eeNegotiationAction.request) {
         _showNegotiationDialog(pending);
       }
+    }
+  }
+
+  Future<void> _loadGroupMembers(String groupId) async {
+    try {
+      final groupApi = ref.read(groupApiProvider);
+      final members = await groupApi.getMembers(groupId);
+      if (mounted) {
+        setState(() => _groupMembers = members);
+      }
+    } catch (_) {
+      // Silently fail - mention will just not show members
     }
   }
 
@@ -286,7 +302,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               if (event.action == E2eeNegotiationAction.request) {
                 final activeId = ref.read(chatStateProvider).activeSessionId;
                 // Only show notification if not the current session
-                if (event.sessionId != activeId && mounted) {
+                if (entry.key != activeId && mounted) {
                   final name = event.requesterName ?? event.requesterId;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -351,9 +367,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   controller: _scrollController,
                   padding:
                       const EdgeInsets.symmetric(vertical: ImTokens.space2),
-                  itemCount: messages.length,
+                  itemCount: messages.length + 1,
                   itemBuilder: (context, index) {
-                    final msg = messages[index];
+                    if (index == 0) {
+                      return LoadMoreHistoryButton(sessionId: sessionId);
+                    }
+                    final msg = messages[index - 1];
                     final currentUserId =
                         ref.watch(authStateProvider).user?.id ?? '';
                     return MessageBubble(
@@ -368,12 +387,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           focusNode: _messageInputFocusNode,
           onFocusChanged: (focused) =>
               setState(() => _messageInputFocused = focused),
-          onSend: (text) {
+          members: isGroup ? _groupMembers : null,
+          onSend: (text, mentionedUserIds) {
             if (session == null) return;
             if (isGroup) {
               ref.read(chatStateProvider.notifier).sendGroupMessage(
                     session.targetId,
                     text,
+                    mentionedUserIds:
+                        mentionedUserIds.isNotEmpty ? mentionedUserIds : null,
                   );
             } else {
               ref.read(chatStateProvider.notifier).sendMessage(

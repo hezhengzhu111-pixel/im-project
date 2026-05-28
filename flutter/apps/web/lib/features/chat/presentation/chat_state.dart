@@ -7,6 +7,9 @@ class ChatState {
     this.isLoading = false,
     this.activeSessionId,
     this.error,
+    this.loadingHistoryBySession = const {},
+    this.hasMoreHistoryBySession = const {},
+    this.oldestLoadedServerMessageIdBySession = const {},
   });
 
   final List<ChatSession> sessions;
@@ -14,6 +17,9 @@ class ChatState {
   final bool isLoading;
   final String? activeSessionId;
   final String? error;
+  final Map<String, bool> loadingHistoryBySession;
+  final Map<String, bool> hasMoreHistoryBySession;
+  final Map<String, String> oldestLoadedServerMessageIdBySession;
 
   List<Message> get currentMessages =>
       activeSessionId != null ? (messages[activeSessionId] ?? const []) : const [];
@@ -24,6 +30,9 @@ class ChatState {
     bool? isLoading,
     String? activeSessionId,
     String? error,
+    Map<String, bool>? loadingHistoryBySession,
+    Map<String, bool>? hasMoreHistoryBySession,
+    Map<String, String>? oldestLoadedServerMessageIdBySession,
   }) {
     return ChatState(
       sessions: sessions ?? this.sessions,
@@ -31,6 +40,9 @@ class ChatState {
       isLoading: isLoading ?? this.isLoading,
       activeSessionId: activeSessionId ?? this.activeSessionId,
       error: error,
+      loadingHistoryBySession: loadingHistoryBySession ?? this.loadingHistoryBySession,
+      hasMoreHistoryBySession: hasMoreHistoryBySession ?? this.hasMoreHistoryBySession,
+      oldestLoadedServerMessageIdBySession: oldestLoadedServerMessageIdBySession ?? this.oldestLoadedServerMessageIdBySession,
     );
   }
 }

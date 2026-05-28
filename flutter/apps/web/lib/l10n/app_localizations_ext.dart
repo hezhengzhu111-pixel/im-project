@@ -310,6 +310,8 @@ extension AppLocalizationsLookup on AppLocalizations {
       case 'seoProfileDescription': return seoProfileDescription;
       case 'seoAiSettingsTitle': return seoAiSettingsTitle;
       case 'seoAiSettingsDescription': return seoAiSettingsDescription;
+      case 'chatLoadMoreHistory': return chatLoadMoreHistory;
+      case 'chatNoMoreHistory': return chatNoMoreHistory;
       default: return key;
     }
   }

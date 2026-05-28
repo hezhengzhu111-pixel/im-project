@@ -341,5 +341,7 @@
   "errorNotificationPermissionDenied": "通知权限被拒绝",
   "errorMicrophonePermissionDenied": "麦克风权限被拒绝",
   "errorFileReadFailed": "无法读取文件数据",
-  "e2eeNegotiationNotification": "{name} 请求与你开启端到端加密"
+  "e2eeNegotiationNotification": "{name} 请求与你开启端到端加密",
+  "chatLoadMoreHistory": "加载更早的消息",
+  "chatNoMoreHistory": "没有更早的消息了"
 }

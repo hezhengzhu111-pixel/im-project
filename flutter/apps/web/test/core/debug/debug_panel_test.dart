@@ -208,7 +208,8 @@ class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>
           String? mediaName,
           int? mediaSize,
           String? thumbnailUrl,
-          int? duration}) async =>
+          int? duration,
+          List<String>? mentionedUserIds}) async =>
       null;
 
   @override
@@ -254,4 +255,7 @@ class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>
 
   @override
   Future<void> disableEncryptionForSession(String sessionId) async {}
+
+  @override
+  Future<void> loadMoreHistory(String sessionId, {int size = 20}) async {}
 }
