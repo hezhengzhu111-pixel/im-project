@@ -66,8 +66,8 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
       }).toList();
 
       state = state.copyWith(friends: updatedFriends);
-    } catch (e) {
-      AppLogger.instance.error('Failed to handle online status', e);
+    } catch (e, st) {
+      AppLogger.instance.error('Failed to handle online status', e, st);
     }
   }
 

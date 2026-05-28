@@ -188,8 +188,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         _wsClient.connect(wsUrl);
         return;
       }
-    } catch (e) {
-      AppLogger.instance.error('WS ticket fetch failed, connecting without ticket', e);
+    } catch (e, st) {
+      AppLogger.instance.error('WS ticket fetch failed, connecting without ticket', e, st, 'ws');
     }
     // Fallback: connect without ticket (development mode)
     _wsClient.connect(_wsClient.wsBaseUrl);
