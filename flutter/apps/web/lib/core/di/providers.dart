@@ -2,6 +2,7 @@
 /// 各 feature 自己持有 provider 定义，这里只做 re-export。
 
 // Core
+export 'platform_providers.dart';
 export '../config/app_config_provider.dart';
 export '../network/network_providers.dart';
 export '../network/network_status_provider.dart';
