@@ -19,7 +19,7 @@ class WebAudioRecorderAdapter implements AudioRecorderPort {
 
     try {
       final stream = await web.window.navigator.mediaDevices
-          .getUserMedia(web.MediaStreamConstraints(audio: true))
+          .getUserMedia(web.MediaStreamConstraints(audio: true.toJS))
           .toDart;
 
       _stream = stream;
@@ -123,7 +123,10 @@ class WebAudioRecorderAdapter implements AudioRecorderPort {
     }
 
     if (_stream != null) {
-      _stream!.getTracks().forEach((track) => track.stop());
+      final tracks = _stream!.getTracks().toDart;
+      for (final track in tracks) {
+        track.stop();
+      }
       _stream = null;
     }
 
@@ -132,6 +135,6 @@ class WebAudioRecorderAdapter implements AudioRecorderPort {
 
   Future<Uint8List> _blobToUint8List(web.Blob blob) async {
     final buffer = await blob.arrayBuffer().toDart;
-    return buffer.asUint8List();
+    return buffer.toDart.asUint8List();
   }
 }

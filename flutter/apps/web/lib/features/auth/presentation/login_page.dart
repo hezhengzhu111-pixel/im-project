@@ -54,15 +54,6 @@ class _LoginPageState extends ConsumerState<LoginPage>
     _animController.forward();
 
     _formController = FormController(FormSchema(fields: []));
-
-    ref.listen<AuthState>(authStateProvider, (prev, next) {
-      if (!mounted) return;
-      if (next.errorCode != null) {
-        _formController.setFormError(_locErrorCode(next.errorCode!));
-      } else if (prev?.errorCode != null && next.errorCode == null) {
-        _formController.setFormError(null);
-      }
-    });
   }
 
   @override
@@ -129,6 +120,15 @@ class _LoginPageState extends ConsumerState<LoginPage>
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
+
+    ref.listen<AuthState>(authStateProvider, (prev, next) {
+      if (!mounted) return;
+      if (next.errorCode != null) {
+        _formController.setFormError(_locErrorCode(next.errorCode!));
+      } else if (prev?.errorCode != null && next.errorCode == null) {
+        _formController.setFormError(null);
+      }
+    });
 
     return Scaffold(
       body: Container(
@@ -233,9 +233,11 @@ class _LoginPageState extends ConsumerState<LoginPage>
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text('${loc.loginNoAccount} ${loc.loginRegister}'),
-              GradientButton(
-                text: loc.loginRegister,
-                onPressed: () => context.go('/register'),
+              Expanded(
+                child: GradientButton(
+                  text: loc.loginRegister,
+                  onPressed: () => context.go('/register'),
+                ),
               ),
             ],
           ),
