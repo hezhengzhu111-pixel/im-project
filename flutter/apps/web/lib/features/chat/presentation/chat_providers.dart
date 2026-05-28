@@ -4,14 +4,10 @@ import '../../../core/network/network_status_provider.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../e2ee/data/e2ee_providers.dart';
 import '../../../core/di/third_party_providers.dart';
-import '../data/message_api.dart';
+import '../data/message_api_provider.dart';
 import '../data/message_pipeline.dart';
 import '../data/outbox_provider.dart';
 import 'chat_provider_with_outbox.dart';
-
-final messageApiProvider = Provider<MessageApi>((ref) {
-  return MessageApi(ref.watch(httpClientProvider));
-});
 
 final chatStateProvider =
     StateNotifierProvider<ChatNotifierWithOutbox, ChatStateWithOutbox>((ref) {

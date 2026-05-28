@@ -1,9 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:idb_shim/idb_browser.dart';
 import '../../../core/network/network_status_provider.dart';
-import '../presentation/chat_providers.dart';
+import 'message_api_provider.dart';
 import 'message_outbox.dart';
-import 'message_api.dart';
 
 /// Provider for the message outbox
 final messageOutboxProvider = Provider<MessageOutbox>((ref) {
