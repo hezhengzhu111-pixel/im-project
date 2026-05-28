@@ -7,4 +7,5 @@ abstract class AuthRepository {
   Future<void> logout();
   Future<bool> isAuthenticated();
   Future<String?> getToken();
+  Future<void> refreshToken();
 }
