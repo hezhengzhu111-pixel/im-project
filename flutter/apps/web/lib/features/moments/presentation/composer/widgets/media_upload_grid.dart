@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 
 class MediaUploadItem {
   const MediaUploadItem({
@@ -80,7 +81,7 @@ class MediaUploadGrid extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          '添加图片/视频，最多 $maxFiles 张',
+          AppLocalizations.of(context)!.momentsAddMedia(maxFiles),
           style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
         ),
       ],
