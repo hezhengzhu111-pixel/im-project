@@ -961,4 +961,76 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get brandFeatureAi => 'AI assistant';
+
+  @override
+  String get seoLoginTitle => 'Login - IM';
+
+  @override
+  String get seoLoginDescription => 'Secure messaging, end-to-end encrypted login';
+
+  @override
+  String get seoRegisterTitle => 'Register - IM';
+
+  @override
+  String get seoRegisterDescription => 'Create your IM account';
+
+  @override
+  String get seoChatTitle => 'Chat - IM';
+
+  @override
+  String get seoChatDescription => 'Chat with friends securely, end-to-end encrypted';
+
+  @override
+  String get seoContactsTitle => 'Contacts - IM';
+
+  @override
+  String get seoContactsDescription => 'Manage your contacts';
+
+  @override
+  String get seoAddFriendTitle => 'Add Friend - IM';
+
+  @override
+  String get seoAddFriendDescription => 'Search and add new friends';
+
+  @override
+  String get seoGroupsTitle => 'Groups - IM';
+
+  @override
+  String get seoGroupsDescription => 'Manage and join groups';
+
+  @override
+  String get seoCreateGroupTitle => 'Create Group - IM';
+
+  @override
+  String get seoCreateGroupDescription => 'Create a new group chat';
+
+  @override
+  String get seoMomentsTitle => 'Moments - IM';
+
+  @override
+  String get seoMomentsDescription => 'View friends\' updates';
+
+  @override
+  String get seoMomentsNotificationsTitle => 'Moment Notifications - IM';
+
+  @override
+  String get seoMomentsNotificationsDescription => 'View moments interaction notifications';
+
+  @override
+  String get seoSettingsTitle => 'Settings - IM';
+
+  @override
+  String get seoSettingsDescription => 'Personalize your IM experience';
+
+  @override
+  String get seoProfileTitle => 'Profile - IM';
+
+  @override
+  String get seoProfileDescription => 'Edit your profile';
+
+  @override
+  String get seoAiSettingsTitle => 'AI Settings - IM';
+
+  @override
+  String get seoAiSettingsDescription => 'Configure AI assistant';
 }
