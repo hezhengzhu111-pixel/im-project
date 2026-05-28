@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
+import 'package:im_web/features/auth/domain/auth_error_code.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 
 import '../../helpers/fakes.dart';
@@ -182,7 +185,7 @@ void main() {
     });
 
     group('AuthState.copyWith', () {
-      test('copyWith preserves existing values', () {
+      test('copyWith preserves error when not explicitly passed', () {
         const state = AuthState(
           user: User(id: '1', username: 'test'),
           isAuthenticated: true,
@@ -194,7 +197,25 @@ void main() {
         expect(copied.user, state.user);
         expect(copied.isAuthenticated, state.isAuthenticated);
         expect(copied.isLoading, isTrue);
-        expect(copied.error, isNull); // copyWith sets error to null by default
+        expect(copied.error, 'some error'); // preserved via sentinel
+      });
+
+      test('copyWith clears error when explicitly passed null', () {
+        const state = AuthState(error: 'old error');
+        final copied = state.copyWith(error: null);
+        expect(copied.error, isNull);
+      });
+
+      test('copyWith preserves errorCode when not explicitly passed', () {
+        const state = AuthState(errorCode: AuthErrorCode.networkError);
+        final copied = state.copyWith(isLoading: true);
+        expect(copied.errorCode, AuthErrorCode.networkError);
+      });
+
+      test('copyWith clears errorCode when explicitly passed null', () {
+        const state = AuthState(errorCode: AuthErrorCode.networkError);
+        final copied = state.copyWith(errorCode: null);
+        expect(copied.errorCode, isNull);
       });
 
       test('copyWith updates all fields', () {
@@ -330,6 +351,61 @@ void main() {
         mockRepo.refreshTokenError = Exception('refresh failed');
         final result = await notifier.ensureFreshSession();
         expect(result, isFalse);
+      });
+    });
+
+    group('error code mapping', () {
+      test('login network error maps to networkError', () async {
+        mockRepo.loginError = Exception('Socket connection refused');
+        await notifier.login('user', 'pass');
+        expect(notifier.state.errorCode, AuthErrorCode.networkError);
+      });
+
+      test('login timeout maps to networkError', () async {
+        mockRepo.loginError = TimeoutException('Connection timed out');
+        await notifier.login('user', 'pass');
+        expect(notifier.state.errorCode, AuthErrorCode.networkError);
+      });
+
+      test('login 401 error maps to invalidCredentials', () async {
+        mockRepo.loginError = Exception('HTTP 401 Unauthorized');
+        await notifier.login('user', 'pass');
+        expect(notifier.state.errorCode, AuthErrorCode.invalidCredentials);
+      });
+
+      test('login 429 error maps to tooManyRequests', () async {
+        mockRepo.loginError = Exception('HTTP 429 Too Many Requests');
+        await notifier.login('user', 'pass');
+        expect(notifier.state.errorCode, AuthErrorCode.tooManyRequests);
+      });
+
+      test('login 500 error maps to serverError', () async {
+        mockRepo.loginError = Exception('HTTP 500 Internal Server Error');
+        await notifier.login('user', 'pass');
+        expect(notifier.state.errorCode, AuthErrorCode.serverError);
+      });
+
+      test('login unknown error maps to unknown', () async {
+        mockRepo.loginError = Exception('Something weird');
+        await notifier.login('user', 'pass');
+        expect(notifier.state.errorCode, AuthErrorCode.unknown);
+      });
+
+      test('register error maps errorCode correctly', () async {
+        mockRepo.registerError = Exception('Socket connection refused');
+        await notifier.register('user', 'e@e.com', 'pass');
+        expect(notifier.state.errorCode, AuthErrorCode.networkError);
+      });
+
+      test('login success clears errorCode', () async {
+        mockRepo.loginError = Exception('fail');
+        await notifier.login('user', 'pass');
+        expect(notifier.state.errorCode, isNotNull);
+
+        mockRepo.loginError = null;
+        mockRepo.loginResponse = const UserAuthResponse(success: true);
+        await notifier.login('user', 'pass');
+        expect(notifier.state.errorCode, isNull);
       });
     });
   });
