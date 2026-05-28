@@ -249,6 +249,71 @@ void main() {
       notifier.dispose();
     });
 
+    test('online -> limited does not emit online transition', () async {
+      final notifier = NetworkStatusNotifier(dataSource: dataSource);
+      expect(notifier.state.isOnline, isTrue);
+
+      // Simulate: navigator online but server unreachable
+      dataSource.setServerReachable(false);
+      await notifier.forceCheck();
+
+      expect(notifier.state.isLimited, isTrue);
+      // isOnline is false for limited
+      expect(notifier.state.isOnline, isFalse);
+      notifier.dispose();
+    });
+
+    test('limited -> online resets retryCount', () async {
+      dataSource.setServerReachable(false);
+      final notifier = NetworkStatusNotifier(dataSource: dataSource);
+
+      await notifier.forceCheck();
+      expect(notifier.state.isLimited, isTrue);
+      expect(notifier.state.retryCount, 1);
+
+      dataSource.setServerReachable(true);
+      await notifier.forceCheck();
+      expect(notifier.state.isOnline, isTrue);
+      expect(notifier.state.retryCount, 0);
+      notifier.dispose();
+    });
+
+    test('offline -> limited keeps offline-like behavior', () async {
+      dataSource.setOffline();
+      final notifier = NetworkStatusNotifier(dataSource: dataSource);
+      expect(notifier.state.isOffline, isTrue);
+
+      // Navigator goes online but server unreachable
+      dataSource.setOnline();
+      dataSource.setServerReachable(false);
+      dataSource.emitOnline();
+      await Future<void>.delayed(Duration.zero);
+      // After online event, notifier calls checkConnectivity
+      await notifier.forceCheck();
+
+      expect(notifier.state.isLimited, isTrue);
+      expect(notifier.state.isOnline, isFalse);
+      notifier.dispose();
+    });
+
+    test('stateChanges stream emits on every state update', () async {
+      final notifier = NetworkStatusNotifier(dataSource: dataSource);
+      final states = <NetworkState>[];
+      notifier.stateChanges.listen((s) => states.add(s));
+
+      dataSource.emitOffline();
+      await Future<void>.delayed(Duration.zero);
+
+      dataSource.setOnline();
+      dataSource.emitOnline();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(states.length, greaterThanOrEqualTo(2));
+      expect(states.any((s) => s.isOffline), isTrue);
+      expect(states.any((s) => s.isOnline), isTrue);
+      notifier.dispose();
+    });
+
     test('disposes cleanly without errors', () {
       final notifier = NetworkStatusNotifier(dataSource: dataSource);
       expect(() => notifier.dispose(), returnsNormally);
