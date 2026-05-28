@@ -286,7 +286,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               if (event.action == E2eeNegotiationAction.request) {
                 final activeId = ref.read(chatStateProvider).activeSessionId;
                 // Only show notification if not the current session
-                if (event.sessionId != activeId && mounted) {
+                if (entry.key != activeId && mounted) {
                   final name = event.requesterName ?? event.requesterId;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
