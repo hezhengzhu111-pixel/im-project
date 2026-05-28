@@ -1466,7 +1466,7 @@ abstract class AppLocalizations {
   /// No description provided for @momentsPublishButton.
   ///
   /// In en, this message translates to:
-  /// **'Publish'**
+  /// **'Publish Moment'**
   String get momentsPublishButton;
 
   /// No description provided for @momentsShareHint.
@@ -1648,6 +1648,276 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Too many attempts. Please try again later.'**
   String get formErrorRateLimit;
+
+  /// No description provided for @e2eeEncryptedBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'End-to-end encryption enabled'**
+  String get e2eeEncryptedBadge;
+
+  /// No description provided for @e2eeNegotiatingBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Negotiating encryption'**
+  String get e2eeNegotiatingBadge;
+
+  /// No description provided for @e2eeFailedBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Encryption error'**
+  String get e2eeFailedBadge;
+
+  /// No description provided for @e2eePlaintextBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Encryption not enabled'**
+  String get e2eePlaintextBadge;
+
+  /// No description provided for @networkDisconnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Network disconnected, messages will be sent when restored'**
+  String get networkDisconnected;
+
+  /// No description provided for @chatMessagesFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} messages failed to send'**
+  String chatMessagesFailed(Object count);
+
+  /// No description provided for @chatMessagesPending.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} messages waiting to send'**
+  String chatMessagesPending(Object count);
+
+  /// No description provided for @chatRetrying.
+  ///
+  /// In en, this message translates to:
+  /// **'Retrying to send messages...'**
+  String get chatRetrying;
+
+  /// No description provided for @chatRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get chatRetry;
+
+  /// No description provided for @errorE2eeNotReady.
+  ///
+  /// In en, this message translates to:
+  /// **'E2EE negotiation not complete, waiting for peer confirmation'**
+  String get errorE2eeNotReady;
+
+  /// No description provided for @errorAlreadyRecording.
+  ///
+  /// In en, this message translates to:
+  /// **'Already recording'**
+  String get errorAlreadyRecording;
+
+  /// No description provided for @errorNotRecording.
+  ///
+  /// In en, this message translates to:
+  /// **'Not recording'**
+  String get errorNotRecording;
+
+  /// No description provided for @errorRecordingNotImplemented.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice recording not yet implemented'**
+  String get errorRecordingNotImplemented;
+
+  /// No description provided for @momentsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Moments'**
+  String get momentsTitle;
+
+  /// No description provided for @momentsUserFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'User'**
+  String get momentsUserFallback;
+
+  /// No description provided for @momentsDailyOverview.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily Overview'**
+  String get momentsDailyOverview;
+
+  /// No description provided for @momentsInteractions.
+  ///
+  /// In en, this message translates to:
+  /// **'Interactions'**
+  String get momentsInteractions;
+
+  /// No description provided for @momentsPhotos.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos'**
+  String get momentsPhotos;
+
+  /// No description provided for @momentsComments.
+  ///
+  /// In en, this message translates to:
+  /// **'Comments'**
+  String get momentsComments;
+
+  /// No description provided for @momentsRecentInteractions.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent Interactions'**
+  String get momentsRecentInteractions;
+
+  /// No description provided for @momentsNoRecentInteractions.
+  ///
+  /// In en, this message translates to:
+  /// **'No recent interactions'**
+  String get momentsNoRecentInteractions;
+
+  /// No description provided for @momentsSharePrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Share your life moments'**
+  String get momentsSharePrompt;
+
+  /// No description provided for @momentsShareDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos, text, videos can all be published to Moments'**
+  String get momentsShareDesc;
+
+  /// No description provided for @momentsNoPosts.
+  ///
+  /// In en, this message translates to:
+  /// **'No moments yet'**
+  String get momentsNoPosts;
+
+  /// No description provided for @momentsNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get momentsNotifications;
+
+  /// No description provided for @momentsMarkAllRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark all as read'**
+  String get momentsMarkAllRead;
+
+  /// No description provided for @momentsNoNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'No notifications'**
+  String get momentsNoNotifications;
+
+  /// No description provided for @momentsNotificationLiked.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} liked your moment'**
+  String momentsNotificationLiked(Object name);
+
+  /// No description provided for @momentsNotificationCommented.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} commented on your moment'**
+  String momentsNotificationCommented(Object name);
+
+  /// No description provided for @momentsNotificationReplied.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} replied to your comment'**
+  String momentsNotificationReplied(Object name);
+
+  /// No description provided for @momentsNotificationInteracted.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} interacted with you'**
+  String momentsNotificationInteracted(Object name);
+
+  /// No description provided for @momentsVisibilityPublic.
+  ///
+  /// In en, this message translates to:
+  /// **'Public'**
+  String get momentsVisibilityPublic;
+
+  /// No description provided for @momentsVisibilityFriends.
+  ///
+  /// In en, this message translates to:
+  /// **'Friends only'**
+  String get momentsVisibilityFriends;
+
+  /// No description provided for @momentsVisibilitySelf.
+  ///
+  /// In en, this message translates to:
+  /// **'Only me'**
+  String get momentsVisibilitySelf;
+
+  /// No description provided for @momentsAddMedia.
+  ///
+  /// In en, this message translates to:
+  /// **'Add photos/videos, max {count}'**
+  String momentsAddMedia(Object count);
+
+  /// No description provided for @momentsShowFull.
+  ///
+  /// In en, this message translates to:
+  /// **'Show full'**
+  String get momentsShowFull;
+
+  /// No description provided for @timeJustNow.
+  ///
+  /// In en, this message translates to:
+  /// **'just now'**
+  String get timeJustNow;
+
+  /// No description provided for @timeMinutesAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} min ago'**
+  String timeMinutesAgo(Object minutes);
+
+  /// No description provided for @timeHoursAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} h ago'**
+  String timeHoursAgo(Object hours);
+
+  /// No description provided for @timeDaysAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'{days} d ago'**
+  String timeDaysAgo(Object days);
+
+  /// No description provided for @brandSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'End-to-end encrypted instant messaging,\nyour messages are only decrypted on your device.'**
+  String get brandSubtitle;
+
+  /// No description provided for @brandFeatureE2ee.
+  ///
+  /// In en, this message translates to:
+  /// **'End-to-end encryption'**
+  String get brandFeatureE2ee;
+
+  /// No description provided for @brandFeatureRealtime.
+  ///
+  /// In en, this message translates to:
+  /// **'Realtime sync'**
+  String get brandFeatureRealtime;
+
+  /// No description provided for @brandFeatureDeviceTrust.
+  ///
+  /// In en, this message translates to:
+  /// **'Multi-device secure login'**
+  String get brandFeatureDeviceTrust;
+
+  /// No description provided for @brandFeatureAi.
+  ///
+  /// In en, this message translates to:
+  /// **'AI assistant'**
+  String get brandFeatureAi;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
