@@ -2,146 +2,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 
-/// Manual mock implementation of WsClientPort for testing.
-class MockWsClientPort implements WsClientPort {
-  @override
-  Stream<WsEvent> get events => const Stream.empty();
-
-  @override
-  Stream<WsConnectionState> get connectionState => const Stream.empty();
-
-  @override
-  bool get isConnected => false;
-
-  @override
-  Future<void> connect(String url) async {}
-
-  @override
-  Future<void> disconnect() async {}
-
-  @override
-  Future<void> reconnect() async {}
-
-  @override
-  void send(Map<String, dynamic> message) {}
-}
-
-/// Manual mock implementation of HttpClientPort for testing.
-class MockHttpClientPort implements HttpClientPort {
-  @override
-  Future<ApiResponse<T>> get<T>(
-    String path, {
-    Map<String, dynamic>? queryParameters,
-    required T Function(Map<String, dynamic>) fromJson,
-  }) async {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<ApiResponse<T>> post<T>(
-    String path, {
-    dynamic body,
-    required T Function(Map<String, dynamic>) fromJson,
-  }) async {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<ApiResponse<T>> put<T>(
-    String path, {
-    dynamic body,
-    required T Function(Map<String, dynamic>) fromJson,
-  }) async {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<ApiResponse<T>> delete<T>(
-    String path, {
-    Map<String, dynamic>? queryParameters,
-    required T Function(Map<String, dynamic>) fromJson,
-  }) async {
-    throw UnimplementedError();
-  }
-}
-
-/// Manual mock implementation of AuthRepository for testing.
-class MockAuthRepository implements AuthRepository {
-  UserAuthResponse? loginResponse;
-  UserAuthResponse? registerResponse;
-  User? profileResponse;
-  bool? isAuthResponse;
-  String? tokenResponse;
-  Exception? errorToThrow;
-  Exception? refreshTokenErrorToThrow;
-
-  int loginCallCount = 0;
-  int registerCallCount = 0;
-  int logoutCallCount = 0;
-  int getProfileCallCount = 0;
-  int isAuthenticatedCallCount = 0;
-
-  LoginRequest? lastLoginRequest;
-  RegisterRequest? lastRegisterRequest;
-
-  @override
-  Future<UserAuthResponse> login(LoginRequest request) async {
-    loginCallCount++;
-    lastLoginRequest = request;
-    if (errorToThrow != null) throw errorToThrow!;
-    return loginResponse!;
-  }
-
-  @override
-  Future<UserAuthResponse> register(RegisterRequest request) async {
-    registerCallCount++;
-    lastRegisterRequest = request;
-    if (errorToThrow != null) throw errorToThrow!;
-    return registerResponse!;
-  }
-
-  @override
-  Future<User> getProfile() async {
-    getProfileCallCount++;
-    if (errorToThrow != null) throw errorToThrow!;
-    if (profileResponse == null) throw Exception('Profile not found');
-    return profileResponse!;
-  }
-
-  @override
-  Future<void> logout() async {
-    logoutCallCount++;
-    if (errorToThrow != null) throw errorToThrow!;
-  }
-
-  @override
-  Future<bool> isAuthenticated() async {
-    isAuthenticatedCallCount++;
-    if (errorToThrow != null) throw errorToThrow!;
-    return isAuthResponse!;
-  }
-
-  @override
-  Future<String?> getToken() async {
-    return tokenResponse;
-  }
-
-  @override
-  Future<void> refreshToken() async {
-    if (refreshTokenErrorToThrow != null) throw refreshTokenErrorToThrow!;
-  }
-}
+import '../../helpers/fakes.dart';
 
 void main() {
-  late MockAuthRepository mockRepo;
-  late MockWsClientPort mockWsClient;
-  late MockHttpClientPort mockHttpClient;
+  late FakeAuthRepository mockRepo;
+  late FakeWsClientPort mockWsClient;
+  late FakeHttpClientPort mockHttpClient;
   late AuthNotifier notifier;
 
   setUp(() {
-    mockRepo = MockAuthRepository();
-    mockWsClient = MockWsClientPort();
-    mockHttpClient = MockHttpClientPort();
+    mockRepo = FakeAuthRepository();
+    mockWsClient = FakeWsClientPort();
+    mockHttpClient = FakeHttpClientPort();
     notifier = AuthNotifier(mockRepo, mockWsClient, mockHttpClient);
   });
 
@@ -190,7 +62,7 @@ void main() {
       });
 
       test('sets error on failure', () async {
-        mockRepo.errorToThrow = Exception('Invalid credentials');
+        mockRepo.loginError = Exception('Invalid credentials');
 
         await notifier.login('testuser', 'wrong');
 
@@ -200,11 +72,11 @@ void main() {
       });
 
       test('clears previous error on new login attempt', () async {
-        mockRepo.errorToThrow = Exception('Error 1');
+        mockRepo.loginError = Exception('Error 1');
         await notifier.login('user', 'pass');
         expect(notifier.state.error, isNotNull);
 
-        mockRepo.errorToThrow = null;
+        mockRepo.loginError = null;
         mockRepo.loginResponse = const UserAuthResponse(success: true);
 
         await notifier.login('user', 'pass');
@@ -243,7 +115,7 @@ void main() {
       });
 
       test('sets error on failure', () async {
-        mockRepo.errorToThrow = Exception('Username taken');
+        mockRepo.registerError = Exception('Username taken');
 
         await notifier.register('user', 'user@example.com', 'pass');
 
@@ -275,7 +147,7 @@ void main() {
 
     group('checkAuth', () {
       test('sets authenticated state when user is authenticated', () async {
-        mockRepo.isAuthResponse = true;
+        mockRepo.isAuthenticatedValue = true;
         const user = User(id: '1', username: 'testuser');
         mockRepo.profileResponse = user;
 
@@ -288,7 +160,7 @@ void main() {
       });
 
       test('stays unauthenticated when not authenticated', () async {
-        mockRepo.isAuthResponse = false;
+        mockRepo.isAuthenticatedValue = false;
 
         await notifier.checkAuth();
 
@@ -299,7 +171,7 @@ void main() {
 
       test('resets state when getProfile throws', () async {
         // isAuthenticated succeeds, but getProfile fails
-        mockRepo.isAuthResponse = true;
+        mockRepo.isAuthenticatedValue = true;
         mockRepo.profileResponse = null; // Will cause null error in getProfile
 
         await notifier.checkAuth();
@@ -344,7 +216,7 @@ void main() {
 
     group('login - additional edge cases', () {
       test('login with correct error clears isLoading', () async {
-        mockRepo.errorToThrow = Exception('Server error');
+        mockRepo.loginError = Exception('Server error');
         await notifier.login('user', 'pass');
 
         expect(notifier.state.isLoading, isFalse);
@@ -353,7 +225,7 @@ void main() {
       });
 
       test('login does not set isAuthenticated on error', () async {
-        mockRepo.errorToThrow = Exception('Network error');
+        mockRepo.loginError = Exception('Network error');
         await notifier.login('user', 'pass');
 
         expect(notifier.state.isAuthenticated, isFalse);
@@ -363,7 +235,7 @@ void main() {
 
     group('register - additional edge cases', () {
       test('register with error does not leave isLoading true', () async {
-        mockRepo.errorToThrow = Exception('Username taken');
+        mockRepo.registerError = Exception('Username taken');
         await notifier.register('user', 'user@example.com', 'pass');
 
         expect(notifier.state.isLoading, isFalse);
@@ -382,7 +254,7 @@ void main() {
 
     group('checkAuth - additional edge cases', () {
       test('checkAuth when isAuthenticated throws resets to authReady', () async {
-        mockRepo.errorToThrow = Exception('Token check failed');
+        mockRepo.isAuthenticatedError = Exception('Token check failed');
 
         // restoreSession catches errors from isAuthenticated
         await notifier.checkAuth();
@@ -393,7 +265,7 @@ void main() {
       });
 
       test('checkAuth after logout preserves logout state', () async {
-        mockRepo.isAuthResponse = false;
+        mockRepo.isAuthenticatedValue = false;
         await notifier.checkAuth();
 
         expect(notifier.state.isAuthenticated, isFalse);
@@ -403,14 +275,14 @@ void main() {
 
     group('AuthNotifier - restoreSession', () {
       test('restoreSession sets authReady true when not authenticated', () async {
-        mockRepo.isAuthResponse = false;
+        mockRepo.isAuthenticatedValue = false;
         await notifier.restoreSession();
         expect(notifier.state.authReady, isTrue);
         expect(notifier.state.isAuthenticated, isFalse);
       });
 
       test('restoreSession sets authReady true when authenticated', () async {
-        mockRepo.isAuthResponse = true;
+        mockRepo.isAuthenticatedValue = true;
         const user = User(id: '1', username: 'test', permissions: ['chat:read']);
         mockRepo.profileResponse = user;
         await notifier.restoreSession();
@@ -420,7 +292,7 @@ void main() {
       });
 
       test('checkAuth delegates to restoreSession', () async {
-        mockRepo.isAuthResponse = false;
+        mockRepo.isAuthenticatedValue = false;
         await notifier.checkAuth();
         expect(notifier.state.authReady, isTrue);
       });
@@ -428,7 +300,7 @@ void main() {
 
     group('AuthNotifier - permissions', () {
       test('hasPermission returns true for granted permission', () async {
-        mockRepo.isAuthResponse = true;
+        mockRepo.isAuthenticatedValue = true;
         const user = User(id: '1', username: 'test', permissions: ['chat:read', 'chat:write']);
         mockRepo.profileResponse = user;
         await notifier.restoreSession();
@@ -437,7 +309,7 @@ void main() {
       });
 
       test('hasAnyPermission returns true if any match', () async {
-        mockRepo.isAuthResponse = true;
+        mockRepo.isAuthenticatedValue = true;
         const user = User(id: '1', username: 'test', permissions: ['chat:read']);
         mockRepo.profileResponse = user;
         await notifier.restoreSession();
@@ -448,14 +320,14 @@ void main() {
 
     group('AuthNotifier - ensureFreshSession', () {
       test('returns true when already authenticated', () async {
-        mockRepo.isAuthResponse = true;
+        mockRepo.isAuthenticatedValue = true;
         final result = await notifier.ensureFreshSession();
         expect(result, isTrue);
       });
 
       test('returns false when refresh fails', () async {
-        mockRepo.isAuthResponse = false;
-        mockRepo.refreshTokenErrorToThrow = Exception('refresh failed');
+        mockRepo.isAuthenticatedValue = false;
+        mockRepo.refreshTokenError = Exception('refresh failed');
         final result = await notifier.ensureFreshSession();
         expect(result, isFalse);
       });
