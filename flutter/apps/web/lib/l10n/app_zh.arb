@@ -187,5 +187,14 @@
   "validatorPasswordLength": "密码长度在 8 到 64 个字符",
   "validatorPasswordFormat": "密码必须包含字母和数字",
   "validatorConfirmPasswordRequired": "请确认密码",
-  "validatorPasswordMismatch": "两次输入密码不一致"
+  "validatorPasswordMismatch": "两次输入密码不一致",
+  "a11yEncryptedMessage": "此消息已端到端加密",
+  "a11yNetworkDisconnected": "网络已断开",
+  "a11yNetworkConnected": "网络已连接",
+  "a11ySettingsProfile": "个人信息",
+  "a11ySettingsAppearance": "外观设置",
+  "a11ySettingsNotifications": "通知设置",
+  "a11ySettingsSecurity": "安全设置",
+  "a11ySettingsStorage": "存储设置",
+  "a11ySettingsAi": "AI 设置"
 }
