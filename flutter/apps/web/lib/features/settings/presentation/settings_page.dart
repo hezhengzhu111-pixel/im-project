@@ -38,12 +38,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
 
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(ImTokens.layoutPanelPadding),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SettingsNavPanel(),
-          const SizedBox(width: 16),
+          const SizedBox(width: ImTokens.layoutPanelPadding),
           Expanded(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -52,9 +52,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   child: _buildPrimaryColumn(loc, theme, settings, authState),
                 ),
                 if (context.isLarge) ...[
-                  const SizedBox(width: 16),
+                  const SizedBox(width: ImTokens.layoutPanelPadding),
                   SizedBox(
-                    width: 340,
+                    width: ImTokens.layoutSettingsAsideWidth,
                     child: _buildSecondaryColumn(loc, theme),
                   ),
                 ],
@@ -73,17 +73,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     AuthState authState,
   ) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(ImTokens.layoutPanelPadding),
       children: [
         _buildHero(loc, theme),
         _buildAccountSection(loc, theme, authState),
-        const SizedBox(height: 12),
+        const SizedBox(height: ImTokens.layoutSectionGap),
         _buildPreferencesSection(loc, theme, settings),
-        const SizedBox(height: 12),
+        const SizedBox(height: ImTokens.layoutSectionGap),
         _buildNotificationSection(loc, theme, settings),
-        const SizedBox(height: 12),
+        const SizedBox(height: ImTokens.layoutSectionGap),
         _buildPrivacySection(loc, theme, settings),
-        const SizedBox(height: 12),
+        const SizedBox(height: ImTokens.layoutSectionGap),
         _buildSecondaryColumn(loc, theme),
       ],
     );
@@ -99,11 +99,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       children: [
         _buildHero(loc, theme),
         _buildAccountSection(loc, theme, authState),
-        const SizedBox(height: 12),
+        const SizedBox(height: ImTokens.layoutSectionGap),
         _buildPreferencesSection(loc, theme, settings),
-        const SizedBox(height: 12),
+        const SizedBox(height: ImTokens.layoutSectionGap),
         _buildNotificationSection(loc, theme, settings),
-        const SizedBox(height: 12),
+        const SizedBox(height: ImTokens.layoutSectionGap),
         _buildPrivacySection(loc, theme, settings),
       ],
     );
@@ -111,14 +111,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Widget _buildHero(AppLocalizations loc, ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: ImTokens.layoutSectionGap),
       child: Row(
         children: [
           IconButton(
             onPressed: () => context.go('/chat'),
-            icon: const Icon(Icons.arrow_back_ios_new, size: 18),
+            icon: const Icon(Icons.arrow_back_ios_new, size: ImTokens.textLg),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: ImTokens.layoutItemGap),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -154,7 +154,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           child: InkWell(
             onTap: () => context.push('/settings/profile'),
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(ImTokens.layoutPanelPadding),
               child: Row(
                 children: [
                   CircleAvatar(
@@ -333,7 +333,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ],
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: ImTokens.layoutSectionGap),
             Expanded(
               child: SettingsSection(
                 children: [
@@ -357,7 +357,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: ImTokens.layoutSectionGap),
         SettingsSection(
           children: [
             SettingsRow(
