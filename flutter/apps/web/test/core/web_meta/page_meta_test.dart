@@ -113,6 +113,25 @@ void main() {
     });
   });
 
+  group('metaForPath with canonicalOverride', () {
+    test('/chat/abc123 normalizes to /chat canonical', () {
+      final meta = metaForPath('/chat/abc123', null);
+      expect(meta.canonicalPath, '/chat');
+      expect(meta.title, 'seoChatTitle');
+    });
+
+    test('/settings/ai keeps its own canonical', () {
+      final meta = metaForPath('/settings/ai', null);
+      expect(meta.canonicalPath, '/settings/ai');
+    });
+
+    test('unknown route returns fallback', () {
+      final meta = metaForPath('/unknown/path', null);
+      expect(meta.title, 'IM - Secure Messaging');
+      expect(meta.canonicalPath, '/');
+    });
+  });
+
   group('appFallbackMeta', () {
     test('has default values', () {
       expect(appFallbackMeta.title, 'IM - Secure Messaging');
