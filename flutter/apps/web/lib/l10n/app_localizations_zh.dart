@@ -1056,4 +1056,19 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get seoAppDescription => 'IM 是一款安全即时通讯应用，支持端到端加密、群组聊天、朋友圈等功能';
+
+  @override
+  String get errorShareNotAvailable => '当前浏览器不支持分享';
+
+  @override
+  String get errorClipboardNotAvailable => '当前浏览器不支持剪贴板';
+
+  @override
+  String get errorNotificationPermissionDenied => '通知权限被拒绝';
+
+  @override
+  String get errorMicrophonePermissionDenied => '麦克风权限被拒绝';
+
+  @override
+  String get errorFileReadFailed => '无法读取文件数据';
 }
