@@ -11,6 +11,7 @@ void main() {
       home: Scaffold(
         body: ValidatedForm(
           controller: controller,
+          showErrorBanner: false,
           child: FormErrorBanner(controller: controller),
         ),
       ),
