@@ -1,3 +1,5 @@
+import 'dart:html' as html;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -221,6 +223,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             value: ref.watch(languageProvider),
             onChanged: (value) {
               ref.read(languageProvider.notifier).state = value;
+              html.window.localStorage['app_language'] = value;
             },
           ),
         ),
@@ -236,6 +239,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             value: ref.watch(themeModeProvider),
             onChanged: (value) {
               ref.read(themeModeProvider.notifier).state = value;
+              html.window.localStorage['app_theme_mode'] = value.name;
             },
           ),
         ),
