@@ -16,14 +16,16 @@ class MessageInput extends ConsumerStatefulWidget {
     required this.onSendVoice,
     this.focusNode,
     this.onFocusChanged,
+    this.members,
   });
 
-  final void Function(String text) onSend;
+  final void Function(String text, List<String> mentionedUserIds) onSend;
   final void Function(UploadResult result) onSendImage;
   final void Function(UploadResult result) onSendFile;
   final void Function(UploadResult result) onSendVoice;
   final FocusNode? focusNode;
   final ValueChanged<bool>? onFocusChanged;
+  final List<GroupMember>? members;
 
   @override
   ConsumerState<MessageInput> createState() => _MessageInputState();
@@ -34,14 +36,97 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   bool _isUploading = false;
   bool _isRecording = false;
 
+  // @ mention state
+  bool _showMention = false;
+  int _mentionIndex = 0;
+  int _mentionStart = 0;
+  String _mentionFilter = '';
+  final List<String> _mentionedIds = [];
+
+  List<GroupMember> get _filteredMembers {
+    final members = widget.members;
+    if (members == null) return const [];
+    if (_mentionFilter.isEmpty) return members.take(8).toList();
+    final q = _mentionFilter.toLowerCase();
+    return members
+        .where((m) =>
+            (m.nickname?.toLowerCase().contains(q) ?? false) ||
+            m.userId.toLowerCase().contains(q))
+        .take(8)
+        .toList();
+  }
+
   @override
   void initState() {
     super.initState();
     widget.focusNode?.addListener(_onFocusChange);
+    _controller.addListener(_onTextChanged);
   }
 
   void _onFocusChange() {
     widget.onFocusChanged?.call(widget.focusNode!.hasFocus);
+  }
+
+  void _onTextChanged() {
+    if (widget.members == null || widget.members!.isEmpty) return;
+
+    final text = _controller.text;
+    final selection = _controller.selection;
+    if (!selection.isValid) return;
+
+    final cursorPos = selection.baseOffset;
+    final before = text.substring(0, cursorPos);
+
+    final atIdx = before.lastIndexOf('@');
+    if (atIdx == -1 ||
+        (atIdx > 0 && before[atIdx - 1] != ' ' && before[atIdx - 1] != '\n')) {
+      _resetMention();
+      return;
+    }
+
+    final afterAt = before.substring(atIdx + 1);
+    if (afterAt.contains(' ')) {
+      _resetMention();
+      return;
+    }
+
+    setState(() {
+      _showMention = true;
+      _mentionStart = cursorPos;
+      _mentionFilter = afterAt;
+      if (!_showMention) _mentionIndex = 0;
+    });
+  }
+
+  void _resetMention() {
+    if (_showMention) {
+      setState(() {
+        _showMention = false;
+        _mentionIndex = 0;
+        _mentionStart = 0;
+        _mentionFilter = '';
+      });
+    }
+  }
+
+  void _selectMember(GroupMember member) {
+    final text = _controller.text;
+    final before = text.substring(0, _mentionStart);
+    final atPos = before.lastIndexOf('@');
+    final preAt = before.substring(0, atPos);
+    final after = text.substring(_mentionStart);
+    final name = member.nickname ?? member.userId;
+    final newText = '$preAt@$name $after';
+    _controller.text = newText;
+    final newCursorPos = preAt.length + name.length + 2;
+    _controller.selection = TextSelection.fromPosition(
+      TextPosition(offset: newCursorPos),
+    );
+    if (!_mentionedIds.contains(member.userId)) {
+      _mentionedIds.add(member.userId);
+    }
+    _resetMention();
+    widget.focusNode?.requestFocus();
   }
 
   @override
@@ -56,6 +141,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   @override
   void dispose() {
     widget.focusNode?.removeListener(_onFocusChange);
+    _controller.removeListener(_onTextChanged);
     _controller.dispose();
     super.dispose();
   }
@@ -175,69 +261,126 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
 
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_showMention) _buildMentionDropdown(),
+        Container(
+          padding: const EdgeInsets.all(8.0),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border(
+              top: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant),
+            ),
+          ),
+          child: Row(
+            children: [
+              const OutboxIndicator(),
+              Semantics(
+                label: loc.a11yAddAttachment,
+                button: true,
+                child: IconButton(
+                  icon: const Icon(Icons.add_circle_outline),
+                  onPressed: _isUploading ? null : _showAttachmentMenu,
+                  tooltip: loc.a11yAddAttachment,
+                ),
+              ),
+              Semantics(
+                label: loc.a11yVoiceInput,
+                button: true,
+                child: IconButton(
+                  icon: Icon(_isRecording ? Icons.stop : Icons.mic),
+                  onPressed: _isUploading
+                      ? null
+                      : () {
+                          if (_isRecording) {
+                            _stopRecordingAndSend();
+                          } else {
+                            _recordAndSendVoice();
+                          }
+                        },
+                  tooltip: loc.a11yVoiceInput,
+                  color: _isRecording ? Colors.red : null,
+                ),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  focusNode: widget.focusNode,
+                  decoration: InputDecoration(
+                    hintText: loc.chatInputHint,
+                    border: InputBorder.none,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  minLines: 1,
+                  maxLines: 4,
+                  onSubmitted: (_) => _handleSend(),
+                ),
+              ),
+              Semantics(
+                label: loc.a11ySendMessage,
+                button: true,
+                child: IconButton(
+                  icon: const Icon(Icons.send),
+                  onPressed: _isUploading ? null : _handleSend,
+                  tooltip: loc.a11ySendMessage,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMentionDropdown() {
+    final filtered = _filteredMembers;
+    if (filtered.isEmpty) return const SizedBox.shrink();
+
     return Container(
-      padding: const EdgeInsets.all(8.0),
+      constraints: const BoxConstraints(maxHeight: 200),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border(
           top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
         ),
-      ),
-      child: Row(
-        children: [
-          const OutboxIndicator(),
-          Semantics(
-            label: loc.a11yAddAttachment,
-            button: true,
-            child: IconButton(
-              icon: const Icon(Icons.add_circle_outline),
-              onPressed: _isUploading ? null : _showAttachmentMenu,
-              tooltip: loc.a11yAddAttachment,
-            ),
-          ),
-          Semantics(
-            label: loc.a11yVoiceInput,
-            button: true,
-            child: IconButton(
-              icon: Icon(_isRecording ? Icons.stop : Icons.mic),
-              onPressed: _isUploading
-                  ? null
-                  : () {
-                      if (_isRecording) {
-                        _stopRecordingAndSend();
-                      } else {
-                        _recordAndSendVoice();
-                      }
-                    },
-              tooltip: loc.a11yVoiceInput,
-              color: _isRecording ? Colors.red : null,
-            ),
-          ),
-          Expanded(
-            child: TextField(
-              controller: _controller,
-              focusNode: widget.focusNode,
-              decoration: InputDecoration(
-                hintText: loc.chatInputHint,
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-              ),
-              minLines: 1,
-              maxLines: 4,
-              onSubmitted: (_) => _handleSend(),
-            ),
-          ),
-          Semantics(
-            label: loc.a11ySendMessage,
-            button: true,
-            child: IconButton(
-              icon: const Icon(Icons.send),
-              onPressed: _isUploading ? null : _handleSend,
-              tooltip: loc.a11ySendMessage,
-              color: Theme.of(context).colorScheme.primary,
-            ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 4,
+            offset: const Offset(0, -2),
           ),
         ],
+      ),
+      child: ListView.builder(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount: filtered.length,
+        itemBuilder: (context, index) {
+          final member = filtered[index];
+          final isSelected = index == _mentionIndex;
+          final name = member.nickname ?? member.userId;
+          return Material(
+            color: isSelected
+                ? Theme.of(context).colorScheme.primaryContainer
+                : Colors.transparent,
+            child: ListTile(
+              dense: true,
+              leading: CircleAvatar(
+                radius: 16,
+                child: Text(
+                  name.isNotEmpty ? name[0].toUpperCase() : '?',
+                  style: const TextStyle(fontSize: 14),
+                ),
+              ),
+              title: Text(name, style: const TextStyle(fontSize: 14)),
+              onTap: () => _selectMember(member),
+            ),
+          );
+        },
       ),
     );
   }
@@ -245,8 +388,11 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   void _handleSend() {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
-    widget.onSend(text);
+    final ids = List<String>.from(_mentionedIds);
+    _mentionedIds.clear();
+    widget.onSend(text, ids);
     _controller.clear();
+    _resetMention();
   }
 
   String _mapError(FailureError error, AppLocalizations loc) {

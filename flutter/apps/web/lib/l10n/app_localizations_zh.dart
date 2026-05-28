@@ -1074,4 +1074,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String e2eeNegotiationNotification(Object name) {
     return '$name 请求与你开启端到端加密';
   }
+
+  @override
+  String get chatLoadMoreHistory => '加载更早的消息';
+
+  @override
+  String get chatNoMoreHistory => '没有更早的消息了';
 }

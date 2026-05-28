@@ -1074,4 +1074,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String e2eeNegotiationNotification(Object name) {
     return '$name requests to enable end-to-end encryption';
   }
+
+  @override
+  String get chatLoadMoreHistory => 'Load earlier messages';
+
+  @override
+  String get chatNoMoreHistory => 'No earlier messages';
 }

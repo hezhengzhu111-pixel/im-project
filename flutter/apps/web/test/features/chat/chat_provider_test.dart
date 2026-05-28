@@ -66,6 +66,11 @@ class TestMessageApi extends MessageApi {
     lastMarkReadId = conversationId;
     if (errorToThrow != null) throw errorToThrow!;
   }
+
+  @override
+  Future<MessageConfig> getConfig() async {
+    return const MessageConfig(textEnforce: true, textMaxLength: 2000);
+  }
 }
 
 /// Mock E2eeMetaStore for testing

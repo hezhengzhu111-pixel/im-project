@@ -341,5 +341,7 @@
   "errorNotificationPermissionDenied": "Notification permission denied",
   "errorMicrophonePermissionDenied": "Microphone permission denied",
   "errorFileReadFailed": "Failed to read file data",
-  "e2eeNegotiationNotification": "{name} requests to enable end-to-end encryption"
+  "e2eeNegotiationNotification": "{name} requests to enable end-to-end encryption",
+  "chatLoadMoreHistory": "Load earlier messages",
+  "chatNoMoreHistory": "No earlier messages"
 }

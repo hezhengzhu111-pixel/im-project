@@ -47,6 +47,7 @@ class SendGroupMessageRequest {
     this.mediaSize,
     this.thumbnailUrl,
     this.duration,
+    this.mentionedUserIds,
   });
 
   final String groupId;
@@ -58,6 +59,7 @@ class SendGroupMessageRequest {
   final int? mediaSize;
   final String? thumbnailUrl;
   final int? duration;
+  final List<String>? mentionedUserIds;
 
   Map<String, dynamic> toJson() => {
         'groupId': groupId,
@@ -69,6 +71,7 @@ class SendGroupMessageRequest {
         if (mediaSize != null) 'mediaSize': mediaSize,
         if (thumbnailUrl != null) 'thumbnailUrl': thumbnailUrl,
         if (duration != null) 'duration': duration,
+        if (mentionedUserIds != null) 'mentionedUserIds': mentionedUserIds,
       };
 }
 
@@ -95,6 +98,21 @@ class MessageApi {
       queryParameters: {
         if (page != null) 'page': page,
         if (size != null) 'size': size,
+      },
+      fromJson: (json) => _asList(json)
+          .map((e) => Message.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+    return response.data.cast<Message>();
+  }
+
+  Future<List<Message>> getPrivateHistoryCursor(String friendId,
+      {int? limit, String? lastMessageId}) async {
+    final response = await _httpClient.get<List<dynamic>>(
+      MessageEndpoints.privateHistoryCursor(friendId),
+      queryParameters: {
+        if (limit != null) 'limit': limit,
+        if (lastMessageId != null) 'last_message_id': lastMessageId,
       },
       fromJson: (json) => _asList(json)
           .map((e) => Message.fromJson(e as Map<String, dynamic>))
@@ -134,6 +152,14 @@ class MessageApi {
     return response.data;
   }
 
+  Future<MessageConfig> getConfig() async {
+    final response = await _httpClient.get<Map<String, dynamic>>(
+      MessageEndpoints.config,
+      fromJson: (json) => json,
+    );
+    return MessageConfig.fromJson(response.data);
+  }
+
   Future<void> markRead(String conversationId) async {
     await _httpClient.post<void>(
       MessageEndpoints.markRead(conversationId),
@@ -157,6 +183,21 @@ class MessageApi {
       queryParameters: {
         if (page != null) 'page': page,
         if (size != null) 'size': size,
+      },
+      fromJson: (json) => _asList(json)
+          .map((e) => Message.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+    return response.data.cast<Message>();
+  }
+
+  Future<List<Message>> getGroupHistoryCursor(String groupId,
+      {int? limit, String? lastMessageId}) async {
+    final response = await _httpClient.get<List<dynamic>>(
+      MessageEndpoints.groupHistoryCursor(groupId),
+      queryParameters: {
+        if (limit != null) 'limit': limit,
+        if (lastMessageId != null) 'last_message_id': lastMessageId,
       },
       fromJson: (json) => _asList(json)
           .map((e) => Message.fromJson(e as Map<String, dynamic>))
