@@ -1089,4 +1089,21 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get seoAppDescription =>
       'IM is a secure messaging app with end-to-end encryption, group chat, and more.';
+
+  @override
+  String get errorShareNotAvailable => 'Sharing not available in this browser';
+
+  @override
+  String get errorClipboardNotAvailable =>
+      'Clipboard not available in this browser';
+
+  @override
+  String get errorNotificationPermissionDenied =>
+      'Notification permission denied';
+
+  @override
+  String get errorMicrophonePermissionDenied => 'Microphone permission denied';
+
+  @override
+  String get errorFileReadFailed => 'Failed to read file data';
 }

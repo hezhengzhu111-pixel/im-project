@@ -335,5 +335,10 @@
   "authTooManyRequests": "尝试次数过多，请稍后重试。",
   "authUnknownError": "发生未知错误，请重试。",
   "seoAppTitle": "IM - 安全即时通讯",
-  "seoAppDescription": "IM 是一款安全即时通讯应用，支持端到端加密、群组聊天、朋友圈等功能"
+  "seoAppDescription": "IM 是一款安全即时通讯应用，支持端到端加密、群组聊天、朋友圈等功能",
+  "errorShareNotAvailable": "当前浏览器不支持分享",
+  "errorClipboardNotAvailable": "当前浏览器不支持剪贴板",
+  "errorNotificationPermissionDenied": "通知权限被拒绝",
+  "errorMicrophonePermissionDenied": "麦克风权限被拒绝",
+  "errorFileReadFailed": "无法读取文件数据"
 }
