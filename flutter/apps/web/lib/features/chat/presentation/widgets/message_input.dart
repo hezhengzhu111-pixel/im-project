@@ -243,7 +243,9 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   }
 
   void _handleSend() {
-    widget.onSend(_controller.text);
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    widget.onSend(text);
     _controller.clear();
   }
 

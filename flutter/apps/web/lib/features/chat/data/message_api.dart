@@ -6,18 +6,33 @@ class SendPrivateMessageRequest {
     required this.content,
     this.messageType = 'text',
     this.clientMessageId,
+    this.mediaUrl,
+    this.mediaName,
+    this.mediaSize,
+    this.thumbnailUrl,
+    this.duration,
   });
 
   final String receiverId;
   final String content;
   final String messageType;
   final String? clientMessageId;
+  final String? mediaUrl;
+  final String? mediaName;
+  final int? mediaSize;
+  final String? thumbnailUrl;
+  final int? duration;
 
   Map<String, dynamic> toJson() => {
         'receiverId': receiverId,
         'content': content,
         'messageType': messageType,
         if (clientMessageId != null) 'clientMessageId': clientMessageId,
+        if (mediaUrl != null) 'mediaUrl': mediaUrl,
+        if (mediaName != null) 'mediaName': mediaName,
+        if (mediaSize != null) 'mediaSize': mediaSize,
+        if (thumbnailUrl != null) 'thumbnailUrl': thumbnailUrl,
+        if (duration != null) 'duration': duration,
       };
 }
 
@@ -27,43 +42,61 @@ class SendGroupMessageRequest {
     required this.content,
     this.messageType = 'text',
     this.clientMessageId,
+    this.mediaUrl,
+    this.mediaName,
+    this.mediaSize,
+    this.thumbnailUrl,
+    this.duration,
   });
 
   final String groupId;
   final String content;
   final String messageType;
   final String? clientMessageId;
+  final String? mediaUrl;
+  final String? mediaName;
+  final int? mediaSize;
+  final String? thumbnailUrl;
+  final int? duration;
 
   Map<String, dynamic> toJson() => {
         'groupId': groupId,
         'content': content,
         'messageType': messageType,
         if (clientMessageId != null) 'clientMessageId': clientMessageId,
+        if (mediaUrl != null) 'mediaUrl': mediaUrl,
+        if (mediaName != null) 'mediaName': mediaName,
+        if (mediaSize != null) 'mediaSize': mediaSize,
+        if (thumbnailUrl != null) 'thumbnailUrl': thumbnailUrl,
+        if (duration != null) 'duration': duration,
       };
 }
 
 class MessageApi {
-  MessageApi(this._httpClient);
+  MessageApi(this._httpClient, {String Function()? currentUserId})
+      : _currentUserId = currentUserId ?? (() => '');
   final HttpClientPort _httpClient;
+  final String Function() _currentUserId;
 
   Future<List<ChatSession>> getConversations() async {
     final response = await _httpClient.get<List<dynamic>>(
       MessageEndpoints.conversations,
-      fromJson: (json) => (json as List)
-          .map((e) => ChatSession.fromJson(e as Map<String, dynamic>))
+      fromJson: (json) => _asList(json)
+          .map((e) => _normalizeConversation(e as Map<String, dynamic>))
           .toList(),
     );
     return response.data.cast<ChatSession>();
   }
 
-  Future<List<Message>> getPrivateHistory(String friendId, {int? page, int? size}) async {
+  Future<List<Message>> getPrivateHistory(String friendId,
+      {int? page, int? size}) async {
     final response = await _httpClient.get<List<dynamic>>(
       MessageEndpoints.privateHistory(friendId),
       queryParameters: {
         if (page != null) 'page': page,
         if (size != null) 'size': size,
       },
-      fromJson: (json) => (json as List)
+      fromJson: (json) => _asList(json)
           .map((e) => Message.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
@@ -125,10 +158,187 @@ class MessageApi {
         if (page != null) 'page': page,
         if (size != null) 'size': size,
       },
-      fromJson: (json) => (json as List)
+      fromJson: (json) => _asList(json)
           .map((e) => Message.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
     return response.data.cast<Message>();
+  }
+
+  List<dynamic> _asList(Map<String, dynamic> json) {
+    final items = json['items'];
+    if (items is List) return items;
+    return const [];
+  }
+
+  ChatSession _normalizeConversation(Map<String, dynamic> json) {
+    final rawType = _firstString(
+      json['type'],
+      json['conversationType'],
+      json['conversation_type'],
+    );
+    final isGroup = rawType == '2' || rawType.toLowerCase() == 'group';
+    final type = isGroup ? 'group' : 'private';
+    final targetId = _stripSessionPrefix(
+      type,
+      _firstString(
+        json['targetId'],
+        json['target_id'],
+        json['groupId'],
+        json['group_id'],
+        json['partnerId'],
+        json['partner_id'],
+        json['friendId'],
+        json['friend_id'],
+        json['userId'],
+        json['user_id'],
+      ),
+    );
+    final conversationId = _firstString(
+      json['conversationId'],
+      json['conversation_id'],
+      json['id'],
+    );
+    final normalizedTargetId = targetId.isNotEmpty
+        ? targetId
+        : _stripSessionPrefix(type, conversationId);
+    final sessionId = type == 'group'
+        ? _groupSessionKey(normalizedTargetId)
+        : _privateSessionKey(normalizedTargetId);
+    final targetName = _firstString(
+      json['targetName'],
+      json['target_name'],
+      json['conversationName'],
+      json['conversation_name'],
+      json['groupName'],
+      json['group_name'],
+      json['name'],
+      normalizedTargetId,
+    );
+    final targetAvatar = _firstString(
+      json['targetAvatar'],
+      json['target_avatar'],
+      json['conversationAvatar'],
+      json['conversation_avatar'],
+      json['avatar'],
+    );
+    final unreadCount = json['unreadCount'] ?? json['unread_count'];
+
+    return ChatSession(
+      id: sessionId,
+      type: type,
+      targetId: normalizedTargetId,
+      targetName: targetName,
+      unreadCount: unreadCount is num
+          ? unreadCount.toInt()
+          : int.tryParse('$unreadCount') ?? 0,
+      conversationId: conversationId.isEmpty ? null : conversationId,
+      targetAvatar: targetAvatar.isEmpty ? null : targetAvatar,
+      name: targetName,
+      avatar: targetAvatar.isEmpty ? null : targetAvatar,
+      conversationType: type,
+      conversationName: _nullableString(
+          json['conversationName'] ?? json['conversation_name']),
+      conversationAvatar: _nullableString(
+          json['conversationAvatar'] ?? json['conversation_avatar']),
+      lastMessageTime:
+          _nullableString(json['lastMessageTime'] ?? json['last_message_time']),
+      lastMessageSenderId: _nullableString(
+          json['lastMessageSenderId'] ?? json['last_message_sender_id']),
+      lastMessageSenderName: _nullableString(
+          json['lastMessageSenderName'] ?? json['last_message_sender_name']),
+      lastActiveTime: _nullableString(
+        json['lastActiveTime'] ??
+            json['last_active_time'] ??
+            json['lastMessageTime'] ??
+            json['last_message_time'],
+      ),
+      updateTime: _nullableString(json['updateTime'] ?? json['update_time']),
+      encrypted: _asBool(json['encrypted']),
+      isPinned: _asBool(json['isPinned'] ?? json['is_pinned']),
+      pinned: _asBool(json['pinned'] ?? json['isPinned'] ?? json['is_pinned']),
+      isMuted: _asBool(json['isMuted'] ?? json['is_muted']),
+      muted: _asBool(json['muted'] ?? json['isMuted'] ?? json['is_muted']),
+    );
+  }
+
+  String _privateSessionKey(String targetId) {
+    final currentUserId = _currentUserId();
+    if (currentUserId.isEmpty || targetId.isEmpty) return targetId;
+    return _compareIds(currentUserId, targetId) <= 0
+        ? '${currentUserId}_$targetId'
+        : '${targetId}_$currentUserId';
+  }
+
+  String _groupSessionKey(String groupId) {
+    final normalized = _stripSessionPrefix('group', groupId);
+    return normalized.isEmpty ? groupId : 'group_$normalized';
+  }
+
+  int _compareIds(String left, String right) {
+    final leftId = BigInt.tryParse(left);
+    final rightId = BigInt.tryParse(right);
+    if (leftId != null &&
+        rightId != null &&
+        leftId > BigInt.zero &&
+        rightId > BigInt.zero) {
+      return leftId.compareTo(rightId);
+    }
+    return left.compareTo(right);
+  }
+
+  String _stripSessionPrefix(String type, String value) {
+    if (type == 'group') {
+      if (value.startsWith('group_')) return value.substring('group_'.length);
+      if (value.startsWith('g_')) return value.substring('g_'.length);
+    }
+    if (type == 'private' && value.startsWith('private_')) {
+      return value.substring('private_'.length);
+    }
+    return value;
+  }
+
+  String _firstString(Object? first,
+      [Object? second,
+      Object? third,
+      Object? fourth,
+      Object? fifth,
+      Object? sixth,
+      Object? seventh,
+      Object? eighth,
+      Object? ninth,
+      Object? tenth]) {
+    for (final value in [
+      first,
+      second,
+      third,
+      fourth,
+      fifth,
+      sixth,
+      seventh,
+      eighth,
+      ninth,
+      tenth
+    ]) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isNotEmpty && text != 'null') return text;
+    }
+    return '';
+  }
+
+  String? _nullableString(Object? value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty || text == 'null' ? null : text;
+  }
+
+  bool? _asBool(Object? value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final normalized = value.toLowerCase();
+      if (normalized == 'true') return true;
+      if (normalized == 'false') return false;
+    }
+    return null;
   }
 }

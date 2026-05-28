@@ -122,7 +122,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/chat',
             name: RouteNames.chat,
-            builder: (_, __) => const ChatPage(),
+            builder: (_, state) {
+              final sessionId = state.uri.queryParameters['sessionId'];
+              return ChatPage(sessionId: sessionId);
+            },
             routes: [
               GoRoute(
                 path: ':sessionId',

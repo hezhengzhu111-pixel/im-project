@@ -39,11 +39,26 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(chatStateProvider.notifier).loadSessions();
-      // Initialize active session from route parameter (deep link support)
-      if (widget.sessionId != null) {
-        ref.read(chatStateProvider.notifier).setActiveSession(widget.sessionId);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await ref.read(chatStateProvider.notifier).loadSessions();
+      if (widget.sessionId != null && mounted) {
+        final notifier = ref.read(chatStateProvider.notifier);
+        notifier.setActiveSession(widget.sessionId);
+        // Load messages for the deep-linked session.
+        final session = ref
+            .read(chatStateProvider)
+            .sessions
+            .where((s) => s.id == widget.sessionId)
+            .firstOrNull;
+        if (session != null) {
+          final isGroup = session.conversationType == 'group' ||
+              session.type == 'group';
+          if (isGroup) {
+            await notifier.loadGroupMessages(session.targetId);
+          } else {
+            await notifier.loadMessages(session.targetId);
+          }
+        }
       }
     });
   }
@@ -314,19 +329,74 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             }
           },
           onSendImage: (result) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(loc.chatImageSending)),
-            );
+            if (session == null) return;
+            if (isGroup) {
+              ref.read(chatStateProvider.notifier).sendGroupMessage(
+                    session.targetId,
+                    '',
+                    messageType: 'IMAGE',
+                    mediaUrl: result.url,
+                    mediaName: result.name,
+                    mediaSize: result.size,
+                    thumbnailUrl: result.thumbnailUrl,
+                  );
+            } else {
+              ref.read(chatStateProvider.notifier).sendMessage(
+                    session.targetId,
+                    '',
+                    messageType: 'IMAGE',
+                    mediaUrl: result.url,
+                    mediaName: result.name,
+                    mediaSize: result.size,
+                    thumbnailUrl: result.thumbnailUrl,
+                  );
+            }
           },
           onSendFile: (result) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(loc.chatFileSending)),
-            );
+            if (session == null) return;
+            if (isGroup) {
+              ref.read(chatStateProvider.notifier).sendGroupMessage(
+                    session.targetId,
+                    '',
+                    messageType: 'FILE',
+                    mediaUrl: result.url,
+                    mediaName: result.name,
+                    mediaSize: result.size,
+                    thumbnailUrl: result.thumbnailUrl,
+                  );
+            } else {
+              ref.read(chatStateProvider.notifier).sendMessage(
+                    session.targetId,
+                    '',
+                    messageType: 'FILE',
+                    mediaUrl: result.url,
+                    mediaName: result.name,
+                    mediaSize: result.size,
+                    thumbnailUrl: result.thumbnailUrl,
+                  );
+            }
           },
           onSendVoice: (result) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(loc.chatVoiceSending)),
-            );
+            if (session == null) return;
+            if (isGroup) {
+              ref.read(chatStateProvider.notifier).sendGroupMessage(
+                    session.targetId,
+                    '',
+                    messageType: 'VOICE',
+                    mediaUrl: result.url,
+                    mediaName: result.name,
+                    mediaSize: result.size,
+                  );
+            } else {
+              ref.read(chatStateProvider.notifier).sendMessage(
+                    session.targetId,
+                    '',
+                    messageType: 'VOICE',
+                    mediaUrl: result.url,
+                    mediaName: result.name,
+                    mediaSize: result.size,
+                  );
+            }
           },
         ),
       ],

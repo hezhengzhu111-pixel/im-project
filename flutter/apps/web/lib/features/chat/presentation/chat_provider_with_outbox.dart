@@ -462,7 +462,13 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   }
 
   Future<Message?> sendMessage(String receiverId, String content,
-      {String messageType = 'text', String? clientMessageId}) async {
+      {String messageType = 'text',
+      String? clientMessageId,
+      String? mediaUrl,
+      String? mediaName,
+      int? mediaSize,
+      String? thumbnailUrl,
+      int? duration}) async {
     final cid =
         clientMessageId ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
     final currentUid = _currentUserId();
@@ -497,6 +503,11 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       clientMessageId: cid,
       encrypted: e2eeStatus == 'encrypted',
       decryptStatus: e2eeStatus == 'encrypted' ? 'skipped_own' : null,
+      mediaUrl: mediaUrl,
+      mediaName: mediaName,
+      mediaSize: mediaSize,
+      thumbnailUrl: thumbnailUrl,
+      duration: duration,
     );
     addMessage(sessionKey, pendingMessage);
 
@@ -531,6 +542,11 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
             content: content,
             messageType: messageType,
             clientMessageId: cid,
+            mediaUrl: mediaUrl,
+            mediaName: mediaName,
+            mediaSize: mediaSize,
+            thumbnailUrl: thumbnailUrl,
+            duration: duration,
           ),
         );
       }
@@ -564,7 +580,13 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   }
 
   Future<Message?> sendGroupMessage(String groupId, String content,
-      {String messageType = 'text', String? clientMessageId}) async {
+      {String messageType = 'text',
+      String? clientMessageId,
+      String? mediaUrl,
+      String? mediaName,
+      int? mediaSize,
+      String? thumbnailUrl,
+      int? duration}) async {
     final cid =
         clientMessageId ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
     final sessionKey = _sessionKeyForGroupTarget(groupId);
@@ -578,6 +600,11 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       sendTime: DateTime.now().toIso8601String(),
       status: 'SENDING',
       clientMessageId: cid,
+      mediaUrl: mediaUrl,
+      mediaName: mediaName,
+      mediaSize: mediaSize,
+      thumbnailUrl: thumbnailUrl,
+      duration: duration,
     );
     addMessage(sessionKey, pendingMessage);
 
@@ -588,6 +615,11 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           content: content,
           messageType: messageType,
           clientMessageId: cid,
+          mediaUrl: mediaUrl,
+          mediaName: mediaName,
+          mediaSize: mediaSize,
+          thumbnailUrl: thumbnailUrl,
+          duration: duration,
         ),
       );
       _replaceMessage(sessionKey, cid, serverMessage);

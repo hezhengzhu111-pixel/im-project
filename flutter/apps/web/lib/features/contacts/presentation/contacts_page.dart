@@ -87,10 +87,14 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
           friend: friend,
           onTap: () async {
             final chatNotifier = ref.read(chatStateProvider.notifier);
-            final session =
-                await chatNotifier.getOrCreateSession(friend.friendId);
+            final session = await chatNotifier.getOrCreateSession(
+              friend.friendId,
+              targetName: friend.nickname ?? friend.username,
+              targetAvatar: friend.avatar,
+            );
             if (session != null) {
               chatNotifier.setActiveSession(session.id);
+              await chatNotifier.loadMessages(friend.friendId);
               if (context.mounted) {
                 context.go('/chat');
               }
