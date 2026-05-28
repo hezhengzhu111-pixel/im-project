@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_ui/im_ui.dart';
-import 'package:im_web/core/responsive/mobile_shell.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_web/features/auth/presentation/login_page.dart';
 import 'package:im_web/features/auth/presentation/register_page.dart';
@@ -75,11 +74,43 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const RegisterPage(),
       ),
       ShellRoute(
-        builder: (_, __, child) => Builder(
-          builder: (context) => context.isMobile
-              ? MobileShell(child: child)
-              : MainLayout(child: child),
-        ),
+        builder: (context, state, child) {
+          final l10n = AppLocalizations.of(context);
+          final selectedIndex = _indexFromPath(state.uri.path);
+
+          return ResponsiveScaffold(
+            destinations: [
+              ResponsiveNavDestination(
+                icon: Icons.chat_outlined,
+                selectedIcon: Icons.chat,
+                label: l10n?.navChat ?? '聊天',
+              ),
+              ResponsiveNavDestination(
+                icon: Icons.people_outlined,
+                selectedIcon: Icons.people,
+                label: l10n?.navContacts ?? '联系人',
+              ),
+              ResponsiveNavDestination(
+                icon: Icons.group_outlined,
+                selectedIcon: Icons.group,
+                label: l10n?.navGroups ?? '群组',
+              ),
+              ResponsiveNavDestination(
+                icon: Icons.camera_alt_outlined,
+                selectedIcon: Icons.camera_alt,
+                label: l10n?.navMoments ?? '朋友圈',
+              ),
+              ResponsiveNavDestination(
+                icon: Icons.settings_outlined,
+                selectedIcon: Icons.settings,
+                label: l10n?.navSettings ?? '设置',
+              ),
+            ],
+            selectedIndex: selectedIndex,
+            onDestinationSelected: (index) => _onNavigate(context, index),
+            child: child,
+          );
+        },
         routes: [
           GoRoute(
             path: '/chat',
@@ -178,90 +209,26 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-class MainLayout extends ConsumerWidget {
-  const MainLayout({required this.child, super.key});
-  final Widget child;
+int _indexFromPath(String path) {
+  if (path.startsWith('/chat')) return 0;
+  if (path.startsWith('/contacts')) return 1;
+  if (path.startsWith('/groups')) return 2;
+  if (path.startsWith('/moments')) return 3;
+  if (path.startsWith('/settings')) return 4;
+  return 0;
+}
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context)!;
-
-    ref.listen<ErrorState>(errorProvider, (prev, next) {
-      if (next.message != null && next.message != prev?.message) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(next.message!),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-        ref.read(errorProvider.notifier).clear();
-      }
-    });
-
-    return Scaffold(
-      body: Row(
-        children: [
-          NavigationRail(
-            selectedIndex: _selectedIndex(context),
-            onDestinationSelected: (index) => _onNavigate(context, index),
-            labelType: NavigationRailLabelType.all,
-            destinations: [
-              NavigationRailDestination(
-                icon: const Icon(Icons.chat_outlined),
-                selectedIcon: const Icon(Icons.chat),
-                label: Text(l10n.navChat),
-              ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.people_outlined),
-                selectedIcon: const Icon(Icons.people),
-                label: Text(l10n.navContacts),
-              ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.group_outlined),
-                selectedIcon: const Icon(Icons.group),
-                label: Text(l10n.navGroups),
-              ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.camera_alt_outlined),
-                selectedIcon: const Icon(Icons.camera_alt),
-                label: Text(l10n.navMoments),
-              ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.settings_outlined),
-                selectedIcon: const Icon(Icons.settings),
-                label: Text(l10n.navSettings),
-              ),
-            ],
-          ),
-          const VerticalDivider(thickness: 1, width: 1),
-          Expanded(child: child),
-        ],
-      ),
-    );
-  }
-
-  int _selectedIndex(BuildContext context) {
-    final location = GoRouterState.of(context).uri.path;
-    if (location.startsWith('/chat')) return 0;
-    if (location.startsWith('/contacts')) return 1;
-    if (location.startsWith('/groups')) return 2;
-    if (location.startsWith('/moments')) return 3;
-    if (location.startsWith('/settings')) return 4;
-    return 0;
-  }
-
-  void _onNavigate(BuildContext context, int index) {
-    switch (index) {
-      case 0:
-        context.go('/chat');
-      case 1:
-        context.go('/contacts');
-      case 2:
-        context.go('/groups');
-      case 3:
-        context.go('/moments');
-      case 4:
-        context.go('/settings');
-    }
+void _onNavigate(BuildContext context, int index) {
+  switch (index) {
+    case 0:
+      context.go('/chat');
+    case 1:
+      context.go('/contacts');
+    case 2:
+      context.go('/groups');
+    case 3:
+      context.go('/moments');
+    case 4:
+      context.go('/settings');
   }
 }
