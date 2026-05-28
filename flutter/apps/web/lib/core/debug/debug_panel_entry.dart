@@ -21,6 +21,16 @@ class _DebugPanelEntryState extends State<DebugPanelEntry> {
 
     return Stack(
       children: [
+        // Tap-outside-to-dismiss overlay
+        if (_isExpanded)
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () => setState(() => _isExpanded = false),
+              behavior: HitTestBehavior.translucent,
+              child: const SizedBox.expand(),
+            ),
+          ),
+
         // Debug panel overlay
         if (_isExpanded)
           Positioned(

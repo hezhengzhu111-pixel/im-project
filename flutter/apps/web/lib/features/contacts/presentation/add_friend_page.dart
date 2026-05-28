@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_core/core.dart';
 
 class AddFriendPage extends ConsumerStatefulWidget {
@@ -58,7 +59,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
       if (mounted) {
         setState(() {
           _isSearching = false;
-          _error = '搜索失败，请重试';
+          _error = AppLocalizations.of(context)!.addFriendSearchFailed;
         });
       }
     }
@@ -70,13 +71,13 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
       await api.sendFriendRequest(user.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已向 ${user.nickname ?? user.username} 发送好友请求')),
+          SnackBar(content: Text(AppLocalizations.of(context)!.addFriendRequestSent(user.nickname ?? user.username))),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('发送请求失败，请重试')),
+          SnackBar(content: Text(AppLocalizations.of(context)!.addFriendRequestFailed)),
         );
       }
     }
@@ -84,9 +85,10 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('添加好友'),
+        title: Text(loc.addFriendTitle),
       ),
       body: Column(
         children: [
@@ -96,7 +98,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
               controller: _searchController,
               onChanged: _onSearchChanged,
               decoration: InputDecoration(
-                hintText: '搜索用户名或昵称',
+                hintText: loc.addFriendSearchHint,
                 prefixIcon: const Icon(Icons.search),
                 border: const OutlineInputBorder(),
                 suffixIcon: _searchController.text.isNotEmpty
@@ -131,14 +133,14 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
               _error == null &&
               _results.isEmpty &&
               _searchController.text.isNotEmpty)
-            const Padding(
-              padding: EdgeInsets.all(32),
-              child: Text('未找到匹配的用户', style: TextStyle(color: Colors.grey)),
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: Text(loc.addFriendNoMatch, style: const TextStyle(color: Colors.grey)),
             ),
           if (!_isSearching && _error == null && _results.isEmpty && _searchController.text.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(32),
-              child: Text('输入关键词搜索用户', style: TextStyle(color: Colors.grey)),
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: Text(loc.addFriendSearchPrompt, style: const TextStyle(color: Colors.grey)),
             ),
           Expanded(
             child: ListView.builder(
@@ -166,7 +168,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
                   subtitle: Text('@${user.username}'),
                   trailing: FilledButton.tonal(
                     onPressed: () => _sendRequest(user),
-                    child: const Text('添加'),
+                    child: Text(loc.addFriendButton),
                   ),
                 );
               },
