@@ -175,6 +175,21 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       }
     });
 
+    ref.listen(chatStateProvider.select((s) => s.error), (prev, next) {
+      if (next != null && next != prev) {
+        final errorMessage = switch (next) {
+          'e2ee_not_ready' => loc.errorE2eeNotReady,
+          final e? => e,
+          null => null,
+        };
+        if (errorMessage != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(errorMessage)),
+          );
+        }
+      }
+    });
+
     final chatState = ref.watch(chatStateProvider);
     final messages = chatState.messages[sessionId] ?? [];
     final session = chatState.sessions.where((s) => s.id == sessionId).firstOrNull;
