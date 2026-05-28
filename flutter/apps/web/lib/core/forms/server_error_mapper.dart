@@ -9,8 +9,15 @@ class ServerErrors {
 }
 
 class ServerErrorMapper {
-  static ServerErrors map(dynamic response, {Map<String, String>? fieldAlias}) {
+  static ServerErrors map(dynamic response,
+      {Map<String, String>? fieldAlias, int? statusCode}) {
     if (response == null || response is! Map<String, dynamic>) {
+      if (statusCode == 422) {
+        return const ServerErrors(fieldErrors: {});
+      }
+      if (statusCode == 401 || statusCode == 403 || statusCode == 500) {
+        return const ServerErrors(formError: 'Server error. Please try again.');
+      }
       return const ServerErrors();
     }
 
@@ -39,6 +46,16 @@ class ServerErrorMapper {
       formError = response['message']?.toString();
     } else if (response.containsKey('detail')) {
       formError = response['detail']?.toString();
+    }
+
+    // Fallback for status codes when no error body is present
+    if (fieldErrors.isEmpty && formError == null) {
+      if (statusCode == 422) {
+        return const ServerErrors(fieldErrors: {});
+      }
+      if (statusCode == 401 || statusCode == 403 || statusCode == 500) {
+        return const ServerErrors(formError: 'Server error. Please try again.');
+      }
     }
 
     return ServerErrors(

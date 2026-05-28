@@ -1,10 +1,9 @@
-import 'package:flutter/material.dart' hide FormFieldState;
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_ui/im_ui.dart';
 import 'package:im_web/core/forms/form_controller.dart';
-import 'package:im_web/core/forms/form_field_state.dart';
 import 'package:im_web/core/forms/form_schema.dart';
 import 'package:im_web/core/forms/validators.dart';
 import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
@@ -65,7 +64,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
     final authState = ref.watch(authStateProvider);
     final loc = AppLocalizations.of(context)!;
 
-    final passwordField = FormFieldState(name: 'password');
     _formController = FormController(FormSchema(fields: [
       FormFieldSchema(
         name: 'username',
@@ -99,7 +97,11 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
         name: 'confirmPassword',
         validators: [
           FormValidators.required(loc.validationRequired),
-          FormValidators.sameAs(passwordField, loc.validationPasswordMismatch),
+          (value) {
+            final pw = _formController.field('password').value;
+            if (value != pw) return loc.validationPasswordMismatch;
+            return null;
+          },
         ],
       ),
     ]));
