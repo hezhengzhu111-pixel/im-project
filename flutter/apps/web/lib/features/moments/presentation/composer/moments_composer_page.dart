@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import '../../../../core/di/providers.dart';
 import 'composer_provider.dart';
 import 'widgets/media_upload_grid.dart';
@@ -26,10 +27,11 @@ class _MomentsComposerPageState extends ConsumerState<MomentsComposerPage> {
     final composer = ref.watch(composerProvider);
     final theme = Theme.of(context);
     final user = ref.watch(authStateProvider).user;
+    final loc = AppLocalizations.of(context)!;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('发布动态'),
+        title: Text(loc.momentsPublishTitle),
         centerTitle: true,
         actions: [
           TextButton(
@@ -42,7 +44,7 @@ class _MomentsComposerPageState extends ConsumerState<MomentsComposerPage> {
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('发布'),
+                : Text(loc.momentsPublishButton),
           ),
         ],
       ),
@@ -64,7 +66,7 @@ class _MomentsComposerPageState extends ConsumerState<MomentsComposerPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    user?.nickname ?? user?.username ?? '用户',
+                    user?.nickname ?? user?.username ?? loc.momentsUserFallback,
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   Row(
@@ -72,7 +74,7 @@ class _MomentsComposerPageState extends ConsumerState<MomentsComposerPage> {
                       Icon(composer.visibility.icon, size: 14, color: theme.colorScheme.onSurfaceVariant),
                       const SizedBox(width: 4),
                       Text(
-                        composer.visibility.label,
+                        visibilityLabel(context, composer.visibility),
                         style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                       ),
                     ],
@@ -91,7 +93,7 @@ class _MomentsComposerPageState extends ConsumerState<MomentsComposerPage> {
             minLines: 4,
             maxLength: 1000,
             decoration: InputDecoration(
-              hintText: '分享新鲜事...',
+              hintText: loc.momentsShareHint,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
@@ -132,7 +134,7 @@ class _MomentsComposerPageState extends ConsumerState<MomentsComposerPage> {
           Row(
             children: [
               Text(
-                '谁可以看',
+                loc.momentsVisibility,
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
@@ -161,7 +163,7 @@ class _MomentsComposerPageState extends ConsumerState<MomentsComposerPage> {
               Expanded(
                 child: TextField(
                   decoration: InputDecoration(
-                    hintText: '添加位置（选填）',
+                    hintText: loc.momentsLocationHint,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
@@ -197,7 +199,7 @@ class _MomentsComposerPageState extends ConsumerState<MomentsComposerPage> {
     final success = await ref.read(composerProvider.notifier).publish();
     if (success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('发布成功')),
+        SnackBar(content: Text(loc.momentsPublishSuccess)),
       );
       // Refresh feed
       ref.read(momentsFeedProvider.notifier).loadFeed(refresh: true);
