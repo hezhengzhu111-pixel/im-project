@@ -119,7 +119,7 @@ class ImButton extends StatelessWidget {
         ),
       ),
       backgroundColor: _backgroundColor(colors),
-      foregroundColor: _foregroundColor(colors),
+      foregroundColor: WidgetStateProperty.all(_foregroundColor(colors)),
       side: _borderSide(colors),
       elevation: WidgetStateProperty.all(
         variant == ImButtonVariant.danger ? ImTokens.elevationSm : 0,
