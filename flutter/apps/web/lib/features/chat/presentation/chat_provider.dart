@@ -85,7 +85,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
     // Sync offline messages on reconnect
     _wsClient.connectionState.listen((wsState) {
       if (wsState == WsConnectionState.connected) {
+        _analytics.trackEvent('ws_connected');
         _syncOfflineMessages();
+      } else if (wsState == WsConnectionState.disconnected) {
+        _analytics.trackEvent('ws_disconnected');
       }
     });
   }
