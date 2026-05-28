@@ -1,3 +1,5 @@
+import 'dart:js_interop';
+
 import 'package:web/web.dart' as web;
 import 'package:im_core/core.dart';
 
@@ -7,7 +9,7 @@ class WebNotificationAdapter implements NotificationPort {
     try {
       final permission =
           await web.Notification.requestPermission().toDart;
-      return Success(permission == 'granted');
+      return Success(permission.toDart == 'granted');
     } catch (e) {
       return const Failure(
           UnknownError('notification_permission_failed'));
@@ -26,7 +28,11 @@ class WebNotificationAdapter implements NotificationPort {
         return const Failure(PermissionDenied('notification'));
       }
 
-      web.Notification(title, web.NotificationOptions(body: body));
+      if (body != null) {
+        web.Notification(title, web.NotificationOptions(body: body));
+      } else {
+        web.Notification(title);
+      }
       return const Success(null);
     } catch (e) {
       return const Failure(

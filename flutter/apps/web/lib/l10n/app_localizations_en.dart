@@ -1,5 +1,3 @@
-// ignore: unused_import
-import 'package:intl/intl.dart' as intl;
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -199,29 +197,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsInsecureVoice => 'HTTP voice recording';
 
   @override
-  String get settingsInsecureVoiceDesc =>
-      'Allow voice recording over HTTP connections (not recommended)';
+  String get settingsInsecureVoiceDesc => 'Allow voice recording over HTTP connections (not recommended)';
 
   @override
   String get settingsReadReceipt => 'Read receipts';
 
   @override
-  String get settingsReadReceiptDesc =>
-      'Allow others to see when you read messages';
+  String get settingsReadReceiptDesc => 'Allow others to see when you read messages';
 
   @override
   String get settingsClearCache => 'Clear local cache';
 
   @override
-  String get settingsClearCacheDesc =>
-      'Clear session selection and temporary page state';
+  String get settingsClearCacheDesc => 'Clear session selection and temporary page state';
 
   @override
   String get settingsAiAssistant => 'AI Assistant';
 
   @override
-  String get settingsAiAssistantDesc =>
-      'Configure LLM API keys, auto-reply, knowledge base';
+  String get settingsAiAssistantDesc => 'Configure LLM API keys, auto-reply, knowledge base';
 
   @override
   String get settingsLogout => 'Logout';
@@ -236,8 +230,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsCacheTitle => 'Clear Cache';
 
   @override
-  String get settingsCacheMessage =>
-      'Clear local UI cache? Login state will be preserved.';
+  String get settingsCacheMessage => 'Clear local UI cache? Login state will be preserved.';
 
   @override
   String get settingsCacheCleared => 'Cache cleared';
@@ -327,15 +320,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileAllowStrangerAdd => 'Allow stranger requests';
 
   @override
-  String get profileAllowStrangerAddDesc =>
-      'Allow others to find you and send friend requests';
+  String get profileAllowStrangerAddDesc => 'Allow others to find you and send friend requests';
 
   @override
   String get profileShowOnlineStatus => 'Show online status';
 
   @override
-  String get profileShowOnlineStatusDesc =>
-      'Friends can see whether you are online';
+  String get profileShowOnlineStatusDesc => 'Friends can see whether you are online';
 
   @override
   String get profileAllowViewMoments => 'Allow moments access';
@@ -398,8 +389,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiApiKeys => 'API Key Management';
 
   @override
-  String get aiApiKeysDesc =>
-      'Configure your LLM API keys (DeepSeek, MiniMax, etc.)';
+  String get aiApiKeysDesc => 'Configure your LLM API keys (DeepSeek, MiniMax, etc.)';
 
   @override
   String get aiAutoReply => 'Auto Reply';
@@ -414,8 +404,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAutoReplyPersona => 'AI Persona';
 
   @override
-  String get aiAutoReplyPersonaPlaceholder =>
-      'Describe the role and speaking style you want AI to play...';
+  String get aiAutoReplyPersonaPlaceholder => 'Describe the role and speaking style you want AI to play...';
 
   @override
   String get aiProvider => 'Provider';
@@ -482,8 +471,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get validationUsernameInvalidChars =>
-      'Username can only contain letters, numbers, and underscores';
+  String get validationUsernameInvalidChars => 'Username can only contain letters, numbers, and underscores';
 
   @override
   String get validationEmailInvalid => 'Please enter a valid email address';
@@ -499,15 +487,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get validationPasswordStrength =>
-      'Password must contain both letters and digits';
+  String get validationPasswordStrength => 'Password must contain both letters and digits';
 
   @override
   String get validationPasswordMismatch => 'Passwords do not match';
 
   @override
-  String get validationAgreementRequired =>
-      'You must accept the agreement to continue';
+  String get validationAgreementRequired => 'You must accept the agreement to continue';
 
   @override
   String get validationNicknameRequired => 'Please enter a nickname';
@@ -518,8 +504,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get loginSubtitle =>
-      'Please log in to your encrypted communication account';
+  String get loginSubtitle => 'Please log in to your encrypted communication account';
 
   @override
   String get loginRememberMe => 'Remember me';
@@ -558,8 +543,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get registerHasAccountLogin => 'Already have an account? Login';
 
   @override
-  String get registerAgreementRequired =>
-      'Please read and agree to the User Agreement and Privacy Policy';
+  String get registerAgreementRequired => 'Please read and agree to the User Agreement and Privacy Policy';
 
   @override
   String get chatSelectSession => 'Select a conversation to start chatting';
@@ -608,8 +592,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get validatorUsernameLength => 'Username must be 3-20 characters';
 
   @override
-  String get validatorUsernameFormat =>
-      'Username can only contain letters, numbers, and underscores';
+  String get validatorUsernameFormat => 'Username can only contain letters, numbers, and underscores';
 
   @override
   String get validatorEmailRequired => 'Please enter an email';
@@ -624,8 +607,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get validatorPasswordLength => 'Password must be 8-64 characters';
 
   @override
-  String get validatorPasswordFormat =>
-      'Password must contain letters and numbers';
+  String get validatorPasswordFormat => 'Password must contain letters and numbers';
 
   @override
   String get validatorConfirmPasswordRequired => 'Please confirm your password';
@@ -684,8 +666,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get addFriendRequestFailed =>
-      'Failed to send request, please try again';
+  String get addFriendRequestFailed => 'Failed to send request, please try again';
 
   @override
   String get addFriendNoMatch => 'No matching users found';
@@ -750,8 +731,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commentDeleteConfirmTitle => 'Delete Confirmation';
 
   @override
-  String get commentDeleteConfirmMessage =>
-      'Are you sure you want to delete this comment?';
+  String get commentDeleteConfirmMessage => 'Are you sure you want to delete this comment?';
 
   @override
   String get commentDelete => 'Delete';
@@ -769,23 +749,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get e2eeDialogTitle => 'Enable End-to-End Encryption';
 
   @override
-  String get e2eeDialogDescription =>
-      'End-to-end encryption uses Signal Protocol to protect your messages:';
+  String get e2eeDialogDescription => 'End-to-end encryption uses Signal Protocol to protect your messages:';
 
   @override
-  String get e2eeSignalBullet1 =>
-      '• Message content is only visible on both devices';
+  String get e2eeSignalBullet1 => '• Message content is only visible on both devices';
 
   @override
   String get e2eeSignalBullet2 => '• Server cannot read encrypted messages';
 
   @override
-  String get e2eeSignalBullet3 =>
-      '• Each message is encrypted with an independent key';
+  String get e2eeSignalBullet3 => '• Each message is encrypted with an independent key';
 
   @override
-  String get e2eeDialogFooter =>
-      'After enabling, both parties need to confirm before encrypted communication can begin.';
+  String get e2eeDialogFooter => 'After enabling, both parties need to confirm before encrypted communication can begin.';
 
   @override
   String get e2eeConfirmEnable => 'Confirm Enable';
@@ -844,8 +820,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get e2eePlaintextBadge => 'Encryption not enabled';
 
   @override
-  String get networkDisconnected =>
-      'Network disconnected, messages will be sent when restored';
+  String get networkDisconnected => 'Network disconnected, messages will be sent when restored';
 
   @override
   String chatMessagesFailed(Object count) {
@@ -864,8 +839,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatRetry => 'Retry';
 
   @override
-  String get errorE2eeNotReady =>
-      'E2EE negotiation not complete, waiting for peer confirmation';
+  String get errorE2eeNotReady => 'E2EE negotiation not complete, waiting for peer confirmation';
 
   @override
   String get errorAlreadyRecording => 'Already recording';
@@ -874,8 +848,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get errorNotRecording => 'Not recording';
 
   @override
-  String get errorRecordingNotImplemented =>
-      'Voice recording not yet implemented';
+  String get errorRecordingNotImplemented => 'Voice recording not yet implemented';
 
   @override
   String get momentsTitle => 'Moments';
@@ -905,8 +878,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get momentsSharePrompt => 'Share your life moments';
 
   @override
-  String get momentsShareDesc =>
-      'Photos, text, videos can all be published to Moments';
+  String get momentsShareDesc => 'Photos, text, videos can all be published to Moments';
 
   @override
   String get momentsNoPosts => 'No moments yet';
@@ -976,8 +948,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get brandSubtitle =>
-      'End-to-end encrypted instant messaging,\nyour messages are only decrypted on your device.';
+  String get brandSubtitle => 'End-to-end encrypted instant messaging,\nyour messages are only decrypted on your device.';
 
   @override
   String get brandFeatureE2ee => 'End-to-end encryption';
@@ -995,8 +966,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get seoLoginTitle => 'Login - IM';
 
   @override
-  String get seoLoginDescription =>
-      'Secure messaging, end-to-end encrypted login';
+  String get seoLoginDescription => 'Secure messaging, end-to-end encrypted login';
 
   @override
   String get seoRegisterTitle => 'Register - IM';
@@ -1008,8 +978,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get seoChatTitle => 'Chat - IM';
 
   @override
-  String get seoChatDescription =>
-      'Chat with friends securely, end-to-end encrypted';
+  String get seoChatDescription => 'Chat with friends securely, end-to-end encrypted';
 
   @override
   String get seoContactsTitle => 'Contacts - IM';
@@ -1045,8 +1014,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get seoMomentsNotificationsTitle => 'Moment Notifications - IM';
 
   @override
-  String get seoMomentsNotificationsDescription =>
-      'View moments interaction notifications';
+  String get seoMomentsNotificationsDescription => 'View moments interaction notifications';
 
   @override
   String get seoSettingsTitle => 'Settings - IM';
@@ -1076,30 +1044,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get authServerError => 'Server error. Please try again later.';
 
   @override
-  String get authTooManyRequests =>
-      'Too many attempts. Please try again later.';
+  String get authTooManyRequests => 'Too many attempts. Please try again later.';
 
   @override
-  String get authUnknownError =>
-      'An unexpected error occurred. Please try again.';
+  String get authUnknownError => 'An unexpected error occurred. Please try again.';
 
   @override
   String get seoAppTitle => 'IM - Secure Messaging';
 
   @override
-  String get seoAppDescription =>
-      'IM is a secure messaging app with end-to-end encryption, group chat, and more.';
+  String get seoAppDescription => 'IM is a secure messaging app with end-to-end encryption, group chat, and more.';
 
   @override
   String get errorShareNotAvailable => 'Sharing not available in this browser';
 
   @override
-  String get errorClipboardNotAvailable =>
-      'Clipboard not available in this browser';
+  String get errorClipboardNotAvailable => 'Clipboard not available in this browser';
 
   @override
-  String get errorNotificationPermissionDenied =>
-      'Notification permission denied';
+  String get errorNotificationPermissionDenied => 'Notification permission denied';
 
   @override
   String get errorMicrophonePermissionDenied => 'Microphone permission denied';

@@ -45,7 +45,7 @@ void main() {
         // Override wsStateProvider with a fake StreamProvider
         wsStateProvider.overrideWith((ref) {
           return Stream.value(
-            wsState ?? const AsyncValue.data(WsConnectionState.disconnected),
+            wsState?.value ?? WsConnectionState.disconnected,
           );
         }),
         // Override chatStateProvider with a fake StateNotifier

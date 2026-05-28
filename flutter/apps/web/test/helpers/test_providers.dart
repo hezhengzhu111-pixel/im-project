@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../lib/core/di/providers.dart';
+import 'package:im_web/core/network/network_providers.dart';
 import 'fakes.dart';
 
 /// Creates a ProviderContainer with all port providers overridden by fakes.

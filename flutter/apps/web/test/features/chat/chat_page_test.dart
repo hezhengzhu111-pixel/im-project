@@ -87,7 +87,8 @@ void main() {
       expect(copied.user, state.user);
       expect(copied.isAuthenticated, state.isAuthenticated);
       expect(copied.isLoading, isTrue);
-      expect(copied.error, isNull);
+      // copyWith uses sentinel pattern: error is preserved unless explicitly passed
+      expect(copied.error, 'some error');
     });
 
     test('copyWith updates all fields', () {

@@ -1,3 +1,5 @@
+import 'dart:js_interop';
+
 import 'package:web/web.dart' as web;
 import 'package:im_core/core.dart';
 
@@ -5,7 +7,7 @@ class WebShareAdapter implements SharePort {
   @override
   Future<Result<bool>> isAvailable() async {
     try {
-      return Success(web.window.navigator.canShare != null);
+      return Success(web.window.navigator.canShare() == true);
     } catch (e) {
       return const Failure(UnknownError('share_check_failed'));
     }

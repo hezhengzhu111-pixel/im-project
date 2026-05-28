@@ -24,7 +24,7 @@ class AuthCard extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.all(context.breakpoint.value(compact: 24, medium: 24, expanded: 32, large: 32)),
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: context.breakpoint.value(compact: double.infinity, medium: double.infinity, expanded: 400, large: 400)),
+          constraints: BoxConstraints(maxWidth: context.breakpoint.value(compact: 400, medium: 400, expanded: 400, large: 400)),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
