@@ -1,24 +1,113 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
   <base href="$FLUTTER_BASE_HREF">
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="IM Web Application">
+
+  <!-- Primary Meta -->
+  <meta name="description" content="IM 是一款安全即时通讯应用，支持端到端加密、群组聊天、朋友圈等功能">
+  <meta name="theme-color" content="#1a1a2e">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="robots" content="index, follow">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name" content="IM">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="IM - 安全即时通讯">
+  <meta property="og:description" content="IM 是一款安全即时通讯应用，支持端到端加密、群组聊天、朋友圈等功能">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:site" content="@im_app">
+  <meta name="twitter:title" content="IM - 安全即时通讯">
+  <meta name="twitter:description" content="IM 是一款安全即时通讯应用，支持端到端加密、群组聊天、朋友圈等功能">
+
+  <!-- Apple -->
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="IM">
+
   <link rel="manifest" href="manifest.json">
-  <title>IM</title>
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="canonical" href="http://localhost:3000/">
+  <title>IM - 安全即时通讯</title>
   <style>
     body {
       margin: 0;
       padding: 0;
       overflow: hidden;
     }
+
+    /* Offline fallback styles */
+    .offline-banner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: #ff6b6b;
+      color: white;
+      text-align: center;
+      padding: 8px;
+      z-index: 9999;
+      font-family: sans-serif;
+      font-size: 14px;
+      transform: translateY(-100%);
+      transition: transform 0.3s ease;
+    }
+
+    .offline-banner.visible {
+      transform: translateY(0);
+    }
   </style>
 </head>
 <body>
+  <!-- Offline banner shown by service worker -->
+  <div id="offline-banner" class="offline-banner">
+    网络已断开，部分功能可能不可用
+  </div>
+
   <script src="flutter_bootstrap.js" async></script>
+
+  <script>
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', async () => {
+        try {
+          const registration = await navigator.serviceWorker.register('/service_worker.js');
+          console.log('SW registered:', registration.scope);
+
+          // Listen for updates
+          registration.addEventListener('updatefound', () => {
+            const newWorker = registration.installing;
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'activated') {
+                console.log('New service worker activated');
+              }
+            });
+          });
+        } catch (error) {
+          console.log('SW registration failed:', error);
+        }
+      });
+    }
+
+    // Show/hide offline banner
+    function updateOnlineStatus() {
+      const banner = document.getElementById('offline-banner');
+      if (banner) {
+        if (navigator.onLine) {
+          banner.classList.remove('visible');
+        } else {
+          banner.classList.add('visible');
+        }
+      }
+    }
+
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    updateOnlineStatus();
+  </script>
 </body>
 </html>
