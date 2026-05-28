@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'core/di/providers.dart';
 import 'core/router/app_router.dart';
+import 'core/router/route_observer.dart';
 import 'core/theme/app_theme.dart';
 
 class App extends ConsumerStatefulWidget {
@@ -31,6 +32,14 @@ class _AppState extends ConsumerState<App> {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       routerConfig: router,
+      builder: (context, child) {
+        if (child == null) return const SizedBox.shrink();
+        return Navigator(
+          observers: [routeObserver],
+          onGenerateRoute: (_) => null,
+          pages: [MaterialPage(child: child)],
+        );
+      },
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
     );
