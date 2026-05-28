@@ -40,6 +40,66 @@
       overflow: hidden;
     }
 
+    /* Loading indicator */
+    .loading-indicator {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: #ffffff;
+      z-index: 10000;
+    }
+
+    .loading-logo {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 16px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 24px;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .loading-logo span {
+      color: white;
+      font-size: 32px;
+      font-weight: bold;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    .loading-text {
+      color: #666;
+      font-size: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    .loading-spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-top: 16px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
     /* Offline fallback styles */
     .offline-banner {
       position: fixed;
@@ -63,6 +123,15 @@
   </style>
 </head>
 <body>
+  <!-- Loading indicator -->
+  <div id="loading-indicator" class="loading-indicator">
+    <div class="loading-logo">
+      <span>IM</span>
+    </div>
+    <div class="loading-text">加载中...</div>
+    <div class="loading-spinner"></div>
+  </div>
+
   <!-- Offline banner shown by service worker -->
   <div id="offline-banner" class="offline-banner">
     网络已断开，部分功能可能不可用
@@ -71,6 +140,18 @@
   <script src="flutter_bootstrap.js" async></script>
 
   <script>
+    // Remove loading indicator when Flutter is ready
+    window.addEventListener('flutter-first-frame', () => {
+      const loadingIndicator = document.getElementById('loading-indicator');
+      if (loadingIndicator) {
+        loadingIndicator.style.opacity = '0';
+        loadingIndicator.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => {
+          loadingIndicator.remove();
+        }, 300);
+      }
+    });
+
     // Register service worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', async () => {

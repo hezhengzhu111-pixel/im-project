@@ -1,0 +1,74 @@
+import 'package:file_picker/file_picker.dart' as fp;
+import 'package:im_core/core.dart';
+
+class WebFilePickerAdapter implements FilePickerPort {
+  @override
+  Future<Result<PickedFile>> pickImage({ImageSource source = ImageSource.gallery}) async {
+    try {
+      final result = await fp.FilePicker.platform.pickFiles(
+        type: fp.FileType.image,
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) {
+        return const Failure(OperationCancelled());
+      }
+
+      final file = result.files.first;
+      if (file.bytes == null) {
+        return const Failure(UnknownError('无法读取文件数据'));
+      }
+
+      return Success(PickedFile.fromBytes(
+        name: file.name,
+        mimeType: _getMimeType(file.name),
+        bytes: file.bytes!,
+      ));
+    } catch (e) {
+      return Failure(UnknownError(e.toString()));
+    }
+  }
+
+  @override
+  Future<Result<PickedFile>> pickFile({List<String>? allowedExtensions}) async {
+    try {
+      final result = await fp.FilePicker.platform.pickFiles(
+        type: allowedExtensions != null ? fp.FileType.custom : fp.FileType.any,
+        allowedExtensions: allowedExtensions,
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) {
+        return const Failure(OperationCancelled());
+      }
+
+      final file = result.files.first;
+      if (file.bytes == null) {
+        return const Failure(UnknownError('无法读取文件数据'));
+      }
+
+      return Success(PickedFile.fromBytes(
+        name: file.name,
+        mimeType: _getMimeType(file.name),
+        bytes: file.bytes!,
+      ));
+    } catch (e) {
+      return Failure(UnknownError(e.toString()));
+    }
+  }
+
+  String _getMimeType(String fileName) {
+    final ext = fileName.split('.').last.toLowerCase();
+    const mimeTypes = {
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'webp': 'image/webp',
+      'pdf': 'application/pdf',
+      'mp3': 'audio/mpeg',
+      'mp4': 'video/mp4',
+    };
+    return mimeTypes[ext] ?? 'application/octet-stream';
+  }
+}
