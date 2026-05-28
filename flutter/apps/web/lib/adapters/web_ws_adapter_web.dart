@@ -129,8 +129,8 @@ class WebWsClient implements WsClientPort {
 
       // Reset heartbeat timeout on any message (acts as pong)
       _heartbeatTimeoutTimer?.cancel();
-    } catch (e) {
-      AppLogger.instance.error('WS parse error', e);
+    } catch (e, st) {
+      AppLogger.instance.error('WS parse error', e, st, 'ws');
     }
   }
 

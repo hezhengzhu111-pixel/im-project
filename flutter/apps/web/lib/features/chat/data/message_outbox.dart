@@ -395,8 +395,8 @@ class MessageOutbox {
         type: OutboxEventType.messageSent,
         message: message,
       ));
-    } catch (e) {
-      AppLogger.instance.error('Outbox retry failed', e);
+    } catch (e, st) {
+      AppLogger.instance.error('Outbox retry failed', e, st);
 
       if (message.retryCount + 1 >= _maxRetries) {
         final failedMessage = message.copyWith(
