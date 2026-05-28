@@ -208,5 +208,53 @@ void main() {
       expect(await outbox.getFailedCount(), 1);
       expect(await outbox.getPendingCount(), 0);
     });
+
+    test('network restoration triggers retry of pending messages', () async {
+      // Start offline with mutable network state
+      bool isOnline = false;
+      outbox = MessageOutbox(
+        messageApi: mockMessageApi,
+        idbFactory: idbFactorySembastMemory,
+        isOnline: () => isOnline,
+      );
+      await outbox.initialize();
+
+      // Enqueue message while offline
+      await outbox.enqueue(
+        sessionKey: 'session-1',
+        receiverId: 'user-2',
+        content: 'Offline message',
+        messageType: 'text',
+        clientMessageId: 'client-1',
+      );
+
+      // Verify message is pending
+      expect(await outbox.getPendingCount(), 1);
+
+      // Mock successful API response
+      final serverMessage = Message(
+        id: 'server-1',
+        senderId: 'user-1',
+        isGroupChat: false,
+        messageType: 'text',
+        content: 'Offline message',
+        sendTime: DateTime.now().toIso8601String(),
+        status: 'SENT',
+        clientMessageId: 'client-1',
+      );
+
+      mockMessageApi.sendPrivateMessageResponse = Future.value(serverMessage);
+
+      // Simulate network restoration
+      isOnline = true;
+      outbox.onNetworkAvailable();
+
+      // Wait for async operations to complete
+      await Future.delayed(Duration(seconds: 1));
+
+      // Verify message was sent and removed from outbox
+      expect(await outbox.getPendingCount(), 0);
+      expect(await outbox.getFailedCount(), 0);
+    });
   });
 }
