@@ -1,24 +1,59 @@
-# Environment
+# ===========================================
+# 环境变量文件
+# ===========================================
 .env
 .env.local
 .env.*.local
 .env.bak
 
-# Logs and runtime data
+# ===========================================
+# 日志和运行时数据
+# ===========================================
 logs/
 *.log
-!frontend/apps/mobile/src/screens/logs/
-!frontend/apps/mobile/src/screens/logs/**
-!frontend/apps/mobile/src/services/logs/
-!frontend/apps/mobile/src/services/logs/**
 
+# ===========================================
 # Python
+# ===========================================
 __pycache__/
 *.py[cod]
 .venv/
 venv/
 
-# Frontend
+# ===========================================
+# Rust 编译产物
+# ===========================================
+target/
+
+# ===========================================
+# 统一编译产物目录
+# ===========================================
+build/
+
+# ===========================================
+# Flutter/Dart 生成文件和缓存
+# ===========================================
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+# ===========================================
+# 编译残留
+# ===========================================
+out.js
+out.js.deps
+out.js.map
+
+# ===========================================
+# 测试覆盖率
+# ===========================================
+coverage/
+.nyc_output
+
+# ===========================================
+# 前端（未来移除）
+# ===========================================
 frontend/node_modules/
 frontend/apps/*/node_modules/
 frontend/packages/*/node_modules/
@@ -32,49 +67,21 @@ frontend/apps/mobile/android/app/build/
 frontend/apps/mobile/ios/Pods/
 frontend/apps/mobile/ios/build/
 
-# Rust
-backend/target/
-backend/.cargo-home/
-backend/java-test-client/**
-
-# IDE and OS
+# ===========================================
+# IDE 和操作系统
+# ===========================================
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
 
-# Temporary work
+# ===========================================
+# 临时文件
+# ===========================================
 tmp/
 .deploy-tools/
 init.md
 .superpowers/
-
-# ===========================================
-# 编译输出目录
-# ===========================================
-target/
-build/
-dist/
-out/
-.dart_tool/
-
-# ===========================================
-# 依赖目录
-# ===========================================
-node_modules/
-.venv/
-venv/
-Pods/
-.gradle/
-
-# ===========================================
-# 缓存文件
-# ===========================================
-*.tsbuildinfo
-.cache
-.parcel-cache
-.eslintcache
-.stylelintcache
 
 # ===========================================
 # 生成文件
@@ -83,22 +90,8 @@ Pods/
 *.freezed.dart
 *.mocks.dart
 *.config.dart
-
-# ===========================================
-# 环境变量文件
-# ===========================================
-.env
-.env.local
-.env.*.local
-
-# ===========================================
-# 测试覆盖率
-# ===========================================
-coverage/
-.nyc_output
-
-# ===========================================
-# 操作系统文件
-# ===========================================
-.DS_Store
-Thumbs.db
+*.tsbuildinfo
+.cache
+.parcel-cache
+.eslintcache
+.stylelintcache
