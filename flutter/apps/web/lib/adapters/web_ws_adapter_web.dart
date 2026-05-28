@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
 import 'package:im_core/core.dart';
+import '../core/logging/app_logger.dart';
 
 class WebWsEvent implements WsEvent {
   WebWsEvent({required this.type, required this.data, required this.timestamp});
@@ -109,7 +110,7 @@ class WebWsClient implements WsClientPort {
     if (_isConnected && _socket != null) {
       _socket!.send(jsonEncode(message));
     } else {
-      print('WS send dropped: not connected');
+      AppLogger.instance.warn('WS send dropped: not connected');
     }
   }
 
@@ -129,7 +130,7 @@ class WebWsClient implements WsClientPort {
       // Reset heartbeat timeout on any message (acts as pong)
       _heartbeatTimeoutTimer?.cancel();
     } catch (e) {
-      print('WS parse error: $e');
+      AppLogger.instance.error('WS parse error', e);
     }
   }
 
