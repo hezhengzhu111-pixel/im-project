@@ -9,7 +9,7 @@ class EncryptionDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
     return AlertDialog(
-      title: Row(children: [const Icon(Icons.lock, color: Colors.green), const SizedBox(width: 8), Text(loc.e2eeDialogTitle)]),
+      title: Row(children: [const Icon(Icons.lock, color: Colors.green), const SizedBox(width: 8), Expanded(child: Text(loc.e2eeDialogTitle))]),
       content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(loc.e2eeDialogDescription),
         const SizedBox(height: 8),
