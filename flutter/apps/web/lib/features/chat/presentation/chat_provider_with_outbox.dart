@@ -9,7 +9,7 @@ import '../data/message_outbox.dart';
 import '../data/outbox_provider.dart';
 import '../../e2ee/data/e2ee_manager.dart';
 import '../../e2ee/data/e2ee_meta_store.dart';
-import 'chat_provider.dart';
+import 'chat_state.dart';
 
 /// Extended chat state with outbox information
 class ChatStateWithOutbox extends ChatState {
