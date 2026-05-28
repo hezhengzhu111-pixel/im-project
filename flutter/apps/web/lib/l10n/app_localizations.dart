@@ -2062,39 +2062,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Configure AI assistant'**
   String get seoAiSettingsDescription;
-
-  /// Translate a key to its localized string.
-  ///
-  /// Used by [metaForPath] to resolve SEO keys to localized text.
-  String translate(String key) {
-    switch (key) {
-      case 'seoLoginTitle': return seoLoginTitle;
-      case 'seoLoginDescription': return seoLoginDescription;
-      case 'seoRegisterTitle': return seoRegisterTitle;
-      case 'seoRegisterDescription': return seoRegisterDescription;
-      case 'seoChatTitle': return seoChatTitle;
-      case 'seoChatDescription': return seoChatDescription;
-      case 'seoContactsTitle': return seoContactsTitle;
-      case 'seoContactsDescription': return seoContactsDescription;
-      case 'seoAddFriendTitle': return seoAddFriendTitle;
-      case 'seoAddFriendDescription': return seoAddFriendDescription;
-      case 'seoGroupsTitle': return seoGroupsTitle;
-      case 'seoGroupsDescription': return seoGroupsDescription;
-      case 'seoCreateGroupTitle': return seoCreateGroupTitle;
-      case 'seoCreateGroupDescription': return seoCreateGroupDescription;
-      case 'seoMomentsTitle': return seoMomentsTitle;
-      case 'seoMomentsDescription': return seoMomentsDescription;
-      case 'seoMomentsNotificationsTitle': return seoMomentsNotificationsTitle;
-      case 'seoMomentsNotificationsDescription': return seoMomentsNotificationsDescription;
-      case 'seoSettingsTitle': return seoSettingsTitle;
-      case 'seoSettingsDescription': return seoSettingsDescription;
-      case 'seoProfileTitle': return seoProfileTitle;
-      case 'seoProfileDescription': return seoProfileDescription;
-      case 'seoAiSettingsTitle': return seoAiSettingsTitle;
-      case 'seoAiSettingsDescription': return seoAiSettingsDescription;
-      default: return key;
-    }
-  }
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
