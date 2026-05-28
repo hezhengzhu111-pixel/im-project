@@ -12,6 +12,7 @@ import 'package:im_web/features/auth/presentation/widgets/decorative_background.
 import 'package:im_web/features/auth/presentation/widgets/gradient_button.dart';
 import 'package:im_web/widgets/validated_form.dart';
 import 'package:im_web/widgets/validated_form_field.dart';
+import 'package:im_web/features/auth/domain/auth_error_code.dart';
 import 'auth_provider.dart';
 import 'auth_providers.dart';
 
@@ -25,6 +26,7 @@ class LoginPage extends ConsumerStatefulWidget {
 class _LoginPageState extends ConsumerState<LoginPage>
     with SingleTickerProviderStateMixin {
   late FormController _formController;
+  Locale? _locale;
   bool _rememberMe = false;
 
   late AnimationController _animController;
@@ -50,20 +52,33 @@ class _LoginPageState extends ConsumerState<LoginPage>
       curve: Curves.easeOut,
     ));
     _animController.forward();
+
+    _formController = FormController(FormSchema(fields: []));
+
+    ref.listen<AuthState>(authStateProvider, (prev, next) {
+      if (!mounted) return;
+      if (next.errorCode != null) {
+        _formController.setFormError(_locErrorCode(next.errorCode!));
+      } else if (prev?.errorCode != null && next.errorCode == null) {
+        _formController.setFormError(null);
+      }
+    });
   }
 
   @override
-  void dispose() {
-    _formController.dispose();
-    _animController.dispose();
-    super.dispose();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final locale = Localizations.localeOf(context);
+    if (_locale != locale) {
+      _locale = locale;
+      _formController.dispose();
+      _formController = _buildFormController();
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  FormController _buildFormController() {
     final loc = AppLocalizations.of(context)!;
-
-    _formController = FormController(FormSchema(fields: [
+    return FormController(FormSchema(fields: [
       FormFieldSchema(
         name: 'username',
         validators: [
@@ -86,12 +101,34 @@ class _LoginPageState extends ConsumerState<LoginPage>
         ],
       ),
     ]));
+  }
 
-    ref.listen<AuthState>(authStateProvider, (prev, next) {
-      if (next.error != null && mounted) {
-        _formController.setFormError(next.error);
-      }
-    });
+  String _locErrorCode(AuthErrorCode code) {
+    final loc = AppLocalizations.of(context)!;
+    switch (code) {
+      case AuthErrorCode.invalidCredentials:
+        return loc.authInvalidCredentials;
+      case AuthErrorCode.networkError:
+        return loc.authNetworkError;
+      case AuthErrorCode.serverError:
+        return loc.authServerError;
+      case AuthErrorCode.tooManyRequests:
+        return loc.authTooManyRequests;
+      case AuthErrorCode.unknown:
+        return loc.authUnknownError;
+    }
+  }
+
+  @override
+  void dispose() {
+    _formController.dispose();
+    _animController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
 
     return Scaffold(
       body: Container(
