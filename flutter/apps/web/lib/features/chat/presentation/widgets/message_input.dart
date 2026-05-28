@@ -80,23 +80,39 @@ class _MessageInputState extends ConsumerState<MessageInput> {
 
   Future<void> _recordAndSendVoice() async {
     final audioRecorder = ref.read(audioRecorderPortProvider);
+    final result = await audioRecorder.startRecording();
 
-    final startResult = await audioRecorder.startRecording();
-    if (startResult is Failure) return;
-
-    _showRecordingUI();
-  }
-
-  void _showRecordingUI() {
-    // 显示录音 UI，包含停止按钮
+    if (result case Failure(:final error)) {
+      if (mounted) {
+        final loc = AppLocalizations.of(context)!;
+        final msg = _mapError(error, loc);
+        if (msg.isNotEmpty) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(msg)));
+        }
+      }
+      return;
+    }
+    setState(() => _isRecording = true);
   }
 
   Future<void> _stopRecordingAndSend() async {
     final audioRecorder = ref.read(audioRecorderPortProvider);
+    final result = await audioRecorder.stopRecording();
 
-    final stopResult = await audioRecorder.stopRecording();
-    if (stopResult case Success(:final data)) {
+    setState(() => _isRecording = false);
+
+    if (result case Success(:final data)) {
       await _uploadAndSend(data, widget.onSendVoice);
+    } else if (result case Failure(:final error)) {
+      if (mounted) {
+        final loc = AppLocalizations.of(context)!;
+        final msg = _mapError(error, loc);
+        if (msg.isNotEmpty) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(msg)));
+        }
+      }
     }
   }
 
@@ -175,7 +191,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
             button: true,
             child: IconButton(
               icon: const Icon(Icons.add_circle_outline),
-              onPressed: _showAttachmentMenu,
+              onPressed: _isUploading ? null : _showAttachmentMenu,
               tooltip: loc.a11yAddAttachment,
             ),
           ),
@@ -184,9 +200,15 @@ class _MessageInputState extends ConsumerState<MessageInput> {
             button: true,
             child: IconButton(
               icon: Icon(_isRecording ? Icons.stop : Icons.mic),
-              onPressed: () {
-                setState(() => _isRecording = !_isRecording);
-              },
+              onPressed: _isUploading
+                  ? null
+                  : () {
+                      if (_isRecording) {
+                        _stopRecordingAndSend();
+                      } else {
+                        _recordAndSendVoice();
+                      }
+                    },
               tooltip: loc.a11yVoiceInput,
               color: _isRecording ? Colors.red : null,
             ),
@@ -210,7 +232,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
             button: true,
             child: IconButton(
               icon: const Icon(Icons.send),
-              onPressed: _handleSend,
+              onPressed: _isUploading ? null : _handleSend,
               tooltip: loc.a11ySendMessage,
               color: Theme.of(context).colorScheme.primary,
             ),
@@ -223,5 +245,31 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   void _handleSend() {
     widget.onSend(_controller.text);
     _controller.clear();
+  }
+
+  String _mapError(FailureError error, AppLocalizations loc) {
+    return switch (error) {
+      UnsupportedCapability(:final capability) =>
+        switch (capability) {
+          'audio_recording' => loc.errorRecordingNotImplemented,
+          'share' => loc.errorShareNotAvailable,
+          'clipboard' => loc.errorClipboardNotAvailable,
+          _ => loc.commonFailed,
+        },
+      PermissionDenied(:final capability) =>
+        switch (capability) {
+          'notification' => loc.errorNotificationPermissionDenied,
+          'microphone' => loc.errorMicrophonePermissionDenied,
+          _ => loc.commonFailed,
+        },
+      OperationCancelled() => '',
+      UnknownError(:final message) =>
+        switch (message) {
+          'file_read_failed' => loc.errorFileReadFailed,
+          'already_recording' => loc.errorAlreadyRecording,
+          'not_recording' => loc.errorNotRecording,
+          _ => loc.commonFailed,
+        },
+    };
   }
 }
