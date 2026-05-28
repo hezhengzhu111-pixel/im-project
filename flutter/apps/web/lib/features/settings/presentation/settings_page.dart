@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_core/core.dart';
+import 'package:im_ui/im_ui.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 import 'package:im_web/l10n/app_localizations.dart';
@@ -33,9 +34,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final authState = ref.watch(authStateProvider);
     final loc = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
-    final screenWidth = MediaQuery.sizeOf(context).width;
-
-    if (screenWidth < 860) {
+    if (context.isMobile) {
       return _buildMobileLayout(loc, theme, settings, authState);
     }
 
@@ -53,7 +52,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 Expanded(
                   child: _buildPrimaryColumn(loc, theme, settings, authState),
                 ),
-                if (screenWidth >= 1200) ...[
+                if (context.isLarge) ...[
                   const SizedBox(width: 16),
                   SizedBox(
                     width: 340,
