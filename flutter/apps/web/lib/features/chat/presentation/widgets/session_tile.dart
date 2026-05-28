@@ -20,7 +20,7 @@ class SessionTile extends StatelessWidget {
     final lastMsg = session.lastMessage;
 
     return Semantics(
-      label: session.targetName.isNotEmpty ? session.targetName : (AppLocalizations.of(context)?.chatSelectSession ?? '会话'),
+      label: session.targetName.isNotEmpty ? session.targetName : AppLocalizations.of(context)!.chatSelectSession,
       button: true,
       child: ListTile(
       selected: isSelected,
