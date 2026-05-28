@@ -134,12 +134,13 @@ void main() {
     });
   });
 
-  group('appFallbackMeta', () {
-    test('has default values', () {
-      expect(appFallbackMeta.title, 'IM - Secure Messaging');
-      expect(appFallbackMeta.canonicalPath, '/');
-      expect(appFallbackMeta.og?.type, 'website');
-      expect(appFallbackMeta.twitter?.card, 'summary');
+  group('fallbackMetaForLocale (legacy appFallbackMeta)', () {
+    test('returns English meta when l10n is null (replaces old appFallbackMeta)', () {
+      final meta = fallbackMetaForLocale(null);
+      expect(meta.title, 'IM - Secure Messaging');
+      expect(meta.canonicalPath, '/');
+      expect(meta.og?.type, 'website');
+      expect(meta.twitter?.card, 'summary');
     });
   });
 
