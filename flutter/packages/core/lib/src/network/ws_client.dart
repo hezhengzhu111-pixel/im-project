@@ -23,6 +23,9 @@ abstract class WsClientPort {
   /// Whether the WebSocket connection is currently active.
   bool get isConnected;
 
+  /// The base URL used for WebSocket connections.
+  String get wsBaseUrl;
+
   /// Establishes a WebSocket connection to the given [url].
   Future<void> connect(String url);
 

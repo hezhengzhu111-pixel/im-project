@@ -125,6 +125,8 @@ class FakeHttpClientPort implements HttpClientPort {
 
 /// A controllable [WsClientPort] that tracks sent messages.
 class FakeWsClientPort implements WsClientPort {
+  FakeWsClientPort({this.wsBaseUrl = 'ws://localhost:8082/ws'});
+
   final _eventsController = StreamController<WsEvent>.broadcast();
   final _connectionStateController =
       StreamController<WsConnectionState>.broadcast();
@@ -133,6 +135,9 @@ class FakeWsClientPort implements WsClientPort {
   final List<Map<String, dynamic>> sentMessages = [];
 
   bool _connected = false;
+
+  @override
+  final String wsBaseUrl;
 
   @override
   Stream<WsEvent> get events => _eventsController.stream;
