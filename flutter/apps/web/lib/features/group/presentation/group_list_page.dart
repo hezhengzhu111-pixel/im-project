@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 import 'package:im_web/features/chat/presentation/chat_provider.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import 'widgets/group_tile.dart';
 
 class GroupListPage extends ConsumerStatefulWidget {
@@ -27,23 +28,24 @@ class _GroupListPageState extends ConsumerState<GroupListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     final groupState = ref.watch(groupStateProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('群组'),
+        title: Text(loc.navGroups),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
             onPressed: () => context.push('/groups/create'),
-            tooltip: '创建群组',
+            tooltip: loc.groupCreateTooltip,
           ),
         ],
       ),
       body: groupState.isLoading
           ? const Center(child: CircularProgressIndicator())
           : groupState.groups.isEmpty
-              ? const Center(child: Text('暂无群组'))
+              ? Center(child: Text(loc.groupNoGroups))
               : ListView.builder(
                   itemCount: groupState.groups.length,
                   itemBuilder: (context, index) {

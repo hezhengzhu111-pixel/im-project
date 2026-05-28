@@ -100,6 +100,14 @@ class DebugPanel extends ConsumerWidget {
               value: '${chatState.sessions.length}',
               color: Colors.white,
             ),
+            const SizedBox(height: 8),
+
+            // Offline queue
+            _buildSection(
+              title: 'Queue',
+              value: '${chatState.pendingCount} pending, ${chatState.failedCount} failed',
+              color: chatState.pendingCount > 0 ? Colors.orange : Colors.white54,
+            ),
           ],
         ),
       ),

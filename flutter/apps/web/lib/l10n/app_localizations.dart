@@ -62,8 +62,7 @@ import 'app_localizations_zh.dart';
 /// be consistent with the languages listed in the AppLocalizations.supportedLocales
 /// property.
 abstract class AppLocalizations {
-  AppLocalizations(String locale)
-      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+  AppLocalizations(String locale) : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -71,8 +70,7 @@ abstract class AppLocalizations {
     return Localizations.of<AppLocalizations>(context, AppLocalizations);
   }
 
-  static const LocalizationsDelegate<AppLocalizations> delegate =
-      _AppLocalizationsDelegate();
+  static const LocalizationsDelegate<AppLocalizations> delegate = _AppLocalizationsDelegate();
 
   /// A list of this localizations delegate along with the default localizations
   /// delegates.
@@ -84,8 +82,7 @@ abstract class AppLocalizations {
   /// Additional delegates can be added by appending to this list in
   /// MaterialApp. This list does not have to be used at all if a custom list
   /// of delegates is preferred or required.
-  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
-      <LocalizationsDelegate<dynamic>>[
+  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates = <LocalizationsDelegate<dynamic>>[
     delegate,
     GlobalMaterialLocalizations.delegate,
     GlobalCupertinoLocalizations.delegate,
@@ -200,6 +197,18 @@ abstract class AppLocalizations {
   /// **'No friends yet'**
   String get contactsNoFriends;
 
+  /// No description provided for @contactsFriends.
+  ///
+  /// In en, this message translates to:
+  /// **'Friends ({count})'**
+  String contactsFriends(Object count);
+
+  /// No description provided for @contactsRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'Requests ({count})'**
+  String contactsRequests(Object count);
+
   /// No description provided for @contactsAddFriend.
   ///
   /// In en, this message translates to:
@@ -212,6 +221,30 @@ abstract class AppLocalizations {
   /// **'Friend Requests'**
   String get contactsFriendRequests;
 
+  /// No description provided for @contactsNoRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'No friend requests'**
+  String get contactsNoRequests;
+
+  /// No description provided for @contactsOnline.
+  ///
+  /// In en, this message translates to:
+  /// **'Online'**
+  String get contactsOnline;
+
+  /// No description provided for @contactsOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline'**
+  String get contactsOffline;
+
+  /// No description provided for @contactsFriendRequestReason.
+  ///
+  /// In en, this message translates to:
+  /// **'Requests to be your friend'**
+  String get contactsFriendRequestReason;
+
   /// No description provided for @contactsAccept.
   ///
   /// In en, this message translates to:
@@ -223,6 +256,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Reject'**
   String get contactsReject;
+
+  /// No description provided for @contactsAccepted.
+  ///
+  /// In en, this message translates to:
+  /// **'Accepted'**
+  String get contactsAccepted;
+
+  /// No description provided for @contactsRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Rejected'**
+  String get contactsRejected;
 
   /// No description provided for @retry.
   ///
@@ -1136,6 +1181,12 @@ abstract class AppLocalizations {
   /// **'File sending feature under development...'**
   String get chatFileSending;
 
+  /// No description provided for @chatVoiceSending.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice sending feature under development...'**
+  String get chatVoiceSending;
+
   /// No description provided for @chatInputHint.
   ///
   /// In en, this message translates to:
@@ -1297,10 +1348,99 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Voice input'**
   String get a11yVoiceInput;
+
+  /// No description provided for @addFriendTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Friend'**
+  String get addFriendTitle;
+
+  /// No description provided for @addFriendSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search by username or nickname'**
+  String get addFriendSearchHint;
+
+  /// No description provided for @addFriendSearchFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Search failed, please try again'**
+  String get addFriendSearchFailed;
+
+  /// No description provided for @addFriendRequestSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Friend request sent to {name}'**
+  String addFriendRequestSent(Object name);
+
+  /// No description provided for @addFriendRequestFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to send request, please try again'**
+  String get addFriendRequestFailed;
+
+  /// No description provided for @addFriendNoMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'No matching users found'**
+  String get addFriendNoMatch;
+
+  /// No description provided for @addFriendSearchPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter keywords to search users'**
+  String get addFriendSearchPrompt;
+
+  /// No description provided for @addFriendButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get addFriendButton;
+
+  /// No description provided for @groupCreateTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Create group'**
+  String get groupCreateTooltip;
+
+  /// No description provided for @groupNoGroups.
+  ///
+  /// In en, this message translates to:
+  /// **'No groups yet'**
+  String get groupNoGroups;
+
+  /// No description provided for @groupCreateTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Create Group'**
+  String get groupCreateTitle;
+
+  /// No description provided for @groupCreateButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get groupCreateButton;
+
+  /// No description provided for @groupNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Group name'**
+  String get groupNameLabel;
+
+  /// No description provided for @groupDescLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Description (optional)'**
+  String get groupDescLabel;
+
+  /// No description provided for @groupSelectMembers.
+  ///
+  /// In en, this message translates to:
+  /// **'Select members'**
+  String get groupSelectMembers;
 }
 
-class _AppLocalizationsDelegate
-    extends LocalizationsDelegate<AppLocalizations> {
+class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
   const _AppLocalizationsDelegate();
 
   @override
@@ -1309,25 +1449,25 @@ class _AppLocalizationsDelegate
   }
 
   @override
-  bool isSupported(Locale locale) =>
-      <String>['en', 'zh'].contains(locale.languageCode);
+  bool isSupported(Locale locale) => <String>['en', 'zh'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
 }
 
 AppLocalizations lookupAppLocalizations(Locale locale) {
+
+
   // Lookup logic when only language code is specified.
   switch (locale.languageCode) {
-    case 'en':
-      return AppLocalizationsEn();
-    case 'zh':
-      return AppLocalizationsZh();
+    case 'en': return AppLocalizationsEn();
+    case 'zh': return AppLocalizationsZh();
   }
 
   throw FlutterError(
-      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-      'an issue with the localizations generation tool. Please file an issue '
-      'on GitHub with a reproducible sample app and the gen-l10n configuration '
-      'that was used.');
+    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+    'an issue with the localizations generation tool. Please file an issue '
+    'on GitHub with a reproducible sample app and the gen-l10n configuration '
+    'that was used.'
+  );
 }

@@ -1,5 +1,3 @@
-// ignore: unused_import
-import 'package:intl/intl.dart' as intl;
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -60,16 +58,44 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactsNoFriends => 'No friends yet';
 
   @override
+  String contactsFriends(Object count) {
+    return 'Friends ($count)';
+  }
+
+  @override
+  String contactsRequests(Object count) {
+    return 'Requests ($count)';
+  }
+
+  @override
   String get contactsAddFriend => 'Add Friend';
 
   @override
   String get contactsFriendRequests => 'Friend Requests';
 
   @override
+  String get contactsNoRequests => 'No friend requests';
+
+  @override
+  String get contactsOnline => 'Online';
+
+  @override
+  String get contactsOffline => 'Offline';
+
+  @override
+  String get contactsFriendRequestReason => 'Requests to be your friend';
+
+  @override
   String get contactsAccept => 'Accept';
 
   @override
   String get contactsReject => 'Reject';
+
+  @override
+  String get contactsAccepted => 'Accepted';
+
+  @override
+  String get contactsRejected => 'Rejected';
 
   @override
   String get retry => 'Retry';
@@ -171,29 +197,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsInsecureVoice => 'HTTP voice recording';
 
   @override
-  String get settingsInsecureVoiceDesc =>
-      'Allow voice recording over HTTP connections (not recommended)';
+  String get settingsInsecureVoiceDesc => 'Allow voice recording over HTTP connections (not recommended)';
 
   @override
   String get settingsReadReceipt => 'Read receipts';
 
   @override
-  String get settingsReadReceiptDesc =>
-      'Allow others to see when you read messages';
+  String get settingsReadReceiptDesc => 'Allow others to see when you read messages';
 
   @override
   String get settingsClearCache => 'Clear local cache';
 
   @override
-  String get settingsClearCacheDesc =>
-      'Clear session selection and temporary page state';
+  String get settingsClearCacheDesc => 'Clear session selection and temporary page state';
 
   @override
   String get settingsAiAssistant => 'AI Assistant';
 
   @override
-  String get settingsAiAssistantDesc =>
-      'Configure LLM API keys, auto-reply, knowledge base';
+  String get settingsAiAssistantDesc => 'Configure LLM API keys, auto-reply, knowledge base';
 
   @override
   String get settingsLogout => 'Logout';
@@ -208,8 +230,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsCacheTitle => 'Clear Cache';
 
   @override
-  String get settingsCacheMessage =>
-      'Clear local UI cache? Login state will be preserved.';
+  String get settingsCacheMessage => 'Clear local UI cache? Login state will be preserved.';
 
   @override
   String get settingsCacheCleared => 'Cache cleared';
@@ -299,15 +320,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileAllowStrangerAdd => 'Allow stranger requests';
 
   @override
-  String get profileAllowStrangerAddDesc =>
-      'Allow others to find you and send friend requests';
+  String get profileAllowStrangerAddDesc => 'Allow others to find you and send friend requests';
 
   @override
   String get profileShowOnlineStatus => 'Show online status';
 
   @override
-  String get profileShowOnlineStatusDesc =>
-      'Friends can see whether you are online';
+  String get profileShowOnlineStatusDesc => 'Friends can see whether you are online';
 
   @override
   String get profileAllowViewMoments => 'Allow moments access';
@@ -370,8 +389,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiApiKeys => 'API Key Management';
 
   @override
-  String get aiApiKeysDesc =>
-      'Configure your LLM API keys (DeepSeek, MiniMax, etc.)';
+  String get aiApiKeysDesc => 'Configure your LLM API keys (DeepSeek, MiniMax, etc.)';
 
   @override
   String get aiAutoReply => 'Auto Reply';
@@ -386,8 +404,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAutoReplyPersona => 'AI Persona';
 
   @override
-  String get aiAutoReplyPersonaPlaceholder =>
-      'Describe the role and speaking style you want AI to play...';
+  String get aiAutoReplyPersonaPlaceholder => 'Describe the role and speaking style you want AI to play...';
 
   @override
   String get aiProvider => 'Provider';
@@ -454,8 +471,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get validationUsernameInvalidChars =>
-      'Username can only contain letters, numbers, and underscores';
+  String get validationUsernameInvalidChars => 'Username can only contain letters, numbers, and underscores';
 
   @override
   String get validationEmailInvalid => 'Please enter a valid email address';
@@ -471,15 +487,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get validationPasswordStrength =>
-      'Password must contain both letters and digits';
+  String get validationPasswordStrength => 'Password must contain both letters and digits';
 
   @override
   String get validationPasswordMismatch => 'Passwords do not match';
 
   @override
-  String get validationAgreementRequired =>
-      'You must accept the agreement to continue';
+  String get validationAgreementRequired => 'You must accept the agreement to continue';
 
   @override
   String get validationNicknameRequired => 'Please enter a nickname';
@@ -490,8 +504,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get loginSubtitle =>
-      'Please log in to your encrypted communication account';
+  String get loginSubtitle => 'Please log in to your encrypted communication account';
 
   @override
   String get loginRememberMe => 'Remember me';
@@ -530,8 +543,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get registerHasAccountLogin => 'Already have an account? Login';
 
   @override
-  String get registerAgreementRequired =>
-      'Please read and agree to the User Agreement and Privacy Policy';
+  String get registerAgreementRequired => 'Please read and agree to the User Agreement and Privacy Policy';
 
   @override
   String get chatSelectSession => 'Select a conversation to start chatting';
@@ -556,6 +568,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatFileSending => 'File sending feature under development...';
 
   @override
+  String get chatVoiceSending => 'Voice sending feature under development...';
+
+  @override
   String get chatInputHint => 'Type a message...';
 
   @override
@@ -577,8 +592,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get validatorUsernameLength => 'Username must be 3-20 characters';
 
   @override
-  String get validatorUsernameFormat =>
-      'Username can only contain letters, numbers, and underscores';
+  String get validatorUsernameFormat => 'Username can only contain letters, numbers, and underscores';
 
   @override
   String get validatorEmailRequired => 'Please enter an email';
@@ -593,8 +607,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get validatorPasswordLength => 'Password must be 8-64 characters';
 
   @override
-  String get validatorPasswordFormat =>
-      'Password must contain letters and numbers';
+  String get validatorPasswordFormat => 'Password must contain letters and numbers';
 
   @override
   String get validatorConfirmPasswordRequired => 'Please confirm your password';
@@ -637,4 +650,51 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get a11yVoiceInput => 'Voice input';
+
+  @override
+  String get addFriendTitle => 'Add Friend';
+
+  @override
+  String get addFriendSearchHint => 'Search by username or nickname';
+
+  @override
+  String get addFriendSearchFailed => 'Search failed, please try again';
+
+  @override
+  String addFriendRequestSent(Object name) {
+    return 'Friend request sent to $name';
+  }
+
+  @override
+  String get addFriendRequestFailed => 'Failed to send request, please try again';
+
+  @override
+  String get addFriendNoMatch => 'No matching users found';
+
+  @override
+  String get addFriendSearchPrompt => 'Enter keywords to search users';
+
+  @override
+  String get addFriendButton => 'Add';
+
+  @override
+  String get groupCreateTooltip => 'Create group';
+
+  @override
+  String get groupNoGroups => 'No groups yet';
+
+  @override
+  String get groupCreateTitle => 'Create Group';
+
+  @override
+  String get groupCreateButton => 'Create';
+
+  @override
+  String get groupNameLabel => 'Group name';
+
+  @override
+  String get groupDescLabel => 'Description (optional)';
+
+  @override
+  String get groupSelectMembers => 'Select members';
 }
