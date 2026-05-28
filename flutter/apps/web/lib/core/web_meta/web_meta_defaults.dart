@@ -1,4 +1,5 @@
 import 'package:im_web/l10n/app_localizations.dart';
+import 'package:im_web/l10n/app_localizations_ext.dart';
 import 'package:im_web/core/router/route_registry.dart';
 import 'page_meta.dart';
 

@@ -134,6 +134,6 @@ class _MomentsNotificationsPageState extends ConsumerState<MomentsNotificationsP
   }
 
   String _formatTime(String time) {
-    return formatRelativeTime(context, time);
+    return formatRelativeTime(context, DateTime.parse(time));
   }
 }

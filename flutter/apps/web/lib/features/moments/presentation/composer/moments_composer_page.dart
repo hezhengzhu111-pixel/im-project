@@ -15,6 +15,7 @@ class MomentsComposerPage extends ConsumerStatefulWidget {
 
 class _MomentsComposerPageState extends ConsumerState<MomentsComposerPage> {
   final _controller = TextEditingController();
+  late final AppLocalizations loc;
 
   @override
   void dispose() {
@@ -27,7 +28,7 @@ class _MomentsComposerPageState extends ConsumerState<MomentsComposerPage> {
     final composer = ref.watch(composerProvider);
     final theme = Theme.of(context);
     final user = ref.watch(authStateProvider).user;
-    final loc = AppLocalizations.of(context)!;
+    loc = AppLocalizations.of(context)!;
 
     return Scaffold(
       appBar: AppBar(
