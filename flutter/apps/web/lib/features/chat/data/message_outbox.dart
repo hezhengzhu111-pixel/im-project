@@ -220,6 +220,12 @@ class MessageOutbox {
     Map<String, dynamic>? e2eeEnvelope,
     String? e2eeDeviceId,
   }) async {
+    // 检查是否已存在相同 clientMessageId 的消息（防重）
+    final existing = await _getByClientMessageId(clientMessageId);
+    if (existing != null) {
+      return existing;
+    }
+
     final message = OutboxMessage(
       id: 'outbox_${DateTime.now().millisecondsSinceEpoch}_$clientMessageId',
       sessionKey: sessionKey,
@@ -269,6 +275,23 @@ class MessageOutbox {
     final store = txn.objectStore(_storeName);
     await store.delete(id);
     await txn.completed;
+  }
+
+  Future<OutboxMessage?> _getByClientMessageId(String clientMessageId) async {
+    final txn = _db!.transaction(_storeName, idbModeReadOnly);
+    final store = txn.objectStore(_storeName);
+    OutboxMessage? result;
+
+    await store.openCursor(autoAdvance: true).forEach((cursor) {
+      final map = cursor.value as Map<String, dynamic>;
+      final message = OutboxMessage.fromMap(map);
+      if (message.clientMessageId == clientMessageId &&
+          message.status != OutboxMessageStatus.sent) {
+        result = message;
+      }
+    });
+
+    return result;
   }
 
   Future<List<OutboxMessage>> _getPendingMessages() async {
