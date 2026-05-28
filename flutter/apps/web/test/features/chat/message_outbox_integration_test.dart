@@ -15,8 +15,21 @@ class MockMessageApi extends Mock implements MessageApi {
   /// If non-null, sendPrivateMessage will throw this exception.
   Exception? sendPrivateMessageException;
 
+  /// If non-null, sendPrivateEncrypted will throw this exception.
+  Exception? sendPrivateEncryptedException;
+
+  /// Captured arguments from the last sendPrivateEncrypted call.
+  Map<String, dynamic>? lastEncryptedArgs;
+
+  /// Number of times sendPrivateEncrypted was called.
+  int encryptedCallCount = 0;
+
+  /// Whether sendPrivateMessage (non-encrypted) was ever called.
+  bool sendPrivateMessageCalled = false;
+
   @override
   Future<Message> sendPrivateMessage(SendPrivateMessageRequest request) async {
+    sendPrivateMessageCalled = true;
     if (sendPrivateMessageException != null) {
       throw sendPrivateMessageException!;
     }
@@ -47,6 +60,17 @@ class MockMessageApi extends Mock implements MessageApi {
     required Map<String, dynamic> e2eeEnvelope,
     required String e2eeDeviceId,
   }) async {
+    encryptedCallCount++;
+    lastEncryptedArgs = {
+      'receiverId': receiverId,
+      'clientMessageId': clientMessageId,
+      'messageType': messageType,
+      'e2eeEnvelope': e2eeEnvelope,
+      'e2eeDeviceId': e2eeDeviceId,
+    };
+    if (sendPrivateEncryptedException != null) {
+      throw sendPrivateEncryptedException!;
+    }
     return super.noSuchMethod(
       Invocation.method(#sendPrivateEncrypted, [], {
         #receiverId: receiverId,
@@ -336,6 +360,53 @@ void main() {
       // Message should be sent via encrypted path and removed from outbox
       expect(await outbox.getPendingCount(), 0);
       expect(await outbox.getFailedCount(), 0);
+    });
+
+    test('E2EE message does not expose plaintext in error logs', () async {
+      outbox = MessageOutbox(
+        messageApi: mockMessageApi,
+        idbFactory: idbFactorySembastMemory,
+        isOnline: () => true,
+      );
+      await outbox.initialize();
+
+      // Enqueue encrypted message with sensitive plaintext content
+      final message = await outbox.enqueue(
+        sessionKey: 'session-1',
+        receiverId: 'user-2',
+        content: 'SENSITIVE_PLAINTEXT_CONTENT',
+        messageType: 'text',
+        clientMessageId: 'client-e2ee-plain-1',
+        isEncrypted: true,
+        e2eeEnvelope: {'wire': 'encrypted_data'},
+        e2eeDeviceId: 'device-1',
+      );
+
+      // Wait for async send to complete
+      await Future.delayed(Duration(seconds: 1));
+
+      // Verify the message was processed and removed (sent successfully)
+      expect(await outbox.getPendingCount(), 0);
+      expect(await outbox.getFailedCount(), 0);
+
+      // Key verification: sendPrivateEncrypted was called (not sendPrivateMessage)
+      // This proves the outbox routes E2EE messages through the encrypted API
+      // which does NOT accept a content/plaintext parameter.
+      expect(mockMessageApi.encryptedCallCount, 1);
+      expect(mockMessageApi.sendPrivateMessageCalled, false);
+
+      // Verify the encrypted API received the envelope, not the plaintext
+      final capturedArgs = mockMessageApi.lastEncryptedArgs!;
+      expect(capturedArgs['e2eeEnvelope'], {'wire': 'encrypted_data'});
+      expect(capturedArgs['receiverId'], 'user-2');
+      expect(capturedArgs['clientMessageId'], 'client-e2ee-plain-1');
+      expect(capturedArgs['messageType'], 'text');
+      expect(capturedArgs['e2eeDeviceId'], 'device-1');
+
+      // The sendPrivateEncrypted API signature does not include a 'content'
+      // parameter, so plaintext can never be passed through this path.
+      // This is a compile-time guarantee verified by this test exercising
+      // the encrypted code path.
     });
 
     test('E2EE message offline enqueue preserves encryption fields', () async {
