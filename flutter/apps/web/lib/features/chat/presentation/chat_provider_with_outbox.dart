@@ -10,6 +10,7 @@ import '../data/outbox_provider.dart';
 import '../../e2ee/data/e2ee_manager.dart';
 import '../../e2ee/data/e2ee_meta_store.dart';
 import 'chat_state.dart';
+import '../../../core/logging/app_logger.dart';
 
 /// Extended chat state with outbox information
 class ChatStateWithOutbox extends ChatState {
@@ -230,7 +231,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         markRead(sessionKey);
       }
     } catch (e) {
-      print('Failed to handle incoming message: $e');
+      AppLogger.instance.error('Failed to handle incoming message', e);
     }
   }
 
@@ -265,7 +266,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         decryptStatus: 'success',
       ));
     } catch (e) {
-      print('E2EE decrypt failed: $e');
+      AppLogger.instance.error('E2EE decrypt failed', e);
       addMessage(sessionKey, message.copyWith(
         content: '',
         decryptStatus: 'failed',
@@ -300,7 +301,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         }
       }
     } catch (e) {
-      print('Failed to handle message status change: $e');
+      AppLogger.instance.error('Failed to handle message status change', e);
     }
   }
 
@@ -329,7 +330,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
 
       state = state.copyWith(messages: {...state.messages, sessionId: updated});
     } catch (e) {
-      print('Failed to handle read receipt: $e');
+      AppLogger.instance.error('Failed to handle read receipt', e);
     }
   }
 
@@ -340,7 +341,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         loadSessions();
       }
     } catch (e) {
-      print('Failed to handle system message: $e');
+      AppLogger.instance.error('Failed to handle system message', e);
     }
   }
 
@@ -377,7 +378,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           _pendingNegotiation = null;
       }
     } catch (e) {
-      print('Failed to handle E2EE negotiation: $e');
+      AppLogger.instance.error('Failed to handle E2EE negotiation', e);
     }
   }
 
@@ -504,7 +505,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       });
       return serverMessage;
     } catch (e) {
-      print('Send message failed, adding to outbox: $e');
+      AppLogger.instance.error('Send message failed, adding to outbox', e);
       _analytics.trackEvent('message_send_failed');
 
       // Add to outbox for retry
@@ -555,7 +556,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       _analytics.trackEvent('message_send', {'type': messageType, 'encrypted': false});
       return serverMessage;
     } catch (e) {
-      print('Send group message failed, adding to outbox: $e');
+      AppLogger.instance.error('Send group message failed, adding to outbox', e);
       _analytics.trackEvent('message_send_failed');
 
       // Add to outbox for retry
