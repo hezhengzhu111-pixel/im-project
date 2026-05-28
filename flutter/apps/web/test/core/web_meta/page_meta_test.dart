@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:im_web/l10n/app_localizations.dart';
@@ -169,6 +171,24 @@ void main() {
       final meta = fallbackMetaForLocale(l10n);
       expect(meta.title, 'IM - Secure Messaging');
       expect(meta.description, contains('end-to-end'));
+    });
+  });
+
+  group('index.html validation', () {
+    test('does not contain hardcoded Chinese descriptions', () {
+      final content = File('web/index.html').readAsStringSync();
+      expect(content, isNot(contains('安全即时通讯')));
+      expect(content, isNot(contains('端到端加密')));
+    });
+
+    test('does not contain localhost', () {
+      final content = File('web/index.html').readAsStringSync();
+      expect(content, isNot(contains('localhost')));
+    });
+
+    test('html lang is en', () {
+      final content = File('web/index.html').readAsStringSync();
+      expect(content, contains('<html lang="en"'));
     });
   });
 }
