@@ -22,6 +22,21 @@ class ErrorSanitizer {
   /// Matches URL query strings
   static final _queryPattern = RegExp(r'\?[^#"\s]*');
 
+  /// Matches envelope=VALUE patterns (E2EE)
+  static final _envelopePattern = RegExp(r'envelope=[^\s&]+');
+
+  /// Matches session=VALUE patterns (E2EE)
+  static final _sessionPattern = RegExp(r'session=[^\s&]+');
+
+  /// Matches deviceId=VALUE patterns (E2EE, camelCase)
+  static final _deviceIdCamelPattern = RegExp(r'deviceId=[^\s&]+');
+
+  /// Matches device_id=VALUE patterns (E2EE, snake_case)
+  static final _deviceIdSnakePattern = RegExp(r'device_id=[^\s&]+');
+
+  /// Matches ticket=VALUE patterns (WebSocket)
+  static final _ticketPattern = RegExp(r'ticket=[^\s&]+');
+
   /// Sensitive path keywords for stack trace filtering
   static const _sensitivePathKeywords = [
     '.env',
@@ -87,15 +102,15 @@ class ErrorSanitizer {
 
   String _stripE2eePatterns(String input) {
     var result = input;
-    result = result.replaceAll(RegExp(r'envelope=[^\s&]+'), 'envelope=***');
-    result = result.replaceAll(RegExp(r'session=[^\s&]+'), 'session=***');
-    result = result.replaceAll(RegExp(r'deviceId=[^\s&]+'), 'deviceId=***');
-    result = result.replaceAll(RegExp(r'device_id=[^\s&]+'), 'device_id=***');
+    result = result.replaceAll(_envelopePattern, 'envelope=***');
+    result = result.replaceAll(_sessionPattern, 'session=***');
+    result = result.replaceAll(_deviceIdCamelPattern, 'deviceId=***');
+    result = result.replaceAll(_deviceIdSnakePattern, 'device_id=***');
     return result;
   }
 
   String _stripWsPatterns(String input) {
-    return input.replaceAll(RegExp(r'ticket=[^\s&]+'), 'ticket=***');
+    return input.replaceAll(_ticketPattern, 'ticket=***');
   }
 
   StackTrace? _filterStackTrace(StackTrace? stackTrace) {
