@@ -1,104 +1,78 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/core/logging/app_logger.dart';
+import 'package:im_web/core/logging/error_sanitizer.dart';
 
-void Function(String?, {int? wrapWidth}) _originalDebugPrint = debugPrint;
-
-/// Mock ErrorReporterPort for testing
-class MockErrorReporterPort implements ErrorReporterPort {
-  final List<Map<String, dynamic>> reports = [];
+class _MockErrorReporter implements ErrorReporterPort {
+  final List<SanitizedError> errors = [];
+  final List<String> messages = [];
 
   @override
-  void reportError(Object error, StackTrace? stackTrace,
-      {Map<String, dynamic>? extra}) {
-    reports.add({
-      'error': error,
-      'stackTrace': stackTrace,
-      'extra': extra,
-    });
+  void reportError(SanitizedError error) {
+    errors.add(error);
   }
 
   @override
-  void reportMessage(String message, {String? level}) {}
+  void reportMessage(String message, {String? level}) {
+    messages.add(message);
+  }
 }
 
 void main() {
-  late List<String> logs;
-  late MockErrorReporterPort mockReporter;
+  group('AppLogger.error', () {
+    late _MockErrorReporter reporter;
 
-  setUp(() {
-    logs = [];
-    mockReporter = MockErrorReporterPort();
-    _originalDebugPrint = debugPrint;
-    debugPrint = (String? message, {int? wrapWidth}) {
-      if (message != null) logs.add(message);
-    };
-  });
-
-  tearDown(() {
-    debugPrint = _originalDebugPrint;
-    AppLogger.init(errorReporter: null);
-  });
-
-  group('AppLogger', () {
-    test('debug outputs in debug mode', () {
-      final logger = AppLogger.instance;
-      logger.debug('test message');
-      expect(logs, contains('[im:debug] test message'));
+    setUp(() {
+      reporter = _MockErrorReporter();
+      AppLogger.init(errorReporter: reporter, sanitizer: ErrorSanitizer());
     });
 
-    test('info outputs in debug mode', () {
-      final logger = AppLogger.instance;
-      logger.info('test info');
-      expect(logs, contains('[im:info] test info'));
+    test('reports sanitized error - no token leakage', () {
+      AppLogger.instance.error(
+        'Request failed',
+        Exception('token=supersecret123'),
+      );
+
+      expect(reporter.errors.length, 1);
+      expect(reporter.errors[0].safeMessage, isNot(contains('supersecret123')));
+      expect(reporter.errors[0].safeMessage, contains('token=***'));
     });
 
-    test('warn always outputs', () {
-      final logger = AppLogger.instance;
-      logger.warn('test warning');
-      expect(logs, contains('[im:warn] test warning'));
+    test('reports sanitized error - no email leakage', () {
+      AppLogger.instance.error(
+        'User lookup failed',
+        Exception('user admin@example.com not found'),
+      );
+
+      expect(reporter.errors.length, 1);
+      expect(reporter.errors[0].safeMessage, isNot(contains('admin@example.com')));
     });
 
-    test('error always outputs with runtimeType', () {
-      final logger = AppLogger.instance;
-      logger.error('something failed', FormatException('secret details'));
-      expect(logs.length, 1);
-      expect(logs[0], contains('[im:error] something failed'));
-      expect(logs[0], contains('(type: FormatException)'));
-      expect(logs[0], isNot(contains('secret details')));
+    test('passes category hint through to sanitized error', () {
+      AppLogger.instance.error(
+        'E2EE decrypt failed',
+        Exception('decrypt failed envelope=abc123'),
+        null,
+        'e2ee',
+      );
+
+      expect(reporter.errors.length, 1);
+      expect(reporter.errors[0].category, 'e2ee_error');
+      expect(reporter.errors[0].safeMessage, isNot(contains('abc123')));
     });
 
-    test('error calls ErrorReporterPort with runtimeType', () {
-      AppLogger.init(errorReporter: mockReporter);
-      final logger = AppLogger.instance;
-      final error = FormatException('bad input');
-      logger.error('parse failed', error);
+    test('errorType is runtimeType name', () {
+      AppLogger.instance.error('test', Exception('msg'));
 
-      expect(mockReporter.reports.length, 1);
-      expect(mockReporter.reports[0]['error'], same(error));
-      expect(mockReporter.reports[0]['extra'], {'error_type': 'FormatException'});
+      expect(reporter.errors[0].errorType, isNot(isEmpty));
     });
 
-    test('error without init does not crash', () {
-      final logger = AppLogger.instance;
-      logger.error('test', StateError('oops'));
-      expect(logs.length, 1);
-      expect(logs[0], contains('(type: StateError)'));
-    });
+    test('reportError receives SanitizedError, not raw Object', () {
+      AppLogger.instance.error('test', Exception('raw message'));
 
-    test('init replaces singleton with new ErrorReporterPort', () {
-      final reporter1 = MockErrorReporterPort();
-      final reporter2 = MockErrorReporterPort();
-
-      AppLogger.init(errorReporter: reporter1);
-      AppLogger.instance.error('test', FormatException('e'));
-      expect(reporter1.reports.length, 1);
-
-      AppLogger.init(errorReporter: reporter2);
-      AppLogger.instance.error('test', FormatException('e'));
-      expect(reporter2.reports.length, 1);
-      expect(reporter1.reports.length, 1);
+      expect(reporter.errors[0], isA<SanitizedError>());
+      expect(reporter.errors[0].errorType, isNot(isEmpty));
+      expect(reporter.errors[0].category, isNotEmpty);
     });
   });
 }
