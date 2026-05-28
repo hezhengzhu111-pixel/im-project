@@ -697,4 +697,113 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get groupSelectMembers => '选择成员';
+
+  @override
+  String get notFoundTitle => '页面不存在';
+
+  @override
+  String get notFoundBackHome => '返回首页';
+
+  @override
+  String loadingFailed(Object error) {
+    return '加载失败: $error';
+  }
+
+  @override
+  String get momentsPublishTitle => '发布动态';
+
+  @override
+  String get momentsPublishButton => '发布';
+
+  @override
+  String get momentsShareHint => '分享新鲜事...';
+
+  @override
+  String get momentsVisibility => '谁可以看';
+
+  @override
+  String get momentsLocationHint => '添加位置（选填）';
+
+  @override
+  String get momentsPublishSuccess => '发布成功';
+
+  @override
+  String get commentDeleteConfirmTitle => '删除确认';
+
+  @override
+  String get commentDeleteConfirmMessage => '确定要删除这条评论吗？';
+
+  @override
+  String get commentDelete => '删除';
+
+  @override
+  String get commentReply => '回复';
+
+  @override
+  String get commentWriteHint => '写评论...';
+
+  @override
+  String get commentNoComments => '暂无评论';
+
+  @override
+  String get e2eeDialogTitle => '启用端到端加密';
+
+  @override
+  String get e2eeDialogDescription => '端到端加密使用 Signal Protocol 保护您的消息：';
+
+  @override
+  String get e2eeSignalBullet1 => '• 消息内容仅在双方设备上可见';
+
+  @override
+  String get e2eeSignalBullet2 => '• 服务器无法读取加密消息';
+
+  @override
+  String get e2eeSignalBullet3 => '• 每条消息使用独立密钥加密';
+
+  @override
+  String get e2eeDialogFooter => '启用后，双方需要确认才能开始加密通信。';
+
+  @override
+  String get e2eeConfirmEnable => '确认启用';
+
+  @override
+  String get e2eeRequestTitle => '端到端加密请求';
+
+  @override
+  String e2eeRequestDescription(Object name) {
+    return '$name 请求启用端到端加密';
+  }
+
+  @override
+  String get e2eeSignalProtocol => 'Signal Protocol 保护：';
+
+  @override
+  String get e2eeEncryptedStatus => '端到端加密已开启';
+
+  @override
+  String get e2eeNegotiatingStatus => '加密协商中...';
+
+  @override
+  String get e2eeFailedStatus => '端到端加密异常';
+
+  @override
+  String get e2eeDetails => '详情';
+
+  @override
+  String get e2eeClearState => '清理状态';
+
+  @override
+  String get commonClose => '关闭';
+
+  @override
+  String get formErrorServer => '服务器错误，请重试。';
+
+  @override
+  String get formErrorNetwork => '网络错误，请检查连接。';
+
+  @override
+  String get formErrorAuth => '用户名或密码错误。';
+
+  @override
+  String get formErrorRateLimit => '尝试次数过多，请稍后重试。';
 }

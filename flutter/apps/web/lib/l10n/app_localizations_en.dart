@@ -697,4 +697,113 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get groupSelectMembers => 'Select members';
+
+  @override
+  String get notFoundTitle => 'Page not found';
+
+  @override
+  String get notFoundBackHome => 'Back to Home';
+
+  @override
+  String loadingFailed(Object error) {
+    return 'Loading failed: $error';
+  }
+
+  @override
+  String get momentsPublishTitle => 'Publish Moment';
+
+  @override
+  String get momentsPublishButton => 'Publish';
+
+  @override
+  String get momentsShareHint => 'Share something...';
+
+  @override
+  String get momentsVisibility => 'Who can see';
+
+  @override
+  String get momentsLocationHint => 'Add location (optional)';
+
+  @override
+  String get momentsPublishSuccess => 'Published successfully';
+
+  @override
+  String get commentDeleteConfirmTitle => 'Delete Confirmation';
+
+  @override
+  String get commentDeleteConfirmMessage => 'Are you sure you want to delete this comment?';
+
+  @override
+  String get commentDelete => 'Delete';
+
+  @override
+  String get commentReply => 'Reply';
+
+  @override
+  String get commentWriteHint => 'Write a comment...';
+
+  @override
+  String get commentNoComments => 'No comments yet';
+
+  @override
+  String get e2eeDialogTitle => 'Enable End-to-End Encryption';
+
+  @override
+  String get e2eeDialogDescription => 'End-to-end encryption uses Signal Protocol to protect your messages:';
+
+  @override
+  String get e2eeSignalBullet1 => '• Message content is only visible on both devices';
+
+  @override
+  String get e2eeSignalBullet2 => '• Server cannot read encrypted messages';
+
+  @override
+  String get e2eeSignalBullet3 => '• Each message is encrypted with an independent key';
+
+  @override
+  String get e2eeDialogFooter => 'After enabling, both parties need to confirm before encrypted communication can begin.';
+
+  @override
+  String get e2eeConfirmEnable => 'Confirm Enable';
+
+  @override
+  String get e2eeRequestTitle => 'End-to-End Encryption Request';
+
+  @override
+  String e2eeRequestDescription(Object name) {
+    return '$name requests to enable end-to-end encryption';
+  }
+
+  @override
+  String get e2eeSignalProtocol => 'Signal Protocol protection:';
+
+  @override
+  String get e2eeEncryptedStatus => 'End-to-end encryption enabled';
+
+  @override
+  String get e2eeNegotiatingStatus => 'Negotiating encryption...';
+
+  @override
+  String get e2eeFailedStatus => 'End-to-end encryption error';
+
+  @override
+  String get e2eeDetails => 'Details';
+
+  @override
+  String get e2eeClearState => 'Clear state';
+
+  @override
+  String get commonClose => 'Close';
+
+  @override
+  String get formErrorServer => 'Server error. Please try again.';
+
+  @override
+  String get formErrorNetwork => 'Network error. Please check your connection.';
+
+  @override
+  String get formErrorAuth => 'Invalid username or password.';
+
+  @override
+  String get formErrorRateLimit => 'Too many attempts. Please try again later.';
 }

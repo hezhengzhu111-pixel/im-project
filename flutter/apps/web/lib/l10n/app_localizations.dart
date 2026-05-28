@@ -1438,6 +1438,216 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Select members'**
   String get groupSelectMembers;
+
+  /// No description provided for @notFoundTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Page not found'**
+  String get notFoundTitle;
+
+  /// No description provided for @notFoundBackHome.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to Home'**
+  String get notFoundBackHome;
+
+  /// No description provided for @loadingFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading failed: {error}'**
+  String loadingFailed(Object error);
+
+  /// No description provided for @momentsPublishTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Publish Moment'**
+  String get momentsPublishTitle;
+
+  /// No description provided for @momentsPublishButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Publish'**
+  String get momentsPublishButton;
+
+  /// No description provided for @momentsShareHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Share something...'**
+  String get momentsShareHint;
+
+  /// No description provided for @momentsVisibility.
+  ///
+  /// In en, this message translates to:
+  /// **'Who can see'**
+  String get momentsVisibility;
+
+  /// No description provided for @momentsLocationHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Add location (optional)'**
+  String get momentsLocationHint;
+
+  /// No description provided for @momentsPublishSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Published successfully'**
+  String get momentsPublishSuccess;
+
+  /// No description provided for @commentDeleteConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete Confirmation'**
+  String get commentDeleteConfirmTitle;
+
+  /// No description provided for @commentDeleteConfirmMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to delete this comment?'**
+  String get commentDeleteConfirmMessage;
+
+  /// No description provided for @commentDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get commentDelete;
+
+  /// No description provided for @commentReply.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply'**
+  String get commentReply;
+
+  /// No description provided for @commentWriteHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Write a comment...'**
+  String get commentWriteHint;
+
+  /// No description provided for @commentNoComments.
+  ///
+  /// In en, this message translates to:
+  /// **'No comments yet'**
+  String get commentNoComments;
+
+  /// No description provided for @e2eeDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable End-to-End Encryption'**
+  String get e2eeDialogTitle;
+
+  /// No description provided for @e2eeDialogDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'End-to-end encryption uses Signal Protocol to protect your messages:'**
+  String get e2eeDialogDescription;
+
+  /// No description provided for @e2eeSignalBullet1.
+  ///
+  /// In en, this message translates to:
+  /// **'• Message content is only visible on both devices'**
+  String get e2eeSignalBullet1;
+
+  /// No description provided for @e2eeSignalBullet2.
+  ///
+  /// In en, this message translates to:
+  /// **'• Server cannot read encrypted messages'**
+  String get e2eeSignalBullet2;
+
+  /// No description provided for @e2eeSignalBullet3.
+  ///
+  /// In en, this message translates to:
+  /// **'• Each message is encrypted with an independent key'**
+  String get e2eeSignalBullet3;
+
+  /// No description provided for @e2eeDialogFooter.
+  ///
+  /// In en, this message translates to:
+  /// **'After enabling, both parties need to confirm before encrypted communication can begin.'**
+  String get e2eeDialogFooter;
+
+  /// No description provided for @e2eeConfirmEnable.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm Enable'**
+  String get e2eeConfirmEnable;
+
+  /// No description provided for @e2eeRequestTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'End-to-End Encryption Request'**
+  String get e2eeRequestTitle;
+
+  /// No description provided for @e2eeRequestDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} requests to enable end-to-end encryption'**
+  String e2eeRequestDescription(Object name);
+
+  /// No description provided for @e2eeSignalProtocol.
+  ///
+  /// In en, this message translates to:
+  /// **'Signal Protocol protection:'**
+  String get e2eeSignalProtocol;
+
+  /// No description provided for @e2eeEncryptedStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'End-to-end encryption enabled'**
+  String get e2eeEncryptedStatus;
+
+  /// No description provided for @e2eeNegotiatingStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Negotiating encryption...'**
+  String get e2eeNegotiatingStatus;
+
+  /// No description provided for @e2eeFailedStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'End-to-end encryption error'**
+  String get e2eeFailedStatus;
+
+  /// No description provided for @e2eeDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Details'**
+  String get e2eeDetails;
+
+  /// No description provided for @e2eeClearState.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear state'**
+  String get e2eeClearState;
+
+  /// No description provided for @commonClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get commonClose;
+
+  /// No description provided for @formErrorServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Server error. Please try again.'**
+  String get formErrorServer;
+
+  /// No description provided for @formErrorNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Network error. Please check your connection.'**
+  String get formErrorNetwork;
+
+  /// No description provided for @formErrorAuth.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid username or password.'**
+  String get formErrorAuth;
+
+  /// No description provided for @formErrorRateLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many attempts. Please try again later.'**
+  String get formErrorRateLimit;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
