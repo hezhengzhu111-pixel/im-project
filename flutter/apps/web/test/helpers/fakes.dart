@@ -308,6 +308,9 @@ class FakeE2eeManager extends E2eeManager {
 
   @override
   Future<void> exitEncryption(String sessionId) async {}
+
+  @override
+  Future<void> rejectNegotiation(String sessionId) async {}
 }
 
 // ---------------------------------------------------------------------------

@@ -39,8 +39,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ref.read(chatStateProvider.notifier).loadSessions();
-      if (widget.sessionId != null && mounted) {
+      if (!mounted) return;
+
+      if (widget.sessionId != null) {
         await _openDeepLinkedSession(widget.sessionId!);
+      } else {
+        // No route sessionId: keep existing active session, or select first.
+        final chatState = ref.read(chatStateProvider);
+        if (chatState.activeSessionId == null &&
+            chatState.sessions.isNotEmpty) {
+          await _selectSession(chatState.sessions.first);
+        }
       }
     });
   }
@@ -70,6 +79,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         .firstOrNull;
     if (session == null) return;
 
+    await _selectSession(session);
+  }
+
+  Future<void> _selectSession(dynamic session) async {
+    final notifier = ref.read(chatStateProvider.notifier);
+    notifier.setActiveSession(session.id);
     final isGroup =
         session.conversationType == 'group' || session.type == 'group';
     if (isGroup) {
@@ -85,7 +100,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final activeId = chatState.activeSessionId;
     final sessions = chatState.sessions.where((s) {
       if (_searchQuery.isEmpty) return true;
-      return s.targetName.toLowerCase().contains(_searchQuery.toLowerCase());
+      final query = _searchQuery.toLowerCase();
+      return s.targetName.toLowerCase().contains(query) ||
+          (s.conversationName?.toLowerCase().contains(query) ?? false) ||
+          (s.name?.toLowerCase().contains(query) ?? false) ||
+          (s.lastMessage?.content.toLowerCase().contains(query) ?? false);
     }).toList();
     final loc = AppLocalizations.of(context)!;
 
@@ -163,23 +182,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                         return SessionTile(
                           session: session,
                           isSelected: session.id == activeId,
-                          onTap: () {
-                            ref
-                                .read(chatStateProvider.notifier)
-                                .setActiveSession(session.id);
-                            final isGroup =
-                                session.conversationType == 'group' ||
-                                    session.type == 'group';
-                            if (isGroup) {
-                              ref
-                                  .read(chatStateProvider.notifier)
-                                  .loadGroupMessages(session.targetId);
-                            } else {
-                              ref
-                                  .read(chatStateProvider.notifier)
-                                  .loadMessages(session.targetId);
-                            }
-                          },
+                          onTap: () => _selectSession(session),
                         );
                       },
                     ),

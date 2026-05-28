@@ -111,8 +111,8 @@ class E2eeManager {
           keyMaterial['otk_pairs'] = freshBundle['otk_pairs'];
           final publicBundle =
               keyMaterial['public_bundle'] as Map<String, dynamic>;
-          publicBundle['one_time_pre_keys'] =
-              (freshBundle['public_bundle'] as Map<String, dynamic>)['one_time_pre_keys'];
+          publicBundle['one_time_pre_keys'] = (freshBundle['public_bundle']
+              as Map<String, dynamic>)['one_time_pre_keys'];
 
           await keyStore.saveKeyMaterial(jsonEncode(keyMaterial));
           await keyStore.savePublicBundle(jsonEncode(publicBundle));
@@ -182,7 +182,8 @@ class E2eeManager {
       final outboundResult = await adapter.createOutboundSession(
         sessionId: sessionId,
         localIdentityKeyPairBase64: identityKeyPairBincode,
-        remoteBundleBase64: base64Encode(utf8.encode(jsonEncode(remoteBundleForFrb))),
+        remoteBundleBase64:
+            base64Encode(utf8.encode(jsonEncode(remoteBundleForFrb))),
       );
 
       // Save session state as v3 envelope.
@@ -204,9 +205,8 @@ class E2eeManager {
 
       // Save pending handshake.
       final handshake = outboundResult['handshake'] as String;
-      final identityKey =
-          (localKeys['public_bundle'] as Map<String, dynamic>)['identity_key']
-              as String;
+      final identityKey = (localKeys['public_bundle']
+          as Map<String, dynamic>)['identity_key'] as String;
       final handshakePayload = jsonEncode({
         'senderIdentityKey': identityKey,
         'handshake': handshake,
@@ -216,9 +216,8 @@ class E2eeManager {
       await metaStore.setPendingHandshake(sessionId, handshakePayload);
 
       // Send request to server.
-      final signedPreKey =
-          (localKeys['public_bundle'] as Map<String, dynamic>)['signed_pre_key']
-              as Map<String, dynamic>;
+      final signedPreKey = (localKeys['public_bundle']
+          as Map<String, dynamic>)['signed_pre_key'] as Map<String, dynamic>;
       await api.requestEncryption(
         sessionId: sessionId,
         identityKey: identityKey,
@@ -333,8 +332,7 @@ class E2eeManager {
       await metaStore.setSessionStatus(sessionId, 'encrypted');
 
       // Accept on server.
-      final publicBundle =
-          localKeys['public_bundle'] as Map<String, dynamic>;
+      final publicBundle = localKeys['public_bundle'] as Map<String, dynamic>;
       final spk = publicBundle['signed_pre_key'] as Map<String, dynamic>;
       try {
         await api.acceptEncryption(
@@ -487,6 +485,20 @@ class E2eeManager {
     }
   }
 
+  /// Reject an incoming negotiation and clear local transient state.
+  Future<void> rejectNegotiation(String sessionId) async {
+    _assertInitialized();
+
+    await _resetNegotiation(sessionId, 'plaintext');
+
+    try {
+      await api.rejectEncryption(sessionId);
+    } catch (_) {
+      // Local state is authoritative for the UI; server failures are surfaced
+      // by callers that need stricter handling.
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Internal Helpers
   // ---------------------------------------------------------------------------
@@ -514,8 +526,9 @@ class E2eeManager {
   /// side by passing the JSON fields through the adapter.
   Map<String, dynamic> _buildRemoteBundleJson(Map<String, dynamic> raw) {
     final identityKey = (raw['identityKey'] as String?) ?? '';
-    final signingKey =
-        (raw['signingIdentityKey'] as String?) ?? (raw['signingKey'] as String?) ?? identityKey;
+    final signingKey = (raw['signingIdentityKey'] as String?) ??
+        (raw['signingKey'] as String?) ??
+        identityKey;
     final spkString = (raw['signedPreKey'] as String?) ?? '';
     final spkSignature = (raw['signedPreKeySignature'] as String?) ?? '';
     final otkString = raw['oneTimePreKey'] as String?;
@@ -526,9 +539,10 @@ class E2eeManager {
       'signingKey': signingKey,
       'signedPreKey': {'id': 1, 'key': spkString},
       'signedPreKeySignature': spkSignature,
-      'oneTimePreKey': (otkString != null && otkString.isNotEmpty && otkId != null)
-          ? {'id': otkId, 'key': otkString}
-          : null,
+      'oneTimePreKey':
+          (otkString != null && otkString.isNotEmpty && otkId != null)
+              ? {'id': otkId, 'key': otkString}
+              : null,
     };
   }
 
