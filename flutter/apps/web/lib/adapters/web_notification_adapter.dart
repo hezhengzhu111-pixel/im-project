@@ -1,14 +1,16 @@
+import 'package:web/web.dart' as web;
 import 'package:im_core/core.dart';
 
 class WebNotificationAdapter implements NotificationPort {
   @override
   Future<Result<bool>> requestPermission() async {
     try {
-      // Web 平台使用 Notification API
-      // 实际实现需要通过 dart:js_interop 桥接
-      return const Success(false);
+      final permission =
+          await web.Notification.requestPermission().toDart;
+      return Success(permission == 'granted');
     } catch (e) {
-      return Failure(UnknownError(e.toString()));
+      return const Failure(
+          UnknownError('notification_permission_failed'));
     }
   }
 
@@ -24,10 +26,11 @@ class WebNotificationAdapter implements NotificationPort {
         return const Failure(PermissionDenied('notification'));
       }
 
-      // 实际实现需要通过 dart:js_interop 创建浏览器通知
+      web.Notification(title, web.NotificationOptions(body: body));
       return const Success(null);
     } catch (e) {
-      return Failure(UnknownError(e.toString()));
+      return const Failure(
+          UnknownError('notification_show_failed'));
     }
   }
 }
