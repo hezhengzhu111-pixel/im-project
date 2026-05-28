@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 
 class MomentsTopbar extends StatelessWidget {
   const MomentsTopbar({
@@ -33,7 +34,7 @@ class MomentsTopbar extends StatelessWidget {
             alignment: Alignment.center,
             children: [
               Text(
-                '朋友圈',
+                AppLocalizations.of(context)!.momentsTitle,
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w600,
