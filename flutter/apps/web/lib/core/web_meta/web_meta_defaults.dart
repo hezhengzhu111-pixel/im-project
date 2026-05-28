@@ -14,6 +14,8 @@ const appFallbackMeta = PageMeta(
   twitter: TwitterMeta(
     card: 'summary',
     title: 'IM - 安全即时通讯',
+    description:
+        'IM 是一款安全即时通讯应用，支持端到端加密、群组聊天、朋友圈等功能',
   ),
 );
 
