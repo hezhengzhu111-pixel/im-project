@@ -10,6 +10,7 @@ import 'package:im_web/features/e2ee/data/e2ee_api.dart';
 import 'package:im_web/features/e2ee/data/e2ee_key_store.dart';
 import 'package:im_web/features/e2ee/data/e2ee_session_store.dart';
 import 'package:im_web/adapters/web_e2ee_adapter.dart';
+import 'package:im_web/adapters/services/noop_analytics_adapter.dart';
 
 import '../../helpers/fakes.dart';
 
@@ -89,7 +90,7 @@ void main() {
     );
     notifier = ChatNotifier(
       mockApi, MessagePipeline(), mockWsClient, () => 'test-user-id',
-      e2eeManager, mockE2eeMetaStore,
+      e2eeManager, mockE2eeMetaStore, NoopAnalyticsAdapter(),
     );
   });
 

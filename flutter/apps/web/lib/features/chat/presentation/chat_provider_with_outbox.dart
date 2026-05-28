@@ -2,57 +2,76 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_core/src/network/ws_connection_state.dart';
+import '../../../core/network/network_status_provider.dart';
 import '../data/message_api.dart';
 import '../data/message_pipeline.dart';
+import '../data/message_outbox.dart';
+import '../data/outbox_provider.dart';
 import '../../e2ee/data/e2ee_manager.dart';
 import '../../e2ee/data/e2ee_meta_store.dart';
+import 'chat_provider.dart';
 
-class ChatState {
-  const ChatState({
-    this.sessions = const [],
-    this.messages = const {},
-    this.isLoading = false,
-    this.activeSessionId,
-    this.error,
+/// Extended chat state with outbox information
+class ChatStateWithOutbox extends ChatState {
+  const ChatStateWithOutbox({
+    super.sessions,
+    super.messages,
+    super.isLoading,
+    super.activeSessionId,
+    super.error,
+    this.pendingCount = 0,
+    this.failedCount = 0,
+    this.isRetrying = false,
+    this.isOffline = false,
   });
 
-  final List<ChatSession> sessions;
-  final Map<String, List<Message>> messages;
-  final bool isLoading;
-  final String? activeSessionId;
-  final String? error;
+  final int pendingCount;
+  final int failedCount;
+  final bool isRetrying;
+  final bool isOffline;
 
-  List<Message> get currentMessages =>
-      activeSessionId != null ? (messages[activeSessionId] ?? const []) : const [];
-
-  ChatState copyWith({
+  @override
+  ChatStateWithOutbox copyWith({
     List<ChatSession>? sessions,
     Map<String, List<Message>>? messages,
     bool? isLoading,
     String? activeSessionId,
     String? error,
+    int? pendingCount,
+    int? failedCount,
+    bool? isRetrying,
+    bool? isOffline,
   }) {
-    return ChatState(
+    return ChatStateWithOutbox(
       sessions: sessions ?? this.sessions,
       messages: messages ?? this.messages,
       isLoading: isLoading ?? this.isLoading,
       activeSessionId: activeSessionId ?? this.activeSessionId,
       error: error,
+      pendingCount: pendingCount ?? this.pendingCount,
+      failedCount: failedCount ?? this.failedCount,
+      isRetrying: isRetrying ?? this.isRetrying,
+      isOffline: isOffline ?? this.isOffline,
     );
   }
 }
 
-class ChatNotifier extends StateNotifier<ChatState> {
-  ChatNotifier(
+/// Chat notifier with outbox integration
+class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
+  ChatNotifierWithOutbox(
     this._messageApi,
     this._pipeline,
     this._wsClient,
     this._currentUserId,
     this._e2eeManager,
     this._e2eeMetaStore,
+    this._outbox,
+    this._networkStatus,
     this._analytics,
-  ) : super(const ChatState()) {
+  ) : super(const ChatStateWithOutbox()) {
     _subscribeToWs();
+    _subscribeToOutbox();
+    _subscribeToNetwork();
   }
 
   final MessageApi _messageApi;
@@ -61,8 +80,12 @@ class ChatNotifier extends StateNotifier<ChatState> {
   final String Function() _currentUserId;
   final E2eeManager _e2eeManager;
   final E2eeMetaStore _e2eeMetaStore;
+  final MessageOutbox _outbox;
+  final NetworkStatusNotifier _networkStatus;
   final AnalyticsPort _analytics;
   StreamSubscription? _wsSubscription;
+  StreamSubscription? _outboxSubscription;
+  StreamSubscription? _networkSubscription;
 
   E2eeNegotiationEvent? _pendingNegotiation;
   E2eeNegotiationEvent? get pendingNegotiation => _pendingNegotiation;
@@ -88,6 +111,81 @@ class ChatNotifier extends StateNotifier<ChatState> {
         _syncOfflineMessages();
       }
     });
+  }
+
+  void _subscribeToOutbox() {
+    _outboxSubscription = _outbox.events.listen((event) {
+      switch (event.type) {
+        case OutboxEventType.messageAdded:
+          _updateOutboxCounts();
+        case OutboxEventType.messageRetrying:
+          state = state.copyWith(isRetrying: true);
+          _updateOutboxCounts();
+        case OutboxEventType.messageSent:
+          // Replace the pending message with the sent one
+          if (event.message != null) {
+            _handleOutboxMessageSent(event.message!);
+          }
+          _updateOutboxCounts();
+        case OutboxEventType.messageFailed:
+          state = state.copyWith(isRetrying: false);
+          _updateOutboxCounts();
+        case OutboxEventType.retryAllStarted:
+          state = state.copyWith(isRetrying: true);
+        case OutboxEventType.retryAllCompleted:
+          state = state.copyWith(isRetrying: false);
+          _updateOutboxCounts();
+      }
+    });
+  }
+
+  void _subscribeToNetwork() {
+    _networkSubscription = _networkStatus.stateChanges.listen((networkState) {
+      state = state.copyWith(isOffline: networkState.isOffline);
+    });
+  }
+
+  Future<void> _updateOutboxCounts() async {
+    final pending = await _outbox.getPendingCount();
+    final failed = await _outbox.getFailedCount();
+    state = state.copyWith(pendingCount: pending, failedCount: failed);
+  }
+
+  void _handleOutboxMessageSent(OutboxMessage outboxMsg) {
+    // Find and update the message in the current state
+    final messages = state.messages[outboxMsg.sessionKey];
+    if (messages == null) return;
+
+    final index = messages.indexWhere(
+      (m) => m.id == outboxMsg.id || m.clientMessageId == outboxMsg.clientMessageId,
+    );
+    if (index == -1) return;
+
+    final updated = List<Message>.from(messages);
+    final old = updated[index];
+    updated[index] = Message(
+      id: old.id,
+      senderId: old.senderId,
+      receiverId: old.receiverId,
+      isGroupChat: old.isGroupChat,
+      messageType: old.messageType,
+      content: old.content,
+      sendTime: old.sendTime,
+      status: 'SENT',
+      clientMessageId: old.clientMessageId,
+      groupId: old.groupId,
+      senderName: old.senderName,
+      senderAvatar: old.senderAvatar,
+      mediaUrl: old.mediaUrl,
+      mediaSize: old.mediaSize,
+      mediaName: old.mediaName,
+      thumbnailUrl: old.thumbnailUrl,
+      duration: old.duration,
+    );
+
+    state = state.copyWith(
+      messages: {...state.messages, outboxMsg.sessionKey: updated},
+    );
   }
 
   Future<void> _syncOfflineMessages() async {
@@ -136,8 +234,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
-  /// Decrypt an incoming E2EE message and add it to the message list.
-  /// Runs asynchronously to avoid blocking the WS event loop.
   Future<void> _decryptAndAdd(
     Message message,
     Map<String, dynamic>? rawEnvelope,
@@ -147,17 +243,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
         : message.senderId;
 
     try {
-      // Build the E2EE session ID.
       final e2eeSessionId = message.e2eeEnvelope?.sessionId ??
           '${_currentUserId()}_private_${message.senderId}';
 
-      // Convert camelCase envelope to snake_case for the Rust adapter.
       final snakeEnvelope = rawEnvelope != null
           ? _camelToSnakeEnvelope(rawEnvelope)
           : null;
 
       if (snakeEnvelope == null) {
-        // No raw envelope available; add message as-is with failed status.
         addMessage(sessionKey, message.copyWith(decryptStatus: 'failed'));
         return;
       }
@@ -180,7 +273,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
-  /// Convert camelCase envelope keys from JSON to snake_case for the Rust adapter.
   Map<String, dynamic> _camelToSnakeEnvelope(Map<String, dynamic> camel) {
     return {
       'version': camel['version'],
@@ -219,7 +311,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final messages = state.messages[sessionId];
       if (messages == null || messages.isEmpty) return;
 
-      // Mark all messages in this session as READ
       final updated = messages.map((m) {
         if (m.status != 'READ') {
           return Message(
@@ -245,7 +336,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
   void _handleSystemMessage(Map<String, dynamic> data) {
     try {
       final content = data['content']?.toString() ?? '';
-      // System messages that affect contacts/sessions trigger a refresh
       if (content.contains('FRIEND') || content.contains('GROUP') || content.contains('friend') || content.contains('group')) {
         loadSessions();
       }
@@ -254,7 +344,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
-  /// Handle E2EE negotiation events from WebSocket.
   void _handleE2eeNegotiation(Map<String, dynamic> data) {
     try {
       final action = E2eeNegotiationAction.fromString(
@@ -277,16 +366,13 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
       switch (action) {
         case E2eeNegotiationAction.request:
-          // Store pending negotiation for UI to pick up and prompt the user.
           _pendingNegotiation = event;
           _e2eeMetaStore.setSessionStatus(sessionId, 'negotiating');
         case E2eeNegotiationAction.accepted:
-          // Peer accepted — session is now encrypted.
           _e2eeMetaStore.setSessionStatus(sessionId, 'encrypted');
           _pendingNegotiation = null;
         case E2eeNegotiationAction.rejected:
         case E2eeNegotiationAction.disabled:
-          // Peer rejected or disabled — revert to plaintext.
           _e2eeMetaStore.setSessionStatus(sessionId, 'plaintext');
           _pendingNegotiation = null;
       }
@@ -350,16 +436,13 @@ class ChatNotifier extends StateNotifier<ChatState> {
     String e2eeStatus = 'plaintext';
     try {
       e2eeStatus = await _e2eeMetaStore.getSessionStatus(e2eeSessionId);
-    } catch (_) {
-      // If meta store is unavailable, fall back to plaintext.
-    }
+    } catch (_) {}
 
     if (e2eeStatus == 'negotiating') {
       state = state.copyWith(error: '端到端加密协商尚未完成，请等待对方确认。');
       return null;
     }
     if (e2eeStatus == 'failed') {
-      // Reset failed status to plaintext so the message can be sent.
       await _e2eeMetaStore.setSessionStatus(e2eeSessionId, 'plaintext');
       e2eeStatus = 'plaintext';
     }
@@ -383,7 +466,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
     try {
       Message serverMessage;
       if (e2eeStatus == 'encrypted') {
-        // Encrypt the message.
         final senderDeviceId = await _e2eeMetaStore.getOrCreateDeviceId();
         final recipientDeviceId =
             await _e2eeMetaStore.getRemoteDeviceId(e2eeSessionId);
@@ -422,9 +504,24 @@ class ChatNotifier extends StateNotifier<ChatState> {
       });
       return serverMessage;
     } catch (e) {
-      print('Send message failed: $e');
+      print('Send message failed, adding to outbox: $e');
       _analytics.trackEvent('message_send_failed');
-      _updateMessageStatus(receiverId, cid, 'FAILED');
+
+      // Add to outbox for retry
+      await _outbox.enqueue(
+        sessionKey: receiverId,
+        receiverId: receiverId,
+        content: content,
+        messageType: messageType,
+        clientMessageId: cid,
+        isGroupChat: false,
+        isEncrypted: e2eeStatus == 'encrypted',
+        e2eeDeviceId: e2eeStatus == 'encrypted'
+            ? await _e2eeMetaStore.getOrCreateDeviceId()
+            : null,
+      );
+
+      _updateMessageStatus(receiverId, cid, 'PENDING');
       return null;
     }
   }
@@ -458,8 +555,21 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _analytics.trackEvent('message_send', {'type': messageType, 'encrypted': false});
       return serverMessage;
     } catch (e) {
+      print('Send group message failed, adding to outbox: $e');
       _analytics.trackEvent('message_send_failed');
-      _updateMessageStatus(groupId, cid, 'FAILED');
+
+      // Add to outbox for retry
+      await _outbox.enqueue(
+        sessionKey: groupId,
+        receiverId: groupId,
+        content: content,
+        messageType: messageType,
+        clientMessageId: cid,
+        isGroupChat: true,
+        groupId: groupId,
+      );
+
+      _updateMessageStatus(groupId, cid, 'PENDING');
       return null;
     }
   }
@@ -501,12 +611,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   Future<void> retryAllFailed() async {
-    for (final entry in state.messages.entries) {
-      final failedMessages = entry.value.where((m) => m.status == 'FAILED').toList();
-      for (final msg in failedMessages) {
-        await retryMessage(entry.key, msg.id);
-      }
-    }
+    await _outbox.retryAllFailed();
   }
 
   Future<ChatSession?> getOrCreateSession(String targetId) async {
@@ -579,6 +684,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
   @override
   void dispose() {
     _wsSubscription?.cancel();
+    _outboxSubscription?.cancel();
+    _networkSubscription?.cancel();
     super.dispose();
   }
 }
