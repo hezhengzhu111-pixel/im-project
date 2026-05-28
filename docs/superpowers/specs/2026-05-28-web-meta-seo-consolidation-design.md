@@ -194,20 +194,22 @@ Map<String, RouteMeta> get routeMetaMap => routeRegistry.map(
   )),
 );
 
-/// Keep existing longest-prefix match logic
+/// Keep existing longest-prefix match logic.
+/// Cache the derived map locally to avoid repeated getter invocations.
 RouteMeta? resolveRouteMeta(String location) {
-  if (routeMetaMap.containsKey(location)) {
-    return routeMetaMap[location];
+  final map = routeMetaMap;
+  if (map.containsKey(location)) {
+    return map[location];
   }
   String bestMatch = '';
-  for (final key in routeMetaMap.keys) {
+  for (final key in map.keys) {
     if (location.startsWith(key) &&
         key.length > bestMatch.length &&
         (key.length == location.length || location[key.length] == '/')) {
       bestMatch = key;
     }
   }
-  return bestMatch.isEmpty ? null : routeMetaMap[bestMatch];
+  return bestMatch.isEmpty ? null : map[bestMatch];
 }
 ```
 
@@ -434,7 +436,7 @@ group('metaForPath', () {
 
 | Risk | Mitigation |
 |------|------------|
-| `routeMetaMap` as getter breaks const usage | Check all callers — `resolveRouteMeta` uses map lookup, works with getter |
+| `routeMetaMap` as getter creates new map per call | `resolveRouteMeta` caches map locally; 12-entry map overhead negligible |
 | ARB key typo causes runtime error | `_resolveTitle` falls back to key itself, won't crash |
 | i18n keys missing in new locale | `l10n?.translate(key) ?? key` fallback ensures no crash |
 | GoRouter redirect depends on routeMetaMap | Getter provides same data, no behavioral change |
