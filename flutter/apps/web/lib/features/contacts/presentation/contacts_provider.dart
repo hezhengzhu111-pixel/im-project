@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import '../../../core/logging/app_logger.dart';
 import '../data/contacts_api.dart';
 
 class ContactsState {
@@ -66,7 +67,7 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
 
       state = state.copyWith(friends: updatedFriends);
     } catch (e) {
-      print('Failed to handle online status: $e');
+      AppLogger.instance.error('Failed to handle online status', e);
     }
   }
 
