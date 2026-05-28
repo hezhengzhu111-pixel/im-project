@@ -333,5 +333,7 @@
   "authNetworkError": "网络错误，请检查网络连接。",
   "authServerError": "服务器错误，请稍后重试。",
   "authTooManyRequests": "尝试次数过多，请稍后重试。",
-  "authUnknownError": "发生未知错误，请重试。"
+  "authUnknownError": "发生未知错误，请重试。",
+  "seoAppTitle": "IM - 安全即时通讯",
+  "seoAppDescription": "IM 是一款安全即时通讯应用，支持端到端加密、群组聊天、朋友圈等功能"
 }

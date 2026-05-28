@@ -333,5 +333,7 @@
   "authNetworkError": "Network error. Please check your connection.",
   "authServerError": "Server error. Please try again later.",
   "authTooManyRequests": "Too many attempts. Please try again later.",
-  "authUnknownError": "An unexpected error occurred. Please try again."
+  "authUnknownError": "An unexpected error occurred. Please try again.",
+  "seoAppTitle": "IM - Secure Messaging",
+  "seoAppDescription": "IM is a secure messaging app with end-to-end encryption, group chat, and more."
 }
