@@ -6,6 +6,10 @@ class ErrorState {
   final DateTime? timestamp;
 }
 
+final errorProvider = StateNotifierProvider<ErrorNotifier, ErrorState>((ref) {
+  return ErrorNotifier();
+});
+
 class ErrorNotifier extends StateNotifier<ErrorState> {
   ErrorNotifier() : super(const ErrorState());
 
