@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:im_ui/im_ui.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 
 class BrandShowcase extends StatelessWidget {
   const BrandShowcase({super.key});
@@ -9,6 +10,8 @@ class BrandShowcase extends StatelessWidget {
     if (context.isMobile) {
       return const SizedBox.shrink();
     }
+
+    final loc = AppLocalizations.of(context)!;
 
     return Padding(
       padding: const EdgeInsets.all(60),
@@ -59,7 +62,7 @@ class BrandShowcase extends StatelessWidget {
 
           // 副标题
           Text(
-            '端对端加密即时通信系统，\n您的消息仅在设备上解密。',
+            loc.brandSubtitle,
             style: TextStyle(
               fontSize: 16,
               color: Colors.white.withValues(alpha: 0.8),
@@ -74,25 +77,25 @@ class BrandShowcase extends StatelessWidget {
           _buildFeatureItem(
             icon: Icons.lock,
             label: 'E2EE Enabled',
-            desc: '端对端加密',
+            desc: loc.brandFeatureE2ee,
           ),
           const SizedBox(height: 16),
           _buildFeatureItem(
             icon: Icons.speed,
             label: 'Realtime Delivery',
-            desc: '实时消息同步',
+            desc: loc.brandFeatureRealtime,
           ),
           const SizedBox(height: 16),
           _buildFeatureItem(
             icon: Icons.devices,
             label: 'Device Trust',
-            desc: '多设备安全登录',
+            desc: loc.brandFeatureDeviceTrust,
           ),
           const SizedBox(height: 16),
           _buildFeatureItem(
             icon: Icons.smart_toy,
             label: 'AI Assistant Online',
-            desc: 'AI 助手接入',
+            desc: loc.brandFeatureAi,
           ),
         ],
       ),
