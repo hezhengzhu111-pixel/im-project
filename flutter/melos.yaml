@@ -8,7 +8,7 @@ packages:
 
 scripts:
   build:web:
-    run: melos exec --scope="im_web" -- flutter build web --output-dir=../../build/flutter/web
+    run: melos exec --scope="im_web" -- flutter build web --output-dir=D:/project/new-im-project/build/flutter/web
   test:
     run: melos exec -- flutter test
   analyze:

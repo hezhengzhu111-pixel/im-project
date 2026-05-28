@@ -1,9 +1,10 @@
 .PHONY: dev prod wasm size report clean help
 
 FLUTTER := flutter
-ROOT_BUILD_DIR := ../../build/flutter/web
+PROJECT_ROOT := $(shell git rev-parse --show-toplevel)
+ROOT_BUILD_DIR := $(PROJECT_ROOT)/build/flutter/web
 BUILD_DIR := $(ROOT_BUILD_DIR)
-DEBUG_INFO_DIR := ../../build/flutter/debug-info
+DEBUG_INFO_DIR := $(PROJECT_ROOT)/build/flutter/debug-info
 
 help: ## 显示帮助信息
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
