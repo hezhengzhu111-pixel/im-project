@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Network connectivity status
@@ -60,11 +59,6 @@ abstract class NetworkStatusDataSource {
 class WebNetworkStatusDataSource implements NetworkStatusDataSource {
   WebNetworkStatusDataSource._();
 
-  static WebNetworkStatusDataSource? _instance;
-
-  /// Initialize with dart:html types passed in from the web entrypoint
-  static void Function()? _onOnlineListener;
-  static void Function()? _onOfflineListener;
   static final _onlineController = StreamController<void>.broadcast();
   static final _offlineController = StreamController<void>.broadcast();
   static bool Function()? _isOnlineCheck;
