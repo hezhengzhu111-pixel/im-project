@@ -14,7 +14,7 @@ void main() {
     mockRepo = FakeAuthRepository();
     mockWsClient = FakeWsClientPort();
     mockHttpClient = FakeHttpClientPort();
-    notifier = AuthNotifier(mockRepo, mockWsClient, mockHttpClient);
+    notifier = AuthNotifier(mockRepo, mockWsClient, mockHttpClient, NoopAnalyticsPort());
   });
 
   group('AuthNotifier', () {
