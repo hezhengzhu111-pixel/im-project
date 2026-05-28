@@ -58,5 +58,46 @@ void main() {
 
       expect(find.text('filled'), findsOneWidget);
     });
+
+    testWidgets('shows FormErrorBanner by default', (tester) async {
+      final controller = FormController(
+        FormSchema(fields: [FormFieldSchema(name: 'field1')]),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ValidatedForm(
+            controller: controller,
+            child: const SizedBox(),
+          ),
+        ),
+      );
+
+      controller.setFormError('Test error');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Test error'), findsOneWidget);
+    });
+
+    testWidgets('hides FormErrorBanner when showErrorBanner is false', (tester) async {
+      final controller = FormController(
+        FormSchema(fields: [FormFieldSchema(name: 'field1')]),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ValidatedForm(
+            controller: controller,
+            showErrorBanner: false,
+            child: const SizedBox(),
+          ),
+        ),
+      );
+
+      controller.setFormError('Test error');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Test error'), findsNothing);
+    });
   });
 }
