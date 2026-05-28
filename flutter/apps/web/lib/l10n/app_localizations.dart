@@ -2134,6 +2134,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to read file data'**
   String get errorFileReadFailed;
+
+  /// No description provided for @e2eeNegotiationNotification.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} requests to enable end-to-end encryption'**
+  String e2eeNegotiationNotification(Object name);
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

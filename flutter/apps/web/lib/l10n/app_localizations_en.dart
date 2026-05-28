@@ -1069,4 +1069,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get errorFileReadFailed => 'Failed to read file data';
+
+  @override
+  String e2eeNegotiationNotification(Object name) {
+    return '$name requests to enable end-to-end encryption';
+  }
 }

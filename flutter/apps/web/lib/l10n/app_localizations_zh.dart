@@ -1069,4 +1069,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get errorFileReadFailed => '无法读取文件数据';
+
+  @override
+  String e2eeNegotiationNotification(Object name) {
+    return '$name 请求与你开启端到端加密';
+  }
 }
