@@ -19,52 +19,28 @@ class App extends ConsumerStatefulWidget {
 
 class _AppState extends ConsumerState<App> {
   final _webMetaService = createWebMetaService();
-  late final GoRouter _router;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AppLogger.init(errorReporter: ref.read(errorReporterProvider));
+      final analytics = ref.read(analyticsProvider);
+      analytics.trackEvent('app_start', {'platform': 'web'});
+      ref.read(authStateProvider.notifier).checkAuth();
 
-    // 1. Synchronous logger init (early startup errors now captured)
-    AppLogger.init(errorReporter: ref.read(errorReporterProvider));
+      final locale = ref.read(languageProvider);
+      final l10n = lookupAppLocalizations(Locale(locale));
+      _webMetaService.apply(fallbackMetaForLocale(l10n), locale: locale);
 
-    // 2. Get router instance and register route listener
-    _router = ref.read(routerProvider);
-    _router.routeInformationProvider.addListener(_onRouteChanged);
-
-    // 3. Register locale change listener (ref.listenManual is valid in initState)
-    ref.listenManual(languageProvider, _onLocaleChanged);
-
-    // 4. One-time startup operations
-    ref.read(authStateProvider.notifier).checkAuth();
-    final analytics = ref.read(analyticsProvider);
-    analytics.trackEvent('app_start', {'platform': 'web'});
-
-    // 5. Apply initial fallback meta (listener will override once route resolves)
-    _webMetaService.apply(appFallbackMeta);
-  }
-
-  void _onRouteChanged() {
-    final path = _router.routeInformationProvider.value.uri.path;
-    final locale = ref.read(languageProvider);
-    final l10n = lookupAppLocalizations(Locale(locale));
-    final meta = metaForPath(path, l10n);
-    _webMetaService.apply(meta);
-  }
-
-  void _onLocaleChanged(String? previous, String next) {
-    if (previous != next) {
-      final path = _router.routeInformationProvider.value.uri.path;
-      final l10n = lookupAppLocalizations(Locale(next));
-      final meta = metaForPath(path, l10n);
-      _webMetaService.apply(meta);
-    }
-  }
-
-  @override
-  void dispose() {
-    _router.routeInformationProvider.removeListener(_onRouteChanged);
-    super.dispose();
+      ref.listen<GoRouter>(routerProvider, (prev, next) {
+        final path = next.routeInformationProvider.value.uri.path;
+        final locale = ref.read(languageProvider);
+        final l10n = lookupAppLocalizations(Locale(locale));
+        final meta = metaForPath(path, l10n);
+        _webMetaService.apply(meta, locale: locale);
+      });
+    });
   }
 
   @override
