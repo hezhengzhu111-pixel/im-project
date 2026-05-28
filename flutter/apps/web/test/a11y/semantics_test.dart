@@ -49,16 +49,29 @@ class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>
   Future<void> loadMessages(String targetId, {int? page, int? size}) async {}
 
   @override
-  Future<void> loadGroupMessages(String groupId, {int? page, int? size}) async {}
+  Future<void> loadGroupMessages(String groupId,
+      {int? page, int? size}) async {}
 
   @override
   Future<Message?> sendMessage(String receiverId, String content,
-          {String messageType = 'text', String? clientMessageId, String? mediaUrl, String? mediaName, int? mediaSize, String? thumbnailUrl, int? duration}) async =>
+          {String messageType = 'text',
+          String? clientMessageId,
+          String? mediaUrl,
+          String? mediaName,
+          int? mediaSize,
+          String? thumbnailUrl,
+          int? duration}) async =>
       null;
 
   @override
   Future<Message?> sendGroupMessage(String groupId, String content,
-          {String messageType = 'text', String? clientMessageId, String? mediaUrl, String? mediaName, int? mediaSize, String? thumbnailUrl, int? duration}) async =>
+          {String messageType = 'text',
+          String? clientMessageId,
+          String? mediaUrl,
+          String? mediaName,
+          int? mediaSize,
+          String? thumbnailUrl,
+          int? duration}) async =>
       null;
 
   @override
@@ -85,7 +98,25 @@ class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>
   E2eeNegotiationEvent? get pendingNegotiation => null;
 
   @override
-  void clearPendingNegotiation() {}
+  Map<String, E2eeNegotiationEvent> get pendingNegotiations => const {};
+
+  @override
+  E2eeNegotiationEvent? get activePendingNegotiation => null;
+
+  @override
+  E2eeNegotiationEvent? pendingNegotiationForSession(String sessionId) => null;
+
+  @override
+  void clearPendingNegotiation([String? sessionId]) {}
+
+  @override
+  Future<bool> acceptPendingNegotiation(String sessionId) async => false;
+
+  @override
+  Future<void> rejectPendingNegotiation(String sessionId) async {}
+
+  @override
+  Future<void> disableEncryptionForSession(String sessionId) async {}
 }
 
 void main() {
