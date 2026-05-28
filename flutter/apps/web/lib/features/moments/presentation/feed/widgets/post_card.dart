@@ -86,7 +86,7 @@ class _PostCardState extends State<PostCard> {
 
             // Content
             if (widget.post.post.content.isNotEmpty)
-              _buildContent(theme),
+              _buildContent(theme, loc),
 
             // Media
             if (widget.post.media != null && widget.post.media!.isNotEmpty)
@@ -152,7 +152,7 @@ class _PostCardState extends State<PostCard> {
     );
   }
 
-  Widget _buildContent(ThemeData theme) {
+  Widget _buildContent(ThemeData theme, AppLocalizations loc) {
     final content = widget.post.post.content;
     final text = _shouldTruncate && !_isExpanded
         ? '${content.substring(0, 200)}...'
@@ -316,6 +316,6 @@ class _PostCardState extends State<PostCard> {
   }
 
   String _formatTime(String time) {
-    return formatRelativeTime(context, time);
+    return formatRelativeTime(context, DateTime.parse(time));
   }
 }
