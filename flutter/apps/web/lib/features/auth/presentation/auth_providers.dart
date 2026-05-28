@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
-import '../../../core/di/providers.dart';
+import '../../../core/di/third_party_providers.dart';
 import '../../../core/network/network_providers.dart';
 import '../data/auth_repository_impl.dart';
 import 'auth_provider.dart';

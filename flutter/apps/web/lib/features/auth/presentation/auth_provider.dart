@@ -150,7 +150,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       final ticket = response.data['ticket'] as String?;
       if (ticket != null && ticket.isNotEmpty) {
-        final wsUrl = 'ws://localhost:8082${WsEndpoints.path}?ticket=$ticket';
+        final wsUrl = '${_wsClient.wsBaseUrl}?ticket=$ticket';
         _wsClient.connect(wsUrl);
         return;
       }
@@ -158,6 +158,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
       print('WS ticket fetch failed, connecting without ticket: $e');
     }
     // Fallback: connect without ticket (development mode)
-    _wsClient.connect('ws://localhost:8082${WsEndpoints.path}');
+    _wsClient.connect(_wsClient.wsBaseUrl);
   }
 }
