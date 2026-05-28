@@ -6,7 +6,6 @@ import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_ui/im_ui.dart';
 import '../../e2ee/presentation/encryption_banner.dart';
-import '../../e2ee/presentation/e2ee_provider.dart';
 import 'widgets/session_tile.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/message_input.dart';
@@ -41,25 +40,43 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ref.read(chatStateProvider.notifier).loadSessions();
       if (widget.sessionId != null && mounted) {
-        final notifier = ref.read(chatStateProvider.notifier);
-        notifier.setActiveSession(widget.sessionId);
-        // Load messages for the deep-linked session.
-        final session = ref
-            .read(chatStateProvider)
-            .sessions
-            .where((s) => s.id == widget.sessionId)
-            .firstOrNull;
-        if (session != null) {
-          final isGroup = session.conversationType == 'group' ||
-              session.type == 'group';
-          if (isGroup) {
-            await notifier.loadGroupMessages(session.targetId);
-          } else {
-            await notifier.loadMessages(session.targetId);
-          }
-        }
+        await _openDeepLinkedSession(widget.sessionId!);
       }
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.sessionId != null && widget.sessionId != oldWidget.sessionId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (mounted) {
+          await _openDeepLinkedSession(widget.sessionId!);
+        }
+      });
+    }
+  }
+
+  Future<void> _openDeepLinkedSession(String rawSessionId) async {
+    final notifier = ref.read(chatStateProvider.notifier);
+    notifier.setActiveSession(rawSessionId);
+    final activeSessionId = ref.read(chatStateProvider).activeSessionId;
+    if (activeSessionId == null) return;
+
+    final session = ref
+        .read(chatStateProvider)
+        .sessions
+        .where((s) => s.id == activeSessionId)
+        .firstOrNull;
+    if (session == null) return;
+
+    final isGroup =
+        session.conversationType == 'group' || session.type == 'group';
+    if (isGroup) {
+      await notifier.loadGroupMessages(session.targetId);
+    } else {
+      await notifier.loadMessages(session.targetId);
+    }
   }
 
   @override
@@ -88,11 +105,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           expanded: Row(
             children: [
               SizedBox(
-                width: context.breakpoint.value(
-                  compact: 0, medium: 0,
-                  expanded: ImTokens.layoutChatSidebarWidth,
-                  large: ImTokens.layoutChatSidebarWidth,
-                ).toDouble(),
+                width: context.breakpoint
+                    .value(
+                      compact: 0,
+                      medium: 0,
+                      expanded: ImTokens.layoutChatSidebarWidth,
+                      large: ImTokens.layoutChatSidebarWidth,
+                    )
+                    .toDouble(),
                 child: _buildSessionList(sessions, activeId, loc),
               ),
               const VerticalDivider(thickness: 1, width: 1),
@@ -108,7 +128,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     );
   }
 
-  Widget _buildSessionList(List<dynamic> sessions, String? activeId, AppLocalizations loc) {
+  Widget _buildSessionList(
+      List<dynamic> sessions, String? activeId, AppLocalizations loc) {
     return Column(
       children: [
         Padding(
@@ -203,9 +224,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     final chatState = ref.watch(chatStateProvider);
     final messages = chatState.messages[sessionId] ?? [];
-    final session = chatState.sessions.where((s) => s.id == sessionId).firstOrNull;
-    final isGroup = session?.conversationType == 'group' ||
-        session?.type == 'group';
+    final session =
+        chatState.sessions.where((s) => s.id == sessionId).firstOrNull;
+    final isGroup =
+        session?.conversationType == 'group' || session?.type == 'group';
     final sessionName =
         session?.conversationName ?? session?.targetName ?? sessionId;
     final memberCount = session?.memberCount;
@@ -277,23 +299,26 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         // E2EE encryption banner (private chats only)
         if (!isGroup)
           ref.watch(e2eeSessionStatusProvider(sessionId)).when(
-            data: (statusStr) => EncryptionBanner(
-              status: E2eeSessionStatus.fromString(statusStr),
-              onExit: () async {
-                await ref.read(e2eeManagerProvider).exitEncryption(sessionId);
-                ref.invalidate(e2eeSessionStatusProvider(sessionId));
-              },
-            ),
-            loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
-          ),
+                data: (statusStr) => EncryptionBanner(
+                  status: E2eeSessionStatus.fromString(statusStr),
+                  onExit: () async {
+                    await ref
+                        .read(e2eeManagerProvider)
+                        .exitEncryption(sessionId);
+                    ref.invalidate(e2eeSessionStatusProvider(sessionId));
+                  },
+                ),
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+              ),
         // Messages
         Expanded(
           child: messages.isEmpty
               ? Center(child: Text(loc.noData))
               : ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(vertical: ImTokens.space2),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: ImTokens.space2),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final msg = messages[index];
@@ -309,7 +334,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         // Input
         MessageInput(
           focusNode: _messageInputFocusNode,
-          onFocusChanged: (focused) => setState(() => _messageInputFocused = focused),
+          onFocusChanged: (focused) =>
+              setState(() => _messageInputFocused = focused),
           onSend: (text) {
             if (session == null) return;
             if (isGroup) {
