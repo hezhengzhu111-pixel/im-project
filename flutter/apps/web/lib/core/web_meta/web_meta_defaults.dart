@@ -63,17 +63,30 @@ const appFallbackMeta = PageMeta(
 );
 
 PageMeta metaForPath(String path, AppLocalizations? l10n) {
-  final entry = routeRegistry[path];
+  var entry = routeRegistry[path];
+
+  // Prefix matching: /chat/abc123 -> /chat
+  if (entry == null) {
+    for (final regEntry in routeRegistry.entries) {
+      if (path.startsWith('${regEntry.key}/')) {
+        entry = regEntry.value;
+        break;
+      }
+    }
+  }
+
   if (entry == null) return fallbackMetaForLocale(l10n);
 
   final title = l10n?.translate(entry.titleKey) ?? entry.titleKey;
   final description =
       l10n?.translate(entry.descriptionKey) ?? entry.descriptionKey;
 
+  final canonicalPath = entry.canonicalOverride ?? path;
+
   return PageMeta(
     title: title,
     description: description,
-    canonicalPath: path,
+    canonicalPath: canonicalPath,
     og: OgMeta(
       title: title,
       description: description,
