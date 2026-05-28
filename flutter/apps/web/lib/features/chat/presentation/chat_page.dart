@@ -75,7 +75,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             children: [
               SizedBox(
                 width: context.breakpoint.value(
-                  compact: 0, medium: 0, expanded: 320, large: 320,
+                  compact: 0, medium: 0,
+                  expanded: ImTokens.layoutChatSidebarWidth,
+                  large: ImTokens.layoutChatSidebarWidth,
                 ).toDouble(),
                 child: _buildSessionList(sessions, activeId, loc),
               ),
@@ -96,17 +98,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(ImTokens.layoutSectionGap),
           child: TextField(
             controller: _searchController,
             decoration: InputDecoration(
               hintText: loc.chatSearchHint,
-              prefixIcon: const Icon(Icons.search, size: 20),
+              prefixIcon: const Icon(Icons.search, size: ImTokens.textXl),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(ImTokens.radiusFull),
               ),
               contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
+                horizontal: ImTokens.space4,
                 vertical: 10,
               ),
               isDense: true,
@@ -189,7 +191,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         const NetworkStatusBanner(),
         // Header
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(
+            horizontal: ImTokens.space4,
+            vertical: ImTokens.space3,
+          ),
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(color: Theme.of(context).dividerColor),
@@ -211,7 +216,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     ),
               ),
               if (isGroup && memberCount != null) ...[
-                const SizedBox(width: 8),
+                const SizedBox(width: ImTokens.layoutItemGap),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 6,
@@ -222,7 +227,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                         .colorScheme
                         .primaryContainer
                         .withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(ImTokens.radiusMd),
                   ),
                   child: Text(
                     loc.chatMemberCount(memberCount),
@@ -262,7 +267,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               ? Center(child: Text(loc.noData))
               : ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding: const EdgeInsets.symmetric(vertical: ImTokens.space2),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final msg = messages[index];
