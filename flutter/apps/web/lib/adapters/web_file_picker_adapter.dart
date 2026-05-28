@@ -16,7 +16,7 @@ class WebFilePickerAdapter implements FilePickerPort {
 
       final file = result.files.first;
       if (file.bytes == null) {
-        return const Failure(UnknownError('无法读取文件数据'));
+        return const Failure(UnknownError('file_read_failed'));
       }
 
       return Success(PickedFile.fromBytes(
@@ -25,7 +25,7 @@ class WebFilePickerAdapter implements FilePickerPort {
         bytes: file.bytes!,
       ));
     } catch (e) {
-      return Failure(UnknownError(e.toString()));
+      return const Failure(UnknownError('file_read_failed'));
     }
   }
 
@@ -44,7 +44,7 @@ class WebFilePickerAdapter implements FilePickerPort {
 
       final file = result.files.first;
       if (file.bytes == null) {
-        return const Failure(UnknownError('无法读取文件数据'));
+        return const Failure(UnknownError('file_read_failed'));
       }
 
       return Success(PickedFile.fromBytes(
@@ -53,7 +53,7 @@ class WebFilePickerAdapter implements FilePickerPort {
         bytes: file.bytes!,
       ));
     } catch (e) {
-      return Failure(UnknownError(e.toString()));
+      return const Failure(UnknownError('file_read_failed'));
     }
   }
 
