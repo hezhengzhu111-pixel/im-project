@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:im_web/app.dart';
 import 'package:im_web/core/web_meta/page_meta.dart';
@@ -11,21 +10,18 @@ import 'package:im_web/core/router/route_observer.dart';
 import 'package:im_web/core/di/providers.dart';
 
 import 'mocks/mock_web_meta_service.dart';
-
-// Generate mocks for GoRouter and related types
-@GenerateMocks([GoRouter, RouteInformationProvider])
-import 'app_lifecycle_test.mocks.dart';
+import 'mocks/mock_go_router.dart';
 
 void main() {
   group('App lifecycle', () {
     late MockWebMetaService mockMetaService;
     late MockGoRouter mockRouter;
-    late MockRouteInformationProvider mockRouteInfoProvider;
+    late MockGoRouteInformationProvider mockRouteInfoProvider;
 
     setUp(() {
       mockMetaService = MockWebMetaService();
       mockRouter = MockGoRouter();
-      mockRouteInfoProvider = MockRouteInformationProvider();
+      mockRouteInfoProvider = MockGoRouteInformationProvider();
 
       // Setup mock router
       when(mockRouter.routeInformationProvider)
@@ -33,10 +29,6 @@ void main() {
       when(mockRouteInfoProvider.value).thenReturn(
         RouteInformation(uri: Uri.parse('/')),
       );
-      when(mockRouter.routeInformationProvider)
-          .thenReturn(mockRouteInfoProvider);
-      when(mockRouter.go(any)).thenReturn(null);
-      when(mockRouter.push(any)).thenReturn(null);
     });
 
     testWidgets('route change triggers WebMetaService.apply with correct meta',
