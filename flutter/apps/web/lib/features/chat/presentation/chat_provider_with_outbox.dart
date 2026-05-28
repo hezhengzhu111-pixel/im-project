@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../../../core/network/network_status_provider.dart';
@@ -22,12 +23,24 @@ class ChatStateWithOutbox extends ChatState {
     this.failedCount = 0,
     this.isRetrying = false,
     this.isOffline = false,
+    this.pendingNegotiations = const {},
   });
 
   final int pendingCount;
   final int failedCount;
   final bool isRetrying;
   final bool isOffline;
+  final Map<String, E2eeNegotiationEvent> pendingNegotiations;
+
+  E2eeNegotiationEvent? pendingNegotiationForSession(String sessionId) {
+    return pendingNegotiations[sessionId];
+  }
+
+  E2eeNegotiationEvent? get activePendingNegotiation {
+    final activeId = activeSessionId;
+    if (activeId == null) return null;
+    return pendingNegotiationForSession(activeId);
+  }
 
   @override
   ChatStateWithOutbox copyWith({
@@ -40,6 +53,7 @@ class ChatStateWithOutbox extends ChatState {
     int? failedCount,
     bool? isRetrying,
     bool? isOffline,
+    Map<String, E2eeNegotiationEvent>? pendingNegotiations,
   }) {
     return ChatStateWithOutbox(
       sessions: sessions ?? this.sessions,
@@ -51,6 +65,7 @@ class ChatStateWithOutbox extends ChatState {
       failedCount: failedCount ?? this.failedCount,
       isRetrying: isRetrying ?? this.isRetrying,
       isOffline: isOffline ?? this.isOffline,
+      pendingNegotiations: pendingNegotiations ?? this.pendingNegotiations,
     );
   }
 }
@@ -86,9 +101,91 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   StreamSubscription? _outboxSubscription;
   StreamSubscription? _networkSubscription;
 
-  E2eeNegotiationEvent? _pendingNegotiation;
-  E2eeNegotiationEvent? get pendingNegotiation => _pendingNegotiation;
-  void clearPendingNegotiation() => _pendingNegotiation = null;
+  Map<String, E2eeNegotiationEvent> get pendingNegotiations =>
+      Map.unmodifiable(state.pendingNegotiations);
+
+  E2eeNegotiationEvent? get pendingNegotiation =>
+      activePendingNegotiation ??
+      (state.pendingNegotiations.isEmpty
+          ? null
+          : state.pendingNegotiations.values.first);
+
+  E2eeNegotiationEvent? get activePendingNegotiation {
+    final activeId = state.activeSessionId;
+    if (activeId == null) return null;
+    return pendingNegotiationForSession(activeId);
+  }
+
+  E2eeNegotiationEvent? pendingNegotiationForSession(String sessionId) {
+    for (final key in _negotiationLookupKeys(sessionId)) {
+      final event = state.pendingNegotiations[key];
+      if (event != null) return event;
+    }
+    return null;
+  }
+
+  void clearPendingNegotiation([String? sessionId]) {
+    if (state.pendingNegotiations.isEmpty) return;
+    if (sessionId == null) {
+      final activeId = state.activeSessionId;
+      if (activeId != null && pendingNegotiationForSession(activeId) != null) {
+        _removePendingNegotiation(activeId);
+        return;
+      }
+      final firstKey = state.pendingNegotiations.keys.first;
+      _removePendingNegotiation(firstKey);
+      return;
+    }
+    _removePendingNegotiation(sessionId);
+  }
+
+  Future<bool> acceptPendingNegotiation(String sessionId) async {
+    final event = pendingNegotiationForSession(sessionId);
+    if (event == null) return false;
+    final payloadJson = event.requestPayloadJson;
+    if (payloadJson == null || payloadJson.isEmpty) return false;
+
+    try {
+      final decoded = jsonDecode(payloadJson);
+      if (decoded is! Map<String, dynamic>) return false;
+      decoded.putIfAbsent('senderUserId', () => event.requesterId);
+
+      final accepted =
+          await _e2eeManager.respondToNegotiation(event.sessionId, decoded);
+      if (!accepted) return false;
+
+      await _e2eeMetaStore.setSessionStatus(event.sessionId, 'encrypted');
+      _removePendingNegotiation(event.sessionId);
+      return true;
+    } catch (e, st) {
+      AppLogger.instance
+          .error('Failed to accept E2EE negotiation', e, st, 'e2ee');
+      return false;
+    }
+  }
+
+  Future<void> rejectPendingNegotiation(String sessionId) async {
+    final event = pendingNegotiationForSession(sessionId);
+    final targetSessionId = event?.sessionId ?? sessionId;
+    try {
+      await _e2eeManager.rejectNegotiation(targetSessionId);
+    } catch (e, st) {
+      AppLogger.instance
+          .error('Failed to reject E2EE negotiation', e, st, 'e2ee');
+    } finally {
+      await _e2eeMetaStore.setSessionStatus(targetSessionId, 'plaintext');
+      _removePendingNegotiation(targetSessionId);
+    }
+  }
+
+  Future<void> disableEncryptionForSession(String sessionId) async {
+    try {
+      await _e2eeManager.exitEncryption(sessionId);
+    } finally {
+      await _e2eeMetaStore.setSessionStatus(sessionId, 'plaintext');
+      _removePendingNegotiation(sessionId);
+    }
+  }
 
   void _subscribeToWs() {
     _wsSubscription = _wsClient.events.listen((event) {
@@ -364,14 +461,15 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     }
   }
 
-  void _handleE2eeNegotiation(Map<String, dynamic> data) {
+  Future<void> _handleE2eeNegotiation(Map<String, dynamic> data) async {
     try {
       final action = E2eeNegotiationAction.fromString(
-        data['action']?.toString() ?? '',
+        (data['action']?.toString() ?? '').toLowerCase(),
       );
       final sessionId = data['sessionId']?.toString() ?? '';
       final requesterId = data['requesterId']?.toString() ?? '';
       final requesterName = data['requesterName']?.toString();
+      final targetUserId = data['targetUserId']?.toString();
       final requestPayloadJson = data['requestPayloadJson']?.toString();
 
       if (sessionId.isEmpty) return;
@@ -381,25 +479,49 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         action: action,
         requesterId: requesterId,
         requesterName: requesterName,
+        targetUserId: targetUserId,
         requestPayloadJson: requestPayloadJson,
       );
 
       switch (action) {
         case E2eeNegotiationAction.request:
-          _pendingNegotiation = event;
-          _e2eeMetaStore.setSessionStatus(sessionId, 'negotiating');
+          _setPendingNegotiation(event);
+          await _e2eeMetaStore.setSessionStatus(sessionId, 'negotiating');
         case E2eeNegotiationAction.accepted:
-          _e2eeMetaStore.setSessionStatus(sessionId, 'encrypted');
-          _pendingNegotiation = null;
+          await _e2eeMetaStore.setSessionStatus(sessionId, 'encrypted');
+          await _e2eeMetaStore.clearPendingHandshake(sessionId);
+          _removePendingNegotiation(sessionId);
         case E2eeNegotiationAction.rejected:
         case E2eeNegotiationAction.disabled:
-          _e2eeMetaStore.setSessionStatus(sessionId, 'plaintext');
-          _pendingNegotiation = null;
+          await _e2eeMetaStore.setSessionStatus(sessionId, 'plaintext');
+          await _e2eeMetaStore.clearPendingHandshake(sessionId);
+          _removePendingNegotiation(sessionId);
       }
     } catch (e, st) {
       AppLogger.instance
           .error('Failed to handle E2EE negotiation', e, st, 'e2ee');
     }
+  }
+
+  void _setPendingNegotiation(E2eeNegotiationEvent event) {
+    final key = _normalizeE2eeSessionKey(event.sessionId);
+    state = state.copyWith(
+      pendingNegotiations: {
+        ...state.pendingNegotiations,
+        key.isEmpty ? event.sessionId : key: event,
+      },
+    );
+  }
+
+  void _removePendingNegotiation(String sessionId) {
+    final keys = _negotiationLookupKeys(sessionId);
+    final updated = Map<String, E2eeNegotiationEvent>.from(
+      state.pendingNegotiations,
+    )..removeWhere((key, event) {
+        return keys.contains(key) ||
+            _negotiationLookupKeys(event.sessionId).any(keys.contains);
+      });
+    state = state.copyWith(pendingNegotiations: updated);
   }
 
   Future<void> loadSessions() async {
@@ -870,6 +992,61 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       return 'group_${_groupIdFromSessionKey(sessionKey)}';
     }
     return _privateTargetFromSessionKey(sessionKey);
+  }
+
+  Set<String> _negotiationLookupKeys(String sessionId) {
+    final keys = <String>{sessionId};
+    if (sessionId.isEmpty) return keys;
+
+    final normalizedChatKey = _normalizeE2eeSessionKey(sessionId);
+    if (normalizedChatKey.isNotEmpty) keys.add(normalizedChatKey);
+
+    final session = state.sessions
+        .where((s) =>
+            s.id == normalizedChatKey ||
+            s.id == sessionId ||
+            s.conversationId == sessionId)
+        .firstOrNull;
+    if (session != null) {
+      keys.add(session.id);
+      if (session.conversationId != null) {
+        keys.add(session.conversationId!);
+      }
+      final isGroup =
+          session.type == 'group' || session.conversationType == 'group';
+      if (isGroup) {
+        keys.add(_groupSessionKey(session.targetId));
+      } else {
+        keys.add(_privateSessionKey(session.targetId));
+        keys.add('${_currentUserId()}_private_${session.targetId}');
+        keys.add('${session.targetId}_private_${_currentUserId()}');
+      }
+    }
+    return keys;
+  }
+
+  String _normalizeE2eeSessionKey(String sessionId) {
+    final exact = state.sessions.where((s) => s.id == sessionId).firstOrNull;
+    if (exact != null) return exact.id;
+    if (sessionId.contains('_private_')) {
+      return _privateSessionKey(_privateTargetFromE2eeSessionId(sessionId));
+    }
+    if (sessionId.startsWith('group_') || sessionId.startsWith('g_')) {
+      return _sessionKeyForGroupTarget(sessionId);
+    }
+    final session = state.sessions
+        .where((s) => s.conversationId == sessionId || s.targetId == sessionId)
+        .firstOrNull;
+    return session?.id ?? sessionId;
+  }
+
+  String _privateTargetFromE2eeSessionId(String sessionId) {
+    final currentUserId = _currentUserId();
+    return sessionId
+            .split('_private_')
+            .where((part) => part.isNotEmpty && part != currentUserId)
+            .firstOrNull ??
+        sessionId;
   }
 
   String _privateSessionKey(String targetId) {

@@ -138,6 +138,20 @@ class TestableE2eeManager extends E2eeManager {
           currentUserId: currentUserId,
         );
 
+  String? lastRespondSessionId;
+  Map<String, dynamic>? lastRespondPayload;
+  bool respondResult = true;
+
+  @override
+  Future<bool> respondToNegotiation(
+    String sessionId,
+    Map<String, dynamic> requestPayload,
+  ) async {
+    lastRespondSessionId = sessionId;
+    lastRespondPayload = requestPayload;
+    return respondResult;
+  }
+
   @override
   Future<Map<String, dynamic>> encryptToEnvelope({
     required String sessionId,
@@ -160,6 +174,16 @@ class TestableE2eeManager extends E2eeManager {
     required Map<String, dynamic> envelope,
   }) async {
     return 'fake_plaintext';
+  }
+
+  @override
+  Future<void> rejectNegotiation(String sessionId) async {
+    await metaStore.setSessionStatus(sessionId, 'plaintext');
+  }
+
+  @override
+  Future<void> exitEncryption(String sessionId) async {
+    await metaStore.setSessionStatus(sessionId, 'plaintext');
   }
 }
 
@@ -671,6 +695,187 @@ void main() {
 
       // Outbox should NOT have been called.
       expect(spyOutbox.enqueueCalls, isEmpty);
+    });
+  });
+
+  // =========================================================================
+  // E2EE negotiation state regression tests
+  // =========================================================================
+
+  group('E2EE negotiation state', () {
+    test('caches requests per session and exposes the active session request',
+        () async {
+      notifier = createNotifier();
+      testApi.conversationsResponse = [
+        const ChatSession(
+          id: 'user-1_user-2',
+          type: 'private',
+          targetId: 'user-2',
+          targetName: 'User 2',
+          unreadCount: 0,
+          conversationType: 'private',
+        ),
+        const ChatSession(
+          id: 'user-1_user-3',
+          type: 'private',
+          targetId: 'user-3',
+          targetName: 'User 3',
+          unreadCount: 0,
+          conversationType: 'private',
+        ),
+      ];
+      await notifier.loadSessions();
+      notifier.setActiveSession('user-1_user-2');
+
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.e2eeNegotiation,
+        data: {
+          'action': 'request',
+          'sessionId': 'user-2_private_user-1',
+          'requesterId': 'user-2',
+          'requesterName': 'User 2',
+          'requestPayloadJson': '{"senderDeviceId":"device-2"}',
+        },
+      ));
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.e2eeNegotiation,
+        data: {
+          'action': 'request',
+          'sessionId': 'user-3_private_user-1',
+          'requesterId': 'user-3',
+          'requesterName': 'User 3',
+          'requestPayloadJson': '{"senderDeviceId":"device-3"}',
+        },
+      ));
+      await Future.delayed(Duration(milliseconds: 50));
+
+      expect(notifier.state.pendingNegotiations.length, 2);
+      expect(
+        notifier.activePendingNegotiation?.sessionId,
+        'user-2_private_user-1',
+      );
+      expect(
+        notifier.pendingNegotiationForSession('user-1_user-3')?.sessionId,
+        'user-3_private_user-1',
+      );
+    });
+
+    test('accepted event removes only the matching pending negotiation',
+        () async {
+      notifier = createNotifier();
+
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.e2eeNegotiation,
+        data: {
+          'action': 'request',
+          'sessionId': 'session-a',
+          'requesterId': 'user-2',
+        },
+      ));
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.e2eeNegotiation,
+        data: {
+          'action': 'request',
+          'sessionId': 'session-b',
+          'requesterId': 'user-3',
+        },
+      ));
+      await Future.delayed(Duration(milliseconds: 50));
+
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.e2eeNegotiation,
+        data: {
+          'action': 'accepted',
+          'sessionId': 'session-a',
+          'requesterId': 'user-2',
+        },
+      ));
+      await Future.delayed(Duration(milliseconds: 50));
+
+      expect(notifier.state.pendingNegotiations.keys, ['session-b']);
+      expect(
+        await mockE2eeMetaStore.getSessionStatus('session-a'),
+        'encrypted',
+      );
+      expect(
+        await mockE2eeMetaStore.getSessionStatus('session-b'),
+        'negotiating',
+      );
+    });
+
+    test('rejected and disabled events clear only their own session state',
+        () async {
+      notifier = createNotifier();
+
+      for (final sessionId in ['session-a', 'session-b', 'session-c']) {
+        fakeWsClient.addEvent(FakeWsEvent(
+          type: WsMessageType.e2eeNegotiation,
+          data: {
+            'action': 'request',
+            'sessionId': sessionId,
+            'requesterId': 'peer',
+          },
+        ));
+      }
+      await Future.delayed(Duration(milliseconds: 50));
+
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.e2eeNegotiation,
+        data: {
+          'action': 'rejected',
+          'sessionId': 'session-a',
+          'requesterId': 'peer',
+        },
+      ));
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.e2eeNegotiation,
+        data: {
+          'action': 'disabled',
+          'sessionId': 'session-b',
+          'requesterId': 'peer',
+        },
+      ));
+      await Future.delayed(Duration(milliseconds: 50));
+
+      expect(notifier.state.pendingNegotiations.keys, ['session-c']);
+      expect(
+        await mockE2eeMetaStore.getSessionStatus('session-a'),
+        'plaintext',
+      );
+      expect(
+        await mockE2eeMetaStore.getSessionStatus('session-b'),
+        'plaintext',
+      );
+      expect(
+        await mockE2eeMetaStore.getSessionStatus('session-c'),
+        'negotiating',
+      );
+    });
+
+    test('acceptPendingNegotiation responds with cached payload', () async {
+      notifier = createNotifier();
+
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.e2eeNegotiation,
+        data: {
+          'action': 'request',
+          'sessionId': 'session-a',
+          'requesterId': 'user-2',
+          'requestPayloadJson': '{"senderDeviceId":"device-2"}',
+        },
+      ));
+      await Future.delayed(Duration(milliseconds: 50));
+
+      final accepted = await notifier.acceptPendingNegotiation('session-a');
+
+      expect(accepted, isTrue);
+      expect(testE2eeManager.lastRespondSessionId, 'session-a');
+      expect(testE2eeManager.lastRespondPayload?['senderUserId'], 'user-2');
+      expect(notifier.state.pendingNegotiations, isEmpty);
+      expect(
+        await mockE2eeMetaStore.getSessionStatus('session-a'),
+        'encrypted',
+      );
     });
   });
 
