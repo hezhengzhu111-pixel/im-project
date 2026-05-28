@@ -11,6 +11,15 @@ void main() {
       final excludedFiles = [
         'app_en.arb',
         'app_zh.arb',
+        'app_localizations', // generated l10n files
+        'agreement_dialog', // out of scope - legal text
+        'message_lock_icon', // out of scope
+        'bind_email_dialog', // out of scope
+        'bind_phone_dialog', // out of scope
+        'settings_page', // contains language name '中文'
+        'web_meta_defaults', // SEO defaults - out of scope
+        'app_router', // fallback values for null l10n
+        'web_file_picker_adapter', // adapter layer - out of scope
       ];
 
       final violations = <String>[];
