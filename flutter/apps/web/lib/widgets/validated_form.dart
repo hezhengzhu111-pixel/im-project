@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:im_web/core/forms/form_controller.dart';
+import 'package:im_web/widgets/form_error_banner.dart';
 
 class ValidatedForm extends StatefulWidget {
   final FormController controller;
   final Widget child;
+  final bool showErrorBanner;
 
   const ValidatedForm({
     super.key,
     required this.controller,
     required this.child,
+    this.showErrorBanner = true,
   });
 
   static FormController of(BuildContext context) {
@@ -47,9 +50,22 @@ class _ValidatedFormState extends State<ValidatedForm> {
 
   @override
   Widget build(BuildContext context) {
+    Widget content = widget.child;
+
+    if (widget.showErrorBanner) {
+      content = Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FormErrorBanner(controller: widget.controller),
+          content,
+        ],
+      );
+    }
+
     return _ValidatedFormInherited(
       controller: widget.controller,
-      child: widget.child,
+      child: content,
     );
   }
 }
