@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import '../../../../core/di/providers.dart';
 
 class MomentsSidebar extends ConsumerWidget {
@@ -12,6 +13,7 @@ class MomentsSidebar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final user = ref.watch(authStateProvider).user;
+    final loc = AppLocalizations.of(context)!;
 
     return SizedBox(
       width: 336,
@@ -19,28 +21,29 @@ class MomentsSidebar extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         children: [
           // Profile card
-          _buildProfileCard(theme, user),
+          _buildProfileCard(context, theme, user),
 
           const SizedBox(height: 14),
 
           // Today overview
-          _buildStatsCard(theme),
+          _buildStatsCard(context, theme),
 
           const SizedBox(height: 14),
 
           // Recent activity
-          _buildActivityCard(theme),
+          _buildActivityCard(context, theme),
 
           const SizedBox(height: 14),
 
           // Tip card
-          _buildTipCard(theme),
+          _buildTipCard(context, theme),
         ],
       ),
     );
   }
 
-  Widget _buildProfileCard(ThemeData theme, User? user) {
+  Widget _buildProfileCard(BuildContext context, ThemeData theme, User? user) {
+    final loc = AppLocalizations.of(context)!;
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -60,14 +63,14 @@ class MomentsSidebar extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              user?.nickname ?? user?.username ?? '用户',
+              user?.nickname ?? user?.username ?? loc.momentsUserFallback,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: onComposeTap,
               icon: const Icon(Icons.camera_alt, size: 18),
-              label: const Text('发布动态'),
+              label: Text(loc.momentsPublishButton),
               style: FilledButton.styleFrom(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -79,7 +82,8 @@ class MomentsSidebar extends ConsumerWidget {
     );
   }
 
-  Widget _buildStatsCard(ThemeData theme) {
+  Widget _buildStatsCard(BuildContext context, ThemeData theme) {
+    final loc = AppLocalizations.of(context)!;
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -89,7 +93,7 @@ class MomentsSidebar extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '今日概览',
+              loc.momentsDailyOverview,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
@@ -100,9 +104,9 @@ class MomentsSidebar extends ConsumerWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                _buildStatItem(theme, '--', '互动'),
-                _buildStatItem(theme, '--', '照片'),
-                _buildStatItem(theme, '--', '评论'),
+                _buildStatItem(theme, '--', loc.momentsInteractions),
+                _buildStatItem(theme, '--', loc.momentsPhotos),
+                _buildStatItem(theme, '--', loc.momentsComments),
               ],
             ),
           ],
@@ -133,7 +137,8 @@ class MomentsSidebar extends ConsumerWidget {
     );
   }
 
-  Widget _buildActivityCard(ThemeData theme) {
+  Widget _buildActivityCard(BuildContext context, ThemeData theme) {
+    final loc = AppLocalizations.of(context)!;
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -143,7 +148,7 @@ class MomentsSidebar extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '最近互动',
+              loc.momentsRecentInteractions,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
@@ -164,7 +169,7 @@ class MomentsSidebar extends ConsumerWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  '暂无最近互动',
+                  loc.momentsNoRecentInteractions,
                   style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
                 ),
               ],
@@ -175,7 +180,8 @@ class MomentsSidebar extends ConsumerWidget {
     );
   }
 
-  Widget _buildTipCard(ThemeData theme) {
+  Widget _buildTipCard(BuildContext context, ThemeData theme) {
+    final loc = AppLocalizations.of(context)!;
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -184,13 +190,13 @@ class MomentsSidebar extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              '分享你的生活瞬间',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            Text(
+              loc.momentsSharePrompt,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 6),
             Text(
-              '照片、文字、视频都可以发布到朋友圈',
+              loc.momentsShareDesc,
               style: TextStyle(
                 fontSize: 12,
                 color: theme.colorScheme.onSurfaceVariant,
