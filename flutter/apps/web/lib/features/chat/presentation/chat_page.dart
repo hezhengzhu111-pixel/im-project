@@ -6,6 +6,8 @@ import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_ui/im_ui.dart';
 import '../../e2ee/presentation/encryption_banner.dart';
+import '../../e2ee/presentation/negotiation_dialog.dart';
+import 'widgets/chat_header.dart';
 import 'widgets/session_tile.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/message_input.dart';
@@ -91,6 +93,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       await notifier.loadGroupMessages(session.targetId);
     } else {
       await notifier.loadMessages(session.targetId);
+    }
+
+    // Check for cached negotiation request after switching session
+    if (!isGroup && mounted) {
+      final pending = notifier.pendingNegotiationForSession(session.id);
+      if (pending != null && pending.action == E2eeNegotiationAction.request) {
+        _showNegotiationDialog(pending);
+      }
     }
   }
 
@@ -205,6 +215,32 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
 
+  void _showNegotiationDialog(E2eeNegotiationEvent event) {
+    final requesterName = event.requesterName ?? event.requesterId;
+    showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => NegotiationDialog(
+        requesterName: requesterName,
+        onAccept: () async {
+          final accepted = await ref
+              .read(chatStateProvider.notifier)
+              .acceptPendingNegotiation(event.sessionId);
+          if (!accepted) {
+            throw Exception('Failed to accept encryption negotiation');
+          }
+          ref.invalidate(e2eeSessionStatusProvider(event.sessionId));
+        },
+        onReject: () async {
+          await ref
+              .read(chatStateProvider.notifier)
+              .rejectPendingNegotiation(event.sessionId);
+          ref.invalidate(e2eeSessionStatusProvider(event.sessionId));
+        },
+      ),
+    );
+  }
+
   Widget _buildChatView(String sessionId, AppLocalizations loc) {
     ref.listen(chatStateProvider.select((s) => s.messages[sessionId]),
         (prev, next) {
@@ -225,15 +261,26 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       }
     });
 
+    // Listen for pending E2EE negotiation requests
+    ref.listen(
+      chatStateProvider.select((s) => s.activePendingNegotiation),
+      (prev, next) {
+        if (next != null && next.action == E2eeNegotiationAction.request) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _showNegotiationDialog(next);
+            }
+          });
+        }
+      },
+    );
+
     final chatState = ref.watch(chatStateProvider);
     final messages = chatState.messages[sessionId] ?? [];
     final session =
         chatState.sessions.where((s) => s.id == sessionId).firstOrNull;
     final isGroup =
         session?.conversationType == 'group' || session?.type == 'group';
-    final sessionName =
-        session?.conversationName ?? session?.targetName ?? sessionId;
-    final memberCount = session?.memberCount;
     final isMobile = context.isMobile;
 
     return Column(
@@ -241,63 +288,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         // Network status banner
         const NetworkStatusBanner(),
         // Header
-        Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: ImTokens.space4,
-            vertical: ImTokens.space3,
-          ),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: Theme.of(context).dividerColor),
-            ),
-          ),
-          child: Row(
-            children: [
-              if (isMobile)
-                IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () {
-                    ref.read(chatStateProvider.notifier).setActiveSession(null);
-                  },
-                ),
-              Text(
-                sessionName,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-              if (isGroup && memberCount != null) ...[
-                const SizedBox(width: ImTokens.layoutItemGap),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primaryContainer
-                        .withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(ImTokens.radiusMd),
-                  ),
-                  child: Text(
-                    loc.chatMemberCount(memberCount),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                  ),
-                ),
-              ],
-              const Spacer(),
-              if (messages.isNotEmpty)
-                Text(
-                  loc.chatMessageCount(messages.length),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                ),
-            ],
-          ),
+        ChatHeader(
+          session: session!,
+          isMobile: isMobile,
+          onBackPressed: () {
+            ref.read(chatStateProvider.notifier).setActiveSession(null);
+          },
+          e2eeStatus: !isGroup
+              ? ref.watch(e2eeSessionStatusProvider(sessionId)).whenOrNull(
+                  data: (statusStr) => E2eeSessionStatus.fromString(statusStr),
+                )
+              : null,
         ),
         // E2EE encryption banner (private chats only)
         if (!isGroup)
