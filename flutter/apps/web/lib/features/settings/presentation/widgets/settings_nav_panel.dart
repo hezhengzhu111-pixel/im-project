@@ -58,12 +58,36 @@ class SettingsNavPanel extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           // Navigation items
-          _NavItem(label: loc!.settingsAccount, icon: Icons.person_outline),
-          _NavItem(label: loc.settingsAppearance, icon: Icons.palette_outlined),
-          _NavItem(label: loc.settingsNotifications, icon: Icons.notifications_outlined),
-          _NavItem(label: loc.settingsPrivacy, icon: Icons.shield_outlined),
-          _NavItem(label: loc.settingsStorage, icon: Icons.storage_outlined),
-          _NavItem(label: loc.settingsAi, icon: Icons.smart_toy_outlined),
+          Semantics(
+            label: loc!.a11ySettingsProfile,
+            button: true,
+            child: _NavItem(label: loc.settingsAccount, icon: Icons.person_outline),
+          ),
+          Semantics(
+            label: loc.a11ySettingsAppearance,
+            button: true,
+            child: _NavItem(label: loc.settingsAppearance, icon: Icons.palette_outlined),
+          ),
+          Semantics(
+            label: loc.a11ySettingsNotifications,
+            button: true,
+            child: _NavItem(label: loc.settingsNotifications, icon: Icons.notifications_outlined),
+          ),
+          Semantics(
+            label: loc.a11ySettingsSecurity,
+            button: true,
+            child: _NavItem(label: loc.settingsPrivacy, icon: Icons.shield_outlined),
+          ),
+          Semantics(
+            label: loc.a11ySettingsStorage,
+            button: true,
+            child: _NavItem(label: loc.settingsStorage, icon: Icons.storage_outlined),
+          ),
+          Semantics(
+            label: loc.a11ySettingsAi,
+            button: true,
+            child: _NavItem(label: loc.settingsAi, icon: Icons.smart_toy_outlined),
+          ),
         ],
       ),
     );
