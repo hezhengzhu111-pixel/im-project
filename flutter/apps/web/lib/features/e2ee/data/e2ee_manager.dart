@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:im_web/adapters/web_e2ee_adapter.dart';
+import 'package:im_core/core.dart';
 import 'package:im_web/features/e2ee/data/e2ee_api.dart';
 import 'package:im_web/features/e2ee/data/e2ee_key_store.dart';
 import 'package:im_web/features/e2ee/data/e2ee_meta_store.dart';
@@ -21,7 +21,7 @@ class E2eeManager {
     required this.currentUserId,
   });
 
-  final WebE2eeAdapter adapter;
+  final E2eeBridge adapter;
   final E2eeApi api;
   final E2eeKeyStore keyStore;
   final E2eeSessionStore sessionStore;

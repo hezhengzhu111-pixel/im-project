@@ -3,8 +3,8 @@ import 'dart:typed_data';
 import 'package:im_core/core.dart';
 import 'package:im_core/src/generated/api/e2ee.dart' as frb;
 
-/// E2eeService implementation that delegates to FRB-generated Rust bindings.
-class WebE2eeAdapter implements E2eeService {
+/// E2eeBridge implementation that delegates to FRB-generated Rust bindings.
+class WebE2eeAdapter implements E2eeBridge {
   @override
   Future<Uint8List> generateKeyBundle(int otkCount) async {
     return await frb.generateKeyBundle(otkCount: otkCount);
