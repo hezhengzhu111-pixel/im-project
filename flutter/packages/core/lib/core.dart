@@ -26,7 +26,6 @@ export 'src/logging/sanitized_error.dart';
 // Ports
 export 'src/ports/file_picker_port.dart';
 export 'src/ports/notification_port.dart';
-export 'src/ports/network_status_port.dart';
 export 'src/ports/clipboard_port.dart';
 export 'src/ports/share_port.dart';
 export 'src/ports/audio_recorder_port.dart';
