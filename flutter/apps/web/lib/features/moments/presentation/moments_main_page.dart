@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:im_ui/im_ui.dart';
 import 'feed/moments_feed_page.dart';
 import 'composer/moments_composer_page.dart';
 import 'widgets/moments_cover.dart';
@@ -37,8 +38,7 @@ class _MomentsMainPageState extends State<MomentsMainPage> {
   }
 
   void _openComposer() {
-    final width = MediaQuery.of(context).size.width;
-    if (width > 768) {
+    if (!context.isCompact) {
       // Desktop: dialog
       showDialog(
         context: context,
@@ -63,8 +63,7 @@ class _MomentsMainPageState extends State<MomentsMainPage> {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final showSidebar = screenWidth > 1100;
+    final showSidebar = context.isLarge;
 
     return Scaffold(
       body: Row(
