@@ -12,8 +12,14 @@ class MockMessageApi extends Mock implements MessageApi {
   /// Optional custom response to return from sendPrivateMessage.
   Future<Message>? sendPrivateMessageResponse;
 
+  /// If non-null, sendPrivateMessage will throw this exception.
+  Exception? sendPrivateMessageException;
+
   @override
   Future<Message> sendPrivateMessage(SendPrivateMessageRequest request) async {
+    if (sendPrivateMessageException != null) {
+      throw sendPrivateMessageException!;
+    }
     if (sendPrivateMessageResponse != null) {
       return sendPrivateMessageResponse!;
     }
@@ -171,6 +177,36 @@ void main() {
       // Verify message was sent and removed from outbox
       expect(await outbox.getPendingCount(), 0);
       expect(await outbox.getFailedCount(), 0);
+    });
+
+    test('retry fails after max retries exceeded', () async {
+      outbox = MessageOutbox(
+        messageApi: mockMessageApi,
+        idbFactory: idbFactorySembastMemory,
+        isOnline: () => true,
+      );
+      await outbox.initialize();
+
+      // Enqueue a message
+      await outbox.enqueue(
+        sessionKey: 'session-1',
+        receiverId: 'user-2',
+        content: 'Test message',
+        clientMessageId: 'client-1',
+      );
+
+      // Mock API to always fail
+      mockMessageApi.sendPrivateMessageException = Exception('Network error');
+
+      // Retry multiple times (max retries is 5)
+      for (int i = 0; i < 6; i++) {
+        outbox.onNetworkAvailable();
+        await Future.delayed(Duration(milliseconds: 500));
+      }
+
+      // Verify message is marked as failed
+      expect(await outbox.getFailedCount(), 1);
+      expect(await outbox.getPendingCount(), 0);
     });
   });
 }
