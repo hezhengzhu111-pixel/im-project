@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_web/core/web_meta/page_meta.dart';
 import 'package:im_web/core/web_meta/web_meta_defaults.dart';
 
@@ -113,10 +115,41 @@ void main() {
 
   group('appFallbackMeta', () {
     test('has default values', () {
-      expect(appFallbackMeta.title, 'IM - 安全即时通讯');
+      expect(appFallbackMeta.title, 'IM - Secure Messaging');
       expect(appFallbackMeta.canonicalPath, '/');
       expect(appFallbackMeta.og?.type, 'website');
       expect(appFallbackMeta.twitter?.card, 'summary');
+    });
+  });
+
+  group('fallbackMetaForLocale', () {
+    test('returns English meta when l10n is null', () {
+      final meta = fallbackMetaForLocale(null);
+      expect(meta.title, 'IM - Secure Messaging');
+      expect(meta.description, contains('end-to-end'));
+      expect(meta.canonicalPath, '/');
+      expect(meta.og?.title, meta.title);
+      expect(meta.og?.description, meta.description);
+      expect(meta.og?.type, 'website');
+      expect(meta.twitter?.card, 'summary');
+      expect(meta.twitter?.title, meta.title);
+      expect(meta.twitter?.description, meta.description);
+    });
+
+    test('returns Chinese meta for zh locale', () {
+      final l10n = lookupAppLocalizations(const Locale('zh'));
+      final meta = fallbackMetaForLocale(l10n);
+      expect(meta.title, 'IM - 安全即时通讯');
+      expect(meta.description, contains('端到端加密'));
+      expect(meta.og?.title, meta.title);
+      expect(meta.twitter?.title, meta.title);
+    });
+
+    test('returns English meta for en locale', () {
+      final l10n = lookupAppLocalizations(const Locale('en'));
+      final meta = fallbackMetaForLocale(l10n);
+      expect(meta.title, 'IM - Secure Messaging');
+      expect(meta.description, contains('end-to-end'));
     });
   });
 }

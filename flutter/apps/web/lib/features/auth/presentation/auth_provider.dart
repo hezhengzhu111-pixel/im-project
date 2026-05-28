@@ -158,6 +158,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return permissions.any(state.permissions.contains);
   }
 
+  // Message-based matching (not type-based) because dart:io is unavailable in Flutter web.
   AuthErrorCode _mapExceptionToErrorCode(Object e) {
     final msg = e.toString().toLowerCase();
     if (msg.contains('401') || msg.contains('403') || msg.contains('unauthorized')) {
@@ -166,7 +167,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     if (msg.contains('429') || msg.contains('too many')) {
       return AuthErrorCode.tooManyRequests;
     }
-    if (RegExp(r'5\d{2}').hasMatch(msg) || msg.contains('server')) {
+    if (RegExp(r'\b5\d{2}\b').hasMatch(msg) || msg.contains('server')) {
       return AuthErrorCode.serverError;
     }
     if (msg.contains('network') || msg.contains('connection') || msg.contains('socket')) {
