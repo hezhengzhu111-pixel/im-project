@@ -275,6 +275,33 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       },
     );
 
+    // Listen for all E2EE negotiation events for notifications
+    ref.listen(
+      chatStateProvider.select((s) => s.pendingNegotiations),
+      (prev, next) {
+        if (next.length > (prev?.length ?? 0)) {
+          for (final entry in next.entries) {
+            if (prev == null || !prev.containsKey(entry.key)) {
+              final event = entry.value;
+              if (event.action == E2eeNegotiationAction.request) {
+                final activeId = ref.read(chatStateProvider).activeSessionId;
+                // Only show notification if not the current session
+                if (event.sessionId != activeId && mounted) {
+                  final name = event.requesterName ?? event.requesterId;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(loc.e2eeNegotiationNotification(name)),
+                      duration: const Duration(seconds: 5),
+                    ),
+                  );
+                }
+              }
+            }
+          }
+        }
+      },
+    );
+
     final chatState = ref.watch(chatStateProvider);
     final messages = chatState.messages[sessionId] ?? [];
     final session =

@@ -340,5 +340,6 @@
   "errorClipboardNotAvailable": "Clipboard not available in this browser",
   "errorNotificationPermissionDenied": "Notification permission denied",
   "errorMicrophonePermissionDenied": "Microphone permission denied",
-  "errorFileReadFailed": "Failed to read file data"
+  "errorFileReadFailed": "Failed to read file data",
+  "e2eeNegotiationNotification": "{name} requests to enable end-to-end encryption"
 }

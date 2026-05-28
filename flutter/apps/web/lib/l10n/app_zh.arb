@@ -340,5 +340,6 @@
   "errorClipboardNotAvailable": "当前浏览器不支持剪贴板",
   "errorNotificationPermissionDenied": "通知权限被拒绝",
   "errorMicrophonePermissionDenied": "麦克风权限被拒绝",
-  "errorFileReadFailed": "无法读取文件数据"
+  "errorFileReadFailed": "无法读取文件数据",
+  "e2eeNegotiationNotification": "{name} 请求与你开启端到端加密"
 }
