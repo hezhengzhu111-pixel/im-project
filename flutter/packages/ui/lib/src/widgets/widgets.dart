@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// 用户头像组件
+@Deprecated('Use ImAvatar instead')
 class UserAvatar extends StatelessWidget {
   const UserAvatar({
     super.key,
@@ -81,6 +82,7 @@ class UserAvatar extends StatelessWidget {
 }
 
 /// 未读消息数徽章
+@Deprecated('Use ImBadge instead')
 class UnreadBadge extends StatelessWidget {
   const UnreadBadge({
     super.key,
@@ -155,6 +157,7 @@ class LoadingIndicator extends StatelessWidget {
 }
 
 /// 空状态提示
+@Deprecated('Use ImEmpty instead')
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
@@ -212,6 +215,7 @@ class EmptyState extends StatelessWidget {
 }
 
 /// 搜索输入框
+@Deprecated('Use ImTextField with prefix icon instead')
 class SearchInput extends StatelessWidget {
   const SearchInput({
     super.key,
@@ -246,6 +250,7 @@ class SearchInput extends StatelessWidget {
 }
 
 /// 确认对话框
+@Deprecated('Use ImDialog instead')
 class ConfirmDialog extends StatelessWidget {
   const ConfirmDialog({
     super.key,
