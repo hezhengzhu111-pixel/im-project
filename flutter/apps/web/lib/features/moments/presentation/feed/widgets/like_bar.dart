@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import '../moments_interactions_provider.dart';
 
 class LikeBar extends ConsumerStatefulWidget {
@@ -50,7 +51,7 @@ class _LikeBarState extends ConsumerState<LikeBar> {
               spacing: 2,
               children: interactions.likes.map((like) {
                 return Text(
-                  '${like.userNickname ?? like.userName ?? "用户"}${like != interactions.likes.last ? "," : ""}',
+                  '${like.userNickname ?? like.userName ?? AppLocalizations.of(context)!.momentsUserFallback}${like != interactions.likes.last ? "," : ""}',
                   style: TextStyle(
                     fontSize: 14,
                     color: theme.colorScheme.primary,
