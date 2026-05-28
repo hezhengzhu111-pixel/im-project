@@ -7,6 +7,11 @@ import 'im_tokens.dart';
 class ImTheme {
   ImTheme._();
 
+  /// When set to `false`, skips Google Fonts loading and uses the default
+  /// platform text theme. Useful for unit/widget tests that do not need
+  /// real font assets.
+  static bool enableGoogleFonts = true;
+
   static ThemeData light() => _build(Brightness.light);
   static ThemeData dark() => _build(Brightness.dark);
 
@@ -21,7 +26,9 @@ class ImTheme {
     final baseTextTheme = isLight
         ? ThemeData.light().textTheme
         : ThemeData.dark().textTheme;
-    final textTheme = GoogleFonts.notoSansScTextTheme(baseTextTheme);
+    final textTheme = enableGoogleFonts
+        ? GoogleFonts.notoSansScTextTheme(baseTextTheme)
+        : baseTextTheme;
 
     return ThemeData(
       useMaterial3: true,
