@@ -1,8 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
+import 'package:im_web/features/chat/data/file_api.dart';
 import 'package:im_web/features/chat/presentation/chat_provider.dart';
-
-import '../../helpers/fakes.dart';
 
 void main() {
   group('MessageInput callback mechanism', () {
@@ -18,23 +17,48 @@ void main() {
     });
 
     test('onSendImage callback can be assigned and invoked', () {
-      String? receivedPath;
-      void onSendImage(String path) {
-        receivedPath = path;
+      UploadResult? receivedResult;
+      void onSendImage(UploadResult result) {
+        receivedResult = result;
       }
 
-      onSendImage('/path/to/image.png');
-      expect(receivedPath, '/path/to/image.png');
+      final uploadResult = UploadResult.fromJson({
+        'url': 'https://example.com/image.png',
+        'name': 'image.png',
+        'size': 1024,
+      });
+      onSendImage(uploadResult);
+      expect(receivedResult?.url, 'https://example.com/image.png');
     });
 
     test('onSendFile callback can be assigned and invoked', () {
-      String? receivedPath;
-      void onSendFile(String path) {
-        receivedPath = path;
+      UploadResult? receivedResult;
+      void onSendFile(UploadResult result) {
+        receivedResult = result;
       }
 
-      onSendFile('/path/to/file.pdf');
-      expect(receivedPath, '/path/to/file.pdf');
+      final uploadResult = UploadResult.fromJson({
+        'url': 'https://example.com/file.pdf',
+        'name': 'file.pdf',
+        'size': 2048,
+      });
+      onSendFile(uploadResult);
+      expect(receivedResult?.url, 'https://example.com/file.pdf');
+    });
+
+    test('onSendVoice callback can be assigned and invoked', () {
+      UploadResult? receivedResult;
+      void onSendVoice(UploadResult result) {
+        receivedResult = result;
+      }
+
+      final uploadResult = UploadResult.fromJson({
+        'url': 'https://example.com/audio.mp3',
+        'name': 'audio.mp3',
+        'size': 4096,
+      });
+      onSendVoice(uploadResult);
+      expect(receivedResult?.url, 'https://example.com/audio.mp3');
     });
 
     test('onSend callback ignores empty text', () {
