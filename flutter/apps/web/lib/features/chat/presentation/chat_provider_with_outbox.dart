@@ -440,7 +440,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     } catch (_) {}
 
     if (e2eeStatus == 'negotiating') {
-      state = state.copyWith(error: '端到端加密协商尚未完成，请等待对方确认。');
+      state = state.copyWith(error: 'e2ee_not_ready');
       return null;
     }
     if (e2eeStatus == 'failed') {
