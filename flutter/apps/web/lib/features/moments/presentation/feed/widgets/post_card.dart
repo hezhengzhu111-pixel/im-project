@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:im_core/core.dart';
+import 'package:im_web/core/utils/time_formatter.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import 'media_grid.dart';
 import 'like_bar.dart';
 import 'comment_section.dart';
@@ -31,6 +33,7 @@ class _PostCardState extends State<PostCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final loc = AppLocalizations.of(context)!;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -63,7 +66,7 @@ class _PostCardState extends State<PostCard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.post.userNickname ?? widget.post.post.userName ?? '用户',
+                        widget.post.userNickname ?? widget.post.post.userName ?? loc.momentsUserFallback,
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       Text(
@@ -168,7 +171,7 @@ class _PostCardState extends State<PostCard> {
             child: Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                '全文',
+                loc.momentsShowFull,
                 style: TextStyle(
                   fontSize: 14,
                   color: theme.colorScheme.onSurfaceVariant,
@@ -313,17 +316,6 @@ class _PostCardState extends State<PostCard> {
   }
 
   String _formatTime(String time) {
-    try {
-      final dt = DateTime.parse(time);
-      final now = DateTime.now();
-      final diff = now.difference(dt);
-      if (diff.inMinutes < 1) return '刚刚';
-      if (diff.inHours < 1) return '${diff.inMinutes}分钟前';
-      if (diff.inDays < 1) return '${diff.inHours}小时前';
-      if (diff.inDays < 30) return '${diff.inDays}天前';
-      return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return time;
-    }
+    return formatRelativeTime(context, time);
   }
 }
