@@ -1,46 +1,48 @@
+import 'package:im_web/l10n/app_localizations.dart';
+
 class Validators {
-  static String? validateUsername(String? value) {
+  static String? validateUsername(String? value, AppLocalizations loc) {
     if (value == null || value.isEmpty) {
-      return '请输入用户名';
+      return loc.validatorUsernameRequired;
     }
     if (value.length < 3 || value.length > 20) {
-      return '用户名长度在 3 到 20 个字符';
+      return loc.validatorUsernameLength;
     }
     if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value)) {
-      return '用户名只能包含字母、数字和下划线';
+      return loc.validatorUsernameFormat;
     }
     return null;
   }
 
-  static String? validateEmail(String? value) {
+  static String? validateEmail(String? value, AppLocalizations loc) {
     if (value == null || value.isEmpty) {
-      return '请输入邮箱';
+      return loc.validatorEmailRequired;
     }
     if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-      return '请输入正确的邮箱格式';
+      return loc.validatorEmailFormat;
     }
     return null;
   }
 
-  static String? validatePassword(String? value) {
+  static String? validatePassword(String? value, AppLocalizations loc) {
     if (value == null || value.isEmpty) {
-      return '请输入密码';
+      return loc.validatorPasswordRequired;
     }
     if (value.length < 8 || value.length > 64) {
-      return '密码长度在 8 到 64 个字符';
+      return loc.validatorPasswordLength;
     }
     if (!RegExp(r'^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]+$').hasMatch(value)) {
-      return '密码必须包含字母和数字';
+      return loc.validatorPasswordFormat;
     }
     return null;
   }
 
-  static String? validateConfirmPassword(String? value, String password) {
+  static String? validateConfirmPassword(String? value, String password, AppLocalizations loc) {
     if (value == null || value.isEmpty) {
-      return '请确认密码';
+      return loc.validatorConfirmPasswordRequired;
     }
     if (value != password) {
-      return '两次输入密码不一致';
+      return loc.validatorPasswordMismatch;
     }
     return null;
   }
