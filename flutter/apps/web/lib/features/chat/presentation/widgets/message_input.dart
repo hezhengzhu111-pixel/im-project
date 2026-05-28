@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import 'package:im_web/l10n/app_localizations.dart';
+import 'package:im_web/features/chat/presentation/widgets/network_status_banner.dart';
+import 'package:im_web/features/chat/data/file_api.dart';
+import 'package:im_web/features/chat/data/file_providers.dart';
+import 'package:im_web/core/di/platform_providers.dart';
 
 class MessageInput extends ConsumerStatefulWidget {
   const MessageInput({
@@ -9,12 +14,16 @@ class MessageInput extends ConsumerStatefulWidget {
     required this.onSendImage,
     required this.onSendFile,
     required this.onSendVoice,
+    this.focusNode,
+    this.onFocusChanged,
   });
 
   final void Function(String text) onSend;
   final void Function(UploadResult result) onSendImage;
   final void Function(UploadResult result) onSendFile;
   final void Function(UploadResult result) onSendVoice;
+  final FocusNode? focusNode;
+  final ValueChanged<bool>? onFocusChanged;
 
   @override
   ConsumerState<MessageInput> createState() => _MessageInputState();
@@ -23,9 +32,30 @@ class MessageInput extends ConsumerStatefulWidget {
 class _MessageInputState extends ConsumerState<MessageInput> {
   final _controller = TextEditingController();
   bool _isUploading = false;
+  bool _isRecording = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.focusNode?.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    widget.onFocusChanged?.call(widget.focusNode!.hasFocus);
+  }
+
+  @override
+  void didUpdateWidget(MessageInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode != widget.focusNode) {
+      oldWidget.focusNode?.removeListener(_onFocusChange);
+      widget.focusNode?.addListener(_onFocusChange);
+    }
+  }
 
   @override
   void dispose() {
+    widget.focusNode?.removeListener(_onFocusChange);
     _controller.dispose();
     super.dispose();
   }
@@ -54,7 +84,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     final startResult = await audioRecorder.startRecording();
     if (startResult is Failure) return;
 
-    // 实际实现中，应该由用户通过 UI 交互（如长按按钮）来控制录音时长
     _showRecordingUI();
   }
 
@@ -96,50 +125,103 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     }
   }
 
+  void _showAttachmentMenu() {
+    final loc = AppLocalizations.of(context)!;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.image),
+              title: Text(loc.chatImage),
+              onTap: () {
+                Navigator.pop(context);
+                _pickAndSendImage();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.attach_file),
+              title: Text(loc.chatFile),
+              onTap: () {
+                Navigator.pop(context);
+                _pickAndSendFile();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (_isUploading)
-          const LinearProgressIndicator(),
-        TextField(
-          controller: _controller,
-          decoration: InputDecoration(
-            hintText: '输入消息...',
-            suffixIcon: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.image),
-                  onPressed: _isUploading ? null : _pickAndSendImage,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.attach_file),
-                  onPressed: _isUploading ? null : _pickAndSendFile,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.mic),
-                  onPressed: _isUploading ? null : _recordAndSendVoice,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.send),
-                  onPressed: _isUploading
-                      ? null
-                      : () {
-                          widget.onSend(_controller.text);
-                          _controller.clear();
-                        },
-                ),
-              ],
+    final loc = AppLocalizations.of(context)!;
+
+    return Container(
+      padding: const EdgeInsets.all(8.0),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+        ),
+      ),
+      child: Row(
+        children: [
+          const OutboxIndicator(),
+          Semantics(
+            label: loc.a11yAddAttachment,
+            button: true,
+            child: IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              onPressed: _showAttachmentMenu,
+              tooltip: loc.a11yAddAttachment,
             ),
           ),
-          onSubmitted: (text) {
-            widget.onSend(text);
-            _controller.clear();
-          },
-        ),
-      ],
+          Semantics(
+            label: loc.a11yVoiceInput,
+            button: true,
+            child: IconButton(
+              icon: Icon(_isRecording ? Icons.stop : Icons.mic),
+              onPressed: () {
+                setState(() => _isRecording = !_isRecording);
+              },
+              tooltip: loc.a11yVoiceInput,
+              color: _isRecording ? Colors.red : null,
+            ),
+          ),
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              focusNode: widget.focusNode,
+              decoration: InputDecoration(
+                hintText: loc.chatInputHint,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              minLines: 1,
+              maxLines: 4,
+              onSubmitted: (_) => _handleSend(),
+            ),
+          ),
+          Semantics(
+            label: loc.a11ySendMessage,
+            button: true,
+            child: IconButton(
+              icon: const Icon(Icons.send),
+              onPressed: _handleSend,
+              tooltip: loc.a11ySendMessage,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  void _handleSend() {
+    widget.onSend(_controller.text);
+    _controller.clear();
   }
 }
