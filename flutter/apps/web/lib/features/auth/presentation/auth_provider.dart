@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import '../../../core/logging/app_logger.dart';
 
 class AuthState {
   const AuthState({
@@ -155,7 +156,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         return;
       }
     } catch (e) {
-      print('WS ticket fetch failed, connecting without ticket: $e');
+      AppLogger.instance.error('WS ticket fetch failed, connecting without ticket', e);
     }
     // Fallback: connect without ticket (development mode)
     _wsClient.connect(_wsClient.wsBaseUrl);
