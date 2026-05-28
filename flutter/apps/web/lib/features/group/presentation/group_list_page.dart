@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
-import 'package:im_web/features/chat/presentation/chat_provider.dart';
+import 'package:im_web/features/chat/presentation/chat_providers.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'widgets/group_tile.dart';
 

@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:idb_shim/idb_client_memory.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/features/chat/data/message_api.dart';
+import 'package:im_web/features/chat/data/message_outbox.dart';
 import 'package:im_web/features/chat/data/message_pipeline.dart';
-import 'package:im_web/features/chat/presentation/chat_provider.dart';
+import 'package:im_web/features/chat/presentation/chat_provider_with_outbox.dart';
+import 'package:im_web/features/chat/presentation/chat_state.dart';
 import 'package:im_web/features/e2ee/data/e2ee_manager.dart';
 import 'package:im_web/features/e2ee/data/e2ee_meta_store.dart';
 import 'package:im_web/features/e2ee/data/e2ee_api.dart';
@@ -11,6 +14,7 @@ import 'package:im_web/features/e2ee/data/e2ee_key_store.dart';
 import 'package:im_web/features/e2ee/data/e2ee_session_store.dart';
 import 'package:im_web/adapters/web_e2ee_adapter.dart';
 import 'package:im_web/adapters/services/noop_analytics_adapter.dart';
+import 'package:im_web/core/network/network_status_provider.dart';
 
 import '../../helpers/fakes.dart';
 
@@ -68,18 +72,113 @@ class MockE2eeMetaStore extends E2eeMetaStore {
   MockE2eeMetaStore() : super(FakeSecureStoragePort());
 }
 
+/// Minimal fake MessageOutbox for testing (no DB dependency)
+class FakeMessageOutbox extends MessageOutbox {
+  FakeMessageOutbox()
+      : super(
+          messageApi: MessageApi(FakeHttpClientPort()),
+          idbFactory: newIdbFactoryMemory(),
+          isOnline: () => true,
+        );
+
+  final _eventsController = StreamController<OutboxEvent>.broadcast();
+
+  @override
+  Stream<OutboxEvent> get events => _eventsController.stream;
+
+  @override
+  Future<int> getPendingCount() async => 0;
+
+  @override
+  Future<int> getFailedCount() async => 0;
+
+  @override
+  Future<void> retryAllFailed() async {}
+
+  @override
+  Future<OutboxMessage> enqueue({
+    required String sessionKey,
+    required String receiverId,
+    required String content,
+    String messageType = 'text',
+    required String clientMessageId,
+    bool isGroupChat = false,
+    String? groupId,
+    bool isEncrypted = false,
+    Map<String, dynamic>? e2eeEnvelope,
+    String? e2eeDeviceId,
+  }) async {
+    final message = OutboxMessage(
+      id: 'outbox_test_$clientMessageId',
+      sessionKey: sessionKey,
+      receiverId: receiverId,
+      content: content,
+      messageType: messageType,
+      clientMessageId: clientMessageId,
+      isGroupChat: isGroupChat,
+      groupId: groupId,
+      status: OutboxMessageStatus.pending,
+      createdAt: DateTime.now(),
+      isEncrypted: isEncrypted,
+      e2eeEnvelope: e2eeEnvelope,
+      e2eeDeviceId: e2eeDeviceId,
+    );
+    _eventsController.add(OutboxEvent(
+      type: OutboxEventType.messageAdded,
+      message: message,
+    ));
+    return message;
+  }
+
+  @override
+  void dispose() {
+    _eventsController.close();
+    super.dispose();
+  }
+}
+
+/// Fake NetworkStatusDataSource that always reports online
+class _FakeNetworkDataSource implements NetworkStatusDataSource {
+  final _onlineController = StreamController<void>.broadcast();
+  final _offlineController = StreamController<void>.broadcast();
+
+  @override
+  bool get isNavigatorOnline => true;
+
+  @override
+  Stream<void> get onOnline => _onlineController.stream;
+
+  @override
+  Stream<void> get onOffline => _offlineController.stream;
+
+  @override
+  Future<bool> checkServerReachable(String url) async => true;
+
+  void dispose() {
+    _onlineController.close();
+    _offlineController.close();
+  }
+}
+
+/// Minimal fake NetworkStatusNotifier for testing
+class FakeNetworkStatusNotifier extends NetworkStatusNotifier {
+  FakeNetworkStatusNotifier() : super(dataSource: _FakeNetworkDataSource());
+}
+
 void main() {
   late TestMessageApi mockApi;
-  late ChatNotifier notifier;
+  late ChatNotifierWithOutbox notifier;
   late FakeWsClientPort mockWsClient;
   late MockE2eeMetaStore mockE2eeMetaStore;
+  late FakeMessageOutbox fakeOutbox;
+  late FakeNetworkStatusNotifier fakeNetwork;
 
   setUp(() {
     mockApi = TestMessageApi();
     mockWsClient = FakeWsClientPort();
     mockE2eeMetaStore = MockE2eeMetaStore();
-    // Create a minimal E2eeManager for testing.
-    // In plaintext mode, no E2EE methods are actually called.
+    fakeOutbox = FakeMessageOutbox();
+    fakeNetwork = FakeNetworkStatusNotifier();
     final e2eeManager = E2eeManager(
       adapter: WebE2eeAdapter(),
       api: E2eeApi(FakeHttpClientPort()),
@@ -88,14 +187,17 @@ void main() {
       metaStore: mockE2eeMetaStore,
       currentUserId: 'test-user-id',
     );
-    notifier = ChatNotifier(
+    notifier = ChatNotifierWithOutbox(
       mockApi, MessagePipeline(), mockWsClient, () => 'test-user-id',
-      e2eeManager, mockE2eeMetaStore, NoopAnalyticsAdapter(),
+      e2eeManager, mockE2eeMetaStore, fakeOutbox, fakeNetwork,
+      NoopAnalyticsAdapter(),
     );
   });
 
   tearDown(() {
     mockWsClient.dispose();
+    fakeOutbox.dispose();
+    fakeNetwork.dispose();
   });
 
   Message makeMessage(String id, {String? content}) {
@@ -155,7 +257,7 @@ void main() {
     });
   });
 
-  group('ChatNotifier - loadSessions', () {
+  group('ChatNotifierWithOutbox - loadSessions', () {
     test('loads sessions successfully', () async {
       mockApi.conversationsResponse = [makeSession('s1', name: 'Alice'), makeSession('s2', name: 'Bob')];
       await notifier.loadSessions();
@@ -172,14 +274,14 @@ void main() {
     });
   });
 
-  group('ChatNotifier - setActiveSession', () {
+  group('ChatNotifierWithOutbox - setActiveSession', () {
     test('sets active session id', () {
       notifier.setActiveSession('session-1');
       expect(notifier.state.activeSessionId, 'session-1');
     });
   });
 
-  group('ChatNotifier - loadMessages', () {
+  group('ChatNotifierWithOutbox - loadMessages', () {
     test('loads messages for a session', () async {
       mockApi.privateHistoryResponse = [makeMessage('m1'), makeMessage('m2')];
       await notifier.loadMessages('session-1');
@@ -193,7 +295,7 @@ void main() {
     });
   });
 
-  group('ChatNotifier - addMessage', () {
+  group('ChatNotifierWithOutbox - addMessage', () {
     test('adds message to session', () {
       notifier.addMessage('session-1', makeMessage('m1'));
       expect(notifier.state.messages['session-1']!.length, 1);
@@ -207,7 +309,7 @@ void main() {
     });
   });
 
-  group('ChatNotifier - sendMessage', () {
+  group('ChatNotifierWithOutbox - sendMessage', () {
     test('sends message and adds to session', () async {
       mockApi.sendPrivateMessageResponse = makeMessage('m1', content: 'Hello!');
       final result = await notifier.sendMessage('u2', 'Hello!');
@@ -223,7 +325,7 @@ void main() {
     });
   });
 
-  group('ChatNotifier - markRead', () {
+  group('ChatNotifierWithOutbox - markRead', () {
     test('calls markRead on the API', () async {
       await notifier.markRead('conv-1');
       expect(mockApi.markReadCallCount, 1);
@@ -232,13 +334,12 @@ void main() {
 
     test('does not throw on failure', () async {
       mockApi.errorToThrow = Exception('Mark read failed');
-      // Should not throw
       await notifier.markRead('conv-1');
       expect(mockApi.markReadCallCount, 1);
     });
   });
 
-  group('ChatNotifier - additional edge cases', () {
+  group('ChatNotifierWithOutbox - additional edge cases', () {
     test('loadSessions clears previous error', () async {
       mockApi.errorToThrow = Exception('First error');
       await notifier.loadSessions();

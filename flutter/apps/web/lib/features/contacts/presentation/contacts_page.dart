@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_core/core.dart';
-import '../../chat/presentation/chat_provider.dart';
+import '../../chat/presentation/chat_providers.dart';
 import 'contacts_provider.dart';
 
 class ContactsPage extends ConsumerStatefulWidget {
