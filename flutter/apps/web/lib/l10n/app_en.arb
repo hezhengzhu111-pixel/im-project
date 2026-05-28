@@ -187,5 +187,14 @@
   "validatorPasswordLength": "Password must be 8-64 characters",
   "validatorPasswordFormat": "Password must contain letters and numbers",
   "validatorConfirmPasswordRequired": "Please confirm your password",
-  "validatorPasswordMismatch": "Passwords do not match"
+  "validatorPasswordMismatch": "Passwords do not match",
+  "a11yEncryptedMessage": "This message is end-to-end encrypted",
+  "a11yNetworkDisconnected": "Network disconnected",
+  "a11yNetworkConnected": "Network connected",
+  "a11ySettingsProfile": "Personal info",
+  "a11ySettingsAppearance": "Appearance settings",
+  "a11ySettingsNotifications": "Notification settings",
+  "a11ySettingsSecurity": "Security settings",
+  "a11ySettingsStorage": "Storage settings",
+  "a11ySettingsAi": "AI settings"
 }

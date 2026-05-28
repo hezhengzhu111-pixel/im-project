@@ -18,7 +18,10 @@ class SessionTile extends StatelessWidget {
     final theme = Theme.of(context);
     final lastMsg = session.lastMessage;
 
-    return ListTile(
+    return Semantics(
+      label: session.targetName.isNotEmpty ? session.targetName : '会话',
+      button: true,
+      child: ListTile(
       selected: isSelected,
       selectedTileColor: theme.colorScheme.primaryContainer.withAlpha(50),
       leading: CircleAvatar(
@@ -87,6 +90,7 @@ class SessionTile extends StatelessWidget {
         ],
       ),
       onTap: onTap,
+    ),
     );
   }
 

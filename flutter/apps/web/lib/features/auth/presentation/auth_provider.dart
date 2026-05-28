@@ -42,12 +42,13 @@ class AuthState {
 }
 
 class AuthNotifier extends StateNotifier<AuthState> {
-  AuthNotifier(this._repository, this._wsClient, this._httpClient)
+  AuthNotifier(this._repository, this._wsClient, this._httpClient, this._analytics)
       : super(const AuthState());
 
   final AuthRepository _repository;
   final WsClientPort _wsClient;
   final HttpClientPort _httpClient;
+  final AnalyticsPort _analytics;
 
   Future<void> login(String username, String password, {bool rememberMe = false}) async {
     state = state.copyWith(isLoading: true, error: null);
@@ -60,9 +61,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
         isAuthenticated: true,
         rememberMe: rememberMe,
       );
+      _analytics.trackEvent('login_success', {'method': 'password'});
       // Connect WebSocket after successful login
       _connectWs();
     } catch (e) {
+      _analytics.trackEvent('login_failed', {'error_type': 'auth'});
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
@@ -79,13 +82,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
         ),
       );
       state = state.copyWith(isLoading: false);
+      _analytics.trackEvent('register_success');
     } catch (e) {
+      _analytics.trackEvent('register_failed', {'error_type': 'auth'});
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
   Future<void> logout() async {
     _wsClient.disconnect();
+    _analytics.setUserId(null);
     await _repository.logout();
     state = const AuthState();
   }
@@ -102,6 +108,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
           authReady: true,
           permissions: user.permissions ?? [],
         );
+        _analytics.setUserId(user.id);
         _connectWs();
       } else {
         state = const AuthState(authReady: true);

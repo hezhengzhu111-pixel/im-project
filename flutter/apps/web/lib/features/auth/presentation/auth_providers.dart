@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import '../../../core/di/providers.dart';
 import '../../../core/network/network_providers.dart';
 import '../data/auth_repository_impl.dart';
 import 'auth_provider.dart';
@@ -16,6 +17,7 @@ final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
     ref.watch(authRepositoryProvider),
     ref.watch(wsClientProvider),
     ref.watch(httpClientProvider),
+    ref.watch(analyticsProvider),
   );
 });
 

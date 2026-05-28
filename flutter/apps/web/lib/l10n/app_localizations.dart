@@ -1166,24 +1166,6 @@ abstract class AppLocalizations {
   /// **'Voice'**
   String get chatVoice;
 
-  /// No description provided for @a11ySendMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Send message'**
-  String get a11ySendMessage;
-
-  /// No description provided for @a11yAddAttachment.
-  ///
-  /// In en, this message translates to:
-  /// **'Add attachment'**
-  String get a11yAddAttachment;
-
-  /// No description provided for @a11yVoiceInput.
-  ///
-  /// In en, this message translates to:
-  /// **'Voice input'**
-  String get a11yVoiceInput;
-
   /// No description provided for @validatorUsernameRequired.
   ///
   /// In en, this message translates to:
@@ -1243,6 +1225,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Passwords do not match'**
   String get validatorPasswordMismatch;
+
+  /// No description provided for @a11yEncryptedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'This message is end-to-end encrypted'**
+  String get a11yEncryptedMessage;
+
+  /// No description provided for @a11yNetworkDisconnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Network disconnected'**
+  String get a11yNetworkDisconnected;
+
+  /// No description provided for @a11yNetworkConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Network connected'**
+  String get a11yNetworkConnected;
+
+  /// No description provided for @a11ySettingsProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Personal info'**
+  String get a11ySettingsProfile;
+
+  /// No description provided for @a11ySettingsAppearance.
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance settings'**
+  String get a11ySettingsAppearance;
+
+  /// No description provided for @a11ySettingsNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Notification settings'**
+  String get a11ySettingsNotifications;
+
+  /// No description provided for @a11ySettingsSecurity.
+  ///
+  /// In en, this message translates to:
+  /// **'Security settings'**
+  String get a11ySettingsSecurity;
+
+  /// No description provided for @a11ySettingsStorage.
+  ///
+  /// In en, this message translates to:
+  /// **'Storage settings'**
+  String get a11ySettingsStorage;
+
+  /// No description provided for @a11ySettingsAi.
+  ///
+  /// In en, this message translates to:
+  /// **'AI settings'**
+  String get a11ySettingsAi;
 }
 
 class _AppLocalizationsDelegate

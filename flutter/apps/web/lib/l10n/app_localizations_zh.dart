@@ -557,15 +557,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get chatVoice => '语音';
 
   @override
-  String get a11ySendMessage => '发送消息';
-
-  @override
-  String get a11yAddAttachment => '添加附件';
-
-  @override
-  String get a11yVoiceInput => '语音输入';
-
-  @override
   String get validatorUsernameRequired => '请输入用户名';
 
   @override
@@ -594,4 +585,31 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get validatorPasswordMismatch => '两次输入密码不一致';
+
+  @override
+  String get a11yEncryptedMessage => '此消息已端到端加密';
+
+  @override
+  String get a11yNetworkDisconnected => '网络已断开';
+
+  @override
+  String get a11yNetworkConnected => '网络已连接';
+
+  @override
+  String get a11ySettingsProfile => '个人信息';
+
+  @override
+  String get a11ySettingsAppearance => '外观设置';
+
+  @override
+  String get a11ySettingsNotifications => '通知设置';
+
+  @override
+  String get a11ySettingsSecurity => '安全设置';
+
+  @override
+  String get a11ySettingsStorage => '存储设置';
+
+  @override
+  String get a11ySettingsAi => 'AI 设置';
 }

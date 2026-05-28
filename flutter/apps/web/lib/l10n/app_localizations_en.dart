@@ -571,15 +571,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatVoice => 'Voice';
 
   @override
-  String get a11ySendMessage => 'Send message';
-
-  @override
-  String get a11yAddAttachment => 'Add attachment';
-
-  @override
-  String get a11yVoiceInput => 'Voice input';
-
-  @override
   String get validatorUsernameRequired => 'Please enter a username';
 
   @override
@@ -610,4 +601,31 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get validatorPasswordMismatch => 'Passwords do not match';
+
+  @override
+  String get a11yEncryptedMessage => 'This message is end-to-end encrypted';
+
+  @override
+  String get a11yNetworkDisconnected => 'Network disconnected';
+
+  @override
+  String get a11yNetworkConnected => 'Network connected';
+
+  @override
+  String get a11ySettingsProfile => 'Personal info';
+
+  @override
+  String get a11ySettingsAppearance => 'Appearance settings';
+
+  @override
+  String get a11ySettingsNotifications => 'Notification settings';
+
+  @override
+  String get a11ySettingsSecurity => 'Security settings';
+
+  @override
+  String get a11ySettingsStorage => 'Storage settings';
+
+  @override
+  String get a11ySettingsAi => 'AI settings';
 }
