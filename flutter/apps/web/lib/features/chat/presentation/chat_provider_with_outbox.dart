@@ -409,9 +409,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       // Preserve locally-created session that server hasn't returned yet.
       final activeId = state.activeSessionId;
       if (activeId != null && !sessions.any((s) => s.id == activeId)) {
-        final localSession = state.sessions
-            .where((s) => s.id == activeId)
-            .firstOrNull;
+        final localSession =
+            state.sessions.where((s) => s.id == activeId).firstOrNull;
         if (localSession != null) {
           sessions.add(localSession);
         }
@@ -462,7 +461,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   }
 
   Future<Message?> sendMessage(String receiverId, String content,
-      {String messageType = 'text',
+      {String messageType = 'TEXT',
       String? clientMessageId,
       String? mediaUrl,
       String? mediaName,
@@ -580,7 +579,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   }
 
   Future<Message?> sendGroupMessage(String groupId, String content,
-      {String messageType = 'text',
+      {String messageType = 'TEXT',
       String? clientMessageId,
       String? mediaUrl,
       String? mediaName,
@@ -794,7 +793,9 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
 
   Future<void> markRead(String conversationId) async {
     try {
-      await _messageApi.markRead(_normalizeIncomingSessionKey(conversationId));
+      await _messageApi.markRead(_readConversationIdForSessionKey(
+        _normalizeIncomingSessionKey(conversationId),
+      ));
     } catch (_) {}
   }
 
@@ -852,6 +853,23 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     }).firstOrNull;
     if (group != null) return group.id;
     return _sessionKeyForPrivateTarget(sessionKey);
+  }
+
+  String _readConversationIdForSessionKey(String sessionKey) {
+    final session = state.sessions.where((s) => s.id == sessionKey).firstOrNull;
+    if (session != null) {
+      final isGroup =
+          session.type == 'group' || session.conversationType == 'group';
+      if (isGroup) {
+        return 'group_${session.targetId}';
+      }
+      return session.conversationId ?? session.targetId;
+    }
+    if (sessionKey.startsWith('group_')) return sessionKey;
+    if (sessionKey.startsWith('g_')) {
+      return 'group_${_groupIdFromSessionKey(sessionKey)}';
+    }
+    return _privateTargetFromSessionKey(sessionKey);
   }
 
   String _privateSessionKey(String targetId) {

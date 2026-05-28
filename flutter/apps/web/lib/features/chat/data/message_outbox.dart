@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:idb_shim/idb_shim.dart';
-import 'package:im_core/core.dart';
 import '../../../core/logging/app_logger.dart';
 import '../data/message_api.dart';
 
@@ -210,7 +209,7 @@ class MessageOutbox {
     required String sessionKey,
     required String receiverId,
     required String content,
-    String messageType = 'text',
+    String messageType = 'TEXT',
     required String clientMessageId,
     bool isGroupChat = false,
     String? groupId,
@@ -306,8 +305,8 @@ class MessageOutbox {
       }
     });
 
-    results.sort((a, b) =>
-        (a.createdAt ?? DateTime.now()).compareTo(b.createdAt ?? DateTime.now()));
+    results.sort((a, b) => (a.createdAt ?? DateTime.now())
+        .compareTo(b.createdAt ?? DateTime.now()));
 
     return results;
   }
@@ -361,9 +360,8 @@ class MessageOutbox {
     ));
 
     try {
-      Message serverMessage;
       if (message.isEncrypted && message.e2eeEnvelope != null) {
-        serverMessage = await _messageApi.sendPrivateEncrypted(
+        await _messageApi.sendPrivateEncrypted(
           receiverId: message.receiverId,
           clientMessageId: message.clientMessageId,
           messageType: message.messageType,
@@ -371,7 +369,7 @@ class MessageOutbox {
           e2eeDeviceId: message.e2eeDeviceId ?? '',
         );
       } else if (message.isGroupChat) {
-        serverMessage = await _messageApi.sendGroupMessage(
+        await _messageApi.sendGroupMessage(
           SendGroupMessageRequest(
             groupId: message.groupId ?? message.receiverId,
             content: message.content,
@@ -380,7 +378,7 @@ class MessageOutbox {
           ),
         );
       } else {
-        serverMessage = await _messageApi.sendPrivateMessage(
+        await _messageApi.sendPrivateMessage(
           SendPrivateMessageRequest(
             receiverId: message.receiverId,
             content: message.content,

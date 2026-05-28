@@ -341,7 +341,42 @@ void main() {
     test('calls markRead on the API', () async {
       await notifier.markRead('conv-1');
       expect(mockApi.markReadCallCount, 1);
-      expect(mockApi.lastMarkReadId, 'conv-1_test-user-id');
+      expect(mockApi.lastMarkReadId, 'conv-1');
+    });
+
+    test('private session uses conversationId for API markRead', () async {
+      mockApi.conversationsResponse = [
+        const ChatSession(
+          id: 'test-user-id_u2',
+          type: 'private',
+          targetId: 'u2',
+          targetName: 'User 2',
+          unreadCount: 1,
+          conversationId: 'server-conv-u2',
+        ),
+      ];
+      await notifier.loadSessions();
+
+      await notifier.markRead('test-user-id_u2');
+
+      expect(mockApi.lastMarkReadId, 'server-conv-u2');
+    });
+
+    test('group session uses group target id for API markRead', () async {
+      mockApi.conversationsResponse = [
+        const ChatSession(
+          id: 'group_g1',
+          type: 'group',
+          targetId: 'g1',
+          targetName: 'Group 1',
+          unreadCount: 1,
+        ),
+      ];
+      await notifier.loadSessions();
+
+      await notifier.markRead('group_g1');
+
+      expect(mockApi.lastMarkReadId, 'group_g1');
     });
 
     test('does not throw on failure', () async {
@@ -411,7 +446,7 @@ void main() {
 
       expect(json['receiverId'], 'u2');
       expect(json['content'], 'Hello!');
-      expect(json['messageType'], 'text');
+      expect(json['messageType'], 'TEXT');
     });
 
     test('toJson excludes null clientMessageId', () {
@@ -435,12 +470,12 @@ void main() {
       expect(json['clientMessageId'], 'client-1');
     });
 
-    test('default messageType is text', () {
+    test('default messageType is TEXT', () {
       const request = SendPrivateMessageRequest(
         receiverId: 'u2',
         content: 'Hello',
       );
-      expect(request.messageType, 'text');
+      expect(request.messageType, 'TEXT');
     });
   });
 }

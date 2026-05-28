@@ -4,7 +4,7 @@ class SendPrivateMessageRequest {
   const SendPrivateMessageRequest({
     required this.receiverId,
     required this.content,
-    this.messageType = 'text',
+    this.messageType = 'TEXT',
     this.clientMessageId,
     this.mediaUrl,
     this.mediaName,
@@ -40,7 +40,7 @@ class SendGroupMessageRequest {
   const SendGroupMessageRequest({
     required this.groupId,
     required this.content,
-    this.messageType = 'text',
+    this.messageType = 'TEXT',
     this.clientMessageId,
     this.mediaUrl,
     this.mediaName,
@@ -135,7 +135,7 @@ class MessageApi {
   }
 
   Future<void> markRead(String conversationId) async {
-    await _httpClient.put<void>(
+    await _httpClient.post<void>(
       MessageEndpoints.markRead(conversationId),
       fromJson: (_) {},
     );

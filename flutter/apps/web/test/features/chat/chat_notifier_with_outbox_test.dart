@@ -38,6 +38,8 @@ class TestMessageApi extends MessageApi {
   int sendPrivateMessageCallCount = 0;
   int sendGroupMessageCallCount = 0;
   int sendPrivateEncryptedCallCount = 0;
+  int markReadCallCount = 0;
+  String? lastMarkReadConversationId;
 
   SendPrivateMessageRequest? lastSendPrivateRequest;
   SendGroupMessageRequest? lastSendGroupRequest;
@@ -101,7 +103,10 @@ class TestMessageApi extends MessageApi {
   }
 
   @override
-  Future<void> markRead(String conversationId) async {}
+  Future<void> markRead(String conversationId) async {
+    markReadCallCount++;
+    lastMarkReadConversationId = conversationId;
+  }
 
   Message _dummyMessage() {
     return const Message(
@@ -370,7 +375,7 @@ void main() {
       expect(call['sessionKey'], 'user-1_user-2');
       expect(call['receiverId'], 'user-2');
       expect(call['content'], 'Hello');
-      expect(call['messageType'], 'text');
+      expect(call['messageType'], 'TEXT');
       expect(call['clientMessageId'], isNotNull);
       expect(call['isGroupChat'], false);
       expect(call['isEncrypted'], false);
@@ -410,7 +415,7 @@ void main() {
       expect(call['sessionKey'], 'group_group-1');
       expect(call['receiverId'], 'group-1');
       expect(call['content'], 'Hello Group');
-      expect(call['messageType'], 'text');
+      expect(call['messageType'], 'TEXT');
       expect(call['isGroupChat'], true);
       expect(call['groupId'], 'group-1');
     });
@@ -600,7 +605,7 @@ void main() {
       expect(testApi.sendPrivateEncryptedCallCount, 1);
       expect(testApi.lastEncryptedArgs, isNotNull);
       expect(testApi.lastEncryptedArgs!['receiverId'], 'user-2');
-      expect(testApi.lastEncryptedArgs!['messageType'], 'text');
+      expect(testApi.lastEncryptedArgs!['messageType'], 'TEXT');
       expect(testApi.lastEncryptedArgs!['e2eeEnvelope'], isA<Map>());
       expect(testApi.lastEncryptedArgs!['e2eeDeviceId'], isNotEmpty);
     });
@@ -728,7 +733,8 @@ void main() {
   // =========================================================================
 
   group('session key routing', () {
-    test('private chat: message routes to session by id even when id != targetId',
+    test(
+        'private chat: message routes to session by id even when id != targetId',
         () async {
       notifier = createNotifier();
 
