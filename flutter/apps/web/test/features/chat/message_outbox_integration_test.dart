@@ -9,8 +9,14 @@ import 'package:mockito/mockito.dart';
 class MockMessageApi extends Mock implements MessageApi {
   MockMessageApi();
 
+  /// Optional custom response to return from sendPrivateMessage.
+  Future<Message>? sendPrivateMessageResponse;
+
   @override
   Future<Message> sendPrivateMessage(SendPrivateMessageRequest request) async {
+    if (sendPrivateMessageResponse != null) {
+      return sendPrivateMessageResponse!;
+    }
     return super.noSuchMethod(
       Invocation.method(#sendPrivateMessage, [request]),
       returnValue: Future.value(_createDummyMessage()),
@@ -124,6 +130,47 @@ void main() {
       );
 
       expect(await outbox.getPendingCount(), 2);
+    });
+
+    test('retry succeeds when API call succeeds', () async {
+      outbox = MessageOutbox(
+        messageApi: mockMessageApi,
+        idbFactory: idbFactorySembastMemory,
+        isOnline: () => true,
+      );
+      await outbox.initialize();
+
+      // Enqueue a message
+      await outbox.enqueue(
+        sessionKey: 'session-1',
+        receiverId: 'user-2',
+        content: 'Test message',
+        clientMessageId: 'client-1',
+      );
+
+      // Mock successful API response
+      final serverMessage = Message(
+        id: 'server-1',
+        senderId: 'user-1',
+        isGroupChat: false,
+        messageType: 'text',
+        content: 'Test message',
+        sendTime: DateTime.now().toIso8601String(),
+        status: 'SENT',
+        clientMessageId: 'client-1',
+      );
+
+      mockMessageApi.sendPrivateMessageResponse = Future.value(serverMessage);
+
+      // Trigger retry
+      outbox.onNetworkAvailable();
+
+      // Wait for async operations to complete
+      await Future.delayed(Duration(seconds: 1));
+
+      // Verify message was sent and removed from outbox
+      expect(await outbox.getPendingCount(), 0);
+      expect(await outbox.getFailedCount(), 0);
     });
   });
 }
