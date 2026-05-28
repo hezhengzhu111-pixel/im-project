@@ -206,10 +206,16 @@ void main() {
         onSendFile: (_) => uploadCalled = true,
       ));
 
-      // MockFilePickerAdapter 默认返回 OperationCancelled
-      final result = await mockFilePicker.pickFile();
-      expect(result, isA<Failure>());
-      expect((result as Failure).error, isA<OperationCancelled>());
+      // Open attachment menu
+      await tester.tap(find.byIcon(Icons.add_circle_outline));
+      await tester.pumpAndSettle();
+
+      // Tap the file option
+      await tester.tap(find.text('File'));
+      await tester.pumpAndSettle();
+
+      // MockFilePickerAdapter returns OperationCancelled by default,
+      // so onSendFile should NOT have been called
       expect(uploadCalled, false);
     });
   });

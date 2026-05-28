@@ -56,11 +56,10 @@ void main() {
       await tester.tap(checkbox);
       await tester.pump();
 
-      // Username value should be preserved after rebuild
-      final rebuiltField = find.byType(TextFormField).first;
-      final usernameTextFormField =
-          tester.widget<TextFormField>(rebuiltField);
-      expect(usernameTextFormField.controller?.text, 'testuser');
+      // The text should still be visible in the field after rebuild.
+      // ValidatedFormField uses initialValue, not an explicit controller,
+      // so we verify the text is present in the rendered widget.
+      expect(find.text('testuser'), findsOneWidget);
     });
 
     testWidgets('dispose does not throw LateInitializationError',
