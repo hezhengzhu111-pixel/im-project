@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 
+export 'breakpoint.dart';
+export 'breakpoint_scope.dart';
+export 'responsive_context.dart';
+export 'adaptive_pane.dart';
+export 'responsive_scaffold.dart';
+
 /// 侧边栏导航布局
 class SideNavLayout extends StatelessWidget {
   const SideNavLayout({
@@ -119,39 +125,6 @@ class MainContentLayout extends StatelessWidget {
         // 主内容
         Expanded(child: content),
       ],
-    );
-  }
-}
-
-/// 响应式布局
-class ResponsiveLayout extends StatelessWidget {
-  const ResponsiveLayout({
-    super.key,
-    required this.mobile,
-    this.tablet,
-    this.desktop,
-    this.breakpointTablet = 768,
-    this.breakpointDesktop = 1200,
-  });
-
-  final Widget mobile;
-  final Widget? tablet;
-  final Widget? desktop;
-  final double breakpointTablet;
-  final double breakpointDesktop;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth >= breakpointDesktop && desktop != null) {
-          return desktop!;
-        } else if (constraints.maxWidth >= breakpointTablet && tablet != null) {
-          return tablet!;
-        } else {
-          return mobile;
-        }
-      },
     );
   }
 }
