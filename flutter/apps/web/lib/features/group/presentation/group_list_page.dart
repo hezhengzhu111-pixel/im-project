@@ -40,7 +40,7 @@ class _GroupListPageState extends ConsumerState<GroupListPage> {
               context: context,
               builder: (_) => const JoinGroupDialog(),
             ),
-            tooltip: '加入群聊',
+            tooltip: loc.joinGroupTooltip,
           ),
           IconButton(
             icon: const Icon(Icons.add),

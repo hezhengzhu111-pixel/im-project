@@ -191,6 +191,24 @@ abstract class AppLocalizations {
   /// **'Search contacts'**
   String get contactsSearch;
 
+  /// No description provided for @contactsSortByName.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get contactsSortByName;
+
+  /// No description provided for @contactsSortByOnline.
+  ///
+  /// In en, this message translates to:
+  /// **'Online status'**
+  String get contactsSortByOnline;
+
+  /// No description provided for @contactsSortByTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Time added'**
+  String get contactsSortByTime;
+
   /// No description provided for @contactsNoFriends.
   ///
   /// In en, this message translates to:
@@ -1397,6 +1415,54 @@ abstract class AppLocalizations {
   /// **'Add'**
   String get addFriendButton;
 
+  /// No description provided for @addFriendTypeUsername.
+  ///
+  /// In en, this message translates to:
+  /// **'Username'**
+  String get addFriendTypeUsername;
+
+  /// No description provided for @addFriendTypeEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get addFriendTypeEmail;
+
+  /// No description provided for @addFriendTypePhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone'**
+  String get addFriendTypePhone;
+
+  /// No description provided for @addFriendSearchByEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Search by email'**
+  String get addFriendSearchByEmail;
+
+  /// No description provided for @addFriendSearchByPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Search by phone number'**
+  String get addFriendSearchByPhone;
+
+  /// No description provided for @addFriendVerificationHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a verification message (optional)'**
+  String get addFriendVerificationHint;
+
+  /// No description provided for @addFriendRequestDuplicate.
+  ///
+  /// In en, this message translates to:
+  /// **'A pending friend request already exists, synced to request list'**
+  String get addFriendRequestDuplicate;
+
+  /// No description provided for @addFriendAlreadyFriend.
+  ///
+  /// In en, this message translates to:
+  /// **'Already friends'**
+  String get addFriendAlreadyFriend;
+
   /// No description provided for @groupCreateTooltip.
   ///
   /// In en, this message translates to:
@@ -2152,6 +2218,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No earlier messages'**
   String get chatNoMoreHistory;
+
+  /// No description provided for @joinGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Join Group'**
+  String get joinGroup;
+
+  /// No description provided for @joinGroupSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search group name...'**
+  String get joinGroupSearchHint;
+
+  /// No description provided for @joinGroupNoResults.
+  ///
+  /// In en, this message translates to:
+  /// **'No matching groups found'**
+  String get joinGroupNoResults;
+
+  /// No description provided for @joinGroupInputHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter keywords to search groups'**
+  String get joinGroupInputHint;
+
+  /// No description provided for @joinGroupSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Joined {name}'**
+  String joinGroupSuccess(Object name);
+
+  /// No description provided for @joinGroupError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to join, please try again'**
+  String get joinGroupError;
+
+  /// No description provided for @joinGroupMembers.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} members'**
+  String joinGroupMembers(Object count);
+
+  /// No description provided for @joinGroupTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Join Group'**
+  String get joinGroupTooltip;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

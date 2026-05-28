@@ -55,6 +55,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactsSearch => 'Search contacts';
 
   @override
+  String get contactsSortByName => 'Name';
+
+  @override
+  String get contactsSortByOnline => 'Online status';
+
+  @override
+  String get contactsSortByTime => 'Time added';
+
+  @override
   String get contactsNoFriends => 'No friends yet';
 
   @override
@@ -678,6 +687,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get addFriendButton => 'Add';
 
   @override
+  String get addFriendTypeUsername => 'Username';
+
+  @override
+  String get addFriendTypeEmail => 'Email';
+
+  @override
+  String get addFriendTypePhone => 'Phone';
+
+  @override
+  String get addFriendSearchByEmail => 'Search by email';
+
+  @override
+  String get addFriendSearchByPhone => 'Search by phone number';
+
+  @override
+  String get addFriendVerificationHint => 'Enter a verification message (optional)';
+
+  @override
+  String get addFriendRequestDuplicate => 'A pending friend request already exists, synced to request list';
+
+  @override
+  String get addFriendAlreadyFriend => 'Already friends';
+
+  @override
   String get groupCreateTooltip => 'Create group';
 
   @override
@@ -1080,4 +1113,32 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatNoMoreHistory => 'No earlier messages';
+
+  @override
+  String get joinGroup => 'Join Group';
+
+  @override
+  String get joinGroupSearchHint => 'Search group name...';
+
+  @override
+  String get joinGroupNoResults => 'No matching groups found';
+
+  @override
+  String get joinGroupInputHint => 'Enter keywords to search groups';
+
+  @override
+  String joinGroupSuccess(Object name) {
+    return 'Joined $name';
+  }
+
+  @override
+  String get joinGroupError => 'Failed to join, please try again';
+
+  @override
+  String joinGroupMembers(Object count) {
+    return '$count members';
+  }
+
+  @override
+  String get joinGroupTooltip => 'Join Group';
 }

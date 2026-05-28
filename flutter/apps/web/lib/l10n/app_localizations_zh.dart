@@ -55,6 +55,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get contactsSearch => '搜索联系人';
 
   @override
+  String get contactsSortByName => '按名称';
+
+  @override
+  String get contactsSortByOnline => '按在线状态';
+
+  @override
+  String get contactsSortByTime => '按添加时间';
+
+  @override
   String get contactsNoFriends => '暂无好友';
 
   @override
@@ -678,6 +687,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String get addFriendButton => '添加';
 
   @override
+  String get addFriendTypeUsername => '用户名';
+
+  @override
+  String get addFriendTypeEmail => '邮箱';
+
+  @override
+  String get addFriendTypePhone => '手机号';
+
+  @override
+  String get addFriendSearchByEmail => '搜索邮箱';
+
+  @override
+  String get addFriendSearchByPhone => '搜索手机号';
+
+  @override
+  String get addFriendVerificationHint => '填写验证消息（选填）';
+
+  @override
+  String get addFriendRequestDuplicate => '已有待处理的好友申请，已同步到好友申请列表';
+
+  @override
+  String get addFriendAlreadyFriend => '已是好友';
+
+  @override
   String get groupCreateTooltip => '创建群组';
 
   @override
@@ -1080,4 +1113,32 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get chatNoMoreHistory => '没有更早的消息了';
+
+  @override
+  String get joinGroup => '加入群聊';
+
+  @override
+  String get joinGroupSearchHint => '搜索群组名称...';
+
+  @override
+  String get joinGroupNoResults => '未找到匹配的群组';
+
+  @override
+  String get joinGroupInputHint => '输入关键词搜索群组';
+
+  @override
+  String joinGroupSuccess(Object name) {
+    return '已加入 $name';
+  }
+
+  @override
+  String get joinGroupError => '加入失败，请重试';
+
+  @override
+  String joinGroupMembers(Object count) {
+    return '$count 成员';
+  }
+
+  @override
+  String get joinGroupTooltip => '加入群聊';
 }
