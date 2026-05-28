@@ -152,6 +152,44 @@ void main() {
       expect(controller.formError, isNull);
     });
 
+    group('formError management', () {
+      test('setFormError sets formError', () {
+        final controller = FormController(_testSchema());
+        controller.setFormError('Test error');
+        expect(controller.formError, 'Test error');
+      });
+
+      test('setFormError notifies listeners', () {
+        final controller = FormController(_testSchema());
+        var notified = false;
+        controller.addListener(() => notified = true);
+        controller.setFormError('Test error');
+        expect(notified, isTrue);
+      });
+
+      test('clearFormError clears formError', () {
+        final controller = FormController(_testSchema());
+        controller.setFormError('Test error');
+        controller.clearFormError();
+        expect(controller.formError, isNull);
+      });
+
+      test('clearFormError notifies listeners', () {
+        final controller = FormController(_testSchema());
+        controller.setFormError('Test error');
+        var notified = false;
+        controller.addListener(() => notified = true);
+        controller.clearFormError();
+        expect(notified, isTrue);
+      });
+
+      test('applyServerErrors uses setFormError internally', () {
+        final controller = FormController(_testSchema());
+        controller.applyServerErrors({}, formError: 'network error');
+        expect(controller.formError, 'network error');
+      });
+    });
+
     test('validate runs async validator when sync passes', () async {
       final completer = Completer<Validator?>();
       final schema = FormSchema(fields: [

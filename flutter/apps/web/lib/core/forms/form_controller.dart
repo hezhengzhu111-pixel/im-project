@@ -53,6 +53,16 @@ class FormController extends ChangeNotifier {
     }
   }
 
+  void setFormError(String? error) {
+    _formError = error;
+    notifyListeners();
+  }
+
+  void clearFormError() {
+    _formError = null;
+    notifyListeners();
+  }
+
   void applyServerErrors(Map<String, String> fieldErrors,
       {String? formError}) {
     for (final entry in fieldErrors.entries) {
