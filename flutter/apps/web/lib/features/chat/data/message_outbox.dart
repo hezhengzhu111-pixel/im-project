@@ -158,16 +158,13 @@ class MessageOutbox {
     required MessageApi messageApi,
     required IdbFactory idbFactory,
     required bool Function() isOnline,
-    void Function()? onNetworkRestored,
   })  : _messageApi = messageApi,
         _idbFactory = idbFactory,
-        _isOnline = isOnline,
-        _onNetworkRestored = onNetworkRestored;
+        _isOnline = isOnline;
 
   final MessageApi _messageApi;
   final IdbFactory _idbFactory;
   final bool Function() _isOnline;
-  final void Function()? _onNetworkRestored;
 
   static const _dbName = 'im_outbox';
   static const _storeName = 'messages';
