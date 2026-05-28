@@ -13,3 +13,23 @@ scripts:
     run: melos exec -- flutter test
   analyze:
     run: melos exec -- flutter analyze
+
+  test:web:
+    run: melos exec --scope="im_web" -- flutter test
+    description: 运行 Flutter Web 单元测试和 widget 测试
+
+  analyze:web:
+    run: melos exec --scope="im_web" -- flutter analyze
+    description: 分析 Flutter Web 代码质量
+
+  coverage:web:
+    run: melos exec --scope="im_web" -- flutter test --coverage
+    description: 生成 Flutter Web 测试覆盖率报告（lcov）
+
+  test:integration:
+    run: melos exec --scope="im_web" -- flutter test integration_test/
+    description: 运行 Flutter Web 整合测试
+
+  format:check:
+    run: melos exec -- dart format --set-exit-if-changed .
+    description: 检查代码格式
