@@ -59,7 +59,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final AnalyticsPort _analytics;
 
   Future<void> login(String username, String password, {bool rememberMe = false}) async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true, error: null, errorCode: null);
     try {
       final response = await _repository.login(
         LoginRequest(username: username, password: password),
@@ -83,7 +83,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> register(String username, String email, String password) async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true, error: null, errorCode: null);
     try {
       await _repository.register(
         RegisterRequest(
@@ -166,7 +166,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     if (msg.contains('429') || msg.contains('too many')) {
       return AuthErrorCode.tooManyRequests;
     }
-    if (msg.contains('500') || msg.contains('502') || msg.contains('503') || msg.contains('server')) {
+    if (RegExp(r'5\d{2}').hasMatch(msg) || msg.contains('server')) {
       return AuthErrorCode.serverError;
     }
     if (msg.contains('network') || msg.contains('connection') || msg.contains('socket')) {
