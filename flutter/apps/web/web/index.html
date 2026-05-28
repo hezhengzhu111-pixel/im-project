@@ -120,6 +120,19 @@
     .offline-banner.visible {
       transform: translateY(0);
     }
+
+    @media (prefers-color-scheme: dark) {
+      .loading-indicator {
+        background: #1a1a2e;
+      }
+      .loading-text {
+        color: #aaa;
+      }
+      .loading-spinner {
+        border-color: #333;
+        border-top-color: #667eea;
+      }
+    }
   </style>
 </head>
 <body>
@@ -151,6 +164,17 @@
         }, 300);
       }
     });
+
+    // Fallback: remove loading indicator after 15s even if Flutter fails
+    setTimeout(() => {
+      const indicator = document.getElementById('loading-indicator');
+      if (indicator) {
+        console.warn('Flutter first-frame event not received; removing loading indicator via timeout.');
+        indicator.style.opacity = '0';
+        indicator.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => indicator.remove(), 300);
+      }
+    }, 15000);
 
     // Register service worker
     if ('serviceWorker' in navigator) {
