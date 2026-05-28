@@ -1033,4 +1033,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get seoAiSettingsDescription => 'Configure AI assistant';
+
+  @override
+  String get authInvalidCredentials => 'Invalid username or password.';
+
+  @override
+  String get authNetworkError => 'Network error. Please check your connection.';
+
+  @override
+  String get authServerError => 'Server error. Please try again later.';
+
+  @override
+  String get authTooManyRequests => 'Too many attempts. Please try again later.';
+
+  @override
+  String get authUnknownError => 'An unexpected error occurred. Please try again.';
+
+  @override
+  String get seoAppTitle => 'IM - Secure Messaging';
+
+  @override
+  String get seoAppDescription => 'IM is a secure messaging app with end-to-end encryption, group chat, and more.';
 }

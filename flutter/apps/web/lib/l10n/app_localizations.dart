@@ -2062,6 +2062,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Configure AI assistant'**
   String get seoAiSettingsDescription;
+
+  /// No description provided for @authInvalidCredentials.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid username or password.'**
+  String get authInvalidCredentials;
+
+  /// No description provided for @authNetworkError.
+  ///
+  /// In en, this message translates to:
+  /// **'Network error. Please check your connection.'**
+  String get authNetworkError;
+
+  /// No description provided for @authServerError.
+  ///
+  /// In en, this message translates to:
+  /// **'Server error. Please try again later.'**
+  String get authServerError;
+
+  /// No description provided for @authTooManyRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many attempts. Please try again later.'**
+  String get authTooManyRequests;
+
+  /// No description provided for @authUnknownError.
+  ///
+  /// In en, this message translates to:
+  /// **'An unexpected error occurred. Please try again.'**
+  String get authUnknownError;
+
+  /// No description provided for @seoAppTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'IM - Secure Messaging'**
+  String get seoAppTitle;
+
+  /// No description provided for @seoAppDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'IM is a secure messaging app with end-to-end encryption, group chat, and more.'**
+  String get seoAppDescription;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

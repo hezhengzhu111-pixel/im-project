@@ -1033,4 +1033,25 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get seoAiSettingsDescription => '配置 AI 助手';
+
+  @override
+  String get authInvalidCredentials => '用户名或密码错误。';
+
+  @override
+  String get authNetworkError => '网络错误，请检查网络连接。';
+
+  @override
+  String get authServerError => '服务器错误，请稍后重试。';
+
+  @override
+  String get authTooManyRequests => '尝试次数过多，请稍后重试。';
+
+  @override
+  String get authUnknownError => '发生未知错误，请重试。';
+
+  @override
+  String get seoAppTitle => 'IM - 安全即时通讯';
+
+  @override
+  String get seoAppDescription => 'IM 是一款安全即时通讯应用，支持端到端加密、群组聊天、朋友圈等功能';
 }
