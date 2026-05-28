@@ -10,3 +10,4 @@ export 'src/im/im.dart';
 export 'src/ws/ws.dart';
 export 'src/utils/utils.dart';
 export 'src/crypto/crypto.dart';
+export 'src/services/analytics_port.dart';
