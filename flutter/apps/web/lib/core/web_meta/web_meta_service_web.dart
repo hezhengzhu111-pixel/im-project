@@ -3,7 +3,7 @@ import 'page_meta.dart';
 import 'web_meta_service.dart';
 
 class WebMetaServiceImpl implements WebMetaService {
-  static const _baseUrl = 'http://localhost:3000';
+  String get _baseUrl => web.window.location.origin;
 
   @override
   void apply(PageMeta meta) {
