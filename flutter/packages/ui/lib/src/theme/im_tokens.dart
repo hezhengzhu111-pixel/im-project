@@ -45,6 +45,13 @@ class ImTokens {
   static const double elevationLg = 4;
   static const double elevationXl = 8;
 
+  // ── Layout Dimensions ──
+  static const double layoutChatSidebarWidth = 320;
+  static const double layoutSettingsAsideWidth = 340;
+  static const double layoutSectionGap = 12;
+  static const double layoutPanelPadding = 16;
+  static const double layoutItemGap = 8;
+
   // ── Breakpoints ──
   static const double breakpointMobile = 600;
   static const double breakpointTablet = 900;
