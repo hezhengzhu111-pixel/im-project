@@ -31,11 +31,16 @@ abstract class PaymentPort {
 }
 
 // map_port.dart
+// Note: packages/core is pure Dart (no Flutter), so UI rendering lives in adapters.
 abstract class MapPort {
-  Widget buildMap(MapConfig config);
   Future<GeoResult> geocode(String address);
   Future<List<GeoResult>> searchPlaces(String query, GeoBounds? bounds);
 }
+
+// Map widget rendering is adapter-specific:
+// Web: GoogleMapsAdapter implements MapWidgetBuilder
+// Desktop: MapBoxAdapter implements MapWidgetBuilder
+typedef MapWidgetBuilder = Widget Function(MapConfig config);
 
 // push_port.dart
 abstract class PushPort {
