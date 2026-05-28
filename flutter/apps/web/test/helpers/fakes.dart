@@ -190,9 +190,9 @@ class FakeWsClientPort implements WsClientPort {
 
 /// In-memory [SecureStoragePort] backed by a [Map].
 class FakeSecureStoragePort implements SecureStoragePort {
-  final Map<String, String?> _storage;
+  final Map<String, String> _storage;
 
-  FakeSecureStoragePort([Map<String, String?>? seed]) : _storage = seed ?? {};
+  FakeSecureStoragePort([Map<String, String>? seed]) : _storage = seed ?? {};
 
   @override
   Future<String?> read(String key) async => _storage[key];
@@ -239,8 +239,11 @@ class FakeStoragePort implements StoragePort {
 // 6. FakeE2eeManager
 // ---------------------------------------------------------------------------
 
-/// A test double for [E2eeManager] that stubs out all public methods
-/// and exposes tracking fields for assertions.
+/// Fake E2eeManager for testing.
+///
+/// Passes null for all dependency fields because every public method is
+/// overridden and none delegate to super. This avoids needing real
+/// WebE2eeAdapter, E2eeApi, etc. in tests.
 class FakeE2eeManager extends E2eeManager {
   FakeE2eeManager()
       : super(
@@ -256,6 +259,9 @@ class FakeE2eeManager extends E2eeManager {
   String? lastEncryptSessionId;
   String? lastDecryptSessionId;
 
+  // Note: We do NOT call super.init() to avoid touching the private
+  // _initialized field. If E2eeManager adds validation in non-overridden
+  // methods, this fake will need updating.
   @override
   Future<void> init() async {
     initCalled = true;
