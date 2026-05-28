@@ -1,5 +1,6 @@
 import 'package:test/test.dart';
 import 'package:im_core/src/services/analytics_port.dart';
+import 'package:im_core/src/logging/sanitized_error.dart';
 import 'package:im_core/src/services/error_reporter_port.dart';
 import 'package:im_core/src/services/payment_port.dart';
 import 'package:im_core/src/services/map_port.dart';
@@ -30,7 +31,11 @@ void main() {
     test('reportError does not throw', () {
       final noop = NoopErrorReporterPort();
       expect(
-        () => noop.reportError(Exception('test'), StackTrace.current, extra: {'key': 'value'}),
+        () => noop.reportError(SanitizedError(
+          errorType: 'Exception',
+          category: 'unknown_error',
+          safeMessage: 'test',
+        )),
         returnsNormally,
       );
     });
