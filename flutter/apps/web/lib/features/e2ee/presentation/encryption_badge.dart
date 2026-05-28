@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:im_core/core.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 
 class EncryptionBadge extends StatelessWidget {
   const EncryptionBadge({required this.status, super.key});
@@ -7,11 +8,12 @@ class EncryptionBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     final (color, icon, label) = switch (status) {
-      E2eeSessionStatus.encrypted => (Colors.green, Icons.lock, '端到端加密已启用'),
-      E2eeSessionStatus.negotiating => (Colors.amber, Icons.sync, '正在协商加密'),
-      E2eeSessionStatus.failed => (Colors.red, Icons.lock_outline, '端到端加密异常'),
-      E2eeSessionStatus.plaintext => (Colors.grey, Icons.lock_open, '未启用端到端加密'),
+      E2eeSessionStatus.encrypted => (Colors.green, Icons.lock, loc.e2eeEncryptedBadge),
+      E2eeSessionStatus.negotiating => (Colors.amber, Icons.sync, loc.e2eeNegotiatingBadge),
+      E2eeSessionStatus.failed => (Colors.red, Icons.lock_outline, loc.e2eeFailedBadge),
+      E2eeSessionStatus.plaintext => (Colors.grey, Icons.lock_open, loc.e2eePlaintextBadge),
     };
 
     return Container(
