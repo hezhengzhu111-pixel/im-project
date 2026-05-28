@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import 'package:im_web/core/utils/time_formatter.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import '../../../../../../core/di/providers.dart';
 import '../moments_interactions_provider.dart';
 
@@ -64,14 +66,15 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
   }
 
   Future<void> _deleteComment(String commentId) async {
+    final loc = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除确认'),
-        content: const Text('确定要删除这条评论吗？'),
+        title: Text(loc.commentDeleteConfirmTitle),
+        content: Text(loc.commentDeleteConfirmMessage),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('删除')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(loc.commonCancel)),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(loc.commentDelete)),
         ],
       ),
     );
@@ -86,6 +89,7 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
   Widget build(BuildContext context) {
     final interactions = ref.watch(momentsInteractionsProvider(widget.postId));
     final theme = Theme.of(context);
+    final loc = AppLocalizations.of(context)!;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -102,7 +106,7 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
             child: Row(
               children: [
                 Text(
-                  '回复 $_replyToName',
+                  '${loc.commentReply} $_replyToName',
                   style: TextStyle(
                     fontSize: 13,
                     color: theme.colorScheme.primary,
@@ -126,7 +130,7 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                 controller: _controller,
                 focusNode: _focusNode,
                 decoration: InputDecoration(
-                  hintText: _replyToName != null ? '回复 $_replyToName...' : '写评论...',
+                  hintText: _replyToName != null ? '${loc.commentReply} $_replyToName...' : loc.commentWriteHint,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(20),
                     borderSide: BorderSide.none,
@@ -164,7 +168,7 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Text(
-              '暂无评论',
+              loc.commentNoComments,
               style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
             ),
           )
@@ -177,6 +181,7 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
   Widget _buildCommentItem(BuildContext context, MomentComment comment) {
     final theme = Theme.of(context);
     final isOwner = ref.read(authStateProvider).user?.id == comment.userId;
+    final loc = AppLocalizations.of(context)!;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -201,7 +206,7 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                 Row(
                   children: [
                     Text(
-                      comment.userNickname ?? comment.userName ?? '用户',
+                      comment.userNickname ?? comment.userName ?? loc.momentsUserFallback,
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
@@ -224,9 +229,9 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                 Row(
                   children: [
                     GestureDetector(
-                      onTap: () => _startReply(comment.id, comment.userNickname ?? comment.userName ?? '用户'),
+                      onTap: () => _startReply(comment.id, comment.userNickname ?? comment.userName ?? loc.momentsUserFallback),
                       child: Text(
-                        '回复',
+                        loc.commentReply,
                         style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                       ),
                     ),
@@ -235,7 +240,7 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                       GestureDetector(
                         onTap: () => _deleteComment(comment.id),
                         child: Text(
-                          '删除',
+                          loc.commentDelete,
                           style: TextStyle(fontSize: 12, color: theme.colorScheme.error),
                         ),
                       ),
@@ -251,17 +256,6 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
   }
 
   String _formatTime(String time) {
-    try {
-      final dt = DateTime.parse(time);
-      final now = DateTime.now();
-      final diff = now.difference(dt);
-      if (diff.inMinutes < 1) return '刚刚';
-      if (diff.inHours < 1) return '${diff.inMinutes}分钟前';
-      if (diff.inDays < 1) return '${diff.inHours}小时前';
-      if (diff.inDays < 30) return '${diff.inDays}天前';
-      return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return time;
-    }
+    return formatRelativeTime(context, time);
   }
 }
