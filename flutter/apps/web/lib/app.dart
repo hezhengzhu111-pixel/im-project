@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:im_ui/im_ui.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'core/di/providers.dart';
+import 'core/logging/app_logger.dart';
 import 'core/router/app_router.dart';
 import 'core/router/route_observer.dart';
 import 'core/theme/app_theme.dart';
@@ -24,6 +25,7 @@ class _AppState extends ConsumerState<App> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      AppLogger.init(errorReporter: ref.read(errorReporterProvider));
       final analytics = ref.read(analyticsProvider);
       analytics.trackEvent('app_start', {'platform': 'web'});
       ref.read(authStateProvider.notifier).checkAuth();
