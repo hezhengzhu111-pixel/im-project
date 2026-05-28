@@ -9,6 +9,7 @@ environment:
 
 flutter:
   generate: true
+  uses-material-design: true
 
 dependencies:
   flutter:
