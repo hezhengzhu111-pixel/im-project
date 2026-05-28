@@ -96,31 +96,31 @@ void main() {
     test('returns exact match for /login', () {
       final meta = resolveRouteMeta('/login');
       expect(meta, isNotNull);
-      expect(meta!.title, '登录');
+      expect(meta!.title, 'seoLoginTitle');
     });
 
     test('returns meta for /chat', () {
       final meta = resolveRouteMeta('/chat');
       expect(meta, isNotNull);
-      expect(meta!.title, '聊天');
+      expect(meta!.title, 'seoChatTitle');
     });
 
     test('resolves /chat/abc123 to /chat meta (deep link)', () {
       final meta = resolveRouteMeta('/chat/abc123');
       expect(meta, isNotNull);
-      expect(meta!.title, '聊天');
+      expect(meta!.title, 'seoChatTitle');
     });
 
     test('resolves /contacts/add to exact match', () {
       final meta = resolveRouteMeta('/contacts/add');
       expect(meta, isNotNull);
-      expect(meta!.title, '添加好友');
+      expect(meta!.title, 'seoAddFriendTitle');
     });
 
     test('resolves /settings/profile to exact match', () {
       final meta = resolveRouteMeta('/settings/profile');
       expect(meta, isNotNull);
-      expect(meta!.title, '个人资料');
+      expect(meta!.title, 'seoProfileTitle');
     });
 
     test('returns null for unknown path (404)', () {
@@ -132,19 +132,19 @@ void main() {
       final meta = resolveRouteMeta('/chat/abc123/extra');
       // This matches /chat prefix, so it should resolve
       expect(meta, isNotNull);
-      expect(meta!.title, '聊天');
+      expect(meta!.title, 'seoChatTitle');
     });
 
     test('does not match /contacts as /contacts/add', () {
       final meta = resolveRouteMeta('/contacts');
       expect(meta, isNotNull);
-      expect(meta!.title, '联系人');
+      expect(meta!.title, 'seoContactsTitle');
     });
 
     test('does not match /settings as /settings/profile', () {
       final meta = resolveRouteMeta('/settings');
       expect(meta, isNotNull);
-      expect(meta!.title, '设置');
+      expect(meta!.title, 'seoSettingsTitle');
     });
   });
 

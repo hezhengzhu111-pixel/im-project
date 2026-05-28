@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:im_core/core.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 
 class EncryptionBanner extends StatelessWidget {
   const EncryptionBanner({required this.status, this.onDetails, this.onExit, this.onClear, super.key});
@@ -12,10 +13,11 @@ class EncryptionBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     if (status == E2eeSessionStatus.plaintext) return const SizedBox.shrink();
 
+    final loc = AppLocalizations.of(context)!;
     final (color, icon, message) = switch (status) {
-      E2eeSessionStatus.encrypted => (Colors.green, Icons.lock, '端到端加密已开启'),
-      E2eeSessionStatus.negotiating => (Colors.amber, Icons.sync, '加密协商中...'),
-      E2eeSessionStatus.failed => (Colors.red, Icons.error_outline, '端到端加密异常'),
+      E2eeSessionStatus.encrypted => (Colors.green, Icons.lock, loc.e2eeEncryptedStatus),
+      E2eeSessionStatus.negotiating => (Colors.amber, Icons.sync, loc.e2eeNegotiatingStatus),
+      E2eeSessionStatus.failed => (Colors.red, Icons.error_outline, loc.e2eeFailedStatus),
       _ => (Colors.grey, Icons.lock_open, ''),
     };
 
@@ -28,11 +30,11 @@ class EncryptionBanner extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(child: Text(message, style: TextStyle(fontSize: 13, color: color))),
         if (status == E2eeSessionStatus.encrypted) ...[
-          TextButton(onPressed: onDetails, child: const Text('详情', style: TextStyle(fontSize: 12))),
-          TextButton(onPressed: onExit, child: const Text('退出加密', style: TextStyle(fontSize: 12))),
+          TextButton(onPressed: onDetails, child: Text(loc.e2eeDetails, style: const TextStyle(fontSize: 12))),
+          TextButton(onPressed: onExit, child: Text(loc.e2eeExit, style: const TextStyle(fontSize: 12))),
         ],
         if (status == E2eeSessionStatus.failed)
-          TextButton(onPressed: onClear, child: const Text('清理状态', style: TextStyle(fontSize: 12))),
+          TextButton(onPressed: onClear, child: Text(loc.e2eeClearState, style: const TextStyle(fontSize: 12))),
       ]),
     );
   }
