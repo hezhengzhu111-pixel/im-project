@@ -474,4 +474,113 @@ class AppLocalizationsEn extends AppLocalizations {
   String validationNicknameMaxLength(Object max) {
     return 'Nickname must be no more than $max characters';
   }
+
+  @override
+  String get loginSubtitle => 'Please log in to your encrypted communication account';
+
+  @override
+  String get loginRememberMe => 'Remember me';
+
+  @override
+  String get loginNoAccountRegister => 'No account? Register';
+
+  @override
+  String get registerTitle => 'Register';
+
+  @override
+  String get registerSubtitle => 'Create your account and start chatting';
+
+  @override
+  String get registerEmail => 'Email';
+
+  @override
+  String get registerConfirmPassword => 'Confirm password';
+
+  @override
+  String get registerAgreementPrefix => 'I have read and agree to the ';
+
+  @override
+  String get registerAgreementSuffix => ' and ';
+
+  @override
+  String get registerUserAgreement => 'User Agreement';
+
+  @override
+  String get registerPrivacyPolicy => 'Privacy Policy';
+
+  @override
+  String get registerButton => 'Register';
+
+  @override
+  String get registerHasAccountLogin => 'Already have an account? Login';
+
+  @override
+  String get registerAgreementRequired => 'Please read and agree to the User Agreement and Privacy Policy';
+
+  @override
+  String get chatSelectSession => 'Select a conversation to start chatting';
+
+  @override
+  String get chatSearchHint => 'Search conversations...';
+
+  @override
+  String chatMessageCount(Object count) {
+    return '$count messages';
+  }
+
+  @override
+  String chatMemberCount(Object count) {
+    return '$count members';
+  }
+
+  @override
+  String get chatImageSending => 'Image sending feature under development...';
+
+  @override
+  String get chatFileSending => 'File sending feature under development...';
+
+  @override
+  String get chatInputHint => 'Type a message...';
+
+  @override
+  String get chatAttach => 'Attach';
+
+  @override
+  String get chatImage => 'Image';
+
+  @override
+  String get chatFile => 'File';
+
+  @override
+  String get chatVoice => 'Voice';
+
+  @override
+  String get validatorUsernameRequired => 'Please enter a username';
+
+  @override
+  String get validatorUsernameLength => 'Username must be 3-20 characters';
+
+  @override
+  String get validatorUsernameFormat => 'Username can only contain letters, numbers, and underscores';
+
+  @override
+  String get validatorEmailRequired => 'Please enter an email';
+
+  @override
+  String get validatorEmailFormat => 'Please enter a valid email format';
+
+  @override
+  String get validatorPasswordRequired => 'Please enter a password';
+
+  @override
+  String get validatorPasswordLength => 'Password must be 8-64 characters';
+
+  @override
+  String get validatorPasswordFormat => 'Password must contain letters and numbers';
+
+  @override
+  String get validatorConfirmPasswordRequired => 'Please confirm your password';
+
+  @override
+  String get validatorPasswordMismatch => 'Passwords do not match';
 }
