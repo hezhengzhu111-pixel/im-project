@@ -15,3 +15,4 @@ export 'src/services/error_reporter_port.dart';
 export 'src/services/push_port.dart';
 export 'src/services/models.dart';
 export 'src/services/payment_port.dart';
+export 'src/services/map_port.dart';
