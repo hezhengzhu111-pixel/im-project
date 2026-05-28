@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:idb_shim/idb_shim.dart';
 import 'package:im_core/core.dart';
+import '../../../core/logging/app_logger.dart';
 import '../data/message_api.dart';
 
 /// Status of a message in the outbox
@@ -373,7 +373,7 @@ class MessageOutbox {
         message: message,
       ));
     } catch (e) {
-      debugPrint('Outbox retry failed: $e');
+      AppLogger.instance.error('Outbox retry failed', e);
 
       if (message.retryCount + 1 >= _maxRetries) {
         final failedMessage = message.copyWith(
