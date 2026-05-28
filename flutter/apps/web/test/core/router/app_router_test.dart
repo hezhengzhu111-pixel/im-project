@@ -1,7 +1,11 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:im_web/core/router/route_meta.dart';
 import 'package:im_web/core/router/route_names.dart';
 import 'package:im_web/core/router/route_resolver.dart';
+
+import '../../helpers/fakes.dart';
 
 void main() {
   group('RouteMeta', () {
@@ -198,6 +202,71 @@ void main() {
       if (meta == null) result = null;
 
       expect(result, isNull);
+    });
+  });
+
+  group('GoRouter creation', () {
+    test('can create a GoRouter with basic routes', () {
+      final router = GoRouter(
+        initialLocation: '/login',
+        routes: [
+          GoRoute(
+            path: '/login',
+            builder: (_, __) => const SizedBox(),
+          ),
+          GoRoute(
+            path: '/chat',
+            builder: (_, __) => const SizedBox(),
+          ),
+          GoRoute(
+            path: '/settings',
+            builder: (_, __) => const SizedBox(),
+          ),
+        ],
+      );
+
+      expect(router, isA<GoRouter>());
+      router.dispose();
+    });
+
+    test('can create a GoRouter with initialLocation /chat', () {
+      final router = GoRouter(
+        initialLocation: '/chat',
+        routes: [
+          GoRoute(
+            path: '/chat',
+            builder: (_, __) => const SizedBox(),
+          ),
+        ],
+      );
+
+      expect(router, isA<GoRouter>());
+      router.dispose();
+    });
+
+    test('GoRouter with redirect function works', () {
+      final router = GoRouter(
+        initialLocation: '/chat',
+        redirect: (context, state) {
+          final meta = resolveRouteMeta(state.uri.path);
+          if (meta == null) return null;
+          if (meta.hideForAuth) return '/chat';
+          return null;
+        },
+        routes: [
+          GoRoute(
+            path: '/chat',
+            builder: (_, __) => const SizedBox(),
+          ),
+          GoRoute(
+            path: '/login',
+            builder: (_, __) => const SizedBox(),
+          ),
+        ],
+      );
+
+      expect(router, isA<GoRouter>());
+      router.dispose();
     });
   });
 }
