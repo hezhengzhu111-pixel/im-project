@@ -1,38 +1,47 @@
 import 'package:test/test.dart';
 import 'package:im_core/src/services/error_reporter_port.dart';
+import 'package:im_core/src/logging/sanitized_error.dart';
 
 class _TestErrorReporterAdapter implements ErrorReporterPort {
-  final List<ErrorCall> calls = [];
+  final List<SanitizedError> errors = [];
+  final List<String> messages = [];
 
   @override
-  void reportError(Object error, StackTrace? stackTrace, {Map<String, dynamic>? extra}) {
-    calls.add(ErrorCall('reportError', error.toString(), stackTrace, extra));
+  void reportError(SanitizedError error) {
+    errors.add(error);
   }
 
   @override
   void reportMessage(String message, {String? level}) {
-    calls.add(ErrorCall('reportMessage', message, null, {'level': level}));
+    messages.add(message);
   }
 }
 
-class ErrorCall {
-  final String method;
-  final String message;
-  final StackTrace? stackTrace;
-  final Map<String, dynamic>? extra;
-  ErrorCall(this.method, this.message, this.stackTrace, this.extra);
-}
-
 void main() {
-  test('ErrorReporterPort interface can be implemented', () {
-    final adapter = _TestErrorReporterAdapter();
-    adapter.reportError(Exception('test'), StackTrace.current, extra: {'key': 'value'});
-    adapter.reportMessage('info message', level: 'info');
+  group('ErrorReporterPort', () {
+    test('accepts SanitizedError', () {
+      final adapter = _TestErrorReporterAdapter();
+      final sanitized = SanitizedError(
+        errorType: 'Exception',
+        category: 'unknown_error',
+        safeMessage: 'test error',
+      );
+      adapter.reportError(sanitized);
 
-    expect(adapter.calls.length, 2);
-    expect(adapter.calls[0].method, 'reportError');
-    expect(adapter.calls[0].message, 'Exception: test');
-    expect(adapter.calls[1].method, 'reportMessage');
-    expect(adapter.calls[1].extra?['level'], 'info');
+      expect(adapter.errors.length, 1);
+      expect(adapter.errors[0].errorType, 'Exception');
+      expect(adapter.errors[0].category, 'unknown_error');
+    });
+
+    test('NoopErrorReporterPort accepts SanitizedError', () {
+      final noop = NoopErrorReporterPort();
+      noop.reportError(SanitizedError(
+        errorType: 'Exception',
+        category: 'unknown_error',
+        safeMessage: 'test',
+      ));
+      noop.reportMessage('info', level: 'info');
+      // no exception = pass
+    });
   });
 }
