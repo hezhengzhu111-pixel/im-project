@@ -9,6 +9,8 @@ class ChatHeader extends StatelessWidget {
     required this.isMobile,
     required this.onBackPressed,
     this.e2eeStatus,
+    this.onStartEncryption,
+    this.onShowGroupEncryptionUnavailable,
     super.key,
   });
 
@@ -16,6 +18,8 @@ class ChatHeader extends StatelessWidget {
   final bool isMobile;
   final VoidCallback onBackPressed;
   final E2eeSessionStatus? e2eeStatus;
+  final VoidCallback? onStartEncryption;
+  final VoidCallback? onShowGroupEncryptionUnavailable;
 
   @override
   Widget build(BuildContext context) {
@@ -67,8 +71,23 @@ class ChatHeader extends StatelessWidget {
               ],
             ),
           ),
-          if (!isGroup && e2eeStatus != null)
+          if (!isGroup && e2eeStatus != null) ...[
             EncryptionBadge(status: e2eeStatus!),
+            if (onStartEncryption != null &&
+                (e2eeStatus == E2eeSessionStatus.plaintext ||
+                    e2eeStatus == E2eeSessionStatus.failed))
+              IconButton(
+                tooltip: loc.e2eeConfirmEnable,
+                icon: const Icon(Icons.lock_open),
+                onPressed: onStartEncryption,
+              ),
+          ],
+          if (isGroup && onShowGroupEncryptionUnavailable != null)
+            IconButton(
+              tooltip: 'Group E2EE unavailable',
+              icon: const Icon(Icons.lock_outline),
+              onPressed: onShowGroupEncryptionUnavailable,
+            ),
         ],
       ),
     );

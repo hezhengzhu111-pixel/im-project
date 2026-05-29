@@ -28,7 +28,7 @@ class _GradientButtonState extends State<GradientButton> {
         duration: const Duration(milliseconds: 200),
         width: double.infinity,
         transform: _isHovered
-            ? (Matrix4.identity()..translate(0, -2))
+            ? (Matrix4.identity()..translateByDouble(0, -2, 0, 1))
             : Matrix4.identity(),
         decoration: BoxDecoration(
           gradient: const LinearGradient(

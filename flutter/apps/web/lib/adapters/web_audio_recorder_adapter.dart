@@ -31,7 +31,7 @@ class WebAudioRecorderAdapter implements AudioRecorderPort {
         (web.Event event) {
           final blobEvent = event as web.BlobEvent;
           final blob = blobEvent.data;
-          if (blob != null && blob.size > 0) {
+          if (blob.size > 0) {
             _chunks.add(blob);
           }
         }.toJS,

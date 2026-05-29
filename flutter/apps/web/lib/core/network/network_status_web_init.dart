@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'dart:async';
 import 'dart:html' as html;
 import 'network_status_provider.dart';
@@ -19,7 +21,9 @@ void initWebNetworkStatus() {
 
         request.onLoad.listen((_) {
           completer.complete(
-            request.status != null && request.status! >= 200 && request.status! < 400,
+            request.status != null &&
+                request.status! >= 200 &&
+                request.status! < 400,
           );
         });
         request.onError.listen((_) => completer.complete(false));

@@ -56,7 +56,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       ),
     ]));
     _gender = user.gender ?? '';
-    _birthday = user.birthday != null ? DateTime.tryParse(user.birthday!) : null;
+    _birthday =
+        user.birthday != null ? DateTime.tryParse(user.birthday!) : null;
     _initialized = true;
   }
 
@@ -91,11 +92,14 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text(loc.profileAccountInfo, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                          Text(loc.profileAccountInfo,
+                              style: theme.textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700)),
                           const SizedBox(height: 16),
                           TextFormField(
                             initialValue: user.username,
-                            decoration: InputDecoration(labelText: loc.profileUsername),
+                            decoration:
+                                InputDecoration(labelText: loc.profileUsername),
                             enabled: false,
                           ),
                           const SizedBox(height: 12),
@@ -114,32 +118,26 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                           const SizedBox(height: 12),
                           TextFormField(
                             initialValue: user.phone,
-                            decoration: InputDecoration(labelText: loc.profilePhone),
+                            decoration:
+                                InputDecoration(labelText: loc.profilePhone),
                             enabled: false,
                           ),
                           const SizedBox(height: 12),
-                          Text(loc.profileGender, style: theme.textTheme.bodyMedium),
-                          Row(
-                            children: [
-                              Radio<String>(
-                                value: 'male',
-                                groupValue: _gender,
-                                onChanged: (v) => setState(() => _gender = v ?? ''),
-                              ),
-                              Text(loc.profileGenderMale),
-                              Radio<String>(
-                                value: 'female',
-                                groupValue: _gender,
-                                onChanged: (v) => setState(() => _gender = v ?? ''),
-                              ),
-                              Text(loc.profileGenderFemale),
-                              Radio<String>(
-                                value: 'secret',
-                                groupValue: _gender,
-                                onChanged: (v) => setState(() => _gender = v ?? ''),
-                              ),
-                              Text(loc.profileGenderSecret),
-                            ],
+                          Text(loc.profileGender,
+                              style: theme.textTheme.bodyMedium),
+                          RadioGroup<String>(
+                            groupValue: _gender,
+                            onChanged: (v) => setState(() => _gender = v ?? ''),
+                            child: Row(
+                              children: [
+                                const Radio<String>(value: 'male'),
+                                Text(loc.profileGenderMale),
+                                const Radio<String>(value: 'female'),
+                                Text(loc.profileGenderFemale),
+                                const Radio<String>(value: 'secret'),
+                                Text(loc.profileGenderSecret),
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 12),
                           ListTile(
@@ -156,7 +154,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                 firstDate: DateTime(1950),
                                 lastDate: DateTime.now(),
                               );
-                              if (date != null) setState(() => _birthday = date);
+                              if (date != null)
+                                setState(() => _birthday = date);
                             },
                           ),
                           const SizedBox(height: 12),
@@ -200,41 +199,65 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(loc.profileChange, style: TextStyle(color: theme.colorScheme.primary)),
+                            Text(loc.profileChange,
+                                style: TextStyle(
+                                    color: theme.colorScheme.primary)),
                             const Icon(Icons.chevron_right),
                           ],
                         ),
-                        onTap: () => showDialog(context: context, builder: (_) => const PasswordDialog()),
+                        onTap: () => showDialog(
+                            context: context,
+                            builder: (_) => const PasswordDialog()),
                       ),
-                      Divider(height: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
+                      Divider(
+                          height: 1,
+                          color: theme.colorScheme.outlineVariant
+                              .withValues(alpha: 0.3)),
                       ListTile(
                         title: Text(loc.profilePhoneVerify),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              user.phone != null ? loc.profileBound : loc.profileUnbound,
-                              style: TextStyle(color: user.phone != null ? Colors.green : theme.colorScheme.onSurfaceVariant),
+                              user.phone != null
+                                  ? loc.profileBound
+                                  : loc.profileUnbound,
+                              style: TextStyle(
+                                  color: user.phone != null
+                                      ? Colors.green
+                                      : theme.colorScheme.onSurfaceVariant),
                             ),
                             const Icon(Icons.chevron_right),
                           ],
                         ),
-                        onTap: () => showDialog(context: context, builder: (_) => const BindPhoneDialog()),
+                        onTap: () => showDialog(
+                            context: context,
+                            builder: (_) => const BindPhoneDialog()),
                       ),
-                      Divider(height: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
+                      Divider(
+                          height: 1,
+                          color: theme.colorScheme.outlineVariant
+                              .withValues(alpha: 0.3)),
                       ListTile(
                         title: Text(loc.profileEmailVerify),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              user.email != null ? loc.profileBound : loc.profileUnbound,
-                              style: TextStyle(color: user.email != null ? Colors.green : theme.colorScheme.onSurfaceVariant),
+                              user.email != null
+                                  ? loc.profileBound
+                                  : loc.profileUnbound,
+                              style: TextStyle(
+                                  color: user.email != null
+                                      ? Colors.green
+                                      : theme.colorScheme.onSurfaceVariant),
                             ),
                             const Icon(Icons.chevron_right),
                           ],
                         ),
-                        onTap: () => showDialog(context: context, builder: (_) => const BindEmailDialog()),
+                        onTap: () => showDialog(
+                            context: context,
+                            builder: (_) => const BindEmailDialog()),
                       ),
                     ],
                   ),
@@ -244,40 +267,61 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     children: [
                       SwitchListTile(
                         title: Text(loc.profileAllowStrangerAdd),
-                        subtitle: Text(loc.profileAllowStrangerAddDesc, style: const TextStyle(fontSize: 12)),
-                        value: ref.watch(settingsStateProvider)?.privacy.allowStrangerAdd ?? false,
+                        subtitle: Text(loc.profileAllowStrangerAddDesc,
+                            style: const TextStyle(fontSize: 12)),
+                        value: ref
+                                .watch(settingsStateProvider)
+                                ?.privacy
+                                .allowStrangerAdd ??
+                            false,
                         onChanged: (v) {
                           final s = ref.read(settingsStateProvider);
                           if (s != null) {
-                            ref.read(settingsStateProvider.notifier).updatePrivacySettings(
-                              s.privacy.copyWith(allowStrangerAdd: v),
-                            );
+                            ref
+                                .read(settingsStateProvider.notifier)
+                                .updatePrivacySettings(
+                                  s.privacy.copyWith(allowStrangerAdd: v),
+                                );
                           }
                         },
                       ),
                       SwitchListTile(
                         title: Text(loc.profileShowOnlineStatus),
-                        subtitle: Text(loc.profileShowOnlineStatusDesc, style: const TextStyle(fontSize: 12)),
-                        value: ref.watch(settingsStateProvider)?.privacy.showOnlineStatus ?? false,
+                        subtitle: Text(loc.profileShowOnlineStatusDesc,
+                            style: const TextStyle(fontSize: 12)),
+                        value: ref
+                                .watch(settingsStateProvider)
+                                ?.privacy
+                                .showOnlineStatus ??
+                            false,
                         onChanged: (v) {
                           final s = ref.read(settingsStateProvider);
                           if (s != null) {
-                            ref.read(settingsStateProvider.notifier).updatePrivacySettings(
-                              s.privacy.copyWith(showOnlineStatus: v),
-                            );
+                            ref
+                                .read(settingsStateProvider.notifier)
+                                .updatePrivacySettings(
+                                  s.privacy.copyWith(showOnlineStatus: v),
+                                );
                           }
                         },
                       ),
                       SwitchListTile(
                         title: Text(loc.profileAllowViewMoments),
-                        subtitle: Text(loc.profileAllowViewMomentsDesc, style: const TextStyle(fontSize: 12)),
-                        value: ref.watch(settingsStateProvider)?.privacy.allowViewMoments ?? false,
+                        subtitle: Text(loc.profileAllowViewMomentsDesc,
+                            style: const TextStyle(fontSize: 12)),
+                        value: ref
+                                .watch(settingsStateProvider)
+                                ?.privacy
+                                .allowViewMoments ??
+                            false,
                         onChanged: (v) {
                           final s = ref.read(settingsStateProvider);
                           if (s != null) {
-                            ref.read(settingsStateProvider.notifier).updatePrivacySettings(
-                              s.privacy.copyWith(allowViewMoments: v),
-                            );
+                            ref
+                                .read(settingsStateProvider.notifier)
+                                .updatePrivacySettings(
+                                  s.privacy.copyWith(allowViewMoments: v),
+                                );
                           }
                         },
                       ),
@@ -298,15 +342,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final loc = AppLocalizations.of(context)!;
     try {
       await ref.read(profileStateProvider.notifier).updateProfile(
-        UpdateProfileRequest(
-          nickname: values['nickname']?.trim(),
-          email: values['email']?.trim(),
-          gender: _gender,
-          birthday: _birthday?.toIso8601String(),
-          signature: values['signature']?.trim(),
-          location: values['location']?.trim(),
-        ),
-      );
+            UpdateProfileRequest(
+              nickname: values['nickname']?.trim(),
+              email: values['email']?.trim(),
+              gender: _gender,
+              birthday: _birthday?.toIso8601String(),
+              signature: values['signature']?.trim(),
+              location: values['location']?.trim(),
+            ),
+          );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(loc.profileSaved)),
@@ -327,7 +371,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     _formController?.reset();
     setState(() {
       _gender = user.gender ?? '';
-      _birthday = user.birthday != null ? DateTime.tryParse(user.birthday!) : null;
+      _birthday =
+          user.birthday != null ? DateTime.tryParse(user.birthday!) : null;
     });
   }
 }

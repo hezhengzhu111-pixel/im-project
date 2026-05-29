@@ -13,7 +13,6 @@ class MomentsSidebar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final user = ref.watch(authStateProvider).user;
-    final loc = AppLocalizations.of(context)!;
 
     return SizedBox(
       width: 336,

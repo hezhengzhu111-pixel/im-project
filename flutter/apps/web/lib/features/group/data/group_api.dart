@@ -18,7 +18,7 @@ class GroupApi {
         if (description != null) 'description': description,
         'memberIds': memberIds,
       },
-      fromJson: (json) => json as Map<String, dynamic>,
+      fromJson: (json) => json,
     );
     return Group.fromJson(response.data);
   }
@@ -26,7 +26,7 @@ class GroupApi {
   Future<List<Group>> getUserGroups(String userId) async {
     final response = await _httpClient.get<List<dynamic>>(
       GroupEndpoints.userGroups(userId),
-      fromJson: (json) => (json as List)
+      fromJson: (json) => _items(json)
           .map((e) => Group.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
@@ -37,7 +37,7 @@ class GroupApi {
     final response = await _httpClient.post<List<dynamic>>(
       GroupEndpoints.membersList,
       body: {'groupId': groupId},
-      fromJson: (json) => (json as List)
+      fromJson: (json) => _items(json, key: 'members')
           .map((e) => GroupMember.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
@@ -63,11 +63,21 @@ class GroupApi {
   Future<List<Group>> searchGroups(String keyword) async {
     final response = await _httpClient.get<List<dynamic>>(
       GroupEndpoints.search,
-      queryParameters: {'keyword': keyword},
-      fromJson: (json) => (json as List)
+      queryParameters: {'q': keyword},
+      fromJson: (json) => _items(json)
           .map((e) => Group.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
     return response.data.cast<Group>();
+  }
+
+  List<dynamic> _items(Map<String, dynamic> json, {String key = 'items'}) {
+    final rawItems = json[key];
+    if (rawItems is List) return rawItems;
+    final wrappedItems = json['items'];
+    if (wrappedItems is List) return wrappedItems;
+    final rawData = json['data'];
+    if (rawData is List) return rawData;
+    return const [];
   }
 }

@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_core/core.dart';
-import 'package:im_core/src/network/ws_connection_state.dart';
 import 'package:im_web/core/debug/debug_panel_entry.dart';
 import 'package:im_web/core/network/network_providers.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
@@ -255,6 +254,9 @@ class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>
 
   @override
   Future<void> disableEncryptionForSession(String sessionId) async {}
+
+  @override
+  Future<bool> initiateEncryptionForSession(String sessionId) async => false;
 
   @override
   Future<void> loadMoreHistory(String sessionId, {int size = 20}) async {}

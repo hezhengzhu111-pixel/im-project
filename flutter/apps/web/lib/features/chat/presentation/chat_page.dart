@@ -6,6 +6,7 @@ import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_ui/im_ui.dart';
 import '../../e2ee/presentation/encryption_banner.dart';
+import '../../e2ee/presentation/encryption_dialog.dart';
 import '../../e2ee/presentation/negotiation_dialog.dart';
 import 'widgets/chat_header.dart';
 import 'widgets/session_tile.dart';
@@ -257,6 +258,51 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     );
   }
 
+  String? _e2eeSessionIdForSession(ChatSession session) {
+    final isGroup =
+        session.conversationType == 'group' || session.type == 'group';
+    if (isGroup) return null;
+    final currentUserId = ref.read(authStateProvider).user?.id ?? '';
+    if (currentUserId.isEmpty || session.targetId.isEmpty) return null;
+    return '${currentUserId}_private_${session.targetId}';
+  }
+
+  void _showEncryptionDialog(ChatSession session, String e2eeSessionId) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => EncryptionDialog(
+        onConfirm: () => _startEncryption(session, e2eeSessionId),
+      ),
+    );
+  }
+
+  Future<void> _startEncryption(
+    ChatSession session,
+    String e2eeSessionId,
+  ) async {
+    final started = await ref
+        .read(chatStateProvider.notifier)
+        .initiateEncryptionForSession(session.id);
+    ref.invalidate(e2eeSessionStatusProvider(e2eeSessionId));
+    if (!started && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to start encryption negotiation.'),
+        ),
+      );
+    }
+  }
+
+  void _showGroupE2eeUnavailable() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Group E2EE requires sender-key support before it can be enabled.',
+        ),
+      ),
+    );
+  }
+
   Widget _buildChatView(String sessionId, AppLocalizations loc) {
     ref.listen(chatStateProvider.select((s) => s.messages[sessionId]),
         (prev, next) {
@@ -269,6 +315,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       if (next != null && next != prev) {
         final errorMessage = switch (next) {
           'e2ee_not_ready' => loc.errorE2eeNotReady,
+          'e2ee_encrypt_failed' =>
+            'Failed to encrypt message. Please restart encryption negotiation.',
+          'group_e2ee_unavailable' =>
+            'Group E2EE requires sender-key support before it can be enabled.',
           final e => e,
         };
         ScaffoldMessenger.of(context).showSnackBar(
@@ -326,6 +376,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final isGroup =
         session.conversationType == 'group' || session.type == 'group';
     final isMobile = context.isMobile;
+    final e2eeSessionId = _e2eeSessionIdForSession(session);
+    final privateE2eeSessionId = e2eeSessionId ?? '';
+    final e2eeStatusAsync = e2eeSessionId == null
+        ? null
+        : ref.watch(e2eeSessionStatusProvider(e2eeSessionId));
 
     return Column(
       children: [
@@ -338,27 +393,32 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           onBackPressed: () {
             ref.read(chatStateProvider.notifier).setActiveSession(null);
           },
-          e2eeStatus: !isGroup
-              ? ref.watch(e2eeSessionStatusProvider(sessionId)).whenOrNull(
-                  data: (statusStr) => E2eeSessionStatus.fromString(statusStr),
-                )
-              : null,
+          e2eeStatus: e2eeStatusAsync?.whenOrNull(
+            data: (statusStr) => E2eeSessionStatus.fromString(statusStr),
+          ),
+          onStartEncryption: e2eeSessionId == null
+              ? null
+              : () => _showEncryptionDialog(session, e2eeSessionId),
+          onShowGroupEncryptionUnavailable:
+              isGroup ? _showGroupE2eeUnavailable : null,
         ),
         // E2EE encryption banner (private chats only)
-        if (!isGroup)
-          ref.watch(e2eeSessionStatusProvider(sessionId)).when(
-                data: (statusStr) => EncryptionBanner(
-                  status: E2eeSessionStatus.fromString(statusStr),
-                  onExit: () async {
-                    await ref
-                        .read(e2eeManagerProvider)
-                        .exitEncryption(sessionId);
-                    ref.invalidate(e2eeSessionStatusProvider(sessionId));
-                  },
-                ),
-                loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
-              ),
+        if (e2eeStatusAsync != null)
+          e2eeStatusAsync.when(
+            data: (statusStr) => EncryptionBanner(
+              status: E2eeSessionStatus.fromString(statusStr),
+              onExit: () async {
+                await ref
+                    .read(chatStateProvider.notifier)
+                    .disableEncryptionForSession(privateE2eeSessionId);
+                ref.invalidate(
+                  e2eeSessionStatusProvider(privateE2eeSessionId),
+                );
+              },
+            ),
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+          ),
         // Messages
         Expanded(
           child: messages.isEmpty
@@ -389,7 +449,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               setState(() => _messageInputFocused = focused),
           members: isGroup ? _groupMembers : null,
           onSend: (text, mentionedUserIds) {
-            if (session == null) return;
             if (isGroup) {
               ref.read(chatStateProvider.notifier).sendGroupMessage(
                     session.targetId,
@@ -405,7 +464,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             }
           },
           onSendImage: (result) {
-            if (session == null) return;
             if (isGroup) {
               ref.read(chatStateProvider.notifier).sendGroupMessage(
                     session.targetId,
@@ -429,7 +487,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             }
           },
           onSendFile: (result) {
-            if (session == null) return;
             if (isGroup) {
               ref.read(chatStateProvider.notifier).sendGroupMessage(
                     session.targetId,
@@ -453,7 +510,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             }
           },
           onSendVoice: (result) {
-            if (session == null) return;
             if (isGroup) {
               ref.read(chatStateProvider.notifier).sendGroupMessage(
                     session.targetId,

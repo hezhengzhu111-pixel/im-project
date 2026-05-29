@@ -7,7 +7,6 @@ import 'message_outbox.dart';
 /// Provider for the message outbox
 final messageOutboxProvider = Provider<MessageOutbox>((ref) {
   final messageApi = ref.watch(messageApiProvider);
-  final networkStatus = ref.watch(networkStatusProvider.notifier);
 
   final outbox = MessageOutbox(
     messageApi: messageApi,

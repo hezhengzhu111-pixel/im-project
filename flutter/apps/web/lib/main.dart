@@ -15,7 +15,6 @@ import 'core/di/platform_providers.dart';
 import 'core/network/network_providers.dart';
 import 'core/network/network_status_initializer.dart';
 import 'core/observer/app_provider_observer.dart';
-import 'core/config/app_config_provider.dart';
 import 'features/e2ee/data/e2ee_providers.dart';
 
 void main() {

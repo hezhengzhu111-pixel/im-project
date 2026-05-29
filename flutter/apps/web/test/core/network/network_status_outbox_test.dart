@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:idb_shim/idb_shim.dart';
 import 'package:idb_shim/idb_client_memory.dart';
 import 'package:im_web/core/network/network_status_provider.dart';
 import 'package:im_web/features/chat/data/message_outbox.dart';

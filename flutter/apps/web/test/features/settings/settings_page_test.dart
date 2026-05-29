@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../helpers/fakes.dart';
-
 /// Test-only provider that mirrors languageProvider from settings_providers.dart.
 /// We define it here because settings_providers.dart imports dart:html
 /// which is unavailable in VM test mode.

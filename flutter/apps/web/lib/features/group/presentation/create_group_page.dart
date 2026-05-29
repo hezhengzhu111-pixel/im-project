@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
-import 'package:im_web/features/contacts/presentation/contacts_provider.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
 class CreateGroupPage extends ConsumerStatefulWidget {
@@ -14,6 +13,7 @@ class CreateGroupPage extends ConsumerStatefulWidget {
 
 class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
   final _nameController = TextEditingController();
+  final _avatarController = TextEditingController();
   final _descController = TextEditingController();
   final Set<String> _selectedMemberIds = {};
 
@@ -28,6 +28,7 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
   @override
   void dispose() {
     _nameController.dispose();
+    _avatarController.dispose();
     _descController.dispose();
     super.dispose();
   }
@@ -38,6 +39,9 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
 
     final group = await ref.read(groupStateProvider.notifier).createGroup(
           name: name,
+          avatar: _avatarController.text.trim().isEmpty
+              ? null
+              : _avatarController.text.trim(),
           description: _descController.text.trim().isEmpty
               ? null
               : _descController.text.trim(),
@@ -83,6 +87,14 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
           ),
           const SizedBox(height: 16),
           TextField(
+            controller: _avatarController,
+            decoration: const InputDecoration(
+              labelText: 'Group avatar URL',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
             controller: _descController,
             decoration: InputDecoration(
               labelText: loc.groupDescLabel,
@@ -91,7 +103,8 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
             maxLines: 2,
           ),
           const SizedBox(height: 24),
-          Text(loc.groupSelectMembers, style: Theme.of(context).textTheme.titleSmall),
+          Text(loc.groupSelectMembers,
+              style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 8),
           ...contactsState.friends.map((friend) => CheckboxListTile(
                 value: _selectedMemberIds.contains(friend.friendId),
