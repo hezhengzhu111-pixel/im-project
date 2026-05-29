@@ -102,6 +102,30 @@ class ImTokens {
   static const Duration animNormal = Duration(milliseconds: 200);
   static const Duration animSlow = Duration(milliseconds: 300);
   static const Duration animDialog = Duration(milliseconds: 250);
+
+  // ── Brand ──
+  static const brandGradient = LinearGradient(
+    colors: [Color(0xFF667eea), Color(0xFF764BA2), Color(0xFF23a6d5), Color(0xFF23d5ab)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  static const brandPurple = Color(0xFF764BA2);
+  static const cardShadow = BoxShadow(
+    color: Color(0x08000000),
+    blurRadius: 20,
+    offset: Offset(0, 4),
+  );
+  static const navRightShadow = BoxShadow(
+    color: Color(0x08000000),
+    blurRadius: 15,
+    offset: Offset(5, 0),
+  );
+  static const capsuleGlowShadow = BoxShadow(
+    color: Color(0x66764BA2),
+    blurRadius: 15,
+    spreadRadius: 0,
+    offset: Offset(0, 4),
+  );
 }
 
 /// Semantic color tokens with light/dark variants.
@@ -132,6 +156,7 @@ class ImColors {
     required this.online,
     required this.offline,
     required this.busy,
+    required this.brandGradient,
   });
 
   final Color primary;
@@ -156,22 +181,23 @@ class ImColors {
   final Color online;
   final Color offline;
   final Color busy;
+  final List<Color> brandGradient;
 
   static const light = ImColors._(
-    primary: Color(0xFF2196F3),
+    primary: Color(0xFF764BA2),
     secondary: Color(0xFF4CAF50),
     error: Color(0xFFF44336),
     warning: Color(0xFFFF9800),
     success: Color(0xFF4CAF50),
-    info: Color(0xFF2196F3),
-    background: Color(0xFFFAFAFA),
+    info: Color(0xFF764BA2),
+    background: Color(0xFFF7F8FA),
     surface: Color(0xFFFFFFFF),
     surfaceVariant: Color(0xFFF5F5F5),
     textPrimary: Color(0xFF212121),
     textSecondary: Color(0xFF757575),
     textDisabled: Color(0xFFBDBDBD),
     border: Color(0xFFE0E0E0),
-    borderFocus: Color(0xFF2196F3),
+    borderFocus: Color(0xFF764BA2),
     borderError: Color(0xFFF44336),
     overlay: Color(0x54000000),
     ownMessageBubble: Color(0xFFDCF8C6),
@@ -180,6 +206,12 @@ class ImColors {
     online: Color(0xFF4CAF50),
     offline: Color(0xFF9E9E9E),
     busy: Color(0xFFF44336),
+    brandGradient: [
+      Color(0xFF667eea),
+      Color(0xFF764BA2),
+      Color(0xFF23a6d5),
+      Color(0xFF23d5ab),
+    ],
   );
 
   static const dark = ImColors._(
@@ -205,6 +237,12 @@ class ImColors {
     online: Color(0xFF66BB6A),
     offline: Color(0xFF757575),
     busy: Color(0xFFEF5350),
+    brandGradient: [
+      Color(0xFF667eea),
+      Color(0xFF764BA2),
+      Color(0xFF23a6d5),
+      Color(0xFF23d5ab),
+    ],
   );
 }
 
@@ -224,16 +262,16 @@ class ImComponentTokens {
   static final Color buttonDangerText = const Color(0xFFFFFFFF);
 
   // ── Input ──
-  static final Color inputBg = ImColors.light.surface;
-  static final Color inputBorder = ImColors.light.border;
-  static final Color inputBorderFocus = ImColors.light.borderFocus;
+  static final Color inputBg = const Color(0xFFF5F5F5);
+  static final Color inputBorder = Colors.transparent;
+  static final Color inputBorderFocus = ImColors.light.primary;
   static final Color inputBorderError = ImColors.light.borderError;
   static final Color inputText = ImColors.light.textPrimary;
   static final Color inputPlaceholder = ImColors.light.textSecondary;
 
   // ── Card ──
-  static final Color cardBg = ImColors.light.surface;
-  static final Color cardBorder = ImColors.light.border;
+  static final Color cardBg = Colors.white;
+  static final Color cardBorder = Colors.transparent;
 
   // ── Badge ──
   static final Color badgeBg = ImColors.light.error;
