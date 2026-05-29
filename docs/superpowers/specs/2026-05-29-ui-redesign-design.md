@@ -16,9 +16,29 @@
 
 ### 约束
 
+- **只改 UI 和交互逻辑，绝对不改动接口、数据层、状态管理相关代码**（API 调用、Repository、Provider/State、数据模型等一律不动）
 - Flutter Web 平台，`backdrop-filter` 有性能开销
 - 需保持 Light/Dark 双主题支持
 - 基于现有 `GlassTheme` ThemeExtension 架构扩展，不破坏现有 API
+
+---
+
+## 0. 改动边界（重要）
+
+### ✅ 可以改动
+
+- **主题层**：`glass_theme.dart`、`app_theme.dart`、`im_tokens.dart`、`im_theme.dart`
+- **UI 组件**：`presentation/widgets/` 下所有 Widget 的外观、动画、布局
+- **页面布局**：`presentation/` 下所有 Page 的视觉结构、装饰效果
+- **新增共享组件**：`im_ui` 包中的新 Widget（GlassCard 等）
+
+### ❌ 禁止改动
+
+- **数据层**：`data/` 目录下所有文件（API 调用、Repository 实现）
+- **状态管理**：所有 `*_provider.dart`、`*_state.dart` 文件（Riverpod Provider/State）
+- **数据模型**：`im_core` 包中的 Model 类
+- **路由逻辑**：`app_router.dart` 的路由定义和守卫逻辑
+- **国际化**：`l10n/` 目录下的 ARB 文件和生成代码
 
 ---
 
