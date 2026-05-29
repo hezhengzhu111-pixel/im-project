@@ -44,51 +44,51 @@ class ImTheme {
         surfaceTintColor: Colors.transparent,
       ),
       cardTheme: CardThemeData(
-        elevation: ImTokens.elevationSm,
+        elevation: 0,
         color: colors.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(ImTokens.radiusLg),
-          side: BorderSide(color: colors.border),
+          borderRadius: BorderRadius.circular(ImTokens.radiusXl),
         ),
-        margin: EdgeInsets.zero,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: colors.surface,
+        fillColor: const Color(0xFFF5F5F5),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(ImTokens.radiusMd),
-          borderSide: BorderSide(color: colors.border),
+          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(ImTokens.radiusLg),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(ImTokens.radiusMd),
-          borderSide: BorderSide(color: colors.border),
+          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(ImTokens.radiusLg),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(ImTokens.radiusMd),
-          borderSide: BorderSide(color: colors.borderFocus, width: 2),
+          borderSide: BorderSide(color: ImTokens.brandPurple, width: 2),
+          borderRadius: BorderRadius.circular(ImTokens.radiusLg),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(ImTokens.radiusMd),
-          borderSide: BorderSide(color: colors.borderError),
+          borderSide: BorderSide(color: colors.error, width: 1),
+          borderRadius: BorderRadius.circular(ImTokens.radiusLg),
         ),
-        contentPadding: EdgeInsets.symmetric(
-          horizontal: ImTokens.space4,
-          vertical: ImTokens.space3,
+        focusedErrorBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: colors.error, width: 2),
+          borderRadius: BorderRadius.circular(ImTokens.radiusLg),
         ),
-        hintStyle: TextStyle(color: colors.textSecondary),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: colors.primary,
           foregroundColor: Colors.white,
-          elevation: ImTokens.elevationSm,
-          padding: EdgeInsets.symmetric(
+          elevation: 0,
+          shadowColor: Colors.transparent,
+          padding: const EdgeInsets.symmetric(
             horizontal: ImTokens.space6,
             vertical: ImTokens.space3,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(ImTokens.radiusMd),
+            borderRadius: BorderRadius.circular(ImTokens.radiusLg),
           ),
+          textStyle: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
@@ -134,18 +134,40 @@ class ImTheme {
         thickness: 1,
         space: 1,
       ),
+      tabBarTheme: TabBarThemeData(
+        labelColor: ImTokens.brandPurple,
+        unselectedLabelColor: colors.textSecondary,
+        indicatorSize: TabBarIndicatorSize.label,
+        indicator: UnderlineTabIndicator(
+          borderSide: BorderSide(color: ImTokens.brandPurple, width: 2),
+        ),
+        labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+      listTileTheme: ListTileThemeData(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(ImTokens.radiusMd),
+        ),
+      ),
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: colors.surface,
-        selectedIconTheme: IconThemeData(color: colors.primary),
-        unselectedIconTheme: IconThemeData(color: colors.textSecondary),
+        indicatorColor: Colors.transparent,
+        selectedIconTheme: IconThemeData(
+          color: ImTokens.brandPurple,
+          size: 24,
+        ),
+        unselectedIconTheme: IconThemeData(
+          color: Colors.blueGrey.shade400,
+          size: 24,
+        ),
         selectedLabelTextStyle: TextStyle(
-          color: colors.primary,
-          fontWeight: FontWeight.w600,
           fontSize: ImTokens.textSm,
+          fontWeight: FontWeight.w600,
+          color: ImTokens.brandPurple,
         ),
         unselectedLabelTextStyle: TextStyle(
-          color: colors.textSecondary,
           fontSize: ImTokens.textSm,
+          color: Colors.blueGrey.shade400,
         ),
       ),
     );
