@@ -444,7 +444,7 @@ void main() {
       _outboxInitialized = true;
 
       // Enqueue encrypted message with sensitive plaintext content
-      final message = await outbox.enqueue(
+      await outbox.enqueue(
         sessionKey: 'session-1',
         receiverId: 'user-2',
         content: 'SENSITIVE_PLAINTEXT_CONTENT',

@@ -389,7 +389,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               setState(() => _messageInputFocused = focused),
           members: isGroup ? _groupMembers : null,
           onSend: (text, mentionedUserIds) {
-            if (session == null) return;
             if (isGroup) {
               ref.read(chatStateProvider.notifier).sendGroupMessage(
                     session.targetId,
@@ -405,7 +404,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             }
           },
           onSendImage: (result) {
-            if (session == null) return;
             if (isGroup) {
               ref.read(chatStateProvider.notifier).sendGroupMessage(
                     session.targetId,
@@ -429,7 +427,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             }
           },
           onSendFile: (result) {
-            if (session == null) return;
             if (isGroup) {
               ref.read(chatStateProvider.notifier).sendGroupMessage(
                     session.targetId,
@@ -453,7 +450,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             }
           },
           onSendVoice: (result) {
-            if (session == null) return;
             if (isGroup) {
               ref.read(chatStateProvider.notifier).sendGroupMessage(
                     session.targetId,

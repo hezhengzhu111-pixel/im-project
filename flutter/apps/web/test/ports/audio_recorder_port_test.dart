@@ -23,9 +23,10 @@ void main() {
       final result = await adapter.startRecording();
 
       expect(result, isA<Failure>());
-      expect((result as Failure).error, isA<UnknownError>());
+      final failure = result as Failure;
+      expect(failure.error, isA<UnknownError>());
       expect(
-        ((result as Failure).error as UnknownError).message,
+        (failure.error as UnknownError).message,
         'already_recording',
       );
     });

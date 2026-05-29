@@ -27,7 +27,6 @@ import 'package:im_web/features/settings/presentation/ai_settings_page.dart'
 import 'package:im_web/features/debug/presentation/component_gallery_page.dart';
 
 import 'deferred_route_page.dart';
-import 'route_meta.dart';
 import 'route_names.dart';
 import 'route_resolver.dart';
 import 'route_observer.dart';

@@ -2,9 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:im_web/core/web_meta/web_meta_service_web.dart';
 import 'page_meta.dart';
 
-import 'web_meta_service_stub.dart'
-    if (dart.library.js_interop) 'web_meta_service_web.dart';
-
 abstract class WebMetaService {
   void apply(PageMeta meta, {String? locale});
 }
