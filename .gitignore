@@ -82,6 +82,7 @@ tmp/
 .deploy-tools/
 init.md
 .superpowers/
+.git.backup/
 
 # ===========================================
 # 生成文件
