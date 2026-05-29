@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
 class MomentsTopbar extends StatelessWidget {
@@ -15,19 +16,21 @@ class MomentsTopbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final glass = theme.extension<GlassTheme>()!;
     final isSolid = scrollProgress > 0.5;
 
     return ClipRect(
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: scrollProgress * 10, sigmaY: scrollProgress * 10),
+        filter: ImageFilter.blur(
+          sigmaX: glass.blurIntensity,
+          sigmaY: glass.blurIntensity,
+        ),
         child: Container(
           height: 56,
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface.withValues(alpha: scrollProgress * 0.95),
+            color: glass.navBackground,
             border: Border(
-              bottom: BorderSide(
-                color: Theme.of(context).dividerColor.withValues(alpha: scrollProgress),
-              ),
+              bottom: BorderSide(color: glass.dividerColor),
             ),
           ),
           child: Stack(
