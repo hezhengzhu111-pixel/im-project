@@ -1019,7 +1019,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get brandBadge => '端对端加密';
 
   @override
-  String get brandTitle => '安全。\n私密。\n即时。';
+  String get brandTitle => '安全 · 私密 · 即时';
 
   @override
   String get brandSubtitle => '端对端加密即时通信系统，\n您的消息仅在设备上解密。';

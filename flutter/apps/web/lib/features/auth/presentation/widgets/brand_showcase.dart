@@ -14,14 +14,14 @@ class BrandShowcase extends StatelessWidget {
     final loc = AppLocalizations.of(context)!;
 
     return Padding(
-      padding: const EdgeInsets.all(60),
+      padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 40),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 品牌徽章
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(20),
@@ -32,46 +32,44 @@ class BrandShowcase extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.lock, size: 16, color: Colors.white),
-                const SizedBox(width: 8),
+                const Icon(Icons.lock, size: 14, color: Colors.white),
+                const SizedBox(width: 6),
                 Text(
                   loc.brandBadge,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 14,
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
 
           // 主标题
           Text(
             loc.brandTitle,
             style: const TextStyle(
-              fontSize: 48,
+              fontSize: 40,
               fontWeight: FontWeight.bold,
               color: Colors.white,
-              height: 1.15,
-              letterSpacing: -0.02,
+              height: 1.2,
+              letterSpacing: -0.01,
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
 
           // 副标题
           Text(
             loc.brandSubtitle,
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 15,
               color: Colors.white.withValues(alpha: 0.8),
-              height: 1.6,
+              height: 1.5,
             ),
           ),
-          const SizedBox(height: 40,
-
-          ),
+          const SizedBox(height: 32),
 
           // 功能特性列表
           _buildFeatureItem(
@@ -79,19 +77,19 @@ class BrandShowcase extends StatelessWidget {
             label: loc.brandFeatureE2eeLabel,
             desc: loc.brandFeatureE2ee,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           _buildFeatureItem(
             icon: Icons.speed,
             label: loc.brandFeatureRealtimeLabel,
             desc: loc.brandFeatureRealtime,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           _buildFeatureItem(
             icon: Icons.devices,
             label: loc.brandFeatureDeviceTrustLabel,
             desc: loc.brandFeatureDeviceTrust,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           _buildFeatureItem(
             icon: Icons.smart_toy,
             label: loc.brandFeatureAiLabel,
@@ -108,10 +106,10 @@ class BrandShowcase extends StatelessWidget {
     required String desc,
   }) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.15),
         ),
@@ -119,31 +117,31 @@ class BrandShowcase extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 40,
-            height: 40,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, size: 20, color: Colors.white),
+            child: Icon(icon, size: 18, color: Colors.white),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 label,
                 style: const TextStyle(
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 1),
               Text(
                 desc,
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 12,
                   color: Colors.white.withValues(alpha: 0.7),
                 ),
               ),

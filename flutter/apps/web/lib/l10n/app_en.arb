@@ -328,7 +328,7 @@
   "timeHoursAgo": "{hours} h ago",
   "timeDaysAgo": "{days} d ago",
   "brandBadge": "End-to-End Encrypted",
-  "brandTitle": "Secure.\nPrivate.\nInstant.",
+  "brandTitle": "Secure · Private · Instant",
   "brandSubtitle": "End-to-end encrypted instant messaging,\nyour messages are only decrypted on your device.",
   "brandFeatureE2eeLabel": "E2EE Enabled",
   "brandFeatureE2ee": "End-to-end encryption",

@@ -2030,7 +2030,7 @@ abstract class AppLocalizations {
   /// No description provided for @brandTitle.
   ///
   /// In en, this message translates to:
-  /// **'Secure.\nPrivate.\nInstant.'**
+  /// **'Secure · Private · Instant'**
   String get brandTitle;
 
   /// No description provided for @brandSubtitle.
