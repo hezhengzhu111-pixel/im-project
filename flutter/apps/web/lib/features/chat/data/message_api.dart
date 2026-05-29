@@ -11,6 +11,7 @@ class SendPrivateMessageRequest {
     this.mediaSize,
     this.thumbnailUrl,
     this.duration,
+    this.extra,
   });
 
   final String receiverId;
@@ -22,6 +23,7 @@ class SendPrivateMessageRequest {
   final int? mediaSize;
   final String? thumbnailUrl;
   final int? duration;
+  final Map<String, dynamic>? extra;
 
   Map<String, dynamic> toJson() => {
         'receiverId': receiverId,
@@ -33,6 +35,7 @@ class SendPrivateMessageRequest {
         if (mediaSize != null) 'mediaSize': mediaSize,
         if (thumbnailUrl != null) 'thumbnailUrl': thumbnailUrl,
         if (duration != null) 'duration': duration,
+        if (extra != null) 'extra': extra,
       };
 }
 
@@ -48,6 +51,7 @@ class SendGroupMessageRequest {
     this.thumbnailUrl,
     this.duration,
     this.mentionedUserIds,
+    this.extra,
   });
 
   final String groupId;
@@ -60,6 +64,7 @@ class SendGroupMessageRequest {
   final String? thumbnailUrl;
   final int? duration;
   final List<String>? mentionedUserIds;
+  final Map<String, dynamic>? extra;
 
   Map<String, dynamic> toJson() => {
         'groupId': groupId,
@@ -72,6 +77,7 @@ class SendGroupMessageRequest {
         if (thumbnailUrl != null) 'thumbnailUrl': thumbnailUrl,
         if (duration != null) 'duration': duration,
         if (mentionedUserIds != null) 'mentionedUserIds': mentionedUserIds,
+        if (extra != null) 'extra': extra,
       };
 }
 
