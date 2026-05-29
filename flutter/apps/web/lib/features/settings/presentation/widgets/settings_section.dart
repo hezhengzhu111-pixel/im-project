@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:im_ui/ui.dart';
 
+/// 白色悬浮卡片容器，用于包裹设置分组内容。
 class SettingsSection extends StatelessWidget {
   const SettingsSection({
     required this.children,
@@ -18,13 +19,18 @@ class SettingsSection extends StatelessWidget {
     final theme = Theme.of(context);
     return Container(
       width: double.infinity,
-      padding: padding ?? EdgeInsets.all(ImTokens.space5),
+      padding: padding ?? const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ImTokens.surfaceWhite,
         borderRadius: BorderRadius.circular(ImTokens.radiusXl),
-        boxShadow: const [ImTokens.cardShadow],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      margin: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -33,74 +39,76 @@ class SettingsSection extends StatelessWidget {
               title!,
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
-                color: theme.colorScheme.primary,
+                color: ImTokens.brandPrimary,
               ),
             ),
-            SizedBox(height: ImTokens.layoutSectionGap),
+            const SizedBox(height: ImTokens.layoutSectionGap),
           ],
-          ...children,
+          ..._intersperse(children, const SizedBox(height: 2)),
         ],
       ),
     );
   }
+
+  /// 在子元素之间插入间距 widget。
+  List<Widget> _intersperse(List<Widget> widgets, Widget separator) {
+    if (widgets.length <= 1) return widgets;
+    final result = <Widget>[];
+    for (var i = 0; i < widgets.length; i++) {
+      result.add(widgets[i]);
+      if (i < widgets.length - 1) {
+        result.add(separator);
+      }
+    }
+    return result;
+  }
 }
 
+/// 设置行：标题 + 描述 + 尾部控件，无分割线。
 class SettingsRow extends StatelessWidget {
   const SettingsRow({
     required this.title,
     this.description,
     required this.trailing,
-    this.showDivider = true,
     super.key,
   });
 
   final String title;
   final String? description;
   final Widget trailing;
-  final bool showDivider;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (description != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        description!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              trailing,
-            ],
+                if (description != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    description!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-        ),
-        if (showDivider)
-          Divider(
-            height: 1,
-            thickness: 0.5,
-            color: Colors.grey.shade200,
-          ),
-      ],
+          trailing,
+        ],
+      ),
     );
   }
 }

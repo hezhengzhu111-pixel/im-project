@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../theme/im_tokens.dart';
 import 'breakpoint.dart';
@@ -42,44 +41,31 @@ class ResponsiveScaffold extends StatelessWidget {
     final isDesktop = bp == Breakpoint.expanded || bp == Breakpoint.large;
 
     if (isDesktop) {
-      return _buildDesktop(context, Theme.of(context));
+      return _buildDesktop(context);
     }
     return _buildMobile(context);
   }
 
   // ─────────────────────────────────────────────────────────────
-  // [重构要求 1] 全局背景：四色渐变包裹整个 Scaffold
+  // 桌面布局：四色渐变大背景 + 导航栏 + 内容区
   // ─────────────────────────────────────────────────────────────
-  Widget _buildDesktop(BuildContext context, ThemeData theme) {
+  Widget _buildDesktop(BuildContext context) {
     return Scaffold(
-      // Scaffold 自身透明，让渐变背景透出
       backgroundColor: Colors.transparent,
       body: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF667eea), // 蓝紫
-              Color(0xFF764ba2), // 品牌紫
-              Color(0xFF23a6d5), // 青色
-              Color(0xFF23d5ab), // 绿青
-            ],
-          ),
+          gradient: ImTokens.brandBackgroundGradient,
         ),
         child: Row(
           children: [
-            // ───────────────────────────────────────────────────
-            // [重构要求 2] 导航栏：毛玻璃效果
-            // ───────────────────────────────────────────────────
-            _buildGlassNavRail(context, theme),
-            // ───────────────────────────────────────────────────
-            // [重构要求 4] 主内容区：浅灰紫背景 + 白卡片
-            // ───────────────────────────────────────────────────
+            // ── 左侧导航栏 ──
+            _buildNavRail(context),
+            // ── 右侧主内容区 ──
             Expanded(
               child: Container(
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF7F8FA), // 浅灰紫背景
+                  color: ImTokens.pageBackground,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(20),
                     bottomLeft: Radius.circular(20),
@@ -92,17 +78,11 @@ class ResponsiveScaffold extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    bottomLeft: Radius.circular(20),
-                  ),
-                  child: Column(
-                    children: [
-                      if (header != null) header!,
-                      Expanded(child: child),
-                    ],
-                  ),
+                child: Column(
+                  children: [
+                    if (header != null) header!,
+                    Expanded(child: child),
+                  ],
                 ),
               ),
             ),
@@ -113,84 +93,73 @@ class ResponsiveScaffold extends StatelessWidget {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // [重构要求 2] 导航栏：毛玻璃 + [重构要求 3] 选中态胶囊
+  // 导航栏：透明背景 + 白色发光胶囊
   // ─────────────────────────────────────────────────────────────
-  Widget _buildGlassNavRail(BuildContext context, ThemeData theme) {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
-        child: Container(
-          width: 88,
-          // 半透明白色，让渐变背景透过来形成毛玻璃效果
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.15),
-          ),
-          child: Column(
-            children: [
-              if (header != null) header!,
-              Expanded(
-                child: NavigationRail(
-                  selectedIndex: selectedIndex,
-                  onDestinationSelected: onDestinationSelected,
-                  labelType: NavigationRailLabelType.all,
-                  backgroundColor: Colors.transparent,
-                  // [重构要求 3] 禁用默认指示器，用自定义胶囊替代
-                  indicatorColor: Colors.transparent,
-                  leading: floatingActionButton,
-                  // [重构要求 3] 选中图标：品牌深紫色
-                  selectedIconTheme: const IconThemeData(
-                    color: Color(0xFF764BA2),
-                    size: 24,
-                  ),
-                  unselectedIconTheme: IconThemeData(
-                    color: Colors.white.withOpacity(0.6),
-                    size: 24,
-                  ),
-                  selectedLabelTextStyle: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF764BA2),
-                  ),
-                  unselectedLabelTextStyle: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white.withOpacity(0.6),
-                  ),
-                  destinations: destinations.map((d) {
-                    final isSelected =
-                        destinations.indexOf(d) == selectedIndex;
-                    return NavigationRailDestination(
-                      icon: _CyberCapsule(
-                        isSelected: isSelected,
-                        child: Icon(
-                          d.icon,
-                          size: 24,
-                          color: isSelected
-                              ? const Color(0xFF764BA2)
-                              : Colors.white.withOpacity(0.6),
-                        ),
-                      ),
-                      selectedIcon: _CyberCapsule(
-                        isSelected: true,
-                        child: Icon(
-                          d.selectedIcon ?? d.icon,
-                          size: 24,
-                          color: const Color(0xFF764BA2),
-                        ),
-                      ),
-                      label: Text(d.label),
-                    );
-                  }).toList(),
-                ),
+  Widget _buildNavRail(BuildContext context) {
+    return SizedBox(
+      width: 88,
+      child: Column(
+        children: [
+          if (header != null) header!,
+          Expanded(
+            child: NavigationRail(
+              selectedIndex: selectedIndex,
+              onDestinationSelected: onDestinationSelected,
+              labelType: NavigationRailLabelType.all,
+              backgroundColor: Colors.transparent,
+              indicatorColor: Colors.transparent,
+              leading: floatingActionButton,
+              selectedIconTheme: const IconThemeData(
+                color: ImTokens.brandPrimary,
+                size: 24,
               ),
-            ],
+              unselectedIconTheme: IconThemeData(
+                color: Colors.blueGrey.shade400,
+                size: 24,
+              ),
+              selectedLabelTextStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: ImTokens.brandPrimary,
+              ),
+              unselectedLabelTextStyle: TextStyle(
+                fontSize: 12,
+                color: Colors.blueGrey.shade400,
+              ),
+              destinations: destinations.map((d) {
+                final isSelected =
+                    destinations.indexOf(d) == selectedIndex;
+                return NavigationRailDestination(
+                  icon: _GlowCapsule(
+                    isSelected: isSelected,
+                    child: Icon(
+                      d.icon,
+                      size: 24,
+                      color: isSelected
+                          ? ImTokens.brandPrimary
+                          : Colors.blueGrey.shade400,
+                    ),
+                  ),
+                  selectedIcon: _GlowCapsule(
+                    isSelected: true,
+                    child: Icon(
+                      d.selectedIcon ?? d.icon,
+                      size: 24,
+                      color: ImTokens.brandPrimary,
+                    ),
+                  ),
+                  label: Text(d.label),
+                );
+              }).toList(),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
 
   // ─────────────────────────────────────────────────────────────
-  // 移动端：保持简洁，底部导航栏
+  // 移动端：底部导航栏
   // ─────────────────────────────────────────────────────────────
   Widget _buildMobile(BuildContext context) {
     return Scaffold(
@@ -219,10 +188,10 @@ class ResponsiveScaffold extends StatelessWidget {
 }
 
 // ═════════════════════════════════════════════════════════════════
-// [重构要求 3] 赛博悬浮胶囊 — 纯白 StadiumBorder + 紫色弥散阴影
+// 纯白发光胶囊 — 选中态悬浮发光效果
 // ═════════════════════════════════════════════════════════════════
-class _CyberCapsule extends StatelessWidget {
-  const _CyberCapsule({
+class _GlowCapsule extends StatelessWidget {
+  const _GlowCapsule({
     required this.isSelected,
     required this.child,
   });
@@ -239,16 +208,12 @@ class _CyberCapsule extends StatelessWidget {
       );
     }
 
-    // 选中态：纯白胶囊 + 品牌紫色弥散发光阴影
     return Container(
       width: 48,
       height: 48,
       decoration: BoxDecoration(
-        // 纯白胶囊背景
         color: Colors.white,
-        // StadiumBorder 等效的圆角
         borderRadius: BorderRadius.circular(16),
-        // [重构要求 3] 品牌紫色弥散阴影 — 悬浮发光效果
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF764BA2).withOpacity(0.4),

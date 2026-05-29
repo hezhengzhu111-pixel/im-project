@@ -103,25 +103,45 @@ class ImTokens {
   static const Duration animSlow = Duration(milliseconds: 300);
   static const Duration animDialog = Duration(milliseconds: 250);
 
-  // ── Brand ──
+  // ── Brand Colors ──
 
-  /// 品牌四色渐变 (用于主按钮、大型交互组件)
-  static const _brandGradientColors = [
-    Color(0xFF667eea),
-    Color(0xFF764BA2),
-    Color(0xFF23a6d5),
-    Color(0xFF23d5ab),
-  ];
+  /// 核心品牌紫
+  static const Color brandPrimary = Color(0xFF764BA2);
 
-  /// 品牌四色渐变 (用于主按钮、大型交互组件)
-  static const LinearGradient brandGradient = LinearGradient(
-    colors: _brandGradientColors,
+  /// 品牌紫色 (别名，保持向后兼容)
+  static const Color brandPurple = brandPrimary;
+
+  /// 极浅灰紫色，用于所有内部内容页底色
+  static const Color pageBackground = Color(0xFFF7F8FA);
+
+  /// 纯白，用于悬浮卡片面板
+  static const Color surfaceWhite = Colors.white;
+
+  // ── Brand Gradients ──
+
+  /// 交互组件双色渐变 (用于主按钮、操作类组件)
+  static const LinearGradient brandActionGradient = LinearGradient(
+    colors: [Color(0xFF6B48FF), Color(0xFF00E5FF)],
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+  );
+
+  /// 外层大背景四色渐变 (仅用于最外层页面背景)
+  static const LinearGradient brandBackgroundGradient = LinearGradient(
+    colors: [Color(0xFF667EEA), Color(0xFF764BA2), Color(0xFF23A6D5), Color(0xFF23D5AB)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
-  /// 品牌紫色 (用于导航选中、胶囊发光)
-  static const Color brandPurple = Color(0xFF764BA2);
+  /// 品牌四色渐变 (向后兼容，请优先使用 [brandActionGradient] 或 [brandBackgroundGradient])
+  static const LinearGradient brandGradient = brandBackgroundGradient;
+
+  static const List<Color> _brandGradientColors = [
+    Color(0xFF667EEA),
+    Color(0xFF764BA2),
+    Color(0xFF23A6D5),
+    Color(0xFF23D5AB),
+  ];
 
   /// 卡片微弱阴影
   static const BoxShadow cardShadow = BoxShadow(

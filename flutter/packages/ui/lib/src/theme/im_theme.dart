@@ -35,7 +35,7 @@ class ImTheme {
       brightness: brightness,
       colorScheme: colorScheme,
       textTheme: textTheme,
-      scaffoldBackgroundColor: colors.background,
+      scaffoldBackgroundColor: ImTokens.pageBackground,
       appBarTheme: AppBarTheme(
         elevation: ImTokens.elevationNone,
         centerTitle: false,
@@ -53,7 +53,7 @@ class ImTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: colors.surfaceVariant,
+        fillColor: Colors.grey.shade100,
         contentPadding: const EdgeInsets.symmetric(horizontal: ImTokens.space4, vertical: ImTokens.space3),
         border: OutlineInputBorder(
           borderSide: BorderSide.none,
@@ -64,7 +64,7 @@ class ImTheme {
           borderRadius: BorderRadius.circular(ImTokens.radiusLg),
         ),
         focusedBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: colors.borderFocus, width: 2),
+          borderSide: const BorderSide(color: ImTokens.brandPrimary, width: 2),
           borderRadius: BorderRadius.circular(ImTokens.radiusLg),
         ),
         hintStyle: TextStyle(color: colors.textSecondary),
@@ -79,8 +79,8 @@ class ImTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: colors.primary,
-          foregroundColor: colors.textPrimary,
+          backgroundColor: Colors.transparent,
+          foregroundColor: Colors.white,
           elevation: 0,
           shadowColor: Colors.transparent,
           padding: const EdgeInsets.symmetric(

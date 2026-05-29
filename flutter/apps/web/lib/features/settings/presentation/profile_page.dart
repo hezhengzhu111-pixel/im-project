@@ -78,206 +78,180 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     return ListView(
       padding: const EdgeInsets.all(ImTokens.space4),
       children: [
-        ProfileHero(user: user, onAvatarTap: () {}),
-        const SizedBox(height: 16),
+        // ── 头像卡片 ──
+        SettingsSection(
+          padding: const EdgeInsets.all(ImTokens.space5),
+          children: [
+            ProfileHero(user: user, onAvatarTap: () {}),
+          ],
+        ),
+        const SizedBox(height: ImTokens.layoutSectionGap),
+        // ── 双栏布局 ──
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── 左栏：基本信息表单 ──
             Expanded(
               child: SettingsSection(
+                padding: const EdgeInsets.all(ImTokens.space5),
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.all(ImTokens.space4),
-                    child: ValidatedForm(
-                      controller: _formController!,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(loc.profileAccountInfo,
-                              style: theme.textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            initialValue: user.username,
-                            decoration:
-                                InputDecoration(labelText: loc.profileUsername),
-                            enabled: false,
-                          ),
-                          const SizedBox(height: ImTokens.space3),
-                          ValidatedFormField(
-                            controller: _formController!,
-                            name: 'nickname',
-                            label: loc.profileNickname,
-                          ),
-                          const SizedBox(height: ImTokens.space3),
-                          ValidatedFormField(
-                            controller: _formController!,
-                            name: 'email',
-                            label: loc.profileEmail,
-                            keyboardType: TextInputType.emailAddress,
-                          ),
-                          const SizedBox(height: ImTokens.space3),
-                          TextFormField(
-                            initialValue: user.phone,
-                            decoration:
-                                InputDecoration(labelText: loc.profilePhone),
-                            enabled: false,
-                          ),
-                          const SizedBox(height: ImTokens.space3),
-                          Text(loc.profileGender,
-                              style: theme.textTheme.bodyMedium),
-                          Row(
-                            children: [
-                              Radio<String>(
-                                value: 'male',
-                                groupValue: _gender,
-                                onChanged: (v) =>
-                                    setState(() => _gender = v ?? ''),
-                              ),
-                              Text(loc.profileGenderMale),
-                              Radio<String>(
-                                value: 'female',
-                                groupValue: _gender,
-                                onChanged: (v) =>
-                                    setState(() => _gender = v ?? ''),
-                              ),
-                              Text(loc.profileGenderFemale),
-                              Radio<String>(
-                                value: 'secret',
-                                groupValue: _gender,
-                                onChanged: (v) =>
-                                    setState(() => _gender = v ?? ''),
-                              ),
-                              Text(loc.profileGenderSecret),
-                            ],
-                          ),
-                          const SizedBox(height: ImTokens.space3),
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(loc.profileBirthday),
-                            subtitle: Text(_birthday != null
-                                ? '${_birthday!.year}-${_birthday!.month.toString().padLeft(2, '0')}-${_birthday!.day.toString().padLeft(2, '0')}'
-                                : loc.profileBirthday),
-                            trailing: const Icon(Icons.calendar_today),
-                            onTap: () async {
-                              final date = await showDatePicker(
-                                context: context,
-                                initialDate: _birthday ?? DateTime(2000),
-                                firstDate: DateTime(1950),
-                                lastDate: DateTime.now(),
-                              );
-                              if (date != null)
-                                setState(() => _birthday = date);
-                            },
-                          ),
-                          const SizedBox(height: ImTokens.space3),
-                          ValidatedFormField(
-                            controller: _formController!,
-                            name: 'signature',
-                            label: loc.profileSignature,
-                            maxLines: 3,
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              FilledButton(
-                                onPressed: _save,
-                                child: Text(loc.profileSave),
-                              ),
-                              const SizedBox(width: ImTokens.space3),
-                              OutlinedButton(
-                                onPressed: _reset,
-                                child: Text(loc.profileReset),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                  Text(loc.profileAccountInfo,
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 16),
+                  ValidatedForm(
+                    controller: _formController!,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextFormField(
+                          initialValue: user.username,
+                          decoration:
+                              InputDecoration(labelText: loc.profileUsername),
+                          enabled: false,
+                        ),
+                        const SizedBox(height: ImTokens.space3),
+                        ValidatedFormField(
+                          controller: _formController!,
+                          name: 'nickname',
+                          label: loc.profileNickname,
+                        ),
+                        const SizedBox(height: ImTokens.space3),
+                        ValidatedFormField(
+                          controller: _formController!,
+                          name: 'email',
+                          label: loc.profileEmail,
+                          keyboardType: TextInputType.emailAddress,
+                        ),
+                        const SizedBox(height: ImTokens.space3),
+                        TextFormField(
+                          initialValue: user.phone,
+                          decoration:
+                              InputDecoration(labelText: loc.profilePhone),
+                          enabled: false,
+                        ),
+                        const SizedBox(height: ImTokens.space3),
+                        Text(loc.profileGender,
+                            style: theme.textTheme.bodyMedium),
+                        Row(
+                          children: [
+                            Radio<String>(
+                              value: 'male',
+                              groupValue: _gender,
+                              onChanged: (v) =>
+                                  setState(() => _gender = v ?? ''),
+                            ),
+                            Text(loc.profileGenderMale),
+                            Radio<String>(
+                              value: 'female',
+                              groupValue: _gender,
+                              onChanged: (v) =>
+                                  setState(() => _gender = v ?? ''),
+                            ),
+                            Text(loc.profileGenderFemale),
+                            Radio<String>(
+                              value: 'secret',
+                              groupValue: _gender,
+                              onChanged: (v) =>
+                                  setState(() => _gender = v ?? ''),
+                            ),
+                            Text(loc.profileGenderSecret),
+                          ],
+                        ),
+                        const SizedBox(height: ImTokens.space3),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(loc.profileBirthday),
+                          subtitle: Text(_birthday != null
+                              ? '${_birthday!.year}-${_birthday!.month.toString().padLeft(2, '0')}-${_birthday!.day.toString().padLeft(2, '0')}'
+                              : loc.profileBirthday),
+                          trailing: const Icon(Icons.calendar_today),
+                          onTap: () async {
+                            final date = await showDatePicker(
+                              context: context,
+                              initialDate: _birthday ?? DateTime(2000),
+                              firstDate: DateTime(1950),
+                              lastDate: DateTime.now(),
+                            );
+                            if (date != null)
+                              setState(() => _birthday = date);
+                          },
+                        ),
+                        const SizedBox(height: ImTokens.space3),
+                        ValidatedFormField(
+                          controller: _formController!,
+                          name: 'signature',
+                          label: loc.profileSignature,
+                          maxLines: 3,
+                        ),
+                        const SizedBox(height: 20),
+                        // ── 渐变保存按钮 + 重置按钮 ──
+                        Row(
+                          children: [
+                            _buildGradientSaveButton(loc),
+                            const SizedBox(width: ImTokens.space3),
+                            OutlinedButton(
+                              onPressed: _reset,
+                              child: Text(loc.profileReset),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: ImTokens.layoutSectionGap),
+            // ── 右栏：安全 & 隐私 ──
             SizedBox(
               width: 340,
               child: Column(
                 children: [
+                  // ── 安全设置卡片 ──
                   SettingsSection(
                     title: loc.profileSecurity,
                     children: [
-                      ListTile(
-                        title: Text(loc.profilePassword),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(loc.profileChange,
-                                style: TextStyle(
-                                    color: theme.colorScheme.primary)),
-                            const Icon(Icons.chevron_right),
-                          ],
-                        ),
+                      _SecurityTile(
+                        title: loc.profilePassword,
+                        trailing: loc.profileChange,
                         onTap: () => showDialog(
                             context: context,
                             builder: (_) => const PasswordDialog()),
                       ),
-                      Divider(
-                          height: 1,
-                          color: theme.colorScheme.outlineVariant
-                              .withValues(alpha: 0.3)),
-                      ListTile(
-                        title: Text(loc.profilePhoneVerify),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              user.phone != null
-                                  ? loc.profileBound
-                                  : loc.profileUnbound,
-                              style: TextStyle(
-                                  color: user.phone != null
-                                      ? theme.colorScheme.primary
-                                      : theme.colorScheme.onSurfaceVariant),
-                            ),
-                            const Icon(Icons.chevron_right),
-                          ],
-                        ),
+                      _SecurityTile(
+                        title: loc.profilePhoneVerify,
+                        trailing: user.phone != null
+                            ? loc.profileBound
+                            : loc.profileUnbound,
+                        trailingColor: user.phone != null
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurfaceVariant,
                         onTap: () => showDialog(
                             context: context,
                             builder: (_) => const BindPhoneDialog()),
                       ),
-                      Divider(
-                          height: 1,
-                          color: theme.colorScheme.outlineVariant
-                              .withValues(alpha: 0.3)),
-                      ListTile(
-                        title: Text(loc.profileEmailVerify),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              user.email != null
-                                  ? loc.profileBound
-                                  : loc.profileUnbound,
-                              style: TextStyle(
-                                  color: user.email != null
-                                      ? theme.colorScheme.primary
-                                      : theme.colorScheme.onSurfaceVariant),
-                            ),
-                            const Icon(Icons.chevron_right),
-                          ],
-                        ),
+                      _SecurityTile(
+                        title: loc.profileEmailVerify,
+                        trailing: user.email != null
+                            ? loc.profileBound
+                            : loc.profileUnbound,
+                        trailingColor: user.email != null
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurfaceVariant,
                         onTap: () => showDialog(
                             context: context,
                             builder: (_) => const BindEmailDialog()),
                       ),
                     ],
                   ),
-                  const SizedBox(height: ImTokens.space3),
+                  const SizedBox(height: ImTokens.layoutSectionGap),
+                  // ── 隐私设置卡片 ──
                   SettingsSection(
                     title: loc.profilePrivacy,
                     children: [
                       SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
                         title: Text(loc.profileAllowStrangerAdd),
                         subtitle: Text(loc.profileAllowStrangerAddDesc,
                             style: const TextStyle(fontSize: 12)),
@@ -298,6 +272,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         },
                       ),
                       SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
                         title: Text(loc.profileShowOnlineStatus),
                         subtitle: Text(loc.profileShowOnlineStatusDesc,
                             style: const TextStyle(fontSize: 12)),
@@ -318,6 +293,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         },
                       ),
                       SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
                         title: Text(loc.profileAllowViewMoments),
                         subtitle: Text(loc.profileAllowViewMomentsDesc,
                             style: const TextStyle(fontSize: 12)),
@@ -345,6 +321,27 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildGradientSaveButton(AppLocalizations loc) {
+    return GestureDetector(
+      onTap: _save,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: ImTokens.brandActionGradient,
+          borderRadius: BorderRadius.circular(ImTokens.radiusLg),
+        ),
+        child: Text(
+          loc.profileSave,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
+      ),
     );
   }
 
@@ -386,5 +383,57 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       _birthday =
           user.birthday != null ? DateTime.tryParse(user.birthday!) : null;
     });
+  }
+}
+
+/// 安全设置行：无分割线，右侧带"修改 >"文字。
+class _SecurityTile extends StatelessWidget {
+  const _SecurityTile({
+    required this.title,
+    required this.trailing,
+    this.trailingColor,
+    required this.onTap,
+  });
+
+  final String title;
+  final String trailing;
+  final Color? trailingColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(ImTokens.radiusMd),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            Text(
+              trailing,
+              style: TextStyle(
+                color: trailingColor ?? theme.colorScheme.primary,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

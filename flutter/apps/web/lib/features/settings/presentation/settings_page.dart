@@ -153,8 +153,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           color: Colors.transparent,
           child: InkWell(
             onTap: () => context.push('/settings/profile'),
+            borderRadius: BorderRadius.circular(ImTokens.radiusMd),
             child: Padding(
-              padding: const EdgeInsets.all(ImTokens.layoutPanelPadding),
+              padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
                   CircleAvatar(
@@ -277,7 +278,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         SettingsRow(
           title: loc.settingsInsecureVoice,
           description: loc.settingsInsecureVoiceDesc,
-          showDivider: false,
           trailing: Switch(
             value: false,
             onChanged: (v) {},
@@ -301,7 +301,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         SettingsRow(
           title: loc.settingsReadReceipt,
           description: loc.settingsReadReceiptDesc,
-          showDivider: false,
           trailing: Switch(
             value: settings.privacy.messageReadReceipt,
             onChanged: (v) {
@@ -321,10 +320,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             SettingsRow(
               title: loc.settingsClearCache,
               description: loc.settingsClearCacheDesc,
-              showDivider: false,
-              trailing: OutlinedButton(
-                onPressed: _confirmClearCache,
-                child: Text(loc.settingsClearCache),
+              trailing: _GradientActionChip(
+                label: loc.settingsClearCache,
+                onTap: _confirmClearCache,
               ),
             ),
           ],
@@ -336,10 +334,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               color: Colors.transparent,
               child: InkWell(
                 onTap: () => context.push('/settings/ai'),
+                borderRadius: BorderRadius.circular(ImTokens.radiusMd),
                 child: SettingsRow(
                   title: loc.settingsAiAssistant,
                   description: loc.settingsAiAssistantDesc,
-                  showDivider: false,
                   trailing: Icon(
                     Icons.chevron_right,
                     color: theme.colorScheme.onSurfaceVariant,
@@ -354,10 +352,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           children: [
             SettingsRow(
               title: loc.settingsLogout,
-              showDivider: false,
-              trailing: OutlinedButton(
-                onPressed: _confirmLogout,
-                child: Text(loc.settingsLogout),
+              trailing: _GradientActionChip(
+                label: loc.settingsLogout,
+                onTap: _confirmLogout,
+                isDestructive: true,
               ),
             ),
           ],
@@ -424,6 +422,45 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             child: Text(loc.commonConfirm),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 渐变胶囊操作按钮，用于卡片内的操作触发。
+class _GradientActionChip extends StatelessWidget {
+  const _GradientActionChip({
+    required this.label,
+    required this.onTap,
+    this.isDestructive = false,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool isDestructive;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          gradient: isDestructive
+              ? const LinearGradient(
+                  colors: [Color(0xFFF44336), Color(0xFFE57373)],
+                )
+              : ImTokens.brandActionGradient,
+          borderRadius: BorderRadius.circular(ImTokens.radiusLg),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+          ),
+        ),
       ),
     );
   }
