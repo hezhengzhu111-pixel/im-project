@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:im_core/core.dart';
+import 'package:im_ui/im_ui.dart';
 import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
@@ -36,7 +37,7 @@ class _SessionTileState extends State<SessionTile> {
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
           color: widget.isSelected
-              ? theme.colorScheme.primaryContainer.withAlpha(50)
+              ? ImTokens.brandPurple.withValues(alpha: 0.08)
               : _isHovered
                   ? glass.navHoverBackground
                   : Colors.transparent,
@@ -102,7 +103,7 @@ class _SessionTileState extends State<SessionTile> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      gradient: glass.accentGradient,
+                      gradient: ImTokens.brandGradient,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
