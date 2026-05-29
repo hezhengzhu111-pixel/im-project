@@ -1,8 +1,11 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/core/di/providers.dart';
+import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_ui/im_ui.dart';
 import '../../e2ee/presentation/encryption_banner.dart';
@@ -123,6 +126,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
+    final glass = Theme.of(context).extension<GlassTheme>()!;
     final chatState = ref.watch(chatStateProvider);
     final activeId = chatState.activeSessionId;
     final sessions = chatState.sessions.where((s) {
@@ -150,16 +154,25 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               : _buildSessionList(sessions, activeId, loc),
           expanded: Row(
             children: [
-              SizedBox(
-                width: context.breakpoint
-                    .value(
-                      compact: 0,
-                      medium: 0,
-                      expanded: ImTokens.layoutChatSidebarWidth,
-                      large: ImTokens.layoutChatSidebarWidth,
-                    )
-                    .toDouble(),
-                child: _buildSessionList(sessions, activeId, loc),
+              ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(
+                    sigmaX: glass.blurIntensity * 0.5,
+                    sigmaY: glass.blurIntensity * 0.5,
+                  ),
+                  child: Container(
+                    width: context.breakpoint
+                        .value(
+                          compact: 0,
+                          medium: 0,
+                          expanded: ImTokens.layoutChatSidebarWidth,
+                          large: ImTokens.layoutChatSidebarWidth,
+                        )
+                        .toDouble(),
+                    color: glass.navBackground,
+                    child: _buildSessionList(sessions, activeId, loc),
+                  ),
+                ),
               ),
               const VerticalDivider(thickness: 1, width: 1),
               Expanded(
@@ -304,6 +317,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Widget _buildChatView(String sessionId, AppLocalizations loc) {
+    final glass = Theme.of(context).extension<GlassTheme>()!;
     ref.listen(chatStateProvider.select((s) => s.messages[sessionId]),
         (prev, next) {
       if (next != null && (prev == null || next.length > prev.length)) {
@@ -435,9 +449,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     final msg = messages[index - 1];
                     final currentUserId =
                         ref.watch(authStateProvider).user?.id ?? '';
-                    return MessageBubble(
-                      message: msg,
-                      isMe: msg.senderId == currentUserId,
+                    return AnimatedEntrance(
+                      duration: glass.animationDuration,
+                      offset: 8,
+                      child: MessageBubble(
+                        message: msg,
+                        isMe: msg.senderId == currentUserId,
+                      ),
                     );
                   },
                 ),
