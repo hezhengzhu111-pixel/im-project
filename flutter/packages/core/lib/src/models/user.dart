@@ -72,6 +72,7 @@ class UserAuthResponse with _$UserAuthResponse {
     User? user,
     String? token,
     String? accessToken,
+    String? refreshToken,
     int? expiresInMs,
     int? refreshExpiresInMs,
     List<String>? permissions,

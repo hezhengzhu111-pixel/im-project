@@ -117,15 +117,36 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       final isAuth = await _repository.isAuthenticated();
       if (isAuth) {
-        final user = await _repository.getProfile();
-        state = AuthState(
-          user: user,
-          isAuthenticated: true,
-          authReady: true,
-          permissions: user.permissions ?? [],
-        );
-        _analytics.setUserId(user.id);
-        _connectWs();
+        try {
+          final user = await _repository.getProfile();
+          state = AuthState(
+            user: user,
+            isAuthenticated: true,
+            authReady: true,
+            permissions: user.permissions ?? [],
+          );
+          _analytics.setUserId(user.id);
+          _connectWs();
+        } catch (e) {
+          // 获取用户资料失败，可能是 token 过期，尝试刷新
+          try {
+            await _repository.refreshToken();
+            // 刷新成功，重新获取用户资料
+            final user = await _repository.getProfile();
+            state = AuthState(
+              user: user,
+              isAuthenticated: true,
+              authReady: true,
+              permissions: user.permissions ?? [],
+            );
+            _analytics.setUserId(user.id);
+            _connectWs();
+          } catch (refreshError) {
+            // 刷新也失败了，清除状态，让用户重新登录
+            AppLogger.instance.error('Session restore failed', refreshError, null, 'auth');
+            state = const AuthState(authReady: true);
+          }
+        }
       } else {
         state = const AuthState(authReady: true);
       }
