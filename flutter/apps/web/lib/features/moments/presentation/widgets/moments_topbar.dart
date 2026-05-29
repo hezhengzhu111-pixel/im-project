@@ -1,6 +1,4 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
 class MomentsTopbar extends StatelessWidget {
@@ -15,55 +13,28 @@ class MomentsTopbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final glass = theme.extension<GlassTheme>()!;
-    final isSolid = scrollProgress > 0.5;
-
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(
-          sigmaX: glass.blurIntensity,
-          sigmaY: glass.blurIntensity,
-        ),
-        child: Container(
-          height: 56,
-          decoration: BoxDecoration(
-            color: glass.navBackground,
-            border: Border(
-              bottom: BorderSide(color: glass.dividerColor),
+    return SizedBox(
+      height: 56,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Text(
+            AppLocalizations.of(context)!.momentsTitle,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              shadows: [Shadow(blurRadius: 3, color: Colors.black45)],
             ),
           ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Text(
-                AppLocalizations.of(context)!.momentsTitle,
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                  color: isSolid
-                      ? theme.colorScheme.onSurface
-                      : Colors.white,
-                  shadows: isSolid
-                      ? null
-                      : const [Shadow(blurRadius: 2, color: Colors.black45)],
-                ),
-              ),
-              Positioned(
-                right: 16,
-                child: IconButton(
-                  onPressed: onComposeTap,
-                  icon: Icon(
-                    Icons.camera_alt,
-                    color: isSolid
-                        ? theme.colorScheme.onSurface
-                        : Colors.white,
-                  ),
-                ),
-              ),
-            ],
+          Positioned(
+            right: 16,
+            child: IconButton(
+              onPressed: onComposeTap,
+              icon: const Icon(Icons.camera_alt_outlined, color: Colors.white),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

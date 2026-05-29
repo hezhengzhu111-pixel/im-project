@@ -269,76 +269,86 @@ class _MessageInputState extends ConsumerState<MessageInput> {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (_showMention) _buildMentionDropdown(),
-        ClipRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Container(
-              padding: const EdgeInsets.all(8.0),
-              decoration: BoxDecoration(
-                color: glass.inputBackground,
-                border: Border(
-                  top: BorderSide(color: glass.dividerColor),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: Container(
+                padding: const EdgeInsets.all(8.0),
+                decoration: BoxDecoration(
+                  color: glass.inputBackground,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: glass.dividerColor),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    const OutboxIndicator(),
+                    Semantics(
+                      label: loc.a11yAddAttachment,
+                      button: true,
+                      child: IconButton(
+                        icon: const Icon(Icons.add_circle_outline),
+                        onPressed: _isUploading ? null : _showAttachmentMenu,
+                        tooltip: loc.a11yAddAttachment,
+                      ),
+                    ),
+                    Semantics(
+                      label: loc.a11yVoiceInput,
+                      button: true,
+                      child: IconButton(
+                        icon: Icon(_isRecording ? Icons.stop : Icons.mic),
+                        onPressed: _isUploading
+                            ? null
+                            : () {
+                                if (_isRecording) {
+                                  _stopRecordingAndSend();
+                                } else {
+                                  _recordAndSendVoice();
+                                }
+                              },
+                        tooltip: loc.a11yVoiceInput,
+                        color: _isRecording ? Colors.red : null,
+                      ),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: widget.focusNode,
+                        decoration: InputDecoration(
+                          hintText: loc.chatInputHint,
+                          border: InputBorder.none,
+                          contentPadding:
+                              const EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                        minLines: 1,
+                        maxLines: 4,
+                        onSubmitted: (_) => _handleSend(),
+                      ),
+                    ),
+                    Semantics(
+                      label: loc.a11ySendMessage,
+                      button: true,
+                      child: IconButton(
+                        icon: const Icon(Icons.send),
+                        onPressed: _isUploading ? null : _handleSend,
+                        tooltip: loc.a11ySendMessage,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-          child: Row(
-            children: [
-              const OutboxIndicator(),
-              Semantics(
-                label: loc.a11yAddAttachment,
-                button: true,
-                child: IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  onPressed: _isUploading ? null : _showAttachmentMenu,
-                  tooltip: loc.a11yAddAttachment,
-                ),
-              ),
-              Semantics(
-                label: loc.a11yVoiceInput,
-                button: true,
-                child: IconButton(
-                  icon: Icon(_isRecording ? Icons.stop : Icons.mic),
-                  onPressed: _isUploading
-                      ? null
-                      : () {
-                          if (_isRecording) {
-                            _stopRecordingAndSend();
-                          } else {
-                            _recordAndSendVoice();
-                          }
-                        },
-                  tooltip: loc.a11yVoiceInput,
-                  color: _isRecording ? Colors.red : null,
-                ),
-              ),
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  focusNode: widget.focusNode,
-                  decoration: InputDecoration(
-                    hintText: loc.chatInputHint,
-                    border: InputBorder.none,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                  minLines: 1,
-                  maxLines: 4,
-                  onSubmitted: (_) => _handleSend(),
-                ),
-              ),
-              Semantics(
-                label: loc.a11ySendMessage,
-                button: true,
-                child: IconButton(
-                  icon: const Icon(Icons.send),
-                  onPressed: _isUploading ? null : _handleSend,
-                  tooltip: loc.a11ySendMessage,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-            ],
+            ),
           ),
-          ),
-        ),
         ),
       ],
     );
@@ -405,22 +415,19 @@ class _MessageInputState extends ConsumerState<MessageInput> {
 
   String _mapError(FailureError error, AppLocalizations loc) {
     return switch (error) {
-      UnsupportedCapability(:final capability) =>
-        switch (capability) {
+      UnsupportedCapability(:final capability) => switch (capability) {
           'audio_recording' => loc.errorRecordingNotImplemented,
           'share' => loc.errorShareNotAvailable,
           'clipboard' => loc.errorClipboardNotAvailable,
           _ => loc.commonFailed,
         },
-      PermissionDenied(:final capability) =>
-        switch (capability) {
+      PermissionDenied(:final capability) => switch (capability) {
           'notification' => loc.errorNotificationPermissionDenied,
           'microphone' => loc.errorMicrophonePermissionDenied,
           _ => loc.commonFailed,
         },
       OperationCancelled() => '',
-      UnknownError(:final message) =>
-        switch (message) {
+      UnknownError(:final message) => switch (message) {
           'file_read_failed' => loc.errorFileReadFailed,
           'already_recording' => loc.errorAlreadyRecording,
           'not_recording' => loc.errorNotRecording,

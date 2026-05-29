@@ -64,8 +64,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                 child: AnimatedContainer(
                   duration: ImTokens.animNormal,
                   curve: Curves.easeOut,
-                  transform:
-                      Matrix4.translationValues(0, _hovered ? -3 : 0, 0),
+                  transform: Matrix4.translationValues(0, _hovered ? -3 : 0, 0),
                   child: _BubbleWithArrow(
                     isMe: isMe,
                     color: _bubbleColor(context),
@@ -161,7 +160,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                     fontSize: 15,
                   ),
                 ),
-          },
+            },
           const SizedBox(height: 4),
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -204,9 +203,7 @@ class _MessageBubbleState extends State<MessageBubble> {
           ? const Color(0xFFBA3247)
           : const Color(0xFFFFE8EC).withValues(alpha: 0.92);
     }
-    return isMe
-        ? imGlassBrand
-        : Colors.white.withValues(alpha: 0.68);
+    return isMe ? imGlassBrand : Colors.white.withValues(alpha: 0.68);
   }
 
   IconData _statusIcon(String status) {

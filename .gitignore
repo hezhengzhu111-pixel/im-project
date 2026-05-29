@@ -108,3 +108,4 @@ init.md
 .parcel-cache
 .eslintcache
 .stylelintcache
+/docs/superpowers/

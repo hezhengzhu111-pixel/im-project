@@ -133,30 +133,25 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         const SizedBox(height: ImTokens.space3),
                         Text(loc.profileGender,
                             style: theme.textTheme.bodyMedium),
-                        Row(
-                          children: [
-                            Radio<String>(
+                        SegmentedButton<String>(
+                          segments: [
+                            ButtonSegment(
                               value: 'male',
-                              groupValue: _gender,
-                              onChanged: (v) =>
-                                  setState(() => _gender = v ?? ''),
+                              label: Text(loc.profileGenderMale),
                             ),
-                            Text(loc.profileGenderMale),
-                            Radio<String>(
+                            ButtonSegment(
                               value: 'female',
-                              groupValue: _gender,
-                              onChanged: (v) =>
-                                  setState(() => _gender = v ?? ''),
+                              label: Text(loc.profileGenderFemale),
                             ),
-                            Text(loc.profileGenderFemale),
-                            Radio<String>(
+                            ButtonSegment(
                               value: 'secret',
-                              groupValue: _gender,
-                              onChanged: (v) =>
-                                  setState(() => _gender = v ?? ''),
+                              label: Text(loc.profileGenderSecret),
                             ),
-                            Text(loc.profileGenderSecret),
                           ],
+                          selected: {_gender.isEmpty ? 'secret' : _gender},
+                          onSelectionChanged: (values) {
+                            setState(() => _gender = values.first);
+                          },
                         ),
                         const SizedBox(height: ImTokens.space3),
                         ListTile(
@@ -173,8 +168,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                               firstDate: DateTime(1950),
                               lastDate: DateTime.now(),
                             );
-                            if (date != null)
-                              setState(() => _birthday = date);
+                            if (date != null) setState(() => _birthday = date);
                           },
                         ),
                         const SizedBox(height: ImTokens.space3),
@@ -330,8 +324,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         decoration: BoxDecoration(
-          gradient: ImTokens.brandActionGradient,
+          color: imGlassBrand,
           borderRadius: BorderRadius.circular(ImTokens.radiusLg),
+          boxShadow: [
+            BoxShadow(
+              color: imGlassBrand.withValues(alpha: 0.24),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: Text(
           loc.profileSave,

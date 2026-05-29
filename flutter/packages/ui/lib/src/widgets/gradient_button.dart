@@ -33,9 +33,17 @@ class GradientButton extends StatelessWidget {
         width: width,
         height: height,
         decoration: BoxDecoration(
-          gradient: enabled ? ImTokens.brandGradient : null,
-          color: enabled ? null : Colors.grey.shade300,
+          color: enabled ? ImTokens.brandPurple : Colors.grey.shade300,
           borderRadius: BorderRadius.circular(radius),
+          boxShadow: enabled
+              ? [
+                  BoxShadow(
+                    color: ImTokens.brandPurple.withValues(alpha: 0.24),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ]
+              : null,
         ),
         child: ElevatedButton(
           onPressed: enabled ? onPressed : null,

@@ -11,7 +11,7 @@ const Color imGlassBrandHover = Color(0xFF6F43C4);
 class AppGradientBackground extends StatelessWidget {
   const AppGradientBackground({
     required this.child,
-    this.animated = false,
+    this.animated = true,
     super.key,
   });
 
@@ -28,7 +28,6 @@ class AppGradientBackground extends StatelessWidget {
         Color(0xFF10CF9A),
       ],
       animated: animated,
-      orbCount: 0,
       child: child,
     );
   }
@@ -58,14 +57,14 @@ class GlassPanel extends StatelessWidget {
       margin: margin,
       clipBehavior: clipBehavior,
       decoration: BoxDecoration(
-        color: backgroundColor ?? Colors.white.withValues(alpha: 0.72),
+        color: backgroundColor ?? Colors.white.withValues(alpha: 0.48),
         borderRadius: BorderRadius.circular(borderRadius),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.58)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.38)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF191C40).withValues(alpha: 0.12),
-            blurRadius: 48,
-            offset: const Offset(0, 18),
+            color: const Color(0xFF191C40).withValues(alpha: 0.08),
+            blurRadius: 36,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
@@ -112,9 +111,9 @@ class _HoverLiftCardState extends State<HoverLiftCard> {
         transform: Matrix4.translationValues(0, _hovered ? -4 : 0, 0),
         padding: widget.padding,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: _hovered ? 0.86 : 0.66),
+          color: Colors.white.withValues(alpha: _hovered ? 0.70 : 0.50),
           borderRadius: BorderRadius.circular(widget.borderRadius),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.58)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.36)),
           boxShadow: [
             BoxShadow(
               color: const Color(0xFF191C40)
@@ -164,7 +163,8 @@ class _PrimarySolidButtonState extends State<PrimarySolidButton> {
       onExit: (_) => setState(() => _hovered = false),
       child: AnimatedContainer(
         duration: ImTokens.animFast,
-        transform: Matrix4.translationValues(0, enabled && _hovered ? -2 : 0, 0),
+        transform:
+            Matrix4.translationValues(0, enabled && _hovered ? -2 : 0, 0),
         decoration: BoxDecoration(
           color: enabled
               ? (_hovered ? imGlassBrandHover : imGlassBrand)
@@ -173,7 +173,8 @@ class _PrimarySolidButtonState extends State<PrimarySolidButton> {
           boxShadow: enabled
               ? [
                   BoxShadow(
-                    color: imGlassBrand.withValues(alpha: _hovered ? 0.32 : 0.22),
+                    color:
+                        imGlassBrand.withValues(alpha: _hovered ? 0.32 : 0.22),
                     blurRadius: _hovered ? 30 : 22,
                     offset: const Offset(0, 12),
                   ),
@@ -244,7 +245,8 @@ class FlatLineIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? imGlassBrand : Colors.white.withValues(alpha: 0.76);
+    final color =
+        selected ? imGlassBrand : Colors.white.withValues(alpha: 0.76);
     return Tooltip(
       message: tooltip,
       child: InkWell(
