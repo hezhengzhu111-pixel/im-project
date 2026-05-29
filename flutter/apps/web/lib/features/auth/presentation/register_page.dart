@@ -10,7 +10,7 @@ import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
 import 'package:im_web/features/auth/presentation/widgets/gradient_button.dart';
 import 'package:im_web/features/auth/presentation/widgets/agreement_dialog.dart';
 import 'package:im_web/features/auth/presentation/widgets/brand_showcase.dart';
-import 'package:im_web/features/auth/presentation/widgets/decorative_background.dart';
+import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_web/widgets/validated_form.dart';
 import 'package:im_web/widgets/validated_form_field.dart';
@@ -149,31 +149,19 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
   Widget build(BuildContext context) {
     final authState = ref.watch(authStateProvider);
     final loc = AppLocalizations.of(context)!;
+    final glass = Theme.of(context).extension<GlassTheme>()!;
 
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: context.isMobile
-                ? const [Color(0xFF667eea), Color(0xFF764ba2)]
-                : const [
-                    Color(0xFF667eea),
-                    Color(0xFF764ba2),
-                    Color(0xFF6B73FF)
-                  ],
-          ),
-        ),
-        child: DecorativeBackground(
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: SlideTransition(
-              position: _slideAnimation,
-              child: context.isMobile
-                  ? _buildMobileLayout(authState, loc)
-                  : _buildDesktopLayout(authState, loc),
-            ),
+      body: GradientBackground(
+        colors: glass.gradientColors,
+        animated: true,
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: SlideTransition(
+            position: _slideAnimation,
+            child: context.isMobile
+                ? _buildMobileLayout(authState, loc)
+                : _buildDesktopLayout(authState, loc),
           ),
         ),
       ),

@@ -1,5 +1,6 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:im_ui/im_ui.dart';
+import 'package:im_web/core/theme/glass_theme.dart';
 
 class AuthCard extends StatelessWidget {
   final Widget child;
@@ -15,27 +16,38 @@ class AuthCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: context.breakpoint.value(compact: 0, medium: 0, expanded: 8, large: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      margin: EdgeInsets.all(context.breakpoint.value(compact: 16, medium: 16, expanded: 32, large: 32)),
-      child: Padding(
-        padding: EdgeInsets.all(context.breakpoint.value(compact: 24, medium: 24, expanded: 32, large: 32)),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: context.breakpoint.value(compact: 400, medium: 400, expanded: 400, large: 400)),
+    final theme = Theme.of(context);
+    final glass = theme.extension<GlassTheme>()!;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(glass.pageRadius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(
+          sigmaX: glass.blurIntensity,
+          sigmaY: glass.blurIntensity,
+        ),
+        child: Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(maxWidth: 420),
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: glass.cardBackground,
+            borderRadius: BorderRadius.circular(glass.pageRadius),
+            border: Border.all(color: glass.cardBorder),
+            boxShadow: glass.softShadow,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
                 title,
-                style: Theme.of(context).textTheme.headlineMedium,
+                style: theme.textTheme.headlineMedium,
               ),
               const SizedBox(height: 8),
               Text(
                 subtitle,
-                style: Theme.of(context).textTheme.bodyMedium,
+                style: theme.textTheme.bodyMedium,
               ),
               const SizedBox(height: 32),
               child,
