@@ -939,7 +939,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       String? mediaName,
       int? mediaSize,
       String? thumbnailUrl,
-      int? duration}) async {
+      int? duration,
+      Map<String, dynamic>? extra}) async {
     // Text splitting: only applies to TEXT messages with enforce enabled.
     if (messageType == 'TEXT') {
       final config = await _ensureMessageConfig();
@@ -957,6 +958,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
               mediaSize: mediaSize,
               thumbnailUrl: thumbnailUrl,
               duration: duration,
+              extra: extra,
             );
             if (lastResult == null) return null;
           }
@@ -974,6 +976,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       mediaSize: mediaSize,
       thumbnailUrl: thumbnailUrl,
       duration: duration,
+      extra: extra,
     );
   }
 
@@ -984,7 +987,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       String? mediaName,
       int? mediaSize,
       String? thumbnailUrl,
-      int? duration}) async {
+      int? duration,
+      Map<String, dynamic>? extra}) async {
     final cid =
         clientMessageId ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
     final currentUid = _currentUserId();
@@ -1067,6 +1071,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
             mediaSize: mediaSize,
             thumbnailUrl: thumbnailUrl,
             duration: duration,
+            extra: extra,
           ),
         );
       }
@@ -1077,7 +1082,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       });
       return serverMessage;
     } catch (e, st) {
-      AppLogger.instance.error('Send message failed, adding to outbox', e, st);
+      AppLogger.instance.error('Send message failed', e, st);
       _analytics.trackEvent('message_send_failed');
 
       if (e2eeStatus == 'encrypted' && encryptedEnvelope == null) {
@@ -1086,20 +1091,26 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         return null;
       }
 
-      // Add to outbox for retry
-      await _outbox.enqueue(
-        sessionKey: sessionKey,
-        receiverId: receiverId,
-        content: content,
-        messageType: messageType,
-        clientMessageId: cid,
-        isGroupChat: false,
-        isEncrypted: e2eeStatus == 'encrypted',
-        e2eeEnvelope: encryptedEnvelope,
-        e2eeDeviceId: encryptedDeviceId,
-      );
-
-      _updateMessageStatus(sessionKey, cid, 'PENDING');
+      // Only enqueue to outbox for network errors (retryable).
+      // Server validation errors (400/403/404) should fail immediately.
+      if (_isNetworkError(e)) {
+        await _outbox.enqueue(
+          sessionKey: sessionKey,
+          receiverId: receiverId,
+          content: content,
+          messageType: messageType,
+          clientMessageId: cid,
+          isGroupChat: false,
+          isEncrypted: e2eeStatus == 'encrypted',
+          e2eeEnvelope: encryptedEnvelope,
+          e2eeDeviceId: encryptedDeviceId,
+        );
+        _updateMessageStatus(sessionKey, cid, 'PENDING');
+      } else {
+        final errorMsg = _extractErrorMessage(e);
+        state = state.copyWith(error: errorMsg);
+        _updateMessageStatus(sessionKey, cid, 'FAILED');
+      }
       return null;
     }
   }
@@ -1112,7 +1123,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       int? mediaSize,
       String? thumbnailUrl,
       int? duration,
-      List<String>? mentionedUserIds}) async {
+      List<String>? mentionedUserIds,
+      Map<String, dynamic>? extra}) async {
     // Text splitting: only applies to TEXT messages with enforce enabled.
     if (messageType == 'TEXT') {
       final config = await _ensureMessageConfig();
@@ -1131,6 +1143,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
               thumbnailUrl: thumbnailUrl,
               duration: duration,
               mentionedUserIds: mentionedUserIds,
+              extra: extra,
             );
             if (lastResult == null) return null;
           }
@@ -1149,6 +1162,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       thumbnailUrl: thumbnailUrl,
       duration: duration,
       mentionedUserIds: mentionedUserIds,
+      extra: extra,
     );
   }
 
@@ -1160,7 +1174,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       int? mediaSize,
       String? thumbnailUrl,
       int? duration,
-      List<String>? mentionedUserIds}) async {
+      List<String>? mentionedUserIds,
+      Map<String, dynamic>? extra}) async {
     final cid =
         clientMessageId ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
     final sessionKey = _sessionKeyForGroupTarget(groupId);
@@ -1195,6 +1210,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           thumbnailUrl: thumbnailUrl,
           duration: duration,
           mentionedUserIds: mentionedUserIds,
+          extra: extra,
         ),
       );
       _replaceMessage(sessionKey, cid, serverMessage);
@@ -1202,22 +1218,27 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           'message_send', {'type': messageType, 'encrypted': false});
       return serverMessage;
     } catch (e, st) {
-      AppLogger.instance
-          .error('Send group message failed, adding to outbox', e, st);
+      AppLogger.instance.error('Send group message failed', e, st);
       _analytics.trackEvent('message_send_failed');
 
-      // Add to outbox for retry
-      await _outbox.enqueue(
-        sessionKey: sessionKey,
-        receiverId: groupId,
-        content: content,
-        messageType: messageType,
-        clientMessageId: cid,
-        isGroupChat: true,
-        groupId: groupId,
-      );
-
-      _updateMessageStatus(sessionKey, cid, 'PENDING');
+      // Only enqueue to outbox for network errors (retryable).
+      // Server validation errors (400/403/404) should fail immediately.
+      if (_isNetworkError(e)) {
+        await _outbox.enqueue(
+          sessionKey: sessionKey,
+          receiverId: groupId,
+          content: content,
+          messageType: messageType,
+          clientMessageId: cid,
+          isGroupChat: true,
+          groupId: groupId,
+        );
+        _updateMessageStatus(sessionKey, cid, 'PENDING');
+      } else {
+        final errorMsg = _extractErrorMessage(e);
+        state = state.copyWith(error: errorMsg);
+        _updateMessageStatus(sessionKey, cid, 'FAILED');
+      }
       return null;
     }
   }
@@ -1560,6 +1581,42 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       return leftId.compareTo(rightId);
     }
     return left.compareTo(right);
+  }
+
+  /// Check if an error is a transient network error (retryable).
+  /// Server validation errors (400/403/404) are NOT network errors.
+  bool _isNetworkError(Object error) {
+    if (error is Exception) {
+      final msg = error.toString().toLowerCase();
+      // Network-level failures
+      if (msg.contains('socketexception') ||
+          msg.contains('connection refused') ||
+          msg.contains('connection timed out') ||
+          msg.contains('network is unreachable') ||
+          msg.contains('broken pipe') ||
+          msg.contains('connection reset')) {
+        return true;
+      }
+      // Dio-specific: connection timeout, send timeout, receive timeout
+      if (msg.contains('connecttimeout') ||
+          msg.contains('sendtimeout') ||
+          msg.contains('receivetimeout')) {
+        return true;
+      }
+    }
+    // Default: treat as non-network (server error) — fail immediately.
+    return false;
+  }
+
+  /// Extract a user-facing error message from an exception.
+  String _extractErrorMessage(Object error) {
+    final raw = error.toString();
+    // Try to extract message from DioException response body.
+    final match = RegExp(r'"message"\s*:\s*"([^"]+)"').firstMatch(raw);
+    if (match != null) return match.group(1)!;
+    // Fallback to generic error string.
+    if (raw.length > 200) return 'send_failed';
+    return raw;
   }
 
   @override

@@ -70,18 +70,35 @@ class WebHttpClient implements HttpClientPort {
     T Function(Map<String, dynamic>) fromJson,
   ) {
     final data = response.data!;
+    final code = data['code'] as int? ?? 0;
+    final message = data['message'] as String? ?? '';
+    final success = data['success'] as bool?;
+
+    // Reject non-success responses (match Vue httpClient behavior).
+    if (success == false || (code != 0 && code != 200)) {
+      throw DioException(
+        requestOptions: response.requestOptions,
+        response: response,
+        type: DioExceptionType.badResponse,
+        message: message.isNotEmpty ? message : 'Request failed with code $code',
+      );
+    }
+
     final rawData = data['data'];
     dynamic parsedData;
     if (rawData is Map<String, dynamic>) {
       parsedData = fromJson(rawData);
     } else if (rawData is List) {
       parsedData = fromJson({'items': rawData});
+    } else if (rawData == null) {
+      // Server returned null data — pass through as null instead of crashing.
+      parsedData = null;
     } else {
       parsedData = rawData;
     }
     return ApiResponse<T>(
-      code: data['code'] as int,
-      message: data['message'] as String,
+      code: code,
+      message: message,
       data: parsedData as T,
       timestamp: data['timestamp'] as int?,
     );
