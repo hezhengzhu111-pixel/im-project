@@ -104,23 +104,41 @@ class ImTokens {
   static const Duration animDialog = Duration(milliseconds: 250);
 
   // ── Brand ──
-  static const brandGradient = LinearGradient(
-    colors: [Color(0xFF667eea), Color(0xFF764BA2), Color(0xFF23a6d5), Color(0xFF23d5ab)],
+
+  /// 品牌四色渐变 (用于主按钮、大型交互组件)
+  static const _brandGradientColors = [
+    Color(0xFF667eea),
+    Color(0xFF764BA2),
+    Color(0xFF23a6d5),
+    Color(0xFF23d5ab),
+  ];
+
+  /// 品牌四色渐变 (用于主按钮、大型交互组件)
+  static const LinearGradient brandGradient = LinearGradient(
+    colors: _brandGradientColors,
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
-  static const brandPurple = Color(0xFF764BA2);
-  static const cardShadow = BoxShadow(
+
+  /// 品牌紫色 (用于导航选中、胶囊发光)
+  static const Color brandPurple = Color(0xFF764BA2);
+
+  /// 卡片微弱阴影
+  static const BoxShadow cardShadow = BoxShadow(
     color: Color(0x08000000),
     blurRadius: 20,
     offset: Offset(0, 4),
   );
-  static const navRightShadow = BoxShadow(
+
+  /// 导航栏右侧阴影 (区分内容区)
+  static const BoxShadow navRightShadow = BoxShadow(
     color: Color(0x08000000),
     blurRadius: 15,
     offset: Offset(5, 0),
   );
-  static const capsuleGlowShadow = BoxShadow(
+
+  /// 导航胶囊发光阴影
+  static const BoxShadow capsuleGlowShadow = BoxShadow(
     color: Color(0x66764BA2),
     blurRadius: 15,
     spreadRadius: 0,
@@ -184,12 +202,12 @@ class ImColors {
   final List<Color> brandGradient;
 
   static const light = ImColors._(
-    primary: Color(0xFF764BA2),
+    primary: ImTokens.brandPurple,
     secondary: Color(0xFF4CAF50),
     error: Color(0xFFF44336),
     warning: Color(0xFFFF9800),
     success: Color(0xFF4CAF50),
-    info: Color(0xFF764BA2),
+    info: ImTokens.brandPurple,
     background: Color(0xFFF7F8FA),
     surface: Color(0xFFFFFFFF),
     surfaceVariant: Color(0xFFF5F5F5),
@@ -197,7 +215,7 @@ class ImColors {
     textSecondary: Color(0xFF757575),
     textDisabled: Color(0xFFBDBDBD),
     border: Color(0xFFE0E0E0),
-    borderFocus: Color(0xFF764BA2),
+    borderFocus: ImTokens.brandPurple,
     borderError: Color(0xFFF44336),
     overlay: Color(0x54000000),
     ownMessageBubble: Color(0xFFDCF8C6),
@@ -206,12 +224,7 @@ class ImColors {
     online: Color(0xFF4CAF50),
     offline: Color(0xFF9E9E9E),
     busy: Color(0xFFF44336),
-    brandGradient: [
-      Color(0xFF667eea),
-      Color(0xFF764BA2),
-      Color(0xFF23a6d5),
-      Color(0xFF23d5ab),
-    ],
+    brandGradient: ImTokens._brandGradientColors,
   );
 
   static const dark = ImColors._(
@@ -237,23 +250,21 @@ class ImColors {
     online: Color(0xFF66BB6A),
     offline: Color(0xFF757575),
     busy: Color(0xFFEF5350),
-    brandGradient: [
-      Color(0xFF667eea),
-      Color(0xFF764BA2),
-      Color(0xFF23a6d5),
-      Color(0xFF23d5ab),
-    ],
+    brandGradient: ImTokens._brandGradientColors,
   );
 }
 
 /// Component-level token values that reference semantic colors.
 class ImComponentTokens {
+  // Intentionally using raw values here instead of ImColors references,
+  // as these specific backgrounds need to be white/light grey regardless
+  // of theme changes to maintain the "floating card" visual effect.
   ImComponentTokens._();
 
   // ── Button ──
   static final Color buttonPrimaryBg = ImColors.light.primary;
   static final Color buttonPrimaryText = const Color(0xFFFFFFFF);
-  static final Color buttonPrimaryDisabledBg = const Color(0x612196F3);
+  static final Color buttonPrimaryDisabledBg = const Color(0x61764BA2); // brand purple @ 38% opacity
   static final Color buttonPrimaryDisabledText = const Color(0x61FFFFFF);
   static final Color buttonSecondaryBg = const Color(0x00000000);
   static final Color buttonSecondaryText = ImColors.light.primary;
