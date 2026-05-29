@@ -28,7 +28,6 @@ const LEGACY_INTERNAL_TS_HEADER: &str = "X-Internal-Ts";
 const INTERNAL_NONCE_HEADER: &str = "X-Internal-Nonce";
 const INTERNAL_SIGN_HEADER: &str = "X-Internal-Signature";
 
-
 /// 构造内部 HMAC-SHA256 签名请求头。
 ///
 /// 生成 `X-Internal-Timestamp`、`X-Internal-Nonce`、`X-Internal-Signature` 三个头部，
@@ -111,7 +110,13 @@ pub(crate) fn expire_auth_cookies(
     expire_cookie(response_headers, &config.ws_ticket_cookie_name, secure);
 }
 
-pub(crate) fn internal_canonical(method: &str, path: &str, body_hash: &str, ts: &str, nonce: &str) -> String {
+pub(crate) fn internal_canonical(
+    method: &str,
+    path: &str,
+    body_hash: &str,
+    ts: &str,
+    nonce: &str,
+) -> String {
     format!(
         "method={}&path={}&bodyHash={}&ts={}&nonce={}",
         method.trim().to_ascii_uppercase(),
@@ -155,7 +160,11 @@ pub(crate) fn sign_hmac(secret: &str, canonical: &str) -> Result<String, AppErro
     Ok(URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes()))
 }
 
-pub(crate) fn verify_hmac(secret: &str, canonical: &str, signature: &str) -> Result<bool, AppError> {
+pub(crate) fn verify_hmac(
+    secret: &str,
+    canonical: &str,
+    signature: &str,
+) -> Result<bool, AppError> {
     Ok(sign_hmac(secret, canonical)?
         .as_bytes()
         .ct_eq(signature.as_bytes())
@@ -299,7 +308,6 @@ pub(crate) fn insert_value(map: &mut HashMap<String, Value>, key: &str, value: O
     }
 }
 
-
 pub(crate) fn is_admin(config: &AppConfig, request: &IssueTokenRequest) -> bool {
     let Some(user_id) = request.user_id else {
         return false;
@@ -326,5 +334,3 @@ pub(crate) fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
 }
-
-

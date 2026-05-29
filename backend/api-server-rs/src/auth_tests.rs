@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::auth_api::*;
     use crate::auth::identity_from_headers;
+    use crate::auth_api::*;
     use crate::config::AppConfig;
     use crate::error::AppError;
     use axum::http::{header, HeaderMap, HeaderValue};

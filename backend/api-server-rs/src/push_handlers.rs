@@ -18,7 +18,6 @@ const MAX_TOKEN_LEN: usize = 2048;
 const MAX_SIMPLE_FIELD_LEN: usize = 128;
 const MAX_MUTED_CONVERSATIONS: usize = 1_024;
 
-
 pub async fn ensure_schema(db: &MySqlPool) -> Result<(), AppError> {
     sqlx::query(
         r#"CREATE TABLE IF NOT EXISTS service_user_service_db.user_push_devices (
@@ -284,7 +283,10 @@ pub(crate) async fn load_push_device_for_update(
     }))
 }
 
-pub(crate) async fn load_push_settings(db: &MySqlPool, user_id: i64) -> Result<PushSettings, AppError> {
+pub(crate) async fn load_push_settings(
+    db: &MySqlPool,
+    user_id: i64,
+) -> Result<PushSettings, AppError> {
     let row = sqlx::query(
         "SELECT CAST(push_settings AS CHAR) AS push_settings \
          FROM service_user_service_db.user_settings WHERE user_id = ?",
@@ -488,7 +490,10 @@ pub(crate) fn normalize_reason(raw: Option<&str>) -> Result<String, AppError> {
     Ok(value.to_ascii_uppercase())
 }
 
-pub(crate) fn normalize_optional_text(raw: Option<&str>, max_len: usize) -> Result<String, AppError> {
+pub(crate) fn normalize_optional_text(
+    raw: Option<&str>,
+    max_len: usize,
+) -> Result<String, AppError> {
     let Some(raw) = raw else {
         return Ok(String::new());
     };
@@ -506,4 +511,3 @@ pub(crate) fn normalize_channel(raw: Option<&str>, fallback: &str) -> Result<Str
     }
     Ok(value.to_string())
 }
-

@@ -1,3 +1,4 @@
+use super::{FNV_OFFSET_BASIS, FNV_PRIME};
 use crate::error::AppError;
 use im_rs_common::event::{ImEvent, ImEventType, MessageDto};
 use im_rs_common::{keys, time};
@@ -5,7 +6,6 @@ use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
 use redis::Script;
 use serde_json;
-use super::{FNV_OFFSET_BASIS, FNV_PRIME};
 
 /// 使用 FNV-1a 哈希计算给定 key 对应的热 Redis 分片索引。
 ///
@@ -223,4 +223,3 @@ pub(crate) async fn write_state_event(
         .await?;
     Ok(())
 }
-

@@ -20,6 +20,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   late TabController _tabController;
   String _searchKeyword = '';
   ContactsSortMode _sortMode = ContactsSortMode.name;
+  final Set<String> _processingRequestIds = <String>{};
 
   @override
   void initState() {
@@ -46,7 +47,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                   Tab(text: loc.contactsFriends(contactsState.friends.length)),
                   Tab(
                     text: contactsState.friendRequests.isNotEmpty
-                        ? loc.contactsRequests(contactsState.friendRequests.length)
+                        ? loc.contactsRequests(
+                            contactsState.friendRequests.length)
                         : loc.contactsFriendRequests,
                   ),
                 ],
@@ -99,6 +101,8 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
         final friend = filteredFriends[index];
         return _FriendTile(
           friend: friend,
+          onEditRemark: () => _showRemarkDialog(friend),
+          onDelete: () => _confirmDeleteFriend(friend),
           onTap: () async {
             final chatNotifier = ref.read(chatStateProvider.notifier);
             final session = await chatNotifier.getOrCreateSession(
@@ -117,6 +121,111 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
         );
       },
     );
+  }
+
+  Future<void> _showRemarkDialog(Friendship friend) async {
+    final controller = TextEditingController(text: friend.remark ?? '');
+    final loc = AppLocalizations.of(context)!;
+    final remark = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(loc.contactsEditRemark),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 30,
+          decoration: InputDecoration(
+            labelText: loc.contactsRemarkLabel,
+            hintText: loc.contactsRemarkHint,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(loc.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: Text(loc.commonConfirm),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (!mounted || remark == null) return;
+
+    final ok = await ref
+        .read(contactsStateProvider.notifier)
+        .updateFriendRemark(friend.friendId, remark);
+    if (!mounted) return;
+
+    final message = ok ? loc.contactsRemarkSaved : loc.contactsRemarkSaveFailed;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _confirmDeleteFriend(Friendship friend) async {
+    final loc = AppLocalizations.of(context)!;
+    final displayName = friend.remark ?? friend.nickname ?? friend.username;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(loc.contactsDeleteFriend),
+        content: Text(loc.contactsDeleteFriendConfirm(displayName)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(loc.commonCancel),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(loc.commonConfirm),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || confirmed != true) return;
+
+    final ok = await ref
+        .read(contactsStateProvider.notifier)
+        .deleteFriend(friend.friendId);
+    if (!mounted) return;
+
+    final message =
+        ok ? loc.contactsDeleteFriendDone : loc.contactsDeleteFriendFailed;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _handleRequestAction(
+    FriendRequest request, {
+    required bool accept,
+  }) async {
+    if (_processingRequestIds.contains(request.id)) return;
+    setState(() => _processingRequestIds.add(request.id));
+
+    final notifier = ref.read(contactsStateProvider.notifier);
+    final ok = accept
+        ? await notifier.acceptRequest(request.id)
+        : await notifier.rejectRequest(request.id);
+
+    if (!mounted) return;
+
+    if (ok && accept) {
+      _tabController.animateTo(0);
+    }
+
+    final loc = AppLocalizations.of(context)!;
+    final error = ref.read(contactsStateProvider).error;
+    final message = ok
+        ? (accept ? loc.contactsAccepted : loc.contactsRejected)
+        : (error ?? loc.commonFailed);
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+
+    setState(() => _processingRequestIds.remove(request.id));
   }
 
   List<Friendship> _filterAndSortFriends(List<Friendship> friends) {
@@ -173,16 +282,9 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
         final request = state.friendRequests[index];
         return _RequestTile(
           request: request,
-          onAccept: () async {
-            await ref
-                .read(contactsStateProvider.notifier)
-                .acceptRequest(request.id);
-          },
-          onReject: () async {
-            await ref
-                .read(contactsStateProvider.notifier)
-                .rejectRequest(request.id);
-          },
+          isBusy: _processingRequestIds.contains(request.id),
+          onAccept: () => _handleRequestAction(request, accept: true),
+          onReject: () => _handleRequestAction(request, accept: false),
         );
       },
     );
@@ -196,22 +298,37 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
 }
 
 class _FriendTile extends StatelessWidget {
-  const _FriendTile({required this.friend, required this.onTap});
+  const _FriendTile({
+    required this.friend,
+    required this.onTap,
+    required this.onEditRemark,
+    required this.onDelete,
+  });
   final Friendship friend;
   final VoidCallback onTap;
+  final VoidCallback onEditRemark;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
+    final displayName = (friend.remark?.trim().isNotEmpty ?? false)
+        ? friend.remark!.trim()
+        : (friend.nickname ?? friend.username);
+    final subtitleParts = <String>[
+      if (displayName != friend.username) '@${friend.username}',
+      friend.signature ??
+          (friend.isOnline == true ? loc.contactsOnline : loc.contactsOffline),
+    ];
+
     return ListTile(
       leading: Stack(
         clipBehavior: Clip.none,
         children: [
           CircleAvatar(
             radius: 22,
-            backgroundImage: friend.avatar != null
-                ? NetworkImage(friend.avatar!)
-                : null,
+            backgroundImage:
+                friend.avatar != null ? NetworkImage(friend.avatar!) : null,
             child: friend.avatar == null
                 ? Text(
                     (friend.nickname ?? friend.username)
@@ -241,11 +358,11 @@ class _FriendTile extends StatelessWidget {
         ],
       ),
       title: Text(
-        friend.nickname ?? friend.username,
+        displayName,
         style: const TextStyle(fontWeight: FontWeight.w500),
       ),
       subtitle: Text(
-        friend.signature ?? (friend.isOnline == true ? loc.contactsOnline : loc.contactsOffline),
+        subtitleParts.join(' · '),
         style: TextStyle(
           color: Theme.of(context).colorScheme.onSurfaceVariant,
           fontSize: ImTokens.textSm,
@@ -253,18 +370,56 @@ class _FriendTile extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
+      trailing: PopupMenuButton<_FriendAction>(
+        onSelected: (action) {
+          switch (action) {
+            case _FriendAction.editRemark:
+              onEditRemark();
+              break;
+            case _FriendAction.delete:
+              onDelete();
+              break;
+          }
+        },
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: _FriendAction.editRemark,
+            child: Row(
+              children: [
+                const Icon(Icons.edit_outlined, size: ImTokens.textLg),
+                const SizedBox(width: ImTokens.space2),
+                Text(loc.contactsEditRemark),
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: _FriendAction.delete,
+            child: Row(
+              children: [
+                const Icon(Icons.delete_outline, size: ImTokens.textLg),
+                const SizedBox(width: ImTokens.space2),
+                Text(loc.contactsDeleteFriend),
+              ],
+            ),
+          ),
+        ],
+      ),
       onTap: onTap,
     );
   }
 }
 
+enum _FriendAction { editRemark, delete }
+
 class _RequestTile extends StatelessWidget {
   const _RequestTile({
     required this.request,
+    required this.isBusy,
     required this.onAccept,
     required this.onReject,
   });
   final FriendRequest request;
+  final bool isBusy;
   final VoidCallback onAccept;
   final VoidCallback onReject;
 
@@ -306,17 +461,25 @@ class _RequestTile extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextButton(
-                  onPressed: onReject,
+                  onPressed: isBusy ? null : onReject,
                   child: Text(loc.contactsReject),
                 ),
                 FilledButton.tonal(
-                  onPressed: onAccept,
-                  child: Text(loc.contactsAccept),
+                  onPressed: isBusy ? null : onAccept,
+                  child: isBusy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(loc.contactsAccept),
                 ),
               ],
             )
           : Text(
-              request.status == 'ACCEPTED' ? loc.contactsAccepted : loc.contactsRejected,
+              request.status == 'ACCEPTED'
+                  ? loc.contactsAccepted
+                  : loc.contactsRejected,
               style: TextStyle(
                 color: theme.colorScheme.onSurfaceVariant,
                 fontSize: ImTokens.textSm,

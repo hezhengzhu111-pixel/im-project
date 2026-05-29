@@ -304,7 +304,10 @@ async fn test_get_post_success() {
     assert_eq!(resp.status, 200);
     assert_eq!(resp.body["data"]["post"]["content"], "My post");
     let uid_str = user.user_id.to_string();
-    assert_eq!(resp.body["data"]["post"]["userId"].as_str(), Some(uid_str.as_str()));
+    assert_eq!(
+        resp.body["data"]["post"]["userId"].as_str(),
+        Some(uid_str.as_str())
+    );
 }
 
 #[tokio::test]
