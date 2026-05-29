@@ -53,7 +53,7 @@ class ImTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isLight ? const Color(0xFFF5F5F5) : colors.surfaceVariant,
+        fillColor: colors.surfaceVariant,
         contentPadding: const EdgeInsets.symmetric(horizontal: ImTokens.space4, vertical: ImTokens.space3),
         border: OutlineInputBorder(
           borderSide: BorderSide.none,
@@ -80,7 +80,7 @@ class ImTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: colors.primary,
-          foregroundColor: Colors.white,
+          foregroundColor: colors.textPrimary,
           elevation: 0,
           shadowColor: Colors.transparent,
           padding: const EdgeInsets.symmetric(
@@ -96,7 +96,7 @@ class ImTheme {
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: colors.primary,
-          foregroundColor: Colors.white,
+          foregroundColor: colors.textPrimary,
           padding: EdgeInsets.symmetric(
             horizontal: ImTokens.space6,
             vertical: ImTokens.space3,
