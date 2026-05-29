@@ -1016,19 +1016,37 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get brandBadge => 'End-to-End Encrypted';
+
+  @override
+  String get brandTitle => 'Secure.\nPrivate.\nInstant.';
+
+  @override
   String get brandSubtitle => 'End-to-end encrypted instant messaging,\nyour messages are only decrypted on your device.';
+
+  @override
+  String get brandFeatureE2eeLabel => 'E2EE Enabled';
 
   @override
   String get brandFeatureE2ee => 'End-to-end encryption';
 
   @override
-  String get brandFeatureRealtime => 'Realtime sync';
+  String get brandFeatureRealtimeLabel => 'Realtime Delivery';
 
   @override
-  String get brandFeatureDeviceTrust => 'Multi-device secure login';
+  String get brandFeatureRealtime => 'Instant message delivery';
 
   @override
-  String get brandFeatureAi => 'AI assistant';
+  String get brandFeatureDeviceTrustLabel => 'Device Trust';
+
+  @override
+  String get brandFeatureDeviceTrust => 'Seamless cross-device switching';
+
+  @override
+  String get brandFeatureAiLabel => 'AI Assistant Online';
+
+  @override
+  String get brandFeatureAi => 'Smart assistant on standby';
 
   @override
   String get seoLoginTitle => 'Login - IM';
