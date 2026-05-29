@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'breakpoint.dart';
 import 'breakpoint_scope.dart';
@@ -46,22 +47,39 @@ class ResponsiveScaffold extends StatelessWidget {
   }
 
   Widget _buildDesktop(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       body: Row(
         children: [
-          NavigationRail(
-            selectedIndex: selectedIndex,
-            onDestinationSelected: onDestinationSelected,
-            labelType: NavigationRailLabelType.all,
-            destinations: destinations
-                .map((d) => NavigationRailDestination(
-                      icon: Icon(d.icon),
-                      selectedIcon: d.selectedIcon != null
-                          ? Icon(d.selectedIcon)
-                          : null,
-                      label: Text(d.label),
-                    ))
-                .toList(),
+          ClipRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface.withAlpha(230),
+                  border: Border(
+                    right: BorderSide(
+                      color: theme.colorScheme.outlineVariant.withAlpha(80),
+                    ),
+                  ),
+                ),
+                child: NavigationRail(
+                  selectedIndex: selectedIndex,
+                  onDestinationSelected: onDestinationSelected,
+                  labelType: NavigationRailLabelType.all,
+                  backgroundColor: Colors.transparent,
+                  destinations: destinations
+                      .map((d) => NavigationRailDestination(
+                            icon: Icon(d.icon),
+                            selectedIcon: d.selectedIcon != null
+                                ? Icon(d.selectedIcon)
+                                : null,
+                            label: Text(d.label),
+                          ))
+                      .toList(),
+                ),
+              ),
+            ),
           ),
           const VerticalDivider(thickness: 1, width: 1),
           Expanded(
