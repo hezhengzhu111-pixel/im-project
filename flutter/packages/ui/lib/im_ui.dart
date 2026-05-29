@@ -14,3 +14,4 @@ export 'src/widgets/glass_card.dart';
 export 'src/widgets/gradient_background.dart';
 export 'src/layouts/layouts.dart';
 export 'src/widgets/animated_entrance.dart';
+export 'src/widgets/gradient_button.dart';
