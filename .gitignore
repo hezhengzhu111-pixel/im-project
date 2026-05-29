@@ -75,6 +75,8 @@ frontend/apps/mobile/android/build/
 frontend/apps/mobile/android/app/build/
 frontend/apps/mobile/ios/Pods/
 frontend/apps/mobile/ios/build/
+frontend/apps/web/android/app/build/
+frontend/apps/web/android/.gradle/
 
 # ===========================================
 # IDE 和操作系统
