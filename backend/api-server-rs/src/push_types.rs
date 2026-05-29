@@ -90,4 +90,3 @@ pub(crate) struct PushDeviceRecord {
     pub(crate) token_version: i64,
     pub(crate) fcm_token: String,
 }
-

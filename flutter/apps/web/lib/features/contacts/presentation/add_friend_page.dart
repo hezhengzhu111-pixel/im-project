@@ -6,6 +6,7 @@ import 'package:im_core/core.dart';
 import 'package:im_ui/im_ui.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/l10n/app_localizations.dart';
+import 'contacts_provider.dart';
 
 class AddFriendPage extends ConsumerStatefulWidget {
   const AddFriendPage({super.key});
@@ -25,6 +26,20 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
   bool _isSending = false;
   String _searchType = 'username';
   bool _requestMessageInitialized = false;
+  final Set<String> _processingRequestIds = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final contactsState = ref.read(contactsStateProvider);
+      if (!contactsState.isLoading &&
+          contactsState.friends.isEmpty &&
+          contactsState.friendRequests.isEmpty) {
+        ref.read(contactsStateProvider.notifier).loadFriends();
+      }
+    });
+  }
 
   @override
   void didChangeDependencies() {
@@ -44,14 +59,49 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
     super.dispose();
   }
 
-  bool _isFriend(String userId) {
-    final contactsState = ref.read(contactsStateProvider);
+  bool _isFriend(ContactsState contactsState, String userId) {
     return contactsState.friends.any((f) => f.friendId == userId);
   }
 
-  bool _hasSentRequest(String userId) {
-    final contactsState = ref.read(contactsStateProvider);
-    return contactsState.sentRequestUserIds.contains(userId);
+  bool _isCurrentUser(String userId) {
+    return ref.read(currentUserIdProvider) == userId;
+  }
+
+  FriendRequest? _pendingOutgoingRequest(
+    ContactsState contactsState,
+    String userId,
+  ) {
+    final currentUserId = ref.read(currentUserIdProvider);
+    if (currentUserId.isEmpty) return null;
+    return contactsState.friendRequests
+        .where(
+          (request) =>
+              request.status == 'PENDING' &&
+              request.applicantId == currentUserId &&
+              request.targetUserId == userId,
+        )
+        .firstOrNull;
+  }
+
+  FriendRequest? _pendingIncomingRequest(
+    ContactsState contactsState,
+    String userId,
+  ) {
+    final currentUserId = ref.read(currentUserIdProvider);
+    if (currentUserId.isEmpty) return null;
+    return contactsState.friendRequests
+        .where(
+          (request) =>
+              request.status == 'PENDING' &&
+              request.applicantId == userId &&
+              request.targetUserId == currentUserId,
+        )
+        .firstOrNull;
+  }
+
+  bool _hasSentRequest(ContactsState contactsState, String userId) {
+    return _pendingOutgoingRequest(contactsState, userId) != null ||
+        contactsState.sentRequestUserIds.contains(userId);
   }
 
   void _onSearchChanged(String keyword) {
@@ -104,7 +154,6 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
             reason: _requestMessageController.text,
           );
       if (mounted) {
-        ref.read(contactsStateProvider.notifier).markRequestSent(user.id);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -114,7 +163,6 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
           ),
         );
         setState(() {
-          _selectedUser = null;
           _requestMessageController.text =
               AppLocalizations.of(context)!.contactsFriendRequestReason;
         });
@@ -133,6 +181,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
             ),
           );
           ref.read(contactsStateProvider.notifier).markRequestSent(user.id);
+          unawaited(ref.read(contactsStateProvider.notifier).loadFriends());
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -144,6 +193,38 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
       }
     } finally {
       if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  Future<void> _handleIncomingRequest(
+    FriendRequest request, {
+    required bool accept,
+  }) async {
+    if (_processingRequestIds.contains(request.id)) return;
+    setState(() => _processingRequestIds.add(request.id));
+
+    final notifier = ref.read(contactsStateProvider.notifier);
+    final success = accept
+        ? await notifier.acceptRequest(request.id)
+        : await notifier.rejectRequest(request.id);
+
+    if (mounted) {
+      final loc = AppLocalizations.of(context)!;
+      final fallbackMessage = accept ? loc.contactsAccept : loc.contactsReject;
+      final error = ref.read(contactsStateProvider).error;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? (accept ? loc.contactsAccepted : loc.contactsRejected)
+                : (error ?? fallbackMessage),
+          ),
+        ),
+      );
+    }
+
+    if (mounted) {
+      setState(() => _processingRequestIds.remove(request.id));
     }
   }
 
@@ -174,6 +255,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
 
   @override
   Widget build(BuildContext context) {
+    final contactsState = ref.watch(contactsStateProvider);
     final loc = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
@@ -216,8 +298,14 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
                   decoration: _searchInputDecoration(loc),
                 ),
                 if (_selectedUser != null &&
-                    !_isFriend(_selectedUser!.id) &&
-                    !_hasSentRequest(_selectedUser!.id)) ...[
+                    !_isCurrentUser(_selectedUser!.id) &&
+                    !_isFriend(contactsState, _selectedUser!.id) &&
+                    !_hasSentRequest(contactsState, _selectedUser!.id) &&
+                    _pendingIncomingRequest(
+                          contactsState,
+                          _selectedUser!.id,
+                        ) ==
+                        null) ...[
                   const SizedBox(height: ImTokens.layoutItemGap),
                   TextField(
                     controller: _requestMessageController,
@@ -277,10 +365,14 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
               itemCount: _results.length,
               itemBuilder: (context, index) {
                 final user = _results[index];
-                final isAlreadyFriend = _isFriend(user.id);
-                final hasSent = _hasSentRequest(user.id);
-                final canSend = !isAlreadyFriend && !hasSent;
+                final isAlreadyFriend = _isFriend(contactsState, user.id);
+                final outgoingRequest =
+                    _pendingOutgoingRequest(contactsState, user.id);
+                final incomingRequest =
+                    _pendingIncomingRequest(contactsState, user.id);
+                final hasSent = _hasSentRequest(contactsState, user.id);
                 return ListTile(
+                  selected: _selectedUser?.id == user.id,
                   leading: CircleAvatar(
                     backgroundImage:
                         user.avatar != null ? NetworkImage(user.avatar!) : null,
@@ -300,9 +392,10 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
                   subtitle: _buildSubtitle(user),
                   trailing: _buildTrailing(
                     user,
+                    outgoingRequest,
+                    incomingRequest,
                     isAlreadyFriend,
                     hasSent,
-                    canSend,
                     loc,
                   ),
                   onTap: () {
@@ -329,26 +422,67 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
     return Text(
       parts.join(' / '),
       style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 
   Widget _buildTrailing(
     User user,
+    FriendRequest? outgoingRequest,
+    FriendRequest? incomingRequest,
     bool isAlreadyFriend,
     bool hasSent,
-    bool canSend,
     AppLocalizations loc,
   ) {
+    if (_isCurrentUser(user.id)) {
+      return Chip(
+        label: Text(loc.addFriendSelf),
+        visualDensity: VisualDensity.compact,
+      );
+    }
     if (isAlreadyFriend) {
       return Chip(
         label: Text(loc.addFriendAlreadyFriend),
         visualDensity: VisualDensity.compact,
       );
     }
+    if (incomingRequest != null) {
+      final isBusy = _processingRequestIds.contains(incomingRequest.id);
+      if (isBusy) {
+        return const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+      }
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: loc.contactsReject,
+            onPressed: () =>
+                _handleIncomingRequest(incomingRequest, accept: false),
+            icon: const Icon(Icons.close),
+          ),
+          IconButton.filledTonal(
+            tooltip: loc.contactsAccept,
+            onPressed: () =>
+                _handleIncomingRequest(incomingRequest, accept: true),
+            icon: const Icon(Icons.check),
+          ),
+        ],
+      );
+    }
     if (hasSent) {
-      return Tooltip(
-        message: loc.addFriendRequestDuplicate,
-        child: const Icon(Icons.check_circle_outline),
+      return Chip(
+        avatar: const Icon(Icons.schedule_outlined, size: ImTokens.textBase),
+        label: Text(
+          outgoingRequest != null
+              ? loc.addFriendPendingOutgoing
+              : loc.addFriendRequestDuplicate,
+        ),
+        visualDensity: VisualDensity.compact,
       );
     }
     return FilledButton.tonal(

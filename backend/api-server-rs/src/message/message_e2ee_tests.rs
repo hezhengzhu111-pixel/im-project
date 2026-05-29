@@ -6,8 +6,7 @@ mod message_e2ee_tests {
     fn valid_rust_v2_envelope() -> E2eeEnvelopeDto {
         let mut wire = vec![0_u8, 0_u8, 0_u8, 52_u8];
         wire.extend(std::iter::repeat(1_u8).take(52));
-        let wire_b64 =
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, wire);
+        let wire_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, wire);
         E2eeEnvelopeDto {
             version: 2,
             alg: "rust-x25519-x3dh-dr-v1".to_string(),
@@ -132,8 +131,7 @@ mod message_e2ee_tests {
     fn invalid_wire_header_length_rejected() {
         let mut wire = vec![0_u8, 0_u8, 0_u8, 99_u8]; // header claims 99 bytes
         wire.extend(std::iter::repeat(1_u8).take(99));
-        let wire_b64 =
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, wire);
+        let wire_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, wire);
         let mut envelope = valid_rust_v2_envelope();
         envelope.wire = Some(wire_b64);
         assert!(message_e2ee::validate_e2ee_envelope_format(&envelope).is_err());

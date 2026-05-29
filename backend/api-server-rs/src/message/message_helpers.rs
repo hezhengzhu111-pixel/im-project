@@ -154,7 +154,10 @@ pub(crate) fn within_recall_window(message: &MessageDto) -> bool {
         .unwrap_or(false)
 }
 
-pub(crate) fn parse_conversation_target(user_id: i64, raw: &str) -> Result<ConversationTarget, AppError> {
+pub(crate) fn parse_conversation_target(
+    user_id: i64,
+    raw: &str,
+) -> Result<ConversationTarget, AppError> {
     let value = raw.trim();
     if let Some(group) = value.strip_prefix("group_") {
         let group_id = group
@@ -348,4 +351,3 @@ pub(crate) fn message_from_row(row: &sqlx::mysql::MySqlRow) -> MessageDto {
             .and_then(|value| serde_json::from_str(&value).ok()),
     }
 }
-

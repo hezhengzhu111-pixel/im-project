@@ -535,4 +535,3 @@ pub(crate) async fn disable_encryption(
 
     Ok(Json(ApiResponse::success("ok".to_string())))
 }
-

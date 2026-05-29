@@ -364,7 +364,10 @@ pub(crate) async fn load_hot_message(
     }
 }
 
-pub(crate) async fn load_message_from_db(db: &MySqlPool, message_id: i64) -> Result<MessageDto, AppError> {
+pub(crate) async fn load_message_from_db(
+    db: &MySqlPool,
+    message_id: i64,
+) -> Result<MessageDto, AppError> {
     let row = observability::db_query(
         "load_message.by_id",
         sqlx::query(
@@ -540,4 +543,3 @@ pub(crate) async fn latest_message_id(
         .first()
         .and_then(|message| message.id.parse::<i64>().ok()))
 }
-

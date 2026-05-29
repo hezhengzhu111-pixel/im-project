@@ -12,7 +12,10 @@ async fn test_app() -> axum::Router {
 }
 
 fn unique_username() -> String {
-    format!("cv{:0>13}", Uuid::new_v4().as_u64_pair().0 % 1_000_000_000_000_000)
+    format!(
+        "cv{:0>13}",
+        Uuid::new_v4().as_u64_pair().0 % 1_000_000_000_000_000
+    )
 }
 
 fn valid_password() -> &'static str {
@@ -26,8 +29,15 @@ async fn read_json(response: axum::response::Response<Body>) -> Value {
     serde_json::from_slice(&bytes).expect("parse json")
 }
 
-async fn register_user(app: &axum::Router, name_prefix: &str) -> Result<(i64, String, String), Box<dyn std::error::Error>> {
-    let username = format!("{}{:0>6}", &name_prefix[..name_prefix.len().min(14)], Uuid::new_v4().as_u64_pair().0 % 1_000_000);
+async fn register_user(
+    app: &axum::Router,
+    name_prefix: &str,
+) -> Result<(i64, String, String), Box<dyn std::error::Error>> {
+    let username = format!(
+        "{}{:0>6}",
+        &name_prefix[..name_prefix.len().min(14)],
+        Uuid::new_v4().as_u64_pair().0 % 1_000_000
+    );
     let body = serde_json::to_string(&json!({
         "username": &username,
         "password": valid_password(),
@@ -41,7 +51,10 @@ async fn register_user(app: &axum::Router, name_prefix: &str) -> Result<(i64, St
     let response = app.clone().oneshot(request).await?;
     assert_eq!(response.status(), StatusCode::OK);
     let json = read_json(response).await;
-    let user_id: i64 = json["data"]["id"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let user_id: i64 = json["data"]["id"]
+        .as_str()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
 
     let body = serde_json::to_string(&json!({
         "username": &username,
@@ -58,7 +71,11 @@ async fn register_user(app: &axum::Router, name_prefix: &str) -> Result<(i64, St
     Ok((user_id, username, token))
 }
 
-async fn add_friend(app: &axum::Router, token: &str, friend_id: i64) -> Result<(), Box<dyn std::error::Error>> {
+async fn add_friend(
+    app: &axum::Router,
+    token: &str,
+    friend_id: i64,
+) -> Result<(), Box<dyn std::error::Error>> {
     let body = serde_json::to_string(&json!({
         "targetUserId": friend_id
     }))?;
@@ -70,8 +87,10 @@ async fn add_friend(app: &axum::Router, token: &str, friend_id: i64) -> Result<(
         .body(Body::from(body))?;
     let response = app.clone().oneshot(request).await?;
     let status = response.status();
-    assert!(status == StatusCode::OK || status == StatusCode::CONFLICT,
-        "expected 200 or 409 for add friend, got {status}");
+    assert!(
+        status == StatusCode::OK || status == StatusCode::CONFLICT,
+        "expected 200 or 409 for add friend, got {status}"
+    );
     Ok(())
 }
 
@@ -94,7 +113,8 @@ async fn test_conversation_list_empty() -> Result<(), Box<dyn std::error::Error>
 }
 
 #[tokio::test]
-async fn test_send_private_message_without_friend_fails() -> Result<(), Box<dyn std::error::Error>> {
+async fn test_send_private_message_without_friend_fails() -> Result<(), Box<dyn std::error::Error>>
+{
     let app = test_app().await;
     let (_user_id, _username, token) = register_user(&app, "MsgNoFriend").await?;
 
@@ -195,6 +215,9 @@ async fn test_create_group() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(response.status(), StatusCode::OK);
     let json = read_json(response).await;
     assert_eq!(json["code"], 200);
-    assert!(!json["data"]["id"].as_str().unwrap_or("").is_empty(), "group id must not be empty");
+    assert!(
+        !json["data"]["id"].as_str().unwrap_or("").is_empty(),
+        "group id must not be empty"
+    );
     Ok(())
 }

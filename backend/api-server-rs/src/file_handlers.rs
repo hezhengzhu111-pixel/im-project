@@ -203,4 +203,3 @@ pub(crate) async fn delete_file(
         Err(err) => Err(AppError::Anyhow(err.into())),
     }
 }
-

@@ -32,6 +32,20 @@
   "contactsReject": "拒绝",
   "contactsAccepted": "已接受",
   "contactsRejected": "已拒绝",
+  "contactsEditRemark": "设置备注",
+  "contactsRemarkLabel": "好友备注",
+  "contactsRemarkHint": "为这个联系人添加备注",
+  "contactsRemarkSaved": "备注已更新",
+  "contactsRemarkSaveFailed": "备注更新失败",
+  "contactsDeleteFriend": "删除好友",
+  "contactsDeleteFriendConfirm": "确定将 {name} 从联系人中删除吗？",
+  "@contactsDeleteFriendConfirm": {
+    "placeholders": {
+      "name": {}
+    }
+  },
+  "contactsDeleteFriendDone": "好友已删除",
+  "contactsDeleteFriendFailed": "删除好友失败",
   "retry": "重试",
   "noData": "暂无数据",
   "e2eeEncrypted": "端到端加密已启用",
@@ -228,6 +242,8 @@
   "addFriendVerificationHint": "填写验证消息（选填）",
   "addFriendRequestDuplicate": "已有待处理的好友申请，已同步到好友申请列表",
   "addFriendAlreadyFriend": "已是好友",
+  "addFriendPendingOutgoing": "已发送申请",
+  "addFriendSelf": "你自己",
   "groupCreateTooltip": "创建群组",
   "groupNoGroups": "暂无群组",
   "groupCreateTitle": "创建群组",

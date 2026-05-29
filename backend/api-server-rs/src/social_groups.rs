@@ -23,7 +23,6 @@ use std::collections::{BTreeSet, HashMap};
 
 const FRIEND_CACHE_TTL_SECONDS: u64 = 5 * 60;
 
-
 pub(crate) async fn create_group(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -357,7 +356,11 @@ pub(crate) async fn ensure_group_exists(db: &MySqlPool, group_id: i64) -> Result
     Ok(())
 }
 
-pub(crate) async fn ensure_group_owner(db: &MySqlPool, group_id: i64, user_id: i64) -> Result<(), AppError> {
+pub(crate) async fn ensure_group_owner(
+    db: &MySqlPool,
+    group_id: i64,
+    user_id: i64,
+) -> Result<(), AppError> {
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM service_group_service_db.im_group WHERE id = ? AND owner_id = ? AND status = 1",
     )
@@ -456,7 +459,10 @@ pub(crate) async fn current_group_sequence(
     Ok(sequence)
 }
 
-pub(crate) async fn refresh_group_member_count(db: &MySqlPool, group_id: i64) -> Result<(), AppError> {
+pub(crate) async fn refresh_group_member_count(
+    db: &MySqlPool,
+    group_id: i64,
+) -> Result<(), AppError> {
     sqlx::query(
         r#"UPDATE service_group_service_db.im_group
            SET member_count = (
@@ -500,4 +506,3 @@ pub(crate) async fn load_group_members(
     .await?;
     Ok(rows.iter().map(group_member_from_row).collect())
 }
-

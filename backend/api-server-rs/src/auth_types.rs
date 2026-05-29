@@ -17,7 +17,6 @@ const LEGACY_INTERNAL_TS_HEADER: &str = "X-Internal-Ts";
 const INTERNAL_NONCE_HEADER: &str = "X-Internal-Nonce";
 const INTERNAL_SIGN_HEADER: &str = "X-Internal-Signature";
 
-
 /// JWT access/refresh 令牌对。
 ///
 /// 由 [`issue_token_pair`] 签发，access token 有效期较短（默认由 `jwt_expiration_ms` 控制），
@@ -272,7 +271,10 @@ pub(crate) struct Claims {
     pub(crate) exp: i64,
 }
 
-pub(crate) fn serialize_option_i64_as_string<S>(value: &Option<i64>, serializer: S) -> Result<S::Ok, S::Error>
+pub(crate) fn serialize_option_i64_as_string<S>(
+    value: &Option<i64>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
@@ -310,4 +312,3 @@ where
 {
     Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
-

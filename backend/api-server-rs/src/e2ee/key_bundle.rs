@@ -10,9 +10,6 @@ use im_rs_common::api::ApiResponse;
 use sqlx::Row;
 use std::collections::HashMap;
 
-
-
-
 /// X25519 公钥的字节长度（Signal/X3DH 协议标准）。
 
 /// Ed25519 签名的字节长度。
@@ -20,7 +17,6 @@ use std::collections::HashMap;
 /// 当前协议约定使用 Ed25519 对 signed pre-key 进行签名，签名固定为 64 字节。
 /// 如果未来支持其他签名算法（如 ECDSA P-256 的 64–72 字节可变长度），
 /// 需要将此处替换为范围校验。
-
 
 /// 上传当前设备的 PreKey Bundle。
 ///
@@ -245,158 +241,157 @@ pub(crate) async fn get_bundle(
     // 外层循环处理 stale claim：当已有 claim 引用的 OTK 已被对方消费后，
     // 删除旧 claim 并重试一次以创建新 claim。
     for attempt in 0..2 {
-    let mut tx = state.db.begin().await?;
+        let mut tx = state.db.begin().await?;
 
-    match sqlx::query(
-        r#"INSERT INTO service_user_service_db.e2ee_pre_key_claims
+        match sqlx::query(
+            r#"INSERT INTO service_user_service_db.e2ee_pre_key_claims
            (requester_user_id, requester_device_id, target_user_id, target_device_id,
             conversation_id, one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key)
            VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)"#,
-    )
-    .bind(identity.user_id)
-    .bind(requester_device_id)
-    .bind(target_user_id)
-    .bind(device_id)
-    .bind(conversation_id)
-    .execute(&mut *tx)
-    .await
-    {
-        Ok(_) => {
-            // INSERT 成功：当前请求拥有 claim 权，尝试消费一个 one-time pre-key
-            let otp_row = sqlx::query(
-                r#"SELECT id, pre_key, COALESCE(pre_key_id, 0) AS pre_key_id
+        )
+        .bind(identity.user_id)
+        .bind(requester_device_id)
+        .bind(target_user_id)
+        .bind(device_id)
+        .bind(conversation_id)
+        .execute(&mut *tx)
+        .await
+        {
+            Ok(_) => {
+                // INSERT 成功：当前请求拥有 claim 权，尝试消费一个 one-time pre-key
+                let otp_row = sqlx::query(
+                    r#"SELECT id, pre_key, COALESCE(pre_key_id, 0) AS pre_key_id
                    FROM service_user_service_db.e2ee_one_time_pre_keys
                    WHERE user_id = ? AND device_id = ? AND consumed = 0
                    LIMIT 1
                    FOR UPDATE"#,
-            )
-            .bind(target_user_id)
-            .bind(device_id)
-            .fetch_optional(&mut *tx)
-            .await?;
-
-            if let Some(ref row) = otp_row {
-                let row_id: i64 = row.get("id");
-                let pre_key: String = row.get("pre_key");
-                let pre_key_id: Option<i32> = row.try_get::<i32, _>("pre_key_id").ok();
-
-                sqlx::query(
-                    "UPDATE service_user_service_db.e2ee_one_time_pre_keys \
-                     SET consumed = 1, consumed_time = NOW() WHERE id = ?",
                 )
-                .bind(row_id)
-                .execute(&mut *tx)
+                .bind(target_user_id)
+                .bind(device_id)
+                .fetch_optional(&mut *tx)
                 .await?;
 
-                // 回填 claim 记录
-                sqlx::query(
-                    r#"UPDATE service_user_service_db.e2ee_pre_key_claims
+                if let Some(ref row) = otp_row {
+                    let row_id: i64 = row.get("id");
+                    let pre_key: String = row.get("pre_key");
+                    let pre_key_id: Option<i32> = row.try_get::<i32, _>("pre_key_id").ok();
+
+                    sqlx::query(
+                        "UPDATE service_user_service_db.e2ee_one_time_pre_keys \
+                     SET consumed = 1, consumed_time = NOW() WHERE id = ?",
+                    )
+                    .bind(row_id)
+                    .execute(&mut *tx)
+                    .await?;
+
+                    // 回填 claim 记录
+                    sqlx::query(
+                        r#"UPDATE service_user_service_db.e2ee_pre_key_claims
                        SET one_time_pre_key_row_id = ?,
                            one_time_pre_key_id = ?,
                            one_time_pre_key = ?
                        WHERE requester_user_id = ? AND requester_device_id = ?
                          AND target_user_id = ? AND target_device_id = ?
                          AND conversation_id = ?"#,
+                    )
+                    .bind(Some(row_id))
+                    .bind(pre_key_id)
+                    .bind(Some(&pre_key))
+                    .bind(identity.user_id)
+                    .bind(requester_device_id)
+                    .bind(target_user_id)
+                    .bind(device_id)
+                    .bind(conversation_id)
+                    .execute(&mut *tx)
+                    .await?;
+
+                    tx.commit().await?;
+
+                    let mut dto = base_dto;
+                    dto.one_time_pre_key = Some(pre_key);
+                    dto.one_time_pre_key_id = pre_key_id;
+                    return Ok(Json(ApiResponse::success(dto)));
+                } else {
+                    // 无可用 pre-key：保留空 claim（signed pre-key fallback），后续请求幂等返回相同结果
+                    tx.commit().await?;
+                    return Ok(Json(ApiResponse::success(base_dto)));
+                }
+            }
+            Err(sqlx::Error::Database(ref db_err)) if db_err.code().as_deref() == Some("23000") => {
+                // 唯一键冲突：另一并发请求或上一次协商已创建 claim
+                tx.rollback().await.ok();
+
+                // 读取已有 claim，检查其引用的 OTK 是否仍有效
+                let claim = sqlx::query(
+                    r#"SELECT one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key
+                   FROM service_user_service_db.e2ee_pre_key_claims
+                   WHERE requester_user_id = ? AND requester_device_id = ?
+                     AND target_user_id = ? AND target_device_id = ?
+                     AND conversation_id = ?"#,
                 )
-                .bind(Some(row_id))
-                .bind(pre_key_id)
-                .bind(Some(&pre_key))
                 .bind(identity.user_id)
                 .bind(requester_device_id)
                 .bind(target_user_id)
                 .bind(device_id)
                 .bind(conversation_id)
-                .execute(&mut *tx)
+                .fetch_optional(&state.db)
                 .await?;
 
-                tx.commit().await?;
-
-                let mut dto = base_dto;
-                dto.one_time_pre_key = Some(pre_key);
-                dto.one_time_pre_key_id = pre_key_id;
-                return Ok(Json(ApiResponse::success(dto)));
-            } else {
-                // 无可用 pre-key：保留空 claim（signed pre-key fallback），后续请求幂等返回相同结果
-                tx.commit().await?;
-                return Ok(Json(ApiResponse::success(base_dto)))
-            }
-        }
-        Err(sqlx::Error::Database(ref db_err)) if db_err.code().as_deref() == Some("23000") => {
-            // 唯一键冲突：另一并发请求或上一次协商已创建 claim
-            tx.rollback().await.ok();
-
-            // 读取已有 claim，检查其引用的 OTK 是否仍有效
-            let claim = sqlx::query(
-                r#"SELECT one_time_pre_key_row_id, one_time_pre_key_id, one_time_pre_key
-                   FROM service_user_service_db.e2ee_pre_key_claims
-                   WHERE requester_user_id = ? AND requester_device_id = ?
-                     AND target_user_id = ? AND target_device_id = ?
-                     AND conversation_id = ?"#,
-            )
-            .bind(identity.user_id)
-            .bind(requester_device_id)
-            .bind(target_user_id)
-            .bind(device_id)
-            .bind(conversation_id)
-            .fetch_optional(&state.db)
-            .await?;
-
-            // 检查已有 claim 的 OTK 是否已被消耗（例如被 respondToNegotiation 消费后
-            // 重新发起协商时，旧 claim 引用的 OTK 已不存在于本地）——如果是则删除旧
-            // claim 并重试，让下一次 INSERT 创建新 claim 消费新 OTK
-            if let Some(ref claim_row) = claim {
-                let otk_row_id: Option<i64> = claim_row.get("one_time_pre_key_row_id");
-                if let Some(row_id) = otk_row_id {
-                    let still_valid = sqlx::query(
-                        "SELECT id FROM service_user_service_db.e2ee_one_time_pre_keys \
+                // 检查已有 claim 的 OTK 是否已被消耗（例如被 respondToNegotiation 消费后
+                // 重新发起协商时，旧 claim 引用的 OTK 已不存在于本地）——如果是则删除旧
+                // claim 并重试，让下一次 INSERT 创建新 claim 消费新 OTK
+                if let Some(ref claim_row) = claim {
+                    let otk_row_id: Option<i64> = claim_row.get("one_time_pre_key_row_id");
+                    if let Some(row_id) = otk_row_id {
+                        let still_valid = sqlx::query(
+                            "SELECT id FROM service_user_service_db.e2ee_one_time_pre_keys \
                          WHERE id = ? AND consumed = 0",
-                    )
-                    .bind(row_id)
-                    .fetch_optional(&state.db)
-                    .await?
-                    .is_some();
+                        )
+                        .bind(row_id)
+                        .fetch_optional(&state.db)
+                        .await?
+                        .is_some();
 
-                    if !still_valid {
-                        tracing::info!(
-                            requester_user_id = %identity.user_id,
-                            target_user_id = %target_user_id,
-                            %conversation_id,
-                            %row_id,
-                            "e2ee_pre_key_claims stale claim detected, deleting and retrying"
-                        );
-                        sqlx::query(
-                            "DELETE FROM service_user_service_db.e2ee_pre_key_claims \
+                        if !still_valid {
+                            tracing::info!(
+                                requester_user_id = %identity.user_id,
+                                target_user_id = %target_user_id,
+                                %conversation_id,
+                                %row_id,
+                                "e2ee_pre_key_claims stale claim detected, deleting and retrying"
+                            );
+                            sqlx::query(
+                                "DELETE FROM service_user_service_db.e2ee_pre_key_claims \
                              WHERE requester_user_id = ? AND requester_device_id = ? \
                                AND target_user_id = ? AND target_device_id = ? \
                                AND conversation_id = ?",
-                        )
-                        .bind(identity.user_id)
-                        .bind(requester_device_id)
-                        .bind(target_user_id)
-                        .bind(device_id)
-                        .bind(conversation_id)
-                        .execute(&state.db)
-                        .await?;
+                            )
+                            .bind(identity.user_id)
+                            .bind(requester_device_id)
+                            .bind(target_user_id)
+                            .bind(device_id)
+                            .bind(conversation_id)
+                            .execute(&state.db)
+                            .await?;
 
-                        // 旧 claim 已删除，重试循环——INSERT 将成功创建新 claim
-                        continue;
+                            // 旧 claim 已删除，重试循环——INSERT 将成功创建新 claim
+                            continue;
+                        }
                     }
                 }
-            }
 
-            let mut dto = base_dto;
-            if let Some(claim) = claim {
-                dto.one_time_pre_key = claim.get("one_time_pre_key");
-                dto.one_time_pre_key_id = claim.get("one_time_pre_key_id");
+                let mut dto = base_dto;
+                if let Some(claim) = claim {
+                    dto.one_time_pre_key = claim.get("one_time_pre_key");
+                    dto.one_time_pre_key_id = claim.get("one_time_pre_key_id");
+                }
+                return Ok(Json(ApiResponse::success(dto)));
             }
-            return Ok(Json(ApiResponse::success(dto)));
+            Err(e) => return Err(e.into()),
         }
-        Err(e) => return Err(e.into()),
-    }
     } // end for attempt loop
-    // 循环内所有分支均有 return，此处仅在重试次数耗尽时到达
+      // 循环内所有分支均有 return，此处仅在重试次数耗尽时到达
     Err(AppError::Conflict(
         "pre-key claim unavailable, please retry".to_string(),
     ))
 }
-

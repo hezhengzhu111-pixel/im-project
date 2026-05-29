@@ -12,7 +12,10 @@ async fn test_app() -> axum::Router {
 }
 
 fn unique_username() -> String {
-    format!("su{:0>13}", Uuid::new_v4().as_u64_pair().0 % 1_000_000_000_000_000)
+    format!(
+        "su{:0>13}",
+        Uuid::new_v4().as_u64_pair().0 % 1_000_000_000_000_000
+    )
 }
 
 fn valid_password() -> &'static str {

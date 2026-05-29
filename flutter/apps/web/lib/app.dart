@@ -23,7 +23,16 @@ class _AppState extends ConsumerState<App> {
   @override
   void initState() {
     super.initState();
+    ref.listenManual<GoRouter>(routerProvider, (prev, next) {
+      final path = next.routeInformationProvider.value.uri.path;
+      final locale = ref.read(languageProvider);
+      final l10n = lookupAppLocalizations(Locale(locale));
+      final meta = metaForPath(path, l10n);
+      _webMetaService.apply(meta, locale: locale);
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       AppLogger.init(errorReporter: ref.read(errorReporterProvider));
       final analytics = ref.read(analyticsProvider);
       analytics.trackEvent('app_start', {'platform': 'web'});
@@ -32,14 +41,6 @@ class _AppState extends ConsumerState<App> {
       final locale = ref.read(languageProvider);
       final l10n = lookupAppLocalizations(Locale(locale));
       _webMetaService.apply(fallbackMetaForLocale(l10n), locale: locale);
-
-      ref.listen<GoRouter>(routerProvider, (prev, next) {
-        final path = next.routeInformationProvider.value.uri.path;
-        final locale = ref.read(languageProvider);
-        final l10n = lookupAppLocalizations(Locale(locale));
-        final meta = metaForPath(path, l10n);
-        _webMetaService.apply(meta, locale: locale);
-      });
     });
   }
 

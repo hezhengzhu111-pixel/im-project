@@ -152,4 +152,3 @@ pub(crate) fn validate_conversation_id(value: &str) -> Result<(), AppError> {
     }
     Ok(())
 }
-
