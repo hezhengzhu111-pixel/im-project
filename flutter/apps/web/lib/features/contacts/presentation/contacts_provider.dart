@@ -99,17 +99,30 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     }
   }
 
-  Future<void> acceptRequest(String requestId) async {
-    await _api.acceptFriendRequest(requestId);
-    await loadFriends();
+  Future<bool> acceptRequest(String requestId) async {
+    try {
+      await _api.acceptFriendRequest(requestId);
+      await loadFriends();
+      return true;
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
   }
 
-  Future<void> rejectRequest(String requestId) async {
-    await _api.rejectFriendRequest(requestId);
-    await loadFriends();
+  Future<bool> rejectRequest(String requestId) async {
+    try {
+      await _api.rejectFriendRequest(requestId);
+      await loadFriends();
+      return true;
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
   }
 
-  Future<List<User>> searchUsers(String keyword, {String type = 'username'}) async {
+  Future<List<User>> searchUsers(String keyword,
+      {String type = 'username'}) async {
     final query = keyword.trim();
     if (query.isEmpty) {
       state = state.copyWith(userSearchResults: const [], error: null);
@@ -136,6 +149,8 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
       targetUserId,
       reason: reason?.trim().isEmpty == true ? null : reason?.trim(),
     );
+    markRequestSent(targetUserId);
+    await _refreshFriendRequests();
   }
 
   void markRequestSent(String userId) {
@@ -146,6 +161,15 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
 
   void clearSearchResults() {
     state = state.copyWith(userSearchResults: const [], error: null);
+  }
+
+  Future<void> _refreshFriendRequests() async {
+    try {
+      final requests = await _api.getFriendRequests();
+      state = state.copyWith(friendRequests: requests, error: null);
+    } catch (e, st) {
+      AppLogger.instance.error('Failed to refresh friend requests', e, st);
+    }
   }
 
   Future<bool> deleteFriend(String friendId) async {

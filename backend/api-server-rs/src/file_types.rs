@@ -69,4 +69,3 @@ pub(crate) struct FileLocator {
     pub(crate) date: String,
     pub(crate) filename: String,
 }
-

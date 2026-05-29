@@ -23,7 +23,6 @@ use std::collections::{BTreeSet, HashMap};
 
 const FRIEND_CACHE_TTL_SECONDS: u64 = 5 * 60;
 
-
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FriendshipDto {
@@ -106,4 +105,3 @@ pub(crate) struct GroupMemberDto {
 pub(crate) struct GroupMembersResponse {
     pub members: Vec<GroupMemberDto>,
 }
-

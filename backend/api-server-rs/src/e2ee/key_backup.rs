@@ -10,9 +10,6 @@ use im_rs_common::api::ApiResponse;
 use serde_json::Value;
 use sqlx::Row;
 
-
-
-
 /// X25519 公钥的字节长度（Signal/X3DH 协议标准）。
 
 /// Ed25519 签名的字节长度。
@@ -20,7 +17,6 @@ use sqlx::Row;
 /// 当前协议约定使用 Ed25519 对 signed pre-key 进行签名，签名固定为 64 字节。
 /// 如果未来支持其他签名算法（如 ECDSA P-256 的 64–72 字节可变长度），
 /// 需要将此处替换为范围校验。
-
 
 /// 上传加密备份。
 ///
@@ -160,4 +156,3 @@ pub(crate) async fn delete_device(
 
     Ok(Json(ApiResponse::success("ok".to_string())))
 }
-

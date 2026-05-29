@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod message_helpers_tests {
     use crate::message::message_e2ee;
-use crate::message::message_helpers;
+    use crate::message::message_helpers;
 
     #[test]
     fn group_unread_count_positive() {

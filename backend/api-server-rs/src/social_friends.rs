@@ -5,6 +5,7 @@ use crate::auth_api;
 use crate::error::AppError;
 use crate::id_resolver::{resolve_active_group_id, resolve_active_user_id};
 use crate::local_cache;
+use crate::social_helpers::normalize_optional;
 use crate::web::AppState;
 use axum::body::Bytes;
 use axum::extract::{OriginalUri, Path, Query, State};
@@ -22,7 +23,6 @@ use sqlx::{MySqlPool, Row};
 use std::collections::{BTreeSet, HashMap};
 
 const FRIEND_CACHE_TTL_SECONDS: u64 = 5 * 60;
-
 
 pub(crate) async fn friend_list(
     State(state): State<AppState>,
@@ -95,7 +95,7 @@ pub(crate) async fn add_friend(
     .bind(request_id)
     .bind(identity.user_id)
     .bind(target_user_id)
-    .bind(normalize_optional(request.reason))
+    .bind(normalize_optional(request.reason.as_deref()))
     .execute(&state.db)
     .await?;
     {
@@ -226,11 +226,10 @@ pub(crate) async fn update_friend_remark(
     sqlx::query(
         "UPDATE service_user_service_db.im_friend SET remark = ? WHERE user_id = ? AND friend_id = ? AND status = 1",
     )
-    .bind(normalize_optional(remark))
+    .bind(normalize_optional(remark.as_deref()))
     .bind(identity.user_id)
     .bind(friend_id)
     .execute(&state.db)
     .await?;
     Ok(Json(ApiResponse::success(true)))
 }
-

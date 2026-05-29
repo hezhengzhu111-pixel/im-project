@@ -217,7 +217,9 @@ pub(crate) async fn upsert_group_read_cursors(
     Ok(())
 }
 
-pub(crate) fn coalesce_private_read_cursors(cursors: Vec<PrivateReadCursor>) -> Vec<PrivateReadCursor> {
+pub(crate) fn coalesce_private_read_cursors(
+    cursors: Vec<PrivateReadCursor>,
+) -> Vec<PrivateReadCursor> {
     let mut latest_by_key: HashMap<(i64, i64), PrivateReadCursor> = HashMap::new();
     for cursor in cursors {
         match latest_by_key.entry((cursor.user_id, cursor.peer_user_id)) {
@@ -251,7 +253,10 @@ pub(crate) fn coalesce_group_read_cursors(cursors: Vec<GroupReadCursor>) -> Vec<
     latest_by_key.into_values().collect()
 }
 
-pub(crate) fn group_cursor_is_newer(candidate: &GroupReadCursor, current: &GroupReadCursor) -> bool {
+pub(crate) fn group_cursor_is_newer(
+    candidate: &GroupReadCursor,
+    current: &GroupReadCursor,
+) -> bool {
     candidate.last_read_seq > current.last_read_seq
         || (candidate.last_read_seq == current.last_read_seq && candidate.read_at > current.read_at)
 }
@@ -287,4 +292,3 @@ pub(crate) fn parse_datetime(value: &str) -> NaiveDateTime {
         .map(|value| value.naive_utc())
         .unwrap_or_else(|_| Utc::now().naive_utc())
 }
-

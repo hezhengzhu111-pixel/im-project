@@ -27,7 +27,6 @@ const LEGACY_INTERNAL_TS_HEADER: &str = "X-Internal-Ts";
 const INTERNAL_NONCE_HEADER: &str = "X-Internal-Nonce";
 const INTERNAL_SIGN_HEADER: &str = "X-Internal-Signature";
 
-
 /// 签发一次性 WebSocket 握手票据。
 ///
 /// **鉴权要求**：需要有效的 access token（通过 `identity_from_headers` 校验）。
@@ -157,4 +156,3 @@ pub(crate) fn parse_ws_ticket_payload(payload: &str) -> Option<(i64, String)> {
     let (user_id, username) = payload.split_once('\n')?;
     Some((user_id.trim().parse().ok()?, username.trim().to_string()))
 }
-

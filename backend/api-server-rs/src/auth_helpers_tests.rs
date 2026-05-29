@@ -41,7 +41,10 @@ mod auth_helpers_tests {
         let canonical = "canonical";
         let sig = auth_helpers::sign_hmac("secret-AAAA-AAAAAAAAAAAAAAA!", canonical).unwrap();
         let verify = auth_helpers::sign_hmac("secret-BBBB-BBBBBBBBBBBBBBB!", canonical).unwrap();
-        assert_ne!(sig, verify, "different secrets produce different signatures");
+        assert_ne!(
+            sig, verify,
+            "different secrets produce different signatures"
+        );
     }
 
     #[test]
@@ -55,7 +58,10 @@ mod auth_helpers_tests {
     fn sha256_base64_url_different_input() {
         let hash1 = auth_helpers::sha256_base64_url(b"hello");
         let hash2 = auth_helpers::sha256_base64_url(b"world");
-        assert_ne!(hash1, hash2, "different inputs must produce different hashes");
+        assert_ne!(
+            hash1, hash2,
+            "different inputs must produce different hashes"
+        );
     }
 
     #[test]
@@ -108,12 +114,18 @@ mod auth_helpers_tests {
 
     #[test]
     fn normalize_path_adds_leading_slash() {
-        assert_eq!(auth_helpers::normalize_path("api/test"), "/api/test".to_string());
+        assert_eq!(
+            auth_helpers::normalize_path("api/test"),
+            "/api/test".to_string()
+        );
     }
 
     #[test]
     fn normalize_path_keeps_leading_slash() {
-        assert_eq!(auth_helpers::normalize_path("/api/test"), "/api/test".to_string());
+        assert_eq!(
+            auth_helpers::normalize_path("/api/test"),
+            "/api/test".to_string()
+        );
     }
 
     #[test]
@@ -131,13 +143,8 @@ mod auth_helpers_tests {
 
     #[test]
     fn internal_canonical_format() {
-        let canonical = auth_helpers::internal_canonical(
-            "POST",
-            "/api/test",
-            "abc123",
-            "123456",
-            "nonce-1",
-        );
+        let canonical =
+            auth_helpers::internal_canonical("POST", "/api/test", "abc123", "123456", "nonce-1");
         assert!(canonical.contains("method=POST"));
         assert!(canonical.contains("path=/api/test"));
         assert!(canonical.contains("bodyHash=abc123"));

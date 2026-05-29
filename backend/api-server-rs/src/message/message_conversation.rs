@@ -582,4 +582,3 @@ pub(crate) async fn load_private_conversations_from_db(
     }
     Ok(result)
 }
-

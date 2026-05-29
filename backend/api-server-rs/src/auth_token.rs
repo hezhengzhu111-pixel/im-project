@@ -27,7 +27,6 @@ const LEGACY_INTERNAL_TS_HEADER: &str = "X-Internal-Ts";
 const INTERNAL_NONCE_HEADER: &str = "X-Internal-Nonce";
 const INTERNAL_SIGN_HEADER: &str = "X-Internal-Signature";
 
-
 /// 刷新 access token。
 ///
 /// **鉴权要求**：客户端需提供有效的 refresh token（通过请求体或 Cookie）。
@@ -400,7 +399,11 @@ pub(crate) fn build_token(
     .map_err(|err| AppError::BadRequest(err.to_string()))
 }
 
-pub(crate) fn parse_token(token: Option<&str>, secret: &str, allow_expired: bool) -> TokenParseResultDto {
+pub(crate) fn parse_token(
+    token: Option<&str>,
+    secret: &str,
+    allow_expired: bool,
+) -> TokenParseResultDto {
     let Some(normalized) = normalize_bearer(token) else {
         return TokenParseResultDto {
             valid: false,
@@ -444,4 +447,3 @@ pub(crate) fn parse_token(token: Option<&str>, secret: &str, allow_expired: bool
         },
     }
 }
-

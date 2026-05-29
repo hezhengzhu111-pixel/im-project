@@ -143,4 +143,3 @@ pub(crate) async fn rotate_conversation_session(
     }
     get_conversation_session(State(state), headers, Path(conversation_id)).await
 }
-

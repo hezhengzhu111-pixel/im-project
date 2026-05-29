@@ -107,6 +107,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactsRejected => 'Rejected';
 
   @override
+  String get contactsEditRemark => 'Edit remark';
+
+  @override
+  String get contactsRemarkLabel => 'Remark';
+
+  @override
+  String get contactsRemarkHint => 'Add a note for this contact';
+
+  @override
+  String get contactsRemarkSaved => 'Remark updated';
+
+  @override
+  String get contactsRemarkSaveFailed => 'Failed to update remark';
+
+  @override
+  String get contactsDeleteFriend => 'Delete friend';
+
+  @override
+  String contactsDeleteFriendConfirm(Object name) {
+    return 'Remove $name from your contacts?';
+  }
+
+  @override
+  String get contactsDeleteFriendDone => 'Friend removed';
+
+  @override
+  String get contactsDeleteFriendFailed => 'Failed to remove friend';
+
+  @override
   String get retry => 'Retry';
 
   @override
@@ -709,6 +738,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get addFriendAlreadyFriend => 'Already friends';
+
+  @override
+  String get addFriendPendingOutgoing => 'Request sent';
+
+  @override
+  String get addFriendSelf => 'You';
 
   @override
   String get groupCreateTooltip => 'Create group';

@@ -32,6 +32,20 @@
   "contactsReject": "Reject",
   "contactsAccepted": "Accepted",
   "contactsRejected": "Rejected",
+  "contactsEditRemark": "Edit remark",
+  "contactsRemarkLabel": "Remark",
+  "contactsRemarkHint": "Add a note for this contact",
+  "contactsRemarkSaved": "Remark updated",
+  "contactsRemarkSaveFailed": "Failed to update remark",
+  "contactsDeleteFriend": "Delete friend",
+  "contactsDeleteFriendConfirm": "Remove {name} from your contacts?",
+  "@contactsDeleteFriendConfirm": {
+    "placeholders": {
+      "name": {}
+    }
+  },
+  "contactsDeleteFriendDone": "Friend removed",
+  "contactsDeleteFriendFailed": "Failed to remove friend",
   "retry": "Retry",
   "noData": "No data",
   "e2eeEncrypted": "End-to-end encryption enabled",
@@ -228,6 +242,8 @@
   "addFriendVerificationHint": "Enter a verification message (optional)",
   "addFriendRequestDuplicate": "A pending friend request already exists, synced to request list",
   "addFriendAlreadyFriend": "Already friends",
+  "addFriendPendingOutgoing": "Request sent",
+  "addFriendSelf": "You",
   "groupCreateTooltip": "Create group",
   "groupNoGroups": "No groups yet",
   "groupCreateTitle": "Create Group",

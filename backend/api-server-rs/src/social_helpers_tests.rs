@@ -5,25 +5,19 @@ mod social_helpers_tests {
     #[test]
     fn normalize_optional_some() {
         assert_eq!(
-            social_helpers::normalize_optional(Some("hello".to_string())),
+            social_helpers::normalize_optional(Some("hello")),
             Some("hello".to_string())
         );
     }
 
     #[test]
     fn normalize_optional_empty_string_becomes_none() {
-        assert_eq!(
-            social_helpers::normalize_optional(Some("".to_string())),
-            None
-        );
+        assert_eq!(social_helpers::normalize_optional(Some("")), None);
     }
 
     #[test]
     fn normalize_optional_whitespace_only_becomes_none() {
-        assert_eq!(
-            social_helpers::normalize_optional(Some("   ".to_string())),
-            None
-        );
+        assert_eq!(social_helpers::normalize_optional(Some("   ")), None);
     }
 
     #[test]

@@ -364,4 +364,3 @@ pub struct EventStreamConfig {
     pub redis_url: String,
     pub stream_key: String,
 }
-

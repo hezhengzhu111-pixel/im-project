@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-
 // ---------------------------------------------------------------------------
 // 常量：字段长度上限
 // ---------------------------------------------------------------------------
@@ -20,7 +19,6 @@ pub(crate) const X25519_KEY_BYTES: usize = 32;
 /// 如果未来支持其他签名算法（如 ECDSA P-256 的 64–72 字节可变长度），
 /// 需要将此处替换为范围校验。
 pub(crate) const ED25519_SIGNATURE_BYTES: usize = 64;
-
 
 /// 上传 PreKey Bundle 的请求体。
 ///
@@ -77,4 +75,3 @@ pub(crate) struct DeviceDto {
     pub signed_pre_key: String,
     pub last_active_at: String,
 }
-

@@ -6,9 +6,6 @@ use im_rs_common::auth::Identity;
 use sqlx::Row;
 use std::collections::{HashMap, HashSet};
 
-
-
-
 /// X25519 公钥的字节长度（Signal/X3DH 协议标准）。
 
 /// Ed25519 签名的字节长度。
@@ -17,12 +14,15 @@ use std::collections::{HashMap, HashSet};
 /// 如果未来支持其他签名算法（如 ECDSA P-256 的 64–72 字节可变长度），
 /// 需要将此处替换为范围校验。
 
-
 /// 解码 Base64 字符串并校验解码后的字节长度是否正好等于 `expected_len`。
 ///
 /// 先做字符串长度上限检查（防止 DoS），再做 Base64 解码，最后校验字节长度。
 /// 所有错误都映射为 `AppError::BadRequest("invalid {field}")`，不暴露内部细节。
-pub(crate) fn decode_base64_exact_len(field: &str, value: &str, expected_len: usize) -> Result<(), AppError> {
+pub(crate) fn decode_base64_exact_len(
+    field: &str,
+    value: &str,
+    expected_len: usize,
+) -> Result<(), AppError> {
     if value.len() > MAX_KEY_FIELD_LEN {
         return Err(AppError::BadRequest(format!("invalid {field}")));
     }
@@ -217,4 +217,3 @@ pub(crate) async fn ensure_device_belongs_to_user(
     }
     Ok(())
 }
-

@@ -287,6 +287,60 @@ abstract class AppLocalizations {
   /// **'Rejected'**
   String get contactsRejected;
 
+  /// No description provided for @contactsEditRemark.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit remark'**
+  String get contactsEditRemark;
+
+  /// No description provided for @contactsRemarkLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Remark'**
+  String get contactsRemarkLabel;
+
+  /// No description provided for @contactsRemarkHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a note for this contact'**
+  String get contactsRemarkHint;
+
+  /// No description provided for @contactsRemarkSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Remark updated'**
+  String get contactsRemarkSaved;
+
+  /// No description provided for @contactsRemarkSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to update remark'**
+  String get contactsRemarkSaveFailed;
+
+  /// No description provided for @contactsDeleteFriend.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete friend'**
+  String get contactsDeleteFriend;
+
+  /// No description provided for @contactsDeleteFriendConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name} from your contacts?'**
+  String contactsDeleteFriendConfirm(Object name);
+
+  /// No description provided for @contactsDeleteFriendDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Friend removed'**
+  String get contactsDeleteFriendDone;
+
+  /// No description provided for @contactsDeleteFriendFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to remove friend'**
+  String get contactsDeleteFriendFailed;
+
   /// No description provided for @retry.
   ///
   /// In en, this message translates to:
@@ -1462,6 +1516,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Already friends'**
   String get addFriendAlreadyFriend;
+
+  /// No description provided for @addFriendPendingOutgoing.
+  ///
+  /// In en, this message translates to:
+  /// **'Request sent'**
+  String get addFriendPendingOutgoing;
+
+  /// No description provided for @addFriendSelf.
+  ///
+  /// In en, this message translates to:
+  /// **'You'**
+  String get addFriendSelf;
 
   /// No description provided for @groupCreateTooltip.
   ///
