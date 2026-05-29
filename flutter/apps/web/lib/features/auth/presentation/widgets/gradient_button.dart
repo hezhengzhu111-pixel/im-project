@@ -20,10 +20,16 @@ class GradientButton extends StatefulWidget {
 class _GradientButtonState extends State<GradientButton> {
   bool _isHovered = false;
 
+  // 品牌紫到青的渐变 — 与背景渐变色系呼应
+  static const _brandGradient = LinearGradient(
+    colors: [Color(0xFF6B48FF), Color(0xFF00BFA6)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
   @override
   Widget build(BuildContext context) {
     final glass = Theme.of(context).extension<GlassTheme>()!;
-    final theme = Theme.of(context);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -33,37 +39,23 @@ class _GradientButtonState extends State<GradientButton> {
         transform: _isHovered
             ? (Matrix4.identity()..translate(0.0, -2.0))
             : Matrix4.identity(),
-        child: AnimatedContainer(
-          duration: glass.animationDuration,
+        child: Container(
           decoration: BoxDecoration(
-            // 使用深邃的品牌蓝色渐变，提升视觉焦点
-            gradient: LinearGradient(
-              colors: _isHovered
-                  ? [
-                      theme.colorScheme.primary,
-                      theme.colorScheme.primary.withValues(alpha: 0.85),
-                    ]
-                  : [
-                      theme.colorScheme.primary,
-                      theme.colorScheme.primary.withValues(alpha: 0.9),
-                    ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            gradient: _brandGradient,
             borderRadius: BorderRadius.circular(glass.controlRadius),
             boxShadow: _isHovered
                 ? [
-                    BoxShadow(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.4),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
+                    const BoxShadow(
+                      color: Color(0x666B48FF), // 0.4 alpha
+                      blurRadius: 20,
+                      offset: Offset(0, 6),
                     ),
                   ]
                 : [
-                    BoxShadow(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+                    const BoxShadow(
+                      color: Color(0x336B48FF), // 0.2 alpha
+                      blurRadius: 12,
+                      offset: Offset(0, 4),
                     ),
                   ],
           ),
@@ -73,6 +65,8 @@ class _GradientButtonState extends State<GradientButton> {
               backgroundColor: Colors.transparent,
               shadowColor: Colors.transparent,
               foregroundColor: Colors.white,
+              disabledBackgroundColor: Colors.transparent,
+              disabledForegroundColor: Colors.white70,
               padding: const EdgeInsets.symmetric(
                 horizontal: 24,
                 vertical: 16,
@@ -80,6 +74,7 @@ class _GradientButtonState extends State<GradientButton> {
               textStyle: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
               ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(glass.controlRadius),
