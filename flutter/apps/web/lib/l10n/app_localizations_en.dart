@@ -1028,25 +1028,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get brandFeatureE2eeLabel => 'E2EE Enabled';
 
   @override
-  String get brandFeatureE2ee => 'End-to-end encryption';
+  String get brandFeatureE2ee => 'Powered by Signal Protocol, messages visible only on both devices';
 
   @override
   String get brandFeatureRealtimeLabel => 'Realtime Delivery';
 
   @override
-  String get brandFeatureRealtime => 'Instant message delivery';
+  String get brandFeatureRealtime => 'WebSocket long-polling, millisecond-level message delivery';
 
   @override
   String get brandFeatureDeviceTrustLabel => 'Device Trust';
 
   @override
-  String get brandFeatureDeviceTrust => 'Seamless cross-device switching';
+  String get brandFeatureDeviceTrust => 'Multi-device login with cloud sync, continue conversations anywhere';
 
   @override
   String get brandFeatureAiLabel => 'AI Assistant Online';
 
   @override
-  String get brandFeatureAi => 'Smart assistant on standby';
+  String get brandFeatureAi => 'Built-in AI for smart Q&A, translation, and content creation';
 
   @override
   String get seoLoginTitle => 'Login - IM';

@@ -1028,25 +1028,25 @@ class AppLocalizationsZh extends AppLocalizations {
   String get brandFeatureE2eeLabel => '端对端加密';
 
   @override
-  String get brandFeatureE2ee => '端到端加密保护';
+  String get brandFeatureE2ee => '基于 Signal Protocol，消息仅在双方设备上可见';
 
   @override
   String get brandFeatureRealtimeLabel => '实时消息同步';
 
   @override
-  String get brandFeatureRealtime => '消息即时送达';
+  String get brandFeatureRealtime => 'WebSocket 长连接，消息毫秒级送达与同步';
 
   @override
   String get brandFeatureDeviceTrustLabel => '多设备安全登录';
 
   @override
-  String get brandFeatureDeviceTrust => '跨设备无缝切换';
+  String get brandFeatureDeviceTrust => '多端登录，聊天记录云端同步，随时随地继续对话';
 
   @override
   String get brandFeatureAiLabel => 'AI 助手在线';
 
   @override
-  String get brandFeatureAi => '智能助手随时待命';
+  String get brandFeatureAi => '内置 AI 助手，支持智能问答、翻译与内容创作';
 
   @override
   String get seoLoginTitle => '登录 - IM';
