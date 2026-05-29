@@ -370,6 +370,12 @@ class FakeAuthRepository implements AuthRepository {
   /// If set, [refreshToken] will throw this.
   Exception? refreshTokenError;
 
+  /// Pre-configured response for [refreshToken].
+  UserAuthResponse? refreshTokenResponse;
+
+  /// Value returned by [getRefreshToken].
+  String? refreshTokenValue;
+
   @override
   Future<UserAuthResponse> login(LoginRequest request) async {
     loginCallCount++;
@@ -410,7 +416,11 @@ class FakeAuthRepository implements AuthRepository {
   Future<String?> getToken() async => tokenValue;
 
   @override
-  Future<void> refreshToken() async {
+  Future<String?> getRefreshToken() async => refreshTokenValue;
+
+  @override
+  Future<UserAuthResponse> refreshToken() async {
     if (refreshTokenError != null) throw refreshTokenError!;
+    return refreshTokenResponse ?? const UserAuthResponse(success: true);
   }
 }

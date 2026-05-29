@@ -64,9 +64,27 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<String?> getToken() => _secureStorage.read('access_token');
 
   @override
-  Future<void> refreshToken() async {
-    final token = await _secureStorage.read('refresh_token');
-    if (token == null) throw Exception('No refresh token');
-    // 实际 refresh token API 调用（待后端接口就绪后实现）
+  Future<String?> getRefreshToken() => _secureStorage.read('refresh_token');
+
+  @override
+  Future<UserAuthResponse> refreshToken() async {
+    final refreshToken = await _secureStorage.read('refresh_token');
+    if (refreshToken == null) throw Exception('No refresh token');
+
+    final response = await _httpClient.post<UserAuthResponse>(
+      '/auth/refresh',
+      body: {'refreshToken': refreshToken},
+      fromJson: UserAuthResponse.fromJson,
+    );
+
+    // 保存新的 token
+    if (response.data.token != null) {
+      await _secureStorage.write('access_token', response.data.token!);
+    }
+    if (response.data.refreshToken != null) {
+      await _secureStorage.write('refresh_token', response.data.refreshToken!);
+    }
+
+    return response.data;
   }
 }
