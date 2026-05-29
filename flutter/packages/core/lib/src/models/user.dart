@@ -23,7 +23,8 @@ class User with _$User {
     List<String>? permissions,
   }) = _User;
 
-  factory User.fromJson(Map<String, dynamic> json) => _$UserFromJson(json);
+  factory User.fromJson(Map<String, dynamic> json) =>
+      _$UserFromJson(_normalizeUserJson(json));
 }
 
 @freezed
@@ -79,7 +80,7 @@ class UserAuthResponse with _$UserAuthResponse {
   }) = _UserAuthResponse;
 
   factory UserAuthResponse.fromJson(Map<String, dynamic> json) =>
-      _$UserAuthResponseFromJson(json);
+      _$UserAuthResponseFromJson(_normalizeUserAuthResponseJson(json));
 }
 
 @freezed
@@ -135,4 +136,30 @@ class OnlineStatus with _$OnlineStatus {
 
   factory OnlineStatus.fromJson(Map<String, dynamic> json) =>
       _$OnlineStatusFromJson(json);
+}
+
+Map<String, dynamic> _normalizeUserJson(Map<String, dynamic> json) {
+  final normalized = Map<String, dynamic>.from(json);
+  _copyAlias(normalized, 'lastSeen', 'last_seen');
+  _copyAlias(normalized, 'lastLoginTime', 'last_login_time');
+  _copyAlias(normalized, 'createTime', 'create_time');
+  return normalized;
+}
+
+Map<String, dynamic> _normalizeUserAuthResponseJson(Map<String, dynamic> json) {
+  final normalized = Map<String, dynamic>.from(json);
+  normalized['success'] =
+      normalized['success'] ?? normalized['authenticated'] ?? true;
+  _copyAlias(normalized, 'accessToken', 'access_token');
+  _copyAlias(normalized, 'refreshToken', 'refresh_token');
+  _copyAlias(normalized, 'expiresInMs', 'expires_in_ms');
+  _copyAlias(normalized, 'refreshExpiresInMs', 'refresh_expires_in_ms');
+  normalized['token'] = normalized['token'] ?? normalized['accessToken'];
+  return normalized;
+}
+
+void _copyAlias(Map<String, dynamic> target, String key, String alias) {
+  if (target[key] == null && target[alias] != null) {
+    target[key] = target[alias];
+  }
 }

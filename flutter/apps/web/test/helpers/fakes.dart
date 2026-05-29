@@ -133,6 +133,7 @@ class FakeWsClientPort implements WsClientPort {
 
   /// Messages that were passed to [send].
   final List<Map<String, dynamic>> sentMessages = [];
+  String? lastConnectedUrl;
 
   bool _connected = false;
 
@@ -151,6 +152,7 @@ class FakeWsClientPort implements WsClientPort {
 
   @override
   Future<void> connect(String url) async {
+    lastConnectedUrl = url;
     _connected = true;
     _connectionStateController.add(WsConnectionState.connected);
   }

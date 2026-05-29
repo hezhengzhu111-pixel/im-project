@@ -40,7 +40,8 @@ class ContactsApi {
     );
   }
 
-  Future<List<User>> searchUsers(String keyword, {String type = 'username'}) async {
+  Future<List<User>> searchUsers(String keyword,
+      {String type = 'username'}) async {
     final response = await _httpClient.get<List<dynamic>>(
       UserEndpoints.search,
       queryParameters: {'keyword': keyword, 'type': type},
@@ -79,6 +80,18 @@ class ContactsApi {
       '${FriendEndpoints.remark}?$query',
       fromJson: (_) {},
     );
+  }
+
+  Future<Map<String, bool>> getOnlineStatus(List<String> userIds) async {
+    if (userIds.isEmpty) return const {};
+    final response = await _httpClient.post<Map<String, bool>>(
+      UserEndpoints.onlineStatus,
+      body: userIds,
+      fromJson: (json) => json.map(
+        (key, value) => MapEntry(key, value == true),
+      ),
+    );
+    return response.data;
   }
 
   List<dynamic> _items(Map<String, dynamic> json) {

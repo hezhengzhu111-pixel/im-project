@@ -6,6 +6,7 @@ import type {
 } from "axios";
 import axios from "axios";
 import qs from "qs";
+import { API_CONFIG } from "@/config";
 import { logger } from "@/utils/logger";
 import type { ApiResponse } from "@/types/api";
 import { shouldSkipRefreshEndpoint } from "@im/shared-auth-core";
@@ -133,7 +134,7 @@ const normalizeHttpError = (error: any): any => {
 };
 
 const httpClient: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
+  baseURL: API_CONFIG.BASE_URL,
   timeout: 10000,
   withCredentials: true,
   headers: {

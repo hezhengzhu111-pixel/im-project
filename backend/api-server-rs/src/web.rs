@@ -11,8 +11,8 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
-use im_rs_common::auth::sign_gateway_headers;
-use redis::aio::ConnectionManager;
+use im_rs_common::auth::{sign_gateway_headers, Identity};
+use redis::{aio::ConnectionManager, AsyncCommands};
 use reqwest::Client;
 use serde_json::json;
 use sqlx::MySqlPool;
@@ -39,6 +39,7 @@ struct WebSocketTargetCache {
 }
 
 static WEBSOCKET_TARGET_CACHE: OnceLock<Mutex<WebSocketTargetCache>> = OnceLock::new();
+const WS_TICKET_KEY_PREFIX: &str = "auth:ws:ticket:";
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -65,18 +66,24 @@ async fn websocket_proxy(
     Path(user_id): Path<String>,
     Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> Response {
-    let identity = match identity_from_headers(&headers, &state.config) {
-        Ok(identity) => identity,
-        Err(error) => return error.into_response(),
-    };
-    let cookie = headers
-        .get(header::COOKIE)
-        .and_then(|value| value.to_str().ok())
-        .map(ToOwned::to_owned);
     let query_ticket = query
         .get("ticket")
         .map(|value| value.trim())
         .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let identity = match identity_from_headers(&headers, &state.config) {
+        Ok(identity) => identity,
+        Err(error) => {
+            match identity_from_ws_ticket(&state, &user_id, query_ticket.as_deref()).await {
+                Ok(Some(identity)) => identity,
+                Ok(None) => return error.into_response(),
+                Err(ticket_error) => return ticket_error.into_response(),
+            }
+        }
+    };
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
         .map(ToOwned::to_owned);
     let origin = headers.get(header::ORIGIN).cloned();
     let target_base = select_websocket_target(&state).await;
@@ -95,6 +102,52 @@ async fn websocket_proxy(
         )
     })
     .into_response()
+}
+
+async fn identity_from_ws_ticket(
+    state: &AppState,
+    path_user_id: &str,
+    query_ticket: Option<&str>,
+) -> Result<Option<Identity>, AppError> {
+    let Some(ticket) = query_ticket
+        .map(str::trim)
+        .filter(|ticket| !ticket.is_empty())
+    else {
+        return Ok(None);
+    };
+
+    let payload: Option<String> = {
+        let mut redis = state.redis_manager.clone();
+        redis
+            .get(format!("{}{}", WS_TICKET_KEY_PREFIX, ticket))
+            .await?
+    };
+    let Some(payload) = payload else {
+        return Err(AppError::Unauthorized(
+            "WS_TICKET_INVALID_OR_EXPIRED".to_string(),
+        ));
+    };
+    let Some((ticket_user_id, username)) = parse_ws_ticket_identity(&payload) else {
+        return Err(AppError::Unauthorized("WS_TICKET_INVALID".to_string()));
+    };
+    let path_user_id = path_user_id
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| AppError::Unauthorized("USER_ID_INVALID".to_string()))?;
+    if ticket_user_id != path_user_id {
+        return Err(AppError::Unauthorized(
+            "WS_TICKET_USER_MISMATCH".to_string(),
+        ));
+    }
+    Ok(Some(Identity {
+        user_id: ticket_user_id,
+        username,
+    }))
+}
+
+fn parse_ws_ticket_identity(payload: &str) -> Option<(i64, String)> {
+    let (user_id, username) = payload.split_once('\n')?;
+    Some((user_id.trim().parse().ok()?, username.trim().to_string()))
 }
 
 struct TunnelWebsocketArgs {

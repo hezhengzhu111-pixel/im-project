@@ -56,6 +56,9 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
       } else if (event.type == WsMessageType.friendRequest ||
           event.type == WsMessageType.friendAccepted) {
         loadFriends();
+      } else if (event.type == WsMessageType.message ||
+          event.type == WsMessageType.system) {
+        _handleContactRefreshMessage(event.data);
       }
     });
   }
@@ -65,8 +68,12 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
       final userIds = (data['userIds'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
-          [];
-      final online = data['online'] as bool? ?? false;
+          [
+            if (data['userId'] != null) data['userId'].toString(),
+          ];
+      final online = data['online'] as bool? ??
+          data['isOnline'] as bool? ??
+          (data['status']?.toString().toUpperCase() == 'ONLINE');
 
       if (userIds.isEmpty) return;
 
@@ -83,13 +90,36 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     }
   }
 
+  void _handleContactRefreshMessage(Map<String, dynamic> data) {
+    final messageType = data['messageType']?.toString().toUpperCase() ??
+        data['type']?.toString().toUpperCase() ??
+        '';
+    if (messageType != WsMessageType.system) return;
+
+    final content = data['content']?.toString() ?? '';
+    if (_isFriendRefreshContent(content)) {
+      loadFriends();
+    }
+  }
+
+  bool _isFriendRefreshContent(String content) {
+    final lower = content.toLowerCase();
+    return content.contains('好友申请') ||
+        content.contains('同意') ||
+        lower.contains('friend request') ||
+        lower.contains('friend accepted') ||
+        content.contains('REFRESH_FRIEND_REQUESTS') ||
+        content.contains('REFRESH_FRIEND_LIST');
+  }
+
   Future<void> loadFriends() async {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final friends = await _api.getFriends();
+      final onlineStatus = await _loadOnlineStatus(friends);
       final requests = await _api.getFriendRequests();
       state = state.copyWith(
-        friends: friends,
+        friends: _mergeOnlineStatus(friends, onlineStatus),
         friendRequests: requests,
         isLoading: false,
         error: null,
@@ -97,6 +127,33 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
+  }
+
+  Future<Map<String, bool>> _loadOnlineStatus(List<Friendship> friends) async {
+    final ids = friends
+        .map((friend) => friend.friendId)
+        .where((id) => id.trim().isNotEmpty)
+        .toSet()
+        .toList();
+    if (ids.isEmpty) return const {};
+    try {
+      return await _api.getOnlineStatus(ids);
+    } catch (e, st) {
+      AppLogger.instance.error('Failed to load friend online status', e, st);
+      return const {};
+    }
+  }
+
+  List<Friendship> _mergeOnlineStatus(
+    List<Friendship> friends,
+    Map<String, bool> onlineStatus,
+  ) {
+    if (onlineStatus.isEmpty) return friends;
+    return friends
+        .map((friend) => friend.copyWith(
+              isOnline: onlineStatus[friend.friendId] ?? friend.isOnline,
+            ))
+        .toList();
   }
 
   Future<bool> acceptRequest(String requestId) async {

@@ -109,6 +109,38 @@ void main() {
       expect(message.e2eeEnvelope, isNull);
     });
 
+    test('fromJson normalizes backend message dto fields', () {
+      final message = Message.fromJson({
+        'id': '100',
+        'messageId': '100',
+        'clientMessageId': 'local-1',
+        'senderId': '1',
+        'receiverId': '2',
+        'isGroup': false,
+        'messageType': 'TEXT',
+        'content': null,
+        'createdTime': '2026-05-29T08:00:00Z',
+        'status': 'SENT',
+        'e2eeEnvelope': {
+          'version': 2,
+          'alg': 'rust-x25519-x3dh-dr-v1',
+          'senderDeviceId': 'device-1',
+          'recipientDeviceIds': ['device-2'],
+          'sessionId': '1_private_2',
+          'wire': 'wire-data',
+        },
+      });
+
+      expect(message.id, '100');
+      expect(message.messageId, '100');
+      expect(message.clientMessageId, 'local-1');
+      expect(message.isGroupChat, isFalse);
+      expect(message.content, '');
+      expect(message.sendTime, '2026-05-29T08:00:00Z');
+      expect(message.e2eeEnvelope!.algorithm, 'rust-x25519-x3dh-dr-v1');
+      expect(message.e2eeEnvelope!.recipientDeviceId, 'device-2');
+    });
+
     test('fromJson handles group message', () {
       final json = {
         'id': 'msg3',

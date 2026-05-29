@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +11,7 @@ import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/web_meta/web_meta_defaults.dart';
 import 'core/web_meta/web_meta_service.dart';
+import 'features/auth/presentation/auth_provider.dart';
 
 class App extends ConsumerStatefulWidget {
   const App({super.key});
@@ -30,6 +33,11 @@ class _AppState extends ConsumerState<App> {
       final meta = metaForPath(path, l10n);
       _webMetaService.apply(meta, locale: locale);
     });
+    ref.listenManual<AuthState>(authStateProvider, (prev, next) {
+      if (next.isAuthenticated && prev?.user?.id != next.user?.id) {
+        unawaited(_bootstrapRealtimeState());
+      }
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -42,6 +50,17 @@ class _AppState extends ConsumerState<App> {
       final l10n = lookupAppLocalizations(Locale(locale));
       _webMetaService.apply(fallbackMetaForLocale(l10n), locale: locale);
     });
+  }
+
+  Future<void> _bootstrapRealtimeState() async {
+    try {
+      await Future.wait([
+        ref.read(chatStateProvider.notifier).loadSessions(),
+        ref.read(contactsStateProvider.notifier).loadFriends(),
+      ]);
+    } catch (e, st) {
+      AppLogger.instance.error('Realtime bootstrap failed', e, st, 'ws');
+    }
   }
 
   @override

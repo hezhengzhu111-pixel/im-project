@@ -34,6 +34,8 @@ void main() {
     defaultValue: 'ws://localhost:8082',
   );
   final secureStorage = WebSecureStorageAdapter();
+  final httpClient =
+      WebHttpClient(baseUrl: apiBase, secureStorage: secureStorage);
 
   runApp(ProviderScope(
     overrides: [
@@ -46,13 +48,18 @@ void main() {
       // Network & storage adapters
       secureStorageProvider.overrideWithValue(secureStorage),
       storageProvider.overrideWithValue(WebStorageAdapter()),
-      httpClientProvider.overrideWithValue(
-        WebHttpClient(baseUrl: apiBase, secureStorage: secureStorage),
-      ),
+      httpClientProvider.overrideWithValue(httpClient),
       wsClientProvider.overrideWithValue(
         WebWsClient(
           ticketUrl: AuthEndpoints.wsTicket,
           wsBaseUrl: '$wsBase${WsEndpoints.path}',
+          ticketProvider: () async {
+            final response = await httpClient.post<Map<String, dynamic>>(
+              AuthEndpoints.wsTicket,
+              fromJson: (json) => json,
+            );
+            return response.data['ticket'] as String?;
+          },
         ),
       ),
       // E2EE adapter

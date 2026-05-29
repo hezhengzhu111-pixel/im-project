@@ -41,7 +41,9 @@ class AuthState {
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
       isLoading: isLoading ?? this.isLoading,
       error: identical(error, _sentinel) ? this.error : error as String?,
-      errorCode: identical(errorCode, _sentinel) ? this.errorCode : errorCode as AuthErrorCode?,
+      errorCode: identical(errorCode, _sentinel)
+          ? this.errorCode
+          : errorCode as AuthErrorCode?,
       rememberMe: rememberMe ?? this.rememberMe,
       authReady: authReady ?? this.authReady,
       permissions: permissions ?? this.permissions,
@@ -50,7 +52,8 @@ class AuthState {
 }
 
 class AuthNotifier extends StateNotifier<AuthState> {
-  AuthNotifier(this._repository, this._wsClient, this._httpClient, this._analytics)
+  AuthNotifier(
+      this._repository, this._wsClient, this._httpClient, this._analytics)
       : super(const AuthState());
 
   final AuthRepository _repository;
@@ -58,7 +61,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final HttpClientPort _httpClient;
   final AnalyticsPort _analytics;
 
-  Future<void> login(String username, String password, {bool rememberMe = false}) async {
+  Future<void> login(String username, String password,
+      {bool rememberMe = false}) async {
     state = state.copyWith(isLoading: true, error: null, errorCode: null);
     try {
       final response = await _repository.login(
@@ -68,10 +72,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
         user: response.user,
         isAuthenticated: true,
         rememberMe: rememberMe,
+        authReady: true,
+        permissions: response.permissions ?? [],
       );
       _analytics.trackEvent('login_success', {'method': 'password'});
       // Connect WebSocket after successful login
-      _connectWs();
+      await _connectWs(response.user?.id);
     } catch (e) {
       _analytics.trackEvent('login_failed', {'error_type': 'auth'});
       state = state.copyWith(
@@ -126,7 +132,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
             permissions: user.permissions ?? [],
           );
           _analytics.setUserId(user.id);
-          _connectWs();
+          await _connectWs(user.id);
         } catch (e) {
           // 获取用户资料失败，可能是 token 过期，尝试刷新
           try {
@@ -140,15 +146,29 @@ class AuthNotifier extends StateNotifier<AuthState> {
               permissions: user.permissions ?? [],
             );
             _analytics.setUserId(user.id);
-            _connectWs();
+            await _connectWs(user.id);
           } catch (refreshError) {
             // 刷新也失败了，清除状态，让用户重新登录
-            AppLogger.instance.error('Session restore failed', refreshError, null, 'auth');
+            AppLogger.instance
+                .error('Session restore failed', refreshError, null, 'auth');
             state = const AuthState(authReady: true);
           }
         }
       } else {
-        state = const AuthState(authReady: true);
+        try {
+          await _repository.refreshToken();
+          final user = await _repository.getProfile();
+          state = AuthState(
+            user: user,
+            isAuthenticated: true,
+            authReady: true,
+            permissions: user.permissions ?? [],
+          );
+          _analytics.setUserId(user.id);
+          await _connectWs(user.id);
+        } catch (_) {
+          state = const AuthState(authReady: true);
+        }
       }
     } catch (e) {
       state = const AuthState(authReady: true);
@@ -182,7 +202,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
   // Message-based matching (not type-based) because dart:io is unavailable in Flutter web.
   AuthErrorCode _mapExceptionToErrorCode(Object e) {
     final msg = e.toString().toLowerCase();
-    if (msg.contains('401') || msg.contains('403') || msg.contains('unauthorized')) {
+    if (msg.contains('401') ||
+        msg.contains('403') ||
+        msg.contains('unauthorized')) {
       return AuthErrorCode.invalidCredentials;
     }
     if (msg.contains('429') || msg.contains('too many')) {
@@ -191,13 +213,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
     if (RegExp(r'\b5\d{2}\b').hasMatch(msg) || msg.contains('server')) {
       return AuthErrorCode.serverError;
     }
-    if (msg.contains('network') || msg.contains('connection') || msg.contains('socket')) {
+    if (msg.contains('network') ||
+        msg.contains('connection') ||
+        msg.contains('socket')) {
       return AuthErrorCode.networkError;
     }
     return AuthErrorCode.unknown;
   }
 
-  Future<void> _connectWs() async {
+  Future<void> _connectWs(String? userId) async {
+    final normalizedUserId = userId?.trim() ?? '';
+    if (normalizedUserId.isEmpty) {
+      AppLogger.instance.warn('WS connect skipped: missing user id');
+      return;
+    }
+
     try {
       final response = await _httpClient.post<Map<String, dynamic>>(
         AuthEndpoints.wsTicket,
@@ -205,14 +235,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       final ticket = response.data['ticket'] as String?;
       if (ticket != null && ticket.isNotEmpty) {
-        final wsUrl = '${_wsClient.wsBaseUrl}?ticket=$ticket';
+        final wsUrl = _buildWsUrl(normalizedUserId, ticket);
         _wsClient.connect(wsUrl);
         return;
       }
     } catch (e, st) {
-      AppLogger.instance.error('WS ticket fetch failed, connecting without ticket', e, st, 'ws');
+      AppLogger.instance.error(
+          'WS ticket fetch failed, connecting without ticket', e, st, 'ws');
     }
     // Fallback: connect without ticket (development mode)
-    _wsClient.connect(_wsClient.wsBaseUrl);
+    _wsClient.connect(_buildWsUrl(normalizedUserId));
+  }
+
+  String _buildWsUrl(String userId, [String? ticket]) {
+    final base = _wsClient.wsBaseUrl.replaceFirst(RegExp(r'/+$'), '');
+    final buffer = StringBuffer('$base/${Uri.encodeComponent(userId)}');
+    if (ticket != null && ticket.isNotEmpty) {
+      buffer.write(
+          '?${WsEndpoints.ticketParam}=${Uri.encodeQueryComponent(ticket)}');
+    }
+    return buffer.toString();
   }
 }

@@ -4,10 +4,86 @@
  */
 
 // API配置
+const trimEnv = (value?: string): string => (value || "").trim();
+
+const stripTrailingSlashes = (value: string): string =>
+  value.replace(/\/+$/, "");
+
+const configuredGatewayAuthority = (): string => {
+  const rawHost = trimEnv(import.meta.env.VITE_GATEWAY_HOST);
+  if (!rawHost) {
+    return "";
+  }
+  const host = rawHost
+    .replace(/^(https?|wss?):\/\//i, "")
+    .replace(/\/+$/, "");
+  const port = trimEnv(import.meta.env.VITE_GATEWAY_PORT);
+  if (!port || /:\d+$/.test(host)) {
+    return host;
+  }
+  return `${host}:${port}`;
+};
+
+const isHttpsPage = (): boolean =>
+  typeof window !== "undefined" && window.location.protocol === "https:";
+
+const gatewayHttpBaseUrl = (): string => {
+  const authority = configuredGatewayAuthority();
+  if (!authority) {
+    return "";
+  }
+  return `${isHttpsPage() ? "https" : "http"}://${authority}`;
+};
+
+const gatewayWsBaseUrl = (): string => {
+  const authority = configuredGatewayAuthority();
+  if (!authority) {
+    return "";
+  }
+  return `${isHttpsPage() ? "wss" : "ws"}://${authority}`;
+};
+
+export const resolveApiBaseUrl = (): string => {
+  const configured = stripTrailingSlashes(
+    trimEnv(import.meta.env.VITE_API_BASE_URL),
+  );
+  if (configured && configured !== "/api") {
+    return configured;
+  }
+  if (import.meta.env.DEV) {
+    return configured || "/api";
+  }
+  const gatewayBaseUrl = gatewayHttpBaseUrl();
+  if (gatewayBaseUrl) {
+    return `${gatewayBaseUrl}/api`;
+  }
+  return configured || "/api";
+};
+
+export const resolveWebSocketBaseUrl = (): string => {
+  const configured = stripTrailingSlashes(
+    trimEnv(import.meta.env.VITE_WS_BASE_URL),
+  );
+  if (configured) {
+    return configured;
+  }
+  if (import.meta.env.DEV) {
+    return "";
+  }
+  const gatewayBaseUrl = gatewayWsBaseUrl();
+  if (gatewayBaseUrl) {
+    return gatewayBaseUrl;
+  }
+  if (typeof window === "undefined") {
+    return "ws://127.0.0.1:8082";
+  }
+  return `${isHttpsPage() ? "wss" : "ws"}://${window.location.host}`;
+};
+
 export const API_CONFIG = {
   // 基础URL
   // 直接连接后端服务 8082
-  BASE_URL: import.meta.env.VITE_API_BASE_URL || "/api",
+  BASE_URL: resolveApiBaseUrl(),
   // 超时时间
   TIMEOUT: 10000,
   // 重试次数
@@ -16,18 +92,10 @@ export const API_CONFIG = {
   RETRY_DELAY: 1000,
 };
 
-const defaultWsBaseUrl = (() => {
-  if (typeof window === "undefined") {
-    return "ws://127.0.0.1:8080";
-  }
-  const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${scheme}://${window.location.host}`;
-})();
-
 // WebSocket配置
 export const WS_CONFIG = {
   // WebSocket基础URL
-  BASE_URL: import.meta.env.VITE_WS_BASE_URL || defaultWsBaseUrl,
+  BASE_URL: resolveWebSocketBaseUrl(),
   // 重连次数
   RECONNECT_ATTEMPTS: 5,
   // 重连间隔

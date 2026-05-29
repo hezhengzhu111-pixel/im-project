@@ -323,7 +323,7 @@ export const useWebSocketStore = defineStore("websocket", () => {
 
       isConnecting.value = true;
       const ticket = await requestWsTicket();
-      const wsBaseUrl = import.meta.env.DEV ? "" : WS_CONFIG.BASE_URL;
+      const wsBaseUrl = WS_CONFIG.BASE_URL;
       socket.value = new WebSocket(createTicketedWebSocketUrl(wsBaseUrl, userId, ticket));
 
       socket.value.onopen = () => {
