@@ -67,38 +67,54 @@ class _ValidatedFormFieldState extends State<ValidatedFormField> {
           obscureText: widget.obscureText ? _obscured : false,
           keyboardType: widget.keyboardType,
           maxLines: widget.obscureText ? 1 : widget.maxLines,
-          style: const TextStyle(fontSize: 15),
+          style: const TextStyle(
+            fontSize: 15,
+            color: Color(0xFF263238), // blueGrey.shade900
+          ),
           decoration: InputDecoration(
             labelText: widget.label,
             labelStyle: TextStyle(
-              color: Colors.grey.shade500,
+              color: Colors.blueGrey.shade400,
               fontSize: 14,
             ),
             prefixIcon: widget.prefix ??
-                (widget.icon != null ? Icon(widget.icon, size: 20) : null),
-            prefixIconColor: Colors.grey.shade400,
+                (widget.icon != null
+                    ? Icon(widget.icon, size: 20, color: Colors.blueGrey.shade400)
+                    : null),
             suffixIcon: _buildSuffix(field),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,
               vertical: 16,
             ),
+            // 极浅灰背景 — 干净不发灰
+            filled: true,
+            fillColor: const Color(0xFFF8F9FA),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderSide: BorderSide(color: Colors.grey.shade200),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey.shade300),
+              borderSide: BorderSide(color: Colors.grey.shade200),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: Theme.of(context).colorScheme.primary,
-                width: 2,
+              borderSide: const BorderSide(
+                color: Color(0xFF6B48FF), // 品牌紫
+                width: 1.5,
               ),
             ),
-            filled: true,
-            fillColor: Colors.white.withValues(alpha: 0.8),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFFFF5252)),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: Color(0xFFFF5252),
+                width: 1.5,
+              ),
+            ),
             errorText:
                 field.touched && field.error != null ? field.error : null,
           ),
