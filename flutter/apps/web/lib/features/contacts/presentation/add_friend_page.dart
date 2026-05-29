@@ -485,7 +485,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
         visualDensity: VisualDensity.compact,
       );
     }
-    return FilledButton.tonal(
+    return GradientButton(
       onPressed: _isSending && _selectedUser?.id == user.id
           ? null
           : () => _sendRequest(user),
