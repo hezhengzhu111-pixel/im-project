@@ -58,8 +58,17 @@ async fn main() -> anyhow::Result<()> {
     api_server_rs::background_writer::spawn(config.clone(), state.db.clone());
     api_server_rs::push_dispatcher::spawn(config.clone(), state.db.clone());
     api_server_rs::e2ee::cleanup::spawn(state.db.clone());
+    // CORS 配置：开发环境允许所有 localhost/127.0.0.1 端口
+    // 当 allow_credentials(true) 时，不能使用 wildcard "*"，需用 predicate 动态匹配
     let cors = CorsLayer::new()
-        .allow_origin(AllowOrigin::mirror_request())
+        .allow_origin(AllowOrigin::predicate(|origin, _parts| {
+            // 允许任何 localhost / 127.0.0.1 端口（开发环境）
+            let s = origin.to_str().unwrap_or("");
+            s.starts_with("http://localhost:")
+                || s.starts_with("http://127.0.0.1:")
+                || s.starts_with("https://localhost:")
+                || s.starts_with("https://127.0.0.1:")
+        }))
         .allow_methods([
             Method::GET,
             Method::POST,

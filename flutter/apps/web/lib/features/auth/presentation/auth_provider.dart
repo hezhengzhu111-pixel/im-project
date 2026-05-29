@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../../../core/logging/app_logger.dart';
@@ -76,8 +78,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
         permissions: response.permissions ?? [],
       );
       _analytics.trackEvent('login_success', {'method': 'password'});
-      // Connect WebSocket after successful login
-      await _connectWs(response.user?.id);
+      // Connect WebSocket after successful login.
+      // WS failures must NOT roll back the authenticated state.
+      unawaited(_connectWs(response.user?.id).catchError((e, st) {
+        AppLogger.instance.error('WS connect failed after login', e, st, 'ws');
+      }));
     } catch (e) {
       _analytics.trackEvent('login_failed', {'error_type': 'auth'});
       state = state.copyWith(
@@ -125,47 +130,26 @@ class AuthNotifier extends StateNotifier<AuthState> {
       if (isAuth) {
         try {
           final user = await _repository.getProfile();
-          state = AuthState(
-            user: user,
-            isAuthenticated: true,
-            authReady: true,
-            permissions: user.permissions ?? [],
-          );
-          _analytics.setUserId(user.id);
-          await _connectWs(user.id);
+          _setAuthenticated(user);
         } catch (e) {
-          // 获取用户资料失败，可能是 token 过期，尝试刷新
+          // Token 可能过期，尝试刷新
           try {
             await _repository.refreshToken();
-            // 刷新成功，重新获取用户资料
             final user = await _repository.getProfile();
-            state = AuthState(
-              user: user,
-              isAuthenticated: true,
-              authReady: true,
-              permissions: user.permissions ?? [],
-            );
-            _analytics.setUserId(user.id);
-            await _connectWs(user.id);
+            _setAuthenticated(user);
           } catch (refreshError) {
-            // 刷新也失败了，清除状态，让用户重新登录
+            // 刷新也失败，让用户重新登录
             AppLogger.instance
                 .error('Session restore failed', refreshError, null, 'auth');
             state = const AuthState(authReady: true);
           }
         }
       } else {
+        // 没有 access_token，尝试用 refresh_token 恢复
         try {
           await _repository.refreshToken();
           final user = await _repository.getProfile();
-          state = AuthState(
-            user: user,
-            isAuthenticated: true,
-            authReady: true,
-            permissions: user.permissions ?? [],
-          );
-          _analytics.setUserId(user.id);
-          await _connectWs(user.id);
+          _setAuthenticated(user);
         } catch (_) {
           state = const AuthState(authReady: true);
         }
@@ -173,6 +157,22 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (e) {
       state = const AuthState(authReady: true);
     }
+  }
+
+  /// 设置认证状态并异步连接 WebSocket。
+  /// WS 连接失败不影响已认证的状态。
+  void _setAuthenticated(User user) {
+    state = AuthState(
+      user: user,
+      isAuthenticated: true,
+      authReady: true,
+      permissions: user.permissions ?? [],
+    );
+    _analytics.setUserId(user.id);
+    // WS 连接是尽力而为的，失败不应导致用户被登出。
+    unawaited(_connectWs(user.id).catchError((e, st) {
+      AppLogger.instance.error('WS connect failed during session restore', e, st, 'ws');
+    }));
   }
 
   Future<void> checkAuth() => restoreSession();

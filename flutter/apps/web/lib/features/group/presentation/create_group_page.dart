@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:im_ui/im_ui.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
@@ -63,7 +64,7 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
       appBar: AppBar(
         title: Text(loc.groupCreateTitle),
         actions: [
-          TextButton(
+          GradientTextButton(
             onPressed: groupState.isLoading ? null : _createGroup,
             child: groupState.isLoading
                 ? const SizedBox(
@@ -76,7 +77,7 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(ImTokens.space4),
         children: [
           TextField(
             controller: _nameController,
@@ -85,7 +86,7 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
               border: const OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: ImTokens.space4),
           TextField(
             controller: _avatarController,
             decoration: const InputDecoration(
@@ -93,7 +94,7 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
               border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: ImTokens.space4),
           TextField(
             controller: _descController,
             decoration: InputDecoration(
@@ -102,10 +103,10 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
             ),
             maxLines: 2,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: ImTokens.space6),
           Text(loc.groupSelectMembers,
               style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
+          const SizedBox(height: ImTokens.space2),
           ...contactsState.friends.map((friend) => CheckboxListTile(
                 value: _selectedMemberIds.contains(friend.friendId),
                 onChanged: (checked) {

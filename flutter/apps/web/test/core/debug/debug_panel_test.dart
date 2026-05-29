@@ -199,7 +199,8 @@ class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>
           String? mediaName,
           int? mediaSize,
           String? thumbnailUrl,
-          int? duration}) async =>
+          int? duration,
+          Map<String, dynamic>? extra}) async =>
       null;
 
   @override
@@ -211,7 +212,8 @@ class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>
           int? mediaSize,
           String? thumbnailUrl,
           int? duration,
-          List<String>? mentionedUserIds}) async =>
+          List<String>? mentionedUserIds,
+          Map<String, dynamic>? extra}) async =>
       null;
 
   @override
