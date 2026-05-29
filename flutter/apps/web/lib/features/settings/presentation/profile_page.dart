@@ -13,6 +13,7 @@ import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_web/widgets/validated_form.dart';
 import 'package:im_web/widgets/validated_form_field.dart';
 import 'package:im_core/core.dart';
+import 'package:im_ui/im_ui.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -75,7 +76,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     _initControllers(user);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(ImTokens.space4),
       children: [
         ProfileHero(user: user, onAvatarTap: () {}),
         const SizedBox(height: 16),
@@ -86,7 +87,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               child: SettingsSection(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(ImTokens.space4),
                     child: ValidatedForm(
                       controller: _formController!,
                       child: Column(
@@ -102,27 +103,27 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                 InputDecoration(labelText: loc.profileUsername),
                             enabled: false,
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: ImTokens.space3),
                           ValidatedFormField(
                             controller: _formController!,
                             name: 'nickname',
                             label: loc.profileNickname,
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: ImTokens.space3),
                           ValidatedFormField(
                             controller: _formController!,
                             name: 'email',
                             label: loc.profileEmail,
                             keyboardType: TextInputType.emailAddress,
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: ImTokens.space3),
                           TextFormField(
                             initialValue: user.phone,
                             decoration:
                                 InputDecoration(labelText: loc.profilePhone),
                             enabled: false,
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: ImTokens.space3),
                           Text(loc.profileGender,
                               style: theme.textTheme.bodyMedium),
                           Row(
@@ -150,7 +151,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                               Text(loc.profileGenderSecret),
                             ],
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: ImTokens.space3),
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             title: Text(loc.profileBirthday),
@@ -169,7 +170,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                 setState(() => _birthday = date);
                             },
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: ImTokens.space3),
                           ValidatedFormField(
                             controller: _formController!,
                             name: 'signature',
@@ -183,7 +184,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                 onPressed: _save,
                                 child: Text(loc.profileSave),
                               ),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: ImTokens.space3),
                               OutlinedButton(
                                 onPressed: _reset,
                                 child: Text(loc.profileReset),
@@ -235,7 +236,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                   : loc.profileUnbound,
                               style: TextStyle(
                                   color: user.phone != null
-                                      ? Colors.green
+                                      ? theme.colorScheme.primary
                                       : theme.colorScheme.onSurfaceVariant),
                             ),
                             const Icon(Icons.chevron_right),
@@ -260,7 +261,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                   : loc.profileUnbound,
                               style: TextStyle(
                                   color: user.email != null
-                                      ? Colors.green
+                                      ? theme.colorScheme.primary
                                       : theme.colorScheme.onSurfaceVariant),
                             ),
                             const Icon(Icons.chevron_right),
@@ -272,7 +273,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: ImTokens.space3),
                   SettingsSection(
                     title: loc.profilePrivacy,
                     children: [
