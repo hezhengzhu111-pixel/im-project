@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:im_core/core.dart';
+import '../core/logging/app_logger.dart';
 
 class WebHttpClient implements HttpClientPort {
   WebHttpClient({
@@ -7,7 +9,7 @@ class WebHttpClient implements HttpClientPort {
     required SecureStoragePort secureStorage,
   }) : _dio = Dio(BaseOptions(baseUrl: baseUrl)) {
     _dio.interceptors.addAll([
-      _AuthInterceptor(secureStorage),
+      _AuthInterceptor(secureStorage, _dio),
       LogInterceptor(requestBody: true, responseBody: true),
     ]);
   }
@@ -86,18 +88,121 @@ class WebHttpClient implements HttpClientPort {
 }
 
 class _AuthInterceptor extends Interceptor {
-  _AuthInterceptor(this._secureStorage);
+  _AuthInterceptor(this._secureStorage, this._dio);
   final SecureStoragePort _secureStorage;
+  final Dio _dio;
+  bool _isRefreshing = false;
+  final List<Completer<void>> _refreshQueue = [];
 
   @override
   void onRequest(
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
+    // 跳过 refresh token 请求本身的认证头
+    if (options.path == '/auth/refresh') {
+      handler.next(options);
+      return;
+    }
+
     final token = await _secureStorage.read('access_token');
     if (token != null) {
       options.headers['Authorization'] = 'Bearer $token';
     }
     handler.next(options);
+  }
+
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) async {
+    if (err.response?.statusCode == 401) {
+      // 避免 refresh token 请求本身触发无限循环
+      if (err.requestOptions.path == '/auth/refresh') {
+        handler.next(err);
+        return;
+      }
+
+      // 如果正在刷新，加入队列等待
+      if (_isRefreshing) {
+        final completer = Completer<void>();
+        _refreshQueue.add(completer);
+        await completer.future;
+
+        // 刷新完成后重试原请求
+        try {
+          final token = await _secureStorage.read('access_token');
+          if (token != null) {
+            err.requestOptions.headers['Authorization'] = 'Bearer $token';
+          }
+          final response = await _dio.fetch(err.requestOptions);
+          handler.resolve(response);
+          return;
+        } catch (e) {
+          handler.next(err);
+          return;
+        }
+      }
+
+      // 开始刷新 token
+      _isRefreshing = true;
+      try {
+        final refreshToken = await _secureStorage.read('refresh_token');
+        if (refreshToken == null) {
+          throw Exception('No refresh token');
+        }
+
+        // 调用 refresh API
+        final response = await _dio.post<Map<String, dynamic>>(
+          '/auth/refresh',
+          data: {'refreshToken': refreshToken},
+        );
+
+        final data = response.data;
+        if (data == null) {
+          throw Exception('Invalid refresh response');
+        }
+
+        // 保存新 token
+        final newToken = data['token'] as String?;
+        final newRefreshToken = data['refreshToken'] as String?;
+
+        if (newToken != null) {
+          await _secureStorage.write('access_token', newToken);
+        }
+        if (newRefreshToken != null) {
+          await _secureStorage.write('refresh_token', newRefreshToken);
+        }
+
+        // 通知等待队列
+        for (final completer in _refreshQueue) {
+          completer.complete();
+        }
+        _refreshQueue.clear();
+
+        // 重试原请求
+        if (newToken != null) {
+          err.requestOptions.headers['Authorization'] = 'Bearer $newToken';
+        }
+        final retryResponse = await _dio.fetch(err.requestOptions);
+        handler.resolve(retryResponse);
+      } catch (e, st) {
+        AppLogger.instance.error('Token refresh failed', e, st, 'auth');
+        // 清理 token
+        await _secureStorage.delete('access_token');
+        await _secureStorage.delete('refresh_token');
+
+        // 通知等待队列
+        for (final completer in _refreshQueue) {
+          completer.completeError(e, st);
+        }
+        _refreshQueue.clear();
+
+        // 抛出异常，让上层处理跳转登录
+        handler.next(err);
+      } finally {
+        _isRefreshing = false;
+      }
+    } else {
+      handler.next(err);
+    }
   }
 }
