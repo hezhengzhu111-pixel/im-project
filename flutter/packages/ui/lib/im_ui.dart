@@ -10,4 +10,5 @@ export 'src/widgets/im_avatar.dart';
 export 'src/widgets/im_badge.dart';
 export 'src/widgets/im_dialog.dart';
 export 'src/widgets/im_nav_item.dart';
+export 'src/widgets/glass_card.dart';
 export 'src/layouts/layouts.dart';
