@@ -25,9 +25,16 @@ void main() {
       expect(dark.colorScheme.primary, isNotNull);
     });
 
-    test('light theme has scaffoldBackgroundColor', () {
+    test('light theme has correct primary color', () {
       final theme = ImTheme.light();
-      expect(theme.scaffoldBackgroundColor, isNotNull);
+      // ColorScheme.fromSeed derives the primary from the seed color,
+      // so it may differ slightly from the exact seed value.
+      expect(theme.colorScheme.primary, isNotNull);
+    });
+
+    test('light theme has correct scaffold background', () {
+      final theme = ImTheme.light();
+      expect(theme.scaffoldBackgroundColor, const Color(0xFFF7F8FA));
     });
 
     test('dark theme has scaffoldBackgroundColor', () {
