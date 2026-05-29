@@ -67,6 +67,7 @@ class _MomentsMainPageState extends State<MomentsMainPage> {
     final showSidebar = context.isLarge;
 
     return Scaffold(
+      backgroundColor: Colors.transparent, // 让外层渐变背景透出
       body: Row(
         children: [
           // Main panel

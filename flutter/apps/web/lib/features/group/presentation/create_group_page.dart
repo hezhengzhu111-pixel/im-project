@@ -61,6 +61,7 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
     final groupState = ref.watch(groupStateProvider);
 
     return Scaffold(
+      backgroundColor: Colors.transparent, // 让外层渐变背景透出
       appBar: AppBar(
         title: Text(loc.groupCreateTitle),
         actions: [

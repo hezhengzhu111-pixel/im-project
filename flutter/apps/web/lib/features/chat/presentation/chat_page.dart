@@ -160,10 +160,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       large: ImTokens.layoutChatSidebarWidth,
                     )
                     .toDouble(),
-                color: Colors.white,
+                color: Colors.transparent, // 透出外层 #F7F8FA 背景
                 child: _buildSessionList(sessions, activeId, loc),
               ),
-              const VerticalDivider(thickness: 1, width: 1),
               Expanded(
                 child: activeId == null
                     ? Center(child: Text(loc.chatSelectSession))

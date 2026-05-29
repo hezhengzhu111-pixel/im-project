@@ -258,6 +258,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
     final contactsState = ref.watch(contactsStateProvider);
     final loc = AppLocalizations.of(context)!;
     return Scaffold(
+      backgroundColor: Colors.transparent, // 让外层渐变背景透出
       appBar: AppBar(
         title: Text(loc.addFriendTitle),
       ),
