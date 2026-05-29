@@ -274,7 +274,11 @@ pub(crate) fn validate_send_input(
     Ok(())
 }
 
-pub(crate) fn build_message(config: &AppConfig, identity: &Identity, input: BuildMessageInput) -> MessageDto {
+pub(crate) fn build_message(
+    config: &AppConfig,
+    identity: &Identity,
+    input: BuildMessageInput,
+) -> MessageDto {
     let id = ids::next_id(config.snowflake_node_id).to_string();
     let now = time::now_iso();
     let ty = MessageType::from_text(input.message_type.as_deref().unwrap_or("TEXT"));
@@ -321,4 +325,3 @@ pub(crate) fn build_message(config: &AppConfig, identity: &Identity, input: Buil
         e2ee_envelope: input.e2ee_envelope,
     }
 }
-

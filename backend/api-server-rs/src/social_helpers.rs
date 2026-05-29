@@ -23,8 +23,10 @@ use std::collections::{BTreeSet, HashMap};
 
 const FRIEND_CACHE_TTL_SECONDS: u64 = 5 * 60;
 
-
-pub(crate) fn group_redis_for_group(state: &AppState, group_id: i64) -> Result<ConnectionManager, AppError> {
+pub(crate) fn group_redis_for_group(
+    state: &AppState,
+    group_id: i64,
+) -> Result<ConnectionManager, AppError> {
     let index =
         crate::message::shard_index_for_group_id(group_id, state.group_redis_managers.len())
             .ok_or_else(|| AppError::Upstream("group hot redis shard missing".to_string()))?;
@@ -130,19 +132,29 @@ pub(crate) fn row_i32(row: &sqlx::mysql::MySqlRow, column: &str) -> i32 {
         .unwrap_or_default()
 }
 
-pub(crate) async fn resolve_user_id_or_not_found(db: &MySqlPool, user_id: i64) -> Result<i64, AppError> {
+pub(crate) async fn resolve_user_id_or_not_found(
+    db: &MySqlPool,
+    user_id: i64,
+) -> Result<i64, AppError> {
     resolve_active_user_id(db, user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("user not found".to_string()))
 }
 
-pub(crate) async fn resolve_group_id_or_not_found(db: &MySqlPool, group_id: i64) -> Result<i64, AppError> {
+pub(crate) async fn resolve_group_id_or_not_found(
+    db: &MySqlPool,
+    group_id: i64,
+) -> Result<i64, AppError> {
     resolve_active_group_id(db, group_id)
         .await?
         .ok_or_else(|| AppError::NotFound("group not found".to_string()))
 }
 
-pub(crate) async fn are_friends(db: &MySqlPool, user_id: i64, friend_id: i64) -> Result<bool, AppError> {
+pub(crate) async fn are_friends(
+    db: &MySqlPool,
+    user_id: i64,
+    friend_id: i64,
+) -> Result<bool, AppError> {
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM service_user_service_db.im_friend WHERE user_id = ? AND friend_id = ? AND status = 1",
     )
@@ -204,10 +216,10 @@ pub(crate) async fn cache_friendship(
     }
 }
 
-pub(crate) fn normalize_optional(value: Option<String>) -> Option<String> {
-    value
-        .map(|item| item.trim().to_string())
-        .filter(|item| !item.is_empty())
+pub(crate) fn normalize_optional(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 pub(crate) fn query_i64(params: &HashMap<String, String>, key: &str) -> Option<i64> {
@@ -215,7 +227,7 @@ pub(crate) fn query_i64(params: &HashMap<String, String>, key: &str) -> Option<i
 }
 
 pub(crate) fn string_field(value: &Value, key: &str) -> Option<String> {
-    normalize_optional(value.get(key)?.as_str().map(ToOwned::to_owned))
+    normalize_optional(value.get(key)?.as_str())
 }
 
 pub(crate) fn value_to_i64(value: &Value) -> Option<i64> {
@@ -281,4 +293,3 @@ pub(crate) async fn write_social_event(state: &AppState, event: &ImEvent) {
         }
     }
 }
-

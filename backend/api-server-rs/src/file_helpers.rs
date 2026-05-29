@@ -152,7 +152,11 @@ pub(crate) async fn remove_temp_file(path: &Path) {
     }
 }
 
-pub(crate) async fn stream_file(state: AppState, headers: HeaderMap, request: FileLocator) -> Response {
+pub(crate) async fn stream_file(
+    state: AppState,
+    headers: HeaderMap,
+    request: FileLocator,
+) -> Response {
     let identity = match identity_from_headers(&headers, &state.config) {
         Ok(identity) => identity,
         Err(err) => return err.into_response(),
@@ -212,7 +216,11 @@ pub(crate) async fn can_read(state: &AppState, user_id: i64, request: &FileLocat
     can_read_message_media(state, user_id, request).await
 }
 
-pub(crate) async fn can_read_message_media(state: &AppState, user_id: i64, request: &FileLocator) -> bool {
+pub(crate) async fn can_read_message_media(
+    state: &AppState,
+    user_id: i64,
+    request: &FileLocator,
+) -> bool {
     let media_url = static_file_url(&request.category, &request.date, &request.filename);
     let media_url_no_slash = media_url.trim_start_matches('/').to_string();
     let rows = match sqlx::query(
@@ -417,7 +425,11 @@ pub(crate) fn normalize_content_type(value: &str) -> String {
         .to_ascii_lowercase()
 }
 
-pub(crate) fn resolve_content_type(filename: &str, raw_content_type: &str, file_type_name: &str) -> String {
+pub(crate) fn resolve_content_type(
+    filename: &str,
+    raw_content_type: &str,
+    file_type_name: &str,
+) -> String {
     let normalized = normalize_content_type(raw_content_type);
     if !normalized.is_empty() {
         return normalized;
@@ -444,7 +456,10 @@ pub(crate) fn resolve_content_type(filename: &str, raw_content_type: &str, file_
         .unwrap_or_else(|| "application/octet-stream".to_string())
 }
 
-pub(crate) fn is_content_type_allowed(content_type: &str, allowed_types: &HashSet<&'static str>) -> bool {
+pub(crate) fn is_content_type_allowed(
+    content_type: &str,
+    allowed_types: &HashSet<&'static str>,
+) -> bool {
     allowed_types.contains("*/*") || allowed_types.contains(content_type)
 }
 
@@ -491,4 +506,3 @@ pub(crate) fn allowed_video_types() -> HashSet<&'static str> {
         "video/flv",
     ])
 }
-

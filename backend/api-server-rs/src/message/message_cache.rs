@@ -1,3 +1,6 @@
+use super::{
+    MAX_FRIENDS_PRELOAD, VALIDATION_CACHE_TTL_SECONDS, VALIDATION_NEGATIVE_CACHE_TTL_SECONDS,
+};
 use crate::error::AppError;
 use crate::id_resolver::{resolve_active_group_id, resolve_active_user_id};
 use crate::local_cache;
@@ -5,7 +8,6 @@ use crate::observability;
 use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
 use sqlx::MySqlPool;
-use super::{VALIDATION_CACHE_TTL_SECONDS, VALIDATION_NEGATIVE_CACHE_TTL_SECONDS, MAX_FRIENDS_PRELOAD};
 
 pub(crate) async fn cached_resolve_active_user_id(
     redis: &mut ConnectionManager,
@@ -55,7 +57,10 @@ pub(crate) async fn cached_resolve_active_group_id(
     Ok(resolved)
 }
 
-pub(crate) async fn read_cached_i64_option(redis: &mut ConnectionManager, key: &str) -> Option<Option<i64>> {
+pub(crate) async fn read_cached_i64_option(
+    redis: &mut ConnectionManager,
+    key: &str,
+) -> Option<Option<i64>> {
     let value: Option<String> = redis.get(key).await.ok().flatten();
     let parsed = value.map(|raw| {
         if raw == "none" {
@@ -70,7 +75,11 @@ pub(crate) async fn read_cached_i64_option(redis: &mut ConnectionManager, key: &
     parsed
 }
 
-pub(crate) async fn write_cached_i64_option(redis: &mut ConnectionManager, key: &str, value: Option<i64>) {
+pub(crate) async fn write_cached_i64_option(
+    redis: &mut ConnectionManager,
+    key: &str,
+    value: Option<i64>,
+) {
     let ttl = if value.is_some() {
         VALIDATION_CACHE_TTL_SECONDS
     } else {
@@ -268,7 +277,10 @@ pub(crate) async fn write_cached_bool(redis: &mut ConnectionManager, key: &str, 
     }
 }
 
-pub(crate) fn validate_mentioned_user_ids(mentioned: &[String], sender_id: i64) -> Result<Vec<i64>, AppError> {
+pub(crate) fn validate_mentioned_user_ids(
+    mentioned: &[String],
+    sender_id: i64,
+) -> Result<Vec<i64>, AppError> {
     let mut seen = std::collections::HashSet::new();
     let mut result = Vec::new();
     for raw in mentioned {
@@ -310,4 +322,3 @@ pub(crate) async fn batch_validate_mentioned_members(
     }
     Ok(valid_ids)
 }
-

@@ -232,8 +232,16 @@ async fn test_e2ee_upload_bundle_then_get_devices() {
     let found = devices.iter().find(|d| d["deviceId"] == json!(device_id));
     assert!(found.is_some(), "uploaded device not found in get_devices");
     let found = found.unwrap();
-    assert!(found["identityKey"].as_str().is_some_and(|s| !s.is_empty()), "identityKey should be present");
-    assert!(found["signedPreKey"].as_str().is_some_and(|s| !s.is_empty()), "signedPreKey should be present");
+    assert!(
+        found["identityKey"].as_str().is_some_and(|s| !s.is_empty()),
+        "identityKey should be present"
+    );
+    assert!(
+        found["signedPreKey"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty()),
+        "signedPreKey should be present"
+    );
     assert!(found["lastActiveAt"].as_str().is_some());
 }
 
@@ -888,7 +896,11 @@ async fn test_e2ee_create_session_group_rejects_non_member_device() {
         StatusCode::OK,
         "group creation failed: {create_body}"
     );
-    let group_id: i64 = create_body["data"]["id"].as_str().expect("group id").parse().expect("group id parse");
+    let group_id: i64 = create_body["data"]["id"]
+        .as_str()
+        .expect("group id")
+        .parse()
+        .expect("group id parse");
 
     let conversation_id = format!("g_{group_id}");
 

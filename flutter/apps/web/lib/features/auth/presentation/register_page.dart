@@ -63,7 +63,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
 
     _formController = FormController(FormSchema(fields: []));
 
-    ref.listen<AuthState>(authStateProvider, (prev, next) {
+    ref.listenManual<AuthState>(authStateProvider, (prev, next) {
       if (!mounted) return;
       if (next.errorCode != null) {
         _formController.setFormError(_locErrorCode(next.errorCode!));
@@ -158,7 +158,11 @@ class _RegisterPageState extends ConsumerState<RegisterPage>
             end: Alignment.bottomRight,
             colors: context.isMobile
                 ? const [Color(0xFF667eea), Color(0xFF764ba2)]
-                : const [Color(0xFF667eea), Color(0xFF764ba2), Color(0xFF6B73FF)],
+                : const [
+                    Color(0xFF667eea),
+                    Color(0xFF764ba2),
+                    Color(0xFF6B73FF)
+                  ],
           ),
         ),
         child: DecorativeBackground(

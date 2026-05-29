@@ -22,7 +22,10 @@ fn unique_username(prefix: &str) -> String {
 }
 
 fn unique_username_pair(prefix: &str) -> (String, String) {
-    (unique_username(&format!("{prefix}a")), unique_username(&format!("{prefix}b")))
+    (
+        unique_username(&format!("{prefix}a")),
+        unique_username(&format!("{prefix}b")),
+    )
 }
 
 // ── test infrastructure ─────────────────────────────────────────
@@ -169,12 +172,18 @@ async fn register_and_login(app: &Router, username: &str, password: &str) -> Aut
     assert!(
         reg_resp.status == StatusCode::OK || reg_resp.status == StatusCode::CONFLICT,
         "register failed: status={} body={}",
-        reg_resp.status, reg_resp.body
+        reg_resp.status,
+        reg_resp.body
     );
     let login_resp = login(app, username, password).await;
     let token = login_resp.body["data"]["token"]
         .as_str()
-        .unwrap_or_else(|| panic!("login failed: status={} body={}", login_resp.status, login_resp.body))
+        .unwrap_or_else(|| {
+            panic!(
+                "login failed: status={} body={}",
+                login_resp.status, login_resp.body
+            )
+        })
         .to_string();
     let user_id: i64 = login_resp.body["data"]["user"]["id"]
         .as_str()

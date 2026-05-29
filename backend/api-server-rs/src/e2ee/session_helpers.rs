@@ -226,32 +226,6 @@ pub(crate) fn parse_private_conversation_members(conversation_id: &str) -> Optio
     Some((left, right))
 }
 
-pub(crate) async fn ensure_conversation_member(
-    db: &sqlx::MySqlPool,
-    user_id: i64,
-    conversation_id: &str,
-) -> Result<(), AppError> {
-    if let Some((left, right)) = parse_private_conversation_members(conversation_id) {
-        if user_id == left || user_id == right {
-            return Ok(());
-        }
-        return Err(AppError::Forbidden("not a conversation member".to_string()));
-    }
-    if let Some(group_id_raw) = conversation_id.strip_prefix("g_") {
-        let group_id = group_id_raw
-            .parse::<i64>()
-            .map_err(|_| AppError::BadRequest("invalid conversationId".to_string()))?;
-        let count: Option<i64> = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM service_group_service_db.im_group_member WHERE group_id = ? AND user_id = ? AND status = 1",
-        )
-        .bind(group_id)
-        .bind(user_id)
-        .fetch_optional(db)
-        .await?;
-        if count.unwrap_or(0) > 0 {
-            return Ok(());
-        }
-    }
     Err(AppError::Forbidden("not a conversation member".to_string()))
 }
 
@@ -316,7 +290,10 @@ pub(crate) async fn ensure_sender_device_belongs_to_user(
 }
 
 /// 查询群组内所有有效成员的用户 ID。
-pub(crate) async fn fetch_group_member_ids(db: &sqlx::MySqlPool, group_id: i64) -> Result<Vec<i64>, AppError> {
+pub(crate) async fn fetch_group_member_ids(
+    db: &sqlx::MySqlPool,
+    group_id: i64,
+) -> Result<Vec<i64>, AppError> {
     let members = sqlx::query_scalar::<_, i64>(
         "SELECT user_id FROM service_group_service_db.im_group_member \
          WHERE group_id = ? AND status = 1",
@@ -453,4 +430,3 @@ pub(crate) fn row_to_metadata(row: sqlx::mysql::MySqlRow) -> E2eeSessionMetadata
         needs_rotation: row.get::<i8, _>("needs_rotation") != 0,
     }
 }
-

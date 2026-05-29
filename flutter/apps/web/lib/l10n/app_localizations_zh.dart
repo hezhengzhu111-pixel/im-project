@@ -107,6 +107,35 @@ class AppLocalizationsZh extends AppLocalizations {
   String get contactsRejected => '已拒绝';
 
   @override
+  String get contactsEditRemark => '设置备注';
+
+  @override
+  String get contactsRemarkLabel => '好友备注';
+
+  @override
+  String get contactsRemarkHint => '为这个联系人添加备注';
+
+  @override
+  String get contactsRemarkSaved => '备注已更新';
+
+  @override
+  String get contactsRemarkSaveFailed => '备注更新失败';
+
+  @override
+  String get contactsDeleteFriend => '删除好友';
+
+  @override
+  String contactsDeleteFriendConfirm(Object name) {
+    return '确定将 $name 从联系人中删除吗？';
+  }
+
+  @override
+  String get contactsDeleteFriendDone => '好友已删除';
+
+  @override
+  String get contactsDeleteFriendFailed => '删除好友失败';
+
+  @override
   String get retry => '重试';
 
   @override
@@ -709,6 +738,12 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get addFriendAlreadyFriend => '已是好友';
+
+  @override
+  String get addFriendPendingOutgoing => '已发送申请';
+
+  @override
+  String get addFriendSelf => '你自己';
 
   @override
   String get groupCreateTooltip => '创建群组';

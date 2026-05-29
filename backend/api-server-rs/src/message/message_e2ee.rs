@@ -143,7 +143,10 @@ pub(crate) async fn validate_e2ee_envelope(
 /// 前后端统一使用 `{idA}_{idB}` 格式作为 session 标识。
 /// 后端 conversation_id 带有 `p_` 前缀（由 keys::private_conversation_id 生成），
 /// 比较时去掉前缀后必须与前端 session_id 一致。
-pub(crate) fn e2ee_session_id_matches(session_id: &str, conversation_id: &str) -> Result<(), AppError> {
+pub(crate) fn e2ee_session_id_matches(
+    session_id: &str,
+    conversation_id: &str,
+) -> Result<(), AppError> {
     if session_id.trim().is_empty() {
         return Err(AppError::BadRequest(
             "e2ee envelope session_id required".to_string(),
@@ -164,7 +167,10 @@ pub(crate) fn e2ee_session_id_matches(session_id: &str, conversation_id: &str) -
 
 /// 校验 device_id 存在且处于 active 状态（不检查 user_id 归属）。
 /// 仅在 group 场景或额外防御层使用。私聊 recipient 校验必须走 validate_device_ownership。
-pub(crate) async fn validate_device_active(db: &MySqlPool, device_id: &str) -> Result<(), AppError> {
+pub(crate) async fn validate_device_active(
+    db: &MySqlPool,
+    device_id: &str,
+) -> Result<(), AppError> {
     let trimmed = device_id.trim();
     if trimmed.is_empty() || trimmed == "unknown" {
         return Err(AppError::BadRequest("invalid device id".to_string()));
@@ -233,7 +239,10 @@ pub(crate) fn resolve_recipient_device_ids(envelope: &E2eeEnvelopeDto) -> Vec<St
 /// conversation_id 格式为 `p_{idA}_{idB}`（由 keys::private_conversation_id 生成）。
 /// e2ee_sessions.session_id 可能为前端格式 `{idA}_{idB}` 或后端格式 `p_{idA}_{idB}`，
 /// 因此需要双格式查询。
-pub(crate) async fn private_e2ee_enabled(db: &MySqlPool, conversation_id: &str) -> Result<bool, AppError> {
+pub(crate) async fn private_e2ee_enabled(
+    db: &MySqlPool,
+    conversation_id: &str,
+) -> Result<bool, AppError> {
     // 去掉 "p_" 前缀得到前端格式的 session_id
     let short_id = conversation_id
         .strip_prefix("p_")
@@ -288,4 +297,3 @@ pub(crate) async fn validate_recipient_devices_not_revoked(
     }
     Ok(())
 }
-

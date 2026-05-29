@@ -27,7 +27,6 @@ const LEGACY_INTERNAL_TS_HEADER: &str = "X-Internal-Ts";
 const INTERNAL_NONCE_HEADER: &str = "X-Internal-Nonce";
 const INTERNAL_SIGN_HEADER: &str = "X-Internal-Signature";
 
-
 /// 内部接口：查询指定用户的资源信息（权限、用户元数据、数据范围）。
 ///
 /// **鉴权要求**：HMAC 内部签名。
@@ -290,4 +289,3 @@ pub(crate) fn validate_internal_signature(
     }
     Ok(())
 }
-

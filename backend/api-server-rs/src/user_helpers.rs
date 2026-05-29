@@ -15,7 +15,6 @@ use serde_json::{json, Value};
 use sqlx::{MySqlPool, Row};
 use std::collections::HashMap;
 
-
 pub(crate) async fn online_status_impl(
     state: AppState,
     body: Bytes,
@@ -73,7 +72,10 @@ where
         .ok_or_else(|| AppError::Upstream("upstream response missing data".to_string()))
 }
 
-pub(crate) async fn issue_token(state: &AppState, user: &UserRecord) -> Result<TokenPairDto, AppError> {
+pub(crate) async fn issue_token(
+    state: &AppState,
+    user: &UserRecord,
+) -> Result<TokenPairDto, AppError> {
     auth_api::issue_token_pair(
         state,
         IssueTokenRequest {
@@ -100,7 +102,10 @@ pub(crate) async fn load_user_by_username(
     Ok(row.as_ref().map(user_from_row))
 }
 
-pub(crate) async fn load_user_by_id(db: &MySqlPool, user_id: i64) -> Result<Option<UserRecord>, AppError> {
+pub(crate) async fn load_user_by_id(
+    db: &MySqlPool,
+    user_id: i64,
+) -> Result<Option<UserRecord>, AppError> {
     let row = sqlx::query(&user_select_sql("id = ?"))
         .bind(user_id)
         .fetch_optional(db)

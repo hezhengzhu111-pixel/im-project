@@ -16,7 +16,6 @@ use serde_json::{json, Value};
 use sqlx::{MySqlPool, Row};
 use std::collections::HashMap;
 
-
 pub(crate) async fn login(
     State(state): State<AppState>,
     Json(request): Json<LoginRequest>,
@@ -319,6 +318,11 @@ pub(crate) async fn search(
     let like = format!("%{}%", keyword);
     let rows = if query.r#type.eq_ignore_ascii_case("phone") {
         sqlx::query(&user_select_sql("phone LIKE ?"))
+            .bind(like)
+            .fetch_all(&state.db)
+            .await?
+    } else if query.r#type.eq_ignore_ascii_case("email") {
+        sqlx::query(&user_select_sql("email LIKE ?"))
             .bind(like)
             .fetch_all(&state.db)
             .await?

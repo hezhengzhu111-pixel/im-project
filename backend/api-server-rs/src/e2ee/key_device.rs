@@ -13,9 +13,6 @@ use serde_json::Value;
 use sqlx::Row;
 use std::collections::HashMap;
 
-
-
-
 /// X25519 公钥的字节长度（Signal/X3DH 协议标准）。
 
 /// Ed25519 签名的字节长度。
@@ -23,7 +20,6 @@ use std::collections::HashMap;
 /// 当前协议约定使用 Ed25519 对 signed pre-key 进行签名，签名固定为 64 字节。
 /// 如果未来支持其他签名算法（如 ECDSA P-256 的 64–72 字节可变长度），
 /// 需要将此处替换为范围校验。
-
 
 /// 获取目标用户的公开设备信息。
 ///
@@ -195,4 +191,3 @@ pub(crate) async fn get_salt(
         serde_json::json!({ "salt": salt }),
     )))
 }
-

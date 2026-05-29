@@ -14,7 +14,6 @@ use serde_json::{json, Value};
 use sqlx::{MySqlPool, Row};
 use std::collections::HashMap;
 
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LoginRequest {
