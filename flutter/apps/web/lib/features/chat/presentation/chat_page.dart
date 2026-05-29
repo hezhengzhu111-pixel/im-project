@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -126,7 +124,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
-    final glass = Theme.of(context).extension<GlassTheme>()!;
     final chatState = ref.watch(chatStateProvider);
     final activeId = chatState.activeSessionId;
     final sessions = chatState.sessions.where((s) {
@@ -154,25 +151,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               : _buildSessionList(sessions, activeId, loc),
           expanded: Row(
             children: [
-              ClipRect(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(
-                    sigmaX: glass.blurIntensity * 0.5,
-                    sigmaY: glass.blurIntensity * 0.5,
-                  ),
-                  child: Container(
-                    width: context.breakpoint
-                        .value(
-                          compact: 0,
-                          medium: 0,
-                          expanded: ImTokens.layoutChatSidebarWidth,
-                          large: ImTokens.layoutChatSidebarWidth,
-                        )
-                        .toDouble(),
-                    color: glass.navBackground,
-                    child: _buildSessionList(sessions, activeId, loc),
-                  ),
-                ),
+              Container(
+                width: context.breakpoint
+                    .value(
+                      compact: 0,
+                      medium: 0,
+                      expanded: ImTokens.layoutChatSidebarWidth,
+                      large: ImTokens.layoutChatSidebarWidth,
+                    )
+                    .toDouble(),
+                color: Colors.white,
+                child: _buildSessionList(sessions, activeId, loc),
               ),
               const VerticalDivider(thickness: 1, width: 1),
               Expanded(
