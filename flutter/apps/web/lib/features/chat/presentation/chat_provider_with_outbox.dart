@@ -113,6 +113,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   final AnalyticsPort _analytics;
   MessageConfig? _messageConfig;
   StreamSubscription? _wsSubscription;
+  StreamSubscription? _wsStateSubscription;
   StreamSubscription? _outboxSubscription;
   StreamSubscription? _networkSubscription;
 
@@ -251,7 +252,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       }
     });
     // Sync offline messages on reconnect
-    _wsClient.connectionState.listen((wsState) {
+    _wsStateSubscription = _wsClient.connectionState.listen((wsState) {
       if (wsState == WsConnectionState.connected) {
         _syncOfflineMessages();
       }
@@ -341,6 +342,14 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
 
   void _handleIncomingMessage(Map<String, dynamic> data) {
     try {
+      final messageType = data['messageType']?.toString().toUpperCase() ??
+          data['type']?.toString().toUpperCase() ??
+          '';
+      if (messageType == WsMessageType.system) {
+        _handleSystemMessage(data);
+        return;
+      }
+
       final message = Message.fromJson(data);
       if (!_pipeline.shouldProcess(message.id)) return;
 
@@ -507,7 +516,10 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       if (content.contains('FRIEND') ||
           content.contains('GROUP') ||
           content.contains('friend') ||
-          content.contains('group')) {
+          content.contains('group') ||
+          content.contains('好友申请') ||
+          content.contains('同意') ||
+          content.contains('REFRESH_FRIEND')) {
         loadSessions();
       }
     } catch (e, st) {
@@ -1553,6 +1565,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   @override
   void dispose() {
     _wsSubscription?.cancel();
+    _wsStateSubscription?.cancel();
     _outboxSubscription?.cancel();
     _networkSubscription?.cancel();
     super.dispose();

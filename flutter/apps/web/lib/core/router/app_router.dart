@@ -46,6 +46,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       // No meta (e.g. 404 catch-all) -- let through
       if (meta == null) return null;
 
+      // During startup, auth restoration is asynchronous. Do not redirect an
+      // existing session to /login before restoreSession has checked storage.
+      if (!authState.authReady) return null;
+
       // hideForAuth: logged-in user on /login or /register -> /chat
       if (meta.hideForAuth && isAuth) return '/chat';
 

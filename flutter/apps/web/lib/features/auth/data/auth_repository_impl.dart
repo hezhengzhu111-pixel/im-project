@@ -17,9 +17,7 @@ class AuthRepositoryImpl implements AuthRepository {
       body: request.toJson(),
       fromJson: UserAuthResponse.fromJson,
     );
-    if (response.data.token != null) {
-      await _secureStorage.write('access_token', response.data.token!);
-    }
+    await _persistTokens(response.data);
     return response.data;
   }
 
@@ -51,13 +49,16 @@ class AuthRepositoryImpl implements AuthRepository {
       );
     } finally {
       await _secureStorage.delete('access_token');
+      await _secureStorage.delete('refresh_token');
     }
   }
 
   @override
   Future<bool> isAuthenticated() async {
     final token = await _secureStorage.read('access_token');
-    return token != null;
+    if (token != null && token.isNotEmpty) return true;
+    final refreshToken = await _secureStorage.read('refresh_token');
+    return refreshToken != null && refreshToken.isNotEmpty;
   }
 
   @override
@@ -69,22 +70,28 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<UserAuthResponse> refreshToken() async {
     final refreshToken = await _secureStorage.read('refresh_token');
-    if (refreshToken == null) throw Exception('No refresh token');
+    if (refreshToken == null || refreshToken.isEmpty) {
+      throw Exception('No refresh token');
+    }
 
     final response = await _httpClient.post<UserAuthResponse>(
-      '/auth/refresh',
+      AuthEndpoints.refresh,
       body: {'refreshToken': refreshToken},
       fromJson: UserAuthResponse.fromJson,
     );
 
-    // 保存新的 token
-    if (response.data.token != null) {
-      await _secureStorage.write('access_token', response.data.token!);
-    }
-    if (response.data.refreshToken != null) {
-      await _secureStorage.write('refresh_token', response.data.refreshToken!);
-    }
-
+    await _persistTokens(response.data);
     return response.data;
+  }
+
+  Future<void> _persistTokens(UserAuthResponse response) async {
+    final accessToken = response.accessToken ?? response.token;
+    final refreshToken = response.refreshToken;
+    if (accessToken != null && accessToken.isNotEmpty) {
+      await _secureStorage.write('access_token', accessToken);
+    }
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      await _secureStorage.write('refresh_token', refreshToken);
+    }
   }
 }

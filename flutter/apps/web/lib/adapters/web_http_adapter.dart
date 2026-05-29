@@ -7,7 +7,10 @@ class WebHttpClient implements HttpClientPort {
   WebHttpClient({
     required String baseUrl,
     required SecureStoragePort secureStorage,
-  }) : _dio = Dio(BaseOptions(baseUrl: baseUrl)) {
+  }) : _dio = Dio(BaseOptions(
+          baseUrl: baseUrl,
+          extra: const {'withCredentials': true},
+        )) {
     _dio.interceptors.addAll([
       _AuthInterceptor(secureStorage, _dio),
       LogInterceptor(requestBody: true, responseBody: true),
@@ -35,8 +38,7 @@ class WebHttpClient implements HttpClientPort {
     dynamic body,
     required T Function(Map<String, dynamic>) fromJson,
   }) async {
-    final response =
-        await _dio.post<Map<String, dynamic>>(path, data: body);
+    final response = await _dio.post<Map<String, dynamic>>(path, data: body);
     return _parseResponse(response, fromJson);
   }
 
@@ -46,8 +48,7 @@ class WebHttpClient implements HttpClientPort {
     dynamic body,
     required T Function(Map<String, dynamic>) fromJson,
   }) async {
-    final response =
-        await _dio.put<Map<String, dynamic>>(path, data: body);
+    final response = await _dio.put<Map<String, dynamic>>(path, data: body);
     return _parseResponse(response, fromJson);
   }
 
@@ -100,7 +101,7 @@ class _AuthInterceptor extends Interceptor {
     RequestInterceptorHandler handler,
   ) async {
     // 跳过 refresh token 请求本身的认证头
-    if (options.path == '/auth/refresh') {
+    if (options.path == AuthEndpoints.refresh) {
       handler.next(options);
       return;
     }
@@ -116,7 +117,7 @@ class _AuthInterceptor extends Interceptor {
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     if (err.response?.statusCode == 401) {
       // 避免 refresh token 请求本身触发无限循环
-      if (err.requestOptions.path == '/auth/refresh') {
+      if (err.requestOptions.path == AuthEndpoints.refresh) {
         handler.next(err);
         return;
       }
@@ -125,13 +126,20 @@ class _AuthInterceptor extends Interceptor {
       if (_isRefreshing) {
         final completer = Completer<void>();
         _refreshQueue.add(completer);
-        await completer.future;
+        try {
+          await completer.future;
+        } catch (_) {
+          handler.next(err);
+          return;
+        }
 
         // 刷新完成后重试原请求
         try {
           final token = await _secureStorage.read('access_token');
           if (token != null) {
             err.requestOptions.headers['Authorization'] = 'Bearer $token';
+          } else {
+            err.requestOptions.headers.remove('Authorization');
           }
           final response = await _dio.fetch(err.requestOptions);
           handler.resolve(response);
@@ -146,13 +154,13 @@ class _AuthInterceptor extends Interceptor {
       _isRefreshing = true;
       try {
         final refreshToken = await _secureStorage.read('refresh_token');
-        if (refreshToken == null) {
+        if (refreshToken == null || refreshToken.isEmpty) {
           throw Exception('No refresh token');
         }
 
         // 调用 refresh API
         final response = await _dio.post<Map<String, dynamic>>(
-          '/auth/refresh',
+          AuthEndpoints.refresh,
           data: {'refreshToken': refreshToken},
         );
 
@@ -162,11 +170,20 @@ class _AuthInterceptor extends Interceptor {
         }
 
         // 保存新 token
-        final newToken = data['token'] as String?;
-        final newRefreshToken = data['refreshToken'] as String?;
+        final payload = data['data'] is Map<String, dynamic>
+            ? data['data'] as Map<String, dynamic>
+            : data;
+        final newToken = _stringValue(
+          payload['accessToken'] ?? payload['access_token'] ?? payload['token'],
+        );
+        final newRefreshToken = _stringValue(
+          payload['refreshToken'] ?? payload['refresh_token'],
+        );
 
         if (newToken != null) {
           await _secureStorage.write('access_token', newToken);
+        } else {
+          await _secureStorage.delete('access_token');
         }
         if (newRefreshToken != null) {
           await _secureStorage.write('refresh_token', newRefreshToken);
@@ -181,6 +198,8 @@ class _AuthInterceptor extends Interceptor {
         // 重试原请求
         if (newToken != null) {
           err.requestOptions.headers['Authorization'] = 'Bearer $newToken';
+        } else {
+          err.requestOptions.headers.remove('Authorization');
         }
         final retryResponse = await _dio.fetch(err.requestOptions);
         handler.resolve(retryResponse);
@@ -204,5 +223,10 @@ class _AuthInterceptor extends Interceptor {
     } else {
       handler.next(err);
     }
+  }
+
+  String? _stringValue(Object? value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty || text == 'null' ? null : text;
   }
 }

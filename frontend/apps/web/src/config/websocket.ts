@@ -1,3 +1,5 @@
+import { WS_CONFIG } from "@/config";
+
 export interface WebSocketConfig {
   baseUrl: string;
   reconnectAttempts: number;
@@ -7,27 +9,16 @@ export interface WebSocketConfig {
 }
 
 const DEFAULT_CONFIG: WebSocketConfig = {
-  baseUrl: "",
-  reconnectAttempts: 5,
-  reconnectInterval: 1000,
-  heartbeatInterval: 30000,
-  connectionTimeout: 10000,
+  baseUrl: WS_CONFIG.BASE_URL,
+  reconnectAttempts: WS_CONFIG.RECONNECT_ATTEMPTS,
+  reconnectInterval: WS_CONFIG.RECONNECT_INTERVAL,
+  heartbeatInterval: WS_CONFIG.HEARTBEAT_INTERVAL,
+  connectionTimeout: WS_CONFIG.CONNECTION_TIMEOUT,
 };
 
 export function getWebSocketConfig(): WebSocketConfig {
-  const defaultBaseUrl = (() => {
-    if (typeof window === "undefined") {
-      return "ws://127.0.0.1:8080";
-    }
-    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    return `${scheme}://${window.location.host}`;
-  })();
-
   return {
-    baseUrl:
-      import.meta.env.VITE_WS_BASE_URL ||
-      DEFAULT_CONFIG.baseUrl ||
-      defaultBaseUrl,
+    baseUrl: WS_CONFIG.BASE_URL || DEFAULT_CONFIG.baseUrl,
     reconnectAttempts: DEFAULT_CONFIG.reconnectAttempts,
     reconnectInterval: DEFAULT_CONFIG.reconnectInterval,
     heartbeatInterval: DEFAULT_CONFIG.heartbeatInterval,

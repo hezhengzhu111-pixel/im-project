@@ -17,7 +17,8 @@ void main() {
     mockRepo = FakeAuthRepository();
     mockWsClient = FakeWsClientPort();
     mockHttpClient = FakeHttpClientPort();
-    notifier = AuthNotifier(mockRepo, mockWsClient, mockHttpClient, NoopAnalyticsPort());
+    notifier = AuthNotifier(
+        mockRepo, mockWsClient, mockHttpClient, NoopAnalyticsPort());
   });
 
   group('AuthNotifier', () {
@@ -52,6 +53,33 @@ void main() {
         expect(successState.isLoading, isFalse);
         expect(successState.isAuthenticated, isTrue);
         expect(successState.user, equals(user));
+      });
+
+      test('connects websocket with user id and ticket after login', () async {
+        const user = User(id: '42', username: 'testuser');
+        mockRepo.loginResponse = const UserAuthResponse(
+          success: true,
+          user: user,
+        );
+        mockHttpClient.onPost = <T>(
+          String path, {
+          dynamic body,
+          required T Function(Map<String, dynamic>) fromJson,
+        }) async {
+          expect(path, AuthEndpoints.wsTicket);
+          return ApiResponse(
+            code: 200,
+            message: 'ok',
+            data: fromJson({'ticket': 'ticket-123'}),
+          );
+        };
+
+        await notifier.login('testuser', 'password123');
+
+        expect(
+          mockWsClient.lastConnectedUrl,
+          'ws://localhost:8082/ws/42?ticket=ticket-123',
+        );
       });
 
       test('passes correct LoginRequest to repository', () async {
@@ -94,7 +122,8 @@ void main() {
         final states = <AuthState>[];
         notifier.addListener(states.add, fireImmediately: true);
 
-        await notifier.register('newuser', 'newuser@example.com', 'password123');
+        await notifier.register(
+            'newuser', 'newuser@example.com', 'password123');
 
         // States: initial (from fireImmediately), loading, success
         expect(states.length, greaterThanOrEqualTo(2));
@@ -164,6 +193,7 @@ void main() {
 
       test('stays unauthenticated when not authenticated', () async {
         mockRepo.isAuthenticatedValue = false;
+        mockRepo.refreshTokenError = Exception('No refresh token');
 
         await notifier.checkAuth();
 
@@ -263,7 +293,8 @@ void main() {
         expect(notifier.state.error, contains('Username taken'));
       });
 
-      test('register success does not change user or isAuthenticated', () async {
+      test('register success does not change user or isAuthenticated',
+          () async {
         mockRepo.registerResponse = const UserAuthResponse(success: true);
         await notifier.register('newuser', 'newuser@example.com', 'pass');
 
@@ -274,7 +305,8 @@ void main() {
     });
 
     group('checkAuth - additional edge cases', () {
-      test('checkAuth when isAuthenticated throws resets to authReady', () async {
+      test('checkAuth when isAuthenticated throws resets to authReady',
+          () async {
         mockRepo.isAuthenticatedError = Exception('Token check failed');
 
         // restoreSession catches errors from isAuthenticated
@@ -295,16 +327,32 @@ void main() {
     });
 
     group('AuthNotifier - restoreSession', () {
-      test('restoreSession sets authReady true when not authenticated', () async {
+      test('restoreSession sets authReady true when not authenticated',
+          () async {
         mockRepo.isAuthenticatedValue = false;
         await notifier.restoreSession();
         expect(notifier.state.authReady, isTrue);
         expect(notifier.state.isAuthenticated, isFalse);
       });
 
+      test('restoreSession can recover with refresh token after reload',
+          () async {
+        mockRepo.isAuthenticatedValue = false;
+        const user = User(id: '1', username: 'test');
+        mockRepo.refreshTokenResponse = const UserAuthResponse(success: true);
+        mockRepo.profileResponse = user;
+
+        await notifier.restoreSession();
+
+        expect(notifier.state.authReady, isTrue);
+        expect(notifier.state.isAuthenticated, isTrue);
+        expect(notifier.state.user, user);
+      });
+
       test('restoreSession sets authReady true when authenticated', () async {
         mockRepo.isAuthenticatedValue = true;
-        const user = User(id: '1', username: 'test', permissions: ['chat:read']);
+        const user =
+            User(id: '1', username: 'test', permissions: ['chat:read']);
         mockRepo.profileResponse = user;
         await notifier.restoreSession();
         expect(notifier.state.authReady, isTrue);
@@ -322,7 +370,10 @@ void main() {
     group('AuthNotifier - permissions', () {
       test('hasPermission returns true for granted permission', () async {
         mockRepo.isAuthenticatedValue = true;
-        const user = User(id: '1', username: 'test', permissions: ['chat:read', 'chat:write']);
+        const user = User(
+            id: '1',
+            username: 'test',
+            permissions: ['chat:read', 'chat:write']);
         mockRepo.profileResponse = user;
         await notifier.restoreSession();
         expect(notifier.hasPermission('chat:read'), isTrue);
@@ -331,7 +382,8 @@ void main() {
 
       test('hasAnyPermission returns true if any match', () async {
         mockRepo.isAuthenticatedValue = true;
-        const user = User(id: '1', username: 'test', permissions: ['chat:read']);
+        const user =
+            User(id: '1', username: 'test', permissions: ['chat:read']);
         mockRepo.profileResponse = user;
         await notifier.restoreSession();
         expect(notifier.hasAnyPermission(['admin', 'chat:read']), isTrue);

@@ -25,11 +25,18 @@ class WebWsEvent implements WsEvent {
   }
 }
 
+typedef WsTicketProvider = Future<String?> Function();
+
 class WebWsClient implements WsClientPort {
-  WebWsClient({required this.ticketUrl, required this.wsBaseUrl});
+  WebWsClient({
+    required this.ticketUrl,
+    required this.wsBaseUrl,
+    WsTicketProvider? ticketProvider,
+  }) : _ticketProvider = ticketProvider;
 
   final String ticketUrl;
   final String wsBaseUrl;
+  final WsTicketProvider? _ticketProvider;
 
   html.WebSocket? _socket;
   final _eventsController = StreamController<WsEvent>.broadcast();
@@ -40,12 +47,13 @@ class WebWsClient implements WsClientPort {
   int _retryCount = 0;
   static const int _maxRetries = 10;
   static const Duration _heartbeatInterval = Duration(seconds: 30);
-  static const Duration _heartbeatTimeout = Duration(seconds: 5);
+  static const Duration _heartbeatTimeout = Duration(seconds: 15);
 
   Timer? _heartbeatTimer;
   Timer? _heartbeatTimeoutTimer;
   Timer? _reconnectTimer;
   String? _lastUrl;
+  String? _lastUserId;
 
   StreamSubscription? _onOpenSub;
   StreamSubscription? _onMessageSub;
@@ -64,6 +72,7 @@ class WebWsClient implements WsClientPort {
   @override
   Future<void> connect(String url) async {
     _lastUrl = url;
+    _lastUserId = _extractUserId(url) ?? _lastUserId;
     _manualDisconnect = false;
     _updateState(WsConnectionState.connecting);
 
@@ -73,6 +82,7 @@ class WebWsClient implements WsClientPort {
       _onCloseSub?.cancel();
       _onErrorSub?.cancel();
 
+      _socket?.close();
       _socket = html.WebSocket(url);
       _onOpenSub = _socket!.onOpen.listen(_onOpen);
       _onMessageSub = _socket!.onMessage.listen(_onMessage);
@@ -103,9 +113,7 @@ class WebWsClient implements WsClientPort {
     _isConnected = false;
     _retryCount = 0;
     _manualDisconnect = false;
-    if (_lastUrl != null) {
-      await connect(_lastUrl!);
-    }
+    await _reconnectWithFreshTicket();
   }
 
   @override
@@ -127,6 +135,10 @@ class WebWsClient implements WsClientPort {
   void _onMessage(html.MessageEvent event) {
     try {
       final data = jsonDecode(event.data as String) as Map<String, dynamic>;
+      if (_isHeartbeatPong(data)) {
+        _heartbeatTimeoutTimer?.cancel();
+        return;
+      }
       final wsEvent = WebWsEvent.fromJson(data);
       _eventsController.add(wsEvent);
 
@@ -159,10 +171,8 @@ class WebWsClient implements WsClientPort {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) {
       send({'type': WsMessageType.heartbeat});
-      // Start timeout timer
       _heartbeatTimeoutTimer?.cancel();
       _heartbeatTimeoutTimer = Timer(_heartbeatTimeout, () {
-        // No pong received, trigger reconnect
         _socket?.close();
       });
     });
@@ -181,10 +191,51 @@ class WebWsClient implements WsClientPort {
     _retryCount++;
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(delay, () {
-      if (_lastUrl != null && !_manualDisconnect) {
-        connect(_lastUrl!);
+      if (!_manualDisconnect) {
+        _reconnectWithFreshTicket();
       }
     });
+  }
+
+  Future<void> _reconnectWithFreshTicket() async {
+    final userId = _lastUserId;
+    final ticketProvider = _ticketProvider;
+    if (userId != null && userId.isNotEmpty && ticketProvider != null) {
+      try {
+        final ticket = await ticketProvider();
+        if (ticket != null && ticket.isNotEmpty) {
+          await connect(_buildUrl(userId, ticket));
+          return;
+        }
+      } catch (e, st) {
+        AppLogger.instance.error('WS ticket refresh failed', e, st, 'ws');
+      }
+      _isConnected = false;
+      _updateState(WsConnectionState.disconnected);
+      _scheduleReconnect();
+      return;
+    }
+    if (_lastUrl != null) {
+      await connect(_lastUrl!);
+    }
+  }
+
+  String _buildUrl(String userId, String ticket) {
+    final base = wsBaseUrl.replaceFirst(RegExp(r'/+$'), '');
+    return '$base/${Uri.encodeComponent(userId)}'
+        '?${WsEndpoints.ticketParam}=${Uri.encodeQueryComponent(ticket)}';
+  }
+
+  String? _extractUserId(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.pathSegments.isEmpty) return null;
+    return Uri.decodeComponent(uri.pathSegments.last);
+  }
+
+  bool _isHeartbeatPong(Map<String, dynamic> data) {
+    final type = data['type']?.toString().toUpperCase();
+    final content = data['content']?.toString().toUpperCase();
+    return type == WsMessageType.heartbeat && content == 'PONG';
   }
 
   void _updateState(WsConnectionState state) {

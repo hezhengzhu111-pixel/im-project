@@ -217,6 +217,24 @@ void main() {
       expect(response.user, isNull);
       expect(response.token, isNull);
     });
+
+    test('fromJson normalizes backend refresh and snake case token fields', () {
+      final json = {
+        'authenticated': true,
+        'access_token': 'access-token',
+        'refresh_token': 'refresh-token',
+        'expires_in_ms': 3600000,
+        'refresh_expires_in_ms': 86400000,
+      };
+      final response = UserAuthResponse.fromJson(json);
+
+      expect(response.success, isTrue);
+      expect(response.token, 'access-token');
+      expect(response.accessToken, 'access-token');
+      expect(response.refreshToken, 'refresh-token');
+      expect(response.expiresInMs, 3600000);
+      expect(response.refreshExpiresInMs, 86400000);
+    });
   });
 
   group('Friendship', () {
@@ -330,7 +348,8 @@ void main() {
     });
 
     test('toJson roundtrip preserves data', () {
-      const status = OnlineStatus(userId: 'u1', status: 'online', lastSeen: '2024-01-01T00:00:00Z');
+      const status = OnlineStatus(
+          userId: 'u1', status: 'online', lastSeen: '2024-01-01T00:00:00Z');
       final json = status.toJson();
       final restored = OnlineStatus.fromJson(json);
 
@@ -415,7 +434,8 @@ void main() {
 
   group('Friendship toJson roundtrip', () {
     test('toJson roundtrip preserves data', () {
-      const friendship = Friendship(id: 'f1', friendId: 'u2', username: 'friend1');
+      const friendship =
+          Friendship(id: 'f1', friendId: 'u2', username: 'friend1');
       final json = friendship.toJson();
       final restored = Friendship.fromJson(json);
 

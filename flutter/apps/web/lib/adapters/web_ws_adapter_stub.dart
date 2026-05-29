@@ -17,13 +17,20 @@ class WebWsEvent implements WsEvent {
     return WebWsEvent(
       type: json['type'] as String? ?? 'unknown',
       data: json['data'] as Map<String, dynamic>? ?? {},
-      timestamp: json['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch,
+      timestamp:
+          json['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch,
     );
   }
 }
 
+typedef WsTicketProvider = Future<String?> Function();
+
 class WebWsClient implements WsClientPort {
-  WebWsClient({required this.ticketUrl, required this.wsBaseUrl});
+  WebWsClient({
+    required this.ticketUrl,
+    required this.wsBaseUrl,
+    WsTicketProvider? ticketProvider,
+  });
 
   final String ticketUrl;
   final String wsBaseUrl;

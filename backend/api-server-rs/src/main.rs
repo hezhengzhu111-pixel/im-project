@@ -11,12 +11,13 @@
 use api_server_rs::config::AppConfig;
 use api_server_rs::web::{self, AppState};
 use axum::extract::DefaultBodyLimit;
+use axum::http::{header, HeaderName, Method};
 use redis::aio::ConnectionManager;
 use sqlx::mysql::MySqlConnectOptions;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -58,9 +59,24 @@ async fn main() -> anyhow::Result<()> {
     api_server_rs::push_dispatcher::spawn(config.clone(), state.db.clone());
     api_server_rs::e2ee::cleanup::spawn(state.db.clone());
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(AllowOrigin::mirror_request())
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::PATCH,
+            Method::OPTIONS,
+        ])
+        .allow_headers([
+            header::ACCEPT,
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            HeaderName::from_static("x-gateway-route"),
+            HeaderName::from_static("x-requested-with"),
+            HeaderName::from_static("x-trace-id"),
+        ])
+        .allow_credentials(true);
     let app = web::router(state)
         .layer(cors)
         .layer(DefaultBodyLimit::max(config.request_body_limit))
