@@ -10,6 +10,8 @@ import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
 import 'package:im_web/features/auth/presentation/widgets/brand_showcase.dart';
 import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/features/auth/presentation/widgets/gradient_button.dart';
+import 'package:im_web/features/settings/presentation/settings_providers.dart';
+import 'package:im_web/core/platform/platform_adapter.dart';
 import 'package:im_web/widgets/validated_form.dart';
 import 'package:im_web/widgets/validated_form_field.dart';
 import 'package:im_web/features/auth/domain/auth_error_code.dart';
@@ -135,14 +137,24 @@ class _LoginPageState extends ConsumerState<LoginPage>
       body: GradientBackground(
         colors: glass.gradientColors,
         animated: true,
-        child: FadeTransition(
-          opacity: _fadeAnim,
-          child: SlideTransition(
-            position: _slideAnim,
-            child: context.isMobile
-                ? _buildMobileLayout(loc)
-                : _buildDesktopLayout(loc),
-          ),
+        child: Stack(
+          children: [
+            FadeTransition(
+              opacity: _fadeAnim,
+              child: SlideTransition(
+                position: _slideAnim,
+                child: context.isMobile
+                    ? _buildMobileLayout(loc)
+                    : _buildDesktopLayout(loc),
+              ),
+            ),
+            // Language toggle button
+            Positioned(
+              top: 16,
+              right: 16,
+              child: _buildLanguageToggle(),
+            ),
+          ],
         ),
       ),
     );
@@ -220,19 +232,62 @@ class _LoginPageState extends ConsumerState<LoginPage>
             onPressed: _login,
           ),
           SizedBox(height: ImTokens.space4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('${loc.loginNoAccount} ${loc.loginRegister}'),
-              Expanded(
-                child: GradientButton(
-                  text: loc.loginRegister,
-                  onPressed: () => context.go('/register'),
+          Center(
+            child: GestureDetector(
+              onTap: () => context.go('/register'),
+              child: Text(
+                '${loc.loginNoAccount} ${loc.loginRegister}',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-            ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLanguageToggle() {
+    final currentLang = ref.watch(languageProvider);
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildLangChip('中文', 'zh', currentLang),
+          _buildLangChip('English', 'en', currentLang),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLangChip(String label, String value, String currentLang) {
+    final isSelected = currentLang == value;
+    return GestureDetector(
+      onTap: () {
+        ref.read(languageProvider.notifier).state = value;
+        getPlatformAdapter().setLocalStorage('app_language', value);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.white.withValues(alpha: 0.3) : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+          ),
+        ),
       ),
     );
   }
