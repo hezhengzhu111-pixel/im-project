@@ -2048,7 +2048,7 @@ abstract class AppLocalizations {
   /// No description provided for @brandFeatureE2ee.
   ///
   /// In en, this message translates to:
-  /// **'End-to-end encryption'**
+  /// **'Powered by Signal Protocol, messages visible only on both devices'**
   String get brandFeatureE2ee;
 
   /// No description provided for @brandFeatureRealtimeLabel.
@@ -2060,7 +2060,7 @@ abstract class AppLocalizations {
   /// No description provided for @brandFeatureRealtime.
   ///
   /// In en, this message translates to:
-  /// **'Instant message delivery'**
+  /// **'WebSocket long-polling, millisecond-level message delivery'**
   String get brandFeatureRealtime;
 
   /// No description provided for @brandFeatureDeviceTrustLabel.
@@ -2072,7 +2072,7 @@ abstract class AppLocalizations {
   /// No description provided for @brandFeatureDeviceTrust.
   ///
   /// In en, this message translates to:
-  /// **'Seamless cross-device switching'**
+  /// **'Multi-device login with cloud sync, continue conversations anywhere'**
   String get brandFeatureDeviceTrust;
 
   /// No description provided for @brandFeatureAiLabel.
@@ -2084,7 +2084,7 @@ abstract class AppLocalizations {
   /// No description provided for @brandFeatureAi.
   ///
   /// In en, this message translates to:
-  /// **'Smart assistant on standby'**
+  /// **'Built-in AI for smart Q&A, translation, and content creation'**
   String get brandFeatureAi;
 
   /// No description provided for @seoLoginTitle.
