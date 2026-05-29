@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:im_web/core/theme/glass_theme.dart';
 
@@ -24,22 +26,31 @@ class SettingsSection extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       margin: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (title != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-              child: Text(
-                title!,
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w700,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(glass.pageRadius),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: glass.blurIntensity,
+            sigmaY: glass.blurIntensity,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (title != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                  child: Text(
+                    title!,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ...children,
-        ],
+              ...children,
+            ],
+          ),
+        ),
       ),
     );
   }
