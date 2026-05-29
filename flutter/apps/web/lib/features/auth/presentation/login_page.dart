@@ -8,7 +8,7 @@ import 'package:im_web/core/forms/validators.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_web/features/auth/presentation/widgets/auth_card.dart';
 import 'package:im_web/features/auth/presentation/widgets/brand_showcase.dart';
-import 'package:im_web/features/auth/presentation/widgets/decorative_background.dart';
+import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/features/auth/presentation/widgets/gradient_button.dart';
 import 'package:im_web/widgets/validated_form.dart';
 import 'package:im_web/widgets/validated_form_field.dart';
@@ -120,6 +120,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
+    final glass = Theme.of(context).extension<GlassTheme>()!;
 
     ref.listen<AuthState>(authStateProvider, (prev, next) {
       if (!mounted) return;
@@ -131,26 +132,16 @@ class _LoginPageState extends ConsumerState<LoginPage>
     });
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF667eea),
-              Color(0xFF764ba2),
-            ],
-          ),
-        ),
-        child: DecorativeBackground(
-          child: FadeTransition(
-            opacity: _fadeAnim,
-            child: SlideTransition(
-              position: _slideAnim,
-              child: context.isMobile
-                  ? _buildMobileLayout(loc)
-                  : _buildDesktopLayout(loc),
-            ),
+      body: GradientBackground(
+        colors: glass.gradientColors,
+        animated: true,
+        child: FadeTransition(
+          opacity: _fadeAnim,
+          child: SlideTransition(
+            position: _slideAnim,
+            child: context.isMobile
+                ? _buildMobileLayout(loc)
+                : _buildDesktopLayout(loc),
           ),
         ),
       ),
