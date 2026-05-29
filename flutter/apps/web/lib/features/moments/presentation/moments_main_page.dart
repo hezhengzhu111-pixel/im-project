@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:im_ui/im_ui.dart';
 import 'package:im_web/l10n/app_localizations.dart';
-import 'feed/moments_feed_page.dart';
 import 'composer/moments_composer_page.dart';
+import 'feed/moments_feed_page.dart';
 import 'widgets/moments_cover.dart';
-import 'widgets/moments_topbar.dart';
 import 'widgets/moments_sidebar.dart';
+import 'widgets/moments_topbar.dart';
 
 class MomentsMainPage extends StatefulWidget {
   const MomentsMainPage({super.key});
@@ -31,7 +31,7 @@ class _MomentsMainPageState extends State<MomentsMainPage> {
   }
 
   void _updateScrollProgress() {
-    final threshold = 192.0; // cover height - topbar height
+    const threshold = 192.0;
     final progress = (_scrollController.offset / threshold).clamp(0.0, 1.0);
     if (progress != _scrollProgress) {
       setState(() => _scrollProgress = progress);
@@ -40,66 +40,76 @@ class _MomentsMainPageState extends State<MomentsMainPage> {
 
   void _openComposer() {
     if (!context.isCompact) {
-      // Desktop: dialog
       showDialog(
         context: context,
         builder: (_) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: const MomentsComposerPage(),
+          backgroundColor: Colors.transparent,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: GlassPanel(
+            borderRadius: 20,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: const MomentsComposerPage(),
+            ),
           ),
         ),
       );
-    } else {
-      // Mobile: full screen
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (_) => const MomentsComposerPage(),
-        ),
-      );
+      return;
     }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const MomentsComposerPage(),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final showSidebar = context.isLarge;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent, // 让外层渐变背景透出
-      body: Row(
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
         children: [
-          // Main panel
           Expanded(
-            child: Column(
-              children: [
-                MomentsTopbar(
-                  scrollProgress: _scrollProgress,
-                  onComposeTap: _openComposer,
-                ),
-                Expanded(
-                  child: CustomScrollView(
-                    controller: _scrollController,
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: MomentsCover(
-                          nickname: AppLocalizations.of(context)!.momentsUserFallback,
-                        ),
-                      ),
-                      SliverFillRemaining(
-                        child: MomentsFeedPage(),
-                      ),
-                    ],
+            child: GlassPanel(
+              backgroundColor: Colors.white.withValues(alpha: 0.18),
+              child: Column(
+                children: [
+                  MomentsTopbar(
+                    scrollProgress: _scrollProgress,
+                    onComposeTap: _openComposer,
                   ),
-                ),
-              ],
+                  Expanded(
+                    child: CustomScrollView(
+                      controller: _scrollController,
+                      slivers: [
+                        SliverToBoxAdapter(
+                          child: MomentsCover(
+                            nickname: AppLocalizations.of(context)!
+                                .momentsUserFallback,
+                          ),
+                        ),
+                        const SliverFillRemaining(
+                          child: MomentsFeedPage(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-
-          // Sidebar (desktop only)
-          if (showSidebar)
-            MomentsSidebar(onComposeTap: _openComposer),
+          if (showSidebar) ...[
+            const SizedBox(width: 18),
+            SizedBox(
+              width: 304,
+              child: MomentsSidebar(onComposeTap: _openComposer),
+            ),
+          ],
         ],
       ),
     );

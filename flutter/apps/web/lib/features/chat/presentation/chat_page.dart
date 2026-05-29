@@ -562,12 +562,19 @@ class _GlassChatHeader extends StatelessWidget {
 
     return Container(
       height: 76,
+      margin: const EdgeInsets.fromLTRB(18, 0, 18, 10),
       padding: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.30),
-        border: Border(
-          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.50)),
-        ),
+        color: Colors.white.withValues(alpha: 0.28),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.42)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Row(
         children: [

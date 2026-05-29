@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:im_web/core/di/providers.dart';
-import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_core/core.dart';
 import 'package:im_ui/im_ui.dart';
+import 'package:im_web/core/di/providers.dart';
+import 'package:im_web/l10n/app_localizations.dart';
 import 'contacts_provider.dart';
 import 'widgets/contacts_toolbar.dart';
 
@@ -20,6 +20,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   late TabController _tabController;
   String _searchKeyword = '';
   ContactsSortMode _sortMode = ContactsSortMode.name;
+  String? _selectedFriendId;
   final Set<String> _processingRequestIds = <String>{};
 
   @override
@@ -35,26 +36,80 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
   Widget build(BuildContext context) {
     final contactsState = ref.watch(contactsStateProvider);
     final loc = AppLocalizations.of(context)!;
+    final selectedFriend = _selectedFriend(contactsState.friends);
 
+    if (context.isCompact) {
+      return Column(
+        children: [
+          _buildListPanel(contactsState, loc),
+          const Divider(height: 1),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: _ContactDetailPanel(
+                friend: selectedFriend,
+                onEditRemark: selectedFriend == null
+                    ? null
+                    : () => _showRemarkDialog(selectedFriend),
+                onMessage: selectedFriend == null
+                    ? null
+                    : () => _openChatWithFriend(selectedFriend),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 304,
+            child: GlassPanel(child: _buildListPanel(contactsState, loc)),
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: GlassPanel(
+              padding: const EdgeInsets.all(24),
+              child: _ContactDetailPanel(
+                friend: selectedFriend,
+                onEditRemark: selectedFriend == null
+                    ? null
+                    : () => _showRemarkDialog(selectedFriend),
+                onMessage: selectedFriend == null
+                    ? null
+                    : () => _openChatWithFriend(selectedFriend),
+              ),
+            ),
+          ),
+          if (context.isLarge) ...[
+            const SizedBox(width: 18),
+            SizedBox(
+              width: 304,
+              child: _ContactsRightPanel(state: contactsState),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildListPanel(ContactsState contactsState, AppLocalizations loc) {
     return Column(
       children: [
-        Container(
-          width: double.infinity,
-          padding: EdgeInsets.symmetric(
-            horizontal: ImTokens.layoutPanelPadding,
-            vertical: ImTokens.space3,
-          ),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            boxShadow: [ImTokens.cardShadow],
-          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 8, 0),
           child: Row(
             children: [
               Expanded(
                 child: TabBar(
                   controller: _tabController,
                   tabs: [
-                    Tab(text: loc.contactsFriends(contactsState.friends.length)),
+                    Tab(
+                        text:
+                            loc.contactsFriends(contactsState.friends.length)),
                     Tab(
                       text: contactsState.friendRequests.isNotEmpty
                           ? loc.contactsRequests(
@@ -65,11 +120,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.person_add),
+                icon: const Icon(Icons.person_add_outlined),
                 tooltip: loc.contactsAddFriend,
                 onPressed: () => context.go('/contacts/add'),
               ),
-              const SizedBox(width: ImTokens.layoutItemGap),
             ],
           ),
         ),
@@ -92,6 +146,14 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     );
   }
 
+  Friendship? _selectedFriend(List<Friendship> friends) {
+    if (friends.isEmpty) return null;
+    for (final friend in friends) {
+      if (friend.friendId == _selectedFriendId) return friend;
+    }
+    return friends.first;
+  }
+
   Widget _buildFriendList(ContactsState state, AppLocalizations loc) {
     if (state.isLoading) {
       return const Center(child: CircularProgressIndicator());
@@ -101,37 +163,39 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     }
 
     final filteredFriends = _filterAndSortFriends(state.friends);
-
     if (filteredFriends.isEmpty) {
       return Center(child: Text(loc.contactsNoFriends));
     }
 
     return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(0, 4, 0, 12),
       itemCount: filteredFriends.length,
       itemBuilder: (context, index) {
         final friend = filteredFriends[index];
         return _FriendTile(
           friend: friend,
+          isSelected: friend.friendId ==
+              (_selectedFriendId ?? state.friends.first.friendId),
           onEditRemark: () => _showRemarkDialog(friend),
           onDelete: () => _confirmDeleteFriend(friend),
-          onTap: () async {
-            final chatNotifier = ref.read(chatStateProvider.notifier);
-            final session = await chatNotifier.getOrCreateSession(
-              friend.friendId,
-              targetName: friend.nickname ?? friend.username,
-              targetAvatar: friend.avatar,
-            );
-            if (session != null) {
-              chatNotifier.setActiveSession(session.id);
-              await chatNotifier.loadMessages(friend.friendId);
-              if (context.mounted) {
-                context.go('/chat');
-              }
-            }
-          },
+          onTap: () => setState(() => _selectedFriendId = friend.friendId),
         );
       },
     );
+  }
+
+  Future<void> _openChatWithFriend(Friendship friend) async {
+    final chatNotifier = ref.read(chatStateProvider.notifier);
+    final session = await chatNotifier.getOrCreateSession(
+      friend.friendId,
+      targetName: friend.nickname ?? friend.username,
+      targetAvatar: friend.avatar,
+    );
+    if (session != null) {
+      chatNotifier.setActiveSession(session.id);
+      await chatNotifier.loadMessages(friend.friendId);
+      if (context.mounted) context.go('/chat');
+    }
   }
 
   Future<void> _showRemarkDialog(Friendship friend) async {
@@ -243,7 +307,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     final keyword = _searchKeyword.trim().toLowerCase();
 
     final filtered = keyword.isEmpty
-        ? friends
+        ? List<Friendship>.from(friends)
         : friends.where((friend) {
             final fields = [
               friend.nickname,
@@ -288,6 +352,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     }
 
     return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(0, 4, 0, 12),
       itemCount: state.friendRequests.length,
       itemBuilder: (context, index) {
         final request = state.friendRequests[index];
@@ -311,11 +376,14 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
 class _FriendTile extends StatelessWidget {
   const _FriendTile({
     required this.friend,
+    required this.isSelected,
     required this.onTap,
     required this.onEditRemark,
     required this.onDelete,
   });
+
   final Friendship friend;
+  final bool isSelected;
   final VoidCallback onTap;
   final VoidCallback onEditRemark;
   final VoidCallback onDelete;
@@ -332,95 +400,479 @@ class _FriendTile extends StatelessWidget {
           (friend.isOnline == true ? loc.contactsOnline : loc.contactsOffline),
     ];
 
-    return ListTile(
-      leading: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundImage:
-                friend.avatar != null ? NetworkImage(friend.avatar!) : null,
-            child: friend.avatar == null
-                ? Text(
-                    (friend.nickname ?? friend.username)
-                        .substring(0, 1)
-                        .toUpperCase(),
-                    style: const TextStyle(fontSize: ImTokens.textBase),
-                  )
-                : null,
-          ),
-          if (friend.isOnline == true)
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.surface,
-                    width: 2,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: HoverLiftCard(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        onTap: onTap,
+        child: Row(
+          children: [
+            _FriendAvatar(friend: friend),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: isSelected ? imGlassBrand : null,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitleParts.join(' / '),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: ImTokens.textSm,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
-        ],
-      ),
-      title: Text(
-        displayName,
-        style: const TextStyle(fontWeight: FontWeight.w500),
-      ),
-      subtitle: Text(
-        subtitleParts.join(' · '),
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          fontSize: ImTokens.textSm,
+            PopupMenuButton<_FriendAction>(
+              icon: const Icon(Icons.more_horiz, size: 18),
+              onSelected: (action) {
+                switch (action) {
+                  case _FriendAction.editRemark:
+                    onEditRemark();
+                  case _FriendAction.delete:
+                    onDelete();
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: _FriendAction.editRemark,
+                  child: Text(loc.contactsEditRemark),
+                ),
+                PopupMenuItem(
+                  value: _FriendAction.delete,
+                  child: Text(loc.contactsDeleteFriend),
+                ),
+              ],
+            ),
+          ],
         ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
       ),
-      trailing: PopupMenuButton<_FriendAction>(
-        onSelected: (action) {
-          switch (action) {
-            case _FriendAction.editRemark:
-              onEditRemark();
-              break;
-            case _FriendAction.delete:
-              onDelete();
-              break;
-          }
-        },
-        itemBuilder: (context) => [
-          PopupMenuItem(
-            value: _FriendAction.editRemark,
-            child: Row(
-              children: [
-                const Icon(Icons.edit_outlined, size: ImTokens.textLg),
-                const SizedBox(width: ImTokens.space2),
-                Text(loc.contactsEditRemark),
-              ],
-            ),
-          ),
-          PopupMenuItem(
-            value: _FriendAction.delete,
-            child: Row(
-              children: [
-                const Icon(Icons.delete_outline, size: ImTokens.textLg),
-                const SizedBox(width: ImTokens.space2),
-                Text(loc.contactsDeleteFriend),
-              ],
-            ),
-          ),
-        ],
-      ),
-      onTap: onTap,
     );
   }
 }
 
 enum _FriendAction { editRemark, delete }
+
+class _FriendAvatar extends StatelessWidget {
+  const _FriendAvatar({required this.friend, this.radius = 22});
+
+  final Friendship friend;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        CircleAvatar(
+          radius: radius,
+          backgroundImage:
+              friend.avatar != null ? NetworkImage(friend.avatar!) : null,
+          child: friend.avatar == null
+              ? Text(
+                  (friend.nickname ?? friend.username)
+                      .substring(0, 1)
+                      .toUpperCase(),
+                  style: TextStyle(fontSize: radius * 0.72),
+                )
+              : null,
+        ),
+        Positioned(
+          right: 0,
+          bottom: 0,
+          child: Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: friend.isOnline == true
+                  ? const Color(0xFF23D5AB)
+                  : Colors.blueGrey.shade200,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ContactDetailPanel extends StatelessWidget {
+  const _ContactDetailPanel({
+    required this.friend,
+    this.onEditRemark,
+    this.onMessage,
+  });
+
+  final Friendship? friend;
+  final VoidCallback? onEditRemark;
+  final VoidCallback? onMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
+    final current = friend;
+    if (current == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.person_outline,
+              size: 58,
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurfaceVariant
+                  .withValues(alpha: 0.48),
+            ),
+            const SizedBox(height: 12),
+            Text(loc.contactsNoFriends),
+          ],
+        ),
+      );
+    }
+
+    final displayName = (current.remark?.trim().isNotEmpty ?? false)
+        ? current.remark!.trim()
+        : (current.nickname ?? current.username);
+    final account = '@${current.username}';
+
+    return ListView(
+      children: [
+        Row(
+          children: [
+            _FriendAvatar(friend: current, radius: 38),
+            const SizedBox(width: 18),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayName,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    account,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            _StatusPill(
+              text: current.isOnline == true
+                  ? loc.contactsOnline
+                  : loc.contactsOffline,
+              active: current.isOnline == true,
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            PrimarySolidButton(
+              label: '发消息',
+              icon: Icons.chat_bubble_outline,
+              onPressed: onMessage,
+            ),
+            _DisabledAction(label: '语音聊天', icon: Icons.call_outlined),
+            _DisabledAction(label: '视频聊天', icon: Icons.videocam_outlined),
+          ],
+        ),
+        const SizedBox(height: 28),
+        _DetailGrid(
+          items: [
+            _DetailItem('备注', current.remark ?? '暂无', onTap: onEditRemark),
+            _DetailItem('权限', '暂无'),
+            _DetailItem('来源', '暂无'),
+            _DetailItem(
+                '添加时间', current.createdAt ?? current.createTime ?? '暂无'),
+            _DetailItem('在线状态', current.lastSeen ?? current.lastActiveLabel),
+            _DetailItem('签名', current.signature ?? '暂无'),
+          ],
+        ),
+        const SizedBox(height: 24),
+        Text(
+          '朋友圈',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          height: 118,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.54),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.58)),
+          ),
+          child: Center(
+            child: Text(
+              '暂无',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+extension on Friendship {
+  String get lastActiveLabel {
+    final value = lastActiveTime ?? lastSeen;
+    return value == null || value.isEmpty ? '暂无' : value;
+  }
+}
+
+class _DetailGrid extends StatelessWidget {
+  const _DetailGrid({required this.items});
+
+  final List<_DetailItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth > 620 ? 2 : 1;
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: items.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisExtent: 78,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+          ),
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return HoverLiftCard(
+              onTap: item.onTap,
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    item.label,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    item.value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _DetailItem {
+  const _DetailItem(this.label, this.value, {this.onTap});
+
+  final String label;
+  final String value;
+  final VoidCallback? onTap;
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.text, required this.active});
+
+  final String text;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: (active ? const Color(0xFF23D5AB) : Colors.blueGrey)
+            .withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: active ? const Color(0xFF0B8F72) : Colors.blueGrey.shade600,
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
+
+class _DisabledAction extends StatelessWidget {
+  const _DisabledAction({required this.label, required this.icon});
+
+  final String label;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: null,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        shape: const StadiumBorder(),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      ),
+    );
+  }
+}
+
+class _ContactsRightPanel extends StatelessWidget {
+  const _ContactsRightPanel({required this.state});
+
+  final ContactsState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
+    final onlineCount =
+        state.friends.where((friend) => friend.isOnline == true).length;
+    return Column(
+      children: [
+        GlassPanel(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '今日概览',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  _OverviewStat(
+                      label: loc.navContacts, value: '${state.friends.length}'),
+                  const SizedBox(width: 12),
+                  _OverviewStat(
+                      label: loc.contactsOnline, value: '$onlineCount'),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        Expanded(
+          child: GlassPanel(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '最近互动',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: state.friends.isEmpty
+                      ? Center(child: Text(loc.contactsNoFriends))
+                      : ListView(
+                          children: state.friends.take(6).map((friend) {
+                            return ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading:
+                                  _FriendAvatar(friend: friend, radius: 16),
+                              title: Text(
+                                friend.remark ??
+                                    friend.nickname ??
+                                    friend.username,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(friend.lastActiveLabel),
+                            );
+                          }).toList(),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _OverviewStat extends StatelessWidget {
+  const _OverviewStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.58),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              value,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: imGlassBrand,
+                  ),
+            ),
+            Text(
+              label,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _RequestTile extends StatelessWidget {
   const _RequestTile({
@@ -429,6 +881,7 @@ class _RequestTile extends StatelessWidget {
     required this.onAccept,
     required this.onReject,
   });
+
   final FriendRequest request;
   final bool isBusy;
   final VoidCallback onAccept;
@@ -436,66 +889,71 @@ class _RequestTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final loc = AppLocalizations.of(context)!;
 
-    return ListTile(
-      leading: CircleAvatar(
-        radius: 22,
-        backgroundImage: request.applicantAvatar != null
-            ? NetworkImage(request.applicantAvatar!)
-            : null,
-        child: request.applicantAvatar == null
-            ? Text(
-                (request.applicantNickname ?? request.applicantUsername)
-                    .substring(0, 1)
-                    .toUpperCase(),
-                style: const TextStyle(fontSize: 16),
-              )
-            : null,
-      ),
-      title: Text(
-        request.applicantNickname ?? request.applicantUsername,
-        style: const TextStyle(fontWeight: FontWeight.w500),
-      ),
-      subtitle: Text(
-        request.reason ?? loc.contactsFriendRequestReason,
-        style: TextStyle(
-          color: theme.colorScheme.onSurfaceVariant,
-          fontSize: ImTokens.textSm,
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: request.status == 'PENDING'
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextButton(
-                  onPressed: isBusy ? null : onReject,
-                  child: Text(loc.contactsReject),
-                ),
-                FilledButton.tonal(
-                  onPressed: isBusy ? null : onAccept,
-                  child: isBusy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(loc.contactsAccept),
-                ),
-              ],
-            )
-          : Text(
-              request.status == 'ACCEPTED'
-                  ? loc.contactsAccepted
-                  : loc.contactsRejected,
-              style: TextStyle(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontSize: ImTokens.textSm,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: HoverLiftCard(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundImage: request.applicantAvatar != null
+                  ? NetworkImage(request.applicantAvatar!)
+                  : null,
+              child: request.applicantAvatar == null
+                  ? Text(
+                      (request.applicantNickname ?? request.applicantUsername)
+                          .substring(0, 1)
+                          .toUpperCase(),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    request.applicantNickname ?? request.applicantUsername,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    request.reason ?? loc.contactsFriendRequestReason,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: ImTokens.textSm,
+                    ),
+                  ),
+                ],
               ),
             ),
+            if (request.status == 'PENDING') ...[
+              TextButton(
+                onPressed: isBusy ? null : onReject,
+                child: Text(loc.contactsReject),
+              ),
+              PrimarySolidButton(
+                label: loc.contactsAccept,
+                compact: true,
+                isLoading: isBusy,
+                onPressed: isBusy ? null : onAccept,
+              ),
+            ] else
+              Text(
+                request.status == 'ACCEPTED'
+                    ? loc.contactsAccepted
+                    : loc.contactsRejected,
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

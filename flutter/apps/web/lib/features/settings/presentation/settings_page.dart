@@ -38,27 +38,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
 
     return Padding(
-      padding: const EdgeInsets.all(ImTokens.layoutPanelPadding),
+      padding: const EdgeInsets.all(16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SettingsNavPanel(),
-          const SizedBox(width: ImTokens.layoutPanelPadding),
+          const SizedBox(width: 18),
           Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: _buildPrimaryColumn(loc, theme, settings, authState),
-                ),
-                if (context.isLarge) ...[
-                  const SizedBox(width: ImTokens.layoutPanelPadding),
-                  SizedBox(
-                    width: ImTokens.layoutSettingsAsideWidth,
-                    child: _buildSecondaryColumn(loc, theme),
-                  ),
-                ],
-              ],
+            child: GlassPanel(
+              padding: const EdgeInsets.all(24),
+              child: _buildSettingsGrid(loc, theme, settings, authState),
             ),
           ),
         ],
@@ -89,7 +78,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
-  Widget _buildPrimaryColumn(
+  Widget _buildSettingsGrid(
     AppLocalizations loc,
     ThemeData theme,
     dynamic settings,
@@ -98,14 +87,140 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     return ListView(
       children: [
         _buildHero(loc, theme),
-        _buildAccountSection(loc, theme, authState),
-        const SizedBox(height: ImTokens.layoutSectionGap),
-        _buildPreferencesSection(loc, theme, settings),
-        const SizedBox(height: ImTokens.layoutSectionGap),
-        _buildNotificationSection(loc, theme, settings),
-        const SizedBox(height: ImTokens.layoutSectionGap),
-        _buildPrivacySection(loc, theme, settings),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isTwoColumn = constraints.maxWidth >= 760;
+            final children = [
+              _buildGroupedSection(
+                title: '外观与语言',
+                icon: Icons.palette_outlined,
+                child: _buildPreferencesSection(loc, theme, settings),
+              ),
+              _buildGroupedSection(
+                title: '消息与隐私',
+                icon: Icons.notifications_outlined,
+                child: Column(
+                  children: [
+                    _buildNotificationSection(loc, theme, settings),
+                    const SizedBox(height: ImTokens.layoutSectionGap),
+                    _buildPrivacySection(loc, theme, settings),
+                  ],
+                ),
+              ),
+              _buildGroupedSection(
+                title: '安全',
+                icon: Icons.shield_outlined,
+                child: SettingsSection(
+                  children: [
+                    SettingsRow(
+                      title: loc.settingsClearCache,
+                      description: loc.settingsClearCacheDesc,
+                      trailing: _SolidActionChip(
+                        label: loc.settingsClearCache,
+                        onTap: _confirmClearCache,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _buildGroupedSection(
+                title: '账号',
+                icon: Icons.person_outline,
+                child: Column(
+                  children: [
+                    _buildAccountSection(loc, theme, authState),
+                    const SizedBox(height: ImTokens.layoutSectionGap),
+                    SettingsSection(
+                      children: [
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => context.push('/settings/ai'),
+                            borderRadius:
+                                BorderRadius.circular(ImTokens.radiusMd),
+                            child: SettingsRow(
+                              title: loc.settingsAiAssistant,
+                              description: loc.settingsAiAssistantDesc,
+                              trailing: Icon(
+                                Icons.chevron_right,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ),
+                        SettingsRow(
+                          title: loc.settingsLogout,
+                          trailing: _SolidActionChip(
+                            label: loc.settingsLogout,
+                            onTap: _confirmLogout,
+                            isDestructive: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ];
+
+            if (!isTwoColumn) {
+              return Column(
+                children: [
+                  for (final child in children) ...[
+                    child,
+                    const SizedBox(height: 14),
+                  ],
+                ],
+              );
+            }
+
+            return Wrap(
+              spacing: 14,
+              runSpacing: 14,
+              children: children
+                  .map(
+                    (child) => SizedBox(
+                      width: (constraints.maxWidth - 14) / 2,
+                      child: child,
+                    ),
+                  )
+                  .toList(),
+            );
+          },
+        ),
       ],
+    );
+  }
+
+  Widget _buildGroupedSection({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
+    return GlassPanel(
+      padding: const EdgeInsets.all(16),
+      borderRadius: 20,
+      backgroundColor: Colors.white.withValues(alpha: 0.54),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: imGlassBrand, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
     );
   }
 
@@ -238,7 +353,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             value: ref.watch(themeModeProvider),
             onChanged: (value) {
               ref.read(themeModeProvider.notifier).state = value;
-              getPlatformAdapter().setLocalStorage('app_theme_mode', value.name);
+              getPlatformAdapter()
+                  .setLocalStorage('app_theme_mode', value.name);
             },
           ),
         ),
@@ -320,7 +436,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             SettingsRow(
               title: loc.settingsClearCache,
               description: loc.settingsClearCacheDesc,
-              trailing: _GradientActionChip(
+              trailing: _SolidActionChip(
                 label: loc.settingsClearCache,
                 onTap: _confirmClearCache,
               ),
@@ -352,7 +468,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           children: [
             SettingsRow(
               title: loc.settingsLogout,
-              trailing: _GradientActionChip(
+              trailing: _SolidActionChip(
                 label: loc.settingsLogout,
                 onTap: _confirmLogout,
                 isDestructive: true,
@@ -384,7 +500,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onPressed: () => Navigator.pop(ctx),
             child: Text(loc.commonCancel),
           ),
-          GradientButton(
+          PrimarySolidButton(
+            label: loc.commonConfirm,
             onPressed: () {
               Navigator.pop(ctx);
               ref.read(settingsStateProvider.notifier).clearCache();
@@ -392,7 +509,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 SnackBar(content: Text(loc.settingsCacheCleared)),
               );
             },
-            child: Text(loc.commonConfirm),
           ),
         ],
       ),
@@ -411,7 +527,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onPressed: () => Navigator.pop(ctx),
             child: Text(loc.commonCancel),
           ),
-          GradientButton(
+          PrimarySolidButton(
+            label: loc.commonConfirm,
             onPressed: () async {
               Navigator.pop(ctx);
               await ref.read(authStateProvider.notifier).logout();
@@ -419,7 +536,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 context.go('/login');
               }
             },
-            child: Text(loc.commonConfirm),
           ),
         ],
       ),
@@ -428,8 +544,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 }
 
 /// 渐变胶囊操作按钮，用于卡片内的操作触发。
-class _GradientActionChip extends StatelessWidget {
-  const _GradientActionChip({
+class _SolidActionChip extends StatelessWidget {
+  const _SolidActionChip({
     required this.label,
     required this.onTap,
     this.isDestructive = false,
@@ -446,12 +562,16 @@ class _GradientActionChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          gradient: isDestructive
-              ? const LinearGradient(
-                  colors: [Color(0xFFF44336), Color(0xFFE57373)],
-                )
-              : ImTokens.brandActionGradient,
+          color: isDestructive ? const Color(0xFFF44336) : imGlassBrand,
           borderRadius: BorderRadius.circular(ImTokens.radiusLg),
+          boxShadow: [
+            BoxShadow(
+              color: (isDestructive ? const Color(0xFFF44336) : imGlassBrand)
+                  .withValues(alpha: 0.22),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: Text(
           label,

@@ -47,6 +47,7 @@ class _AddApiKeyFormState extends State<AddApiKeyForm> {
                     ?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
+              // ignore: deprecated_member_use
               value: _provider,
               decoration: InputDecoration(labelText: loc.aiProvider),
               items: const [

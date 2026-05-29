@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:im_web/core/theme/glass_theme.dart';
+import 'package:im_ui/im_ui.dart';
 
 class Segment<T> {
   const Segment({required this.label, required this.value});
@@ -39,15 +40,16 @@ class SegmentedControl<T> extends StatelessWidget {
               onTap: () => onChanged(segment.value),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  gradient: isActive ? glass.accentGradient : null,
-                  color: isActive ? null : Colors.transparent,
+                  color: isActive ? imGlassBrand : Colors.transparent,
                   borderRadius: BorderRadius.circular(glass.controlRadius - 2),
                   boxShadow: isActive
                       ? [
                           BoxShadow(
-                            color: glass.segmentedActiveBackground.withValues(alpha: 0.2),
+                            color: glass.segmentedActiveBackground
+                                .withValues(alpha: 0.2),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),

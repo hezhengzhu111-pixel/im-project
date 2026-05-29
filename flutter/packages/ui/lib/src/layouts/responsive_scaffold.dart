@@ -51,59 +51,41 @@ class ResponsiveScaffold extends StatelessWidget {
       body: AppGradientBackground(
         child: Padding(
           padding: const EdgeInsets.all(22),
-          child: Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.13),
-              borderRadius: BorderRadius.circular(32),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF191C40).withValues(alpha: 0.18),
-                  blurRadius: 70,
-                  offset: const Offset(0, 22),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                _buildNavRail(context),
-                const SizedBox(width: 18),
-                Expanded(
-                  child: GlassPanel(
-                    borderRadius: 28,
-                    child: Column(
-                      children: [
-                        if (header != null) header!,
-                        Expanded(
-                          child: AnimatedSwitcher(
-                            duration: ImTokens.animNormal,
-                            switchInCurve: Curves.easeOut,
-                            switchOutCurve: Curves.easeOut,
-                            transitionBuilder: (child, animation) {
-                              return FadeTransition(
-                                opacity: animation,
-                                child: SlideTransition(
-                                  position: Tween<Offset>(
-                                    begin: const Offset(0, 0.018),
-                                    end: Offset.zero,
-                                  ).animate(animation),
-                                  child: child,
-                                ),
-                              );
-                            },
-                            child: KeyedSubtree(
-                              key: ValueKey(selectedIndex),
+          child: Row(
+            children: [
+              _buildNavRail(context),
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  children: [
+                    if (header != null) header!,
+                    Expanded(
+                      child: AnimatedSwitcher(
+                        duration: ImTokens.animNormal,
+                        switchInCurve: Curves.easeOut,
+                        switchOutCurve: Curves.easeOut,
+                        transitionBuilder: (child, animation) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 0.018),
+                                end: Offset.zero,
+                              ).animate(animation),
                               child: child,
                             ),
-                          ),
+                          );
+                        },
+                        child: KeyedSubtree(
+                          key: ValueKey(selectedIndex),
+                          child: child,
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -115,7 +97,7 @@ class ResponsiveScaffold extends StatelessWidget {
       width: 86,
       child: GlassPanel(
         borderRadius: 24,
-        backgroundColor: Colors.white.withValues(alpha: 0.18),
+        backgroundColor: Colors.white.withValues(alpha: 0.12),
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
         child: Column(
           children: [
