@@ -208,11 +208,8 @@ void main() {
       );
       mockRecorder.setMockFile(mockFile);
 
-      // Track voice send callback
-      var voiceSent = false;
-
       await tester.pumpWidget(buildSubject(
-        onSendVoice: (_) => voiceSent = true,
+        onSendVoice: (_) {},
       ));
 
       // Start recording

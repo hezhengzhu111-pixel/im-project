@@ -5,8 +5,8 @@ import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_core/core.dart';
 import 'package:im_ui/im_ui.dart';
-import '../../chat/presentation/chat_providers.dart';
 import 'contacts_provider.dart';
+import 'widgets/contacts_toolbar.dart';
 
 class ContactsPage extends ConsumerStatefulWidget {
   const ContactsPage({super.key});
@@ -18,6 +18,8 @@ class ContactsPage extends ConsumerStatefulWidget {
 class _ContactsPageState extends ConsumerState<ContactsPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  String _searchKeyword = '';
+  ContactsSortMode _sortMode = ContactsSortMode.name;
 
   @override
   void initState() {
@@ -58,6 +60,12 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
             const SizedBox(width: ImTokens.layoutItemGap),
           ],
         ),
+        ContactsToolbar(
+          searchKeyword: _searchKeyword,
+          onSearchChanged: (value) => setState(() => _searchKeyword = value),
+          sortMode: _sortMode,
+          onSortChanged: (mode) => setState(() => _sortMode = mode),
+        ),
         Expanded(
           child: TabBarView(
             controller: _tabController,
@@ -79,10 +87,16 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
       return Center(child: Text(loc.contactsNoFriends));
     }
 
+    final filteredFriends = _filterAndSortFriends(state.friends);
+
+    if (filteredFriends.isEmpty) {
+      return Center(child: Text(loc.contactsNoFriends));
+    }
+
     return ListView.builder(
-      itemCount: state.friends.length,
+      itemCount: filteredFriends.length,
       itemBuilder: (context, index) {
-        final friend = state.friends[index];
+        final friend = filteredFriends[index];
         return _FriendTile(
           friend: friend,
           onTap: () async {
@@ -103,6 +117,46 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
         );
       },
     );
+  }
+
+  List<Friendship> _filterAndSortFriends(List<Friendship> friends) {
+    final keyword = _searchKeyword.trim().toLowerCase();
+
+    final filtered = keyword.isEmpty
+        ? friends
+        : friends.where((friend) {
+            final fields = [
+              friend.nickname,
+              friend.username,
+              friend.remark,
+              friend.signature,
+            ].whereType<String>();
+            return fields.any(
+              (field) => field.toLowerCase().contains(keyword),
+            );
+          }).toList();
+
+    filtered.sort((a, b) {
+      switch (_sortMode) {
+        case ContactsSortMode.name:
+          final nameA = (a.remark ?? a.nickname ?? a.username).toLowerCase();
+          final nameB = (b.remark ?? b.nickname ?? b.username).toLowerCase();
+          return nameA.compareTo(nameB);
+        case ContactsSortMode.online:
+          final onlineA = a.isOnline == true ? 0 : 1;
+          final onlineB = b.isOnline == true ? 0 : 1;
+          if (onlineA != onlineB) return onlineA.compareTo(onlineB);
+          final nameA = (a.remark ?? a.nickname ?? a.username).toLowerCase();
+          final nameB = (b.remark ?? b.nickname ?? b.username).toLowerCase();
+          return nameA.compareTo(nameB);
+        case ContactsSortMode.time:
+          final timeA = a.createdAt ?? a.createTime ?? '';
+          final timeB = b.createdAt ?? b.createTime ?? '';
+          return timeB.compareTo(timeA);
+      }
+    });
+
+    return filtered;
   }
 
   Widget _buildRequestList(ContactsState state, AppLocalizations loc) {

@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import '../../../../core/di/providers.dart';
-import '../../../../core/network/network_status_provider.dart';
-import '../../data/outbox_provider.dart';
-import '../chat_providers.dart';
 import '../chat_provider_with_outbox.dart';
 
 /// Banner that shows network status and outbox information

@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_core/core.dart';
-import 'package:im_core/src/network/ws_connection_state.dart';
 import 'package:im_web/core/debug/debug_panel_entry.dart';
 import 'package:im_web/core/network/network_providers.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
