@@ -98,8 +98,6 @@ class _MomentsMainPageState extends State<MomentsMainPage> {
 
           // Sidebar (desktop only)
           if (showSidebar)
-            const VerticalDivider(thickness: 1, width: 1),
-          if (showSidebar)
             MomentsSidebar(onComposeTap: _openComposer),
         ],
       ),

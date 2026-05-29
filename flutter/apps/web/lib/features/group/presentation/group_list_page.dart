@@ -1,9 +1,8 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:im_ui/im_ui.dart';
 import 'package:im_web/core/di/providers.dart';
-import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'widgets/group_tile.dart';
 import 'widgets/join_group_dialog.dart';
@@ -31,24 +30,18 @@ class _GroupListPageState extends ConsumerState<GroupListPage> {
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
     final groupState = ref.watch(groupStateProvider);
-    final glass = Theme.of(context).extension<GlassTheme>()!;
 
     return Column(
       children: [
-        ClipRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(
-              sigmaX: glass.blurIntensity * 0.5,
-              sigmaY: glass.blurIntensity * 0.5,
-            ),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: glass.navBackground,
-                border: Border(
-                  bottom: BorderSide(color: glass.dividerColor),
-                ),
-              ),
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: ImTokens.space4,
+            vertical: ImTokens.space3,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            boxShadow: [ImTokens.cardShadow],
+          ),
               child: Row(
                 children: [
                   Text(
@@ -74,8 +67,6 @@ class _GroupListPageState extends ConsumerState<GroupListPage> {
                 ],
               ),
             ),
-          ),
-        ),
         Expanded(
           child: groupState.isLoading
               ? const Center(child: CircularProgressIndicator())
