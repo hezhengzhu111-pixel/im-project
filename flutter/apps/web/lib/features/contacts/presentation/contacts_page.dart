@@ -1,7 +1,9 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_web/core/di/providers.dart';
+import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_core/core.dart';
 import 'package:im_ui/im_ui.dart';
@@ -36,31 +38,49 @@ class _ContactsPageState extends ConsumerState<ContactsPage>
     final contactsState = ref.watch(contactsStateProvider);
     final loc = AppLocalizations.of(context)!;
 
+    final glass = Theme.of(context).extension<GlassTheme>()!;
+
     return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: TabBar(
-                controller: _tabController,
-                tabs: [
-                  Tab(text: loc.contactsFriends(contactsState.friends.length)),
-                  Tab(
-                    text: contactsState.friendRequests.isNotEmpty
-                        ? loc.contactsRequests(
-                            contactsState.friendRequests.length)
-                        : loc.contactsFriendRequests,
+        ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(
+              sigmaX: glass.blurIntensity * 0.5,
+              sigmaY: glass.blurIntensity * 0.5,
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: glass.navBackground,
+                border: Border(
+                  bottom: BorderSide(color: glass.dividerColor),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TabBar(
+                      controller: _tabController,
+                      tabs: [
+                        Tab(text: loc.contactsFriends(contactsState.friends.length)),
+                        Tab(
+                          text: contactsState.friendRequests.isNotEmpty
+                              ? loc.contactsRequests(
+                                  contactsState.friendRequests.length)
+                              : loc.contactsFriendRequests,
+                        ),
+                      ],
+                    ),
                   ),
+                  IconButton(
+                    icon: const Icon(Icons.person_add),
+                    tooltip: loc.contactsAddFriend,
+                    onPressed: () => context.go('/contacts/add'),
+                  ),
+                  const SizedBox(width: ImTokens.layoutItemGap),
                 ],
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.person_add),
-              tooltip: loc.contactsAddFriend,
-              onPressed: () => context.go('/contacts/add'),
-            ),
-            const SizedBox(width: ImTokens.layoutItemGap),
-          ],
+          ),
         ),
         ContactsToolbar(
           searchKeyword: _searchKeyword,

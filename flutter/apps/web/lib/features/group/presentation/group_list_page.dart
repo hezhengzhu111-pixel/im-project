@@ -1,7 +1,10 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:im_ui/im_ui.dart';
 import 'package:im_web/core/di/providers.dart';
+import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'widgets/group_tile.dart';
 import 'widgets/join_group_dialog.dart';
@@ -29,51 +32,79 @@ class _GroupListPageState extends ConsumerState<GroupListPage> {
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
     final groupState = ref.watch(groupStateProvider);
+    final glass = Theme.of(context).extension<GlassTheme>()!;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(loc.navGroups),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () => showDialog(
-              context: context,
-              builder: (_) => const JoinGroupDialog(),
+    return Column(
+      children: [
+        ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(
+              sigmaX: glass.blurIntensity * 0.5,
+              sigmaY: glass.blurIntensity * 0.5,
             ),
-            tooltip: loc.joinGroupTooltip,
-          ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => context.push('/groups/create'),
-            tooltip: loc.groupCreateTooltip,
-          ),
-        ],
-      ),
-      body: groupState.isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : groupState.groups.isEmpty
-              ? Center(child: Text(loc.groupNoGroups))
-              : ListView.builder(
-                  itemCount: groupState.groups.length,
-                  itemBuilder: (context, index) {
-                    final group = groupState.groups[index];
-                    return GroupTile(
-                      group: group,
-                      onTap: () {
-                        final sessionKey = ref
-                            .read(chatStateProvider.notifier)
-                            .getGroupSessionKey(group.id);
-                        ref
-                            .read(chatStateProvider.notifier)
-                            .setActiveSession(sessionKey);
-                        ref
-                            .read(chatStateProvider.notifier)
-                            .loadGroupMessages(group.id);
-                        context.go('/chat');
-                      },
-                    );
-                  },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: glass.navBackground,
+                border: Border(
+                  bottom: BorderSide(color: glass.dividerColor),
                 ),
+              ),
+              child: Row(
+                children: [
+                  Text(
+                    loc.navGroups,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.search),
+                    onPressed: () => showDialog(
+                      context: context,
+                      builder: (_) => const JoinGroupDialog(),
+                    ),
+                    tooltip: loc.joinGroupTooltip,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add),
+                    onPressed: () => context.push('/groups/create'),
+                    tooltip: loc.groupCreateTooltip,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: groupState.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : groupState.groups.isEmpty
+                  ? Center(child: Text(loc.groupNoGroups))
+                  : ListView.builder(
+                      itemCount: groupState.groups.length,
+                      itemBuilder: (context, index) {
+                        final group = groupState.groups[index];
+                        return GroupTile(
+                          group: group,
+                          onTap: () {
+                            final sessionKey = ref
+                                .read(chatStateProvider.notifier)
+                                .getGroupSessionKey(group.id);
+                            ref
+                                .read(chatStateProvider.notifier)
+                                .setActiveSession(sessionKey);
+                            ref
+                                .read(chatStateProvider.notifier)
+                                .loadGroupMessages(group.id);
+                            context.go('/chat');
+                          },
+                        );
+                      },
+                    ),
+        ),
+      ],
     );
   }
 }
