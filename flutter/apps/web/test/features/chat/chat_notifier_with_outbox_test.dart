@@ -149,6 +149,7 @@ class TestableE2eeManager extends E2eeManager {
   String? lastInitiateSessionId;
   String? lastInitiatePeerId;
   bool initiateResult = true;
+  List<E2eeNegotiationEvent> pendingNegotiationsResult = const [];
 
   @override
   Future<bool> initiateNegotiation(String sessionId, String peerId) async {
@@ -189,6 +190,11 @@ class TestableE2eeManager extends E2eeManager {
     required Map<String, dynamic> envelope,
   }) async {
     return 'fake_plaintext';
+  }
+
+  @override
+  Future<List<E2eeNegotiationEvent>> getPendingNegotiations() async {
+    return pendingNegotiationsResult;
   }
 
   @override
@@ -846,6 +852,43 @@ void main() {
       );
       expect(
         await mockE2eeMetaStore.getSessionStatus('session-b'),
+        'negotiating',
+      );
+    });
+
+    test('loadSessions syncs server pending negotiations into session cache',
+        () async {
+      notifier = createNotifier();
+      testApi.conversationsResponse = [
+        const ChatSession(
+          id: 'custom-session-2',
+          type: 'private',
+          targetId: 'user-2',
+          targetName: 'User 2',
+          unreadCount: 0,
+          conversationType: 'private',
+        ),
+      ];
+      testE2eeManager.pendingNegotiationsResult = const [
+        E2eeNegotiationEvent(
+          sessionId: 'user-2_private_user-1',
+          action: E2eeNegotiationAction.request,
+          requesterId: 'user-2',
+          requesterName: 'User 2',
+          targetUserId: 'user-1',
+          requestPayloadJson: '{"senderDeviceId":"device-2"}',
+        ),
+      ];
+
+      await notifier.loadSessions();
+
+      expect(notifier.state.pendingNegotiations.keys, ['custom-session-2']);
+      expect(
+        notifier.pendingNegotiationForSession('custom-session-2')?.sessionId,
+        'user-2_private_user-1',
+      );
+      expect(
+        await mockE2eeMetaStore.getSessionStatus('user-2_private_user-1'),
         'negotiating',
       );
     });

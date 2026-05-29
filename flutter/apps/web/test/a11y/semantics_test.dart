@@ -41,6 +41,9 @@ class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>
   Future<void> loadSessions() async {}
 
   @override
+  Future<void> loadPendingNegotiations() async {}
+
+  @override
   void setActiveSession(String? sessionId) {}
 
   @override

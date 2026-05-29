@@ -112,6 +112,7 @@ class E2eeEndpoints {
   static const accept = '/api/e2ee/accept';
   static const reject = '/api/e2ee/reject';
   static const disable = '/api/e2ee/disable';
+  static const pending = '/api/e2ee/pending';
   static const heartbeat = '/api/keys/heartbeat';
   static const otkCount = '/api/keys/otk-count';
   static const otk = '/api/keys/otk';

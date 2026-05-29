@@ -125,19 +125,30 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                           const SizedBox(height: 12),
                           Text(loc.profileGender,
                               style: theme.textTheme.bodyMedium),
-                          RadioGroup<String>(
-                            groupValue: _gender,
-                            onChanged: (v) => setState(() => _gender = v ?? ''),
-                            child: Row(
-                              children: [
-                                const Radio<String>(value: 'male'),
-                                Text(loc.profileGenderMale),
-                                const Radio<String>(value: 'female'),
-                                Text(loc.profileGenderFemale),
-                                const Radio<String>(value: 'secret'),
-                                Text(loc.profileGenderSecret),
-                              ],
-                            ),
+                          Row(
+                            children: [
+                              Radio<String>(
+                                value: 'male',
+                                groupValue: _gender,
+                                onChanged: (v) =>
+                                    setState(() => _gender = v ?? ''),
+                              ),
+                              Text(loc.profileGenderMale),
+                              Radio<String>(
+                                value: 'female',
+                                groupValue: _gender,
+                                onChanged: (v) =>
+                                    setState(() => _gender = v ?? ''),
+                              ),
+                              Text(loc.profileGenderFemale),
+                              Radio<String>(
+                                value: 'secret',
+                                groupValue: _gender,
+                                onChanged: (v) =>
+                                    setState(() => _gender = v ?? ''),
+                              ),
+                              Text(loc.profileGenderSecret),
+                            ],
                           ),
                           const SizedBox(height: 12),
                           ListTile(

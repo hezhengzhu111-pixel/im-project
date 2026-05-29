@@ -545,6 +545,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           await _e2eeMetaStore.setSessionStatus(sessionId, 'encrypted');
           await _e2eeMetaStore.clearPendingHandshake(sessionId);
           _removePendingNegotiation(sessionId);
+          await _retryDecryptMessagesForE2eeSession(sessionId);
         case E2eeNegotiationAction.rejected:
         case E2eeNegotiationAction.disabled:
           await _e2eeMetaStore.setSessionStatus(sessionId, 'plaintext');
@@ -554,6 +555,31 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     } catch (e, st) {
       AppLogger.instance
           .error('Failed to handle E2EE negotiation', e, st, 'e2ee');
+    }
+  }
+
+  Future<void> loadPendingNegotiations() async {
+    try {
+      final events = await _e2eeManager.getPendingNegotiations();
+      if (events.isEmpty) return;
+
+      final updated = Map<String, E2eeNegotiationEvent>.from(
+        state.pendingNegotiations,
+      );
+      for (final event in events) {
+        if (event.action != E2eeNegotiationAction.request) continue;
+        final key = _normalizeE2eeSessionKey(event.sessionId);
+        updated[key.isEmpty ? event.sessionId : key] = event;
+        await _e2eeMetaStore.setSessionStatus(
+          event.sessionId,
+          'negotiating',
+        );
+      }
+
+      state = state.copyWith(pendingNegotiations: updated);
+    } catch (e, st) {
+      AppLogger.instance
+          .error('Failed to load pending E2EE negotiations', e, st, 'e2ee');
     }
   }
 
@@ -578,6 +604,39 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     state = state.copyWith(pendingNegotiations: updated);
   }
 
+  Future<void> _retryDecryptMessagesForE2eeSession(String e2eeSessionId) async {
+    final sessionKey = _normalizeE2eeSessionKey(e2eeSessionId);
+    final currentMessages = state.messages[sessionKey];
+    if (currentMessages == null || currentMessages.isEmpty) return;
+
+    var changed = false;
+    final updated = <Message>[];
+    for (final message in currentMessages) {
+      final shouldRetry = message.encrypted == true &&
+          message.e2eeEnvelope != null &&
+          message.senderId != _currentUserId() &&
+          message.decryptStatus != 'success' &&
+          (message.e2eeEnvelope!.sessionId == e2eeSessionId ||
+              _normalizeE2eeSessionKey(message.e2eeEnvelope!.sessionId) ==
+                  sessionKey);
+
+      if (!shouldRetry) {
+        updated.add(message);
+        continue;
+      }
+
+      final decrypted = await _decryptLoadedMessage(message);
+      changed = changed || decrypted != message;
+      updated.add(decrypted);
+    }
+
+    if (changed) {
+      state = state.copyWith(
+        messages: {...state.messages, sessionKey: updated},
+      );
+    }
+  }
+
   Future<void> loadSessions() async {
     state = state.copyWith(isLoading: true, error: null);
     try {
@@ -592,6 +651,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         }
       }
       state = state.copyWith(sessions: sessions, isLoading: false);
+      await loadPendingNegotiations();
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -1424,7 +1484,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     final exact = state.sessions.where((s) => s.id == sessionId).firstOrNull;
     if (exact != null) return exact.id;
     if (sessionId.contains('_private_')) {
-      return _privateSessionKey(_privateTargetFromE2eeSessionId(sessionId));
+      return _sessionKeyForPrivateTarget(
+          _privateTargetFromE2eeSessionId(sessionId));
     }
     if (sessionId.startsWith('group_') || sessionId.startsWith('g_')) {
       return _sessionKeyForGroupTarget(sessionId);
