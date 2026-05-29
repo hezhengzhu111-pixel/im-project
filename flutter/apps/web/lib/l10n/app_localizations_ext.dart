@@ -20,6 +20,9 @@ extension AppLocalizationsLookup on AppLocalizations {
       case 'chatSearch': return chatSearch;
       case 'chatNoSessions': return chatNoSessions;
       case 'contactsSearch': return contactsSearch;
+      case 'contactsSortByName': return contactsSortByName;
+      case 'contactsSortByOnline': return contactsSortByOnline;
+      case 'contactsSortByTime': return contactsSortByTime;
       case 'contactsNoFriends': return contactsNoFriends;
       case 'contactsAddFriend': return contactsAddFriend;
       case 'contactsFriendRequests': return contactsFriendRequests;
@@ -211,6 +214,14 @@ extension AppLocalizationsLookup on AppLocalizations {
       case 'addFriendNoMatch': return addFriendNoMatch;
       case 'addFriendSearchPrompt': return addFriendSearchPrompt;
       case 'addFriendButton': return addFriendButton;
+      case 'addFriendTypeUsername': return addFriendTypeUsername;
+      case 'addFriendTypeEmail': return addFriendTypeEmail;
+      case 'addFriendTypePhone': return addFriendTypePhone;
+      case 'addFriendSearchByEmail': return addFriendSearchByEmail;
+      case 'addFriendSearchByPhone': return addFriendSearchByPhone;
+      case 'addFriendVerificationHint': return addFriendVerificationHint;
+      case 'addFriendRequestDuplicate': return addFriendRequestDuplicate;
+      case 'addFriendAlreadyFriend': return addFriendAlreadyFriend;
       case 'groupCreateTooltip': return groupCreateTooltip;
       case 'groupNoGroups': return groupNoGroups;
       case 'groupCreateTitle': return groupCreateTitle;

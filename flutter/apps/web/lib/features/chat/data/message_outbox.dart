@@ -361,7 +361,10 @@ class MessageOutbox {
     ));
 
     try {
-      if (message.isEncrypted && message.e2eeEnvelope != null) {
+      if (message.isEncrypted) {
+        if (message.e2eeEnvelope == null) {
+          throw StateError('Encrypted outbox message missing E2EE envelope');
+        }
         await _messageApi.sendPrivateEncrypted(
           receiverId: message.receiverId,
           clientMessageId: message.clientMessageId,

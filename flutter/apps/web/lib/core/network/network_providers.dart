@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
-import '../config/app_config_provider.dart';
 
 // ---------------------------------------------------------------------------
 // Network & Storage Providers

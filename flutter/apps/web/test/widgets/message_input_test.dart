@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
@@ -117,6 +116,9 @@ class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>
 
   @override
   Future<void> disableEncryptionForSession(String sessionId) async {}
+
+  @override
+  Future<bool> initiateEncryptionForSession(String sessionId) async => false;
 
   @override
   Future<void> loadMoreHistory(String sessionId, {int size = 20}) async {}

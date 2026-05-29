@@ -47,18 +47,14 @@ class _AddApiKeyFormState extends State<AddApiKeyForm> {
                     ?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: _provider,
+              initialValue: _provider,
               decoration: InputDecoration(labelText: loc.aiProvider),
               items: const [
-                DropdownMenuItem(
-                    value: 'DeepSeek', child: Text('DeepSeek')),
-                DropdownMenuItem(
-                    value: 'MiniMax', child: Text('MiniMax')),
-                DropdownMenuItem(
-                    value: 'OpenAI', child: Text('OpenAI')),
+                DropdownMenuItem(value: 'DeepSeek', child: Text('DeepSeek')),
+                DropdownMenuItem(value: 'MiniMax', child: Text('MiniMax')),
+                DropdownMenuItem(value: 'OpenAI', child: Text('OpenAI')),
               ],
-              onChanged: (v) =>
-                  setState(() => _provider = v ?? 'DeepSeek'),
+              onChanged: (v) => setState(() => _provider = v ?? 'DeepSeek'),
             ),
             const SizedBox(height: 12),
             TextField(

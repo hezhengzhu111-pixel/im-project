@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:test/test.dart';
 import 'package:im_core/src/services/push_port.dart';
-import 'package:im_core/src/services/models.dart';
 
 class _TestPushAdapter implements PushPort {
   final _controller = StreamController<PushMessage>.broadcast();

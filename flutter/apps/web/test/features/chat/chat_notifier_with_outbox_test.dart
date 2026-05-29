@@ -146,6 +146,16 @@ class TestableE2eeManager extends E2eeManager {
   String? lastRespondSessionId;
   Map<String, dynamic>? lastRespondPayload;
   bool respondResult = true;
+  String? lastInitiateSessionId;
+  String? lastInitiatePeerId;
+  bool initiateResult = true;
+
+  @override
+  Future<bool> initiateNegotiation(String sessionId, String peerId) async {
+    lastInitiateSessionId = sessionId;
+    lastInitiatePeerId = peerId;
+    return initiateResult;
+  }
 
   @override
   Future<bool> respondToNegotiation(
@@ -253,6 +263,7 @@ class SpyMessageOutbox extends MessageOutbox {
       'isGroupChat': isGroupChat,
       'groupId': groupId,
       'isEncrypted': isEncrypted,
+      'e2eeEnvelope': e2eeEnvelope,
       'e2eeDeviceId': e2eeDeviceId,
     });
 
@@ -268,6 +279,7 @@ class SpyMessageOutbox extends MessageOutbox {
       status: OutboxMessageStatus.pending,
       createdAt: DateTime.now(),
       isEncrypted: isEncrypted,
+      e2eeEnvelope: e2eeEnvelope,
       e2eeDeviceId: e2eeDeviceId,
     );
   }
@@ -701,6 +713,36 @@ void main() {
       // Outbox should NOT have been called.
       expect(spyOutbox.enqueueCalls, isEmpty);
     });
+
+    test('encrypted API failure queues retry with envelope', () async {
+      notifier = createNotifier();
+
+      await mockE2eeMetaStore.setSessionStatus(
+        'user-1_private_user-2',
+        'encrypted',
+      );
+      await mockE2eeMetaStore.setRemoteDeviceId(
+        'user-1_private_user-2',
+        'device-remote-1',
+      );
+      testApi.errorToThrow = Exception('Network error');
+
+      final result = await notifier.sendMessage('user-2', 'Secret message');
+
+      expect(result, isNull);
+      expect(testApi.sendPrivateMessageCallCount, 0);
+      expect(testApi.sendPrivateEncryptedCallCount, 1);
+      expect(spyOutbox.enqueueCalls.length, 1);
+
+      final call = spyOutbox.enqueueCalls.first;
+      expect(call['isEncrypted'], true);
+      expect(call['e2eeEnvelope'], isA<Map<String, dynamic>>());
+      expect(call['e2eeDeviceId'], 'test-device-id');
+      expect(
+        (call['e2eeEnvelope'] as Map<String, dynamic>).values,
+        isNot(contains('Secret message')),
+      );
+    });
   });
 
   // =========================================================================
@@ -881,6 +923,55 @@ void main() {
         await mockE2eeMetaStore.getSessionStatus('session-a'),
         'encrypted',
       );
+    });
+
+    test('initiateEncryptionForSession uses canonical E2EE session id',
+        () async {
+      notifier = createNotifier();
+      testApi.conversationsResponse = [
+        const ChatSession(
+          id: 'custom-session-1',
+          type: 'private',
+          targetId: 'user-2',
+          targetName: 'User 2',
+          unreadCount: 0,
+          conversationType: 'private',
+        ),
+      ];
+      await notifier.loadSessions();
+
+      final started =
+          await notifier.initiateEncryptionForSession('custom-session-1');
+
+      expect(started, isTrue);
+      expect(testE2eeManager.lastInitiateSessionId, 'user-1_private_user-2');
+      expect(testE2eeManager.lastInitiatePeerId, 'user-2');
+      expect(
+        await mockE2eeMetaStore.getSessionStatus('user-1_private_user-2'),
+        'negotiating',
+      );
+    });
+
+    test('initiateEncryptionForSession refuses group E2EE', () async {
+      notifier = createNotifier();
+      testApi.conversationsResponse = [
+        const ChatSession(
+          id: 'group_group-1',
+          type: 'group',
+          targetId: 'group-1',
+          targetName: 'Group 1',
+          unreadCount: 0,
+          conversationType: 'group',
+        ),
+      ];
+      await notifier.loadSessions();
+
+      final started =
+          await notifier.initiateEncryptionForSession('group_group-1');
+
+      expect(started, isFalse);
+      expect(notifier.state.error, 'group_e2ee_unavailable');
+      expect(testE2eeManager.lastInitiateSessionId, isNull);
     });
   });
 

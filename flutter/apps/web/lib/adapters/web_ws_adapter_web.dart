@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
@@ -17,7 +19,8 @@ class WebWsEvent implements WsEvent {
     return WebWsEvent(
       type: json['type'] as String? ?? 'unknown',
       data: json['data'] as Map<String, dynamic>? ?? {},
-      timestamp: json['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch,
+      timestamp:
+          json['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch,
     );
   }
 }

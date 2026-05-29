@@ -5,8 +5,6 @@ import 'package:im_web/core/router/route_meta.dart';
 import 'package:im_web/core/router/route_names.dart';
 import 'package:im_web/core/router/route_resolver.dart';
 
-import '../../helpers/fakes.dart';
-
 void main() {
   group('RouteMeta', () {
     test('default values are correct', () {

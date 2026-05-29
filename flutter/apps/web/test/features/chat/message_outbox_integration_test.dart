@@ -444,7 +444,7 @@ void main() {
       _outboxInitialized = true;
 
       // Enqueue encrypted message with sensitive plaintext content
-      final message = await outbox.enqueue(
+      await outbox.enqueue(
         sessionKey: 'session-1',
         receiverId: 'user-2',
         content: 'SENSITIVE_PLAINTEXT_CONTENT',
@@ -507,6 +507,34 @@ void main() {
       expect(message.isEncrypted, true);
       expect(message.e2eeEnvelope, {'wire': 'encrypted_payload'});
       expect(message.e2eeDeviceId, 'device-1');
+      expect(await outbox.getPendingCount(), 1);
+    });
+
+    test('E2EE retry without envelope fails without plaintext fallback',
+        () async {
+      outbox = MessageOutbox(
+        messageApi: mockMessageApi,
+        idbFactory: idbFactorySembastMemory,
+        isOnline: () => true,
+        dbName: 'test_outbox_e2ee_missing_envelope',
+      );
+      await outbox.initialize();
+      _outboxInitialized = true;
+
+      await outbox.enqueue(
+        sessionKey: 'session-1',
+        receiverId: 'user-2',
+        content: 'SENSITIVE_PLAINTEXT_CONTENT',
+        messageType: 'text',
+        clientMessageId: 'client-e2ee-missing-envelope',
+        isEncrypted: true,
+        e2eeDeviceId: 'device-1',
+      );
+
+      await Future.delayed(Duration(seconds: 1));
+
+      expect(mockMessageApi.encryptedCallCount, 0);
+      expect(mockMessageApi.sendPrivateMessageCalled, false);
       expect(await outbox.getPendingCount(), 1);
     });
 

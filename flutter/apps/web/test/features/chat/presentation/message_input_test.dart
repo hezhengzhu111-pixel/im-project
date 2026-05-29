@@ -122,6 +122,9 @@ class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>
   Future<void> disableEncryptionForSession(String sessionId) async {}
 
   @override
+  Future<bool> initiateEncryptionForSession(String sessionId) async => false;
+
+  @override
   Future<void> loadMoreHistory(String sessionId, {int size = 20}) async {}
 }
 
@@ -208,11 +211,8 @@ void main() {
       );
       mockRecorder.setMockFile(mockFile);
 
-      // Track voice send callback
-      var voiceSent = false;
-
       await tester.pumpWidget(buildSubject(
-        onSendVoice: (_) => voiceSent = true,
+        onSendVoice: (_) {},
       ));
 
       // Start recording

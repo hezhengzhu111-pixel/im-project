@@ -43,9 +43,6 @@ class AppProviderObserver extends ProviderObserver {
 
   String _summarize(Object? value) {
     if (value == null) return 'null';
-    if (value is StateNotifier) {
-      return value.state.runtimeType.toString();
-    }
     return value.runtimeType.toString();
   }
 }

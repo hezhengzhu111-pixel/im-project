@@ -68,9 +68,13 @@ class ChatStateWithOutbox extends ChatState {
       isLoading: isLoading ?? this.isLoading,
       activeSessionId: activeSessionId ?? this.activeSessionId,
       error: error,
-      loadingHistoryBySession: loadingHistoryBySession ?? this.loadingHistoryBySession,
-      hasMoreHistoryBySession: hasMoreHistoryBySession ?? this.hasMoreHistoryBySession,
-      oldestLoadedServerMessageIdBySession: oldestLoadedServerMessageIdBySession ?? this.oldestLoadedServerMessageIdBySession,
+      loadingHistoryBySession:
+          loadingHistoryBySession ?? this.loadingHistoryBySession,
+      hasMoreHistoryBySession:
+          hasMoreHistoryBySession ?? this.hasMoreHistoryBySession,
+      oldestLoadedServerMessageIdBySession:
+          oldestLoadedServerMessageIdBySession ??
+              this.oldestLoadedServerMessageIdBySession,
       pendingCount: pendingCount ?? this.pendingCount,
       failedCount: failedCount ?? this.failedCount,
       isRetrying: isRetrying ?? this.isRetrying,
@@ -190,11 +194,45 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   }
 
   Future<void> disableEncryptionForSession(String sessionId) async {
+    final e2eeSessionId = _e2eeSessionIdForChatOrE2eeSession(sessionId);
     try {
-      await _e2eeManager.exitEncryption(sessionId);
+      await _e2eeManager.exitEncryption(e2eeSessionId);
     } finally {
-      await _e2eeMetaStore.setSessionStatus(sessionId, 'plaintext');
-      _removePendingNegotiation(sessionId);
+      await _e2eeMetaStore.setSessionStatus(e2eeSessionId, 'plaintext');
+      _removePendingNegotiation(e2eeSessionId);
+    }
+  }
+
+  Future<bool> initiateEncryptionForSession(String sessionId) async {
+    final session = state.sessions
+        .where((s) =>
+            s.id == sessionId ||
+            s.conversationId == sessionId ||
+            s.targetId == sessionId)
+        .firstOrNull;
+    if (session != null &&
+        (session.type == 'group' || session.conversationType == 'group')) {
+      state = state.copyWith(error: 'group_e2ee_unavailable');
+      return false;
+    }
+
+    final peerId = session?.targetId ?? _privateTargetFromSessionKey(sessionId);
+    final e2eeSessionId = _e2eeSessionIdForPrivateTarget(peerId);
+    if (peerId.isEmpty || e2eeSessionId.isEmpty) return false;
+
+    try {
+      final initiated =
+          await _e2eeManager.initiateNegotiation(e2eeSessionId, peerId);
+      await _e2eeMetaStore.setSessionStatus(
+        e2eeSessionId,
+        initiated ? 'negotiating' : 'failed',
+      );
+      return initiated;
+    } catch (e, st) {
+      AppLogger.instance
+          .error('Failed to initiate E2EE negotiation', e, st, 'e2ee');
+      await _e2eeMetaStore.setSessionStatus(e2eeSessionId, 'failed');
+      return false;
     }
   }
 
@@ -273,25 +311,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
 
     final updated = List<Message>.from(messages);
     final old = updated[index];
-    updated[index] = Message(
-      id: old.id,
-      senderId: old.senderId,
-      receiverId: old.receiverId,
-      isGroupChat: old.isGroupChat,
-      messageType: old.messageType,
-      content: old.content,
-      sendTime: old.sendTime,
-      status: 'SENT',
-      clientMessageId: old.clientMessageId,
-      groupId: old.groupId,
-      senderName: old.senderName,
-      senderAvatar: old.senderAvatar,
-      mediaUrl: old.mediaUrl,
-      mediaSize: old.mediaSize,
-      mediaName: old.mediaName,
-      thumbnailUrl: old.thumbnailUrl,
-      duration: old.duration,
-    );
+    updated[index] = old.copyWith(status: 'SENT');
 
     state = state.copyWith(
       messages: {...state.messages, sessionKey: updated},
@@ -398,6 +418,47 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     };
   }
 
+  Future<List<Message>> _decryptLoadedMessages(List<Message> messages) async {
+    final decrypted = <Message>[];
+    for (final message in messages) {
+      decrypted.add(await _decryptLoadedMessage(message));
+    }
+    return decrypted;
+  }
+
+  Future<Message> _decryptLoadedMessage(Message message) async {
+    if (message.encrypted != true || message.e2eeEnvelope == null) {
+      return message;
+    }
+    if (message.senderId == _currentUserId()) {
+      return message.copyWith(decryptStatus: 'skipped_own');
+    }
+
+    try {
+      final envelope = message.e2eeEnvelope!;
+      final plaintext = await _e2eeManager.decryptEnvelope(
+        sessionId: envelope.sessionId,
+        envelope: _camelToSnakeEnvelope({
+          'version': envelope.version,
+          'algorithm': envelope.algorithm,
+          'senderDeviceId': envelope.senderDeviceId,
+          'recipientDeviceId': envelope.recipientDeviceId,
+          'sessionId': envelope.sessionId,
+          'wire': envelope.wire,
+          if (envelope.handshake != null) 'handshake': envelope.handshake,
+        }),
+      );
+      return message.copyWith(
+        content: plaintext,
+        decryptStatus: 'success',
+      );
+    } catch (e, st) {
+      AppLogger.instance
+          .error('Loaded E2EE message decrypt failed', e, st, 'e2ee');
+      return message.copyWith(content: '', decryptStatus: 'failed');
+    }
+  }
+
   void _handleMessageStatusChanged(Map<String, dynamic> data) {
     try {
       final message = Message.fromJson(data);
@@ -429,25 +490,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
 
       final updated = messages.map((m) {
         if (m.status != 'READ') {
-          return Message(
-            id: m.id,
-            senderId: m.senderId,
-            receiverId: m.receiverId,
-            isGroupChat: m.isGroupChat,
-            messageType: m.messageType,
-            content: m.content,
-            sendTime: m.sendTime,
-            status: 'READ',
-            clientMessageId: m.clientMessageId,
-            groupId: m.groupId,
-            senderName: m.senderName,
-            senderAvatar: m.senderAvatar,
-            mediaUrl: m.mediaUrl,
-            mediaSize: m.mediaSize,
-            mediaName: m.mediaName,
-            thumbnailUrl: m.thumbnailUrl,
-            duration: m.duration,
-          );
+          return m.copyWith(status: 'READ');
         }
         return m;
       }).toList();
@@ -567,8 +610,9 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final sessionKey = _sessionKeyForPrivateTarget(targetId);
-      final messages =
+      final history =
           await _messageApi.getPrivateHistory(targetId, page: page, size: size);
+      final messages = await _decryptLoadedMessages(history);
       final oldestId = _findOldestLoadedServerMessageId(messages);
       state = state.copyWith(
         messages: {...state.messages, sessionKey: messages},
@@ -591,8 +635,9 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final sessionKey = _sessionKeyForGroupTarget(groupId);
-      final messages =
+      final history =
           await _messageApi.getGroupHistory(groupId, page: page, size: size);
+      final messages = await _decryptLoadedMessages(history);
       final oldestId = _findOldestLoadedServerMessageId(messages);
       state = state.copyWith(
         messages: {...state.messages, sessionKey: messages},
@@ -648,7 +693,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     );
 
     try {
-      final isGroup = session.type == 'group' || session.conversationType == 'group';
+      final isGroup =
+          session.type == 'group' || session.conversationType == 'group';
       List<Message> newMessages;
 
       try {
@@ -683,7 +729,9 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         _incrementFallbackHistoryPage(sessionId);
       }
 
-      final merged = _mergeMessagesChronologically(existingMessages, newMessages);
+      final decryptedNewMessages = await _decryptLoadedMessages(newMessages);
+      final merged =
+          _mergeMessagesChronologically(existingMessages, decryptedNewMessages);
       final hasMore = newMessages.length >= size;
 
       final oldestId = _findOldestLoadedServerMessageId(merged);
@@ -746,29 +794,28 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     }
 
     for (final msg in incoming) {
-      final existingMsg = merged[msg.id] ?? (msg.clientMessageId != null ? merged[msg.clientMessageId!] : null);
+      final existingMsg = merged[msg.id] ??
+          (msg.clientMessageId != null ? merged[msg.clientMessageId!] : null);
       if (existingMsg != null) {
-        final mergedMsg = Message(
-          id: existingMsg.id,
-          senderId: existingMsg.senderId,
-          receiverId: existingMsg.receiverId,
-          isGroupChat: existingMsg.isGroupChat,
-          messageType: existingMsg.messageType,
+        final mergedMsg = existingMsg.copyWith(
           content: msg.content.isNotEmpty ? msg.content : existingMsg.content,
-          sendTime: existingMsg.sendTime,
           status: msg.status.isNotEmpty ? msg.status : existingMsg.status,
-          clientMessageId: existingMsg.clientMessageId,
-          groupId: existingMsg.groupId,
-          senderName: existingMsg.senderName,
-          senderAvatar: existingMsg.senderAvatar,
           mediaUrl: msg.mediaUrl ?? existingMsg.mediaUrl,
           mediaSize: msg.mediaSize ?? existingMsg.mediaSize,
           mediaName: msg.mediaName ?? existingMsg.mediaName,
           thumbnailUrl: msg.thumbnailUrl ?? existingMsg.thumbnailUrl,
           duration: msg.duration ?? existingMsg.duration,
+          extra: msg.extra ?? existingMsg.extra,
+          mentionedUserIds:
+              msg.mentionedUserIds ?? existingMsg.mentionedUserIds,
+          readBy: msg.readBy ?? existingMsg.readBy,
+          readByCount: msg.readByCount ?? existingMsg.readByCount,
+          readStatus: msg.readStatus ?? existingMsg.readStatus,
+          readAt: msg.readAt ?? existingMsg.readAt,
           encrypted: msg.encrypted ?? existingMsg.encrypted,
-          decryptStatus: msg.decryptStatus ?? existingMsg.decryptStatus,
+          e2eeDeviceId: msg.e2eeDeviceId ?? existingMsg.e2eeDeviceId,
           e2eeEnvelope: msg.e2eeEnvelope ?? existingMsg.e2eeEnvelope,
+          decryptStatus: msg.decryptStatus ?? existingMsg.decryptStatus,
         );
         merged[msg.id] = mergedMsg;
         if (msg.clientMessageId != null) {
@@ -799,7 +846,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   }
 
   void _incrementFallbackHistoryPage(String sessionId) {
-    _fallbackHistoryPages[sessionId] = (_fallbackHistoryPages[sessionId] ?? 1) + 1;
+    _fallbackHistoryPages[sessionId] =
+        (_fallbackHistoryPages[sessionId] ?? 1) + 1;
   }
 
   Future<MessageConfig> _ensureMessageConfig() async {
@@ -829,7 +877,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           Message? lastResult;
           for (final part in parts) {
             lastResult = await _sendSinglePrivateMessage(
-              receiverId, part,
+              receiverId,
+              part,
               messageType: messageType,
               mediaUrl: mediaUrl,
               mediaName: mediaName,
@@ -844,7 +893,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       }
     }
     return _sendSinglePrivateMessage(
-      receiverId, content,
+      receiverId,
+      content,
       messageType: messageType,
       clientMessageId: clientMessageId,
       mediaUrl: mediaUrl,
@@ -855,8 +905,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     );
   }
 
-  Future<Message?> _sendSinglePrivateMessage(
-      String receiverId, String content,
+  Future<Message?> _sendSinglePrivateMessage(String receiverId, String content,
       {String messageType = 'TEXT',
       String? clientMessageId,
       String? mediaUrl,
@@ -868,7 +917,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         clientMessageId ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
     final currentUid = _currentUserId();
     final sessionKey = _sessionKeyForPrivateTarget(receiverId);
-    final e2eeSessionId = '${currentUid}_private_$receiverId';
+    final e2eeSessionId = _e2eeSessionIdForPrivateTarget(receiverId);
 
     // Check E2EE session status before sending.
     String e2eeStatus = 'plaintext';
@@ -906,6 +955,9 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     );
     addMessage(sessionKey, pendingMessage);
 
+    Map<String, dynamic>? encryptedEnvelope;
+    String? encryptedDeviceId;
+
     try {
       Message serverMessage;
       if (e2eeStatus == 'encrypted') {
@@ -916,7 +968,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           throw Exception('remote device ID not found for session');
         }
 
-        final envelope = await _e2eeManager.encryptToEnvelope(
+        encryptedDeviceId = senderDeviceId;
+        encryptedEnvelope = await _e2eeManager.encryptToEnvelope(
           sessionId: e2eeSessionId,
           senderDeviceId: senderDeviceId,
           recipientDeviceId: recipientDeviceId,
@@ -927,7 +980,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           receiverId: receiverId,
           clientMessageId: cid,
           messageType: messageType,
-          e2eeEnvelope: envelope,
+          e2eeEnvelope: encryptedEnvelope,
           e2eeDeviceId: senderDeviceId,
         );
       } else {
@@ -955,6 +1008,12 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       AppLogger.instance.error('Send message failed, adding to outbox', e, st);
       _analytics.trackEvent('message_send_failed');
 
+      if (e2eeStatus == 'encrypted' && encryptedEnvelope == null) {
+        state = state.copyWith(error: 'e2ee_encrypt_failed');
+        _updateMessageStatus(sessionKey, cid, 'FAILED');
+        return null;
+      }
+
       // Add to outbox for retry
       await _outbox.enqueue(
         sessionKey: sessionKey,
@@ -964,9 +1023,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         clientMessageId: cid,
         isGroupChat: false,
         isEncrypted: e2eeStatus == 'encrypted',
-        e2eeDeviceId: e2eeStatus == 'encrypted'
-            ? await _e2eeMetaStore.getOrCreateDeviceId()
-            : null,
+        e2eeEnvelope: encryptedEnvelope,
+        e2eeDeviceId: encryptedDeviceId,
       );
 
       _updateMessageStatus(sessionKey, cid, 'PENDING');
@@ -992,7 +1050,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           Message? lastResult;
           for (final part in parts) {
             lastResult = await _sendSingleGroupMessage(
-              groupId, part,
+              groupId,
+              part,
               messageType: messageType,
               mediaUrl: mediaUrl,
               mediaName: mediaName,
@@ -1008,7 +1067,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       }
     }
     return _sendSingleGroupMessage(
-      groupId, content,
+      groupId,
+      content,
       messageType: messageType,
       clientMessageId: clientMessageId,
       mediaUrl: mediaUrl,
@@ -1098,6 +1158,12 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         .indexWhere((m) => m.id == messageId || m.clientMessageId == messageId);
     if (index == -1) return;
     final msg = messages[index];
+
+    if (msg.encrypted == true) {
+      _updateMessageStatus(normalizedKey, msg.id, 'FAILED');
+      state = state.copyWith(error: 'e2ee_not_ready');
+      return;
+    }
 
     _updateMessageStatus(normalizedKey, msg.id, 'SENDING');
 
@@ -1211,25 +1277,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     if (index == -1) return;
     final updated = List<Message>.from(currentMessages);
     final old = updated[index];
-    updated[index] = Message(
-      id: old.id,
-      senderId: old.senderId,
-      receiverId: old.receiverId,
-      isGroupChat: old.isGroupChat,
-      messageType: old.messageType,
-      content: old.content,
-      sendTime: old.sendTime,
-      status: status,
-      clientMessageId: old.clientMessageId,
-      groupId: old.groupId,
-      senderName: old.senderName,
-      senderAvatar: old.senderAvatar,
-      mediaUrl: old.mediaUrl,
-      mediaSize: old.mediaSize,
-      mediaName: old.mediaName,
-      thumbnailUrl: old.thumbnailUrl,
-      duration: old.duration,
-    );
+    updated[index] = old.copyWith(status: status);
     state = state.copyWith(
       messages: {...state.messages, normalizedKey: updated},
     );
@@ -1345,6 +1393,31 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       }
     }
     return keys;
+  }
+
+  String _e2eeSessionIdForChatOrE2eeSession(String sessionId) {
+    if (sessionId.contains('_private_')) return sessionId;
+    final session = state.sessions
+        .where((s) =>
+            s.id == sessionId ||
+            s.conversationId == sessionId ||
+            s.targetId == sessionId)
+        .firstOrNull;
+    if (session != null) {
+      final isGroup =
+          session.type == 'group' || session.conversationType == 'group';
+      return isGroup
+          ? session.id
+          : _e2eeSessionIdForPrivateTarget(session.targetId);
+    }
+    return _e2eeSessionIdForPrivateTarget(
+        _privateTargetFromSessionKey(sessionId));
+  }
+
+  String _e2eeSessionIdForPrivateTarget(String targetId) {
+    final currentUserId = _currentUserId();
+    if (currentUserId.isEmpty || targetId.isEmpty) return targetId;
+    return '${currentUserId}_private_$targetId';
   }
 
   String _normalizeE2eeSessionKey(String sessionId) {

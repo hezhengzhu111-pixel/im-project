@@ -37,7 +37,7 @@ class FileApi {
       final response = await _httpClient.post<Map<String, dynamic>>(
         FileEndpoints.uploadImage,
         body: {'file': bytes, 'fileName': fileName},
-        fromJson: (json) => json as Map<String, dynamic>,
+        fromJson: (json) => json,
       );
       return UploadResult.fromJson(response.data);
     } catch (e) {
@@ -56,7 +56,7 @@ class FileApi {
       final response = await _httpClient.post<Map<String, dynamic>>(
         FileEndpoints.uploadFile,
         body: {'file': bytes, 'fileName': fileName},
-        fromJson: (json) => json as Map<String, dynamic>,
+        fromJson: (json) => json,
       );
       return UploadResult.fromJson(response.data);
     } catch (e) {
@@ -75,7 +75,7 @@ class FileApi {
       final response = await _httpClient.post<Map<String, dynamic>>(
         FileEndpoints.uploadAudio,
         body: {'file': bytes, 'fileName': fileName},
-        fromJson: (json) => json as Map<String, dynamic>,
+        fromJson: (json) => json,
       );
       return UploadResult.fromJson(response.data);
     } catch (e) {
@@ -94,7 +94,7 @@ class FileApi {
       final response = await _httpClient.post<Map<String, dynamic>>(
         FileEndpoints.uploadVideo,
         body: {'file': bytes, 'fileName': fileName},
-        fromJson: (json) => json as Map<String, dynamic>,
+        fromJson: (json) => json,
       );
       return UploadResult.fromJson(response.data);
     } catch (e) {
