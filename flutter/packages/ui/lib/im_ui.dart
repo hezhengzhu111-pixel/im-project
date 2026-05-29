@@ -11,6 +11,7 @@ export 'src/widgets/im_badge.dart';
 export 'src/widgets/im_dialog.dart';
 export 'src/widgets/im_nav_item.dart';
 export 'src/widgets/glass_card.dart';
+export 'src/widgets/glass_app_components.dart';
 export 'src/widgets/gradient_background.dart';
 export 'src/layouts/layouts.dart';
 export 'src/widgets/animated_entrance.dart';

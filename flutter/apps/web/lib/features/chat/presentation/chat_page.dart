@@ -6,10 +6,7 @@ import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_ui/im_ui.dart';
-import '../../e2ee/presentation/encryption_banner.dart';
-import '../../e2ee/presentation/encryption_dialog.dart';
-import '../../e2ee/presentation/negotiation_dialog.dart';
-import 'widgets/chat_header.dart';
+import '../../e2ee/presentation/e2ee_glass_widgets.dart';
 import 'widgets/session_tile.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/message_input.dart';
@@ -102,12 +99,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
 
     // Check for cached negotiation request after switching session
-    if (!isGroup && mounted) {
-      final pending = notifier.pendingNegotiationForSession(session.id);
-      if (pending != null && pending.action == E2eeNegotiationAction.request) {
-        _showNegotiationDialog(pending);
-      }
-    }
+    if (!isGroup && mounted) setState(() {});
   }
 
   Future<void> _loadGroupMembers(String groupId) async {
@@ -233,32 +225,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
 
-  void _showNegotiationDialog(E2eeNegotiationEvent event) {
-    final requesterName = event.requesterName ?? event.requesterId;
-    showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => NegotiationDialog(
-        requesterName: requesterName,
-        onAccept: () async {
-          final accepted = await ref
-              .read(chatStateProvider.notifier)
-              .acceptPendingNegotiation(event.sessionId);
-          if (!accepted) {
-            throw Exception('Failed to accept encryption negotiation');
-          }
-          ref.invalidate(e2eeSessionStatusProvider(event.sessionId));
-        },
-        onReject: () async {
-          await ref
-              .read(chatStateProvider.notifier)
-              .rejectPendingNegotiation(event.sessionId);
-          ref.invalidate(e2eeSessionStatusProvider(event.sessionId));
-        },
-      ),
-    );
-  }
-
   String? _e2eeSessionIdForSession(ChatSession session) {
     final isGroup =
         session.conversationType == 'group' || session.type == 'group';
@@ -266,15 +232,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final currentUserId = ref.read(authStateProvider).user?.id ?? '';
     if (currentUserId.isEmpty || session.targetId.isEmpty) return null;
     return '${currentUserId}_private_${session.targetId}';
-  }
-
-  void _showEncryptionDialog(ChatSession session, String e2eeSessionId) {
-    showDialog<void>(
-      context: context,
-      builder: (_) => EncryptionDialog(
-        onConfirm: () => _startEncryption(session, e2eeSessionId),
-      ),
-    );
   }
 
   Future<void> _startEncryption(
@@ -329,20 +286,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       }
     });
 
-    // Listen for pending E2EE negotiation requests
-    ref.listen(
-      chatStateProvider.select((s) => s.activePendingNegotiation),
-      (prev, next) {
-        if (next != null && next.action == E2eeNegotiationAction.request) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              _showNegotiationDialog(next);
-            }
-          });
-        }
-      },
-    );
-
     // Listen for all E2EE negotiation events for notifications
     ref.listen(
       chatStateProvider.select((s) => s.pendingNegotiations),
@@ -383,13 +326,18 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final e2eeStatusAsync = e2eeSessionId == null
         ? null
         : ref.watch(e2eeSessionStatusProvider(e2eeSessionId));
+    final pendingNegotiation = isGroup
+        ? null
+        : ref
+            .read(chatStateProvider.notifier)
+            .pendingNegotiationForSession(session.id);
 
     return Column(
       children: [
         // Network status banner
         const NetworkStatusBanner(),
         // Header
-        ChatHeader(
+        _GlassChatHeader(
           session: session,
           isMobile: isMobile,
           onBackPressed: () {
@@ -400,15 +348,42 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           ),
           onStartEncryption: e2eeSessionId == null
               ? null
-              : () => _showEncryptionDialog(session, e2eeSessionId),
+              : () => _startEncryption(session, e2eeSessionId),
           onShowGroupEncryptionUnavailable:
               isGroup ? _showGroupE2eeUnavailable : null,
         ),
         // E2EE encryption banner (private chats only)
         if (e2eeStatusAsync != null)
           e2eeStatusAsync.when(
-            data: (statusStr) => EncryptionBanner(
+            data: (statusStr) => E2eeNegotiationBanner(
               status: E2eeSessionStatus.fromString(statusStr),
+              pending: pendingNegotiation,
+              onAccept: pendingNegotiation == null
+                  ? null
+                  : () async {
+                      final accepted = await ref
+                          .read(chatStateProvider.notifier)
+                          .acceptPendingNegotiation(session.id);
+                      ref.invalidate(
+                        e2eeSessionStatusProvider(privateE2eeSessionId),
+                      );
+                      if (!accepted && mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('接受加密请求失败')),
+                        );
+                      }
+                    },
+              onReject: pendingNegotiation == null
+                  ? null
+                  : () async {
+                      await ref
+                          .read(chatStateProvider.notifier)
+                          .rejectPendingNegotiation(session.id);
+                      ref.invalidate(
+                        e2eeSessionStatusProvider(privateE2eeSessionId),
+                      );
+                    },
+              onStart: () => _startEncryption(session, privateE2eeSessionId),
               onExit: () async {
                 await ref
                     .read(chatStateProvider.notifier)
@@ -547,5 +522,116 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     _scrollController.dispose();
     _messageInputFocusNode.dispose();
     super.dispose();
+  }
+}
+
+class _GlassChatHeader extends StatelessWidget {
+  const _GlassChatHeader({
+    required this.session,
+    required this.isMobile,
+    required this.onBackPressed,
+    this.e2eeStatus,
+    this.onStartEncryption,
+    this.onShowGroupEncryptionUnavailable,
+  });
+
+  final ChatSession session;
+  final bool isMobile;
+  final VoidCallback onBackPressed;
+  final E2eeSessionStatus? e2eeStatus;
+  final VoidCallback? onStartEncryption;
+  final VoidCallback? onShowGroupEncryptionUnavailable;
+
+  @override
+  Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
+    final sessionName = session.conversationName ?? session.targetName;
+    final isGroup =
+        session.conversationType == 'group' || session.type == 'group';
+    final status = e2eeStatus ?? E2eeSessionStatus.plaintext;
+    final subtitle = isGroup
+        ? (session.memberCount == null
+            ? '群聊'
+            : loc.chatMemberCount(session.memberCount!))
+        : switch (status) {
+            E2eeSessionStatus.encrypted => '安全会话',
+            E2eeSessionStatus.negotiating => '正在协商安全会话',
+            E2eeSessionStatus.failed => '加密状态异常',
+            E2eeSessionStatus.plaintext => '在线 / 明文聊天',
+          };
+
+    return Container(
+      height: 76,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.30),
+        border: Border(
+          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.50)),
+        ),
+      ),
+      child: Row(
+        children: [
+          if (isMobile)
+            IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: onBackPressed,
+            ),
+          CircleAvatar(
+            radius: 20,
+            backgroundImage: session.targetAvatar != null
+                ? NetworkImage(session.targetAvatar!)
+                : null,
+            child: session.targetAvatar == null
+                ? Text(sessionName.isNotEmpty ? sessionName[0] : '?')
+                : null,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  sessionName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          if (!isGroup && e2eeStatus != null) ...[
+            E2eeStatusPill(status: status),
+            if (status == E2eeSessionStatus.plaintext &&
+                onStartEncryption != null) ...[
+              const SizedBox(width: 10),
+              PrimarySolidButton(
+                label: '开启加密',
+                icon: Icons.lock_outline,
+                compact: true,
+                onPressed: onStartEncryption,
+              ),
+            ],
+          ],
+          if (isGroup && onShowGroupEncryptionUnavailable != null)
+            IconButton(
+              tooltip: 'Group E2EE unavailable',
+              icon: const Icon(Icons.lock_outline),
+              onPressed: onShowGroupEncryptionUnavailable,
+            ),
+        ],
+      ),
+    );
   }
 }

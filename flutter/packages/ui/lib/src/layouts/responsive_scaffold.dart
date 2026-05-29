@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import '../theme/im_tokens.dart';
+import '../widgets/glass_app_components.dart';
 import 'breakpoint.dart';
 import 'breakpoint_scope.dart';
 
@@ -40,127 +42,106 @@ class ResponsiveScaffold extends StatelessWidget {
     final bp = BreakpointScope.of(context);
     final isDesktop = bp == Breakpoint.expanded || bp == Breakpoint.large;
 
-    if (isDesktop) {
-      return _buildDesktop(context);
-    }
-    return _buildMobile(context);
+    return isDesktop ? _buildDesktop(context) : _buildMobile(context);
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 桌面布局：四色渐变大背景 + 导航栏 + 内容区
-  // ─────────────────────────────────────────────────────────────
   Widget _buildDesktop(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: ImTokens.brandBackgroundGradient,
-        ),
-        child: Row(
-          children: [
-            // ── 左侧导航栏 ──
-            _buildNavRail(context),
-            // ── 右侧主内容区 ──
-            Expanded(
-              child: Container(
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  color: ImTokens.pageBackground,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    bottomLeft: Radius.circular(20),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 30,
-                      offset: const Offset(-4, 0),
-                    ),
-                  ],
+      body: AppGradientBackground(
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.13),
+              borderRadius: BorderRadius.circular(32),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF191C40).withValues(alpha: 0.18),
+                  blurRadius: 70,
+                  offset: const Offset(0, 22),
                 ),
-                child: Column(
-                  children: [
-                    if (header != null) header!,
-                    Expanded(child: child),
-                  ],
-                ),
-              ),
+              ],
             ),
+            child: Row(
+              children: [
+                _buildNavRail(context),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: GlassPanel(
+                    borderRadius: 28,
+                    child: Column(
+                      children: [
+                        if (header != null) header!,
+                        Expanded(
+                          child: AnimatedSwitcher(
+                            duration: ImTokens.animNormal,
+                            switchInCurve: Curves.easeOut,
+                            switchOutCurve: Curves.easeOut,
+                            transitionBuilder: (child, animation) {
+                              return FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: Tween<Offset>(
+                                    begin: const Offset(0, 0.018),
+                                    end: Offset.zero,
+                                  ).animate(animation),
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: KeyedSubtree(
+                              key: ValueKey(selectedIndex),
+                              child: child,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavRail(BuildContext context) {
+    return SizedBox(
+      width: 86,
+      child: GlassPanel(
+        borderRadius: 24,
+        backgroundColor: Colors.white.withValues(alpha: 0.18),
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
+        child: Column(
+          children: [
+            if (floatingActionButton != null) ...[
+              floatingActionButton!,
+              const SizedBox(height: 12),
+            ],
+            for (var i = 0; i < destinations.length; i++) ...[
+              FlatLineIconButton(
+                icon: i == selectedIndex
+                    ? destinations[i].selectedIcon ?? destinations[i].icon
+                    : destinations[i].icon,
+                tooltip: destinations[i].label,
+                label: destinations[i].label,
+                selected: i == selectedIndex,
+                onPressed: () => onDestinationSelected(i),
+              ),
+              const SizedBox(height: 10),
+            ],
+            const Spacer(),
           ],
         ),
       ),
     );
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 导航栏：透明背景 + 白色发光胶囊
-  // ─────────────────────────────────────────────────────────────
-  Widget _buildNavRail(BuildContext context) {
-    return SizedBox(
-      width: 88,
-      child: Column(
-        children: [
-          if (header != null) header!,
-          Expanded(
-            child: NavigationRail(
-              selectedIndex: selectedIndex,
-              onDestinationSelected: onDestinationSelected,
-              labelType: NavigationRailLabelType.all,
-              backgroundColor: Colors.transparent,
-              indicatorColor: Colors.transparent,
-              leading: floatingActionButton,
-              selectedIconTheme: const IconThemeData(
-                color: ImTokens.brandPrimary,
-                size: 24,
-              ),
-              unselectedIconTheme: IconThemeData(
-                color: Colors.blueGrey.shade400,
-                size: 24,
-              ),
-              selectedLabelTextStyle: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: ImTokens.brandPrimary,
-              ),
-              unselectedLabelTextStyle: TextStyle(
-                fontSize: 12,
-                color: Colors.blueGrey.shade400,
-              ),
-              destinations: destinations.map((d) {
-                final isSelected =
-                    destinations.indexOf(d) == selectedIndex;
-                return NavigationRailDestination(
-                  icon: _GlowCapsule(
-                    isSelected: isSelected,
-                    child: Icon(
-                      d.icon,
-                      size: 24,
-                      color: isSelected
-                          ? ImTokens.brandPrimary
-                          : Colors.blueGrey.shade400,
-                    ),
-                  ),
-                  selectedIcon: _GlowCapsule(
-                    isSelected: true,
-                    child: Icon(
-                      d.selectedIcon ?? d.icon,
-                      size: 24,
-                      color: ImTokens.brandPrimary,
-                    ),
-                  ),
-                  label: Text(d.label),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // 移动端：底部导航栏
-  // ─────────────────────────────────────────────────────────────
   Widget _buildMobile(BuildContext context) {
     return Scaffold(
       appBar: header != null
@@ -169,61 +150,33 @@ class ResponsiveScaffold extends StatelessWidget {
               child: header!,
             )
           : null,
-      body: child,
+      body: AppGradientBackground(
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+            child: GlassPanel(
+              borderRadius: 22,
+              child: child,
+            ),
+          ),
+        ),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: onDestinationSelected,
+        indicatorColor: imGlassBrand.withValues(alpha: 0.16),
         destinations: destinations
-            .map((d) => NavigationDestination(
-                  icon: Icon(d.icon),
-                  selectedIcon:
-                      d.selectedIcon != null ? Icon(d.selectedIcon) : null,
-                  label: d.label,
-                ))
+            .map(
+              (d) => NavigationDestination(
+                icon: Icon(d.icon),
+                selectedIcon: Icon(d.selectedIcon ?? d.icon),
+                label: d.label,
+              ),
+            )
             .toList(),
       ),
       floatingActionButton: floatingActionButton,
-    );
-  }
-}
-
-// ═════════════════════════════════════════════════════════════════
-// 纯白发光胶囊 — 选中态悬浮发光效果
-// ═════════════════════════════════════════════════════════════════
-class _GlowCapsule extends StatelessWidget {
-  const _GlowCapsule({
-    required this.isSelected,
-    required this.child,
-  });
-
-  final bool isSelected;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!isSelected) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: child,
-      );
-    }
-
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF764BA2).withOpacity(0.4),
-            blurRadius: 15,
-            spreadRadius: 0,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Center(child: child),
     );
   }
 }
