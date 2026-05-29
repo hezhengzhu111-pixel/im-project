@@ -2021,11 +2021,29 @@ abstract class AppLocalizations {
   /// **'{days} d ago'**
   String timeDaysAgo(Object days);
 
+  /// No description provided for @brandBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'End-to-End Encrypted'**
+  String get brandBadge;
+
+  /// No description provided for @brandTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Secure.\nPrivate.\nInstant.'**
+  String get brandTitle;
+
   /// No description provided for @brandSubtitle.
   ///
   /// In en, this message translates to:
   /// **'End-to-end encrypted instant messaging,\nyour messages are only decrypted on your device.'**
   String get brandSubtitle;
+
+  /// No description provided for @brandFeatureE2eeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'E2EE Enabled'**
+  String get brandFeatureE2eeLabel;
 
   /// No description provided for @brandFeatureE2ee.
   ///
@@ -2033,22 +2051,40 @@ abstract class AppLocalizations {
   /// **'End-to-end encryption'**
   String get brandFeatureE2ee;
 
+  /// No description provided for @brandFeatureRealtimeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Realtime Delivery'**
+  String get brandFeatureRealtimeLabel;
+
   /// No description provided for @brandFeatureRealtime.
   ///
   /// In en, this message translates to:
-  /// **'Realtime sync'**
+  /// **'Instant message delivery'**
   String get brandFeatureRealtime;
+
+  /// No description provided for @brandFeatureDeviceTrustLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Device Trust'**
+  String get brandFeatureDeviceTrustLabel;
 
   /// No description provided for @brandFeatureDeviceTrust.
   ///
   /// In en, this message translates to:
-  /// **'Multi-device secure login'**
+  /// **'Seamless cross-device switching'**
   String get brandFeatureDeviceTrust;
+
+  /// No description provided for @brandFeatureAiLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'AI Assistant Online'**
+  String get brandFeatureAiLabel;
 
   /// No description provided for @brandFeatureAi.
   ///
   /// In en, this message translates to:
-  /// **'AI assistant'**
+  /// **'Smart assistant on standby'**
   String get brandFeatureAi;
 
   /// No description provided for @seoLoginTitle.

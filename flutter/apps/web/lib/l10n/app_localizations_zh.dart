@@ -1016,19 +1016,37 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get brandBadge => '端对端加密';
+
+  @override
+  String get brandTitle => '安全。\n私密。\n即时。';
+
+  @override
   String get brandSubtitle => '端对端加密即时通信系统，\n您的消息仅在设备上解密。';
 
   @override
-  String get brandFeatureE2ee => '端对端加密';
+  String get brandFeatureE2eeLabel => '端对端加密';
 
   @override
-  String get brandFeatureRealtime => '实时消息同步';
+  String get brandFeatureE2ee => '端到端加密保护';
 
   @override
-  String get brandFeatureDeviceTrust => '多设备安全登录';
+  String get brandFeatureRealtimeLabel => '实时消息同步';
 
   @override
-  String get brandFeatureAi => 'AI 助手接入';
+  String get brandFeatureRealtime => '消息即时送达';
+
+  @override
+  String get brandFeatureDeviceTrustLabel => '多设备安全登录';
+
+  @override
+  String get brandFeatureDeviceTrust => '跨设备无缝切换';
+
+  @override
+  String get brandFeatureAiLabel => 'AI 助手在线';
+
+  @override
+  String get brandFeatureAi => '智能助手随时待命';
 
   @override
   String get seoLoginTitle => '登录 - IM';

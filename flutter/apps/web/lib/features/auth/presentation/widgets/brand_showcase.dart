@@ -29,14 +29,14 @@ class BrandShowcase extends StatelessWidget {
                 color: Colors.white.withValues(alpha: 0.2),
               ),
             ),
-            child: const Row(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.lock, size: 16, color: Colors.white),
-                SizedBox(width: 8),
+                const Icon(Icons.lock, size: 16, color: Colors.white),
+                const SizedBox(width: 8),
                 Text(
-                  'End-to-End Encrypted',
-                  style: TextStyle(
+                  loc.brandBadge,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -48,9 +48,9 @@ class BrandShowcase extends StatelessWidget {
           const SizedBox(height: 32),
 
           // 主标题
-          const Text(
-            'Secure.\nPrivate.\nInstant.',
-            style: TextStyle(
+          Text(
+            loc.brandTitle,
+            style: const TextStyle(
               fontSize: 48,
               fontWeight: FontWeight.bold,
               color: Colors.white,
@@ -76,25 +76,25 @@ class BrandShowcase extends StatelessWidget {
           // 功能特性列表
           _buildFeatureItem(
             icon: Icons.lock,
-            label: 'E2EE Enabled',
+            label: loc.brandFeatureE2eeLabel,
             desc: loc.brandFeatureE2ee,
           ),
           const SizedBox(height: 16),
           _buildFeatureItem(
             icon: Icons.speed,
-            label: 'Realtime Delivery',
+            label: loc.brandFeatureRealtimeLabel,
             desc: loc.brandFeatureRealtime,
           ),
           const SizedBox(height: 16),
           _buildFeatureItem(
             icon: Icons.devices,
-            label: 'Device Trust',
+            label: loc.brandFeatureDeviceTrustLabel,
             desc: loc.brandFeatureDeviceTrust,
           ),
           const SizedBox(height: 16),
           _buildFeatureItem(
             icon: Icons.smart_toy,
-            label: 'AI Assistant Online',
+            label: loc.brandFeatureAiLabel,
             desc: loc.brandFeatureAi,
           ),
         ],
