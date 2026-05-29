@@ -51,19 +51,6 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
   /// Input field background color.
   final Color inputBackground;
 
-  static const _lightShadow = [
-    BoxShadow(
-      color: Color(0x0D000000),
-      blurRadius: 24,
-      offset: Offset(0, 8),
-    ),
-    BoxShadow(
-      color: Color(0x05000000),
-      blurRadius: 8,
-      offset: Offset(0, 2),
-    ),
-  ];
-
   static const _darkShadow = [
     BoxShadow(
       color: Color(0x33000000),
@@ -80,16 +67,22 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
   static final light = GlassTheme(
     cardBackground: const Color(0xCCFFFFFF),
     cardBorder: const Color(0x4DFFFFFF),
-    softShadow: _lightShadow,
+    softShadow: [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: 0.03),
+        blurRadius: 20,
+        offset: const Offset(0, 4),
+      ),
+    ],
     pageRadius: 16,
     controlRadius: 10,
     accentGradient: const LinearGradient(
-      colors: [Color(0xFFA7F3D0), Color(0xFFBAE6FD)],
+      colors: [Color(0xFF667eea), Color(0xFF764BA2), Color(0xFF23a6d5), Color(0xFF23d5ab)],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
     segmentedBackground: const Color(0x6BFFFFFF),
-    segmentedActiveBackground: const Color(0xFF22C55E),
+    segmentedActiveBackground: const Color(0xFF764BA2), // brand purple
     dividerColor: const Color(0x1A000000),
     navHoverBackground: const Color(0x0A000000),
     blurIntensity: 12,
@@ -101,8 +94,8 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
     ],
     neumorphicShadow: ImTokens.neumorphicRaised,
     animationDuration: const Duration(milliseconds: 200),
-    navBackground: const Color(0xF0FFFFFF),
-    inputBackground: const Color(0x80FFFFFF),
+    navBackground: Colors.white,
+    inputBackground: const Color(0xFFF5F5F5), // grey.shade100
   );
 
   static final dark = GlassTheme(
