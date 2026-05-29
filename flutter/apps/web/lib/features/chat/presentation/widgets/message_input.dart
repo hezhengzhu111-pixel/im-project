@@ -1,6 +1,9 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import '../../data/file_api.dart';
 import '../../data/file_providers.dart';
@@ -260,20 +263,23 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
+    final glass = Theme.of(context).extension<GlassTheme>()!;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         if (_showMention) _buildMentionDropdown(),
-        Container(
-          padding: const EdgeInsets.all(8.0),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            border: Border(
-              top: BorderSide(
-                  color: Theme.of(context).colorScheme.outlineVariant),
-            ),
-          ),
+        ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Container(
+              padding: const EdgeInsets.all(8.0),
+              decoration: BoxDecoration(
+                color: glass.inputBackground,
+                border: Border(
+                  top: BorderSide(color: glass.dividerColor),
+                ),
+              ),
           child: Row(
             children: [
               const OutboxIndicator(),
@@ -331,6 +337,8 @@ class _MessageInputState extends ConsumerState<MessageInput> {
               ),
             ],
           ),
+          ),
+        ),
         ),
       ],
     );
