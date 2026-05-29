@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_core/core.dart';
+import 'package:im_ui/im_ui.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/features/settings/presentation/widgets/settings_section.dart';
 import 'package:im_web/features/settings/presentation/widgets/api_key_card.dart';
@@ -41,18 +42,18 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
     final theme = Theme.of(context);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(ImTokens.space4),
       children: [
         // Hero
         Padding(
-          padding: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.only(bottom: ImTokens.space3),
           child: Row(
             children: [
               IconButton(
                 onPressed: () => context.pop(),
                 icon: const Icon(Icons.arrow_back_ios_new, size: 18),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: ImTokens.space2),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -80,7 +81,7 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
                     title: loc.aiApiKeys,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(ImTokens.space4),
                         child: Text(
                           loc.aiApiKeysDesc,
                           style: theme.textTheme.bodySmall?.copyWith(
@@ -140,7 +141,7 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
                       ],
                       if (aiState.keys.isEmpty && !_showAddForm)
                         Padding(
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(ImTokens.space4),
                           child: Center(
                             child: Text(
                               loc.aiNoKeys,
@@ -216,7 +217,7 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
               ),
             ),
 
-            const SizedBox(width: 16),
+            const SizedBox(width: ImTokens.space4),
             // Secondary - Auto reply
             SizedBox(
               width: 340,

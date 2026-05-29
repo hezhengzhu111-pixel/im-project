@@ -322,7 +322,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               title: loc.settingsClearCache,
               description: loc.settingsClearCacheDesc,
               showDivider: false,
-              trailing: FilledButton.tonal(
+              trailing: OutlinedButton(
                 onPressed: _confirmClearCache,
                 child: Text(loc.settingsClearCache),
               ),
@@ -355,7 +355,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             SettingsRow(
               title: loc.settingsLogout,
               showDivider: false,
-              trailing: FilledButton.tonal(
+              trailing: OutlinedButton(
                 onPressed: _confirmLogout,
                 child: Text(loc.settingsLogout),
               ),
@@ -386,7 +386,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onPressed: () => Navigator.pop(ctx),
             child: Text(loc.commonCancel),
           ),
-          FilledButton(
+          GradientButton(
             onPressed: () {
               Navigator.pop(ctx);
               ref.read(settingsStateProvider.notifier).clearCache();
@@ -413,7 +413,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onPressed: () => Navigator.pop(ctx),
             child: Text(loc.commonCancel),
           ),
-          FilledButton(
+          GradientButton(
             onPressed: () async {
               Navigator.pop(ctx);
               await ref.read(authStateProvider.notifier).logout();
