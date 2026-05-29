@@ -1,56 +1,45 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
-import 'package:im_web/core/theme/glass_theme.dart';
+import 'package:im_ui/ui.dart';
 
 class SettingsSection extends StatelessWidget {
   const SettingsSection({
     required this.children,
     this.title,
+    this.padding,
     super.key,
   });
 
   final String? title;
   final List<Widget> children;
+  final EdgeInsetsGeometry? padding;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final glass = theme.extension<GlassTheme>()!;
     return Container(
+      width: double.infinity,
+      padding: padding ?? EdgeInsets.all(ImTokens.space5),
       decoration: BoxDecoration(
-        color: glass.cardBackground,
-        borderRadius: BorderRadius.circular(glass.pageRadius),
-        border: Border.all(color: glass.cardBorder),
-        boxShadow: glass.softShadow,
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(ImTokens.radiusXl),
+        boxShadow: const [ImTokens.cardShadow],
       ),
-      clipBehavior: Clip.antiAlias,
       margin: const EdgeInsets.only(bottom: 12),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(glass.pageRadius),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: glass.blurIntensity,
-            sigmaY: glass.blurIntensity,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (title != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                  child: Text(
-                    title!,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ...children,
-            ],
-          ),
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (title != null) ...[
+            Text(
+              title!,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+            SizedBox(height: ImTokens.layoutSectionGap),
+          ],
+          ...children,
+        ],
       ),
     );
   }
@@ -73,7 +62,6 @@ class SettingsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final glass = theme.extension<GlassTheme>()!;
     return Column(
       children: [
         Padding(
@@ -110,7 +98,7 @@ class SettingsRow extends StatelessWidget {
           Divider(
             height: 1,
             thickness: 0.5,
-            color: glass.dividerColor,
+            color: Colors.grey.shade200,
           ),
       ],
     );
