@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:im_ui/im_ui.dart';
 
 class GlassTheme extends ThemeExtension<GlassTheme> {
   const GlassTheme({
@@ -13,6 +14,12 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
     required this.segmentedActiveBackground,
     required this.dividerColor,
     required this.navHoverBackground,
+    required this.blurIntensity,
+    required this.gradientColors,
+    required this.neumorphicShadow,
+    required this.animationDuration,
+    required this.navBackground,
+    required this.inputBackground,
   });
 
   final Color cardBackground;
@@ -25,6 +32,24 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
   final Color segmentedActiveBackground;
   final Color dividerColor;
   final Color navHoverBackground;
+
+  /// Background blur intensity in logical pixels.
+  final double blurIntensity;
+
+  /// Page-level gradient colors (used by GradientBackground).
+  final List<Color> gradientColors;
+
+  /// Neumorphic shadow preset.
+  final List<BoxShadow> neumorphicShadow;
+
+  /// Default animation duration for micro-interactions.
+  final Duration animationDuration;
+
+  /// Navigation rail/bar background color.
+  final Color navBackground;
+
+  /// Input field background color.
+  final Color inputBackground;
 
   static const _lightShadow = [
     BoxShadow(
@@ -67,6 +92,17 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
     segmentedActiveBackground: const Color(0xFF22C55E),
     dividerColor: const Color(0x1A000000),
     navHoverBackground: const Color(0x0A000000),
+    blurIntensity: 12,
+    gradientColors: const [
+      Color(0xFF667eea),
+      Color(0xFF764ba2),
+      Color(0xFF23a6d5),
+      Color(0xFF23d5ab),
+    ],
+    neumorphicShadow: ImTokens.neumorphicRaised,
+    animationDuration: const Duration(milliseconds: 200),
+    navBackground: const Color(0xF0FFFFFF),
+    inputBackground: const Color(0x80FFFFFF),
   );
 
   static final dark = GlassTheme(
@@ -84,6 +120,16 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
     segmentedActiveBackground: const Color(0xFF16A34A),
     dividerColor: const Color(0x1AFFFFFF),
     navHoverBackground: const Color(0x0DFFFFFF),
+    blurIntensity: 16,
+    gradientColors: const [
+      Color(0xFF1e1b4b),
+      Color(0xFF0f172a),
+      Color(0xFF042f2e),
+    ],
+    neumorphicShadow: ImTokens.neumorphicFlat,
+    animationDuration: const Duration(milliseconds: 200),
+    navBackground: const Color(0xE61E1E1E),
+    inputBackground: const Color(0xB31E1E1E),
   );
 
   @override
@@ -98,6 +144,12 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
     Color? segmentedActiveBackground,
     Color? dividerColor,
     Color? navHoverBackground,
+    double? blurIntensity,
+    List<Color>? gradientColors,
+    List<BoxShadow>? neumorphicShadow,
+    Duration? animationDuration,
+    Color? navBackground,
+    Color? inputBackground,
   }) {
     return GlassTheme(
       cardBackground: cardBackground ?? this.cardBackground,
@@ -110,7 +162,18 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
       segmentedActiveBackground: segmentedActiveBackground ?? this.segmentedActiveBackground,
       dividerColor: dividerColor ?? this.dividerColor,
       navHoverBackground: navHoverBackground ?? this.navHoverBackground,
+      blurIntensity: blurIntensity ?? this.blurIntensity,
+      gradientColors: gradientColors ?? this.gradientColors,
+      neumorphicShadow: neumorphicShadow ?? this.neumorphicShadow,
+      animationDuration: animationDuration ?? this.animationDuration,
+      navBackground: navBackground ?? this.navBackground,
+      inputBackground: inputBackground ?? this.inputBackground,
     );
+  }
+
+  static List<Color> _lerpColorList(List<Color> a, List<Color> b, double t) {
+    final len = a.length < b.length ? a.length : b.length;
+    return List.generate(len, (i) => Color.lerp(a[i], b[i], t)!);
   }
 
   @override
@@ -127,6 +190,12 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
       segmentedActiveBackground: Color.lerp(segmentedActiveBackground, other.segmentedActiveBackground, t)!,
       dividerColor: Color.lerp(dividerColor, other.dividerColor, t)!,
       navHoverBackground: Color.lerp(navHoverBackground, other.navHoverBackground, t)!,
+      blurIntensity: lerpDouble(blurIntensity, other.blurIntensity, t)!,
+      gradientColors: _lerpColorList(gradientColors, other.gradientColors, t),
+      neumorphicShadow: BoxShadow.lerpList(neumorphicShadow, other.neumorphicShadow, t) ?? [],
+      animationDuration: t < 0.5 ? animationDuration : other.animationDuration,
+      navBackground: Color.lerp(navBackground, other.navBackground, t)!,
+      inputBackground: Color.lerp(inputBackground, other.inputBackground, t)!,
     );
   }
 }

@@ -1,4 +1,4 @@
-import 'dart:ui';
+import 'package:flutter/material.dart';
 
 // flutter/packages/ui/lib/src/theme/im_tokens.dart
 
@@ -56,6 +56,52 @@ class ImTokens {
   static const double breakpointMobile = 600;
   static const double breakpointTablet = 900;
   static const double breakpointDesktop = 1200;
+
+  // ── Neumorphic Shadows ──
+  static const List<BoxShadow> neumorphicInset = [
+    BoxShadow(
+      color: Color(0xFFd1d1d4),
+      blurRadius: 12,
+      offset: Offset(6, 6),
+    ),
+    BoxShadow(
+      color: Colors.white,
+      blurRadius: 12,
+      offset: Offset(-6, -6),
+    ),
+  ];
+
+  static const List<BoxShadow> neumorphicFlat = [
+    BoxShadow(
+      color: Color(0xFFd1d1d4),
+      blurRadius: 8,
+      offset: Offset(4, 4),
+    ),
+    BoxShadow(
+      color: Colors.white,
+      blurRadius: 8,
+      offset: Offset(-4, -4),
+    ),
+  ];
+
+  static const List<BoxShadow> neumorphicRaised = [
+    BoxShadow(
+      color: Color(0xFFd1d1d4),
+      blurRadius: 16,
+      offset: Offset(8, 8),
+    ),
+    BoxShadow(
+      color: Colors.white,
+      blurRadius: 16,
+      offset: Offset(-8, -8),
+    ),
+  ];
+
+  // ── Animation Durations ──
+  static const Duration animFast = Duration(milliseconds: 150);
+  static const Duration animNormal = Duration(milliseconds: 200);
+  static const Duration animSlow = Duration(milliseconds: 300);
+  static const Duration animDialog = Duration(milliseconds: 250);
 }
 
 /// Semantic color tokens with light/dark variants.
