@@ -46,14 +46,15 @@ class ImTheme {
       cardTheme: CardThemeData(
         elevation: 0,
         color: colors.surface,
+        margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(ImTokens.radiusXl),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFFF5F5F5),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        fillColor: isLight ? const Color(0xFFF5F5F5) : colors.surfaceVariant,
+        contentPadding: const EdgeInsets.symmetric(horizontal: ImTokens.space4, vertical: ImTokens.space3),
         border: OutlineInputBorder(
           borderSide: BorderSide.none,
           borderRadius: BorderRadius.circular(ImTokens.radiusLg),
@@ -63,9 +64,10 @@ class ImTheme {
           borderRadius: BorderRadius.circular(ImTokens.radiusLg),
         ),
         focusedBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: ImTokens.brandPurple, width: 2),
+          borderSide: BorderSide(color: colors.borderFocus, width: 2),
           borderRadius: BorderRadius.circular(ImTokens.radiusLg),
         ),
+        hintStyle: TextStyle(color: colors.textSecondary),
         errorBorder: OutlineInputBorder(
           borderSide: BorderSide(color: colors.error, width: 1),
           borderRadius: BorderRadius.circular(ImTokens.radiusLg),
@@ -135,16 +137,16 @@ class ImTheme {
         space: 1,
       ),
       tabBarTheme: TabBarThemeData(
-        labelColor: ImTokens.brandPurple,
+        labelColor: colors.primary,
         unselectedLabelColor: colors.textSecondary,
         indicatorSize: TabBarIndicatorSize.label,
         indicator: UnderlineTabIndicator(
-          borderSide: BorderSide(color: ImTokens.brandPurple, width: 2),
+          borderSide: BorderSide(color: colors.primary, width: 2),
         ),
         labelStyle: const TextStyle(fontWeight: FontWeight.w600),
       ),
       listTileTheme: ListTileThemeData(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        contentPadding: const EdgeInsets.symmetric(horizontal: ImTokens.space4, vertical: ImTokens.space1),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(ImTokens.radiusMd),
         ),
@@ -153,21 +155,21 @@ class ImTheme {
         backgroundColor: colors.surface,
         indicatorColor: Colors.transparent,
         selectedIconTheme: IconThemeData(
-          color: ImTokens.brandPurple,
+          color: colors.primary,
           size: 24,
         ),
         unselectedIconTheme: IconThemeData(
-          color: Colors.blueGrey.shade400,
+          color: colors.textSecondary,
           size: 24,
         ),
         selectedLabelTextStyle: TextStyle(
           fontSize: ImTokens.textSm,
           fontWeight: FontWeight.w600,
-          color: ImTokens.brandPurple,
+          color: colors.primary,
         ),
         unselectedLabelTextStyle: TextStyle(
           fontSize: ImTokens.textSm,
-          color: Colors.blueGrey.shade400,
+          color: colors.textSecondary,
         ),
       ),
     );
