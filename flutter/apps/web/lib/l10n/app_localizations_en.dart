@@ -1019,7 +1019,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get brandBadge => 'End-to-End Encrypted';
 
   @override
-  String get brandTitle => 'Secure.\nPrivate.\nInstant.';
+  String get brandTitle => 'Secure · Private · Instant';
 
   @override
   String get brandSubtitle => 'End-to-end encrypted instant messaging,\nyour messages are only decrypted on your device.';
