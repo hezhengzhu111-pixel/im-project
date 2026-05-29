@@ -33,6 +33,7 @@ class E2eeManager {
 
   late String _deviceId;
   bool _initialized = false;
+  Future<void>? _initFuture;
 
   // ---------------------------------------------------------------------------
   // Initialization
@@ -40,6 +41,17 @@ class E2eeManager {
 
   /// Initialize stores and set device ID.
   Future<void> init() async {
+    if (_initialized) return;
+    final existingInit = _initFuture;
+    if (existingInit != null) {
+      await existingInit;
+      return;
+    }
+    _initFuture = _doInit();
+    await _initFuture;
+  }
+
+  Future<void> _doInit() async {
     await keyStore.init();
     await sessionStore.init();
     _deviceId = await metaStore.getOrCreateDeviceId();
@@ -55,7 +67,7 @@ class E2eeManager {
   ///   clear old sessions.
   /// - If yes: heartbeat + replenish OTK if < 20.
   Future<String> ensureDeviceRegistered() async {
-    _assertInitialized();
+    await init();
 
     final existingKeys = await keyStore.getKeyMaterial();
 
@@ -149,7 +161,7 @@ class E2eeManager {
   /// -> get remote bundle -> create outbound session via FRB -> save session state
   /// -> generate verify phrase -> save handshake -> send request to server.
   Future<bool> initiateNegotiation(String sessionId, String peerId) async {
-    _assertInitialized();
+    await init();
 
     // Clear old state.
     await _resetNegotiation(sessionId, 'negotiating');
@@ -252,7 +264,7 @@ class E2eeManager {
     String sessionId,
     Map<String, dynamic> requestPayload,
   ) async {
-    _assertInitialized();
+    await init();
 
     final senderDeviceId = requestPayload['senderDeviceId'] as String? ?? '';
     final targetDeviceId = requestPayload['targetDeviceId'] as String? ?? '';
@@ -364,7 +376,7 @@ class E2eeManager {
     required String recipientDeviceId,
     required String plaintext,
   }) async {
-    _assertInitialized();
+    await init();
 
     final envelopeBase64 = await sessionStore.getSession(sessionId);
     if (envelopeBase64 == null) {
@@ -424,7 +436,7 @@ class E2eeManager {
     required String sessionId,
     required Map<String, dynamic> envelope,
   }) async {
-    _assertInitialized();
+    await init();
 
     final senderDeviceId = envelope['sender_device_id'] as String? ?? '';
     final localDeviceId = _deviceId;
@@ -473,7 +485,7 @@ class E2eeManager {
 
   /// Delete session + clear metadata + disable on server.
   Future<void> exitEncryption(String sessionId) async {
-    _assertInitialized();
+    await init();
 
     await sessionStore.deleteSession(sessionId);
     await metaStore.clearSession(sessionId);
@@ -485,9 +497,15 @@ class E2eeManager {
     }
   }
 
+  /// Load server-side pending negotiation requests for the current user.
+  Future<List<E2eeNegotiationEvent>> getPendingNegotiations() async {
+    await init();
+    return api.getPendingNegotiations();
+  }
+
   /// Reject an incoming negotiation and clear local transient state.
   Future<void> rejectNegotiation(String sessionId) async {
-    _assertInitialized();
+    await init();
 
     await _resetNegotiation(sessionId, 'plaintext');
 
@@ -502,12 +520,6 @@ class E2eeManager {
   // ---------------------------------------------------------------------------
   // Internal Helpers
   // ---------------------------------------------------------------------------
-
-  void _assertInitialized() {
-    if (!_initialized) {
-      throw StateError('E2eeManager not initialized. Call init() first.');
-    }
-  }
 
   /// Load key material JSON from IndexedDB.
   Future<Map<String, dynamic>> _getLocalKeyMaterial() async {

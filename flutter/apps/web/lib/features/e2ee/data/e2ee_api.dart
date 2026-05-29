@@ -80,6 +80,28 @@ class E2eeApi {
     );
   }
 
+  /// Get pending E2EE negotiation requests for the current user.
+  Future<List<E2eeNegotiationEvent>> getPendingNegotiations() async {
+    final response = await _httpClient.get<List<E2eeNegotiationEvent>>(
+      E2eeEndpoints.pending,
+      fromJson: (json) => ((json['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(
+            (item) => E2eeNegotiationEvent(
+              sessionId: item['sessionId']?.toString() ?? '',
+              action: E2eeNegotiationAction.request,
+              requesterId: item['requesterId']?.toString() ?? '',
+              requesterName: item['requesterName']?.toString(),
+              targetUserId: item['targetUserId']?.toString(),
+              requestPayloadJson: item['requestPayloadJson']?.toString(),
+            ),
+          )
+          .where((event) => event.sessionId.isNotEmpty)
+          .toList(),
+    );
+    return response.data;
+  }
+
   /// Send device heartbeat for key maintenance.
   Future<void> heartbeat() async {
     await _httpClient.post<void>(
