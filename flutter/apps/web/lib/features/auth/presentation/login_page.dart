@@ -174,22 +174,43 @@ class _LoginPageState extends ConsumerState<LoginPage>
   }
 
   Widget _buildDesktopLayout(AppLocalizations loc) {
-    return Row(
-      children: [
-        const Expanded(child: BrandShowcase()),
-        Expanded(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.all(ImTokens.space6),
-              child: AuthCard(
-                title: loc.loginTitle,
-                subtitle: loc.loginSubtitle,
-                child: _buildForm(loc),
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1200),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          child: Row(
+            children: [
+              // 左侧品牌展示区 — 限制最大宽度防止拉伸
+              Expanded(
+                flex: 5,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 480),
+                  child: const BrandShowcase(),
+                ),
               ),
-            ),
+              const SizedBox(width: 60),
+              // 右侧登录卡片 — 固定宽度，居中对齐
+              Expanded(
+                flex: 4,
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 400),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(vertical: 40),
+                      child: AuthCard(
+                        title: loc.loginTitle,
+                        subtitle: loc.loginSubtitle,
+                        child: _buildForm(loc),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 

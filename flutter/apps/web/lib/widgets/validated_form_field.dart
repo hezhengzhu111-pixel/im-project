@@ -67,14 +67,38 @@ class _ValidatedFormFieldState extends State<ValidatedFormField> {
           obscureText: widget.obscureText ? _obscured : false,
           keyboardType: widget.keyboardType,
           maxLines: widget.obscureText ? 1 : widget.maxLines,
+          style: const TextStyle(fontSize: 15),
           decoration: InputDecoration(
             labelText: widget.label,
-            prefixIcon: widget.prefix ??
-                (widget.icon != null ? Icon(widget.icon) : null),
-            suffixIcon: _buildSuffix(field),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
+            labelStyle: TextStyle(
+              color: Colors.grey.shade500,
+              fontSize: 14,
             ),
+            prefixIcon: widget.prefix ??
+                (widget.icon != null ? Icon(widget.icon, size: 20) : null),
+            prefixIconColor: Colors.grey.shade400,
+            suffixIcon: _buildSuffix(field),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: Theme.of(context).colorScheme.primary,
+                width: 2,
+              ),
+            ),
+            filled: true,
+            fillColor: Colors.white.withValues(alpha: 0.8),
             errorText:
                 field.touched && field.error != null ? field.error : null,
           ),

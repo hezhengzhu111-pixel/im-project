@@ -23,6 +23,7 @@ class _GradientButtonState extends State<GradientButton> {
   @override
   Widget build(BuildContext context) {
     final glass = Theme.of(context).extension<GlassTheme>()!;
+    final theme = Theme.of(context);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -35,18 +36,36 @@ class _GradientButtonState extends State<GradientButton> {
         child: AnimatedContainer(
           duration: glass.animationDuration,
           decoration: BoxDecoration(
-            gradient: glass.accentGradient,
+            // 使用深邃的品牌蓝色渐变，提升视觉焦点
+            gradient: LinearGradient(
+              colors: _isHovered
+                  ? [
+                      theme.colorScheme.primary,
+                      theme.colorScheme.primary.withValues(alpha: 0.85),
+                    ]
+                  : [
+                      theme.colorScheme.primary,
+                      theme.colorScheme.primary.withValues(alpha: 0.9),
+                    ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
             borderRadius: BorderRadius.circular(glass.controlRadius),
             boxShadow: _isHovered
                 ? [
                     BoxShadow(
-                      color: glass.accentGradient.colors.first
-                          .withValues(alpha: 0.4),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.4),
                       blurRadius: 16,
                       offset: const Offset(0, 4),
                     ),
                   ]
-                : [],
+                : [
+                    BoxShadow(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
           ),
           child: ElevatedButton(
             onPressed: widget.isLoading ? null : widget.onPressed,
@@ -56,7 +75,11 @@ class _GradientButtonState extends State<GradientButton> {
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(
                 horizontal: 24,
-                vertical: 14,
+                vertical: 16,
+              ),
+              textStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
               ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(glass.controlRadius),
