@@ -24,11 +24,17 @@ venv/
 # Rust 编译产物
 # ===========================================
 target/
+*.pdb
+*.rlib
+*.lib
 
 # ===========================================
 # 统一编译产物目录
 # ===========================================
 build/
+*.dill
+*.dill.track.dill
+*.cache.dill*
 
 # ===========================================
 # Flutter/Dart 生成文件和缓存
@@ -37,6 +43,9 @@ build/
 .flutter-plugins
 .flutter-plugins-dependencies
 pubspec.lock
+.flutter-plugins-dependencies
+.flutter-plugins
+*.iml
 
 # ===========================================
 # 编译残留
@@ -74,6 +83,7 @@ frontend/apps/mobile/ios/build/
 .vscode/
 .DS_Store
 Thumbs.db
+.cache/
 
 # ===========================================
 # 临时文件
