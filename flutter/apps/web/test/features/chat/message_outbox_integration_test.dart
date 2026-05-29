@@ -100,15 +100,17 @@ class MockMessageApi extends Mock implements MessageApi {
 void main() {
   late MessageOutbox outbox;
   late MockMessageApi mockMessageApi;
+  bool _outboxInitialized = false;
 
   setUp(() {
     mockMessageApi = MockMessageApi();
+    _outboxInitialized = false;
   });
 
   tearDown(() async {
-    if (outbox != null) {
-      await outbox!.clearAll();
-      outbox!.dispose();
+    if (_outboxInitialized) {
+      await outbox.clearAll();
+      outbox.dispose();
     }
   });
 
@@ -118,8 +120,10 @@ void main() {
         messageApi: mockMessageApi,
         idbFactory: idbFactorySembastMemory,
         isOnline: () => false,
+        dbName: 'test_outbox_enqueue_pending',
       );
       await outbox.initialize();
+      _outboxInitialized = true;
 
       final message = await outbox.enqueue(
         sessionKey: 'session-1',
@@ -142,8 +146,10 @@ void main() {
         messageApi: mockMessageApi,
         idbFactory: idbFactorySembastMemory,
         isOnline: () => false,
+        dbName: 'test_outbox_enqueue_multiple',
       );
       await outbox.initialize();
+      _outboxInitialized = true;
 
       await outbox.enqueue(
         sessionKey: 'session-1',
@@ -167,8 +173,10 @@ void main() {
         messageApi: mockMessageApi,
         idbFactory: idbFactorySembastMemory,
         isOnline: () => true,
+        dbName: 'test_outbox_retry_succeeds',
       );
       await outbox.initialize();
+      _outboxInitialized = true;
 
       // Enqueue a message
       await outbox.enqueue(
@@ -208,8 +216,10 @@ void main() {
         messageApi: mockMessageApi,
         idbFactory: idbFactorySembastMemory,
         isOnline: () => true,
+        dbName: 'test_outbox_retry_max_exceeded',
       );
       await outbox.initialize();
+      _outboxInitialized = true;
 
       // Enqueue a message
       await outbox.enqueue(
@@ -238,8 +248,10 @@ void main() {
         messageApi: mockMessageApi,
         idbFactory: idbFactorySembastMemory,
         isOnline: () => true,
+        dbName: 'test_outbox_retry_all_failed',
       );
       await outbox.initialize();
+      _outboxInitialized = true;
 
       // Enqueue a message
       await outbox.enqueue(
@@ -291,8 +303,10 @@ void main() {
         messageApi: mockMessageApi,
         idbFactory: idbFactorySembastMemory,
         isOnline: () => isOnline,
+        dbName: 'test_outbox_network_restoration',
       );
       await outbox.initialize();
+      _outboxInitialized = true;
 
       // Enqueue message while offline
       await outbox.enqueue(
@@ -337,8 +351,10 @@ void main() {
         messageApi: mockMessageApi,
         idbFactory: idbFactorySembastMemory,
         isOnline: () => false,
+        dbName: 'test_outbox_group_offline',
       );
       await outbox.initialize();
+      _outboxInitialized = true;
 
       final message = await outbox.enqueue(
         sessionKey: 'group-1',
@@ -365,8 +381,10 @@ void main() {
         messageApi: mockMessageApi,
         idbFactory: idbFactorySembastMemory,
         isOnline: () => true,
+        dbName: 'test_outbox_group_send',
       );
       await outbox.initialize();
+      _outboxInitialized = true;
 
       await outbox.enqueue(
         sessionKey: 'group-1',
@@ -391,8 +409,10 @@ void main() {
         messageApi: mockMessageApi,
         idbFactory: idbFactorySembastMemory,
         isOnline: () => true,
+        dbName: 'test_outbox_e2ee_send',
       );
       await outbox.initialize();
+      _outboxInitialized = true;
 
       await outbox.enqueue(
         sessionKey: 'session-1',
@@ -418,8 +438,10 @@ void main() {
         messageApi: mockMessageApi,
         idbFactory: idbFactorySembastMemory,
         isOnline: () => true,
+        dbName: 'test_outbox_e2ee_plaintext',
       );
       await outbox.initialize();
+      _outboxInitialized = true;
 
       // Enqueue encrypted message with sensitive plaintext content
       final message = await outbox.enqueue(
@@ -465,8 +487,10 @@ void main() {
         messageApi: mockMessageApi,
         idbFactory: idbFactorySembastMemory,
         isOnline: () => false,
+        dbName: 'test_outbox_e2ee_offline',
       );
       await outbox.initialize();
+      _outboxInitialized = true;
 
       final message = await outbox.enqueue(
         sessionKey: 'session-1',
@@ -491,8 +515,10 @@ void main() {
         messageApi: mockMessageApi,
         idbFactory: idbFactorySembastMemory,
         isOnline: () => false,
+        dbName: 'test_outbox_dedup_client_msg',
       );
       await outbox.initialize();
+      _outboxInitialized = true;
 
       // First enqueue
       final first = await outbox.enqueue(

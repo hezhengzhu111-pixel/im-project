@@ -157,15 +157,16 @@ class MessageOutbox {
     required MessageApi messageApi,
     required IdbFactory idbFactory,
     required bool Function() isOnline,
+    String dbName = 'im_outbox',
   })  : _messageApi = messageApi,
         _idbFactory = idbFactory,
-        _isOnline = isOnline;
+        _isOnline = isOnline,
+        _dbName = dbName;
 
   final MessageApi _messageApi;
   final IdbFactory _idbFactory;
   final bool Function() _isOnline;
-
-  static const _dbName = 'im_outbox';
+  final String _dbName;
   static const _storeName = 'messages';
   static const _dbVersion = 1;
   static const _maxRetries = 5;
