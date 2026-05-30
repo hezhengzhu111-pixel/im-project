@@ -419,6 +419,114 @@ pub(crate) async fn settings(
     }
 }
 
+/// 递归合并 JSON 对象，实现字段级更新
+/// - 如果 base 和 patch 都是对象，递归合并 patch 中的字段到 base
+/// - 否则直接用 patch 替换 base
+fn merge_json(base: &mut Value, patch: Value) {
+    if let (Some(base_obj), Some(patch_obj)) = (base.as_object_mut(), patch.as_object()) {
+        for (key, value) in patch_obj {
+            if let Some(base_value) = base_obj.get_mut(key) {
+                merge_json(base_value, value.clone());
+            } else {
+                base_obj.insert(key.clone(), value.clone());
+            }
+        }
+    } else {
+        *base = patch;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_merge_json_basic() {
+        let mut base = json!({
+            "privacy": {
+                "read_receipt": true,
+                "online_status": true
+            }
+        });
+        let patch = json!({
+            "privacy": {
+                "read_receipt": false
+            }
+        });
+
+        merge_json(&mut base, patch);
+
+        // read_receipt 应该被更新为 false
+        assert_eq!(base["privacy"]["read_receipt"], false);
+        // online_status 应该保持不变
+        assert_eq!(base["privacy"]["online_status"], true);
+    }
+
+    #[test]
+    fn test_merge_json_new_field() {
+        let mut base = json!({
+            "privacy": {
+                "read_receipt": true
+            }
+        });
+        let patch = json!({
+            "privacy": {
+                "online_status": false
+            }
+        });
+
+        merge_json(&mut base, patch);
+
+        // read_receipt 应该保持不变
+        assert_eq!(base["privacy"]["read_receipt"], true);
+        // online_status 应该被添加
+        assert_eq!(base["privacy"]["online_status"], false);
+    }
+
+    #[test]
+    fn test_merge_json_nested() {
+        let mut base = json!({
+            "settings": {
+                "privacy": {
+                    "read_receipt": true,
+                    "online_status": true
+                },
+                "general": {
+                    "language": "zh-CN"
+                }
+            }
+        });
+        let patch = json!({
+            "settings": {
+                "privacy": {
+                    "read_receipt": false
+                }
+            }
+        });
+
+        merge_json(&mut base, patch);
+
+        // privacy.read_receipt 应该被更新
+        assert_eq!(base["settings"]["privacy"]["read_receipt"], false);
+        // privacy.online_status 应该保持不变
+        assert_eq!(base["settings"]["privacy"]["online_status"], true);
+        // general 应该保持不变
+        assert_eq!(base["settings"]["general"]["language"], "zh-CN");
+    }
+
+    #[test]
+    fn test_merge_json_non_object_replacement() {
+        let mut base = json!("old_value");
+        let patch = json!("new_value");
+
+        merge_json(&mut base, patch);
+
+        // 非对象类型应该直接替换
+        assert_eq!(base, "new_value");
+    }
+}
+
 pub(crate) async fn update_settings(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -448,9 +556,13 @@ pub(crate) async fn update_settings(
         None => serde_json::to_value(default_settings()).unwrap(),
     };
 
-    // 更新对应节点
+    // 更新对应节点（使用深度合并，保留其他字段）
     if let Some(obj) = settings_value.as_object_mut() {
-        obj.insert(kind.clone(), payload);
+        if let Some(existing) = obj.get_mut(&kind) {
+            merge_json(existing, payload);
+        } else {
+            obj.insert(kind.clone(), payload);
+        }
     }
 
     // 保存到数据库
