@@ -376,7 +376,7 @@ pub(crate) async fn online_status(
 pub(crate) async fn settings(
     headers: HeaderMap,
     State(state): State<AppState>,
-) -> Result<Json<ApiResponse<Value>>, AppError> {
+) -> Result<Json<ApiResponse<UserSettings>>, AppError> {
     let _identity = identity_from_headers(&headers, &state.config)?;
     Ok(Json(ApiResponse::success(default_settings())))
 }

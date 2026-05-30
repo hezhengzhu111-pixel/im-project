@@ -14,6 +14,29 @@ use serde_json::{json, Value};
 use sqlx::{MySqlPool, Row};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UserSettings {
+    pub(crate) privacy: PrivacySettings,
+    pub(crate) message: MessageSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PrivacySettings {
+    pub(crate) read_receipt: bool,
+    pub(crate) online_status: bool,
+    pub(crate) stranger_add: bool,
+    pub(crate) moments_visible: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MessageSettings {
+    pub(crate) notification: bool,
+    pub(crate) sound: bool,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LoginRequest {
@@ -38,6 +61,10 @@ pub(crate) struct UpdateProfileRequest {
     pub(crate) avatar: Option<String>,
     pub(crate) email: Option<String>,
     pub(crate) phone: Option<String>,
+    pub(crate) gender: Option<i8>,
+    pub(crate) birthday: Option<String>,
+    pub(crate) signature: Option<String>,
+    pub(crate) location: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -152,32 +179,17 @@ pub(crate) fn default_search_type() -> String {
     "username".to_string()
 }
 
-pub(crate) fn default_settings() -> Value {
-    json!({
-        "general": {
-            "language": "zh-CN",
-            "theme": "light",
-            "fontSize": "medium",
-            "autoLogin": true,
-            "minimizeOnStart": false
+pub(crate) fn default_settings() -> UserSettings {
+    UserSettings {
+        privacy: PrivacySettings {
+            read_receipt: true,
+            online_status: true,
+            stranger_add: true,
+            moments_visible: true,
         },
-        "privacy": {
-            "allowStrangerAdd": true,
-            "showOnlineStatus": true,
-            "allowViewMoments": true,
-            "messageReadReceipt": true
+        message: MessageSettings {
+            notification: true,
+            sound: true,
         },
-        "message": {
-            "enableNotification": true,
-            "enableSound": true,
-            "enableVibration": false,
-            "muteGroupMessages": false,
-            "autoDownloadImages": true
-        },
-        "notifications": {
-            "sound": true,
-            "desktop": true,
-            "preview": true
-        }
-    })
+    }
 }
