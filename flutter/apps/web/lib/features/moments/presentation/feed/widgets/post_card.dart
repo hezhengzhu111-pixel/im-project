@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:im_core/core.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:im_web/core/utils/time_formatter.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'media_grid.dart';
@@ -196,8 +197,12 @@ class _PostCardState extends State<PostCard> {
 
   Widget _buildLinkCard(ThemeData theme) {
     return GestureDetector(
-      onTap: () {
-        // TODO: launch URL
+      onTap: () async {
+        final url = widget.post.post.linkUrl!;
+        final uri = Uri.parse(url);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
       },
       child: Container(
         margin: const EdgeInsets.only(top: 12),
