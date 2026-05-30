@@ -25,6 +25,7 @@ abstract class HttpClientPort {
 
   Future<ApiResponse<T>> delete<T>(
     String path, {
+    dynamic body,
     Map<String, dynamic>? queryParameters,
     required T Function(Map<String, dynamic>) fromJson,
   });

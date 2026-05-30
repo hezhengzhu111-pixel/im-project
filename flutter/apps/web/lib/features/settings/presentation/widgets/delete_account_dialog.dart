@@ -107,9 +107,18 @@ class _DeleteAccountDialogState extends ConsumerState<DeleteAccountDialog> {
   Future<void> _handleDelete() async {
     setState(() => _isLoading = true);
     try {
-      await ref
+      final success = await ref
           .read(settingsApiProvider)
-          .deleteAccount(_passwordController.text);
+          .deleteAccount(_passwordController.text.trim());
+
+      if (!success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('删除失败，请检查密码是否正确')),
+          );
+        }
+        return;
+      }
 
       // 清除登录状态
       await ref.read(authStateProvider.notifier).logout();

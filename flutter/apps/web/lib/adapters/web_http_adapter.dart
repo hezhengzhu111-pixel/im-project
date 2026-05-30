@@ -55,11 +55,13 @@ class WebHttpClient implements HttpClientPort {
   @override
   Future<ApiResponse<T>> delete<T>(
     String path, {
+    dynamic body,
     Map<String, dynamic>? queryParameters,
     required T Function(Map<String, dynamic>) fromJson,
   }) async {
     final response = await _dio.delete<Map<String, dynamic>>(
       path,
+      data: body,
       queryParameters: queryParameters,
     );
     return _parseResponse(response, fromJson);

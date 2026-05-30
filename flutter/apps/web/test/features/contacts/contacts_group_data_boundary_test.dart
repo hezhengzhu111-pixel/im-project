@@ -35,6 +35,7 @@ void main() {
 
       http.onDelete = <T>(
         String path, {
+        dynamic body,
         Map<String, dynamic>? queryParameters,
         required T Function(Map<String, dynamic>) fromJson,
       }) async {

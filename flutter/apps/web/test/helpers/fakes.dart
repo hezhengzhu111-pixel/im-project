@@ -58,6 +58,7 @@ class FakeHttpClientPort implements HttpClientPort {
   /// Optional callback for DELETE requests.
   Future<ApiResponse<T>> Function<T>(
     String path, {
+    dynamic body,
     Map<String, dynamic>? queryParameters,
     required T Function(Map<String, dynamic>) fromJson,
   })? onDelete;
@@ -104,13 +105,15 @@ class FakeHttpClientPort implements HttpClientPort {
   @override
   Future<ApiResponse<T>> delete<T>(
     String path, {
+    dynamic body,
     Map<String, dynamic>? queryParameters,
     required T Function(Map<String, dynamic>) fromJson,
   }) async {
-    requests.add(('DELETE', path, null));
+    requests.add(('DELETE', path, body));
     if (onDelete != null) {
       return onDelete!(
         path,
+        body: body,
         queryParameters: queryParameters,
         fromJson: fromJson,
       );
