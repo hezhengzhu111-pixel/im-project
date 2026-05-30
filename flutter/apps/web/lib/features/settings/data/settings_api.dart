@@ -89,11 +89,12 @@ class SettingsApi {
   }
 
   // Account
-  Future<void> deleteAccount(String password) async {
-    await _httpClient.delete<void>(
+  Future<bool> deleteAccount(String password) async {
+    final response = await _httpClient.delete<bool>(
       UserEndpoints.account,
       queryParameters: {'password': password},
-      fromJson: (_) {},
+      fromJson: (json) => json as bool,
     );
+    return response.data;
   }
 }

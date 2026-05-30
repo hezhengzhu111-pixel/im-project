@@ -8,6 +8,7 @@ import 'package:im_web/core/platform/platform_adapter.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'widgets/settings_nav_panel.dart';
+import 'widgets/delete_account_dialog.dart';
 import 'widgets/segmented_control.dart';
 import 'widgets/settings_section.dart';
 
@@ -394,6 +395,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ],
         ),
+        const SizedBox(height: ImTokens.layoutSectionGap),
+        Center(
+          child: TextButton(
+            onPressed: () => showDialog(
+              context: context,
+              builder: (context) => const DeleteAccountDialog(),
+            ),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('删除账号'),
+          ),
+        ),
       ],
     );
   }
@@ -421,6 +435,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: ImTokens.layoutSectionGap),
+        Center(
+          child: TextButton(
+            onPressed: () => showDialog(
+              context: context,
+              builder: (context) => const DeleteAccountDialog(),
+            ),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('删除账号'),
+          ),
         ),
       ],
     );
