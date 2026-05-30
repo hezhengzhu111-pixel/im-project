@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:im_core/core.dart';
 
 class SettingsApi {
@@ -19,6 +20,19 @@ class SettingsApi {
       body: data,
       fromJson: (_) {},
     );
+  }
+
+  // Avatar
+  Future<String> uploadAvatar(Uint8List bytes, String fileName) async {
+    final response = await _httpClient.post<Map<String, dynamic>>(
+      UserEndpoints.avatar,
+      body: {'file': bytes, 'fileName': fileName},
+      fromJson: (json) => json,
+    );
+    return response.data['url'] as String? ??
+        response.data['avatar_url'] as String? ??
+        response.data['data'] as String? ??
+        '';
   }
 
   // Profile

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:im_web/core/di/providers.dart';
 import 'package:im_web/core/forms/form_controller.dart';
 import 'package:im_web/core/forms/form_schema.dart';
@@ -82,7 +83,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         SettingsSection(
           padding: const EdgeInsets.all(ImTokens.space5),
           children: [
-            ProfileHero(user: user, onAvatarTap: () {}),
+            ProfileHero(
+              user: user,
+              onAvatarTap: () => _pickAndUploadAvatar(user),
+            ),
           ],
         ),
         const SizedBox(height: ImTokens.layoutSectionGap),
@@ -384,6 +388,56 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       _birthday =
           user.birthday != null ? DateTime.tryParse(user.birthday!) : null;
     });
+  }
+
+  Future<void> _pickAndUploadAvatar(User currentUser) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+    );
+
+    if (result == null || result.files.isEmpty) return;
+
+    final file = result.files.first;
+    if (file.bytes == null) return;
+
+    final ext = (file.extension ?? '').toLowerCase();
+
+    // 验证文件类型
+    if (!['jpg', 'jpeg', 'png', 'gif'].contains(ext)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('仅支持 jpg、png、gif 格式')),
+      );
+      return;
+    }
+
+    // 验证文件大小（最大 2MB）
+    if (file.size > 2 * 1024 * 1024) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('文件大小不能超过 2MB')),
+      );
+      return;
+    }
+
+    try {
+      final avatarUrl = await ref
+          .read(settingsApiProvider)
+          .uploadAvatar(file.bytes!, file.name);
+      // 更新用户头像
+      await ref.read(profileStateProvider.notifier).updateProfile(
+            UpdateProfileRequest(avatar: avatarUrl),
+          );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('头像更新成功')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('上传失败: $e')),
+      );
+    }
   }
 }
 

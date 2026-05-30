@@ -20,6 +20,7 @@ class UserEndpoints {
   static const account = '/user/account';
   static const settings = '/user/settings';
   static String settingsType(String type) => '/user/settings/$type';
+  static const avatar = '/user/avatar';
 }
 
 class MessageEndpoints {
