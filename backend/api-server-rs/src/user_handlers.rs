@@ -712,6 +712,34 @@ pub(crate) async fn upload_avatar(
             .await
             .map_err(|e| AppError::BadRequest(format!("读取文件内容失败: {}", e)))?;
 
+        // 验证 Magic Bytes（防止伪造文件内容）
+        let magic_valid = match ext.as_str() {
+            "jpg" | "jpeg" => {
+                data.len() >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF
+            }
+            "png" => {
+                data.len() >= 4
+                    && data[0] == 0x89
+                    && data[1] == 0x50
+                    && data[2] == 0x4E
+                    && data[3] == 0x47
+            }
+            "gif" => {
+                data.len() >= 4
+                    && data[0] == 0x47
+                    && data[1] == 0x49
+                    && data[2] == 0x46
+                    && data[3] == 0x38
+            }
+            _ => false,
+        };
+
+        if !magic_valid {
+            return Err(AppError::BadRequest(
+                "文件内容不是有效的图片格式".to_string(),
+            ));
+        }
+
         // 验证文件大小（最大 2MB）
         if data.len() > 2 * 1024 * 1024 {
             return Err(AppError::BadRequest(
