@@ -15,7 +15,6 @@ class MomentsComposerPage extends ConsumerStatefulWidget {
 
 class _MomentsComposerPageState extends ConsumerState<MomentsComposerPage> {
   final _controller = TextEditingController();
-  late final AppLocalizations loc;
 
   @override
   void dispose() {
@@ -28,7 +27,7 @@ class _MomentsComposerPageState extends ConsumerState<MomentsComposerPage> {
     final composer = ref.watch(composerProvider);
     final theme = Theme.of(context);
     final user = ref.watch(authStateProvider).user;
-    loc = AppLocalizations.of(context)!;
+    final loc = AppLocalizations.of(context)!;
 
     return Scaffold(
       appBar: AppBar(
@@ -199,6 +198,7 @@ class _MomentsComposerPageState extends ConsumerState<MomentsComposerPage> {
   Future<void> _handlePublish() async {
     final success = await ref.read(composerProvider.notifier).publish();
     if (success && mounted) {
+      final loc = AppLocalizations.of(context)!;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(loc.momentsPublishSuccess)),
       );
