@@ -82,7 +82,7 @@ class _ImageViewerBodyState extends State<_ImageViewerBody> {
         opacity: _visible ? 1.0 : 0.0,
         duration: const Duration(milliseconds: 200),
         child: Container(
-          color: Colors.black.withOpacity(0.95),
+          color: Colors.black.withValues(alpha: 0.95),
           child: Stack(
             children: [
               PageView.builder(
