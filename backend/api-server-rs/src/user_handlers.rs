@@ -377,8 +377,39 @@ pub(crate) async fn settings(
     headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<UserSettings>>, AppError> {
-    let _identity = identity_from_headers(&headers, &state.config)?;
-    Ok(Json(ApiResponse::success(default_settings())))
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let user_id = identity.user_id;
+
+    // 查询 user_settings 表
+    let json_str: Option<String> = sqlx::query_scalar(
+        "SELECT settings FROM service_user_service_db.user_settings WHERE user_id = ?",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    match json_str {
+        Some(raw) => {
+            let user_settings: UserSettings =
+                serde_json::from_str(&raw).unwrap_or_else(|_| default_settings());
+            Ok(Json(ApiResponse::success(user_settings)))
+        }
+        None => {
+            // 不存在记录时，返回默认设置并创建记录
+            let defaults = default_settings();
+            let raw = serde_json::to_string(&defaults)?;
+
+            sqlx::query(
+                "INSERT INTO service_user_service_db.user_settings (user_id, settings) VALUES (?, ?)",
+            )
+            .bind(user_id)
+            .bind(&raw)
+            .execute(&state.db)
+            .await?;
+
+            Ok(Json(ApiResponse::success(defaults)))
+        }
+    }
 }
 
 pub(crate) async fn update_settings(
