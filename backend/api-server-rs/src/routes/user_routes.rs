@@ -37,4 +37,6 @@ pub fn routes() -> Router<AppState> {
         .route("/api/user/settings", get(user::settings))
         .route("/user/settings/:kind", put(user::update_settings))
         .route("/api/user/settings/:kind", put(user::update_settings))
+        .route("/user/avatar", post(user::upload_avatar))
+        .route("/api/user/avatar", post(user::upload_avatar))
 }

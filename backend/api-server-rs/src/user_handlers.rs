@@ -5,7 +5,7 @@ use crate::auth_api::{self, IssueTokenRequest, TokenPairDto};
 use crate::error::AppError;
 use crate::web::AppState;
 use axum::body::Bytes;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Multipart, Path, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::Json;
 use im_rs_common::api::ApiResponse;
@@ -649,4 +649,104 @@ pub(crate) async fn update_settings(
         .await;
 
     Ok(Json(ApiResponse::success(true)))
+}
+
+pub(crate) async fn upload_avatar(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let user_id = identity.user_id;
+
+    let mut file_data: Option<Vec<u8>> = None;
+    let mut file_ext: Option<String> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("读取文件失败: {}", e)))?
+    {
+        let name = field.name().unwrap_or("").to_string();
+        if name != "avatar" {
+            continue;
+        }
+
+        // 获取文件名和扩展名
+        let filename = field.file_name().unwrap_or("unknown").to_string();
+
+        let ext = filename
+            .rsplit('.')
+            .next()
+            .unwrap_or("jpg")
+            .to_lowercase();
+
+        // 验证文件类型
+        let allowed_exts = ["jpg", "jpeg", "png", "gif"];
+        if !allowed_exts.contains(&ext.as_str()) {
+            return Err(AppError::BadRequest(
+                "不支持的文件类型（仅支持 jpg、png、gif）".to_string(),
+            ));
+        }
+
+        // 读取文件数据
+        let data = field
+            .bytes()
+            .await
+            .map_err(|e| AppError::BadRequest(format!("读取文件内容失败: {}", e)))?;
+
+        // 验证文件大小（最大 2MB）
+        if data.len() > 2 * 1024 * 1024 {
+            return Err(AppError::BadRequest(
+                "文件大小超过限制（最大 2MB）".to_string(),
+            ));
+        }
+
+        if data.is_empty() {
+            return Err(AppError::BadRequest("文件为空".to_string()));
+        }
+
+        file_data = Some(data.to_vec());
+        file_ext = Some(ext);
+    }
+
+    let data = file_data.ok_or_else(|| AppError::BadRequest("未找到 avatar 文件".to_string()))?;
+    let ext = file_ext.unwrap_or_else(|| "jpg".to_string());
+
+    // 获取当前头像路径（用于删除旧文件）
+    let old_avatar = sqlx::query_scalar::<_, Option<String>>(
+        "SELECT avatar FROM service_user_service_db.users WHERE id = ?",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    // 生成新文件名
+    let timestamp = chrono::Utc::now().timestamp();
+    let new_filename = format!("{}_{}.{}", user_id, timestamp, ext);
+    let upload_dir = std::path::Path::new("uploads/avatars");
+    std::fs::create_dir_all(upload_dir)?;
+
+    let file_path = upload_dir.join(&new_filename);
+    std::fs::write(&file_path, &data)?;
+
+    // 删除旧头像文件
+    if let Some(Some(old_path)) = old_avatar {
+        let old_file = std::path::Path::new(&old_path);
+        if old_file.exists() {
+            let _ = std::fs::remove_file(old_file);
+        }
+    }
+
+    // 更新数据库
+    let avatar_url = format!("/uploads/avatars/{}", new_filename);
+    sqlx::query("UPDATE service_user_service_db.users SET avatar = ? WHERE id = ?")
+        .bind(&avatar_url)
+        .bind(user_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "avatar_url": avatar_url
+    }))))
 }
