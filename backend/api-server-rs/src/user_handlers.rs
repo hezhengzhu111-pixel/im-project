@@ -134,16 +134,26 @@ pub(crate) async fn update_profile(
 
     // 验证昵称长度
     if let Some(ref nickname) = payload.nickname {
-        if nickname.len() > 20 {
+        if nickname.chars().count() > 20 {
             return Err(AppError::BadRequest("昵称长度不能超过 20 个字符".to_string()));
         }
     }
 
     // 验证签名长度
     if let Some(ref signature) = payload.signature {
-        if signature.len() > 200 {
+        if signature.chars().count() > 200 {
             return Err(AppError::BadRequest("个性签名长度不能超过 200 个字符".to_string()));
         }
+    }
+
+    // 验证邮箱格式
+    if let Some(ref email) = payload.email {
+        validate_email(email)?;
+    }
+
+    // 验证手机号格式
+    if let Some(ref phone) = payload.phone {
+        validate_phone(phone)?;
     }
 
     // 动态构建 UPDATE 语句
