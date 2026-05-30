@@ -381,6 +381,10 @@ class FakeAuthRepository implements AuthRepository {
   /// Value returned by [getRefreshToken].
   String? refreshTokenValue;
 
+  AuthSession? restoreSessionResponse;
+  Exception? restoreSessionError;
+  int restoreSessionCallCount = 0;
+
   @override
   Future<UserAuthResponse> login(LoginRequest request) async {
     loginCallCount++;
@@ -398,6 +402,53 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<AuthSession> restoreSession() async {
+    restoreSessionCallCount++;
+    if (restoreSessionError != null) throw restoreSessionError!;
+    if (restoreSessionResponse != null) return restoreSessionResponse!;
+
+    isAuthenticatedCallCount++;
+    if (isAuthenticatedError != null) throw isAuthenticatedError!;
+
+    if (isAuthenticatedValue) {
+      getProfileCallCount++;
+      if (getProfileError != null) throw getProfileError!;
+      if (profileResponse == null) throw Exception('No profile configured');
+      final user = profileResponse!;
+      return AuthSession(
+        currentUser: user,
+        isAuthenticated: true,
+        authReady: true,
+        permissions: user.permissions ?? const [],
+      );
+    }
+
+    if (refreshTokenError != null) {
+      return const AuthSession(
+        currentUser: null,
+        isAuthenticated: false,
+        authReady: true,
+      );
+    }
+
+    if (refreshTokenResponse != null && profileResponse != null) {
+      getProfileCallCount++;
+      final user = profileResponse!;
+      return AuthSession(
+        currentUser: user,
+        isAuthenticated: true,
+        authReady: true,
+        permissions: user.permissions ?? const [],
+      );
+    }
+
+    return const AuthSession(
+      currentUser: null,
+      isAuthenticated: false,
+      authReady: true,
+    );
+  }
+
   Future<User> getProfile() async {
     getProfileCallCount++;
     if (getProfileError != null) throw getProfileError!;
@@ -410,20 +461,16 @@ class FakeAuthRepository implements AuthRepository {
     logoutCallCount++;
   }
 
-  @override
   Future<bool> isAuthenticated() async {
     isAuthenticatedCallCount++;
     if (isAuthenticatedError != null) throw isAuthenticatedError!;
     return isAuthenticatedValue;
   }
 
-  @override
   Future<String?> getToken() async => tokenValue;
 
-  @override
   Future<String?> getRefreshToken() async => refreshTokenValue;
 
-  @override
   Future<UserAuthResponse> refreshToken() async {
     if (refreshTokenError != null) throw refreshTokenError!;
     return refreshTokenResponse ?? const UserAuthResponse(success: true);

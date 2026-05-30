@@ -5,7 +5,6 @@ use crate::web::AppState;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::Json;
-use base64::Engine;
 use im_rs_common::api::ApiResponse;
 use serde_json::Value;
 use sqlx::Row;

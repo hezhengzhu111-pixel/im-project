@@ -537,7 +537,7 @@ fn ratchet_stress_out_of_order_1000() -> Result<(), E2eeError> {
 
     // Deliver in reverse order — worst case for skipped-key store
     for i in (0..n).rev() {
-        let (ref header, ref ct) = encrypted.get(i).ok_or(E2eeError::EncryptionFailed)?;
+        let (header, ct) = encrypted.get(i).ok_or(E2eeError::EncryptionFailed)?;
         let expected = format!("stress-msg-{}", i);
         assert_eq!(ratchet_decrypt(&mut bob, header, ct)?, expected.as_bytes());
     }

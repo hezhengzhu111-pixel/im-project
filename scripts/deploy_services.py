@@ -25,11 +25,11 @@ SERVICE_ALIASES = {
     "im": "im-server",
     "im-server": "im-server",
     "frontend": "im-frontend",
-    "ai": "im-spring-ai",
-    "spring-ai": "im-spring-ai",
+    # "ai": "im-spring-ai",          # 暂时禁用
+    # "spring-ai": "im-spring-ai",   # 暂时禁用
 }
 
-APP_SERVICES = ["im-server", "im-api-server", "im-frontend", "im-spring-ai"]
+APP_SERVICES = ["im-server", "im-api-server", "im-frontend"]  # im-spring-ai 暂时移除
 
 
 def _hot_urls(host_prefix: str, env_key: str, password: str) -> str:

@@ -167,6 +167,11 @@ class _FakeAuthNotifier extends StateNotifier<AuthState>
 
   @override
   bool hasAnyPermission(List<String> permissions) => false;
+
+  @override
+  void updateUser(User user) {
+    state = state.copyWith(user: user);
+  }
 }
 
 class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>

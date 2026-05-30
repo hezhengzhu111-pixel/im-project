@@ -24,7 +24,7 @@ class MomentsRepository {
     List<String>? fileNames,
     List<bool>? isVideoList,
   }) async {
-    final post = await _api.createPost(CreatePostRequest(
+    final postId = await _api.createPost(CreatePostRequest(
       content: content,
       visibility: visibility,
       location: location,
@@ -33,9 +33,8 @@ class MomentsRepository {
     if (fileBytes != null && fileBytes.isNotEmpty) {
       final mediaItems = <MediaItem>[];
       for (var i = 0; i < fileBytes.length; i++) {
-        final isVideo = isVideoList != null &&
-            i < isVideoList.length &&
-            isVideoList[i];
+        final isVideo =
+            isVideoList != null && i < isVideoList.length && isVideoList[i];
         final uploadResult = isVideo
             ? await _fileApi.uploadVideo(
                 fileBytes[i], fileNames?[i] ?? 'video_$i')
@@ -47,10 +46,10 @@ class MomentsRepository {
           sortOrder: i,
         ));
       }
-      await _api.addMedia(post.id, mediaItems);
+      await _api.addMedia(postId, mediaItems);
     }
 
-    return _api.getPost(post.id);
+    return _api.getPost(postId);
   }
 
   Future<void> deletePost(String postId) {
@@ -74,8 +73,7 @@ class MomentsRepository {
         ));
   }
 
-  Future<void> deleteComment(String commentId) =>
-      _api.deleteComment(commentId);
+  Future<void> deleteComment(String commentId) => _api.deleteComment(commentId);
 
   Future<List<MomentNotification>> getNotifications() =>
       _api.getNotifications();

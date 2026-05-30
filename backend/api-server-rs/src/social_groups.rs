@@ -3,24 +3,20 @@ use crate::access_control;
 use crate::auth::identity_from_headers;
 use crate::auth_api;
 use crate::error::AppError;
-use crate::id_resolver::{resolve_active_group_id, resolve_active_user_id};
-use crate::local_cache;
+use crate::id_resolver::resolve_active_user_id;
 use crate::web::AppState;
 use axum::body::Bytes;
 use axum::extract::{OriginalUri, Path, Query, State};
 use axum::http::HeaderMap;
 use axum::Json;
-use chrono::NaiveDateTime;
 use im_rs_common::api::ApiResponse;
-use im_rs_common::event::{ImEvent, ImEventType};
-use im_rs_common::{ids, keys, time};
+use im_rs_common::{ids, keys};
 use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
-use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-use sqlx::{MySqlPool, Row};
-use std::collections::{BTreeSet, HashMap};
+use sqlx::MySqlPool;
 
+#[allow(dead_code)]
 const FRIEND_CACHE_TTL_SECONDS: u64 = 5 * 60;
 
 pub(crate) async fn create_group(

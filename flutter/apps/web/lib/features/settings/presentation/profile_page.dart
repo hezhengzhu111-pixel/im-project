@@ -402,11 +402,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
     final ext = (file.extension ?? '').toLowerCase();
 
+    final loc = AppLocalizations.of(context)!;
+
     // 验证文件类型
     if (!['jpg', 'jpeg', 'png', 'gif'].contains(ext)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('仅支持 jpg、png、gif 格式')),
+        SnackBar(content: Text(loc.avatarUnsupportedFormat)),
       );
       return;
     }
@@ -415,7 +417,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     if (file.size > 2 * 1024 * 1024) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('文件大小不能超过 2MB')),
+        SnackBar(content: Text(loc.avatarSizeExceeded)),
       );
       return;
     }
@@ -428,14 +430,18 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       await ref.read(profileStateProvider.notifier).updateProfile(
             UpdateProfileRequest(avatar: avatarUrl),
           );
+      // 同步更新 authState
+      ref.read(authStateProvider.notifier).updateUser(
+            currentUser.copyWith(avatar: avatarUrl),
+          );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('头像更新成功')),
+        SnackBar(content: Text(loc.avatarUpdateSuccess)),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('上传失败: $e')),
+        SnackBar(content: Text(loc.avatarUploadFailed(e.toString()))),
       );
     }
   }

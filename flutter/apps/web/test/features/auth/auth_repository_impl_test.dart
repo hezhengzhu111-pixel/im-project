@@ -6,34 +6,27 @@ import '../../helpers/fakes.dart';
 
 void main() {
   late FakeHttpClientPort httpClient;
-  late FakeSecureStoragePort secureStorage;
   late AuthRepositoryImpl repository;
 
   setUp(() {
     httpClient = FakeHttpClientPort();
-    secureStorage = FakeSecureStoragePort();
-    repository = AuthRepositoryImpl(
-      httpClient: httpClient,
-      secureStorage: secureStorage,
-    );
+    repository = AuthRepositoryImpl(httpClient: httpClient);
   });
 
   group('AuthRepositoryImpl', () {
-    test('login persists access and refresh tokens from backend aliases',
-        () async {
+    test('login uses user login endpoint and returns response', () async {
       httpClient.onPost = <T>(
         String path, {
         dynamic body,
         required T Function(Map<String, dynamic>) fromJson,
       }) async {
         expect(path, UserEndpoints.login);
+        expect(body, {'username': 'alice', 'password': 'secret'});
         return ApiResponse<T>(
           code: 200,
           message: 'ok',
           data: fromJson({
             'success': true,
-            'access_token': 'access-token',
-            'refresh_token': 'refresh-token',
             'user': {'id': 'u1', 'username': 'alice'},
           }),
         );
@@ -43,50 +36,110 @@ void main() {
         const LoginRequest(username: 'alice', password: 'secret'),
       );
 
-      expect(response.accessToken, 'access-token');
-      expect(response.token, 'access-token');
-      expect(await secureStorage.read('access_token'), 'access-token');
-      expect(await secureStorage.read('refresh_token'), 'refresh-token');
+      expect(response.success, isTrue);
+      expect(response.user?.id, 'u1');
     });
 
-    test('isAuthenticated accepts a persisted refresh token after page reload',
+    test('restoreSession builds auth state from auth parse cookie session',
         () async {
-      await secureStorage.write('refresh_token', 'refresh-token');
-
-      expect(await repository.isAuthenticated(), isTrue);
-    });
-
-    test('refreshToken uses refresh endpoint and updates rotated tokens',
-        () async {
-      await secureStorage.write('refresh_token', 'old-refresh-token');
       httpClient.onPost = <T>(
         String path, {
         dynamic body,
         required T Function(Map<String, dynamic>) fromJson,
       }) async {
-        expect(path, AuthEndpoints.refresh);
-        expect(body, {'refreshToken': 'old-refresh-token'});
+        expect(path, AuthEndpoints.parse);
+        expect(body, {'allowExpired': true});
         return ApiResponse<T>(
           code: 200,
           message: 'ok',
           data: fromJson({
-            'authenticated': true,
-            'accessToken': 'new-access-token',
-            'refreshToken': 'new-refresh-token',
+            'valid': true,
+            'expired': false,
+            'userId': '1',
+            'username': 'alice',
+            'permissions': ['chat:read'],
           }),
         );
       };
 
-      final response = await repository.refreshToken();
+      final session = await repository.restoreSession();
 
-      expect(response.success, isTrue);
-      expect(await secureStorage.read('access_token'), 'new-access-token');
-      expect(await secureStorage.read('refresh_token'), 'new-refresh-token');
+      expect(session.isAuthenticated, isTrue);
+      expect(session.currentUser?.id, '1');
+      expect(session.currentUser?.username, 'alice');
+      expect(session.permissions, ['chat:read']);
     });
 
-    test('logout clears both access and refresh tokens', () async {
-      await secureStorage.write('access_token', 'access-token');
-      await secureStorage.write('refresh_token', 'refresh-token');
+    test('restoreSession refreshes with cookie when parse is invalid',
+        () async {
+      var parseCalls = 0;
+      httpClient.onPost = <T>(
+        String path, {
+        dynamic body,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        if (path == AuthEndpoints.refresh) {
+          expect(body, const <String, dynamic>{});
+          return ApiResponse<T>(
+            code: 200,
+            message: 'ok',
+            data: fromJson({'success': true, 'authenticated': true}),
+          );
+        }
+
+        expect(path, AuthEndpoints.parse);
+        parseCalls++;
+        return ApiResponse<T>(
+          code: 200,
+          message: 'ok',
+          data: fromJson(parseCalls == 1
+              ? {'valid': false, 'expired': true}
+              : {
+                  'valid': true,
+                  'expired': false,
+                  'userId': '1',
+                  'username': 'alice',
+                }),
+        );
+      };
+
+      final session = await repository.restoreSession();
+
+      expect(parseCalls, 2);
+      expect(session.isAuthenticated, isTrue);
+      expect(session.currentUser?.username, 'alice');
+      expect(httpClient.requests.map((request) => request.$2), [
+        AuthEndpoints.parse,
+        AuthEndpoints.refresh,
+        AuthEndpoints.parse,
+      ]);
+    });
+
+    test(
+        'restoreSession returns unauthenticated when cookie refresh is invalid',
+        () async {
+      httpClient.onPost = <T>(
+        String path, {
+        dynamic body,
+        required T Function(Map<String, dynamic>) fromJson,
+      }) async {
+        if (path == AuthEndpoints.refresh) {
+          throw Exception('401 unauthorized');
+        }
+        return ApiResponse<T>(
+          code: 200,
+          message: 'ok',
+          data: fromJson({'valid': false, 'expired': false}),
+        );
+      };
+
+      final session = await repository.restoreSession();
+
+      expect(session.isAuthenticated, isFalse);
+      expect(session.currentUser, isNull);
+    });
+
+    test('logout calls logout endpoint', () async {
       httpClient.onPost = <T>(
         String path, {
         dynamic body,
@@ -101,9 +154,6 @@ void main() {
       };
 
       await repository.logout();
-
-      expect(await secureStorage.read('access_token'), isNull);
-      expect(await secureStorage.read('refresh_token'), isNull);
     });
   });
 }

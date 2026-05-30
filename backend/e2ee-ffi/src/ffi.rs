@@ -56,12 +56,12 @@ fn store_error(msg: String) {
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn session_manager_new() -> *mut SessionManager {
     Box::into_raw(Box::new(SessionManager::new()))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn session_manager_free(ptr: *mut SessionManager) {
     if ptr.is_null() {
         return;
@@ -75,7 +75,7 @@ pub extern "C" fn session_manager_free(ptr: *mut SessionManager) {
 // generate_pre_key_bundle
 // ---------------------------------------------------------------------------
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn session_manager_generate_pre_key_bundle(
     ptr: *const SessionManager,
     signed_pre_key_id: u32,
@@ -93,7 +93,7 @@ pub extern "C" fn session_manager_generate_pre_key_bundle(
 // create_outbound_session
 // ---------------------------------------------------------------------------
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn session_manager_create_outbound_session(
     ptr: *const SessionManager,
     session_id: *const c_char,
@@ -132,7 +132,7 @@ pub extern "C" fn session_manager_create_outbound_session(
 // create_inbound_session
 // ---------------------------------------------------------------------------
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn session_manager_create_inbound_session(
     ptr: *const SessionManager,
     session_id: *const c_char,
@@ -179,7 +179,7 @@ pub extern "C" fn session_manager_create_inbound_session(
 // encrypt
 // ---------------------------------------------------------------------------
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn session_manager_encrypt(
     ptr: *const SessionManager,
     session_id: *const c_char,
@@ -212,7 +212,7 @@ pub extern "C" fn session_manager_encrypt(
 // decrypt
 // ---------------------------------------------------------------------------
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn session_manager_decrypt(
     ptr: *const SessionManager,
     session_id: *const c_char,
@@ -245,7 +245,7 @@ pub extern "C" fn session_manager_decrypt(
 // export_session
 // ---------------------------------------------------------------------------
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn session_manager_export_session(
     ptr: *const SessionManager,
     session_id: *const c_char,
@@ -275,7 +275,7 @@ pub extern "C" fn session_manager_export_session(
 // restore_session
 // ---------------------------------------------------------------------------
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn session_manager_restore_session(
     ptr: *const SessionManager,
     session_id: *const c_char,
@@ -299,7 +299,7 @@ pub extern "C" fn session_manager_restore_session(
 // remove_session
 // ---------------------------------------------------------------------------
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn session_manager_remove_session(
     ptr: *const SessionManager,
     session_id: *const c_char,
@@ -313,7 +313,7 @@ pub extern "C" fn session_manager_remove_session(
 // Error retrieval
 // ---------------------------------------------------------------------------
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn session_manager_last_error(
     _ptr: *const SessionManager,
 ) -> *mut c_char {
@@ -330,7 +330,7 @@ pub extern "C" fn session_manager_last_error(
 // Memory management
 // ---------------------------------------------------------------------------
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn free_rust_string(ptr: *mut c_char) {
     if ptr.is_null() {
         return;
@@ -340,7 +340,7 @@ pub extern "C" fn free_rust_string(ptr: *mut c_char) {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn free_rust_buffer(ptr: *mut u8, len: u32) {
     if ptr.is_null() {
         return;

@@ -5,7 +5,6 @@ use crate::web::AppState;
 use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::Json;
-use base64::Engine;
 use im_rs_common::api::ApiResponse;
 use sqlx::Row;
 use std::collections::HashMap;
@@ -240,7 +239,7 @@ pub(crate) async fn get_bundle(
     // 唯一键冲突则不消费任何 pre-key，回滚后重读已有 claim。
     // 外层循环处理 stale claim：当已有 claim 引用的 OTK 已被对方消费后，
     // 删除旧 claim 并重试一次以创建新 claim。
-    for attempt in 0..2 {
+    for _attempt in 0..2 {
         let mut tx = state.db.begin().await?;
 
         match sqlx::query(

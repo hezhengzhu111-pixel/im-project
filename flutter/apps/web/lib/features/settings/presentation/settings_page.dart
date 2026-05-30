@@ -312,10 +312,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ),
         SettingsRow(
           title: loc.settingsInsecureVoice,
-          description: loc.settingsInsecureVoiceDesc,
+          description: '即将推出',
           trailing: Switch(
             value: false,
-            onChanged: (v) {},
+            onChanged: null,
           ),
         ),
       ],
@@ -574,12 +574,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
           PrimarySolidButton(
             label: loc.commonConfirm,
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
-              ref.read(settingsStateProvider.notifier).clearCache();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(loc.settingsCacheCleared)),
-              );
+              await ref.read(settingsStateProvider.notifier).clearCache();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(loc.settingsCacheCleared)),
+                );
+              }
             },
           ),
         ],

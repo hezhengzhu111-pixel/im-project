@@ -62,8 +62,8 @@ class SettingsNotifier extends StateNotifier<UserSettings?> {
       // 注意：IndexedDB 清理需要根据实际使用的数据库名称调整
       // await IndexedDBFactory.instance.deleteDatabase('im_app_cache');
 
-      // 触发 UI 刷新
-      state = state;
+      // 清除后重新从服务器加载设置，触发 UI 刷新
+      await loadSettings();
     } catch (e) {
       // 静默处理错误，不中断用户操作
       debugPrint('Clear cache failed: $e');

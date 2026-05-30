@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:im_core/core.dart';
 
 /// Stores E2EE ephemeral metadata in SecureStorage.
@@ -76,10 +78,17 @@ class E2eeMetaStore {
   }
 
   String _generateUuid() {
-    final now = DateTime.now().microsecondsSinceEpoch;
-    final random = (now * 1000 + (now % 1000)).toRadixString(16);
-    return '${random.substring(0, 8)}-${random.substring(8, 12)}-'
-        '${random.substring(12, 16)}-${random.substring(16, 20)}-'
-        '${random.substring(20, 32)}';
+    final rng = Random.secure();
+    final bytes = List<int>.generate(16, (_) => rng.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    String hex(int value) => value.toRadixString(16).padLeft(2, '0');
+    final parts = bytes.map(hex).toList();
+    return '${parts.sublist(0, 4).join()}-'
+        '${parts.sublist(4, 6).join()}-'
+        '${parts.sublist(6, 8).join()}-'
+        '${parts.sublist(8, 10).join()}-'
+        '${parts.sublist(10, 16).join()}';
   }
 }

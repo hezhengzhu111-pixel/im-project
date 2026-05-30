@@ -1,20 +1,18 @@
-use crate::auth::identity_from_headers;
-use crate::error::AppError;
-use crate::web::AppState;
-use axum::extract::State;
-use axum::http::HeaderMap;
-use axum::Json;
-use im_rs_common::api::ApiResponse;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use sqlx::{MySqlPool, Row};
 
+#[allow(dead_code)]
 const DEFAULT_MESSAGES_CHANNEL: &str = "im-messages";
+#[allow(dead_code)]
 const DEFAULT_FRIEND_EVENTS_CHANNEL: &str = "im-social";
+#[allow(dead_code)]
 const DEFAULT_SYSTEM_CHANNEL: &str = "im-system";
+#[allow(dead_code)]
 const MAX_DEVICE_ID_LEN: usize = 128;
+#[allow(dead_code)]
 const MAX_TOKEN_LEN: usize = 2048;
+#[allow(dead_code)]
 const MAX_SIMPLE_FIELD_LEN: usize = 128;
+#[allow(dead_code)]
 const MAX_MUTED_CONVERSATIONS: usize = 1_024;
 
 #[derive(Debug, Deserialize)]

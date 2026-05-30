@@ -8,7 +8,7 @@ use im_rs_common::{keys, time};
 use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
 use serde_json;
-use sqlx::{MySqlPool, Row};
+use sqlx::MySqlPool;
 
 /// 标记会话为已读。
 ///

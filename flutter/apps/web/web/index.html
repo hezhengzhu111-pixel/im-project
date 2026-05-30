@@ -171,24 +171,19 @@
       }
     }, 15000);
 
-    // Register service worker
+    // Flutter Web is served as a live IM client. Do not keep an app-shell
+    // service worker because stale main.dart.js can reference removed chunks.
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', async () => {
         try {
-          const registration = await navigator.serviceWorker.register('/service_worker.js');
-          console.log('SW registered:', registration.scope);
-
-          // Listen for updates
-          registration.addEventListener('updatefound', () => {
-            const newWorker = registration.installing;
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'activated') {
-                console.log('New service worker activated');
-              }
-            });
-          });
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map((registration) => registration.unregister()));
+          if ('caches' in window) {
+            const names = await caches.keys();
+            await Promise.all(names.map((name) => caches.delete(name)));
+          }
         } catch (error) {
-          console.log('SW registration failed:', error);
+          console.log('SW cleanup failed:', error);
         }
       });
     }

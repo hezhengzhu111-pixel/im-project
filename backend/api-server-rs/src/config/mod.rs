@@ -1,7 +1,6 @@
 pub mod config_loader;
 pub(crate) use config_loader::*;
 
-use std::env;
 use std::path::PathBuf;
 
 #[derive(Clone, Debug)]

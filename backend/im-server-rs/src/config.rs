@@ -329,27 +329,37 @@ mod tests {
     fn is_local_dev_or_test_detection() {
         // Only test positive cases to avoid env var race conditions with parallel threads.
         // Unset → local (default)
-        env::remove_var("APP_ENV");
-        env::remove_var("IM_ENV");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { env::remove_var("APP_ENV") };
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { env::remove_var("IM_ENV") };
         assert!(is_local_dev_or_test());
 
         // Explicit local/dev/test values
-        env::set_var("APP_ENV", "dev");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { env::set_var("APP_ENV", "dev") };
         assert!(is_local_dev_or_test());
-        env::set_var("APP_ENV", "test");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { env::set_var("APP_ENV", "test") };
         assert!(is_local_dev_or_test());
-        env::set_var("APP_ENV", "local");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { env::set_var("APP_ENV", "local") };
         assert!(is_local_dev_or_test());
 
         // IM_ENV fallback
-        env::remove_var("APP_ENV");
-        env::set_var("IM_ENV", "dev");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { env::remove_var("APP_ENV") };
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { env::set_var("IM_ENV", "dev") };
         assert!(is_local_dev_or_test());
-        env::set_var("IM_ENV", "test");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { env::set_var("IM_ENV", "test") };
         assert!(is_local_dev_or_test());
 
         // Restore to safe state
-        env::remove_var("APP_ENV");
-        env::remove_var("IM_ENV");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { env::remove_var("APP_ENV") };
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { env::remove_var("IM_ENV") };
     }
 }

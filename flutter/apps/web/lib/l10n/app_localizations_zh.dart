@@ -1,3 +1,5 @@
+// ignore: unused_import
+import 'package:intl/intl.dart' as intl;
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1206,4 +1208,18 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get joinGroupTooltip => '加入群聊';
+
+  @override
+  String get avatarUnsupportedFormat => '仅支持 jpg、png、gif 格式';
+
+  @override
+  String get avatarSizeExceeded => '文件大小不能超过 2MB';
+
+  @override
+  String get avatarUpdateSuccess => '头像更新成功';
+
+  @override
+  String avatarUploadFailed(Object error) {
+    return '上传失败：$error';
+  }
 }

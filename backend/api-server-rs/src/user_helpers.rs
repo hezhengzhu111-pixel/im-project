@@ -1,17 +1,14 @@
 use super::*;
-use crate::auth::identity_from_headers;
 use crate::auth_api::{self, IssueTokenRequest, TokenPairDto};
 use crate::error::AppError;
 use crate::web::AppState;
 use axum::body::Bytes;
-use axum::extract::{Path, Query, State};
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::http::header;
 use axum::Json;
 use im_rs_common::api::ApiResponse;
-use im_rs_common::{ids, time};
 use redis::AsyncCommands;
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde::Deserialize;
+use serde_json::Value;
 use sqlx::{MySqlPool, Row};
 use std::collections::HashMap;
 

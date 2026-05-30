@@ -27,7 +27,8 @@ class VisibilityPicker extends StatelessWidget {
       segments: MomentVisibility.values.map((v) {
         return ButtonSegment<MomentVisibility>(
           value: v,
-          label: Text(visibilityLabel(context, v), style: const TextStyle(fontSize: 12)),
+          label: Text(visibilityLabel(context, v),
+              style: const TextStyle(fontSize: 12)),
           icon: Icon(v.icon, size: 16),
         );
       }).toList(),
@@ -44,10 +45,10 @@ class VisibilityPicker extends StatelessWidget {
 }
 
 String visibilityLabel(BuildContext context, MomentVisibility level) {
-  final loc = AppLocalizations.of(context)!;
+  final l10n = AppLocalizations.of(context)!;
   return switch (level) {
-    MomentVisibility.public => loc.momentsVisibilityPublic,
-    MomentVisibility.friends => loc.momentsVisibilityFriends,
-    MomentVisibility.self => loc.momentsVisibilitySelf,
+    MomentVisibility.public => l10n.momentsVisibilityPublic,
+    MomentVisibility.friends => l10n.momentsVisibilityFriends,
+    MomentVisibility.self => l10n.momentsVisibilitySelf,
   };
 }

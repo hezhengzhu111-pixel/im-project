@@ -1,3 +1,5 @@
+// ignore_for_file: invalid_annotation_target
+
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'moments.freezed.dart';
@@ -8,8 +10,8 @@ class MomentPost with _$MomentPost {
   const factory MomentPost({
     required String id,
     required String userId,
-    required String content,
-    required String createTime,
+    String? content,
+    @JsonKey(name: 'createdAt') required String createTime,
     String? userName,
     String? userAvatar,
     String? userNickname,
@@ -49,7 +51,7 @@ class MomentLike with _$MomentLike {
   const factory MomentLike({
     required String id,
     required String userId,
-    required String createTime,
+    @JsonKey(name: 'createdAt') required String createTime,
     String? userName,
     String? userNickname,
     String? userAvatar,
@@ -65,7 +67,7 @@ class MomentComment with _$MomentComment {
     required String id,
     required String userId,
     required String content,
-    required String createTime,
+    @JsonKey(name: 'createdAt') required String createTime,
     String? userName,
     String? userNickname,
     String? userAvatar,
@@ -83,7 +85,7 @@ class MomentNotification with _$MomentNotification {
   const factory MomentNotification({
     required String id,
     required String type,
-    required String createTime,
+    @JsonKey(name: 'createdAt') required String createTime,
     bool? isRead,
     String? userId,
     String? userName,

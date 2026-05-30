@@ -31,7 +31,7 @@ class _PostCardState extends ConsumerState<PostCard> {
   bool _isExpanded = false;
 
   bool get _shouldTruncate {
-    final content = widget.post.post.content;
+    final content = widget.post.post.content ?? '';
     if (content.isEmpty) return false;
     return content.length > 200;
   }
@@ -65,7 +65,11 @@ class _PostCardState extends ConsumerState<PostCard> {
                         : null,
                     child: widget.post.userAvatar == null
                         ? Text(
-                            (widget.post.userNickname ?? widget.post.post.userName ?? '?').substring(0, 1).toUpperCase(),
+                            (widget.post.userNickname ??
+                                    widget.post.post.userName ??
+                                    '?')
+                                .substring(0, 1)
+                                .toUpperCase(),
                             style: const TextStyle(fontSize: 14),
                           )
                         : null,
@@ -76,7 +80,9 @@ class _PostCardState extends ConsumerState<PostCard> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.post.userNickname ?? widget.post.post.userName ?? loc.momentsUserFallback,
+                          widget.post.userNickname ??
+                              widget.post.post.userName ??
+                              loc.momentsUserFallback,
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                         Text(
@@ -95,7 +101,7 @@ class _PostCardState extends ConsumerState<PostCard> {
               const SizedBox(height: 12),
 
               // Content
-              if (widget.post.post.content.isNotEmpty)
+              if ((widget.post.post.content ?? '').isNotEmpty)
                 _buildContent(theme, loc),
 
               // Media
@@ -121,12 +127,10 @@ class _PostCardState extends ConsumerState<PostCard> {
                 ),
 
               // Link card
-              if (widget.post.post.linkUrl != null)
-                _buildLinkCard(theme),
+              if (widget.post.post.linkUrl != null) _buildLinkCard(theme),
 
               // Location
-              if (widget.post.post.location != null)
-                _buildLocation(theme),
+              if (widget.post.post.location != null) _buildLocation(theme),
 
               const SizedBox(height: 12),
 
@@ -153,7 +157,8 @@ class _PostCardState extends ConsumerState<PostCard> {
                   margin: const EdgeInsets.only(top: 12),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    color: theme.colorScheme.surfaceContainerHighest
+                        .withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
@@ -174,7 +179,7 @@ class _PostCardState extends ConsumerState<PostCard> {
   }
 
   Widget _buildContent(ThemeData theme, AppLocalizations loc) {
-    final content = widget.post.post.content;
+    final content = widget.post.post.content ?? '';
     final text = _shouldTruncate && !_isExpanded
         ? '${content.substring(0, 200)}...'
         : content;
@@ -217,7 +222,8 @@ class _PostCardState extends ConsumerState<PostCard> {
         margin: const EdgeInsets.only(top: 12),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          color:
+              theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -245,21 +251,25 @@ class _PostCardState extends ConsumerState<PostCard> {
                 children: [
                   Text(
                     widget.post.post.linkTitle ?? widget.post.post.linkUrl!,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     widget.post.post.linkUrl!,
-                    style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurfaceVariant),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
+            Icon(Icons.chevron_right,
+                color: theme.colorScheme.onSurfaceVariant),
           ],
         ),
       ),
@@ -271,11 +281,13 @@ class _PostCardState extends ConsumerState<PostCard> {
       padding: const EdgeInsets.only(top: 8),
       child: Row(
         children: [
-          Icon(Icons.location_on_outlined, size: 16, color: theme.colorScheme.onSurfaceVariant),
+          Icon(Icons.location_on_outlined,
+              size: 16, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: 4),
           Text(
             widget.post.post.location!,
-            style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
+            style: TextStyle(
+                fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -295,7 +307,9 @@ class _PostCardState extends ConsumerState<PostCard> {
             Icon(
               isLiked ? Icons.star : Icons.star_border,
               size: 20,
-              color: isLiked ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+              color: isLiked
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
             ),
             if ((widget.post.likeCount ?? 0) > 0) ...[
               const SizedBox(width: 4),
@@ -303,7 +317,9 @@ class _PostCardState extends ConsumerState<PostCard> {
                 '${widget.post.likeCount}',
                 style: TextStyle(
                   fontSize: 13,
-                  color: isLiked ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                  color: isLiked
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -331,7 +347,8 @@ class _PostCardState extends ConsumerState<PostCard> {
               const SizedBox(width: 4),
               Text(
                 '${widget.post.commentCount}',
-                style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
+                style: TextStyle(
+                    fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
               ),
             ],
           ],
@@ -365,9 +382,11 @@ class _PostCardState extends ConsumerState<PostCard> {
           value: 'delete',
           child: Row(
             children: [
-              Icon(Icons.delete_outline, size: 18, color: Theme.of(context).colorScheme.error),
+              Icon(Icons.delete_outline,
+                  size: 18, color: Theme.of(context).colorScheme.error),
               const SizedBox(width: 8),
-              Text(loc.momentsDeletePost, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              Text(loc.momentsDeletePost,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
           ),
         ),
@@ -385,10 +404,13 @@ class _PostCardState extends ConsumerState<PostCard> {
         title: Text(loc.momentsDeletePost),
         content: Text(loc.momentsDeletePostConfirm),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(loc.commonCancel)),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(loc.commonCancel)),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(loc.momentsDeletePost, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            child: Text(loc.momentsDeletePost,
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ),
         ],
       ),

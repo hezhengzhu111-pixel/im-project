@@ -75,6 +75,7 @@ void main() {
         };
 
         await notifier.login('testuser', 'password123');
+        await Future<void>.delayed(Duration.zero);
 
         expect(
           mockWsClient.lastConnectedUrl,
@@ -394,6 +395,7 @@ void main() {
     group('AuthNotifier - ensureFreshSession', () {
       test('returns true when already authenticated', () async {
         mockRepo.isAuthenticatedValue = true;
+        mockRepo.profileResponse = const User(id: '1', username: 'test');
         final result = await notifier.ensureFreshSession();
         expect(result, isTrue);
       });

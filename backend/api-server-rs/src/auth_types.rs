@@ -1,21 +1,6 @@
-use hmac::Hmac;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::Sha256;
 use std::collections::HashMap;
-
-type HmacSha256 = Hmac<Sha256>;
-
-const REFRESH_JTI_KEY_PREFIX: &str = "auth:refresh:jti:";
-const WS_TICKET_KEY_PREFIX: &str = "auth:ws:ticket:";
-const USER_RESOURCE_KEY_PREFIX: &str = "auth:user:";
-const REVOKED_TOKEN_KEY_PREFIX: &str = "auth:revoked:token:";
-const USER_REVOKE_AFTER_KEY_PREFIX: &str = "auth:user:revoke_after:";
-
-const INTERNAL_TS_HEADER: &str = "X-Internal-Timestamp";
-const LEGACY_INTERNAL_TS_HEADER: &str = "X-Internal-Ts";
-const INTERNAL_NONCE_HEADER: &str = "X-Internal-Nonce";
-const INTERNAL_SIGN_HEADER: &str = "X-Internal-Signature";
 
 /// JWT access/refresh 令牌对。
 ///

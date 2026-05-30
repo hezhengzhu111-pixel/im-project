@@ -388,5 +388,9 @@
   "joinGroupSuccess": "已加入 {name}",
   "joinGroupError": "加入失败，请重试",
   "joinGroupMembers": "{count} 成员",
-  "joinGroupTooltip": "加入群聊"
+  "joinGroupTooltip": "加入群聊",
+  "avatarUnsupportedFormat": "仅支持 jpg、png、gif 格式",
+  "avatarSizeExceeded": "文件大小不能超过 2MB",
+  "avatarUpdateSuccess": "头像更新成功",
+  "avatarUploadFailed": "上传失败：{error}"
 }

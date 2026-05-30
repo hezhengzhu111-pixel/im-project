@@ -5,11 +5,11 @@ WORKDIR /app/apps/web
 RUN flutter pub get
 ARG FRONTEND_BUILD_MODE=sit
 RUN if [ "${FRONTEND_BUILD_MODE}" = "dev" ]; then \
-      flutter build web --debug; \
+      flutter build web --debug --pwa-strategy=none; \
     elif [ "${FRONTEND_BUILD_MODE}" = "sit" ]; then \
-      flutter build web --release; \
+      flutter build web --release --pwa-strategy=none; \
     else \
-      flutter build web --release --obfuscate --split-debug-info=/debug-info; \
+      flutter build web --release --pwa-strategy=none --obfuscate --split-debug-info=/debug-info; \
     fi
 
 FROM docker.m.daocloud.io/library/nginx:1.27-alpine

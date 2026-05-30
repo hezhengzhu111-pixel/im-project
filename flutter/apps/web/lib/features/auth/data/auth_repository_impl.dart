@@ -1,14 +1,12 @@
+import 'package:dio/dio.dart';
 import 'package:im_core/core.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   AuthRepositoryImpl({
     required HttpClientPort httpClient,
-    required SecureStoragePort secureStorage,
-  })  : _httpClient = httpClient,
-        _secureStorage = secureStorage;
+  }) : _httpClient = httpClient;
 
   final HttpClientPort _httpClient;
-  final SecureStoragePort _secureStorage;
 
   @override
   Future<UserAuthResponse> login(LoginRequest request) async {
@@ -17,7 +15,6 @@ class AuthRepositoryImpl implements AuthRepository {
       body: request.toJson(),
       fromJson: UserAuthResponse.fromJson,
     );
-    await _persistTokens(response.data);
     return response.data;
   }
 
@@ -32,66 +29,111 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<User> getProfile() async {
-    final response = await _httpClient.get<User>(
-      UserEndpoints.profile,
-      fromJson: User.fromJson,
-    );
-    return response.data;
-  }
-
-  @override
   Future<void> logout() async {
-    try {
-      await _httpClient.post<void>(
-        UserEndpoints.logout,
-        fromJson: (_) {},
-      );
-    } finally {
-      await _secureStorage.delete('access_token');
-      await _secureStorage.delete('refresh_token');
-    }
-  }
-
-  @override
-  Future<bool> isAuthenticated() async {
-    final token = await _secureStorage.read('access_token');
-    if (token != null && token.isNotEmpty) return true;
-    final refreshToken = await _secureStorage.read('refresh_token');
-    return refreshToken != null && refreshToken.isNotEmpty;
-  }
-
-  @override
-  Future<String?> getToken() => _secureStorage.read('access_token');
-
-  @override
-  Future<String?> getRefreshToken() => _secureStorage.read('refresh_token');
-
-  @override
-  Future<UserAuthResponse> refreshToken() async {
-    final refreshToken = await _secureStorage.read('refresh_token');
-    if (refreshToken == null || refreshToken.isEmpty) {
-      throw Exception('No refresh token');
-    }
-
-    final response = await _httpClient.post<UserAuthResponse>(
-      AuthEndpoints.refresh,
-      body: {'refreshToken': refreshToken},
-      fromJson: UserAuthResponse.fromJson,
+    await _httpClient.post<void>(
+      UserEndpoints.logout,
+      fromJson: (_) {},
     );
+  }
 
-    await _persistTokens(response.data);
+  @override
+  Future<AuthSession> restoreSession() async {
+    final parsed = await _parseAccessToken(allowExpired: true);
+    if (_isValidParsedToken(parsed)) {
+      return _sessionFromParsedToken(parsed);
+    }
+
+    try {
+      await _refreshSession();
+    } catch (error) {
+      if (_isAuthInvalid(error)) {
+        return _unauthenticatedSession();
+      }
+      rethrow;
+    }
+
+    final refreshed = await _parseAccessToken();
+    if (_isValidParsedToken(refreshed)) {
+      return _sessionFromParsedToken(refreshed);
+    }
+    return _unauthenticatedSession();
+  }
+
+  Future<void> _refreshSession() async {
+    await _httpClient.post<Map<String, dynamic>>(
+      AuthEndpoints.refresh,
+      body: const <String, dynamic>{},
+      fromJson: (json) => json,
+    );
+  }
+
+  Future<Map<String, dynamic>> _parseAccessToken({
+    bool allowExpired = false,
+  }) async {
+    final response = await _httpClient.post<Map<String, dynamic>>(
+      AuthEndpoints.parse,
+      body: {'allowExpired': allowExpired},
+      fromJson: (json) => json,
+    );
     return response.data;
   }
 
-  Future<void> _persistTokens(UserAuthResponse response) async {
-    final accessToken = response.accessToken ?? response.token;
-    final refreshToken = response.refreshToken;
-    if (accessToken != null && accessToken.isNotEmpty) {
-      await _secureStorage.write('access_token', accessToken);
+  AuthSession _sessionFromParsedToken(Map<String, dynamic> parsed) {
+    final userId = _stringValue(parsed['userId'] ?? parsed['user_id']);
+    if (userId == null) return _unauthenticatedSession();
+
+    final username = _stringValue(parsed['username']) ?? userId;
+    final permissions = _stringList(parsed['permissions']);
+    final user = User(
+      id: userId,
+      username: username,
+      nickname: username,
+      permissions: permissions,
+    );
+
+    return AuthSession(
+      currentUser: user,
+      isAuthenticated: true,
+      authReady: true,
+      permissions: permissions,
+    );
+  }
+
+  bool _isValidParsedToken(Map<String, dynamic> parsed) {
+    return parsed['valid'] == true && parsed['expired'] != true;
+  }
+
+  bool _isAuthInvalid(Object error) {
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      if (status == 400 || status == 401 || status == 403) return true;
     }
-    if (refreshToken != null && refreshToken.isNotEmpty) {
-      await _secureStorage.write('refresh_token', refreshToken);
-    }
+    final message = error.toString().toLowerCase();
+    return message.contains('401') ||
+        message.contains('403') ||
+        message.contains('token_invalid') ||
+        message.contains('token_expired') ||
+        message.contains('no refresh token');
+  }
+
+  AuthSession _unauthenticatedSession() {
+    return const AuthSession(
+      currentUser: null,
+      isAuthenticated: false,
+      authReady: true,
+    );
+  }
+
+  String? _stringValue(Object? value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty || text == 'null' ? null : text;
+  }
+
+  List<String> _stringList(Object? value) {
+    if (value is! List) return const [];
+    return value
+        .map((item) => _stringValue(item))
+        .whereType<String>()
+        .toList(growable: false);
   }
 }

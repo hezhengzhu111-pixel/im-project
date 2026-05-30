@@ -24,7 +24,15 @@ class WebPlatformAdapter implements PlatformAdapter {
   @override
   void clearLocalStorage() {
     try {
-      html.window.localStorage.clear();
+      // 只清除设置相关的 key，保留登录 token 等关键数据
+      const keysToRemove = [
+        'app_language',
+        'app_theme_mode',
+      ];
+
+      for (final key in keysToRemove) {
+        html.window.localStorage.remove(key);
+      }
     } catch (_) {}
   }
 

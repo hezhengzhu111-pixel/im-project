@@ -11,10 +11,10 @@ help: ## 显示帮助信息
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
 dev: ## 开发构建 (dart2js, CanvasKit, debug)
-	$(FLUTTER) build web --debug --output-dir=$(ROOT_BUILD_DIR)
+	$(FLUTTER) build web --debug --pwa-strategy=none --output-dir=$(ROOT_BUILD_DIR)
 
 prod: ## 生产构建 (dart2js, CanvasKit, obfuscated)
-	$(FLUTTER) build web --release --obfuscate --split-debug-info=$(DEBUG_INFO_DIR) --output-dir=$(ROOT_BUILD_DIR)
+	$(FLUTTER) build web --release --pwa-strategy=none --obfuscate --split-debug-info=$(DEBUG_INFO_DIR) --output-dir=$(ROOT_BUILD_DIR)
 
 wasm: ## WASM 构建 (dart2wasm, skwasm)
 	$(FLUTTER) build web --wasm --output-dir=$(ROOT_BUILD_DIR)
@@ -32,7 +32,7 @@ size: ## 输出构建产物大小
 	@ls -lh $(BUILD_DIR)/part_*.js 2>/dev/null || echo "无 deferred chunks"
 
 report: ## 构建 + 分析体积
-	$(FLUTTER) build web --release --analyze-size --output-dir=$(ROOT_BUILD_DIR)
+	$(FLUTTER) build web --release --pwa-strategy=none --analyze-size --output-dir=$(ROOT_BUILD_DIR)
 	@echo "=== 体积分析完成 ==="
 	@du -sh $(BUILD_DIR)
 

@@ -180,18 +180,20 @@ class E2eeManager {
     try {
       await ensureDeviceRegistered();
       final localKeys = await _getLocalKeyMaterial();
+      final targetDevice = await _newestRemoteDevice(peerId);
+      final remoteDeviceId = targetDevice['deviceId'] as String;
+      if (remoteDeviceId.isEmpty) {
+        throw Exception('remote user has no active E2EE device');
+      }
 
       // Fetch remote bundle from server.
       final remoteBundle = await api.getBundle(
         peerId,
-        deviceId: '',
+        deviceId: remoteDeviceId,
         conversationId: sessionId,
         requesterDeviceId: _deviceId,
       );
-      final remoteDeviceId = (remoteBundle['deviceId'] as String?) ?? '';
-      if (remoteDeviceId.isEmpty) {
-        throw Exception('remote user has no active E2EE device');
-      }
+      final resolvedRemoteDeviceId = remoteBundle['deviceId'] as String;
 
       // Build PreKeyBundleFetch for FRB.
       final remoteBundleForFrb = _buildRemoteBundleJson(remoteBundle);
@@ -213,10 +215,10 @@ class E2eeManager {
         stateBase64: stateBase64,
         localDeviceId: _deviceId,
         remoteUserId: peerId,
-        remoteDeviceId: remoteDeviceId,
+        remoteDeviceId: resolvedRemoteDeviceId,
         direction: 'outbound',
       );
-      await metaStore.setRemoteDeviceId(sessionId, remoteDeviceId);
+      await metaStore.setRemoteDeviceId(sessionId, resolvedRemoteDeviceId);
 
       // Track in memory (match Vue loadedSessions).
       _loadedSessions.add(sessionId);
@@ -233,7 +235,7 @@ class E2eeManager {
         'senderIdentityKey': identityKey,
         'handshake': handshake,
         'senderDeviceId': _deviceId,
-        'targetDeviceId': remoteDeviceId,
+        'targetDeviceId': resolvedRemoteDeviceId,
       });
       await metaStore.setPendingHandshake(sessionId, handshakePayload);
 
@@ -248,7 +250,7 @@ class E2eeManager {
           'senderIdentityKey': identityKey,
           'handshake': handshake,
           'senderDeviceId': _deviceId,
-          'targetDeviceId': remoteDeviceId,
+          'targetDeviceId': resolvedRemoteDeviceId,
           'verifyPhrase': verifyPhrase,
         }),
       );
@@ -546,25 +548,40 @@ class E2eeManager {
   /// the bundle as a flat JSON object. We reconstruct the bincode on the Rust
   /// side by passing the JSON fields through the adapter.
   Map<String, dynamic> _buildRemoteBundleJson(Map<String, dynamic> raw) {
-    final identityKey = (raw['identityKey'] as String?) ?? '';
-    final signingKey = (raw['signingIdentityKey'] as String?) ??
-        (raw['signingKey'] as String?) ??
-        identityKey;
-    final spkString = (raw['signedPreKey'] as String?) ?? '';
-    final spkSignature = (raw['signedPreKeySignature'] as String?) ?? '';
+    final identityKey = raw['identityKey'] as String;
+    final signingKey = raw['signingIdentityKey'] as String;
+    final spkString = raw['signedPreKey'] as String;
+    final spkSignature = raw['signedPreKeySignature'] as String;
     final otkString = raw['oneTimePreKey'] as String?;
     final otkId = raw['oneTimePreKeyId'] as int?;
 
     return {
-      'identityKey': identityKey,
-      'signingKey': signingKey,
-      'signedPreKey': {'id': 1, 'key': spkString},
-      'signedPreKeySignature': spkSignature,
-      'oneTimePreKey':
+      'identity_key': identityKey,
+      'signing_key': signingKey,
+      'signed_pre_key': {'id': 1, 'key': spkString},
+      'signed_pre_key_signature': spkSignature,
+      'one_time_pre_key':
           (otkString != null && otkString.isNotEmpty && otkId != null)
               ? {'id': otkId, 'key': otkString}
               : null,
     };
+  }
+
+  Future<Map<String, dynamic>> _newestRemoteDevice(String userId) async {
+    final devices = await api.getDevices(userId);
+    devices.sort((a, b) {
+      final left = DateTime.tryParse(a['lastActiveAt'] as String)
+              ?.millisecondsSinceEpoch ??
+          0;
+      final right = DateTime.tryParse(b['lastActiveAt'] as String)
+              ?.millisecondsSinceEpoch ??
+          0;
+      return right.compareTo(left);
+    });
+    if (devices.isEmpty || (devices.first['deviceId'] as String).isEmpty) {
+      throw Exception('remote user has no active E2EE device');
+    }
+    return devices.first;
   }
 
   /// Reset negotiation state for a session.
@@ -587,8 +604,7 @@ class E2eeManager {
     if (parts.length == 2) {
       return parts[0] == currentUserId ? parts[1] : parts[0];
     }
-    // Fallback: try to extract from any known separator.
-    return sessionId;
+    throw FormatException('invalid E2EE private session id', sessionId);
   }
 
   /// Generate a 6-digit verify phrase (same as Vue frontend).

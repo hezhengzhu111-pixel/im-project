@@ -6,13 +6,12 @@ import '../core/logging/app_logger.dart';
 class WebHttpClient implements HttpClientPort {
   WebHttpClient({
     required String baseUrl,
-    required SecureStoragePort secureStorage,
   }) : _dio = Dio(BaseOptions(
           baseUrl: baseUrl,
           extra: const {'withCredentials': true},
         )) {
     _dio.interceptors.addAll([
-      _AuthInterceptor(secureStorage, _dio),
+      _AuthInterceptor(_dio),
       LogInterceptor(requestBody: true, responseBody: true),
     ]);
   }
@@ -82,7 +81,8 @@ class WebHttpClient implements HttpClientPort {
         requestOptions: response.requestOptions,
         response: response,
         type: DioExceptionType.badResponse,
-        message: message.isNotEmpty ? message : 'Request failed with code $code',
+        message:
+            message.isNotEmpty ? message : 'Request failed with code $code',
       );
     }
 
@@ -108,8 +108,7 @@ class WebHttpClient implements HttpClientPort {
 }
 
 class _AuthInterceptor extends Interceptor {
-  _AuthInterceptor(this._secureStorage, this._dio);
-  final SecureStoragePort _secureStorage;
+  _AuthInterceptor(this._dio);
   final Dio _dio;
   bool _isRefreshing = false;
   final List<Completer<void>> _refreshQueue = [];
@@ -119,29 +118,21 @@ class _AuthInterceptor extends Interceptor {
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    // 跳过 refresh token 请求本身的认证头
-    if (options.path == AuthEndpoints.refresh) {
-      handler.next(options);
-      return;
-    }
-
-    final token = await _secureStorage.read('access_token');
-    if (token != null) {
-      options.headers['Authorization'] = 'Bearer $token';
-    }
+    // Cookies are the only browser auth transport. Drop any stale local header.
+    options.headers.remove('Authorization');
     handler.next(options);
   }
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     if (err.response?.statusCode == 401) {
-      // 避免 refresh token 请求本身触发无限循环
-      if (err.requestOptions.path == AuthEndpoints.refresh) {
+      // Avoid recursive refresh for auth endpoints.
+      if (_shouldSkipRefresh(err.requestOptions.path)) {
         handler.next(err);
         return;
       }
 
-      // 如果正在刷新，加入队列等待
+      // Serialize concurrent refresh attempts.
       if (_isRefreshing) {
         final completer = Completer<void>();
         _refreshQueue.add(completer);
@@ -152,14 +143,9 @@ class _AuthInterceptor extends Interceptor {
           return;
         }
 
-        // 刷新完成后重试原请求
+        // Retry the original request after the shared refresh completes.
         try {
-          final token = await _secureStorage.read('access_token');
-          if (token != null) {
-            err.requestOptions.headers['Authorization'] = 'Bearer $token';
-          } else {
-            err.requestOptions.headers.remove('Authorization');
-          }
+          err.requestOptions.headers.remove('Authorization');
           final response = await _dio.fetch(err.requestOptions);
           handler.resolve(response);
           return;
@@ -169,72 +155,28 @@ class _AuthInterceptor extends Interceptor {
         }
       }
 
-      // 开始刷新 token
       _isRefreshing = true;
       try {
-        final refreshToken = await _secureStorage.read('refresh_token');
-        if (refreshToken == null || refreshToken.isEmpty) {
-          throw Exception('No refresh token');
-        }
-
-        // 调用 refresh API
-        final response = await _dio.post<Map<String, dynamic>>(
+        await _dio.post<Map<String, dynamic>>(
           AuthEndpoints.refresh,
-          data: {'refreshToken': refreshToken},
+          data: const <String, dynamic>{},
         );
 
-        final data = response.data;
-        if (data == null) {
-          throw Exception('Invalid refresh response');
-        }
-
-        // 保存新 token
-        final payload = data['data'] is Map<String, dynamic>
-            ? data['data'] as Map<String, dynamic>
-            : data;
-        final newToken = _stringValue(
-          payload['accessToken'] ?? payload['access_token'] ?? payload['token'],
-        );
-        final newRefreshToken = _stringValue(
-          payload['refreshToken'] ?? payload['refresh_token'],
-        );
-
-        if (newToken != null) {
-          await _secureStorage.write('access_token', newToken);
-        } else {
-          await _secureStorage.delete('access_token');
-        }
-        if (newRefreshToken != null) {
-          await _secureStorage.write('refresh_token', newRefreshToken);
-        }
-
-        // 通知等待队列
         for (final completer in _refreshQueue) {
           completer.complete();
         }
         _refreshQueue.clear();
 
-        // 重试原请求
-        if (newToken != null) {
-          err.requestOptions.headers['Authorization'] = 'Bearer $newToken';
-        } else {
-          err.requestOptions.headers.remove('Authorization');
-        }
+        err.requestOptions.headers.remove('Authorization');
         final retryResponse = await _dio.fetch(err.requestOptions);
         handler.resolve(retryResponse);
       } catch (e, st) {
         AppLogger.instance.error('Token refresh failed', e, st, 'auth');
-        // 清理 token
-        await _secureStorage.delete('access_token');
-        await _secureStorage.delete('refresh_token');
-
-        // 通知等待队列
         for (final completer in _refreshQueue) {
           completer.completeError(e, st);
         }
         _refreshQueue.clear();
 
-        // 抛出异常，让上层处理跳转登录
         handler.next(err);
       } finally {
         _isRefreshing = false;
@@ -244,8 +186,11 @@ class _AuthInterceptor extends Interceptor {
     }
   }
 
-  String? _stringValue(Object? value) {
-    final text = value?.toString().trim() ?? '';
-    return text.isEmpty || text == 'null' ? null : text;
+  bool _shouldSkipRefresh(String path) {
+    return path == AuthEndpoints.refresh ||
+        path == AuthEndpoints.parse ||
+        path == UserEndpoints.login ||
+        path == UserEndpoints.register ||
+        path == UserEndpoints.logout;
   }
 }

@@ -1,24 +1,16 @@
-use crate::auth::identity_from_headers;
-use crate::auth_api;
 use crate::error::AppError;
-use crate::route::parse_user_routes;
-use crate::web::AppState;
-use axum::extract::{Path, State};
-use axum::http::HeaderMap;
-use axum::Json;
-use im_rs_common::api::ApiResponse;
-use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::Row;
-use std::collections::{HashMap, HashSet};
 
 // ---------------------------------------------------------------------------
 // 常量
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 const MAX_SESSION_ID_LEN: usize = 64;
+#[allow(dead_code)]
 const MAX_KEY_FIELD_LEN: usize = 1000;
+#[allow(dead_code)]
 const MAX_PAYLOAD_LEN: usize = 50_000;
 
 // ---------------------------------------------------------------------------
@@ -101,6 +93,7 @@ pub(crate) struct CreateE2eeSessionRequest {
     pub recipient_device_ids: Vec<String>,
     pub sender_device_id: String,
     #[serde(default)]
+    #[allow(dead_code)]
     pub initial_envelope_metadata: Value,
 }
 

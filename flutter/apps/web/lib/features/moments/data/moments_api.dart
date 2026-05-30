@@ -5,7 +5,8 @@ class MomentsApi {
   final HttpClientPort _httpClient;
 
   // Feed
-  Future<List<PostWithDetails>> getFeed({String? cursor, int limit = 20}) async {
+  Future<List<PostWithDetails>> getFeed(
+      {String? cursor, int limit = 20}) async {
     final response = await _httpClient.get<Map<String, dynamic>>(
       MomentsEndpoints.feed,
       queryParameters: {
@@ -28,7 +29,7 @@ class MomentsApi {
     return PostWithDetails.fromJson(response.data);
   }
 
-  Future<MomentPost> createPost(CreatePostRequest data) async {
+  Future<String> createPost(CreatePostRequest data) async {
     final response = await _httpClient.post<Map<String, dynamic>>(
       MomentsEndpoints.create,
       body: {
@@ -38,7 +39,7 @@ class MomentsApi {
       },
       fromJson: (json) => json,
     );
-    return MomentPost.fromJson(response.data);
+    return response.data['id'] as String;
   }
 
   Future<void> deletePost(String postId) async {

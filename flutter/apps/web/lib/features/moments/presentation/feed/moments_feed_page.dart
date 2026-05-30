@@ -15,16 +15,12 @@ class MomentsFeedPage extends ConsumerStatefulWidget {
 
 class _MomentsFeedPageState extends ConsumerState<MomentsFeedPage> {
   final _scrollController = ScrollController();
-  final _postKeys = <String, GlobalKey>{};
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ref.read(momentsFeedProvider.notifier).loadFeed(refresh: true);
-      if (widget.postId != null && mounted) {
-        _scrollToPost(widget.postId!);
-      }
     });
     _scrollController.addListener(_onScroll);
   }
@@ -42,25 +38,13 @@ class _MomentsFeedPageState extends ConsumerState<MomentsFeedPage> {
     }
   }
 
-  void _scrollToPost(String postId) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final key = _postKeys[postId];
-      if (key != null && key.currentContext != null) {
-        Scrollable.ensureVisible(
-          key.currentContext!,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final feedState = ref.watch(momentsFeedProvider);
 
     return RefreshIndicator(
-      onRefresh: () => ref.read(momentsFeedProvider.notifier).loadFeed(refresh: true),
+      onRefresh: () =>
+          ref.read(momentsFeedProvider.notifier).loadFeed(refresh: true),
       child: CustomScrollView(
         controller: _scrollController,
         slivers: [
@@ -74,7 +58,12 @@ class _MomentsFeedPageState extends ConsumerState<MomentsFeedPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.camera_alt_outlined, size: 64, color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                    Icon(Icons.camera_alt_outlined,
+                        size: 64,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurfaceVariant
+                            .withValues(alpha: 0.5)),
                     const SizedBox(height: 16),
                     Text(
                       AppLocalizations.of(context)!.momentsNoPosts,
@@ -98,19 +87,23 @@ class _MomentsFeedPageState extends ConsumerState<MomentsFeedPage> {
                     );
                   }
                   final post = feedState.posts[index];
-                  _postKeys.putIfAbsent(post.post.id, () => GlobalKey());
                   return PostCard(
-                    key: _postKeys[post.post.id],
+                    key: ValueKey(post.post.id),
                     post: post,
                     onLike: () {
-                      ref.read(momentsFeedProvider.notifier).toggleLike(post.post.id);
+                      ref
+                          .read(momentsFeedProvider.notifier)
+                          .toggleLike(post.post.id);
                     },
                     onDelete: () {
-                      ref.read(momentsFeedProvider.notifier).removePost(post.post.id);
+                      ref
+                          .read(momentsFeedProvider.notifier)
+                          .removePost(post.post.id);
                     },
                   );
                 },
-                childCount: feedState.posts.length + (feedState.isLoading ? 1 : 0),
+                childCount:
+                    feedState.posts.length + (feedState.isLoading ? 1 : 0),
               ),
             ),
         ],

@@ -126,69 +126,59 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> restoreSession() async {
     state = state.copyWith(authReady: false);
     try {
-      final isAuth = await _repository.isAuthenticated();
-      if (isAuth) {
-        try {
-          final user = await _repository.getProfile();
-          _setAuthenticated(user);
-        } catch (e) {
-          // Token 可能过期，尝试刷新
-          try {
-            await _repository.refreshToken();
-            final user = await _repository.getProfile();
-            _setAuthenticated(user);
-          } catch (refreshError) {
-            // 刷新也失败，让用户重新登录
-            AppLogger.instance
-                .error('Session restore failed', refreshError, null, 'auth');
-            state = const AuthState(authReady: true);
-          }
-        }
+      final session = await _repository.restoreSession();
+      final user = session.currentUser;
+      if (session.isAuthenticated && user != null) {
+        _setAuthenticated(user, permissions: session.permissions);
       } else {
-        // 没有 access_token，尝试用 refresh_token 恢复
-        try {
-          await _repository.refreshToken();
-          final user = await _repository.getProfile();
-          _setAuthenticated(user);
-        } catch (_) {
-          state = const AuthState(authReady: true);
-        }
+        state = const AuthState(authReady: true);
       }
-    } catch (e) {
-      state = const AuthState(authReady: true);
+    } catch (e, st) {
+      AppLogger.instance.error('Session restore failed', e, st, 'auth');
+      state = state.isAuthenticated
+          ? state.copyWith(authReady: true, isLoading: false)
+          : const AuthState(authReady: true);
     }
   }
 
   /// 设置认证状态并异步连接 WebSocket。
   /// WS 连接失败不影响已认证的状态。
-  void _setAuthenticated(User user) {
+  void _setAuthenticated(User user, {List<String>? permissions}) {
     state = AuthState(
       user: user,
       isAuthenticated: true,
       authReady: true,
-      permissions: user.permissions ?? [],
+      permissions: permissions ?? user.permissions ?? [],
     );
     _analytics.setUserId(user.id);
     // WS 连接是尽力而为的，失败不应导致用户被登出。
     unawaited(_connectWs(user.id).catchError((e, st) {
-      AppLogger.instance.error('WS connect failed during session restore', e, st, 'ws');
+      AppLogger.instance
+          .error('WS connect failed during session restore', e, st, 'ws');
     }));
   }
 
   Future<void> checkAuth() => restoreSession();
 
   Future<bool> ensureFreshSession() async {
-    final isAuth = await _repository.isAuthenticated();
-    if (!isAuth) {
-      try {
-        await _repository.refreshToken();
+    try {
+      final session = await _repository.restoreSession();
+      final user = session.currentUser;
+      if (session.isAuthenticated && user != null) {
+        _setAuthenticated(user, permissions: session.permissions);
         return true;
-      } catch (e) {
-        state = const AuthState();
-        return false;
       }
+      state = const AuthState(authReady: true);
+      return false;
+    } catch (e, st) {
+      AppLogger.instance.error('Fresh session check failed', e, st, 'auth');
+      return state.isAuthenticated;
     }
-    return true;
+  }
+
+  /// Update the current user in auth state (e.g. after avatar upload).
+  void updateUser(User user) {
+    state = state.copyWith(user: user);
   }
 
   bool hasPermission(String permission) {

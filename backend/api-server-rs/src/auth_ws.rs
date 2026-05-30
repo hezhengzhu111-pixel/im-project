@@ -7,25 +7,11 @@ use axum::body::Bytes;
 use axum::extract::{OriginalUri, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
-use base64::Engine;
-use hmac::{Hmac, Mac};
 use im_rs_common::api::ApiResponse;
 use redis::AsyncCommands;
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-type HmacSha256 = Hmac<Sha256>;
-
-const REFRESH_JTI_KEY_PREFIX: &str = "auth:refresh:jti:";
 const WS_TICKET_KEY_PREFIX: &str = "auth:ws:ticket:";
-const USER_RESOURCE_KEY_PREFIX: &str = "auth:user:";
-const REVOKED_TOKEN_KEY_PREFIX: &str = "auth:revoked:token:";
-const USER_REVOKE_AFTER_KEY_PREFIX: &str = "auth:user:revoke_after:";
-
-const INTERNAL_TS_HEADER: &str = "X-Internal-Timestamp";
-const LEGACY_INTERNAL_TS_HEADER: &str = "X-Internal-Ts";
-const INTERNAL_NONCE_HEADER: &str = "X-Internal-Nonce";
-const INTERNAL_SIGN_HEADER: &str = "X-Internal-Signature";
 
 /// 签发一次性 WebSocket 握手票据。
 ///

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:idb_shim/idb_browser.dart' as idb;
+import 'package:im_web/features/e2ee/data/e2ee_indexed_db.dart';
 
 /// Stores E2EE ratchet session states in IndexedDB.
 /// Database: "e2ee_keys", version 3
@@ -11,8 +12,6 @@ import 'package:idb_shim/idb_browser.dart' as idb;
 class E2eeSessionStore {
   E2eeSessionStore();
 
-  static const _dbName = 'e2ee_keys';
-  static const _dbVersion = 3;
   static const _storeName = 'sessions';
   static const _sessionStateEnvelopeVersion = 3;
   static const _sessionStateAlgorithm = 'rust-x25519-x3dh-dr-v1';
@@ -20,19 +19,7 @@ class E2eeSessionStore {
   idb.Database? _db;
 
   Future<void> init() async {
-    _db = await idb.idbFactoryNative.open(
-      _dbName,
-      version: _dbVersion,
-      onUpgradeNeeded: (e) {
-        final db = e.database;
-        final stores = ['identity', 'prekeys', 'sessions', 'sender_keys', 'meta'];
-        for (final storeName in stores) {
-          if (!db.objectStoreNames.contains(storeName)) {
-            db.createObjectStore(storeName);
-          }
-        }
-      },
-    );
+    _db = await openE2eeDatabase();
   }
 
   // ---------------------------------------------------------------------------
@@ -48,11 +35,15 @@ class E2eeSessionStore {
     String direction = 'outbound',
   }) async {
     if (sessionId.isEmpty) throw Exception('E2EE session requires sessionId');
-    if (localDeviceId.isEmpty) throw Exception('E2EE session requires localDeviceId');
-    if (remoteDeviceId.isEmpty) throw Exception('E2EE session requires remoteDeviceId');
+    if (localDeviceId.isEmpty)
+      throw Exception('E2EE session requires localDeviceId');
+    if (remoteDeviceId.isEmpty)
+      throw Exception('E2EE session requires remoteDeviceId');
 
-    final resolvedRemoteUserId = remoteUserId.isNotEmpty ? remoteUserId : remoteDeviceId;
-    if (resolvedRemoteUserId.isEmpty) throw Exception('E2EE session requires remoteUserId');
+    final resolvedRemoteUserId =
+        remoteUserId.isNotEmpty ? remoteUserId : remoteDeviceId;
+    if (resolvedRemoteUserId.isEmpty)
+      throw Exception('E2EE session requires remoteUserId');
 
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final remoteUserIdHash = _fingerprint(resolvedRemoteUserId);
@@ -108,9 +99,11 @@ class E2eeSessionStore {
       final storedLocalDeviceId = stored['localDeviceId'] as String? ?? '';
       final storedSessionId = stored['sessionId'] as String? ?? '';
       final storedRemoteDeviceId = stored['remoteDeviceId'] as String? ?? '';
-      final storedRemoteUserIdHash = stored['remoteUserIdHash'] as String? ?? '';
+      final storedRemoteUserIdHash =
+          stored['remoteUserIdHash'] as String? ?? '';
 
-      final resolvedRemoteUserId = remoteUserId.isNotEmpty ? remoteUserId : remoteDeviceId;
+      final resolvedRemoteUserId =
+          remoteUserId.isNotEmpty ? remoteUserId : remoteDeviceId;
 
       if (storedUserId != localDeviceId) return null;
       if (storedLocalDeviceId != localDeviceId) return null;

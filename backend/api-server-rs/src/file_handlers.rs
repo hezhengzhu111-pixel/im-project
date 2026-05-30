@@ -1,25 +1,15 @@
 use super::*;
 use crate::auth::identity_from_headers;
-use crate::config::AppConfig;
 use crate::error::AppError;
 use crate::web::AppState;
-use axum::body::Body;
 use axum::extract::{Multipart, Query, State};
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
-use axum::response::{IntoResponse, Response};
+use axum::http::HeaderMap;
+use axum::response::Response;
 use axum::Json;
 use chrono::Local;
 use im_rs_common::api::ApiResponse;
-use redis::AsyncCommands;
-use serde::{Deserialize, Serialize};
-use sqlx::Row;
-use std::collections::HashSet;
-use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use tokio::fs;
-use tokio::io::AsyncWriteExt;
-use tokio_util::io::ReaderStream;
-use uuid::Uuid;
 pub(crate) fn store_knowledge_file(
     base_dir: &std::path::Path,
     _original_name: &str,

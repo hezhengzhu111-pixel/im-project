@@ -8,38 +8,40 @@ import 'package:im_web/l10n/app_localizations.dart';
 import 'package:im_web/features/auth/presentation/login_page.dart';
 import 'package:im_web/features/auth/presentation/register_page.dart';
 import 'package:im_web/features/chat/presentation/chat_page.dart';
+import 'package:im_web/features/contacts/presentation/add_friend_page.dart';
 import 'package:im_web/features/contacts/presentation/contacts_page.dart';
+import 'package:im_web/features/group/presentation/create_group_page.dart';
 import 'package:im_web/features/group/presentation/group_list_page.dart';
 import 'package:im_web/features/moments/presentation/moments_main_page.dart';
+import 'package:im_web/features/moments/presentation/notifications/moments_notifications_page.dart';
+import 'package:im_web/features/settings/presentation/ai_settings_page.dart';
+import 'package:im_web/features/settings/presentation/profile_page.dart';
 import 'package:im_web/features/settings/presentation/settings_page.dart';
-
-// Deferred imports for low-frequency routes
-import 'package:im_web/features/contacts/presentation/add_friend_page.dart'
-    deferred as add_friend_page;
-import 'package:im_web/features/group/presentation/create_group_page.dart'
-    deferred as create_group_page;
-import 'package:im_web/features/moments/presentation/notifications/moments_notifications_page.dart'
-    deferred as notifications_page;
-import 'package:im_web/features/settings/presentation/profile_page.dart'
-    deferred as profile_page;
-import 'package:im_web/features/settings/presentation/ai_settings_page.dart'
-    deferred as ai_settings_page;
 import 'package:im_web/features/debug/presentation/component_gallery_page.dart';
+import 'package:im_web/features/auth/presentation/auth_provider.dart';
 
-import 'deferred_route_page.dart';
 import 'route_names.dart';
 import 'route_resolver.dart';
 import 'route_observer.dart';
 export 'route_resolver.dart' show routeMetaMap, resolveRouteMeta;
 import 'not_found_page.dart';
 
+final _routerRefreshProvider = Provider<_RouterRefreshListenable>((ref) {
+  final refresh = _RouterRefreshListenable();
+  ref.listen<AuthState>(authStateProvider, (_, __) => refresh.refresh());
+  ref.onDispose(refresh.dispose);
+  return refresh;
+});
+
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authStateProvider);
+  final refreshListenable = ref.watch(_routerRefreshProvider);
 
   return GoRouter(
     initialLocation: '/chat',
+    refreshListenable: refreshListenable,
     observers: [routeObserver],
     redirect: (context, state) {
+      final authState = ref.read(authStateProvider);
       final isAuth = authState.isAuthenticated;
       final meta = resolveRouteMeta(state.uri.path);
 
@@ -149,10 +151,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/contacts/add',
             name: RouteNames.contactsAdd,
             pageBuilder: (_, __) => NoTransitionPage(
-              child: DeferredRoutePage(
-                loadLibrary: add_friend_page.loadLibrary,
-                builder: () => add_friend_page.AddFriendPage(),
-              ),
+              child: const AddFriendPage(),
             ),
           ),
           GoRoute(
@@ -164,10 +163,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/groups/create',
             name: RouteNames.groupsCreate,
             pageBuilder: (_, __) => NoTransitionPage(
-              child: DeferredRoutePage(
-                loadLibrary: create_group_page.loadLibrary,
-                builder: () => create_group_page.CreateGroupPage(),
-              ),
+              child: const CreateGroupPage(),
             ),
           ),
           GoRoute(
@@ -182,10 +178,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/moments/notifications',
             name: RouteNames.momentsNotifications,
             pageBuilder: (_, __) => NoTransitionPage(
-              child: DeferredRoutePage(
-                loadLibrary: notifications_page.loadLibrary,
-                builder: () => notifications_page.MomentsNotificationsPage(),
-              ),
+              child: const MomentsNotificationsPage(),
             ),
           ),
           GoRoute(
@@ -197,20 +190,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/settings/profile',
             name: RouteNames.settingsProfile,
             pageBuilder: (_, __) => NoTransitionPage(
-              child: DeferredRoutePage(
-                loadLibrary: profile_page.loadLibrary,
-                builder: () => profile_page.ProfilePage(),
-              ),
+              child: const ProfilePage(),
             ),
           ),
           GoRoute(
             path: '/settings/ai',
             name: RouteNames.settingsAi,
             pageBuilder: (_, __) => NoTransitionPage(
-              child: DeferredRoutePage(
-                loadLibrary: ai_settings_page.loadLibrary,
-                builder: () => ai_settings_page.AiSettingsPage(),
-              ),
+              child: const AiSettingsPage(),
             ),
           ),
         ],
@@ -224,6 +211,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+class _RouterRefreshListenable extends ChangeNotifier {
+  void refresh() => notifyListeners();
+}
 
 int _indexFromPath(String path) {
   if (path.startsWith('/chat')) return 0;

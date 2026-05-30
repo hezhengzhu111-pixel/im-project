@@ -1,19 +1,17 @@
 use super::user_helpers::*;
 use super::user_types::*;
 use crate::auth::identity_from_headers;
-use crate::auth_api::{self, IssueTokenRequest, TokenPairDto};
+use crate::auth_api::{self};
 use crate::error::AppError;
 use crate::web::AppState;
 use axum::body::Bytes;
 use axum::extract::{Multipart, Path, Query, State};
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use im_rs_common::api::ApiResponse;
 use im_rs_common::{ids, time};
 use redis::AsyncCommands;
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use sqlx::{MySqlPool, Row};
+use serde_json::Value;
 use std::collections::HashMap;
 
 pub(crate) async fn login(
@@ -330,39 +328,65 @@ pub(crate) async fn bind_email(
 pub(crate) async fn delete_account(
     State(state): State<AppState>,
     headers: HeaderMap,
-    body: Bytes,
+    Json(payload): Json<DeleteAccountRequest>,
 ) -> Result<(StatusCode, HeaderMap, Json<ApiResponse<bool>>), AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    let request: DeleteAccountRequest = serde_json::from_slice(&body)?;
-    let user = load_user_by_id(&state.db, identity.user_id)
+    let user_id = identity.user_id;
+
+    // 验证密码
+    let user = load_user_by_id(&state.db, user_id)
         .await?
-        .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
-    if !verify_password(&request.password, &user.password) {
-        return Err(AppError::Unauthorized("password is incorrect".to_string()));
+        .ok_or_else(|| AppError::NotFound("用户不存在".to_string()))?;
+
+    if !verify_password(&payload.password, &user.password) {
+        return Err(AppError::Unauthorized("密码错误".to_string()));
     }
+
+    // 软删除：设置 status = 0，更新 last_login_time 为删除时间
+    let now = chrono::Utc::now().naive_utc();
     let mut tx = state.db.begin().await?;
-    sqlx::query("UPDATE service_user_service_db.users SET status = 0 WHERE id = ?")
-        .bind(identity.user_id)
+
+    // 1. 软删除用户
+    sqlx::query("UPDATE service_user_service_db.users SET status = 0, last_login_time = ? WHERE id = ?")
+        .bind(now)
+        .bind(user_id)
         .execute(&mut *tx)
         .await?;
+
+    // 2. 清理好友关系
     sqlx::query(
         "UPDATE service_user_service_db.im_friend SET status = 2 WHERE user_id = ? OR friend_id = ?",
     )
-    .bind(identity.user_id)
-    .bind(identity.user_id)
+    .bind(user_id)
+    .bind(user_id)
     .execute(&mut *tx)
     .await?;
+
+    // 3. 清理群组成员
     sqlx::query("UPDATE service_group_service_db.im_group_member SET status = 0 WHERE user_id = ?")
-        .bind(identity.user_id)
+        .bind(user_id)
         .execute(&mut *tx)
         .await?;
+
+    // 4. 清理拥有的群组
     sqlx::query("UPDATE service_group_service_db.im_group SET status = 0 WHERE owner_id = ?")
-        .bind(identity.user_id)
+        .bind(user_id)
         .execute(&mut *tx)
         .await?;
+
     tx.commit().await?;
+
+    // 5. 清理 Redis 缓存
+    {
+        let mut redis = state.redis_manager.clone();
+        let _: redis::RedisResult<()> = redis.del(&format!("user_settings:{}", user_id)).await;
+        let _: redis::RedisResult<()> = redis.del(&format!("user_token:{}", user_id)).await;
+    }
+
+    // 6. 过期 auth cookies
     let mut response_headers = HeaderMap::new();
     auth_api::expire_auth_cookies(&mut response_headers, &state.config, &headers);
+
     Ok((
         StatusCode::OK,
         response_headers,

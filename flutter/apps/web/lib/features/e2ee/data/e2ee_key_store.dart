@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:idb_shim/idb_browser.dart' as idb;
+import 'package:im_web/features/e2ee/data/e2ee_indexed_db.dart';
 
 /// Stores E2EE key material in IndexedDB.
 /// Database: "e2ee_keys", version 3
@@ -8,8 +9,6 @@ import 'package:idb_shim/idb_browser.dart' as idb;
 class E2eeKeyStore {
   E2eeKeyStore();
 
-  static const _dbName = 'e2ee_keys';
-  static const _dbVersion = 3;
   static const _identityStore = 'identity';
   static const _metaStore = 'meta';
   static const _localKeyMaterialKey = 'rustLocalKeyMaterial';
@@ -17,19 +16,7 @@ class E2eeKeyStore {
   idb.Database? _db;
 
   Future<void> init() async {
-    _db = await idb.idbFactoryNative.open(
-      _dbName,
-      version: _dbVersion,
-      onUpgradeNeeded: (e) {
-        final db = e.database;
-        final stores = ['identity', 'prekeys', 'sessions', 'sender_keys', 'meta'];
-        for (final storeName in stores) {
-          if (!db.objectStoreNames.contains(storeName)) {
-            db.createObjectStore(storeName);
-          }
-        }
-      },
-    );
+    _db = await openE2eeDatabase();
   }
 
   // -- Identity store --
@@ -69,7 +56,8 @@ class E2eeKeyStore {
     if (publicBundle != null) {
       final otkList = publicBundle['one_time_pre_keys'] as List<dynamic>? ?? [];
       publicBundle['one_time_pre_keys'] = otkList
-          .where((otk) => (otk as Map<String, dynamic>)['id'] != oneTimePreKeyId)
+          .where(
+              (otk) => (otk as Map<String, dynamic>)['id'] != oneTimePreKeyId)
           .toList();
     }
 
@@ -127,9 +115,8 @@ class E2eeKeyStore {
 
   Future<void> clearAll() async {
     final db = _db!;
-    final storeNames = ['identity', 'prekeys', 'sessions', 'sender_keys', 'meta'];
-    final txn = db.transactionList(storeNames, idb.idbModeReadWrite);
-    for (final storeName in storeNames) {
+    final txn = db.transactionList(e2eeStoreNames, idb.idbModeReadWrite);
+    for (final storeName in e2eeStoreNames) {
       await txn.objectStore(storeName).clear();
     }
     await txn.completed;

@@ -388,5 +388,9 @@
   "joinGroupSuccess": "Joined {name}",
   "joinGroupError": "Failed to join, please try again",
   "joinGroupMembers": "{count} members",
-  "joinGroupTooltip": "Join Group"
+  "joinGroupTooltip": "Join Group",
+  "avatarUnsupportedFormat": "Only jpg, png, gif formats are supported",
+  "avatarSizeExceeded": "File size cannot exceed 2MB",
+  "avatarUpdateSuccess": "Avatar updated successfully",
+  "avatarUploadFailed": "Upload failed: {error}"
 }

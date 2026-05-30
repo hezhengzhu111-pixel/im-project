@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../theme/im_tokens.dart';
 import '../widgets/glass_app_components.dart';
 import 'breakpoint.dart';
 import 'breakpoint_scope.dart';
@@ -60,27 +59,7 @@ class ResponsiveScaffold extends StatelessWidget {
                   children: [
                     if (header != null) header!,
                     Expanded(
-                      child: AnimatedSwitcher(
-                        duration: ImTokens.animNormal,
-                        switchInCurve: Curves.easeOut,
-                        switchOutCurve: Curves.easeOut,
-                        transitionBuilder: (child, animation) {
-                          return FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: Tween<Offset>(
-                                begin: const Offset(0, 0.018),
-                                end: Offset.zero,
-                              ).animate(animation),
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: KeyedSubtree(
-                          key: ValueKey(selectedIndex),
-                          child: child,
-                        ),
-                      ),
+                      child: child,
                     ),
                   ],
                 ),

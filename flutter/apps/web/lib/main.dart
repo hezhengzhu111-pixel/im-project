@@ -34,8 +34,7 @@ void main() {
     defaultValue: 'ws://localhost:8082',
   );
   final secureStorage = WebSecureStorageAdapter();
-  final httpClient =
-      WebHttpClient(baseUrl: apiBase, secureStorage: secureStorage);
+  final httpClient = WebHttpClient(baseUrl: apiBase);
 
   runApp(ProviderScope(
     overrides: [
