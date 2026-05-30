@@ -25,18 +25,21 @@ class MediaGrid extends StatelessWidget {
   }
 
   Widget _buildSingleVideo(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 720, maxHeight: 480),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: AspectRatio(
-          aspectRatio: 16 / 9,
-          child: Image.network(
-            media[0].thumbnailUrl ?? media[0].url,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(
-              color: Colors.grey[300],
-              child: const Center(child: Icon(Icons.play_circle_outline, size: 48)),
+    return GestureDetector(
+      onTap: () => onImageTap?.call(0),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 480),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Image.network(
+              media[0].thumbnailUrl ?? media[0].url,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                color: Colors.grey[300],
+                child: const Center(child: Icon(Icons.play_circle_outline, size: 48)),
+              ),
             ),
           ),
         ),

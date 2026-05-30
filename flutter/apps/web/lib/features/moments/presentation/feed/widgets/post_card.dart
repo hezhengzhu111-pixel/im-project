@@ -3,6 +3,7 @@ import 'package:im_core/core.dart';
 import 'package:im_web/core/utils/time_formatter.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 import 'media_grid.dart';
+import 'image_viewer.dart';
 import 'like_bar.dart';
 import 'comment_section.dart';
 
@@ -95,7 +96,17 @@ class _PostCardState extends State<PostCard> {
                 child: MediaGrid(
                   media: widget.post.media!,
                   onImageTap: (index) {
-                    // TODO: open image viewer
+                    final imageUrls = widget.post.media!
+                        .where((m) => m.type == 0)
+                        .map((m) => m.url)
+                        .toList();
+                    if (imageUrls.isNotEmpty) {
+                      ImageViewerOverlay.show(
+                        context,
+                        imageUrls: imageUrls,
+                        initialIndex: index,
+                      );
+                    }
                   },
                 ),
               ),
