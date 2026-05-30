@@ -422,9 +422,56 @@ pub(crate) async fn settings(
 pub(crate) async fn update_settings(
     headers: HeaderMap,
     State(state): State<AppState>,
-    Path(_kind): Path<String>,
-    Json(_payload): Json<Value>,
+    Path(kind): Path<String>,
+    Json(payload): Json<Value>,
 ) -> Result<Json<ApiResponse<bool>>, AppError> {
-    let _identity = identity_from_headers(&headers, &state.config)?;
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let user_id = identity.user_id;
+
+    // 验证 kind 参数
+    let valid_kinds = ["privacy", "message", "general"];
+    if !valid_kinds.contains(&kind.as_str()) {
+        return Err(AppError::BadRequest("无效的设置分类".to_string()));
+    }
+
+    // 查询现有设置
+    let existing = sqlx::query_scalar::<_, String>(
+        "SELECT settings FROM service_user_service_db.user_settings WHERE user_id = ?",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let mut settings_value: serde_json::Value = match existing {
+        Some(json_str) => serde_json::from_str(&json_str)
+            .unwrap_or_else(|_| serde_json::to_value(default_settings()).unwrap()),
+        None => serde_json::to_value(default_settings()).unwrap(),
+    };
+
+    // 更新对应节点
+    if let Some(obj) = settings_value.as_object_mut() {
+        obj.insert(kind.clone(), payload);
+    }
+
+    // 保存到数据库
+    let json_str = serde_json::to_string(&settings_value)?;
+
+    sqlx::query(
+        "INSERT INTO service_user_service_db.user_settings (user_id, settings) VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE settings = VALUES(settings)",
+    )
+    .bind(user_id)
+    .bind(&json_str)
+    .execute(&state.db)
+    .await?;
+
+    // 更新 Redis 缓存
+    let cache_key = format!("user_settings:{}", user_id);
+    let _ = state
+        .redis_manager
+        .clone()
+        .set_ex::<_, _, ()>(&cache_key, &json_str, 3600_u64)
+        .await;
+
     Ok(Json(ApiResponse::success(true)))
 }
