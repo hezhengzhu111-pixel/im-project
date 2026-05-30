@@ -240,6 +240,10 @@ extension AppLocalizationsLookup on AppLocalizations {
       case 'commentDeleteConfirmTitle': return commentDeleteConfirmTitle;
       case 'commentDeleteConfirmMessage': return commentDeleteConfirmMessage;
       case 'commentDelete': return commentDelete;
+      case 'momentsDeletePost': return momentsDeletePost;
+      case 'momentsDeletePostConfirm': return momentsDeletePostConfirm;
+      case 'momentsDeletePostSuccess': return momentsDeletePostSuccess;
+      case 'momentsDeletePostFailed': return momentsDeletePostFailed;
       case 'commentReply': return commentReply;
       case 'commentWriteHint': return commentWriteHint;
       case 'commentNoComments': return commentNoComments;

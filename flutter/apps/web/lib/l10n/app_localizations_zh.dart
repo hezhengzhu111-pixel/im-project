@@ -1,3 +1,5 @@
+// ignore: unused_import
+import 'package:intl/intl.dart' as intl;
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -803,6 +805,18 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get commentDelete => '删除';
+
+  @override
+  String get momentsDeletePost => '删除动态';
+
+  @override
+  String get momentsDeletePostConfirm => '确定要删除这条动态吗？删除后无法恢复。';
+
+  @override
+  String get momentsDeletePostSuccess => '动态已删除';
+
+  @override
+  String get momentsDeletePostFailed => '删除失败';
 
   @override
   String get commentReply => '回复';
