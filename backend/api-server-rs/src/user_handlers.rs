@@ -689,6 +689,23 @@ pub(crate) async fn upload_avatar(
             ));
         }
 
+        // 验证文件内容类型与扩展名匹配（防止将可执行文件重命名为图片扩展名绕过校验）
+        let content_type = field.content_type().unwrap_or("").to_string();
+        let expected_content_type = match ext.as_str() {
+            "jpg" | "jpeg" => "image/jpeg",
+            "png" => "image/png",
+            "gif" => "image/gif",
+            _ => "",
+        };
+
+        if !expected_content_type.is_empty()
+            && !content_type.contains(expected_content_type)
+        {
+            return Err(AppError::BadRequest(
+                "文件内容类型与扩展名不匹配".to_string(),
+            ));
+        }
+
         // 读取文件数据
         let data = field
             .bytes()
