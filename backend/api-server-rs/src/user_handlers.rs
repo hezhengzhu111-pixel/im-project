@@ -390,8 +390,13 @@ pub(crate) async fn settings(
 
     match json_str {
         Some(raw) => {
-            let user_settings: UserSettings =
-                serde_json::from_str(&raw).unwrap_or_else(|_| default_settings());
+            let user_settings: UserSettings = match serde_json::from_str(&raw) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::warn!("Failed to parse user_settings for user {}: {}", user_id, e);
+                    default_settings()
+                }
+            };
             Ok(Json(ApiResponse::success(user_settings)))
         }
         None => {
@@ -399,8 +404,10 @@ pub(crate) async fn settings(
             let defaults = default_settings();
             let raw = serde_json::to_string(&defaults)?;
 
+            // 使用 INSERT ... ON DUPLICATE KEY UPDATE 避免并发竞态条件
             sqlx::query(
-                "INSERT INTO service_user_service_db.user_settings (user_id, settings) VALUES (?, ?)",
+                "INSERT INTO service_user_service_db.user_settings (user_id, settings) VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE settings = VALUES(settings)",
             )
             .bind(user_id)
             .bind(&raw)
