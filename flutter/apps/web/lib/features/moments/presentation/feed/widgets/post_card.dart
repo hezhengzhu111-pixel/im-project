@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import 'package:im_web/core/di/providers.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:im_web/core/utils/time_formatter.dart';
 import 'package:im_web/l10n/app_localizations.dart';
@@ -8,18 +10,20 @@ import 'image_viewer.dart';
 import 'like_bar.dart';
 import 'comment_section.dart';
 
-class PostCard extends StatefulWidget {
+class PostCard extends ConsumerStatefulWidget {
   const PostCard({
     required this.post,
     required this.onLike,
+    required this.onDelete,
     super.key,
   });
 
   final PostWithDetails post;
   final VoidCallback onLike;
+  final VoidCallback onDelete;
 
   @override
-  State<PostCard> createState() => _PostCardState();
+  ConsumerState<PostCard> createState() => _PostCardState();
 }
 
 class _PostCardState extends State<PostCard> {
@@ -37,128 +41,133 @@ class _PostCardState extends State<PostCard> {
     final theme = Theme.of(context);
     final loc = AppLocalizations.of(context)!;
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: theme.colorScheme.surface,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header: avatar + nickname
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 21,
-                  backgroundImage: widget.post.userAvatar != null
-                      ? NetworkImage(widget.post.userAvatar!)
-                      : null,
-                  child: widget.post.userAvatar == null
-                      ? Text(
-                          (widget.post.userNickname ?? widget.post.post.userName ?? '?').substring(0, 1).toUpperCase(),
-                          style: const TextStyle(fontSize: 14),
-                        )
-                      : null,
+    return GestureDetector(
+      onLongPressStart: _isOwnPost
+          ? (details) => _showPostMenu(context, details.globalPosition)
+          : null,
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        color: theme.colorScheme.surface,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header: avatar + nickname
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 21,
+                    backgroundImage: widget.post.userAvatar != null
+                        ? NetworkImage(widget.post.userAvatar!)
+                        : null,
+                    child: widget.post.userAvatar == null
+                        ? Text(
+                            (widget.post.userNickname ?? widget.post.post.userName ?? '?').substring(0, 1).toUpperCase(),
+                            style: const TextStyle(fontSize: 14),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.post.userNickname ?? widget.post.post.userName ?? loc.momentsUserFallback,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        Text(
+                          _formatTime(widget.post.post.createTime),
+                          style: TextStyle(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              // Content
+              if (widget.post.post.content.isNotEmpty)
+                _buildContent(theme, loc),
+
+              // Media
+              if (widget.post.media != null && widget.post.media!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: MediaGrid(
+                    media: widget.post.media!,
+                    onImageTap: (index) {
+                      final imageUrls = widget.post.media!
+                          .where((m) => m.type == 0)
+                          .map((m) => m.url)
+                          .toList();
+                      if (imageUrls.isNotEmpty) {
+                        ImageViewerOverlay.show(
+                          context,
+                          imageUrls: imageUrls,
+                          initialIndex: index,
+                        );
+                      }
+                    },
+                  ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
+
+              // Link card
+              if (widget.post.post.linkUrl != null)
+                _buildLinkCard(theme),
+
+              // Location
+              if (widget.post.post.location != null)
+                _buildLocation(theme),
+
+              const SizedBox(height: 12),
+
+              // Actions: time + like/comment buttons
+              Row(
+                children: [
+                  Text(
+                    _formatTime(widget.post.post.createTime),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const Spacer(),
+                  _buildLikeButton(theme),
+                  const SizedBox(width: 8),
+                  _buildCommentButton(theme),
+                ],
+              ),
+
+              // Social area
+              if ((widget.post.likeCount ?? 0) > 0 || _showComments)
+                Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        widget.post.userNickname ?? widget.post.post.userName ?? loc.momentsUserFallback,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      Text(
-                        _formatTime(widget.post.post.createTime),
-                        style: TextStyle(
-                          color: theme.colorScheme.onSurfaceVariant,
-                          fontSize: 12,
-                        ),
-                      ),
+                      if ((widget.post.likeCount ?? 0) > 0)
+                        LikeBar(postId: widget.post.post.id),
+                      if (_showComments)
+                        CommentSection(postId: widget.post.post.id),
                     ],
                   ),
                 ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            // Content
-            if (widget.post.post.content.isNotEmpty)
-              _buildContent(theme, loc),
-
-            // Media
-            if (widget.post.media != null && widget.post.media!.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: MediaGrid(
-                  media: widget.post.media!,
-                  onImageTap: (index) {
-                    final imageUrls = widget.post.media!
-                        .where((m) => m.type == 0)
-                        .map((m) => m.url)
-                        .toList();
-                    if (imageUrls.isNotEmpty) {
-                      ImageViewerOverlay.show(
-                        context,
-                        imageUrls: imageUrls,
-                        initialIndex: index,
-                      );
-                    }
-                  },
-                ),
-              ),
-
-            // Link card
-            if (widget.post.post.linkUrl != null)
-              _buildLinkCard(theme),
-
-            // Location
-            if (widget.post.post.location != null)
-              _buildLocation(theme),
-
-            const SizedBox(height: 12),
-
-            // Actions: time + like/comment buttons
-            Row(
-              children: [
-                Text(
-                  _formatTime(widget.post.post.createTime),
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const Spacer(),
-                _buildLikeButton(theme),
-                const SizedBox(width: 8),
-                _buildCommentButton(theme),
-              ],
-            ),
-
-            // Social area
-            if ((widget.post.likeCount ?? 0) > 0 || _showComments)
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if ((widget.post.likeCount ?? 0) > 0)
-                      LikeBar(postId: widget.post.post.id),
-                    if (_showComments)
-                      CommentSection(postId: widget.post.post.id),
-                  ],
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -333,5 +342,59 @@ class _PostCardState extends State<PostCard> {
 
   String _formatTime(String time) {
     return formatRelativeTime(context, DateTime.parse(time));
+  }
+
+  bool get _isOwnPost {
+    final userId = ref.read(authStateProvider).user?.id;
+    return userId != null && userId == widget.post.post.userId;
+  }
+
+  void _showPostMenu(BuildContext context, Offset position) {
+    if (!_isOwnPost) return;
+    final loc = AppLocalizations.of(context)!;
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        position.dx,
+        position.dy,
+        position.dx + 1,
+        position.dy + 1,
+      ),
+      items: [
+        PopupMenuItem<String>(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Icons.delete_outline, size: 18, color: Theme.of(context).colorScheme.error),
+              const SizedBox(width: 8),
+              Text(loc.momentsDeletePost, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'delete') _confirmDelete(context);
+    });
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final loc = AppLocalizations.of(context)!;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(loc.momentsDeletePost),
+        content: Text(loc.momentsDeletePostConfirm),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(loc.commonCancel)),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(loc.momentsDeletePost, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      widget.onDelete();
+    }
   }
 }

@@ -84,6 +84,9 @@ class _MomentsFeedPageState extends ConsumerState<MomentsFeedPage> {
                     onLike: () {
                       ref.read(momentsFeedProvider.notifier).toggleLike(post.post.id);
                     },
+                    onDelete: () {
+                      ref.read(momentsFeedProvider.notifier).removePost(post.post.id);
+                    },
                   );
                 },
                 childCount: feedState.posts.length + (feedState.isLoading ? 1 : 0),
