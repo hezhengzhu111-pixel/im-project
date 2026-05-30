@@ -231,7 +231,21 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     if (isGroup) return null;
     final currentUserId = ref.read(authStateProvider).user?.id ?? '';
     if (currentUserId.isEmpty || session.targetId.isEmpty) return null;
-    return '${currentUserId}_private_${session.targetId}';
+    return _compareIds(currentUserId, session.targetId) <= 0
+        ? 'p_${currentUserId}_${session.targetId}'
+        : 'p_${session.targetId}_$currentUserId';
+  }
+
+  int _compareIds(String left, String right) {
+    final leftId = BigInt.tryParse(left);
+    final rightId = BigInt.tryParse(right);
+    if (leftId != null &&
+        rightId != null &&
+        leftId > BigInt.zero &&
+        rightId > BigInt.zero) {
+      return leftId.compareTo(rightId);
+    }
+    return left.compareTo(right);
   }
 
   Future<void> _startEncryption(

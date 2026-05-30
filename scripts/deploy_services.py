@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import shutil
 from urllib.parse import quote_plus
 
 from deploy_utils import (
@@ -30,8 +29,7 @@ SERVICE_ALIASES = {
     "spring-ai": "im-spring-ai",
 }
 
-APP_SERVICES = ["im-server", "im-api-server", "im-spring-ai"]
-# APP_SERVICES = ["im-server", "im-api-server", "im-frontend", "im-spring-ai"]
+APP_SERVICES = ["im-server", "im-api-server", "im-frontend", "im-spring-ai"]
 
 
 def _hot_urls(host_prefix: str, env_key: str, password: str) -> str:
@@ -60,7 +58,7 @@ def middleware_services() -> list[str]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Deploy Docker-built Rust backend services, Spring AI, and the frontend."
+        description="Deploy Docker-built Rust backend services, Spring AI, and the Flutter frontend."
     )
     parser.add_argument(
         "services",
@@ -87,11 +85,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-middleware-check",
         action="store_true",
         help="Skip MySQL and Redis readiness checks before service deployment.",
-    )
-    parser.add_argument(
-        "--skip-e2ee-wasm-build",
-        action="store_true",
-        help="Skip the host-side Rust E2EE WASM build before building the frontend image.",
     )
     parser.add_argument(
         "--no-wait",
@@ -156,26 +149,6 @@ def apply_database_migrations(config) -> None:
         )
 
 
-def build_frontend_wasm(config) -> None:
-    npm_path = shutil.which("npm") or shutil.which("npm.cmd")
-    if npm_path is None:
-        # 纯 Docker + Git 环境可能没有 npm，此时依赖预构建的 WASM 产物
-        wasm_dir = config.project_dir / "frontend" / "packages" / "rust-e2ee-wasm" / "src"
-        required = ["e2ee_wasm.js", "e2ee_wasm.d.ts", "e2ee_wasm_bg.wasm"]
-        missing = [f for f in required if not (wasm_dir / f).exists()]
-        if missing:
-            fatal(
-                "npm is not available and E2EE WASM artifacts are missing: "
-                + ", ".join(missing)
-                + ". Install Node.js or run 'npm run e2ee:wasm:build' on a "
-                + "development machine and commit the generated files."
-            )
-        print("npm not found; using pre-built E2EE WASM artifacts.")
-        return
-    print("Building Rust E2EE WASM artifacts for frontend...")
-    run_command([npm_path, "run", "e2ee:wasm:build"], cwd=config.project_dir / "frontend")
-
-
 def main() -> None:
     args = build_parser().parse_args()
     ensure_docker_environment()
@@ -194,9 +167,6 @@ def main() -> None:
 
     if "im-api-server" in services:
         apply_database_migrations(config)
-
-    # if "im-frontend" in services and not args.no_build and not args.skip_e2ee_wasm_build:
-    #     build_frontend_wasm(config)
 
     command = compose_up_command(
         config,

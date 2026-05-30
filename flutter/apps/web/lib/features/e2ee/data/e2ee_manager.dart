@@ -35,11 +35,14 @@ class E2eeManager {
   bool _initialized = false;
   Future<void>? _initFuture;
 
+  /// Track sessions currently loaded in the WASM runtime to avoid duplicate
+  /// restore. Matches Vue's `loadedSessions` Set.
+  final _loadedSessions = <String>{};
+
   // ---------------------------------------------------------------------------
   // Initialization
   // ---------------------------------------------------------------------------
 
-  /// Initialize stores and set device ID.
   Future<void> init() async {
     if (_initialized) return;
     final existingInit = _initFuture;
@@ -179,7 +182,12 @@ class E2eeManager {
       final localKeys = await _getLocalKeyMaterial();
 
       // Fetch remote bundle from server.
-      final remoteBundle = await api.getBundle(peerId);
+      final remoteBundle = await api.getBundle(
+        peerId,
+        deviceId: '',
+        conversationId: sessionId,
+        requesterDeviceId: _deviceId,
+      );
       final remoteDeviceId = (remoteBundle['deviceId'] as String?) ?? '';
       if (remoteDeviceId.isEmpty) {
         throw Exception('remote user has no active E2EE device');
@@ -200,16 +208,18 @@ class E2eeManager {
 
       // Save session state as v3 envelope.
       final stateBase64 = outboundResult['state'] as String;
-      final envelopeBase64 = await adapter.exportSessionEnvelope(
-        stateBase64: stateBase64,
-        userId: currentUserId,
-        deviceId: _deviceId,
+      await sessionStore.saveSession(
         sessionId: sessionId,
+        stateBase64: stateBase64,
+        localDeviceId: _deviceId,
         remoteUserId: peerId,
         remoteDeviceId: remoteDeviceId,
+        direction: 'outbound',
       );
-      await sessionStore.saveSession(sessionId, envelopeBase64);
       await metaStore.setRemoteDeviceId(sessionId, remoteDeviceId);
+
+      // Track in memory (match Vue loadedSessions).
+      _loadedSessions.add(sessionId);
 
       // Generate and save verify phrase.
       final verifyPhrase = _generateVerifyPhrase();
@@ -326,16 +336,18 @@ class E2eeManager {
 
       // Save session state as v3 envelope.
       final stateBase64 = inboundResult['state'] as String;
-      final envelopeBase64 = await adapter.exportSessionEnvelope(
-        stateBase64: stateBase64,
-        userId: currentUserId,
-        deviceId: _deviceId,
+      await sessionStore.saveSession(
         sessionId: sessionId,
+        stateBase64: stateBase64,
+        localDeviceId: _deviceId,
         remoteUserId: senderUserId,
         remoteDeviceId: senderDeviceId,
+        direction: 'inbound',
       );
-      await sessionStore.saveSession(sessionId, envelopeBase64);
       await metaStore.setRemoteDeviceId(sessionId, senderDeviceId);
+
+      // Track in memory (match Vue loadedSessions).
+      _loadedSessions.add(sessionId);
 
       if (verifyPhrase != null && verifyPhrase.isNotEmpty) {
         await metaStore.setVerifyPhrase(sessionId, verifyPhrase);
@@ -378,11 +390,6 @@ class E2eeManager {
   }) async {
     await init();
 
-    final envelopeBase64 = await sessionStore.getSession(sessionId);
-    if (envelopeBase64 == null) {
-      throw Exception('no E2EE session found for $sessionId');
-    }
-
     final remoteDeviceId = await metaStore.getRemoteDeviceId(sessionId);
     if (remoteDeviceId == null || remoteDeviceId.isEmpty) {
       throw Exception('remote device ID not set for session $sessionId');
@@ -390,15 +397,17 @@ class E2eeManager {
 
     final remoteUserId = _extractPeerId(sessionId);
 
-    // Restore session state from v3 envelope.
-    final stateBase64 = await adapter.restoreSessionEnvelope(
-      envelopeBase64: envelopeBase64,
-      userId: currentUserId,
-      deviceId: senderDeviceId,
+    // Get stored session state from IndexedDB.
+    final stateBase64 = await sessionStore.getSession(
       sessionId: sessionId,
+      localDeviceId: senderDeviceId,
       remoteUserId: remoteUserId,
       remoteDeviceId: remoteDeviceId,
     );
+
+    if (stateBase64 == null) {
+      throw Exception('no E2EE session found for $sessionId');
+    }
 
     // Encrypt via FRB.
     final plaintextBase64 = base64Encode(utf8.encode(plaintext));
@@ -410,17 +419,16 @@ class E2eeManager {
       sessionId: sessionId,
     );
 
-    // Save updated session state.
+    // Save updated session state as v3 envelope.
     final newStateBase64 = result['new_state'] as String;
-    final newEnvelopeBase64 = await adapter.exportSessionEnvelope(
-      stateBase64: newStateBase64,
-      userId: currentUserId,
-      deviceId: senderDeviceId,
+    await sessionStore.saveSession(
       sessionId: sessionId,
+      stateBase64: newStateBase64,
+      localDeviceId: senderDeviceId,
       remoteUserId: remoteUserId,
       remoteDeviceId: remoteDeviceId,
+      direction: 'outbound',
     );
-    await sessionStore.saveSession(sessionId, newEnvelopeBase64);
 
     // Return envelope without new_state (internal state must not leak).
     final envelope = Map<String, dynamic>.from(result);
@@ -440,21 +448,19 @@ class E2eeManager {
 
     final senderDeviceId = envelope['sender_device_id'] as String? ?? '';
     final localDeviceId = _deviceId;
+    final remoteUserId = _extractPeerId(sessionId);
 
-    final envelopeBase64 = await sessionStore.getSession(sessionId);
-    if (envelopeBase64 == null) {
-      throw Exception('no E2EE session found for $sessionId');
-    }
-
-    // Restore session state from v3 envelope.
-    final stateBase64 = await adapter.restoreSessionEnvelope(
-      envelopeBase64: envelopeBase64,
-      userId: currentUserId,
-      deviceId: localDeviceId,
+    // Get stored session state from IndexedDB.
+    final stateBase64 = await sessionStore.getSession(
       sessionId: sessionId,
-      remoteUserId: _extractPeerId(sessionId),
+      localDeviceId: localDeviceId,
+      remoteUserId: remoteUserId,
       remoteDeviceId: senderDeviceId,
     );
+
+    if (stateBase64 == null) {
+      throw Exception('no E2EE session found for $sessionId');
+    }
 
     // Decrypt via FRB.
     final result = await adapter.decryptMessage(
@@ -462,17 +468,19 @@ class E2eeManager {
       envelope: envelope,
     );
 
-    // Save updated session state.
+    // Save updated session state as v3 envelope.
     final newStateBase64 = result['new_state'] as String;
-    final newEnvelopeBase64 = await adapter.exportSessionEnvelope(
-      stateBase64: newStateBase64,
-      userId: currentUserId,
-      deviceId: localDeviceId,
+    await sessionStore.saveSession(
       sessionId: sessionId,
-      remoteUserId: _extractPeerId(sessionId),
+      stateBase64: newStateBase64,
+      localDeviceId: localDeviceId,
+      remoteUserId: remoteUserId,
       remoteDeviceId: senderDeviceId,
+      direction: 'inbound',
     );
-    await sessionStore.saveSession(sessionId, newEnvelopeBase64);
+
+    // Track in memory.
+    _loadedSessions.add(sessionId);
 
     // Decode plaintext.
     final plaintextBase64 = result['plaintext'] as String;
@@ -489,6 +497,7 @@ class E2eeManager {
 
     await sessionStore.deleteSession(sessionId);
     await metaStore.clearSession(sessionId);
+    _loadedSessions.remove(sessionId);
 
     try {
       await api.disableEncryption(sessionId);
@@ -566,6 +575,7 @@ class E2eeManager {
     await metaStore.clearPendingHandshake(sessionId);
     await sessionStore.deleteSession(sessionId);
     await metaStore.setSessionStatus(sessionId, status);
+    _loadedSessions.remove(sessionId);
   }
 
   /// Extract the peer user ID from a session ID.

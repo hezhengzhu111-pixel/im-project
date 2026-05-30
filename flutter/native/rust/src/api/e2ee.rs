@@ -1,17 +1,14 @@
 use anyhow::{Context, Result};
-use e2ee_core::{
-    init_receiving_chain, init_sending_chain,
-    ratchet_decrypt as core_ratchet_decrypt, ratchet_encrypt as core_ratchet_encrypt,
-    restore_state as core_restore_state, try_export_state, decode_ratchet_header,
-    encode_ratchet_header, PreKeyBundle, PreKeyBundleFetch, X25519KeyPair, X25519PublicKey,
-    Ed25519PublicKey,
-};
-use e2ee_core::x3dh::{
-    generate_key_bundle_with_count, x3dh_initiate as core_x3dh_initiate,
-};
 use base64::Engine as _;
-use sha2::{Sha256, Digest};
+use e2ee_core::x3dh::{generate_key_bundle_with_count, x3dh_initiate as core_x3dh_initiate};
+use e2ee_core::{
+    decode_ratchet_header, encode_ratchet_header, init_receiving_chain, init_sending_chain,
+    ratchet_decrypt as core_ratchet_decrypt, ratchet_encrypt as core_ratchet_encrypt,
+    restore_state as core_restore_state, try_export_state, Ed25519PublicKey, Ed25519Signature,
+    PreKey, PreKeyBundle, PreKeyBundleFetch, X25519KeyPair, X25519PublicKey,
+};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 // ============================================================================
 // Serializable bridge types for FFI
@@ -21,6 +18,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Contains both public (PreKeyBundle) and private key material so the Dart
 /// side can store everything needed for later X3DH response and ratchet ops.
+/// flutter_rust_bridge:ignore
 #[derive(Serialize, Deserialize)]
 pub struct BridgeKeyBundle {
     pub spk_id: u32,
@@ -35,6 +33,7 @@ pub struct BridgeKeyBundle {
 }
 
 /// Serializable one-time pre-key pair.
+/// flutter_rust_bridge:ignore
 #[derive(Serialize, Deserialize)]
 pub struct BridgeOtkPair {
     pub id: u32,
@@ -68,6 +67,82 @@ pub struct BridgeX3dhRespondResult {
     pub otk_id: Option<u32>,
 }
 
+fn decode_base64_32(value: &str, label: &str) -> Result<[u8; 32]> {
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(value)
+        .with_context(|| format!("invalid {label} base64"))?;
+    if bytes.len() != 32 {
+        anyhow::bail!("{label} must be 32 bytes, got {}", bytes.len());
+    }
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&bytes);
+    Ok(out)
+}
+
+fn json_key_bytes(value: &serde_json::Value, label: &str) -> Result<[u8; 32]> {
+    if let Some(text) = value.as_str() {
+        return decode_base64_32(text, label);
+    }
+    let array = value
+        .as_array()
+        .with_context(|| format!("{label} must be base64 string or byte array"))?;
+    if array.len() != 32 {
+        anyhow::bail!("{label} must be 32 bytes, got {}", array.len());
+    }
+    let mut out = [0u8; 32];
+    for (idx, item) in array.iter().enumerate() {
+        let byte = item
+            .as_u64()
+            .with_context(|| format!("{label}[{idx}] must be a byte"))?;
+        if byte > u8::MAX as u64 {
+            anyhow::bail!("{label}[{idx}] must be in 0..=255");
+        }
+        out[idx] = byte as u8;
+    }
+    Ok(out)
+}
+
+fn json_pre_key(value: &serde_json::Value, label: &str) -> Result<PreKey> {
+    let id = value["id"]
+        .as_u64()
+        .with_context(|| format!("{label}.id is required"))?;
+    if id > u32::MAX as u64 {
+        anyhow::bail!("{label}.id out of range");
+    }
+    Ok(PreKey {
+        id: id as u32,
+        key: X25519PublicKey(json_key_bytes(&value["key"], &format!("{label}.key"))?),
+    })
+}
+
+fn parse_remote_bundle_json(bundle_json: &str) -> Result<PreKeyBundleFetch> {
+    let value: serde_json::Value =
+        serde_json::from_str(bundle_json).context("failed to parse remote bundle JSON")?;
+    let one_time_pre_key = match value.get("one_time_pre_key") {
+        Some(v) if !v.is_null() => Some(json_pre_key(v, "one_time_pre_key")?),
+        _ => None,
+    };
+    let sig_bytes = base64::engine::general_purpose::STANDARD
+        .decode(value["signed_pre_key_signature"].as_str().unwrap_or(""))
+        .context("invalid signed_pre_key_signature base64")?;
+    if sig_bytes.len() != 64 {
+        anyhow::bail!(
+            "signed_pre_key_signature must be 64 bytes, got {}",
+            sig_bytes.len()
+        );
+    }
+    let mut sig = [0u8; 64];
+    sig.copy_from_slice(&sig_bytes);
+
+    Ok(PreKeyBundleFetch {
+        identity_key: X25519PublicKey(json_key_bytes(&value["identity_key"], "identity_key")?),
+        signing_key: Ed25519PublicKey(json_key_bytes(&value["signing_key"], "signing_key")?),
+        signed_pre_key: json_pre_key(&value["signed_pre_key"], "signed_pre_key")?,
+        signed_pre_key_signature: Ed25519Signature(sig),
+        one_time_pre_key,
+    })
+}
+
 // ============================================================================
 // Bridge functions
 // ============================================================================
@@ -81,8 +156,8 @@ pub struct BridgeX3dhRespondResult {
 /// # Arguments
 /// * `otk_count` — Number of one-time pre-keys to generate.
 pub fn generate_key_bundle(otk_count: u32) -> Result<Vec<u8>> {
-    let key_bundle = generate_key_bundle_with_count(1, otk_count)
-        .context("failed to generate key bundle")?;
+    let key_bundle =
+        generate_key_bundle_with_count(1, otk_count).context("failed to generate key bundle")?;
 
     // Extract raw bytes from KeyBundle without moving fields (it implements Drop).
     let identity_pk = key_bundle.identity_key_pair.public_key.0;
@@ -152,8 +227,8 @@ pub fn generate_key_bundle(otk_count: u32) -> Result<Vec<u8>> {
 /// }
 /// ```
 pub fn generate_key_bundle_json(otk_count: u32) -> Result<String> {
-    let key_bundle = generate_key_bundle_with_count(1, otk_count)
-        .context("failed to generate key bundle")?;
+    let key_bundle =
+        generate_key_bundle_with_count(1, otk_count).context("failed to generate key bundle")?;
 
     let identity_key_pair_bytes = bincode::serialize(&key_bundle.identity_key_pair)
         .context("failed to serialize identity key pair")?;
@@ -165,8 +240,8 @@ pub fn generate_key_bundle_json(otk_count: u32) -> Result<String> {
     let mut otk_pairs_json = Vec::with_capacity(key_bundle.one_time_pre_key_pairs.len());
     let mut one_time_pre_keys_json = Vec::with_capacity(key_bundle.one_time_pre_key_pairs.len());
     for otk in &key_bundle.one_time_pre_key_pairs {
-        let otk_pair_bytes = bincode::serialize(&otk.key_pair)
-            .context("failed to serialize OTK pair")?;
+        let otk_pair_bytes =
+            bincode::serialize(&otk.key_pair).context("failed to serialize OTK pair")?;
         otk_pairs_json.push(serde_json::json!({
             "id": otk.id,
             "key_pair_bincode": b64(&otk_pair_bytes),
@@ -213,14 +288,14 @@ pub fn x3dh_initiate(
     signed_pre_key: Vec<u8>,
     _one_time_pre_key: Option<Vec<u8>>,
 ) -> Result<Vec<u8>> {
-    let alice_identity: X25519KeyPair =
-        bincode::deserialize(&identity_key).context("failed to deserialize Alice's identity key")?;
+    let alice_identity: X25519KeyPair = bincode::deserialize(&identity_key)
+        .context("failed to deserialize Alice's identity key")?;
 
     let remote_bundle: PreKeyBundleFetch = bincode::deserialize(&signed_pre_key)
         .context("failed to deserialize Bob's pre-key bundle")?;
 
-    let initiate_result = core_x3dh_initiate(&alice_identity, &remote_bundle)
-        .context("X3DH initiation failed")?;
+    let initiate_result =
+        core_x3dh_initiate(&alice_identity, &remote_bundle).context("X3DH initiation failed")?;
 
     // Create initial sending RatchetState from the derived root key.
     let sending_state = init_sending_chain(
@@ -230,7 +305,8 @@ pub fn x3dh_initiate(
     )
     .context("failed to initialize sending ratchet chain")?;
 
-    let state_bytes = try_export_state(&sending_state).context("failed to serialize ratchet state")?;
+    let state_bytes =
+        try_export_state(&sending_state).context("failed to serialize ratchet state")?;
 
     let result = BridgeX3dhInitiateResult {
         state: state_bytes,
@@ -279,13 +355,12 @@ pub fn x3dh_respond(
         X25519PublicKey(buf)
     };
 
-    let bob_spk: X25519KeyPair =
-        bincode::deserialize(&signed_pre_key).context("failed to deserialize Bob's signed pre-key")?;
+    let bob_spk: X25519KeyPair = bincode::deserialize(&signed_pre_key)
+        .context("failed to deserialize Bob's signed pre-key")?;
 
     let bob_otk: Option<X25519KeyPair> = match one_time_pre_key {
         Some(bytes) => Some(
-            bincode::deserialize(&bytes)
-                .context("failed to deserialize Bob's one-time pre-key")?,
+            bincode::deserialize(&bytes).context("failed to deserialize Bob's one-time pre-key")?,
         ),
         None => None,
     };
@@ -328,10 +403,7 @@ pub fn x3dh_respond(
 /// Returns `(new_state_bytes, header_and_ciphertext)`:
 /// - `new_state_bytes`: Updated serialized RatchetState (must be stored for next operation).
 /// - `header_and_ciphertext`: 52-byte ratchet header || AES-GCM ciphertext (to send to peer).
-pub fn ratchet_encrypt(
-    state_bytes: Vec<u8>,
-    plaintext: Vec<u8>,
-) -> Result<(Vec<u8>, Vec<u8>)> {
+pub fn ratchet_encrypt(state_bytes: Vec<u8>, plaintext: Vec<u8>) -> Result<(Vec<u8>, Vec<u8>)> {
     let mut state: e2ee_core::RatchetState =
         bincode::deserialize(&state_bytes).context("failed to deserialize ratchet state")?;
 
@@ -359,10 +431,7 @@ pub fn ratchet_encrypt(
 /// Returns `(new_state_bytes, plaintext)`:
 /// - `new_state_bytes`: Updated serialized RatchetState (must be stored for next operation).
 /// - `plaintext`: The decrypted message bytes.
-pub fn ratchet_decrypt(
-    state_bytes: Vec<u8>,
-    ciphertext: Vec<u8>,
-) -> Result<(Vec<u8>, Vec<u8>)> {
+pub fn ratchet_decrypt(state_bytes: Vec<u8>, ciphertext: Vec<u8>) -> Result<(Vec<u8>, Vec<u8>)> {
     let mut state: e2ee_core::RatchetState =
         bincode::deserialize(&state_bytes).context("failed to deserialize ratchet state")?;
 
@@ -376,8 +445,8 @@ pub fn ratchet_decrypt(
     let (header_bytes, actual_ciphertext) = ciphertext.split_at(52);
     let header = decode_ratchet_header(header_bytes).context("failed to decode ratchet header")?;
 
-    let plaintext =
-        core_ratchet_decrypt(&mut state, &header, actual_ciphertext).context("ratchet decryption failed")?;
+    let plaintext = core_ratchet_decrypt(&mut state, &header, actual_ciphertext)
+        .context("ratchet decryption failed")?;
 
     let new_state_bytes =
         try_export_state(&state).context("failed to serialize updated ratchet state")?;
@@ -411,7 +480,7 @@ pub fn restore_state(state_bytes: Vec<u8>) -> Result<Vec<u8>> {
 // ============================================================================
 
 /// Create outbound X3DH session (Alice side).
-/// Input JSON: {"session_id": "...", "local_identity_key_pair": "<base64 bincode X25519KeyPair>", "remote_bundle": "<base64 bincode PreKeyBundleFetch>"}
+/// Input JSON: {"session_id": "...", "local_identity_key_pair": "<base64 bincode X25519KeyPair>", "remote_bundle_json": "{...}"}
 /// Output JSON: {"state": "<base64>", "handshake": "<base64>", "otk_id": <u32|null>}
 #[allow(dead_code)]
 pub fn create_outbound_session(config_json: String) -> Result<String> {
@@ -424,14 +493,13 @@ pub fn create_outbound_session(config_json: String) -> Result<String> {
     let alice_identity: X25519KeyPair = bincode::deserialize(&identity_bytes)
         .context("failed to deserialize local identity key pair")?;
 
-    let bundle_bytes = base64::engine::general_purpose::STANDARD
-        .decode(config["remote_bundle"].as_str().unwrap_or(""))
-        .context("invalid remote_bundle base64")?;
-    let remote_bundle: PreKeyBundleFetch = bincode::deserialize(&bundle_bytes)
-        .context("failed to deserialize remote bundle")?;
+    let bundle_json = config["remote_bundle_json"]
+        .as_str()
+        .context("remote_bundle_json is required")?;
+    let remote_bundle = parse_remote_bundle_json(bundle_json)?;
 
-    let initiate_result = core_x3dh_initiate(&alice_identity, &remote_bundle)
-        .context("X3DH initiation failed")?;
+    let initiate_result =
+        core_x3dh_initiate(&alice_identity, &remote_bundle).context("X3DH initiation failed")?;
 
     let sending_state = init_sending_chain(
         &initiate_result.root_key,
@@ -440,8 +508,8 @@ pub fn create_outbound_session(config_json: String) -> Result<String> {
     )
     .context("failed to initialize sending ratchet chain")?;
 
-    let state_bytes = try_export_state(&sending_state)
-        .context("failed to serialize ratchet state")?;
+    let state_bytes =
+        try_export_state(&sending_state).context("failed to serialize ratchet state")?;
 
     let mut handshake = Vec::with_capacity(40);
     handshake.extend_from_slice(&initiate_result.ephemeral_public_key.0);
@@ -475,8 +543,8 @@ pub fn create_inbound_session(config_json: String) -> Result<String> {
     let spk_bytes = base64::engine::general_purpose::STANDARD
         .decode(config["local_spk_pair"].as_str().unwrap_or(""))
         .context("invalid local_spk_pair")?;
-    let bob_spk: X25519KeyPair = bincode::deserialize(&spk_bytes)
-        .context("failed to deserialize local SPK pair")?;
+    let bob_spk: X25519KeyPair =
+        bincode::deserialize(&spk_bytes).context("failed to deserialize local SPK pair")?;
 
     let bob_otk: Option<X25519KeyPair> = match config.get("local_otk_pair") {
         Some(v) if v.is_string() => {
@@ -492,7 +560,10 @@ pub fn create_inbound_session(config_json: String) -> Result<String> {
         .decode(config["remote_identity_key"].as_str().unwrap_or(""))
         .context("invalid remote_identity_key")?;
     if remote_id_bytes.len() != 32 {
-        anyhow::bail!("remote_identity_key must be 32 bytes, got {}", remote_id_bytes.len());
+        anyhow::bail!(
+            "remote_identity_key must be 32 bytes, got {}",
+            remote_id_bytes.len()
+        );
     }
     let alice_identity_pk = X25519PublicKey({
         let mut buf = [0u8; 32];
@@ -528,8 +599,8 @@ pub fn create_inbound_session(config_json: String) -> Result<String> {
     )
     .context("failed to initialize receiving ratchet chain")?;
 
-    let state_bytes = try_export_state(&receiving_state)
-        .context("failed to serialize ratchet state")?;
+    let state_bytes =
+        try_export_state(&receiving_state).context("failed to serialize ratchet state")?;
 
     let result = serde_json::json!({
         "state": base64::engine::general_purpose::STANDARD.encode(&state_bytes),
@@ -544,8 +615,8 @@ pub fn create_inbound_session(config_json: String) -> Result<String> {
 /// Output JSON: {"version": 2, "algorithm": "rust-x25519-x3dh-dr-v1", "sender_device_id": "...", "recipient_device_id": "...", "session_id": "...", "wire": "<base64>", "handshake?": "<base64>", "new_state": "<base64>"}
 #[allow(dead_code)]
 pub fn encrypt_message(config_json: String) -> Result<String> {
-    let config: serde_json::Value = serde_json::from_str(&config_json)
-        .context("failed to parse encrypt_message config")?;
+    let config: serde_json::Value =
+        serde_json::from_str(&config_json).context("failed to parse encrypt_message config")?;
 
     let state_bytes = base64::engine::general_purpose::STANDARD
         .decode(config["state"].as_str().unwrap_or(""))
@@ -554,8 +625,7 @@ pub fn encrypt_message(config_json: String) -> Result<String> {
         .decode(config["plaintext"].as_str().unwrap_or(""))
         .context("invalid plaintext base64")?;
 
-    let (new_state, header_and_ciphertext) =
-        ratchet_encrypt(state_bytes, plaintext_bytes)?;
+    let (new_state, header_and_ciphertext) = ratchet_encrypt(state_bytes, plaintext_bytes)?;
 
     let wire = base64::engine::general_purpose::STANDARD.encode(&header_and_ciphertext);
     let new_state_b64 = base64::engine::general_purpose::STANDARD.encode(&new_state);
@@ -584,14 +654,15 @@ pub fn encrypt_message(config_json: String) -> Result<String> {
 /// Output JSON: {"plaintext": "<base64>", "new_state": "<base64>"}
 #[allow(dead_code)]
 pub fn decrypt_message(config_json: String) -> Result<String> {
-    let config: serde_json::Value = serde_json::from_str(&config_json)
-        .context("failed to parse decrypt_message config")?;
+    let config: serde_json::Value =
+        serde_json::from_str(&config_json).context("failed to parse decrypt_message config")?;
 
     let state_bytes = base64::engine::general_purpose::STANDARD
         .decode(config["state"].as_str().unwrap_or(""))
         .context("invalid state base64")?;
 
-    let wire_b64 = config["envelope"]["wire"].as_str()
+    let wire_b64 = config["envelope"]["wire"]
+        .as_str()
         .context("envelope.wire is required")?;
     let wire_bytes = base64::engine::general_purpose::STANDARD
         .decode(wire_b64)
@@ -625,7 +696,10 @@ pub fn export_session_envelope(config_json: String) -> Result<String> {
     let remote_user_id = config["remote_user_id"].as_str().unwrap_or("");
     let remote_device_id = config["remote_device_id"].as_str().unwrap_or("");
 
-    let context_str = format!("{}:{}:{}:{}:{}", user_id, device_id, session_id, remote_user_id, remote_device_id);
+    let context_str = format!(
+        "{}:{}:{}:{}:{}",
+        user_id, device_id, session_id, remote_user_id, remote_device_id
+    );
     let mut hasher = Sha256::new();
     hasher.update(context_str.as_bytes());
     let hash = hasher.finalize();
@@ -656,7 +730,10 @@ pub fn restore_session_envelope(config_json: String) -> Result<String> {
         .context("invalid envelope base64")?;
 
     if envelope_bytes.len() < 17 {
-        anyhow::bail!("envelope too short: expected at least 17 bytes, got {}", envelope_bytes.len());
+        anyhow::bail!(
+            "envelope too short: expected at least 17 bytes, got {}",
+            envelope_bytes.len()
+        );
     }
 
     let version = envelope_bytes[0];
@@ -673,7 +750,10 @@ pub fn restore_session_envelope(config_json: String) -> Result<String> {
     let remote_user_id = config["remote_user_id"].as_str().unwrap_or("");
     let remote_device_id = config["remote_device_id"].as_str().unwrap_or("");
 
-    let context_str = format!("{}:{}:{}:{}:{}", user_id, device_id, session_id, remote_user_id, remote_device_id);
+    let context_str = format!(
+        "{}:{}:{}:{}:{}",
+        user_id, device_id, session_id, remote_user_id, remote_device_id
+    );
     let mut hasher = Sha256::new();
     hasher.update(context_str.as_bytes());
     let hash = hasher.finalize();
@@ -735,8 +815,7 @@ mod tests {
             generate_key_bundle(1).expect("Alice key bundle generation failed");
         let alice_bundle = deserialize_bundle(&alice_bundle_bytes);
 
-        let bob_bundle_bytes =
-            generate_key_bundle(1).expect("Bob key bundle generation failed");
+        let bob_bundle_bytes = generate_key_bundle(1).expect("Bob key bundle generation failed");
         let bob_bundle = deserialize_bundle(&bob_bundle_bytes);
 
         // Serialize Alice's identity key pair for the bridge.
@@ -745,8 +824,7 @@ mod tests {
 
         // Build Bob's PreKeyBundleFetch.
         let bob_fetch = build_fetch_bundle(&bob_bundle);
-        let bob_fetch_bytes =
-            bincode::serialize(&bob_fetch).expect("serialize bob fetch bundle");
+        let bob_fetch_bytes = bincode::serialize(&bob_fetch).expect("serialize bob fetch bundle");
 
         // Alice initiates.
         let initiate_bytes = x3dh_initiate(alice_identity_bytes.clone(), bob_fetch_bytes, None)
@@ -790,29 +868,22 @@ mod tests {
 
         // Verify public key material is present (non-zero).
         assert_ne!(
-            bundle.bundle.identity_key.0,
-            [0u8; 32],
+            bundle.bundle.identity_key.0, [0u8; 32],
             "identity key must not be all zeros"
         );
         assert_ne!(
-            bundle.bundle.signed_pre_key.0,
-            [0u8; 32],
+            bundle.bundle.signed_pre_key.0, [0u8; 32],
             "signed pre-key must not be all zeros"
         );
 
         // Verify OTK count matches.
-        assert_eq!(
-            bundle.otk_pairs.len(),
-            5,
-            "expected 5 one-time pre-keys"
-        );
+        assert_eq!(bundle.otk_pairs.len(), 5, "expected 5 one-time pre-keys");
 
         // Verify OTK ids are sequential starting at 1.
         for (i, otk) in bundle.otk_pairs.iter().enumerate() {
             assert_eq!(otk.id, (i as u32) + 1, "OTK id mismatch");
             assert_ne!(
-                otk.key_pair.public_key.0,
-                [0u8; 32],
+                otk.key_pair.public_key.0, [0u8; 32],
                 "OTK public key must not be all zeros"
             );
         }
@@ -834,10 +905,7 @@ mod tests {
         let (alice_state_after, ciphertext) =
             ratchet_encrypt(alice_state, plaintext.to_vec()).expect("ratchet_encrypt failed");
 
-        assert!(
-            !ciphertext.is_empty(),
-            "ciphertext must not be empty"
-        );
+        assert!(!ciphertext.is_empty(), "ciphertext must not be empty");
         // ciphertext = 52-byte header + encrypted data
         assert!(
             ciphertext.len() > 52,
@@ -916,8 +984,7 @@ mod tests {
             ratchet_encrypt(alice_state, b"before export".to_vec()).expect("encrypt failed");
         let deserialized_state: e2ee_core::RatchetState =
             bincode::deserialize(&alice_state_after).expect("deserialize state");
-        let exported2 =
-            try_export_state(&deserialized_state).expect("try_export_state failed");
+        let exported2 = try_export_state(&deserialized_state).expect("try_export_state failed");
         let _restored2 = core_restore_state(&exported2).expect("core_restore_state failed");
     }
 }

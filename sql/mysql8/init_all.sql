@@ -23,6 +23,10 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(100) NULL COMMENT '邮箱',
   status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1-正常，0-禁用',
   last_login_time DATETIME NULL COMMENT '最后登录时间',
+  gender TINYINT NULL COMMENT '0=未知, 1=男, 2=女',
+  birthday DATE NULL COMMENT '生日',
+  signature VARCHAR(200) NULL COMMENT '个性签名',
+  location VARCHAR(100) NULL COMMENT '所在地',
   im_token VARCHAR(500) NULL COMMENT 'IM Token',
   im_server_url VARCHAR(200) NULL COMMENT 'IM服务器地址',
   created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -63,10 +67,11 @@ CREATE TABLE IF NOT EXISTS friend_request (
 
 CREATE TABLE IF NOT EXISTS user_settings (
   user_id BIGINT NOT NULL COMMENT '用户ID',
-  privacy_settings JSON NULL COMMENT '隐私设置',
-  message_settings JSON NULL COMMENT '消息设置',
-  general_settings JSON NULL COMMENT '通用设置',
-  push_settings JSON NULL COMMENT '推送设置',
+  settings JSON NOT NULL DEFAULT (JSON_OBJECT()) COMMENT '统一设置JSON',
+  privacy_settings JSON NULL COMMENT '隐私设置（旧字段，保留兼容）',
+  message_settings JSON NULL COMMENT '消息设置（旧字段，保留兼容）',
+  general_settings JSON NULL COMMENT '通用设置（旧字段，保留兼容）',
+  push_settings JSON NULL COMMENT '推送设置（旧字段，保留兼容）',
   created_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (user_id)

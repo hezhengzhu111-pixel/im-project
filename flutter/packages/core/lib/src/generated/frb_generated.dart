@@ -68,7 +68,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -1400914855;
+  int get rustContentHash => -2023470693;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -80,61 +80,6 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
-  PreKeyBundle crateApiE2EeBridgeKeyBundleAutoAccessorGetBundle(
-      {required BridgeKeyBundle that});
-
-  X25519KeyPair crateApiE2EeBridgeKeyBundleAutoAccessorGetIdentityKeyPair(
-      {required BridgeKeyBundle that});
-
-  List<BridgeOtkPair> crateApiE2EeBridgeKeyBundleAutoAccessorGetOtkPairs(
-      {required BridgeKeyBundle that});
-
-  X25519KeyPair crateApiE2EeBridgeKeyBundleAutoAccessorGetSignedPreKeyPair(
-      {required BridgeKeyBundle that});
-
-  U8Array32 crateApiE2EeBridgeKeyBundleAutoAccessorGetSigningPrivateKeyBytes(
-      {required BridgeKeyBundle that});
-
-  Ed25519PublicKey crateApiE2EeBridgeKeyBundleAutoAccessorGetSigningPublicKey(
-      {required BridgeKeyBundle that});
-
-  int crateApiE2EeBridgeKeyBundleAutoAccessorGetSpkId(
-      {required BridgeKeyBundle that});
-
-  void crateApiE2EeBridgeKeyBundleAutoAccessorSetBundle(
-      {required BridgeKeyBundle that, required PreKeyBundle bundle});
-
-  void crateApiE2EeBridgeKeyBundleAutoAccessorSetIdentityKeyPair(
-      {required BridgeKeyBundle that, required X25519KeyPair identityKeyPair});
-
-  void crateApiE2EeBridgeKeyBundleAutoAccessorSetOtkPairs(
-      {required BridgeKeyBundle that, required List<BridgeOtkPair> otkPairs});
-
-  void crateApiE2EeBridgeKeyBundleAutoAccessorSetSignedPreKeyPair(
-      {required BridgeKeyBundle that, required X25519KeyPair signedPreKeyPair});
-
-  void crateApiE2EeBridgeKeyBundleAutoAccessorSetSigningPrivateKeyBytes(
-      {required BridgeKeyBundle that,
-      required U8Array32 signingPrivateKeyBytes});
-
-  void crateApiE2EeBridgeKeyBundleAutoAccessorSetSigningPublicKey(
-      {required BridgeKeyBundle that,
-      required Ed25519PublicKey signingPublicKey});
-
-  void crateApiE2EeBridgeKeyBundleAutoAccessorSetSpkId(
-      {required BridgeKeyBundle that, required int spkId});
-
-  int crateApiE2EeBridgeOtkPairAutoAccessorGetId({required BridgeOtkPair that});
-
-  X25519KeyPair crateApiE2EeBridgeOtkPairAutoAccessorGetKeyPair(
-      {required BridgeOtkPair that});
-
-  void crateApiE2EeBridgeOtkPairAutoAccessorSetId(
-      {required BridgeOtkPair that, required int id});
-
-  void crateApiE2EeBridgeOtkPairAutoAccessorSetKeyPair(
-      {required BridgeOtkPair that, required X25519KeyPair keyPair});
-
   Future<String> crateApiE2EeCreateInboundSession({required String configJson});
 
   Future<String> crateApiE2EeCreateOutboundSession(
@@ -174,50 +119,6 @@ abstract class RustLibApi extends BaseApi {
       required List<int> ephemeralKey,
       required List<int> signedPreKey,
       Uint8List? oneTimePreKey});
-
-  RustArcIncrementStrongCountFnType
-      get rust_arc_increment_strong_count_BridgeKeyBundle;
-
-  RustArcDecrementStrongCountFnType
-      get rust_arc_decrement_strong_count_BridgeKeyBundle;
-
-  CrossPlatformFinalizerArg
-      get rust_arc_decrement_strong_count_BridgeKeyBundlePtr;
-
-  RustArcIncrementStrongCountFnType
-      get rust_arc_increment_strong_count_BridgeOtkPair;
-
-  RustArcDecrementStrongCountFnType
-      get rust_arc_decrement_strong_count_BridgeOtkPair;
-
-  CrossPlatformFinalizerArg
-      get rust_arc_decrement_strong_count_BridgeOtkPairPtr;
-
-  RustArcIncrementStrongCountFnType
-      get rust_arc_increment_strong_count_Ed25519PublicKey;
-
-  RustArcDecrementStrongCountFnType
-      get rust_arc_decrement_strong_count_Ed25519PublicKey;
-
-  CrossPlatformFinalizerArg
-      get rust_arc_decrement_strong_count_Ed25519PublicKeyPtr;
-
-  RustArcIncrementStrongCountFnType
-      get rust_arc_increment_strong_count_PreKeyBundle;
-
-  RustArcDecrementStrongCountFnType
-      get rust_arc_decrement_strong_count_PreKeyBundle;
-
-  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_PreKeyBundlePtr;
-
-  RustArcIncrementStrongCountFnType
-      get rust_arc_increment_strong_count_X25519KeyPair;
-
-  RustArcDecrementStrongCountFnType
-      get rust_arc_decrement_strong_count_X25519KeyPair;
-
-  CrossPlatformFinalizerArg
-      get rust_arc_decrement_strong_count_X25519KeyPairPtr;
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -229,520 +130,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
-  PreKeyBundle crateApiE2EeBridgeKeyBundleAutoAccessorGetBundle(
-      {required BridgeKeyBundle that}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-            that, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData:
-            sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreKeyBundle,
-        decodeErrorData: null,
-      ),
-      constMeta: kCrateApiE2EeBridgeKeyBundleAutoAccessorGetBundleConstMeta,
-      argValues: [that],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta
-      get kCrateApiE2EeBridgeKeyBundleAutoAccessorGetBundleConstMeta =>
-          const TaskConstMeta(
-            debugName: "BridgeKeyBundle_auto_accessor_get_bundle",
-            argNames: ["that"],
-          );
-
-  @override
-  X25519KeyPair crateApiE2EeBridgeKeyBundleAutoAccessorGetIdentityKeyPair(
-      {required BridgeKeyBundle that}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-            that, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData:
-            sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerX25519KeyPair,
-        decodeErrorData: null,
-      ),
-      constMeta:
-          kCrateApiE2EeBridgeKeyBundleAutoAccessorGetIdentityKeyPairConstMeta,
-      argValues: [that],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta
-      get kCrateApiE2EeBridgeKeyBundleAutoAccessorGetIdentityKeyPairConstMeta =>
-          const TaskConstMeta(
-            debugName: "BridgeKeyBundle_auto_accessor_get_identity_key_pair",
-            argNames: ["that"],
-          );
-
-  @override
-  List<BridgeOtkPair> crateApiE2EeBridgeKeyBundleAutoAccessorGetOtkPairs(
-      {required BridgeKeyBundle that}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-            that, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData:
-            sse_decode_list_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair,
-        decodeErrorData: null,
-      ),
-      constMeta: kCrateApiE2EeBridgeKeyBundleAutoAccessorGetOtkPairsConstMeta,
-      argValues: [that],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta
-      get kCrateApiE2EeBridgeKeyBundleAutoAccessorGetOtkPairsConstMeta =>
-          const TaskConstMeta(
-            debugName: "BridgeKeyBundle_auto_accessor_get_otk_pairs",
-            argNames: ["that"],
-          );
-
-  @override
-  X25519KeyPair crateApiE2EeBridgeKeyBundleAutoAccessorGetSignedPreKeyPair(
-      {required BridgeKeyBundle that}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-            that, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData:
-            sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerX25519KeyPair,
-        decodeErrorData: null,
-      ),
-      constMeta:
-          kCrateApiE2EeBridgeKeyBundleAutoAccessorGetSignedPreKeyPairConstMeta,
-      argValues: [that],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta
-      get kCrateApiE2EeBridgeKeyBundleAutoAccessorGetSignedPreKeyPairConstMeta =>
-          const TaskConstMeta(
-            debugName: "BridgeKeyBundle_auto_accessor_get_signed_pre_key_pair",
-            argNames: ["that"],
-          );
-
-  @override
-  U8Array32 crateApiE2EeBridgeKeyBundleAutoAccessorGetSigningPrivateKeyBytes(
-      {required BridgeKeyBundle that}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-            that, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_u_8_array_32,
-        decodeErrorData: null,
-      ),
-      constMeta:
-          kCrateApiE2EeBridgeKeyBundleAutoAccessorGetSigningPrivateKeyBytesConstMeta,
-      argValues: [that],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta
-      get kCrateApiE2EeBridgeKeyBundleAutoAccessorGetSigningPrivateKeyBytesConstMeta =>
-          const TaskConstMeta(
-            debugName:
-                "BridgeKeyBundle_auto_accessor_get_signing_private_key_bytes",
-            argNames: ["that"],
-          );
-
-  @override
-  Ed25519PublicKey crateApiE2EeBridgeKeyBundleAutoAccessorGetSigningPublicKey(
-      {required BridgeKeyBundle that}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-            that, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData:
-            sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerEd25519PublicKey,
-        decodeErrorData: null,
-      ),
-      constMeta:
-          kCrateApiE2EeBridgeKeyBundleAutoAccessorGetSigningPublicKeyConstMeta,
-      argValues: [that],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta
-      get kCrateApiE2EeBridgeKeyBundleAutoAccessorGetSigningPublicKeyConstMeta =>
-          const TaskConstMeta(
-            debugName: "BridgeKeyBundle_auto_accessor_get_signing_public_key",
-            argNames: ["that"],
-          );
-
-  @override
-  int crateApiE2EeBridgeKeyBundleAutoAccessorGetSpkId(
-      {required BridgeKeyBundle that}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-            that, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_u_32,
-        decodeErrorData: null,
-      ),
-      constMeta: kCrateApiE2EeBridgeKeyBundleAutoAccessorGetSpkIdConstMeta,
-      argValues: [that],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta get kCrateApiE2EeBridgeKeyBundleAutoAccessorGetSpkIdConstMeta =>
-      const TaskConstMeta(
-        debugName: "BridgeKeyBundle_auto_accessor_get_spk_id",
-        argNames: ["that"],
-      );
-
-  @override
-  void crateApiE2EeBridgeKeyBundleAutoAccessorSetBundle(
-      {required BridgeKeyBundle that, required PreKeyBundle bundle}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-            that, serializer);
-        sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreKeyBundle(
-            bundle, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_unit,
-        decodeErrorData: null,
-      ),
-      constMeta: kCrateApiE2EeBridgeKeyBundleAutoAccessorSetBundleConstMeta,
-      argValues: [that, bundle],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta
-      get kCrateApiE2EeBridgeKeyBundleAutoAccessorSetBundleConstMeta =>
-          const TaskConstMeta(
-            debugName: "BridgeKeyBundle_auto_accessor_set_bundle",
-            argNames: ["that", "bundle"],
-          );
-
-  @override
-  void crateApiE2EeBridgeKeyBundleAutoAccessorSetIdentityKeyPair(
-      {required BridgeKeyBundle that, required X25519KeyPair identityKeyPair}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-            that, serializer);
-        sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerX25519KeyPair(
-            identityKeyPair, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_unit,
-        decodeErrorData: null,
-      ),
-      constMeta:
-          kCrateApiE2EeBridgeKeyBundleAutoAccessorSetIdentityKeyPairConstMeta,
-      argValues: [that, identityKeyPair],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta
-      get kCrateApiE2EeBridgeKeyBundleAutoAccessorSetIdentityKeyPairConstMeta =>
-          const TaskConstMeta(
-            debugName: "BridgeKeyBundle_auto_accessor_set_identity_key_pair",
-            argNames: ["that", "identityKeyPair"],
-          );
-
-  @override
-  void crateApiE2EeBridgeKeyBundleAutoAccessorSetOtkPairs(
-      {required BridgeKeyBundle that, required List<BridgeOtkPair> otkPairs}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-            that, serializer);
-        sse_encode_list_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-            otkPairs, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_unit,
-        decodeErrorData: null,
-      ),
-      constMeta: kCrateApiE2EeBridgeKeyBundleAutoAccessorSetOtkPairsConstMeta,
-      argValues: [that, otkPairs],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta
-      get kCrateApiE2EeBridgeKeyBundleAutoAccessorSetOtkPairsConstMeta =>
-          const TaskConstMeta(
-            debugName: "BridgeKeyBundle_auto_accessor_set_otk_pairs",
-            argNames: ["that", "otkPairs"],
-          );
-
-  @override
-  void crateApiE2EeBridgeKeyBundleAutoAccessorSetSignedPreKeyPair(
-      {required BridgeKeyBundle that,
-      required X25519KeyPair signedPreKeyPair}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-            that, serializer);
-        sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerX25519KeyPair(
-            signedPreKeyPair, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_unit,
-        decodeErrorData: null,
-      ),
-      constMeta:
-          kCrateApiE2EeBridgeKeyBundleAutoAccessorSetSignedPreKeyPairConstMeta,
-      argValues: [that, signedPreKeyPair],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta
-      get kCrateApiE2EeBridgeKeyBundleAutoAccessorSetSignedPreKeyPairConstMeta =>
-          const TaskConstMeta(
-            debugName: "BridgeKeyBundle_auto_accessor_set_signed_pre_key_pair",
-            argNames: ["that", "signedPreKeyPair"],
-          );
-
-  @override
-  void crateApiE2EeBridgeKeyBundleAutoAccessorSetSigningPrivateKeyBytes(
-      {required BridgeKeyBundle that,
-      required U8Array32 signingPrivateKeyBytes}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-            that, serializer);
-        sse_encode_u_8_array_32(signingPrivateKeyBytes, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 12)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_unit,
-        decodeErrorData: null,
-      ),
-      constMeta:
-          kCrateApiE2EeBridgeKeyBundleAutoAccessorSetSigningPrivateKeyBytesConstMeta,
-      argValues: [that, signingPrivateKeyBytes],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta
-      get kCrateApiE2EeBridgeKeyBundleAutoAccessorSetSigningPrivateKeyBytesConstMeta =>
-          const TaskConstMeta(
-            debugName:
-                "BridgeKeyBundle_auto_accessor_set_signing_private_key_bytes",
-            argNames: ["that", "signingPrivateKeyBytes"],
-          );
-
-  @override
-  void crateApiE2EeBridgeKeyBundleAutoAccessorSetSigningPublicKey(
-      {required BridgeKeyBundle that,
-      required Ed25519PublicKey signingPublicKey}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-            that, serializer);
-        sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerEd25519PublicKey(
-            signingPublicKey, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_unit,
-        decodeErrorData: null,
-      ),
-      constMeta:
-          kCrateApiE2EeBridgeKeyBundleAutoAccessorSetSigningPublicKeyConstMeta,
-      argValues: [that, signingPublicKey],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta
-      get kCrateApiE2EeBridgeKeyBundleAutoAccessorSetSigningPublicKeyConstMeta =>
-          const TaskConstMeta(
-            debugName: "BridgeKeyBundle_auto_accessor_set_signing_public_key",
-            argNames: ["that", "signingPublicKey"],
-          );
-
-  @override
-  void crateApiE2EeBridgeKeyBundleAutoAccessorSetSpkId(
-      {required BridgeKeyBundle that, required int spkId}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-            that, serializer);
-        sse_encode_u_32(spkId, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 14)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_unit,
-        decodeErrorData: null,
-      ),
-      constMeta: kCrateApiE2EeBridgeKeyBundleAutoAccessorSetSpkIdConstMeta,
-      argValues: [that, spkId],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta get kCrateApiE2EeBridgeKeyBundleAutoAccessorSetSpkIdConstMeta =>
-      const TaskConstMeta(
-        debugName: "BridgeKeyBundle_auto_accessor_set_spk_id",
-        argNames: ["that", "spkId"],
-      );
-
-  @override
-  int crateApiE2EeBridgeOtkPairAutoAccessorGetId(
-      {required BridgeOtkPair that}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-            that, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 15)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_u_32,
-        decodeErrorData: null,
-      ),
-      constMeta: kCrateApiE2EeBridgeOtkPairAutoAccessorGetIdConstMeta,
-      argValues: [that],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta get kCrateApiE2EeBridgeOtkPairAutoAccessorGetIdConstMeta =>
-      const TaskConstMeta(
-        debugName: "BridgeOtkPair_auto_accessor_get_id",
-        argNames: ["that"],
-      );
-
-  @override
-  X25519KeyPair crateApiE2EeBridgeOtkPairAutoAccessorGetKeyPair(
-      {required BridgeOtkPair that}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-            that, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData:
-            sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerX25519KeyPair,
-        decodeErrorData: null,
-      ),
-      constMeta: kCrateApiE2EeBridgeOtkPairAutoAccessorGetKeyPairConstMeta,
-      argValues: [that],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta get kCrateApiE2EeBridgeOtkPairAutoAccessorGetKeyPairConstMeta =>
-      const TaskConstMeta(
-        debugName: "BridgeOtkPair_auto_accessor_get_key_pair",
-        argNames: ["that"],
-      );
-
-  @override
-  void crateApiE2EeBridgeOtkPairAutoAccessorSetId(
-      {required BridgeOtkPair that, required int id}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-            that, serializer);
-        sse_encode_u_32(id, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_unit,
-        decodeErrorData: null,
-      ),
-      constMeta: kCrateApiE2EeBridgeOtkPairAutoAccessorSetIdConstMeta,
-      argValues: [that, id],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta get kCrateApiE2EeBridgeOtkPairAutoAccessorSetIdConstMeta =>
-      const TaskConstMeta(
-        debugName: "BridgeOtkPair_auto_accessor_set_id",
-        argNames: ["that", "id"],
-      );
-
-  @override
-  void crateApiE2EeBridgeOtkPairAutoAccessorSetKeyPair(
-      {required BridgeOtkPair that, required X25519KeyPair keyPair}) {
-    return handler.executeSync(SyncTask(
-      callFfi: () {
-        final serializer = SseSerializer(generalizedFrbRustBinding);
-        sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-            that, serializer);
-        sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerX25519KeyPair(
-            keyPair, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 18)!;
-      },
-      codec: SseCodec(
-        decodeSuccessData: sse_decode_unit,
-        decodeErrorData: null,
-      ),
-      constMeta: kCrateApiE2EeBridgeOtkPairAutoAccessorSetKeyPairConstMeta,
-      argValues: [that, keyPair],
-      apiImpl: this,
-    ));
-  }
-
-  TaskConstMeta get kCrateApiE2EeBridgeOtkPairAutoAccessorSetKeyPairConstMeta =>
-      const TaskConstMeta(
-        debugName: "BridgeOtkPair_auto_accessor_set_key_pair",
-        argNames: ["that", "keyPair"],
-      );
-
-  @override
   Future<String> crateApiE2EeCreateInboundSession(
       {required String configJson}) {
     return handler.executeNormal(NormalTask(
@@ -750,7 +137,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(configJson, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 19, port: port_);
+            funcId: 1, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -776,7 +163,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(configJson, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 20, port: port_);
+            funcId: 2, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -801,7 +188,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(configJson, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 21, port: port_);
+            funcId: 3, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -825,7 +212,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(configJson, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 22, port: port_);
+            funcId: 4, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -850,7 +237,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(configJson, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 23, port: port_);
+            funcId: 5, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -875,7 +262,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_list_prim_u_8_loose(stateBytes, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 24, port: port_);
+            funcId: 6, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -899,7 +286,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_u_32(otkCount, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 25, port: port_);
+            funcId: 7, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -924,7 +311,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_u_32(otkCount, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 26, port: port_);
+            funcId: 8, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -951,7 +338,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_list_prim_u_8_loose(stateBytes, serializer);
         sse_encode_list_prim_u_8_loose(ciphertext, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 27, port: port_);
+            funcId: 9, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData:
@@ -978,7 +365,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_list_prim_u_8_loose(stateBytes, serializer);
         sse_encode_list_prim_u_8_loose(plaintext, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 28, port: port_);
+            funcId: 10, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData:
@@ -1004,7 +391,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(configJson, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 29, port: port_);
+            funcId: 11, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -1029,7 +416,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_list_prim_u_8_loose(stateBytes, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 30, port: port_);
+            funcId: 12, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -1058,7 +445,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_list_prim_u_8_loose(signedPreKey, serializer);
         sse_encode_opt_list_prim_u_8_strict(oneTimePreKey, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 31, port: port_);
+            funcId: 13, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -1089,7 +476,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_list_prim_u_8_loose(signedPreKey, serializer);
         sse_encode_opt_list_prim_u_8_strict(oneTimePreKey, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 32, port: port_);
+            funcId: 14, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -1111,46 +498,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         ],
       );
 
-  RustArcIncrementStrongCountFnType
-      get rust_arc_increment_strong_count_BridgeKeyBundle => wire
-          .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle;
-
-  RustArcDecrementStrongCountFnType
-      get rust_arc_decrement_strong_count_BridgeKeyBundle => wire
-          .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle;
-
-  RustArcIncrementStrongCountFnType
-      get rust_arc_increment_strong_count_BridgeOtkPair => wire
-          .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair;
-
-  RustArcDecrementStrongCountFnType
-      get rust_arc_decrement_strong_count_BridgeOtkPair => wire
-          .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair;
-
-  RustArcIncrementStrongCountFnType
-      get rust_arc_increment_strong_count_Ed25519PublicKey => wire
-          .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerEd25519PublicKey;
-
-  RustArcDecrementStrongCountFnType
-      get rust_arc_decrement_strong_count_Ed25519PublicKey => wire
-          .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerEd25519PublicKey;
-
-  RustArcIncrementStrongCountFnType
-      get rust_arc_increment_strong_count_PreKeyBundle => wire
-          .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreKeyBundle;
-
-  RustArcDecrementStrongCountFnType
-      get rust_arc_decrement_strong_count_PreKeyBundle => wire
-          .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreKeyBundle;
-
-  RustArcIncrementStrongCountFnType
-      get rust_arc_increment_strong_count_X25519KeyPair => wire
-          .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerX25519KeyPair;
-
-  RustArcDecrementStrongCountFnType
-      get rust_arc_decrement_strong_count_X25519KeyPair => wire
-          .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerX25519KeyPair;
-
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
@@ -1158,132 +505,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  BridgeKeyBundle
-      dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-          dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return BridgeKeyBundleImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  BridgeOtkPair
-      dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return BridgeOtkPairImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  Ed25519PublicKey
-      dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerEd25519PublicKey(
-          dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return Ed25519PublicKeyImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  PreKeyBundle
-      dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreKeyBundle(
-          dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return PreKeyBundleImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  X25519KeyPair
-      dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerX25519KeyPair(
-          dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return X25519KeyPairImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  BridgeKeyBundle
-      dco_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-          dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return BridgeKeyBundleImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  BridgeOtkPair
-      dco_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return BridgeOtkPairImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  BridgeKeyBundle
-      dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-          dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return BridgeKeyBundleImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  BridgeOtkPair
-      dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return BridgeOtkPairImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  BridgeKeyBundle
-      dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-          dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return BridgeKeyBundleImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  BridgeOtkPair
-      dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return BridgeOtkPairImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  Ed25519PublicKey
-      dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerEd25519PublicKey(
-          dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return Ed25519PublicKeyImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  PreKeyBundle
-      dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreKeyBundle(
-          dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return PreKeyBundleImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  X25519KeyPair
-      dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerX25519KeyPair(
-          dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return X25519KeyPairImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as String;
-  }
-
-  @protected
-  List<BridgeOtkPair>
-      dco_decode_list_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return (raw as List<dynamic>)
-        .map(
-            dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair)
-        .toList();
   }
 
   @protected
@@ -1331,24 +555,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  U8Array32 dco_decode_u_8_array_32(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return U8Array32(dco_decode_list_prim_u_8_strict(raw));
-  }
-
-  @protected
-  void dco_decode_unit(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return;
-  }
-
-  @protected
-  BigInt dco_decode_usize(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return dcoDecodeU64(raw);
-  }
-
-  @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_String(deserializer);
@@ -1356,152 +562,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  BridgeKeyBundle
-      sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-          SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return BridgeKeyBundleImpl.frbInternalSseDecode(
-        sse_decode_usize(deserializer), sse_decode_i_32(deserializer));
-  }
-
-  @protected
-  BridgeOtkPair
-      sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return BridgeOtkPairImpl.frbInternalSseDecode(
-        sse_decode_usize(deserializer), sse_decode_i_32(deserializer));
-  }
-
-  @protected
-  Ed25519PublicKey
-      sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerEd25519PublicKey(
-          SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return Ed25519PublicKeyImpl.frbInternalSseDecode(
-        sse_decode_usize(deserializer), sse_decode_i_32(deserializer));
-  }
-
-  @protected
-  PreKeyBundle
-      sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreKeyBundle(
-          SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return PreKeyBundleImpl.frbInternalSseDecode(
-        sse_decode_usize(deserializer), sse_decode_i_32(deserializer));
-  }
-
-  @protected
-  X25519KeyPair
-      sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerX25519KeyPair(
-          SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return X25519KeyPairImpl.frbInternalSseDecode(
-        sse_decode_usize(deserializer), sse_decode_i_32(deserializer));
-  }
-
-  @protected
-  BridgeKeyBundle
-      sse_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-          SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return BridgeKeyBundleImpl.frbInternalSseDecode(
-        sse_decode_usize(deserializer), sse_decode_i_32(deserializer));
-  }
-
-  @protected
-  BridgeOtkPair
-      sse_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return BridgeOtkPairImpl.frbInternalSseDecode(
-        sse_decode_usize(deserializer), sse_decode_i_32(deserializer));
-  }
-
-  @protected
-  BridgeKeyBundle
-      sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-          SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return BridgeKeyBundleImpl.frbInternalSseDecode(
-        sse_decode_usize(deserializer), sse_decode_i_32(deserializer));
-  }
-
-  @protected
-  BridgeOtkPair
-      sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return BridgeOtkPairImpl.frbInternalSseDecode(
-        sse_decode_usize(deserializer), sse_decode_i_32(deserializer));
-  }
-
-  @protected
-  BridgeKeyBundle
-      sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-          SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return BridgeKeyBundleImpl.frbInternalSseDecode(
-        sse_decode_usize(deserializer), sse_decode_i_32(deserializer));
-  }
-
-  @protected
-  BridgeOtkPair
-      sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return BridgeOtkPairImpl.frbInternalSseDecode(
-        sse_decode_usize(deserializer), sse_decode_i_32(deserializer));
-  }
-
-  @protected
-  Ed25519PublicKey
-      sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerEd25519PublicKey(
-          SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return Ed25519PublicKeyImpl.frbInternalSseDecode(
-        sse_decode_usize(deserializer), sse_decode_i_32(deserializer));
-  }
-
-  @protected
-  PreKeyBundle
-      sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreKeyBundle(
-          SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return PreKeyBundleImpl.frbInternalSseDecode(
-        sse_decode_usize(deserializer), sse_decode_i_32(deserializer));
-  }
-
-  @protected
-  X25519KeyPair
-      sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerX25519KeyPair(
-          SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return X25519KeyPairImpl.frbInternalSseDecode(
-        sse_decode_usize(deserializer), sse_decode_i_32(deserializer));
-  }
-
-  @protected
   String sse_decode_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_list_prim_u_8_strict(deserializer);
     return utf8.decoder.convert(inner);
-  }
-
-  @protected
-  List<BridgeOtkPair>
-      sse_decode_list_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    var len_ = sse_decode_i_32(deserializer);
-    var ans_ = <BridgeOtkPair>[];
-    for (var idx_ = 0; idx_ < len_; ++idx_) {
-      ans_.add(
-          sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-              deserializer));
-    }
-    return ans_;
   }
 
   @protected
@@ -1552,24 +616,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  U8Array32 sse_decode_u_8_array_32(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var inner = sse_decode_list_prim_u_8_strict(deserializer);
-    return U8Array32(inner);
-  }
-
-  @protected
-  void sse_decode_unit(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-  }
-
-  @protected
-  BigInt sse_decode_usize(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getBigUint64();
-  }
-
-  @protected
   int sse_decode_i_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getInt32();
@@ -1589,161 +635,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void
-      sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-          BridgeKeyBundle self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-        (self as BridgeKeyBundleImpl).frbInternalSseEncode(move: true),
-        serializer);
-  }
-
-  @protected
-  void
-      sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          BridgeOtkPair self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-        (self as BridgeOtkPairImpl).frbInternalSseEncode(move: true),
-        serializer);
-  }
-
-  @protected
-  void
-      sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerEd25519PublicKey(
-          Ed25519PublicKey self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-        (self as Ed25519PublicKeyImpl).frbInternalSseEncode(move: true),
-        serializer);
-  }
-
-  @protected
-  void
-      sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreKeyBundle(
-          PreKeyBundle self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-        (self as PreKeyBundleImpl).frbInternalSseEncode(move: true),
-        serializer);
-  }
-
-  @protected
-  void
-      sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerX25519KeyPair(
-          X25519KeyPair self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-        (self as X25519KeyPairImpl).frbInternalSseEncode(move: true),
-        serializer);
-  }
-
-  @protected
-  void
-      sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-          BridgeKeyBundle self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-        (self as BridgeKeyBundleImpl).frbInternalSseEncode(move: false),
-        serializer);
-  }
-
-  @protected
-  void
-      sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          BridgeOtkPair self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-        (self as BridgeOtkPairImpl).frbInternalSseEncode(move: false),
-        serializer);
-  }
-
-  @protected
-  void
-      sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-          BridgeKeyBundle self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-        (self as BridgeKeyBundleImpl).frbInternalSseEncode(move: false),
-        serializer);
-  }
-
-  @protected
-  void
-      sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          BridgeOtkPair self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-        (self as BridgeOtkPairImpl).frbInternalSseEncode(move: false),
-        serializer);
-  }
-
-  @protected
-  void
-      sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeKeyBundle(
-          BridgeKeyBundle self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-        (self as BridgeKeyBundleImpl).frbInternalSseEncode(move: null),
-        serializer);
-  }
-
-  @protected
-  void
-      sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          BridgeOtkPair self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-        (self as BridgeOtkPairImpl).frbInternalSseEncode(move: null),
-        serializer);
-  }
-
-  @protected
-  void
-      sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerEd25519PublicKey(
-          Ed25519PublicKey self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-        (self as Ed25519PublicKeyImpl).frbInternalSseEncode(move: null),
-        serializer);
-  }
-
-  @protected
-  void
-      sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreKeyBundle(
-          PreKeyBundle self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-        (self as PreKeyBundleImpl).frbInternalSseEncode(move: null),
-        serializer);
-  }
-
-  @protected
-  void
-      sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerX25519KeyPair(
-          X25519KeyPair self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-        (self as X25519KeyPairImpl).frbInternalSseEncode(move: null),
-        serializer);
-  }
-
-  @protected
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
-  }
-
-  @protected
-  void
-      sse_encode_list_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          List<BridgeOtkPair> self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_i_32(self.length, serializer);
-    for (final item in self) {
-      sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBridgeOtkPair(
-          item, serializer);
-    }
   }
 
   @protected
@@ -1795,23 +689,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_u_8_array_32(U8Array32 self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_list_prim_u_8_strict(self.inner, serializer);
-  }
-
-  @protected
-  void sse_encode_unit(void self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-  }
-
-  @protected
-  void sse_encode_usize(BigInt self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putBigUint64(self);
-  }
-
-  @protected
   void sse_encode_i_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putInt32(self);
@@ -1822,186 +699,4 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint8(self ? 1 : 0);
   }
-}
-
-@sealed
-class BridgeKeyBundleImpl extends RustOpaque implements BridgeKeyBundle {
-  // Not to be used by end users
-  BridgeKeyBundleImpl.frbInternalDcoDecode(List<dynamic> wire)
-      : super.frbInternalDcoDecode(wire, _kStaticData);
-
-  // Not to be used by end users
-  BridgeKeyBundleImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
-      : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
-
-  static final _kStaticData = RustArcStaticData(
-    rustArcIncrementStrongCount:
-        RustLib.instance.api.rust_arc_increment_strong_count_BridgeKeyBundle,
-    rustArcDecrementStrongCount:
-        RustLib.instance.api.rust_arc_decrement_strong_count_BridgeKeyBundle,
-    rustArcDecrementStrongCountPtr:
-        RustLib.instance.api.rust_arc_decrement_strong_count_BridgeKeyBundlePtr,
-  );
-
-  PreKeyBundle get bundle =>
-      RustLib.instance.api.crateApiE2EeBridgeKeyBundleAutoAccessorGetBundle(
-        that: this,
-      );
-
-  X25519KeyPair get identityKeyPair => RustLib.instance.api
-          .crateApiE2EeBridgeKeyBundleAutoAccessorGetIdentityKeyPair(
-        that: this,
-      );
-
-  List<BridgeOtkPair> get otkPairs =>
-      RustLib.instance.api.crateApiE2EeBridgeKeyBundleAutoAccessorGetOtkPairs(
-        that: this,
-      );
-
-  X25519KeyPair get signedPreKeyPair => RustLib.instance.api
-          .crateApiE2EeBridgeKeyBundleAutoAccessorGetSignedPreKeyPair(
-        that: this,
-      );
-
-  U8Array32 get signingPrivateKeyBytes => RustLib.instance.api
-          .crateApiE2EeBridgeKeyBundleAutoAccessorGetSigningPrivateKeyBytes(
-        that: this,
-      );
-
-  Ed25519PublicKey get signingPublicKey => RustLib.instance.api
-          .crateApiE2EeBridgeKeyBundleAutoAccessorGetSigningPublicKey(
-        that: this,
-      );
-
-  int get spkId =>
-      RustLib.instance.api.crateApiE2EeBridgeKeyBundleAutoAccessorGetSpkId(
-        that: this,
-      );
-
-  set bundle(PreKeyBundle bundle) =>
-      RustLib.instance.api.crateApiE2EeBridgeKeyBundleAutoAccessorSetBundle(
-          that: this, bundle: bundle);
-
-  set identityKeyPair(X25519KeyPair identityKeyPair) => RustLib.instance.api
-      .crateApiE2EeBridgeKeyBundleAutoAccessorSetIdentityKeyPair(
-          that: this, identityKeyPair: identityKeyPair);
-
-  set otkPairs(List<BridgeOtkPair> otkPairs) =>
-      RustLib.instance.api.crateApiE2EeBridgeKeyBundleAutoAccessorSetOtkPairs(
-          that: this, otkPairs: otkPairs);
-
-  set signedPreKeyPair(X25519KeyPair signedPreKeyPair) => RustLib.instance.api
-      .crateApiE2EeBridgeKeyBundleAutoAccessorSetSignedPreKeyPair(
-          that: this, signedPreKeyPair: signedPreKeyPair);
-
-  set signingPrivateKeyBytes(U8Array32 signingPrivateKeyBytes) =>
-      RustLib.instance.api
-          .crateApiE2EeBridgeKeyBundleAutoAccessorSetSigningPrivateKeyBytes(
-              that: this, signingPrivateKeyBytes: signingPrivateKeyBytes);
-
-  set signingPublicKey(Ed25519PublicKey signingPublicKey) =>
-      RustLib.instance.api
-          .crateApiE2EeBridgeKeyBundleAutoAccessorSetSigningPublicKey(
-              that: this, signingPublicKey: signingPublicKey);
-
-  set spkId(int spkId) =>
-      RustLib.instance.api.crateApiE2EeBridgeKeyBundleAutoAccessorSetSpkId(
-          that: this, spkId: spkId);
-}
-
-@sealed
-class BridgeOtkPairImpl extends RustOpaque implements BridgeOtkPair {
-  // Not to be used by end users
-  BridgeOtkPairImpl.frbInternalDcoDecode(List<dynamic> wire)
-      : super.frbInternalDcoDecode(wire, _kStaticData);
-
-  // Not to be used by end users
-  BridgeOtkPairImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
-      : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
-
-  static final _kStaticData = RustArcStaticData(
-    rustArcIncrementStrongCount:
-        RustLib.instance.api.rust_arc_increment_strong_count_BridgeOtkPair,
-    rustArcDecrementStrongCount:
-        RustLib.instance.api.rust_arc_decrement_strong_count_BridgeOtkPair,
-    rustArcDecrementStrongCountPtr:
-        RustLib.instance.api.rust_arc_decrement_strong_count_BridgeOtkPairPtr,
-  );
-
-  int get id => RustLib.instance.api.crateApiE2EeBridgeOtkPairAutoAccessorGetId(
-        that: this,
-      );
-
-  X25519KeyPair get keyPair =>
-      RustLib.instance.api.crateApiE2EeBridgeOtkPairAutoAccessorGetKeyPair(
-        that: this,
-      );
-
-  set id(int id) => RustLib.instance.api
-      .crateApiE2EeBridgeOtkPairAutoAccessorSetId(that: this, id: id);
-
-  set keyPair(X25519KeyPair keyPair) =>
-      RustLib.instance.api.crateApiE2EeBridgeOtkPairAutoAccessorSetKeyPair(
-          that: this, keyPair: keyPair);
-}
-
-@sealed
-class Ed25519PublicKeyImpl extends RustOpaque implements Ed25519PublicKey {
-  // Not to be used by end users
-  Ed25519PublicKeyImpl.frbInternalDcoDecode(List<dynamic> wire)
-      : super.frbInternalDcoDecode(wire, _kStaticData);
-
-  // Not to be used by end users
-  Ed25519PublicKeyImpl.frbInternalSseDecode(
-      BigInt ptr, int externalSizeOnNative)
-      : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
-
-  static final _kStaticData = RustArcStaticData(
-    rustArcIncrementStrongCount:
-        RustLib.instance.api.rust_arc_increment_strong_count_Ed25519PublicKey,
-    rustArcDecrementStrongCount:
-        RustLib.instance.api.rust_arc_decrement_strong_count_Ed25519PublicKey,
-    rustArcDecrementStrongCountPtr: RustLib
-        .instance.api.rust_arc_decrement_strong_count_Ed25519PublicKeyPtr,
-  );
-}
-
-@sealed
-class PreKeyBundleImpl extends RustOpaque implements PreKeyBundle {
-  // Not to be used by end users
-  PreKeyBundleImpl.frbInternalDcoDecode(List<dynamic> wire)
-      : super.frbInternalDcoDecode(wire, _kStaticData);
-
-  // Not to be used by end users
-  PreKeyBundleImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
-      : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
-
-  static final _kStaticData = RustArcStaticData(
-    rustArcIncrementStrongCount:
-        RustLib.instance.api.rust_arc_increment_strong_count_PreKeyBundle,
-    rustArcDecrementStrongCount:
-        RustLib.instance.api.rust_arc_decrement_strong_count_PreKeyBundle,
-    rustArcDecrementStrongCountPtr:
-        RustLib.instance.api.rust_arc_decrement_strong_count_PreKeyBundlePtr,
-  );
-}
-
-@sealed
-class X25519KeyPairImpl extends RustOpaque implements X25519KeyPair {
-  // Not to be used by end users
-  X25519KeyPairImpl.frbInternalDcoDecode(List<dynamic> wire)
-      : super.frbInternalDcoDecode(wire, _kStaticData);
-
-  // Not to be used by end users
-  X25519KeyPairImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
-      : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
-
-  static final _kStaticData = RustArcStaticData(
-    rustArcIncrementStrongCount:
-        RustLib.instance.api.rust_arc_increment_strong_count_X25519KeyPair,
-    rustArcDecrementStrongCount:
-        RustLib.instance.api.rust_arc_decrement_strong_count_X25519KeyPair,
-    rustArcDecrementStrongCountPtr:
-        RustLib.instance.api.rust_arc_decrement_strong_count_X25519KeyPairPtr,
-  );
 }

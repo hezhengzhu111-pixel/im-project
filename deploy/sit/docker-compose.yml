@@ -426,36 +426,36 @@ services:
     networks:
       - im-sit-network
 
-  # im-frontend:
-  #   image: im-project-sit/im-frontend:latest
-  #   build:
-  #     context: ../../frontend
-  #     dockerfile: apps/web/Dockerfile
-  #     args:
-  #       FRONTEND_BUILD_MODE: "${FRONTEND_BUILD_MODE:-sit}"
-  #       IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
-  #   restart: unless-stopped
-  #   depends_on:
-  #     im-api-server:
-  #       condition: service_started
-  #   environment:
-  #     TZ: Asia/Shanghai
-  #   ports:
-  #     - "${FRONTEND_PORT:-80}:80"
-  #   ulimits:
-  #     nofile:
-  #       soft: 200000
-  #       hard: 200000
-  #   volumes:
-  #     - im_files:/data/im-files:ro
-  #   healthcheck:
-  #     test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/"]
-  #     interval: 30s
-  #     timeout: 5s
-  #     retries: 3
-  #     start_period: 10s
-  #   networks:
-  #     - im-sit-network
+  im-frontend:
+    image: im-project-sit/im-frontend:latest
+    build:
+      context: ../../flutter
+      dockerfile: apps/web/Dockerfile
+      args:
+        FRONTEND_BUILD_MODE: "${FRONTEND_BUILD_MODE:-sit}"
+        IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
+    restart: unless-stopped
+    depends_on:
+      im-api-server:
+        condition: service_started
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
+    volumes:
+      - im_files:/data/im-files:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - im-sit-network
 
   im-spring-ai:
     image: im-project-sit/im-spring-ai:latest

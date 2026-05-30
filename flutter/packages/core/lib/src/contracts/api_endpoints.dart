@@ -107,7 +107,8 @@ class AdminEndpoints {
 
 class E2eeEndpoints {
   static const bundle = '/api/keys/bundle';
-  static String bundleByUser(String userId) => '/api/keys/bundle/$userId';
+  static const devices = '/api/keys/devices';
+  static String devicesByUser(String userId) => '/api/e2ee/devices/$userId';
   static const request = '/api/e2ee/request';
   static const accept = '/api/e2ee/accept';
   static const reject = '/api/e2ee/reject';

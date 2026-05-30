@@ -30,11 +30,15 @@ const MAX_PAYLOAD_LEN: usize = 50_000;
 
 /// 解析 session_id（格式 `{id_a}_{id_b}`）为两个用户 ID。
 pub(crate) fn parse_session_partners(session_id: &str) -> Result<(i64, i64), AppError> {
-    let normalized = session_id.strip_prefix("p_").unwrap_or(session_id);
+    let Some(normalized) = session_id.strip_prefix("p_") else {
+        return Err(AppError::BadRequest(
+            "session_id must be in format 'p_{id_a}_{id_b}'".to_string(),
+        ));
+    };
     let parts: Vec<&str> = normalized.split('_').collect();
     if parts.len() != 2 {
         return Err(AppError::BadRequest(
-            "session_id must be in format '{id_a}_{id_b}' or 'p_{id_a}_{id_b}'".to_string(),
+            "session_id must be in format 'p_{id_a}_{id_b}'".to_string(),
         ));
     }
     let Some(id_a_raw) = parts.first() else {

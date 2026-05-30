@@ -16,10 +16,34 @@ class E2eeApi {
   }
 
   /// Get remote user's pre-key bundle.
-  Future<Map<String, dynamic>> getBundle(String userId) async {
+  Future<Map<String, dynamic>> getBundle(
+    String userId, {
+    required String deviceId,
+    required String conversationId,
+    required String requesterDeviceId,
+  }) async {
     final response = await _httpClient.get<Map<String, dynamic>>(
-      E2eeEndpoints.bundleByUser(userId),
+      E2eeEndpoints.bundle,
+      queryParameters: {
+        'userId': userId,
+        'deviceId': deviceId,
+        'conversationId': conversationId,
+        'requesterDeviceId': requesterDeviceId,
+      },
       fromJson: (json) => json,
+    );
+    return response.data;
+  }
+
+  /// Get E2EE devices for a user.
+  Future<List<Map<String, dynamic>>> getDevices(String userId) async {
+    final response = await _httpClient.get<List<Map<String, dynamic>>>(
+      E2eeEndpoints.devices,
+      queryParameters: {'userId': userId},
+      fromJson: (json) => ((json['items'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((item) => item.map((key, value) => MapEntry('$key', value)))
+          .toList(),
     );
     return response.data;
   }
@@ -106,6 +130,15 @@ class E2eeApi {
   Future<void> heartbeat() async {
     await _httpClient.post<void>(
       E2eeEndpoints.heartbeat,
+      body: const {},
+      fromJson: (_) {},
+    );
+  }
+
+  Future<void> heartbeatDevice(String deviceId) async {
+    await _httpClient.post<void>(
+      E2eeEndpoints.heartbeat,
+      body: {'deviceId': deviceId},
       fromJson: (_) {},
     );
   }

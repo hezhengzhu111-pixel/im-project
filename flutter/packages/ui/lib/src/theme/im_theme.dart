@@ -1,16 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'im_tokens.dart';
 
 /// Builds Material 3 [ThemeData] from [ImTokens].
 class ImTheme {
   ImTheme._();
-
-  /// When set to `false`, skips Google Fonts loading and uses the default
-  /// platform text theme. Useful for unit/widget tests that do not need
-  /// real font assets.
-  static bool enableGoogleFonts = true;
 
   static ThemeData light() => _build(Brightness.light);
   static ThemeData dark() => _build(Brightness.dark);
@@ -23,12 +17,9 @@ class ImTheme {
       brightness: brightness,
     );
 
-    final baseTextTheme = isLight
+    final textTheme = isLight
         ? ThemeData.light().textTheme
         : ThemeData.dark().textTheme;
-    final textTheme = enableGoogleFonts
-        ? GoogleFonts.notoSansScTextTheme(baseTextTheme)
-        : baseTextTheme;
 
     return ThemeData(
       useMaterial3: true,

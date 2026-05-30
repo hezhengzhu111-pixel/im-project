@@ -80,10 +80,11 @@ class WebE2eeAdapter implements E2eeBridge {
     required String localIdentityKeyPairBase64,
     required String remoteBundleBase64,
   }) async {
+    final remoteBundleJson = utf8.decode(base64Decode(remoteBundleBase64));
     final config = jsonEncode({
       'session_id': sessionId,
       'local_identity_key_pair': localIdentityKeyPairBase64,
-      'remote_bundle': remoteBundleBase64,
+      'remote_bundle_json': remoteBundleJson,
     });
     final result = await frb.createOutboundSession(configJson: config);
     return jsonDecode(result) as Map<String, dynamic>;
@@ -107,7 +108,8 @@ class WebE2eeAdapter implements E2eeBridge {
     if (localOtkPairBase64 != null) {
       config['local_otk_pair'] = localOtkPairBase64;
     }
-    final result = await frb.createInboundSession(configJson: jsonEncode(config));
+    final result =
+        await frb.createInboundSession(configJson: jsonEncode(config));
     return jsonDecode(result) as Map<String, dynamic>;
   }
 

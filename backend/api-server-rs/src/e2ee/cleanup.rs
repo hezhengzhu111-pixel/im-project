@@ -14,18 +14,42 @@ pub fn spawn(db: MySqlPool) {
 }
 
 async fn cleanup_stale_devices(db: &MySqlPool) -> Result<(), sqlx::Error> {
-    sqlx::query("DELETE FROM prekey_bundles WHERE last_active_at < NOW() - INTERVAL 30 DAY")
-        .execute(db)
-        .await?;
-
     sqlx::query(
-        "DELETE FROM one_time_prekeys WHERE device_id NOT IN (SELECT device_id FROM prekey_bundles)",
+        "UPDATE service_user_service_db.e2ee_devices \
+         SET status = 'deleted', revoked_at = COALESCE(revoked_at, NOW()) \
+         WHERE status = 'active' AND last_active_at < NOW() - INTERVAL 30 DAY",
     )
     .execute(db)
     .await?;
 
     sqlx::query(
-        "DELETE FROM e2ee_sender_keys WHERE device_id NOT IN (SELECT device_id FROM prekey_bundles)",
+        "DELETE otk FROM service_user_service_db.e2ee_one_time_pre_keys otk \
+         LEFT JOIN service_user_service_db.e2ee_devices d \
+           ON d.user_id = otk.user_id AND d.device_id = otk.device_id AND d.status = 'active' \
+         WHERE d.device_id IS NULL",
+    )
+    .execute(db)
+    .await?;
+
+    sqlx::query(
+        "DELETE FROM service_user_service_db.e2ee_one_time_pre_keys \
+         WHERE consumed = 1 AND COALESCE(consumed_time, created_time) < NOW() - INTERVAL 7 DAY",
+    )
+    .execute(db)
+    .await?;
+
+    sqlx::query(
+        "DELETE FROM service_user_service_db.e2ee_pre_key_claims \
+         WHERE created_at < NOW() - INTERVAL 7 DAY",
+    )
+    .execute(db)
+    .await?;
+
+    sqlx::query(
+        "DELETE sk FROM service_user_service_db.e2ee_sender_keys sk \
+         LEFT JOIN service_user_service_db.e2ee_devices d \
+           ON d.user_id = sk.sender_id AND d.device_id = sk.device_id AND d.status = 'active' \
+         WHERE d.device_id IS NULL",
     )
     .execute(db)
     .await?;

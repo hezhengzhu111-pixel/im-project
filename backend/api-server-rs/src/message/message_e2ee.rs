@@ -152,11 +152,7 @@ pub(crate) fn e2ee_session_id_matches(
             "e2ee envelope session_id required".to_string(),
         ));
     }
-    let normalized_conv = conversation_id
-        .strip_prefix("p_")
-        .unwrap_or(conversation_id);
-    let normalized_session = session_id.strip_prefix("p_").unwrap_or(session_id);
-    if normalized_session != normalized_conv {
+    if !session_id.starts_with("p_") || session_id != conversation_id {
         return Err(AppError::BadRequest(format!(
             "e2ee envelope session_id '{}' does not match conversation_id '{}'",
             session_id, conversation_id

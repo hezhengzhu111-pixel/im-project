@@ -4,10 +4,10 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import '../frb_generated.dart';
-import 'package:collection/collection.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BridgeX3dhInitiateResult`, `BridgeX3dhRespondResult`
+// These functions are ignored because they are not marked as `pub`: `decode_base64_32`, `json_key_bytes`, `json_pre_key`, `parse_remote_bundle_json`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BridgeKeyBundle`, `BridgeOtkPair`, `BridgeX3dhInitiateResult`, `BridgeX3dhRespondResult`
 
 /// Generate a key bundle for X3DH.
 ///
@@ -166,68 +166,3 @@ Future<String> exportSessionEnvelope({required String configJson}) =>
 Future<String> restoreSessionEnvelope({required String configJson}) =>
     RustLib.instance.api
         .crateApiE2EeRestoreSessionEnvelope(configJson: configJson);
-
-// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<BridgeKeyBundle>>
-abstract class BridgeKeyBundle implements RustOpaqueInterface {
-  PreKeyBundle get bundle;
-
-  X25519KeyPair get identityKeyPair;
-
-  List<BridgeOtkPair> get otkPairs;
-
-  X25519KeyPair get signedPreKeyPair;
-
-  U8Array32 get signingPrivateKeyBytes;
-
-  Ed25519PublicKey get signingPublicKey;
-
-  int get spkId;
-
-  set bundle(PreKeyBundle bundle);
-
-  set identityKeyPair(X25519KeyPair identityKeyPair);
-
-  set otkPairs(List<BridgeOtkPair> otkPairs);
-
-  set signedPreKeyPair(X25519KeyPair signedPreKeyPair);
-
-  set signingPrivateKeyBytes(U8Array32 signingPrivateKeyBytes);
-
-  set signingPublicKey(Ed25519PublicKey signingPublicKey);
-
-  set spkId(int spkId);
-}
-
-// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<BridgeOtkPair>>
-abstract class BridgeOtkPair implements RustOpaqueInterface {
-  int get id;
-
-  X25519KeyPair get keyPair;
-
-  set id(int id);
-
-  set keyPair(X25519KeyPair keyPair);
-}
-
-// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Ed25519PublicKey>>
-abstract class Ed25519PublicKey implements RustOpaqueInterface {}
-
-// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PreKeyBundle>>
-abstract class PreKeyBundle implements RustOpaqueInterface {}
-
-// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<X25519KeyPair>>
-abstract class X25519KeyPair implements RustOpaqueInterface {}
-
-class U8Array32 extends NonGrowableListView<int> {
-  static const arraySize = 32;
-
-  @internal
-  Uint8List get inner => _inner;
-  final Uint8List _inner;
-
-  U8Array32(this._inner)
-      : assert(_inner.length == arraySize),
-        super(_inner);
-
-  U8Array32.init() : this(Uint8List(arraySize));
-}
