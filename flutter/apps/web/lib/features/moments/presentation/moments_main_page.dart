@@ -1,20 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_ui/im_ui.dart';
 import 'package:im_web/l10n/app_localizations.dart';
+import '../../../../core/di/providers.dart';
 import 'composer/moments_composer_page.dart';
 import 'feed/moments_feed_page.dart';
 import 'widgets/moments_cover.dart';
 import 'widgets/moments_sidebar.dart';
 import 'widgets/moments_topbar.dart';
 
-class MomentsMainPage extends StatefulWidget {
+class MomentsMainPage extends ConsumerStatefulWidget {
   const MomentsMainPage({super.key});
 
   @override
-  State<MomentsMainPage> createState() => _MomentsMainPageState();
+  ConsumerState<MomentsMainPage> createState() => _MomentsMainPageState();
 }
 
-class _MomentsMainPageState extends State<MomentsMainPage> {
+class _MomentsMainPageState extends ConsumerState<MomentsMainPage> {
   final _scrollController = ScrollController();
   double _scrollProgress = 0;
 
@@ -88,9 +90,14 @@ class _MomentsMainPageState extends State<MomentsMainPage> {
                       controller: _scrollController,
                       slivers: [
                         SliverToBoxAdapter(
-                          child: MomentsCover(
-                            nickname: AppLocalizations.of(context)!
-                                .momentsUserFallback,
+                          child: Builder(
+                            builder: (context) {
+                              final user = ref.watch(authStateProvider).user;
+                              return MomentsCover(
+                                nickname: user?.nickname ?? user?.username ?? AppLocalizations.of(context)!.momentsUserFallback,
+                                avatar: user?.avatar,
+                              );
+                            },
                           ),
                         ),
                         const SliverFillRemaining(
