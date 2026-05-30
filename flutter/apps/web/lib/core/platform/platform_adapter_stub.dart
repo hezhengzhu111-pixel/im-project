@@ -8,6 +8,9 @@ class StubPlatformAdapter implements PlatformAdapter {
   void setLocalStorage(String key, String value) {}
 
   @override
+  void clearLocalStorage() {}
+
+  @override
   String? getBrowserLanguage() => null;
 }
 

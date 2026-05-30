@@ -22,6 +22,13 @@ class WebPlatformAdapter implements PlatformAdapter {
   }
 
   @override
+  void clearLocalStorage() {
+    try {
+      html.window.localStorage.clear();
+    } catch (_) {}
+  }
+
+  @override
   String? getBrowserLanguage() {
     try {
       return html.window.navigator.language;

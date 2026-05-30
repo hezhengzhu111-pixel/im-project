@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import '../../../core/platform/platform_adapter.dart';
 import '../data/settings_api.dart';
 
 class SettingsNotifier extends StateNotifier<UserSettings?> {
@@ -51,7 +53,20 @@ class SettingsNotifier extends StateNotifier<UserSettings?> {
     }
   }
 
-  void clearCache() {
-    // Clear web local storage items
+  Future<void> clearCache() async {
+    try {
+      // 清除 localStorage 中的设置缓存
+      getPlatformAdapter().clearLocalStorage();
+
+      // 清除 IndexedDB 中的离线数据（如果有）
+      // 注意：IndexedDB 清理需要根据实际使用的数据库名称调整
+      // await IndexedDBFactory.instance.deleteDatabase('im_app_cache');
+
+      // 触发 UI 刷新
+      state = state;
+    } catch (e) {
+      // 静默处理错误，不中断用户操作
+      debugPrint('Clear cache failed: $e');
+    }
   }
 }
