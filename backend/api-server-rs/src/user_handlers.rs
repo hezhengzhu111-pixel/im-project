@@ -125,30 +125,83 @@ pub(crate) async fn offline() -> Json<ApiResponse<String>> {
 }
 
 pub(crate) async fn update_profile(
-    State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<UpdateProfileRequest>,
-) -> Result<Json<ApiResponse<UserDto>>, AppError> {
+    State(state): State<AppState>,
+    Json(payload): Json<UpdateProfileRequest>,
+) -> Result<Json<ApiResponse<bool>>, AppError> {
     let identity = identity_from_headers(&headers, &state.config)?;
-    sqlx::query(
-        r#"UPDATE service_user_service_db.users
-           SET nickname = COALESCE(?, nickname),
-               avatar = COALESCE(?, avatar),
-               email = COALESCE(?, email),
-               phone = COALESCE(?, phone)
-           WHERE id = ? AND status = 1"#,
-    )
-    .bind(normalize_optional(request.nickname.as_deref()))
-    .bind(normalize_optional(request.avatar.as_deref()))
-    .bind(normalize_optional(request.email.as_deref()))
-    .bind(normalize_optional(request.phone.as_deref()))
-    .bind(identity.user_id)
-    .execute(&state.db)
-    .await?;
-    let user = load_user_by_id(&state.db, identity.user_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("user not found".to_string()))?;
-    Ok(Json(ApiResponse::success(user.to_dto())))
+    let user_id = identity.user_id;
+
+    // 验证昵称长度
+    if let Some(ref nickname) = payload.nickname {
+        if nickname.len() > 20 {
+            return Err(AppError::BadRequest("昵称长度不能超过 20 个字符".to_string()));
+        }
+    }
+
+    // 验证签名长度
+    if let Some(ref signature) = payload.signature {
+        if signature.len() > 200 {
+            return Err(AppError::BadRequest("个性签名长度不能超过 200 个字符".to_string()));
+        }
+    }
+
+    // 动态构建 UPDATE 语句
+    let mut updates = Vec::new();
+    let mut params: Vec<String> = Vec::new();
+
+    if payload.nickname.is_some() {
+        updates.push("nickname = ?");
+        params.push(payload.nickname.clone().unwrap());
+    }
+    if payload.avatar.is_some() {
+        updates.push("avatar = ?");
+        params.push(payload.avatar.clone().unwrap());
+    }
+    if payload.email.is_some() {
+        updates.push("email = ?");
+        params.push(payload.email.clone().unwrap());
+    }
+    if payload.phone.is_some() {
+        updates.push("phone = ?");
+        params.push(payload.phone.clone().unwrap());
+    }
+    if payload.gender.is_some() {
+        updates.push("gender = ?");
+        params.push(payload.gender.unwrap().to_string());
+    }
+    if payload.birthday.is_some() {
+        updates.push("birthday = ?");
+        params.push(payload.birthday.clone().unwrap());
+    }
+    if payload.signature.is_some() {
+        updates.push("signature = ?");
+        params.push(payload.signature.clone().unwrap());
+    }
+    if payload.location.is_some() {
+        updates.push("location = ?");
+        params.push(payload.location.clone().unwrap());
+    }
+
+    if updates.is_empty() {
+        return Err(AppError::BadRequest("请求体为空".to_string()));
+    }
+
+    let sql = format!(
+        "UPDATE service_user_service_db.users SET {} WHERE id = ? AND status = 1",
+        updates.join(", ")
+    );
+
+    let mut query = sqlx::query(&sql);
+    for param in &params {
+        query = query.bind(param);
+    }
+    query = query.bind(user_id);
+
+    query.execute(&state.db)
+        .await?;
+
+    Ok(Json(ApiResponse::success(true)))
 }
 
 pub(crate) async fn change_password(
