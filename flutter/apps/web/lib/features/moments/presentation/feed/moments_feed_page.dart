@@ -5,7 +5,9 @@ import '../../../../core/di/providers.dart';
 import 'widgets/post_card.dart';
 
 class MomentsFeedPage extends ConsumerStatefulWidget {
-  const MomentsFeedPage({super.key});
+  const MomentsFeedPage({this.postId, super.key});
+
+  final String? postId;
 
   @override
   ConsumerState<MomentsFeedPage> createState() => _MomentsFeedPageState();
@@ -13,12 +15,16 @@ class MomentsFeedPage extends ConsumerStatefulWidget {
 
 class _MomentsFeedPageState extends ConsumerState<MomentsFeedPage> {
   final _scrollController = ScrollController();
+  final _postKeys = <String, GlobalKey>{};
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(momentsFeedProvider.notifier).loadFeed(refresh: true);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await ref.read(momentsFeedProvider.notifier).loadFeed(refresh: true);
+      if (widget.postId != null && mounted) {
+        _scrollToPost(widget.postId!);
+      }
     });
     _scrollController.addListener(_onScroll);
   }
@@ -34,6 +40,19 @@ class _MomentsFeedPageState extends ConsumerState<MomentsFeedPage> {
         _scrollController.position.maxScrollExtent - 200) {
       ref.read(momentsFeedProvider.notifier).loadFeed();
     }
+  }
+
+  void _scrollToPost(String postId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final key = _postKeys[postId];
+      if (key != null && key.currentContext != null) {
+        Scrollable.ensureVisible(
+          key.currentContext!,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
   }
 
   @override
@@ -79,7 +98,9 @@ class _MomentsFeedPageState extends ConsumerState<MomentsFeedPage> {
                     );
                   }
                   final post = feedState.posts[index];
+                  _postKeys.putIfAbsent(post.post.id, () => GlobalKey());
                   return PostCard(
+                    key: _postKeys[post.post.id],
                     post: post,
                     onLike: () {
                       ref.read(momentsFeedProvider.notifier).toggleLike(post.post.id);

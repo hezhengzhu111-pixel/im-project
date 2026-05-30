@@ -173,7 +173,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/moments',
             name: RouteNames.moments,
-            builder: (_, __) => const MomentsMainPage(),
+            builder: (_, state) {
+              final postId = state.uri.queryParameters['postId'];
+              return MomentsMainPage(postId: postId);
+            },
           ),
           GoRoute(
             path: '/moments/notifications',

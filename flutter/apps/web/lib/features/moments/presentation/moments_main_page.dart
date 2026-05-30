@@ -10,7 +10,9 @@ import 'widgets/moments_sidebar.dart';
 import 'widgets/moments_topbar.dart';
 
 class MomentsMainPage extends ConsumerStatefulWidget {
-  const MomentsMainPage({super.key});
+  const MomentsMainPage({this.postId, super.key});
+
+  final String? postId;
 
   @override
   ConsumerState<MomentsMainPage> createState() => _MomentsMainPageState();
@@ -100,8 +102,8 @@ class _MomentsMainPageState extends ConsumerState<MomentsMainPage> {
                             },
                           ),
                         ),
-                        const SliverFillRemaining(
-                          child: MomentsFeedPage(),
+                        SliverFillRemaining(
+                          child: MomentsFeedPage(postId: widget.postId),
                         ),
                       ],
                     ),

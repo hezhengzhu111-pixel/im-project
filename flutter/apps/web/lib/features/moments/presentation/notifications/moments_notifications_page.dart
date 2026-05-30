@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/core/utils/time_formatter.dart';
 import 'package:im_web/l10n/app_localizations.dart';
@@ -76,6 +77,11 @@ class _MomentsNotificationsPageState extends ConsumerState<MomentsNotificationsP
     final isUnread = notification.isRead != true;
 
     return ListTile(
+      onTap: () {
+        if (notification.postId != null) {
+          context.go('/moments?postId=${notification.postId}');
+        }
+      },
       leading: Stack(
         children: [
           CircleAvatar(
