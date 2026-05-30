@@ -19,12 +19,31 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
+  int _selectedIndex = 0;
+  late final PageController _pageController;
+
   @override
   void initState() {
     super.initState();
+    _pageController = PageController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(settingsStateProvider.notifier).loadSettings();
     });
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _onNavItemSelected(int index) {
+    setState(() => _selectedIndex = index);
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
   }
 
   @override
@@ -42,12 +61,25 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SettingsNavPanel(),
+          SettingsNavPanel(
+            selectedIndex: _selectedIndex,
+            onItemSelected: _onNavItemSelected,
+          ),
           const SizedBox(width: 18),
           Expanded(
             child: GlassPanel(
               padding: const EdgeInsets.all(24),
-              child: _buildSettingsGrid(loc, theme, settings, authState),
+              child: PageView(
+                controller: _pageController,
+                onPageChanged: (index) => setState(() => _selectedIndex = index),
+                children: [
+                  _buildAccountPage(loc, theme, authState),
+                  _buildAppearancePage(loc, theme, settings),
+                  _buildNotificationPage(loc, theme, settings),
+                  _buildSecurityPage(loc, theme, settings),
+                  _buildAISettingsPage(loc, theme),
+                ],
+              ),
             ),
           ),
         ],
@@ -74,120 +106,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         _buildPrivacySection(loc, theme, settings),
         const SizedBox(height: ImTokens.layoutSectionGap),
         _buildSecondaryColumn(loc, theme),
-      ],
-    );
-  }
-
-  Widget _buildSettingsGrid(
-    AppLocalizations loc,
-    ThemeData theme,
-    dynamic settings,
-    AuthState authState,
-  ) {
-    return ListView(
-      children: [
-        _buildHero(loc, theme),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final isTwoColumn = constraints.maxWidth >= 760;
-            final children = [
-              _buildGroupedSection(
-                title: '外观与语言',
-                icon: Icons.palette_outlined,
-                child: _buildPreferencesSection(loc, theme, settings),
-              ),
-              _buildGroupedSection(
-                title: '消息与隐私',
-                icon: Icons.notifications_outlined,
-                child: Column(
-                  children: [
-                    _buildNotificationSection(loc, theme, settings),
-                    const SizedBox(height: ImTokens.layoutSectionGap),
-                    _buildPrivacySection(loc, theme, settings),
-                  ],
-                ),
-              ),
-              _buildGroupedSection(
-                title: '安全',
-                icon: Icons.shield_outlined,
-                child: SettingsSection(
-                  children: [
-                    SettingsRow(
-                      title: loc.settingsClearCache,
-                      description: loc.settingsClearCacheDesc,
-                      trailing: _SolidActionChip(
-                        label: loc.settingsClearCache,
-                        onTap: _confirmClearCache,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              _buildGroupedSection(
-                title: '账号',
-                icon: Icons.person_outline,
-                child: Column(
-                  children: [
-                    _buildAccountSection(loc, theme, authState),
-                    const SizedBox(height: ImTokens.layoutSectionGap),
-                    SettingsSection(
-                      children: [
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () => context.push('/settings/ai'),
-                            borderRadius:
-                                BorderRadius.circular(ImTokens.radiusMd),
-                            child: SettingsRow(
-                              title: loc.settingsAiAssistant,
-                              description: loc.settingsAiAssistantDesc,
-                              trailing: Icon(
-                                Icons.chevron_right,
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                        ),
-                        SettingsRow(
-                          title: loc.settingsLogout,
-                          trailing: _SolidActionChip(
-                            label: loc.settingsLogout,
-                            onTap: _confirmLogout,
-                            isDestructive: true,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ];
-
-            if (!isTwoColumn) {
-              return Column(
-                children: [
-                  for (final child in children) ...[
-                    child,
-                    const SizedBox(height: 14),
-                  ],
-                ],
-              );
-            }
-
-            return Wrap(
-              spacing: 14,
-              runSpacing: 14,
-              children: children
-                  .map(
-                    (child) => SizedBox(
-                      width: (constraints.maxWidth - 14) / 2,
-                      child: child,
-                    ),
-                  )
-                  .toList(),
-            );
-          },
-        ),
       ],
     );
   }
@@ -475,6 +393,133 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ),
             ),
           ],
+        ),
+      ],
+    );
+  }
+
+  // --- Page builders for desktop PageView ---
+
+  Widget _buildAccountPage(
+    AppLocalizations loc,
+    ThemeData theme,
+    AuthState authState,
+  ) {
+    return ListView(
+      children: [
+        _buildHero(loc, theme),
+        _buildAccountSection(loc, theme, authState),
+        const SizedBox(height: ImTokens.layoutSectionGap),
+        SettingsSection(
+          children: [
+            SettingsRow(
+              title: loc.settingsLogout,
+              trailing: _SolidActionChip(
+                label: loc.settingsLogout,
+                onTap: _confirmLogout,
+                isDestructive: true,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAppearancePage(
+    AppLocalizations loc,
+    ThemeData theme,
+    dynamic settings,
+  ) {
+    return ListView(
+      children: [
+        _buildHero(loc, theme),
+        _buildGroupedSection(
+          title: loc.settingsAppearance,
+          icon: Icons.palette_outlined,
+          child: _buildPreferencesSection(loc, theme, settings),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNotificationPage(
+    AppLocalizations loc,
+    ThemeData theme,
+    dynamic settings,
+  ) {
+    return ListView(
+      children: [
+        _buildHero(loc, theme),
+        _buildGroupedSection(
+          title: loc.settingsNotifications,
+          icon: Icons.notifications_outlined,
+          child: _buildNotificationSection(loc, theme, settings),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSecurityPage(
+    AppLocalizations loc,
+    ThemeData theme,
+    dynamic settings,
+  ) {
+    return ListView(
+      children: [
+        _buildHero(loc, theme),
+        _buildGroupedSection(
+          title: '安全',
+          icon: Icons.shield_outlined,
+          child: Column(
+            children: [
+              _buildPrivacySection(loc, theme, settings),
+              const SizedBox(height: ImTokens.layoutSectionGap),
+              SettingsSection(
+                children: [
+                  SettingsRow(
+                    title: loc.settingsClearCache,
+                    description: loc.settingsClearCacheDesc,
+                    trailing: _SolidActionChip(
+                      label: loc.settingsClearCache,
+                      onTap: _confirmClearCache,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAISettingsPage(AppLocalizations loc, ThemeData theme) {
+    return ListView(
+      children: [
+        _buildHero(loc, theme),
+        _buildGroupedSection(
+          title: loc.settingsAiAssistant,
+          icon: Icons.smart_toy_outlined,
+          child: SettingsSection(
+            children: [
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => context.push('/settings/ai'),
+                  borderRadius: BorderRadius.circular(ImTokens.radiusMd),
+                  child: SettingsRow(
+                    title: loc.settingsAiAssistant,
+                    description: loc.settingsAiAssistantDesc,
+                    trailing: Icon(
+                      Icons.chevron_right,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );

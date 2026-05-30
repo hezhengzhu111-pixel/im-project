@@ -5,7 +5,14 @@ import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/l10n/app_localizations.dart';
 
 class SettingsNavPanel extends ConsumerWidget {
-  const SettingsNavPanel({super.key});
+  final int selectedIndex;
+  final ValueChanged<int> onItemSelected;
+
+  const SettingsNavPanel({
+    super.key,
+    required this.selectedIndex,
+    required this.onItemSelected,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -61,32 +68,52 @@ class SettingsNavPanel extends ConsumerWidget {
           Semantics(
             label: loc!.a11ySettingsProfile,
             button: true,
-            child: _NavItem(label: loc.settingsAccount, icon: Icons.person_outline),
+            child: _NavItem(
+              label: loc.settingsAccount,
+              icon: Icons.person_outline,
+              isSelected: selectedIndex == 0,
+              onTap: () => onItemSelected(0),
+            ),
           ),
           Semantics(
             label: loc.a11ySettingsAppearance,
             button: true,
-            child: _NavItem(label: loc.settingsAppearance, icon: Icons.palette_outlined),
+            child: _NavItem(
+              label: loc.settingsAppearance,
+              icon: Icons.palette_outlined,
+              isSelected: selectedIndex == 1,
+              onTap: () => onItemSelected(1),
+            ),
           ),
           Semantics(
             label: loc.a11ySettingsNotifications,
             button: true,
-            child: _NavItem(label: loc.settingsNotifications, icon: Icons.notifications_outlined),
+            child: _NavItem(
+              label: loc.settingsNotifications,
+              icon: Icons.notifications_outlined,
+              isSelected: selectedIndex == 2,
+              onTap: () => onItemSelected(2),
+            ),
           ),
           Semantics(
             label: loc.a11ySettingsSecurity,
             button: true,
-            child: _NavItem(label: loc.settingsPrivacy, icon: Icons.shield_outlined),
-          ),
-          Semantics(
-            label: loc.a11ySettingsStorage,
-            button: true,
-            child: _NavItem(label: loc.settingsStorage, icon: Icons.storage_outlined),
+            child: _NavItem(
+              label: loc.settingsPrivacy,
+              icon: Icons.shield_outlined,
+              isSelected: selectedIndex == 3,
+              onTap: () => onItemSelected(3),
+            ),
           ),
           Semantics(
             label: loc.a11ySettingsAi,
             button: true,
-            child: _NavItem(label: loc.settingsAi, icon: Icons.smart_toy_outlined),
+            child: _NavItem(
+              label: loc.settingsAi,
+              icon: Icons.smart_toy_outlined,
+              isSelected: selectedIndex == 4,
+              onTap: () => onItemSelected(4),
+            ),
           ),
         ],
       ),
@@ -94,17 +121,18 @@ class SettingsNavPanel extends ConsumerWidget {
   }
 }
 
-class _NavItem extends StatefulWidget {
-  const _NavItem({required this.label, required this.icon});
+class _NavItem extends StatelessWidget {
+  const _NavItem({
+    required this.label,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
   final String label;
   final IconData icon;
-
-  @override
-  State<_NavItem> createState() => _NavItemState();
-}
-
-class _NavItemState extends State<_NavItem> {
-  bool _hovered = false;
+  final bool isSelected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -113,12 +141,13 @@ class _NavItemState extends State<_NavItem> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: MouseRegion(
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
+        cursor: SystemMouseCursors.click,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           decoration: BoxDecoration(
-            color: _hovered ? glass.navHoverBackground : Colors.transparent,
+            color: isSelected
+                ? glass.navHoverBackground
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(glass.controlRadius),
           ),
           child: Material(
@@ -126,17 +155,26 @@ class _NavItemState extends State<_NavItem> {
             borderRadius: BorderRadius.circular(glass.controlRadius),
             child: InkWell(
               borderRadius: BorderRadius.circular(glass.controlRadius),
-              onTap: () {},
+              onTap: onTap,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: Row(
                   children: [
-                    Icon(widget.icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
+                    Icon(
+                      icon,
+                      size: 20,
+                      color: isSelected
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 10),
                     Text(
-                      widget.label,
+                      label,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                        color: isSelected
+                            ? theme.colorScheme.primary
+                            : null,
                       ),
                     ),
                   ],
