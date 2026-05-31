@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:im_ui/im_ui.dart';
 
 import '../../features/auth/auth.dart';
+import '../../features/chat/chat.dart';
 import 'route_names.dart';
 
 /// Route metadata for auth guards.
@@ -173,22 +174,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/chat',
             name: RouteNames.chat,
-            builder: (_, state) {
-              final sessionId = state.uri.queryParameters['sessionId'];
-              return _PlaceholderPage(
-                title: 'Chat${sessionId != null ? ' - $sessionId' : ''}',
-              );
-            },
-            routes: [
-              GoRoute(
-                path: ':sessionId',
-                name: RouteNames.chatSession,
-                builder: (_, state) {
-                  final sessionId = state.pathParameters['sessionId']!;
-                  return _PlaceholderPage(title: 'Chat - $sessionId');
-                },
-              ),
-            ],
+            builder: (_, state) => const ChatPage(),
           ),
           GoRoute(
             path: '/contacts',
