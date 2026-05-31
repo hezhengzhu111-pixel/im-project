@@ -42,6 +42,8 @@ class _MainShellState extends ConsumerState<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       body: Row(
         children: [
@@ -49,10 +51,10 @@ class _MainShellState extends ConsumerState<MainShell> {
           Container(
             width: 72,
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
+              color: colorScheme.surface,
               border: Border(
                 right: BorderSide(
-                  color: Theme.of(context).dividerColor,
+                  color: colorScheme.outlineVariant,
                   width: 1,
                 ),
               ),
@@ -65,12 +67,12 @@ class _MainShellState extends ConsumerState<MainShell> {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: Colors.blue,
+                    color: colorScheme.primary,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.chat_bubble,
-                    color: Colors.white,
+                    color: colorScheme.onPrimary,
                     size: 28,
                   ),
                 ),
@@ -88,7 +90,7 @@ class _MainShellState extends ConsumerState<MainShell> {
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         child: Material(
                           color: isSelected
-                              ? Colors.blue.withAlpha(25)
+                              ? colorScheme.primaryContainer
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(12),
                           child: InkWell(
@@ -103,7 +105,9 @@ class _MainShellState extends ConsumerState<MainShell> {
                                 children: [
                                   Icon(
                                     isSelected ? item.selectedIcon : item.icon,
-                                    color: isSelected ? Colors.blue : Colors.grey,
+                                    color: isSelected
+                                        ? colorScheme.onPrimaryContainer
+                                        : colorScheme.onSurfaceVariant,
                                     size: 24,
                                   ),
                                   const SizedBox(height: 4),
@@ -111,7 +115,9 @@ class _MainShellState extends ConsumerState<MainShell> {
                                     item.label,
                                     style: TextStyle(
                                       fontSize: 10,
-                                      color: isSelected ? Colors.blue : Colors.grey,
+                                      color: isSelected
+                                          ? colorScheme.onPrimaryContainer
+                                          : colorScheme.onSurfaceVariant,
                                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                                     ),
                                   ),
@@ -130,8 +136,11 @@ class _MainShellState extends ConsumerState<MainShell> {
                   padding: const EdgeInsets.all(16),
                   child: CircleAvatar(
                     radius: 20,
-                    backgroundColor: Colors.grey[300],
-                    child: const Icon(Icons.person, color: Colors.grey),
+                    backgroundColor: colorScheme.surfaceVariant,
+                    child: Icon(
+                      Icons.person,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],
