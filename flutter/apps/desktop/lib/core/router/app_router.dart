@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_desktop/features/auth/auth.dart';
+import 'package:im_desktop/features/chat/chat.dart';
 
 // 路由名称常量
 class RouteNames {
@@ -12,20 +13,6 @@ class RouteNames {
   static const groups = 'groups';
   static const settings = 'settings';
   static const profile = 'profile';
-}
-
-// 占位页面
-class ChatPage extends StatelessWidget {
-  const ChatPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text('Chat Page'),
-      ),
-    );
-  }
 }
 
 class ContactsPage extends StatelessWidget {
