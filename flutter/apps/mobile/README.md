@@ -1,16 +1,100 @@
-# im_mobile
+# IM Mobile
 
-A new Flutter project.
+Flutter 移动端即时通讯应用。
 
-## Getting Started
+## 功能特性
 
-This project is a starting point for a Flutter application.
+- ✅ 用户认证（登录/注册）
+- ✅ 实时聊天（单聊/群聊）
+- ✅ 联系人管理
+- ✅ 群组管理
+- ✅ 朋友圈
+- ✅ 端到端加密（E2EE）
+- ✅ 文件传输
+- ✅ 语音消息
+- ✅ 系统通知
 
-A few resources to get you started if this is your first Flutter project:
+## 技术栈
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+- Flutter 3.x
+- Dart
+- Rust (通过 Flutter Rust Bridge)
+- Riverpod (状态管理)
+- GoRouter (路由)
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 开发环境
+
+### 前置要求
+
+- Flutter SDK 3.3.0+
+- Rust toolchain
+- Android Studio / Xcode
+
+### 安装依赖
+
+```bash
+cd flutter
+flutter pub get
+cd native/rust
+cargo build
+```
+
+### 生成 FRB 绑定
+
+```bash
+cd flutter
+flutter_rust_bridge_codegen generate
+```
+
+### 运行应用
+
+```bash
+cd apps/mobile
+flutter run  # 连接设备或启动模拟器
+```
+
+### 构建发布版本
+
+```bash
+flutter build apk      # Android
+flutter build appbundle  # Android (Google Play)
+flutter build ios      # iOS
+```
+
+## 项目结构
+
+```
+flutter/apps/mobile/
+├── lib/
+│   ├── main.dart                    # 应用入口
+│   ├── app.dart                     # MaterialApp 配置
+│   ├── adapters/                    # 平台适配器
+│   ├── core/                        # 核心基础设施
+│   │   ├── di/                      # 依赖注入
+│   │   ├── router/                  # 路由配置
+│   │   ├── theme/                   # 主题配置
+│   │   └── logging/                 # 日志
+│   └── features/                    # 业务模块
+│       ├── auth/                    # 认证模块
+│       ├── chat/                    # 聊天模块
+│       ├── contacts/                # 联系人模块
+│       ├── group/                   # 群组模块
+│       ├── moments/                 # 朋友圈模块
+│       ├── settings/                # 设置模块
+│       └── e2ee/                    # E2EE 模块
+├── android/                         # Android 平台配置
+├── pubspec.yaml
+└── README.md
+```
+
+## 环境变量
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `API_BASE_URL` | API 服务器地址 | http://localhost:8082 |
+| `WS_BASE_URL` | WebSocket 服务器地址 | ws://localhost:8082 |
+| `APP_ENV` | 应用环境 | development |
+
+## 许可证
+
+MIT License
