@@ -3,10 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:im_ui/ui.dart';
 
 void main() {
-  setUpAll(() {
-    ImTheme.enableGoogleFonts = false;
-  });
-
   group('ImTheme', () {
     test('light theme has brightness light', () {
       final theme = ImTheme.light();

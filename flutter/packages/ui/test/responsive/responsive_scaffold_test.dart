@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_ui/src/layouts/breakpoint_scope.dart';
 import 'package:im_ui/src/layouts/responsive_scaffold.dart';
+import 'package:im_ui/src/widgets/glass_app_components.dart';
 
 List<ResponsiveNavDestination> _testDestinations() => const [
       ResponsiveNavDestination(icon: Icons.chat, label: 'Chat'),
@@ -60,7 +61,7 @@ void main() {
         ),
       ));
 
-      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.byType(FlatLineIconButton), findsWidgets);
       expect(find.byType(NavigationBar), findsNothing);
     });
 
@@ -75,7 +76,7 @@ void main() {
         ),
       ));
 
-      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.byType(FlatLineIconButton), findsWidgets);
       expect(find.byType(NavigationBar), findsNothing);
     });
 
