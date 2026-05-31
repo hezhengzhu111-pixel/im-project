@@ -1,19 +1,20 @@
 import 'dart:convert';
 
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:im_desktop/features/e2ee/data/e2ee_key_store.dart';
 
-import 'e2ee_key_store.dart';
-
-/// Desktop implementation of [E2eeKeyStore] using [SharedPreferences].
+/// Desktop implementation of [E2eeKeyStore] using [FlutterSecureStorage].
 ///
-/// Replaces the web IndexedDB implementation with a simple key-value store
-/// that persists across app sessions on desktop.
+/// Replaces the SharedPreferences implementation with OS-level secure
+/// storage (Keychain on macOS, libsecret on Linux, Windows Credential
+/// Manager on Windows) so that E2EE key material is never stored in
+/// plaintext files on disk.
 class DesktopKeyStore implements E2eeKeyStore {
-  late SharedPreferences _prefs;
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   @override
   Future<void> init() async {
-    _prefs = await SharedPreferences.getInstance();
+    // FlutterSecureStorage requires no explicit initialisation.
   }
 
   // ---------------------------------------------------------------------------
@@ -22,13 +23,12 @@ class DesktopKeyStore implements E2eeKeyStore {
 
   @override
   Future<void> saveKeyMaterial(String base64Bundle) async {
-    await _prefs.setString(_kKeyMaterial, base64Bundle);
+    await _storage.write(key: _kKeyMaterial, value: base64Bundle);
   }
 
   @override
-  Future<String?> getKeyMaterial() async {
-    return _prefs.getString(_kKeyMaterial);
-  }
+  Future<String?> getKeyMaterial() =>
+      _storage.read(key: _kKeyMaterial);
 
   @override
   Future<void> markOneTimePreKeyConsumed(int oneTimePreKeyId) async {
@@ -38,18 +38,29 @@ class DesktopKeyStore implements E2eeKeyStore {
     final keyMaterial = jsonDecode(raw) as Map<String, dynamic>;
 
     // Remove from otk_pairs
-    final otkPairs = keyMaterial['otk_pairs'] as List<dynamic>? ?? [];
+    final otkPairs =
+        keyMaterial['otk_pairs'] as List<dynamic>? ?? [];
     keyMaterial['otk_pairs'] = otkPairs
-        .where((otk) => (otk as Map<String, dynamic>)['id'] != oneTimePreKeyId)
+        .where(
+          (otk) =>
+              (otk as Map<String, dynamic>)['id'] !=
+              oneTimePreKeyId,
+        )
         .toList();
 
     // Remove from public_bundle.one_time_pre_keys
-    final publicBundle = keyMaterial['public_bundle'] as Map<String, dynamic>?;
+    final publicBundle =
+        keyMaterial['public_bundle'] as Map<String, dynamic>?;
     if (publicBundle != null) {
-      final otkList = publicBundle['one_time_pre_keys'] as List<dynamic>? ?? [];
+      final otkList =
+          publicBundle['one_time_pre_keys'] as List<dynamic>? ??
+              [];
       publicBundle['one_time_pre_keys'] = otkList
           .where(
-              (otk) => (otk as Map<String, dynamic>)['id'] != oneTimePreKeyId)
+            (otk) =>
+                (otk as Map<String, dynamic>)['id'] !=
+                oneTimePreKeyId,
+          )
           .toList();
     }
 
@@ -62,13 +73,12 @@ class DesktopKeyStore implements E2eeKeyStore {
 
   @override
   Future<void> saveDeviceId(String deviceId) async {
-    await _prefs.setString(_kDeviceId, deviceId);
+    await _storage.write(key: _kDeviceId, value: deviceId);
   }
 
   @override
-  Future<String?> getDeviceId() async {
-    return _prefs.getString(_kDeviceId);
-  }
+  Future<String?> getDeviceId() =>
+      _storage.read(key: _kDeviceId);
 
   // ---------------------------------------------------------------------------
   // Public Bundle
@@ -76,13 +86,12 @@ class DesktopKeyStore implements E2eeKeyStore {
 
   @override
   Future<void> savePublicBundle(String bundleJson) async {
-    await _prefs.setString(_kPublicBundle, bundleJson);
+    await _storage.write(key: _kPublicBundle, value: bundleJson);
   }
 
   @override
-  Future<String?> getPublicBundle() async {
-    return _prefs.getString(_kPublicBundle);
-  }
+  Future<String?> getPublicBundle() =>
+      _storage.read(key: _kPublicBundle);
 
   // ---------------------------------------------------------------------------
   // Clear
@@ -90,23 +99,21 @@ class DesktopKeyStore implements E2eeKeyStore {
 
   @override
   Future<void> clearKeyMaterial() async {
-    await _prefs.remove(_kKeyMaterial);
-    await _prefs.remove(_kPublicBundle);
+    await _storage.delete(key: _kKeyMaterial);
+    await _storage.delete(key: _kPublicBundle);
   }
 
   @override
   Future<void> clearAll() async {
-    final keys = _prefs.getKeys();
-    for (final key in keys) {
-      if (key.startsWith(_kPrefix)) {
-        await _prefs.remove(key);
-      }
-    }
+    // Delete only our own keys to avoid wiping unrelated entries.
+    await _storage.delete(key: _kKeyMaterial);
+    await _storage.delete(key: _kDeviceId);
+    await _storage.delete(key: _kPublicBundle);
   }
 
   @override
   void dispose() {
-    // SharedPreferences does not require explicit disposal.
+    // FlutterSecureStorage does not require explicit disposal.
   }
 
   // ---------------------------------------------------------------------------

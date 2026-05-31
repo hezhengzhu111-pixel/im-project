@@ -1,30 +1,34 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:im_desktop/features/e2ee/data/e2ee_session_store.dart';
 
-import 'e2ee_session_store.dart';
-
-/// Desktop implementation of [E2eeSessionStore] using [SharedPreferences].
+/// Desktop implementation of [E2eeSessionStore]
+/// using [FlutterSecureStorage].
 ///
 /// Stores E2EE ratchet session states as v3 envelope JSON strings.
-/// Mirrors the web IndexedDB implementation but uses platform-appropriate
-/// persistent key-value storage.
+/// Uses OS-level secure storage (Keychain on macOS, libsecret on
+/// Linux, Windows Credential Manager on Windows) instead of
+/// SharedPreferences, ensuring session states are never written
+/// to plaintext files.
 class DesktopSessionStore implements E2eeSessionStore {
-  late SharedPreferences _prefs;
+  final FlutterSecureStorage _storage =
+      const FlutterSecureStorage();
 
   static const _sessionStateEnvelopeVersion = 3;
-  static const _sessionStateAlgorithm = 'rust-x25519-x3dh-dr-v1';
+  static const _sessionStateAlgorithm =
+      'rust-x25519-x3dh-dr-v1';
   static const _kPrefix = 'e2ee_session_';
 
   @override
   Future<void> init() async {
-    _prefs = await SharedPreferences.getInstance();
+    // FlutterSecureStorage requires no explicit initialisation.
   }
 
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
   // Save session (v3 envelope)
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
 
   @override
   Future<void> saveSession({
@@ -35,7 +39,9 @@ class DesktopSessionStore implements E2eeSessionStore {
     required String remoteDeviceId,
     String direction = 'outbound',
   }) async {
-    if (sessionId.isEmpty) throw Exception('E2EE session requires sessionId');
+    if (sessionId.isEmpty) {
+      throw Exception('E2EE session requires sessionId');
+    }
     if (localDeviceId.isEmpty) {
       throw Exception('E2EE session requires localDeviceId');
     }
@@ -49,8 +55,10 @@ class DesktopSessionStore implements E2eeSessionStore {
       throw Exception('E2EE session requires remoteUserId');
     }
 
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final remoteUserIdHash = _fingerprint(resolvedRemoteUserId);
+    final timestamp =
+        DateTime.now().millisecondsSinceEpoch;
+    final remoteUserIdHash =
+        _fingerprint(resolvedRemoteUserId);
 
     final envelope = {
       'version': _sessionStateEnvelopeVersion,
@@ -66,12 +74,15 @@ class DesktopSessionStore implements E2eeSessionStore {
       'direction': direction,
     };
 
-    await _prefs.setString('$_kPrefix$sessionId', jsonEncode(envelope));
+    await _storage.write(
+      key: '$_kPrefix$sessionId',
+      value: jsonEncode(envelope),
+    );
   }
 
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
   // Get session (with v3 envelope validation)
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
 
   @override
   Future<String?> getSession({
@@ -80,34 +91,54 @@ class DesktopSessionStore implements E2eeSessionStore {
     required String remoteUserId,
     required String remoteDeviceId,
   }) async {
-    final raw = _prefs.getString('$_kPrefix$sessionId');
+    final raw =
+        await _storage.read(key: '$_kPrefix$sessionId');
     if (raw == null) return null;
 
     try {
-      final stored = jsonDecode(raw) as Map<String, dynamic>;
+      final stored =
+          jsonDecode(raw) as Map<String, dynamic>;
 
       // Validate v3 envelope
-      if (stored['version'] != _sessionStateEnvelopeVersion) return null;
-      if (stored['algorithm'] != _sessionStateAlgorithm) return null;
+      if (stored['version'] !=
+          _sessionStateEnvelopeVersion) {
+        return null;
+      }
+      if (stored['algorithm'] != _sessionStateAlgorithm) {
+        return null;
+      }
 
       // Validate context
-      final storedUserId = stored['userId'] as String? ?? '';
-      final storedLocalDeviceId = stored['localDeviceId'] as String? ?? '';
-      final storedSessionId = stored['sessionId'] as String? ?? '';
-      final storedRemoteDeviceId = stored['remoteDeviceId'] as String? ?? '';
+      final storedUserId =
+          stored['userId'] as String? ?? '';
+      final storedLocalDeviceId =
+          stored['localDeviceId'] as String? ?? '';
+      final storedSessionId =
+          stored['sessionId'] as String? ?? '';
+      final storedRemoteDeviceId =
+          stored['remoteDeviceId'] as String? ?? '';
       final storedRemoteUserIdHash =
           stored['remoteUserIdHash'] as String? ?? '';
 
       final resolvedRemoteUserId =
-          remoteUserId.isNotEmpty ? remoteUserId : remoteDeviceId;
+          remoteUserId.isNotEmpty
+              ? remoteUserId
+              : remoteDeviceId;
 
       if (storedUserId != localDeviceId) return null;
-      if (storedLocalDeviceId != localDeviceId) return null;
+      if (storedLocalDeviceId != localDeviceId) {
+        return null;
+      }
       if (storedSessionId != sessionId) return null;
-      if (storedRemoteDeviceId != remoteDeviceId) return null;
+      if (storedRemoteDeviceId != remoteDeviceId) {
+        return null;
+      }
 
-      final expectedHash = _fingerprint(resolvedRemoteUserId);
-      if (storedRemoteUserIdHash != expectedHash) return null;
+      final expectedHash =
+          _fingerprint(resolvedRemoteUserId);
+      if (storedRemoteUserIdHash != expectedHash) {
+        return null;
+      }
 
       return stored['state'] as String?;
     } catch (_) {
@@ -115,25 +146,33 @@ class DesktopSessionStore implements E2eeSessionStore {
     }
   }
 
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
   // Find session by local device (fallback)
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
 
   @override
   Future<SessionLookupResult?> findSessionByLocalDevice({
     required String sessionId,
     required String localDeviceId,
   }) async {
-    final raw = _prefs.getString('$_kPrefix$sessionId');
+    final raw =
+        await _storage.read(key: '$_kPrefix$sessionId');
     if (raw == null) return null;
 
     try {
-      final stored = jsonDecode(raw) as Map<String, dynamic>;
-      if (stored['version'] != _sessionStateEnvelopeVersion) return null;
+      final stored =
+          jsonDecode(raw) as Map<String, dynamic>;
+      if (stored['version'] !=
+          _sessionStateEnvelopeVersion) {
+        return null;
+      }
 
-      final storedUserId = stored['userId'] as String? ?? '';
-      final storedLocalDeviceId = stored['localDeviceId'] as String? ?? '';
-      final storedSessionId = stored['sessionId'] as String? ?? '';
+      final storedUserId =
+          stored['userId'] as String? ?? '';
+      final storedLocalDeviceId =
+          stored['localDeviceId'] as String? ?? '';
+      final storedSessionId =
+          stored['sessionId'] as String? ?? '';
 
       if (storedUserId != localDeviceId ||
           storedLocalDeviceId != localDeviceId ||
@@ -142,9 +181,12 @@ class DesktopSessionStore implements E2eeSessionStore {
       }
 
       final stateBase64 = stored['state'] as String?;
-      final remoteDeviceId = stored['remoteDeviceId'] as String? ?? '';
+      final remoteDeviceId =
+          stored['remoteDeviceId'] as String? ?? '';
 
-      if (stateBase64 == null || stateBase64.isEmpty) return null;
+      if (stateBase64 == null || stateBase64.isEmpty) {
+        return null;
+      }
 
       return SessionLookupResult(
         stateBase64: stateBase64,
@@ -155,33 +197,37 @@ class DesktopSessionStore implements E2eeSessionStore {
     }
   }
 
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
   // Delete / Clear
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
 
   @override
   Future<void> deleteSession(String sessionId) async {
-    await _prefs.remove('$_kPrefix$sessionId');
+    await _storage.delete(key: '$_kPrefix$sessionId');
   }
 
   @override
   Future<void> clearAll() async {
-    final keys = _prefs.getKeys();
-    for (final key in keys) {
-      if (key.startsWith(_kPrefix)) {
-        await _prefs.remove(key);
-      }
+    // Delete only our own keys to avoid wiping
+    // unrelated secure storage entries.
+    final allData = await _storage.readAll();
+    final keysToRemove = allData.keys
+        .where((key) => key.startsWith(_kPrefix))
+        .toList();
+    for (final key in keysToRemove) {
+      await _storage.delete(key: key);
     }
   }
 
   @override
   void dispose() {
-    // SharedPreferences does not require explicit disposal.
+    // FlutterSecureStorage does not require
+    // explicit disposal.
   }
 
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
   // Helpers
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
 
   static String _fingerprint(String input) {
     final bytes = utf8.encode(input);
