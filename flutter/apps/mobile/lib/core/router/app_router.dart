@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:im_ui/im_ui.dart';
 
+import '../../features/auth/auth.dart';
 import 'route_names.dart';
 
 /// Route metadata for auth guards.
@@ -124,12 +125,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/login',
         name: RouteNames.login,
-        builder: (_, __) => const _PlaceholderPage(title: 'Login'),
+        builder: (context, state) => const LoginPage(),
       ),
       GoRoute(
         path: '/register',
         name: RouteNames.register,
-        builder: (_, __) => const _PlaceholderPage(title: 'Register'),
+        builder: (context, state) => const RegisterPage(),
       ),
       ShellRoute(
         builder: (context, state, child) {

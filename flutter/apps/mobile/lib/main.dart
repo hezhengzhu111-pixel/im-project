@@ -13,8 +13,12 @@ import 'adapters/mobile_notification_adapter.dart';
 import 'adapters/mobile_share_adapter.dart';
 import 'adapters/mobile_storage_adapter.dart';
 import 'adapters/mobile_ws_adapter.dart';
+import 'adapters/services/noop_analytics_adapter.dart';
+import 'adapters/services/noop_error_reporter_adapter.dart';
+import 'adapters/services/noop_push_adapter.dart';
 import 'app.dart';
 import 'core/di/platform_providers.dart';
+import 'core/logging/app_logger.dart';
 
 /// Entry point for the IM Mobile application.
 ///
@@ -25,6 +29,11 @@ Future<void> main() async {
 
   // Initialize Flutter Rust Bridge for E2EE crypto operations.
   await RustLib.init();
+
+  // Initialize logger
+  AppLogger.init(
+    errorReporter: NoopErrorReporterAdapter(),
+  );
 
   // Build config from compile-time environment variables.
   const apiBase = String.fromEnvironment(
@@ -69,6 +78,10 @@ Future<void> main() async {
       ),
       // E2EE adapter
       e2eeAdapterProvider.overrideWithValue(MobileE2eeService()),
+      // Third-party service adapters
+      analyticsProvider.overrideWithValue(NoopAnalyticsAdapter()),
+      errorReporterProvider.overrideWithValue(NoopErrorReporterAdapter()),
+      pushProvider.overrideWithValue(NoopPushAdapter()),
     ],
     child: const App(),
   ));
