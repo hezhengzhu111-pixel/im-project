@@ -241,5 +241,7 @@ void _onNavigate(BuildContext context, int index) {
       context.go('/moments');
     case 4:
       context.go('/settings');
+    default:
+      assert(false, 'Unexpected navigation index: $index');
   }
 }
