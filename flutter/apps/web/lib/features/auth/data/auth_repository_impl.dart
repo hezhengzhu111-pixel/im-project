@@ -47,7 +47,8 @@ class AuthRepositoryImpl implements AuthRepository {
       await _refreshSession();
     } catch (error) {
       if (_isAuthInvalid(error)) {
-        return _authFailure('Session invalid');
+        return _authFailure('Session invalid',
+            errorCode: AuthErrorCode.invalidCredentials);
       }
       rethrow;
     }
@@ -56,7 +57,7 @@ class AuthRepositoryImpl implements AuthRepository {
     if (_isValidParsedToken(refreshed)) {
       return _resultFromParsedToken(refreshed);
     }
-    return _authFailure('Session expired');
+    return _authFailure('Session expired', errorCode: AuthErrorCode.unknown);
   }
 
   Future<void> _refreshSession() async {
@@ -80,7 +81,9 @@ class AuthRepositoryImpl implements AuthRepository {
 
   AuthResult _resultFromParsedToken(Map<String, dynamic> parsed) {
     final userId = _stringValue(parsed['userId'] ?? parsed['user_id']);
-    if (userId == null) return _authFailure('Invalid user id');
+    if (userId == null) {
+      return _authFailure('Invalid user id', errorCode: AuthErrorCode.unknown);
+    }
 
     final username = _stringValue(parsed['username']) ?? userId;
     final permissions = _stringList(parsed['permissions']);
@@ -101,18 +104,13 @@ class AuthRepositoryImpl implements AuthRepository {
   bool _isAuthInvalid(Object error) {
     if (error is DioException) {
       final status = error.response?.statusCode;
-      if (status == 400 || status == 401 || status == 403) return true;
+      return status == 400 || status == 401 || status == 403;
     }
-    final message = error.toString().toLowerCase();
-    return message.contains('401') ||
-        message.contains('403') ||
-        message.contains('token_invalid') ||
-        message.contains('token_expired') ||
-        message.contains('no refresh token');
+    return false;
   }
 
-  AuthFailure _authFailure(String message) {
-    return AuthFailure(error: message);
+  AuthFailure _authFailure(String message, {AuthErrorCode? errorCode}) {
+    return AuthFailure(error: message, errorCode: errorCode);
   }
 
   String? _stringValue(Object? value) {
