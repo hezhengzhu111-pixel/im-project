@@ -1,0 +1,4 @@
+# flutter/Cargo.toml
+[workspace]
+members = ["native/rust"]
+resolver = "2"
