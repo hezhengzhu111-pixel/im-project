@@ -10,16 +10,23 @@ import 'adapters/desktop_notification_adapter.dart';
 import 'adapters/desktop_clipboard_adapter.dart';
 import 'adapters/desktop_share_adapter.dart';
 import 'adapters/desktop_audio_recorder_adapter.dart';
+import 'adapters/desktop_ws_adapter.dart';
 import 'adapters/services/noop_analytics_adapter.dart';
 import 'adapters/services/noop_error_reporter_adapter.dart';
 import 'adapters/services/noop_push_adapter.dart';
 import 'core/di/platform_providers.dart';
+import 'core/logging/app_logger.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Flutter Rust Bridge
   await RustLib.init();
+
+  // Initialize logger
+  AppLogger.init(
+    errorReporter: NoopErrorReporterAdapter(),
+  );
 
   const apiBase = String.fromEnvironment(
     'API_BASE_URL',
@@ -30,6 +37,7 @@ void main() async {
   final secureStorageService = DesktopSecureStorageAdapter();
   final networkService = DesktopNetworkService(baseUrl: apiBase);
   final e2eeService = DesktopE2eeService();
+  final wsService = DesktopWsAdapter();
 
   runApp(ProviderScope(
     overrides: [
@@ -44,6 +52,7 @@ void main() async {
       httpClientProvider.overrideWithValue(networkService),
       storageProvider.overrideWithValue(storageService),
       secureStorageProvider.overrideWithValue(secureStorageService),
+      wsClientProvider.overrideWithValue(wsService),
       // E2EE 适配器
       e2eeAdapterProvider.overrideWithValue(e2eeService),
       // 第三方服务适配器

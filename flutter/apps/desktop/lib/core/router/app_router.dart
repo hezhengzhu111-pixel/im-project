@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:im_desktop/features/auth/auth.dart';
 
 // 路由名称常量
 class RouteNames {
@@ -13,52 +14,7 @@ class RouteNames {
   static const profile = 'profile';
 }
 
-// 路由守卫 Provider
-final routerAuthProvider = StateProvider<AuthState>((ref) => AuthState.initial);
-
-class AuthState {
-  final bool isAuthenticated;
-  final String? userId;
-
-  const AuthState({this.isAuthenticated = false, this.userId});
-
-  static const initial = AuthState();
-
-  AuthState copyWith({bool? isAuthenticated, String? userId}) {
-    return AuthState(
-      isAuthenticated: isAuthenticated ?? this.isAuthenticated,
-      userId: userId ?? this.userId,
-    );
-  }
-}
-
 // 占位页面
-class LoginPage extends StatelessWidget {
-  const LoginPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text('Login Page'),
-      ),
-    );
-  }
-}
-
-class RegisterPage extends StatelessWidget {
-  const RegisterPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text('Register Page'),
-      ),
-    );
-  }
-}
-
 class ChatPage extends StatelessWidget {
   const ChatPage({super.key});
 
@@ -126,16 +82,17 @@ class ProfilePage extends StatelessWidget {
 
 // 路由配置
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(routerAuthProvider);
+  final authState = ref.watch(authStateProvider);
 
   return GoRouter(
     initialLocation: '/chat',
     redirect: (context, state) {
       final isLoggedIn = authState.isAuthenticated;
       final isLoginRoute = state.uri.path == '/login';
+      final isRegisterRoute = state.uri.path == '/register';
 
-      // 未登录且不在登录页，跳转到登录页
-      if (!isLoggedIn && !isLoginRoute) {
+      // 未登录且不在登录/注册页，跳转到登录页
+      if (!isLoggedIn && !isLoginRoute && !isRegisterRoute) {
         return '/login';
       }
 
