@@ -8,7 +8,7 @@ void main() {
         'id': 'post1',
         'userId': 'u1',
         'content': 'Hello World!',
-        'createTime': '2024-01-01T00:00:00Z',
+        'createdAt': '2024-01-01T00:00:00Z',
         'userName': 'Alice',
         'userAvatar': 'https://example.com/alice.png',
         'media': [
@@ -55,7 +55,7 @@ void main() {
         'id': 'post2',
         'userId': 'u1',
         'content': 'Simple post',
-        'createTime': '2024-01-01T00:00:00Z',
+        'createdAt': '2024-01-01T00:00:00Z',
       };
       final post = MomentPost.fromJson(json);
 
@@ -142,7 +142,7 @@ void main() {
       final json = {
         'id': 'like1',
         'userId': 'u1',
-        'createTime': '2024-01-01T00:00:00Z',
+        'createdAt': '2024-01-01T00:00:00Z',
         'userName': 'Alice',
         'userAvatar': 'https://example.com/alice.png',
       };
@@ -159,7 +159,7 @@ void main() {
       final json = {
         'id': 'like2',
         'userId': 'u2',
-        'createTime': '2024-01-01T00:00:00Z',
+        'createdAt': '2024-01-01T00:00:00Z',
       };
       final like = MomentLike.fromJson(json);
 
@@ -174,7 +174,7 @@ void main() {
         'id': 'comment1',
         'userId': 'u1',
         'content': 'Nice post!',
-        'createTime': '2024-01-01T00:00:00Z',
+        'createdAt': '2024-01-01T00:00:00Z',
         'userName': 'Alice',
         'userAvatar': 'https://example.com/alice.png',
         'replyToUserId': 'u2',
@@ -196,7 +196,7 @@ void main() {
         'id': 'comment2',
         'userId': 'u1',
         'content': 'Great!',
-        'createTime': '2024-01-01T00:00:00Z',
+        'createdAt': '2024-01-01T00:00:00Z',
       };
       final comment = MomentComment.fromJson(json);
 
@@ -210,7 +210,7 @@ void main() {
       final json = {
         'id': 'notif1',
         'type': 'like',
-        'createTime': '2024-01-01T00:00:00Z',
+        'createdAt': '2024-01-01T00:00:00Z',
         'isRead': false,
         'userId': 'u1',
         'userName': 'Alice',
@@ -234,7 +234,7 @@ void main() {
       final json = {
         'id': 'notif2',
         'type': 'comment',
-        'createTime': '2024-01-01T00:00:00Z',
+        'createdAt': '2024-01-01T00:00:00Z',
         'commentId': 'comment1',
         'postId': 'post1',
       };
