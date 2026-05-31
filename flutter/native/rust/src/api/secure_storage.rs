@@ -97,6 +97,7 @@ impl SecureKeyStore {
 }
 
 /// 安全内存缓冲区
+#[frb(opaque)]
 pub struct SecureBuffer {
     data: Vec<u8>,
 }

@@ -128,7 +128,7 @@ Future<Uint8List> restoreState({required List<int> stateBytes}) =>
     RustLib.instance.api.crateApiE2EeRestoreState(stateBytes: stateBytes);
 
 /// Create outbound X3DH session (Alice side).
-/// Input JSON: {"session_id": "...", "local_identity_key_pair": "<base64 bincode X25519KeyPair>", "remote_bundle": "<base64 bincode PreKeyBundleFetch>"}
+/// Input JSON: {"session_id": "...", "local_identity_key_pair": "<base64 bincode X25519KeyPair>", "remote_bundle_json": "{...}"}
 /// Output JSON: {"state": "<base64>", "handshake": "<base64>", "otk_id": <u32|null>}
 Future<String> createOutboundSession({required String configJson}) =>
     RustLib.instance.api
