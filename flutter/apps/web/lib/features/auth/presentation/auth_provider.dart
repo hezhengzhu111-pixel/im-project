@@ -18,8 +18,8 @@ class AuthState {
     this.error,
     this.errorCode,
     this.rememberMe = false,
-    this.permissions = const [],
-  });
+    List<String> permissions = const [],
+  }) : permissions = permissions;
 
   /// 当前已登录的用户，未登录时为 null。
   final User? user;
@@ -65,7 +65,7 @@ class AuthState {
           ? this.errorCode
           : errorCode as AuthErrorCode?,
       rememberMe: rememberMe ?? this.rememberMe,
-      permissions: permissions ?? this.permissions,
+      permissions: List.unmodifiable(permissions ?? this.permissions),
     );
   }
 }
@@ -93,6 +93,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// [rememberMe] 为 true 时，登录状态将被持久化。
   Future<void> login(String username, String password,
       {bool rememberMe = false}) async {
+    if (state.isLoading) return;
     state = state.copyWith(status: AuthStatus.loading, error: null, errorCode: null);
     try {
       final response = await _repository.login(
@@ -168,20 +169,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// 否则切换到未认证状态。
   Future<void> restoreSession() async {
     state = state.copyWith(status: AuthStatus.loading);
-    try {
-      final result = await _repository.restoreSession();
-      switch (result) {
-        case AuthSuccess(:final user, :final permissions):
-          _setAuthenticated(user, permissions: permissions);
-        case AuthFailure():
-          state = const AuthState(status: AuthStatus.unauthenticated);
-      }
-    } catch (e, st) {
-      AppLogger.instance.error('Session restore failed', e, st, 'auth');
-      state = state.isAuthenticated
-          ? state.copyWith(status: AuthStatus.authenticated)
-          : const AuthState(status: AuthStatus.unauthenticated);
-    }
+    await _restoreAndSync();
   }
 
   /// 设置认证状态并异步连接 WebSocket。
@@ -205,7 +193,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// 确保当前会话仍然有效。
   ///
   /// 返回 true 表示会话有效且已刷新，false 表示会话已过期。
-  Future<bool> ensureFreshSession() async {
+  Future<bool> ensureFreshSession() => _restoreAndSync();
+
+  /// 从服务端恢复会话并同步认证状态，供 [restoreSession] 和
+  /// [ensureFreshSession] 复用。
+  Future<bool> _restoreAndSync() async {
     try {
       final result = await _repository.restoreSession();
       switch (result) {
@@ -217,7 +209,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
           return false;
       }
     } catch (e, st) {
-      AppLogger.instance.error('Fresh session check failed', e, st, 'auth');
+      AppLogger.instance.error('Session restore failed', e, st, 'auth');
       return state.isAuthenticated;
     }
   }
