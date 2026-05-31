@@ -6,6 +6,10 @@ import '../../../core/logging/app_logger.dart';
 import '../domain/auth_error_code.dart';
 import '../domain/auth_status.dart';
 
+/// 认证模块的不可变状态。
+///
+/// 包含当前用户信息、认证状态、错误信息以及权限列表。
+/// 通过 [copyWith] 方法创建修改后的新实例，确保状态不可变。
 class AuthState {
   static const _sentinel = Object();
 
@@ -18,11 +22,22 @@ class AuthState {
     this.permissions = const [],
   });
 
+  /// 当前已登录的用户，未登录时为 null。
   final User? user;
+
+  /// 当前认证状态（初始、加载中、已认证、未认证等）。
   final AuthStatus status;
+
+  /// 最近一次操作的错误描述信息。
   final String? error;
+
+  /// 最近一次操作的结构化错误码，用于 UI 层按类型展示错误提示。
   final AuthErrorCode? errorCode;
+
+  /// 是否记住登录状态。
   final bool rememberMe;
+
+  /// 当前用户拥有的权限标识列表。
   final List<String> permissions;
 
   /// 便捷 getter：是否已认证
@@ -34,6 +49,7 @@ class AuthState {
   /// 便捷 getter：认证流程是否已就绪（已检查过认证状态）
   bool get authReady => status != AuthStatus.initial && status != AuthStatus.loading;
 
+  /// 创建当前状态的副本，仅修改传入的字段，其余字段保持不变。
   AuthState copyWith({
     Object? user = _sentinel,
     AuthStatus? status,
@@ -55,6 +71,10 @@ class AuthState {
   }
 }
 
+/// 管理认证流程的 Riverpod StateNotifier。
+///
+/// 负责登录、注册、登出、会话恢复等操作，
+/// 并在状态变更时自动管理 WebSocket 连接和分析事件上报。
 class AuthNotifier extends StateNotifier<AuthState> {
   AuthNotifier(
       this._repository, this._wsClient, this._httpClient, this._analytics)
@@ -65,6 +85,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final HttpClientPort _httpClient;
   final AnalyticsPort _analytics;
 
+  /// 使用用户名和密码登录。
+  ///
+  /// 登录成功后会自动建立 WebSocket 连接，WS 失败不影响认证状态。
+  /// [rememberMe] 为 true 时，登录状态将被持久化。
   Future<void> login(String username, String password,
       {bool rememberMe = false}) async {
     state = state.copyWith(status: AuthStatus.loading, error: null, errorCode: null);
@@ -94,6 +118,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// 注册新用户账号。
+  ///
+  /// 注册成功后状态切换为 [AuthStatus.unauthenticated]，引导用户登录。
   Future<void> register(String username, String email, String password) async {
     state = state.copyWith(status: AuthStatus.loading, error: null, errorCode: null);
     try {
@@ -110,20 +137,28 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (e) {
       _analytics.trackEvent('register_failed', {'error_type': 'auth'});
       state = state.copyWith(
-        status: AuthStatus.error,
+        status: AuthStatus.unauthenticated,
         error: e.toString(),
         errorCode: _mapExceptionToErrorCode(e),
       );
     }
   }
 
+  /// 登出当前用户。
+  ///
+  /// 断开 WebSocket 连接，清除分析用户标识，销毁服务端会话，
+  /// 并将状态重置为 [AuthStatus.unauthenticated]。
   Future<void> logout() async {
     _wsClient.disconnect();
     _analytics.setUserId(null);
     await _repository.logout();
-    state = const AuthState();
+    state = const AuthState(status: AuthStatus.unauthenticated);
   }
 
+  /// 从服务端恢复已保存的会话。
+  ///
+  /// 如果会话有效则切换到已认证状态并连接 WebSocket，
+  /// 否则切换到未认证状态。
   Future<void> restoreSession() async {
     state = state.copyWith(status: AuthStatus.loading);
     try {
@@ -160,6 +195,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> checkAuth() => restoreSession();
 
+  /// 确保当前会话仍然有效。
+  ///
+  /// 返回 true 表示会话有效且已刷新，false 表示会话已过期。
   Future<bool> ensureFreshSession() async {
     try {
       final session = await _repository.restoreSession();
@@ -181,10 +219,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(user: user);
   }
 
+  /// 检查当前用户是否拥有指定权限。
   bool hasPermission(String permission) {
     return state.permissions.contains(permission);
   }
 
+  /// 检查当前用户是否拥有给定权限列表中的任一权限。
   bool hasAnyPermission(List<String> permissions) {
     return permissions.any(state.permissions.contains);
   }
