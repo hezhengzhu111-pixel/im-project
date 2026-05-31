@@ -116,6 +116,27 @@ void main() {
       });
     });
 
+    group('concurrency protection', () {
+      test('login ignores concurrent calls while loading', () async {
+        // Set up a response that will be returned on login
+        mockRepo.loginResponse = const UserAuthResponse(
+          success: true,
+          user: User(id: '1', username: 'test'),
+        );
+
+        // First call – starts loading
+        final future1 = notifier.login('user', 'pass');
+
+        // Second call – should be ignored because state.isLoading is true
+        await notifier.login('user', 'pass');
+
+        await future1;
+
+        // Verify login was only called once
+        expect(mockRepo.loginCallCount, 1);
+      });
+    });
+
     group('register', () {
       test('sets isLoading then completes successfully', () async {
         mockRepo.registerResponse = const UserAuthResponse(success: true);

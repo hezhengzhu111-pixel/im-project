@@ -148,6 +148,45 @@ void main() {
       expect(result, isA<AuthFailure>());
     });
 
+    group('register', () {
+      test('returns UserAuthResponse on success', () async {
+        httpClient.onPost = <T>(
+          String path, {
+          dynamic body,
+          required T Function(Map<String, dynamic>) fromJson,
+        }) async {
+          expect(path, UserEndpoints.register);
+          expect(body, {
+            'username': 'test',
+            'password': 'password',
+            'email': 'test@example.com',
+            'nickname': 'test',
+            'phone': null,
+          });
+          return ApiResponse<T>(
+            code: 200,
+            message: 'ok',
+            data: fromJson({
+              'success': true,
+              'user': {'id': '1', 'username': 'test'},
+              'token': 'token',
+            }),
+          );
+        };
+
+        final result = await repository.register(
+          const RegisterRequest(
+            username: 'test',
+            password: 'password',
+            email: 'test@example.com',
+            nickname: 'test',
+          ),
+        );
+
+        expect(result.user?.id, '1');
+      });
+    });
+
     test('logout calls logout endpoint', () async {
       httpClient.onPost = <T>(
         String path, {
