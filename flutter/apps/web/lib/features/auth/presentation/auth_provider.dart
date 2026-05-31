@@ -4,50 +4,52 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../../../core/logging/app_logger.dart';
 import '../domain/auth_error_code.dart';
+import '../domain/auth_status.dart';
 
 class AuthState {
   static const _sentinel = Object();
 
   const AuthState({
     this.user,
-    this.isAuthenticated = false,
-    this.isLoading = false,
+    this.status = AuthStatus.initial,
     this.error,
     this.errorCode,
     this.rememberMe = false,
-    this.authReady = false,
     this.permissions = const [],
   });
 
   final User? user;
-  final bool isAuthenticated;
-  final bool isLoading;
+  final AuthStatus status;
   final String? error;
   final AuthErrorCode? errorCode;
   final bool rememberMe;
-  final bool authReady;
   final List<String> permissions;
+
+  /// 便捷 getter：是否已认证
+  bool get isAuthenticated => status == AuthStatus.authenticated;
+
+  /// 便捷 getter：是否正在加载
+  bool get isLoading => status == AuthStatus.loading;
+
+  /// 便捷 getter：认证流程是否已就绪（已检查过认证状态）
+  bool get authReady => status != AuthStatus.initial && status != AuthStatus.loading;
 
   AuthState copyWith({
     Object? user = _sentinel,
-    bool? isAuthenticated,
-    bool? isLoading,
+    AuthStatus? status,
     Object? error = _sentinel,
     Object? errorCode = _sentinel,
     bool? rememberMe,
-    bool? authReady,
     List<String>? permissions,
   }) {
     return AuthState(
       user: identical(user, _sentinel) ? this.user : user as User?,
-      isAuthenticated: isAuthenticated ?? this.isAuthenticated,
-      isLoading: isLoading ?? this.isLoading,
+      status: status ?? this.status,
       error: identical(error, _sentinel) ? this.error : error as String?,
       errorCode: identical(errorCode, _sentinel)
           ? this.errorCode
           : errorCode as AuthErrorCode?,
       rememberMe: rememberMe ?? this.rememberMe,
-      authReady: authReady ?? this.authReady,
       permissions: permissions ?? this.permissions,
     );
   }
@@ -65,16 +67,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> login(String username, String password,
       {bool rememberMe = false}) async {
-    state = state.copyWith(isLoading: true, error: null, errorCode: null);
+    state = state.copyWith(status: AuthStatus.loading, error: null, errorCode: null);
     try {
       final response = await _repository.login(
         LoginRequest(username: username, password: password),
       );
       state = AuthState(
         user: response.user,
-        isAuthenticated: true,
+        status: AuthStatus.authenticated,
         rememberMe: rememberMe,
-        authReady: true,
         permissions: response.permissions ?? [],
       );
       _analytics.trackEvent('login_success', {'method': 'password'});
@@ -86,7 +87,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (e) {
       _analytics.trackEvent('login_failed', {'error_type': 'auth'});
       state = state.copyWith(
-        isLoading: false,
+        status: AuthStatus.unauthenticated,
         error: e.toString(),
         errorCode: _mapExceptionToErrorCode(e),
       );
@@ -94,7 +95,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> register(String username, String email, String password) async {
-    state = state.copyWith(isLoading: true, error: null, errorCode: null);
+    state = state.copyWith(status: AuthStatus.loading, error: null, errorCode: null);
     try {
       await _repository.register(
         RegisterRequest(
@@ -104,12 +105,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
           nickname: username,
         ),
       );
-      state = state.copyWith(isLoading: false);
+      state = state.copyWith(status: AuthStatus.unauthenticated);
       _analytics.trackEvent('register_success');
     } catch (e) {
       _analytics.trackEvent('register_failed', {'error_type': 'auth'});
       state = state.copyWith(
-        isLoading: false,
+        status: AuthStatus.error,
         error: e.toString(),
         errorCode: _mapExceptionToErrorCode(e),
       );
@@ -124,20 +125,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> restoreSession() async {
-    state = state.copyWith(authReady: false);
+    state = state.copyWith(status: AuthStatus.loading);
     try {
       final session = await _repository.restoreSession();
       final user = session.currentUser;
       if (session.isAuthenticated && user != null) {
         _setAuthenticated(user, permissions: session.permissions);
       } else {
-        state = const AuthState(authReady: true);
+        state = const AuthState(status: AuthStatus.unauthenticated);
       }
     } catch (e, st) {
       AppLogger.instance.error('Session restore failed', e, st, 'auth');
       state = state.isAuthenticated
-          ? state.copyWith(authReady: true, isLoading: false)
-          : const AuthState(authReady: true);
+          ? state.copyWith(status: AuthStatus.authenticated)
+          : const AuthState(status: AuthStatus.unauthenticated);
     }
   }
 
@@ -146,8 +147,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   void _setAuthenticated(User user, {List<String>? permissions}) {
     state = AuthState(
       user: user,
-      isAuthenticated: true,
-      authReady: true,
+      status: AuthStatus.authenticated,
       permissions: permissions ?? user.permissions ?? [],
     );
     _analytics.setUserId(user.id);
@@ -168,7 +168,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         _setAuthenticated(user, permissions: session.permissions);
         return true;
       }
-      state = const AuthState(authReady: true);
+      state = const AuthState(status: AuthStatus.unauthenticated);
       return false;
     } catch (e, st) {
       AppLogger.instance.error('Fresh session check failed', e, st, 'auth');
