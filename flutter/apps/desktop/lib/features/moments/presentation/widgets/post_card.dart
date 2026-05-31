@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
-import '../moments_providers.dart';
+import 'package:intl/intl.dart';
+import '../feed/moments_interactions_provider.dart';
 
 class PostCard extends ConsumerWidget {
   final PostWithDetails post;
@@ -10,6 +11,7 @@ class PostCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final interactions = ref.watch(momentsInteractionsProvider(post.post.id));
     final nickname = post.userNickname ?? post.post.userNickname ?? '未知用户';
     final media = post.media ?? [];
 
@@ -36,7 +38,9 @@ class PostCard extends ConsumerWidget {
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       Text(
-                        post.post.createTime,
+                        DateFormat('yyyy-MM-dd HH:mm').format(
+                          DateTime.tryParse(post.post.createTime) ?? DateTime.now(),
+                        ),
                         style: TextStyle(color: Colors.grey[600], fontSize: 12),
                       ),
                     ],
@@ -53,23 +57,7 @@ class PostCard extends ConsumerWidget {
             // Media
             if (media.isNotEmpty) ...[
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: media
-                    .map((m) => Container(
-                          width: 100,
-                          height: 100,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            image: DecorationImage(
-                              image: NetworkImage(m.url),
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        ))
-                    .toList(),
-              ),
+              _buildMediaGrid(media),
             ],
 
             const SizedBox(height: 12),
@@ -79,19 +67,17 @@ class PostCard extends ConsumerWidget {
               children: [
                 IconButton(
                   icon: Icon(
-                    (post.isLiked ?? false)
-                        ? Icons.favorite
-                        : Icons.favorite_border,
-                    color: (post.isLiked ?? false) ? Colors.red : null,
+                    interactions.isLiked ? Icons.favorite : Icons.favorite_border,
+                    color: interactions.isLiked ? Colors.red : null,
                   ),
                   onPressed: () {
                     ref
-                        .read(momentsFeedProvider.notifier)
-                        .toggleLike(post.post.id);
+                        .read(momentsInteractionsProvider(post.post.id).notifier)
+                        .toggleLike();
                   },
                   iconSize: 20,
                 ),
-                Text('${post.likeCount ?? 0}'),
+                Text('${interactions.likeCount}'),
                 const SizedBox(width: 16),
                 IconButton(
                   icon: const Icon(Icons.comment_outlined),
@@ -100,8 +86,110 @@ class PostCard extends ConsumerWidget {
                   },
                   iconSize: 20,
                 ),
-                Text('${post.commentCount ?? 0}'),
+                Text('${interactions.commentCount}'),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMediaGrid(List<MomentMedia> media) {
+    if (media.isEmpty) return const SizedBox.shrink();
+
+    // 最多显示 9 个媒体
+    final displayMedia = media.take(9).toList();
+    final crossAxisCount = displayMedia.length <= 1 ? 1 : (displayMedia.length <= 4 ? 2 : 3);
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+      ),
+      itemCount: displayMedia.length,
+      itemBuilder: (context, index) {
+        final item = displayMedia[index];
+        return _buildMediaItem(item);
+      },
+    );
+  }
+
+  Widget _buildMediaItem(MomentMedia item) {
+    final url = item.url;
+    final type = item.type;
+
+    // type: 0 = image, 1 = video
+    if (type == 1) {
+      return _buildVideoItem(url, item.thumbnailUrl);
+    } else {
+      return _buildImageItem(url);
+    }
+  }
+
+  Widget _buildImageItem(String url) {
+    if (url.isEmpty) {
+      return Container(
+        color: Colors.grey[300],
+        child: const Icon(Icons.image_not_supported),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.network(
+        url,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.grey[300],
+            child: const Icon(Icons.image_not_supported),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildVideoItem(String url, String? thumbnailUrl) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // 视频缩略图
+            if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
+              Positioned.fill(
+                child: Image.network(
+                  thumbnailUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const SizedBox.shrink();
+                  },
+                ),
+              )
+            else if (url.isNotEmpty)
+              Positioned.fill(
+                child: Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const SizedBox.shrink();
+                  },
+                ),
+              ),
+            // 播放按钮
+            const Icon(
+              Icons.play_circle_outline,
+              color: Colors.white,
+              size: 48,
             ),
           ],
         ),
