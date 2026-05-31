@@ -62,12 +62,13 @@ void main() {
         );
       };
 
-      final session = await repository.restoreSession();
+      final result = await repository.restoreSession();
 
-      expect(session.isAuthenticated, isTrue);
-      expect(session.currentUser?.id, '1');
-      expect(session.currentUser?.username, 'alice');
-      expect(session.permissions, ['chat:read']);
+      expect(result, isA<AuthSuccess>());
+      final success = result as AuthSuccess;
+      expect(success.user.id, '1');
+      expect(success.user.username, 'alice');
+      expect(success.permissions, ['chat:read']);
     });
 
     test('restoreSession refreshes with cookie when parse is invalid',
@@ -103,11 +104,12 @@ void main() {
         );
       };
 
-      final session = await repository.restoreSession();
+      final result = await repository.restoreSession();
 
       expect(parseCalls, 2);
-      expect(session.isAuthenticated, isTrue);
-      expect(session.currentUser?.username, 'alice');
+      expect(result, isA<AuthSuccess>());
+      final success = result as AuthSuccess;
+      expect(success.user.username, 'alice');
       expect(httpClient.requests.map((request) => request.$2), [
         AuthEndpoints.parse,
         AuthEndpoints.refresh,
@@ -133,10 +135,9 @@ void main() {
         );
       };
 
-      final session = await repository.restoreSession();
+      final result = await repository.restoreSession();
 
-      expect(session.isAuthenticated, isFalse);
-      expect(session.currentUser, isNull);
+      expect(result, isA<AuthFailure>());
     });
 
     test('logout calls logout endpoint', () async {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
+import 'package:im_web/features/auth/domain/auth_status.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 import 'package:im_web/features/auth/presentation/auth_providers.dart';
 import 'package:im_web/features/contacts/data/contacts_api.dart';
@@ -91,9 +92,9 @@ void main() {
           overrides: [
             authStateProvider.overrideWith(
               (ref) => _FakeAuthNotifier(
-                AuthState(
-                  user: const User(id: 'current-user', username: 'me'),
-                  isAuthenticated: true,
+                const AuthState(
+                  user: User(id: 'current-user', username: 'me'),
+                  status: AuthStatus.authenticated,
                 ),
               ),
             ),

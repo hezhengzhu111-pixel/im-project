@@ -37,26 +37,26 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<AuthSession> restoreSession() async {
+  Future<AuthResult> restoreSession() async {
     final parsed = await _parseAccessToken(allowExpired: true);
     if (_isValidParsedToken(parsed)) {
-      return _sessionFromParsedToken(parsed);
+      return _resultFromParsedToken(parsed);
     }
 
     try {
       await _refreshSession();
     } catch (error) {
       if (_isAuthInvalid(error)) {
-        return _unauthenticatedSession();
+        return _authFailure('Session invalid');
       }
       rethrow;
     }
 
     final refreshed = await _parseAccessToken();
     if (_isValidParsedToken(refreshed)) {
-      return _sessionFromParsedToken(refreshed);
+      return _resultFromParsedToken(refreshed);
     }
-    return _unauthenticatedSession();
+    return _authFailure('Session expired');
   }
 
   Future<void> _refreshSession() async {
@@ -78,9 +78,9 @@ class AuthRepositoryImpl implements AuthRepository {
     return response.data;
   }
 
-  AuthSession _sessionFromParsedToken(Map<String, dynamic> parsed) {
+  AuthResult _resultFromParsedToken(Map<String, dynamic> parsed) {
     final userId = _stringValue(parsed['userId'] ?? parsed['user_id']);
-    if (userId == null) return _unauthenticatedSession();
+    if (userId == null) return _authFailure('Invalid user id');
 
     final username = _stringValue(parsed['username']) ?? userId;
     final permissions = _stringList(parsed['permissions']);
@@ -91,12 +91,7 @@ class AuthRepositoryImpl implements AuthRepository {
       permissions: permissions,
     );
 
-    return AuthSession(
-      currentUser: user,
-      isAuthenticated: true,
-      authReady: true,
-      permissions: permissions,
-    );
+    return AuthSuccess(user: user, permissions: permissions);
   }
 
   bool _isValidParsedToken(Map<String, dynamic> parsed) {
@@ -116,12 +111,8 @@ class AuthRepositoryImpl implements AuthRepository {
         message.contains('no refresh token');
   }
 
-  AuthSession _unauthenticatedSession() {
-    return const AuthSession(
-      currentUser: null,
-      isAuthenticated: false,
-      authReady: true,
-    );
+  AuthFailure _authFailure(String message) {
+    return AuthFailure(error: message);
   }
 
   String? _stringValue(Object? value) {

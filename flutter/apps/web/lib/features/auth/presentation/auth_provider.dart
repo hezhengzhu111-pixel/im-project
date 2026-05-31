@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../../../core/logging/app_logger.dart';
-import '../domain/auth_error_code.dart';
 import '../domain/auth_status.dart';
 
 /// 认证模块的不可变状态。
@@ -170,12 +169,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> restoreSession() async {
     state = state.copyWith(status: AuthStatus.loading);
     try {
-      final session = await _repository.restoreSession();
-      final user = session.currentUser;
-      if (session.isAuthenticated && user != null) {
-        _setAuthenticated(user, permissions: session.permissions);
-      } else {
-        state = const AuthState(status: AuthStatus.unauthenticated);
+      final result = await _repository.restoreSession();
+      switch (result) {
+        case AuthSuccess(:final user, :final permissions):
+          _setAuthenticated(user, permissions: permissions);
+        case AuthFailure():
+          state = const AuthState(status: AuthStatus.unauthenticated);
       }
     } catch (e, st) {
       AppLogger.instance.error('Session restore failed', e, st, 'auth');
@@ -208,14 +207,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// 返回 true 表示会话有效且已刷新，false 表示会话已过期。
   Future<bool> ensureFreshSession() async {
     try {
-      final session = await _repository.restoreSession();
-      final user = session.currentUser;
-      if (session.isAuthenticated && user != null) {
-        _setAuthenticated(user, permissions: session.permissions);
-        return true;
+      final result = await _repository.restoreSession();
+      switch (result) {
+        case AuthSuccess(:final user, :final permissions):
+          _setAuthenticated(user, permissions: permissions);
+          return true;
+        case AuthFailure():
+          state = const AuthState(status: AuthStatus.unauthenticated);
+          return false;
       }
-      state = const AuthState(status: AuthStatus.unauthenticated);
-      return false;
     } catch (e, st) {
       AppLogger.instance.error('Fresh session check failed', e, st, 'auth');
       return state.isAuthenticated;

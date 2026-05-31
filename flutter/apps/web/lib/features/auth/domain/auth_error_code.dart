@@ -1,7 +1,2 @@
-enum AuthErrorCode {
-  invalidCredentials,
-  networkError,
-  serverError,
-  tooManyRequests,
-  unknown,
-}
+// Re-export from core package
+export 'package:im_core/core.dart' show AuthErrorCode;

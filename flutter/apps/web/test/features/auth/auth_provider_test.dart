@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
-import 'package:im_web/features/auth/domain/auth_error_code.dart';
+import 'package:im_web/features/auth/domain/auth_status.dart';
 import 'package:im_web/features/auth/presentation/auth_provider.dart';
 
 import '../../helpers/fakes.dart';
@@ -219,11 +219,10 @@ void main() {
       test('copyWith preserves error when not explicitly passed', () {
         const state = AuthState(
           user: User(id: '1', username: 'test'),
-          isAuthenticated: true,
-          isLoading: false,
+          status: AuthStatus.authenticated,
           error: 'some error',
         );
-        final copied = state.copyWith(isLoading: true);
+        final copied = state.copyWith(status: AuthStatus.loading);
 
         expect(copied.user, state.user);
         expect(copied.isAuthenticated, state.isAuthenticated);
@@ -239,7 +238,7 @@ void main() {
 
       test('copyWith preserves errorCode when not explicitly passed', () {
         const state = AuthState(errorCode: AuthErrorCode.networkError);
-        final copied = state.copyWith(isLoading: true);
+        final copied = state.copyWith(status: AuthStatus.loading);
         expect(copied.errorCode, AuthErrorCode.networkError);
       });
 
@@ -254,14 +253,13 @@ void main() {
         const newUser = User(id: '2', username: 'other');
         final updated = state.copyWith(
           user: newUser,
-          isAuthenticated: true,
-          isLoading: true,
+          status: AuthStatus.authenticated,
           error: 'new error',
         );
 
         expect(updated.user, equals(newUser));
         expect(updated.isAuthenticated, isTrue);
-        expect(updated.isLoading, isTrue);
+        expect(updated.isLoading, isFalse);
         expect(updated.error, 'new error');
       });
     });

@@ -381,7 +381,7 @@ class FakeAuthRepository implements AuthRepository {
   /// Value returned by [getRefreshToken].
   String? refreshTokenValue;
 
-  AuthSession? restoreSessionResponse;
+  AuthResult? restoreSessionResponse;
   Exception? restoreSessionError;
   int restoreSessionCallCount = 0;
 
@@ -402,7 +402,7 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AuthSession> restoreSession() async {
+  Future<AuthResult> restoreSession() async {
     restoreSessionCallCount++;
     if (restoreSessionError != null) throw restoreSessionError!;
     if (restoreSessionResponse != null) return restoreSessionResponse!;
@@ -415,38 +415,26 @@ class FakeAuthRepository implements AuthRepository {
       if (getProfileError != null) throw getProfileError!;
       if (profileResponse == null) throw Exception('No profile configured');
       final user = profileResponse!;
-      return AuthSession(
-        currentUser: user,
-        isAuthenticated: true,
-        authReady: true,
+      return AuthSuccess(
+        user: user,
         permissions: user.permissions ?? const [],
       );
     }
 
     if (refreshTokenError != null) {
-      return const AuthSession(
-        currentUser: null,
-        isAuthenticated: false,
-        authReady: true,
-      );
+      return const AuthFailure(error: 'Session invalid');
     }
 
     if (refreshTokenResponse != null && profileResponse != null) {
       getProfileCallCount++;
       final user = profileResponse!;
-      return AuthSession(
-        currentUser: user,
-        isAuthenticated: true,
-        authReady: true,
+      return AuthSuccess(
+        user: user,
         permissions: user.permissions ?? const [],
       );
     }
 
-    return const AuthSession(
-      currentUser: null,
-      isAuthenticated: false,
-      authReady: true,
-    );
+    return const AuthFailure(error: 'Session expired');
   }
 
   Future<User> getProfile() async {
