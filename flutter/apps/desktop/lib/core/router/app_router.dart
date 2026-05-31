@@ -1,8 +1,10 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_desktop/features/auth/auth.dart';
 import 'package:im_desktop/features/chat/chat.dart';
+import 'package:im_desktop/features/contacts/contacts.dart';
+import 'package:im_desktop/features/group/group.dart';
+import 'package:im_desktop/features/settings/settings.dart';
 
 // 路由名称常量
 class RouteNames {
@@ -13,58 +15,6 @@ class RouteNames {
   static const groups = 'groups';
   static const settings = 'settings';
   static const profile = 'profile';
-}
-
-class ContactsPage extends StatelessWidget {
-  const ContactsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text('Contacts Page'),
-      ),
-    );
-  }
-}
-
-class GroupsPage extends StatelessWidget {
-  const GroupsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text('Groups Page'),
-      ),
-    );
-  }
-}
-
-class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text('Settings Page'),
-      ),
-    );
-  }
-}
-
-class ProfilePage extends StatelessWidget {
-  const ProfilePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text('Profile Page'),
-      ),
-    );
-  }
 }
 
 // 路由配置
@@ -114,17 +64,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/groups',
         name: RouteNames.groups,
-        builder: (context, state) => const GroupsPage(),
+        builder: (context, state) => const GroupListPage(),
       ),
       GoRoute(
         path: '/settings',
         name: RouteNames.settings,
         builder: (context, state) => const SettingsPage(),
-      ),
-      GoRoute(
-        path: '/profile',
-        name: RouteNames.profile,
-        builder: (context, state) => const ProfilePage(),
       ),
     ],
   );
