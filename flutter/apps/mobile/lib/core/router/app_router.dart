@@ -5,6 +5,10 @@ import 'package:im_ui/im_ui.dart';
 
 import '../../features/auth/auth.dart';
 import '../../features/chat/chat.dart';
+import '../../features/contacts/contacts.dart';
+import '../../features/group/group.dart';
+import '../../features/moments/moments.dart';
+import '../../features/settings/settings.dart';
 import 'route_names.dart';
 
 /// Route metadata for auth guards.
@@ -179,7 +183,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/contacts',
             name: RouteNames.contacts,
-            builder: (_, __) => const _PlaceholderPage(title: 'Contacts'),
+            builder: (_, __) => const ContactsPage(),
           ),
           GoRoute(
             path: '/contacts/add',
@@ -191,7 +195,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/groups',
             name: RouteNames.groups,
-            builder: (_, __) => const _PlaceholderPage(title: 'Groups'),
+            builder: (_, __) => const GroupListPage(),
           ),
           GoRoute(
             path: '/groups/create',
@@ -203,7 +207,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/moments',
             name: RouteNames.moments,
-            builder: (_, __) => const _PlaceholderPage(title: 'Moments'),
+            builder: (_, __) => const MomentsMainPage(),
           ),
           GoRoute(
             path: '/moments/notifications',
@@ -215,7 +219,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/settings',
             name: RouteNames.settings,
-            builder: (_, __) => const _PlaceholderPage(title: 'Settings'),
+            builder: (_, __) => const SettingsPage(),
           ),
           GoRoute(
             path: '/settings/profile',
