@@ -26,7 +26,7 @@ class E2eeManager {
   final E2eeKeyStore keyStore;
   final E2eeSessionStore sessionStore;
   final E2eeMetaStore metaStore;
-  final String currentUserId;
+  final String? currentUserId;
 
   static const _otkCount = 100;
   static const _otkReplenishThreshold = 20;
@@ -602,6 +602,9 @@ class E2eeManager {
   String _extractPeerId(String sessionId) {
     final parts = sessionId.split('_private_');
     if (parts.length == 2) {
+      if (currentUserId == null) {
+        throw StateError('currentUserId is null, cannot determine peer');
+      }
       return parts[0] == currentUserId ? parts[1] : parts[0];
     }
     throw FormatException('invalid E2EE private session id', sessionId);

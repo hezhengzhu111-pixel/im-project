@@ -105,7 +105,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   final MessageApi _messageApi;
   final MessagePipeline _pipeline;
   final WsClientPort _wsClient;
-  final String Function() _currentUserId;
+  final String? Function() _currentUserId;
   final E2eeManager _e2eeManager;
   final E2eeMetaStore _e2eeMetaStore;
   final MessageOutbox _outbox;
@@ -354,9 +354,10 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       if (!_pipeline.shouldProcess(message.id)) return;
 
       // Decrypt E2EE messages from other users.
+      final currentUserId = _currentUserId();
       if (message.encrypted == true &&
           message.e2eeEnvelope != null &&
-          message.senderId != _currentUserId()) {
+          message.senderId != currentUserId) {
         _decryptAndAdd(message, data['e2eeEnvelope'] as Map<String, dynamic>?);
         return;
       }
@@ -382,8 +383,9 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     if (sessionKey.isEmpty) return;
 
     try {
+      final currentUserId = _currentUserId();
       final e2eeSessionId = message.e2eeEnvelope?.sessionId ??
-          '${_currentUserId()}_private_${message.senderId}';
+          '${currentUserId}_private_${message.senderId}';
 
       final snakeEnvelope =
           rawEnvelope != null ? _camelToSnakeEnvelope(rawEnvelope) : null;
@@ -439,7 +441,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     if (message.encrypted != true || message.e2eeEnvelope == null) {
       return message;
     }
-    if (message.senderId == _currentUserId()) {
+    final currentUserId = _currentUserId();
+    if (message.senderId == currentUserId) {
       return message.copyWith(decryptStatus: 'skipped_own');
     }
 
@@ -623,10 +626,11 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
 
     var changed = false;
     final updated = <Message>[];
+    final currentUserId = _currentUserId();
     for (final message in currentMessages) {
       final shouldRetry = message.encrypted == true &&
           message.e2eeEnvelope != null &&
-          message.senderId != _currentUserId() &&
+          message.senderId != currentUserId &&
           message.decryptStatus != 'success' &&
           (message.e2eeEnvelope!.sessionId == e2eeSessionId ||
               _normalizeE2eeSessionKey(message.e2eeEnvelope!.sessionId) ==
@@ -992,6 +996,10 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     final cid =
         clientMessageId ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
     final currentUid = _currentUserId();
+    if (currentUid == null || currentUid.isEmpty) {
+      state = state.copyWith(error: 'user_not_authenticated');
+      return null;
+    }
     final sessionKey = _sessionKeyForPrivateTarget(receiverId);
     final e2eeSessionId = _e2eeSessionIdForPrivateTarget(receiverId);
 
@@ -1178,10 +1186,15 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       Map<String, dynamic>? extra}) async {
     final cid =
         clientMessageId ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+    final currentUserId = _currentUserId();
+    if (currentUserId == null || currentUserId.isEmpty) {
+      state = state.copyWith(error: 'user_not_authenticated');
+      return null;
+    }
     final sessionKey = _sessionKeyForGroupTarget(groupId);
     final pendingMessage = Message(
       id: cid,
-      senderId: _currentUserId(),
+      senderId: currentUserId,
       isGroupChat: true,
       groupId: groupId,
       messageType: messageType,
@@ -1481,8 +1494,11 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         keys.add(_groupSessionKey(session.targetId));
       } else {
         keys.add(_privateSessionKey(session.targetId));
-        keys.add('${_currentUserId()}_private_${session.targetId}');
-        keys.add('${session.targetId}_private_${_currentUserId()}');
+        final currentUserId = _currentUserId();
+        if (currentUserId != null && currentUserId.isNotEmpty) {
+          keys.add('${currentUserId}_private_${session.targetId}');
+          keys.add('${session.targetId}_private_${currentUserId}');
+        }
       }
     }
     return keys;
@@ -1509,7 +1525,9 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
 
   String _e2eeSessionIdForPrivateTarget(String targetId) {
     final currentUserId = _currentUserId();
-    if (currentUserId.isEmpty || targetId.isEmpty) return targetId;
+    if (currentUserId == null || currentUserId.isEmpty || targetId.isEmpty) {
+      return targetId;
+    }
     return '${currentUserId}_private_$targetId';
   }
 
@@ -1533,14 +1551,17 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     final currentUserId = _currentUserId();
     return sessionId
             .split('_private_')
-            .where((part) => part.isNotEmpty && part != currentUserId)
+            .where((part) =>
+                part.isNotEmpty && (currentUserId == null || part != currentUserId))
             .firstOrNull ??
         sessionId;
   }
 
   String _privateSessionKey(String targetId) {
     final currentUserId = _currentUserId();
-    if (currentUserId.isEmpty || targetId.isEmpty) return targetId;
+    if (currentUserId == null || currentUserId.isEmpty || targetId.isEmpty) {
+      return targetId;
+    }
     return _compareIds(currentUserId, targetId) <= 0
         ? '${currentUserId}_$targetId'
         : '${targetId}_$currentUserId';
@@ -1556,7 +1577,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     final currentUserId = _currentUserId();
     return sessionKey
             .split('_')
-            .where((part) => part.isNotEmpty && part != currentUserId)
+            .where((part) =>
+                part.isNotEmpty && (currentUserId == null || part != currentUserId))
             .firstOrNull ??
         sessionKey;
   }

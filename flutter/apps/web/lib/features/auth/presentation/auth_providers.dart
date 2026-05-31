@@ -41,9 +41,9 @@ final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
 
 /// 当前已登录用户的 ID Provider。
 ///
-/// 从 [authStateProvider] 中提取用户 ID，未登录时返回空字符串。
-final currentUserIdProvider = Provider<String>((ref) {
-  return ref.watch(authStateProvider).user?.id ?? '';
+/// 从 [authStateProvider] 中提取用户 ID，未登录时返回 null。
+final currentUserIdProvider = Provider<String?>((ref) {
+  return ref.watch(authStateProvider).user?.id;
 });
 
 /// 是否已认证的便捷 Provider。

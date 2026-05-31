@@ -82,10 +82,10 @@ class SendGroupMessageRequest {
 }
 
 class MessageApi {
-  MessageApi(this._httpClient, {String Function()? currentUserId})
-      : _currentUserId = currentUserId ?? (() => '');
+  MessageApi(this._httpClient, {String? Function()? currentUserId})
+      : _currentUserId = currentUserId ?? (() => null);
   final HttpClientPort _httpClient;
-  final String Function() _currentUserId;
+  final String? Function() _currentUserId;
 
   Future<List<ChatSession>> getConversations() async {
     final response = await _httpClient.get<List<dynamic>>(
@@ -311,7 +311,9 @@ class MessageApi {
 
   String _privateSessionKey(String targetId) {
     final currentUserId = _currentUserId();
-    if (currentUserId.isEmpty || targetId.isEmpty) return targetId;
+    if (currentUserId == null || currentUserId.isEmpty || targetId.isEmpty) {
+      return targetId;
+    }
     return _compareIds(currentUserId, targetId) <= 0
         ? '${currentUserId}_$targetId'
         : '${targetId}_$currentUserId';

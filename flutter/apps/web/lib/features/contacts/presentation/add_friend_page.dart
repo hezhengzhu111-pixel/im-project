@@ -72,7 +72,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
     String userId,
   ) {
     final currentUserId = ref.read(currentUserIdProvider);
-    if (currentUserId.isEmpty) return null;
+    if (currentUserId == null || currentUserId.isEmpty) return null;
     return contactsState.friendRequests
         .where(
           (request) =>
@@ -88,7 +88,7 @@ class _AddFriendPageState extends ConsumerState<AddFriendPage> {
     String userId,
   ) {
     final currentUserId = ref.read(currentUserIdProvider);
-    if (currentUserId.isEmpty) return null;
+    if (currentUserId == null || currentUserId.isEmpty) return null;
     return contactsState.friendRequests
         .where(
           (request) =>
