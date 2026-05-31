@@ -1,17 +1,25 @@
+import 'package:share_plus/share_plus.dart';
 import 'package:im_core/core.dart';
 
-/// Desktop share adapter.
-///
-/// This is a placeholder implementation for the framework skeleton.
-/// Desktop platforms have limited native share support. Consider using
-/// `share_plus` or platform channels for production use.
 class DesktopShareAdapter implements SharePort {
   @override
-  Future<Result<bool>> isAvailable() async => const Success(false);
+  Future<Result<bool>> isAvailable() async {
+    try {
+      // share_plus has limited support on desktop but can be attempted.
+      return const Success(true);
+    } catch (e) {
+      return const Success(false);
+    }
+  }
 
   @override
   Future<Result<void>> shareText(String text) async {
-    return const Failure(UnsupportedCapability('share'));
+    try {
+      await Share.share(text);
+      return const Success(null);
+    } catch (e) {
+      return Failure(UnknownError('share_failed'));
+    }
   }
 
   @override
@@ -19,6 +27,11 @@ class DesktopShareAdapter implements SharePort {
     required String filePath,
     String? mimeType,
   }) async {
-    return const Failure(UnsupportedCapability('share_file'));
+    try {
+      await Share.shareXFiles([XFile(filePath)]);
+      return const Success(null);
+    } catch (e) {
+      return Failure(UnknownError('share_failed'));
+    }
   }
 }

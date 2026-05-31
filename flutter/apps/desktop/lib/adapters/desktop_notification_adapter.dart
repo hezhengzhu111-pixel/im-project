@@ -1,10 +1,11 @@
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:im_core/core.dart';
 
-/// Desktop notification adapter.
-///
-/// This is a placeholder implementation for the framework skeleton.
-/// Replace with `flutter_local_notifications` for production use.
 class DesktopNotificationAdapter implements NotificationPort {
+  final FlutterLocalNotificationsPlugin _notifications =
+      FlutterLocalNotificationsPlugin();
+  bool _initialized = false;
+
   @override
   Future<Result<bool>> requestPermission() async {
     // Desktop platforms generally don't require explicit notification
@@ -18,7 +19,39 @@ class DesktopNotificationAdapter implements NotificationPort {
     String? body,
     String? payload,
   }) async {
-    // TODO: Implement using flutter_local_notifications or similar.
-    return const Success(null);
+    try {
+      if (!_initialized) {
+        await _initialize();
+      }
+
+      const androidDetails = AndroidNotificationDetails(
+        'im_desktop',
+        'IM Desktop',
+        channelDescription: 'IM Desktop Notifications',
+        importance: Importance.high,
+        priority: Priority.high,
+      );
+      const details = NotificationDetails(android: androidDetails);
+
+      await _notifications.show(
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        title,
+        body,
+        details,
+        payload: payload,
+      );
+
+      return const Success(null);
+    } catch (e) {
+      return Failure(UnknownError('notification_failed'));
+    }
+  }
+
+  Future<void> _initialize() async {
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const settings = InitializationSettings(android: androidSettings);
+    await _notifications.initialize(settings);
+    _initialized = true;
   }
 }
