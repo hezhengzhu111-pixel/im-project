@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:im_core/core.dart';
+import '../core/logging/app_logger.dart';
 
 /// Desktop WebSocket client adapter using dart:io.
 ///
@@ -90,11 +91,17 @@ class DesktopWsAdapter implements WsClientPort {
 
   @override
   void send(Map<String, dynamic> message) {
-    if (_socket == null || !isConnected) {
-      throw StateError('WebSocket is not connected');
+    if (_socket == null || _connectionState != WsConnectionState.connected) {
+      // Don't throw; just log and discard the message.
+      AppLogger.instance.warn('WebSocket not connected, message dropped');
+      return;
     }
 
-    _socket!.add(jsonEncode(message));
+    try {
+      _socket!.add(jsonEncode(message));
+    } catch (e, st) {
+      AppLogger.instance.error('Failed to send WebSocket message', e, st);
+    }
   }
 
   void _updateConnectionState(WsConnectionState state) {

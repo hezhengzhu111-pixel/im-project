@@ -62,7 +62,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
           }
         }
       }
-    } catch (_) {}
+    } catch (e, st) {
+      AppLogger.instance.warn('Failed to sync offline messages', e, st);
+    }
   }
 
   void _handleIncomingMessage(Map<String, dynamic> data) {
@@ -610,7 +612,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<void> markRead(String conversationId) async {
     try {
       await _messageApi.markRead(conversationId);
-    } catch (_) {}
+    } catch (e, st) {
+      AppLogger.instance.warn('Failed to mark read', e, st);
+    }
   }
 
   String _sessionKeyForMessage(Message message) {

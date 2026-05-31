@@ -35,8 +35,14 @@ class AppLogger {
     debugPrint('[im:info] $message');
   }
 
-  void warn(String message) {
+  void warn(String message, [Object? error, StackTrace? stackTrace]) {
     debugPrint('[im:warn] $message');
+    if (error != null) {
+      debugPrint('[im:warn] detail: $error');
+    }
+    if (stackTrace != null) {
+      debugPrint('[im:warn] stack: $stackTrace');
+    }
   }
 
   void error(String message, Object error,

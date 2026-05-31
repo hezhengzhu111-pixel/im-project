@@ -13,13 +13,18 @@ class DesktopNetworkService implements HttpClientPort {
           baseUrl: baseUrl,
           headers: {'Content-Type': 'application/json'},
         )) {
+    _authInterceptor = _AuthInterceptor(_dio);
     _dio.interceptors.addAll([
-      _AuthInterceptor(_dio),
+      _authInterceptor,
       LogInterceptor(requestBody: true, responseBody: true),
     ]);
   }
 
   final Dio _dio;
+  late final _AuthInterceptor _authInterceptor;
+
+  /// Update the auth token used for subsequent requests.
+  void setAuthToken(String? token) => _authInterceptor.setAuthToken(token);
 
   @override
   Future<ApiResponse<T>> get<T>(
@@ -73,7 +78,15 @@ class DesktopNetworkService implements HttpClientPort {
     Response<Map<String, dynamic>> response,
     T Function(Map<String, dynamic>) fromJson,
   ) {
-    final data = response.data!;
+    final data = response.data;
+    if (data == null) {
+      return ApiResponse<T>(
+        code: response.statusCode ?? 0,
+        message: 'Empty response',
+        data: null as T,
+      );
+    }
+
     final code = data['code'] as int? ?? 0;
     final message = data['message'] as String? ?? '';
     final success = data['success'] as bool?;
@@ -113,6 +126,10 @@ class _AuthInterceptor extends Interceptor {
   final Dio _dio;
   bool _isRefreshing = false;
   final List<Completer<void>> _refreshQueue = [];
+  String? _authToken;
+
+  /// Update the stored auth token. Pass `null` to clear.
+  void setAuthToken(String? token) => _authToken = token;
 
   @override
   void onRequest(
@@ -120,7 +137,10 @@ class _AuthInterceptor extends Interceptor {
     RequestInterceptorHandler handler,
   ) async {
     // Token-based auth: attach Authorization header if available.
-    // The actual token is managed by the DesktopNetworkService.
+    final token = _authToken;
+    if (token != null && token.isNotEmpty) {
+      options.headers['Authorization'] = 'Bearer $token';
+    }
     handler.next(options);
   }
 

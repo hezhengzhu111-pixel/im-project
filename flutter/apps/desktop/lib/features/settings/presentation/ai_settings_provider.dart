@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../data/ai_api.dart';
+import '../../../core/logging/app_logger.dart';
 
 class AiSettingsState {
   const AiSettingsState({
@@ -79,7 +80,9 @@ class AiSettingsNotifier extends StateNotifier<AiSettingsState> {
     try {
       final settings = await _api.getAiSettings();
       state = state.copyWith(aiSettings: settings);
-    } catch (_) {}
+    } catch (e, st) {
+      AppLogger.instance.warn('Failed to load AI settings', e, st);
+    }
   }
 
   Future<void> updateAiSettings(AiSettings settings) async {

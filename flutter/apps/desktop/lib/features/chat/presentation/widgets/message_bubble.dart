@@ -34,9 +34,11 @@ class MessageBubble extends StatelessWidget {
                     : null,
                 child: message.senderAvatar == null
                     ? Text(
-                        (message.senderName ?? message.senderId)
-                            .substring(0, 1)
-                            .toUpperCase(),
+                        (() {
+                          final senderName = message.senderName ?? message.senderId ?? '';
+                          final initial = senderName.isNotEmpty ? senderName.substring(0, 1) : '?';
+                          return initial.toUpperCase();
+                        })(),
                         style: const TextStyle(fontSize: 12),
                       )
                     : null,
@@ -107,9 +109,11 @@ class MessageBubble extends StatelessWidget {
                     : null,
                 child: message.senderAvatar == null
                     ? Text(
-                        (message.senderName ?? message.senderId)
-                            .substring(0, 1)
-                            .toUpperCase(),
+                        (() {
+                          final senderName = message.senderName ?? message.senderId ?? '';
+                          final initial = senderName.isNotEmpty ? senderName.substring(0, 1) : '?';
+                          return initial.toUpperCase();
+                        })(),
                         style: const TextStyle(fontSize: 12),
                       )
                     : null,

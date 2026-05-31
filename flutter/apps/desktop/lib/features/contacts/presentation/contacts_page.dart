@@ -55,40 +55,42 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
-          ...contactsState.friendRequests.map((request) => ListTile(
-            leading: CircleAvatar(
-              child: Text(
-                (request.applicantNickname ?? request.applicantUsername)
-                    .substring(0, 1)
-                    .toUpperCase(),
+          ...contactsState.friendRequests.map((request) {
+            final displayName = request.applicantNickname ?? request.applicantUsername ?? '';
+            final initial = displayName.isNotEmpty ? displayName.substring(0, 1) : '?';
+            return ListTile(
+              leading: CircleAvatar(
+                child: Text(
+                  initial.toUpperCase(),
+                ),
               ),
-            ),
-            title: Text(
-              request.applicantNickname ?? request.applicantUsername,
-            ),
-            subtitle: Text(request.reason ?? '好友请求'),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextButton(
-                  onPressed: () {
-                    ref
-                        .read(contactsStateProvider.notifier)
-                        .acceptRequest(request.id);
-                  },
-                  child: const Text('接受'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    ref
-                        .read(contactsStateProvider.notifier)
-                        .rejectRequest(request.id);
-                  },
-                  child: const Text('拒绝'),
-                ),
-              ],
-            ),
-          )),
+              title: Text(
+                displayName,
+              ),
+              subtitle: Text(request.reason ?? '好友请求'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      ref
+                          .read(contactsStateProvider.notifier)
+                          .acceptRequest(request.id);
+                    },
+                    child: const Text('接受'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      ref
+                          .read(contactsStateProvider.notifier)
+                          .rejectRequest(request.id);
+                    },
+                    child: const Text('拒绝'),
+                  ),
+                ],
+              ),
+            );
+          }),
           const Divider(),
         ],
 
@@ -102,11 +104,12 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
                     final friend = contactsState.friends[index];
                     final displayName = (friend.remark?.isNotEmpty ?? false)
                         ? friend.remark!
-                        : (friend.nickname ?? friend.username);
+                        : (friend.nickname ?? friend.username ?? '');
+                    final initial = displayName.isNotEmpty ? displayName.substring(0, 1) : '?';
                     return ListTile(
                       leading: CircleAvatar(
                         child: Text(
-                          displayName.substring(0, 1).toUpperCase(),
+                          initial.toUpperCase(),
                         ),
                       ),
                       title: Text(displayName),

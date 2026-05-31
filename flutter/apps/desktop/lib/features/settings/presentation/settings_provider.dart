@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../data/settings_api.dart';
+import '../../../core/logging/app_logger.dart';
 
 class SettingsNotifier extends StateNotifier<UserSettings?> {
   SettingsNotifier(this._api) : super(null);
@@ -11,8 +12,8 @@ class SettingsNotifier extends StateNotifier<UserSettings?> {
   Future<void> loadSettings() async {
     try {
       state = await _api.getSettings();
-    } catch (_) {
-      // Keep current state
+    } catch (e, st) {
+      AppLogger.instance.warn('Failed to load settings', e, st);
     }
   }
 
