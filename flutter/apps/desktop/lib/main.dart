@@ -11,7 +11,7 @@ import 'adapters/desktop_share_adapter.dart';
 import 'adapters/desktop_audio_recorder_adapter.dart';
 import 'core/di/platform_providers.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   const apiBase = String.fromEnvironment(
@@ -19,8 +19,9 @@ void main() {
     defaultValue: 'http://localhost:8082',
   );
 
+  final storageService = await DesktopStorageService.create();
+  final secureStorageService = DesktopSecureStorageAdapter();
   final networkService = DesktopNetworkService(baseUrl: apiBase);
-  final storageService = DesktopStorageService();
   final e2eeService = DesktopE2eeService();
 
   runApp(ProviderScope(
@@ -35,7 +36,7 @@ void main() {
       // 网络和存储适配器
       httpClientProvider.overrideWithValue(networkService),
       storageProvider.overrideWithValue(storageService),
-      secureStorageProvider.overrideWithValue(DesktopSecureStorageAdapter()),
+      secureStorageProvider.overrideWithValue(secureStorageService),
       // E2EE 适配器
       e2eeAdapterProvider.overrideWithValue(e2eeService),
     ],
