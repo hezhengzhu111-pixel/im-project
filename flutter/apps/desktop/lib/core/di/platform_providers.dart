@@ -97,7 +97,22 @@ final pushProvider = Provider<PushPort>((ref) {
 // Settings Providers (language & theme)
 // ---------------------------------------------------------------------------
 
-final languageProvider = StateProvider<String>((ref) => 'zh');
+/// Notifier that holds the current language code and allows mutation.
+class LanguageNotifier extends StateNotifier<String> {
+  LanguageNotifier([String initial = 'zh']) : super(initial);
+}
+
+final languageProvider =
+    StateNotifierProvider<LanguageNotifier, String>((ref) {
+  return LanguageNotifier();
+});
+
+/// Notifier that holds the current theme mode and allows mutation.
+class ThemeModeNotifier extends StateNotifier<ThemeMode> {
+  ThemeModeNotifier([ThemeMode initial = ThemeMode.system]) : super(initial);
+}
 
 final themeModeProvider =
-    StateProvider<ThemeMode>((ref) => ThemeMode.system);
+    StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {
+  return ThemeModeNotifier();
+});

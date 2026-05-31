@@ -16,9 +16,18 @@ import 'adapters/services/noop_error_reporter_adapter.dart';
 import 'adapters/services/noop_push_adapter.dart';
 import 'core/di/platform_providers.dart';
 import 'core/logging/app_logger.dart';
+import 'core/settings/settings_persistence.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize settings persistence
+  final settingsPersistence = SettingsPersistence();
+  await settingsPersistence.init();
+
+  // Get saved settings
+  final savedLanguage = settingsPersistence.getLanguage();
+  final savedThemeMode = settingsPersistence.getThemeMode();
 
   // Initialize Flutter Rust Bridge
   await RustLib.init();
@@ -68,7 +77,10 @@ void main() async {
       analyticsProvider.overrideWithValue(NoopAnalyticsAdapter()),
       errorReporterProvider.overrideWithValue(NoopErrorReporterAdapter()),
       pushProvider.overrideWithValue(NoopPushAdapter()),
+      // 设置持久化（从本地存储恢复）
+      languageProvider.overrideWith((ref) => LanguageNotifier(savedLanguage)),
+      themeModeProvider.overrideWith((ref) => ThemeModeNotifier(savedThemeMode)),
     ],
-    child: const App(),
+    child: App(settingsPersistence: settingsPersistence),
   ));
 }

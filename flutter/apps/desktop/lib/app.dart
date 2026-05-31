@@ -3,12 +3,34 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/di/platform_providers.dart';
+import 'core/settings/settings_persistence.dart';
 
-class App extends ConsumerWidget {
-  const App({super.key});
+class App extends ConsumerStatefulWidget {
+  final SettingsPersistence settingsPersistence;
+
+  const App({super.key, required this.settingsPersistence});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<App> createState() => _AppState();
+}
+
+class _AppState extends ConsumerState<App> {
+  @override
+  void initState() {
+    super.initState();
+    // Listen for language changes and persist
+    ref.listen<String>(languageProvider, (previous, next) {
+      widget.settingsPersistence.setLanguage(next);
+    });
+
+    // Listen for theme changes and persist
+    ref.listen<ThemeMode>(themeModeProvider, (previous, next) {
+      widget.settingsPersistence.setThemeMode(next);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
     final locale = ref.watch(languageProvider);
     final themeMode = ref.watch(themeModeProvider);
