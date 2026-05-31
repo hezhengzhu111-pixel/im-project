@@ -11,7 +11,4 @@ enum AuthStatus {
 
   /// 未认证
   unauthenticated,
-
-  /// 认证出错
-  error,
 }

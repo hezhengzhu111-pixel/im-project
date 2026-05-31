@@ -80,6 +80,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       this._repository, this._wsClient, this._httpClient, this._analytics)
       : super(const AuthState());
 
+  /// Matches HTTP 5xx status codes (e.g. 500, 502, 503).
+  static final _serverErrorCodePattern = RegExp(r'\b5\d{2}\b');
+
   final AuthRepository _repository;
   final WsClientPort _wsClient;
   final HttpClientPort _httpClient;
@@ -151,8 +154,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> logout() async {
     _wsClient.disconnect();
     _analytics.setUserId(null);
-    await _repository.logout();
-    state = const AuthState(status: AuthStatus.unauthenticated);
+    try {
+      await _repository.logout();
+    } catch (e, st) {
+      AppLogger.instance.error('Server logout failed', e, st, 'auth');
+    } finally {
+      state = const AuthState(status: AuthStatus.unauthenticated);
+    }
   }
 
   /// 从服务端恢复已保存的会话。
@@ -240,7 +248,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     if (msg.contains('429') || msg.contains('too many')) {
       return AuthErrorCode.tooManyRequests;
     }
-    if (RegExp(r'\b5\d{2}\b').hasMatch(msg) || msg.contains('server')) {
+    if (_serverErrorCodePattern.hasMatch(msg) || msg.contains('server')) {
       return AuthErrorCode.serverError;
     }
     if (msg.contains('network') ||
