@@ -33,11 +33,20 @@ void main() async {
     defaultValue: 'http://localhost:8082',
   );
 
+  const wsBase = String.fromEnvironment(
+    'WS_BASE_URL',
+    defaultValue: 'ws://localhost:8082',
+  );
+
   final storageService = await DesktopStorageService.create();
   final secureStorageService = DesktopSecureStorageAdapter();
   final networkService = DesktopNetworkService(baseUrl: apiBase);
   final e2eeService = DesktopE2eeService();
+
+  // Initialize WebSocket adapter with base URL
   final wsService = DesktopWsAdapter();
+  // Connect to WebSocket server
+  await wsService.connect('$wsBase/ws');
 
   runApp(ProviderScope(
     overrides: [
