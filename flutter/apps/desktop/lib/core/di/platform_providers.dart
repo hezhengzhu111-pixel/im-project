@@ -76,6 +76,24 @@ final e2eeAdapterProvider = Provider<E2eeBridge>((ref) {
 });
 
 // ---------------------------------------------------------------------------
+// Analytics & Error Reporting Providers
+// ---------------------------------------------------------------------------
+
+final analyticsProvider = Provider<AnalyticsPort>((ref) {
+  throw UnimplementedError(
+      'analyticsProvider must be overridden at app startup');
+});
+
+final errorReporterProvider = Provider<ErrorReporterPort>((ref) {
+  throw UnimplementedError(
+      'errorReporterProvider must be overridden at app startup');
+});
+
+final pushProvider = Provider<PushPort>((ref) {
+  throw UnimplementedError('pushProvider must be overridden at app startup');
+});
+
+// ---------------------------------------------------------------------------
 // Settings Providers (language & theme)
 // ---------------------------------------------------------------------------
 

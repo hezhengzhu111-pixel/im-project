@@ -10,6 +10,9 @@ import 'adapters/desktop_notification_adapter.dart';
 import 'adapters/desktop_clipboard_adapter.dart';
 import 'adapters/desktop_share_adapter.dart';
 import 'adapters/desktop_audio_recorder_adapter.dart';
+import 'adapters/services/noop_analytics_adapter.dart';
+import 'adapters/services/noop_error_reporter_adapter.dart';
+import 'adapters/services/noop_push_adapter.dart';
 import 'core/di/platform_providers.dart';
 
 void main() async {
@@ -43,6 +46,10 @@ void main() async {
       secureStorageProvider.overrideWithValue(secureStorageService),
       // E2EE 适配器
       e2eeAdapterProvider.overrideWithValue(e2eeService),
+      // 第三方服务适配器
+      analyticsProvider.overrideWithValue(NoopAnalyticsAdapter()),
+      errorReporterProvider.overrideWithValue(NoopErrorReporterAdapter()),
+      pushProvider.overrideWithValue(NoopPushAdapter()),
     ],
     child: const App(),
   ));
