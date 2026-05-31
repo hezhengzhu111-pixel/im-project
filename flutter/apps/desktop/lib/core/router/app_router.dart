@@ -6,6 +6,7 @@ import 'package:im_desktop/features/contacts/contacts.dart';
 import 'package:im_desktop/features/group/group.dart';
 import 'package:im_desktop/features/settings/settings.dart';
 import 'package:im_desktop/features/moments/moments.dart';
+import '../shell/main_shell.dart';
 
 // 路由名称常量
 class RouteNames {
@@ -53,30 +54,37 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: RouteNames.register,
         builder: (context, state) => const RegisterPage(),
       ),
-      GoRoute(
-        path: '/chat',
-        name: RouteNames.chat,
-        builder: (context, state) => const ChatPage(),
-      ),
-      GoRoute(
-        path: '/contacts',
-        name: RouteNames.contacts,
-        builder: (context, state) => const ContactsPage(),
-      ),
-      GoRoute(
-        path: '/groups',
-        name: RouteNames.groups,
-        builder: (context, state) => const GroupListPage(),
-      ),
-      GoRoute(
-        path: '/settings',
-        name: RouteNames.settings,
-        builder: (context, state) => const SettingsPage(),
-      ),
-      GoRoute(
-        path: '/moments',
-        name: RouteNames.moments,
-        builder: (context, state) => const MomentsMainPage(),
+      ShellRoute(
+        builder: (context, state, child) {
+          return MainShell(child: child);
+        },
+        routes: [
+          GoRoute(
+            path: '/chat',
+            name: RouteNames.chat,
+            builder: (context, state) => const ChatPage(),
+          ),
+          GoRoute(
+            path: '/contacts',
+            name: RouteNames.contacts,
+            builder: (context, state) => const ContactsPage(),
+          ),
+          GoRoute(
+            path: '/groups',
+            name: RouteNames.groups,
+            builder: (context, state) => const GroupListPage(),
+          ),
+          GoRoute(
+            path: '/moments',
+            name: RouteNames.moments,
+            builder: (context, state) => const MomentsMainPage(),
+          ),
+          GoRoute(
+            path: '/settings',
+            name: RouteNames.settings,
+            builder: (context, state) => const SettingsPage(),
+          ),
+        ],
       ),
     ],
   );
