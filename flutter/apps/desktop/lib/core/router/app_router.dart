@@ -5,6 +5,7 @@ import 'package:im_desktop/features/chat/chat.dart';
 import 'package:im_desktop/features/contacts/contacts.dart';
 import 'package:im_desktop/features/group/group.dart';
 import 'package:im_desktop/features/settings/settings.dart';
+import 'package:im_desktop/features/moments/moments.dart';
 
 // 路由名称常量
 class RouteNames {
@@ -15,6 +16,7 @@ class RouteNames {
   static const groups = 'groups';
   static const settings = 'settings';
   static const profile = 'profile';
+  static const moments = 'moments';
 }
 
 // 路由配置
@@ -70,6 +72,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/settings',
         name: RouteNames.settings,
         builder: (context, state) => const SettingsPage(),
+      ),
+      GoRoute(
+        path: '/moments',
+        name: RouteNames.moments,
+        builder: (context, state) => const MomentsMainPage(),
       ),
     ],
   );
