@@ -1,24 +1,23 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:im_core/core.dart';
+import 'package:im_core/src/generated/api/e2ee.dart' as frb;
 
-/// Desktop E2EE adapter.
+/// Desktop E2EE adapter that delegates to FRB-generated Rust bindings.
 ///
-/// This is a placeholder implementation for the framework skeleton.
-/// It delegates to FRB-generated Rust bindings for cryptographic operations.
-/// The actual FRB initialization for desktop (IO) will be wired up when the
-/// desktop build pipeline is configured.
+/// On desktop, flutter_rust_bridge compiles the same Rust crypto library
+/// into the native app binary, providing identical functionality to mobile.
 class DesktopE2eeService implements E2eeBridge {
   @override
   Future<Uint8List> generateKeyBundle(int otkCount) async {
-    throw UnimplementedError(
-        'DesktopE2eeService.generateKeyBundle not yet implemented');
+    return await frb.generateKeyBundle(otkCount: otkCount);
   }
 
   @override
   Future<Map<String, dynamic>> generateKeyBundleJson(int otkCount) async {
-    throw UnimplementedError(
-        'DesktopE2eeService.generateKeyBundleJson not yet implemented');
+    final result = await frb.generateKeyBundleJson(otkCount: otkCount);
+    return jsonDecode(result) as Map<String, dynamic>;
   }
 
   @override
@@ -27,8 +26,11 @@ class DesktopE2eeService implements E2eeBridge {
     Uint8List signedPreKey,
     Uint8List? oneTimePreKey,
   ) async {
-    throw UnimplementedError(
-        'DesktopE2eeService.x3dhInitiate not yet implemented');
+    return await frb.x3DhInitiate(
+      identityKey: identityKey,
+      signedPreKey: signedPreKey,
+      oneTimePreKey: oneTimePreKey,
+    );
   }
 
   @override
@@ -38,8 +40,12 @@ class DesktopE2eeService implements E2eeBridge {
     Uint8List signedPreKey,
     Uint8List? oneTimePreKey,
   ) async {
-    throw UnimplementedError(
-        'DesktopE2eeService.x3dhRespond not yet implemented');
+    return await frb.x3DhRespond(
+      identityKey: identityKey,
+      ephemeralKey: ephemeralKey,
+      signedPreKey: signedPreKey,
+      oneTimePreKey: oneTimePreKey,
+    );
   }
 
   @override
@@ -47,8 +53,7 @@ class DesktopE2eeService implements E2eeBridge {
     Uint8List state,
     Uint8List plaintext,
   ) async {
-    throw UnimplementedError(
-        'DesktopE2eeService.ratchetEncrypt not yet implemented');
+    return await frb.ratchetEncrypt(stateBytes: state, plaintext: plaintext);
   }
 
   @override
@@ -56,21 +61,23 @@ class DesktopE2eeService implements E2eeBridge {
     Uint8List state,
     Uint8List ciphertext,
   ) async {
-    throw UnimplementedError(
-        'DesktopE2eeService.ratchetDecrypt not yet implemented');
+    return await frb.ratchetDecrypt(
+      stateBytes: state,
+      ciphertext: ciphertext,
+    );
   }
 
   @override
   Future<Uint8List> exportState(Uint8List state) async {
-    throw UnimplementedError(
-        'DesktopE2eeService.exportState not yet implemented');
+    return await frb.exportState(stateBytes: state);
   }
 
   @override
   Future<Uint8List> restoreState(Uint8List state) async {
-    throw UnimplementedError(
-        'DesktopE2eeService.restoreState not yet implemented');
+    return await frb.restoreState(stateBytes: state);
   }
+
+  // High-level JSON-based methods (thin wrappers over Rust SessionManager)
 
   @override
   Future<Map<String, dynamic>> createOutboundSession({
@@ -78,8 +85,14 @@ class DesktopE2eeService implements E2eeBridge {
     required String localIdentityKeyPairBase64,
     required String remoteBundleBase64,
   }) async {
-    throw UnimplementedError(
-        'DesktopE2eeService.createOutboundSession not yet implemented');
+    final remoteBundleJson = utf8.decode(base64Decode(remoteBundleBase64));
+    final config = jsonEncode({
+      'session_id': sessionId,
+      'local_identity_key_pair': localIdentityKeyPairBase64,
+      'remote_bundle_json': remoteBundleJson,
+    });
+    final result = await frb.createOutboundSession(configJson: config);
+    return jsonDecode(result) as Map<String, dynamic>;
   }
 
   @override
@@ -91,8 +104,19 @@ class DesktopE2eeService implements E2eeBridge {
     required String remoteIdentityKeyBase64,
     required String remoteHandshakeBase64,
   }) async {
-    throw UnimplementedError(
-        'DesktopE2eeService.createInboundSession not yet implemented');
+    final config = <String, dynamic>{
+      'session_id': sessionId,
+      'local_identity_key_pair': localIdentityKeyPairBase64,
+      'local_spk_pair': localSpkPairBase64,
+      'remote_identity_key': remoteIdentityKeyBase64,
+      'remote_handshake': remoteHandshakeBase64,
+    };
+    if (localOtkPairBase64 != null) {
+      config['local_otk_pair'] = localOtkPairBase64;
+    }
+    final result =
+        await frb.createInboundSession(configJson: jsonEncode(config));
+    return jsonDecode(result) as Map<String, dynamic>;
   }
 
   @override
@@ -104,8 +128,18 @@ class DesktopE2eeService implements E2eeBridge {
     required String sessionId,
     String? handshakeBase64,
   }) async {
-    throw UnimplementedError(
-        'DesktopE2eeService.encryptMessage not yet implemented');
+    final config = <String, dynamic>{
+      'state': stateBase64,
+      'plaintext': plaintextBase64,
+      'sender_device_id': senderDeviceId,
+      'recipient_device_id': recipientDeviceId,
+      'session_id': sessionId,
+    };
+    if (handshakeBase64 != null) {
+      config['handshake'] = handshakeBase64;
+    }
+    final result = await frb.encryptMessage(configJson: jsonEncode(config));
+    return jsonDecode(result) as Map<String, dynamic>;
   }
 
   @override
@@ -113,8 +147,12 @@ class DesktopE2eeService implements E2eeBridge {
     required String stateBase64,
     required Map<String, dynamic> envelope,
   }) async {
-    throw UnimplementedError(
-        'DesktopE2eeService.decryptMessage not yet implemented');
+    final config = jsonEncode({
+      'state': stateBase64,
+      'envelope': envelope,
+    });
+    final result = await frb.decryptMessage(configJson: config);
+    return jsonDecode(result) as Map<String, dynamic>;
   }
 
   @override
@@ -126,8 +164,17 @@ class DesktopE2eeService implements E2eeBridge {
     required String remoteUserId,
     required String remoteDeviceId,
   }) async {
-    throw UnimplementedError(
-        'DesktopE2eeService.exportSessionEnvelope not yet implemented');
+    final config = jsonEncode({
+      'state': stateBase64,
+      'user_id': userId,
+      'device_id': deviceId,
+      'session_id': sessionId,
+      'remote_user_id': remoteUserId,
+      'remote_device_id': remoteDeviceId,
+    });
+    final result = await frb.exportSessionEnvelope(configJson: config);
+    final parsed = jsonDecode(result) as Map<String, dynamic>;
+    return parsed['envelope'] as String;
   }
 
   @override
@@ -139,7 +186,16 @@ class DesktopE2eeService implements E2eeBridge {
     required String remoteUserId,
     required String remoteDeviceId,
   }) async {
-    throw UnimplementedError(
-        'DesktopE2eeService.restoreSessionEnvelope not yet implemented');
+    final config = jsonEncode({
+      'envelope': envelopeBase64,
+      'user_id': userId,
+      'device_id': deviceId,
+      'session_id': sessionId,
+      'remote_user_id': remoteUserId,
+      'remote_device_id': remoteDeviceId,
+    });
+    final result = await frb.restoreSessionEnvelope(configJson: config);
+    final parsed = jsonDecode(result) as Map<String, dynamic>;
+    return parsed['state'] as String;
   }
 }

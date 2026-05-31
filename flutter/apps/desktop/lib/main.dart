@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:im_core/src/generated/frb_generated.dart';
 import 'app.dart';
 import 'adapters/desktop_network_adapter.dart';
 import 'adapters/desktop_storage_adapter.dart';
@@ -13,6 +14,9 @@ import 'core/di/platform_providers.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Flutter Rust Bridge
+  await RustLib.init();
 
   const apiBase = String.fromEnvironment(
     'API_BASE_URL',
