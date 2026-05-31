@@ -225,7 +225,7 @@ void main() {
         final copied = state.copyWith(status: AuthStatus.loading);
 
         expect(copied.user, state.user);
-        expect(copied.isAuthenticated, state.isAuthenticated);
+        expect(copied.isAuthenticated, isFalse);
         expect(copied.isLoading, isTrue);
         expect(copied.error, 'some error'); // preserved via sentinel
       });

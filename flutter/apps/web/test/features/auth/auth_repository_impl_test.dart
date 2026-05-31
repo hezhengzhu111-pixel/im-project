@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:im_core/core.dart';
 import 'package:im_web/features/auth/data/auth_repository_impl.dart';
@@ -126,7 +127,14 @@ void main() {
         required T Function(Map<String, dynamic>) fromJson,
       }) async {
         if (path == AuthEndpoints.refresh) {
-          throw Exception('401 unauthorized');
+          throw DioException(
+            requestOptions: RequestOptions(path: AuthEndpoints.refresh),
+            response: Response(
+              requestOptions: RequestOptions(path: AuthEndpoints.refresh),
+              statusCode: 401,
+            ),
+            type: DioExceptionType.badResponse,
+          );
         }
         return ApiResponse<T>(
           code: 200,

@@ -210,7 +210,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
     } catch (e, st) {
       AppLogger.instance.error('Session restore failed', e, st, 'auth');
-      return state.isAuthenticated;
+      state = const AuthState(status: AuthStatus.unauthenticated);
+      return false;
     }
   }
 
