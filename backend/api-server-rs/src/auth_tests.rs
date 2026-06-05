@@ -1,12 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::auth::identity_from_headers;
     use crate::auth_api::*;
     use crate::config::AppConfig;
-    use crate::error::AppError;
     use axum::http::{header, HeaderMap, HeaderValue};
-    use im_rs_common::time;
-    use serde_json::Value;
 
     fn config_with_secure(secure: &str) -> AppConfig {
         AppConfig {

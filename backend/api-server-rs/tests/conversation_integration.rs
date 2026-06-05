@@ -11,13 +11,6 @@ async fn test_app() -> axum::Router {
     web::create_test_app().await
 }
 
-fn unique_username() -> String {
-    format!(
-        "cv{:0>13}",
-        Uuid::new_v4().as_u64_pair().0 % 1_000_000_000_000_000
-    )
-}
-
 fn valid_password() -> &'static str {
     "Test1234"
 }
@@ -155,7 +148,7 @@ async fn test_message_config() -> Result<(), Box<dyn std::error::Error>> {
 #[tokio::test]
 async fn test_private_history_empty() -> Result<(), Box<dyn std::error::Error>> {
     let app = test_app().await;
-    let (user_a_id, _username_a, token_a) = register_user(&app, "HistA").await?;
+    let (_user_a_id, _username_a, token_a) = register_user(&app, "HistA").await?;
     let (user_b_id, _username_b, _token_b) = register_user(&app, "HistB").await?;
 
     add_friend(&app, &token_a, user_b_id).await?;

@@ -8,7 +8,7 @@ pub mod message_send;
 pub mod message_types;
 
 #[cfg(test)]
-use im_rs_common::event::{E2eeEnvelopeDto, MessageDto, MessageStatus};
+use im_rs_common::event::{E2eeEnvelopeDto, MessageDto};
 #[cfg(test)]
 use serde_json;
 

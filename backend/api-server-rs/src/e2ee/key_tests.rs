@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::e2ee::key_api::*;
+    use crate::e2ee::key_helpers::*;
+    use crate::e2ee::key_types::*;
     use crate::error::AppError;
     use base64::engine::general_purpose::STANDARD as B64;
     use base64::Engine;
