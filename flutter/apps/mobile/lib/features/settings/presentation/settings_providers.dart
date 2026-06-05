@@ -13,7 +13,7 @@ final settingsApiProvider = Provider<SettingsApi>((ref) {
 
 final settingsStateProvider =
     StateNotifierProvider<SettingsNotifier, UserSettings?>((ref) {
-  return SettingsNotifier(ref.watch(settingsApiProvider));
+  return SettingsNotifier(ref.watch(settingsApiProvider), ref.watch(storageProvider));
 });
 
 final aiApiProvider = Provider<AiApi>((ref) {

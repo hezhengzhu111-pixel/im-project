@@ -148,6 +148,7 @@ class TestableE2eeManager extends E2eeManager {
   bool respondResult = true;
   String? lastInitiateSessionId;
   String? lastInitiatePeerId;
+  String? lastEncryptSessionId;
   bool initiateResult = true;
   List<E2eeNegotiationEvent> pendingNegotiationsResult = const [];
 
@@ -175,6 +176,7 @@ class TestableE2eeManager extends E2eeManager {
     required String recipientDeviceId,
     required String plaintext,
   }) async {
+    lastEncryptSessionId = sessionId;
     // Return a fake envelope containing no trace of the plaintext.
     return {
       'ciphertext': 'fake_ciphertext',
@@ -632,11 +634,11 @@ void main() {
 
       // Pre-seed: device ID and remote device ID for the session.
       await mockE2eeMetaStore.setSessionStatus(
-        'user-1_private_user-2',
+        'p_user-1_user-2',
         'encrypted',
       );
       await mockE2eeMetaStore.setRemoteDeviceId(
-        'user-1_private_user-2',
+        'p_user-1_user-2',
         'device-remote-1',
       );
 
@@ -661,11 +663,11 @@ void main() {
       notifier = createNotifier();
 
       await mockE2eeMetaStore.setSessionStatus(
-        'user-1_private_user-2',
+        'p_user-1_user-2',
         'encrypted',
       );
       await mockE2eeMetaStore.setRemoteDeviceId(
-        'user-1_private_user-2',
+        'p_user-1_user-2',
         'device-remote-1',
       );
 
@@ -680,6 +682,37 @@ void main() {
         envelope.values.every((v) => v != 'Top secret'),
         isTrue,
       );
+    });
+
+    test('reverse participant uses the same canonical E2EE session id',
+        () async {
+      notifier = ChatNotifierWithOutbox(
+        testApi,
+        MessagePipeline(),
+        fakeWsClient,
+        () => 'user-2',
+        testE2eeManager,
+        mockE2eeMetaStore,
+        spyOutbox,
+        fakeNetwork,
+        NoopAnalyticsAdapter(),
+      );
+
+      await mockE2eeMetaStore.setSessionStatus(
+        'p_user-1_user-2',
+        'encrypted',
+      );
+      await mockE2eeMetaStore.setRemoteDeviceId(
+        'p_user-1_user-2',
+        'device-remote-1',
+      );
+
+      final result = await notifier.sendMessage('user-1', 'Reverse secret');
+
+      expect(result, isNotNull);
+      expect(testApi.sendPrivateMessageCallCount, 0);
+      expect(testApi.sendPrivateEncryptedCallCount, 1);
+      expect(testE2eeManager.lastEncryptSessionId, 'p_user-1_user-2');
     });
 
     test('plaintext session sends via sendPrivateMessage', () async {
@@ -703,7 +736,7 @@ void main() {
       notifier = createNotifier();
 
       await mockE2eeMetaStore.setSessionStatus(
-        'user-1_private_user-2',
+        'p_user-1_user-2',
         'negotiating',
       );
 
@@ -724,11 +757,11 @@ void main() {
       notifier = createNotifier();
 
       await mockE2eeMetaStore.setSessionStatus(
-        'user-1_private_user-2',
+        'p_user-1_user-2',
         'encrypted',
       );
       await mockE2eeMetaStore.setRemoteDeviceId(
-        'user-1_private_user-2',
+        'p_user-1_user-2',
         'device-remote-1',
       );
       testApi.errorToThrow = Exception('Network error');
@@ -784,7 +817,7 @@ void main() {
         type: WsMessageType.e2eeNegotiation,
         data: {
           'action': 'request',
-          'sessionId': 'user-2_private_user-1',
+          'sessionId': 'p_user-2_user-1',
           'requesterId': 'user-2',
           'requesterName': 'User 2',
           'requestPayloadJson': '{"senderDeviceId":"device-2"}',
@@ -794,7 +827,7 @@ void main() {
         type: WsMessageType.e2eeNegotiation,
         data: {
           'action': 'request',
-          'sessionId': 'user-3_private_user-1',
+          'sessionId': 'p_user-3_user-1',
           'requesterId': 'user-3',
           'requesterName': 'User 3',
           'requestPayloadJson': '{"senderDeviceId":"device-3"}',
@@ -805,11 +838,11 @@ void main() {
       expect(notifier.state.pendingNegotiations.length, 2);
       expect(
         notifier.activePendingNegotiation?.sessionId,
-        'user-2_private_user-1',
+        'p_user-2_user-1',
       );
       expect(
         notifier.pendingNegotiationForSession('user-1_user-3')?.sessionId,
-        'user-3_private_user-1',
+        'p_user-3_user-1',
       );
     });
 
@@ -871,7 +904,7 @@ void main() {
       ];
       testE2eeManager.pendingNegotiationsResult = const [
         E2eeNegotiationEvent(
-          sessionId: 'user-2_private_user-1',
+          sessionId: 'p_user-2_user-1',
           action: E2eeNegotiationAction.request,
           requesterId: 'user-2',
           requesterName: 'User 2',
@@ -885,10 +918,10 @@ void main() {
       expect(notifier.state.pendingNegotiations.keys, ['custom-session-2']);
       expect(
         notifier.pendingNegotiationForSession('custom-session-2')?.sessionId,
-        'user-2_private_user-1',
+        'p_user-2_user-1',
       );
       expect(
-        await mockE2eeMetaStore.getSessionStatus('user-2_private_user-1'),
+        await mockE2eeMetaStore.getSessionStatus('p_user-2_user-1'),
         'negotiating',
       );
     });
@@ -987,10 +1020,10 @@ void main() {
           await notifier.initiateEncryptionForSession('custom-session-1');
 
       expect(started, isTrue);
-      expect(testE2eeManager.lastInitiateSessionId, 'user-1_private_user-2');
+      expect(testE2eeManager.lastInitiateSessionId, 'p_user-1_user-2');
       expect(testE2eeManager.lastInitiatePeerId, 'user-2');
       expect(
-        await mockE2eeMetaStore.getSessionStatus('user-1_private_user-2'),
+        await mockE2eeMetaStore.getSessionStatus('p_user-1_user-2'),
         'negotiating',
       );
     });

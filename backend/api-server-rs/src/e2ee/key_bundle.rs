@@ -344,7 +344,7 @@ pub(crate) async fn get_bundle(
                     if let Some(row_id) = otk_row_id {
                         let still_valid = sqlx::query(
                             "SELECT id FROM service_user_service_db.e2ee_one_time_pre_keys \
-                         WHERE id = ? AND consumed = 0",
+                         WHERE id = ?",
                         )
                         .bind(row_id)
                         .fetch_optional(&state.db)

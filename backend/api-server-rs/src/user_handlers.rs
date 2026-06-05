@@ -122,6 +122,17 @@ pub(crate) async fn offline() -> Json<ApiResponse<String>> {
     Json(ApiResponse::success("ok".to_string()))
 }
 
+pub(crate) async fn get_profile(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<ApiResponse<UserDto>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    let user = load_user_by_id(&state.db, identity.user_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("用户不存在".to_string()))?;
+    Ok(Json(ApiResponse::success(user.to_dto())))
+}
+
 pub(crate) async fn update_profile(
     headers: HeaderMap,
     State(state): State<AppState>,

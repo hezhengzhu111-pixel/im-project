@@ -292,9 +292,13 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   }
 
   Future<void> _updateOutboxCounts() async {
-    final pending = await _outbox.getPendingCount();
-    final failed = await _outbox.getFailedCount();
-    state = state.copyWith(pendingCount: pending, failedCount: failed);
+    try {
+      final pending = await _outbox.getPendingCount();
+      final failed = await _outbox.getFailedCount();
+      state = state.copyWith(pendingCount: pending, failedCount: failed);
+    } on StateError {
+      // Notifier disposed, ignore
+    }
   }
 
   void _handleOutboxMessageSent(OutboxMessage outboxMsg) {
@@ -337,7 +341,9 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           }
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      // Ignore errors during offline sync
+    }
   }
 
   void _handleIncomingMessage(Map<String, dynamic> data) {
@@ -385,7 +391,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     try {
       final currentUserId = _currentUserId();
       final e2eeSessionId = message.e2eeEnvelope?.sessionId ??
-          '${currentUserId}_private_${message.senderId}';
+          _e2eeSessionIdForPrivateTarget(message.senderId);
 
       final snakeEnvelope =
           rawEnvelope != null ? _camelToSnakeEnvelope(rawEnvelope) : null;
@@ -647,9 +653,13 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     }
 
     if (changed) {
-      state = state.copyWith(
-        messages: {...state.messages, sessionKey: updated},
-      );
+      try {
+        state = state.copyWith(
+          messages: {...state.messages, sessionKey: updated},
+        );
+      } on StateError {
+        // Notifier disposed, ignore
+      }
     }
   }
 
@@ -668,8 +678,36 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       }
       state = state.copyWith(sessions: sessions, isLoading: false);
       await loadPendingNegotiations();
+      await _syncKnownE2eeStatuses();
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      // Ignore state updates if notifier was disposed during async operations
+      try {
+        state = state.copyWith(isLoading: false, error: e.toString());
+      } on StateError {
+        // Notifier disposed, ignore
+      }
+    }
+  }
+
+  Future<void> _syncKnownE2eeStatuses() async {
+    for (final session in state.sessions) {
+      final isGroup =
+          session.type == 'group' || session.conversationType == 'group';
+      if (isGroup) continue;
+
+      final e2eeSessionId = _e2eeSessionIdForPrivateTarget(session.targetId);
+      if (e2eeSessionId.isEmpty) continue;
+
+      final localStatus = await _e2eeMetaStore.getSessionStatus(e2eeSessionId);
+      if (localStatus == 'plaintext') continue;
+
+      final synced = await _e2eeManager.syncSessionStatus(e2eeSessionId);
+      if (synced == 'plaintext') {
+        _removePendingNegotiation(e2eeSessionId);
+      } else if (synced == 'encrypted') {
+        _removePendingNegotiation(e2eeSessionId);
+        await _retryDecryptMessagesForE2eeSession(e2eeSessionId);
+      }
     }
   }
 
@@ -703,7 +741,11 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         },
       );
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      try {
+        state = state.copyWith(isLoading: false, error: e.toString());
+      } on StateError {
+        // Notifier disposed, ignore
+      }
     }
   }
 
@@ -728,7 +770,11 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         },
       );
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      try {
+        state = state.copyWith(isLoading: false, error: e.toString());
+      } on StateError {
+        // Notifier disposed, ignore
+      }
     }
   }
 
@@ -828,12 +874,16 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         },
       );
     } catch (e) {
-      state = state.copyWith(
-        loadingHistoryBySession: {
-          ...state.loadingHistoryBySession,
-          sessionId: false,
-        },
-      );
+      try {
+        state = state.copyWith(
+          loadingHistoryBySession: {
+            ...state.loadingHistoryBySession,
+            sessionId: false,
+          },
+        );
+      } on StateError {
+        // Notifier disposed, ignore
+      }
     }
   }
 
@@ -1008,6 +1058,16 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     try {
       e2eeStatus = await _e2eeMetaStore.getSessionStatus(e2eeSessionId);
     } catch (_) {}
+
+    if (e2eeStatus == 'negotiating' || e2eeStatus == 'encrypted') {
+      final syncedStatus = await _e2eeManager.syncSessionStatus(e2eeSessionId);
+      if (e2eeStatus == 'encrypted' && syncedStatus == 'plaintext') {
+        state = state.copyWith(error: 'e2ee_session_disabled');
+        _removePendingNegotiation(e2eeSessionId);
+        return null;
+      }
+      e2eeStatus = syncedStatus;
+    }
 
     if (e2eeStatus == 'negotiating') {
       state = state.copyWith(error: 'e2ee_not_ready');
@@ -1496,8 +1556,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         keys.add(_privateSessionKey(session.targetId));
         final currentUserId = _currentUserId();
         if (currentUserId != null && currentUserId.isNotEmpty) {
-          keys.add('${currentUserId}_private_${session.targetId}');
-          keys.add('${session.targetId}_private_${currentUserId}');
+          keys.add('p_${currentUserId}_${session.targetId}');
+          keys.add('p_${session.targetId}_${currentUserId}');
         }
       }
     }
@@ -1505,7 +1565,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   }
 
   String _e2eeSessionIdForChatOrE2eeSession(String sessionId) {
-    if (sessionId.contains('_private_')) return sessionId;
+    if (sessionId.startsWith('p_')) return sessionId;
     final session = state.sessions
         .where((s) =>
             s.id == sessionId ||
@@ -1528,13 +1588,15 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     if (currentUserId == null || currentUserId.isEmpty || targetId.isEmpty) {
       return targetId;
     }
-    return '${currentUserId}_private_$targetId';
+    return _compareIds(currentUserId, targetId) <= 0
+        ? 'p_${currentUserId}_$targetId'
+        : 'p_${targetId}_$currentUserId';
   }
 
   String _normalizeE2eeSessionKey(String sessionId) {
     final exact = state.sessions.where((s) => s.id == sessionId).firstOrNull;
     if (exact != null) return exact.id;
-    if (sessionId.contains('_private_')) {
+    if (sessionId.startsWith('p_')) {
       return _sessionKeyForPrivateTarget(
           _privateTargetFromE2eeSessionId(sessionId));
     }
@@ -1549,10 +1611,12 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
 
   String _privateTargetFromE2eeSessionId(String sessionId) {
     final currentUserId = _currentUserId();
-    return sessionId
-            .split('_private_')
+    final raw = sessionId.startsWith('p_') ? sessionId.substring(2) : sessionId;
+    return raw
+            .split('_')
             .where((part) =>
-                part.isNotEmpty && (currentUserId == null || part != currentUserId))
+                part.isNotEmpty &&
+                (currentUserId == null || part != currentUserId))
             .firstOrNull ??
         sessionId;
   }
@@ -1578,7 +1642,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     return sessionKey
             .split('_')
             .where((part) =>
-                part.isNotEmpty && (currentUserId == null || part != currentUserId))
+                part.isNotEmpty &&
+                (currentUserId == null || part != currentUserId))
             .firstOrNull ??
         sessionKey;
   }
@@ -1615,6 +1680,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           msg.contains('connection refused') ||
           msg.contains('connection timed out') ||
           msg.contains('network is unreachable') ||
+          msg.contains('network error') ||
+          msg.contains('networkerror') ||
           msg.contains('broken pipe') ||
           msg.contains('connection reset')) {
         return true;

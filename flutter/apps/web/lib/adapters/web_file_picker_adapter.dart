@@ -3,9 +3,10 @@ import 'package:im_core/core.dart';
 
 class WebFilePickerAdapter implements FilePickerPort {
   @override
-  Future<Result<PickedFile>> pickImage({ImageSource source = ImageSource.gallery}) async {
+  Future<Result<PickedFile>> pickImage(
+      {ImageSource source = ImageSource.gallery}) async {
     try {
-      final result = await fp.FilePicker.platform.pickFiles(
+      final result = await fp.FilePicker.pickFiles(
         type: fp.FileType.image,
         withData: true,
       );
@@ -32,7 +33,7 @@ class WebFilePickerAdapter implements FilePickerPort {
   @override
   Future<Result<PickedFile>> pickFile({List<String>? allowedExtensions}) async {
     try {
-      final result = await fp.FilePicker.platform.pickFiles(
+      final result = await fp.FilePicker.pickFiles(
         type: allowedExtensions != null ? fp.FileType.custom : fp.FileType.any,
         allowedExtensions: allowedExtensions,
         withData: true,

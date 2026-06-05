@@ -115,6 +115,7 @@ class E2eeEndpoints {
   static const reject = '/api/e2ee/reject';
   static const disable = '/api/e2ee/disable';
   static const pending = '/api/e2ee/pending';
+  static String status(String sessionId) => '/api/e2ee/status/$sessionId';
   static const heartbeat = '/api/keys/heartbeat';
   static const otkCount = '/api/keys/otk-count';
   static const otk = '/api/keys/otk';

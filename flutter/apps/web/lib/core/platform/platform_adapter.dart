@@ -6,7 +6,7 @@ import 'platform_adapter_stub.dart'
 abstract class PlatformAdapter {
   String? getLocalStorage(String key);
   void setLocalStorage(String key, String value);
-  void clearLocalStorage();
+  Future<void> clearLocalStorage();
   String? getBrowserLanguage();
 }
 

@@ -60,6 +60,17 @@ pub(crate) struct E2eeNegotiationPush {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct E2eeNegotiationStatusDto {
+    pub session_id: String,
+    pub status: String,
+    pub requester_id: Option<String>,
+    pub target_user_id: Option<String>,
+    pub updated_time: Option<String>,
+    pub state_version: i32,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct InternalPushBatchRequest {
     pub user_ids: Vec<i64>,
     #[serde(rename = "type")]

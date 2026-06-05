@@ -4,9 +4,10 @@ import 'package:im_core/core.dart';
 import '../data/settings_api.dart';
 
 class SettingsNotifier extends StateNotifier<UserSettings?> {
-  SettingsNotifier(this._api) : super(null);
+  SettingsNotifier(this._api, this._storage) : super(null);
 
   final SettingsApi _api;
+  final StoragePort _storage;
 
   Future<void> loadSettings() async {
     try {
@@ -54,7 +55,9 @@ class SettingsNotifier extends StateNotifier<UserSettings?> {
 
   Future<void> clearCache() async {
     try {
-      // 清除后重新从服务器加载设置，触发 UI 刷新
+      // 清除 SharedPreferences 中的设置缓存
+      await _storage.clear();
+      // 重新从服务器加载设置，触发 UI 刷新
       await loadSettings();
     } catch (e) {
       // 静默处理错误，不中断用户操作

@@ -606,8 +606,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onPressed: () async {
               Navigator.pop(ctx);
               await ref.read(authStateProvider.notifier).logout();
-              if (context.mounted) {
-                context.go('/login');
+              // Router redirect 会自动将未认证用户跳转到 /login。
+              // 这里作为安全网，确保导航一定发生。
+              if (mounted) {
+                GoRouter.of(context).go('/login');
               }
             },
           ),

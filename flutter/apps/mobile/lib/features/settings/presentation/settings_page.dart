@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/di/platform_providers.dart';
+import '../../../l10n/app_localizations.dart';
+import 'settings_providers.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -9,13 +11,14 @@ class SettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
     final language = ref.watch(languageProvider);
+    final loc = AppLocalizations.of(context)!;
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text(
-          '设置',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        Text(
+          loc.settingsTitle,
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 16),
 
@@ -23,13 +26,13 @@ class SettingsPage extends ConsumerWidget {
         Card(
           child: ListTile(
             leading: const Icon(Icons.brightness_6),
-            title: const Text('主题'),
+            title: Text(loc.settingsTheme),
             trailing: DropdownButton<ThemeMode>(
               value: themeMode,
-              items: const [
-                DropdownMenuItem(value: ThemeMode.system, child: Text('跟随系统')),
-                DropdownMenuItem(value: ThemeMode.light, child: Text('浅色')),
-                DropdownMenuItem(value: ThemeMode.dark, child: Text('深色')),
+              items: [
+                DropdownMenuItem(value: ThemeMode.system, child: Text(loc.settingsThemeAuto)),
+                DropdownMenuItem(value: ThemeMode.light, child: Text(loc.settingsThemeLight)),
+                DropdownMenuItem(value: ThemeMode.dark, child: Text(loc.settingsThemeDark)),
               ],
               onChanged: (value) {
                 if (value != null) {
@@ -44,7 +47,7 @@ class SettingsPage extends ConsumerWidget {
         Card(
           child: ListTile(
             leading: const Icon(Icons.language),
-            title: const Text('语言'),
+            title: Text(loc.settingsLanguage),
             trailing: DropdownButton<String>(
               value: language,
               items: const [
@@ -64,7 +67,7 @@ class SettingsPage extends ConsumerWidget {
         Card(
           child: ListTile(
             leading: const Icon(Icons.person),
-            title: const Text('个人资料'),
+            title: Text(loc.settingsProfile),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               // TODO: 打开个人资料页面
@@ -76,11 +79,21 @@ class SettingsPage extends ConsumerWidget {
         Card(
           child: ListTile(
             leading: const Icon(Icons.smart_toy),
-            title: const Text('AI 设置'),
+            title: Text(loc.settingsAi),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               // TODO: 打开 AI 设置页面
             },
+          ),
+        ),
+
+        // Clear Cache
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.cleaning_services),
+            title: Text(loc.settingsClearCache),
+            subtitle: Text(loc.settingsClearCacheDesc),
+            onTap: () => _confirmClearCache(context, ref, loc),
           ),
         ),
 
@@ -93,13 +106,45 @@ class SettingsPage extends ConsumerWidget {
             onTap: () {
               showAboutDialog(
                 context: context,
-                applicationName: 'IM Desktop',
+                applicationName: 'IM',
                 applicationVersion: '1.0.0',
               );
             },
           ),
         ),
       ],
+    );
+  }
+
+  void _confirmClearCache(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocalizations loc,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(loc.settingsCacheTitle),
+        content: Text(loc.settingsCacheMessage),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(loc.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ref.read(settingsStateProvider.notifier).clearCache();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(loc.settingsCacheCleared)),
+                );
+              }
+            },
+            child: Text(loc.commonConfirm),
+          ),
+        ],
+      ),
     );
   }
 }

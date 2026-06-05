@@ -50,7 +50,13 @@ pub(crate) async fn send_private(
     validate_friend(cache_redis, db, identity.user_id, receiver_id).await?;
     let conversation_id = keys::private_conversation_id(identity.user_id, receiver_id);
     let e2ee_enabled = private_e2ee_enabled(db, &conversation_id).await?;
-    if e2ee_enabled || request.encrypted.unwrap_or(false) || request.e2ee_envelope.is_some() {
+    let has_e2ee_payload = request.encrypted.unwrap_or(false) || request.e2ee_envelope.is_some();
+    if has_e2ee_payload && !e2ee_enabled {
+        return Err(AppError::Conflict(
+            "e2ee session is not encrypted; refresh session status".to_string(),
+        ));
+    }
+    if e2ee_enabled || has_e2ee_payload {
         let envelope = private_e2ee_envelope_from_request(&request)?;
         validate_e2ee_envelope(
             envelope,
