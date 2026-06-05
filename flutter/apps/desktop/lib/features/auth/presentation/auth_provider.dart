@@ -108,7 +108,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _analytics.trackEvent('login_success', {'method': 'password'});
       // Connect WebSocket after successful login.
       // WS failures must NOT roll back the authenticated state.
-      unawaited(_connectWs(response.user?.id).catchError((e, st) {
+      unawaited(_connectWs(response.user?.id).catchError((Object e, StackTrace? st) {
         AppLogger.instance.error('WS connect failed after login', e, st, 'ws');
       }));
     } catch (e) {
@@ -182,7 +182,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     );
     _analytics.setUserId(user.id);
     // WS 连接是尽力而为的，失败不应导致用户被登出。
-    unawaited(_connectWs(user.id).catchError((e, st) {
+    unawaited(_connectWs(user.id).catchError((Object e, StackTrace? st) {
       AppLogger.instance
           .error('WS connect failed during session restore', e, st, 'ws');
     }));

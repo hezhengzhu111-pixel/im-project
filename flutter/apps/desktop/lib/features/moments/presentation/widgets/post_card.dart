@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
-import 'package:intl/intl.dart';
-import '../feed/moments_interactions_provider.dart';
+import '../moments_providers.dart';
 
 class PostCard extends ConsumerWidget {
   final PostWithDetails post;
@@ -11,7 +10,6 @@ class PostCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final interactions = ref.watch(momentsInteractionsProvider(post.post.id));
     final nickname = post.userNickname ?? post.post.userNickname ?? '未知用户';
     final media = post.media ?? [];
 
@@ -38,9 +36,7 @@ class PostCard extends ConsumerWidget {
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       Text(
-                        DateFormat('yyyy-MM-dd HH:mm').format(
-                          DateTime.tryParse(post.post.createTime) ?? DateTime.now(),
-                        ),
+                        post.post.createTime,
                         style: TextStyle(color: Colors.grey[600], fontSize: 12),
                       ),
                     ],
@@ -67,17 +63,19 @@ class PostCard extends ConsumerWidget {
               children: [
                 IconButton(
                   icon: Icon(
-                    interactions.isLiked ? Icons.favorite : Icons.favorite_border,
-                    color: interactions.isLiked ? Colors.red : null,
+                    (post.isLiked ?? false)
+                        ? Icons.favorite
+                        : Icons.favorite_border,
+                    color: (post.isLiked ?? false) ? Colors.red : null,
                   ),
                   onPressed: () {
                     ref
-                        .read(momentsInteractionsProvider(post.post.id).notifier)
-                        .toggleLike();
+                        .read(momentsFeedProvider.notifier)
+                        .toggleLike(post.post.id);
                   },
                   iconSize: 20,
                 ),
-                Text('${interactions.likeCount}'),
+                Text('${post.likeCount ?? 0}'),
                 const SizedBox(width: 16),
                 IconButton(
                   icon: const Icon(Icons.comment_outlined),
@@ -86,7 +84,7 @@ class PostCard extends ConsumerWidget {
                   },
                   iconSize: 20,
                 ),
-                Text('${interactions.commentCount}'),
+                Text('${post.commentCount ?? 0}'),
               ],
             ),
           ],
