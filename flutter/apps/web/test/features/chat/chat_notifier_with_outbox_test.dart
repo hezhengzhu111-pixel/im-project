@@ -9,6 +9,7 @@ import 'package:im_web/features/chat/data/message_pipeline.dart';
 import 'package:im_web/features/chat/presentation/chat_provider_with_outbox.dart';
 import 'package:im_web/features/e2ee/data/e2ee_manager.dart';
 import 'package:im_web/features/e2ee/data/e2ee_meta_store.dart';
+import 'package:im_web/features/e2ee/data/e2ee_sent_message_cache.dart';
 import 'package:im_web/features/e2ee/data/e2ee_api.dart';
 import 'package:im_web/features/e2ee/data/e2ee_key_store.dart';
 import 'package:im_web/features/e2ee/data/e2ee_session_store.dart';
@@ -342,6 +343,65 @@ class _ControllableNetworkDataSource implements NetworkStatusDataSource {
   }
 }
 
+/// Fake E2eeSentMessageCache for testing.
+class FakeE2eeSentMessageCache implements E2eeSentMessageCache {
+  FakeE2eeSentMessageCache();
+
+  @override
+  SentMessageCacheStorage get storage => throw UnimplementedError();
+
+  final Map<String, String> _store = {};
+
+  @override
+  Future<void> put({
+    required String clientMessageId,
+    required String plaintext,
+    required String e2eeSessionId,
+    String? peerUserId,
+    String? serverMessageId,
+  }) async {
+    _store[clientMessageId] = plaintext;
+    if (serverMessageId != null) {
+      _store[serverMessageId] = plaintext;
+    }
+  }
+
+  @override
+  Future<void> updateServerId({
+    required String clientMessageId,
+    required String serverMessageId,
+  }) async {
+    final plaintext = _store[clientMessageId];
+    if (plaintext != null) {
+      _store[serverMessageId] = plaintext;
+    }
+  }
+
+  @override
+  Future<String?> getPlaintextByClientId(String clientMessageId) async {
+    return _store[clientMessageId];
+  }
+
+  @override
+  Future<String?> getPlaintextByServerId(String serverMessageId) async {
+    return _store[serverMessageId];
+  }
+
+  @override
+  Future<void> clearAll() async {
+    _store.clear();
+  }
+
+  @override
+  Future<void> clearSession(String e2eeSessionId) async {
+    // In real implementation, this would clear by session. For testing, just clear all.
+    _store.clear();
+  }
+
+  @override
+  Future<void> clearExpired() async {}
+}
+
 /// Mock E2eeMetaStore backed by FakeSecureStorage.
 ///
 /// Accepts an optional pre-seeded [SecureStoragePort] so callers can inject
@@ -395,6 +455,7 @@ void main() {
       () => 'user-1',
       testE2eeManager,
       mockE2eeMetaStore,
+      FakeE2eeSentMessageCache(),
       spyOutbox,
       fakeNetwork,
       NoopAnalyticsAdapter(),
@@ -693,6 +754,7 @@ void main() {
         () => 'user-2',
         testE2eeManager,
         mockE2eeMetaStore,
+        FakeE2eeSentMessageCache(),
         spyOutbox,
         fakeNetwork,
         NoopAnalyticsAdapter(),

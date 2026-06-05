@@ -270,4 +270,7 @@ class _FakeChatNotifier extends StateNotifier<ChatStateWithOutbox>
 
   @override
   Future<void> loadMoreHistory(String sessionId, {int size = 20}) async {}
+
+  @override
+  Future<void> logout() async {}
 }

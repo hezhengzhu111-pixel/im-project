@@ -6,6 +6,8 @@ import 'e2ee_api.dart';
 import 'e2ee_key_store.dart';
 import 'e2ee_manager.dart';
 import 'e2ee_meta_store.dart';
+import 'e2ee_sent_message_cache.dart';
+import 'e2ee_sent_message_cache_impl.dart';
 import 'e2ee_session_store.dart';
 
 final e2eeAdapterProvider = Provider<E2eeBridge>((ref) {
@@ -47,4 +49,9 @@ final e2eeManagerProvider = Provider<E2eeManager>((ref) {
 final e2eeSessionStatusProvider =
     FutureProvider.family<String, String>((ref, sessionId) async {
   return ref.watch(e2eeMetaStoreProvider).getSessionStatus(sessionId);
+});
+
+final e2eeSentMessageCacheProvider = Provider<E2eeSentMessageCache>((ref) {
+  final storage = IdbSentMessageCacheStorage(dbName: 'im_e2ee_sent_cache');
+  return E2eeSentMessageCache(storage: storage);
 });

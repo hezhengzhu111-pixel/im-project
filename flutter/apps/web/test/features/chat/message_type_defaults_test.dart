@@ -9,6 +9,7 @@ import 'package:im_web/features/chat/data/message_pipeline.dart';
 import 'package:im_web/features/chat/presentation/chat_provider_with_outbox.dart';
 import 'package:im_web/features/e2ee/data/e2ee_manager.dart';
 import 'package:im_web/features/e2ee/data/e2ee_meta_store.dart';
+import 'package:im_web/features/e2ee/data/e2ee_sent_message_cache.dart';
 import 'package:im_web/features/e2ee/data/e2ee_api.dart';
 import 'package:im_web/features/e2ee/data/e2ee_key_store.dart';
 import 'package:im_web/features/e2ee/data/e2ee_session_store.dart';
@@ -235,6 +236,42 @@ class _FakeNetworkDataSource implements NetworkStatusDataSource {
   Future<bool> checkServerReachable(String url) async => true;
 }
 
+/// Fake E2eeSentMessageCache for testing.
+class _FakeE2eeSentMessageCache implements E2eeSentMessageCache {
+  @override
+  SentMessageCacheStorage get storage => throw UnimplementedError();
+
+  @override
+  Future<void> put({
+    required String clientMessageId,
+    required String plaintext,
+    required String e2eeSessionId,
+    String? peerUserId,
+    String? serverMessageId,
+  }) async {}
+
+  @override
+  Future<void> updateServerId({
+    required String clientMessageId,
+    required String serverMessageId,
+  }) async {}
+
+  @override
+  Future<String?> getPlaintextByClientId(String clientMessageId) async => null;
+
+  @override
+  Future<String?> getPlaintextByServerId(String serverMessageId) async => null;
+
+  @override
+  Future<void> clearAll() async {}
+
+  @override
+  Future<void> clearSession(String e2eeSessionId) async {}
+
+  @override
+  Future<void> clearExpired() async {}
+}
+
 void main() {
   late _TestMessageApi testApi;
   late ChatNotifierWithOutbox notifier;
@@ -258,6 +295,7 @@ void main() {
       () => 'user-1',
       e2eeManager,
       mockE2eeMetaStore,
+      _FakeE2eeSentMessageCache(),
       spyOutbox,
       _FakeNetworkStatusNotifier(),
       NoopAnalyticsAdapter(),

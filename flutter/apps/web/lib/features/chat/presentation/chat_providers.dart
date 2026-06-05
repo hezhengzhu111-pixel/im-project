@@ -18,6 +18,7 @@ final chatStateProvider =
     () => ref.read(currentUserIdProvider),
     ref.watch(e2eeManagerProvider),
     ref.watch(e2eeMetaStoreProvider),
+    ref.watch(e2eeSentMessageCacheProvider),
     ref.watch(messageOutboxProvider),
     ref.watch(networkStatusProvider.notifier),
     ref.watch(analyticsProvider),

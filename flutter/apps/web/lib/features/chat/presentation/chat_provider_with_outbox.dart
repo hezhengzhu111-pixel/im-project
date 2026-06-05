@@ -10,6 +10,7 @@ import '../data/message_pipeline.dart';
 import '../data/message_outbox.dart';
 import '../../e2ee/data/e2ee_manager.dart';
 import '../../e2ee/data/e2ee_meta_store.dart';
+import '../../e2ee/data/e2ee_sent_message_cache.dart';
 import 'chat_state.dart';
 import '../../../core/logging/app_logger.dart';
 
@@ -94,6 +95,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     this._currentUserId,
     this._e2eeManager,
     this._e2eeMetaStore,
+    this._sentMessageCache,
     this._outbox,
     this._networkStatus,
     this._analytics,
@@ -109,6 +111,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   final String? Function() _currentUserId;
   final E2eeManager _e2eeManager;
   final E2eeMetaStore _e2eeMetaStore;
+  final E2eeSentMessageCache _sentMessageCache;
   final MessageOutbox _outbox;
   final NetworkStatusNotifier _networkStatus;
   final AnalyticsPort _analytics;
@@ -199,6 +202,8 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     final e2eeSessionId = _e2eeSessionIdForChatOrE2eeSession(sessionId);
     try {
       await _e2eeManager.exitEncryption(e2eeSessionId);
+      // Clear sent message cache for this session.
+      await _sentMessageCache.clearSession(e2eeSessionId);
     } finally {
       await _e2eeMetaStore.setSessionStatus(e2eeSessionId, 'plaintext');
       _removePendingNegotiation(e2eeSessionId);
@@ -448,10 +453,13 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       return message;
     }
     final currentUserId = _currentUserId();
+
+    // For own sent messages: try local cache first, then E2EE decrypt.
     if (message.senderId == currentUserId) {
-      return message.copyWith(decryptStatus: 'skipped_own');
+      return _decryptOwnSentMessage(message);
     }
 
+    // For messages from others: decrypt via E2EE.
     try {
       final envelope = message.e2eeEnvelope!;
       final plaintext = await _e2eeManager.decryptEnvelope(
@@ -475,6 +483,78 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           .error('Loaded E2EE message decrypt failed', e, st, 'e2ee');
       return message.copyWith(content: '', decryptStatus: 'failed');
     }
+  }
+
+  /// Decrypt or restore plaintext for a message sent by the current user.
+  ///
+  /// Recovery priority:
+  /// 1. Try E2EE decrypt (works if session state is still valid)
+  /// 2. Fall back to local sent message cache
+  /// 3. Return unavailable status if both fail
+  Future<Message> _decryptOwnSentMessage(Message message) async {
+    final clientId = message.clientMessageId ?? message.id;
+    final serverId = message.id;
+
+    // Step 1: Try E2EE decrypt.
+    try {
+      final envelope = message.e2eeEnvelope!;
+      final plaintext = await _e2eeManager.decryptEnvelope(
+        sessionId: envelope.sessionId,
+        envelope: _camelToSnakeEnvelope({
+          'version': envelope.version,
+          'algorithm': envelope.algorithm,
+          'senderDeviceId': envelope.senderDeviceId,
+          'recipientDeviceId': envelope.recipientDeviceId,
+          'sessionId': envelope.sessionId,
+          'wire': envelope.wire,
+          if (envelope.handshake != null) 'handshake': envelope.handshake,
+        }),
+      );
+
+      // Also cache for future recovery.
+      await _sentMessageCache.put(
+        clientMessageId: clientId,
+        plaintext: plaintext,
+        e2eeSessionId: envelope.sessionId,
+        serverMessageId: serverId,
+      );
+
+      return message.copyWith(
+        content: plaintext,
+        decryptStatus: 'success',
+      );
+    } catch (_) {
+      // E2EE decrypt failed for own message; fall through to local cache.
+    }
+
+    // Step 2: Try local sent message cache.
+    String? plaintext;
+
+    // Try by clientMessageId first (most reliable).
+    if (clientId.isNotEmpty) {
+      plaintext = await _sentMessageCache.getPlaintextByClientId(clientId);
+    }
+
+    // Try by serverMessageId if client ID lookup failed.
+    if (plaintext == null && serverId.isNotEmpty && !serverId.startsWith('local_')) {
+      plaintext = await _sentMessageCache.getPlaintextByServerId(serverId);
+    }
+
+    if (plaintext != null && plaintext.isNotEmpty) {
+      return message.copyWith(
+        content: plaintext,
+        decryptStatus: 'restored_from_local_cache',
+      );
+    }
+
+    // Step 3: Both failed - return unavailable status.
+    AppLogger.instance.warn(
+      'Cannot recover own sent E2EE message: no local cache',
+    );
+    return message.copyWith(
+      content: '',
+      decryptStatus: 'unavailable_own_history',
+    );
   }
 
   void _handleMessageStatusChanged(Map<String, dynamic> data) {
@@ -1153,6 +1233,18 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         );
       }
       _replaceMessage(sessionKey, cid, serverMessage);
+
+      // Cache plaintext for own sent E2EE messages to enable history recovery.
+      if (e2eeStatus == 'encrypted') {
+        await _sentMessageCache.put(
+          clientMessageId: cid,
+          plaintext: content,
+          e2eeSessionId: e2eeSessionId,
+          peerUserId: receiverId,
+          serverMessageId: serverMessage.id,
+        );
+      }
+
       _analytics.trackEvent('message_send', {
         'type': messageType,
         'encrypted': e2eeStatus == 'encrypted',
@@ -1715,6 +1807,11 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     // Fallback to generic error string.
     if (raw.length > 200) return 'send_failed';
     return raw;
+  }
+
+  /// Clear sent message cache on logout.
+  Future<void> logout() async {
+    await _sentMessageCache.clearAll();
   }
 
   @override
