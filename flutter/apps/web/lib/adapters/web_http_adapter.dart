@@ -257,9 +257,8 @@ class _SensitiveLogInterceptor extends Interceptor {
     final shouldLogBody = _isDev && !isSensitive;
 
     AppLogger.instance.debug(
-      'HTTP ${options.method} $path'
+      '[http] ${options.method} $path'
       '${shouldLogBody && options.data != null ? ' body=${_redactBody(options.data)}' : ''}',
-      'http',
     );
     handler.next(options);
   }
@@ -273,9 +272,8 @@ class _SensitiveLogInterceptor extends Interceptor {
     final shouldLogBody = _isDev && !isSensitive;
 
     AppLogger.instance.debug(
-      'HTTP $statusCode ${response.requestOptions.method} $path'
+      '[http] $statusCode ${response.requestOptions.method} $path'
       '${shouldLogBody && response.data != null ? ' body=${_redactBody(response.data)}' : ''}',
-      'http',
     );
     handler.next(response);
   }
@@ -285,9 +283,8 @@ class _SensitiveLogInterceptor extends Interceptor {
     final path = err.requestOptions.uri.path;
     final statusCode = err.response?.statusCode;
     AppLogger.instance.warn(
-      'HTTP ERROR ${statusCode ?? 'N/A'} ${err.requestOptions.method} $path'
+      '[http] ERROR ${statusCode ?? 'N/A'} ${err.requestOptions.method} $path'
       ' type=${err.type.name}',
-      'http',
     );
     handler.next(err);
   }

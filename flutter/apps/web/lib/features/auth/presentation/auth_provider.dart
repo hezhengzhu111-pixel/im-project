@@ -292,7 +292,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } else {
       AppLogger.instance.error(
           'WS ticket unavailable, refusing to connect without ticket in production',
-          null,
+          Exception('ws_ticket_unavailable'),
           null,
           'ws');
     }

@@ -5,6 +5,7 @@ import 'package:im_core/core.dart';
 import '../../../core/network/network_status_provider.dart';
 import '../data/message_api.dart';
 import '../data/message_config.dart';
+import '../data/message_merge_utils.dart';
 import '../data/message_pipeline.dart';
 import '../data/message_outbox.dart';
 import '../../e2ee/data/e2ee_manager.dart';
@@ -389,7 +390,6 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
     if (sessionKey.isEmpty) return;
 
     try {
-      final currentUserId = _currentUserId();
       final e2eeSessionId = message.e2eeEnvelope?.sessionId ??
           _e2eeSessionIdForPrivateTarget(message.senderId);
 
@@ -506,9 +506,61 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       final messages = state.messages[sessionId];
       if (messages == null || messages.isEmpty) return;
 
+      // Extract read receipt fields.
+      final messageId = data['messageId']?.toString();
+      final messageIds = data['messageIds'];
+      final lastReadMessageId = data['lastReadMessageId']?.toString();
+
+      // If no specific message identifiers, don't mark anything as READ.
+      if (messageId == null &&
+          messageIds == null &&
+          lastReadMessageId == null) {
+        return;
+      }
+
+      final currentUserId = _currentUserId();
+
+      // Determine which message IDs should be marked as READ.
+      final targetIds = <String>{};
+
+      if (messageId != null) {
+        // Single message read receipt.
+        targetIds.add(messageId);
+      }
+
+      if (messageIds is List) {
+        // Multiple message read receipts.
+        for (final id in messageIds) {
+          targetIds.add(id.toString());
+        }
+      }
+
+      if (lastReadMessageId != null) {
+        // lastReadMessageId: mark all messages up to and including this one
+        // that were sent by the current user.
+        final lastReadIndex = messages.indexWhere(
+          (m) => m.id == lastReadMessageId || m.clientMessageId == lastReadMessageId,
+        );
+        if (lastReadIndex != -1) {
+          for (var i = 0; i <= lastReadIndex; i++) {
+            final msg = messages[i];
+            // Only mark messages sent by the current user as READ.
+            if (msg.senderId == currentUserId) {
+              targetIds.add(msg.id);
+            }
+          }
+        }
+      }
+
+      if (targetIds.isEmpty) return;
+
       final updated = messages.map((m) {
-        if (m.status != 'READ') {
-          return m.copyWith(status: 'READ');
+        if (targetIds.contains(m.id) || targetIds.contains(m.clientMessageId)) {
+          // Don't mark messages sent by others as READ by us.
+          // Only mark our own messages as READ when we receive a read receipt.
+          if (m.senderId == currentUserId && m.status != 'READ') {
+            return m.copyWith(status: 'READ');
+          }
         }
         return m;
       }).toList();
@@ -910,59 +962,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
 
   List<Message> _mergeMessagesChronologically(
       List<Message> existing, List<Message> incoming) {
-    final merged = <String, Message>{};
-
-    for (final msg in existing) {
-      merged[msg.id] = msg;
-      if (msg.clientMessageId != null) {
-        merged[msg.clientMessageId!] = msg;
-      }
-    }
-
-    for (final msg in incoming) {
-      final existingMsg = merged[msg.id] ??
-          (msg.clientMessageId != null ? merged[msg.clientMessageId!] : null);
-      if (existingMsg != null) {
-        final mergedMsg = existingMsg.copyWith(
-          content: msg.content.isNotEmpty ? msg.content : existingMsg.content,
-          status: msg.status.isNotEmpty ? msg.status : existingMsg.status,
-          mediaUrl: msg.mediaUrl ?? existingMsg.mediaUrl,
-          mediaSize: msg.mediaSize ?? existingMsg.mediaSize,
-          mediaName: msg.mediaName ?? existingMsg.mediaName,
-          thumbnailUrl: msg.thumbnailUrl ?? existingMsg.thumbnailUrl,
-          duration: msg.duration ?? existingMsg.duration,
-          extra: msg.extra ?? existingMsg.extra,
-          mentionedUserIds:
-              msg.mentionedUserIds ?? existingMsg.mentionedUserIds,
-          readBy: msg.readBy ?? existingMsg.readBy,
-          readByCount: msg.readByCount ?? existingMsg.readByCount,
-          readStatus: msg.readStatus ?? existingMsg.readStatus,
-          readAt: msg.readAt ?? existingMsg.readAt,
-          encrypted: msg.encrypted ?? existingMsg.encrypted,
-          e2eeDeviceId: msg.e2eeDeviceId ?? existingMsg.e2eeDeviceId,
-          e2eeEnvelope: msg.e2eeEnvelope ?? existingMsg.e2eeEnvelope,
-          decryptStatus: msg.decryptStatus ?? existingMsg.decryptStatus,
-        );
-        merged[msg.id] = mergedMsg;
-        if (msg.clientMessageId != null) {
-          merged[msg.clientMessageId!] = mergedMsg;
-        }
-      } else {
-        merged[msg.id] = msg;
-        if (msg.clientMessageId != null) {
-          merged[msg.clientMessageId!] = msg;
-        }
-      }
-    }
-
-    final result = merged.values.toList();
-    result.sort((a, b) {
-      final timeA = DateTime.tryParse(a.sendTime) ?? DateTime(2000);
-      final timeB = DateTime.tryParse(b.sendTime) ?? DateTime(2000);
-      return timeA.compareTo(timeB);
-    });
-
-    return result;
+    return mergeMessagesChronologically(existing, incoming);
   }
 
   final Map<String, int> _fallbackHistoryPages = {};

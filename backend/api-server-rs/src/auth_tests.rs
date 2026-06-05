@@ -41,6 +41,7 @@ mod tests {
             jwt_expiration_ms: 0,
             refresh_secret: String::new(),
             refresh_expiration_ms: 0,
+            remember_me_refresh_expiration_ms: 0,
             ws_ticket_ttl_seconds: 0,
             revoked_token_ttl_seconds: 0,
             resource_cache_ttl_seconds: 0,
