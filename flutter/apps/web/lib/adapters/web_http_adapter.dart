@@ -1,7 +1,54 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:im_core/core.dart';
 import '../core/logging/app_logger.dart';
+
+/// Paths whose request/response bodies must never be logged.
+const _sensitivePaths = <String>{
+  UserEndpoints.login,
+  UserEndpoints.register,
+  AuthEndpoints.refresh,
+  AuthEndpoints.parse,
+  AuthEndpoints.wsTicket,
+  UserEndpoints.logout,
+};
+
+/// Keys whose values must be redacted in log output.
+const _sensitiveKeys = <String>{
+  'password',
+  'token',
+  'accessToken',
+  'refreshToken',
+  'refresh_token',
+  'ticket',
+  'authorization',
+  'cookie',
+  'set-cookie',
+};
+
+/// Whether the current runtime is development.
+bool _isDevelopment() {
+  const env = String.fromEnvironment('APP_ENV', defaultValue: '');
+  return env.isEmpty || env == 'dev' || env == 'development' || env == 'test';
+}
+
+/// Recursively redact sensitive values in a JSON-like map.
+Map<String, dynamic> _redactSensitive(Map<String, dynamic> json) {
+  final redacted = <String, dynamic>{};
+  for (final entry in json.entries) {
+    final key = entry.key;
+    final value = entry.value;
+    if (_sensitiveKeys.contains(key.toLowerCase())) {
+      redacted[key] = '***REDACTED***';
+    } else if (value is Map<String, dynamic>) {
+      redacted[key] = _redactSensitive(value);
+    } else {
+      redacted[key] = value;
+    }
+  }
+  return redacted;
+}
 
 class WebHttpClient implements HttpClientPort {
   WebHttpClient({
@@ -12,7 +59,7 @@ class WebHttpClient implements HttpClientPort {
         )) {
     _dio.interceptors.addAll([
       _AuthInterceptor(_dio),
-      LogInterceptor(requestBody: true, responseBody: true),
+      _SensitiveLogInterceptor(),
     ]);
   }
 
@@ -192,5 +239,73 @@ class _AuthInterceptor extends Interceptor {
         path == UserEndpoints.login ||
         path == UserEndpoints.register ||
         path == UserEndpoints.logout;
+  }
+}
+
+/// Custom log interceptor that sanitizes sensitive data.
+///
+/// - Production: never logs request/response bodies.
+/// - Development: logs bodies for non-sensitive paths, with sensitive keys redacted.
+/// - Always logs method, path, status code, and error type for debugging.
+class _SensitiveLogInterceptor extends Interceptor {
+  final _isDev = _isDevelopment();
+
+  @override
+  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    final path = options.uri.path;
+    final isSensitive = _sensitivePaths.contains(path);
+    final shouldLogBody = _isDev && !isSensitive;
+
+    AppLogger.instance.debug(
+      'HTTP ${options.method} $path'
+      '${shouldLogBody && options.data != null ? ' body=${_redactBody(options.data)}' : ''}',
+      'http',
+    );
+    handler.next(options);
+  }
+
+  @override
+  void onResponse(
+      Response<dynamic> response, ResponseInterceptorHandler handler) {
+    final path = response.requestOptions.uri.path;
+    final statusCode = response.statusCode;
+    final isSensitive = _sensitivePaths.contains(path);
+    final shouldLogBody = _isDev && !isSensitive;
+
+    AppLogger.instance.debug(
+      'HTTP $statusCode ${response.requestOptions.method} $path'
+      '${shouldLogBody && response.data != null ? ' body=${_redactBody(response.data)}' : ''}',
+      'http',
+    );
+    handler.next(response);
+  }
+
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) {
+    final path = err.requestOptions.uri.path;
+    final statusCode = err.response?.statusCode;
+    AppLogger.instance.warn(
+      'HTTP ERROR ${statusCode ?? 'N/A'} ${err.requestOptions.method} $path'
+      ' type=${err.type.name}',
+      'http',
+    );
+    handler.next(err);
+  }
+
+  dynamic _redactBody(dynamic body) {
+    if (body is Map<String, dynamic>) {
+      return _redactSensitive(body);
+    }
+    if (body is String) {
+      // Attempt to parse as JSON for redaction
+      try {
+        final decoded = Map<String, dynamic>.from(
+            const JsonDecoder().convert(body) as Map);
+        return _redactSensitive(decoded);
+      } catch (_) {
+        return '[string body omitted]';
+      }
+    }
+    return '[non-json body omitted]';
   }
 }
