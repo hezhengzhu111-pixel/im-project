@@ -183,6 +183,7 @@ pub(crate) async fn issue_token_pair(
             &username,
             "access",
             &access_jti,
+            request.remember_me,
         )?),
         refresh_token: Some(build_token(
             &state.config.refresh_secret,
@@ -191,6 +192,7 @@ pub(crate) async fn issue_token_pair(
             &username,
             "refresh",
             &refresh_jti,
+            request.remember_me,
         )?),
         expires_in_ms: Some(state.config.jwt_expiration_ms),
         refresh_expires_in_ms: Some(refresh_expiration_ms),
@@ -262,6 +264,7 @@ pub(crate) async fn refresh_token_pair(
                 .as_ref()
                 .map(|r| r.resource_permissions.clone())
                 .unwrap_or_default(),
+            remember_me: parsed.remember_me,
             ..Default::default()
         },
     )
@@ -371,6 +374,7 @@ pub(crate) fn build_token(
     username: &str,
     typ: &str,
     jti: &str,
+    remember_me: bool,
 ) -> Result<String, AppError> {
     if secret.len() < 64 {
         return Err(AppError::BadRequest(format!(
@@ -387,6 +391,7 @@ pub(crate) fn build_token(
         sub: username.to_string(),
         iat: now_ms / 1000,
         exp: (now_ms + expiration_ms) / 1000,
+        remember_me,
     };
     encode(
         &Header::new(Algorithm::HS512),
@@ -430,6 +435,7 @@ pub(crate) fn parse_token(
                 issued_at_epoch_ms: Some(claims.iat * 1000),
                 expires_at_epoch_ms: Some(claims.exp * 1000),
                 permissions: None,
+                remember_me: claims.remember_me,
             };
             if expired && !allow_expired {
                 result.clear_identity();

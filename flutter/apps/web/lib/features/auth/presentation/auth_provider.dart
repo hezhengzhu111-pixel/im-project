@@ -280,9 +280,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
 
     // Only allow unauthenticated WS connection in development mode.
-    const appEnv = String.fromEnvironment('APP_ENV', defaultValue: '');
-    final isDev = appEnv.isEmpty ||
-        appEnv == 'dev' ||
+    // Empty APP_ENV defaults to production (safe by default).
+    const appEnv = String.fromEnvironment('APP_ENV', defaultValue: 'production');
+    final isDev = appEnv == 'dev' ||
         appEnv == 'development' ||
         appEnv == 'test';
     if (isDev) {
