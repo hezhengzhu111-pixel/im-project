@@ -15,11 +15,12 @@ const _sensitivePaths = <String>{
 };
 
 /// Keys whose values must be redacted in log output.
+/// All keys are lowercase; comparison uses key.toLowerCase().
 const _sensitiveKeys = <String>{
   'password',
   'token',
-  'accessToken',
-  'refreshToken',
+  'accesstoken',
+  'refreshtoken',
   'refresh_token',
   'ticket',
   'authorization',
@@ -43,11 +44,25 @@ Map<String, dynamic> _redactSensitive(Map<String, dynamic> json) {
       redacted[key] = '***REDACTED***';
     } else if (value is Map<String, dynamic>) {
       redacted[key] = _redactSensitive(value);
+    } else if (value is List) {
+      redacted[key] = _redactList(value);
     } else {
       redacted[key] = value;
     }
   }
   return redacted;
+}
+
+/// Recursively redact sensitive values in a list that may contain maps.
+List<dynamic> _redactList(List<dynamic> list) {
+  return list.map((item) {
+    if (item is Map<String, dynamic>) {
+      return _redactSensitive(item);
+    } else if (item is List) {
+      return _redactList(item);
+    }
+    return item;
+  }).toList();
 }
 
 class WebHttpClient implements HttpClientPort {

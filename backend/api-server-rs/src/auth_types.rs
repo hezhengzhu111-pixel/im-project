@@ -45,6 +45,8 @@ pub(crate) struct TokenParseResultDto {
     pub issued_at_epoch_ms: Option<i64>,
     pub expires_at_epoch_ms: Option<i64>,
     pub permissions: Option<Vec<String>>,
+    #[serde(default)]
+    pub remember_me: bool,
 }
 
 impl TokenParseResultDto {
@@ -256,6 +258,10 @@ pub(crate) struct Claims {
     pub(crate) sub: String,
     pub(crate) iat: i64,
     pub(crate) exp: i64,
+    /// Whether the token was issued with rememberMe=true.
+    /// Used to preserve long-lived refresh across token rotation.
+    #[serde(default)]
+    pub(crate) remember_me: bool,
 }
 
 pub(crate) fn serialize_option_i64_as_string<S>(

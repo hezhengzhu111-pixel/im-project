@@ -1303,4 +1303,343 @@ void main() {
       expect(messages.first.status, 'SENT');
     });
   });
+
+  // =========================================================================
+  // Read receipt readerId/userId protection
+  // =========================================================================
+
+  group('read receipt readerId/userId protection', () {
+    test('readerId == currentUserId does not update messages', () async {
+      notifier = createNotifier();
+
+      // Add a message sent by current user (user-1).
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'msg-1',
+          senderId: 'user-1',
+          receiverId: 'user-2',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Hello',
+          sendTime: '2024-01-01T00:00:00Z',
+          status: 'SENT',
+        ),
+      );
+
+      // Emit read receipt where readerId is the current user (self-read).
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.readReceipt,
+        data: {
+          'sessionId': 'user-1_user-2',
+          'readerId': 'user-1',
+          'messageId': 'msg-1',
+        },
+      ));
+      await Future.delayed(Duration(milliseconds: 50));
+
+      // Message should NOT be updated to READ.
+      final messages = notifier.state.messages['user-1_user-2']!;
+      expect(messages.first.status, 'SENT');
+    });
+
+    test('missing readerId/userId does not update messages', () async {
+      notifier = createNotifier();
+
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'msg-2',
+          senderId: 'user-1',
+          receiverId: 'user-2',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Hello',
+          sendTime: '2024-01-01T00:00:00Z',
+          status: 'SENT',
+        ),
+      );
+
+      // Emit read receipt without readerId or userId.
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.readReceipt,
+        data: {
+          'sessionId': 'user-1_user-2',
+          'messageId': 'msg-2',
+        },
+      ));
+      await Future.delayed(Duration(milliseconds: 50));
+
+      final messages = notifier.state.messages['user-1_user-2']!;
+      expect(messages.first.status, 'SENT');
+    });
+
+    test('readerId is other user: messageId updates only specified message',
+        () async {
+      notifier = createNotifier();
+
+      // Add two messages sent by current user.
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'msg-a',
+          senderId: 'user-1',
+          receiverId: 'user-2',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Msg A',
+          sendTime: '2024-01-01T00:00:00Z',
+          status: 'SENT',
+        ),
+      );
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'msg-b',
+          senderId: 'user-1',
+          receiverId: 'user-2',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Msg B',
+          sendTime: '2024-01-01T00:00:01Z',
+          status: 'SENT',
+        ),
+      );
+
+      // Read receipt from other user for only msg-a.
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.readReceipt,
+        data: {
+          'sessionId': 'user-1_user-2',
+          'readerId': 'user-2',
+          'messageId': 'msg-a',
+        },
+      ));
+      await Future.delayed(Duration(milliseconds: 50));
+
+      final messages = notifier.state.messages['user-1_user-2']!;
+      expect(messages[0].status, 'READ'); // msg-a
+      expect(messages[1].status, 'SENT'); // msg-b unchanged
+    });
+
+    test('readerId is other user: messageIds updates only specified messages',
+        () async {
+      notifier = createNotifier();
+
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'msg-x',
+          senderId: 'user-1',
+          receiverId: 'user-2',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Msg X',
+          sendTime: '2024-01-01T00:00:00Z',
+          status: 'SENT',
+        ),
+      );
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'msg-y',
+          senderId: 'user-1',
+          receiverId: 'user-2',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Msg Y',
+          sendTime: '2024-01-01T00:00:01Z',
+          status: 'SENT',
+        ),
+      );
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'msg-z',
+          senderId: 'user-1',
+          receiverId: 'user-2',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Msg Z',
+          sendTime: '2024-01-01T00:00:02Z',
+          status: 'SENT',
+        ),
+      );
+
+      // Read receipt from other user for msg-x and msg-z only.
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.readReceipt,
+        data: {
+          'sessionId': 'user-1_user-2',
+          'readerId': 'user-2',
+          'messageIds': ['msg-x', 'msg-z'],
+        },
+      ));
+      await Future.delayed(Duration(milliseconds: 50));
+
+      final messages = notifier.state.messages['user-1_user-2']!;
+      expect(messages[0].status, 'READ'); // msg-x
+      expect(messages[1].status, 'SENT'); // msg-y unchanged
+      expect(messages[2].status, 'READ'); // msg-z
+    });
+
+    test('readerId is other user: lastReadMessageId updates own messages up to target',
+        () async {
+      notifier = createNotifier();
+
+      // Add messages: own, other, own, own.
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'msg-1',
+          senderId: 'user-1',
+          receiverId: 'user-2',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Own 1',
+          sendTime: '2024-01-01T00:00:00Z',
+          status: 'SENT',
+        ),
+      );
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'msg-2',
+          senderId: 'user-2',
+          receiverId: 'user-1',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Other 1',
+          sendTime: '2024-01-01T00:00:01Z',
+          status: 'SENT',
+        ),
+      );
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'msg-3',
+          senderId: 'user-1',
+          receiverId: 'user-2',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Own 2',
+          sendTime: '2024-01-01T00:00:02Z',
+          status: 'SENT',
+        ),
+      );
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'msg-4',
+          senderId: 'user-1',
+          receiverId: 'user-2',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Own 3',
+          sendTime: '2024-01-01T00:00:03Z',
+          status: 'SENT',
+        ),
+      );
+
+      // lastReadMessageId = msg-3 (other user read up to msg-3).
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.readReceipt,
+        data: {
+          'sessionId': 'user-1_user-2',
+          'readerId': 'user-2',
+          'lastReadMessageId': 'msg-3',
+        },
+      ));
+      await Future.delayed(Duration(milliseconds: 50));
+
+      final messages = notifier.state.messages['user-1_user-2']!;
+      expect(messages[0].status, 'READ'); // msg-1 (own, before target)
+      expect(messages[1].status, 'SENT'); // msg-2 (other's message, not ours)
+      expect(messages[2].status, 'READ'); // msg-3 (own, at target)
+      expect(messages[3].status, 'SENT'); // msg-4 (own, after target)
+    });
+
+    test('does not affect other sessions', () async {
+      notifier = createNotifier();
+
+      // Add messages in two sessions.
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'msg-session1',
+          senderId: 'user-1',
+          receiverId: 'user-2',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Session 1',
+          sendTime: '2024-01-01T00:00:00Z',
+          status: 'SENT',
+        ),
+      );
+      notifier.addMessage(
+        'user-1_user-3',
+        const Message(
+          id: 'msg-session2',
+          senderId: 'user-1',
+          receiverId: 'user-3',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'Session 2',
+          sendTime: '2024-01-01T00:00:00Z',
+          status: 'SENT',
+        ),
+      );
+
+      // Read receipt for session 1 only.
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.readReceipt,
+        data: {
+          'sessionId': 'user-1_user-2',
+          'readerId': 'user-2',
+          'messageId': 'msg-session1',
+        },
+      ));
+      await Future.delayed(Duration(milliseconds: 50));
+
+      // Session 1 message should be READ.
+      final s1 = notifier.state.messages['user-1_user-2']!;
+      expect(s1.first.status, 'READ');
+
+      // Session 2 message should remain SENT.
+      final s2 = notifier.state.messages['user-1_user-3']!;
+      expect(s2.first.status, 'SENT');
+    });
+
+    test('does not mark other user messages as READ', () async {
+      notifier = createNotifier();
+
+      // Message sent by other user.
+      notifier.addMessage(
+        'user-1_user-2',
+        const Message(
+          id: 'msg-other',
+          senderId: 'user-2',
+          receiverId: 'user-1',
+          isGroupChat: false,
+          messageType: 'text',
+          content: 'From other',
+          sendTime: '2024-01-01T00:00:00Z',
+          status: 'SENT',
+        ),
+      );
+
+      fakeWsClient.addEvent(FakeWsEvent(
+        type: WsMessageType.readReceipt,
+        data: {
+          'sessionId': 'user-1_user-2',
+          'readerId': 'user-2',
+          'messageId': 'msg-other',
+        },
+      ));
+      await Future.delayed(Duration(milliseconds: 50));
+
+      final messages = notifier.state.messages['user-1_user-2']!;
+      expect(messages.first.status, 'SENT'); // not changed to READ
+    });
+  });
 }

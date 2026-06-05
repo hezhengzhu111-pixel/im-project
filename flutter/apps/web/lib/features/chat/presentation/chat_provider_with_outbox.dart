@@ -506,6 +506,17 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       final messages = state.messages[sessionId];
       if (messages == null || messages.isEmpty) return;
 
+      // Validate reader identity: require readerId or userId.
+      final readerId = data['readerId']?.toString() ??
+          data['userId']?.toString();
+      if (readerId == null || readerId.isEmpty) return;
+
+      final currentUserId = _currentUserId();
+      if (currentUserId == null || currentUserId.isEmpty) return;
+
+      // Skip self-read receipts to avoid incorrect status updates.
+      if (readerId == currentUserId) return;
+
       // Extract read receipt fields.
       final messageId = data['messageId']?.toString();
       final messageIds = data['messageIds'];
@@ -517,8 +528,6 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           lastReadMessageId == null) {
         return;
       }
-
-      final currentUserId = _currentUserId();
 
       // Determine which message IDs should be marked as READ.
       final targetIds = <String>{};

@@ -202,20 +202,20 @@ mod tests {
 
     #[test]
     fn build_token_empty_secret_fails() {
-        let result = build_token("", 3_600_000, 1, "user", "access", "jti1");
+        let result = build_token("", 3_600_000, 1, "user", "access", "jti1", false);
         assert!(result.is_err(), "empty secret should fail");
     }
 
     #[test]
     fn build_token_short_secret_fails() {
-        let result = build_token("short", 3_600_000, 1, "user", "access", "jti1");
+        let result = build_token("short", 3_600_000, 1, "user", "access", "jti1", false);
         assert!(result.is_err(), "short secret should fail");
     }
 
     #[test]
     fn build_token_valid_secret_succeeds() {
         let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
-        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1");
+        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1", false);
         assert!(
             token.is_ok(),
             "valid secret should succeed: {:?}",
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn parse_token_with_valid_secret_succeeds() -> anyhow::Result<()> {
         let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
-        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1")?;
+        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1", false)?;
         let result = parse_token(Some(&format!("Bearer {token}")), secret, false);
         assert!(result.valid, "parse should succeed");
         assert_eq!(result.user_id, Some(1));
@@ -237,7 +237,7 @@ mod tests {
     #[test]
     fn parse_token_empty_secret_fails() -> anyhow::Result<()> {
         let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
-        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1")?;
+        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1", false)?;
         let result = parse_token(Some(&token), "", false);
         assert!(!result.valid, "empty secret should fail validation");
         Ok(())
@@ -246,9 +246,29 @@ mod tests {
     #[test]
     fn parse_token_short_secret_fails() -> anyhow::Result<()> {
         let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
-        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1")?;
+        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1", false)?;
         let result = parse_token(Some(&token), "short", false);
         assert!(!result.valid, "short secret should fail validation");
+        Ok(())
+    }
+
+    #[test]
+    fn build_token_with_remember_me_sets_claim() -> anyhow::Result<()> {
+        let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
+        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1", true)?;
+        let result = parse_token(Some(&format!("Bearer {token}")), secret, false);
+        assert!(result.valid);
+        assert!(result.remember_me, "remember_me should be true in parsed token");
+        Ok(())
+    }
+
+    #[test]
+    fn build_token_without_remember_me_defaults_false() -> anyhow::Result<()> {
+        let secret = "a-valid-secret-that-is-exactly-sixty-four-bytes-long-for-testing-ok!!!";
+        let token = build_token(secret, 3_600_000, 1, "user", "access", "jti1", false)?;
+        let result = parse_token(Some(&format!("Bearer {token}")), secret, false);
+        assert!(result.valid);
+        assert!(!result.remember_me, "remember_me should be false by default");
         Ok(())
     }
 }
