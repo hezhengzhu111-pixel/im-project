@@ -36,6 +36,8 @@ pub struct AppConfig {
     pub jwt_expiration_ms: i64,
     pub refresh_secret: String,
     pub refresh_expiration_ms: i64,
+    /// Longer refresh expiration when rememberMe is true (default: 30 days).
+    pub remember_me_refresh_expiration_ms: i64,
     pub ws_ticket_ttl_seconds: u64,
     pub revoked_token_ttl_seconds: u64,
     pub resource_cache_ttl_seconds: u64,
@@ -161,6 +163,10 @@ impl AppConfig {
             jwt_expiration_ms: env_i64("JWT_EXPIRATION_MS", 86_400_000),
             refresh_secret: env_string("AUTH_REFRESH_SECRET", DEFAULT_REFRESH_SECRET),
             refresh_expiration_ms: env_i64("AUTH_REFRESH_EXPIRATION_MS", 604_800_000),
+            remember_me_refresh_expiration_ms: env_i64(
+                "IM_REMEMBER_ME_REFRESH_EXPIRATION_MS",
+                2_592_000_000, // 30 days
+            ),
             ws_ticket_ttl_seconds: env_u64("AUTH_WS_TICKET_TTL_SECONDS", 30),
             revoked_token_ttl_seconds: env_u64("AUTH_REVOKE_TOKEN_TTL_SECONDS", 86_400),
             resource_cache_ttl_seconds: env_u64("AUTH_RESOURCE_CACHE_TTL_SECONDS", 604_800),

@@ -97,7 +97,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(status: AuthStatus.loading, error: null, errorCode: null);
     try {
       final response = await _repository.login(
-        LoginRequest(username: username, password: password),
+        LoginRequest(
+          username: username,
+          password: password,
+          rememberMe: rememberMe,
+        ),
       );
       state = AuthState(
         user: response.user,
@@ -272,10 +276,26 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
     } catch (e, st) {
       AppLogger.instance.error(
-          'WS ticket fetch failed, connecting without ticket', e, st, 'ws');
+          'WS ticket fetch failed', e, st, 'ws');
     }
-    // Fallback: connect without ticket (development mode)
-    _wsClient.connect(_buildWsUrl(normalizedUserId));
+
+    // Only allow unauthenticated WS connection in development mode.
+    const appEnv = String.fromEnvironment('APP_ENV', defaultValue: '');
+    final isDev = appEnv.isEmpty ||
+        appEnv == 'dev' ||
+        appEnv == 'development' ||
+        appEnv == 'test';
+    if (isDev) {
+      AppLogger.instance.warn(
+          'WS ticket unavailable, falling back to no-ticket connection (dev only)');
+      _wsClient.connect(_buildWsUrl(normalizedUserId));
+    } else {
+      AppLogger.instance.error(
+          'WS ticket unavailable, refusing to connect without ticket in production',
+          Exception('ws_ticket_unavailable'),
+          null,
+          'ws');
+    }
   }
 
   String _buildWsUrl(String userId, [String? ticket]) {

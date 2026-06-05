@@ -72,6 +72,7 @@ where
 pub(crate) async fn issue_token(
     state: &AppState,
     user: &UserRecord,
+    remember_me: bool,
 ) -> Result<TokenPairDto, AppError> {
     auth_api::issue_token_pair(
         state,
@@ -83,6 +84,7 @@ pub(crate) async fn issue_token(
             email: user.email.clone(),
             phone: user.phone.clone(),
             permissions: Vec::new(),
+            remember_me,
         },
     )
     .await

@@ -167,6 +167,14 @@ pub(crate) async fn issue_token_pair(
     upsert_user_resource(state, &request).await?;
     let access_jti = Uuid::new_v4().to_string();
     let refresh_jti = Uuid::new_v4().to_string();
+
+    // Use longer refresh expiration when rememberMe is true.
+    let refresh_expiration_ms = if request.remember_me {
+        state.config.remember_me_refresh_expiration_ms
+    } else {
+        state.config.refresh_expiration_ms
+    };
+
     let dto = TokenPairDto {
         access_token: Some(build_token(
             &state.config.jwt_secret,
@@ -178,21 +186,21 @@ pub(crate) async fn issue_token_pair(
         )?),
         refresh_token: Some(build_token(
             &state.config.refresh_secret,
-            state.config.refresh_expiration_ms,
+            refresh_expiration_ms,
             user_id,
             &username,
             "refresh",
             &refresh_jti,
         )?),
         expires_in_ms: Some(state.config.jwt_expiration_ms),
-        refresh_expires_in_ms: Some(state.config.refresh_expiration_ms),
+        refresh_expires_in_ms: Some(refresh_expiration_ms),
     };
     let mut redis = state.redis_manager.clone();
     redis::cmd("SET")
         .arg(format!("{}{}", REFRESH_JTI_KEY_PREFIX, user_id))
         .arg(refresh_jti)
         .arg("PX")
-        .arg(state.config.refresh_expiration_ms)
+        .arg(refresh_expiration_ms)
         .query_async::<()>(&mut redis)
         .await?;
     Ok(dto)

@@ -125,6 +125,8 @@ pub(crate) struct IssueTokenRequest {
     pub phone: Option<String>,
     #[serde(default, deserialize_with = "null_to_default")]
     pub permissions: Vec<String>,
+    #[serde(default)]
+    pub remember_me: bool,
 }
 
 /// 刷新令牌请求体，支持从请求体 JSON 或 Cookie 中获取 refresh token。

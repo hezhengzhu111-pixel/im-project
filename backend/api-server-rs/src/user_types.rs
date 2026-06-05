@@ -28,6 +28,8 @@ pub(crate) struct MessageSettings {
 pub(crate) struct LoginRequest {
     pub(crate) username: String,
     pub(crate) password: String,
+    #[serde(default)]
+    pub(crate) remember_me: bool,
 }
 
 #[derive(Debug, Deserialize)]
