@@ -126,7 +126,7 @@ void main() {
           'alg': 'rust-x25519-x3dh-dr-v1',
           'senderDeviceId': 'device-1',
           'recipientDeviceIds': ['device-2'],
-          'sessionId': '1_private_2',
+          'sessionId': 'p_1_2',
           'wire': 'wire-data',
         },
       });

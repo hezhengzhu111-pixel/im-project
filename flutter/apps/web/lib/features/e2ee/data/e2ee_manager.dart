@@ -109,7 +109,7 @@ class E2eeManager {
     } else {
       // Device already registered — heartbeat + OTK replenishment.
       try {
-        await api.heartbeat();
+        await api.heartbeatDevice(_deviceId);
       } catch (_) {
         // Heartbeat failure is non-fatal; continue with local state.
       }
@@ -257,7 +257,9 @@ class E2eeManager {
 
       await metaStore.setSessionStatus(sessionId, 'negotiating');
       return true;
-    } catch (e) {
+    } catch (e, st) {
+      // ignore: avoid_print
+      print('[e2ee] initiateNegotiation FAILED: $e\n$st');
       await metaStore.clearPendingHandshake(sessionId);
       await metaStore.setSessionStatus(sessionId, 'failed');
       return false;
@@ -335,6 +337,11 @@ class E2eeManager {
         remoteIdentityKeyBase64: senderIdentityKey,
         remoteHandshakeBase64: handshake,
       );
+
+      final consumedOtkId = inboundResult['otk_id'] as int?;
+      if (consumedOtkId != null) {
+        await keyStore.markOneTimePreKeyConsumed(consumedOtkId);
+      }
 
       // Save session state as v3 envelope.
       final stateBase64 = inboundResult['state'] as String;
@@ -528,6 +535,76 @@ class E2eeManager {
     }
   }
 
+  /// Reconcile local E2EE state with the server-side negotiation state.
+  ///
+  /// This is the recovery path for devices that missed websocket negotiation
+  /// events while offline. It never recreates cryptographic state in Dart; it
+  /// only exposes locally persisted Rust session state when the server confirms
+  /// the channel is encrypted, or purges stale local state when the server says
+  /// the channel has been disabled/rejected.
+  Future<String> syncSessionStatus(String sessionId) async {
+    await init();
+
+    try {
+      final remote = await api.getSessionStatus(sessionId);
+      final remoteStatus = remote['status']?.toString() ?? 'plaintext';
+
+      if (remoteStatus == 'encrypted') {
+        final existingRemoteDeviceId =
+            await metaStore.getRemoteDeviceId(sessionId);
+        if (existingRemoteDeviceId != null &&
+            existingRemoteDeviceId.isNotEmpty) {
+          final stateBase64 = await sessionStore.getSession(
+            sessionId: sessionId,
+            localDeviceId: _deviceId,
+            remoteUserId: _extractPeerId(sessionId),
+            remoteDeviceId: existingRemoteDeviceId,
+          );
+          if (stateBase64 != null) {
+            await metaStore.setSessionStatus(sessionId, 'encrypted');
+            _loadedSessions.add(sessionId);
+            return 'encrypted';
+          }
+        }
+
+        final recovered = await sessionStore.findSessionByLocalDevice(
+          sessionId: sessionId,
+          localDeviceId: _deviceId,
+        );
+        if (recovered != null && recovered.remoteDeviceId.isNotEmpty) {
+          await metaStore.setRemoteDeviceId(
+            sessionId,
+            recovered.remoteDeviceId,
+          );
+          await metaStore.setSessionStatus(sessionId, 'encrypted');
+          _loadedSessions.add(sessionId);
+          return 'encrypted';
+        }
+
+        await metaStore.setSessionStatus(sessionId, 'failed');
+        return 'failed';
+      }
+
+      if (remoteStatus == 'pending') {
+        await metaStore.setSessionStatus(sessionId, 'negotiating');
+        return 'negotiating';
+      }
+
+      if (remoteStatus == 'plaintext' || remoteStatus == 'rejected') {
+        await sessionStore.deleteSession(sessionId);
+        await metaStore.clearSession(sessionId);
+        await metaStore.setSessionStatus(sessionId, 'plaintext');
+        _loadedSessions.remove(sessionId);
+        return 'plaintext';
+      }
+
+      await metaStore.setSessionStatus(sessionId, 'failed');
+      return 'failed';
+    } catch (_) {
+      return metaStore.getSessionStatus(sessionId);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Internal Helpers
   // ---------------------------------------------------------------------------
@@ -597,10 +674,12 @@ class E2eeManager {
 
   /// Extract the peer user ID from a session ID.
   ///
-  /// Session ID format: `{userId}_private_{targetId}`.
+  /// Session ID format: `p_{id_a}_{id_b}`.
   /// Returns the targetId portion.
   String _extractPeerId(String sessionId) {
-    final parts = sessionId.split('_private_');
+    final parts = sessionId.startsWith('p_')
+        ? sessionId.substring(2).split('_')
+        : sessionId.split('_');
     if (parts.length == 2) {
       if (currentUserId == null) {
         throw StateError('currentUserId is null, cannot determine peer');

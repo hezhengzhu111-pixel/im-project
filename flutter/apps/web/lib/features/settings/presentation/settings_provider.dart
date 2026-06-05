@@ -55,12 +55,8 @@ class SettingsNotifier extends StateNotifier<UserSettings?> {
 
   Future<void> clearCache() async {
     try {
-      // 清除 localStorage 中的设置缓存
-      getPlatformAdapter().clearLocalStorage();
-
-      // 清除 IndexedDB 中的离线数据（如果有）
-      // 注意：IndexedDB 清理需要根据实际使用的数据库名称调整
-      // await IndexedDBFactory.instance.deleteDatabase('im_app_cache');
+      // 清除 localStorage 和 IndexedDB 中的缓存
+      await getPlatformAdapter().clearLocalStorage();
 
       // 清除后重新从服务器加载设置，触发 UI 刷新
       await loadSettings();

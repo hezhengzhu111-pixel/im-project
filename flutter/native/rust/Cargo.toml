@@ -7,6 +7,10 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "staticlib"]
 
+[features]
+default = ["native"]
+native = ["tokio", "reqwest", "rusqlite", "keyring", "tokio-tungstenite"]
+
 [dependencies]
 flutter_rust_bridge = "=2.12.0"
 e2ee-core = { path = "../../../backend/e2ee-core" }
@@ -16,15 +20,18 @@ bincode = "1"
 anyhow = "1"
 base64 = "0.22"
 sha2 = "0.10"
-tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
-rusqlite = { version = "0.28", features = ["bundled"] }
-keyring = "2"
 aes-gcm = "0.10"
 rand_core = "0.6"
+getrandom = { version = "0.2", features = ["js"] }
 zeroize = "1"
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "js"] }
 chrono = { version = "0.4", features = ["serde"] }
 lru = "0.11"
-tokio-tungstenite = { version = "0.20", features = ["native-tls"] }
 futures-util = "0.3"
+
+# Native-only dependencies (not compiled for WASM)
+tokio = { version = "1", features = ["full"], optional = true }
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], optional = true }
+rusqlite = { version = "0.28", features = ["bundled"], optional = true }
+keyring = { version = "2", optional = true }
+tokio-tungstenite = { version = "0.20", features = ["native-tls"], optional = true }

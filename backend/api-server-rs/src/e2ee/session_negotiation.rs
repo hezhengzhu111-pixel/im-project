@@ -2,7 +2,7 @@ use super::*;
 use crate::auth::identity_from_headers;
 use crate::error::AppError;
 use crate::web::AppState;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::Json;
 use im_rs_common::api::ApiResponse;
@@ -217,6 +217,41 @@ pub(crate) async fn pending_encryption_requests(
     }
 
     Ok(Json(ApiResponse::success(requests)))
+}
+
+pub(crate) async fn get_encryption_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<Json<ApiResponse<E2eeNegotiationStatusDto>>, AppError> {
+    let identity = identity_from_headers(&headers, &state.config)?;
+    validate_session_id(&session_id)?;
+    ensure_e2ee_session_participant(&state.db, identity.user_id, &session_id).await?;
+
+    let negotiation = load_negotiation_state(&state.db, &session_id).await?;
+    let dto = if let Some((status, requester_id, target_user_id, state_version, updated_time)) =
+        negotiation
+    {
+        E2eeNegotiationStatusDto {
+            session_id,
+            status,
+            requester_id: Some(requester_id.to_string()),
+            target_user_id: Some(target_user_id.to_string()),
+            updated_time: Some(updated_time.and_utc().to_rfc3339()),
+            state_version,
+        }
+    } else {
+        E2eeNegotiationStatusDto {
+            session_id,
+            status: "plaintext".to_string(),
+            requester_id: None,
+            target_user_id: None,
+            updated_time: None,
+            state_version: 0,
+        }
+    };
+
+    Ok(Json(ApiResponse::success(dto)))
 }
 
 /// 接受端到端加密协商。

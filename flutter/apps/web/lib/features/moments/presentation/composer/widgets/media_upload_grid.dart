@@ -32,7 +32,7 @@ class MediaUploadGrid extends StatelessWidget {
   static const int maxVideoSize = 100 * 1024 * 1024; // 100MB
 
   Future<void> _pickFiles(BuildContext context) async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.media,
       allowMultiple: true,
     );
@@ -75,20 +75,21 @@ class MediaUploadGrid extends StatelessWidget {
             ...files.asMap().entries.map((entry) {
               return _buildPreviewItem(context, entry.key, entry.value);
             }),
-            if (files.length < maxFiles)
-              _buildAddButton(context),
+            if (files.length < maxFiles) _buildAddButton(context),
           ],
         ),
         const SizedBox(height: 8),
         Text(
           AppLocalizations.of(context)!.momentsAddMedia(maxFiles),
-          style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+          style: TextStyle(
+              fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
         ),
       ],
     );
   }
 
-  Widget _buildPreviewItem(BuildContext context, int index, MediaUploadItem item) {
+  Widget _buildPreviewItem(
+      BuildContext context, int index, MediaUploadItem item) {
     final theme = Theme.of(context);
 
     return Stack(
@@ -106,12 +107,15 @@ class MediaUploadGrid extends StatelessWidget {
                 ? Stack(
                     alignment: Alignment.center,
                     children: [
-                      Icon(Icons.videocam, color: theme.colorScheme.onSurfaceVariant),
+                      Icon(Icons.videocam,
+                          color: theme.colorScheme.onSurfaceVariant),
                       Positioned(
                         bottom: 4,
                         child: Text(
                           item.fileName,
-                          style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: theme.colorScheme.onSurfaceVariant),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -121,7 +125,8 @@ class MediaUploadGrid extends StatelessWidget {
                 : Image.memory(
                     item.bytes,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Icon(Icons.broken_image, color: theme.colorScheme.onSurfaceVariant),
+                    errorBuilder: (_, __, ___) => Icon(Icons.broken_image,
+                        color: theme.colorScheme.onSurfaceVariant),
                   ),
           ),
         ),
@@ -159,7 +164,8 @@ class MediaUploadGrid extends StatelessWidget {
             color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
             style: BorderStyle.solid,
           ),
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+          color:
+              theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         ),
         child: Icon(
           Icons.add,
