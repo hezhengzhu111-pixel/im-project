@@ -45,6 +45,7 @@ class LoginRequest with _$LoginRequest {
   const factory LoginRequest({
     required String username,
     required String password,
+    @Default(false) bool rememberMe,
   }) = _LoginRequest;
 
   factory LoginRequest.fromJson(Map<String, dynamic> json) =>

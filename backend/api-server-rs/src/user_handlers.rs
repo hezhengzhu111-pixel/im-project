@@ -31,7 +31,7 @@ pub(crate) async fn login(
         return Err(AppError::Unauthorized("用户名或密码错误".to_string()));
     }
 
-    let token_pair = issue_token(&state, &user).await?;
+    let token_pair = issue_token(&state, &user, request.remember_me).await?;
     sqlx::query("UPDATE service_user_service_db.users SET last_login_time = NOW() WHERE id = ?")
         .bind(user.id)
         .execute(&state.db)

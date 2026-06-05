@@ -147,6 +147,7 @@ mod tests {
             jwt_expiration_ms: 86_400_000,
             refresh_secret: "b".repeat(64),
             refresh_expiration_ms: 604_800_000,
+            remember_me_refresh_expiration_ms: 2_592_000_000,
             ws_ticket_ttl_seconds: 30,
             revoked_token_ttl_seconds: 86_400,
             resource_cache_ttl_seconds: 604_800,
