@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
-import 'package:im_core_flutter/src/logging/app_logger.dart';
+import 'package:im_core_flutter/im_core_flutter.dart';
 import '../data/settings_api.dart';
 
 class SettingsNotifier extends StateNotifier<UserSettings?> {

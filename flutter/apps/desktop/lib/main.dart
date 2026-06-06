@@ -19,7 +19,7 @@ import 'core/logging/app_logger.dart';
 import 'core/settings/settings_persistence.dart';
 import 'features/e2ee/data/desktop_key_store.dart';
 import 'features/e2ee/data/desktop_session_store.dart';
-import 'package:im_shared_features/src/e2ee/data/e2ee_providers.dart';
+import 'package:im_shared_features/e2ee.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:im_shared_features/src/chat/chat.dart';
+import 'package:im_shared_features/chat.dart';
 
 void main() {
   late MessagePipeline pipeline;

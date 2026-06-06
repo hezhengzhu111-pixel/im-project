@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/di/platform_providers.dart';
 import '../../../l10n/app_localizations.dart';
-import 'package:im_shared_features/src/settings/settings.dart';
+import 'package:im_shared_features/settings.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});

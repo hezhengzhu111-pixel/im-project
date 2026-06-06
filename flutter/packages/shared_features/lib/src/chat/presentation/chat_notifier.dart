@@ -5,7 +5,7 @@ import '../data/message_api.dart';
 import '../data/message_config.dart';
 import '../data/message_pipeline.dart';
 import 'chat_state.dart';
-import 'package:im_core_flutter/src/logging/app_logger.dart';
+import 'package:im_core_flutter/im_core_flutter.dart';
 
 /// Simplified chat notifier for desktop (no IndexedDB outbox).
 class ChatNotifier extends StateNotifier<ChatState> {

@@ -1,10 +1,10 @@
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:im_shared_features/src/auth/auth.dart';
-import 'package:im_shared_features/src/chat/chat.dart';
-import 'package:im_shared_features/src/contacts/contacts.dart';
-import 'package:im_shared_features/src/group/group.dart';
-import 'package:im_shared_features/src/moments/moments.dart';
+import 'package:im_shared_features/auth.dart';
+import 'package:im_shared_features/chat.dart';
+import 'package:im_shared_features/contacts.dart';
+import 'package:im_shared_features/group.dart';
+import 'package:im_shared_features/moments.dart';
 import 'package:im_desktop/features/settings/settings.dart';
 import '../shell/main_shell.dart';
 

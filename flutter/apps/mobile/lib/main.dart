@@ -21,7 +21,7 @@ import 'core/di/platform_providers.dart';
 import 'core/logging/app_logger.dart';
 import 'features/e2ee/data/mobile_key_store.dart';
 import 'features/e2ee/data/mobile_session_store.dart';
-import 'package:im_shared_features/src/e2ee/data/e2ee_providers.dart';
+import 'package:im_shared_features/e2ee.dart';
 
 /// Entry point for the IM Mobile application.
 ///

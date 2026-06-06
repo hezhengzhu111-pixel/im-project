@@ -1,2 +1,2 @@
-export 'package:im_core_flutter/src/logging/app_logger.dart';
-export 'package:im_core_flutter/src/logging/error_sanitizer.dart';
+export 'package:im_core_flutter/im_core_flutter.dart' show AppLogger;
+export 'package:im_core_flutter/im_core_flutter.dart' show ErrorSanitizer;
