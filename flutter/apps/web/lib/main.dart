@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
-import 'package:im_core/src/generated/frb_generated.dart';
 import 'app.dart';
 import 'adapters/web_file_picker_adapter.dart';
 import 'adapters/web_notification_adapter.dart';
@@ -20,7 +19,7 @@ import 'features/e2ee/data/e2ee_providers.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await RustLib.init();
+  await RustBridgeInitializer.init();
   initNetworkStatus();
   const env = String.fromEnvironment('APP_ENV', defaultValue: 'development');
 

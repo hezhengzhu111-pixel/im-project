@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:im_core/src/generated/frb_generated.dart';
+import 'package:im_core/core.dart';
 import 'app.dart';
 import 'adapters/desktop_network_adapter.dart';
 import 'adapters/desktop_storage_adapter.dart';
@@ -33,7 +33,7 @@ void main() async {
   final savedThemeMode = settingsPersistence.getThemeMode();
 
   // Initialize Flutter Rust Bridge
-  await RustLib.init();
+  await RustBridgeInitializer.init();
 
   // Initialize logger
   AppLogger.init(
