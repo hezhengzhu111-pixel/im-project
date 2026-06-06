@@ -8,6 +8,7 @@ import '../data/message_config.dart';
 import '../data/message_merge_utils.dart';
 import '../data/message_pipeline.dart';
 import '../data/message_outbox.dart';
+import '../data/read_receipt_handler.dart';
 import '../data/session_key_codec.dart';
 import '../../e2ee/data/e2ee_manager.dart';
 import '../../e2ee/data/e2ee_meta_store.dart';
@@ -587,73 +588,24 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       final messages = state.messages[sessionId];
       if (messages == null || messages.isEmpty) return;
 
-      // Validate reader identity: require readerId or userId.
-      final readerId = data['readerId']?.toString() ??
-          data['userId']?.toString();
-      if (readerId == null || readerId.isEmpty) return;
-
       final currentUserId = _currentUserId();
       if (currentUserId == null || currentUserId.isEmpty) return;
 
-      // Skip self-read receipts to avoid incorrect status updates.
-      if (readerId == currentUserId) return;
-
-      // Extract read receipt fields.
-      final messageId = data['messageId']?.toString();
-      final messageIds = data['messageIds'];
-      final lastReadMessageId = data['lastReadMessageId']?.toString();
-
-      // If no specific message identifiers, don't mark anything as READ.
-      if (messageId == null &&
-          messageIds == null &&
-          lastReadMessageId == null) {
-        return;
-      }
-
-      // Determine which message IDs should be marked as READ.
-      final targetIds = <String>{};
-
-      if (messageId != null) {
-        // Single message read receipt.
-        targetIds.add(messageId);
-      }
-
-      if (messageIds is List) {
-        // Multiple message read receipts.
-        for (final id in messageIds) {
-          targetIds.add(id.toString());
-        }
-      }
-
-      if (lastReadMessageId != null) {
-        // lastReadMessageId: mark all messages up to and including this one
-        // that were sent by the current user.
-        final lastReadIndex = messages.indexWhere(
-          (m) => m.id == lastReadMessageId || m.clientMessageId == lastReadMessageId,
-        );
-        if (lastReadIndex != -1) {
-          for (var i = 0; i <= lastReadIndex; i++) {
-            final msg = messages[i];
-            // Only mark messages sent by the current user as READ.
-            if (msg.senderId == currentUserId) {
-              targetIds.add(msg.id);
-            }
-          }
-        }
-      }
+      // Use the pure handler to compute target IDs.
+      final targetIds = ReadReceiptHandler.computeReadReceiptTargetIds(
+        sessionMessages: messages,
+        eventData: data,
+        currentUserId: currentUserId,
+      );
 
       if (targetIds.isEmpty) return;
 
-      final updated = messages.map((m) {
-        if (targetIds.contains(m.id) || targetIds.contains(m.clientMessageId)) {
-          // Don't mark messages sent by others as READ by us.
-          // Only mark our own messages as READ when we receive a read receipt.
-          if (m.senderId == currentUserId && m.status != 'READ') {
-            return m.copyWith(status: 'READ');
-          }
-        }
-        return m;
-      }).toList();
+      // Apply the updates.
+      final updated = ReadReceiptHandler.applyReadReceipts(
+        messages: messages,
+        targetIds: targetIds,
+        currentUserId: currentUserId,
+      );
 
       state = state.copyWith(messages: {...state.messages, sessionId: updated});
     } catch (e, st) {
