@@ -11,6 +11,7 @@ import '../data/message_outbox.dart';
 import '../data/read_receipt_handler.dart';
 import '../data/session_key_codec.dart';
 import '../data/e2ee_history_recovery.dart';
+import '../data/retryable_error_classifier.dart';
 import '../../e2ee/data/e2ee_manager.dart';
 import '../../e2ee/data/e2ee_meta_store.dart';
 import '../../e2ee/data/e2ee_sent_message_cache.dart';
@@ -1238,9 +1239,10 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         return null;
       }
 
-      // Only enqueue to outbox for network errors (retryable).
-      // Server validation errors (400/403/404) should fail immediately.
-      if (_isNetworkError(e)) {
+      // Only enqueue to outbox for retryable errors (network/temporary).
+      // Non-retryable errors (validation, permission, E2EE state) fail immediately.
+      final decision = RetryableErrorClassifier.classifySendError(e);
+      if (decision.retryable) {
         await _outbox.enqueue(
           sessionKey: sessionKey,
           receiverId: receiverId,
@@ -1254,7 +1256,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         );
         _updateMessageStatus(sessionKey, cid, 'PENDING');
       } else {
-        final errorMsg = _extractErrorMessage(e);
+        final errorMsg = decision.safeMessage ?? _extractErrorMessage(e);
         state = state.copyWith(error: errorMsg);
         _updateMessageStatus(sessionKey, cid, 'FAILED');
       }
@@ -1373,9 +1375,10 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       AppLogger.instance.error('Send group message failed', e, st);
       _analytics.trackEvent('message_send_failed');
 
-      // Only enqueue to outbox for network errors (retryable).
-      // Server validation errors (400/403/404) should fail immediately.
-      if (_isNetworkError(e)) {
+      // Only enqueue to outbox for retryable errors (network/temporary).
+      // Non-retryable errors (validation, permission) fail immediately.
+      final decision = RetryableErrorClassifier.classifySendError(e);
+      if (decision.retryable) {
         await _outbox.enqueue(
           sessionKey: sessionKey,
           receiverId: groupId,
@@ -1387,7 +1390,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
         );
         _updateMessageStatus(sessionKey, cid, 'PENDING');
       } else {
-        final errorMsg = _extractErrorMessage(e);
+        final errorMsg = decision.safeMessage ?? _extractErrorMessage(e);
         state = state.copyWith(error: errorMsg);
         _updateMessageStatus(sessionKey, cid, 'FAILED');
       }
@@ -1642,33 +1645,6 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       return sessionKey.substring('g_'.length);
     }
     return sessionKey;
-  }
-
-  /// Check if an error is a transient network error (retryable).
-  /// Server validation errors (400/403/404) are NOT network errors.
-  bool _isNetworkError(Object error) {
-    if (error is Exception) {
-      final msg = error.toString().toLowerCase();
-      // Network-level failures
-      if (msg.contains('socketexception') ||
-          msg.contains('connection refused') ||
-          msg.contains('connection timed out') ||
-          msg.contains('network is unreachable') ||
-          msg.contains('network error') ||
-          msg.contains('networkerror') ||
-          msg.contains('broken pipe') ||
-          msg.contains('connection reset')) {
-        return true;
-      }
-      // Dio-specific: connection timeout, send timeout, receive timeout
-      if (msg.contains('connecttimeout') ||
-          msg.contains('sendtimeout') ||
-          msg.contains('receivetimeout')) {
-        return true;
-      }
-    }
-    // Default: treat as non-network (server error) — fail immediately.
-    return false;
   }
 
   /// Extract a user-facing error message from an exception.
