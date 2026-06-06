@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import 'package:im_core_flutter/im_core_flutter.dart';
 import '../../data/file_api.dart';
 import '../../data/file_providers.dart';
-import '../../../../core/di/platform_providers.dart';
 
 class MessageInput extends ConsumerStatefulWidget {
   const MessageInput({
