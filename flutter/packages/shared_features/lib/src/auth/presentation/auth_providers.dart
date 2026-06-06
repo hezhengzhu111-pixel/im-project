@@ -6,7 +6,7 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
-import '../../../core/di/platform_providers.dart';
+import 'package:im_core_flutter/im_core_flutter.dart';
 import '../data/auth_repository_impl.dart';
 import 'auth_provider.dart';
 

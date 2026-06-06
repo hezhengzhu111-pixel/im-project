@@ -1,0 +1,24 @@
+name: im_shared_features
+description: Shared business features for IM Desktop and Mobile apps
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.5.1
+  go_router: ^13.0.0
+  im_core:
+    path: ../core
+  im_core_flutter:
+    path: ../core_flutter
+  im_ui:
+    path: ../ui
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  very_good_analysis: ^5.1.0

@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/platform_providers.dart';
-import '../../auth/presentation/auth_providers.dart';
+import 'package:im_mobile/features/auth/auth.dart';
 import 'e2ee_api.dart';
 import 'e2ee_key_store.dart';
 import 'e2ee_manager.dart';

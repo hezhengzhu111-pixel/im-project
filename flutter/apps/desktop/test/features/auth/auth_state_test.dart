@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:im_desktop/features/auth/presentation/auth_provider.dart';
-import 'package:im_desktop/features/auth/domain/auth_status.dart';
+import 'package:im_desktop/features/auth/auth.dart';
 import 'package:im_core/core.dart';
 
 void main() {

@@ -73,7 +73,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               ),
               const SizedBox(height: 16),
               const Text(
-                'IM Mobile',
+                'IM',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,

@@ -7,7 +7,7 @@ import 'package:im_core/core.dart';
 import 'package:im_mobile/app.dart';
 import 'package:im_mobile/core/di/platform_providers.dart';
 import 'package:im_mobile/core/router/app_router.dart';
-import 'package:im_mobile/features/auth/presentation/login_page.dart';
+import 'package:im_mobile/features/auth/auth.dart';
 
 // ---------------------------------------------------------------------------
 // Minimal mock implementations for platform ports

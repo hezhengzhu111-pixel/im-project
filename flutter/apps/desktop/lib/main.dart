@@ -78,8 +78,8 @@ void main() async {
       errorReporterProvider.overrideWithValue(NoopErrorReporterAdapter()),
       pushProvider.overrideWithValue(NoopPushAdapter()),
       // 设置持久化（从本地存储恢复）
-      languageProvider.overrideWith((ref) => LanguageNotifier(savedLanguage)),
-      themeModeProvider.overrideWith((ref) => ThemeModeNotifier(savedThemeMode)),
+      languageProvider.overrideWith((ref) => savedLanguage),
+      themeModeProvider.overrideWith((ref) => savedThemeMode),
     ],
     child: App(settingsPersistence: settingsPersistence),
   ));
