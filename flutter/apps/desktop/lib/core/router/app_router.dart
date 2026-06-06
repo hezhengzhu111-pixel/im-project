@@ -1,11 +1,11 @@
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:im_desktop/features/auth/auth.dart';
-import 'package:im_desktop/features/chat/chat.dart';
-import 'package:im_desktop/features/contacts/contacts.dart';
-import 'package:im_desktop/features/group/group.dart';
+import 'package:im_shared_features/src/auth/auth.dart';
+import 'package:im_shared_features/src/chat/chat.dart';
+import 'package:im_shared_features/src/contacts/contacts.dart';
+import 'package:im_shared_features/src/group/group.dart';
+import 'package:im_shared_features/src/moments/moments.dart';
 import 'package:im_desktop/features/settings/settings.dart';
-import 'package:im_desktop/features/moments/moments.dart';
 import '../shell/main_shell.dart';
 
 // 路由名称常量
