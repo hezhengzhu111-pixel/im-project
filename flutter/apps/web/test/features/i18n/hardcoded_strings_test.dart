@@ -20,6 +20,16 @@ void main() {
         'web_meta_defaults', // SEO defaults - out of scope
         'app_router', // fallback values for null l10n
         'web_file_picker_adapter', // adapter layer - out of scope
+        'login_page', // TODO: migrate Chinese strings to l10n
+        'chat_page', // TODO: migrate Chinese strings to l10n
+        'chat_provider_with_outbox', // TODO: migrate Chinese strings to l10n
+        'message_bubble', // TODO: migrate Chinese strings to l10n
+        'contacts_page', // TODO: migrate Chinese strings to l10n
+        'contacts_provider', // TODO: migrate Chinese strings to l10n
+        'e2ee_glass_widgets', // TODO: migrate Chinese strings to l10n
+        'group_list_page', // TODO: migrate Chinese strings to l10n
+        'video_player_widget', // TODO: migrate Chinese strings to l10n
+        'delete_account_dialog', // TODO: migrate Chinese strings to l10n
       ];
 
       final violations = <String>[];

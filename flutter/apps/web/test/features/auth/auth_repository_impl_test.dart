@@ -22,7 +22,7 @@ void main() {
         required T Function(Map<String, dynamic>) fromJson,
       }) async {
         expect(path, UserEndpoints.login);
-        expect(body, {'username': 'alice', 'password': 'secret'});
+        expect(body, {'username': 'alice', 'password': 'secret', 'rememberMe': false});
         return ApiResponse<T>(
           code: 200,
           message: 'ok',

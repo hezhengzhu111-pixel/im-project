@@ -9,6 +9,7 @@ import 'package:im_web/core/di/platform_providers.dart';
 import 'package:im_web/core/di/third_party_providers.dart';
 import 'package:im_web/core/network/network_providers.dart';
 import 'package:im_web/core/network/network_status_provider.dart';
+import 'package:im_web/core/theme/glass_theme.dart';
 import 'package:im_web/features/chat/data/file_api.dart';
 import 'package:im_web/features/chat/presentation/chat_providers.dart';
 import 'package:im_web/features/chat/presentation/chat_provider_with_outbox.dart';
@@ -188,6 +189,7 @@ void main() {
         locale: const Locale('en'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        theme: ThemeData(extensions: [GlassTheme.light]),
         home: Scaffold(
           body: MessageInput(
             onSend: onSend ?? (_, __) {},
