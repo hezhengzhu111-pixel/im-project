@@ -8,6 +8,7 @@ import '../data/message_config.dart';
 import '../data/message_merge_utils.dart';
 import '../data/message_pipeline.dart';
 import '../data/message_outbox.dart';
+import '../data/session_key_codec.dart';
 import '../../e2ee/data/e2ee_manager.dart';
 import '../../e2ee/data/e2ee_meta_store.dart';
 import '../../e2ee/data/e2ee_sent_message_cache.dart';
@@ -1599,154 +1600,61 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   }
 
   String _normalizeIncomingSessionKey(String sessionKey) {
-    if (sessionKey.isEmpty) return sessionKey;
-    final exact = state.sessions.where((s) => s.id == sessionKey).firstOrNull;
-    if (exact != null) return exact.id;
-    if (sessionKey.startsWith('group_') || sessionKey.startsWith('g_')) {
-      return _sessionKeyForGroupTarget(sessionKey);
-    }
-    final group = state.sessions.where((s) {
-      final isGroup = s.type == 'group' || s.conversationType == 'group';
-      return isGroup &&
-          (s.targetId == sessionKey || s.conversationId == sessionKey);
-    }).firstOrNull;
-    if (group != null) return group.id;
-    return _sessionKeyForPrivateTarget(sessionKey);
+    return SessionKeyCodec.normalizeIncomingSessionKey(
+      sessionKey,
+      state.sessions,
+      currentUserId: _currentUserId(),
+    );
   }
 
   String _readConversationIdForSessionKey(String sessionKey) {
-    final session = state.sessions.where((s) => s.id == sessionKey).firstOrNull;
-    if (session != null) {
-      final isGroup =
-          session.type == 'group' || session.conversationType == 'group';
-      if (isGroup) {
-        return 'group_${session.targetId}';
-      }
-      return session.conversationId ?? session.targetId;
-    }
-    if (sessionKey.startsWith('group_')) return sessionKey;
-    if (sessionKey.startsWith('g_')) {
-      return 'group_${_groupIdFromSessionKey(sessionKey)}';
-    }
-    return _privateTargetFromSessionKey(sessionKey);
+    return SessionKeyCodec.readConversationIdForSessionKey(
+      sessionKey,
+      state.sessions,
+      currentUserId: _currentUserId(),
+    );
   }
 
   Set<String> _negotiationLookupKeys(String sessionId) {
-    final keys = <String>{sessionId};
-    if (sessionId.isEmpty) return keys;
-
-    final normalizedChatKey = _normalizeE2eeSessionKey(sessionId);
-    if (normalizedChatKey.isNotEmpty) keys.add(normalizedChatKey);
-
-    final session = state.sessions
-        .where((s) =>
-            s.id == normalizedChatKey ||
-            s.id == sessionId ||
-            s.conversationId == sessionId)
-        .firstOrNull;
-    if (session != null) {
-      keys.add(session.id);
-      if (session.conversationId != null) {
-        keys.add(session.conversationId!);
-      }
-      final isGroup =
-          session.type == 'group' || session.conversationType == 'group';
-      if (isGroup) {
-        keys.add(_groupSessionKey(session.targetId));
-      } else {
-        keys.add(_privateSessionKey(session.targetId));
-        final currentUserId = _currentUserId();
-        if (currentUserId != null && currentUserId.isNotEmpty) {
-          keys.add('p_${currentUserId}_${session.targetId}');
-          keys.add('p_${session.targetId}_${currentUserId}');
-        }
-      }
-    }
-    return keys;
+    return SessionKeyCodec.negotiationLookupKeys(
+      sessionId,
+      state.sessions,
+      currentUserId: _currentUserId(),
+    );
   }
 
   String _e2eeSessionIdForChatOrE2eeSession(String sessionId) {
-    if (sessionId.startsWith('p_')) return sessionId;
-    final session = state.sessions
-        .where((s) =>
-            s.id == sessionId ||
-            s.conversationId == sessionId ||
-            s.targetId == sessionId)
-        .firstOrNull;
-    if (session != null) {
-      final isGroup =
-          session.type == 'group' || session.conversationType == 'group';
-      return isGroup
-          ? session.id
-          : _e2eeSessionIdForPrivateTarget(session.targetId);
-    }
-    return _e2eeSessionIdForPrivateTarget(
-        _privateTargetFromSessionKey(sessionId));
+    return SessionKeyCodec.e2eeSessionIdForChatOrE2eeSession(
+      sessionId,
+      state.sessions,
+      currentUserId: _currentUserId(),
+    );
   }
 
   String _e2eeSessionIdForPrivateTarget(String targetId) {
-    final currentUserId = _currentUserId();
-    if (currentUserId == null || currentUserId.isEmpty || targetId.isEmpty) {
-      return targetId;
-    }
-    return _compareIds(currentUserId, targetId) <= 0
-        ? 'p_${currentUserId}_$targetId'
-        : 'p_${targetId}_$currentUserId';
+    return SessionKeyCodec.e2eeSessionIdForPrivate(
+        _currentUserId() ?? '', targetId);
   }
 
   String _normalizeE2eeSessionKey(String sessionId) {
-    final exact = state.sessions.where((s) => s.id == sessionId).firstOrNull;
-    if (exact != null) return exact.id;
-    if (sessionId.startsWith('p_')) {
-      return _sessionKeyForPrivateTarget(
-          _privateTargetFromE2eeSessionId(sessionId));
-    }
-    if (sessionId.startsWith('group_') || sessionId.startsWith('g_')) {
-      return _sessionKeyForGroupTarget(sessionId);
-    }
-    final session = state.sessions
-        .where((s) => s.conversationId == sessionId || s.targetId == sessionId)
-        .firstOrNull;
-    return session?.id ?? sessionId;
-  }
-
-  String _privateTargetFromE2eeSessionId(String sessionId) {
-    final currentUserId = _currentUserId();
-    final raw = sessionId.startsWith('p_') ? sessionId.substring(2) : sessionId;
-    return raw
-            .split('_')
-            .where((part) =>
-                part.isNotEmpty &&
-                (currentUserId == null || part != currentUserId))
-            .firstOrNull ??
-        sessionId;
+    return SessionKeyCodec.normalizeE2eeSessionKey(
+      sessionId,
+      state.sessions,
+      currentUserId: _currentUserId(),
+    );
   }
 
   String _privateSessionKey(String targetId) {
-    final currentUserId = _currentUserId();
-    if (currentUserId == null || currentUserId.isEmpty || targetId.isEmpty) {
-      return targetId;
-    }
-    return _compareIds(currentUserId, targetId) <= 0
-        ? '${currentUserId}_$targetId'
-        : '${targetId}_$currentUserId';
+    return SessionKeyCodec.privateSessionKey(_currentUserId() ?? '', targetId);
   }
 
   String _groupSessionKey(String groupId) {
-    final normalized = _groupIdFromSessionKey(groupId);
-    return normalized.isEmpty ? groupId : 'group_$normalized';
+    return SessionKeyCodec.groupSessionKey(groupId);
   }
 
   String _privateTargetFromSessionKey(String sessionKey) {
-    if (!sessionKey.contains('_')) return sessionKey;
-    final currentUserId = _currentUserId();
-    return sessionKey
-            .split('_')
-            .where((part) =>
-                part.isNotEmpty &&
-                (currentUserId == null || part != currentUserId))
-            .firstOrNull ??
-        sessionKey;
+    return SessionKeyCodec.privateTargetFromSessionKey(
+        sessionKey, _currentUserId());
   }
 
   String _groupIdFromSessionKey(String sessionKey) {
@@ -1757,18 +1665,6 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       return sessionKey.substring('g_'.length);
     }
     return sessionKey;
-  }
-
-  int _compareIds(String left, String right) {
-    final leftId = BigInt.tryParse(left);
-    final rightId = BigInt.tryParse(right);
-    if (leftId != null &&
-        rightId != null &&
-        leftId > BigInt.zero &&
-        rightId > BigInt.zero) {
-      return leftId.compareTo(rightId);
-    }
-    return left.compareTo(right);
   }
 
   /// Check if an error is a transient network error (retryable).
