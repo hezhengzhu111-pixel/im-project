@@ -1,19 +1,20 @@
 import 'dart:convert';
 
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'package:im_shared_features/e2ee.dart';
 
-/// Mobile implementation of [E2eeKeyStore] using [SharedPreferences].
+/// Mobile implementation of [E2eeKeyStore] using [FlutterSecureStorage].
 ///
-/// Replaces the web IndexedDB implementation with a simple key-value store
-/// that persists across app sessions on mobile.
+/// Uses OS-level secure storage (Keychain on iOS, Android Keystore) to protect
+/// E2EE key material. This is more secure than SharedPreferences which stores
+/// data in plaintext.
 class MobileKeyStore implements E2eeKeyStore {
-  late SharedPreferences _prefs;
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   @override
   Future<void> init() async {
-    _prefs = await SharedPreferences.getInstance();
+    // FlutterSecureStorage requires no explicit initialization.
   }
 
   // ---------------------------------------------------------------------------
@@ -22,12 +23,12 @@ class MobileKeyStore implements E2eeKeyStore {
 
   @override
   Future<void> saveKeyMaterial(String base64Bundle) async {
-    await _prefs.setString(_kKeyMaterial, base64Bundle);
+    await _storage.write(key: _kKeyMaterial, value: base64Bundle);
   }
 
   @override
   Future<String?> getKeyMaterial() async {
-    return _prefs.getString(_kKeyMaterial);
+    return _storage.read(key: _kKeyMaterial);
   }
 
   @override
@@ -62,12 +63,12 @@ class MobileKeyStore implements E2eeKeyStore {
 
   @override
   Future<void> saveDeviceId(String deviceId) async {
-    await _prefs.setString(_kDeviceId, deviceId);
+    await _storage.write(key: _kDeviceId, value: deviceId);
   }
 
   @override
   Future<String?> getDeviceId() async {
-    return _prefs.getString(_kDeviceId);
+    return _storage.read(key: _kDeviceId);
   }
 
   // ---------------------------------------------------------------------------
@@ -76,12 +77,12 @@ class MobileKeyStore implements E2eeKeyStore {
 
   @override
   Future<void> savePublicBundle(String bundleJson) async {
-    await _prefs.setString(_kPublicBundle, bundleJson);
+    await _storage.write(key: _kPublicBundle, value: bundleJson);
   }
 
   @override
   Future<String?> getPublicBundle() async {
-    return _prefs.getString(_kPublicBundle);
+    return _storage.read(key: _kPublicBundle);
   }
 
   // ---------------------------------------------------------------------------
@@ -90,31 +91,27 @@ class MobileKeyStore implements E2eeKeyStore {
 
   @override
   Future<void> clearKeyMaterial() async {
-    await _prefs.remove(_kKeyMaterial);
-    await _prefs.remove(_kPublicBundle);
+    await _storage.delete(key: _kKeyMaterial);
+    await _storage.delete(key: _kPublicBundle);
   }
 
   @override
   Future<void> clearAll() async {
-    final keys = _prefs.getKeys();
-    for (final key in keys) {
-      if (key.startsWith(_kPrefix)) {
-        await _prefs.remove(key);
-      }
-    }
+    await _storage.delete(key: _kKeyMaterial);
+    await _storage.delete(key: _kDeviceId);
+    await _storage.delete(key: _kPublicBundle);
   }
 
   @override
   void dispose() {
-    // SharedPreferences does not require explicit disposal.
+    // FlutterSecureStorage does not require explicit disposal.
   }
 
   // ---------------------------------------------------------------------------
   // Keys
   // ---------------------------------------------------------------------------
 
-  static const _kPrefix = 'e2ee_key_';
-  static const _kKeyMaterial = '${_kPrefix}material';
-  static const _kDeviceId = '${_kPrefix}device_id';
-  static const _kPublicBundle = '${_kPrefix}public_bundle';
+  static const _kKeyMaterial = 'e2ee_key_material';
+  static const _kDeviceId = 'e2ee_key_device_id';
+  static const _kPublicBundle = 'e2ee_key_public_bundle';
 }

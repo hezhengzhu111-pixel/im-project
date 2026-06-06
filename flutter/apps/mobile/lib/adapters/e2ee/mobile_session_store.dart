@@ -8,6 +8,7 @@ import 'package:im_shared_features/e2ee.dart';
 /// Mobile implementation of [E2eeSessionStore] using [SharedPreferences].
 ///
 /// Stores E2EE ratchet session states as v3 envelope JSON strings.
+// TODO(security): Move E2EE session state to secure storage or encrypted envelope.
 /// Mirrors the web IndexedDB implementation but uses platform-appropriate
 /// persistent key-value storage.
 class MobileSessionStore implements E2eeSessionStore {

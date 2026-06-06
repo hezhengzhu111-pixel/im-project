@@ -17,8 +17,8 @@ import 'adapters/services/noop_push_adapter.dart';
 import 'core/di/platform_providers.dart';
 import 'core/logging/app_logger.dart';
 import 'core/settings/settings_persistence.dart';
-import 'features/e2ee/data/desktop_key_store.dart';
-import 'features/e2ee/data/desktop_session_store.dart';
+import 'adapters/e2ee/desktop_key_store.dart';
+import 'adapters/e2ee/desktop_session_store.dart';
 import 'package:im_shared_features/e2ee.dart';
 
 void main() async {
