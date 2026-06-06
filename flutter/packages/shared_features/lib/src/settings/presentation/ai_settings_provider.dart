@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import 'package:im_core_flutter/src/logging/app_logger.dart';
 import '../data/ai_api.dart';
-import '../../../core/logging/app_logger.dart';
 
 class AiSettingsState {
   const AiSettingsState({

@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import 'package:im_core_flutter/src/logging/app_logger.dart';
 import '../data/settings_api.dart';
-import '../../../core/logging/app_logger.dart';
 
 class SettingsNotifier extends StateNotifier<UserSettings?> {
   SettingsNotifier(this._api, this._storage) : super(null);
@@ -56,12 +56,9 @@ class SettingsNotifier extends StateNotifier<UserSettings?> {
 
   Future<void> clearCache() async {
     try {
-      // 清除 SharedPreferences 中的设置缓存
       await _storage.clear();
-      // 重新从服务器加载设置，触发 UI 刷新
       await loadSettings();
     } catch (e) {
-      // 静默处理错误，不中断用户操作
       debugPrint('Clear cache failed: $e');
     }
   }

@@ -6,3 +6,4 @@ export 'src/chat/chat.dart';
 export 'src/contacts/contacts.dart';
 export 'src/group/group.dart';
 export 'src/moments/moments.dart';
+export 'src/settings/settings.dart';
