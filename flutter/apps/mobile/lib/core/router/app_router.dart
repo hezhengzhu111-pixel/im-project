@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:im_core_flutter/im_core_flutter.dart';
 import 'package:im_ui/im_ui.dart';
 
 import 'package:im_shared_features/auth.dart';
@@ -9,84 +10,10 @@ import 'package:im_shared_features/contacts.dart';
 import 'package:im_shared_features/group.dart';
 import 'package:im_shared_features/moments.dart';
 import '../../features/settings/settings.dart';
-import 'route_names.dart';
 
-/// Route metadata for auth guards.
-class RouteMeta {
-  const RouteMeta({
-    required this.title,
-    this.requiresAuth = true,
-    this.hideForAuth = false,
-    this.permission,
-  });
-
-  final String title;
-  final bool requiresAuth;
-  final bool hideForAuth;
-  final String? permission;
-}
-
-/// Simplified auth state for mobile router redirects.
-/// The real auth provider will be implemented in the auth feature.
-class MobileAuthState {
-  const MobileAuthState({
-    this.isAuthenticated = false,
-    this.isLoading = true,
-    this.permissions = const [],
-  });
-
-  final bool isAuthenticated;
-  final bool isLoading;
-  final List<String> permissions;
-}
-
-/// Auth state provider - will be replaced by the real auth provider.
-final mobileAuthStateProvider =
-    StateProvider<MobileAuthState>((ref) => const MobileAuthState());
-
-/// Route metadata map for redirect logic.
-final routeMetaMap = <String, RouteMeta>{
-  '/login': const RouteMeta(
-    title: 'Login',
-    requiresAuth: false,
-    hideForAuth: true,
-  ),
-  '/register': const RouteMeta(
-    title: 'Register',
-    requiresAuth: false,
-    hideForAuth: true,
-  ),
-  '/chat': const RouteMeta(title: 'Chat'),
-  '/contacts': const RouteMeta(title: 'Contacts'),
-  '/contacts/add': const RouteMeta(title: 'Add Friend'),
-  '/groups': const RouteMeta(title: 'Groups'),
-  '/groups/create': const RouteMeta(title: 'Create Group'),
-  '/moments': const RouteMeta(title: 'Moments'),
-  '/moments/notifications': const RouteMeta(title: 'Notifications'),
-  '/settings': const RouteMeta(title: 'Settings'),
-  '/settings/profile': const RouteMeta(title: 'Profile'),
-  '/settings/ai': const RouteMeta(title: 'AI Settings'),
-};
-
-/// Resolve [RouteMeta] for a given location by longest-prefix match.
-RouteMeta? resolveRouteMeta(String location) {
-  if (routeMetaMap.containsKey(location)) {
-    return routeMetaMap[location];
-  }
-  var bestMatch = '';
-  for (final key in routeMetaMap.keys) {
-    if (location.startsWith(key) &&
-        key.length > bestMatch.length &&
-        (key.length == location.length || location[key.length] == '/')) {
-      bestMatch = key;
-    }
-  }
-  return bestMatch.isEmpty ? null : routeMetaMap[bestMatch];
-}
-
-final _routerRefreshProvider = Provider<_RouterRefreshListenable>((ref) {
-  final refresh = _RouterRefreshListenable();
-  ref.listen<MobileAuthState>(mobileAuthStateProvider, (_, __) {
+final _routerRefreshProvider = Provider<RouterRefreshListenable>((ref) {
+  final refresh = RouterRefreshListenable();
+  ref.listen(authStateProvider, (_, __) {
     refresh.refresh();
   });
   ref.onDispose(refresh.dispose);
@@ -94,37 +21,19 @@ final _routerRefreshProvider = Provider<_RouterRefreshListenable>((ref) {
 });
 
 final routerProvider = Provider<GoRouter>((ref) {
+  final authState = ref.watch(authStateProvider);
   final refreshListenable = ref.watch(_routerRefreshProvider);
 
   return GoRouter(
     initialLocation: '/chat',
     refreshListenable: refreshListenable,
     redirect: (context, state) {
-      final authState = ref.read(mobileAuthStateProvider);
-      final isAuth = authState.isAuthenticated;
-      final meta = resolveRouteMeta(state.uri.path);
-
-      // No meta (e.g. 404 catch-all) -- let through
-      if (meta == null) return null;
-
-      // During startup, auth restoration is asynchronous.
-      if (authState.isLoading) return null;
-
-      // hideForAuth: logged-in user on /login or /register -> /chat
-      if (meta.hideForAuth && isAuth) return '/chat';
-
-      // requiresAuth: not logged in -> /login
-      if (meta.requiresAuth && !isAuth) {
-        return '/login?redirect=${Uri.encodeComponent(state.uri.toString())}';
-      }
-
-      // permission: user lacks required permission -> /chat
-      if (meta.permission != null &&
-          !authState.permissions.contains(meta.permission!)) {
-        return '/chat';
-      }
-
-      return null;
+      return authGuardRedirect(
+        isAuthenticated: authState.isAuthenticated,
+        isLoading: authState.isLoading,
+        currentPath: state.uri.path,
+        permissions: authState.permissions,
+      );
     },
     routes: [
       GoRoute(
@@ -246,10 +155,6 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
-
-class _RouterRefreshListenable extends ChangeNotifier {
-  void refresh() => notifyListeners();
-}
 
 /// Temporary placeholder page for routes not yet implemented.
 class _PlaceholderPage extends StatelessWidget {

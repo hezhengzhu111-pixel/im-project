@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import 'package:im_mobile/app.dart';
 import 'package:im_mobile/core/di/platform_providers.dart';
-import 'package:im_mobile/core/router/app_router.dart';
 import 'package:im_shared_features/auth.dart';
 
 // ---------------------------------------------------------------------------
@@ -84,13 +83,6 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          // Redirect to /login so we avoid deep provider dependencies
-          mobileAuthStateProvider.overrideWith(
-            (ref) => const MobileAuthState(
-              isAuthenticated: false,
-              isLoading: false,
-            ),
-          ),
           httpClientProvider.overrideWithValue(_MockHttpClientPort()),
           wsClientProvider.overrideWithValue(_MockWsClientPort()),
           analyticsProvider.overrideWithValue(NoopAnalyticsPort()),
