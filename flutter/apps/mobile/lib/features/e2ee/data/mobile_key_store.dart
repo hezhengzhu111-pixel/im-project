@@ -4,11 +4,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:im_shared_features/src/e2ee/data/e2ee_key_store.dart';
 
-/// Desktop implementation of [E2eeKeyStore] using [SharedPreferences].
+/// Mobile implementation of [E2eeKeyStore] using [SharedPreferences].
 ///
 /// Replaces the web IndexedDB implementation with a simple key-value store
-/// that persists across app sessions on desktop.
-class DesktopKeyStore implements E2eeKeyStore {
+/// that persists across app sessions on mobile.
+class MobileKeyStore implements E2eeKeyStore {
   late SharedPreferences _prefs;
 
   @override

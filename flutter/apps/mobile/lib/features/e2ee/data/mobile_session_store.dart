@@ -5,12 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:im_shared_features/src/e2ee/data/e2ee_session_store.dart';
 
-/// Desktop implementation of [E2eeSessionStore] using [SharedPreferences].
+/// Mobile implementation of [E2eeSessionStore] using [SharedPreferences].
 ///
 /// Stores E2EE ratchet session states as v3 envelope JSON strings.
 /// Mirrors the web IndexedDB implementation but uses platform-appropriate
 /// persistent key-value storage.
-class DesktopSessionStore implements E2eeSessionStore {
+class MobileSessionStore implements E2eeSessionStore {
   late SharedPreferences _prefs;
 
   static const _sessionStateEnvelopeVersion = 3;
