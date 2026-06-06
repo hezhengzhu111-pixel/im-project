@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../auth/auth.dart';
+import 'package:im_shared_features/src/auth/auth.dart';
 import 'group_providers.dart';
 
 class GroupListPage extends ConsumerStatefulWidget {
