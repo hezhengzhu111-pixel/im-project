@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'e2ee_session_store.dart';
+import 'package:im_shared_features/src/e2ee/data/e2ee_session_store.dart';
 
 /// Desktop implementation of [E2eeSessionStore] using [SharedPreferences].
 ///

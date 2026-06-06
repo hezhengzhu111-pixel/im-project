@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'e2ee_key_store.dart';
+import 'package:im_shared_features/src/e2ee/data/e2ee_key_store.dart';
 
 /// Desktop implementation of [E2eeKeyStore] using [SharedPreferences].
 ///

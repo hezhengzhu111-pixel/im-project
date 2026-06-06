@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:im_desktop/features/e2ee/data/e2ee_key_store.dart';
+import 'package:im_shared_features/src/e2ee/data/e2ee_key_store.dart';
 
 /// Desktop implementation of [E2eeKeyStore] using [FlutterSecureStorage].
 ///
