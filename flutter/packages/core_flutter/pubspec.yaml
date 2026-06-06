@@ -1,0 +1,22 @@
+name: im_core_flutter
+description: Flutter infrastructure layer for IM app - providers, logger, routing helpers
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.5.1
+  dio: ^5.4.0
+  im_core:
+    path: ../core
+  im_ui:
+    path: ../ui
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  very_good_analysis: ^5.1.0
