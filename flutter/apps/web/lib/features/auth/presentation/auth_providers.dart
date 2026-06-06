@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
 import '../../../core/di/third_party_providers.dart';
 import '../../../core/network/network_providers.dart';
+import '../../e2ee/data/e2ee_providers.dart';
 import '../data/auth_repository_impl.dart';
 import 'auth_provider.dart';
 
@@ -30,12 +31,14 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 /// - [WsClientPort]：WebSocket 连接管理
 /// - [HttpClientPort]：HTTP 请求（用于获取 WS ticket 等）
 /// - [AnalyticsPort]：分析事件上报
+/// - [E2eeSentMessageCache]：E2EE sent message plaintext cache (cleared on logout)
 final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   return AuthNotifier(
     ref.watch(authRepositoryProvider),
     ref.watch(wsClientProvider),
     ref.watch(httpClientProvider),
     ref.watch(analyticsProvider),
+    ref.watch(e2eeSentMessageCacheProvider),
   );
 });
 
