@@ -8,6 +8,9 @@ import '../data/message_config.dart';
 import '../data/message_merge_utils.dart';
 import '../data/message_pipeline.dart';
 import '../data/message_outbox.dart';
+import '../data/read_receipt_handler.dart';
+import '../data/session_key_codec.dart';
+import '../data/e2ee_history_recovery.dart';
 import '../../e2ee/data/e2ee_manager.dart';
 import '../../e2ee/data/e2ee_meta_store.dart';
 import '../../e2ee/data/e2ee_sent_message_cache.dart';
@@ -429,15 +432,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   }
 
   Map<String, dynamic> _camelToSnakeEnvelope(Map<String, dynamic> camel) {
-    return {
-      'version': camel['version'],
-      'algorithm': camel['algorithm'],
-      'sender_device_id': camel['senderDeviceId'],
-      'recipient_device_id': camel['recipientDeviceId'],
-      'session_id': camel['sessionId'],
-      'wire': camel['wire'],
-      if (camel['handshake'] != null) 'handshake': camel['handshake'],
-    };
+    return E2eeHistoryRecovery.camelToSnakeEnvelope(camel);
   }
 
   Future<List<Message>> _decryptLoadedMessages(List<Message> messages) async {
@@ -449,13 +444,17 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   }
 
   Future<Message> _decryptLoadedMessage(Message message) async {
-    if (message.encrypted != true || message.e2eeEnvelope == null) {
+    if (!E2eeHistoryRecovery.needsRecovery(message)) {
       return message;
     }
+
     final currentUserId = _currentUserId();
+    if (currentUserId == null || currentUserId.isEmpty) {
+      return message;
+    }
 
     // For own sent messages: try local cache first, then E2EE decrypt.
-    if (message.senderId == currentUserId) {
+    if (E2eeHistoryRecovery.isOwnMessage(message, currentUserId)) {
       return _decryptOwnSentMessage(message);
     }
 
@@ -474,14 +473,29 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           if (envelope.handshake != null) 'handshake': envelope.handshake,
         }),
       );
+
+      final result = E2eeHistoryRecovery.computeOtherMessageRecovery(
+        decryptSuccess: true,
+        decryptedContent: plaintext,
+      );
+
       return message.copyWith(
-        content: plaintext,
-        decryptStatus: 'success',
+        content: result.content,
+        decryptStatus: result.decryptStatus,
       );
     } catch (e, st) {
       AppLogger.instance
           .error('Loaded E2EE message decrypt failed', e, st, 'e2ee');
-      return message.copyWith(content: '', decryptStatus: 'failed');
+
+      final result = E2eeHistoryRecovery.computeOtherMessageRecovery(
+        decryptSuccess: false,
+        decryptedContent: '',
+      );
+
+      return message.copyWith(
+        content: result.content,
+        decryptStatus: result.decryptStatus,
+      );
     }
   }
 
@@ -494,11 +508,13 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   Future<Message> _decryptOwnSentMessage(Message message) async {
     final clientId = message.clientMessageId ?? message.id;
     final serverId = message.id;
+    final envelope = message.e2eeEnvelope!;
 
     // Step 1: Try E2EE decrypt.
+    bool decryptSuccess = false;
+    String decryptedContent = '';
     try {
-      final envelope = message.e2eeEnvelope!;
-      final plaintext = await _e2eeManager.decryptEnvelope(
+      decryptedContent = await _e2eeManager.decryptEnvelope(
         sessionId: envelope.sessionId,
         envelope: _camelToSnakeEnvelope({
           'version': envelope.version,
@@ -510,50 +526,61 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           if (envelope.handshake != null) 'handshake': envelope.handshake,
         }),
       );
-
-      // Also cache for future recovery.
-      await _sentMessageCache.put(
-        clientMessageId: clientId,
-        plaintext: plaintext,
-        e2eeSessionId: envelope.sessionId,
-        serverMessageId: serverId,
-      );
-
-      return message.copyWith(
-        content: plaintext,
-        decryptStatus: 'success',
-      );
+      decryptSuccess = true;
     } catch (_) {
       // E2EE decrypt failed for own message; fall through to local cache.
     }
 
     // Step 2: Try local sent message cache.
-    String? plaintext;
+    String? cachedPlaintext;
+    bool cacheHit = false;
 
-    // Try by clientMessageId first (most reliable).
-    if (clientId.isNotEmpty) {
-      plaintext = await _sentMessageCache.getPlaintextByClientId(clientId);
+    if (!decryptSuccess) {
+      // Try by clientMessageId first (most reliable).
+      if (clientId.isNotEmpty) {
+        cachedPlaintext =
+            await _sentMessageCache.getPlaintextByClientId(clientId);
+      }
+
+      // Try by serverMessageId if client ID lookup failed.
+      if (cachedPlaintext == null &&
+          serverId.isNotEmpty &&
+          !serverId.startsWith('local_')) {
+        cachedPlaintext =
+            await _sentMessageCache.getPlaintextByServerId(serverId);
+      }
+
+      cacheHit = cachedPlaintext != null && cachedPlaintext.isNotEmpty;
     }
 
-    // Try by serverMessageId if client ID lookup failed.
-    if (plaintext == null && serverId.isNotEmpty && !serverId.startsWith('local_')) {
-      plaintext = await _sentMessageCache.getPlaintextByServerId(serverId);
-    }
+    // Step 3: Compute the final result using the pure helper.
+    final result = E2eeHistoryRecovery.computeOwnMessageRecovery(
+      decryptSuccess: decryptSuccess,
+      decryptedContent: decryptedContent,
+      cacheHit: cacheHit,
+      cachedPlaintext: cachedPlaintext ?? '',
+    );
 
-    if (plaintext != null && plaintext.isNotEmpty) {
-      return message.copyWith(
-        content: plaintext,
-        decryptStatus: 'restored_from_local_cache',
+    // Step 4: Write to cache if decryption succeeded.
+    if (result.shouldWriteCache) {
+      await _sentMessageCache.put(
+        clientMessageId: clientId,
+        plaintext: result.content,
+        e2eeSessionId: envelope.sessionId,
+        serverMessageId: serverId,
       );
     }
 
-    // Step 3: Both failed - return unavailable status.
-    AppLogger.instance.warn(
-      'Cannot recover own sent E2EE message: no local cache',
-    );
+    // Log warning if recovery failed.
+    if (result.decryptStatus == 'unavailable_own_history') {
+      AppLogger.instance.warn(
+        'Cannot recover own sent E2EE message: no local cache',
+      );
+    }
+
     return message.copyWith(
-      content: '',
-      decryptStatus: 'unavailable_own_history',
+      content: result.content,
+      decryptStatus: result.decryptStatus,
     );
   }
 
@@ -586,73 +613,24 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       final messages = state.messages[sessionId];
       if (messages == null || messages.isEmpty) return;
 
-      // Validate reader identity: require readerId or userId.
-      final readerId = data['readerId']?.toString() ??
-          data['userId']?.toString();
-      if (readerId == null || readerId.isEmpty) return;
-
       final currentUserId = _currentUserId();
       if (currentUserId == null || currentUserId.isEmpty) return;
 
-      // Skip self-read receipts to avoid incorrect status updates.
-      if (readerId == currentUserId) return;
-
-      // Extract read receipt fields.
-      final messageId = data['messageId']?.toString();
-      final messageIds = data['messageIds'];
-      final lastReadMessageId = data['lastReadMessageId']?.toString();
-
-      // If no specific message identifiers, don't mark anything as READ.
-      if (messageId == null &&
-          messageIds == null &&
-          lastReadMessageId == null) {
-        return;
-      }
-
-      // Determine which message IDs should be marked as READ.
-      final targetIds = <String>{};
-
-      if (messageId != null) {
-        // Single message read receipt.
-        targetIds.add(messageId);
-      }
-
-      if (messageIds is List) {
-        // Multiple message read receipts.
-        for (final id in messageIds) {
-          targetIds.add(id.toString());
-        }
-      }
-
-      if (lastReadMessageId != null) {
-        // lastReadMessageId: mark all messages up to and including this one
-        // that were sent by the current user.
-        final lastReadIndex = messages.indexWhere(
-          (m) => m.id == lastReadMessageId || m.clientMessageId == lastReadMessageId,
-        );
-        if (lastReadIndex != -1) {
-          for (var i = 0; i <= lastReadIndex; i++) {
-            final msg = messages[i];
-            // Only mark messages sent by the current user as READ.
-            if (msg.senderId == currentUserId) {
-              targetIds.add(msg.id);
-            }
-          }
-        }
-      }
+      // Use the pure handler to compute target IDs.
+      final targetIds = ReadReceiptHandler.computeReadReceiptTargetIds(
+        sessionMessages: messages,
+        eventData: data,
+        currentUserId: currentUserId,
+      );
 
       if (targetIds.isEmpty) return;
 
-      final updated = messages.map((m) {
-        if (targetIds.contains(m.id) || targetIds.contains(m.clientMessageId)) {
-          // Don't mark messages sent by others as READ by us.
-          // Only mark our own messages as READ when we receive a read receipt.
-          if (m.senderId == currentUserId && m.status != 'READ') {
-            return m.copyWith(status: 'READ');
-          }
-        }
-        return m;
-      }).toList();
+      // Apply the updates.
+      final updated = ReadReceiptHandler.applyReadReceipts(
+        messages: messages,
+        targetIds: targetIds,
+        currentUserId: currentUserId,
+      );
 
       state = state.copyWith(messages: {...state.messages, sessionId: updated});
     } catch (e, st) {
@@ -1599,154 +1577,61 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   }
 
   String _normalizeIncomingSessionKey(String sessionKey) {
-    if (sessionKey.isEmpty) return sessionKey;
-    final exact = state.sessions.where((s) => s.id == sessionKey).firstOrNull;
-    if (exact != null) return exact.id;
-    if (sessionKey.startsWith('group_') || sessionKey.startsWith('g_')) {
-      return _sessionKeyForGroupTarget(sessionKey);
-    }
-    final group = state.sessions.where((s) {
-      final isGroup = s.type == 'group' || s.conversationType == 'group';
-      return isGroup &&
-          (s.targetId == sessionKey || s.conversationId == sessionKey);
-    }).firstOrNull;
-    if (group != null) return group.id;
-    return _sessionKeyForPrivateTarget(sessionKey);
+    return SessionKeyCodec.normalizeIncomingSessionKey(
+      sessionKey,
+      state.sessions,
+      currentUserId: _currentUserId(),
+    );
   }
 
   String _readConversationIdForSessionKey(String sessionKey) {
-    final session = state.sessions.where((s) => s.id == sessionKey).firstOrNull;
-    if (session != null) {
-      final isGroup =
-          session.type == 'group' || session.conversationType == 'group';
-      if (isGroup) {
-        return 'group_${session.targetId}';
-      }
-      return session.conversationId ?? session.targetId;
-    }
-    if (sessionKey.startsWith('group_')) return sessionKey;
-    if (sessionKey.startsWith('g_')) {
-      return 'group_${_groupIdFromSessionKey(sessionKey)}';
-    }
-    return _privateTargetFromSessionKey(sessionKey);
+    return SessionKeyCodec.readConversationIdForSessionKey(
+      sessionKey,
+      state.sessions,
+      currentUserId: _currentUserId(),
+    );
   }
 
   Set<String> _negotiationLookupKeys(String sessionId) {
-    final keys = <String>{sessionId};
-    if (sessionId.isEmpty) return keys;
-
-    final normalizedChatKey = _normalizeE2eeSessionKey(sessionId);
-    if (normalizedChatKey.isNotEmpty) keys.add(normalizedChatKey);
-
-    final session = state.sessions
-        .where((s) =>
-            s.id == normalizedChatKey ||
-            s.id == sessionId ||
-            s.conversationId == sessionId)
-        .firstOrNull;
-    if (session != null) {
-      keys.add(session.id);
-      if (session.conversationId != null) {
-        keys.add(session.conversationId!);
-      }
-      final isGroup =
-          session.type == 'group' || session.conversationType == 'group';
-      if (isGroup) {
-        keys.add(_groupSessionKey(session.targetId));
-      } else {
-        keys.add(_privateSessionKey(session.targetId));
-        final currentUserId = _currentUserId();
-        if (currentUserId != null && currentUserId.isNotEmpty) {
-          keys.add('p_${currentUserId}_${session.targetId}');
-          keys.add('p_${session.targetId}_${currentUserId}');
-        }
-      }
-    }
-    return keys;
+    return SessionKeyCodec.negotiationLookupKeys(
+      sessionId,
+      state.sessions,
+      currentUserId: _currentUserId(),
+    );
   }
 
   String _e2eeSessionIdForChatOrE2eeSession(String sessionId) {
-    if (sessionId.startsWith('p_')) return sessionId;
-    final session = state.sessions
-        .where((s) =>
-            s.id == sessionId ||
-            s.conversationId == sessionId ||
-            s.targetId == sessionId)
-        .firstOrNull;
-    if (session != null) {
-      final isGroup =
-          session.type == 'group' || session.conversationType == 'group';
-      return isGroup
-          ? session.id
-          : _e2eeSessionIdForPrivateTarget(session.targetId);
-    }
-    return _e2eeSessionIdForPrivateTarget(
-        _privateTargetFromSessionKey(sessionId));
+    return SessionKeyCodec.e2eeSessionIdForChatOrE2eeSession(
+      sessionId,
+      state.sessions,
+      currentUserId: _currentUserId(),
+    );
   }
 
   String _e2eeSessionIdForPrivateTarget(String targetId) {
-    final currentUserId = _currentUserId();
-    if (currentUserId == null || currentUserId.isEmpty || targetId.isEmpty) {
-      return targetId;
-    }
-    return _compareIds(currentUserId, targetId) <= 0
-        ? 'p_${currentUserId}_$targetId'
-        : 'p_${targetId}_$currentUserId';
+    return SessionKeyCodec.e2eeSessionIdForPrivate(
+        _currentUserId() ?? '', targetId);
   }
 
   String _normalizeE2eeSessionKey(String sessionId) {
-    final exact = state.sessions.where((s) => s.id == sessionId).firstOrNull;
-    if (exact != null) return exact.id;
-    if (sessionId.startsWith('p_')) {
-      return _sessionKeyForPrivateTarget(
-          _privateTargetFromE2eeSessionId(sessionId));
-    }
-    if (sessionId.startsWith('group_') || sessionId.startsWith('g_')) {
-      return _sessionKeyForGroupTarget(sessionId);
-    }
-    final session = state.sessions
-        .where((s) => s.conversationId == sessionId || s.targetId == sessionId)
-        .firstOrNull;
-    return session?.id ?? sessionId;
-  }
-
-  String _privateTargetFromE2eeSessionId(String sessionId) {
-    final currentUserId = _currentUserId();
-    final raw = sessionId.startsWith('p_') ? sessionId.substring(2) : sessionId;
-    return raw
-            .split('_')
-            .where((part) =>
-                part.isNotEmpty &&
-                (currentUserId == null || part != currentUserId))
-            .firstOrNull ??
-        sessionId;
+    return SessionKeyCodec.normalizeE2eeSessionKey(
+      sessionId,
+      state.sessions,
+      currentUserId: _currentUserId(),
+    );
   }
 
   String _privateSessionKey(String targetId) {
-    final currentUserId = _currentUserId();
-    if (currentUserId == null || currentUserId.isEmpty || targetId.isEmpty) {
-      return targetId;
-    }
-    return _compareIds(currentUserId, targetId) <= 0
-        ? '${currentUserId}_$targetId'
-        : '${targetId}_$currentUserId';
+    return SessionKeyCodec.privateSessionKey(_currentUserId() ?? '', targetId);
   }
 
   String _groupSessionKey(String groupId) {
-    final normalized = _groupIdFromSessionKey(groupId);
-    return normalized.isEmpty ? groupId : 'group_$normalized';
+    return SessionKeyCodec.groupSessionKey(groupId);
   }
 
   String _privateTargetFromSessionKey(String sessionKey) {
-    if (!sessionKey.contains('_')) return sessionKey;
-    final currentUserId = _currentUserId();
-    return sessionKey
-            .split('_')
-            .where((part) =>
-                part.isNotEmpty &&
-                (currentUserId == null || part != currentUserId))
-            .firstOrNull ??
-        sessionKey;
+    return SessionKeyCodec.privateTargetFromSessionKey(
+        sessionKey, _currentUserId());
   }
 
   String _groupIdFromSessionKey(String sessionKey) {
@@ -1757,18 +1642,6 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
       return sessionKey.substring('g_'.length);
     }
     return sessionKey;
-  }
-
-  int _compareIds(String left, String right) {
-    final leftId = BigInt.tryParse(left);
-    final rightId = BigInt.tryParse(right);
-    if (leftId != null &&
-        rightId != null &&
-        leftId > BigInt.zero &&
-        rightId > BigInt.zero) {
-      return leftId.compareTo(rightId);
-    }
-    return left.compareTo(right);
   }
 
   /// Check if an error is a transient network error (retryable).
