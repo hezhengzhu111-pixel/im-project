@@ -10,6 +10,7 @@ import '../data/message_pipeline.dart';
 import '../data/message_outbox.dart';
 import '../data/read_receipt_handler.dart';
 import '../data/session_key_codec.dart';
+import '../data/e2ee_history_recovery.dart';
 import '../../e2ee/data/e2ee_manager.dart';
 import '../../e2ee/data/e2ee_meta_store.dart';
 import '../../e2ee/data/e2ee_sent_message_cache.dart';
@@ -431,15 +432,7 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   }
 
   Map<String, dynamic> _camelToSnakeEnvelope(Map<String, dynamic> camel) {
-    return {
-      'version': camel['version'],
-      'algorithm': camel['algorithm'],
-      'sender_device_id': camel['senderDeviceId'],
-      'recipient_device_id': camel['recipientDeviceId'],
-      'session_id': camel['sessionId'],
-      'wire': camel['wire'],
-      if (camel['handshake'] != null) 'handshake': camel['handshake'],
-    };
+    return E2eeHistoryRecovery.camelToSnakeEnvelope(camel);
   }
 
   Future<List<Message>> _decryptLoadedMessages(List<Message> messages) async {
@@ -451,13 +444,17 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   }
 
   Future<Message> _decryptLoadedMessage(Message message) async {
-    if (message.encrypted != true || message.e2eeEnvelope == null) {
+    if (!E2eeHistoryRecovery.needsRecovery(message)) {
       return message;
     }
+
     final currentUserId = _currentUserId();
+    if (currentUserId == null || currentUserId.isEmpty) {
+      return message;
+    }
 
     // For own sent messages: try local cache first, then E2EE decrypt.
-    if (message.senderId == currentUserId) {
+    if (E2eeHistoryRecovery.isOwnMessage(message, currentUserId)) {
       return _decryptOwnSentMessage(message);
     }
 
@@ -476,14 +473,29 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           if (envelope.handshake != null) 'handshake': envelope.handshake,
         }),
       );
+
+      final result = E2eeHistoryRecovery.computeOtherMessageRecovery(
+        decryptSuccess: true,
+        decryptedContent: plaintext,
+      );
+
       return message.copyWith(
-        content: plaintext,
-        decryptStatus: 'success',
+        content: result.content,
+        decryptStatus: result.decryptStatus,
       );
     } catch (e, st) {
       AppLogger.instance
           .error('Loaded E2EE message decrypt failed', e, st, 'e2ee');
-      return message.copyWith(content: '', decryptStatus: 'failed');
+
+      final result = E2eeHistoryRecovery.computeOtherMessageRecovery(
+        decryptSuccess: false,
+        decryptedContent: '',
+      );
+
+      return message.copyWith(
+        content: result.content,
+        decryptStatus: result.decryptStatus,
+      );
     }
   }
 
@@ -496,11 +508,13 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
   Future<Message> _decryptOwnSentMessage(Message message) async {
     final clientId = message.clientMessageId ?? message.id;
     final serverId = message.id;
+    final envelope = message.e2eeEnvelope!;
 
     // Step 1: Try E2EE decrypt.
+    bool decryptSuccess = false;
+    String decryptedContent = '';
     try {
-      final envelope = message.e2eeEnvelope!;
-      final plaintext = await _e2eeManager.decryptEnvelope(
+      decryptedContent = await _e2eeManager.decryptEnvelope(
         sessionId: envelope.sessionId,
         envelope: _camelToSnakeEnvelope({
           'version': envelope.version,
@@ -512,50 +526,61 @@ class ChatNotifierWithOutbox extends StateNotifier<ChatStateWithOutbox> {
           if (envelope.handshake != null) 'handshake': envelope.handshake,
         }),
       );
-
-      // Also cache for future recovery.
-      await _sentMessageCache.put(
-        clientMessageId: clientId,
-        plaintext: plaintext,
-        e2eeSessionId: envelope.sessionId,
-        serverMessageId: serverId,
-      );
-
-      return message.copyWith(
-        content: plaintext,
-        decryptStatus: 'success',
-      );
+      decryptSuccess = true;
     } catch (_) {
       // E2EE decrypt failed for own message; fall through to local cache.
     }
 
     // Step 2: Try local sent message cache.
-    String? plaintext;
+    String? cachedPlaintext;
+    bool cacheHit = false;
 
-    // Try by clientMessageId first (most reliable).
-    if (clientId.isNotEmpty) {
-      plaintext = await _sentMessageCache.getPlaintextByClientId(clientId);
+    if (!decryptSuccess) {
+      // Try by clientMessageId first (most reliable).
+      if (clientId.isNotEmpty) {
+        cachedPlaintext =
+            await _sentMessageCache.getPlaintextByClientId(clientId);
+      }
+
+      // Try by serverMessageId if client ID lookup failed.
+      if (cachedPlaintext == null &&
+          serverId.isNotEmpty &&
+          !serverId.startsWith('local_')) {
+        cachedPlaintext =
+            await _sentMessageCache.getPlaintextByServerId(serverId);
+      }
+
+      cacheHit = cachedPlaintext != null && cachedPlaintext.isNotEmpty;
     }
 
-    // Try by serverMessageId if client ID lookup failed.
-    if (plaintext == null && serverId.isNotEmpty && !serverId.startsWith('local_')) {
-      plaintext = await _sentMessageCache.getPlaintextByServerId(serverId);
-    }
+    // Step 3: Compute the final result using the pure helper.
+    final result = E2eeHistoryRecovery.computeOwnMessageRecovery(
+      decryptSuccess: decryptSuccess,
+      decryptedContent: decryptedContent,
+      cacheHit: cacheHit,
+      cachedPlaintext: cachedPlaintext ?? '',
+    );
 
-    if (plaintext != null && plaintext.isNotEmpty) {
-      return message.copyWith(
-        content: plaintext,
-        decryptStatus: 'restored_from_local_cache',
+    // Step 4: Write to cache if decryption succeeded.
+    if (result.shouldWriteCache) {
+      await _sentMessageCache.put(
+        clientMessageId: clientId,
+        plaintext: result.content,
+        e2eeSessionId: envelope.sessionId,
+        serverMessageId: serverId,
       );
     }
 
-    // Step 3: Both failed - return unavailable status.
-    AppLogger.instance.warn(
-      'Cannot recover own sent E2EE message: no local cache',
-    );
+    // Log warning if recovery failed.
+    if (result.decryptStatus == 'unavailable_own_history') {
+      AppLogger.instance.warn(
+        'Cannot recover own sent E2EE message: no local cache',
+      );
+    }
+
     return message.copyWith(
-      content: '',
-      decryptStatus: 'unavailable_own_history',
+      content: result.content,
+      decryptStatus: result.decryptStatus,
     );
   }
 
