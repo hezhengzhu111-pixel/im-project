@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
-// ignore: implementation_imports
-import 'package:im_core/src/generated/frb_generated.dart';
 
 import 'adapters/mobile_audio_recorder_adapter.dart';
 import 'adapters/mobile_clipboard_adapter.dart';
@@ -31,7 +29,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Flutter Rust Bridge for E2EE crypto operations.
-  await RustLib.init();
+  await RustBridgeInitializer.init();
 
   // Initialize logger
   AppLogger.init(
