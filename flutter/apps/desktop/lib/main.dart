@@ -17,6 +17,9 @@ import 'adapters/services/noop_push_adapter.dart';
 import 'core/di/platform_providers.dart';
 import 'core/logging/app_logger.dart';
 import 'core/settings/settings_persistence.dart';
+import 'features/e2ee/data/desktop_key_store.dart';
+import 'features/e2ee/data/desktop_session_store.dart';
+import 'features/e2ee/data/e2ee_providers.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -73,6 +76,8 @@ void main() async {
       wsClientProvider.overrideWithValue(wsService),
       // E2EE 适配器
       e2eeAdapterProvider.overrideWithValue(e2eeService),
+      e2eeKeyStoreProvider.overrideWithValue(DesktopKeyStore()),
+      e2eeSessionStoreProvider.overrideWithValue(DesktopSessionStore()),
       // 第三方服务适配器
       analyticsProvider.overrideWithValue(NoopAnalyticsAdapter()),
       errorReporterProvider.overrideWithValue(NoopErrorReporterAdapter()),

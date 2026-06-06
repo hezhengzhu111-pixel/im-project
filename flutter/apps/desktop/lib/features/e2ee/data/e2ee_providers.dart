@@ -7,23 +7,17 @@ import 'e2ee_key_store.dart';
 import 'e2ee_manager.dart';
 import 'e2ee_meta_store.dart';
 import 'e2ee_session_store.dart';
-import 'desktop_key_store.dart';
-import 'desktop_session_store.dart';
 
 final e2eeApiProvider = Provider<E2eeApi>((ref) {
   return E2eeApi(ref.watch(httpClientProvider));
 });
 
 final e2eeKeyStoreProvider = Provider<E2eeKeyStore>((ref) {
-  final store = DesktopKeyStore();
-  ref.onDispose(() => store.dispose());
-  return store;
+  throw UnimplementedError('e2eeKeyStoreProvider must be overridden');
 });
 
 final e2eeSessionStoreProvider = Provider<E2eeSessionStore>((ref) {
-  final store = DesktopSessionStore();
-  ref.onDispose(() => store.dispose());
-  return store;
+  throw UnimplementedError('e2eeSessionStoreProvider must be overridden');
 });
 
 final e2eeMetaStoreProvider = Provider<E2eeMetaStore>((ref) {

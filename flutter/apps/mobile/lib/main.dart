@@ -19,6 +19,9 @@ import 'adapters/services/noop_push_adapter.dart';
 import 'app.dart';
 import 'core/di/platform_providers.dart';
 import 'core/logging/app_logger.dart';
+import 'features/e2ee/data/desktop_key_store.dart';
+import 'features/e2ee/data/desktop_session_store.dart';
+import 'features/e2ee/data/e2ee_providers.dart';
 
 /// Entry point for the IM Mobile application.
 ///
@@ -78,6 +81,8 @@ Future<void> main() async {
       ),
       // E2EE adapter
       e2eeAdapterProvider.overrideWithValue(MobileE2eeService()),
+      e2eeKeyStoreProvider.overrideWithValue(DesktopKeyStore()),
+      e2eeSessionStoreProvider.overrideWithValue(DesktopSessionStore()),
       // Third-party service adapters
       analyticsProvider.overrideWithValue(NoopAnalyticsAdapter()),
       errorReporterProvider.overrideWithValue(NoopErrorReporterAdapter()),
