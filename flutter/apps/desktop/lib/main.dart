@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:im_core/core.dart';
 import 'package:im_rust_bridge/im_rust_bridge.dart';
 import 'app.dart';
 import 'adapters/desktop_network_adapter.dart';
@@ -53,11 +54,6 @@ void main() async {
   final secureStorageService = DesktopSecureStorageAdapter();
   final networkService = DesktopNetworkService(baseUrl: apiBase);
 
-  // Initialize WebSocket adapter with base URL
-  final wsService = DesktopWsAdapter();
-  // Connect to WebSocket server
-  await wsService.connect('$wsBase/ws');
-
   runApp(ProviderScope(
     overrides: [
       // 平台能力适配器
@@ -71,7 +67,19 @@ void main() async {
       httpClientProvider.overrideWithValue(networkService),
       storageProvider.overrideWithValue(storageService),
       secureStorageProvider.overrideWithValue(secureStorageService),
-      wsClientProvider.overrideWithValue(wsService),
+      wsClientProvider.overrideWithValue(
+        DesktopWsAdapter(
+          ticketUrl: AuthEndpoints.wsTicket,
+          wsBaseUrl: '$wsBase${WsEndpoints.path}',
+          ticketProvider: () async {
+            final response = await networkService.post<Map<String, dynamic>>(
+              AuthEndpoints.wsTicket,
+              fromJson: (json) => json,
+            );
+            return response.data['ticket'] as String?;
+          },
+        ),
+      ),
       // E2EE 适配器
       e2eeAdapterProvider.overrideWithValue(rustGateway),
       e2eeKeyStoreProvider.overrideWithValue(DesktopKeyStore()),
