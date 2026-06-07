@@ -66,6 +66,12 @@ Future<void> main() async {
       ),
       // E2EE adapter
       e2eeAdapterProvider.overrideWithValue(rustGateway),
+      e2eeKeyStoreProvider.overrideWith((ref) {
+        return ref.watch(webE2eeKeyStoreProvider);
+      }),
+      e2eeSessionStoreProvider.overrideWith((ref) {
+        return ref.watch(webE2eeSessionStoreProvider);
+      }),
     ],
     observers: [AppProviderObserver(env: env)],
     child: const App(),
