@@ -23,6 +23,8 @@ dependencies:
     path: ../../packages/core_flutter
   im_shared_features:
     path: ../../packages/shared_features
+  im_rust_bridge:
+    path: ../../packages/rust_bridge
   flutter_riverpod: ^2.4.9
   go_router: ^13.0.0
   dio: ^5.4.0
@@ -32,7 +34,7 @@ dependencies:
   shared_preferences: ^2.2.2
   flutter_secure_storage: ^9.0.0
   crypto: ^3.0.6
-  file_picker: ^6.1.1
+  file_picker: ^11.0.2
   flutter_local_notifications: ^16.1.0
   share_plus: ^7.2.1
   path_provider: ^2.1.1

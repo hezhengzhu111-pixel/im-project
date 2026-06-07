@@ -35,8 +35,8 @@ Flutter 桌面端即时通讯应用。
 ```bash
 cd flutter
 flutter pub get
-cd native/rust
-cargo build
+cd ../rust
+cargo build -p im-flutter-bridge --release
 ```
 
 ### 生成 FRB 绑定
@@ -44,6 +44,15 @@ cargo build
 ```bash
 cd flutter
 flutter_rust_bridge_codegen generate
+```
+
+生成配置位于 `flutter/flutter_rust_bridge.yaml`。native 运行时加载
+`rust/target/release/im_rust_bridge.dll`、`libim_rust_bridge.so` 或
+`libim_rust_bridge.dylib`，因此本地运行前需要先执行上面的 release build。
+也可以从 `flutter/` 执行：
+
+```bash
+dart run melos run rust-bridge:smoke
 ```
 
 ### 运行应用

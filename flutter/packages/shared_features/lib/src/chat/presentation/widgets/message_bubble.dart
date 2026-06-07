@@ -15,8 +15,9 @@ class MessageBubble extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final senderName = message.senderName ?? message.senderId ?? '';
-    final initial = senderName.isNotEmpty ? senderName.substring(0, 1).toUpperCase() : '?';
+    final senderName = message.senderName ?? message.senderId;
+    final initial =
+        senderName.isNotEmpty ? senderName.substring(0, 1).toUpperCase() : '?';
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -116,7 +117,9 @@ class MessageBubble extends ConsumerWidget {
         return Text(
           message.content,
           style: TextStyle(
-            color: isMe ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
+            color: isMe
+                ? theme.colorScheme.onPrimary
+                : theme.colorScheme.onSurface,
             fontSize: 15,
           ),
         );
@@ -132,7 +135,9 @@ class MessageBubble extends ConsumerWidget {
         return Text(
           message.content,
           style: TextStyle(
-            color: isMe ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
+            color: isMe
+                ? theme.colorScheme.onPrimary
+                : theme.colorScheme.onSurface,
             fontSize: 15,
           ),
         );
@@ -189,7 +194,9 @@ class MessageBubble extends ConsumerWidget {
               Text(
                 fileName,
                 style: TextStyle(
-                  color: isMe ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
+                  color: isMe
+                      ? theme.colorScheme.onPrimary
+                      : theme.colorScheme.onSurface,
                   fontWeight: FontWeight.bold,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -223,7 +230,9 @@ class MessageBubble extends ConsumerWidget {
         Text(
           '语音消息',
           style: TextStyle(
-            color: isMe ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
+            color: isMe
+                ? theme.colorScheme.onPrimary
+                : theme.colorScheme.onSurface,
           ),
         ),
       ],
@@ -275,7 +284,9 @@ class MessageBubble extends ConsumerWidget {
   }
 
   Color _bubbleColor(ThemeData theme) {
-    return isMe ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest;
+    return isMe
+        ? theme.colorScheme.primary
+        : theme.colorScheme.surfaceContainerHighest;
   }
 
   IconData _statusIcon(String status) {

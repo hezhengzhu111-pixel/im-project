@@ -19,6 +19,7 @@ class DeploymentConfig:
     env_file: Path
     compose_file: Path
     backend_root: Path
+    rust_root: Path
     frontend_root: Path
     sql_init_file: Path
     sql_migration_file: Path
@@ -71,6 +72,7 @@ def load_config(project_dir: Path | None = None) -> DeploymentConfig:
         env_file=env_file,
         compose_file=root / "deploy" / "sit" / "docker-compose.yml",
         backend_root=root / "backend",
+        rust_root=root / "rust",
         frontend_root=root / "flutter" / "apps" / "web",
         sql_init_file=root / "sql" / "mysql8" / "init_all.sql",
         sql_migration_file=root / "sql" / "mysql8" / "e2ee_migration.sql",
@@ -82,9 +84,9 @@ def load_config(project_dir: Path | None = None) -> DeploymentConfig:
 
 def ensure_project_layout(config: DeploymentConfig) -> None:
     required_files = [
-        config.backend_root / "Cargo.toml",
-        config.backend_root / "api-server-rs" / "Dockerfile",
-        config.backend_root / "im-server-rs" / "Dockerfile",
+        config.rust_root / "Cargo.toml",
+        config.rust_root / "apps" / "api-server" / "Dockerfile",
+        config.rust_root / "apps" / "im-server" / "Dockerfile",
         config.backend_root / "spring-ai" / "Dockerfile",
         config.frontend_root / "pubspec.yaml",
         config.frontend_root / "Dockerfile",

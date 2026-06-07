@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import 'package:im_rust_bridge/im_rust_bridge.dart';
 
 import 'adapters/mobile_audio_recorder_adapter.dart';
 import 'adapters/mobile_clipboard_adapter.dart';
-import 'adapters/mobile_e2ee_adapter.dart';
 import 'adapters/mobile_file_picker_adapter.dart';
 import 'adapters/mobile_network_adapter.dart';
 import 'adapters/mobile_notification_adapter.dart';
@@ -28,8 +28,8 @@ import 'package:im_shared_features/e2ee.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Flutter Rust Bridge for E2EE crypto operations.
-  await RustBridgeInitializer.init();
+  final rustGateway = FrbRustGateway();
+  await rustGateway.init();
 
   // Initialize logger
   AppLogger.init(
@@ -78,7 +78,7 @@ Future<void> main() async {
         ),
       ),
       // E2EE adapter
-      e2eeAdapterProvider.overrideWithValue(MobileE2eeService()),
+      e2eeAdapterProvider.overrideWithValue(rustGateway),
       e2eeKeyStoreProvider.overrideWithValue(MobileKeyStore()),
       e2eeSessionStoreProvider.overrideWithValue(MobileSessionStore()),
       // Third-party service adapters

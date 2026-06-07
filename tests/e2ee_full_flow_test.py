@@ -1,7 +1,7 @@
 """
 E2EE 全链路测试脚本 —— 完全模拟前端浏览器行为。
 
-通过 Rust e2ee-ffi cdylib (ctypes) 调用真正的 E2EE 加密引擎。
+通过 Rust im-e2ee-ffi cdylib (ctypes) 调用真正的 E2EE 加密引擎。
 Python 侧完全镜像前端 TypeScript 代码：
   - E2eeManager     → e2ee-manager.ts
   - E2eeNegotiation  → negotiation.ts
@@ -14,7 +14,7 @@ Python 侧完全镜像前端 TypeScript 代码：
 
 依赖:
     pip install requests
-    先构建: cd backend && cargo build -p e2ee-ffi --release
+    先构建: cd rust && cargo build -p im-e2ee-ffi --release
 """
 
 import sys
@@ -39,7 +39,7 @@ from e2ee_rust_bridge import (
 from e2ee_stores import SessionStore, KeyStore
 
 # ============================================================================
-# 常量 (对应 shared-e2ee-core types.ts)
+# 常量 (对应 shared-im-e2ee-core types.ts)
 # ============================================================================
 
 RUST_E2EE_ENVELOPE_VERSION = 2

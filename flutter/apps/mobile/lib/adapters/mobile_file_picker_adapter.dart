@@ -41,7 +41,7 @@ class MobileFilePickerAdapter implements FilePickerPort {
     List<String>? allowedExtensions,
   }) async {
     try {
-      final result = await fp.FilePicker.platform.pickFiles(
+      final result = await fp.FilePicker.pickFiles(
         type: allowedExtensions != null ? fp.FileType.custom : fp.FileType.any,
         allowedExtensions: allowedExtensions,
       );
@@ -87,9 +87,11 @@ class MobileFilePickerAdapter implements FilePickerPort {
       'amr': 'audio/amr',
       'ogg': 'audio/ogg',
       'doc': 'application/msword',
-      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'docx':
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'xls': 'application/vnd.ms-excel',
-      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'xlsx':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'txt': 'text/plain',
       'zip': 'application/zip',
     };

@@ -301,8 +301,8 @@ services:
   im-server:
     image: im-project-sit/im-server:latest
     build:
-      context: ../../backend
-      dockerfile: im-server-rs/Dockerfile
+      context: ../../rust
+      dockerfile: apps/im-server/Dockerfile
       args:
         IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
     restart: unless-stopped
@@ -340,8 +340,8 @@ services:
   im-api-server:
     image: im-project-sit/im-api-server:latest
     build:
-      context: ../../backend
-      dockerfile: api-server-rs/Dockerfile
+      context: ../../rust
+      dockerfile: apps/api-server/Dockerfile
       args:
         IM_BUILD_NONCE: "${IM_BUILD_NONCE:-manual}"
     restart: unless-stopped

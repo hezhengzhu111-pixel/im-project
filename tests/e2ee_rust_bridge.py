@@ -1,5 +1,5 @@
 """
-Python ctypes bridge to Rust e2ee-ffi cdylib.
+Python ctypes bridge to Rust im-e2ee-ffi cdylib.
 
 完全对应前端 WebE2eeRuntime + WasmSessionManager 的接口。
 """
@@ -23,8 +23,8 @@ def _find_lib_path() -> str:
     lib_name = "e2ee_ffi.dll" if system == "Windows" else "libe2ee_ffi.so"
 
     candidates = [
-        os.path.join(os.path.dirname(__file__), "..", "backend", "target", "release", lib_name),
-        os.path.join(os.path.dirname(__file__), "..", "backend", "target", "debug", lib_name),
+        os.path.join(os.path.dirname(__file__), "..", "rust", "target", "release", lib_name),
+        os.path.join(os.path.dirname(__file__), "..", "rust", "target", "debug", lib_name),
     ]
     for path in candidates:
         if os.path.exists(os.path.normpath(path)):
@@ -35,7 +35,7 @@ def _find_lib_path() -> str:
         return local
 
     raise FileNotFoundError(
-        f"Cannot find {lib_name}. Build with: cd backend && cargo build -p e2ee-ffi --release"
+        f"Cannot find {lib_name}. Build with: cd rust && cargo build -p im-e2ee-ffi --release"
     )
 
 
@@ -107,7 +107,7 @@ def bundle_to_rust_json(bundle: dict) -> dict:
 
 
 class RustE2eeEngine:
-    """Wrapper around the Rust e2ee-ffi cdylib.
+    """Wrapper around the Rust im-e2ee-ffi cdylib.
 
     Each instance manages its own SessionManager (like WasmSessionManager).
     Completely mirrors WebE2eeRuntime interface.

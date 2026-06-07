@@ -4,7 +4,7 @@ import 'e2ee_service.dart';
 ///
 /// Extends [E2eeService] with JSON-based session management methods
 /// that operate on base64-encoded strings rather than raw bytes.
-/// Platform adapters (e.g. WebE2eeAdapter) implement this interface.
+/// Platform adapters implement this interface.
 abstract class E2eeBridge extends E2eeService {
   /// Generate key bundle and return as JSON with base64-encoded fields.
   Future<Map<String, dynamic>> generateKeyBundleJson(int otkCount);

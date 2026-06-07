@@ -1,4 +1,4 @@
-# Flutter 多端应用架构设计文档
+﻿# Flutter 多端应用架构设计文档
 
 ## 1. 概述
 
@@ -24,7 +24,7 @@
 | **Rust 桥接** | flutter_rust_bridge | 已有基础 |
 | **网络层** | reqwest + tokio-tungstenite | Rust 异步网络 |
 | **存储层** | rusqlite | Rust SQLite |
-| **加密层** | e2ee-core | 已有 Rust 实现 |
+| **加密层** | im-e2ee-core | 已有 Rust 实现 |
 
 ---
 
@@ -49,7 +49,7 @@
 │                        │                                    │
 │  ┌─────────────────────▼───────────────────────────────┐   │
 │  │              Rust Service Layer                      │   │
-│  │  • E2EE 加密/解密 (e2ee-core)                       │   │
+│  │  • E2EE 加密/解密 (im-e2ee-core)                       │   │
 │  │  • HTTP/WebSocket 客户端 (reqwest)                   │   │
 │  │  • 本地数据库 (rusqlite)                             │   │
 │  │  • 平台功能 (通知、托盘、快捷键)                     │   │
@@ -130,7 +130,7 @@ flutter/
 
 #### 3.1.1 现有代码复用
 
-**文件位置：** `backend/e2ee-core/`
+**文件位置：** `rust/crates/im-e2ee-core/`
 
 **模块列表：**
 - `primitives/`：AES-GCM、Ed25519、X25519、HKDF
@@ -143,7 +143,7 @@ flutter/
 #### 3.1.2 接口定义
 
 ```rust
-// flutter/native/rust/src/api/e2ee.rs
+// rust/crates/im-flutter-bridge/src/api/e2ee.rs
 
 pub struct E2eeService;
 
@@ -196,7 +196,7 @@ impl E2eeService {
 #### 3.2.2 接口定义
 
 ```rust
-// flutter/native/rust/src/api/network.rs
+// rust/crates/im-flutter-bridge/src/api/network.rs
 
 pub struct NetworkService {
     base_url: String,
@@ -268,7 +268,7 @@ impl WebSocketConnection {
 #### 3.3.2 接口定义
 
 ```rust
-// flutter/native/rust/src/api/storage.rs
+// rust/crates/im-flutter-bridge/src/api/storage.rs
 
 pub struct LocalStorage {
     db_path: String,
@@ -344,7 +344,7 @@ pub struct Contact {
 #### 3.4.2 接口定义
 
 ```rust
-// flutter/native/rust/src/api/sync.rs
+// rust/crates/im-flutter-bridge/src/api/sync.rs
 
 pub struct SyncManager {
     device_id: String,
@@ -404,7 +404,7 @@ pub enum SyncResult {
 #### 3.5.1 通知系统
 
 ```rust
-// flutter/native/rust/src/api/notifications.rs
+// rust/crates/im-flutter-bridge/src/api/notifications.rs
 
 pub struct NotificationManager;
 
@@ -436,7 +436,7 @@ impl NotificationManager {
 #### 3.5.2 系统托盘
 
 ```rust
-// flutter/native/rust/src/api/tray.rs
+// rust/crates/im-flutter-bridge/src/api/tray.rs
 
 pub struct SystemTray;
 
@@ -460,7 +460,7 @@ pub enum TrayEvent {
 #### 3.5.3 全局快捷键
 
 ```rust
-// flutter/native/rust/src/api/hotkeys.rs
+// rust/crates/im-flutter-bridge/src/api/hotkeys.rs
 
 pub struct HotkeyManager;
 
@@ -783,7 +783,7 @@ class MobileFilePickerAdapter implements FilePickerPort {
 ### 5.2 安全存储实现
 
 ```rust
-// flutter/native/rust/src/api/secure_storage.rs
+// rust/crates/im-flutter-bridge/src/api/secure_storage.rs
 
 use keyring::Entry;
 use aes_gcm::{Aes256Gcm, Key, Nonce};
@@ -889,7 +889,7 @@ impl Drop for SecureBuffer {
 ### 6.1 异步处理架构
 
 ```rust
-// flutter/native/rust/src/api/performance.rs
+// rust/crates/im-flutter-bridge/src/api/performance.rs
 
 use tokio::sync::Semaphore;
 use std::sync::Arc;
@@ -1068,7 +1068,7 @@ Phase 7 ──► Phase 8 ──► Phase 9
 ### 9.3 自动更新
 
 ```rust
-// flutter/native/rust/src/api/updater.rs
+// rust/crates/im-flutter-bridge/src/api/updater.rs
 
 pub struct AutoUpdater;
 
@@ -1104,7 +1104,7 @@ pub struct UpdateInfo {
 ### 10.2 关键技术点
 
 1. **Flutter Rust Bridge**：已有的 Rust 桥接基础
-2. **e2ee-core**：已有的生产级 E2EE 实现
+2. **im-e2ee-core**：已有的生产级 E2EE 实现
 3. **端口模式**：平台能力抽象，易于扩展
 4. **响应式 UI**：im_ui 组件库已支持多端
 

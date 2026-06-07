@@ -9,7 +9,7 @@ import 'package:im_web/features/e2ee/data/e2ee_session_store.dart';
 
 /// Core E2EE orchestrator.
 ///
-/// Thin wrapper over the Rust SessionManager (via [WebE2eeAdapter]).
+/// Thin wrapper over the configured Rust-backed E2EE adapter.
 /// Handles: negotiation flow, storage coordination, device registration.
 class E2eeManager {
   E2eeManager({

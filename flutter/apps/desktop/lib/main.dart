@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:im_core/core.dart';
+import 'package:im_rust_bridge/im_rust_bridge.dart';
 import 'app.dart';
 import 'adapters/desktop_network_adapter.dart';
 import 'adapters/desktop_storage_adapter.dart';
-import 'adapters/desktop_e2ee_adapter.dart';
 import 'adapters/desktop_file_picker_adapter.dart';
 import 'adapters/desktop_notification_adapter.dart';
 import 'adapters/desktop_clipboard_adapter.dart';
@@ -32,8 +31,8 @@ void main() async {
   final savedLanguage = settingsPersistence.getLanguage();
   final savedThemeMode = settingsPersistence.getThemeMode();
 
-  // Initialize Flutter Rust Bridge
-  await RustBridgeInitializer.init();
+  final rustGateway = FrbRustGateway();
+  await rustGateway.init();
 
   // Initialize logger
   AppLogger.init(
@@ -53,7 +52,6 @@ void main() async {
   final storageService = await DesktopStorageService.create();
   final secureStorageService = DesktopSecureStorageAdapter();
   final networkService = DesktopNetworkService(baseUrl: apiBase);
-  final e2eeService = DesktopE2eeService();
 
   // Initialize WebSocket adapter with base URL
   final wsService = DesktopWsAdapter();
@@ -75,7 +73,7 @@ void main() async {
       secureStorageProvider.overrideWithValue(secureStorageService),
       wsClientProvider.overrideWithValue(wsService),
       // E2EE 适配器
-      e2eeAdapterProvider.overrideWithValue(e2eeService),
+      e2eeAdapterProvider.overrideWithValue(rustGateway),
       e2eeKeyStoreProvider.overrideWithValue(DesktopKeyStore()),
       e2eeSessionStoreProvider.overrideWithValue(DesktopSessionStore()),
       // 第三方服务适配器

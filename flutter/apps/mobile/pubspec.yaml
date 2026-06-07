@@ -22,6 +22,8 @@ dependencies:
     path: ../../packages/core_flutter
   im_shared_features:
     path: ../../packages/shared_features
+  im_rust_bridge:
+    path: ../../packages/rust_bridge
   flutter_riverpod: ^2.4.9
   go_router: ^13.0.0
   dio: ^5.4.0
@@ -31,7 +33,7 @@ dependencies:
   json_annotation: ^4.8.1
   intl: ">=0.19.0 <0.21.0"
   image_picker: ^1.0.4
-  file_picker: ^6.1.1
+  file_picker: ^11.0.2
   share_plus: ^7.2.1
   flutter_local_notifications: ^17.0.0
   shared_preferences: ^2.2.2

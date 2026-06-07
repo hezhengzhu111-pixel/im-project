@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:im_core/core.dart';
+import 'package:im_rust_bridge/im_rust_bridge.dart';
 import 'app.dart';
 import 'adapters/web_file_picker_adapter.dart';
 import 'adapters/web_notification_adapter.dart';
@@ -10,7 +11,6 @@ import 'adapters/web_audio_recorder_adapter.dart';
 import 'adapters/web_storage_adapter.dart';
 import 'adapters/web_http_adapter.dart';
 import 'adapters/web_ws_adapter.dart';
-import 'adapters/web_e2ee_adapter.dart';
 import 'core/di/platform_providers.dart';
 import 'core/network/network_providers.dart';
 import 'core/network/network_status_initializer.dart';
@@ -19,7 +19,8 @@ import 'features/e2ee/data/e2ee_providers.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await RustBridgeInitializer.init();
+  final rustGateway = FrbRustGateway();
+  await rustGateway.init();
   initNetworkStatus();
   const env = String.fromEnvironment('APP_ENV', defaultValue: 'development');
 
@@ -64,7 +65,7 @@ Future<void> main() async {
         ),
       ),
       // E2EE adapter
-      e2eeAdapterProvider.overrideWithValue(WebE2eeAdapter()),
+      e2eeAdapterProvider.overrideWithValue(rustGateway),
     ],
     observers: [AppProviderObserver(env: env)],
     child: const App(),

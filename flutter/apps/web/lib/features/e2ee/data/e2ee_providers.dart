@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:im_core/core.dart';
+import 'package:im_core_flutter/im_core_flutter.dart' show e2eeAdapterProvider;
 import '../../../core/network/network_providers.dart';
 import '../../auth/presentation/auth_providers.dart';
 import 'e2ee_api.dart';
@@ -10,10 +10,7 @@ import 'e2ee_sent_message_cache.dart';
 import 'e2ee_sent_message_cache_impl.dart';
 import 'e2ee_session_store.dart';
 
-final e2eeAdapterProvider = Provider<E2eeBridge>((ref) {
-  throw UnimplementedError(
-      'e2eeAdapterProvider must be overridden at app startup');
-});
+export 'package:im_core_flutter/im_core_flutter.dart' show e2eeAdapterProvider;
 
 final e2eeApiProvider = Provider<E2eeApi>((ref) {
   return E2eeApi(ref.watch(httpClientProvider));

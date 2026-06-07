@@ -1,0 +1,19 @@
+﻿[package]
+name = "im-e2ee-wasm"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+im-e2ee-core = { path = "../im-e2ee-core" }
+wasm-bindgen.workspace = true
+base64.workspace = true
+bincode.workspace = true
+serde_json.workspace = true
+getrandom = { workspace = true, features = ["js"] }
+x25519-dalek.workspace = true
+
+[dev-dependencies]
+wasm-bindgen-test.workspace = true

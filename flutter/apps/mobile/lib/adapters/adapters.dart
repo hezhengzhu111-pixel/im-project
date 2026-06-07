@@ -1,6 +1,5 @@
 export 'mobile_audio_recorder_adapter.dart';
 export 'mobile_clipboard_adapter.dart';
-export 'mobile_e2ee_adapter.dart';
 export 'mobile_file_picker_adapter.dart';
 export 'mobile_network_adapter.dart';
 export 'mobile_notification_adapter.dart';

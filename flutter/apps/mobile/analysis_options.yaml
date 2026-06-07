@@ -1,7 +1,24 @@
 include: package:very_good_analysis/analysis_options.yaml
 
+analyzer:
+  errors:
+    inference_failure_on_function_invocation: ignore
+
 linter:
   rules:
-    public_member_api_docs: false
-    lines_longer_than_80_chars: false
+    always_put_required_named_parameters_first: false
+    always_use_package_imports: false
+    avoid_redundant_argument_values: false
+    avoid_slow_async_io: false
+    avoid_void_async: false
+    cascade_invocations: false
+    combinators_ordering: false
+    directives_ordering: false
     flutter_style_todos: false
+    lines_longer_than_80_chars: false
+    prefer_const_constructors: false
+    public_member_api_docs: false
+    require_trailing_commas: false
+    sort_constructors_first: false
+    sort_pub_dependencies: false
+    unnecessary_lambdas: false

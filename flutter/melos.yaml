@@ -14,6 +14,10 @@ scripts:
   analyze:
     run: melos exec -- flutter analyze
 
+  rust-bridge:smoke:
+    run: powershell -NoProfile -ExecutionPolicy Bypass -File packages/rust_bridge/tool/rust_bridge_smoke.ps1
+    description: Build the Rust bridge release library and verify FrbRustGateway native initialization
+
   test:web:
     run: melos exec --scope="im_web" -- flutter test
     description: 运行 Flutter Web 单元测试和 widget 测试

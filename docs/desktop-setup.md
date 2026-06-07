@@ -13,8 +13,8 @@
 ```bash
 cd flutter
 flutter pub get
-cd native/rust
-cargo build
+cd ../rust
+cargo build -p im-flutter-bridge --release
 ```
 
 ### 2. 生成 FRB 绑定
@@ -23,6 +23,10 @@ cargo build
 cd flutter
 flutter_rust_bridge_codegen generate
 ```
+
+The generated Dart loader uses the `im_rust_bridge` native library stem and
+loads from `rust/target/release/`. Run `dart run melos run rust-bridge:smoke`
+from `flutter/` to build the release library and verify native initialization.
 
 ### 3. 运行桌面端
 

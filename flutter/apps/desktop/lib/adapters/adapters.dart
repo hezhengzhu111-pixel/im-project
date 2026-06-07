@@ -1,6 +1,5 @@
 export 'desktop_network_adapter.dart';
 export 'desktop_storage_adapter.dart';
-export 'desktop_e2ee_adapter.dart';
 export 'desktop_file_picker_adapter.dart';
 export 'desktop_notification_adapter.dart';
 export 'desktop_clipboard_adapter.dart';

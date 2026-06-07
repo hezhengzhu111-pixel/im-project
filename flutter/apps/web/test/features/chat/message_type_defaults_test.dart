@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idb_shim/idb_client_memory.dart';
@@ -13,7 +13,7 @@ import 'package:im_web/features/e2ee/data/e2ee_sent_message_cache.dart';
 import 'package:im_web/features/e2ee/data/e2ee_api.dart';
 import 'package:im_web/features/e2ee/data/e2ee_key_store.dart';
 import 'package:im_web/features/e2ee/data/e2ee_session_store.dart';
-import 'package:im_web/adapters/web_e2ee_adapter.dart';
+import 'package:im_rust_bridge/im_rust_bridge.dart';
 import 'package:im_web/adapters/services/noop_analytics_adapter.dart';
 import 'package:im_web/core/network/network_status_provider.dart';
 
@@ -187,7 +187,7 @@ class _TestableE2eeManager extends E2eeManager {
     required E2eeMetaStore metaStore,
     String currentUserId = 'user-1',
   }) : super(
-          adapter: WebE2eeAdapter(),
+          adapter: FrbRustGateway(),
           api: E2eeApi(FakeHttpClientPort()),
           keyStore: E2eeKeyStore(),
           sessionStore: E2eeSessionStore(),

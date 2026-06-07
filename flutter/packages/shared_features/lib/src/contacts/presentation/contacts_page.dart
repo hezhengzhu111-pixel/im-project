@@ -56,8 +56,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
             ),
           ),
           ...contactsState.friendRequests.map((request) {
-            final displayName = request.applicantNickname ?? request.applicantUsername ?? '';
-            final initial = displayName.isNotEmpty ? displayName.substring(0, 1) : '?';
+            final displayName =
+                request.applicantNickname ?? request.applicantUsername;
+            final initial =
+                displayName.isNotEmpty ? displayName.substring(0, 1) : '?';
             return ListTile(
               leading: CircleAvatar(
                 child: Text(
@@ -104,8 +106,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
                     final friend = contactsState.friends[index];
                     final displayName = (friend.remark?.isNotEmpty ?? false)
                         ? friend.remark!
-                        : (friend.nickname ?? friend.username ?? '');
-                    final initial = displayName.isNotEmpty ? displayName.substring(0, 1) : '?';
+                        : (friend.nickname ?? friend.username);
+                    final initial = displayName.isNotEmpty
+                        ? displayName.substring(0, 1)
+                        : '?';
                     return ListTile(
                       leading: CircleAvatar(
                         child: Text(
