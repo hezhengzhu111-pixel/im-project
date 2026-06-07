@@ -30,9 +30,14 @@ class SettingsPage extends ConsumerWidget {
             trailing: DropdownButton<ThemeMode>(
               value: themeMode,
               items: [
-                DropdownMenuItem(value: ThemeMode.system, child: Text(loc.settingsThemeAuto)),
-                DropdownMenuItem(value: ThemeMode.light, child: Text(loc.settingsThemeLight)),
-                DropdownMenuItem(value: ThemeMode.dark, child: Text(loc.settingsThemeDark)),
+                DropdownMenuItem(
+                    value: ThemeMode.system,
+                    child: Text(loc.settingsThemeAuto)),
+                DropdownMenuItem(
+                    value: ThemeMode.light,
+                    child: Text(loc.settingsThemeLight)),
+                DropdownMenuItem(
+                    value: ThemeMode.dark, child: Text(loc.settingsThemeDark)),
               ],
               onChanged: (value) {
                 if (value != null) {

@@ -298,7 +298,9 @@ class _LoginPageState extends ConsumerState<LoginPage>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white.withValues(alpha: 0.3) : Colors.transparent,
+          color: isSelected
+              ? Colors.white.withValues(alpha: 0.3)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Text(

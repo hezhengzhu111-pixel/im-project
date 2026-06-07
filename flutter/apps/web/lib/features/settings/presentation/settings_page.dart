@@ -72,7 +72,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               padding: const EdgeInsets.all(24),
               child: PageView(
                 controller: _pageController,
-                onPageChanged: (index) => setState(() => _selectedIndex = index),
+                onPageChanged: (index) =>
+                    setState(() => _selectedIndex = index),
                 children: [
                   _buildAccountPage(loc, theme, authState),
                   _buildAppearancePage(loc, theme, settings),

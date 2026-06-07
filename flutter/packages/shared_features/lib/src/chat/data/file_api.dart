@@ -39,7 +39,8 @@ class FileApi {
       );
       return UploadResult.fromJson(response.data);
     } catch (e) {
-      _analytics.trackEvent('file_upload_failed', {'error_type': 'upload_error'});
+      _analytics
+          .trackEvent('file_upload_failed', {'error_type': 'upload_error'});
       rethrow;
     }
   }
@@ -54,7 +55,8 @@ class FileApi {
       );
       return UploadResult.fromJson(response.data);
     } catch (e) {
-      _analytics.trackEvent('file_upload_failed', {'error_type': 'upload_error'});
+      _analytics
+          .trackEvent('file_upload_failed', {'error_type': 'upload_error'});
       rethrow;
     }
   }
@@ -69,7 +71,8 @@ class FileApi {
       );
       return UploadResult.fromJson(response.data);
     } catch (e) {
-      _analytics.trackEvent('file_upload_failed', {'error_type': 'upload_error'});
+      _analytics
+          .trackEvent('file_upload_failed', {'error_type': 'upload_error'});
       rethrow;
     }
   }
@@ -84,7 +87,8 @@ class FileApi {
       );
       return UploadResult.fromJson(response.data);
     } catch (e) {
-      _analytics.trackEvent('file_upload_failed', {'error_type': 'upload_error'});
+      _analytics
+          .trackEvent('file_upload_failed', {'error_type': 'upload_error'});
       rethrow;
     }
   }

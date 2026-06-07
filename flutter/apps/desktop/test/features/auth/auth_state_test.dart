@@ -61,8 +61,7 @@ void main() {
 
     test('copyWith should update permissions', () {
       const state = AuthState();
-      final newState =
-          state.copyWith(permissions: ['read', 'write']);
+      final newState = state.copyWith(permissions: ['read', 'write']);
       expect(newState.permissions, ['read', 'write']);
     });
 

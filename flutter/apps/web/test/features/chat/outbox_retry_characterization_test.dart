@@ -1,4 +1,4 @@
-﻿/// Characterization tests for outbox retry behavior.
+/// Characterization tests for outbox retry behavior.
 ///
 /// These tests document and lock down the current behavior of:
 /// - Private message send failure → outbox enqueue
@@ -582,7 +582,8 @@ void main() {
   // =========================================================================
 
   group('group message: non-network error → immediate failure', () {
-    test('generic exception does not enqueue group message to outbox', () async {
+    test('generic exception does not enqueue group message to outbox',
+        () async {
       notifier = createNotifier();
       testApi.errorToThrow = Exception('Permission denied');
 

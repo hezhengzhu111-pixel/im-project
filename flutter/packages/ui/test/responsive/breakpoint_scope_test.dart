@@ -45,7 +45,8 @@ void main() {
       expect(captured, Breakpoint.medium);
     });
 
-    testWidgets('provides expanded breakpoint for width 900-1199', (tester) async {
+    testWidgets('provides expanded breakpoint for width 900-1199',
+        (tester) async {
       late Breakpoint captured;
 
       await tester.pumpWidget(
@@ -85,7 +86,8 @@ void main() {
       expect(captured, Breakpoint.large);
     });
 
-    testWidgets('defaults to compact when no BreakpointScope ancestor', (tester) async {
+    testWidgets('defaults to compact when no BreakpointScope ancestor',
+        (tester) async {
       late Breakpoint captured;
 
       await tester.pumpWidget(

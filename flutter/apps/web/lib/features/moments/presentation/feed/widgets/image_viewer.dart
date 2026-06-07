@@ -9,7 +9,8 @@ class ImageViewerOverlay {
   /// 显示图片查看器。
   /// [initialIndex] 初始显示的图片索引。
   /// [imageUrls] 图片 URL 列表。
-  static void show(BuildContext context, {required List<String> imageUrls, int initialIndex = 0}) {
+  static void show(BuildContext context,
+      {required List<String> imageUrls, int initialIndex = 0}) {
     dismiss();
     _entry = OverlayEntry(
       builder: (_) => _ImageViewerBody(
@@ -63,7 +64,8 @@ class _ImageViewerBodyState extends State<_ImageViewerBody> {
   }
 
   bool _onKey(KeyEvent event) {
-    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.escape) {
       widget.onDismiss();
       return true;
     }
@@ -122,14 +124,16 @@ class _ImageViewerBodyState extends State<_ImageViewerBody> {
                   right: 0,
                   child: Center(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
                         color: Colors.black54,
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Text(
                         '${_currentIndex + 1} / ${widget.imageUrls.length}',
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 14),
                       ),
                     ),
                   ),

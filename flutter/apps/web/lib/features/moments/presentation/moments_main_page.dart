@@ -96,7 +96,10 @@ class _MomentsMainPageState extends ConsumerState<MomentsMainPage> {
                             builder: (context) {
                               final user = ref.watch(authStateProvider).user;
                               return MomentsCover(
-                                nickname: user?.nickname ?? user?.username ?? AppLocalizations.of(context)!.momentsUserFallback,
+                                nickname: user?.nickname ??
+                                    user?.username ??
+                                    AppLocalizations.of(context)!
+                                        .momentsUserFallback,
                                 avatar: user?.avatar,
                               );
                             },

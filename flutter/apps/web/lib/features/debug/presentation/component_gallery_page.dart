@@ -68,7 +68,8 @@ class _ComponentGalleryPageState extends State<ComponentGalleryPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('ImButton', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        const Text('ImButton',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         const Text('Variants'),
         const SizedBox(height: 8),
@@ -109,7 +110,8 @@ class _ComponentGalleryPageState extends State<ComponentGalleryPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('ImTextField', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        const Text('ImTextField',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         const ImTextField(label: 'Username', hintText: 'Enter username'),
         const SizedBox(height: 16),
@@ -131,7 +133,8 @@ class _ComponentGalleryPageState extends State<ComponentGalleryPage> {
           errorText: 'This field is required',
         ),
         const SizedBox(height: 16),
-        const ImTextField(label: 'Disabled', hintText: 'Cannot edit', enabled: false),
+        const ImTextField(
+            label: 'Disabled', hintText: 'Cannot edit', enabled: false),
       ],
     );
   }
@@ -140,7 +143,8 @@ class _ComponentGalleryPageState extends State<ComponentGalleryPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('ImCard', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        const Text('ImCard',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         const ImCard(child: Text('Default Card')),
         const SizedBox(height: 16),
@@ -160,7 +164,8 @@ class _ComponentGalleryPageState extends State<ComponentGalleryPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('ImEmpty', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        const Text('ImEmpty',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         const ImEmpty(icon: Icons.inbox, title: 'No messages'),
         const SizedBox(height: 16),
@@ -183,7 +188,8 @@ class _ComponentGalleryPageState extends State<ComponentGalleryPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('ImAvatar', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        const Text('ImAvatar',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         const Wrap(
           spacing: 16,
@@ -212,7 +218,8 @@ class _ComponentGalleryPageState extends State<ComponentGalleryPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('ImBadge', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        const Text('ImBadge',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         const Wrap(
           spacing: 16,
@@ -235,7 +242,8 @@ class _ComponentGalleryPageState extends State<ComponentGalleryPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('ImDialog', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        const Text('ImDialog',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         Wrap(
           spacing: 8,
@@ -279,7 +287,8 @@ class _ComponentGalleryPageState extends State<ComponentGalleryPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('ImNavItem', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        const Text('ImNavItem',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         Row(
           children: [

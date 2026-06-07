@@ -27,7 +27,8 @@ class AiSettingsState {
       loading: loading ?? this.loading,
       keys: keys ?? this.keys,
       aiSettings: aiSettings ?? this.aiSettings,
-      testingKeyId: clearTestingKeyId ? null : (testingKeyId ?? this.testingKeyId),
+      testingKeyId:
+          clearTestingKeyId ? null : (testingKeyId ?? this.testingKeyId),
     );
   }
 }
@@ -65,9 +66,17 @@ class AiSettingsNotifier extends StateNotifier<AiSettingsState> {
     try {
       final status = await _api.testKey(id);
       state = state.copyWith(
-        keys: state.keys.map((k) =>
-            k.id == id ? AiApiKey(id: k.id, provider: k.provider, key: k.key, label: k.label, status: status, createdAt: k.createdAt) : k
-        ).toList(),
+        keys: state.keys
+            .map((k) => k.id == id
+                ? AiApiKey(
+                    id: k.id,
+                    provider: k.provider,
+                    key: k.key,
+                    label: k.label,
+                    status: status,
+                    createdAt: k.createdAt)
+                : k)
+            .toList(),
         clearTestingKeyId: true,
       );
     } catch (e) {

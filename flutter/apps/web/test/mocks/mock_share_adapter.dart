@@ -33,7 +33,8 @@ class MockShareAdapter implements SharePort {
   }
 
   @override
-  Future<Result<void>> shareFile({required String filePath, String? mimeType}) async {
+  Future<Result<void>> shareFile(
+      {required String filePath, String? mimeType}) async {
     if (_mockError != null) {
       return Failure(_mockError!);
     }

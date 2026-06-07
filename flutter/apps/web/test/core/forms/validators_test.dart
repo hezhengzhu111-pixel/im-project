@@ -52,12 +52,14 @@ void main() {
 
     group('pattern', () {
       test('returns error for non-matching value', () {
-        final validator = FormValidators.pattern(RegExp(r'^\d+$'), 'digits only');
+        final validator =
+            FormValidators.pattern(RegExp(r'^\d+$'), 'digits only');
         expect(validator('abc'), 'digits only');
       });
 
       test('returns null for matching value', () {
-        final validator = FormValidators.pattern(RegExp(r'^\d+$'), 'digits only');
+        final validator =
+            FormValidators.pattern(RegExp(r'^\d+$'), 'digits only');
         expect(validator('123'), isNull);
       });
     });

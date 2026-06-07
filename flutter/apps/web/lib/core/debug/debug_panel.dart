@@ -105,8 +105,10 @@ class DebugPanel extends ConsumerWidget {
             // Offline queue
             _buildSection(
               title: 'Queue',
-              value: '${chatState.pendingCount} pending, ${chatState.failedCount} failed',
-              color: chatState.pendingCount > 0 ? Colors.orange : Colors.white54,
+              value:
+                  '${chatState.pendingCount} pending, ${chatState.failedCount} failed',
+              color:
+                  chatState.pendingCount > 0 ? Colors.orange : Colors.white54,
             ),
           ],
         ),

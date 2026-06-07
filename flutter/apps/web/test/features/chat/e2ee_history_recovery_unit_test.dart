@@ -133,7 +133,8 @@ void main() {
       expect(result.shouldWriteCache, isFalse);
     });
 
-    test('decrypt fail + cache hit but empty plaintext returns unavailable', () {
+    test('decrypt fail + cache hit but empty plaintext returns unavailable',
+        () {
       final result = E2eeHistoryRecovery.computeOwnMessageRecovery(
         decryptSuccess: false,
         decryptedContent: '',

@@ -128,7 +128,12 @@ class ImTokens {
 
   /// 外层大背景四色渐变 (仅用于最外层页面背景)
   static const LinearGradient brandBackgroundGradient = LinearGradient(
-    colors: [Color(0xFF667EEA), Color(0xFF764BA2), Color(0xFF23A6D5), Color(0xFF23D5AB)],
+    colors: [
+      Color(0xFF667EEA),
+      Color(0xFF764BA2),
+      Color(0xFF23A6D5),
+      Color(0xFF23D5AB)
+    ],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -284,7 +289,8 @@ class ImComponentTokens {
   // ── Button ──
   static final Color buttonPrimaryBg = ImColors.light.primary;
   static final Color buttonPrimaryText = const Color(0xFFFFFFFF);
-  static final Color buttonPrimaryDisabledBg = const Color(0x61764BA2); // brand purple @ 38% opacity
+  static final Color buttonPrimaryDisabledBg =
+      const Color(0x61764BA2); // brand purple @ 38% opacity
   static final Color buttonPrimaryDisabledText = const Color(0x61FFFFFF);
   static final Color buttonSecondaryBg = const Color(0x00000000);
   static final Color buttonSecondaryText = ImColors.light.primary;

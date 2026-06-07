@@ -36,7 +36,8 @@ class _JoinGroupDialogState extends ConsumerState<JoinGroupDialog> {
     if (_isJoining) return;
     setState(() => _isJoining = true);
 
-    final success = await ref.read(groupStateProvider.notifier).joinGroup(group.id);
+    final success =
+        await ref.read(groupStateProvider.notifier).joinGroup(group.id);
 
     if (mounted) {
       final loc = AppLocalizations.of(context)!;

@@ -23,7 +23,8 @@ class AppConfig {
   static AppConfig fromEnvironment() {
     return AppConfig(
       analyticsEnabled: const bool.fromEnvironment('ANALYTICS_ENABLED'),
-      errorReporterEnabled: const bool.fromEnvironment('ERROR_REPORTER_ENABLED'),
+      errorReporterEnabled:
+          const bool.fromEnvironment('ERROR_REPORTER_ENABLED'),
       paymentEnabled: const bool.fromEnvironment('PAYMENT_ENABLED'),
       mapEnabled: const bool.fromEnvironment('MAP_ENABLED'),
       pushEnabled: const bool.fromEnvironment('PUSH_ENABLED'),

@@ -46,8 +46,7 @@ void main() {
     });
 
     test('strips existing group_ prefix before adding', () {
-      expect(SessionKeyCodec.groupSessionKey('group_group-1'),
-          'group_group-1');
+      expect(SessionKeyCodec.groupSessionKey('group_group-1'), 'group_group-1');
     });
 
     test('strips g_ prefix before adding', () {
@@ -75,13 +74,11 @@ void main() {
     });
 
     test('numeric IDs are compared numerically', () {
-      expect(SessionKeyCodec.e2eeSessionIdForPrivate('100', '2'),
-          'p_2_100');
+      expect(SessionKeyCodec.e2eeSessionIdForPrivate('100', '2'), 'p_2_100');
     });
 
     test('empty currentUserId returns targetId', () {
-      expect(SessionKeyCodec.e2eeSessionIdForPrivate('', 'user-2'),
-          'user-2');
+      expect(SessionKeyCodec.e2eeSessionIdForPrivate('', 'user-2'), 'user-2');
     });
 
     test('empty targetId returns empty', () {
@@ -106,7 +103,8 @@ void main() {
         ),
       ];
       expect(
-          SessionKeyCodec.normalizeIncomingSessionKey('custom-session', sessions),
+          SessionKeyCodec.normalizeIncomingSessionKey(
+              'custom-session', sessions),
           'custom-session');
     });
 
@@ -137,8 +135,7 @@ void main() {
           conversationType: 'group',
         ),
       ];
-      expect(
-          SessionKeyCodec.normalizeIncomingSessionKey('g_custom', sessions),
+      expect(SessionKeyCodec.normalizeIncomingSessionKey('g_custom', sessions),
           'group_custom');
     });
 
@@ -165,8 +162,7 @@ void main() {
     });
 
     test('empty session key returns empty', () {
-      expect(
-          SessionKeyCodec.normalizeIncomingSessionKey('', []), '');
+      expect(SessionKeyCodec.normalizeIncomingSessionKey('', []), '');
     });
   });
 
@@ -190,15 +186,12 @@ void main() {
     });
 
     test('bare id returns itself', () {
-      expect(
-          SessionKeyCodec.privateTargetFromSessionKey('user-2', 'user-1'),
+      expect(SessionKeyCodec.privateTargetFromSessionKey('user-2', 'user-1'),
           'user-2');
     });
 
     test('null currentUserId returns first non-empty part', () {
-      expect(
-          SessionKeyCodec.privateTargetFromSessionKey(
-              'user-1_user-2', null),
+      expect(SessionKeyCodec.privateTargetFromSessionKey('user-1_user-2', null),
           'user-1');
     });
   });
@@ -258,8 +251,7 @@ void main() {
         ),
       ];
       expect(
-          SessionKeyCodec.normalizeE2eeSessionKey(
-              'p_user-1_user-2', sessions),
+          SessionKeyCodec.normalizeE2eeSessionKey('p_user-1_user-2', sessions),
           'p_user-1_user-2');
     });
 
@@ -294,9 +286,7 @@ void main() {
           conversationType: 'group',
         ),
       ];
-      expect(
-          SessionKeyCodec.normalizeE2eeSessionKey(
-              'group_custom', sessions),
+      expect(SessionKeyCodec.normalizeE2eeSessionKey('group_custom', sessions),
           'group_custom');
     });
   });
@@ -392,14 +382,12 @@ void main() {
 
     test('unknown key with group_ prefix', () {
       expect(
-          SessionKeyCodec.readConversationIdForSessionKey(
-              'group_custom', []),
+          SessionKeyCodec.readConversationIdForSessionKey('group_custom', []),
           'group_custom');
     });
 
     test('unknown key with g_ prefix', () {
-      expect(
-          SessionKeyCodec.readConversationIdForSessionKey('g_custom', []),
+      expect(SessionKeyCodec.readConversationIdForSessionKey('g_custom', []),
           'group_custom');
     });
 

@@ -29,7 +29,9 @@ void main() {
       );
       final state = ChatState(
         activeSessionId: 's1',
-        messages: {'s1': [msg]},
+        messages: {
+          's1': [msg]
+        },
       );
       expect(state.currentMessages.length, 1);
       expect(state.currentMessages.first.content, 'Hello');
@@ -45,7 +47,9 @@ void main() {
         sendTime: '2024-01-01T00:00:00Z',
         status: 'sent',
       );
-      final state = ChatState(messages: {'s1': [msg]});
+      final state = ChatState(messages: {
+        's1': [msg]
+      });
       expect(state.currentMessages, isEmpty);
     });
 

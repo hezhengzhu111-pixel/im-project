@@ -70,8 +70,7 @@ void main() {
     });
 
     test('preserves errorType as runtimeType name', () {
-      final result =
-          sanitizer.sanitize(CustomTestException('test'), null);
+      final result = sanitizer.sanitize(CustomTestException('test'), null);
       expect(result.errorType, 'CustomTestException');
     });
 
@@ -106,12 +105,14 @@ void main() {
     });
 
     test('sets category to e2ee_error when hint is e2ee', () {
-      final result = sanitizer.sanitize(Exception('test'), null, category: 'e2ee');
+      final result =
+          sanitizer.sanitize(Exception('test'), null, category: 'e2ee');
       expect(result.category, 'e2ee_error');
     });
 
     test('sets category to ws_error when hint is ws', () {
-      final result = sanitizer.sanitize(Exception('test'), null, category: 'ws');
+      final result =
+          sanitizer.sanitize(Exception('test'), null, category: 'ws');
       expect(result.category, 'ws_error');
     });
   });

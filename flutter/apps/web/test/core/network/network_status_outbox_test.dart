@@ -61,7 +61,8 @@ class FakeMessageApi extends MessageApi {
   int sendCount = 0;
   bool shouldFail = false;
 
-  Message _makeMessage(String content, String messageType, String? clientMessageId) {
+  Message _makeMessage(
+      String content, String messageType, String? clientMessageId) {
     return Message(
       id: 'msg_${sendCount}',
       senderId: 'sender1',
@@ -78,14 +79,16 @@ class FakeMessageApi extends MessageApi {
   Future<Message> sendPrivateMessage(SendPrivateMessageRequest request) async {
     sendCount++;
     if (shouldFail) throw Exception('Network error');
-    return _makeMessage(request.content, request.messageType, request.clientMessageId);
+    return _makeMessage(
+        request.content, request.messageType, request.clientMessageId);
   }
 
   @override
   Future<Message> sendGroupMessage(SendGroupMessageRequest request) async {
     sendCount++;
     if (shouldFail) throw Exception('Network error');
-    return _makeMessage(request.content, request.messageType, request.clientMessageId);
+    return _makeMessage(
+        request.content, request.messageType, request.clientMessageId);
   }
 
   @override

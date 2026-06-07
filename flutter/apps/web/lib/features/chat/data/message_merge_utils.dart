@@ -137,15 +137,15 @@ Message _mergeTwoMessages(Message existing, Message incoming) {
     id: (incoming.id.isNotEmpty && !incoming.id.startsWith('local_'))
         ? incoming.id
         : existing.id,
-    senderId: incoming.senderId.isNotEmpty
-        ? incoming.senderId
-        : existing.senderId,
+    senderId:
+        incoming.senderId.isNotEmpty ? incoming.senderId : existing.senderId,
     isGroupChat: incoming.isGroupChat,
     messageType: incoming.messageType.isNotEmpty
         ? incoming.messageType
         : existing.messageType,
     content: incoming.content.isNotEmpty ? incoming.content : existing.content,
-    sendTime: incoming.sendTime.isNotEmpty ? incoming.sendTime : existing.sendTime,
+    sendTime:
+        incoming.sendTime.isNotEmpty ? incoming.sendTime : existing.sendTime,
     status: incoming.status.isNotEmpty ? incoming.status : existing.status,
     messageId: incoming.messageId ?? existing.messageId,
     clientMessageId: incoming.clientMessageId ?? existing.clientMessageId,

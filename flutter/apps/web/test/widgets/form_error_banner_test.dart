@@ -87,7 +87,11 @@ void main() {
       await tester.pumpAndSettle();
 
       final container = tester.widget<Container>(
-        find.ancestor(of: find.byIcon(Icons.error_outline), matching: find.byType(Container)).first,
+        find
+            .ancestor(
+                of: find.byIcon(Icons.error_outline),
+                matching: find.byType(Container))
+            .first,
       );
       final decoration = container.decoration as BoxDecoration;
       expect(decoration.color, isNotNull);

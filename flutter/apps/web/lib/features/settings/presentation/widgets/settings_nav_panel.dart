@@ -39,9 +39,8 @@ class SettingsNavPanel extends ConsumerWidget {
             children: [
               CircleAvatar(
                 radius: 20,
-                backgroundImage: user?.avatar != null
-                    ? NetworkImage(user!.avatar!)
-                    : null,
+                backgroundImage:
+                    user?.avatar != null ? NetworkImage(user!.avatar!) : null,
                 child: user?.avatar == null
                     ? Text(
                         (user?.nickname ?? user?.username ?? '?')
@@ -145,9 +144,7 @@ class _NavItem extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           decoration: BoxDecoration(
-            color: isSelected
-                ? glass.navHoverBackground
-                : Colors.transparent,
+            color: isSelected ? glass.navHoverBackground : Colors.transparent,
             borderRadius: BorderRadius.circular(glass.controlRadius),
           ),
           child: Material(
@@ -157,7 +154,8 @@ class _NavItem extends StatelessWidget {
               borderRadius: BorderRadius.circular(glass.controlRadius),
               onTap: onTap,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: Row(
                   children: [
                     Icon(
@@ -171,10 +169,9 @@ class _NavItem extends StatelessWidget {
                     Text(
                       label,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                        color: isSelected
-                            ? theme.colorScheme.primary
-                            : null,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w500,
+                        color: isSelected ? theme.colorScheme.primary : null,
                       ),
                     ),
                   ],

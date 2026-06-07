@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idb_shim/idb_client_memory.dart';
@@ -1545,7 +1545,8 @@ void main() {
       expect(messages[2].status, 'READ'); // msg-z
     });
 
-    test('readerId is other user: lastReadMessageId updates own messages up to target',
+    test(
+        'readerId is other user: lastReadMessageId updates own messages up to target',
         () async {
       notifier = createNotifier();
 

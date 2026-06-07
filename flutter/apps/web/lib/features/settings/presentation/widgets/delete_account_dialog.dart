@@ -67,8 +67,7 @@ class _DeleteAccountDialogState extends ConsumerState<DeleteAccountDialog> {
           const SizedBox(height: 12),
           CheckboxListTile(
             value: _confirmed,
-            onChanged: (value) =>
-                setState(() => _confirmed = value ?? false),
+            onChanged: (value) => setState(() => _confirmed = value ?? false),
             title: const Text('我已了解风险'),
             controlAffinity: ListTileControlAffinity.leading,
             contentPadding: EdgeInsets.zero,

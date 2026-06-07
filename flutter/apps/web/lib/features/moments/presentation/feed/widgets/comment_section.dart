@@ -25,7 +25,9 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(momentsInteractionsProvider(widget.postId).notifier).loadComments();
+      ref
+          .read(momentsInteractionsProvider(widget.postId).notifier)
+          .loadComments();
     });
   }
 
@@ -73,8 +75,12 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
         title: Text(loc.commentDeleteConfirmTitle),
         content: Text(loc.commentDeleteConfirmMessage),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(loc.commonCancel)),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(loc.commentDelete)),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(loc.commonCancel)),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(loc.commentDelete)),
         ],
       ),
     );
@@ -116,7 +122,8 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                 const Spacer(),
                 GestureDetector(
                   onTap: _cancelReply,
-                  child: Icon(Icons.close, size: 16, color: theme.colorScheme.onSurfaceVariant),
+                  child: Icon(Icons.close,
+                      size: 16, color: theme.colorScheme.onSurfaceVariant),
                 ),
               ],
             ),
@@ -130,14 +137,17 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                 controller: _controller,
                 focusNode: _focusNode,
                 decoration: InputDecoration(
-                  hintText: _replyToName != null ? '${loc.commentReply} $_replyToName...' : loc.commentWriteHint,
+                  hintText: _replyToName != null
+                      ? '${loc.commentReply} $_replyToName...'
+                      : loc.commentWriteHint,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(20),
                     borderSide: BorderSide.none,
                   ),
                   filled: true,
                   fillColor: theme.colorScheme.surfaceContainerHighest,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   isDense: true,
                 ),
                 style: const TextStyle(fontSize: 14),
@@ -146,7 +156,8 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
             ),
             const SizedBox(width: 8),
             IconButton(
-              onPressed: _controller.text.trim().isEmpty ? null : _submitComment,
+              onPressed:
+                  _controller.text.trim().isEmpty ? null : _submitComment,
               icon: const Icon(Icons.send),
               style: IconButton.styleFrom(
                 backgroundColor: theme.colorScheme.primary,
@@ -162,18 +173,24 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
         if (interactions.loadingComments)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
-            child: Center(child: SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))),
+            child: Center(
+                child: SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))),
           )
         else if (interactions.comments.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Text(
               loc.commentNoComments,
-              style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
+              style: TextStyle(
+                  fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
             ),
           )
         else
-          ...interactions.comments.map((comment) => _buildCommentItem(context, comment)),
+          ...interactions.comments
+              .map((comment) => _buildCommentItem(context, comment)),
       ],
     );
   }
@@ -194,7 +211,10 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                 ? NetworkImage(comment.userAvatar!)
                 : null,
             child: comment.userAvatar == null
-                ? Text((comment.userNickname ?? comment.userName ?? '?').substring(0, 1).toUpperCase(),
+                ? Text(
+                    (comment.userNickname ?? comment.userName ?? '?')
+                        .substring(0, 1)
+                        .toUpperCase(),
                     style: const TextStyle(fontSize: 12))
                 : null,
           ),
@@ -206,7 +226,9 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                 Row(
                   children: [
                     Text(
-                      comment.userNickname ?? comment.userName ?? loc.momentsUserFallback,
+                      comment.userNickname ??
+                          comment.userName ??
+                          loc.momentsUserFallback,
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
@@ -216,7 +238,9 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                     const SizedBox(width: 8),
                     Text(
                       _formatTime(comment.createTime),
-                      style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -229,10 +253,16 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                 Row(
                   children: [
                     GestureDetector(
-                      onTap: () => _startReply(comment.id, comment.userNickname ?? comment.userName ?? loc.momentsUserFallback),
+                      onTap: () => _startReply(
+                          comment.id,
+                          comment.userNickname ??
+                              comment.userName ??
+                              loc.momentsUserFallback),
                       child: Text(
                         loc.commentReply,
-                        style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurfaceVariant),
                       ),
                     ),
                     if (isOwner) ...[
@@ -241,7 +271,8 @@ class _CommentSectionState extends ConsumerState<CommentSection> {
                         onTap: () => _deleteComment(comment.id),
                         child: Text(
                           loc.commentDelete,
-                          style: TextStyle(fontSize: 12, color: theme.colorScheme.error),
+                          style: TextStyle(
+                              fontSize: 12, color: theme.colorScheme.error),
                         ),
                       ),
                     ],

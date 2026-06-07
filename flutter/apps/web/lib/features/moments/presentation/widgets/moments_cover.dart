@@ -70,9 +70,13 @@ class MomentsCover extends StatelessWidget {
                       backgroundColor: theme.colorScheme.surface,
                       child: CircleAvatar(
                         radius: 29,
-                        backgroundImage: avatar != null ? NetworkImage(avatar!) : null,
+                        backgroundImage:
+                            avatar != null ? NetworkImage(avatar!) : null,
                         child: avatar == null
-                            ? Text(nickname.isNotEmpty ? nickname[0].toUpperCase() : 'U',
+                            ? Text(
+                                nickname.isNotEmpty
+                                    ? nickname[0].toUpperCase()
+                                    : 'U',
                                 style: const TextStyle(fontSize: 20))
                             : null,
                       ),

@@ -37,7 +37,8 @@ void main() {
     test('settingsType returns parameterized path', () {
       expect(UserEndpoints.settingsType('general'), '/user/settings/general');
       expect(UserEndpoints.settingsType('privacy'), '/user/settings/privacy');
-      expect(UserEndpoints.settingsType('notification'), '/user/settings/notification');
+      expect(UserEndpoints.settingsType('notification'),
+          '/user/settings/notification');
     });
   });
 
@@ -51,11 +52,13 @@ void main() {
 
     test('privateHistory returns parameterized path', () {
       expect(MessageEndpoints.privateHistory('123'), '/message/private/123');
-      expect(MessageEndpoints.privateHistory('friend-abc'), '/message/private/friend-abc');
+      expect(MessageEndpoints.privateHistory('friend-abc'),
+          '/message/private/friend-abc');
     });
 
     test('privateHistoryCursor returns parameterized path', () {
-      expect(MessageEndpoints.privateHistoryCursor('f1'), '/message/private/f1/cursor');
+      expect(MessageEndpoints.privateHistoryCursor('f1'),
+          '/message/private/f1/cursor');
     });
 
     test('groupHistory returns parameterized path', () {
@@ -63,7 +66,8 @@ void main() {
     });
 
     test('groupHistoryCursor returns parameterized path', () {
-      expect(MessageEndpoints.groupHistoryCursor('g1'), '/message/group/g1/cursor');
+      expect(MessageEndpoints.groupHistoryCursor('g1'),
+          '/message/group/g1/cursor');
     });
 
     test('markRead returns parameterized path', () {
@@ -128,7 +132,8 @@ void main() {
       expect(MomentsEndpoints.create, '/moments');
       expect(MomentsEndpoints.feed, '/moments/feed');
       expect(MomentsEndpoints.notifications, '/moments/notifications');
-      expect(MomentsEndpoints.markNotificationsRead, '/moments/notifications/read');
+      expect(MomentsEndpoints.markNotificationsRead,
+          '/moments/notifications/read');
     });
 
     test('postById returns parameterized path', () {

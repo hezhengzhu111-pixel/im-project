@@ -23,7 +23,8 @@ void main() {
 
     test('setUserProperties does not throw', () {
       final noop = NoopAnalyticsPort();
-      expect(() => noop.setUserProperties({'plan': 'premium'}), returnsNormally);
+      expect(
+          () => noop.setUserProperties({'plan': 'premium'}), returnsNormally);
     });
   });
 
@@ -42,7 +43,8 @@ void main() {
 
     test('reportMessage does not throw', () {
       final noop = NoopErrorReporterPort();
-      expect(() => noop.reportMessage('test message', level: 'info'), returnsNormally);
+      expect(() => noop.reportMessage('test message', level: 'info'),
+          returnsNormally);
     });
   });
 

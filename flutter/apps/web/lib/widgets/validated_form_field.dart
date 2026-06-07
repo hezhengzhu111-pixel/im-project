@@ -79,7 +79,8 @@ class _ValidatedFormFieldState extends State<ValidatedFormField> {
             ),
             prefixIcon: widget.prefix ??
                 (widget.icon != null
-                    ? Icon(widget.icon, size: 20, color: Colors.blueGrey.shade400)
+                    ? Icon(widget.icon,
+                        size: 20, color: Colors.blueGrey.shade400)
                     : null),
             suffixIcon: _buildSuffix(field),
             contentPadding: const EdgeInsets.symmetric(

@@ -17,9 +17,8 @@ class ImTheme {
       brightness: brightness,
     );
 
-    final textTheme = isLight
-        ? ThemeData.light().textTheme
-        : ThemeData.dark().textTheme;
+    final textTheme =
+        isLight ? ThemeData.light().textTheme : ThemeData.dark().textTheme;
 
     return ThemeData(
       useMaterial3: true,
@@ -45,7 +44,8 @@ class ImTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.grey.shade100,
-        contentPadding: const EdgeInsets.symmetric(horizontal: ImTokens.space4, vertical: ImTokens.space3),
+        contentPadding: const EdgeInsets.symmetric(
+            horizontal: ImTokens.space4, vertical: ImTokens.space3),
         border: OutlineInputBorder(
           borderSide: BorderSide.none,
           borderRadius: BorderRadius.circular(ImTokens.radiusLg),
@@ -137,7 +137,8 @@ class ImTheme {
         labelStyle: const TextStyle(fontWeight: FontWeight.w600),
       ),
       listTileTheme: ListTileThemeData(
-        contentPadding: const EdgeInsets.symmetric(horizontal: ImTokens.space4, vertical: ImTokens.space1),
+        contentPadding: const EdgeInsets.symmetric(
+            horizontal: ImTokens.space4, vertical: ImTokens.space1),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(ImTokens.radiusMd),
         ),

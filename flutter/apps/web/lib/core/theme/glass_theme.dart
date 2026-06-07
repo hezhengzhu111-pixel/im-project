@@ -77,7 +77,12 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
     pageRadius: 16,
     controlRadius: 10,
     accentGradient: const LinearGradient(
-      colors: [Color(0xFF667eea), Color(0xFF764BA2), Color(0xFF23a6d5), Color(0xFF23d5ab)],
+      colors: [
+        Color(0xFF667eea),
+        Color(0xFF764BA2),
+        Color(0xFF23a6d5),
+        Color(0xFF23d5ab)
+      ],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
@@ -152,7 +157,8 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
       controlRadius: controlRadius ?? this.controlRadius,
       accentGradient: accentGradient ?? this.accentGradient,
       segmentedBackground: segmentedBackground ?? this.segmentedBackground,
-      segmentedActiveBackground: segmentedActiveBackground ?? this.segmentedActiveBackground,
+      segmentedActiveBackground:
+          segmentedActiveBackground ?? this.segmentedActiveBackground,
       dividerColor: dividerColor ?? this.dividerColor,
       navHoverBackground: navHoverBackground ?? this.navHoverBackground,
       blurIntensity: blurIntensity ?? this.blurIntensity,
@@ -178,14 +184,19 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
       softShadow: BoxShadow.lerpList(softShadow, other.softShadow, t) ?? [],
       pageRadius: lerpDouble(pageRadius, other.pageRadius, t)!,
       controlRadius: lerpDouble(controlRadius, other.controlRadius, t)!,
-      accentGradient: LinearGradient.lerp(accentGradient, other.accentGradient, t)!,
-      segmentedBackground: Color.lerp(segmentedBackground, other.segmentedBackground, t)!,
-      segmentedActiveBackground: Color.lerp(segmentedActiveBackground, other.segmentedActiveBackground, t)!,
+      accentGradient:
+          LinearGradient.lerp(accentGradient, other.accentGradient, t)!,
+      segmentedBackground:
+          Color.lerp(segmentedBackground, other.segmentedBackground, t)!,
+      segmentedActiveBackground: Color.lerp(
+          segmentedActiveBackground, other.segmentedActiveBackground, t)!,
       dividerColor: Color.lerp(dividerColor, other.dividerColor, t)!,
-      navHoverBackground: Color.lerp(navHoverBackground, other.navHoverBackground, t)!,
+      navHoverBackground:
+          Color.lerp(navHoverBackground, other.navHoverBackground, t)!,
       blurIntensity: lerpDouble(blurIntensity, other.blurIntensity, t)!,
       gradientColors: _lerpColorList(gradientColors, other.gradientColors, t),
-      neumorphicShadow: BoxShadow.lerpList(neumorphicShadow, other.neumorphicShadow, t) ?? [],
+      neumorphicShadow:
+          BoxShadow.lerpList(neumorphicShadow, other.neumorphicShadow, t) ?? [],
       animationDuration: t < 0.5 ? animationDuration : other.animationDuration,
       navBackground: Color.lerp(navBackground, other.navBackground, t)!,
       inputBackground: Color.lerp(inputBackground, other.inputBackground, t)!,

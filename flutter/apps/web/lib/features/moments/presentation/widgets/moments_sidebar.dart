@@ -52,10 +52,13 @@ class MomentsSidebar extends ConsumerWidget {
           children: [
             CircleAvatar(
               radius: 32,
-              backgroundImage: user?.avatar != null ? NetworkImage(user!.avatar!) : null,
+              backgroundImage:
+                  user?.avatar != null ? NetworkImage(user!.avatar!) : null,
               child: user?.avatar == null
                   ? Text(
-                      (user?.nickname ?? user?.username ?? 'U').substring(0, 1).toUpperCase(),
+                      (user?.nickname ?? user?.username ?? 'U')
+                          .substring(0, 1)
+                          .toUpperCase(),
                       style: const TextStyle(fontSize: 20),
                     )
                   : null,
@@ -71,8 +74,10 @@ class MomentsSidebar extends ConsumerWidget {
               icon: const Icon(Icons.camera_alt, size: 18),
               label: Text(loc.momentsPublishButton),
               style: FilledButton.styleFrom(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               ),
             ),
           ],
@@ -96,7 +101,8 @@ class MomentsSidebar extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                color:
+                    theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                 letterSpacing: 0.06,
               ),
             ),
@@ -129,7 +135,8 @@ class MomentsSidebar extends ConsumerWidget {
           const SizedBox(height: 4),
           Text(
             label,
-            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+            style: TextStyle(
+                fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -151,7 +158,8 @@ class MomentsSidebar extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                color:
+                    theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                 letterSpacing: 0.06,
               ),
             ),
@@ -169,7 +177,8 @@ class MomentsSidebar extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Text(
                   loc.momentsNoRecentInteractions,
-                  style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
+                  style: TextStyle(
+                      fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
                 ),
               ],
             ),

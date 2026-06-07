@@ -33,9 +33,8 @@ class ProfileHero extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 32,
-                  backgroundImage: user?.avatar != null
-                      ? NetworkImage(user!.avatar!)
-                      : null,
+                  backgroundImage:
+                      user?.avatar != null ? NetworkImage(user!.avatar!) : null,
                   child: user?.avatar == null
                       ? Text(
                           (user?.nickname ?? user?.username ?? '?')
