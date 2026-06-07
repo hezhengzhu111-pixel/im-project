@@ -9,17 +9,20 @@ import 'rust_gateway.dart';
 class FrbRustGateway implements RustGateway {
   @override
   Future<void> init() {
-    return _run(() => RustBridgeInitializer.init());
+    return _run('init', () => RustBridgeInitializer.init());
   }
 
   @override
   Future<Uint8List> generateKeyBundle(int otkCount) {
-    return _run(() => frb.generateKeyBundle(otkCount: otkCount));
+    return _run(
+      'generateKeyBundle',
+      () => frb.generateKeyBundle(otkCount: otkCount),
+    );
   }
 
   @override
   Future<Map<String, dynamic>> generateKeyBundleJson(int otkCount) {
-    return _run(() async {
+    return _run('generateKeyBundleJson', () async {
       final result = await frb.generateKeyBundleJson(otkCount: otkCount);
       return jsonDecode(result) as Map<String, dynamic>;
     });
@@ -32,6 +35,7 @@ class FrbRustGateway implements RustGateway {
     Uint8List? oneTimePreKey,
   ) {
     return _run(
+      'x3dhInitiate',
       () => frb.x3DhInitiate(
         identityKey: identityKey,
         signedPreKey: signedPreKey,
@@ -48,6 +52,7 @@ class FrbRustGateway implements RustGateway {
     Uint8List? oneTimePreKey,
   ) {
     return _run(
+      'x3dhRespond',
       () => frb.x3DhRespond(
         identityKey: identityKey,
         ephemeralKey: ephemeralKey,
@@ -63,6 +68,7 @@ class FrbRustGateway implements RustGateway {
     Uint8List plaintext,
   ) {
     return _run(
+      'ratchetEncrypt',
       () => frb.ratchetEncrypt(stateBytes: state, plaintext: plaintext),
     );
   }
@@ -73,18 +79,19 @@ class FrbRustGateway implements RustGateway {
     Uint8List ciphertext,
   ) {
     return _run(
+      'ratchetDecrypt',
       () => frb.ratchetDecrypt(stateBytes: state, ciphertext: ciphertext),
     );
   }
 
   @override
   Future<Uint8List> exportState(Uint8List state) {
-    return _run(() => frb.exportState(stateBytes: state));
+    return _run('exportState', () => frb.exportState(stateBytes: state));
   }
 
   @override
   Future<Uint8List> restoreState(Uint8List state) {
-    return _run(() => frb.restoreState(stateBytes: state));
+    return _run('restoreState', () => frb.restoreState(stateBytes: state));
   }
 
   @override
@@ -93,7 +100,7 @@ class FrbRustGateway implements RustGateway {
     required String localIdentityKeyPairBase64,
     required String remoteBundleBase64,
   }) {
-    return _run(() async {
+    return _run('createOutboundSession', () async {
       final remoteBundleJson = utf8.decode(base64Decode(remoteBundleBase64));
       final config = jsonEncode({
         'session_id': sessionId,
@@ -114,7 +121,7 @@ class FrbRustGateway implements RustGateway {
     required String remoteIdentityKeyBase64,
     required String remoteHandshakeBase64,
   }) {
-    return _run(() async {
+    return _run('createInboundSession', () async {
       final config = <String, dynamic>{
         'session_id': sessionId,
         'local_identity_key_pair': localIdentityKeyPairBase64,
@@ -140,7 +147,7 @@ class FrbRustGateway implements RustGateway {
     required String sessionId,
     String? handshakeBase64,
   }) {
-    return _run(() async {
+    return _run('encryptMessage', () async {
       final config = <String, dynamic>{
         'state': stateBase64,
         'plaintext': plaintextBase64,
@@ -161,7 +168,7 @@ class FrbRustGateway implements RustGateway {
     required String stateBase64,
     required Map<String, dynamic> envelope,
   }) {
-    return _run(() async {
+    return _run('decryptMessage', () async {
       final config = jsonEncode({
         'state': stateBase64,
         'envelope': envelope,
@@ -180,7 +187,7 @@ class FrbRustGateway implements RustGateway {
     required String remoteUserId,
     required String remoteDeviceId,
   }) {
-    return _run(() async {
+    return _run('exportSessionEnvelope', () async {
       final config = jsonEncode({
         'state': stateBase64,
         'user_id': userId,
@@ -204,7 +211,7 @@ class FrbRustGateway implements RustGateway {
     required String remoteUserId,
     required String remoteDeviceId,
   }) {
-    return _run(() async {
+    return _run('restoreSessionEnvelope', () async {
       final config = jsonEncode({
         'envelope': envelopeBase64,
         'user_id': userId,
@@ -219,11 +226,11 @@ class FrbRustGateway implements RustGateway {
     });
   }
 
-  Future<T> _run<T>(Future<T> Function() action) async {
+  Future<T> _run<T>(String operation, Future<T> Function() action) async {
     try {
       return await action();
     } catch (error, stackTrace) {
-      throw mapRustError(error, stackTrace);
+      throw mapRustError(operation, error, stackTrace);
     }
   }
 }
