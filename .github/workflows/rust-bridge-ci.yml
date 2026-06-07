@@ -1,0 +1,88 @@
+name: Rust Bridge CI
+
+on:
+  push:
+    paths:
+      - 'rust/crates/im-flutter-bridge/**'
+      - 'rust/crates/im-e2ee-core/**'
+      - 'flutter/packages/rust_bridge/**'
+      - 'flutter/packages/core/**'
+      - 'flutter/packages/core_flutter/**'
+      - 'flutter/packages/shared_features/**'
+      - 'flutter/apps/web/**'
+      - 'flutter/apps/desktop/**'
+      - 'flutter/apps/mobile/**'
+      - 'flutter/melos.yaml'
+      - 'flutter/pubspec.yaml'
+      - 'scripts/check_architecture_boundaries.py'
+      - '.github/workflows/rust-bridge-ci.yml'
+  pull_request:
+    paths:
+      - 'rust/crates/im-flutter-bridge/**'
+      - 'rust/crates/im-e2ee-core/**'
+      - 'flutter/packages/rust_bridge/**'
+      - 'flutter/packages/core/**'
+      - 'flutter/packages/core_flutter/**'
+      - 'flutter/packages/shared_features/**'
+      - 'flutter/apps/web/**'
+      - 'flutter/apps/desktop/**'
+      - 'flutter/apps/mobile/**'
+      - 'flutter/melos.yaml'
+      - 'flutter/pubspec.yaml'
+      - 'scripts/check_architecture_boundaries.py'
+      - '.github/workflows/rust-bridge-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  rust-bridge:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup component add rustfmt
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Rust bridge format
+        working-directory: rust
+        run: cargo fmt --check -p im-flutter-bridge
+
+      - name: Rust bridge check
+        working-directory: rust
+        run: cargo check -p im-flutter-bridge
+
+      - name: Rust bridge test
+        working-directory: rust
+        run: cargo test -p im-flutter-bridge
+
+      - name: Rust bridge release build
+        working-directory: rust
+        run: cargo build -p im-flutter-bridge --release
+
+      - name: Flutter dependencies
+        working-directory: flutter
+        run: flutter pub get
+
+      - name: im_rust_bridge analyze
+        working-directory: flutter
+        run: dart run melos exec --scope="im_rust_bridge" -- flutter analyze
+
+      - name: im_rust_bridge tests
+        working-directory: flutter
+        run: dart run melos exec --scope="im_rust_bridge" -- flutter test
+
+      - name: Rust bridge smoke
+        working-directory: flutter
+        run: dart run melos run rust-bridge:smoke
+
+      - name: Architecture boundaries
+        run: python scripts/check_architecture_boundaries.py
